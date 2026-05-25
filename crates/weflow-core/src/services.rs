@@ -679,6 +679,32 @@ impl ServiceHub {
                 .unwrap_or(0)
         });
 
+        // Supplemental lookup: for any sender still not in nickname_map, query contact table directly
+        {
+            let mut missing: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for m in &all_messages {
+                if let Some(wxid) = m
+                    .get("sender_user_name")
+                    .or_else(|| m.get("senderUserName"))
+                    .and_then(Value::as_str)
+                {
+                    if !wxid.is_empty() && !nickname_map.contains_key(wxid) {
+                        missing.insert(wxid.to_string());
+                    }
+                }
+            }
+            for wxid in missing {
+                if let Ok(c) = self.contact(&wxid) {
+                    let nef = |field: &str| {
+                        c.get(field).and_then(Value::as_str).filter(|s| !s.is_empty())
+                    };
+                    if let Some(name) = nef("nickName").or_else(|| nef("remark")).or_else(|| nef("alias")) {
+                        nickname_map.insert(wxid, name.to_string());
+                    }
+                }
+            }
+        }
+
         let count = all_messages.len();
         crate::export::export_txt(&all_messages, &nickname_map, out)
             .map_err(|e| AppError::runtime(e.to_string()))?;
