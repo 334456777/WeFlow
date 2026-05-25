@@ -1,0 +1,25 @@
+[package]
+name = "weflow-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aes.workspace = true
+anyhow.workspace = true
+dirs.workspace = true
+ecb.workspace = true
+md-5.workspace = true
+mime_guess.workspace = true
+reqwest.workspace = true
+rust_xlsxwriter.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+sha2.workspace = true
+walkdir.workspace = true
+weflow-assets = { path = "../weflow-assets" }
+weflow-native = { path = "../weflow-native" }
+zip.workspace = true

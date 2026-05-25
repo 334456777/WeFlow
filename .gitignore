@@ -29,6 +29,7 @@ test/
 # Build output
 out
 release
+target
 
 # Database
 *.db

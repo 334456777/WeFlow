@@ -20,7 +20,10 @@
     "build": "tsc && vite build && electron-builder",
     "preview": "vite preview",
     "electron:dev": "node scripts/prepare-electron-runtime.cjs && vite --mode electron",
-    "electron:build": "npm run build"
+    "electron:build": "npm run build",
+    "cli:build": "cargo build --release -p weflow-cli",
+    "cli:test": "cargo test --workspace",
+    "cli:check": "cargo check --workspace"
   },
   "dependencies": {
     "@vscode/sudo-prompt": "^9.3.2",
