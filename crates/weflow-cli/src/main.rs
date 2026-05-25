@@ -218,6 +218,17 @@ enum ExportSubcommand {
         #[arg(long, default_value = "all")]
         r#type: String,
     },
+    Messages {
+        session_id: String,
+        /// Start date in Beijing time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        start: Option<String>,
+        /// End date in Beijing time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        end: Option<String>,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -658,7 +669,35 @@ fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> 
         ExportSubcommand::Media { out, session, r#type } => {
             hub.export_media_images(session.as_deref(), out, r#type)
         }
+        ExportSubcommand::Messages { session_id, start, end, out } => {
+            let start_ts = start
+                .as_deref()
+                .map(parse_date_beijing)
+                .transpose()
+                .map_err(AppError::usage)?;
+            let end_ts = end
+                .as_deref()
+                .map(|d| parse_date_beijing(d).map(|ts| ts + 86400))
+                .transpose()
+                .map_err(AppError::usage)?;
+            hub.export_messages_txt(session_id, start_ts, end_ts, out)
+        }
     }
+}
+
+fn parse_date_beijing(s: &str) -> Result<i64, String> {
+    let parts: Vec<&str> = s.splitn(3, '-').collect();
+    if parts.len() != 3 {
+        return Err(format!("invalid date '{s}'; use YYYY-MM-DD"));
+    }
+    let y: i64 = parts[0].parse().map_err(|_| format!("invalid year in '{s}'"))?;
+    let m: i64 = parts[1].parse().map_err(|_| format!("invalid month in '{s}'"))?;
+    let d: i64 = parts[2].parse().map_err(|_| format!("invalid day in '{s}'"))?;
+    // Days since Unix epoch for this calendar date
+    let (y2, m2) = if m <= 2 { (y - 1, m + 9) } else { (y, m - 3) };
+    let days = 365 * y2 + y2 / 4 - y2 / 100 + y2 / 400 + (153 * m2 + 2) / 5 + d - 719_469;
+    // UTC midnight of that date minus 8 h = Beijing midnight
+    Ok(days * 86400 - 8 * 3600)
 }
 
 fn handle_analytics(command: &AnalyticsCommand, hub: &ServiceHub) -> AppResult<Value> {

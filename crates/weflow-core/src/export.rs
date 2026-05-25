@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -394,6 +395,149 @@ fn write_bytes(path: &Path, data: &[u8]) -> Result<()> {
             .with_context(|| format!("create {}", parent.display()))?;
     }
     fs::write(path, data).with_context(|| format!("write {}", path.display()))
+}
+
+// ── TXT export ───────────────────────────────────────────────────────────────
+
+/// Export messages to human-readable TXT.
+/// Format per message:
+///   YYYY-MM-DD HH:MM:SS 'Nickname'
+///
+///   content
+///
+pub fn export_txt(
+    messages: &[Value],
+    nickname_map: &HashMap<String, String>,
+    out: &Path,
+) -> Result<()> {
+    let mut text = String::new();
+    for msg in messages {
+        let ts = msg
+            .get("create_time")
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .or_else(|| v.as_i64())
+            })
+            .unwrap_or(0);
+
+        let sender_wxid = msg
+            .get("sender_username")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        let local_type: i64 = msg
+            .get("local_type")
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_i64())
+            })
+            .unwrap_or(1);
+
+        let content: String = match local_type {
+            1 => {
+                let raw = decode_wcdb_content(msg);
+                let t = extract_text_after_sender(&raw);
+                if t.is_empty() {
+                    continue;
+                }
+                t
+            }
+            3 => "[图片]".to_string(),
+            34 => "[语音]".to_string(),
+            43 => "[视频]".to_string(),
+            47 => "[表情]".to_string(),
+            49 => {
+                let raw = decode_wcdb_content(msg);
+                let t = extract_text_after_sender(&raw);
+                if t.is_empty() {
+                    "[链接/文件]".to_string()
+                } else {
+                    t
+                }
+            }
+            10000 => {
+                let raw = decode_wcdb_content(msg);
+                let t = extract_text_after_sender(&raw);
+                if t.is_empty() {
+                    continue;
+                }
+                format!("[系统: {t}]")
+            }
+            _ => continue,
+        };
+
+        let nickname = nickname_map
+            .get(&sender_wxid)
+            .cloned()
+            .unwrap_or_else(|| sender_wxid.clone());
+
+        let dt = format_timestamp_beijing(ts);
+        text.push_str(&format!("{dt} '{nickname}'\n\n{content}\n\n"));
+    }
+    write_file(out, &text)
+}
+
+fn decode_wcdb_content(msg: &Value) -> String {
+    let ct_flag = msg
+        .get("WCDB_CT_message_content")
+        .and_then(Value::as_str)
+        .unwrap_or("0");
+    let raw = msg
+        .get("message_content")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+
+    if ct_flag == "4" && !raw.is_empty() {
+        decompress_zstd_hex(raw).unwrap_or_else(|| raw.to_string())
+    } else {
+        raw.to_string()
+    }
+}
+
+fn extract_text_after_sender(raw: &str) -> String {
+    // WCDB text messages start with "sender_wxid:\ncontent"
+    if let Some(nl) = raw.find('\n') {
+        let prefix = &raw[..nl];
+        if prefix.ends_with(':') && prefix.len() < 80 && !prefix.contains('\n') {
+            return raw[nl + 1..].trim().to_string();
+        }
+    }
+    raw.trim().to_string()
+}
+
+fn decompress_zstd_hex(hex: &str) -> Option<String> {
+    let bytes = hex_decode(hex)?;
+    let decoded = zstd::decode_all(bytes.as_slice()).ok()?;
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_decode(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    for chunk in s.as_bytes().chunks(2) {
+        let hi = hex_nibble(chunk[0])?;
+        let lo = hex_nibble(chunk[1])?;
+        out.push((hi << 4) | lo);
+    }
+    Some(out)
+}
+
+fn hex_nibble(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn format_timestamp_beijing(ts: i64) -> String {
+    format_timestamp(ts + 8 * 3600)
 }
 
 #[cfg(test)]

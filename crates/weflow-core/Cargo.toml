@@ -23,3 +23,4 @@ walkdir.workspace = true
 weflow-assets = { path = "../weflow-assets" }
 weflow-native = { path = "../weflow-native" }
 zip.workspace = true
+zstd.workspace = true

@@ -572,6 +572,119 @@ impl ServiceHub {
         }
     }
 
+    // ── Messages TXT export ──────────────────────────────────────────────────
+
+    pub fn export_messages_txt(
+        &self,
+        session_id: &str,
+        start_ts: Option<i64>,
+        end_ts: Option<i64>,
+        out: &Path,
+    ) -> AppResult<Value> {
+        // Build nickname map: global contacts first, then group nicknames (higher priority)
+        let mut nickname_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        if let Ok(contacts) = self.contacts() {
+            if let Some(items) = contacts.as_array() {
+                for c in items {
+                    let wxid = c
+                        .get("username")
+                        .or_else(|| c.get("wxid"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    let name = c
+                        .get("nickname")
+                        .or_else(|| c.get("alias"))
+                        .or_else(|| c.get("remark"))
+                        .and_then(Value::as_str)
+                        .unwrap_or(&wxid)
+                        .to_string();
+                    if !wxid.is_empty() {
+                        nickname_map.insert(wxid, name);
+                    }
+                }
+            }
+        }
+
+        if session_id.ends_with("@chatroom") {
+            if let Ok(members) = self.group_members(session_id) {
+                if let Some(obj) = members.get("nicknames").and_then(Value::as_object) {
+                    for (wxid, name) in obj {
+                        if let Some(n) = name.as_str() {
+                            if !n.is_empty() {
+                                nickname_map.insert(wxid.clone(), n.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fetch messages with pagination (newest first, so paginate until before start_ts)
+        let mut all_messages: Vec<Value> = Vec::new();
+        let mut offset = 0i32;
+        let batch = 500i32;
+
+        loop {
+            let data = self.messages(session_id, batch, offset)?;
+            let msgs = match data.as_array() {
+                Some(a) => a,
+                None => break,
+            };
+            if msgs.is_empty() {
+                break;
+            }
+
+            let mut reached_before_range = false;
+            for m in msgs {
+                let ts = m
+                    .get("create_time")
+                    .and_then(|v| {
+                        v.as_str()
+                            .and_then(|s| s.parse::<i64>().ok())
+                            .or_else(|| v.as_i64())
+                    })
+                    .unwrap_or(0);
+
+                let in_range = start_ts.map_or(true, |s| ts >= s)
+                    && end_ts.map_or(true, |e| ts < e);
+
+                if in_range {
+                    all_messages.push(m.clone());
+                }
+
+                if start_ts.map_or(false, |s| ts < s) {
+                    reached_before_range = true;
+                }
+            }
+
+            offset += msgs.len() as i32;
+
+            if reached_before_range || msgs.len() < batch as usize {
+                break;
+            }
+        }
+
+        // Sort ascending by create_time for chronological output
+        all_messages.sort_by_key(|m| {
+            m.get("create_time")
+                .and_then(|v| {
+                    v.as_str()
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .or_else(|| v.as_i64())
+                })
+                .unwrap_or(0)
+        });
+
+        let count = all_messages.len();
+        crate::export::export_txt(&all_messages, &nickname_map, out)
+            .map_err(|e| AppError::runtime(e.to_string()))?;
+
+        Ok(json!({ "out": out, "count": count, "session": session_id }))
+    }
+
     // ── Media export ─────────────────────────────────────────────────────────
 
     pub fn export_media_images(

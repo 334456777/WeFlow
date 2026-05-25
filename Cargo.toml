@@ -37,3 +37,4 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 walkdir = "2.5.0"
 zip = "2"
+zstd = "0.13"
