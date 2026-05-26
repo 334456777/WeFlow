@@ -3,7 +3,7 @@ name: Preview Nightly
 on:
   schedule:
     # GitHub Actions schedule uses UTC. 16:00 UTC = 北京时间次日 00:00
-    - cron: "0 16 * * *"
+    # - cron: "0 16 * * *"
   workflow_dispatch:
 
 concurrency:
