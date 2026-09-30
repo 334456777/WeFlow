@@ -11,6 +11,7 @@ mod chat;
 mod group;
 mod reports;
 mod sns;
+mod voice;
 pub use chat::ResourceQuery;
 pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
 

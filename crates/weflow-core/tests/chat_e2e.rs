@@ -107,3 +107,31 @@ fn mark_read_reaches_the_library() {
     let v = hub.chat_mark_all_read().unwrap();
     assert_eq!(v["fn"], "wcdb_mark_all_sessions_read");
 }
+
+#[test]
+fn voice_messages_decode_from_silk_to_a_cached_wav() {
+    let (hub, _root) = common::mock_hub("voice");
+    // strong key (createTime + serverId): no localId lookup needed
+    let wav = hub.voice_data("wxid_bob", "5", Some(1700000100), Some("9007199254740993"), Some("wxid_bob")).unwrap();
+    assert_eq!(&wav[0..4], b"RIFF");
+    assert_eq!(&wav[8..12], b"WAVE");
+    assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 24000);
+    let data_len = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
+    assert_eq!(wav.len(), 44 + data_len);
+    assert!(data_len > 2 * 24000 / 10 / 2, "roughly 0.2 s of 16-bit audio, got {data_len} bytes");
+    let samples: Vec<i16> = wav[44..].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+    assert!(samples.iter().any(|s| s.abs() > 2000), "decoded samples carry the tone");
+
+    // cached under <cache>/Voices/<session>_<createTime>_<localId>.wav and served from there next time
+    let key_file = hub.voice_cache_dir().join("wxid_bob_1700000100_5.wav");
+    assert!(key_file.exists(), "{}", key_file.display());
+    std::fs::write(&key_file, b"cached-wav").unwrap();
+    assert_eq!(hub.voice_data("wxid_bob", "5", Some(1700000100), Some("1"), None).unwrap(), b"cached-wav");
+
+    // the key without a timestamp is what `resolveVoiceCache` looks at
+    assert_eq!(hub.voice_resolve_cache("wxid_bob", "5")["hasCache"], false);
+    assert!(hub.voice_data("wxid_bob", "abc", None, None, None).is_err());
+
+    let prepared = hub.voice_preload("wxid_bob", &[serde_json::json!({"localId": 9, "createTime": 1700000300, "serverId": "77"})]).unwrap();
+    assert_eq!(prepared["success"], true);
+}

@@ -951,7 +951,7 @@ impl ServiceHub {
     }
 
     /// `exportMediaForMessages`: copies message media into `api-media/<session>/…`.
-    /// Images, videos and stickers are supported; voice needs the SILK decoder.
+    /// Images, voice (SILK → WAV), videos and stickers.
     pub(super) async fn export_media_for_messages(&self, wcdb: &weflow_native::wcdb::Wcdb, messages: &[ChatMessage], talker: &str, opts: &ApiMediaOptions) -> HashMap<i64, ApiExportedMedia> {
         let mut map = HashMap::new();
         if !opts.enabled || messages.is_empty() {
@@ -961,14 +961,14 @@ impl ServiceHub {
         let session_dir = self.api_media_dir().join(&safe_talker);
         let _ = std::fs::create_dir_all(&session_dir);
         for msg in messages {
-            if let Some(m) = self.export_media_for_message(wcdb, msg, &safe_talker, &session_dir, opts).await {
+            if let Some(m) = self.export_media_for_message(wcdb, msg, talker, &safe_talker, &session_dir, opts).await {
                 map.insert(msg.local_id, m);
             }
         }
         map
     }
 
-    async fn export_media_for_message(&self, wcdb: &weflow_native::wcdb::Wcdb, msg: &ChatMessage, safe_talker: &str, session_dir: &Path, opts: &ApiMediaOptions) -> Option<ApiExportedMedia> {
+    async fn export_media_for_message(&self, wcdb: &weflow_native::wcdb::Wcdb, msg: &ChatMessage, talker: &str, safe_talker: &str, session_dir: &Path, opts: &ApiMediaOptions) -> Option<ApiExportedMedia> {
         let _ = wcdb;
         let put = |kind: &'static str, sub: &str, file_name: String, bytes: Option<&[u8]>, copy_from: Option<&Path>| -> Option<ApiExportedMedia> {
             let dir = session_dir.join(sub);
@@ -991,6 +991,12 @@ impl ServiceHub {
             let ext = if ext == ".bin" { ".jpg".to_string() } else { ext };
             let base = api::sanitize_file_name(msg.image_md5.as_deref().filter(|s| !s.is_empty()).or(msg.image_dat_name.as_deref()).unwrap_or(""), &format!("image_{}", msg.local_id));
             return put("image", "images", format!("{base}{ext}"), Some(&found), None);
+        }
+        if msg.local_type == 34 && opts.voices {
+            let server = if msg.server_id_raw.is_empty() || msg.server_id_raw == "0" { msg.server_id.to_string() } else { msg.server_id_raw.clone() };
+            let server = if server == "0" { None } else { Some(server) };
+            let wav = self.voice_data(talker, &msg.local_id.to_string(), Some(msg.create_time).filter(|t| *t != 0), server.as_deref(), None).ok()?;
+            return put("voice", "voices", format!("voice_{}.wav", msg.local_id), Some(&wav), None);
         }
         if msg.local_type == 43 && opts.videos {
             let md5 = msg.video_md5.as_deref().filter(|m| !m.is_empty())?;

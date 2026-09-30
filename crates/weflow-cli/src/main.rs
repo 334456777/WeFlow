@@ -272,6 +272,26 @@ enum ChatSubcommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Decode one voice message (SILK) into a 24 kHz WAV file
+    VoiceData {
+        session_id: String,
+        /// Local message id
+        msg_id: String,
+        #[arg(long)]
+        create_time: Option<i64>,
+        #[arg(long)]
+        server_id: Option<String>,
+        /// Sender wxid (important in group chats)
+        #[arg(long)]
+        sender: Option<String>,
+        /// Output WAV path (default: print base64 in the JSON result)
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Check whether a decoded voice WAV is already cached for a message id
+    VoiceCache { session_id: String, msg_id: String },
+    /// Decode and cache many voice messages; takes a JSON array of {localId, createTime, serverId?, senderWxid?}
+    VoicePreload { session_id: String, messages_json: String },
     Emoji {
         session_id: String,
         #[arg(long)]
@@ -924,6 +944,27 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         ChatSubcommand::Voice { session_id, out } => {
             let out_path = out.as_deref().unwrap_or(Path::new("."));
             hub.export_media_images(Some(session_id), out_path, "voice")
+        }
+        ChatSubcommand::VoiceData { session_id, msg_id, create_time, server_id, sender, out } => {
+            let wav = hub.voice_data(session_id, msg_id, *create_time, server_id.as_deref(), sender.as_deref())?;
+            match out {
+                Some(path) => {
+                    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                        std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(format!("failed to create {}: {e}", parent.display())))?;
+                    }
+                    std::fs::write(path, &wav).map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
+                    Ok(serde_json::json!({ "success": true, "path": path.to_string_lossy(), "bytes": wav.len() }))
+                }
+                None => {
+                    use base64::Engine;
+                    Ok(serde_json::json!({ "success": true, "data": base64::engine::general_purpose::STANDARD.encode(&wav) }))
+                }
+            }
+        }
+        ChatSubcommand::VoiceCache { session_id, msg_id } => Ok(hub.voice_resolve_cache(session_id, msg_id)),
+        ChatSubcommand::VoicePreload { session_id, messages_json } => {
+            let messages: Vec<Value> = serde_json::from_str(messages_json).map_err(|e| AppError::usage(format!("messages_json must be a JSON array: {e}")))?;
+            hub.voice_preload(session_id, &messages)
         }
         ChatSubcommand::Emoji { session_id, out } => hub.emoji_download(session_id, out).await,
     }

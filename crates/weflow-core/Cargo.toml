@@ -33,5 +33,6 @@ sha2.workspace = true
 walkdir.workspace = true
 weflow-assets = { path = "../weflow-assets" }
 weflow-native = { path = "../weflow-native" }
+weflow-silk = { path = "../weflow-silk" }
 zip.workspace = true
 zstd.workspace = true

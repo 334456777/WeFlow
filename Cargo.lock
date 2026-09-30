@@ -2366,6 +2366,7 @@ name = "weflow-cli"
 version = "4.3.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "reqwest",
  "serde",
@@ -2409,6 +2410,7 @@ dependencies = [
  "walkdir",
  "weflow-assets",
  "weflow-native",
+ "weflow-silk",
  "zip",
  "zstd",
 ]
@@ -2422,6 +2424,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "weflow-silk"
+version = "4.3.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
