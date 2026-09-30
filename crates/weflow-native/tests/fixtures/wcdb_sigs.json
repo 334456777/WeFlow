@@ -1,0 +1,761 @@
+{
+"wcdb_init": [
+"int32",
+[]
+],
+"wcdb_shutdown": [
+"int32",
+[]
+],
+"wcdb_open_account": [
+"int32",
+[
+"const char* path",
+"const char* key",
+"_Out_ int64* handle"
+]
+],
+"wcdb_close_account": [
+"int32",
+[
+"int64 handle"
+]
+],
+"wcdb_set_my_wxid": [
+"int32",
+[
+"int64 handle",
+"const char* wxid"
+]
+],
+"wcdb_update_message": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int64 localId",
+"int32 createTime",
+"const char* newContent",
+"_Out_ void** outError"
+]
+],
+"wcdb_delete_message": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int64 localId",
+"int32 createTime",
+"const char* dbPathHint",
+"_Out_ void** outError"
+]
+],
+"wcdb_free_string": [
+"void",
+[
+"void* ptr"
+]
+],
+"wcdb_get_sessions": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outJson"
+]
+],
+"wcdb_mark_all_sessions_read": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outError"
+]
+],
+"wcdb_get_messages": [
+"int32",
+[
+"int64 handle",
+"const char* username",
+"int32 limit",
+"int32 offset",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_count": [
+"int32",
+[
+"int64 handle",
+"const char* username",
+"_Out_ int32* outCount"
+]
+],
+"wcdb_get_message_by_svrid": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"const char* svrid",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_display_names": [
+"int32",
+[
+"int64 handle",
+"const char* usernamesJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_avatar_urls": [
+"int32",
+[
+"int64 handle",
+"const char* usernamesJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_group_member_count": [
+"int32",
+[
+"int64 handle",
+"const char* chatroomId",
+"_Out_ int32* outCount"
+]
+],
+"wcdb_get_group_member_counts": [
+"int32",
+[
+"int64 handle",
+"const char* chatroomIdsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_group_members": [
+"int32",
+[
+"int64 handle",
+"const char* chatroomId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_group_nicknames": [
+"int32",
+[
+"int64 handle",
+"const char* chatroomId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_tables": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_meta": [
+"int32",
+[
+"int64 handle",
+"const char* dbPath",
+"const char* tableName",
+"int32 limit",
+"int32 offset",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_contact": [
+"int32",
+[
+"int64 handle",
+"const char* username",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_contact_status": [
+"int32",
+[
+"int64 handle",
+"const char* usernamesJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_contact_type_counts": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_contacts_compact": [
+"int32",
+[
+"int64 handle",
+"const char* usernamesJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_contact_alias_map": [
+"int32",
+[
+"int64 handle",
+"const char* usernamesJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_contact_friend_flags": [
+"int32",
+[
+"int64 handle",
+"const char* usernamesJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_chat_room_ext_buffer": [
+"int32",
+[
+"int64 handle",
+"const char* chatroomId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_table_stats": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_aggregate_stats": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"int32 begin",
+"int32 end",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_available_years": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_annual_report_stats": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"int32 begin",
+"int32 end",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_annual_report_extras": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"int32 begin",
+"int32 end",
+"int32 peakBegin",
+"int32 peakEnd",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_dual_report_stats": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int32 begin",
+"int32 end",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_logs": [
+"int32",
+[
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_group_stats": [
+"int32",
+[
+"int64 handle",
+"const char* chatroomId",
+"int32 begin",
+"int32 end",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_my_footprint_stats": [
+"int32",
+[
+"int64 handle",
+"const char* optionsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_dates": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_open_message_cursor": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int32 batchSize",
+"int32 ascending",
+"int32 beginTimestamp",
+"int32 endTimestamp",
+"_Out_ int64* outCursor"
+]
+],
+"wcdb_open_message_cursor_lite": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int32 batchSize",
+"int32 ascending",
+"int32 beginTimestamp",
+"int32 endTimestamp",
+"_Out_ int64* outCursor"
+]
+],
+"wcdb_fetch_message_batch": [
+"int32",
+[
+"int64 handle",
+"int64 cursor",
+"_Out_ void** outJson",
+"_Out_ int32* outHasMore"
+]
+],
+"wcdb_close_message_cursor": [
+"int32",
+[
+"int64 handle",
+"int64 cursor"
+]
+],
+"wcdb_exec_query": [
+"int32",
+[
+"int64 handle",
+"const char* kind",
+"const char* path",
+"const char* sql",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_emoticon_cdn_url": [
+"int32",
+[
+"int64 handle",
+"const char* dbPath",
+"const char* md5",
+"_Out_ void** outUrl"
+]
+],
+"wcdb_get_emoticon_caption": [
+"int32",
+[
+"int64 handle",
+"const char* dbPath",
+"const char* md5",
+"_Out_ void** outCaption"
+]
+],
+"wcdb_get_emoticon_caption_strict": [
+"int32",
+[
+"int64 handle",
+"const char* md5",
+"_Out_ void** outCaption"
+]
+],
+"wcdb_list_message_dbs": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outJson"
+]
+],
+"wcdb_list_media_dbs": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_by_id": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int32 localId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_db_status": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_voice_data": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int32 createTime",
+"int32 localId",
+"int64 svrId",
+"const char* candidatesJson",
+"_Out_ void** outHex"
+]
+],
+"wcdb_get_voice_data_batch": [
+"int32",
+[
+"int64 handle",
+"const char* requestsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_media_schema_summary": [
+"int32",
+[
+"int64 handle",
+"const char* dbPath",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_session_message_counts": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_session_message_type_stats": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int32 beginTimestamp",
+"int32 endTimestamp",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_session_message_type_stats_batch": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"const char* optionsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_session_message_date_counts": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_session_message_date_counts_batch": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_messages_by_type": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"int64 localType",
+"int32 ascending",
+"int32 limit",
+"int32 offset",
+"_Out_ void** outJson"
+]
+],
+"wcdb_scan_media_stream": [
+"int32",
+[
+"int64 handle",
+"const char* sessionIdsJson",
+"int32 mediaType",
+"int32 beginTimestamp",
+"int32 endTimestamp",
+"int32 limit",
+"int32 offset",
+"_Out_ void** outJson",
+"_Out_ int32* outHasMore"
+]
+],
+"wcdb_get_head_image_buffers": [
+"int32",
+[
+"int64 handle",
+"const char* usernamesJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_search_messages": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"const char* keyword",
+"int32 limit",
+"int32 offset",
+"int32 beginTimestamp",
+"int32 endTimestamp",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_sns_timeline": [
+"int32",
+[
+"int64 handle",
+"int32 limit",
+"int32 offset",
+"const char* username",
+"const char* keyword",
+"int32 startTime",
+"int32 endTime",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_sns_annual_stats": [
+"int32",
+[
+"int64 handle",
+"int32 begin",
+"int32 end",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_sns_usernames": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_sns_export_stats": [
+"int32",
+[
+"int64 handle",
+"const char* myWxid",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_table_columns": [
+"int32",
+[
+"int64 handle",
+"const char* dbPath",
+"const char* tableName",
+"_Out_ void** outJson"
+]
+],
+"wcdb_list_tables": [
+"int32",
+[
+"int64 handle",
+"const char* kind",
+"const char* dbPath",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_table_schema": [
+"int32",
+[
+"int64 handle",
+"const char* kind",
+"const char* dbPath",
+"const char* tableName",
+"_Out_ void** outJson"
+]
+],
+"wcdb_export_table_snapshot": [
+"int32",
+[
+"int64 handle",
+"const char* kind",
+"const char* dbPath",
+"const char* tableName",
+"const char* outputPath",
+"_Out_ void** outJson"
+]
+],
+"wcdb_import_table_snapshot": [
+"int32",
+[
+"int64 handle",
+"const char* kind",
+"const char* dbPath",
+"const char* tableName",
+"const char* inputPath",
+"_Out_ void** outJson"
+]
+],
+"wcdb_import_table_snapshot_with_schema": [
+"int32",
+[
+"int64 handle",
+"const char* kind",
+"const char* dbPath",
+"const char* tableName",
+"const char* inputPath",
+"const char* createTableSql",
+"_Out_ void** outJson"
+]
+],
+"wcdb_get_message_table_time_range": [
+"int32",
+[
+"int64 handle",
+"const char* dbPath",
+"const char* tableName",
+"_Out_ void** outJson"
+]
+],
+"wcdb_resolve_image_hardlink": [
+"int32",
+[
+"int64 handle",
+"const char* md5",
+"const char* accountDir",
+"_Out_ void** outJson"
+]
+],
+"wcdb_resolve_image_hardlink_batch": [
+"int32",
+[
+"int64 handle",
+"const char* requestsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_resolve_video_hardlink_md5": [
+"int32",
+[
+"int64 handle",
+"const char* md5",
+"const char* dbPath",
+"_Out_ void** outJson"
+]
+],
+"wcdb_resolve_video_hardlink_md5_batch": [
+"int32",
+[
+"int64 handle",
+"const char* requestsJson",
+"_Out_ void** outJson"
+]
+],
+"wcdb_install_message_anti_revoke_trigger": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"_Out_ void** outError"
+]
+],
+"wcdb_uninstall_message_anti_revoke_trigger": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"_Out_ void** outError"
+]
+],
+"wcdb_check_message_anti_revoke_trigger": [
+"int32",
+[
+"int64 handle",
+"const char* sessionId",
+"_Out_ int32* outInstalled"
+]
+],
+"wcdb_install_sns_block_delete_trigger": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outError"
+]
+],
+"wcdb_uninstall_sns_block_delete_trigger": [
+"int32",
+[
+"int64 handle",
+"_Out_ void** outError"
+]
+],
+"wcdb_check_sns_block_delete_trigger": [
+"int32",
+[
+"int64 handle",
+"_Out_ int32* outInstalled"
+]
+],
+"wcdb_delete_sns_post": [
+"int32",
+[
+"int64 handle",
+"const char* postId",
+"_Out_ void** outError"
+]
+],
+"wcdb_start_monitor_pipe": [
+"int32",
+[]
+],
+"wcdb_stop_monitor_pipe": [
+"void",
+[]
+],
+"wcdb_get_monitor_pipe_name": [
+"int32",
+[
+"_Out_ void** outName"
+]
+],
+"wcdb_cloud_init": [
+"int32",
+[
+"int32 intervalSeconds"
+]
+],
+"wcdb_cloud_report": [
+"int32",
+[
+"const char* statsJson"
+]
+],
+"wcdb_cloud_stop": [
+"void",
+[]
+]
+}

@@ -259,6 +259,18 @@ enum ExportSubcommand {
         end: Option<String>,
         #[arg(long)]
         out: PathBuf,
+        /// txt (default), json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql
+        #[arg(long, default_value = "txt")]
+        format: String,
+        /// Only export messages sent by this wxid
+        #[arg(long)]
+        sender: Option<String>,
+        /// How senders are named: group-nickname, remark (default) or nickname
+        #[arg(long, default_value = "remark")]
+        display_name: String,
+        /// Excel: compact columns (time, sender, type, content)
+        #[arg(long)]
+        excel_compact: bool,
     },
 }
 
@@ -706,7 +718,7 @@ fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> 
         ExportSubcommand::Media { out, session, r#type } => {
             hub.export_media_images(session.as_deref(), out, r#type)
         }
-        ExportSubcommand::Messages { session_id, start, end, out } => {
+        ExportSubcommand::Messages { session_id, start, end, out, format, sender, display_name, excel_compact } => {
             let start_ts = start
                 .as_deref()
                 .map(parse_date_beijing)
@@ -717,7 +729,40 @@ fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> 
                 .map(|d| parse_date_beijing(d).map(|ts| ts + 86400))
                 .transpose()
                 .map_err(AppError::usage)?;
-            hub.export_messages_txt(session_id, start_ts, end_ts, out)
+            let fmt = format.to_ascii_lowercase();
+            if fmt == "txt" {
+                return hub.export_messages_txt(session_id, start_ts, end_ts, out);
+            }
+            let ext = match fmt.as_str() {
+                "json" | "arkme-json" => "json",
+                "chatlab" => "chatlab.json",
+                "chatlab-jsonl" => "jsonl",
+                "excel" | "xlsx" => "xlsx",
+                "weclone" => "csv",
+                "html" => "html",
+                "sql" => "sql",
+                other => {
+                    return Err(AppError::usage(format!(
+                        "unsupported message export format: {other}; supported: txt, {}",
+                        weflow_core::services::MESSAGE_EXPORT_FORMATS
+                    )))
+                }
+            };
+            let display_pref = weflow_core::export_msg::DisplayPref::parse(display_name)
+                .ok_or_else(|| AppError::usage("--display-name must be group-nickname, remark or nickname"))?;
+            let safe_name: String = session_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '@' || c == '.' { c } else { '_' }).collect();
+            let target = export_path(out, &format!("{safe_name}.{ext}"));
+            let request = weflow_core::services::MessageExportRequest {
+                session_id: session_id.clone(),
+                format: fmt,
+                // the desktop formats take the end as inclusive seconds, TXT as exclusive
+                start: start_ts,
+                end: end_ts.map(|e| e - 1),
+                sender: sender.clone(),
+                display_pref,
+                excel_compact: *excel_compact,
+            };
+            hub.export_messages(&request, &target)
         }
     }
 }

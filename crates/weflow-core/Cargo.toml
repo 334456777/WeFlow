@@ -7,10 +7,12 @@ license.workspace = true
 [dependencies]
 aes.workspace = true
 anyhow.workspace = true
+chrono.workspace = true
 dirs.workspace = true
 ecb.workspace = true
 md-5.workspace = true
 mime_guess.workspace = true
+regex.workspace = true
 reqwest.workspace = true
 rust_xlsxwriter.workspace = true
 serde.workspace = true

@@ -712,6 +712,86 @@ impl ServiceHub {
         Ok(json!({ "out": out, "count": count, "session": session_id }))
     }
 
+    /// Export a conversation's messages in one of the desktop app's formats
+    /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
+    pub fn export_messages(&self, req: &MessageExportRequest, out: &Path) -> AppResult<Value> {
+        use crate::export_msg::*;
+        use crate::message::{collect_messages, CollectOptions};
+        let (_, _, wxid) = self.connection_inputs()?;
+        let raw_my_wxid = wxid.unwrap_or_default();
+        let my_wxid = clean_account_dir_name(&raw_my_wxid);
+        let wcdb = self.open_wcdb()?;
+
+        let rows = fetch_message_rows(&wcdb, &req.session_id, req.start, req.end)?;
+        let collected = collect_messages(
+            &rows,
+            &CollectOptions {
+                session_id: &req.session_id,
+                my_wxid: &my_wxid,
+                start: req.start,
+                end: req.end,
+                sender_filter: req.sender.as_deref(),
+            },
+        );
+        if collected.is_empty() {
+            return Err(AppError::runtime("no messages found for this session in the given range"));
+        }
+
+        let mut names = NameBook::new(|username: &str| {
+            wcdb.contact(username)
+                .ok()
+                .filter(|v| v.is_object() && !v.as_object().map_or(true, |o| o.is_empty()))
+                .map(|v| ContactInfo::from_value(username, &v))
+        });
+        let is_group = req.session_id.ends_with("@chatroom");
+        let (group_nicks, group_members) = if is_group {
+            let nick_value = wcdb.group_nicknames(&req.session_id).unwrap_or(Value::Null);
+            let nick_obj = nick_value.get("nicknames").and_then(Value::as_object).or_else(|| nick_value.as_object());
+            let entries: Vec<(String, String)> = nick_obj
+                .map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|n| (k.clone(), n.to_string()))).collect())
+                .unwrap_or_default();
+            let members_value = wcdb.group_members(&req.session_id).unwrap_or(Value::Null);
+            (build_trusted_group_nicknames(entries), extract_member_ids(&members_value))
+        } else {
+            (std::collections::HashMap::new(), Vec::new())
+        };
+
+        let session_display = names.display_name(&req.session_id);
+        let session_contact = names.get(&req.session_id);
+        let my_display = names.display_name(&my_wxid);
+        let mut exporter = Exporter {
+            session: SessionInfo {
+                id: req.session_id.clone(),
+                display_name: session_display,
+                nickname: session_contact.as_ref().map(|c| c.nickname.clone()).unwrap_or_default(),
+                remark: session_contact.as_ref().map(|c| c.remark.clone()).unwrap_or_default(),
+                is_group,
+            },
+            my_wxid: my_wxid.clone(),
+            raw_my_wxid,
+            my_display: if my_display == my_wxid { String::new() } else { my_display },
+            group_nicks,
+            group_members,
+            names: &mut names,
+            settings: Settings { display_pref: req.display_pref, excel_compact: req.excel_compact, ..Default::default() },
+        };
+        let format = req.format.to_ascii_lowercase();
+        let result = match format.as_str() {
+            "chatlab" => exporter.write_chatlab(&collected, out, false),
+            "chatlab-jsonl" => exporter.write_chatlab(&collected, out, true),
+            "json" => exporter.write_json(&collected, out, false),
+            "arkme-json" => exporter.write_json(&collected, out, true),
+            "excel" | "xlsx" => exporter.write_excel(&collected, out),
+            "txt" => exporter.write_txt(&collected, out),
+            "weclone" => exporter.write_weclone(&collected, out),
+            "html" => exporter.write_html(&collected, out),
+            "sql" => exporter.write_sql(&collected, out),
+            other => return Err(AppError::usage(format!("unsupported message export format: {other}; supported: {MESSAGE_EXPORT_FORMATS}"))),
+        };
+        result.map_err(|e| AppError::runtime(e.to_string()))?;
+        Ok(json!({ "out": out, "count": collected.len(), "session": req.session_id, "format": format }))
+    }
+
     // ── Media export ─────────────────────────────────────────────────────────
 
     pub fn export_media_images(
@@ -1094,4 +1174,104 @@ fn base64_encode(data: &[u8]) -> String {
         result.push('=');
     }
     result
+}
+
+
+pub const MESSAGE_EXPORT_FORMATS: &str = "json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql";
+
+pub struct MessageExportRequest {
+    pub session_id: String,
+    pub format: String,
+    pub start: Option<i64>,
+    pub end: Option<i64>,
+    pub sender: Option<String>,
+    pub display_pref: crate::export_msg::DisplayPref,
+    pub excel_compact: bool,
+}
+
+/// `cleanAccountDirName`: `wxid_abc_1234` -> `wxid_abc`, `name_ab12` -> `name`.
+pub fn clean_account_dir_name(dir_name: &str) -> String {
+    use crate::message::rx;
+    let trimmed = dir_name.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.to_lowercase().starts_with("wxid_") {
+        return rx(r"(?i)^(wxid_[^_]+)").captures(trimmed).map(|c| c[1].to_string()).unwrap_or_else(|| trimmed.to_string());
+    }
+    rx(r"^(.+)_([a-zA-Z0-9]{4})$").captures(trimmed).map(|c| c[1].to_string()).unwrap_or_else(|| trimmed.to_string())
+}
+
+/// Page through a session's messages (newest first) until the range start is passed.
+fn fetch_message_rows(wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, start: Option<i64>, end: Option<i64>) -> AppResult<Vec<Value>> {
+    let mut rows: Vec<Value> = Vec::new();
+    let mut offset = 0i32;
+    let batch = 500i32;
+    loop {
+        let data = wcdb.messages(session_id, batch, offset).map_err(|e| AppError::native(e.to_string()))?;
+        let Some(page) = data.as_array() else { break };
+        if page.is_empty() {
+            break;
+        }
+        let mut before_range = false;
+        for m in page {
+            let ts = crate::message::get_timestamp_seconds(m);
+            let in_range = start.map_or(true, |s| ts >= s) && end.map_or(true, |e| ts < e);
+            if in_range {
+                rows.push(m.clone());
+            }
+            if start.map_or(false, |s| ts > 0 && ts < s) {
+                before_range = true;
+            }
+        }
+        offset += page.len() as i32;
+        if before_range || page.len() < batch as usize {
+            break;
+        }
+    }
+    Ok(rows)
+}
+
+fn extract_member_ids(value: &Value) -> Vec<String> {
+    let list = value
+        .as_array()
+        .cloned()
+        .or_else(|| value.get("members").and_then(Value::as_array).cloned())
+        .unwrap_or_default();
+    let mut out: Vec<String> = Vec::new();
+    for item in list {
+        let id = match &item {
+            Value::String(s) => s.clone(),
+            other => ["username", "userName", "wxid", "user_name"]
+                .iter()
+                .find_map(|k| other.get(*k).and_then(Value::as_str))
+                .unwrap_or("")
+                .to_string(),
+        };
+        if !id.is_empty() && !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    #[test]
+    fn cleans_account_dir_names() {
+        assert_eq!(clean_account_dir_name("wxid_abc123_ab12"), "wxid_abc123");
+        assert_eq!(clean_account_dir_name("someone_a1b2"), "someone");
+        assert_eq!(clean_account_dir_name("plain"), "plain");
+        assert_eq!(clean_account_dir_name(" "), "");
+    }
+
+    #[test]
+    fn member_ids_from_various_shapes() {
+        let v = json!({"members": [{"username": "a"}, {"userName": "b"}, "c", {"username": "a"}]});
+        assert_eq!(extract_member_ids(&v), vec!["a", "b", "c"]);
+        assert_eq!(extract_member_ids(&json!(["x", "y"])), vec!["x", "y"]);
+        assert!(extract_member_ids(&Value::Null).is_empty());
+    }
 }
