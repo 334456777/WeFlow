@@ -922,6 +922,14 @@ impl Wcdb {
         }
     }
 
+    /// Like [`invoke_status`], but hands back the raw status code and message
+    /// (some triggers report "already installed" as a positive code).
+    pub fn invoke_status_code(&self, name: &str, args: &[Arg<'_>]) -> Result<(i32, String)> {
+        let (rc, out) = self.invoke_raw(name, args)?;
+        let message = if out.is_null() { String::new() } else { unsafe { self.take_string(out)? } };
+        Ok((rc, message))
+    }
+
     // ── functions with non-standard shapes ──
 
     pub fn message_count(&self, session_id: &str) -> Result<i32> {

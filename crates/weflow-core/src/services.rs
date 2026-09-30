@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
 use crate::error::{AppError, AppResult};
 
+mod api;
 mod chat;
 mod group;
 mod sns;

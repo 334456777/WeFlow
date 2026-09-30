@@ -1,15 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::Arc;
 
-use axum::extract::{Path as AxumPath, Query, State};
-use axum::http::StatusCode;
-use axum::routing::get;
-use axum::{Json, Router};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use serde::Deserialize;
 use serde_json::{json, Value};
-use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
 use weflow_core::error::{AppError, AppResult};
@@ -526,10 +519,15 @@ struct ServeCommand {
     insight: bool,
     #[arg(long)]
     image_auto_download: bool,
-    #[arg(long, default_value = "127.0.0.1")]
-    host: String,
-    #[arg(long, default_value_t = 5031)]
-    port: u16,
+    /// Listen address (default: `http_api_host` from the config, else 127.0.0.1).
+    #[arg(long)]
+    host: Option<String>,
+    /// Listen port (default: `http_api_port` from the config, else 5031).
+    #[arg(long)]
+    port: Option<u16>,
+    /// Access token for the HTTP API (default: `http_api_token` from the config).
+    #[arg(long, env = "WEFLOW_HTTP_TOKEN")]
+    api_token: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -1010,281 +1008,79 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         ));
     }
 
-    let addr = format!("{}:{}", command.host, command.port)
+    let cfg_str = |key: &str| hub.config_value(key).as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+    let host = command.host.clone().or_else(|| cfg_str("httpApiHost")).unwrap_or_else(|| "127.0.0.1".into());
+    let port = command
+        .port
+        .or_else(|| hub.config_value("httpApiPort").as_u64().map(|p| p as u16))
+        .unwrap_or(5031);
+    let token = command.api_token.clone().or_else(|| cfg_str("httpApiToken"));
+    let addr = format!("{host}:{port}")
         .parse::<std::net::SocketAddr>()
         .map_err(|err| AppError::usage(format!("invalid listen address: {err}")))?;
 
-    let event_channel = weflow_core::push::EventChannel::new(256);
-    let event_sender = event_channel.sender();
-
+    let broker = weflow_core::push::PushBroker::new();
     if command.message_push {
         let hub = hub.clone();
-        let sender = event_sender.clone();
-        tokio::spawn(async move {
-            weflow_core::push::message_push_loop(hub, sender, 5).await;
+        let broker = broker.clone();
+        std::thread::spawn(move || {
+            let channel = weflow_core::push::EventChannel::new(256);
+            let mut rx = channel.subscribe();
+            let sender = channel.sender();
+            let forward = {
+                let broker = broker.clone();
+                std::thread::spawn(move || {
+                    while let Ok(payload) = rx.blocking_recv() {
+                        broker.broadcast(&payload);
+                    }
+                })
+            };
+            weflow_core::push::message_push_loop(hub, sender, 5);
+            let _ = forward.join();
         });
     }
-
-    let state = HttpState {
-        hub: Arc::new(hub.clone()),
-        event_sender: event_sender.clone(),
-    };
-    let app = Router::new()
-        .route("/health", get(http_health))
-        .route("/api/v1/runtime", get(http_runtime))
-        .route("/api/v1/sessions", get(http_sessions))
-        .route("/api/v1/messages", get(http_messages))
-        .route(
-            "/api/v1/sessions/{session_id}/messages",
-            get(http_session_messages),
-        )
-        .route("/api/v1/contacts", get(http_contacts))
-        .route("/api/v1/analytics/overall", get(http_analytics_overall))
-        .route("/api/v1/groups", get(http_groups))
-        .route(
-            "/api/v1/groups/{chatroom_id}/members",
-            get(http_group_members),
-        )
-        .route("/api/v1/sns/timeline", get(http_sns_timeline))
-        .route("/api/v1/sns/usernames", get(http_sns_users))
-        .route("/api/v1/sns/export/stats", get(http_sns_stats))
-        .route("/api/v1/events", get(http_events_sse))
-        .with_state(state);
 
     eprintln!(
         "{}",
         serde_json::to_string(&json!({
             "type": "server_started",
             "url": format!("http://{addr}"),
+            "http": command.http,
+            "tokenConfigured": token.is_some(),
             "messagePush": command.message_push,
             "insight": command.insight,
             "imageAutoDownload": command.image_auto_download
         }))
         .unwrap()
     );
+    if command.http && token.is_none() {
+        eprintln!("warning: no HTTP API token configured; every request except /health will be refused (set http_api_token or pass --api-token)");
+    }
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|err| AppError::runtime(format!("failed to bind HTTP server: {err}")))?;
-    tokio::select! {
-        result = axum::serve(listener, app) => {
-            result.map_err(|err| AppError::runtime(format!("HTTP server stopped: {err}")))?;
+    let cfg = weflow_core::http_server::HttpConfig {
+        host,
+        port: listener.local_addr().map(|a| a.port()).unwrap_or(port),
+        token,
+        push_enabled: command.message_push || hub.config_value("messagePushEnabled").as_bool() == Some(true),
+    };
+    let server = async {
+        if command.http {
+            weflow_core::http_server::serve(hub.clone(), cfg, broker, listener)
+                .await
+                .map_err(|err| AppError::runtime(format!("HTTP server stopped: {err}")))
+        } else {
+            std::future::pending::<AppResult<()>>().await
         }
+    };
+    tokio::select! {
+        result = server => { result?; }
         _ = tokio::signal::ctrl_c() => {
             return Err(AppError::new("user_interrupt", "interrupted by user", 130));
         }
     }
     Ok(json!({ "stopped": true }))
-}
-
-#[derive(Clone)]
-struct HttpState {
-    hub: Arc<ServiceHub>,
-    event_sender: tokio::sync::broadcast::Sender<Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListQuery {
-    keyword: Option<String>,
-    limit: Option<usize>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MessageQuery {
-    talker: Option<String>,
-    session_id: Option<String>,
-    keyword: Option<String>,
-    limit: Option<i32>,
-    offset: Option<i32>,
-    start: Option<i32>,
-    end: Option<i32>,
-}
-
-type HttpJson = (StatusCode, Json<Value>);
-
-async fn http_health() -> HttpJson {
-    http_ok(json!({ "ok": true }))
-}
-
-async fn http_runtime(State(state): State<HttpState>) -> HttpJson {
-    http_ok(state.hub.runtime_info())
-}
-
-async fn http_sessions(State(state): State<HttpState>, Query(query): Query<ListQuery>) -> HttpJson {
-    match state.hub.sessions() {
-        Ok(value) => http_ok(filter_and_limit_array(
-            value,
-            query.keyword.as_deref(),
-            query.limit,
-        )),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_contacts(State(state): State<HttpState>, Query(query): Query<ListQuery>) -> HttpJson {
-    match state.hub.contacts() {
-        Ok(value) => http_ok(filter_and_limit_array(
-            value,
-            query.keyword.as_deref(),
-            query.limit,
-        )),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_messages(
-    State(state): State<HttpState>,
-    Query(query): Query<MessageQuery>,
-) -> HttpJson {
-    let limit = query.limit.unwrap_or(50);
-    let offset = query.offset.unwrap_or(0);
-    if let Some(keyword) = query.keyword.as_deref() {
-        return match state.hub.search(
-            keyword,
-            query.session_id.as_deref().or(query.talker.as_deref()),
-            limit,
-            offset,
-            query.start.unwrap_or(0),
-            query.end.unwrap_or(0),
-        ) {
-            Ok(value) => http_ok(value),
-            Err(err) => http_error(err),
-        };
-    }
-
-    let Some(session_id) = query.session_id.as_deref().or(query.talker.as_deref()) else {
-        return http_error(AppError::usage(
-            "messages endpoint needs talker, session_id, or keyword",
-        ));
-    };
-    match state.hub.messages(session_id, limit, offset) {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_session_messages(
-    State(state): State<HttpState>,
-    AxumPath(session_id): AxumPath<String>,
-    Query(query): Query<MessageQuery>,
-) -> HttpJson {
-    let limit = query.limit.unwrap_or(50);
-    let offset = query.offset.unwrap_or(0);
-    match state.hub.messages(&session_id, limit, offset) {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_analytics_overall(State(state): State<HttpState>) -> HttpJson {
-    match state.hub.analytics_overall() {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_groups(State(state): State<HttpState>) -> HttpJson {
-    match state.hub.group_list() {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_group_members(
-    State(state): State<HttpState>,
-    AxumPath(chatroom_id): AxumPath<String>,
-) -> HttpJson {
-    match state.hub.group_members(&chatroom_id) {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_sns_timeline(State(state): State<HttpState>) -> HttpJson {
-    match state.hub.sns_timeline() {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_sns_users(State(state): State<HttpState>) -> HttpJson {
-    match state.hub.sns_users() {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_sns_stats(State(state): State<HttpState>) -> HttpJson {
-    match state.hub.sns_stats() {
-        Ok(value) => http_ok(value),
-        Err(err) => http_error(err),
-    }
-}
-
-async fn http_events_sse(
-    State(state): State<HttpState>,
-) -> axum::response::Sse<impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {
-    let mut receiver = state.event_sender.subscribe();
-    let stream = async_stream::stream! {
-        loop {
-            match receiver.recv().await {
-                Ok(event) => {
-                    let data = serde_json::to_string(&event).unwrap_or_default();
-                    yield Ok(axum::response::sse::Event::default().data(data));
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    let data = serde_json::to_string(&json!({"type": "lagged", "missed": n})).unwrap_or_default();
-                    yield Ok(axum::response::sse::Event::default().data(data));
-                }
-                Err(_) => break,
-            }
-        }
-    };
-    axum::response::Sse::new(stream).keep_alive(
-        axum::response::sse::KeepAlive::new()
-            .interval(Duration::from_secs(30))
-            .text("ping"),
-    )
-}
-
-fn filter_and_limit_array(value: Value, keyword: Option<&str>, limit: Option<usize>) -> Value {
-    let Some(items) = value.as_array() else {
-        return value;
-    };
-    let keyword = keyword.map(str::to_lowercase);
-    let mut filtered = items
-        .iter()
-        .filter(|item| {
-            let Some(keyword) = keyword.as_deref() else {
-                return true;
-            };
-            item.to_string().to_lowercase().contains(keyword)
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    if let Some(limit) = limit {
-        filtered.truncate(limit);
-    }
-    Value::Array(filtered)
-}
-
-fn http_ok(data: Value) -> HttpJson {
-    (
-        StatusCode::OK,
-        Json(serde_json::to_value(success(data)).unwrap()),
-    )
-}
-
-fn http_error(err: AppError) -> HttpJson {
-    let status = match err.exit_code {
-        2 => StatusCode::BAD_REQUEST,
-        3 => StatusCode::PRECONDITION_FAILED,
-        4 => StatusCode::FAILED_DEPENDENCY,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-    (
-        status,
-        Json(serde_json::to_value(failure(err.payload())).unwrap()),
-    )
 }
 
 fn write_json_file(path: &Path, value: &Value) -> AppResult<()> {

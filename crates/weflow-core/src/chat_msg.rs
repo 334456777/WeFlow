@@ -797,6 +797,9 @@ pub struct ChatMessage {
     pub location_poiname: Option<String>,
     pub location_label: Option<String>,
     pub t49: Type49Info,
+    pub message_key: String,
+    pub db_path: Option<String>,
+    pub table_name: Option<String>,
 }
 
 impl ChatMessage {
@@ -816,6 +819,7 @@ impl ChatMessage {
     /// Full JSON view (camelCase, `undefined` fields omitted).
     pub fn to_json(&self) -> Value {
         let mut o = Map::new();
+        o.insert("messageKey".into(), json!(self.message_key));
         o.insert("localId".into(), json!(self.local_id));
         o.insert("serverId".into(), json!(self.server_id));
         o.insert("serverIdRaw".into(), json!(self.server_id_raw));
@@ -897,6 +901,63 @@ impl ChatMessage {
     }
 }
 
+// ───────────────────────── message keys ─────────────────────────
+
+/// JS `encodeURIComponent`
+pub fn encode_uri_component(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.trim().bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')' => out.push(b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+pub struct SourceInfo {
+    pub db_name: String,
+    pub table_name: String,
+    pub db_path: String,
+}
+
+pub fn message_source_info(row: &Value) -> SourceInfo {
+    let txt = |keys: &[&str]| keys.iter().filter_map(|k| row.get(*k)).map(value_to_trimmed_string).find(|s| !s.is_empty()).unwrap_or_default();
+    let db_path = txt(&["_db_path", "db_path"]);
+    let explicit = txt(&["db_name"]);
+    let table_name = txt(&["table_name"]);
+    let db_name = if !explicit.is_empty() { explicit } else { db_base_name(&db_path) };
+    SourceInfo { db_name, table_name, db_path }
+}
+
+fn db_base_name(path: &str) -> String {
+    let name = path.rsplit(['/', '\\']).next().unwrap_or("");
+    match name.rfind('.') {
+        Some(i) if i > 0 => name[..i].to_string(),
+        _ => name.to_string(),
+    }
+}
+
+/// `buildMessageKey`
+#[allow(clippy::too_many_arguments)]
+pub fn build_message_key(local_id: i64, server_id: i64, create_time: i64, sort_seq: i64, sender: Option<&str>, local_type: i64, src: &SourceInfo) -> String {
+    let (local_id, server_id, create_time, sort_seq) = (local_id.max(0), server_id.max(0), create_time.max(0), sort_seq.max(0));
+    let sender = encode_uri_component(sender.unwrap_or(""));
+    let db_name = if src.db_name.is_empty() { db_base_name(&src.db_path) } else { src.db_name.clone() };
+    let scope = if !src.db_path.is_empty() { src.db_path.clone() } else { db_name };
+    if local_id > 0 && !scope.is_empty() && !src.table_name.is_empty() {
+        return format!("{}:{}:{}", encode_uri_component(&scope), encode_uri_component(&src.table_name), local_id);
+    }
+    if local_id > 0 && !scope.is_empty() {
+        return format!("local:{}:{local_id}:{create_time}:{sort_seq}:{sender}:{local_type}", encode_uri_component(&scope));
+    }
+    if server_id > 0 {
+        let scoped = if scope.is_empty() { server_id.to_string() } else { format!("{}:{server_id}", encode_uri_component(&scope)) };
+        return format!("server:{scoped}:{create_time}:{sort_seq}:{local_id}:{sender}:{local_type}");
+    }
+    format!("fallback:{}:{create_time}:{sort_seq}:{local_id}:{sender}:{local_type}", encode_uri_component(&scope))
+}
+
 // ───────────────────────── isSend / sender ─────────────────────────
 
 fn identity_keys(raw: &str) -> Vec<String> {
@@ -962,9 +1023,14 @@ pub fn map_rows_lite(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
             let from_row = row.get("sender_username").map(value_to_trimmed_string).filter(|s| !s.is_empty()).or_else(|| extract_sender_from_content(&content));
             let is_send = resolve_is_send(raw, from_row.as_deref(), my_wxid);
             let sender = from_row.or_else(|| (is_send == Some(1) && !my_wxid.is_empty()).then(|| my_wxid.to_string()));
+            let src = message_source_info(row);
+            let (local_id, server_id) = (row_int(row, &["local_id"], 0), row_int(row, &["server_id"], 0));
             ChatMessage {
-                local_id: row_int(row, &["local_id"], 0),
-                server_id: row_int(row, &["server_id"], 0),
+                message_key: build_message_key(local_id, server_id, create_time, sort_seq, sender.as_deref(), local_type, &src),
+                db_path: Some(src.db_path.clone()).filter(|s| !s.is_empty()),
+                table_name: Some(src.table_name.clone()).filter(|s| !s.is_empty()),
+                local_id,
+                server_id,
                 server_id_raw: row.get("server_id").map(|v| normalize_unsigned_token(&value_to_trimmed_string(v))).unwrap_or_else(|| "0".into()),
                 local_type,
                 create_time,
@@ -1105,6 +1171,10 @@ pub fn map_rows(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
             }
             m.parsed_content = parse_message_content(&content, local_type);
             m.raw_content = content;
+            let src = message_source_info(row);
+            m.message_key = build_message_key(m.local_id, m.server_id, m.create_time, m.sort_seq, m.sender_username.as_deref(), m.local_type, &src);
+            m.db_path = Some(src.db_path).filter(|s| !s.is_empty());
+            m.table_name = Some(src.table_name).filter(|s| !s.is_empty());
             m
         })
         .collect()
@@ -1155,6 +1225,20 @@ mod tests {
         assert_eq!(resolve_is_send(Some(0), Some("wxid_bob"), "wxid_me"), Some(0));
         assert_eq!(resolve_is_send(None, Some("wxid_bob"), "wxid_me"), Some(0));
         assert_eq!(resolve_is_send(None, None, "wxid_me"), None);
+    }
+
+    #[test]
+    fn message_keys_follow_the_desktop_format() {
+        let rows = vec![
+            json!({"local_id": "5", "create_time": "10", "local_type": "1", "message_content": "x", "_db_path": "/a b/message_0.db", "table_name": "Msg_abc"}),
+            json!({"local_id": "6", "create_time": "11", "local_type": "1", "message_content": "x", "_db_path": "/a/message_1.db"}),
+            json!({"local_id": "0", "server_id": "77", "create_time": "12", "local_type": "1", "message_content": "x"}),
+        ];
+        let m = map_rows(&rows, "wxid_me");
+        assert_eq!(m[0].message_key, "%2Fa%20b%2Fmessage_0.db:Msg_abc:5");
+        assert!(m[1].message_key.starts_with("local:%2Fa%2Fmessage_1.db:6:11:11:"), "{}", m[1].message_key);
+        assert!(m[2].message_key.starts_with("server:77:12:12:0:"), "{}", m[2].message_key);
+        assert_eq!(encode_uri_component("a b/é"), "a%20b%2F%C3%A9");
     }
 
     #[test]

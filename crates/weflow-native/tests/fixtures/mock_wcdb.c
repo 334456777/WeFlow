@@ -5,6 +5,8 @@
 #include <string.h>
 
 static char g_last[16384];
+static char g_cur_session[256];
+static int g_cur_done = 0;
 
 // Test hook: JSON of the arguments of the most recent generated call.
 const char* mock_last_call(void) { return g_last; }
@@ -375,6 +377,7 @@ int32_t wcdb_open_message_cursor(int64_t handle, const char* sessionId, int32_t 
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outCursor) *outCursor = 7;
+    snprintf(g_cur_session, sizeof(g_cur_session), "%s", sessionId ? sessionId : ""); g_cur_done = 0;
     snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
@@ -390,6 +393,7 @@ int32_t wcdb_open_message_cursor_lite(int64_t handle, const char* sessionId, int
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outCursor) *outCursor = 7;
+    snprintf(g_cur_session, sizeof(g_cur_session), "%s", sessionId ? sessionId : ""); g_cur_done = 0;
     snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
@@ -402,6 +406,12 @@ int32_t wcdb_fetch_message_batch(int64_t handle, int64_t cursor, void** outJson,
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outHasMore) *outHasMore = 0;
     snprintf(g_last, sizeof(g_last), "%s", buf);
+    if (strcmp(g_cur_session, "room1@chatroom") == 0 || strcmp(g_cur_session, "wxid_bob") == 0) {
+        if (outHasMore) *outHasMore = 0;
+        if (g_cur_done) return ret_json(outJson, "[]");
+        g_cur_done = 1;
+        return ret_json(outJson, strcmp(g_cur_session, "room1@chatroom") == 0 ? "[{\"local_id\":\"3\",\"server_id\":\"9007199254740993\",\"create_time\":\"1700000120\",\"local_type\":\"1\",\"message_content\":\"wxid_bob:third\",\"sender_username\":\"wxid_bob\",\"is_send\":\"0\"},{\"local_id\":\"2\",\"create_time\":\"1700000060\",\"local_type\":\"1\",\"message_content\":\"second\",\"sender_username\":\"wxid_me\",\"is_send\":\"1\"},{\"local_id\":\"1\",\"create_time\":\"1700000000\",\"local_type\":\"10000\",\"message_content\":\"<sysmsg type=\\\"x\\\"><plain>Bob joined</plain></sysmsg>\",\"sender_username\":\"room1@chatroom\",\"is_send\":\"0\"}]" : "[{\"local_id\":\"3\",\"server_id\":\"9007199254740993\",\"create_time\":\"1700000120\",\"local_type\":\"3\",\"message_content\":\"\",\"sender_username\":\"wxid_bob\",\"is_send\":\"0\"},{\"local_id\":\"2\",\"create_time\":\"1700000060\",\"local_type\":\"1\",\"message_content\":\"wxid_bob:hi <there>\",\"sender_username\":\"wxid_bob\",\"is_send\":\"0\"},{\"local_id\":\"1\",\"create_time\":\"1700000000\",\"local_type\":\"1\",\"message_content\":\"hello, \\\"world\\\"\",\"is_send\":\"1\"}]");
+    }
     return ret_json(outJson, buf);
 }
 

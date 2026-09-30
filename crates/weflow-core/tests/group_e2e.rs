@@ -62,8 +62,14 @@ fn group_chats_and_full_members() {
 fn member_analytics_and_exports() {
     let (hub, root) = common::mock_hub("group-export");
     let a = hub.group_member_analytics("room1@chatroom", "wxid_bob", 0, 0).unwrap();
-    assert_eq!(a["statistics"]["totalMessages"], 0);
+    assert_eq!(a["statistics"]["totalMessages"], 1, "only Bob's message in the room counts");
+    assert_eq!(a["statistics"]["textMessages"], 1);
+    assert_eq!(a["statistics"]["firstMessageTime"], 1700000120);
+    assert_eq!(a["statistics"]["activeDays"], 1);
     assert_eq!(a["timeDistribution"].as_object().unwrap().len(), 24);
+    assert_eq!(a["commonPhrases"][0]["phrase"], "wxid_bob:third", "the sender prefix is only stripped before a newline");
+    let me = hub.group_member_analytics("room1@chatroom", "wxid_me", 0, 0).unwrap();
+    assert_eq!(me["statistics"]["totalMessages"], 1, "my own messages are matched through is_send");
 
     let csv = root.join("members.csv");
     let res = hub.group_export_members("room1@chatroom", &csv).unwrap();
@@ -80,8 +86,12 @@ fn member_analytics_and_exports() {
 
     let msgs = root.join("bob.csv");
     let res = hub.group_export_member_messages("room1@chatroom", "wxid_bob", &msgs, 0, 0).unwrap();
-    assert_eq!(res["count"], 0);
-    assert!(std::fs::read_to_string(&msgs).unwrap().contains("序号,时间,发送者wxid,消息类型,内容"));
+    assert_eq!(res["count"], 1);
+    let csv_text = std::fs::read_to_string(&msgs).unwrap();
+    assert!(csv_text.contains("序号,时间,发送者wxid,消息类型,内容"));
+    assert!(csv_text.contains("wxid_bob") && csv_text.contains("文本") && csv_text.contains("third"), "{csv_text}");
     let page = hub.group_member_messages("room1@chatroom", "wxid_bob", 0, 0, 20, 0).unwrap();
     assert_eq!(page["hasMore"], false);
+    assert_eq!(page["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(page["messages"][0]["parsedContent"], "third");
 }

@@ -88,7 +88,7 @@ fn export_stats_value(total_posts: i64, total_friends: i64, my_posts: Option<i64
 impl ServiceHub {
     // ── paths ──
 
-    fn cache_base(&self) -> PathBuf {
+    pub(super) fn cache_base(&self) -> PathBuf {
         self.profile()
             .ok()
             .and_then(|p| p.cache_path.clone())
@@ -103,7 +103,7 @@ impl ServiceHub {
         dir
     }
 
-    fn emoji_cache_dir(&self) -> PathBuf {
+    pub(super) fn emoji_cache_dir(&self) -> PathBuf {
         let dir = self.cache_base().join("Emojis");
         let _ = std::fs::create_dir_all(&dir);
         dir
@@ -388,8 +388,13 @@ impl ServiceHub {
     }
 
     pub fn sns_block_delete_install(&self) -> AppResult<Value> {
-        let _ = self.sns_block_delete("install")?;
-        Ok(json!({ "success": true }))
+        let wcdb = self.open_wcdb()?;
+        let (rc, msg) = wcdb.invoke_status_code("wcdb_install_sns_block_delete_trigger", &[]).map_err(err_native)?;
+        match rc {
+            1 => Ok(json!({ "success": true, "alreadyInstalled": true })),
+            0 => Ok(json!({ "success": true, "alreadyInstalled": false })),
+            _ => Err(AppError::native(if msg.is_empty() { format!("DLL error {rc}") } else { msg })),
+        }
     }
 
     pub fn sns_block_delete_uninstall(&self) -> AppResult<Value> {

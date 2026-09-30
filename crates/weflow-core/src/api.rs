@@ -8,6 +8,19 @@ use serde_json::{json, Map, Value};
 use crate::chat_msg::ChatMessage;
 use crate::message::rx;
 
+/// An HTTP error reply (`{ "error": message }` with a status code).
+#[derive(Debug, Clone)]
+pub struct ApiError {
+    pub status: u16,
+    pub message: String,
+}
+
+impl ApiError {
+    pub fn new(status: u16, message: impl Into<String>) -> Self {
+        Self { status, message: message.into() }
+    }
+}
+
 // ───────────────────────── ChatLab types ─────────────────────────
 
 pub mod chatlab {
