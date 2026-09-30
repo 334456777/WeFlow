@@ -43,7 +43,7 @@ weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
 ```
 
-Progress: commands that run longer than the delay (default 10 seconds; `--progress-delay <s>`, env `WEFLOW_PROGRESS_DELAY`, or `weflow config set progress_delay_seconds <s>`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
+Progress: commands that run longer than the delay (default 5 seconds; `--progress-delay <s>`, env `WEFLOW_PROGRESS_DELAY`, or `weflow config set progress_delay_seconds <s>`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
 terminal; stdout stays pure JSON). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` walks the media

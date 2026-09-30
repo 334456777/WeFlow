@@ -57,13 +57,13 @@ pub enum ProgressMode {
     Off,
     /// One NDJSON event per line (`--progress`).
     Ndjson,
-    /// A single-line progress bar that appears once a command has run for 10 seconds, only when
+    /// A single-line progress bar that appears once a command has run for 5 seconds, only when
     /// stderr is a terminal.
     Auto,
 }
 
 /// Default number of seconds a command must run before the automatic progress bar appears.
-pub const DEFAULT_BAR_DELAY_SECS: u64 = 10;
+pub const DEFAULT_BAR_DELAY_SECS: u64 = 5;
 
 static BAR_DELAY_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(DEFAULT_BAR_DELAY_SECS);
 

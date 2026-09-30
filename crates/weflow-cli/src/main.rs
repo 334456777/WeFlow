@@ -44,7 +44,7 @@ struct Cli {
     /// Never show the automatic progress bar
     #[arg(long, global = true)]
     no_progress: bool,
-    /// Seconds a command must run before the automatic progress bar appears (default 10; 0 = always).
+    /// Seconds a command must run before the automatic progress bar appears (default 5; 0 = always).
     /// Also settable with WEFLOW_PROGRESS_DELAY or `config set progress_delay_seconds <n>`
     #[arg(long, global = true, value_name = "SECONDS", env = "WEFLOW_PROGRESS_DELAY")]
     progress_delay: Option<u64>,
