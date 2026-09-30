@@ -8,6 +8,7 @@ pub mod error;
 pub mod export;
 pub mod export_msg;
 pub mod http_server;
+pub mod image;
 pub mod insight;
 pub mod isaac64;
 pub mod locale;

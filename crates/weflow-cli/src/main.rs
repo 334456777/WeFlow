@@ -77,6 +77,8 @@ enum Commands {
     Insight(InsightCommand),
     /// Locate videos stored by WeChat and parse video md5s
     Video(VideoCommand),
+    /// Locate, decrypt and cache message images
+    Image(ImageCommand),
     /// Run the HTTP API, message push, insight and image auto-download services
     Serve(ServeCommand),
     /// Show the embedded runtime and manifest
@@ -287,6 +289,13 @@ enum ChatSubcommand {
         /// Output WAV path (default: print base64 in the JSON result)
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Decrypt the image of one message and write it to a file
+    ImageData {
+        session_id: String,
+        msg_id: String,
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Check whether a decoded voice WAV is already cached for a message id
     VoiceCache { session_id: String, msg_id: String },
@@ -598,6 +607,70 @@ enum BizSubcommand {
 }
 
 #[derive(Args, Debug)]
+struct ImageCommand {
+    #[command(subcommand)]
+    command: ImageSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
+struct ImageTarget {
+    /// Conversation the image belongs to (locates msg/attach/<md5(session)>/…)
+    #[arg(long)]
+    session: Option<String>,
+    #[arg(long)]
+    md5: Option<String>,
+    #[arg(long)]
+    dat_name: Option<String>,
+    /// Message create time (seconds); selects the year-month folder
+    #[arg(long)]
+    create_time: Option<i64>,
+    /// Return a file path instead of a base64 data URL
+    #[arg(long)]
+    prefer_file_path: bool,
+    #[arg(long)]
+    hardlink_only: bool,
+    /// Do not fall back to scanning by .dat name
+    #[arg(long)]
+    no_cache_index: bool,
+}
+
+impl ImageTarget {
+    fn payload(&self, force: bool) -> weflow_core::services::ImagePayload {
+        weflow_core::services::ImagePayload {
+            session_id: self.session.clone(),
+            image_md5: self.md5.clone(),
+            image_dat_name: self.dat_name.clone(),
+            create_time: self.create_time,
+            prefer_file_path: self.prefer_file_path,
+            hardlink_only: self.hardlink_only,
+            allow_cache_index: if self.no_cache_index { Some(false) } else { None },
+            force,
+        }
+    }
+}
+
+#[derive(Subcommand, Debug)]
+enum ImageSubcommand {
+    /// Decrypt an image (HD preferred with --force) into the image cache
+    Decrypt {
+        #[command(flatten)]
+        target: ImageTarget,
+        /// Prefer the HD rendition
+        #[arg(long)]
+        force: bool,
+    },
+    /// Look an image up in the cache without decrypting
+    ResolveCache {
+        #[command(flatten)]
+        target: ImageTarget,
+    },
+    /// Resolve many images; takes a JSON array of payloads (sessionId, imageMd5, imageDatName, createTime, …)
+    ResolveBatch { payloads_json: String },
+    /// Delete every decrypted image from the cache
+    ClearCache,
+}
+
+#[derive(Args, Debug)]
 struct VideoCommand {
     #[command(subcommand)]
     command: VideoSubcommand,
@@ -761,6 +834,16 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         Commands::Sns(command) => handle_sns(command, &hub).await,
         Commands::Biz(command) => handle_biz(command, &hub),
         Commands::Insight(command) => handle_insight(command, &hub).await,
+        Commands::Image(command) => Ok(match &command.command {
+            ImageSubcommand::Decrypt { target, force } => hub.image_decrypt(&target.payload(*force)).to_json(),
+            ImageSubcommand::ResolveCache { target } => hub.image_resolve_cache(&target.payload(false)).to_json(),
+            ImageSubcommand::ResolveBatch { payloads_json } => {
+                let list: Vec<Value> = serde_json::from_str(payloads_json).map_err(|e| AppError::usage(format!("payloads_json must be a JSON array: {e}")))?;
+                let payloads: Vec<_> = list.iter().map(weflow_core::services::ImagePayload::from_json).collect();
+                hub.image_resolve_cache_batch(&payloads)
+            }
+            ImageSubcommand::ClearCache => hub.image_clear_cache(),
+        }),
         Commands::Video(command) => match &command.command {
             VideoSubcommand::Info { md5, no_poster, file_url } => hub.video_info(md5, !*no_poster, if *file_url { weflow_core::video::PosterFormat::FileUrl } else { weflow_core::video::PosterFormat::DataUrl }),
             VideoSubcommand::ParseMd5 { content } => Ok(serde_json::json!({ "md5": weflow_core::video::parse_video_md5(content) })),
@@ -960,6 +1043,14 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
                     Ok(serde_json::json!({ "success": true, "data": base64::engine::general_purpose::STANDARD.encode(&wav) }))
                 }
             }
+        }
+        ChatSubcommand::ImageData { session_id, msg_id, out } => {
+            let bytes = hub.image_data_for_message(session_id, msg_id)?;
+            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+                std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(format!("failed to create {}: {e}", parent.display())))?;
+            }
+            std::fs::write(out, &bytes).map_err(|e| AppError::runtime(format!("failed to write {}: {e}", out.display())))?;
+            Ok(serde_json::json!({ "success": true, "path": out.to_string_lossy(), "bytes": bytes.len() }))
         }
         ChatSubcommand::VoiceCache { session_id, msg_id } => Ok(hub.voice_resolve_cache(session_id, msg_id)),
         ChatSubcommand::VoicePreload { session_id, messages_json } => {

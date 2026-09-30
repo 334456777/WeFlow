@@ -9,6 +9,8 @@ mod analytics;
 mod api;
 mod chat;
 mod group;
+mod image;
+pub use image::{ImagePayload, ImageResult};
 mod reports;
 mod sns;
 mod voice;
@@ -27,6 +29,7 @@ pub struct ServiceHub {
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
     group_state: std::sync::Arc<std::sync::Mutex<group::GroupState>>,
     analytics_state: std::sync::Arc<std::sync::Mutex<analytics::AnalyticsState>>,
+    image_state: std::sync::Arc<std::sync::Mutex<image::ImageState>>,
 }
 
 impl ServiceHub {
@@ -50,6 +53,7 @@ impl ServiceHub {
             sns_state: Default::default(),
             group_state: Default::default(),
             analytics_state: Default::default(),
+            image_state: Default::default(),
         }
     }
 
@@ -213,13 +217,13 @@ impl ServiceHub {
 
     /// `video:getVideoInfo`
     pub fn video_info(&self, md5: &str, include_poster: bool, format: crate::video::PosterFormat) -> AppResult<Value> {
-        let (account_dir, _, _) = self.connection_inputs()?;
+        let account_dir = self.account_dir_only()?;
         Ok(crate::video::video_info(&account_dir.join("msg").join("video"), md5, include_poster, format).to_json())
     }
 
     /// Path of the on-disk video for a message md5, if WeChat stored one.
     pub(super) fn video_file_path(&self, md5: &str) -> Option<PathBuf> {
-        let (account_dir, _, _) = self.connection_inputs().ok()?;
+        let account_dir = self.account_dir_only().ok()?;
         let info = crate::video::video_info(&account_dir.join("msg").join("video"), md5, false, crate::video::PosterFormat::DataUrl);
         info.video_url.map(PathBuf::from).filter(|p| p.exists())
     }
@@ -296,14 +300,7 @@ impl ServiceHub {
 
         let profile = self.profile()?;
         let xor_key = profile.image_xor_key.map(|k| k as u8);
-        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(|k| {
-            let hex = if k.len() >= 32 { &k[..32] } else { return None };
-            let mut arr = [0u8; 16];
-            for i in 0..16 {
-                arr[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
-            }
-            Some(arr)
-        });
+        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(crate::decrypt::parse_aes_key);
 
         let version = crate::decrypt::detect_dat_version(&data);
         let (final_data, ext) = if version > 0 && xor_key.is_some() {
@@ -747,16 +744,7 @@ impl ServiceHub {
         let (account_dir, _, _) = self.connection_inputs()?;
         let profile = self.profile()?;
         let xor_key = profile.image_xor_key.map(|k| k as u8).unwrap_or(0);
-        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(|k| {
-            if k.len() < 32 {
-                return None;
-            }
-            let mut arr = [0u8; 16];
-            for i in 0..16 {
-                arr[i] = u8::from_str_radix(&k[i * 2..i * 2 + 2], 16).ok()?;
-            }
-            Some(arr)
-        });
+        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(crate::decrypt::parse_aes_key);
 
         std::fs::create_dir_all(out).map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
 

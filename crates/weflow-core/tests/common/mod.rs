@@ -29,6 +29,11 @@ fn build_mock(runtime: &Path) {
 
 /// Returns a hub connected to the mock library, plus the temp root for outputs.
 pub fn mock_hub(tag: &str) -> (ServiceHub, PathBuf) {
+    mock_hub_with(tag, |_| {})
+}
+
+/// Like [`mock_hub`], with a hook to adjust the default profile (keys, cache path, …).
+pub fn mock_hub_with(tag: &str, tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig)) -> (ServiceHub, PathBuf) {
     let root = temp_dir(tag);
     let runtime = root.join("runtime");
     build_mock(&runtime);
@@ -42,9 +47,11 @@ pub fn mock_hub(tag: &str) -> (ServiceHub, PathBuf) {
         version: "test".into(),
     };
     std::fs::create_dir_all(&ctx.home_dir).unwrap();
+    let mut config = ConfigStore::default();
+    tweak(config.profiles.get_mut("default").unwrap());
     let hub = ServiceHub::new(
         ctx,
-        ConfigStore::default(),
+        config,
         None,
         Some(account.to_string_lossy().to_string()),
         Some("00".repeat(32)),

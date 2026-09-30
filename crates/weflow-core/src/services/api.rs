@@ -986,11 +986,34 @@ impl ServiceHub {
             Some(ApiExportedMedia { kind, file_name: file_name.clone(), full_path: full.to_string_lossy().to_string(), relative_path: format!("{safe_talker}/{sub}/{file_name}") })
         };
         if msg.local_type == 3 && opts.images {
-            let found = self.resolve_message_image(msg)?;
-            let ext = crate::decrypt::detect_image_extension(&found).to_string();
-            let ext = if ext == ".bin" { ".jpg".to_string() } else { ext };
+            let payload = crate::services::ImagePayload {
+                session_id: Some(talker.to_string()),
+                image_md5: msg.image_md5.clone().filter(|m| !m.is_empty()),
+                image_dat_name: msg.image_dat_name.clone().filter(|m| !m.is_empty()),
+                create_time: Some(msg.create_time).filter(|t| *t != 0),
+                force: true,
+                prefer_file_path: true,
+                hardlink_only: true,
+                ..Default::default()
+            };
+            let mut path = self.image_decrypt(&payload).local_path;
+            if path.is_none() {
+                let cached = self.image_resolve_cache(&crate::services::ImagePayload { force: false, ..payload.clone() });
+                if cached.success {
+                    path = cached.local_path;
+                }
+            }
+            let path = path?;
+            let bytes = if let Some(rest) = path.strip_prefix("data:") {
+                use base64::Engine;
+                let b64 = rest.split_once(";base64,")?.1;
+                base64::engine::general_purpose::STANDARD.decode(b64).ok()?
+            } else {
+                std::fs::read(&path).ok()?
+            };
+            let ext = api_detect_image_ext(&bytes);
             let base = api::sanitize_file_name(msg.image_md5.as_deref().filter(|s| !s.is_empty()).or(msg.image_dat_name.as_deref()).unwrap_or(""), &format!("image_{}", msg.local_id));
-            return put("image", "images", format!("{base}{ext}"), Some(&found), None);
+            return put("image", "images", format!("{base}{ext}"), Some(&bytes), None);
         }
         if msg.local_type == 34 && opts.voices {
             let server = if msg.server_id_raw.is_empty() || msg.server_id_raw == "0" { msg.server_id.to_string() } else { msg.server_id_raw.clone() };
@@ -1014,40 +1037,22 @@ impl ServiceHub {
         }
         None
     }
+}
 
-    /// Finds and decrypts the `.dat` file of an image message (by md5 / dat name).
-    fn resolve_message_image(&self, msg: &ChatMessage) -> Option<Vec<u8>> {
-        let (account_dir, _, _) = self.connection_inputs().ok()?;
-        let profile = self.profile().ok()?;
-        let xor_key = profile.image_xor_key.map(|k| k as u8).unwrap_or(0);
-        let aes: Option<[u8; 16]> = profile.image_aes_key.as_deref().and_then(|k| {
-            if k.len() < 32 {
-                return None;
-            }
-            let mut arr = [0u8; 16];
-            for i in 0..16 {
-                arr[i] = u8::from_str_radix(&k[i * 2..i * 2 + 2], 16).ok()?;
-            }
-            Some(arr)
-        });
-        let tokens: Vec<String> = [msg.image_md5.clone(), msg.image_dat_name.clone()].into_iter().flatten().map(|t| t.to_lowercase()).filter(|t| !t.is_empty()).collect();
-        if tokens.is_empty() {
-            return None;
-        }
-        for entry in crate::media::scan_image_files(&account_dir) {
-            let name = entry.path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
-            if !tokens.iter().any(|t| name.starts_with(t.as_str())) {
-                continue;
-            }
-            if name.ends_with(".dat") {
-                if let Ok(res) = crate::decrypt::decrypt_file(&entry.path, xor_key, aes.as_ref()) {
-                    return Some(res.data);
-                }
-            } else if let Ok(bytes) = std::fs::read(&entry.path) {
-                return Some(bytes);
-            }
-        }
-        None
+/// httpService `detectImageExt`
+fn api_detect_image_ext(b: &[u8]) -> &'static str {
+    if b.len() >= 3 && b[..3] == [0xff, 0xd8, 0xff] {
+        ".jpg"
+    } else if b.len() >= 8 && b[..8] == [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] {
+        ".png"
+    } else if b.len() >= 6 && (&b[..6] == b"GIF87a" || &b[..6] == b"GIF89a") {
+        ".gif"
+    } else if b.len() >= 12 && &b[..4] == b"RIFF" && &b[8..12] == b"WEBP" {
+        ".webp"
+    } else if b.len() >= 2 && b[..2] == [0x42, 0x4d] {
+        ".bmp"
+    } else {
+        ".jpg"
     }
 }
 
