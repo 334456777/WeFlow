@@ -59,6 +59,34 @@ weflow --lang zh export messages <session-id> --out chat.txt
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
+### First-time setup and export (required steps)
+
+Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
+
+```powershell
+# 1. Find the WeChat data directory
+.\weflow.exe db detect --pretty
+
+# 2. Get the database key (WeChat must be running) and the image keys
+.\weflow.exe key db --pretty
+.\weflow.exe key image --pretty
+
+# 3. Save the configuration (once)
+.\weflow.exe config set db_path "C:\Users\<you>\Documents\xwechat_files"
+.\weflow.exe config set wxid wxid_xxxxxxxx
+.\weflow.exe config set decrypt_key <database key>
+.\weflow.exe config set image_xor_key <image xor key>
+.\weflow.exe config set image_aes_key <image aes key>
+
+# 4. Required: list the sessions to confirm the connection and find the session ID to export
+.\weflow.exe chat sessions --pretty
+
+# 5. Export (private chat: the other party's wxid; group: xxx@chatroom)
+.\weflow.exe export messages <session-id> --format html --out chat.html
+```
+
+`--lang zh` (or `en`) is an option, not a command: it must accompany a subcommand, e.g. `weflow.exe --lang zh chat sessions --pretty`.
+
 Docs: [command list](docs/NATIVE-CLI.md) · [coverage of the desktop backend](docs/CLI-COVERAGE.md) · [what the CLI does not cover](docs/CLI-GAPS.md).
 
 ## Quick Start

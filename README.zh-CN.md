@@ -59,6 +59,34 @@ weflow --lang zh export messages <session-id> --out chat.txt
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
+### 首次设置与导出（必要步骤）
+
+以 Windows PowerShell 为例，先登录并保持微信运行（微信 4.0 及以上）：
+
+```powershell
+# 1. 找到微信数据目录
+.\weflow.exe --lang zh db detect --pretty
+
+# 2. 获取数据库密钥（微信需在运行）和图片密钥
+.\weflow.exe --lang zh key db --pretty
+.\weflow.exe --lang zh key image --pretty
+
+# 3. 写入配置（只需一次）
+.\weflow.exe config set db_path "C:\Users\<你>\Documents\xwechat_files"
+.\weflow.exe config set wxid wxid_xxxxxxxx
+.\weflow.exe config set decrypt_key <数据库密钥>
+.\weflow.exe config set image_xor_key <图片xor密钥>
+.\weflow.exe config set image_aes_key <图片aes密钥>
+
+# 4. 必要步骤：查看会话列表，确认连接成功并找到要导出的会话 ID
+.\weflow.exe --lang zh chat sessions --pretty
+
+# 5. 导出（私聊为对方 wxid，群聊为 xxx@chatroom）
+.\weflow.exe --lang zh export messages <会话ID> --format html --out chat.html
+```
+
+`--lang zh` 必须跟在一个子命令前后（例如 `chat sessions`），单独运行 `weflow.exe --lang zh` 会提示缺少子命令。
+
 文档：[命令列表](docs/zh-CN/NATIVE-CLI.md) · [对桌面端后端的覆盖率](docs/zh-CN/CLI-COVERAGE.md) · [CLI 未覆盖的部分](docs/zh-CN/CLI-GAPS.md)。
 
 ## 快速开始
