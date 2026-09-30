@@ -9,6 +9,7 @@ mod analytics;
 mod api;
 mod chat;
 mod group;
+mod reports;
 mod sns;
 pub use chat::ResourceQuery;
 pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
@@ -207,28 +208,6 @@ impl ServiceHub {
             "nicknames": nicknames,
             "count": count
         }))
-    }
-
-    pub fn report_annual_years(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        wcdb.available_years(&session_ids)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn report_annual_generate(&self, year: i32) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        let (begin, end) = year_bounds(year)?;
-        wcdb.annual_report_stats(&session_ids, begin, end)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn report_dual_generate(&self, friend: &str, year: i32) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let (begin, end) = year_bounds(year)?;
-        wcdb.dual_report_stats(friend, begin, end)
-            .map_err(|err| AppError::native(err.to_string()))
     }
 
     pub fn footprint(&self) -> AppResult<Value> {
@@ -896,13 +875,6 @@ impl ServiceHub {
         Ok(wcdb)
     }
 
-    fn all_session_ids(&self, wcdb: &weflow_native::wcdb::Wcdb) -> AppResult<Vec<String>> {
-        let sessions = wcdb
-            .sessions()
-            .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(extract_session_ids(&sessions))
-    }
-
     fn connection_inputs(&self) -> AppResult<(PathBuf, String, Option<String>)> {
         let profile = self.profile()?;
         let db_path = self
@@ -991,34 +963,6 @@ fn session_id_from_value(value: &Value) -> Option<String> {
         }
     }
     None
-}
-
-fn year_bounds(year: i32) -> AppResult<(i32, i32)> {
-    if !(1970..=2100).contains(&year) {
-        return Err(AppError::usage("year must be between 1970 and 2100"));
-    }
-    let begin = unix_timestamp(year, 1, 1)?;
-    let end = unix_timestamp(year + 1, 1, 1)? - 1;
-    Ok((begin, end))
-}
-
-fn unix_timestamp(year: i32, month: u32, day: u32) -> AppResult<i32> {
-    let days = days_from_civil(year, month, day);
-    let seconds = days
-        .checked_mul(86_400)
-        .ok_or_else(|| AppError::usage("date is out of range"))?;
-    i32::try_from(seconds).map_err(|_| AppError::usage("date is out of range"))
-}
-
-fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
-    let year = year - i32::from(month <= 2);
-    let era = if year >= 0 { year } else { year - 399 } / 400;
-    let yoe = year - era * 400;
-    let month = month as i32;
-    let day = day as i32;
-    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    i64::from(era * 146_097 + doe - 719_468)
 }
 
 fn find_wechat_pid() -> Option<u32> {

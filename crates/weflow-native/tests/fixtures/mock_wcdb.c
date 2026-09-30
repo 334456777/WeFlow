@@ -285,7 +285,7 @@ int32_t wcdb_get_available_years(int64_t handle, const char* sessionIdsJson, voi
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionIdsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "[2024,2023,2023]");
 }
 
 int32_t wcdb_get_annual_report_stats(int64_t handle, const char* sessionIdsJson, int32_t begin, int32_t end, void** outJson) {
@@ -297,7 +297,7 @@ int32_t wcdb_get_annual_report_stats(int64_t handle, const char* sessionIdsJson,
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"total\":300,\"sessions\":{\"wxid_bob\":{\"sent\":120,\"received\":100,\"monthly\":{\"1\":10,\"2\":200,\"7\":10}},\"wxid_carol\":{\"sent\":40,\"received\":40,\"monthly\":{\"3\":80}}},\"daily\":{\"2024-02-10\":90,\"2024-02-11\":40,\"2024-03-01\":5}}");
 }
 
 int32_t wcdb_get_annual_report_extras(int64_t handle, const char* sessionIdsJson, int32_t begin, int32_t end, int32_t peakBegin, int32_t peakEnd, void** outJson) {
@@ -311,7 +311,7 @@ int32_t wcdb_get_annual_report_extras(int64_t handle, const char* sessionIdsJson
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)peakEnd);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"heatmap\":[[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],\"midnight\":{\"wxid_bob\":30,\"wxid_carol\":10},\"conversation\":{\"wxid_bob\":{\"initiated\":30,\"received\":10},\"wxid_carol\":{\"initiated\":5,\"received\":15}},\"response\":{\"wxid_bob\":{\"count\":10,\"avg\":60},\"wxid_carol\":{\"count\":30,\"avg\":120}},\"peakDay\":{\"wxid_bob\":70,\"wxid_carol\":20},\"topPhrases\":[{\"phrase\":\"ok\",\"count\":9}],\"streak\":{\"sessionId\":\"wxid_bob\",\"days\":4,\"startDate\":\"2024-02-08\",\"endDate\":\"2024-02-11\"}}");
 }
 
 int32_t wcdb_get_dual_report_stats(int64_t handle, const char* sessionId, int32_t begin, int32_t end, void** outJson) {
@@ -323,7 +323,7 @@ int32_t wcdb_get_dual_report_stats(int64_t handle, const char* sessionId, int32_
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"counts\":{\"total\":500,\"words\":1234,\"image\":10,\"voice\":3,\"emoji\":0},\"emojis\":[],\"phrases\":[{\"phrase\":\"haha\",\"count\":8},{\"phrase\":\"ok\",\"count\":6},{\"phrase\":\"skip\",\"count\":4}],\"myPhrases\":[{\"phrase\":\"haha\",\"count\":7},{\"phrase\":\"ok\",\"count\":3},{\"phrase\":\"skip\",\"count\":4}],\"friendPhrases\":[{\"phrase\":\"haha\",\"count\":1},{\"phrase\":\"ok\",\"count\":3},{\"phrase\":\"mine\",\"count\":5}],\"heatmap\":[[1]],\"initiative\":{\"mine\":3,\"theirs\":2},\"streak\":{\"days\":5}}");
 }
 
 int32_t wcdb_get_logs(void** outJson) {
@@ -672,7 +672,7 @@ int32_t wcdb_get_sns_annual_stats(int64_t handle, int32_t begin, int32_t end, vo
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"totalPosts\":12,\"typeCounts\":{\"1\":12},\"topLikers\":[{\"username\":\"wxid_bob\",\"count\":5}],\"topLiked\":[{\"username\":\"wxid_carol\",\"count\":3}]}");
 }
 
 int32_t wcdb_get_sns_usernames(int64_t handle, void** outJson) {

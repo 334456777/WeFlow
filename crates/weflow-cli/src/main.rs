@@ -503,7 +503,8 @@ enum ReportSubcommand {
 enum AnnualSubcommand {
     Years,
     Generate {
-        #[arg(long)]
+        /// Report year; 0 (default) covers all years.
+        #[arg(long, default_value_t = 0)]
         year: i32,
     },
 }
@@ -513,8 +514,12 @@ enum DualSubcommand {
     Generate {
         #[arg(long)]
         friend: String,
-        #[arg(long)]
+        /// Report year; 0 (default) covers all years.
+        #[arg(long, default_value_t = 0)]
         year: i32,
+        /// Words to exclude from the phrase rankings (repeatable).
+        #[arg(long = "exclude-word")]
+        exclude_words: Vec<String>,
     },
 }
 
@@ -1061,11 +1066,11 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
 fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
         ReportSubcommand::Annual { command } => match command {
-            AnnualSubcommand::Years => hub.report_annual_years(),
-            AnnualSubcommand::Generate { year } => hub.report_annual_generate(*year),
+            AnnualSubcommand::Years => hub.report_available_years(),
+            AnnualSubcommand::Generate { year } => hub.report_annual(*year),
         },
         ReportSubcommand::Dual { command } => match command {
-            DualSubcommand::Generate { friend, year } => hub.report_dual_generate(friend, *year),
+            DualSubcommand::Generate { friend, year, exclude_words } => hub.report_dual(friend, *year, exclude_words),
         },
     }
 }
