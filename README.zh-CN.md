@@ -1,65 +1,46 @@
-# WeFlow
+# WeFlow 原生命令行
 
 [English](README.md) | **简体中文**
 
-WeFlow 是一个**完全本地**的微信**实时**聊天记录查看、分析与导出工具。它可以实时获取你的微信聊天记录并将其导出，还可以根据你的聊天记录为你生成独一无二的分析报告。
+`weflow` 是 [WeFlow](docs/zh-CN/WEFLOW-README.md) 后端的 Rust 原生命令行版本。无需 Electron 桌面端，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
-<p align="center">
-  <img src="app.jpg" alt="WeFlow 应用预览" width="90%">
-</p>
+- 每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
+- 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
+- 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
+- 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
+- 本地 HTTP API（token 鉴权、SSE 推送，`serve --http`）、消息推送、AI 见解。
+- 默认英文，按需切换中文。
 
-<p align="center">
-  <a href="https://github.com/hicccc77/WeFlow/stargazers"><img src="https://img.shields.io/github/stars/hicccc77/WeFlow?style=flat&label=Stars&labelColor=1F2937&color=2563EB" alt="Stargazers"></a>
-  <a href="https://github.com/hicccc77/WeFlow/network/members"><img src="https://img.shields.io/github/forks/hicccc77/WeFlow?style=flat&label=Forks&labelColor=1F2937&color=7C3AED" alt="Forks"></a>
-  <a href="https://github.com/hicccc77/WeFlow/issues"><img src="https://img.shields.io/github/issues/hicccc77/WeFlow?style=flat&label=Issues&labelColor=1F2937&color=D97706" alt="Issues"></a>
-  <a href="https://github.com/hicccc77/WeFlow/releases"><img src="https://img.shields.io/github/downloads/hicccc77/WeFlow/total?style=flat&label=Downloads&labelColor=1F2937&color=059669" alt="Downloads"></a>
-  <br><br>
-  <a href="https://t.me/weflow_cc"><img src="https://img.shields.io/badge/Telegram-频道-1D9BF0?style=flat&logo=telegram&logoColor=white&labelColor=1F2937&color=1D9BF0" alt="Telegram Channel" style="height: 22px; vertical-align: middle;"></a>
-  <a href="https://www.star-history.com/hicccc77/weflow"><img src="https://api.star-history.com/badge?repo=hicccc77/WeFlow&theme=dark" alt="Star History Rank" style="height: 32px; vertical-align: middle;"></a>
-</p>
+> [!WARNING]
+> CLI 是从原 TypeScript 后端移植而来，只在 mock WCDB 库上测试过，**没有用真实微信数据验证**。可能有粗糙之处，欢迎反馈。已覆盖和未覆盖的内容：[覆盖率](docs/zh-CN/CLI-COVERAGE.md) · [未覆盖部分](docs/zh-CN/CLI-GAPS.md)。
 
-> [!TIP]
-> 如果导出聊天记录后，想深入分析聊天内容可以试试 [ChatLab](https://chatlab.fun/)
+原 WeFlow 项目（Electron 桌面端）的说明见 [docs/zh-CN/WEFLOW-README.md](docs/zh-CN/WEFLOW-README.md)。
 
-> [!NOTE]
-> 仅支持微信 **4.0 及以上**版本，确保你的微信版本符合要求
-
-## 主要功能
-
-- 本地实时查看聊天记录
-- 朋友圈图片、视频、**实况**的预览和解密
-- 统计分析与群聊画像
-- 年度报告与可视化概览
-- 导出聊天记录为 HTML 等格式
-- HTTP API 接口（供开发者集成）
-- 查看完整能力清单：[详细功能](#详细功能清单)
-
-## 支持平台与设备
-
-| 平台 | 设备/架构 | 安装包 |
-|------|----------|--------|
-| Windows | Windows10+、x64（amd64） | `.exe` |
-| macOS | Apple Silicon（M 系列，arm64） | `.dmg` |
-| Linux | x64 设备（amd64） | `.AppImage`、`.tar.gz` |
-
-## 界面语言
-
-桌面端默认显示英文；系统语言为中文时自动显示中文（Linux 上 Electron 跟随 `LANG` / `LC_*`），也可在「设置 → 外观 → 语言」中手动选择 **English**、**简体中文** 或 **跟随系统**，切换后窗口会自动重载。
-
-开发者：界面文案请用 `t('中文原文')`（渲染进程）或 `mt('中文原文')`（主进程）包裹，在 `src/i18n/locales/en/` 或 `electron/i18n/en.ts` 中补充英文条目，并运行 `npm run i18n:check`。
-
-## 原生命令行
-
-WeFlow 在桌面端之外提供 Rust 命令行版本 `weflow`。它默认输出**英文**并跟随系统语言：只有当 `WEFLOW_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG` 或 `LANGUAGE` 以 `zh` 开头时才输出中文（以先设置的变量为准；其他取值，包括 `C`/`POSIX`，均为英文）。也可用 `--lang en|zh` 单次指定。
+## 构建
 
 ```bash
 make build                                  # 或：cargo build --release -p weflow-cli
 weflow --help
-weflow --lang zh export messages <session-id> --out chat.txt
+```
+
+Windows x64 发布版是单个 `weflow.exe`。WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`。
+
+## 切换中英文
+
+默认英文。单次运行用 `--lang en|zh`，也可以用环境变量：
+
+```powershell
+.\weflow.exe --lang zh chat sessions --pretty    # 本次输出中文
+$env:WEFLOW_LANG = "zh"                          # 整个 PowerShell 会话都用中文
+```
+
+```bash
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-### 首次设置与导出（必要步骤）
+只有当 `WEFLOW_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG` 或 `LANGUAGE` 以 `zh` 开头时才输出中文（以先设置的变量为准；其他取值，包括 `C`/`POSIX`，均为英文）。`--lang` 是选项而不是命令，必须配合子命令使用，例如 `weflow.exe --lang zh chat sessions --pretty`；单独运行 `weflow.exe --lang zh` 会提示缺少子命令。语言只影响生成的文本（`[Image]` / `[图片]` 之类的导出标签、默认 AI 提示词）；JSON 键、错误码和 `--help` 始终是英文。
+
+## 首次设置与导出（必要步骤）
 
 以 Windows PowerShell 为例，先登录并保持微信运行（微信 4.0 及以上）：
 
@@ -85,89 +66,13 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 .\weflow.exe --lang zh export messages <会话ID> --format html --out chat.html
 ```
 
-`--lang zh` 必须跟在一个子命令前后（例如 `chat sessions`），单独运行 `weflow.exe --lang zh` 会提示缺少子命令。
+常用导出选项：`--start 2025-01-01 --end 2025-12-31`（北京时间，含首尾）、`--display-name remark|nickname|group-nickname`、`--sender wxid_xxx`、`--excel-compact`。消息导出不内嵌媒体文件；媒体请单独导出，见 `weflow export media --help`。
 
-文档：[命令列表](docs/zh-CN/NATIVE-CLI.md) · [对桌面端后端的覆盖率](docs/zh-CN/CLI-COVERAGE.md) · [CLI 未覆盖的部分](docs/zh-CN/CLI-GAPS.md)。
+## 文档
 
-## 快速开始
+- [命令列表](docs/zh-CN/NATIVE-CLI.md)
+- [对原后端的覆盖率](docs/zh-CN/CLI-COVERAGE.md) · [CLI 未覆盖的部分](docs/zh-CN/CLI-GAPS.md)
+- [HTTP API](docs/zh-CN/HTTP-API.md) · [macOS 密钥排障](docs/zh-CN/MAC-KEY-FAQ.md)
+- [原 WeFlow README](docs/zh-CN/WEFLOW-README.md)
 
-若你只想使用成品版本，可前往 [Releases](https://github.com/hicccc77/WeFlow/releases) 下载并安装。
-
-> ArchLinux 用户可以选择 `yay -S weflow` 快速安装
-
-## 详细功能清单
-
-当前版本已支持以下能力：
-
-| 功能模块 | 说明 |
-|---------|------|
-| **聊天** | 解密聊天中的图片、视频、实况（仅支持谷歌协议拍摄的实况）；支持**修改**、删除**本地**消息；实时刷新最新消息，无需生成解密中间数据库 |
-| **消息防撤回** | 防止其他人发送的消息被撤回 |
-| **实时弹窗通知** | 新消息到达时提供桌面弹窗提醒，便于及时查看重要会话，提供黑白名单功能 |
-| **私聊分析** | 统计好友间消息数量；分析消息类型与发送比例；查看消息时段分布等 |
-| **群聊分析** | 查看群成员详细信息；分析群内发言排行、活跃时段和媒体内容 |
-| **年度报告** | 生成按年统计的年度报告，或跨年度的长期历史报告 |
-| **双人报告** | 选择指定好友，基于双方聊天记录生成专属分析报告 |
-| **消息导出** | 将微信聊天记录导出为多种格式：JSON、HTML、TXT、Excel、CSV、PGSQL、ChatLab专属格式等 |
-| **朋友圈** | 解密朋友圈图片、视频、实况；导出朋友圈内容；拦截朋友圈的删除与隐藏操作；突破时间访问限制 |
-| **联系人** | 导出微信好友、群聊、公众号信息；尝试找回曾经的好友（功能尚不完善） |
-| **HTTP API 映射** | 将本地消息能力映射为 HTTP API，便于对接外部系统、自动化脚本与二次开发 |
-
-## HTTP API
-
-> [!WARNING]
-> 此功能目前处于早期阶段，接口可能会有变动，请等待后续更新完善。
-
-WeFlow 提供本地 HTTP API 服务，支持通过接口查询消息数据，可用于与其他工具集成或二次开发。
-
-- **启用方式**：设置 → API 服务 → 启动服务
-- **默认端口**：5031
-- **访问地址**：`http://127.0.0.1:5031`
-- **支持格式**：原始 JSON 或 [ChatLab](https://chatlab.fun/) 标准格式
-
-完整接口文档：[点击查看](docs/zh-CN/HTTP-API.md)
-
-## 面向开发者
-
-如果你想从源码构建或为项目贡献代码，请遵循以下步骤：
-
-```bash
-# 1. 克隆项目到本地
-git clone https://github.com/hicccc77/WeFlow.git
-cd WeFlow
-
-# 2. 安装项目依赖
-npm install
-
-# 3. 运行应用（开发模式）
-npm run dev
-```
-
-## 致谢
-
-- [密语 CipherTalk](https://github.com/ILoveBingLu/miyu) 为本项目提供了基础框架
-- [WeChat-Channels-Video-File-Decryption](https://github.com/Evil0ctal/WeChat-Channels-Video-File-Decryption) 提供了视频解密相关的技术参考
-
-## 支持我们
-
-如果 WeFlow 确实帮到了你，可以考虑请我们喝杯咖啡：
-
-> TRC20 **Address:** `TZCtAw8CaeARWZBfvjidCnTcfnAtf6nvS6`
-
-## Star History
-
-<a href="https://www.star-history.com/#hicccc77/WeFlow&type=date&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=hicccc77/WeFlow&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=hicccc77/WeFlow&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=hicccc77/WeFlow&type=date&legend=top-left" />
-  </picture>
-</a>
-
-<div align="center">
-
----
-
-**请负责任地使用本工具，遵守相关法律法规**
-
-</div>
+请负责任地使用本工具，遵守相关法律法规。
