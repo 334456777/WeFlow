@@ -60,7 +60,7 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 .\weflow.exe config set image_aes_key <image aes key>
 
 # 4. Required: list the sessions to confirm the connection and find the session ID to export
-.\weflow.exe --lang zh chat sessions --pretty
+.\weflow.exe chat sessions --pretty
 
 # 5. Export (private chat: the other party's wxid; group: xxx@chatroom)
 .\weflow.exe export messages <session-id> --format html --out chat.html
