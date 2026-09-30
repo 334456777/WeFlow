@@ -39,7 +39,7 @@ weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
 ```
 
-进度：运行超过 10 秒的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 始终只有 JSON）。`--no-progress` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
+进度：运行超过延迟时间（默认 10 秒；可用 `--progress-delay <秒>`、环境变量 `WEFLOW_PROGRESS_DELAY` 或 `weflow config set progress_delay_seconds <秒>` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 始终只有 JSON）。`--no-progress` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` 按媒体消息遍历（同一张图发两次算两条，所以 `found` 可能大于 `chat images` 列出的唯一文件数）。`missing` 统计文件不在磁盘上（微信里没下载过）或无法解析的消息，按类型分列在 `missingByKind`。表情可能需要联网；语音导出要逐条解码，几百条语音的全量导出需要数分钟。
 

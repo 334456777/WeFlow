@@ -41,9 +41,13 @@ struct Cli {
     /// Emit NDJSON progress events on stderr (machine-readable)
     #[arg(long, global = true)]
     progress: bool,
-    /// Never show the automatic progress bar (it appears on a terminal after 10 seconds)
+    /// Never show the automatic progress bar
     #[arg(long, global = true)]
     no_progress: bool,
+    /// Seconds a command must run before the automatic progress bar appears (default 10; 0 = always).
+    /// Also settable with WEFLOW_PROGRESS_DELAY or `config set progress_delay_seconds <n>`
+    #[arg(long, global = true, value_name = "SECONDS", env = "WEFLOW_PROGRESS_DELAY")]
+    progress_delay: Option<u64>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -104,7 +108,7 @@ enum ConfigSubcommand {
     Get { key: Option<String> },
     /// Set a key. Main keys: db_path, wxid, decrypt_key, image_xor_key, image_aes_key, cache_path,
     /// http_api_token, http_api_host, http_api_port, ai_model_api_base_url, ai_model_api_key,
-    /// ai_model_api_model, ai_model_api_max_tokens, ai_insight_enabled (desktop names such as dbPath also work)
+    /// ai_model_api_model, ai_model_api_max_tokens, ai_insight_enabled, progress_delay_seconds (desktop names such as dbPath also work)
     Set {
         /// Key name, see the list above or `config list`
         key: String,
@@ -947,6 +951,9 @@ async fn main() -> ExitCode {
     } else {
         weflow_core::output::ProgressMode::Auto
     });
+    if let Some(d) = cli.progress_delay {
+        weflow_core::output::set_progress_delay(d);
+    }
     let outcome = run(&cli).await;
     weflow_core::output::finish_progress();
     match outcome {
@@ -965,6 +972,14 @@ async fn run(cli: &Cli) -> AppResult<Value> {
     let ctx = AppContext::new(cli.config.clone(), VERSION)?;
     let mut config =
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
+
+    if cli.progress_delay.is_none() {
+        let v = config.get_key(cli.profile.as_deref(), "progress_delay_seconds");
+        let delay = v.as_u64().or_else(|| v.as_str().and_then(weflow_core::output::parse_delay));
+        if let Some(d) = delay {
+            weflow_core::output::set_progress_delay(d);
+        }
+    }
 
     match &cli.command {
         Commands::Config(command) => return handle_config(command, &ctx, &mut config, cli),

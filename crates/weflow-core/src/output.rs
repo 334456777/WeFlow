@@ -62,8 +62,20 @@ pub enum ProgressMode {
     Auto,
 }
 
-/// Seconds a command must run before the automatic progress bar appears.
-pub const AUTO_BAR_DELAY_SECS: u64 = 10;
+/// Default number of seconds a command must run before the automatic progress bar appears.
+pub const DEFAULT_BAR_DELAY_SECS: u64 = 10;
+
+static BAR_DELAY_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(DEFAULT_BAR_DELAY_SECS);
+
+/// Sets the delay before the automatic bar appears (`0` = from the start).
+pub fn set_progress_delay(secs: u64) {
+    BAR_DELAY_SECS.store(secs, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Parses a delay setting given as a number or a numeric string.
+pub fn parse_delay(value: &str) -> Option<u64> {
+    value.trim().parse::<u64>().ok()
+}
 
 struct BarState {
     mode: ProgressMode,
@@ -134,7 +146,7 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
                 st.stage = stage.to_string();
                 st.stage_started = now;
             }
-            if !st.is_tty || now.duration_since(st.started).as_secs() < AUTO_BAR_DELAY_SECS {
+            if !st.is_tty || now.duration_since(st.started).as_secs() < BAR_DELAY_SECS.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
             let done = total > 0 && current >= total;
@@ -180,6 +192,14 @@ mod tests {
         let s = render_bar("scanning", 12, 0, 65, 16, 1);
         assert_eq!(s, "scanning  / 12 processed  elapsed 1m05s");
         assert!(!s.contains('%'));
+    }
+
+    #[test]
+    fn delay_settings_parse() {
+        assert_eq!(parse_delay(" 30 "), Some(30));
+        assert_eq!(parse_delay("0"), Some(0));
+        assert_eq!(parse_delay("abc"), None);
+        assert_eq!(parse_delay("-1"), None);
     }
 
     #[test]
