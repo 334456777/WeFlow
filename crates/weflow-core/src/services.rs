@@ -5,6 +5,9 @@ use serde_json::{json, Value};
 use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
 use crate::error::{AppError, AppResult};
 
+mod chat;
+pub use chat::ResourceQuery;
+
 #[derive(Clone)]
 pub struct ServiceHub {
     ctx: AppContext,
@@ -1007,7 +1010,7 @@ fn default_db_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-fn extract_session_ids(value: &Value) -> Vec<String> {
+pub(crate) fn extract_session_ids(value: &Value) -> Vec<String> {
     value
         .as_array()
         .map(|items| {

@@ -185,6 +185,93 @@ enum ChatSubcommand {
         #[command(subcommand)]
         command: AntiRevokeSubcommand,
     },
+    /// Look up one message by local id or server id
+    Message {
+        session_id: String,
+        #[arg(long)]
+        local_id: Option<i32>,
+        #[arg(long)]
+        server_id: Option<String>,
+    },
+    /// Dates that have messages in a session (YYYY-MM-DD)
+    Dates { session_id: String },
+    /// Message count per day for a session
+    DateCounts { session_id: String },
+    /// Total message counts for several sessions
+    Counts { sessions: Vec<String> },
+    /// Folded / muted state of sessions
+    Statuses { usernames: Vec<String> },
+    /// Session details (contact info, message count, message tables, first/latest time)
+    Detail {
+        session_id: String,
+        /// Only the fast part (contact info + message count)
+        #[arg(long)]
+        fast: bool,
+        /// Only the extra part (tables, first/latest time)
+        #[arg(long)]
+        extra: bool,
+    },
+    /// Mark all sessions as read
+    MarkRead,
+    /// Contact counts per tab (friends, groups, official accounts, former friends)
+    TabCounts,
+    /// Per-session statistics used by the export page
+    ExportStats {
+        sessions: Vec<String>,
+        /// Start date in Beijing time (YYYY-MM-DD)
+        #[arg(long)]
+        start: Option<String>,
+        /// End date in Beijing time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        end: Option<String>,
+        /// Skip mutual group / friend relations
+        #[arg(long)]
+        no_relations: bool,
+    },
+    /// Read or set the cached "my message count" of a group chat
+    GroupHint {
+        chatroom_id: String,
+        #[arg(long)]
+        set: Option<i64>,
+    },
+    /// List image / video / voice / file messages across sessions
+    Resources {
+        #[arg(long)]
+        session: Option<String>,
+        /// image, video, voice, file (repeatable)
+        #[arg(long = "type")]
+        types: Vec<String>,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
+        #[arg(long, default_value_t = 300)]
+        limit: usize,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+    },
+    /// All image identifiers of a session (md5 / dat name), newest first
+    Images { session_id: String },
+    /// All voice messages of a session
+    VoiceMessages { session_id: String },
+    /// Page through image/video messages with the native media scanner
+    MediaStream {
+        #[arg(long)]
+        session: Option<String>,
+        /// image, video or all
+        #[arg(long, default_value = "all")]
+        media_type: String,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
+        #[arg(long, default_value_t = 200)]
+        limit: i32,
+        #[arg(long, default_value_t = 0)]
+        offset: i32,
+    },
+    /// Resolve payer / receiver display names of a transfer message
+    TransferNames { chatroom_id: String, payer: String, receiver: String },
     Voice {
         session_id: String,
         #[arg(long)]
@@ -208,6 +295,8 @@ struct PageArgs {
 
 #[derive(Subcommand, Debug)]
 enum AntiRevokeSubcommand {
+    /// Sessions that anti-revoke can be installed for
+    Sessions,
     Check { sessions: Vec<String> },
     Install { sessions: Vec<String> },
     Uninstall { sessions: Vec<String> },
@@ -674,10 +763,53 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             db_path_hint,
         } => hub.delete_message(session_id, *local_id, *create_time, db_path_hint.as_deref()),
         ChatSubcommand::AntiRevoke { command } => match command {
+            AntiRevokeSubcommand::Sessions => hub.chat_anti_revoke_sessions(),
             AntiRevokeSubcommand::Check { sessions } => hub.anti_revoke("check", sessions),
             AntiRevokeSubcommand::Install { sessions } => hub.anti_revoke("install", sessions),
             AntiRevokeSubcommand::Uninstall { sessions } => hub.anti_revoke("uninstall", sessions),
         },
+        ChatSubcommand::Message { session_id, local_id, server_id } => match (local_id, server_id) {
+            (Some(id), None) => hub.chat_message_by_id(session_id, *id),
+            (None, Some(svr)) => hub.chat_message_by_server_id(session_id, svr),
+            _ => Err(AppError::usage("pass exactly one of --local-id or --server-id")),
+        },
+        ChatSubcommand::Dates { session_id } => hub.chat_dates(session_id),
+        ChatSubcommand::DateCounts { session_id } => hub.chat_date_counts(session_id),
+        ChatSubcommand::Counts { sessions } => hub.chat_counts(sessions),
+        ChatSubcommand::Statuses { usernames } => hub.chat_statuses(usernames),
+        ChatSubcommand::Detail { session_id, fast, extra } => match (fast, extra) {
+            (true, false) => hub.chat_detail_fast(session_id),
+            (false, true) => hub.chat_detail_extra(session_id),
+            _ => hub.chat_detail(session_id),
+        },
+        ChatSubcommand::MarkRead => hub.chat_mark_all_read(),
+        ChatSubcommand::TabCounts => hub.chat_tab_counts(),
+        ChatSubcommand::ExportStats { sessions, start, end, no_relations } => {
+            let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
+            hub.chat_export_stats(sessions, b.unwrap_or(0), e.map(|x| x - 1).unwrap_or(0), !no_relations)
+        }
+        ChatSubcommand::GroupHint { chatroom_id, set } => match set {
+            Some(count) => hub.set_group_hint(chatroom_id, *count),
+            None => hub.get_group_hint(chatroom_id),
+        },
+        ChatSubcommand::Resources { session, types, start, end, limit, offset } => {
+            let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
+            hub.chat_resources(&weflow_core::services::ResourceQuery {
+                session_id: session.clone(),
+                types: types.clone(),
+                begin: b.unwrap_or(0),
+                end: e.map(|x| x - 1).unwrap_or(0),
+                limit: *limit,
+                offset: *offset,
+            })
+        }
+        ChatSubcommand::Images { session_id } => hub.chat_all_images(session_id),
+        ChatSubcommand::VoiceMessages { session_id } => hub.chat_all_voices(session_id),
+        ChatSubcommand::MediaStream { session, media_type, start, end, limit, offset } => {
+            let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
+            hub.chat_media_stream(session.as_deref(), media_type, b.unwrap_or(0), e.map(|x| x - 1).unwrap_or(0), *limit, *offset)
+        }
+        ChatSubcommand::TransferNames { chatroom_id, payer, receiver } => hub.chat_transfer_names(chatroom_id, payer, receiver),
         ChatSubcommand::Voice { session_id, out } => {
             let out_path = out.as_deref().unwrap_or(Path::new("."));
             hub.export_media_images(Some(session_id), out_path, "voice")
@@ -765,6 +897,13 @@ fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> 
             hub.export_messages(&request, &target)
         }
     }
+}
+
+/// `--start` / `--end` dates (Beijing time). The end is returned exclusive (next midnight).
+fn date_range_args(start: Option<&str>, end: Option<&str>) -> AppResult<(Option<i64>, Option<i64>)> {
+    let b = start.map(parse_date_beijing).transpose().map_err(AppError::usage)?;
+    let e = end.map(|d| parse_date_beijing(d).map(|ts| ts + 86400)).transpose().map_err(AppError::usage)?;
+    Ok((b, e))
 }
 
 fn parse_date_beijing(s: &str) -> Result<i64, String> {

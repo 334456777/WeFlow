@@ -786,6 +786,341 @@ impl Wcdb {
     }
 }
 
+/// One argument of a generic WCDB call (after the leading account handle).
+#[derive(Clone, Copy, Debug)]
+pub enum Arg<'a> {
+    S(&'a str),
+    I32(i32),
+    I64(i64),
+}
+
+enum CArg {
+    S(CString),
+    I32(i32),
+    I64(i64),
+}
+
+type RawFn = unsafe extern "C" fn();
+
+impl Wcdb {
+    fn raw_symbol(&self, name: &str) -> Result<RawFn> {
+        let mut bytes = name.as_bytes().to_vec();
+        bytes.push(0);
+        unsafe {
+            let sym = self
+                ._lib
+                .get::<RawFn>(&bytes)
+                .with_context(|| format!("{name} is not available in this WCDB library"))?;
+            Ok(*sym)
+        }
+    }
+
+    fn c_args(args: &[Arg<'_>]) -> Result<Vec<CArg>> {
+        args.iter()
+            .map(|a| {
+                Ok(match a {
+                    Arg::S(s) => CArg::S(cstring(s)?),
+                    Arg::I32(v) => CArg::I32(*v),
+                    Arg::I64(v) => CArg::I64(*v),
+                })
+            })
+            .collect()
+    }
+
+    /// Generic `int32 f(int64 handle, args..., void** out)`; returns the raw status and out pointer.
+    fn invoke_raw(&self, name: &str, args: &[Arg<'_>]) -> Result<(c_int, *mut c_void)> {
+        let handle = self.require_handle()?;
+        let raw = self.raw_symbol(name)?;
+        let cargs = Self::c_args(args)?;
+        let mut out: *mut c_void = std::ptr::null_mut();
+        let outp: *mut *mut c_void = &mut out;
+        macro_rules! p {
+            ($a:expr) => {
+                match $a {
+                    CArg::S(c) => c.as_ptr(),
+                    _ => unreachable!(),
+                }
+            };
+        }
+        macro_rules! n32 {
+            ($a:expr) => {
+                match $a {
+                    CArg::I32(v) => *v,
+                    _ => unreachable!(),
+                }
+            };
+        }
+        macro_rules! n64 {
+            ($a:expr) => {
+                match $a {
+                    CArg::I64(v) => *v,
+                    _ => unreachable!(),
+                }
+            };
+        }
+        use CArg::{I32 as I, I64 as L, S};
+        let rc = unsafe {
+            match cargs.as_slice() {
+                [] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *mut *mut c_void) -> c_int>(raw)(handle, outp),
+                [a @ S(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), outp),
+                [a @ S(_), b @ S(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, *const c_char, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), p!(b), outp),
+                [a @ S(_), b @ S(_), c @ S(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, *const c_char, *const c_char, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), p!(b), p!(c), outp),
+                [a @ S(_), b @ S(_), c @ S(_), d @ S(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, *const c_char, *const c_char, *const c_char, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), p!(b), p!(c), p!(d), outp),
+                [a @ S(_), b @ S(_), c @ S(_), d @ S(_), e @ S(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, *const c_char, *const c_char, *const c_char, *const c_char, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), p!(b), p!(c), p!(d), p!(e), outp),
+                [a @ S(_), b @ I(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, i32, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), n32!(b), outp),
+                [a @ S(_), b @ S(_), c @ I(_), d @ I(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, *const c_char, i32, i32, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), p!(b), n32!(c), n32!(d), outp),
+                [a @ S(_), b @ I(_), c @ I(_), d @ I(_), e @ I(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, i32, i32, i32, i32, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), n32!(b), n32!(c), n32!(d), n32!(e), outp),
+                [a @ S(_), b @ I(_), c @ I(_), d @ L(_), e @ S(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, i32, i32, i64, *const c_char, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), n32!(b), n32!(c), n64!(d), p!(e), outp),
+                [a @ S(_), b @ L(_), c @ I(_), d @ I(_), e @ I(_)] => std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, i64, i32, i32, i32, *mut *mut c_void) -> c_int>(raw)(handle, p!(a), n64!(b), n32!(c), n32!(d), n32!(e), outp),
+                other => return Err(anyhow!("unsupported WCDB argument shape for {name}: {} arguments", other.len())),
+            }
+        };
+        Ok((rc, out))
+    }
+
+    /// Call a WCDB function that returns JSON through `outJson`.
+    pub fn invoke_json(&self, name: &str, args: &[Arg<'_>]) -> Result<Value> {
+        let (rc, out) = self.invoke_raw(name, args)?;
+        if rc != 0 || out.is_null() {
+            if !out.is_null() {
+                let _ = unsafe { self.take_string(out) };
+            }
+            return Err(anyhow!("{name} failed with code {rc}"));
+        }
+        let raw = unsafe { self.take_string(out)? };
+        serde_json::from_str(&normalize_int64_json(&raw)).with_context(|| {
+            format!("failed to parse {name} payload: {}", raw.chars().take(200).collect::<String>())
+        })
+    }
+
+    /// Call a WCDB function whose output is a plain string (hex, URL, caption).
+    pub fn invoke_string(&self, name: &str, args: &[Arg<'_>]) -> Result<String> {
+        let (rc, out) = self.invoke_raw(name, args)?;
+        if rc != 0 {
+            if !out.is_null() {
+                let _ = unsafe { self.take_string(out) };
+            }
+            return Err(anyhow!("{name} failed with code {rc}"));
+        }
+        if out.is_null() {
+            return Ok(String::new());
+        }
+        unsafe { self.take_string(out) }
+    }
+
+    /// Call a WCDB function that reports success by status code and optional message.
+    pub fn invoke_status(&self, name: &str, args: &[Arg<'_>]) -> Result<Value> {
+        let (rc, out) = self.invoke_raw(name, args)?;
+        let message = if out.is_null() { String::new() } else { unsafe { self.take_string(out)? } };
+        if rc != 0 {
+            return Err(anyhow!(if message.is_empty() { format!("{name} failed with code {rc}") } else { message }));
+        }
+        if message.is_empty() {
+            Ok(serde_json::json!({ "ok": true }))
+        } else {
+            serde_json::from_str(&message).or_else(|_| Ok(serde_json::json!({ "message": message })))
+        }
+    }
+
+    // ── functions with non-standard shapes ──
+
+    pub fn message_count(&self, session_id: &str) -> Result<i32> {
+        let handle = self.require_handle()?;
+        let raw = self.raw_symbol("wcdb_get_message_count")?;
+        let s = cstring(session_id)?;
+        let mut count: c_int = 0;
+        let rc = unsafe {
+            std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, *mut c_int) -> c_int>(raw)(handle, s.as_ptr(), &mut count)
+        };
+        if rc != 0 {
+            return Err(anyhow!("wcdb_get_message_count failed with code {rc}"));
+        }
+        Ok(count)
+    }
+
+    pub fn open_message_cursor(&self, session_id: &str, batch_size: i32, ascending: bool, begin: i32, end: i32, lite: bool) -> Result<i64> {
+        let handle = self.require_handle()?;
+        let raw = self.raw_symbol(if lite { "wcdb_open_message_cursor_lite" } else { "wcdb_open_message_cursor" })?;
+        let s = cstring(session_id)?;
+        let mut cursor: i64 = 0;
+        let rc = unsafe {
+            std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, c_int, c_int, c_int, c_int, *mut i64) -> c_int>(raw)(
+                handle, s.as_ptr(), batch_size, ascending as c_int, begin, end, &mut cursor,
+            )
+        };
+        if rc != 0 || cursor <= 0 {
+            return Err(anyhow!("opening the message cursor failed with code {rc}"));
+        }
+        Ok(cursor)
+    }
+
+    /// Returns the next batch of rows and whether more remain.
+    pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
+        let handle = self.require_handle()?;
+        let raw = self.raw_symbol("wcdb_fetch_message_batch")?;
+        let mut out: *mut c_void = std::ptr::null_mut();
+        let mut has_more: c_int = 0;
+        let rc = unsafe {
+            std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, i64, *mut *mut c_void, *mut c_int) -> c_int>(raw)(handle, cursor, &mut out, &mut has_more)
+        };
+        if rc != 0 || out.is_null() {
+            return Err(anyhow!("wcdb_fetch_message_batch failed with code {rc}"));
+        }
+        let text = unsafe { self.take_string(out)? };
+        let value: Value = serde_json::from_str(&normalize_int64_json(&text)).context("failed to parse message batch")?;
+        Ok((value, has_more != 0))
+    }
+
+    pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
+        let handle = self.require_handle()?;
+        let raw = self.raw_symbol("wcdb_close_message_cursor")?;
+        let rc = unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, i64) -> c_int>(raw)(handle, cursor) };
+        if rc != 0 {
+            return Err(anyhow!("wcdb_close_message_cursor failed with code {rc}"));
+        }
+        Ok(())
+    }
+
+    /// Stream media messages across sessions. Returns the rows and whether more remain.
+    pub fn scan_media_stream(&self, session_ids_json: &str, media_type: i32, begin: i32, end: i32, limit: i32, offset: i32) -> Result<(Value, bool)> {
+        let handle = self.require_handle()?;
+        let raw = self.raw_symbol("wcdb_scan_media_stream")?;
+        let ids = cstring(session_ids_json)?;
+        let mut out: *mut c_void = std::ptr::null_mut();
+        let mut has_more: c_int = 0;
+        let rc = unsafe {
+            std::mem::transmute::<RawFn, unsafe extern "C" fn(i64, *const c_char, c_int, c_int, c_int, c_int, c_int, *mut *mut c_void, *mut c_int) -> c_int>(raw)(
+                handle, ids.as_ptr(), media_type, begin, end, limit, offset, &mut out, &mut has_more,
+            )
+        };
+        if rc != 0 || out.is_null() {
+            return Err(anyhow!("wcdb_scan_media_stream failed with code {rc}"));
+        }
+        let text = unsafe { self.take_string(out)? };
+        let value: Value = serde_json::from_str(&normalize_int64_json(&text)).context("failed to parse media stream")?;
+        Ok((value, has_more != 0))
+    }
+
+    // ── functions that do not take the account handle ──
+
+    pub fn logs(&self) -> Result<Value> {
+        let raw = self.raw_symbol("wcdb_get_logs")?;
+        let mut out: *mut c_void = std::ptr::null_mut();
+        let rc = unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn(*mut *mut c_void) -> c_int>(raw)(&mut out) };
+        if rc != 0 || out.is_null() {
+            return Err(anyhow!("wcdb_get_logs failed with code {rc}"));
+        }
+        let text = unsafe { self.take_string(out)? };
+        serde_json::from_str(&text).or_else(|_| Ok(serde_json::json!({ "raw": text })))
+    }
+
+    pub fn start_monitor_pipe(&self) -> Result<()> {
+        let raw = self.raw_symbol("wcdb_start_monitor_pipe")?;
+        let rc = unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn() -> c_int>(raw)() };
+        if rc != 0 {
+            return Err(anyhow!("wcdb_start_monitor_pipe failed with code {rc}"));
+        }
+        Ok(())
+    }
+
+    pub fn stop_monitor_pipe(&self) -> Result<()> {
+        let raw = self.raw_symbol("wcdb_stop_monitor_pipe")?;
+        unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn()>(raw)() };
+        Ok(())
+    }
+
+    pub fn monitor_pipe_name(&self) -> Result<String> {
+        let raw = self.raw_symbol("wcdb_get_monitor_pipe_name")?;
+        let mut out: *mut c_void = std::ptr::null_mut();
+        let rc = unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn(*mut *mut c_void) -> c_int>(raw)(&mut out) };
+        if rc != 0 || out.is_null() {
+            return Err(anyhow!("wcdb_get_monitor_pipe_name failed with code {rc}"));
+        }
+        unsafe { self.take_string(out) }
+    }
+
+    pub fn cloud_init(&self, interval_seconds: i32) -> Result<()> {
+        let raw = self.raw_symbol("wcdb_cloud_init")?;
+        let rc = unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn(c_int) -> c_int>(raw)(interval_seconds) };
+        if rc != 0 {
+            return Err(anyhow!("wcdb_cloud_init failed with code {rc}"));
+        }
+        Ok(())
+    }
+
+    pub fn cloud_report(&self, stats_json: &str) -> Result<()> {
+        let raw = self.raw_symbol("wcdb_cloud_report")?;
+        let s = cstring(stats_json)?;
+        let rc = unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn(*const c_char) -> c_int>(raw)(s.as_ptr()) };
+        if rc != 0 {
+            return Err(anyhow!("wcdb_cloud_report failed with code {rc}"));
+        }
+        Ok(())
+    }
+
+    pub fn cloud_stop(&self) -> Result<()> {
+        let raw = self.raw_symbol("wcdb_cloud_stop")?;
+        unsafe { std::mem::transmute::<RawFn, unsafe extern "C" fn()>(raw)() };
+        Ok(())
+    }
+
+    // ── standard-shape wrappers ──
+
+    pub fn mark_all_sessions_read(&self) -> Result<Value> { self.invoke_status("wcdb_mark_all_sessions_read", &[]) }
+    pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Value> { self.invoke_json("wcdb_get_message_by_svrid", &[Arg::S(session_id), Arg::S(svrid)]) }
+    pub fn message_by_id(&self, session_id: &str, local_id: i32) -> Result<Value> { self.invoke_json("wcdb_get_message_by_id", &[Arg::S(session_id), Arg::I32(local_id)]) }
+    pub fn display_names(&self, usernames_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_display_names", &[Arg::S(usernames_json)]) }
+    pub fn avatar_urls(&self, usernames_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_avatar_urls", &[Arg::S(usernames_json)]) }
+    pub fn group_member_counts(&self, chatroom_ids_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_group_member_counts", &[Arg::S(chatroom_ids_json)]) }
+    pub fn message_tables(&self, session_id: &str) -> Result<Value> { self.invoke_json("wcdb_get_message_tables", &[Arg::S(session_id)]) }
+    pub fn message_meta(&self, db_path: &str, table: &str, limit: i32, offset: i32) -> Result<Value> { self.invoke_json("wcdb_get_message_meta", &[Arg::S(db_path), Arg::S(table), Arg::I32(limit), Arg::I32(offset)]) }
+    pub fn contact_status(&self, usernames_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_contact_status", &[Arg::S(usernames_json)]) }
+    pub fn contact_alias_map(&self, usernames_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_contact_alias_map", &[Arg::S(usernames_json)]) }
+    pub fn contact_friend_flags(&self, usernames_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_contact_friend_flags", &[Arg::S(usernames_json)]) }
+    pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> { self.invoke_json("wcdb_get_chat_room_ext_buffer", &[Arg::S(chatroom_id)]) }
+    pub fn message_table_stats(&self, session_id: &str) -> Result<Value> { self.invoke_json("wcdb_get_message_table_stats", &[Arg::S(session_id)]) }
+    pub fn annual_report_extras(&self, session_ids_json: &str, begin: i32, end: i32, peak_begin: i32, peak_end: i32) -> Result<Value> {
+        self.invoke_json("wcdb_get_annual_report_extras", &[Arg::S(session_ids_json), Arg::I32(begin), Arg::I32(end), Arg::I32(peak_begin), Arg::I32(peak_end)])
+    }
+    pub fn emoticon_cdn_url(&self, db_path: &str, md5: &str) -> Result<String> { self.invoke_string("wcdb_get_emoticon_cdn_url", &[Arg::S(db_path), Arg::S(md5)]) }
+    pub fn emoticon_caption(&self, db_path: &str, md5: &str) -> Result<String> { self.invoke_string("wcdb_get_emoticon_caption", &[Arg::S(db_path), Arg::S(md5)]) }
+    pub fn emoticon_caption_strict(&self, md5: &str) -> Result<String> { self.invoke_string("wcdb_get_emoticon_caption_strict", &[Arg::S(md5)]) }
+    pub fn list_message_dbs(&self) -> Result<Value> { self.invoke_json("wcdb_list_message_dbs", &[]) }
+    pub fn list_media_dbs(&self) -> Result<Value> { self.invoke_json("wcdb_list_media_dbs", &[]) }
+    pub fn db_status(&self) -> Result<Value> { self.invoke_json("wcdb_get_db_status", &[]) }
+    /// Voice payload as a hex string.
+    pub fn voice_data(&self, session_id: &str, create_time: i32, local_id: i32, svr_id: i64, candidates_json: &str) -> Result<String> {
+        self.invoke_string("wcdb_get_voice_data", &[Arg::S(session_id), Arg::I32(create_time), Arg::I32(local_id), Arg::I64(svr_id), Arg::S(candidates_json)])
+    }
+    pub fn voice_data_batch(&self, requests_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_voice_data_batch", &[Arg::S(requests_json)]) }
+    pub fn media_schema_summary(&self, db_path: &str) -> Result<Value> { self.invoke_json("wcdb_get_media_schema_summary", &[Arg::S(db_path)]) }
+    pub fn session_message_type_stats_batch(&self, session_ids_json: &str, options_json: &str) -> Result<Value> {
+        self.invoke_json("wcdb_get_session_message_type_stats_batch", &[Arg::S(session_ids_json), Arg::S(options_json)])
+    }
+    pub fn session_message_date_counts_batch(&self, session_ids_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_session_message_date_counts_batch", &[Arg::S(session_ids_json)]) }
+    pub fn messages_by_type(&self, session_id: &str, local_type: i64, ascending: bool, limit: i32, offset: i32) -> Result<Value> {
+        self.invoke_json("wcdb_get_messages_by_type", &[Arg::S(session_id), Arg::I64(local_type), Arg::I32(ascending as i32), Arg::I32(limit), Arg::I32(offset)])
+    }
+    pub fn head_image_buffers(&self, usernames_json: &str) -> Result<Value> { self.invoke_json("wcdb_get_head_image_buffers", &[Arg::S(usernames_json)]) }
+    pub fn message_table_columns(&self, db_path: &str, table: &str) -> Result<Value> { self.invoke_json("wcdb_get_message_table_columns", &[Arg::S(db_path), Arg::S(table)]) }
+    pub fn list_tables(&self, kind: &str, db_path: &str) -> Result<Value> { self.invoke_json("wcdb_list_tables", &[Arg::S(kind), Arg::S(db_path)]) }
+    pub fn table_schema(&self, kind: &str, db_path: &str, table: &str) -> Result<Value> { self.invoke_json("wcdb_get_table_schema", &[Arg::S(kind), Arg::S(db_path), Arg::S(table)]) }
+    pub fn export_table_snapshot(&self, kind: &str, db_path: &str, table: &str, output_path: &str) -> Result<Value> {
+        self.invoke_json("wcdb_export_table_snapshot", &[Arg::S(kind), Arg::S(db_path), Arg::S(table), Arg::S(output_path)])
+    }
+    pub fn import_table_snapshot(&self, kind: &str, db_path: &str, table: &str, input_path: &str) -> Result<Value> {
+        self.invoke_json("wcdb_import_table_snapshot", &[Arg::S(kind), Arg::S(db_path), Arg::S(table), Arg::S(input_path)])
+    }
+    pub fn import_table_snapshot_with_schema(&self, kind: &str, db_path: &str, table: &str, input_path: &str, create_table_sql: &str) -> Result<Value> {
+        self.invoke_json("wcdb_import_table_snapshot_with_schema", &[Arg::S(kind), Arg::S(db_path), Arg::S(table), Arg::S(input_path), Arg::S(create_table_sql)])
+    }
+    pub fn message_table_time_range(&self, db_path: &str, table: &str) -> Result<Value> { self.invoke_json("wcdb_get_message_table_time_range", &[Arg::S(db_path), Arg::S(table)]) }
+    pub fn resolve_image_hardlink(&self, md5: &str, account_dir: &str) -> Result<Value> { self.invoke_json("wcdb_resolve_image_hardlink", &[Arg::S(md5), Arg::S(account_dir)]) }
+    pub fn resolve_image_hardlink_batch(&self, requests_json: &str) -> Result<Value> { self.invoke_json("wcdb_resolve_image_hardlink_batch", &[Arg::S(requests_json)]) }
+    pub fn resolve_video_hardlink_md5(&self, md5: &str, db_path: &str) -> Result<Value> { self.invoke_json("wcdb_resolve_video_hardlink_md5", &[Arg::S(md5), Arg::S(db_path)]) }
+    pub fn resolve_video_hardlink_md5_batch(&self, requests_json: &str) -> Result<Value> { self.invoke_json("wcdb_resolve_video_hardlink_md5_batch", &[Arg::S(requests_json)]) }
+}
+
 impl Drop for Wcdb {
     fn drop(&mut self) {
         self.close();

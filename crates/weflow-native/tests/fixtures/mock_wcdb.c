@@ -4,6 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+static char g_last[16384];
+
+// Test hook: JSON of the arguments of the most recent generated call.
+const char* mock_last_call(void) { return g_last; }
+
 static int ret_json(void** out, const char* s) {
     if (out) *out = strdup(s);
     return 0;
@@ -78,6 +83,7 @@ int32_t wcdb_update_message(int64_t handle, const char* sessionId, int64_t local
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)createTime);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, newContent);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -90,6 +96,7 @@ int32_t wcdb_delete_message(int64_t handle, const char* sessionId, int64_t local
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)createTime);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPathHint);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -98,6 +105,7 @@ int32_t wcdb_mark_all_sessions_read(int64_t handle, void** outError) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_mark_all_sessions_read\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -108,6 +116,7 @@ int32_t wcdb_get_message_count(int64_t handle, const char* username, int32_t* ou
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, username);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outCount) *outCount = 42;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -118,7 +127,8 @@ int32_t wcdb_get_message_by_svrid(int64_t handle, const char* sessionId, const c
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, svrid);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"local_id\":\"8\",\"server_id\":\"777\",\"create_time\":\"1700000060\",\"local_type\":\"1\",\"message_content\":\"found by svrid\",\"is_send\":\"1\"}");
 }
 
 int32_t wcdb_get_display_names(int64_t handle, const char* usernamesJson, void** outJson) {
@@ -127,7 +137,8 @@ int32_t wcdb_get_display_names(int64_t handle, const char* usernamesJson, void**
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"wxid_bob\":\"Bobby\",\"wxid_me\":\"Me Nick\"}");
 }
 
 int32_t wcdb_get_avatar_urls(int64_t handle, const char* usernamesJson, void** outJson) {
@@ -136,7 +147,8 @@ int32_t wcdb_get_avatar_urls(int64_t handle, const char* usernamesJson, void** o
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"wxid_bob\":\"https://example.com/bob.png\"}");
 }
 
 int32_t wcdb_get_group_member_count(int64_t handle, const char* chatroomId, int32_t* outCount) {
@@ -146,6 +158,7 @@ int32_t wcdb_get_group_member_count(int64_t handle, const char* chatroomId, int3
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, chatroomId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outCount) *outCount = 42;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -155,7 +168,8 @@ int32_t wcdb_get_group_member_counts(int64_t handle, const char* chatroomIdsJson
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, chatroomIdsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"room1@chatroom\":3}");
 }
 
 int32_t wcdb_get_message_tables(int64_t handle, const char* sessionId, void** outJson) {
@@ -164,6 +178,7 @@ int32_t wcdb_get_message_tables(int64_t handle, const char* sessionId, void** ou
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -176,6 +191,7 @@ int32_t wcdb_get_message_meta(int64_t handle, const char* dbPath, const char* ta
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)limit);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)offset);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -185,7 +201,8 @@ int32_t wcdb_get_contact_status(int64_t handle, const char* usernamesJson, void*
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"wxid_bob\":{\"isFolded\":true,\"isMuted\":false}}");
 }
 
 int32_t wcdb_get_contact_type_counts(int64_t handle, void** outJson) {
@@ -193,7 +210,8 @@ int32_t wcdb_get_contact_type_counts(int64_t handle, void** outJson) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_get_contact_type_counts\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"private\":2,\"group\":1,\"official\":1,\"former_friend\":0}");
 }
 
 int32_t wcdb_get_contacts_compact(int64_t handle, const char* usernamesJson, void** outJson) {
@@ -202,7 +220,8 @@ int32_t wcdb_get_contacts_compact(int64_t handle, const char* usernamesJson, voi
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "[{\"username\":\"wxid_bob\",\"local_type\":\"1\",\"nick_name\":\"Bob\",\"remark\":\"Bobby\"},{\"username\":\"wxid_carol\",\"local_type\":\"1\",\"nick_name\":\"Carol\"},{\"username\":\"wxid_me\",\"local_type\":\"1\"},{\"username\":\"gh_news\",\"local_type\":\"1\"},{\"username\":\"medianote\",\"local_type\":\"1\"},{\"username\":\"room1@chatroom\",\"local_type\":\"2\"}]");
 }
 
 int32_t wcdb_get_contact_alias_map(int64_t handle, const char* usernamesJson, void** outJson) {
@@ -211,6 +230,7 @@ int32_t wcdb_get_contact_alias_map(int64_t handle, const char* usernamesJson, vo
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -220,6 +240,7 @@ int32_t wcdb_get_contact_friend_flags(int64_t handle, const char* usernamesJson,
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -229,6 +250,7 @@ int32_t wcdb_get_chat_room_ext_buffer(int64_t handle, const char* chatroomId, vo
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, chatroomId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -238,7 +260,8 @@ int32_t wcdb_get_message_table_stats(int64_t handle, const char* sessionId, void
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "[{\"db_path\":\"/x/message_0.db\",\"table_name\":\"Msg_abc\",\"count\":\"70\",\"first_timestamp\":\"1700000000\",\"last_timestamp\":\"1700009999\"},{\"db_path\":\"/x/message_1.db\",\"table_name\":\"Msg_abc\",\"count\":\"50\",\"first_timestamp\":\"1690000000\",\"last_timestamp\":\"1699999999\"}]");
 }
 
 int32_t wcdb_get_aggregate_stats(int64_t handle, const char* sessionIdsJson, int32_t begin, int32_t end, void** outJson) {
@@ -249,6 +272,7 @@ int32_t wcdb_get_aggregate_stats(int64_t handle, const char* sessionIdsJson, int
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)begin);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -258,6 +282,7 @@ int32_t wcdb_get_available_years(int64_t handle, const char* sessionIdsJson, voi
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionIdsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -269,6 +294,7 @@ int32_t wcdb_get_annual_report_stats(int64_t handle, const char* sessionIdsJson,
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)begin);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -282,6 +308,7 @@ int32_t wcdb_get_annual_report_extras(int64_t handle, const char* sessionIdsJson
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)peakBegin);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)peakEnd);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -293,6 +320,7 @@ int32_t wcdb_get_dual_report_stats(int64_t handle, const char* sessionId, int32_
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)begin);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -300,6 +328,7 @@ int32_t wcdb_get_logs(void** outJson) {
     char buf[16384]; size_t n = 0;
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_get_logs\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -311,6 +340,7 @@ int32_t wcdb_get_group_stats(int64_t handle, const char* chatroomId, int32_t beg
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)begin);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -320,6 +350,7 @@ int32_t wcdb_get_my_footprint_stats(int64_t handle, const char* optionsJson, voi
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, optionsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -329,7 +360,8 @@ int32_t wcdb_get_message_dates(int64_t handle, const char* sessionId, void** out
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "[\"2024-01-01\",\"2024-01-02\"]");
 }
 
 int32_t wcdb_open_message_cursor(int64_t handle, const char* sessionId, int32_t batchSize, int32_t ascending, int32_t beginTimestamp, int32_t endTimestamp, int64_t* outCursor) {
@@ -343,6 +375,7 @@ int32_t wcdb_open_message_cursor(int64_t handle, const char* sessionId, int32_t 
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outCursor) *outCursor = 7;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -357,6 +390,7 @@ int32_t wcdb_open_message_cursor_lite(int64_t handle, const char* sessionId, int
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outCursor) *outCursor = 7;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -367,6 +401,7 @@ int32_t wcdb_fetch_message_batch(int64_t handle, int64_t cursor, void** outJson,
     n += snprintf(buf + n, sizeof(buf) - n, ",%lld", (long long)cursor);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outHasMore) *outHasMore = 0;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -376,6 +411,7 @@ int32_t wcdb_close_message_cursor(int64_t handle, int64_t cursor) {
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ",%lld", (long long)cursor);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -387,6 +423,7 @@ int32_t wcdb_exec_query(int64_t handle, const char* kind, const char* path, cons
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, path);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sql);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -397,6 +434,7 @@ int32_t wcdb_get_emoticon_cdn_url(int64_t handle, const char* dbPath, const char
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, md5);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outUrl, buf);
 }
 
@@ -407,6 +445,7 @@ int32_t wcdb_get_emoticon_caption(int64_t handle, const char* dbPath, const char
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, md5);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outCaption, buf);
 }
 
@@ -416,6 +455,7 @@ int32_t wcdb_get_emoticon_caption_strict(int64_t handle, const char* md5, void**
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, md5);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outCaption, buf);
 }
 
@@ -424,6 +464,7 @@ int32_t wcdb_list_message_dbs(int64_t handle, void** outJson) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_list_message_dbs\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -432,6 +473,7 @@ int32_t wcdb_list_media_dbs(int64_t handle, void** outJson) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_list_media_dbs\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -442,7 +484,8 @@ int32_t wcdb_get_message_by_id(int64_t handle, const char* sessionId, int32_t lo
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)localId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"local_id\":\"7\",\"server_id\":\"9007199254740993\",\"create_time\":\"1700000050\",\"local_type\":\"1\",\"message_content\":\"wxid_bob:found by id\",\"sender_username\":\"wxid_bob\",\"is_send\":\"0\"}");
 }
 
 int32_t wcdb_get_db_status(int64_t handle, void** outJson) {
@@ -450,6 +493,7 @@ int32_t wcdb_get_db_status(int64_t handle, void** outJson) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_get_db_status\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -463,6 +507,7 @@ int32_t wcdb_get_voice_data(int64_t handle, const char* sessionId, int32_t creat
     n += snprintf(buf + n, sizeof(buf) - n, ",%lld", (long long)svrId);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, candidatesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outHex, buf);
 }
 
@@ -472,6 +517,7 @@ int32_t wcdb_get_voice_data_batch(int64_t handle, const char* requestsJson, void
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, requestsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -481,6 +527,7 @@ int32_t wcdb_get_media_schema_summary(int64_t handle, const char* dbPath, void**
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -490,7 +537,8 @@ int32_t wcdb_get_session_message_counts(int64_t handle, const char* sessionIdsJs
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionIdsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"wxid_bob\":120,\"room1@chatroom\":55}");
 }
 
 int32_t wcdb_get_session_message_type_stats(int64_t handle, const char* sessionId, int32_t beginTimestamp, int32_t endTimestamp, void** outJson) {
@@ -501,6 +549,7 @@ int32_t wcdb_get_session_message_type_stats(int64_t handle, const char* sessionI
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)beginTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -511,7 +560,8 @@ int32_t wcdb_get_session_message_type_stats_batch(int64_t handle, const char* se
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionIdsJson);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, optionsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"wxid_bob\":{\"total_messages\":120,\"voice_messages\":4,\"image_messages\":10,\"video_messages\":1,\"emoji_messages\":2,\"call_messages\":1,\"transfer_messages\":1,\"red_packet_messages\":0,\"first_timestamp\":1690000000,\"last_timestamp\":1700009999},\"room1@chatroom\":{\"total_messages\":55,\"voice_messages\":0,\"image_messages\":3,\"video_messages\":0,\"emoji_messages\":9,\"call_messages\":0,\"transfer_messages\":0,\"red_packet_messages\":2,\"first_timestamp\":1695000000,\"last_timestamp\":1700000000,\"group_my_messages\":17,\"group_sender_count\":3}}");
 }
 
 int32_t wcdb_get_session_message_date_counts(int64_t handle, const char* sessionId, void** outJson) {
@@ -520,7 +570,8 @@ int32_t wcdb_get_session_message_date_counts(int64_t handle, const char* session
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "{\"2024-01-01\":3,\"2024-01-02\":0,\"2024-01-03\":5}");
 }
 
 int32_t wcdb_get_session_message_date_counts_batch(int64_t handle, const char* sessionIdsJson, void** outJson) {
@@ -529,6 +580,7 @@ int32_t wcdb_get_session_message_date_counts_batch(int64_t handle, const char* s
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionIdsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -542,7 +594,8 @@ int32_t wcdb_get_messages_by_type(int64_t handle, const char* sessionId, int64_t
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)limit);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)offset);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    return ret_json(outJson, buf);
+    snprintf(g_last, sizeof(g_last), "%s", buf);
+    return ret_json(outJson, "[{\"local_id\":\"11\",\"server_id\":\"5001\",\"create_time\":\"1700000300\",\"local_type\":\"3\",\"message_content\":\"<msg><img md5=\\\"aabbccddeeff00112233445566778899\\\" /></msg>\",\"sender_username\":\"wxid_bob\",\"is_send\":\"0\"},{\"local_id\":\"12\",\"create_time\":\"1700000200\",\"local_type\":\"3\",\"message_content\":\"<msg><img cdnmidimgurl=\\\"3057aabbccddeeff0011223344556677_xx.dat\\\" /></msg>\",\"sender_username\":\"wxid_bob\",\"is_send\":\"0\"},{\"local_id\":\"11\",\"server_id\":\"5001\",\"create_time\":\"1700000300\",\"local_type\":\"3\",\"message_content\":\"<msg><img md5=\\\"aabbccddeeff00112233445566778899\\\" /></msg>\",\"sender_username\":\"wxid_bob\",\"is_send\":\"0\"}]");
 }
 
 int32_t wcdb_scan_media_stream(int64_t handle, const char* sessionIdsJson, int32_t mediaType, int32_t beginTimestamp, int32_t endTimestamp, int32_t limit, int32_t offset, void** outJson, int32_t* outHasMore) {
@@ -557,6 +610,7 @@ int32_t wcdb_scan_media_stream(int64_t handle, const char* sessionIdsJson, int32
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)offset);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outHasMore) *outHasMore = 0;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -566,6 +620,7 @@ int32_t wcdb_get_head_image_buffers(int64_t handle, const char* usernamesJson, v
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -580,6 +635,7 @@ int32_t wcdb_search_messages(int64_t handle, const char* sessionId, const char* 
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)beginTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTimestamp);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -594,6 +650,7 @@ int32_t wcdb_get_sns_timeline(int64_t handle, int32_t limit, int32_t offset, con
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)startTime);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTime);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -604,6 +661,7 @@ int32_t wcdb_get_sns_annual_stats(int64_t handle, int32_t begin, int32_t end, vo
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)begin);
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -612,6 +670,7 @@ int32_t wcdb_get_sns_usernames(int64_t handle, void** outJson) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_get_sns_usernames\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -621,6 +680,7 @@ int32_t wcdb_get_sns_export_stats(int64_t handle, const char* myWxid, void** out
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, myWxid);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -631,6 +691,7 @@ int32_t wcdb_get_message_table_columns(int64_t handle, const char* dbPath, const
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, tableName);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -641,6 +702,7 @@ int32_t wcdb_list_tables(int64_t handle, const char* kind, const char* dbPath, v
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, kind);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -652,6 +714,7 @@ int32_t wcdb_get_table_schema(int64_t handle, const char* kind, const char* dbPa
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, tableName);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -664,6 +727,7 @@ int32_t wcdb_export_table_snapshot(int64_t handle, const char* kind, const char*
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, tableName);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, outputPath);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -676,6 +740,7 @@ int32_t wcdb_import_table_snapshot(int64_t handle, const char* kind, const char*
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, tableName);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, inputPath);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -689,6 +754,7 @@ int32_t wcdb_import_table_snapshot_with_schema(int64_t handle, const char* kind,
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, inputPath);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, createTableSql);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -699,6 +765,7 @@ int32_t wcdb_get_message_table_time_range(int64_t handle, const char* dbPath, co
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, tableName);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -709,6 +776,7 @@ int32_t wcdb_resolve_image_hardlink(int64_t handle, const char* md5, const char*
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, md5);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, accountDir);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -718,6 +786,7 @@ int32_t wcdb_resolve_image_hardlink_batch(int64_t handle, const char* requestsJs
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, requestsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -728,6 +797,7 @@ int32_t wcdb_resolve_video_hardlink_md5(int64_t handle, const char* md5, const c
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, md5);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, dbPath);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -737,6 +807,7 @@ int32_t wcdb_resolve_video_hardlink_md5_batch(int64_t handle, const char* reques
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, requestsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outJson, buf);
 }
 
@@ -746,6 +817,7 @@ int32_t wcdb_install_message_anti_revoke_trigger(int64_t handle, const char* ses
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -755,6 +827,7 @@ int32_t wcdb_uninstall_message_anti_revoke_trigger(int64_t handle, const char* s
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -765,6 +838,7 @@ int32_t wcdb_check_message_anti_revoke_trigger(int64_t handle, const char* sessi
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, sessionId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outInstalled) *outInstalled = 0;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -773,6 +847,7 @@ int32_t wcdb_install_sns_block_delete_trigger(int64_t handle, void** outError) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_install_sns_block_delete_trigger\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -781,6 +856,7 @@ int32_t wcdb_uninstall_sns_block_delete_trigger(int64_t handle, void** outError)
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_uninstall_sns_block_delete_trigger\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -790,6 +866,7 @@ int32_t wcdb_check_sns_block_delete_trigger(int64_t handle, int32_t* outInstalle
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     if (outInstalled) *outInstalled = 0;
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -799,6 +876,7 @@ int32_t wcdb_delete_sns_post(int64_t handle, const char* postId, void** outError
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, postId);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outError, buf);
 }
 
@@ -806,6 +884,7 @@ int32_t wcdb_start_monitor_pipe(void) {
     char buf[16384]; size_t n = 0;
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_start_monitor_pipe\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -816,6 +895,7 @@ int32_t wcdb_get_monitor_pipe_name(void** outName) {
     char buf[16384]; size_t n = 0;
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_get_monitor_pipe_name\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return ret_json(outName, buf);
 }
 
@@ -824,6 +904,7 @@ int32_t wcdb_cloud_init(int32_t intervalSeconds) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_cloud_init\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, "%d", (int)intervalSeconds);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 
@@ -832,6 +913,7 @@ int32_t wcdb_cloud_report(const char* statsJson) {
     n += snprintf(buf + n, sizeof(buf) - n, "{\"fn\":\"wcdb_cloud_report\",\"args\":[");
     n += snprintf(buf + n, sizeof(buf) - n, ""); n += esc(buf + n, sizeof(buf) - n, statsJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
+    snprintf(g_last, sizeof(g_last), "%s", buf);
     return 0;
 }
 

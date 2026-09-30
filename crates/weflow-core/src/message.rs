@@ -487,6 +487,47 @@ pub struct ExportMsg {
 }
 
 impl ExportMsg {
+    /// JSON view used by the CLI query commands.
+    pub fn to_json(&self, my_wxid: &str) -> Value {
+        let mut o = Map::new();
+        o.insert("localId".into(), json!(self.local_id));
+        o.insert("serverId".into(), json!(self.server_id_raw.clone().unwrap_or_else(|| self.server_id.to_string())));
+        o.insert("createTime".into(), json!(self.create_time));
+        o.insert("localType".into(), json!(self.local_type));
+        o.insert("isSend".into(), json!(if self.is_send { 1 } else { 0 }));
+        o.insert("senderUsername".into(), json!(self.sender_username));
+        o.insert("content".into(), json!(self.content));
+        let text = parse_message_content(&self.content, self.local_type, Some(my_wxid), Some(&self.sender_username), self.emoji_caption.as_deref());
+        o.insert("text".into(), text.map(Value::String).unwrap_or(Value::Null));
+        let mut put = |k: &str, v: &Option<String>| {
+            if let Some(v) = v {
+                o.insert(k.into(), json!(v));
+            }
+        };
+        put("imageMd5", &self.image_md5);
+        put("imageDatName", &self.image_dat_name);
+        put("videoMd5", &self.video_md5);
+        put("emojiMd5", &self.emoji_md5);
+        put("emojiCdnUrl", &self.emoji_cdn_url);
+        put("xmlType", &self.xml_type);
+        put("fileName", &self.file_name);
+        put("fileExt", &self.file_ext);
+        put("fileMd5", &self.file_md5);
+        if let Some(size) = self.file_size {
+            o.insert("fileSize".into(), json!(size));
+        }
+        if let Some(v) = self.location_lat { o.insert("locationLat".into(), json!(v)); }
+        if let Some(v) = self.location_lng { o.insert("locationLng".into(), json!(v)); }
+        if let Some(v) = &self.location_poiname { o.insert("locationPoiname".into(), json!(v)); }
+        if let Some(v) = &self.location_label { o.insert("locationLabel".into(), json!(v)); }
+        if let Some(meta) = extract_arkme_app_message_meta(&self.content, self.local_type) {
+            if let Some(kind) = meta.get("appMsgKind") {
+                o.insert("appMsgKind".into(), kind.clone());
+            }
+        }
+        Value::Object(o)
+    }
+
     pub fn stable_key(&self) -> String {
         let raw = self.server_id_raw.clone().unwrap_or_else(|| self.server_id.to_string());
         format!(
