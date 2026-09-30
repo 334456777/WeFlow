@@ -2394,6 +2394,7 @@ dependencies = [
  "ecb",
  "flate2",
  "futures",
+ "libloading",
  "md-5",
  "mime_guess",
  "regex",

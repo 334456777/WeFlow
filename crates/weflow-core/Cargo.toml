@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+libloading.workspace = true
 aes.workspace = true
 aes-gcm.workspace = true
 anyhow.workspace = true

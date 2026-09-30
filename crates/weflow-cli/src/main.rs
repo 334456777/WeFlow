@@ -668,6 +668,22 @@ enum ImageSubcommand {
     ResolveBatch { payloads_json: String },
     /// Delete every decrypted image from the cache
     ClearCache,
+    /// Windows only: make WeChat download original-size images (img_helper.dll hook)
+    AutoDownload {
+        #[command(subcommand)]
+        command: AutoDownloadSubcommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AutoDownloadSubcommand {
+    /// Hook WeChat and keep the hook alive until interrupted (re-hooks after a WeChat restart)
+    Start {
+        /// Conversation ids to download originals for (default: `autoDownloadWhitelist` from the config)
+        #[arg(long, value_delimiter = ',')]
+        whitelist: Vec<String>,
+    },
+    Status,
 }
 
 #[derive(Args, Debug)]
@@ -834,7 +850,23 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         Commands::Sns(command) => handle_sns(command, &hub).await,
         Commands::Biz(command) => handle_biz(command, &hub),
         Commands::Insight(command) => handle_insight(command, &hub).await,
+        Commands::Image(ImageCommand { command: ImageSubcommand::AutoDownload { command } }) => match command {
+            AutoDownloadSubcommand::Start { whitelist } => {
+                let svc = weflow_core::image_download::ImageAutoDownload::new(hub.runtime_dir());
+                let list = if whitelist.is_empty() { config_whitelist(&hub) } else { whitelist.clone() };
+                let started = svc.start(list);
+                if started["success"] != true {
+                    return Err(AppError::runtime(started["error"].as_str().unwrap_or("auto download failed to start").to_string()));
+                }
+                eprintln!("{}", serde_json::to_string(&json!({ "type": "auto_download_started", "status": svc.status() })).unwrap());
+                let _ = tokio::signal::ctrl_c().await;
+                svc.stop();
+                Ok(json!({ "stopped": true }))
+            }
+            AutoDownloadSubcommand::Status => Ok(json!({ "isHooked": false, "pid": null, "supported": weflow_core::image_download::supported() })),
+        },
         Commands::Image(command) => Ok(match &command.command {
+            ImageSubcommand::AutoDownload { .. } => unreachable!("handled above"),
             ImageSubcommand::Decrypt { target, force } => hub.image_decrypt(&target.payload(*force)).to_json(),
             ImageSubcommand::ResolveCache { target } => hub.image_resolve_cache(&target.payload(false)).to_json(),
             ImageSubcommand::ResolveBatch { payloads_json } => {
@@ -1277,6 +1309,13 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
     }
 }
 
+fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
+    hub.config_value("autoDownloadWhitelist")
+        .as_array()
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
 async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
     if !command.http && !command.message_push && !command.insight && !command.image_auto_download {
         return Err(AppError::usage(
@@ -1294,6 +1333,17 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     let addr = format!("{host}:{port}")
         .parse::<std::net::SocketAddr>()
         .map_err(|err| AppError::usage(format!("invalid listen address: {err}")))?;
+
+    let auto_download = if command.image_auto_download {
+        let svc = weflow_core::image_download::ImageAutoDownload::new(hub.runtime_dir());
+        let started = svc.start(config_whitelist(hub));
+        if started["success"] != true {
+            eprintln!("warning: image auto download not started: {}", started["error"].as_str().unwrap_or("unknown error"));
+        }
+        Some(svc)
+    } else {
+        None
+    };
 
     let broker = weflow_core::push::PushBroker::new();
     if command.message_push {
@@ -1350,12 +1400,14 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             std::future::pending::<AppResult<()>>().await
         }
     };
-    tokio::select! {
-        result = server => { result?; }
-        _ = tokio::signal::ctrl_c() => {
-            return Err(AppError::new("user_interrupt", "interrupted by user", 130));
-        }
+    let outcome = tokio::select! {
+        result = server => result.map(|_| ()),
+        _ = tokio::signal::ctrl_c() => Err(AppError::new("user_interrupt", "interrupted by user", 130)),
+    };
+    if let Some(svc) = &auto_download {
+        svc.stop();
     }
+    outcome?;
     Ok(json!({ "stopped": true }))
 }
 

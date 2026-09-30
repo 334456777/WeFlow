@@ -57,6 +57,10 @@ impl ServiceHub {
         }
     }
 
+    pub fn runtime_dir(&self) -> &Path {
+        &self.ctx.runtime_dir
+    }
+
     pub fn runtime_info(&self) -> Value {
         json!({
             "homeDir": self.ctx.home_dir,
