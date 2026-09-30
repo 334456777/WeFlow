@@ -19,21 +19,32 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and `--
 ## Commands
 
 ```
-weflow config   list | get | set | unset | clear | import
-weflow db       detect | scan <root> | test | open
-weflow key      db | image | scan-image <user-dir>
-weflow chat     sessions | messages | latest | search | contacts | contact | update-message | delete-message
-                anti-revoke check|install|uninstall | voice | emoji
-weflow export   sessions | contacts | footprint | media | messages
-weflow analytics overall | rankings | time | excluded
-weflow group    list | members | ranking | hours | media | member | export-members
-weflow report   annual years|generate | dual generate
-weflow sns      timeline | users | stats | export | download-image | block-delete | delete
-weflow biz      accounts | messages | pay-records
-weflow insight  test | records | get | mark-read | clear | trigger | footprint
-weflow backup   create | inspect | restore
-weflow serve    --http --message-push --insight --image-auto-download
-weflow runtime  info | manifest
+weflow config    list | get | set | unset | clear | import
+weflow db        detect | scan <root> | test | open
+weflow key       db | image | scan-image <user-dir>
+weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
+                 anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
+                 export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
+                 voice | voice-data | voice-cache | voice-preload | image-data | emoji
+weflow export    sessions | contacts | footprint | media | messages   (messages: chatlab, chatlab-jsonl, json,
+                 arkme-json, html, txt, excel, weclone, sql)
+weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
+weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
+weflow report    annual years|generate | dual generate
+weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | block-delete | delete
+weflow biz       accounts | messages | pay-records
+weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
+weflow video     info | parse-md5
+weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-download start|status
+weflow backup    create | inspect | restore
+weflow serve     --http --message-push --insight --image-auto-download
+weflow runtime   info | manifest
 ```
+
+`serve --http` exposes the desktop app's HTTP API (token required except `/health`; set `http_api_token` or `--api-token`).
+`serve --insight` runs the AI insight engine; each generated insight is printed to stderr as a JSON line.
+`image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
+Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`); WXGF images need `ffmpeg`
+on `PATH` (or `FFMPEG_PATH`).
 
 Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, `4` database/native library error.
