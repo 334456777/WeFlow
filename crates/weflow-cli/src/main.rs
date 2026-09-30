@@ -75,6 +75,8 @@ enum Commands {
     Biz(BizCommand),
     /// AI insights
     Insight(InsightCommand),
+    /// Locate videos stored by WeChat and parse video md5s
+    Video(VideoCommand),
     /// Run the HTTP API, message push, insight and image auto-download services
     Serve(ServeCommand),
     /// Show the embedded runtime and manifest
@@ -576,6 +578,28 @@ enum BizSubcommand {
 }
 
 #[derive(Args, Debug)]
+struct VideoCommand {
+    #[command(subcommand)]
+    command: VideoSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum VideoSubcommand {
+    /// Look up the on-disk video (and optional cover/thumbnail) for a message md5
+    Info {
+        md5: String,
+        /// Skip cover / thumbnail images
+        #[arg(long)]
+        no_poster: bool,
+        /// Return `file://` URLs instead of base64 data URLs for the posters
+        #[arg(long)]
+        file_url: bool,
+    },
+    /// Extract the video md5 from a message XML payload
+    ParseMd5 { content: String },
+}
+
+#[derive(Args, Debug)]
 struct InsightCommand {
     #[command(subcommand)]
     command: InsightSubcommand,
@@ -717,6 +741,10 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         Commands::Sns(command) => handle_sns(command, &hub).await,
         Commands::Biz(command) => handle_biz(command, &hub),
         Commands::Insight(command) => handle_insight(command, &hub).await,
+        Commands::Video(command) => match &command.command {
+            VideoSubcommand::Info { md5, no_poster, file_url } => hub.video_info(md5, !*no_poster, if *file_url { weflow_core::video::PosterFormat::FileUrl } else { weflow_core::video::PosterFormat::DataUrl }),
+            VideoSubcommand::ParseMd5 { content } => Ok(serde_json::json!({ "md5": weflow_core::video::parse_video_md5(content) })),
+        },
         Commands::Serve(command) => handle_serve(command, &hub).await,
         Commands::Backup(command) => handle_backup(command, &hub),
         Commands::Runtime(_) | Commands::Config(_) => unreachable!(),

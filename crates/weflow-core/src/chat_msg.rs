@@ -618,7 +618,7 @@ fn parse_media_quote(content: &str) -> Option<String> {
 
 // ───────────────────────── media token helpers ─────────────────────────
 
-fn normalize_video_file_token(value: &str) -> Option<String> {
+pub fn normalize_video_file_token(value: &str) -> Option<String> {
     let mut text = value.trim().to_lowercase();
     if text.is_empty() {
         return None;

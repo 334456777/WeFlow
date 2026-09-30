@@ -210,6 +210,19 @@ impl ServiceHub {
         }))
     }
 
+    /// `video:getVideoInfo`
+    pub fn video_info(&self, md5: &str, include_poster: bool, format: crate::video::PosterFormat) -> AppResult<Value> {
+        let (account_dir, _, _) = self.connection_inputs()?;
+        Ok(crate::video::video_info(&account_dir.join("msg").join("video"), md5, include_poster, format).to_json())
+    }
+
+    /// Path of the on-disk video for a message md5, if WeChat stored one.
+    pub(super) fn video_file_path(&self, md5: &str) -> Option<PathBuf> {
+        let (account_dir, _, _) = self.connection_inputs().ok()?;
+        let info = crate::video::video_info(&account_dir.join("msg").join("video"), md5, false, crate::video::PosterFormat::DataUrl);
+        info.video_url.map(PathBuf::from).filter(|p| p.exists())
+    }
+
     pub fn footprint(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let profile = self.profile()?;

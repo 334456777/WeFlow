@@ -951,7 +951,7 @@ impl ServiceHub {
     }
 
     /// `exportMediaForMessages`: copies message media into `api-media/<session>/…`.
-    /// Images and stickers are supported; voice (SILK) and video need their dedicated services.
+    /// Images, videos and stickers are supported; voice needs the SILK decoder.
     pub(super) async fn export_media_for_messages(&self, wcdb: &weflow_native::wcdb::Wcdb, messages: &[ChatMessage], talker: &str, opts: &ApiMediaOptions) -> HashMap<i64, ApiExportedMedia> {
         let mut map = HashMap::new();
         if !opts.enabled || messages.is_empty() {
@@ -991,6 +991,13 @@ impl ServiceHub {
             let ext = if ext == ".bin" { ".jpg".to_string() } else { ext };
             let base = api::sanitize_file_name(msg.image_md5.as_deref().filter(|s| !s.is_empty()).or(msg.image_dat_name.as_deref()).unwrap_or(""), &format!("image_{}", msg.local_id));
             return put("image", "images", format!("{base}{ext}"), Some(&found), None);
+        }
+        if msg.local_type == 43 && opts.videos {
+            let md5 = msg.video_md5.as_deref().filter(|m| !m.is_empty())?;
+            let video = self.video_file_path(md5)?;
+            let ext = video.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_else(|| ".mp4".into());
+            let base = api::sanitize_file_name(md5, &format!("video_{}", msg.local_id));
+            return put("video", "videos", format!("{base}{ext}"), None, Some(&video));
         }
         if msg.local_type == 47 && opts.emojis {
             let url = msg.emoji_cdn_url.as_deref().filter(|u| !u.is_empty())?;
