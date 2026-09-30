@@ -1059,6 +1059,9 @@ fn handle_config(
             }
         }
         ConfigSubcommand::Set { key, value } => {
+            if matches!(key.as_str(), "progress_delay_seconds" | "progressDelaySeconds") && weflow_core::output::parse_delay(value).is_none() {
+                return Err(AppError::usage(format!("invalid value '{value}' for {key}; use a whole number of seconds (0 or more)")));
+            }
             let value = parse_config_value(value);
             config.set_key(cli.profile.as_deref(), key, value)?;
             config
@@ -1278,21 +1281,11 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             write_export("footprint", format.as_deref(), out, &data)
         }
         ExportSubcommand::Media { out, session, r#type, start, end } => {
-            let start_ts = start.as_deref().map(parse_date_beijing).transpose().map_err(AppError::usage)?;
-            let end_ts = end.as_deref().map(|d| parse_date_beijing(d).map(|ts| ts + 86400)).transpose().map_err(AppError::usage)?;
+            let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
             hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts).await
         }
         ExportSubcommand::Messages { session_id, start, end, out, format, sender, display_name, excel_compact } => {
-            let start_ts = start
-                .as_deref()
-                .map(parse_date_beijing)
-                .transpose()
-                .map_err(AppError::usage)?;
-            let end_ts = end
-                .as_deref()
-                .map(|d| parse_date_beijing(d).map(|ts| ts + 86400))
-                .transpose()
-                .map_err(AppError::usage)?;
+            let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
             let fmt = format.to_ascii_lowercase();
             if fmt == "txt" {
                 return hub.export_messages_txt(session_id, start_ts, end_ts, out);
@@ -1331,13 +1324,6 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
     }
 }
 
-/// `--start` / `--end` dates (Beijing time). The end is returned exclusive (next midnight).
-fn date_range_args(start: Option<&str>, end: Option<&str>) -> AppResult<(Option<i64>, Option<i64>)> {
-    let b = start.map(parse_date_beijing).transpose().map_err(AppError::usage)?;
-    let e = end.map(|d| parse_date_beijing(d).map(|ts| ts + 86400)).transpose().map_err(AppError::usage)?;
-    Ok((b, e))
-}
-
 fn parse_date_beijing(s: &str) -> Result<i64, String> {
     let parts: Vec<&str> = s.splitn(3, '-').collect();
     if parts.len() != 3 {
@@ -1346,11 +1332,40 @@ fn parse_date_beijing(s: &str) -> Result<i64, String> {
     let y: i64 = parts[0].parse().map_err(|_| format!("invalid year in '{s}'"))?;
     let m: i64 = parts[1].parse().map_err(|_| format!("invalid month in '{s}'"))?;
     let d: i64 = parts[2].parse().map_err(|_| format!("invalid day in '{s}'"))?;
+    if !(1970..=2100).contains(&y) {
+        return Err(format!("invalid year in '{s}'; use 1970-2100"));
+    }
+    if !(1..=12).contains(&m) {
+        return Err(format!("invalid month in '{s}'; use 01-12"));
+    }
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let dim = match m {
+        2 => if leap { 29 } else { 28 },
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if !(1..=dim).contains(&d) {
+        return Err(format!("invalid day in '{s}'; {y}-{m:02} has {dim} days"));
+    }
     // Days since Unix epoch for this calendar date
     let (y2, m2) = if m <= 2 { (y - 1, m + 9) } else { (y, m - 3) };
     let days = 365 * y2 + y2 / 4 - y2 / 100 + y2 / 400 + (153 * m2 + 2) / 5 + d - 719_469;
     // UTC midnight of that date minus 8 h = Beijing midnight
     Ok(days * 86400 - 8 * 3600)
+}
+
+/// Parses an optional `--start` / `--end` pair (`end` becomes the exclusive next-midnight bound) and
+/// rejects a start that is after the end.
+/// `--start` / `--end` dates (Beijing time). The end is returned exclusive (next midnight).
+fn date_range_args(start: Option<&str>, end: Option<&str>) -> AppResult<(Option<i64>, Option<i64>)> {
+    let b = start.map(parse_date_beijing).transpose().map_err(AppError::usage)?;
+    let e = end.map(|d| parse_date_beijing(d).map(|ts| ts + 86400)).transpose().map_err(AppError::usage)?;
+    if let (Some(b), Some(e)) = (b, e) {
+        if b >= e {
+            return Err(AppError::usage(format!("--start ({}) is after --end ({})", start.unwrap_or(""), end.unwrap_or(""))));
+        }
+    }
+    Ok((b, e))
 }
 
 fn handle_analytics(command: &AnalyticsCommand, hub: &ServiceHub) -> AppResult<Value> {
@@ -1832,5 +1847,27 @@ fn print_response<T: serde::Serialize>(response: &T, pretty: bool) {
         println!("{}", serde_json::to_string_pretty(response).unwrap());
     } else {
         println!("{}", serde_json::to_string(response).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dates_are_validated() {
+        assert!(parse_date_beijing("2026-09-24").is_ok());
+        assert!(parse_date_beijing("2024-02-29").is_ok());
+        for bad in ["2026-13-40", "2026-02-29", "2026-04-31", "2026-00-10", "1969-01-01", "abc", "2026-09"] {
+            assert!(parse_date_beijing(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn ranges_must_be_ordered() {
+        assert!(date_range_args(Some("2026-09-01"), Some("2026-09-30")).is_ok());
+        assert!(date_range_args(Some("2026-09-30"), Some("2026-09-30")).is_ok(), "the end day is inclusive");
+        assert!(date_range_args(Some("2026-09-30"), Some("2026-09-01")).is_err());
+        assert!(date_range_args(None, Some("2026-09-01")).is_ok());
     }
 }

@@ -83,6 +83,12 @@ struct BarState {
     stage: String,
     stage_started: std::time::Instant,
     last_draw: Option<std::time::Instant>,
+    last_line: String,
+    /// visible width of the last drawn line, to pad shorter updates instead of clearing the row
+    last_width: usize,
+    /// smoothed items per second of the current stage
+    rate: Option<f64>,
+    rate_sample: Option<(std::time::Instant, usize)>,
     drawn: bool,
     is_tty: bool,
 }
@@ -91,7 +97,7 @@ fn bar_state() -> &'static std::sync::Mutex<BarState> {
     static STATE: std::sync::OnceLock<std::sync::Mutex<BarState>> = std::sync::OnceLock::new();
     STATE.get_or_init(|| {
         let now = std::time::Instant::now();
-        std::sync::Mutex::new(BarState { mode: ProgressMode::Off, started: now, stage: String::new(), stage_started: now, last_draw: None, drawn: false, is_tty: false })
+        std::sync::Mutex::new(BarState { mode: ProgressMode::Off, started: now, stage: String::new(), stage_started: now, last_draw: None, last_line: String::new(), last_width: 0, rate: None, rate_sample: None, drawn: false, is_tty: false })
     })
 }
 
@@ -115,7 +121,8 @@ pub fn format_duration(secs: u64) -> String {
 }
 
 /// One line of the bar; `total == 0` means the total is unknown (spinner, no percentage).
-pub fn render_bar(message: &str, current: usize, total: usize, elapsed_secs: u64, width: usize, tick: usize) -> String {
+/// `eta_secs` is the (smoothed) remaining time, when known.
+pub fn render_bar(message: &str, current: usize, total: usize, elapsed_secs: u64, eta_secs: Option<u64>, width: usize, tick: usize) -> String {
     if total == 0 {
         let spin = ['|', '/', '-', '\\'][tick % 4];
         return format!("{message}  {spin} {current} processed  elapsed {}", format_duration(elapsed_secs));
@@ -123,8 +130,20 @@ pub fn render_bar(message: &str, current: usize, total: usize, elapsed_secs: u64
     let frac = (current as f64 / total as f64).clamp(0.0, 1.0);
     let filled = (frac * width as f64).round() as usize;
     let bar: String = "█".repeat(filled) + &"░".repeat(width.saturating_sub(filled));
-    let eta = if current > 0 && current < total { format!("  remaining {}", format_duration((elapsed_secs as f64 / current as f64 * (total - current) as f64).round() as u64)) } else { String::new() };
+    let eta = match eta_secs {
+        Some(e) if current < total => format!("  remaining {}", format_duration(e)),
+        _ => String::new(),
+    };
     format!("{message}  [{bar}] {}%  {current}/{total}  elapsed {}{eta}", (frac * 100.0) as u32, format_duration(elapsed_secs))
+}
+
+/// Cuts a line to `max` characters so it never wraps (a wrapped line cannot be redrawn in place).
+pub fn fit_line(line: &str, max: usize) -> String {
+    if max == 0 || line.chars().count() <= max { line.to_string() } else { line.chars().take(max).collect() }
+}
+
+fn terminal_columns() -> usize {
+    terminal_size::terminal_size_of(std::io::stderr()).map(|(w, _)| w.0 as usize).filter(|w| *w > 8).unwrap_or(100)
 }
 
 pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
@@ -145,21 +164,50 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             if st.stage != stage {
                 st.stage = stage.to_string();
                 st.stage_started = now;
+                st.rate = None;
+                st.rate_sample = None;
+            }
+            // smoothed rate (exponential average over ~1 s samples) so `remaining` does not jump around
+            match st.rate_sample {
+                Some((t, c)) if now.duration_since(t).as_millis() >= 1000 && current >= c => {
+                    let inst = (current - c) as f64 / now.duration_since(t).as_secs_f64();
+                    st.rate = Some(st.rate.map_or(inst, |r| r * 0.8 + inst * 0.2));
+                    st.rate_sample = Some((now, current));
+                }
+                None => st.rate_sample = Some((now, current)),
+                _ => {}
             }
             if !st.is_tty || now.duration_since(st.started).as_secs() < BAR_DELAY_SECS.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
             let done = total > 0 && current >= total;
-            if !done && st.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 120) {
+            if !done && st.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 200) {
+                return;
+            }
+            let elapsed = now.duration_since(st.stage_started).as_secs();
+            let eta = st.rate.filter(|r| *r > 0.0 && total > current).map(|r| ((total - current) as f64 / r).round() as u64);
+            let tick = (now.duration_since(st.started).as_millis() / 200) as usize;
+            let cols = terminal_columns();
+            let line = fit_line(&render_bar(message, current, total, elapsed, eta, 16, tick), cols.saturating_sub(1));
+            if line == st.last_line {
                 return;
             }
             st.last_draw = Some(now);
-            let elapsed = now.duration_since(st.stage_started).as_secs();
-            let tick = (now.duration_since(st.started).as_millis() / 120) as usize;
-            let line = render_bar(message, current, total, elapsed, 16, tick);
+            // one write: return to column 0, overwrite in place, pad over a longer previous line
+            let width = line.chars().count();
+            let pad = st.last_width.saturating_sub(width);
+            let mut out = String::with_capacity(line.len() + pad + 2);
+            out.push('\r');
+            out.push_str(&line);
+            out.extend(std::iter::repeat(' ').take(pad));
+            if pad > 0 {
+                out.extend(std::iter::repeat('\u{8}').take(pad));
+            }
             let mut err = std::io::stderr().lock();
-            let _ = write!(err, "\r\x1b[2K{line}");
+            let _ = err.write_all(out.as_bytes());
             let _ = err.flush();
+            st.last_width = width;
+            st.last_line = line;
             st.drawn = true;
         }
     }
@@ -170,10 +218,14 @@ pub fn finish_progress() {
     let mut st = bar_state().lock().unwrap();
     if st.drawn {
         use std::io::Write;
+        // blank the row once and return to its start so the next output begins on a clean line
+        let blank = " ".repeat(st.last_width);
         let mut err = std::io::stderr().lock();
-        let _ = write!(err, "\r\x1b[2K");
+        let _ = write!(err, "\r{blank}\r");
         let _ = err.flush();
         st.drawn = false;
+        st.last_line.clear();
+        st.last_width = 0;
     }
 }
 
@@ -183,13 +235,13 @@ mod tests {
 
     #[test]
     fn bar_shows_percentage_and_eta() {
-        let s = render_bar("exporting images", 4056, 7800, 227, 16, 0);
-        assert!(s.starts_with("exporting images  [████████░░░░░░░░] 52%  4056/7800  elapsed 3m47s  remaining "), "{s}");
+        let s = render_bar("exporting images", 4056, 7800, 227, Some(208), 16, 0);
+        assert!(s.starts_with("exporting images  [████████░░░░░░░░] 52%  4056/7800  elapsed 3m47s  remaining 3m28s"), "{s}");
     }
 
     #[test]
     fn unknown_totals_show_a_spinner() {
-        let s = render_bar("scanning", 12, 0, 65, 16, 1);
+        let s = render_bar("scanning", 12, 0, 65, None, 16, 1);
         assert_eq!(s, "scanning  / 12 processed  elapsed 1m05s");
         assert!(!s.contains('%'));
     }
@@ -203,6 +255,13 @@ mod tests {
     }
 
     #[test]
+    fn long_lines_are_cut_to_the_terminal_width() {
+        assert_eq!(fit_line("abcdef", 4), "abcd");
+        assert_eq!(fit_line("abc", 10), "abc");
+        assert_eq!(fit_line("██████", 3).chars().count(), 3);
+    }
+
+    #[test]
     fn durations() {
         assert_eq!(format_duration(9), "9s");
         assert_eq!(format_duration(125), "2m05s");
@@ -211,7 +270,7 @@ mod tests {
 
     #[test]
     fn finished_bars_have_no_eta() {
-        let s = render_bar("x", 10, 10, 5, 8, 0);
+        let s = render_bar("x", 10, 10, 5, Some(3), 8, 0);
         assert!(s.contains("100%") && !s.contains("remaining"));
     }
 }
