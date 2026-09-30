@@ -107,7 +107,7 @@ int32_t wcdb_close_account(int64_t handle) { return 0; }
 int32_t wcdb_set_my_wxid(int64_t handle, const char* wxid) { return 0; }
 
 int32_t wcdb_get_sessions(int64_t handle, void** out) {
-    return ret_json(out, "[{\\"username\\":\\"wxid_bob\\",\\"summary\\":\\"hi\\"},{\\"username\\":\\"room1@chatroom\\"}]");
+    return ret_json(out, "[{\\"username\\":\\"wxid_bob\\",\\"summary\\":\\"hi\\",\\"last_timestamp\\":1700009999,\\"sort_timestamp\\":1700009999},{\\"username\\":\\"room1@chatroom\\"}]");
 }
 
 // Newest first, 3 rows at offset 0, nothing after.

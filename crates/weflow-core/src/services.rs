@@ -10,7 +10,9 @@ mod api;
 mod chat;
 mod group;
 mod image;
+mod insight;
 pub use image::{ImagePayload, ImageResult};
+pub use insight::Trigger as InsightTrigger;
 mod reports;
 mod sns;
 mod voice;
@@ -30,6 +32,7 @@ pub struct ServiceHub {
     group_state: std::sync::Arc<std::sync::Mutex<group::GroupState>>,
     analytics_state: std::sync::Arc<std::sync::Mutex<analytics::AnalyticsState>>,
     image_state: std::sync::Arc<std::sync::Mutex<image::ImageState>>,
+    insight_state: std::sync::Arc<std::sync::Mutex<insight::InsightState>>,
 }
 
 impl ServiceHub {
@@ -54,6 +57,7 @@ impl ServiceHub {
             group_state: Default::default(),
             analytics_state: Default::default(),
             image_state: Default::default(),
+            insight_state: Default::default(),
         }
     }
 
@@ -353,86 +357,6 @@ impl ServiceHub {
         let messages = self.messages("gh_3dfda90e39d6", limit, offset)?;
         let records = crate::biz::parse_pay_records(&messages);
         Ok(json!({ "records": records }))
-    }
-
-    pub async fn insight_test(&self) -> AppResult<Value> {
-        let profile = self.profile()?;
-        let config = crate::insight::extract_ai_config(profile)?;
-        crate::insight::test_ai_connection(&config).await
-    }
-
-    pub async fn insight_trigger(&self, session_id: &str) -> AppResult<Value> {
-        let profile = self.profile()?;
-        let config = crate::insight::extract_ai_config(profile)?;
-        let messages = self.messages(session_id, 30, 0)?;
-        let messages_text = serde_json::to_string_pretty(&messages)
-            .unwrap_or_default();
-        let display_name = self
-            .contact(session_id)
-            .ok()
-            .and_then(|v| {
-                v.get("nickname")
-                    .or_else(|| v.get("alias"))
-                    .and_then(Value::as_str)
-                    .map(String::from)
-            })
-            .unwrap_or_else(|| session_id.to_string());
-        let insight = crate::insight::generate_insight(
-            &config,
-            session_id,
-            &display_name,
-            &messages_text,
-            "manual",
-        )
-        .await?;
-        let mut store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        let record = crate::insight::InsightRecord {
-            id: format!(
-                "insight_{}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-            ),
-            created_at: crate::insight::now_millis(),
-            session_id: session_id.to_string(),
-            display_name: display_name.clone(),
-            trigger_reason: "manual".to_string(),
-            insight: insight.clone(),
-            read: false,
-        };
-        store.add(record);
-        store.save()?;
-        Ok(json!({ "sessionId": session_id, "insight": insight }))
-    }
-
-    pub fn insight_records(&self) -> AppResult<Value> {
-        let store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        Ok(json!({ "records": store.records() }))
-    }
-
-    pub fn insight_get(&self, id: &str) -> AppResult<Value> {
-        let store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        let record = store.get(id).ok_or_else(|| {
-            AppError::runtime(format!("insight record not found: {id}"))
-        })?;
-        Ok(serde_json::to_value(record).unwrap_or(Value::Null))
-    }
-
-    pub fn insight_mark_read(&self, id: &str) -> AppResult<Value> {
-        let mut store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        if !store.mark_read(id) {
-            return Err(AppError::runtime(format!("insight record not found: {id}")));
-        }
-        store.save()?;
-        Ok(json!({ "id": id, "read": true }))
-    }
-
-    pub fn insight_clear(&self) -> AppResult<Value> {
-        let mut store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        store.clear();
-        store.save()?;
-        Ok(json!({ "cleared": true }))
     }
 
     pub fn insight_footprint(&self) -> AppResult<Value> {

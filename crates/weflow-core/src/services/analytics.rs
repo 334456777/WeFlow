@@ -70,7 +70,10 @@ impl ServiceHub {
         self.cache_base().join("analytics_cache.json")
     }
 
-    fn fresh_config(&self) -> crate::config::ConfigStore {
+    pub(super) fn fresh_config(&self) -> crate::config::ConfigStore {
+        if !self.ctx.config_path.exists() {
+            return self.config.clone();
+        }
         crate::config::ConfigStore::load(&self.ctx.config_path).unwrap_or_else(|_| self.config.clone())
     }
 

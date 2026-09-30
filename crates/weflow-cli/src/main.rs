@@ -716,15 +716,47 @@ struct InsightCommand {
 
 #[derive(Subcommand, Debug)]
 enum InsightSubcommand {
+    /// Test the AI model connection
     Test,
-    Records,
+    /// Generate a test insight for the first eligible private chat (or for --session)
+    Trigger {
+        /// Generate for this conversation instead of the first eligible one
+        session_id: Option<String>,
+    },
+    /// List insight records (newest first)
+    Records {
+        #[arg(long)]
+        keyword: Option<String>,
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long)]
+        start: Option<i64>,
+        #[arg(long)]
+        end: Option<i64>,
+        #[arg(long)]
+        limit: Option<i64>,
+        #[arg(long)]
+        offset: Option<i64>,
+    },
     Get { id: String },
     MarkRead { id: String },
-    Clear,
-    Trigger {
-        session_id: String,
+    /// Delete insight records (all, or filtered)
+    Clear {
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long)]
+        start: Option<i64>,
+        #[arg(long)]
+        end: Option<i64>,
     },
+    /// Today's trigger counts (only meaningful inside a running `serve --insight`)
+    TodayStats,
+    /// Run the silence scan once
+    Scan,
+    /// Footprint statistics from the database
     Footprint,
+    /// AI footprint summary; takes the JSON payload {rangeLabel, summary, privateSegments, mentionGroups}
+    FootprintSummary { payload_json: String },
 }
 
 #[derive(Args, Debug)]
@@ -1297,16 +1329,81 @@ fn handle_biz(command: &BizCommand, hub: &ServiceHub) -> AppResult<Value> {
     }
 }
 
+fn insight_filters(session: &Option<String>, keyword: &Option<String>, start: &Option<i64>, end: &Option<i64>, limit: &Option<i64>, offset: &Option<i64>) -> weflow_core::insight::RecordFilters {
+    weflow_core::insight::RecordFilters { keyword: keyword.clone().unwrap_or_default(), session_id: session.clone().unwrap_or_default(), start_time: start.unwrap_or(0), end_time: end.unwrap_or(0), limit: *limit, offset: *offset }
+}
+
+fn print_insight(r: &weflow_core::insight::InsightRecord) {
+    eprintln!("{}", serde_json::to_string(&json!({ "type": "insight", "record": r.summary() })).unwrap());
+}
+
 async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        InsightSubcommand::Test => hub.insight_test().await,
-        InsightSubcommand::Trigger { session_id } => hub.insight_trigger(session_id).await,
-        InsightSubcommand::Records => hub.insight_records(),
-        InsightSubcommand::Get { id } => hub.insight_get(id),
-        InsightSubcommand::MarkRead { id } => hub.insight_mark_read(id),
-        InsightSubcommand::Clear => hub.insight_clear(),
+        InsightSubcommand::Test => Ok(hub.insight_test_connection().await),
+        InsightSubcommand::Trigger { session_id } => match session_id {
+            None => Ok(hub.insight_trigger_test().await),
+            Some(id) => {
+                let name = hub.chat_contact_avatar(id).map(|(_, n)| n).unwrap_or_else(|| id.clone());
+                match hub.insight_generate(id, &name, weflow_core::services::InsightTrigger::Test, None).await {
+                    Some(r) => Ok(json!({ "success": true, "record": r.summary() })),
+                    None => Ok(json!({ "success": false, "message": "no insight was generated (AI not configured, request failed, or the model answered SKIP)" })),
+                }
+            }
+        },
+        InsightSubcommand::Records { keyword, session, start, end, limit, offset } => Ok(hub.insight_list_records(&insight_filters(session, keyword, start, end, limit, offset))),
+        InsightSubcommand::Get { id } => Ok(hub.insight_get_record(id)),
+        InsightSubcommand::MarkRead { id } => Ok(hub.insight_mark_record_read(id)),
+        InsightSubcommand::Clear { session, start, end } => Ok(hub.insight_clear_records(&insight_filters(session, &None, start, end, &None, &None))),
+        InsightSubcommand::TodayStats => Ok(hub.insight_today_stats()),
+        InsightSubcommand::Scan => {
+            let mut found = Vec::new();
+            let n = hub.insight_silence_scan(&mut |r| {
+                print_insight(r);
+                found.push(r.summary());
+            })
+            .await;
+            Ok(json!({ "generated": n, "records": found }))
+        }
         InsightSubcommand::Footprint => hub.insight_footprint(),
+        InsightSubcommand::FootprintSummary { payload_json } => {
+            let payload: Value = serde_json::from_str(payload_json).map_err(|e| AppError::usage(format!("payload_json must be JSON: {e}")))?;
+            Ok(hub.insight_footprint_summary(&payload).await)
+        }
     }
+}
+
+/// The background engine of `serve --insight`: polls for new messages (the desktop app reacts to
+/// database-change events) and runs the silence scan on its own schedule.
+fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    use std::sync::atomic::Ordering;
+    std::thread::spawn(move || {
+        let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return };
+        rt.block_on(async move {
+            let mut next_scan = std::time::Instant::now() + std::time::Duration::from_secs(3 * 60);
+            while !stop.load(Ordering::Relaxed) {
+                if hub.insight_enabled() {
+                    let notify = hub.config_value("aiInsightNotificationEnabled") != Value::Bool(false);
+                    let mut emit = |r: &weflow_core::insight::InsightRecord| {
+                        if notify {
+                            print_insight(r);
+                        }
+                    };
+                    if std::time::Instant::now() >= next_scan {
+                        hub.insight_silence_scan(&mut emit).await;
+                        let hours = hub.config_value("aiInsightScanIntervalHours").as_f64().filter(|h| *h != 0.0).unwrap_or(4.0).max(0.1);
+                        next_scan = std::time::Instant::now() + std::time::Duration::from_secs_f64(hours * 3600.0);
+                    }
+                    hub.insight_analyze_activity(&mut emit).await;
+                }
+                for _ in 0..50 {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+        });
+    });
 }
 
 fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
@@ -1344,6 +1441,11 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     } else {
         None
     };
+
+    let insight_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    if command.insight {
+        spawn_insight_engine(hub.clone(), insight_stop.clone());
+    }
 
     let broker = weflow_core::push::PushBroker::new();
     if command.message_push {
@@ -1404,6 +1506,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         result = server => result.map(|_| ()),
         _ = tokio::signal::ctrl_c() => Err(AppError::new("user_interrupt", "interrupted by user", 130)),
     };
+    insight_stop.store(true, std::sync::atomic::Ordering::Relaxed);
     if let Some(svc) = &auto_download {
         svc.stop();
     }

@@ -1065,3 +1065,31 @@ fn truthy(v: &Value) -> bool {
         _ => true,
     }
 }
+
+impl ServiceHub {
+    /// `getLatestMessages`: the newest `limit` messages, oldest first (direct-offset read).
+    pub fn chat_latest_messages(&self, session_id: &str, limit: usize) -> AppResult<Vec<ChatMessage>> {
+        let wcdb = self.open_wcdb()?;
+        let page = limit.max(1);
+        let probe = (page + 1).min(500);
+        let rows = wcdb.messages(session_id, probe as i32, 0).map_err(|e| AppError::native(e.to_string()))?;
+        let rows: Vec<Value> = rows.as_array().cloned().unwrap_or_default();
+        let selected: Vec<Value> = rows.into_iter().take(page).collect();
+        let mapped = chat_msg::map_rows(&selected, &self.wmy());
+        let is_group = session_id.contains("@chatroom");
+        let visible: Vec<ChatMessage> = mapped
+            .iter()
+            .filter(|m| is_group || m.sender_username.as_deref().map_or(true, |s| s.is_empty() || s == session_id) || m.is_send == Some(1))
+            .cloned()
+            .collect();
+        let mut out = if visible.is_empty() && !mapped.is_empty() { mapped } else { visible };
+        out.sort_by(|a, b| {
+            let (asq, bsq) = (a.sort_seq.max(0), b.sort_seq.max(0));
+            if asq > 0 && bsq > 0 && asq != bsq {
+                return asq.cmp(&bsq);
+            }
+            a.create_time.max(0).cmp(&b.create_time.max(0)).then(asq.cmp(&bsq)).then(a.local_id.max(0).cmp(&b.local_id.max(0))).then(a.server_id.max(0).cmp(&b.server_id.max(0)))
+        });
+        Ok(out)
+    }
+}
