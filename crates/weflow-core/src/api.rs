@@ -568,6 +568,8 @@ pub struct ApiExportedMedia {
     pub file_name: String,
     pub full_path: String,
     pub relative_path: String,
+    /// image only: the exported file is the thumbnail (the original is not on disk)
+    pub thumbnail: bool,
 }
 
 /// `toApiMessage`
@@ -713,7 +715,7 @@ mod tests {
         assert_eq!(map_message_type(&msgs[0]), chatlab::REPLY);
         let c = to_api_message(&msgs[2], None, "http://h:1");
         assert_eq!(c["content"], "hello");
-        let media = ApiExportedMedia { kind: "image", file_name: "a.jpg".into(), full_path: "/x/a.jpg".into(), relative_path: "s/images/a.jpg".into() };
+        let media = ApiExportedMedia { kind: "image", file_name: "a.jpg".into(), full_path: "/x/a.jpg".into(), relative_path: "s/images/a.jpg".into(), thumbnail: false };
         let d = to_api_message(&msgs[2], Some(&media), "http://h:1/");
         assert_eq!(d["mediaUrl"], "http://h:1/api/v1/media/s/images/a.jpg");
     }

@@ -49,7 +49,9 @@ terminal; stdout stays pure JSON). `--no-progress` turns it off, `--progress` pr
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` walks the media
 messages (an image sent twice counts twice, so `found` can exceed the unique files listed by `chat images`). `missing` counts
 messages whose file is not on disk (never downloaded in WeChat) or could not be resolved, per kind in `missingByKind`.
-Stickers may need network access; voice export decodes every message, so a full export of hundreds of voices takes minutes.
+`thumbOnly` counts exported images that are only the thumbnail (each image entry also has `isThumb`); open the original in WeChat and export again to get the HD file. `export media` always prefers the HD original (like `image decrypt --force`). Stickers may need network access; voice export decodes every message, so a full export of hundreds of voices takes minutes.
+
+`export messages` reads only the requested date range from the database (cost follows the range size, not its age) and shows a progress bar; the output file is written once reading finishes.
 
 `key db` (Windows) hooks WeChat through `wx_key.dll` and keeps polling (`--timeout`, default 180 s) because WeChat only
 produces the key while it opens its databases: log in or restart WeChat while the command waits. It needs an administrator

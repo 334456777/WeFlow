@@ -983,7 +983,7 @@ impl ServiceHub {
                     _ => return None,
                 }
             }
-            Some(ApiExportedMedia { kind, file_name: file_name.clone(), full_path: full.to_string_lossy().to_string(), relative_path: format!("{safe_talker}/{sub}/{file_name}") })
+            Some(ApiExportedMedia { kind, file_name: file_name.clone(), full_path: full.to_string_lossy().to_string(), relative_path: format!("{safe_talker}/{sub}/{file_name}"), thumbnail: false })
         };
         if msg.local_type == 3 && opts.images {
             let payload = crate::services::ImagePayload {
@@ -1004,6 +1004,7 @@ impl ServiceHub {
                 }
             }
             let path = path?;
+            let thumbnail = !path.starts_with("data:") && crate::image::is_thumbnail_path(&path);
             let bytes = if let Some(rest) = path.strip_prefix("data:") {
                 use base64::Engine;
                 let b64 = rest.split_once(";base64,")?.1;
@@ -1013,7 +1014,10 @@ impl ServiceHub {
             };
             let ext = api_detect_image_ext(&bytes);
             let base = api::sanitize_file_name(msg.image_md5.as_deref().filter(|s| !s.is_empty()).or(msg.image_dat_name.as_deref()).unwrap_or(""), &format!("image_{}", msg.local_id));
-            return put("image", "images", format!("{base}{ext}"), Some(&bytes), None);
+            return put("image", "images", format!("{base}{ext}"), Some(&bytes), None).map(|mut m| {
+                m.thumbnail = thumbnail;
+                m
+            });
         }
         if msg.local_type == 34 && opts.voices {
             let server = if msg.server_id_raw.is_empty() || msg.server_id_raw == "0" { msg.server_id.to_string() } else { msg.server_id_raw.clone() };
@@ -1140,16 +1144,26 @@ impl ServiceHub {
         let total = work.len();
         let mut files: Vec<Value> = Vec::new();
         let mut missing_by_kind: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut thumb_only = 0usize;
         for (n, (sid, kind, msg)) in work.iter().enumerate() {
             let safe = api::sanitize_file_name(sid, "session");
             let session_dir = out.join(&safe);
             match self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts).await {
-                Some(m) => files.push(json!({ "session": sid, "kind": m.kind, "fileName": m.file_name, "path": m.full_path, "localId": msg.local_id, "createTime": msg.create_time })),
+                Some(m) => {
+                    if m.thumbnail {
+                        thumb_only += 1;
+                    }
+                    let mut entry = json!({ "session": sid, "kind": m.kind, "fileName": m.file_name, "path": m.full_path, "localId": msg.local_id, "createTime": msg.create_time });
+                    if m.kind == "image" {
+                        entry["isThumb"] = json!(m.thumbnail);
+                    }
+                    files.push(entry)
+                }
                 None => *missing_by_kind.entry(kind).or_default() += 1,
             }
             self.emit_progress("media", &format!("exporting {media_type} media"), n + 1, total);
         }
         let missing: usize = missing_by_kind.values().sum();
-        Ok(json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access", "sessions": sessions.len(), "out": out, "files": files }))
+        Ok(json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files }))
     }
 }

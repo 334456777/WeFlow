@@ -515,50 +515,8 @@ impl ServiceHub {
             }
         }
 
-        // Fetch messages with pagination (newest first, so paginate until before start_ts)
-        let mut all_messages: Vec<Value> = Vec::new();
-        let mut offset = 0i32;
-        let batch = 500i32;
-
-        loop {
-            let data = self.messages(session_id, batch, offset)?;
-            let msgs = match data.as_array() {
-                Some(a) => a,
-                None => break,
-            };
-            if msgs.is_empty() {
-                break;
-            }
-
-            let mut reached_before_range = false;
-            for m in msgs {
-                let ts = m
-                    .get("create_time")
-                    .and_then(|v| {
-                        v.as_str()
-                            .and_then(|s| s.parse::<i64>().ok())
-                            .or_else(|| v.as_i64())
-                    })
-                    .unwrap_or(0);
-
-                let in_range = start_ts.map_or(true, |s| ts >= s)
-                    && end_ts.map_or(true, |e| ts < e);
-
-                if in_range {
-                    all_messages.push(m.clone());
-                }
-
-                if start_ts.map_or(false, |s| ts < s) {
-                    reached_before_range = true;
-                }
-            }
-
-            offset += msgs.len() as i32;
-
-            if reached_before_range || msgs.len() < batch as usize {
-                break;
-            }
-        }
+        let wcdb = self.open_wcdb()?;
+        let mut all_messages = fetch_message_rows(&wcdb, session_id, start_ts, end_ts)?;
 
         // Sort ascending by create_time for chronological output
         all_messages.sort_by_key(|m| {
@@ -973,33 +931,39 @@ pub fn clean_account_dir_name(dir_name: &str) -> String {
     rx(r"^(.+)_([a-zA-Z0-9]{4})$").captures(trimmed).map(|c| c[1].to_string()).unwrap_or_else(|| trimmed.to_string())
 }
 
-/// Page through a session's messages (newest first) until the range start is passed.
+/// Read a session's messages inside `[start, end)` (Unix seconds) with a bounded WCDB cursor,
+/// so the cost follows the range size, not how far back the range lies. Reports progress
+/// (`total` is the session's message count when the whole history is requested, else unknown).
 fn fetch_message_rows(wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, start: Option<i64>, end: Option<i64>) -> AppResult<Vec<Value>> {
+    let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
+    let (begin, finish) = (start.map_or(0, clamp), end.map_or(0, clamp));
+    let total = if begin == 0 && finish == 0 { wcdb.message_count(session_id).unwrap_or(0).max(0) as usize } else { 0 };
+    let cursor = wcdb
+        .open_message_cursor(session_id, 2000, true, begin, finish, false)
+        .map_err(|e| AppError::native(e.to_string()))?;
     let mut rows: Vec<Value> = Vec::new();
-    let mut offset = 0i32;
-    let batch = 500i32;
-    loop {
-        let data = wcdb.messages(session_id, batch, offset).map_err(|e| AppError::native(e.to_string()))?;
-        let Some(page) = data.as_array() else { break };
-        if page.is_empty() {
-            break;
-        }
-        let mut before_range = false;
-        for m in page {
-            let ts = crate::message::get_timestamp_seconds(m);
-            let in_range = start.map_or(true, |s| ts >= s) && end.map_or(true, |e| ts < e);
-            if in_range {
-                rows.push(m.clone());
+    let result = (|| -> AppResult<()> {
+        loop {
+            let (page, more) = wcdb.fetch_message_batch(cursor).map_err(|e| AppError::native(e.to_string()))?;
+            let Some(page) = page.as_array() else { break };
+            if page.is_empty() {
+                break;
             }
-            if start.map_or(false, |s| ts > 0 && ts < s) {
-                before_range = true;
+            for m in page {
+                let ts = crate::message::get_timestamp_seconds(m);
+                if start.map_or(true, |s| ts >= s) && end.map_or(true, |e| ts < e) {
+                    rows.push(m.clone());
+                }
+            }
+            crate::output::progress("messages", "reading messages", rows.len(), if total == 0 { 0 } else { total.max(rows.len()) });
+            if !more {
+                break;
             }
         }
-        offset += page.len() as i32;
-        if before_range || page.len() < batch as usize {
-            break;
-        }
-    }
+        Ok(())
+    })();
+    let _ = wcdb.close_message_cursor(cursor);
+    result?;
     Ok(rows)
 }
 

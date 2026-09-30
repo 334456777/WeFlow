@@ -761,7 +761,7 @@ impl ImageTarget {
 
 #[derive(Subcommand, Debug)]
 enum ImageSubcommand {
-    /// Decrypt an image (HD preferred with --force) into the image cache
+    /// Decrypt an image into the image cache. Without --force a cached thumbnail may be returned; with --force the HD original is used when it is on disk (`export media` always behaves like --force)
     Decrypt {
         #[command(flatten)]
         target: ImageTarget,
