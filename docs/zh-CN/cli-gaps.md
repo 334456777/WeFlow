@@ -26,6 +26,7 @@
 | 图片自动下载（`image auto-download`、`serve --image-auto-download`） | 仅 Windows x64（`img_helper.dll`）。钩子只在 `weflow` 进程运行期间存在，因此从另一个进程执行 `status` 总是显示"未挂钩"。 |
 | 图片服务事件 | `image:cacheResolved`、`decryptProgress`、`updateAvailable` 以及后台"有更高质量版本"检查都不会发出；`hasUpdate` 始终为 `false`。 |
 | AI 见解通知 | 没有弹窗；`serve --insight` 把每条见解以 JSON 行输出到 stderr（Telegram 推送仍可用）。 |
+| 图片密钥内存扫描 | `key scan-image`（扫描微信内存找 AES 密钥）仅 macOS 可用；Windows 请用 `key image`（kvcomm 缓存 + 模板校验）。桌面端 Windows 的内存扫描回退未移植。 |
 | 排序 | 中文名称的 `localeCompare` 排序只是近似实现。 |
 | 视频 | 只查找微信已存放在 `msg/video` 下的文件；没有下载或解密路径（桌面端同样没有）。 |
 
