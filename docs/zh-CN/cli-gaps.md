@@ -44,3 +44,7 @@
 ## 5. 修复而非照搬的问题
 
 TypeScript 的 ISAAC-64 回退实现（精度问题，遵循厂商 WASM），以及*早期 Rust CLI* 中的三个缺陷（`.dat` 布局/密钥、派生 AES 密钥、AI 接口 `/v1`）。详见 cli-coverage.md。
+
+## 已知限制：内置 `wcdb_api` 库带有到期时间
+
+项目自带的闭源 `wcdb_api` 库（2026-05-07 构建）内置了有效期检查：超过 2026-09-30 23:59:59（本地时间）后，`wcdb_init` 返回 `-1000`，并尝试删除自身（`MoveFileExA ... MOVEFILE_DELAY_UNTIL_REBOOT`，以管理员运行时会写入 `PendingFileRenameOperations`；只影响该库文件，不影响微信数据）。此后所有要打开数据库的命令都会失败，与密钥、配置无关。CLI 现在会明确提示这一点。CLI 不会修改该库，也不会改动系统时间；可行的办法是向其作者索取去掉到期检查的 `wcdb_api` 构建，或改用开源 SQLCipher 直接读取。

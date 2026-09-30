@@ -107,6 +107,18 @@ pub struct Wcdb {
     initialized: bool,
 }
 
+/// Human-readable text for a `wcdb_init` failure code.
+pub fn init_failure_message(rc: i32) -> String {
+    match rc {
+        -1000 => "wcdb_init failed with code -1000: the bundled wcdb_api library refuses to start because its built-in \
+                  validity period has ended (it embeds an expiry of 2026-09-30 23:59:59 local time). This is not a key, \
+                  configuration or WeChat problem; a newer wcdb_api build is required. See docs/cli-gaps.md"
+            .to_string(),
+        -1007..=-1005 => format!("wcdb_init failed with code {rc}: the wcdb_api library's security validation failed (SecurityStatus); a different wcdb_api build is required"),
+        _ => format!("wcdb_init failed with code {rc}"),
+    }
+}
+
 impl Wcdb {
     /// # Safety
     ///
@@ -262,7 +274,7 @@ impl Wcdb {
         }
         let rc = unsafe { (self.init)() };
         if rc != 0 {
-            return Err(anyhow!("wcdb_init failed with code {rc}"));
+            return Err(anyhow!("{}", init_failure_message(rc)));
         }
         self.initialized = true;
         Ok(())

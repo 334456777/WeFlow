@@ -48,3 +48,12 @@ export task pause/resume, renderer-only report screenshots, the Moments cache-mi
 
 TypeScript's ISAAC-64 fallback (precision bug, the vendor WASM is followed), and three defects in the *earlier Rust CLI*
 (`.dat` layout/keys, derived AES key, AI endpoint `/v1`). See cli-coverage.md.
+
+## Known limitation: the bundled `wcdb_api` library has an expiry date
+
+The closed-source `wcdb_api` library shipped with the project (build of 2026-05-07) contains a built-in validity check:
+after 2026-09-30 23:59:59 (local time) `wcdb_init` returns `-1000` and the library tries to delete itself
+(`MoveFileExA ... MOVEFILE_DELAY_UNTIL_REBOOT`, which writes `PendingFileRenameOperations` when run as administrator; only the
+library file is affected, never WeChat data). Every command that opens a database then fails, regardless of key or config.
+The CLI now reports this explicitly. The CLI does not patch the library or alter the clock; the way forward is either a
+`wcdb_api` build without the expiry from its author, or replacing it with a direct open-source SQLCipher reader.

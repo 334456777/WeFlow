@@ -195,6 +195,7 @@ impl ConfigStore {
             "image_xor_key" | "imageXorKey" => target.image_xor_key = None,
             "image_aes_key" | "imageAesKey" => target.image_aes_key = None,
             "cache_path" | "cachePath" => target.cache_path = None,
+            "log_enabled" | "logEnabled" => target.log_enabled = false,
             "http_api_token" | "httpApiToken" => target.http_api_token = None,
             "http_api_host" | "httpApiHost" => target.http_api_host = None,
             "http_api_port" | "httpApiPort" => target.http_api_port = None,
