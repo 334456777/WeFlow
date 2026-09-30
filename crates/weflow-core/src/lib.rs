@@ -19,6 +19,7 @@ pub mod output;
 pub mod push;
 pub mod sns;
 pub mod video;
+pub mod weibo;
 pub mod services;
 
 pub use config::{AppContext, ConfigStore, ProfileConfig};
