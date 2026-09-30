@@ -43,6 +43,14 @@ weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
 ```
 
+Progress: commands that run longer than 10 seconds show a single-line progress bar on stderr (only when stderr is a
+terminal; stdout stays pure JSON). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.
+
+`export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` walks the media
+messages (an image sent twice counts twice, so `found` can exceed the unique files listed by `chat images`). `missing` counts
+messages whose file is not on disk (never downloaded in WeChat) or could not be resolved, per kind in `missingByKind`.
+Stickers may need network access; voice export decodes every message, so a full export of hundreds of voices takes minutes.
+
 `key db` (Windows) hooks WeChat through `wx_key.dll` and keeps polling (`--timeout`, default 180 s) because WeChat only
 produces the key while it opens its databases: log in or restart WeChat while the command waits. It needs an administrator
 terminal, looks for `Weixin.exe` then `WeChat.exe`, and accepts `--pid`. `key image` derives the image keys from the `kvcomm`

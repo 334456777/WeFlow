@@ -155,7 +155,7 @@ async fn export_media_copies_images_of_a_conversation() {
     std::fs::write(img_dir.join(format!("{md5}_h.dat")), encrypt_v2(&plain, KEY.as_bytes().try_into().unwrap(), 0x5a)).unwrap();
 
     let out = root.join("media-out");
-    let r = hub.export_media(Some("wxid_bob"), &out, "image").await.unwrap();
+    let r = hub.export_media(Some("wxid_bob"), &out, "image", None, None).await.unwrap();
     assert_eq!(r["exported"], 1, "{r}");
     assert_eq!(r["found"], 2, "two image messages, one has no file on disk");
     assert_eq!(r["missing"], 1);
@@ -163,6 +163,20 @@ async fn export_media_copies_images_of_a_conversation() {
     assert!(path.contains("wxid_bob") && path.ends_with(&format!("{md5}.jpg")), "{path}");
     assert_eq!(std::fs::read(path).unwrap(), plain);
 
-    assert!(hub.export_media(Some("wxid_bob"), &out, "bogus").await.is_err());
+    assert!(hub.export_media(Some("wxid_bob"), &out, "bogus", None, None).await.is_err());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn export_media_honours_the_date_range_and_reports_missing_by_kind() {
+    let (hub, root, _account, _img_dir) = setup("img-export-range");
+    let out = root.join("media-range");
+    // both canned image messages are from 2023-11-14; a later window matches nothing
+    let none = hub.export_media(Some("wxid_bob"), &out, "image", Some(1_800_000_000), None).await.unwrap();
+    assert_eq!(none["found"], 0);
+    let all = hub.export_media(Some("wxid_bob"), &out, "image", Some(1_600_000_000), Some(1_800_000_000)).await.unwrap();
+    assert_eq!(all["found"], 2);
+    assert_eq!(all["missing"], 2, "no .dat files exist");
+    assert_eq!(all["missingByKind"]["image"], 2);
     let _ = std::fs::remove_dir_all(root);
 }

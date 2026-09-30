@@ -762,9 +762,7 @@ impl ServiceHub {
     }
 
     pub fn emit_progress(&self, stage: &str, message: &str, current: usize, total: usize) {
-        if self.progress_enabled {
-            crate::output::progress(stage, message, current, total);
-        }
+        crate::output::progress(stage, message, current, total);
     }
 
     fn open_wcdb(&self) -> AppResult<weflow_native::wcdb::Wcdb> {

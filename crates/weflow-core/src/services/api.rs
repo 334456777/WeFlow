@@ -1,6 +1,6 @@
 //! Service layer behind the HTTP API: sessions, contacts, message paging, ChatLab conversion.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
@@ -1098,7 +1098,9 @@ impl ServiceHub {
     /// `export media`: walks the messages of one conversation (or all of them) and copies each
     /// image / voice (as WAV) / video / sticker into `<out>/<session>/<kind>s/`, using the same
     /// per-message pipeline as the HTTP API (`media=1`). `media_type`: image, voice, video, emoji, all.
-    pub async fn export_media(&self, session: Option<&str>, out: &Path, media_type: &str) -> AppResult<Value> {
+    /// `start` / `end` (Unix seconds, `end` exclusive) restrict the message time.
+    /// `found` counts media *messages* (an image sent twice counts twice; `chat images` lists unique files).
+    pub async fn export_media(&self, session: Option<&str>, out: &Path, media_type: &str, start: Option<i64>, end: Option<i64>) -> AppResult<Value> {
         let wanted = |k: &str| media_type == "all" || media_type == k;
         if !["image", "voice", "video", "emoji", "all"].contains(&media_type) {
             return Err(AppError::usage(format!("unsupported media type: {media_type}; use image, voice, video, emoji or all")));
@@ -1110,33 +1112,44 @@ impl ServiceHub {
             None => self.sessions_with(&wcdb)?.iter().filter_map(|s| s["username"].as_str().map(str::to_string)).collect(),
         };
         let opts = ApiMediaOptions { enabled: true, images: wanted("image"), voices: wanted("voice"), videos: wanted("video"), emojis: wanted("emoji") };
-        let types: Vec<(i64, bool)> = vec![(3, opts.images), (34, opts.voices), (43, opts.videos), (47, opts.emojis)];
-        let mut files: Vec<Value> = Vec::new();
-        let (mut found, mut missing) = (0usize, 0usize);
+        let types: Vec<(i64, &'static str, bool)> = vec![(3, "image", opts.images), (34, "voice", opts.voices), (43, "video", opts.videos), (47, "emoji", opts.emojis)];
         let my = self.wmy();
+
+        // pass 1: collect the media messages so the progress bar knows the total
+        self.emit_progress("media", "scanning messages", 0, sessions.len());
+        let mut work: Vec<(String, &'static str, ChatMessage)> = Vec::new();
         for (i, sid) in sessions.iter().enumerate() {
-            let safe = api::sanitize_file_name(sid, "session");
-            let session_dir = out.join(&safe);
-            for (code, enabled) in &types {
+            for (code, kind, enabled) in &types {
                 if !enabled {
                     continue;
                 }
-                let rows = match wcdb.messages_by_type(sid, *code, false, 0, 0) {
-                    Ok(v) => v.as_array().cloned().unwrap_or_default(),
-                    Err(_) => continue,
-                };
-                let msgs = chat_msg::map_rows(&rows, &my);
+                let Ok(rows) = wcdb.messages_by_type(sid, *code, false, 0, 0) else { continue };
+                let msgs = chat_msg::map_rows(&rows.as_array().cloned().unwrap_or_default(), &my);
                 let mut seen: HashSet<(i64, i64)> = HashSet::new();
-                for msg in msgs.iter().filter(|m| m.local_type == *code && seen.insert((m.local_id, m.create_time))) {
-                    found += 1;
-                    match self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts).await {
-                        Some(m) => files.push(json!({ "session": sid, "kind": m.kind, "fileName": m.file_name, "path": m.full_path, "localId": msg.local_id, "createTime": msg.create_time })),
-                        None => missing += 1,
+                for m in msgs {
+                    let in_range = start.map_or(true, |s| m.create_time >= s) && end.map_or(true, |e| m.create_time < e);
+                    if m.local_type == *code && in_range && seen.insert((m.local_id, m.create_time)) {
+                        work.push((sid.clone(), kind, m));
                     }
                 }
             }
-            self.emit_progress("media", "exporting media", i + 1, sessions.len());
+            self.emit_progress("media", "scanning messages", i + 1, sessions.len());
         }
-        Ok(json!({ "exported": files.len(), "found": found, "missing": missing, "sessions": sessions.len(), "out": out, "files": files }))
+
+        // pass 2: export
+        let total = work.len();
+        let mut files: Vec<Value> = Vec::new();
+        let mut missing_by_kind: BTreeMap<&str, usize> = BTreeMap::new();
+        for (n, (sid, kind, msg)) in work.iter().enumerate() {
+            let safe = api::sanitize_file_name(sid, "session");
+            let session_dir = out.join(&safe);
+            match self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts).await {
+                Some(m) => files.push(json!({ "session": sid, "kind": m.kind, "fileName": m.file_name, "path": m.full_path, "localId": msg.local_id, "createTime": msg.create_time })),
+                None => *missing_by_kind.entry(kind).or_default() += 1,
+            }
+            self.emit_progress("media", &format!("exporting {media_type} media"), n + 1, total);
+        }
+        let missing: usize = missing_by_kind.values().sum();
+        Ok(json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access", "sessions": sessions.len(), "out": out, "files": files }))
     }
 }

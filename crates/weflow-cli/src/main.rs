@@ -38,9 +38,12 @@ struct Cli {
     /// Print human-readable pretty JSON
     #[arg(long, global = true)]
     pretty: bool,
-    /// Emit NDJSON progress events on stderr
+    /// Emit NDJSON progress events on stderr (machine-readable)
     #[arg(long, global = true)]
     progress: bool,
+    /// Never show the automatic progress bar (it appears on a terminal after 10 seconds)
+    #[arg(long, global = true)]
+    no_progress: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -391,6 +394,12 @@ enum ExportSubcommand {
         /// What to export: image, voice, video, emoji or all
         #[arg(long, default_value = "all")]
         r#type: String,
+        /// Only messages from this date, Beijing time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        start: Option<String>,
+        /// Only messages up to this date, Beijing time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        end: Option<String>,
     },
     /// Export the messages of one conversation
     Messages {
@@ -931,7 +940,16 @@ async fn main() -> ExitCode {
             LangArg::Zh => weflow_core::locale::Lang::Zh,
         });
     }
-    match run(&cli).await {
+    weflow_core::output::set_progress_mode(if cli.progress {
+        weflow_core::output::ProgressMode::Ndjson
+    } else if cli.no_progress {
+        weflow_core::output::ProgressMode::Off
+    } else {
+        weflow_core::output::ProgressMode::Auto
+    });
+    let outcome = run(&cli).await;
+    weflow_core::output::finish_progress();
+    match outcome {
         Ok(value) => {
             print_response(&success(value), cli.pretty);
             ExitCode::SUCCESS
@@ -962,11 +980,6 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         cli.decrypt_key.clone(),
         cli.wxid.clone(),
     );
-    let hub = {
-        let mut h = hub;
-        h.progress_enabled = cli.progress;
-        h
-    };
 
     match &cli.command {
         Commands::Db(command) => handle_db(command, &hub),
@@ -1185,7 +1198,7 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         ChatSubcommand::TransferNames { chatroom_id, payer, receiver } => hub.chat_transfer_names(chatroom_id, payer, receiver),
         ChatSubcommand::Voice { session_id, out } => {
             let out_path = out.as_deref().unwrap_or(Path::new("."));
-            hub.export_media(Some(session_id), out_path, "voice").await
+            hub.export_media(Some(session_id), out_path, "voice", None, None).await
         }
         ChatSubcommand::VoiceData { session_id, msg_id, create_time, server_id, sender, out } => {
             let wav = hub.voice_data(session_id, msg_id, *create_time, server_id.as_deref(), sender.as_deref())?;
@@ -1249,8 +1262,10 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             let data = hub.footprint()?;
             write_export("footprint", format.as_deref(), out, &data)
         }
-        ExportSubcommand::Media { out, session, r#type } => {
-            hub.export_media(session.as_deref(), out, r#type).await
+        ExportSubcommand::Media { out, session, r#type, start, end } => {
+            let start_ts = start.as_deref().map(parse_date_beijing).transpose().map_err(AppError::usage)?;
+            let end_ts = end.as_deref().map(|d| parse_date_beijing(d).map(|ts| ts + 86400)).transpose().map_err(AppError::usage)?;
+            hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts).await
         }
         ExportSubcommand::Messages { session_id, start, end, out, format, sender, display_name, excel_compact } => {
             let start_ts = start
