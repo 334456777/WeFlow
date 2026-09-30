@@ -122,7 +122,7 @@ impl ServiceHub {
     // ── contacts ──
 
     /// Desktop `contacts.json` cache (if present) topped up from WCDB for the given users.
-    fn contact_book(&self, wcdb: &weflow_native::wcdb::Wcdb, usernames: &[String]) -> HashMap<String, CachedContact> {
+    pub(super) fn contact_book(&self, wcdb: &weflow_native::wcdb::Wcdb, usernames: &[String]) -> HashMap<String, CachedContact> {
         let mut book: HashMap<String, CachedContact> = HashMap::new();
         if let Ok(raw) = std::fs::read_to_string(self.cache_base().join("contacts.json")) {
             if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) {

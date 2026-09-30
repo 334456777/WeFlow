@@ -1,5 +1,7 @@
+pub mod api;
 pub mod backup;
 pub mod biz;
+pub mod chat_msg;
 pub mod config;
 pub mod decrypt;
 pub mod error;

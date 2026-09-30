@@ -341,7 +341,7 @@ int32_t wcdb_get_group_stats(int64_t handle, const char* chatroomId, int32_t beg
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"sessions\":{\"room1@chatroom\":{\"senders\":{\"1\":30,\"2\":10,\"3\":5}}},\"idMap\":{\"1\":\"wxid_bob\",\"2\":\"wxid_me\",\"3\":\"wxid_quiet\"},\"hourly\":{\"9\":4,\"21\":7},\"typeCounts\":{\"1\":30,\"3\":5,\"47\":3,\"10000\":2,\"49\":4}}");
 }
 
 int32_t wcdb_get_my_footprint_stats(int64_t handle, const char* optionsJson, void** outJson) {

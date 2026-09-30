@@ -6,6 +6,7 @@ use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig}
 use crate::error::{AppError, AppResult};
 
 mod chat;
+mod group;
 mod sns;
 pub use chat::ResourceQuery;
 pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
@@ -20,6 +21,7 @@ pub struct ServiceHub {
     wxid_override: Option<String>,
     pub progress_enabled: bool,
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
+    group_state: std::sync::Arc<std::sync::Mutex<group::GroupState>>,
 }
 
 impl ServiceHub {
@@ -41,6 +43,7 @@ impl ServiceHub {
             wxid_override,
             progress_enabled: false,
             sns_state: Default::default(),
+            group_state: Default::default(),
         }
     }
 
@@ -1283,4 +1286,26 @@ mod export_tests {
         assert_eq!(extract_member_ids(&json!(["x", "y"])), vec!["x", "y"]);
         assert!(extract_member_ids(&Value::Null).is_empty());
     }
+}
+
+/// `normalizeTimestamp` of the WCDB wrapper: ms → s, clamped to i32.
+pub(crate) fn normalize_timestamp(input: i64) -> i32 {
+    if input <= 0 {
+        return 0;
+    }
+    let seconds = if input > 1_000_000_000_000 { input / 1000 } else { input };
+    seconds.clamp(0, i32::MAX as i64) as i32
+}
+
+/// `normalizeRange`: open end → now, end never before begin.
+pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
+    let b = normalize_timestamp(begin);
+    let mut e = normalize_timestamp(end);
+    if e <= 0 {
+        e = normalize_timestamp(chrono::Utc::now().timestamp_millis());
+    }
+    if b > 0 && e < b {
+        e = b;
+    }
+    (b, e)
 }
