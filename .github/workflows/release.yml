@@ -1,9 +1,11 @@
 name: Build and Release
 
+# PAUSED: automatic triggers disabled, manual runs only. To resume, restore:
+#   push:
+#     tags:
+#       - "v*"
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write

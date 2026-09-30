@@ -1,8 +1,10 @@
 name: Anti-Spam
 
+# PAUSED: automatic triggers disabled, manual runs only. To resume, restore:
+#   issues:
+#     types: [opened, edited]
 on:
-  issues:
-    types: [opened, edited]
+  workflow_dispatch:
 
 permissions:
   issues: write

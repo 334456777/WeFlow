@@ -1,8 +1,10 @@
 name: Issue Auto Assign
 
+# PAUSED: automatic triggers disabled, manual runs only. To resume, restore:
+#   issues:
+#     types: [opened, edited, reopened]
 on:
-  issues:
-    types: [opened, edited, reopened]
+  workflow_dispatch:
 
 permissions:
   issues: write

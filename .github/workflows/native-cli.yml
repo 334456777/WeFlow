@@ -1,24 +1,13 @@
 name: Native CLI
 
+# PAUSED: automatic triggers disabled, manual runs only. To resume, restore:
+#   push:
+#     branches: [main]
+#     paths: [Cargo.toml, Cargo.lock, "crates/**", "resources/**", "electron/assets/wasm/**", ".github/workflows/native-cli.yml"]
+#   pull_request:
+#     paths: [Cargo.toml, Cargo.lock, "crates/**", "resources/**", "electron/assets/wasm/**", ".github/workflows/native-cli.yml"]
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "crates/**"
-      - "resources/**"
-      - "electron/assets/wasm/**"
-      - ".github/workflows/native-cli.yml"
-  pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "crates/**"
-      - "resources/**"
-      - "electron/assets/wasm/**"
-      - ".github/workflows/native-cli.yml"
 
 jobs:
   build:
