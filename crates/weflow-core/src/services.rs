@@ -248,29 +248,7 @@ impl ServiceHub {
             .map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn sns_timeline(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        wcdb.sns_timeline(100, 0, None, None, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn sns_users(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        wcdb.sns_usernames()
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn sns_stats(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let profile = self.profile()?;
-        let export = wcdb
-            .sns_export_stats(self.wxid_override.as_deref().or(profile.wxid.as_deref()))
-            .map_err(|err| AppError::native(err.to_string()))?;
-        let annual = wcdb.sns_annual_stats(0, 0).unwrap_or(Value::Null);
-        Ok(json!({ "export": export, "annual": annual }))
-    }
-
-    pub fn sns_block_delete(&self, action: &str) -> AppResult<Value> {
+    pub(crate) fn sns_block_delete(&self, action: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let result = match action {
             "check" => wcdb.sns_block_delete_check(),
@@ -281,7 +259,7 @@ impl ServiceHub {
         result.map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn sns_delete(&self, post_id: &str) -> AppResult<Value> {
+    pub(crate) fn sns_delete(&self, post_id: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.sns_delete_post(post_id)
             .map_err(|err| AppError::native(err.to_string()))

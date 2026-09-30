@@ -562,10 +562,74 @@ struct SnsCommand {
 
 #[derive(Subcommand, Debug)]
 enum SnsSubcommand {
-    Timeline,
+    /// Moments timeline (newest first)
+    Timeline {
+        #[arg(long, default_value_t = 20)]
+        limit: i32,
+        #[arg(long, default_value_t = 0)]
+        offset: i32,
+        /// Only posts of these users (repeatable)
+        #[arg(long = "user")]
+        users: Vec<String>,
+        #[arg(long)]
+        keyword: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        start: i64,
+        #[arg(long, default_value_t = 0)]
+        end: i64,
+        /// Download and decrypt images / videos into the cache and inline them as data URLs
+        #[arg(long)]
+        with_media: bool,
+    },
+    /// Users that have posted
     Users,
-    Stats,
-    Export { out: PathBuf },
+    /// Export statistics (total posts / friends / mine); --fast reads the cached counts only
+    Stats {
+        #[arg(long)]
+        fast: bool,
+    },
+    /// Post counts per user, or the statistics of one user
+    PostCounts {
+        #[arg(long)]
+        user: Option<String>,
+        #[arg(long)]
+        prefer_cache: bool,
+    },
+    /// Export the timeline as json, html or arkmejson
+    Export {
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value = "json")]
+        format: String,
+        #[arg(long = "user")]
+        users: Vec<String>,
+        #[arg(long)]
+        keyword: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        start: i64,
+        #[arg(long, default_value_t = 0)]
+        end: i64,
+        /// Also save images / live photos / videos next to the export
+        #[arg(long)]
+        media: bool,
+    },
+    /// Fetch (and decrypt, with --key) a Moments image or video
+    Media {
+        url: String,
+        #[arg(long)]
+        key: Option<String>,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Download a Moments sticker (plain or AES-GCM encrypted)
+    DownloadEmoji {
+        url: String,
+        #[arg(long)]
+        encrypt_url: Option<String>,
+        #[arg(long)]
+        aes_key: Option<String>,
+    },
+    /// Download an arbitrary image URL and decrypt it if it is a .dat payload
     DownloadImage {
         url: String,
         #[arg(long)]
@@ -1300,24 +1364,44 @@ fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> 
 }
 
 async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
+    use weflow_core::services::{SnsExportOptions, SnsTimelineQuery};
     match &command.command {
-        SnsSubcommand::Timeline => hub.sns_timeline(),
-        SnsSubcommand::Users => hub.sns_users(),
-        SnsSubcommand::Stats => hub.sns_stats(),
-        SnsSubcommand::Export { out } => {
-            let data = hub.sns_timeline()?;
-            write_json_file(out, &data)?;
-            Ok(json!({ "out": out, "data": data }))
+        SnsSubcommand::Timeline { limit, offset, users, keyword, start, end, with_media } => {
+            let posts = hub.sns_timeline_query(&SnsTimelineQuery { limit: *limit, offset: *offset, usernames: users.clone(), keyword: keyword.clone(), start: *start, end: *end })?;
+            let posts = if *with_media { hub.sns_enrich_timeline_media(posts, "", true, true).await } else { posts };
+            Ok(json!({ "timeline": posts }))
         }
-        SnsSubcommand::DownloadImage { url, out } => {
-            hub.sns_download_image(url, out.as_deref()).await
-        }
-        SnsSubcommand::BlockDelete { action } => match action {
-            TriggerAction::Check => hub.sns_block_delete("check"),
-            TriggerAction::Install => hub.sns_block_delete("install"),
-            TriggerAction::Uninstall => hub.sns_block_delete("uninstall"),
+        SnsSubcommand::Users => Ok(json!({ "usernames": hub.sns_usernames_list()? })),
+        SnsSubcommand::Stats { fast } => hub.sns_export_stats(*fast),
+        SnsSubcommand::PostCounts { user, prefer_cache } => match user {
+            Some(u) => hub.sns_user_post_stats(u),
+            None => Ok(json!(hub.sns_user_post_counts(*prefer_cache)?)),
         },
-        SnsSubcommand::Delete { post_id } => hub.sns_delete(post_id),
+        SnsSubcommand::Export { out, format, users, keyword, start, end, media } => {
+            hub.sns_export_timeline(&SnsExportOptions { output_dir: out.clone(), format: format.clone(), usernames: users.clone(), keyword: keyword.clone(), export_media: *media, start: *start, end: *end, ..Default::default() }).await
+        }
+        SnsSubcommand::Media { url, key, out } => {
+            let fetched = hub.sns_fetch_media(url, key.as_deref()).await?;
+            let data = fetched.data.clone().unwrap_or_default();
+            match out {
+                Some(path) => {
+                    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                        std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(format!("failed to create {}: {e}", parent.display())))?;
+                    }
+                    std::fs::write(path, &data).map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
+                    Ok(json!({ "out": path.to_string_lossy(), "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path }))
+                }
+                None => Ok(json!({ "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path })),
+            }
+        }
+        SnsSubcommand::DownloadEmoji { url, encrypt_url, aes_key } => hub.sns_download_emoji(url, encrypt_url.as_deref(), aes_key.as_deref()).await,
+        SnsSubcommand::DownloadImage { url, out } => hub.sns_download_image(url, out.as_deref()).await,
+        SnsSubcommand::BlockDelete { action } => match action {
+            TriggerAction::Check => hub.sns_block_delete_status(),
+            TriggerAction::Install => hub.sns_block_delete_install(),
+            TriggerAction::Uninstall => hub.sns_block_delete_uninstall(),
+        },
+        SnsSubcommand::Delete { post_id } => hub.sns_delete_post(post_id),
     }
 }
 
