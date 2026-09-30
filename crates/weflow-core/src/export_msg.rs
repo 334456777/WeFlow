@@ -612,6 +612,14 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 if let Some(v) = &msg.emoji_cdn_url { o.insert("emojiCdnUrl".into(), json!(v)); }
                 if let Some(v) = &msg.emoji_caption { o.insert("emojiCaption".into(), json!(v)); }
             }
+            // Additive (not in the desktop export): media identifiers so exports can be matched with files on disk.
+            if msg.local_type == 3 {
+                if let Some(v) = &msg.image_md5 { o.insert("imageMd5".into(), json!(v)); }
+                if let Some(v) = &msg.image_dat_name { o.insert("imageDatName".into(), json!(v)); }
+            }
+            if msg.local_type == 43 {
+                if let Some(v) = &msg.video_md5 { o.insert("videoMd5".into(), json!(v)); }
+            }
             if let Some(id) = msg.platform_message_id() { o.insert("platformMessageId".into(), json!(id)); }
             if let Some(r) = extract_reply_to_message_id(&msg.content) { o.insert("replyToMessageId".into(), json!(r)); }
             if let Some(meta) = extract_arkme_app_message_meta(&msg.content, msg.local_type) {

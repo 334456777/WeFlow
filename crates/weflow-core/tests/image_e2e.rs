@@ -146,3 +146,23 @@ fn reports_missing_files_keys_and_bad_keys() {
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(root2);
 }
+
+#[tokio::test]
+async fn export_media_copies_images_of_a_conversation() {
+    let (hub, root, _account, img_dir) = setup("img-export");
+    let md5 = "aabbccddeeff00112233445566778899";
+    let plain = jpeg(3000, 7);
+    std::fs::write(img_dir.join(format!("{md5}_h.dat")), encrypt_v2(&plain, KEY.as_bytes().try_into().unwrap(), 0x5a)).unwrap();
+
+    let out = root.join("media-out");
+    let r = hub.export_media(Some("wxid_bob"), &out, "image").await.unwrap();
+    assert_eq!(r["exported"], 1, "{r}");
+    assert_eq!(r["found"], 2, "two image messages, one has no file on disk");
+    assert_eq!(r["missing"], 1);
+    let path = r["files"][0]["path"].as_str().unwrap();
+    assert!(path.contains("wxid_bob") && path.ends_with(&format!("{md5}.jpg")), "{path}");
+    assert_eq!(std::fs::read(path).unwrap(), plain);
+
+    assert!(hub.export_media(Some("wxid_bob"), &out, "bogus").await.is_err());
+    let _ = std::fs::remove_dir_all(root);
+}

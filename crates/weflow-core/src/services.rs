@@ -686,58 +686,6 @@ impl ServiceHub {
 
     // ── Media export ─────────────────────────────────────────────────────────
 
-    pub fn export_media_images(
-        &self,
-        session_filter: Option<&str>,
-        out: &Path,
-        media_type: &str,
-    ) -> AppResult<Value> {
-        let account_dir = self.account_dir_only()?;
-        let profile = self.profile()?;
-        let xor_key = profile.image_xor_key.map(|k| k as u8).unwrap_or(0);
-        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(crate::decrypt::parse_aes_key);
-
-        std::fs::create_dir_all(out).map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
-
-        let mut results = Vec::new();
-        let mut total_files = 0usize;
-
-        let include_images = media_type == "image" || media_type == "all";
-        let include_voice = media_type == "voice" || media_type == "all";
-
-        if include_images {
-            let entries = crate::media::scan_image_files(&account_dir);
-            let hub = self.clone();
-            let exported = crate::media::export_images(
-                &entries,
-                xor_key,
-                aes_key_bytes.as_ref(),
-                out,
-                session_filter,
-                &|current, total| hub.emit_progress("images", "exporting images", current, total),
-            )
-            .map_err(|e| AppError::runtime(e.to_string()))?;
-            total_files += exported.len();
-            results.extend(exported);
-        }
-
-        if include_voice {
-            let entries = crate::media::scan_voice_files(&account_dir);
-            let hub = self.clone();
-            let exported = crate::media::export_voices(
-                &entries,
-                out,
-                session_filter,
-                &|current, total| hub.emit_progress("voice", "exporting voice files", current, total),
-            )
-            .map_err(|e| AppError::runtime(e.to_string()))?;
-            total_files += exported.len();
-            results.extend(exported);
-        }
-
-        Ok(json!({ "exported": total_files, "out": out, "files": results }))
-    }
-
     pub async fn emoji_download(&self, session_id: &str, out: &Path) -> AppResult<Value> {
         let messages = self.messages(session_id, 500, 0)?;
         let metas = crate::media::extract_emoji_urls(&messages);

@@ -1093,3 +1093,50 @@ impl ServiceHub {
         Ok(out)
     }
 }
+
+impl ServiceHub {
+    /// `export media`: walks the messages of one conversation (or all of them) and copies each
+    /// image / voice (as WAV) / video / sticker into `<out>/<session>/<kind>s/`, using the same
+    /// per-message pipeline as the HTTP API (`media=1`). `media_type`: image, voice, video, emoji, all.
+    pub async fn export_media(&self, session: Option<&str>, out: &Path, media_type: &str) -> AppResult<Value> {
+        let wanted = |k: &str| media_type == "all" || media_type == k;
+        if !["image", "voice", "video", "emoji", "all"].contains(&media_type) {
+            return Err(AppError::usage(format!("unsupported media type: {media_type}; use image, voice, video, emoji or all")));
+        }
+        std::fs::create_dir_all(out).map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
+        let wcdb = self.open_wcdb()?;
+        let sessions: Vec<String> = match session {
+            Some(s) => vec![s.to_string()],
+            None => self.sessions_with(&wcdb)?.iter().filter_map(|s| s["username"].as_str().map(str::to_string)).collect(),
+        };
+        let opts = ApiMediaOptions { enabled: true, images: wanted("image"), voices: wanted("voice"), videos: wanted("video"), emojis: wanted("emoji") };
+        let types: Vec<(i64, bool)> = vec![(3, opts.images), (34, opts.voices), (43, opts.videos), (47, opts.emojis)];
+        let mut files: Vec<Value> = Vec::new();
+        let (mut found, mut missing) = (0usize, 0usize);
+        let my = self.wmy();
+        for (i, sid) in sessions.iter().enumerate() {
+            let safe = api::sanitize_file_name(sid, "session");
+            let session_dir = out.join(&safe);
+            for (code, enabled) in &types {
+                if !enabled {
+                    continue;
+                }
+                let rows = match wcdb.messages_by_type(sid, *code, false, 0, 0) {
+                    Ok(v) => v.as_array().cloned().unwrap_or_default(),
+                    Err(_) => continue,
+                };
+                let msgs = chat_msg::map_rows(&rows, &my);
+                let mut seen: HashSet<(i64, i64)> = HashSet::new();
+                for msg in msgs.iter().filter(|m| m.local_type == *code && seen.insert((m.local_id, m.create_time))) {
+                    found += 1;
+                    match self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts).await {
+                        Some(m) => files.push(json!({ "session": sid, "kind": m.kind, "fileName": m.file_name, "path": m.full_path, "localId": msg.local_id, "createTime": msg.create_time })),
+                        None => missing += 1,
+                    }
+                }
+            }
+            self.emit_progress("media", "exporting media", i + 1, sessions.len());
+        }
+        Ok(json!({ "exported": files.len(), "found": found, "missing": missing, "sessions": sessions.len(), "out": out, "files": files }))
+    }
+}

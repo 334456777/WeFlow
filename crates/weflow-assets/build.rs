@@ -91,8 +91,9 @@ fn collect_assets(repo_root: &Path, target: &str, out: &mut Vec<(String, PathBuf
 }
 
 fn include_resource(logical: &str, target: &str) -> bool {
+    // The annual-report fonts (27 MB) are only used by the desktop renderer.
     if logical.starts_with("resources/fonts/") {
-        return true;
+        return false;
     }
     if logical == "resources/image/README.md" {
         return true;

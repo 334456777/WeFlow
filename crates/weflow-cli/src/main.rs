@@ -12,7 +12,7 @@ use weflow_core::services::ServiceHub;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser, Debug)]
-#[command(name = "weflow", version, about = "Native CLI for WeFlow")]
+#[command(name = "weflow", version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEFLOW_BUILD_INFO"), ")"), about = "Native CLI for WeFlow")]
 struct Cli {
     /// Path to the config file
     #[arg(long, global = true)]
@@ -380,7 +380,7 @@ enum ExportSubcommand {
         #[arg(long)]
         out: PathBuf,
     },
-    /// Export decrypted images and/or voice files found on disk
+    /// Export the images, voice (WAV), videos and stickers of messages
     Media {
         /// Output directory
         #[arg(long)]
@@ -388,7 +388,7 @@ enum ExportSubcommand {
         /// Only media of this conversation id (default: all conversations)
         #[arg(long)]
         session: Option<String>,
-        /// What to export: image, voice or all
+        /// What to export: image, voice, video, emoji or all
         #[arg(long, default_value = "all")]
         r#type: String,
     },
@@ -972,7 +972,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         Commands::Db(command) => handle_db(command, &hub),
         Commands::Chat(command) => handle_chat(command, &hub).await,
         Commands::Key(command) => handle_key(command, &hub),
-        Commands::Export(command) => handle_export(command, &hub),
+        Commands::Export(command) => handle_export(command, &hub).await,
         Commands::Analytics(command) => handle_analytics(command, &hub),
         Commands::Group(command) => handle_group(command, &hub),
         Commands::Report(command) => handle_report(command, &hub),
@@ -1098,13 +1098,11 @@ fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
 async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
         ChatSubcommand::Sessions { limit } => {
-            let mut sessions = hub.sessions()?;
+            let mut sessions = hub.chat_sessions_list()?;
             if *limit > 0 {
-                if let Some(arr) = sessions.as_array_mut() {
-                    arr.truncate(*limit);
-                }
+                sessions.truncate(*limit);
             }
-            Ok(sessions)
+            Ok(Value::Array(sessions))
         }
         ChatSubcommand::Messages(args) => hub.messages(&args.session_id, args.limit, args.offset),
         ChatSubcommand::Latest { session_id, limit } => hub.latest(session_id, *limit),
@@ -1187,7 +1185,7 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         ChatSubcommand::TransferNames { chatroom_id, payer, receiver } => hub.chat_transfer_names(chatroom_id, payer, receiver),
         ChatSubcommand::Voice { session_id, out } => {
             let out_path = out.as_deref().unwrap_or(Path::new("."));
-            hub.export_media_images(Some(session_id), out_path, "voice")
+            hub.export_media(Some(session_id), out_path, "voice").await
         }
         ChatSubcommand::VoiceData { session_id, msg_id, create_time, server_id, sender, out } => {
             let wav = hub.voice_data(session_id, msg_id, *create_time, server_id.as_deref(), sender.as_deref())?;
@@ -1230,7 +1228,7 @@ fn handle_key(command: &KeyCommand, hub: &ServiceHub) -> AppResult<Value> {
     }
 }
 
-fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> {
+async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
         ExportSubcommand::Sessions {
             sessions,
@@ -1252,7 +1250,7 @@ fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> 
             write_export("footprint", format.as_deref(), out, &data)
         }
         ExportSubcommand::Media { out, session, r#type } => {
-            hub.export_media_images(session.as_deref(), out, r#type)
+            hub.export_media(session.as_deref(), out, r#type).await
         }
         ExportSubcommand::Messages { session_id, start, end, out, format, sender, display_name, excel_compact } => {
             let start_ts = start
