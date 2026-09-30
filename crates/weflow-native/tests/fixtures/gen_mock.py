@@ -30,6 +30,9 @@ CANNED = {
     'wcdb_get_message_by_id': '{"local_id":"7","server_id":"9007199254740993","create_time":"1700000050","local_type":"1","message_content":"wxid_bob:found by id","sender_username":"wxid_bob","is_send":"0"}',
     'wcdb_get_message_by_svrid': '{"local_id":"8","server_id":"777","create_time":"1700000060","local_type":"1","message_content":"found by svrid","is_send":"1"}',
     'wcdb_get_display_names': '{"wxid_bob":"Bobby","wxid_me":"Me Nick"}',
+    'wcdb_get_sns_timeline': '[{"id":"p1","tid":"11","username":"wxid_bob","nickname":"","createTime":1700000500,"contentDesc":"hello moments","type":1,"rawXml":"<TimelineObject><location city=\\"Shanghai\\" poiName=\\"Bund\\" latitude=\\"31.2\\" longitude=\\"121.5\\"/></TimelineObject>","media":[{"url":"http://mmsns.qpic.cn/a/150","thumb":"http://mmsns.qpic.cn/a/150","token":"TK","md5":"abc"}],"likes":["Carol"],"comments":[{"id":"1","nickname":"Carol","content":"nice","refCommentId":"","refNickname":""},{"id":"2","nickname":"Bob","content":"thx","refCommentId":"1"}]},{"id":"p2","username":"wxid_carol","nickname":"Carol","createTime":1700000400,"contentDesc":"video","type":15,"rawXml":"<x><enc key=\\"2105122989\\"/></x>","media":[{"url":"http://snsvideodownload.qq.com/v?x=1","thumb":"http://vweixinthumb.qpic.cn/t","token":"T2","key":"1"}],"likes":[],"comments":[]}]',
+    'wcdb_get_sns_usernames': '["wxid_bob","wxid_carol"]',
+    'wcdb_get_sns_export_stats': '{"total_posts":2,"total_friends":2,"my_posts":0}',
     'wcdb_get_avatar_urls': '{"wxid_bob":"https://example.com/bob.png"}',
 }
 

@@ -651,7 +651,7 @@ int32_t wcdb_get_sns_timeline(int64_t handle, int32_t limit, int32_t offset, con
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)endTime);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "[{\"id\":\"p1\",\"tid\":\"11\",\"username\":\"wxid_bob\",\"nickname\":\"\",\"createTime\":1700000500,\"contentDesc\":\"hello moments\",\"type\":1,\"rawXml\":\"<TimelineObject><location city=\\\"Shanghai\\\" poiName=\\\"Bund\\\" latitude=\\\"31.2\\\" longitude=\\\"121.5\\\"/></TimelineObject>\",\"media\":[{\"url\":\"http://mmsns.qpic.cn/a/150\",\"thumb\":\"http://mmsns.qpic.cn/a/150\",\"token\":\"TK\",\"md5\":\"abc\"}],\"likes\":[\"Carol\"],\"comments\":[{\"id\":\"1\",\"nickname\":\"Carol\",\"content\":\"nice\",\"refCommentId\":\"\",\"refNickname\":\"\"},{\"id\":\"2\",\"nickname\":\"Bob\",\"content\":\"thx\",\"refCommentId\":\"1\"}]},{\"id\":\"p2\",\"username\":\"wxid_carol\",\"nickname\":\"Carol\",\"createTime\":1700000400,\"contentDesc\":\"video\",\"type\":15,\"rawXml\":\"<x><enc key=\\\"2105122989\\\"/></x>\",\"media\":[{\"url\":\"http://snsvideodownload.qq.com/v?x=1\",\"thumb\":\"http://vweixinthumb.qpic.cn/t\",\"token\":\"T2\",\"key\":\"1\"}],\"likes\":[],\"comments\":[]}]");
 }
 
 int32_t wcdb_get_sns_annual_stats(int64_t handle, int32_t begin, int32_t end, void** outJson) {
@@ -671,7 +671,7 @@ int32_t wcdb_get_sns_usernames(int64_t handle, void** outJson) {
     n += snprintf(buf + n, sizeof(buf) - n, "%lld", (long long)handle);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "[\"wxid_bob\",\"wxid_carol\"]");
 }
 
 int32_t wcdb_get_sns_export_stats(int64_t handle, const char* myWxid, void** outJson) {
@@ -681,7 +681,7 @@ int32_t wcdb_get_sns_export_stats(int64_t handle, const char* myWxid, void** out
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, myWxid);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"total_posts\":2,\"total_friends\":2,\"my_posts\":0}");
 }
 
 int32_t wcdb_get_message_table_columns(int64_t handle, const char* dbPath, const char* tableName, void** outJson) {

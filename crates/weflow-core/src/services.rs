@@ -6,7 +6,9 @@ use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig}
 use crate::error::{AppError, AppResult};
 
 mod chat;
+mod sns;
 pub use chat::ResourceQuery;
+pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
 
 #[derive(Clone)]
 pub struct ServiceHub {
@@ -17,6 +19,7 @@ pub struct ServiceHub {
     decrypt_key_override: Option<String>,
     wxid_override: Option<String>,
     pub progress_enabled: bool,
+    sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
 }
 
 impl ServiceHub {
@@ -37,6 +40,7 @@ impl ServiceHub {
             decrypt_key_override,
             wxid_override,
             progress_enabled: false,
+            sns_state: Default::default(),
         }
     }
 
@@ -549,7 +553,9 @@ impl ServiceHub {
         Err(AppError::native("image key not available; configure image_xor_key or use wx_key native library"))
     }
 
+    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     pub fn key_scan_image(&self, user_dir: &str) -> AppResult<Value> {
+        #[cfg(target_os = "macos")]
         let expanded = crate::config::expand_home(user_dir);
         #[cfg(target_os = "macos")]
         {

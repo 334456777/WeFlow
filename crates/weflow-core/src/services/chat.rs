@@ -79,7 +79,7 @@ pub struct ResourceQuery {
 }
 
 impl ServiceHub {
-    fn my_wxid_cleaned(&self) -> String {
+    pub(super) fn my_wxid_cleaned(&self) -> String {
         let raw = self.wxid_override.clone().or_else(|| self.profile().ok().and_then(|p| p.wxid.clone())).unwrap_or_default();
         clean_account_dir_name(&raw)
     }
