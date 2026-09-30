@@ -42,7 +42,6 @@ summary) and the Weibo context client.
 - The AI endpoint is `<base>/chat/completions`; the first CLI version inserted an extra `/v1`.
 - TypeScript's ISAAC-64 fallback has a precision bug (`Number(x>>3n)&255`); the Rust port follows the vendor WASM, which is the
   authoritative implementation.
-- The desktop JSON was audited with the WASM for the Moments video/image keystream (test vectors in `isaac64.rs`).
 
 ## Channels that are still missing or partial
 
