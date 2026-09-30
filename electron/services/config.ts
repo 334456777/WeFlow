@@ -48,6 +48,8 @@ interface ConfigSchema {
   theme: 'light' | 'dark' | 'system'
   themeId: string
   language: string
+  // UI language preference: 'auto' follows the system locale (default), or 'en' / 'zh-CN'
+  uiLanguage?: 'auto' | 'en' | 'zh-CN'
   logEnabled: boolean
   launchAtStartup?: boolean
   silentStartup?: boolean

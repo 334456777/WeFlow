@@ -36,6 +36,7 @@ import { normalizeWeiboCookieInput, weiboService } from './services/social/weibo
 import { bizService } from './services/bizService'
 import { backupService } from './services/backupService'
 import { imageDownloadService } from './services/imageDownloadService'
+import { mt, setLanguagePreferenceProvider, refreshLocale } from './i18n'
 
 // 配置自动更新
 autoUpdater.autoDownload = false
@@ -89,7 +90,7 @@ const finalizeExportTaskControlResult = async (taskId: string, result: any) => {
       return {
         ...result,
         success: false,
-        error: `导出已停止，但清理已导出文件失败：${cleanup.error || '未知错误'}`
+        error: mt('导出已停止，但清理已导出文件失败：{v0}', { v0: cleanup.error || '未知错误' })
       }
     }
     return {
@@ -232,10 +233,10 @@ const AUTO_UPDATE_ENABLED =
 
 const getLaunchAtStartupUnsupportedReason = (): string | null => {
   if (process.platform !== 'win32' && process.platform !== 'darwin') {
-    return '当前平台暂不支持开机自启动'
+    return mt('当前平台暂不支持开机自启动')
   }
   if (!app.isPackaged) {
-    return '仅安装后的 Windows / macOS 版本支持开机自启动'
+    return mt('仅安装后的 Windows / macOS 版本支持开机自启动')
   }
   return null
 }
@@ -270,7 +271,7 @@ const setSystemLaunchAtStartup = (enabled: boolean): { success: boolean; enabled
       return {
         success: false,
         enabled: effectiveEnabled,
-        error: '系统未接受该开机自启动设置'
+        error: mt('系统未接受该开机自启动设置')
       }
     }
     return { success: true, enabled: effectiveEnabled }
@@ -278,7 +279,7 @@ const setSystemLaunchAtStartup = (enabled: boolean): { success: boolean; enabled
     return {
       success: false,
       enabled: getSystemLaunchAtStartup(),
-      error: `设置开机自启动失败: ${String((error as Error)?.message || error)}`
+      error: mt('设置开机自启动失败: {v0}', { v0: String((error as Error)?.message || error) })
     }
   }
 }
@@ -570,7 +571,7 @@ const normalizeReleaseNotes = (rawReleaseNotes: unknown): string => {
 const getDialogReleaseNotes = (rawReleaseNotes: unknown): string => {
   const track = getEffectiveUpdateTrack()
   if (track !== 'stable') {
-    return '修复了一些已知问题'
+    return mt('修复了一些已知问题')
   }
   return normalizeReleaseNotes(rawReleaseNotes)
 }
@@ -1641,17 +1642,17 @@ const collectLegacySnsCacheMigrationPlan = async (): Promise<SnsCacheMigrationPl
 
   const candidates = [
     {
-      label: '朋友圈媒体缓存',
+      label: mt('朋友圈媒体缓存'),
       sourceDir: join(legacyBaseDir, 'sns_cache'),
       targetDir: join(currentBaseDir, 'sns_cache')
     },
     {
-      label: '朋友圈表情缓存（合并到 Emojis）',
+      label: mt('朋友圈表情缓存（合并到 Emojis）'),
       sourceDir: join(legacyBaseDir, 'sns_emoji_cache'),
       targetDir: join(currentBaseDir, 'Emojis')
     },
     {
-      label: '朋友圈表情缓存（当前目录残留）',
+      label: mt('朋友圈表情缓存（当前目录残留）'),
       sourceDir: join(currentBaseDir, 'sns_emoji_cache'),
       targetDir: join(currentBaseDir, 'Emojis')
     }
@@ -1703,10 +1704,10 @@ const runLegacySnsCacheMigration = async (
     })
   }
 
-  emitProgress({ message: '准备迁移缓存...' })
+  emitProgress({ message: mt('准备迁移缓存...') })
 
   for (const item of plan.candidates) {
-    emitProgress({ currentItemLabel: item.label, message: `正在迁移：${item.label}` })
+    emitProgress({ currentItemLabel: item.label, message: mt('正在迁移：{label}', { label: item.label }) })
     const result = await migrateDirectoryPreserveNewFiles(item.sourceDir, item.targetDir, ({ copied: copiedThisFile }) => {
       processed += 1
       if (copiedThisFile) copied += 1
@@ -1723,7 +1724,7 @@ const runLegacySnsCacheMigration = async (
     }
   }
 
-  emitProgress({ phase: 'cleanup', message: '正在清理旧目录...' })
+  emitProgress({ phase: 'cleanup', message: mt('正在清理旧目录...') })
   for (const item of plan.candidates) {
     await rm(item.sourceDir, { recursive: true, force: true })
   }
@@ -1747,7 +1748,7 @@ const runLegacySnsCacheMigration = async (
     copied,
     skipped,
     remaining: Math.max(0, total - processed),
-    message: '迁移完成'
+    message: mt('迁移完成')
   })
 
   return { copied, skipped, totalFiles: total }
@@ -1769,6 +1770,9 @@ function registerIpcHandlers() {
       result = applyLaunchAtStartupPreference(value === true)
     } else {
       result = configService?.set(key as any, value)
+    }
+    if (key === 'uiLanguage') {
+      refreshLocale()
     }
     if (key === 'updateChannel') {
       applyAutoUpdateChannel('settings')
@@ -1958,7 +1962,7 @@ function registerIpcHandlers() {
   }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath) {
-      return { success: false, error: '导出路径不能为空' }
+      return { success: false, error: mt('导出路径不能为空') }
     }
     return exportCardDiagnosticsService.exportCombinedLogs(filePath, payload?.frontendLogs || [])
   })
@@ -2005,12 +2009,12 @@ function registerIpcHandlers() {
 
   ipcMain.handle('app:downloadAndInstall', async (event) => {
     if (!AUTO_UPDATE_ENABLED) {
-      throw new Error('自动更新已暂时禁用')
+      throw new Error(mt('自动更新已暂时禁用'))
     }
 
     // 防止重复下载（Issue #294 修复）
     if (isDownloadInProgress) {
-      throw new Error('更新正在下载中，请稍候')
+      throw new Error(mt('更新正在下载中，请稍候'))
     }
 
     isDownloadInProgress = true
@@ -2070,10 +2074,10 @@ function registerIpcHandlers() {
           : (typeof error === 'string' ? error : JSON.stringify(error))
 
       if (errorCode === 'ERR_UPDATER_ZIP_FILE_NOT_FOUND' || /ZIP file not provided/i.test(rawErrorMessage)) {
-        throw new Error('当前发布版本缺少 macOS 自动更新所需的 ZIP 包，请联系开发者重新发布该版本')
+        throw new Error(mt('当前发布版本缺少 macOS 自动更新所需的 ZIP 包，请联系开发者重新发布该版本'))
       }
 
-      throw new Error(rawErrorMessage || '下载更新失败，请稍后重试')
+      throw new Error(rawErrorMessage || mt('下载更新失败，请稍后重试'))
     }
   })
 
@@ -2165,7 +2169,7 @@ function registerIpcHandlers() {
     const now = Date.now()
     chatHistoryPayloadStore.set(payloadId, {
       sessionId: String(payload?.sessionId || '').trim(),
-      title: String(payload?.title || '').trim() || '聊天记录',
+      title: String(payload?.title || '').trim() || mt('聊天记录'),
       recordList: Array.isArray(payload?.recordList) ? payload.recordList : [],
       createdAt: now,
       lastAccessedAt: now
@@ -2179,7 +2183,7 @@ function registerIpcHandlers() {
     pruneChatHistoryPayloadStore()
     const normalizedPayloadId = String(payloadId || '').trim()
     const payload = chatHistoryPayloadStore.get(normalizedPayloadId)
-    if (!payload) return { success: false, error: '聊天记录载荷不存在或已失效' }
+    if (!payload) return { success: false, error: mt('聊天记录载荷不存在或已失效') }
     const nextPayload: ChatHistoryPayloadEntry = {
       ...payload,
       lastAccessedAt: Date.now()
@@ -2291,7 +2295,7 @@ function registerIpcHandlers() {
     const cfg = configService || new ConfigService()
     const accountDir = cfg.getAccountDir(dbPath, wxid)
     if (!accountDir) {
-      return { success: false, error: '未找到账号目录' }
+      return { success: false, error: mt('未找到账号目录') }
     }
     return wcdbService.testConnection(accountDir, hexKey)
   })
@@ -2432,17 +2436,17 @@ function registerIpcHandlers() {
 
   ipcMain.handle('chat:clearCurrentAccountData', async (_, options?: { clearCache?: boolean; clearExports?: boolean }) => {
     const cfg = configService
-    if (!cfg) return { success: false, error: '配置服务未初始化' }
+    if (!cfg) return { success: false, error: mt('配置服务未初始化') }
 
     const clearCache = options?.clearCache === true
     const clearExports = options?.clearExports === true
     if (!clearCache && !clearExports) {
-      return { success: false, error: '请至少选择一项清理范围' }
+      return { success: false, error: mt('请至少选择一项清理范围') }
     }
 
     const rawWxid = String(cfg.getMyWxidCleaned() || '').trim()
     if (!rawWxid) {
-      return { success: false, error: '当前账号未登录或未识别，无法清理' }
+      return { success: false, error: mt('当前账号未登录或未识别，无法清理') }
     }
     const normalizedWxid = normalizeAccountId(rawWxid)
     const wxidCandidates = Array.from(new Set([rawWxid, normalizedWxid].filter(Boolean)))
@@ -2454,7 +2458,7 @@ function registerIpcHandlers() {
       wcdbService.close()
       chatService.close()
     } catch (error) {
-      warnings.push(`关闭数据库连接失败: ${String(error)}`)
+      warnings.push(mt('关闭数据库连接失败: {v0}', { v0: String(error) }))
     }
 
     if (clearCache) {
@@ -2557,7 +2561,7 @@ function registerIpcHandlers() {
           }
         }
       } catch (error) {
-        warnings.push(`清理自动化导出任务失败: ${String(error)}`)
+        warnings.push(mt('清理自动化导出任务失败: {v0}', { v0: String(error) }))
       }
     }
 
@@ -2582,7 +2586,7 @@ function registerIpcHandlers() {
         cfg.set('onboardingDone' as any, false)
         cfg.set('lastSession' as any, '')
       } catch (error) {
-        warnings.push(`清理账号配置失败: ${String(error)}`)
+        warnings.push(mt('清理账号配置失败: {v0}', { v0: String(error) }))
       }
     }
 
@@ -2735,7 +2739,7 @@ function registerIpcHandlers() {
       const result = await snsService.downloadImage(url, key)
 
       if (!result.success || !result.data) {
-        return { success: false, error: result.error || '下载图片失败' }
+        return { success: false, error: result.error || mt('下载图片失败') }
       }
 
       const { dialog } = await import('electron')
@@ -2753,7 +2757,7 @@ function registerIpcHandlers() {
       })
 
       if (canceled || !filePath) {
-        return { success: false, error: '用户已取消' }
+        return { success: false, error: mt('用户已取消') }
       }
 
       const fs = await import('fs/promises')
@@ -2792,7 +2796,7 @@ function registerIpcHandlers() {
     const { dialog } = await import('electron')
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
-      title: '选择导出目录'
+      title: mt('选择导出目录')
     })
     if (result.canceled || !result.filePaths?.[0]) {
       return { canceled: true }
@@ -2848,7 +2852,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('sns:startCacheMigration', async (event) => {
     if (snsCacheMigrationInProgress) {
-      return { success: false, error: '迁移任务正在进行中' }
+      return { success: false, error: mt('迁移任务正在进行中') }
     }
 
     const sender = event.sender
@@ -2879,9 +2883,9 @@ function registerIpcHandlers() {
           copied: 0,
           skipped: 0,
           remaining: 0,
-          message: '无需迁移'
+          message: mt('无需迁移')
         })
-        return { success: true, copied: 0, skipped: 0, totalFiles: 0, message: '无需迁移' }
+        return { success: true, copied: 0, skipped: 0, totalFiles: 0, message: mt('无需迁移') }
       }
 
       snsCacheMigrationInProgress = true
@@ -3062,25 +3066,25 @@ function registerIpcHandlers() {
 
   // 密码解锁（验证 + 解密密钥到内存）
   ipcMain.handle('auth:unlock', async (_event, password: string) => {
-    if (!configService) return { success: false, error: '配置服务未初始化' }
+    if (!configService) return { success: false, error: mt('配置服务未初始化') }
     return configService.unlock(password)
   })
 
   // 开启应用锁
   ipcMain.handle('auth:enableLock', async (_event, password: string) => {
-    if (!configService) return { success: false, error: '配置服务未初始化' }
+    if (!configService) return { success: false, error: mt('配置服务未初始化') }
     return configService.enableLock(password)
   })
 
   // 关闭应用锁
   ipcMain.handle('auth:disableLock', async (_event, password: string) => {
-    if (!configService) return { success: false, error: '配置服务未初始化' }
+    if (!configService) return { success: false, error: mt('配置服务未初始化') }
     return configService.disableLock(password)
   })
 
   // 修改密码
   ipcMain.handle('auth:changePassword', async (_event, oldPassword: string, newPassword: string) => {
-    if (!configService) return { success: false, error: '配置服务未初始化' }
+    if (!configService) return { success: false, error: mt('配置服务未初始化') }
     return configService.changePassword(oldPassword, newPassword)
   })
 
@@ -3110,7 +3114,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('export:pauseTask', async (_, taskId: string) => {
     const normalizedTaskId = normalizeExportTaskId(taskId)
-    if (!normalizedTaskId) return { success: false, error: '缺少导出任务 ID' }
+    if (!normalizedTaskId) return { success: false, error: mt('缺少导出任务 ID') }
     const success = exportTaskControlService.pauseTask(normalizedTaskId)
     if (success) postExportWorkerControl(normalizedTaskId, 'pause')
     return { success }
@@ -3118,7 +3122,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('export:resumeTask', async (_, taskId: string) => {
     const normalizedTaskId = normalizeExportTaskId(taskId)
-    if (!normalizedTaskId) return { success: false, error: '缺少导出任务 ID' }
+    if (!normalizedTaskId) return { success: false, error: mt('缺少导出任务 ID') }
     const success = exportTaskControlService.resumeTask(normalizedTaskId)
     if (success) postExportWorkerControl(normalizedTaskId, 'resume')
     return { success }
@@ -3126,14 +3130,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('export:cancelTask', async (_, taskId: string) => {
     const normalizedTaskId = normalizeExportTaskId(taskId)
-    if (!normalizedTaskId) return { success: false, error: '缺少导出任务 ID' }
+    if (!normalizedTaskId) return { success: false, error: mt('缺少导出任务 ID') }
     const success = exportTaskControlService.cancelTask(normalizedTaskId)
     if (success) postExportWorkerControl(normalizedTaskId, 'cancel')
     if (success && !activeExportTasks.has(normalizedTaskId)) {
       const cleanup = await exportTaskControlService.cleanupTask(normalizedTaskId)
       return cleanup.success
         ? { success: true, cleanup }
-        : { success: false, error: cleanup.error || '清理已导出文件失败' }
+        : { success: false, error: cleanup.error || mt('清理已导出文件失败') }
     }
     return { success }
   })
@@ -3274,7 +3278,7 @@ function registerIpcHandlers() {
             return
           }
           if (msg && msg.type === 'export:error') {
-            finalizeReject(new Error(String(msg.error || '导出 Worker 执行失败')))
+            finalizeReject(new Error(String(msg.error || mt('导出 Worker 执行失败'))))
           }
         })
 
@@ -3285,9 +3289,9 @@ function registerIpcHandlers() {
         worker.on('exit', (code) => {
           if (settled) return
           if (code === 0) {
-            finalizeResolve({ success: false, successCount: 0, failCount: 0, error: '导出 Worker 未返回结果' })
+            finalizeResolve({ success: false, successCount: 0, failCount: 0, error: mt('导出 Worker 未返回结果') })
           } else {
-            finalizeReject(new Error(`导出 Worker 异常退出: ${code}`))
+            finalizeReject(new Error(mt('导出 Worker 异常退出: {code}', { code: code })))
           }
         })
       })
@@ -3310,7 +3314,7 @@ function registerIpcHandlers() {
         failCount: normalizedSessionIds.length,
         failedSessionIds: normalizedSessionIds,
         failedSessionErrors,
-        error: `导出 Worker 执行失败: ${errorMessage}`
+        error: mt('导出 Worker 执行失败: {errorMessage}', { errorMessage: errorMessage })
       }
       return await finalizeExportTaskControlResult(taskId, result)
     } finally {
@@ -3359,7 +3363,7 @@ function registerIpcHandlers() {
         const fail = (error: unknown) => {
           const errorMessage = error instanceof Error ? error.message : String(error)
           console.error(`[export-worker-single] ${errorMessage}`)
-          finalize({ success: false, error: `导出 Worker 执行失败: ${errorMessage}` })
+          finalize({ success: false, error: mt('导出 Worker 执行失败: {errorMessage}', { errorMessage: errorMessage }) })
         }
 
         worker.on('message', (msg: any) => {
@@ -3374,23 +3378,23 @@ function registerIpcHandlers() {
             return
           }
           if (msg && msg.type === 'export:error') {
-            fail(String(msg.error || '导出 Worker 执行失败'))
+            fail(String(msg.error || mt('导出 Worker 执行失败')))
           }
         })
         worker.on('error', fail)
         worker.on('exit', (code) => {
           if (settled) return
           if (code === 0) {
-            finalize({ success: false, error: '导出 Worker 未返回结果' })
+            finalize({ success: false, error: mt('导出 Worker 未返回结果') })
           } else {
-            fail(`导出 Worker 异常退出: ${code}`)
+            fail(mt('导出 Worker 异常退出: {code}', { code: code }))
           }
         })
       })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`[export-worker-single] ${errorMessage}`)
-      return { success: false, error: `导出 Worker 启动失败: ${errorMessage}` }
+      return { success: false, error: mt('导出 Worker 启动失败: {errorMessage}', { errorMessage: errorMessage }) }
     }
   })
 
@@ -3426,7 +3430,7 @@ function registerIpcHandlers() {
         const fail = (error: unknown) => {
           const errorMessage = error instanceof Error ? error.message : String(error)
           console.error(`[export-worker-contacts] ${errorMessage}`)
-          finalize({ success: false, error: `导出 Worker 执行失败: ${errorMessage}` })
+          finalize({ success: false, error: mt('导出 Worker 执行失败: {errorMessage}', { errorMessage: errorMessage }) })
         }
 
         worker.on('message', (msg: any) => {
@@ -3435,23 +3439,23 @@ function registerIpcHandlers() {
             return
           }
           if (msg && msg.type === 'export:error') {
-            fail(String(msg.error || '导出 Worker 执行失败'))
+            fail(String(msg.error || mt('导出 Worker 执行失败')))
           }
         })
         worker.on('error', fail)
         worker.on('exit', (code) => {
           if (settled) return
           if (code === 0) {
-            finalize({ success: false, error: '导出 Worker 未返回结果' })
+            finalize({ success: false, error: mt('导出 Worker 未返回结果') })
           } else {
-            fail(`导出 Worker 异常退出: ${code}`)
+            fail(mt('导出 Worker 异常退出: {code}', { code: code }))
           }
         })
       })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`[export-worker-contacts] ${errorMessage}`)
-      return { success: false, error: `导出 Worker 启动失败: ${errorMessage}` }
+      return { success: false, error: mt('导出 Worker 启动失败: {errorMessage}', { errorMessage: errorMessage }) }
     }
   })
 
@@ -3691,7 +3695,7 @@ function registerIpcHandlers() {
         done: false,
         strategy: 'native',
         phase: 'native',
-        statusText: '准备使用原生快速模式加载年份...',
+        statusText: mt('准备使用原生快速模式加载年份...'),
         nativeElapsedMs: 0,
         scanElapsedMs: 0,
         totalElapsedMs: 0,
@@ -3755,7 +3759,7 @@ function registerIpcHandlers() {
             done: true,
             canceled: true,
             phase: 'done',
-            statusText: '已取消年份加载'
+            statusText: mt('已取消年份加载')
           })
           if (snapshot) {
             broadcastAnnualReportYearsProgress(taskId, snapshot)
@@ -3769,7 +3773,7 @@ function registerIpcHandlers() {
             done: true,
             strategy: result.meta?.strategy,
             phase: 'done',
-            statusText: result.meta?.statusText || '年份数据加载完成',
+            statusText: result.meta?.statusText || mt('年份数据加载完成'),
             nativeElapsedMs: result.meta?.nativeElapsedMs,
             scanElapsedMs: result.meta?.scanElapsedMs,
             totalElapsedMs: result.meta?.totalElapsedMs,
@@ -3779,10 +3783,10 @@ function registerIpcHandlers() {
           : {
             years: result.data || [],
             done: true,
-            error: result.error || '加载年度数据失败',
+            error: result.error || mt('加载年度数据失败'),
             strategy: result.meta?.strategy,
             phase: 'done',
-            statusText: result.meta?.statusText || '年份数据加载失败',
+            statusText: result.meta?.statusText || mt('年份数据加载失败'),
             nativeElapsedMs: result.meta?.nativeElapsedMs,
             scanElapsedMs: result.meta?.scanElapsedMs,
             totalElapsedMs: result.meta?.totalElapsedMs,
@@ -3799,7 +3803,7 @@ function registerIpcHandlers() {
           done: true,
           error: String(e),
           phase: 'done',
-          statusText: '年份数据加载失败',
+          statusText: mt('年份数据加载失败'),
           strategy: 'hybrid'
         })
         if (snapshot) {
@@ -3824,7 +3828,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('annualReport:cancelAvailableYearsLoad', async (_, taskId: string) => {
     const key = String(taskId || '').trim()
-    if (!key) return { success: false, error: '任务ID不能为空' }
+    if (!key) return { success: false, error: mt('任务ID不能为空') }
     const task = annualReportYearsLoadTasks.get(key)
     if (!task) return { success: true }
     task.canceled = true
@@ -3875,7 +3879,7 @@ function registerIpcHandlers() {
         if (msg && (msg.type === 'annualReport:error' || msg.type === 'error')) {
           cleanup()
           void worker.terminate()
-          resolve({ success: false, error: msg.error || '年度报告生成失败' })
+          resolve({ success: false, error: msg.error || mt('年度报告生成失败') })
         }
       })
 
@@ -3887,7 +3891,7 @@ function registerIpcHandlers() {
       worker.on('exit', (code) => {
         if (code !== 0) {
           cleanup()
-          resolve({ success: false, error: `年度报告线程异常退出: ${code}` })
+          resolve({ success: false, error: mt('年度报告线程异常退出: {code}', { code: code }) })
         }
       })
     })
@@ -3906,7 +3910,7 @@ function registerIpcHandlers() {
     const excludeWords = cfg.get('wordCloudExcludeWords') || []
 
     if (!friendUsername) {
-      return { success: false, error: '缺少好友用户名' }
+      return { success: false, error: mt('缺少好友用户名') }
     }
 
     const resourcesPath = app.isPackaged
@@ -3943,7 +3947,7 @@ function registerIpcHandlers() {
         if (msg && (msg.type === 'dualReport:error' || msg.type === 'error')) {
           cleanup()
           void worker.terminate()
-          resolve({ success: false, error: msg.error || '双人报告生成失败' })
+          resolve({ success: false, error: msg.error || mt('双人报告生成失败') })
         }
       })
 
@@ -3955,7 +3959,7 @@ function registerIpcHandlers() {
       worker.on('exit', (code) => {
         if (code !== 0) {
           cleanup()
-          resolve({ success: false, error: `双人报告线程异常退出: ${code}` })
+          resolve({ success: false, error: mt('双人报告线程异常退出: {code}', { code: code }) })
         }
       })
     })
@@ -3965,7 +3969,7 @@ function registerIpcHandlers() {
     try {
       const { baseDir, folderName, images } = payload
       if (!baseDir || !folderName || !Array.isArray(images) || images.length === 0) {
-        return { success: false, error: '导出参数无效' }
+        return { success: false, error: mt('导出参数无效') }
       }
 
       let targetDir = join(baseDir, folderName)
@@ -3997,7 +4001,7 @@ function registerIpcHandlers() {
     try {
       const win = BrowserWindow.fromWebContents(event.sender)
       if (!win || win.isDestroyed()) {
-        return { success: false, error: '窗口不可用' }
+        return { success: false, error: mt('窗口不可用') }
       }
 
       const image = await win.webContents.capturePage()
@@ -4107,6 +4111,7 @@ function checkForUpdatesOnStartup() {
 app.whenReady().then(async () => {
   // 先初始化配置，以便在启动早期判定是否需要静默启动
   configService = new ConfigService()
+  setLanguagePreferenceProvider(() => configService?.get('uiLanguage') as 'auto' | 'en' | 'zh-CN' | undefined)
   applyAutoUpdateChannel('startup')
   syncLaunchAtStartupPreference()
   const onboardingDone = configService.get('onboardingDone') === true
@@ -4158,7 +4163,7 @@ app.whenReady().then(async () => {
     })
   }
 
-  updateSplashProgress(5, '正在加载配置...')
+  updateSplashProgress(5, mt('正在加载配置...'))
 
   // 将用户主题配置推送给 Splash 窗口
   if (splashWindow && !splashWindow.isDestroyed()) {
@@ -4171,7 +4176,7 @@ app.whenReady().then(async () => {
   await delay(200)
 
   // 设置资源路径
-  updateSplashProgress(12, '正在初始化...')
+  updateSplashProgress(12, mt('正在初始化...'))
   const candidateResources = app.isPackaged
     ? join(process.resourcesPath, 'resources')
     : join(app.getAppPath(), 'resources')
@@ -4181,13 +4186,13 @@ app.whenReady().then(async () => {
   await delay(200)
 
   // 初始化数据库服务
-  updateSplashProgress(20, '正在初始化...')
+  updateSplashProgress(20, mt('正在初始化...'))
   wcdbService.setPaths(resourcesPath, userDataPath)
   wcdbService.setLogEnabled(configService.get('logEnabled') === true)
   await delay(200)
 
   // 注册 IPC 处理器
-  updateSplashProgress(28, '正在初始化...')
+  updateSplashProgress(28, mt('正在初始化...'))
   registerIpcHandlers()
   if (configService.get('autoDownloadHighRes')) {
     const whitelistArr = configService.get('autoDownloadWhitelist') || []
@@ -4206,7 +4211,7 @@ app.whenReady().then(async () => {
 
   // 已完成引导时，在 Splash 阶段预热核心数据（联系人、消息库索引等）
   if (onboardingDone) {
-    updateSplashProgress(34, '正在连接数据库...')
+    updateSplashProgress(34, mt('正在连接数据库...'))
     const connectWarmup = await withTimeout(() => chatService.connect(), 12000)
     const connected = !connectWarmup.timedOut && connectWarmup.value?.success === true
 
@@ -4215,11 +4220,11 @@ app.whenReady().then(async () => {
         ? connectWarmup.error
         : (connectWarmup.value?.error || connectWarmup.error || 'unknown')
       console.warn('[StartupWarmup] 跳过预热，数据库连接失败:', reason)
-      updateSplashProgress(68, '数据库预热已跳过')
+      updateSplashProgress(68, mt('数据库预热已跳过'))
     } else {
       const preloadUsernames = new Set<string>()
 
-      updateSplashProgress(44, '正在预加载会话...')
+      updateSplashProgress(44, mt('正在预加载会话...'))
       const sessionsWarmup = await withTimeout(() => chatService.getSessions(), 12000)
       if (!sessionsWarmup.timedOut && sessionsWarmup.value?.success && Array.isArray(sessionsWarmup.value.sessions)) {
         for (const session of sessionsWarmup.value.sessions) {
@@ -4228,7 +4233,7 @@ app.whenReady().then(async () => {
         }
       }
 
-      updateSplashProgress(56, '正在预加载联系人...')
+      updateSplashProgress(56, mt('正在预加载联系人...'))
       const contactsWarmup = await withTimeout(() => chatService.getContacts(), 15000)
       if (!contactsWarmup.timedOut && contactsWarmup.value?.success && Array.isArray(contactsWarmup.value.contacts)) {
         for (const contact of contactsWarmup.value.contacts) {
@@ -4237,21 +4242,21 @@ app.whenReady().then(async () => {
         }
       }
 
-      updateSplashProgress(63, '正在缓存联系人头像...')
+      updateSplashProgress(63, mt('正在缓存联系人头像...'))
       const avatarWarmupUsernames = Array.from(preloadUsernames).slice(0, 2000)
       if (avatarWarmupUsernames.length > 0) {
         await withTimeout(() => chatService.enrichSessionsContactInfo(avatarWarmupUsernames), 15000)
       }
 
-      updateSplashProgress(68, '正在初始化消息库索引...')
+      updateSplashProgress(68, mt('正在初始化消息库索引...'))
       await withTimeout(() => chatService.warmupMessageDbSnapshot(), 10000)
     }
   } else {
-    updateSplashProgress(68, '首次启动准备中...')
+    updateSplashProgress(68, mt('首次启动准备中...'))
   }
 
   // 创建主窗口（不显示，由启动流程统一控制）
-  updateSplashProgress(70, '正在准备主窗口...')
+  updateSplashProgress(70, mt('正在准备主窗口...'))
   ensureWeChatRequestHeaderInterceptor()
   mainWindow = createWindow({ autoShow: false })
 
@@ -4274,7 +4279,7 @@ app.whenReady().then(async () => {
     tray.setToolTip('WeFlow')
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: '显示主窗口',
+        label: mt('显示主窗口'),
         click: () => {
           if (mainWindow) {
             mainWindow.show()
@@ -4284,7 +4289,7 @@ app.whenReady().then(async () => {
       },
       { type: 'separator' },
       {
-        label: '退出',
+        label: mt('退出'),
         click: () => {
           isAppQuitting = true
           app.quit()
@@ -4313,7 +4318,7 @@ app.whenReady().then(async () => {
   }
 
   // 等待主窗口加载完成（真正耗时阶段，进度条末端呼吸光点）
-  updateSplashProgress(70, '正在准备主窗口...', true)
+  updateSplashProgress(70, mt('正在准备主窗口...'), true)
   await new Promise<void>((resolve) => {
     if (mainWindowReady) {
       resolve()
@@ -4326,7 +4331,7 @@ app.whenReady().then(async () => {
   })
 
   // 加载完成，收尾
-  updateSplashProgress(100, '启动完成')
+  updateSplashProgress(100, mt('启动完成'))
   await new Promise((resolve) => setTimeout(resolve, 250))
   closeSplash()
 

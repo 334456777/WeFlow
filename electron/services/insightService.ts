@@ -22,6 +22,7 @@ import { snsService } from './snsService'
 import { weiboService } from './social/weiboService'
 import { showNotification } from '../windows/notificationWindow'
 import { insightRecordService, type InsightRecordLog, type InsightRecordTriggerReason } from './insightRecordService'
+import { mt } from '../i18n'
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ function formatPromptCurrentTime(date: Date = new Date()): string {
   const day = String(date.getDate()).padStart(2, '0')
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `当前系统时间：${year}年${month}月${day}日 ${hours}:${minutes}`
+  return mt('当前系统时间：{year}年{month}月{day}日 {hours}:{minutes}', { year: year, month: month, day: day, hours: hours, minutes: minutes })
 }
 
 function appendPromptCurrentTime(prompt: string): string {
@@ -179,7 +180,7 @@ function callApi(
     try {
       urlObj = new URL(endpoint)
     } catch (e) {
-      reject(new Error(`无效的 API URL: ${endpoint}`))
+      reject(new Error(mt('无效的 API URL: {endpoint}', { endpoint: endpoint })))
       return
     }
 
@@ -215,17 +216,17 @@ function callApi(
           if (typeof content === 'string' && content.trim()) {
             resolve(content.trim())
           } else {
-            reject(new Error(`API 返回格式异常: ${data.slice(0, 200)}`))
+            reject(new Error(mt('API 返回格式异常: {v0}', { v0: data.slice(0, 200) })))
           }
         } catch (e) {
-          reject(new Error(`JSON 解析失败: ${data.slice(0, 200)}`))
+          reject(new Error(mt('JSON 解析失败: {v0}', { v0: data.slice(0, 200) })))
         }
       })
     })
 
     req.setTimeout(timeoutMs, () => {
       req.destroy()
-      reject(new Error('API 请求超时'))
+      reject(new Error(mt('API 请求超时')))
     })
 
     req.on('error', (e) => reject(e))
@@ -396,21 +397,21 @@ class InsightService {
     const { apiBaseUrl, apiKey, model, maxTokens } = this.getSharedAiModelConfig()
 
     if (!apiBaseUrl || !apiKey) {
-      return { success: false, message: '请先填写 API 地址和 API Key' }
+      return { success: false, message: mt('请先填写 API 地址和 API Key') }
     }
 
     try {
       const endpoint = buildApiUrl(apiBaseUrl, '/chat/completions')
-      const requestMessages = [{ role: 'user', content: '请回复"连接成功"四个字。' }]
+      const requestMessages = [{ role: 'user', content: mt('请回复"连接成功"四个字。') }]
       insightDebugSection(
         'INFO',
-        'AI 测试连接请求',
+        mt('AI 测试连接请求'),
         [
           `Endpoint: ${endpoint}`,
           `Model: ${model}`,
           `Max Tokens: ${maxTokens}`,
           '',
-          '用户提示词：',
+          mt('用户提示词：'),
           requestMessages[0].content
         ].join('\n')
       )
@@ -423,15 +424,15 @@ class InsightService {
         15_000,
         maxTokens
       )
-      insightDebugSection('INFO', 'AI 测试连接输出原文', result)
-      return { success: true, message: `连接成功，模型回复：${result.slice(0, 50)}` }
+      insightDebugSection('INFO', mt('AI 测试连接输出原文'), result)
+      return { success: true, message: mt('连接成功，模型回复：{v0}', { v0: result.slice(0, 50) }) }
     } catch (e) {
       insightDebugSection(
         'ERROR',
-        'AI 测试连接失败',
-        `错误信息：${(e as Error).message}\n\n堆栈：\n${(e as Error).stack || '[无堆栈]'}`
+        mt('AI 测试连接失败'),
+        mt('错误信息：{message}\n\n堆栈：\n{v1}', { message: (e as Error).message, v1: (e as Error).stack || '[无堆栈]' })
       )
-      return { success: false, message: `连接失败：${(e as Error).message}` }
+      return { success: false, message: mt('连接失败：{message}', { message: (e as Error).message }) }
     }
   }
 
@@ -443,16 +444,16 @@ class InsightService {
     insightLog('INFO', '手动触发测试见解...')
     const { apiBaseUrl, apiKey } = this.getSharedAiModelConfig()
     if (!apiBaseUrl || !apiKey) {
-      return { success: false, message: '请先填写 API 地址和 Key' }
+      return { success: false, message: mt('请先填写 API 地址和 Key') }
     }
     try {
       const connectResult = await chatService.connect()
       if (!connectResult.success) {
-        return { success: false, message: '数据库连接失败，请先在"数据库连接"页完成配置' }
+        return { success: false, message: mt('数据库连接失败，请先在"数据库连接"页完成配置') }
       }
       const sessionsResult = await chatService.getSessions()
       if (!sessionsResult.success || !sessionsResult.sessions || sessionsResult.sessions.length === 0) {
-        return { success: false, message: '未找到任何会话，请确认数据库已正确连接' }
+        return { success: false, message: mt('未找到任何会话，请确认数据库已正确连接') }
       }
       // 找第一个允许的私聊
       const session = (sessionsResult.sessions as ChatSession[]).find((s) => {
@@ -460,7 +461,7 @@ class InsightService {
         return id && !id.endsWith('@chatroom') && !id.toLowerCase().includes('placeholder') && this.isSessionAllowed(id)
       })
       if (!session) {
-        return { success: false, message: '未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）' }
+        return { success: false, message: mt('未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）') }
       }
       const sessionId = session.username?.trim() || ''
       const displayName = session.displayName || sessionId
@@ -474,11 +475,11 @@ class InsightService {
       return {
         success: true,
         message: notificationEnabled
-          ? `已向「${displayName}」发送测试见解，请查看通知弹窗`
-          : `已生成「${displayName}」的测试见解，AI 见解消息通知当前已关闭`
+          ? mt('已向「{displayName}」发送测试见解，请查看通知弹窗', { displayName: displayName })
+          : mt('已生成「{displayName}」的测试见解，AI 见解消息通知当前已关闭', { displayName: displayName })
       }
     } catch (e) {
-      return { success: false, message: `测试失败：${(e as Error).message}` }
+      return { success: false, message: mt('测试失败：{message}', { message: (e as Error).message }) }
     }
   }
 
@@ -511,63 +512,46 @@ class InsightService {
   }): Promise<{ success: boolean; message: string; insight?: string }> {
     const enabled = this.config.get('aiFootprintEnabled') === true
     if (!enabled) {
-      return { success: false, message: '请先在设置中开启「AI 足迹总结」' }
+      return { success: false, message: mt('请先在设置中开启「AI 足迹总结」') }
     }
 
     const { apiBaseUrl, apiKey, model, maxTokens } = this.getSharedAiModelConfig()
     if (!apiBaseUrl || !apiKey) {
-      return { success: false, message: '请先填写通用 AI 模型配置（API 地址和 Key）' }
+      return { success: false, message: mt('请先填写通用 AI 模型配置（API 地址和 Key）') }
     }
 
     const summary = params?.summary || {}
-    const rangeLabel = String(params?.rangeLabel || '').trim() || '当前范围'
+    const rangeLabel = String(params?.rangeLabel || '').trim() || mt('当前范围')
     const privateSegments = Array.isArray(params?.privateSegments) ? params.privateSegments.slice(0, 6) : []
     const mentionGroups = Array.isArray(params?.mentionGroups) ? params.mentionGroups.slice(0, 6) : []
 
     const topPrivateText = privateSegments.length > 0
       ? privateSegments
         .map((item, idx) => {
-          const name = String(item.displayName || item.session_id || `联系人${idx + 1}`).trim()
+          const name = String(item.displayName || item.session_id || mt('联系人{v0}', { v0: idx + 1 })).trim()
           const inbound = Number(item.incoming_count) || 0
           const outbound = Number(item.outgoing_count) || 0
           const total = Math.max(Number(item.message_count) || 0, inbound + outbound)
-          return `${idx + 1}. ${name}（收${inbound}/发${outbound}/总${total}${item.replied ? '/已回复' : ''}）`
+          return mt('{v0}. {name}（收{inbound}/发{outbound}/总{total}{v5}）', { v0: idx + 1, name: name, inbound: inbound, outbound: outbound, total: total, v5: item.replied ? mt('/已回复') : '' })
         })
         .join('\n')
-      : '无'
+      : mt('无')
 
     const topMentionText = mentionGroups.length > 0
       ? mentionGroups
         .map((item, idx) => {
-          const name = String(item.displayName || item.session_id || `群聊${idx + 1}`).trim()
+          const name = String(item.displayName || item.session_id || mt('群聊{v0}', { v0: idx + 1 })).trim()
           const count = Number(item.count) || 0
-          return `${idx + 1}. ${name}（@我 ${count} 次）`
+          return mt('{v0}. {name}（@我 {count} 次）', { v0: idx + 1, name: name, count: count })
         })
         .join('\n')
-      : '无'
+      : mt('无')
 
-    const defaultSystemPrompt = `你是用户的聊天足迹教练，负责基于统计数据给出一段简明复盘。
-要求：
-1. 输出 2-3 句，总长度不超过 180 字。
-2. 必须包含：总体观察 + 一个可执行建议。
-3. 语气务实，不夸张，不使用 Markdown。`
+    const defaultSystemPrompt = mt('你是用户的聊天足迹教练，负责基于统计数据给出一段简明复盘。\n要求：\n1. 输出 2-3 句，总长度不超过 180 字。\n2. 必须包含：总体观察 + 一个可执行建议。\n3. 语气务实，不夸张，不使用 Markdown。')
     const customPrompt = String(this.config.get('aiFootprintSystemPrompt') || '').trim()
     const systemPrompt = customPrompt || defaultSystemPrompt
 
-    const userPromptBase = `统计范围：${rangeLabel}
-有聊天的人数：${Number(summary.private_inbound_people) || 0}
-我有回复的人数：${Number(summary.private_outbound_people) || 0}
-回复率：${(((Number(summary.private_reply_rate) || 0) * 100)).toFixed(1)}%
-@我次数：${Number(summary.mention_count) || 0}
-涉及群聊：${Number(summary.mention_group_count) || 0}
-
-私聊重点：
-${topPrivateText}
-
-群聊@我重点：
-${topMentionText}
-
-请给出足迹复盘（2-3句，含建议）：`
+    const userPromptBase = mt('统计范围：{rangeLabel}\n有聊天的人数：{v1}\n我有回复的人数：{v2}\n回复率：{v3}%\n@我次数：{v4}\n涉及群聊：{v5}\n\n私聊重点：\n{topPrivateText}\n\n群聊@我重点：\n{topMentionText}\n\n请给出足迹复盘（2-3句，含建议）：', { rangeLabel: rangeLabel, v1: Number(summary.private_inbound_people) || 0, v2: Number(summary.private_outbound_people) || 0, v3: (((Number(summary.private_reply_rate) || 0) * 100)).toFixed(1), v4: Number(summary.mention_count) || 0, v5: Number(summary.mention_group_count) || 0, topPrivateText: topPrivateText, topMentionText: topMentionText })
     const userPrompt = appendPromptCurrentTime(userPromptBase)
 
     try {
@@ -583,10 +567,10 @@ ${topMentionText}
         maxTokens
       )
       const insight = result.trim()
-      if (!insight) return { success: false, message: '模型返回为空' }
-      return { success: true, message: '生成成功', insight }
+      if (!insight) return { success: false, message: mt('模型返回为空') }
+      return { success: true, message: mt('生成成功'), insight }
     } catch (error) {
-      return { success: false, message: `生成失败：${(error as Error).message}` }
+      return { success: false, message: mt('生成失败：{message}', { message: (error as Error).message }) }
     }
   }
 
@@ -689,7 +673,7 @@ ${topMentionText}
       const cleanQuotedSender = quotedSender && !this.looksLikeWxid(quotedSender) ? quotedSender : ''
       const quoteLabel = cleanQuotedSender ? `${cleanQuotedSender}：${quotedPreview}` : quotedPreview
       const replyText = parsedContent && parsedContent !== '[引用消息]' ? parsedContent : ''
-      return replyText ? `${replyText}[引用 ${quoteLabel}]` : `[引用 ${quoteLabel}]`
+      return replyText ? mt('{replyText}[引用 {quoteLabel}]', { replyText: replyText, quoteLabel: quoteLabel }) : mt('[引用 {quoteLabel}]', { quoteLabel: quoteLabel })
     }
 
     if (parsedContent) {
@@ -701,19 +685,19 @@ ${topMentionText}
       return rawContent
     }
 
-    return '[其他消息]'
+    return mt('[其他消息]')
   }
 
   private buildInsightContextSection(messages: Message[], peerDisplayName: string): string {
     if (!messages.length) return ''
 
     const lines = messages.map((message) => {
-      const senderName = message.isSend === 1 ? '我' : peerDisplayName
+      const senderName = message.isSend === 1 ? mt('我') : peerDisplayName
       const content = this.formatInsightMessageContent(message)
       return `${this.formatInsightMessageTimestamp(message.createTime)} '${senderName}'\n${content}`
     })
 
-    return `近期聊天记录（最近 ${lines.length} 条）：\n\n${lines.join('\n\n')}`
+    return mt('近期聊天记录（最近 {length} 条）：\n\n{v1}', { length: lines.length, v1: lines.join('\n\n') })
   }
 
   /**
@@ -816,7 +800,7 @@ ${topMentionText}
     if (contentDesc) return contentDesc
 
     const linkTitle = this.normalizeInsightText(String(post.linkTitle || '')).replace(/\s+/g, ' ').trim()
-    if (linkTitle) return `[链接] ${linkTitle}`
+    if (linkTitle) return mt('[链接] {linkTitle}', { linkTitle: linkTitle })
 
     return ''
   }
@@ -844,13 +828,13 @@ ${topMentionText}
           if (!text) return ''
           const shortText = text.length > 180 ? `${text.slice(0, 180)}...` : text
           const time = this.formatMomentsTimestamp((post as { createTime?: unknown }).createTime)
-          return time ? `[朋友圈 ${time}] ${shortText}` : `[朋友圈] ${shortText}`
+          return time ? mt('[朋友圈 {time}] {shortText}', { time: time, shortText: shortText }) : mt('[朋友圈] {shortText}', { shortText: shortText })
         })
         .filter(Boolean) as string[]
 
       if (lines.length === 0) return ''
       insightLog('INFO', `已加载 ${lines.length} 条朋友圈内容 (sessionId=${sessionId})`)
-      return `近期朋友圈内容（最近 ${lines.length} 条）：\n${lines.join('\n')}`
+      return mt('近期朋友圈内容（最近 {length} 条）：\n{v1}', { length: lines.length, v1: lines.join('\n') })
     } catch (error) {
       insightLog('WARN', `拉取朋友圈内容失败 (sessionId=${sessionId}): ${(error as Error).message}`)
       return ''
@@ -879,10 +863,10 @@ ${topMentionText}
       const lines = posts.map((post) => {
         const time = this.formatWeiboTimestamp(post.createdAt)
         const text = post.text.length > 180 ? `${post.text.slice(0, 180)}...` : post.text
-        return `[微博 ${time}] ${text}`
+        return mt('[微博 {time}] {text}', { time: time, text: text })
       })
       insightLog('INFO', `已加载 ${lines.length} 条微博公开内容 (uid=${uid})`)
-      return `近期公开社交平台内容（来源：微博，最近 ${lines.length} 条）：\n${lines.join('\n')}`
+      return mt('近期公开社交平台内容（来源：微博，最近 {length} 条）：\n{v1}', { length: lines.length, v1: lines.join('\n') })
     } catch (error) {
       insightLog('WARN', `拉取微博公开内容失败 (uid=${uid}): ${(error as Error).message}`)
       return ''
@@ -1116,7 +1100,7 @@ ${topMentionText}
       resolvedAvatarUrl = undefined
     }
 
-    insightLog('INFO', `generateInsightForSession: sessionId=${sessionId}, reason=${triggerReason}, contextCount=${contextCount}, api=${apiBaseUrl ? '已配置' : '未配置'}`)
+    insightLog('INFO', `generateInsightForSession: sessionId=${sessionId}, reason=${triggerReason}, contextCount=${contextCount}, api=${apiBaseUrl ? mt('已配置') : mt('未配置')}`)
 
     if (!apiBaseUrl || !apiKey) {
       insightLog('WARN', 'API 地址或 Key 未配置，跳过见解生成')
@@ -1143,13 +1127,7 @@ ${topMentionText}
     const socialContextSection = await this.getSocialContextSection(sessionId)
 
     // ── 默认 system prompt（稳定内容，有利于 provider 端 prompt cache 命中）────
-    const DEFAULT_SYSTEM_PROMPT = `你是用户的私人关系观察助手，名叫"见解"。你的任务是主动提供有价值的观察和建议。
-
-要求：
-1. 必须给出见解。基于聊天记录分析对方情绪、话题趋势、关系动态，或给出回复建议、聊天话题推荐。
-2. 控制在 80 字以内，直接、具体、一针见血。不要废话。
-3. 输出纯文本，不使用 Markdown。
-4. 只有在完全没有任何可说的内容时（比如对话只有一条"嗯"），才回复"SKIP"。绝大多数情况下你应该输出见解。`
+    const DEFAULT_SYSTEM_PROMPT = mt('你是用户的私人关系观察助手，名叫"见解"。你的任务是主动提供有价值的观察和建议。\n\n要求：\n1. 必须给出见解。基于聊天记录分析对方情绪、话题趋势、关系动态，或给出回复建议、聊天话题推荐。\n2. 控制在 80 字以内，直接、具体、一针见血。不要废话。\n3. 输出纯文本，不使用 Markdown。\n4. 只有在完全没有任何可说的内容时（比如对话只有一条"嗯"），才回复"SKIP"。绝大多数情况下你应该输出见解。')
 
     // 优先使用用户自定义 prompt，为空则使用默认值
     const customPrompt = (this.config.get('aiInsightSystemPrompt') as string) || ''
@@ -1157,12 +1135,12 @@ ${topMentionText}
 
     const userPromptBase = [
       triggerReason === 'silence' && silentDays
-        ? `已 ${silentDays} 天未联系「${resolvedDisplayName}」。`
+        ? mt('已 {silentDays} 天未联系「{resolvedDisplayName}」。', { silentDays: silentDays, resolvedDisplayName: resolvedDisplayName })
         : '',
       contextSection,
       momentsContextSection,
       socialContextSection,
-      '请给出你的见解（≤80字）：'
+      mt('请给出你的见解（≤80字）：')
     ].filter(Boolean).join('\n\n')
     const userPrompt = appendPromptCurrentTime(userPromptBase)
 
@@ -1175,19 +1153,19 @@ ${topMentionText}
     insightLog('INFO', `准备调用 API: ${endpoint}，模型: ${model}`)
     insightDebugSection(
       'INFO',
-      `AI 请求 ${resolvedDisplayName} (${sessionId})`,
+      mt('AI 请求 {resolvedDisplayName} ({sessionId})', { resolvedDisplayName: resolvedDisplayName, sessionId: sessionId }),
       [
-        `接口地址：${endpoint}`,
-        `模型：${model}`,
+        mt('接口地址：{endpoint}', { endpoint: endpoint }),
+        mt('模型：{model}', { model: model }),
         `Max Tokens：${maxTokens}`,
-        `触发类型：${triggerReason}`,
-        `上下文开关：${allowContext ? '开启' : '关闭'}`,
-        `上下文条数：${contextCount}`,
+        mt('触发类型：{triggerReason}', { triggerReason: triggerReason }),
+        mt('上下文开关：{v0}', { v0: allowContext ? mt('开启') : mt('关闭') }),
+        mt('上下文条数：{contextCount}', { contextCount: contextCount }),
         '',
-        '系统提示词：',
+        mt('系统提示词：'),
         systemPrompt,
         '',
-        '用户提示词：',
+        mt('用户提示词：'),
         userPrompt
       ].join('\n')
     )
@@ -1205,7 +1183,7 @@ ${topMentionText}
       const apiDurationMs = Date.now() - apiStartedAt
 
       insightLog('INFO', `API 返回原文: ${result.slice(0, 150)}`)
-      insightDebugSection('INFO', `AI 输出原文 ${resolvedDisplayName} (${sessionId})`, result)
+      insightDebugSection('INFO', mt('AI 输出原文 {resolvedDisplayName} ({sessionId})', { resolvedDisplayName: resolvedDisplayName, sessionId: sessionId }), result)
 
       // 模型主动选择跳过
       if (result.trim().toUpperCase() === 'SKIP' || result.trim().startsWith('SKIP')) {
@@ -1215,7 +1193,7 @@ ${topMentionText}
       if (!this.isEnabled()) return
 
       const insight = result.trim()
-      const notifTitle = `见解 · ${resolvedDisplayName}`
+      const notifTitle = mt('见解 · {resolvedDisplayName}', { resolvedDisplayName: resolvedDisplayName })
       const recordLog: InsightRecordLog = {
         endpoint,
         model,
@@ -1280,8 +1258,8 @@ ${topMentionText}
     } catch (e) {
       insightDebugSection(
         'ERROR',
-        `AI 请求失败 ${resolvedDisplayName} (${sessionId})`,
-        `错误信息：${(e as Error).message}\n\n堆栈：\n${(e as Error).stack || '[无堆栈]'}`
+        mt('AI 请求失败 {resolvedDisplayName} ({sessionId})', { resolvedDisplayName: resolvedDisplayName, sessionId: sessionId }),
+        mt('错误信息：{message}\n\n堆栈：\n{v1}', { message: (e as Error).message, v1: (e as Error).stack || '[无堆栈]' })
       )
       insightLog('ERROR', `API 调用失败 (${resolvedDisplayName}): ${(e as Error).message}`)
     }
@@ -1313,14 +1291,14 @@ ${topMentionText}
             if (parsed.ok) {
               resolve()
             } else {
-              reject(new Error(parsed.description || '未知错误'))
+              reject(new Error(parsed.description || mt('未知错误')))
             }
           } catch {
-            reject(new Error(`响应解析失败: ${data.slice(0, 100)}`))
+            reject(new Error(mt('响应解析失败: {v0}', { v0: data.slice(0, 100) })))
           }
         })
       })
-      req.setTimeout(15_000, () => { req.destroy(); reject(new Error('Telegram 请求超时')) })
+      req.setTimeout(15_000, () => { req.destroy(); reject(new Error(mt('Telegram 请求超时'))) })
       req.on('error', reject)
       req.write(body)
       req.end()

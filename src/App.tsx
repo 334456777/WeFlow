@@ -352,7 +352,7 @@ function App() {
       setIsDownloading(false)
       // Extract clean error message if possible
       const errorMsg = e.message || String(e)
-      setUpdateError(errorMsg.includes('暂时禁用') ? t('自动更新已暂时禁用') : errorMsg)
+      setUpdateError((errorMsg.includes('暂时禁用') || errorMsg.includes('temporarily disabled')) ? t('自动更新已暂时禁用') : errorMsg)
     }
   }
 

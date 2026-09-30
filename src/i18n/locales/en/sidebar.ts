@@ -18,5 +18,7 @@ export const sidebarDict: Record<string, string> = {
   微信用户: 'WeChat user',
   微信账号: 'WeChat account',
   微: 'W',
-  '、': ', '
+  '、': ', ',
+  语言: 'Language',
+  '选择界面语言。切换后窗口会自动重新加载。': 'Choose the interface language. The window reloads automatically after switching.'
 }

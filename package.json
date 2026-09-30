@@ -17,6 +17,7 @@
     "rebuild": "electron-rebuild",
     "dev": "node scripts/prepare-electron-runtime.cjs && vite",
     "typecheck": "tsc --noEmit",
+    "i18n:check": "node scripts/i18n-check.cjs",
     "build": "tsc && vite build && electron-builder",
     "preview": "vite preview",
     "electron:dev": "node scripts/prepare-electron-runtime.cjs && vite --mode electron",

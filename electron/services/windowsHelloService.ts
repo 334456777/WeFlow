@@ -1,5 +1,6 @@
 import { wcdbService } from './wcdbService'
 import { BrowserWindow } from 'electron'
+import { mt } from '../i18n'
 
 export class WindowsHelloService {
     private verificationPromise: Promise<{ success: boolean; error?: string }> | null = null
@@ -8,7 +9,7 @@ export class WindowsHelloService {
      * 验证 Windows Hello
      * @param message 提示信息
      */
-    async verify(message: string = '请验证您的身份以解锁 WeFlow', targetWindow?: BrowserWindow): Promise<{ success: boolean; error?: string }> {
+    async verify(message: string = mt('请验证您的身份以解锁 WeFlow'), targetWindow?: BrowserWindow): Promise<{ success: boolean; error?: string }> {
         // Prevent concurrent verification requests
         if (this.verificationPromise) {
             return this.verificationPromise

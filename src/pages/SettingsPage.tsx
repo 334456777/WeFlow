@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
 import './SettingsPage.scss'
-import { t } from '../i18n'
+import { t, getLanguagePreference, setLanguagePreference, type LanguagePreference } from '../i18n'
 
 type SettingsTab =
   | 'appearance'
@@ -135,6 +135,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const setChatSessions = useChatStore((state) => state.setSessions)
   const resetChatStore = useChatStore((state) => state.reset)
   const { currentTheme, themeMode, setTheme, setThemeMode } = useThemeStore()
+  const [languagePref, setLanguagePref] = useState<LanguagePreference>(getLanguagePreference())
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -1631,8 +1632,26 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     }
   }
 
+  const changeLanguage = (next: LanguagePreference) => {
+    setLanguagePref(next)
+    // The main process reads this to localize tray, dialogs and notifications.
+    void configService.setLanguage(next)
+    setLanguagePreference(next)
+  }
+
   const renderAppearanceTab = () => (
     <div className="tab-content">
+      <div className="form-group">
+        <label>{t('语言')}</label>
+        <span className="form-hint">{t('选择界面语言。切换后窗口会自动重新加载。')}</span>
+        <div className="theme-mode-toggle" role="radiogroup" aria-label={t('语言')}>
+          {([['auto', t('跟随系统')], ['en', 'English'], ['zh-CN', '简体中文']] as const).map(([value, label]) => (
+            <button key={value} className={`mode-btn ${languagePref === value ? 'active' : ''}`} onClick={() => changeLanguage(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="theme-mode-toggle">
         <button className={`mode-btn ${themeMode === 'light' ? 'active' : ''}`} onClick={() => setThemeMode('light')}>
           <Sun size={16} />{' '}{t('浅色')}</button>

@@ -70,6 +70,13 @@ WeFlow 是一个**完全本地**的微信**实时**聊天记录查看、分析�
 | macOS | Apple Silicon (M series, arm64) | `.dmg` |
 | Linux | x64 devices (amd64) | `.AppImage`, `.tar.gz` |
 
+## Desktop app language / 界面语言
+
+The desktop app is English by default. It switches to Chinese when the system locale is Chinese (Electron follows `LANG` / `LC_*` on Linux), or you can pick **English**, **简体中文** or **System** under *Settings → Appearance → Language*. Changing it reloads the window.
+Developers: wrap UI text in `t('中文原文')` (renderer) or `mt('中文原文')` (main process), add the English entry under `src/i18n/locales/en/` or `electron/i18n/en.ts`, and run `npm run i18n:check`.
+
+桌面端默认显示英文；系统语言为中文时自动显示中文，也可在「设置 → 外观 → 语言」中手动选择。
+
 ## Native CLI / 原生命令行
 
 WeFlow ships a Rust command-line build (`weflow`) next to the desktop app. It defaults to **English** and follows your system locale: Chinese output is used only when `WEFLOW_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG` or `LANGUAGE` starts with `zh` (first one set wins; anything else, including `C`/`POSIX`, gives English). Override it per run with `--lang en|zh`.
