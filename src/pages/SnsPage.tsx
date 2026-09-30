@@ -21,6 +21,7 @@ import {
     getExportDateRangeLabel,
     type ExportDateRangeSelection
 } from '../utils/exportDateRange'
+import { t, formatLocale } from '../i18n'
 
 const SNS_PAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const SNS_PAGE_CACHE_POST_LIMIT = 200
@@ -468,16 +469,16 @@ export default function SnsPage() {
         if (exportScope.kind !== 'selected' || exportScope.usernames.length === 0) return ''
         const contactMap = new Map(contacts.map((contact) => [contact.username, contact]))
         const names = exportScope.usernames.map((username) => contactMap.get(username)?.displayName || username)
-        if (names.length <= 2) return names.join('、')
-        return `${names.slice(0, 2).join('、')} 等 ${names.length} 位联系人`
+        if (names.length <= 2) return names.join(t('、'))
+        return t('{v0} 等 {length} 位联系人', { v0: names.slice(0, 2).join(t('、')), length: names.length })
     }, [contacts, exportScope])
 
     const selectedFeedContactsSummary = useMemo(() => {
         if (selectedContactUsernames.length === 0) return ''
         const contactMap = new Map(contacts.map((contact) => [contact.username, contact]))
         const names = selectedContactUsernames.map((username) => contactMap.get(username)?.displayName || username)
-        if (names.length <= 2) return names.join('、')
-        return `${names.slice(0, 2).join('、')} 等 ${names.length} 人`
+        if (names.length <= 2) return names.join(t('、'))
+        return t('{v0} 等 {length} 人', { v0: names.slice(0, 2).join(t('、')), length: names.length })
     }, [contacts, selectedContactUsernames])
 
     const selectedContactUsernameSet = useMemo(() => (
@@ -627,7 +628,7 @@ export default function SnsPage() {
         try {
             const statsResult = await window.electronAPI.sns.getExportStats()
             if (!statsResult.success || !statsResult.data) {
-                throw new Error(statsResult.error || '获取朋友圈统计失败')
+                throw new Error(statsResult.error || t('获取朋友圈统计失败'))
             }
 
             const totalPosts = Math.max(0, Number(statsResult.data.totalPosts || 0))
@@ -732,7 +733,7 @@ export default function SnsPage() {
             copied: 0,
             skipped: 0,
             remaining: total,
-            message: '准备迁移...'
+            message: t('准备迁移...')
         })
 
         const removeProgress = window.electronAPI.sns.onCacheMigrationProgress((payload) => {
@@ -752,14 +753,14 @@ export default function SnsPage() {
                 setCacheMigrationDone(true)
                 setCacheMigrationError(null)
             } else if (payload.status === 'error') {
-                setCacheMigrationError(payload.message || '迁移失败')
+                setCacheMigrationError(payload.message || t('迁移失败'))
             }
         })
 
         try {
             const result = await window.electronAPI.sns.startCacheMigration()
             if (!result?.success) {
-                setCacheMigrationError(result?.error || '迁移失败')
+                setCacheMigrationError(result?.error || t('迁移失败'))
             } else {
                 const totalFiles = Math.max(0, Number(result.totalFiles || 0))
                 if (totalFiles === 0) {
@@ -772,7 +773,7 @@ export default function SnsPage() {
                         copied: 0,
                         skipped: 0,
                         remaining: 0,
-                        message: result.message || '无需迁移'
+                        message: result.message || t('无需迁移')
                     })
                 } else {
                     // 兜底：若 done 事件因时序原因未到达，仍以返回结果收敛到完成态。
@@ -785,12 +786,12 @@ export default function SnsPage() {
                         copied: Math.max(0, Number(result.copied || 0)),
                         skipped: Math.max(0, Number(result.skipped || 0)),
                         remaining: 0,
-                        message: '迁移完成'
+                        message: t('迁移完成')
                     })
                 }
             }
         } catch (error) {
-            setCacheMigrationError(String((error as Error)?.message || error || '迁移失败'))
+            setCacheMigrationError(String((error as Error)?.message || error || t('迁移失败')))
         } finally {
             removeProgress()
             setCacheMigrationRunning(false)
@@ -800,13 +801,11 @@ export default function SnsPage() {
     const renderOverviewRangeText = () => {
         if (overviewStatsStatus === 'error') {
             return (
-                <button type="button" className="feed-stats-retry" onClick={() => { void loadOverviewStats() }}>
-                    统计失败，点击重试
-                </button>
+                <button type="button" className="feed-stats-retry" onClick={() => { void loadOverviewStats() }}>{t('统计失败，点击重试')}</button>
             )
         }
         if (overviewStatsStatus === 'loading') {
-            return '统计中...'
+            return t('统计中...')
         }
         return `${formatDateOnly(overviewStats.earliestTime)} ~ ${formatDateOnly(overviewStats.latestTime)}`
     }
@@ -846,7 +845,7 @@ export default function SnsPage() {
         searchKeyword
     ])
 
-    const runSnsExport = useCallback(async (request: SnsExportRequest, statusText = '准备导出...') => {
+    const runSnsExport = useCallback(async (request: SnsExportRequest, statusText = t('准备导出...')) => {
         activeExportTaskIdRef.current = request.taskId
         activeExportRequestRef.current = request
         setIsExporting(true)
@@ -872,7 +871,7 @@ export default function SnsPage() {
                 setExportProgress(prev => ({
                     current: Math.max(prev?.current || 0, result.postCount || 0),
                     total: Math.max(prev?.total || 0, result.postCount || 0),
-                    status: '已暂停，可继续或取消'
+                    status: t('已暂停，可继续或取消')
                 }))
                 return
             }
@@ -901,7 +900,7 @@ export default function SnsPage() {
     const handleStartSnsExport = useCallback(() => {
         if (!canStartExport) return
         const request = buildSnsExportRequest(createSnsExportTaskId())
-        setExportProgress({ current: 0, total: 0, status: '准备导出...' })
+        setExportProgress({ current: 0, total: 0, status: t('准备导出...') })
         void runSnsExport(request)
     }, [buildSnsExportRequest, canStartExport, runSnsExport])
 
@@ -912,7 +911,7 @@ export default function SnsPage() {
         setExportProgress(prev => ({
             current: prev?.current || 0,
             total: prev?.total || 0,
-            status: '暂停请求已发送，正在等待安全检查点'
+            status: t('暂停请求已发送，正在等待安全检查点')
         }))
         window.electronAPI.export.pauseTask(taskId).then(result => {
             if (result.success) return
@@ -920,7 +919,7 @@ export default function SnsPage() {
             setExportProgress(prev => ({
                 current: prev?.current || 0,
                 total: prev?.total || 0,
-                status: result.error || '暂停请求失败'
+                status: result.error || t('暂停请求失败')
             }))
         }).catch(error => {
             setExportTaskStatus(current => current === 'pause_requested' ? 'running' : current)
@@ -940,7 +939,7 @@ export default function SnsPage() {
         setExportProgress(prev => ({
             current: prev?.current || 0,
             total: prev?.total || 0,
-            status: '正在继续导出...'
+            status: t('正在继续导出...')
         }))
         window.electronAPI.export.resumeTask(taskId).then(result => {
             if (!result.success) {
@@ -948,11 +947,11 @@ export default function SnsPage() {
                 setExportProgress(prev => ({
                     current: prev?.current || 0,
                     total: prev?.total || 0,
-                    status: result.error || '继续任务失败'
+                    status: result.error || t('继续任务失败')
                 }))
                 return
             }
-            void runSnsExport(request, '正在继续导出...')
+            void runSnsExport(request, t('正在继续导出...'))
         }).catch(error => {
             setExportTaskStatus('paused')
             setExportProgress(prev => ({
@@ -971,7 +970,7 @@ export default function SnsPage() {
         setExportProgress(prev => ({
             current: prev?.current || 0,
             total: prev?.total || 0,
-            status: '取消请求已发送，正在安全停止并清理'
+            status: t('取消请求已发送，正在安全停止并清理')
         }))
         window.electronAPI.export.cancelTask(taskId).then(result => {
             if (!result.success) {
@@ -979,7 +978,7 @@ export default function SnsPage() {
                 setExportProgress(prev => ({
                     current: prev?.current || 0,
                     total: prev?.total || 0,
-                    status: result.error || '取消任务失败'
+                    status: result.error || t('取消任务失败')
                 }))
                 return
             }
@@ -1148,7 +1147,7 @@ export default function SnsPage() {
         }
         if (activeContactsCountTaskIdRef.current) {
             finishBackgroundTask(activeContactsCountTaskIdRef.current, 'canceled', {
-                detail: '已停止后续联系人朋友圈条数补算'
+                detail: t('已停止后续联系人朋友圈条数补算')
             })
             activeContactsCountTaskIdRef.current = null
         }
@@ -1210,8 +1209,8 @@ export default function SnsPage() {
 
         const taskId = registerBackgroundTask({
             sourcePage: 'sns',
-            title: '朋友圈联系人计数补算',
-            detail: `正在补算 ${pendingTargets.length} 个联系人朋友圈条数`,
+            title: t('朋友圈联系人计数补算'),
+            detail: t('正在补算 {length} 个联系人朋友圈条数', { length: pendingTargets.length }),
             progressText: `${preResolved}/${totalTargets}`,
             cancelable: true
         })
@@ -1225,7 +1224,7 @@ export default function SnsPage() {
                     activeContactsCountTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: '已停止后续加载，当前计数查询结束后不再继续分批写入'
+                    detail: t('已停止后续加载，当前计数查询结束后不再继续分批写入')
                 })
                 return
             }
@@ -1234,7 +1233,7 @@ export default function SnsPage() {
                     activeContactsCountTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: '页面状态已刷新，本次联系人朋友圈条数补算已过期'
+                    detail: t('页面状态已刷新，本次联系人朋友圈条数补算已过期')
                 })
                 return
             }
@@ -1280,7 +1279,7 @@ export default function SnsPage() {
                     activeContactsCountTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: '页面状态已刷新，本次联系人朋友圈条数补算已过期'
+                    detail: t('页面状态已刷新，本次联系人朋友圈条数补算已过期')
                 })
                 return
             }
@@ -1289,7 +1288,7 @@ export default function SnsPage() {
                     activeContactsCountTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: `已停止后续加载，已完成 ${resolved}/${totalTargets}`
+                    detail: t('已停止后续加载，已完成 {resolved}/{totalTargets}', { resolved: resolved, totalTargets: totalTargets })
                 })
                 contactsCountBatchTimerRef.current = null
                 setContactsCountProgress({
@@ -1312,7 +1311,7 @@ export default function SnsPage() {
                     activeContactsCountTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'completed', {
-                    detail: '联系人朋友圈条数补算完成',
+                    detail: t('联系人朋友圈条数补算完成'),
                     progressText: `${totalTargets}/${totalTargets}`
                 })
                 return
@@ -1343,7 +1342,7 @@ export default function SnsPage() {
                 running: resolved < totalTargets
             })
             updateBackgroundTask(taskId, {
-                detail: `已完成 ${resolved}/${totalTargets} 个联系人朋友圈条数补算`,
+                detail: t('已完成 {resolved}/{totalTargets} 个联系人朋友圈条数补算', { resolved: resolved, totalTargets: totalTargets }),
                 progressText: `${resolved}/${totalTargets}`
             })
 
@@ -1360,7 +1359,7 @@ export default function SnsPage() {
                     activeContactsCountTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'completed', {
-                    detail: '联系人朋友圈条数补算完成',
+                    detail: t('联系人朋友圈条数补算完成'),
                     progressText: `${totalTargets}/${totalTargets}`
                 })
             }
@@ -1373,16 +1372,16 @@ export default function SnsPage() {
     const loadContacts = useCallback(async () => {
         if (activeContactsLoadTaskIdRef.current) {
             finishBackgroundTask(activeContactsLoadTaskIdRef.current, 'canceled', {
-                detail: '新一轮联系人列表加载已开始，旧任务已取消'
+                detail: t('新一轮联系人列表加载已开始，旧任务已取消')
             })
             activeContactsLoadTaskIdRef.current = null
         }
         const requestToken = ++contactsLoadTokenRef.current
         const taskId = registerBackgroundTask({
             sourcePage: 'sns',
-            title: '朋友圈联系人列表加载',
-            detail: '准备读取联系人缓存与最近会话',
-            progressText: '初始化',
+            title: t('朋友圈联系人列表加载'),
+            detail: t('准备读取联系人缓存与最近会话'),
+            progressText: t('初始化'),
             cancelable: true
         })
         activeContactsLoadTaskIdRef.current = taskId
@@ -1420,7 +1419,7 @@ export default function SnsPage() {
                     activeContactsLoadTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: '页面状态已刷新，本次联系人列表加载已过期'
+                    detail: t('页面状态已刷新，本次联系人列表加载已过期')
                 })
                 return
             }
@@ -1437,8 +1436,8 @@ export default function SnsPage() {
             }
 
             updateBackgroundTask(taskId, {
-                detail: '正在读取联系人与最近会话数据',
-                progressText: '联系人快照'
+                detail: t('正在读取联系人与最近会话数据'),
+                progressText: t('联系人快照')
             })
             const [contactsResult, sessionsResult] = await Promise.all([
                 window.electronAPI.chat.getContacts(),
@@ -1449,7 +1448,7 @@ export default function SnsPage() {
                     activeContactsLoadTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: '已停止后续加载，当前联系人查询结束后未继续补齐'
+                    detail: t('已停止后续加载，当前联系人查询结束后未继续补齐')
                 })
                 return
             }
@@ -1497,7 +1496,7 @@ export default function SnsPage() {
                     activeContactsLoadTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: '页面状态已刷新，本次联系人列表加载已过期'
+                    detail: t('页面状态已刷新，本次联系人列表加载已过期')
                 })
                 return
             }
@@ -1517,8 +1516,8 @@ export default function SnsPage() {
             // 用 enrichSessionsContactInfo 统一补充头像和显示名
             if (allUsernames.length > 0) {
                 updateBackgroundTask(taskId, {
-                    detail: '正在补齐联系人显示名与头像',
-                    progressText: '联系人补齐'
+                    detail: t('正在补齐联系人显示名与头像'),
+                    progressText: t('联系人补齐')
                 })
                 const enriched = await window.electronAPI.chat.enrichSessionsContactInfo(allUsernames)
                 if (isBackgroundTaskCancelRequested(taskId)) {
@@ -1526,7 +1525,7 @@ export default function SnsPage() {
                         activeContactsLoadTaskIdRef.current = null
                     }
                     finishBackgroundTask(taskId, 'canceled', {
-                        detail: '已停止后续加载，联系人补齐未继续写入'
+                        detail: t('已停止后续加载，联系人补齐未继续写入')
                     })
                     return
                 }
@@ -1545,7 +1544,7 @@ export default function SnsPage() {
                             activeContactsLoadTaskIdRef.current = null
                         }
                         finishBackgroundTask(taskId, 'canceled', {
-                            detail: '页面状态已刷新，本次联系人列表加载已过期'
+                            detail: t('页面状态已刷新，本次联系人列表加载已过期')
                         })
                         return
                     }
@@ -1568,8 +1567,8 @@ export default function SnsPage() {
                 activeContactsLoadTaskIdRef.current = null
             }
             finishBackgroundTask(taskId, 'completed', {
-                detail: `朋友圈联系人列表加载完成，共 ${contactsList.length} 人`,
-                progressText: `${contactsList.length} 人`
+                detail: t('朋友圈联系人列表加载完成，共 {length} 人', { length: contactsList.length }),
+                progressText: t('{length} 人', { length: contactsList.length })
             })
         } catch (error) {
             if (requestToken !== contactsLoadTokenRef.current) {
@@ -1577,7 +1576,7 @@ export default function SnsPage() {
                     activeContactsLoadTaskIdRef.current = null
                 }
                 finishBackgroundTask(taskId, 'canceled', {
-                    detail: '页面状态已刷新，本次联系人列表加载已过期'
+                    detail: t('页面状态已刷新，本次联系人列表加载已过期')
                 })
                 return
             }
@@ -1689,7 +1688,7 @@ export default function SnsPage() {
                 if (!resolvedWxid && !cachedProfile) return
                 setCurrentUserProfile((prev) => ({
                     wxid: resolvedWxid || prev.wxid,
-                    displayName: prev.displayName || cachedProfile?.displayName || resolvedWxid || '未识别用户',
+                    displayName: prev.displayName || cachedProfile?.displayName || resolvedWxid || t('未识别用户'),
                     alias: prev.alias || cachedProfile?.alias,
                     avatarUrl: prev.avatarUrl || cachedProfile?.avatarUrl
                 }))
@@ -1713,13 +1712,13 @@ export default function SnsPage() {
             }
             if (activeContactsCountTaskIdRef.current) {
                 finishBackgroundTask(activeContactsCountTaskIdRef.current, 'canceled', {
-                    detail: '已离开朋友圈页，联系人朋友圈条数补算已取消'
+                    detail: t('已离开朋友圈页，联系人朋友圈条数补算已取消')
                 })
                 activeContactsCountTaskIdRef.current = null
             }
             if (activeContactsLoadTaskIdRef.current) {
                 finishBackgroundTask(activeContactsLoadTaskIdRef.current, 'canceled', {
-                    detail: '已离开朋友圈页，联系人列表加载已取消'
+                    detail: t('已离开朋友圈页，联系人列表加载已取消')
                 })
                 activeContactsLoadTaskIdRef.current = null
             }
@@ -1796,14 +1795,12 @@ export default function SnsPage() {
                 {loadingNewer && (
                     <div className="status-indicator loading-newer">
                         <RefreshCw size={14} className="spinning" />
-                        <span>正在检查更新动态</span>
+                        <span>{t('正在检查更新动态')}</span>
                     </div>
                 )}
 
                 {!loadingNewer && hasNewer && (
-                    <button type="button" className="status-indicator newer-hint" onClick={() => void loadPosts({ direction: 'newer' })}>
-                        有新动态，点击查看
-                    </button>
+                    <button type="button" className="status-indicator newer-hint" onClick={() => void loadPosts({ direction: 'newer' })}>{t('有新动态，点击查看')}</button>
                 )}
             </>
         ),
@@ -1812,12 +1809,12 @@ export default function SnsPage() {
                 {loading && visiblePosts.length > 0 && (
                     <div className="status-indicator loading-more">
                         <RefreshCw size={14} className="spinning" />
-                        <span>正在加载更多</span>
+                        <span>{t('正在加载更多')}</span>
                     </div>
                 )}
 
                 {!hasMore && visiblePosts.length > 0 && (
-                    <div className="status-indicator no-more">已加载全部动态</div>
+                    <div className="status-indicator no-more">{t('已加载全部动态')}</div>
                 )}
             </>
         )
@@ -1829,27 +1826,27 @@ export default function SnsPage() {
                 <div className="sns-feed-container">
                     <div className="feed-header">
                         <div className="feed-header-main">
-                            <h2>朋友圈</h2>
+                            <h2>{t('朋友圈')}</h2>
                             <div className={`feed-stats-line ${overviewStatsStatus}`}>
                                 <span className="feed-overview-total">
                                     {overviewStatsStatus === 'loading'
-                                        ? '共 统计中...'
-                                        : `共 ${overviewStats.totalPosts.toLocaleString('zh-CN')} 条`}
+                                        ? t('共 统计中...')
+                                        : t('共 {v0} 条', { v0: overviewStats.totalPosts.toLocaleString(formatLocale()) })}
                                 </span>
-                                <span className="feed-stats-divider" aria-hidden="true">｜</span>
+                                <span className="feed-stats-divider" aria-hidden="true">|</span>
                                 <button
                                     type="button"
                                     className={`feed-my-timeline-entry ${resolvedCurrentUserContact ? 'ready' : ''} ${myTimelineCountLoading ? 'loading' : ''}`}
                                     onClick={openCurrentUserTimeline}
                                     disabled={!resolvedCurrentUserContact}
                                     title={resolvedCurrentUserContact
-                                        ? `打开${resolvedCurrentUserContact.displayName || '我'}的朋友圈详情`
-                                        : '未在右侧联系人列表中匹配到当前账号'}
+                                        ? t('打开{v0}的朋友圈详情', { v0: resolvedCurrentUserContact.displayName || t('我') })
+                                        : t('未在右侧联系人列表中匹配到当前账号')}
                                 >
-                                    <span className="feed-my-timeline-label">我的朋友圈</span>
+                                    <span className="feed-my-timeline-label">{t('我的朋友圈')}</span>
                                     <span className="feed-my-timeline-count">
                                         {myTimelineCount !== null
-                                            ? `${myTimelineCount.toLocaleString('zh-CN')} 条`
+                                            ? t('{v0} 条', { v0: myTimelineCount.toLocaleString(formatLocale()) })
                                             : myTimelineCountLoading
                                                 ? <Loader2 size={14} className="spin" aria-hidden="true" />
                                                 : '--'}
@@ -1866,8 +1863,8 @@ export default function SnsPage() {
                                     type="button"
                                     className={`${jumpTargetDate ? 'jump-date-chip' : 'icon-btn'} ${showJumpPopover ? 'active' : ''}`}
                                     title={jumpTargetDate
-                                        ? jumpTargetDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
-                                        : '时间跳转'}
+                                        ? jumpTargetDate.toLocaleDateString(formatLocale(), { year: 'numeric', month: 'long', day: 'numeric' })
+                                        : t('时间跳转')}
                                     onClick={() => {
                                         if (!showJumpPopover) {
                                             const nextDate = jumpTargetDate || new Date()
@@ -1898,7 +1895,7 @@ export default function SnsPage() {
                                                     setJumpTargetDate(undefined)
                                                     setShowJumpPopover(false)
                                                 }}
-                                                aria-label="清除日期跳转"
+                                                aria-label={t('清除日期跳转')}
                                             >
                                                 <X size={14} />
                                             </span>
@@ -1940,14 +1937,14 @@ export default function SnsPage() {
                                     }
                                 }}
                                 className="icon-btn"
-                                title="朋友圈保护插件"
+                                title={t('朋友圈保护插件')}
                             >
                                 <Shield size={20} />
                             </button>
                             <button
                                 onClick={() => openExportDialog({ kind: 'all' })}
                                 className="icon-btn export-btn"
-                                title="导出朋友圈"
+                                title={t('导出朋友圈')}
                             >
                                 <Download size={20} />
                             </button>
@@ -1960,7 +1957,7 @@ export default function SnsPage() {
                                 }}
                                 disabled={loading || loadingNewer}
                                 className="icon-btn refresh-btn"
-                                title="从头刷新"
+                                title={t('从头刷新')}
                             >
                                 <RefreshCw size={20} className={(loading || loadingNewer || refreshSpin) ? 'spinning' : ''} />
                             </button>
@@ -1969,15 +1966,13 @@ export default function SnsPage() {
 
                     {selectedContactUsernames.length > 0 && (
                         <div className="feed-contact-filter-bar">
-                            <span className="feed-contact-filter-label">仅显示</span>
-                            <span className="feed-contact-filter-summary">{selectedFeedContactsSummary} 的动态</span>
+                            <span className="feed-contact-filter-label">{t('仅显示')}</span>
+                            <span className="feed-contact-filter-summary">{t('{selectedFeedContactsSummary} 的动态', { selectedFeedContactsSummary: selectedFeedContactsSummary })}</span>
                             <button
                                 type="button"
                                 className="feed-contact-filter-clear"
                                 onClick={clearSelectedContacts}
-                            >
-                                清空筛选
-                            </button>
+                            >{t('清空筛选')}</button>
                         </div>
                     )}
 
@@ -1986,7 +1981,7 @@ export default function SnsPage() {
                             <div className="initial-loading">
                                 <div className="loading-pulse">
                                     <div className="pulse-circle"></div>
-                                    <span>正在加载动态</span>
+                                    <span>{t('正在加载动态')}</span>
                                 </div>
                             </div>
                         )}
@@ -1994,15 +1989,13 @@ export default function SnsPage() {
                         {!loading && visiblePosts.length === 0 && (
                             <div className="no-results">
                                 <div className="no-results-icon"><Search size={28} /></div>
-                                <p>未找到相关动态</p>
+                                <p>{t('未找到相关动态')}</p>
                                 {(searchKeyword || jumpTargetDate || selectedContactUsernames.length > 0) && (
                                     <button onClick={() => {
                                         setSearchKeyword('')
                                         setJumpTargetDate(undefined)
                                         clearSelectedContacts()
-                                    }} className="reset-inline">
-                                        重置筛选条件
-                                    </button>
+                                    }} className="reset-inline">{t('重置筛选条件')}</button>
                                 )}
                             </div>
                         )}
@@ -2033,9 +2026,9 @@ export default function SnsPage() {
                 setSearchKeyword={setSearchKeyword}
                 totalFriendsLabel={
                     overviewStatsStatus === 'loading'
-                        ? '统计中'
+                        ? t('统计中')
                         : overviewStatsStatus === 'ready'
-                            ? `${overviewStats.totalFriends} 位好友`
+                            ? t('{totalFriends} 位好友', { totalFriends: overviewStats.totalFriends })
                             : undefined
                 }
                 contacts={contacts}
@@ -2072,7 +2065,7 @@ export default function SnsPage() {
                 <div className="modal-overlay" onClick={() => setDebugPost(null)}>
                     <div className="debug-dialog" onClick={(e) => e.stopPropagation()}>
                         <div className="debug-dialog-header">
-                            <h3>原始数据</h3>
+                            <h3>{t('原始数据')}</h3>
                             <button className="close-btn" onClick={() => setDebugPost(null)}>
                                 <X size={20} />
                             </button>
@@ -2104,15 +2097,13 @@ export default function SnsPage() {
                         </button>
 
                         <div className="sns-cache-migration-header">
-                            <div className="sns-cache-migration-title">发现旧版朋友圈缓存</div>
-                            <div className="sns-cache-migration-subtitle">
-                                建议迁移到当前缓存目录，避免目录分散和重复占用空间
-                            </div>
+                            <div className="sns-cache-migration-title">{t('发现旧版朋友圈缓存')}</div>
+                            <div className="sns-cache-migration-subtitle">{t('建议迁移到当前缓存目录，避免目录分散和重复占用空间')}</div>
                         </div>
 
                         <div className="sns-cache-migration-body">
                             <div className="sns-cache-migration-meta">
-                                <span>待处理文件</span>
+                                <span>{t('待处理文件')}</span>
                                 <strong>{cacheMigrationStatus.totalFiles}</strong>
                             </div>
 
@@ -2129,9 +2120,8 @@ export default function SnsPage() {
                                         />
                                     </div>
                                     <div className="sns-cache-migration-progress-text">
-                                        <span>{cacheMigrationProgress.message || '迁移中...'}</span>
-                                        <span>
-                                            已迁移 {cacheMigrationProgress.copied}，剩余 {cacheMigrationProgress.remaining}，跳过重复 {cacheMigrationProgress.skipped}
+                                        <span>{cacheMigrationProgress.message || t('迁移中...')}</span>
+                                        <span>{t('已迁移 {copied}，剩余 {remaining}，跳过重复 {skipped}', { copied: cacheMigrationProgress.copied, remaining: cacheMigrationProgress.remaining, skipped: cacheMigrationProgress.skipped })}
                                         </span>
                                     </div>
                                 </div>
@@ -2143,7 +2133,7 @@ export default function SnsPage() {
                                         <div className="sns-cache-migration-item" key={`${item.label}-${idx}`}>
                                             <div className="sns-cache-migration-item-title">{item.label}</div>
                                             <div className="sns-cache-migration-item-detail">
-                                                {item.fileCount} 个文件 · {item.sourceDir} → {item.targetDir}
+                                                {t('{fileCount} 个文件 · {sourceDir} → {targetDir}', { fileCount: item.fileCount, sourceDir: item.sourceDir, targetDir: item.targetDir })}
                                             </div>
                                         </div>
                                     ))}
@@ -2160,7 +2150,7 @@ export default function SnsPage() {
                             {cacheMigrationDone && !cacheMigrationError && (
                                 <div className="sns-cache-migration-success">
                                     <CheckCircle size={14} />
-                                    <span>迁移完成，旧目录已清理。</span>
+                                    <span>{t('迁移完成，旧目录已清理。')}</span>
                                 </div>
                             )}
                         </div>
@@ -2172,15 +2162,13 @@ export default function SnsPage() {
                                         className="sns-cache-migration-btn secondary"
                                         onClick={() => setShowCacheMigrationDialog(false)}
                                         disabled={cacheMigrationRunning}
-                                    >
-                                        稍后再说
-                                    </button>
+                                    >{t('稍后再说')}</button>
                                     <button
                                         className="sns-cache-migration-btn primary"
                                         onClick={() => { void startCacheMigration() }}
                                         disabled={cacheMigrationRunning}
                                     >
-                                        {cacheMigrationRunning ? '迁移中...' : '开始迁移'}
+                                        {cacheMigrationRunning ? t('迁移中...') : t('开始迁移')}
                                     </button>
                                 </>
                             ) : (
@@ -2188,9 +2176,7 @@ export default function SnsPage() {
                                     className="sns-cache-migration-btn primary"
                                     onClick={() => setShowCacheMigrationDialog(false)}
                                     disabled={cacheMigrationRunning}
-                                >
-                                    完成
-                                </button>
+                                >{t('完成')}</button>
                             )}
                         </div>
                     </div>
@@ -2215,16 +2201,14 @@ export default function SnsPage() {
                                         : <ShieldOff size={28} />
                                 }
                             </div>
-                            <div className="sns-protect-title">朋友圈防删除</div>
+                            <div className="sns-protect-title">{t('朋友圈防删除')}</div>
                             <div className={`sns-protect-status-badge ${triggerInstalled ? 'on' : 'off'}`}>
-                                {triggerLoading ? '检查中…' : triggerInstalled ? '已启用' : '未启用'}
+                                {triggerLoading ? t('检查中…') : triggerInstalled ? t('已启用') : t('未启用')}
                             </div>
                         </div>
 
                         {/* 说明 */}
-                        <div className="sns-protect-desc">
-                            启用后，WeFlow将拦截朋友圈删除操作<br/>已同步的动态不会从本地数据库中消失<br/>新的动态仍可正常同步。
-                        </div>
+                        <div className="sns-protect-desc">{t('启用后，WeFlow将拦截朋友圈删除操作')}<br/>{t('已同步的动态不会从本地数据库中消失')}<br/>{t('新的动态仍可正常同步。')}</div>
 
                         {/* 操作反馈 */}
                         {triggerMessage && (
@@ -2247,9 +2231,9 @@ export default function SnsPage() {
                                             const r = await window.electronAPI.sns.installBlockDeleteTrigger()
                                             if (r.success) {
                                                 setTriggerInstalled(true)
-                                                setTriggerMessage({ type: 'success', text: r.alreadyInstalled ? '插件已存在，无需重复安装' : '已启用朋友圈防删除保护' })
+                                                setTriggerMessage({ type: 'success', text: r.alreadyInstalled ? t('插件已存在，无需重复安装') : t('已启用朋友圈防删除保护') })
                                             } else {
-                                                setTriggerMessage({ type: 'error', text: r.error || '安装失败' })
+                                                setTriggerMessage({ type: 'error', text: r.error || t('安装失败') })
                                             }
                                         } catch (e: any) {
                                             setTriggerMessage({ type: 'error', text: e.message || String(e) })
@@ -2258,9 +2242,7 @@ export default function SnsPage() {
                                         }
                                     }}
                                 >
-                                    <Shield size={15} />
-                                    启用保护
-                                </button>
+                                    <Shield size={15} />{t('启用保护')}</button>
                             ) : (
                                 <button
                                     className="sns-protect-btn danger"
@@ -2272,9 +2254,9 @@ export default function SnsPage() {
                                             const r = await window.electronAPI.sns.uninstallBlockDeleteTrigger()
                                             if (r.success) {
                                                 setTriggerInstalled(false)
-                                                setTriggerMessage({ type: 'success', text: '已关闭朋友圈防删除保护' })
+                                                setTriggerMessage({ type: 'success', text: t('已关闭朋友圈防删除保护') })
                                             } else {
-                                                setTriggerMessage({ type: 'error', text: r.error || '卸载失败' })
+                                                setTriggerMessage({ type: 'error', text: r.error || t('卸载失败') })
                                             }
                                         } catch (e: any) {
                                             setTriggerMessage({ type: 'error', text: e.message || String(e) })
@@ -2283,9 +2265,7 @@ export default function SnsPage() {
                                         }
                                     }}
                                 >
-                                    <ShieldOff size={15} />
-                                    关闭保护
-                                </button>
+                                    <ShieldOff size={15} />{t('关闭保护')}</button>
                             )}
                         </div>
                     </div>
@@ -2297,7 +2277,7 @@ export default function SnsPage() {
                 <div className="modal-overlay" onClick={() => !isExportLocked && setShowExportDialog(false)}>
                     <div className="export-dialog" onClick={(e) => e.stopPropagation()}>
                         <div className="export-dialog-header">
-                            <h3>导出朋友圈</h3>
+                            <h3>{t('导出朋友圈')}</h3>
                             <button className="close-btn" onClick={() => !isExportLocked && setShowExportDialog(false)} disabled={isExportLocked}>
                                 <X size={20} />
                             </button>
@@ -2307,11 +2287,11 @@ export default function SnsPage() {
                             {/* 筛选条件提示 */}
                             {(searchKeyword || exportScope.kind === 'selected') && (
                                 <div className="export-filter-info">
-                                    <span className="filter-badge">导出范围</span>
+                                    <span className="filter-badge">{t('导出范围')}</span>
                                     {exportScope.kind === 'selected' && (
-                                        <span className="filter-tag">联系人: {exportSelectedContactsSummary}</span>
+                                        <span className="filter-tag">{t('联系人: {exportSelectedContactsSummary}', { exportSelectedContactsSummary: exportSelectedContactsSummary })}</span>
                                     )}
-                                    {searchKeyword && <span className="filter-tag">关键词: "{searchKeyword}"</span>}
+                                    {searchKeyword && <span className="filter-tag">{t('关键词: "{searchKeyword}"', { searchKeyword: searchKeyword })}</span>}
                                 </div>
                             )}
 
@@ -2319,7 +2299,7 @@ export default function SnsPage() {
                                 <>
                                     {/* 格式选择 */}
                                     <div className="export-section">
-                                        <label className="export-label">导出格式</label>
+                                        <label className="export-label">{t('导出格式')}</label>
                                         <div className="export-format-options">
                                             <button
                                                 className={`format-option ${exportFormat === 'html' ? 'active' : ''}`}
@@ -2328,7 +2308,7 @@ export default function SnsPage() {
                                             >
                                                 <FileText size={20} />
                                                 <span>HTML</span>
-                                                <small>浏览器可直接查看</small>
+                                                <small>{t('浏览器可直接查看')}</small>
                                             </button>
                                             <button
                                                 className={`format-option ${exportFormat === 'json' ? 'active' : ''}`}
@@ -2337,7 +2317,7 @@ export default function SnsPage() {
                                             >
                                                 <FileJson size={20} />
                                                 <span>JSON</span>
-                                                <small>结构化数据</small>
+                                                <small>{t('结构化数据')}</small>
                                             </button>
                                             <button
                                                 className={`format-option ${exportFormat === 'arkmejson' ? 'active' : ''}`}
@@ -2346,20 +2326,20 @@ export default function SnsPage() {
                                             >
                                                 <FileJson size={20} />
                                                 <span>ArkmeJSON</span>
-                                                <small>结构化数据（含互动身份）</small>
+                                                <small>{t('结构化数据（含互动身份）')}</small>
                                             </button>
                                         </div>
                                     </div>
 
                                     {/* 输出路径 */}
                                     <div className="export-section">
-                                        <label className="export-label">输出目录</label>
+                                        <label className="export-label">{t('输出目录')}</label>
                                         <div className="export-path-row">
                                             <input
                                                 type="text"
                                                 value={exportFolder}
                                                 readOnly
-                                                placeholder="点击选择输出目录..."
+                                                placeholder={t('点击选择输出目录...')}
                                                 className="export-path-input"
                                             />
                                             <button
@@ -2380,7 +2360,7 @@ export default function SnsPage() {
                                     {/* 时间范围 */}
                                     <div className="export-section">
                                         <div className="export-section-header">
-                                            <label className="export-label"><Calendar size={14} /> 时间范围</label>
+                                            <label className="export-label"><Calendar size={14} />{' '}{t('时间范围')}</label>
                                             <button
                                                 type="button"
                                                 className="time-range-trigger sns-export-time-range-trigger"
@@ -2398,9 +2378,7 @@ export default function SnsPage() {
                                     {/* 媒体导出 */}
                                     <div className="export-section">
                                         <label className="export-label">
-                                            <Image size={14} />
-                                            媒体文件（可多选）
-                                        </label>
+                                            <Image size={14} />{t('媒体文件（可多选）')}</label>
                                         <div className="export-media-check-grid">
                                             <label>
                                                 <input
@@ -2408,35 +2386,29 @@ export default function SnsPage() {
                                                     checked={exportImages}
                                                     onChange={(e) => setExportImages(e.target.checked)}
                                                     disabled={isExportLocked}
-                                                />
-                                                图片
-                                            </label>
+                                                />{t('图片')}</label>
                                             <label>
                                                 <input
                                                     type="checkbox"
                                                     checked={exportLivePhotos}
                                                     onChange={(e) => setExportLivePhotos(e.target.checked)}
                                                     disabled={isExportLocked}
-                                                />
-                                                实况图
-                                            </label>
+                                                />{t('实况图')}</label>
                                             <label>
                                                 <input
                                                     type="checkbox"
                                                     checked={exportVideos}
                                                     onChange={(e) => setExportVideos(e.target.checked)}
                                                     disabled={isExportLocked}
-                                                />
-                                                视频
-                                            </label>
+                                                />{t('视频')}</label>
                                         </div>
-                                        <p className="export-media-hint">全不勾选时仅导出文本信息，不导出媒体文件</p>
+                                        <p className="export-media-hint">{t('全不勾选时仅导出文本信息，不导出媒体文件')}</p>
                                     </div>
 
                                     {/* 同步提示 */}
                                     <div className="export-sync-hint">
                                         <Info size={14} />
-                                        <span>{exportScope.kind === 'selected' ? '将同步主页面的关键词搜索，并仅导出所选联系人' : '将同步主页面的关键词搜索'}</span>
+                                        <span>{exportScope.kind === 'selected' ? t('将同步主页面的关键词搜索，并仅导出所选联系人') : t('将同步主页面的关键词搜索')}</span>
                                     </div>
 
                                     {/* 进度条 */}
@@ -2456,9 +2428,7 @@ export default function SnsPage() {
                                                         className="export-progress-btn"
                                                         onClick={handlePauseSnsExport}
                                                     >
-                                                        <Pause size={14} />
-                                                        暂停
-                                                    </button>
+                                                        <Pause size={14} />{t('暂停')}</button>
                                                 )}
                                                 {canResumeExport && (
                                                     <button
@@ -2466,9 +2436,7 @@ export default function SnsPage() {
                                                         className="export-progress-btn primary"
                                                         onClick={handleResumeSnsExport}
                                                     >
-                                                        <Play size={14} />
-                                                        继续
-                                                    </button>
+                                                        <Play size={14} />{t('继续')}</button>
                                                 )}
                                                 {canCancelExport && (
                                                     <button
@@ -2478,7 +2446,7 @@ export default function SnsPage() {
                                                         disabled={exportTaskStatus === 'cancel_requested'}
                                                     >
                                                         <Square size={14} />
-                                                        {exportTaskStatus === 'cancel_requested' ? '取消中' : '取消'}
+                                                        {exportTaskStatus === 'cancel_requested' ? t('取消中') : t('取消')}
                                                     </button>
                                                 )}
                                             </div>
@@ -2491,15 +2459,13 @@ export default function SnsPage() {
                                             className="export-cancel-btn"
                                             onClick={() => setShowExportDialog(false)}
                                             disabled={isExportLocked}
-                                        >
-                                            取消
-                                        </button>
+                                        >{t('取消')}</button>
                                         <button
                                             className="export-start-btn"
                                             disabled={!canStartExport}
                                             onClick={handleStartSnsExport}
                                         >
-                                            {isExporting ? '导出中...' : '开始导出'}
+                                            {isExporting ? t('导出中...') : t('开始导出')}
                                         </button>
                                     </div>
                                 </>
@@ -2511,8 +2477,8 @@ export default function SnsPage() {
                                             <div className="export-result-icon success">
                                                 <CheckCircle size={48} />
                                             </div>
-                                            <h4>导出成功</h4>
-                                            <p>共导出 {exportResult.postCount} 条动态{exportResult.mediaCount ? `，${exportResult.mediaCount} 个媒体文件` : ''}</p>
+                                            <h4>{t('导出成功')}</h4>
+                                            <p>{t('共导出 {postCount} 条动态{v1}', { postCount: exportResult.postCount, v1: exportResult.mediaCount ? t('，{mediaCount} 个媒体文件', { mediaCount: exportResult.mediaCount }) : '' })}</p>
                                             <div className="export-result-actions">
                                                 <button
                                                     className="export-open-btn"
@@ -2522,15 +2488,11 @@ export default function SnsPage() {
                                                         }
                                                     }}
                                                 >
-                                                    <FolderOpen size={16} />
-                                                    打开目录
-                                                </button>
+                                                    <FolderOpen size={16} />{t('打开目录')}</button>
                                                 <button
                                                     className="export-done-btn"
                                                     onClick={() => setShowExportDialog(false)}
-                                                >
-                                                    完成
-                                                </button>
+                                                >{t('完成')}</button>
                                             </div>
                                         </>
                                     ) : (
@@ -2538,14 +2500,12 @@ export default function SnsPage() {
                                             <div className="export-result-icon error">
                                                 <AlertCircle size={48} />
                                             </div>
-                                            <h4>导出失败</h4>
+                                            <h4>{t('导出失败')}</h4>
                                             <p className="error-text">{exportResult.error}</p>
                                             <button
                                                 className="export-done-btn"
                                                 onClick={() => setExportResult(null)}
-                                            >
-                                                重试
-                                            </button>
+                                            >{t('重试')}</button>
                                         </>
                                     )}
                                 </div>

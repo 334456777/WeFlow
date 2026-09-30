@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { t as tr } from '../i18n'
 
 export type ThemeId = 'cloud-dancer' | 'corundum-blue' | 'kiwi-green' | 'spicy-red' | 'teal-water' | 'blossom-dream' | 'geist'
 export type ThemeMode = 'light' | 'dark' | 'system'
@@ -17,43 +18,43 @@ export interface ThemeInfo {
 export const themes: ThemeInfo[] = [
   {
     id: 'cloud-dancer',
-    name: '云上舞白',
-    description: 'Pantone 2026 年度色',
+    name: tr('云上舞白'),
+    description: tr('Pantone 2026 年度色'),
     primaryColor: '#8B7355',
     bgColor: '#F0EEE9'
   },
   {
     id: 'blossom-dream',
-    name: '繁花如梦',
-    description: '晨曦花境 · 夜阑幽梦',
+    name: tr('繁花如梦'),
+    description: tr('晨曦花境 · 夜阑幽梦'),
     primaryColor: '#D4849A',
     bgColor: '#FCF9FB',
     accentColor: '#FFBE98'
   },
   {
     id: 'corundum-blue',
-    name: '刚玉蓝',
+    name: tr('刚玉蓝'),
     description: 'RAL 220 40 10',
     primaryColor: '#4A6670',
     bgColor: '#E8EEF0'
   },
   {
     id: 'kiwi-green',
-    name: '冰猕猴桃汁绿',
+    name: tr('冰猕猴桃汁绿'),
     description: 'RAL 120 90 20',
     primaryColor: '#7A9A5C',
     bgColor: '#E8F0E4'
   },
   {
     id: 'spicy-red',
-    name: '辛辣红',
+    name: tr('辛辣红'),
     description: 'RAL 030 40 40',
     primaryColor: '#8B4049',
     bgColor: '#F0E8E8'
   },
   {
     id: 'teal-water',
-    name: '明水鸭色',
+    name: tr('明水鸭色'),
     description: 'RAL 180 80 10',
     primaryColor: '#5A8A8A',
     bgColor: '#E4F0F0'
@@ -61,7 +62,7 @@ export const themes: ThemeInfo[] = [
   {
     id: 'geist',
     name: 'Geist',
-    description: 'Vercel · 极简黑白',
+    description: tr('Vercel · 极简黑白'),
     primaryColor: '#000000',
     bgColor: '#ffffff'
   }

@@ -4,6 +4,7 @@ import { ZoomIn, ZoomOut, RotateCw, RotateCcw } from 'lucide-react'
 import { LivePhotoIcon } from '../components/LivePhotoIcon'
 import TitleBar from '../components/TitleBar'
 import './ImageWindow.scss'
+import { t } from '../i18n'
 
 export default function ImageWindow() {
     const [searchParams] = useSearchParams()
@@ -199,7 +200,7 @@ export default function ImageWindow() {
     if (!imagePath) {
         return (
             <div className="image-window-empty">
-                <span>无效的图片路径</span>
+                <span>{t('无效的图片路径')}</span>
             </div>
         )
     }
@@ -209,7 +210,7 @@ export default function ImageWindow() {
     return (
         <div className="image-window-container">
             <TitleBar
-                title="图片查看"
+                title={t('图片查看')}
                 showWindowControls={true}
                 showLogo={false}
                 customControls={
@@ -218,7 +219,7 @@ export default function ImageWindow() {
                             <>
                                 <button
                                     onClick={handlePlayLiveVideo}
-                                    title={isPlayingLive ? '正在播放实况' : '播放实况 (空格)'}
+                                    title={isPlayingLive ? t('正在播放实况') : t('播放实况 (空格)')}
                                     className={`live-play-btn ${isPlayingLive ? 'active' : ''}`}
                                     disabled={isPlayingLive}
                                 >
@@ -228,12 +229,12 @@ export default function ImageWindow() {
                                 <div className="divider"></div>
                             </>
                         )}
-                        <button onClick={handleZoomOut} title="缩小 (-)"><ZoomOut size={16} /></button>
+                        <button onClick={handleZoomOut} title={t('缩小 (-)')}><ZoomOut size={16} /></button>
                         <span className="scale-text">{Math.round(displayScale * 100)}%</span>
-                        <button onClick={handleZoomIn} title="放大 (+)"><ZoomIn size={16} /></button>
+                        <button onClick={handleZoomIn} title={t('放大 (+)')}><ZoomIn size={16} /></button>
                         <div className="divider"></div>
-                        <button onClick={handleRotateCcw} title="逆时针旋转"><RotateCcw size={16} /></button>
-                        <button onClick={handleRotate} title="顺时针旋转 (R)"><RotateCw size={16} /></button>
+                        <button onClick={handleRotateCcw} title={t('逆时针旋转')}><RotateCcw size={16} /></button>
+                        <button onClick={handleRotate} title={t('顺时针旋转 (R)')}><RotateCw size={16} /></button>
                     </div>
                 }
             />

@@ -2,6 +2,7 @@ import { ChevronDown, ChevronLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './ChatAnalysisHeader.scss'
+import { t } from '../i18n'
 
 export type ChatAnalysisMode = 'private' | 'group'
 
@@ -12,11 +13,11 @@ interface ChatAnalysisHeaderProps {
 
 const MODE_CONFIG: Record<ChatAnalysisMode, { label: string; path: string }> = {
   private: {
-    label: '私聊分析',
+    label: t('私聊分析'),
     path: '/analytics/private'
   },
   group: {
-    label: '群聊分析',
+    label: t('群聊分析'),
     path: '/analytics/group'
   }
 }
@@ -64,7 +65,7 @@ function ChatAnalysisHeader({ currentMode, actions }: ChatAnalysisHeaderProps) {
           onClick={() => navigate('/analytics')}
         >
           <ChevronLeft size={16} />
-          <span>聊天分析</span>
+          <span>{t('聊天分析')}</span>
         </button>
         <span className="chat-analysis-breadcrumb-separator">/</span>
         <div className="chat-analysis-dropdown" ref={dropdownRef}>
@@ -80,7 +81,7 @@ function ChatAnalysisHeader({ currentMode, actions }: ChatAnalysisHeaderProps) {
           </button>
 
           {menuOpen && (
-            <div className="chat-analysis-menu" role="menu" aria-label="切换聊天分析类型">
+            <div className="chat-analysis-menu" role="menu" aria-label={t('切换聊天分析类型')}>
               <button
                 type="button"
                 role="menuitem"

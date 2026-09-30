@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertCircle, AtSign, CheckCircle2, Download, Loader2, MessageCircle, RefreshCw, Search, Sparkles, Users } from 'lucide-react'
 import DateRangePicker from '../components/DateRangePicker'
 import './MyFootprintPage.scss'
+import { t } from '../i18n'
 
 type RangePreset = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'custom'
 type TimelineMode = 'all' | 'mention' | 'private'
@@ -227,7 +228,7 @@ function normalizeFootprintMessageContent(content: string): string {
 }
 
 function renderMentionContent(content: string): ReactNode {
-  const normalized = String(content || '').trim() || '[空消息]'
+  const normalized = String(content || '').trim() || t('[空消息]')
   const parts = normalized.split(/(@我|＠我)/g)
   if (parts.length <= 1) return normalized
   return parts.map((part, index) => {
@@ -244,24 +245,24 @@ function renderMentionContent(content: string): ReactNode {
 
 function formatDurationLabel(beginTimestamp: number, endTimestamp: number): string {
   if (!beginTimestamp || !endTimestamp || endTimestamp <= beginTimestamp) {
-    return '持续不足 1 分钟'
+    return t('持续不足 1 分钟')
   }
   const minutes = Math.max(1, Math.round((endTimestamp - beginTimestamp) / 60))
-  return `持续 ${minutes} 分钟`
+  return t('持续 {minutes} 分钟', { minutes: minutes })
 }
 
 function resolveRangePresetLabel(preset: RangePreset): string {
   switch (preset) {
     case 'today':
-      return '今天'
+      return t('今天')
     case 'yesterday':
-      return '昨天'
+      return t('昨天')
     case 'this_week':
-      return '本周'
+      return t('本周')
     case 'last_week':
-      return '上周'
+      return t('上周')
     default:
-      return '自定义'
+      return t('自定义')
   }
 }
 
@@ -272,7 +273,7 @@ function buildRange(preset: RangePreset, customStart: string, customEnd: string)
     return {
       begin: toSeconds(toDayStart(now)),
       end: toSeconds(now),
-      label: '今天'
+      label: t('今天')
     }
   }
 
@@ -282,7 +283,7 @@ function buildRange(preset: RangePreset, customStart: string, customEnd: string)
     return {
       begin: toSeconds(toDayStart(yesterday)),
       end: toSeconds(toDayEnd(yesterday)),
-      label: '昨天'
+      label: t('昨天')
     }
   }
 
@@ -293,7 +294,7 @@ function buildRange(preset: RangePreset, customStart: string, customEnd: string)
     return {
       begin: toSeconds(toDayStart(weekStart)),
       end: toSeconds(toDayEnd(weekEnd)),
-      label: '本周'
+      label: t('本周')
     }
   }
 
@@ -306,7 +307,7 @@ function buildRange(preset: RangePreset, customStart: string, customEnd: string)
     return {
       begin: toSeconds(toDayStart(lastWeekStart)),
       end: toSeconds(toDayEnd(lastWeekEnd)),
-      label: '上周'
+      label: t('上周')
     }
   }
 
@@ -318,7 +319,7 @@ function buildRange(preset: RangePreset, customStart: string, customEnd: string)
   return {
     begin,
     end,
-    label: `${toDateInputValue(customStartDate)} 至 ${toDateInputValue(customEndDate)}`
+    label: t('{v0} 至 {v1}', { v0: toDateInputValue(customStartDate), v1: toDateInputValue(customEndDate) })
   }
 }
 
@@ -371,7 +372,7 @@ function MyFootprintPage() {
     try {
       const result = await window.electronAPI.chat.getMyFootprintStats(currentRange.begin, currentRange.end)
       if (!result.success || !result.data) {
-        setError(result.error || '读取统计失败')
+        setError(result.error || t('读取统计失败'))
         setData(EMPTY_DATA)
         return
       }
@@ -488,7 +489,7 @@ function MyFootprintPage() {
           createTime: item.create_time,
           groupName: item.sessionDisplayName || groupMeta?.displayName || item.session_id,
           groupAvatarUrl: groupMeta?.avatarUrl,
-          senderName: item.senderDisplayName || item.sender_username || '未知',
+          senderName: item.senderDisplayName || item.sender_username || t('未知'),
           messageContent: normalizeFootprintMessageContent(item.message_content)
         }
       })
@@ -509,12 +510,12 @@ function MyFootprintPage() {
         const isRange = endTime > startTime + 60
         const totalInteractions = Math.max(0, item.message_count || (item.incoming_count + item.outgoing_count))
         const durationLabel = item.duration_sec > 0
-          ? `持续 ${Math.max(1, Math.round(item.duration_sec / 60))} 分钟`
+          ? t('持续 {v0} 分钟', { v0: Math.max(1, Math.round(item.duration_sec / 60)) })
           : formatDurationLabel(startTime, endTime)
         const subtitle = isRange
-          ? `${formatTimelineMoment(startTime, timelineTimeMode)} 至 ${formatTimelineMoment(endTime || startTime, timelineTimeMode)} · ${durationLabel}`
+          ? t('{v0} 至 {v1} · {durationLabel}', { v0: formatTimelineMoment(startTime, timelineTimeMode), v1: formatTimelineMoment(endTime || startTime, timelineTimeMode), durationLabel: durationLabel })
           : ''
-        const summaryText = `收到 ${item.incoming_count} 条 / 发送 ${item.outgoing_count} 条${item.replied ? ' · 已回复' : ''}`
+        const summaryText = t('收到 {incoming_count} 条 / 发送 {outgoing_count} 条{v2}', { incoming_count: item.incoming_count, outgoing_count: item.outgoing_count, v2: item.replied ? t(' · 已回复') : '' })
         const sessionMeta = privateSessionMetaMap.get(item.session_id)
         let dotVariant: PrivateDotVariant = 'both'
         if (item.incoming_count > 0 && item.outgoing_count === 0) {
@@ -565,7 +566,7 @@ function MyFootprintPage() {
       edge: 'start',
       key: 'boundary:start',
       time: currentRange.begin,
-      label: `区域时间开始（${presetLabel}）`
+      label: t('区域时间开始（{presetLabel}）', { presetLabel: presetLabel })
     }
 
     const endNode: TimelineBoundaryItem = {
@@ -573,7 +574,7 @@ function MyFootprintPage() {
       edge: 'end',
       key: 'boundary:end',
       time: currentRange.end,
-      label: `区域时间结束（${preset === 'today' ? '现在' : presetLabel}）`
+      label: t('区域时间结束（{v0}）', { v0: preset === 'today' ? t('现在') : presetLabel })
     }
 
     return [startNode, ...events, endNode]
@@ -588,8 +589,8 @@ function MyFootprintPage() {
     try {
       setExporting(true)
       setExportModalStatus('progress')
-      setExportModalTitle(`正在准备导出 ${format.toUpperCase()}`)
-      setExportModalDescription('正在准备文件保存信息...')
+      setExportModalTitle(t('正在准备导出 {v0}', { v0: format.toUpperCase() }))
+      setExportModalDescription(t('正在准备文件保存信息...'))
       setExportModalPath('')
       const downloadsPath = await window.electronAPI.app.getDownloadsPath()
       const separator = downloadsPath && downloadsPath.includes('\\') ? '\\' : '/'
@@ -597,9 +598,9 @@ function MyFootprintPage() {
       const suggestedName = `my_footprint_${rangeName}_${Date.now()}.${format}`
       const defaultPath = downloadsPath ? `${downloadsPath}${separator}${suggestedName}` : suggestedName
 
-      setExportModalDescription('请在弹窗中选择导出路径...')
+      setExportModalDescription(t('请在弹窗中选择导出路径...'))
       const saveResult = await window.electronAPI.dialog.saveFile({
-        title: format === 'csv' ? '导出我的足迹 CSV' : '导出我的足迹 JSON',
+        title: format === 'csv' ? t('导出我的足迹 CSV') : t('导出我的足迹 JSON'),
         defaultPath,
         filters: format === 'csv'
           ? [{ name: 'CSV', extensions: ['csv'] }]
@@ -613,7 +614,7 @@ function MyFootprintPage() {
         return
       }
 
-      setExportModalDescription('正在导出数据，请稍候...')
+      setExportModalDescription(t('正在导出数据，请稍候...'))
       setExportModalPath(saveResult.filePath)
       const exportResult = await window.electronAPI.chat.exportMyFootprint(
         currentRange.begin,
@@ -623,18 +624,18 @@ function MyFootprintPage() {
       )
       if (!exportResult.success) {
         setExportModalStatus('error')
-        setExportModalTitle('导出失败')
-        setExportModalDescription(exportResult.error || '未知错误')
+        setExportModalTitle(t('导出失败'))
+        setExportModalDescription(exportResult.error || t('未知错误'))
         setExportModalPath(saveResult.filePath)
         return
       }
       setExportModalStatus('success')
-      setExportModalTitle('导出完成')
-      setExportModalDescription(`文件已成功导出为 ${format.toUpperCase()}。`)
+      setExportModalTitle(t('导出完成'))
+      setExportModalDescription(t('文件已成功导出为 {v0}。', { v0: format.toUpperCase() }))
       setExportModalPath(exportResult.filePath || saveResult.filePath)
     } catch (exportError) {
       setExportModalStatus('error')
-      setExportModalTitle('导出失败')
+      setExportModalTitle(t('导出失败'))
       setExportModalDescription(String(exportError))
     } finally {
       setExporting(false)
@@ -665,7 +666,7 @@ function MyFootprintPage() {
       })
       if (!result.success || !result.insight) {
         setFootprintAiStatus('error')
-        setFootprintAiText(result.message || '生成失败')
+        setFootprintAiText(result.message || t('生成失败'))
         return
       }
       setFootprintAiStatus('success')
@@ -680,18 +681,18 @@ function MyFootprintPage() {
     <div className="my-footprint-page">
       <section className="footprint-header">
         <div className="footprint-title-wrap">
-          <h1>我的微信足迹</h1>
-          <p>范围：{currentRange.label}</p>
+          <h1>{t('我的微信足迹')}</h1>
+          <p>{t('范围：{label}', { label: currentRange.label })}</p>
         </div>
 
         <div className="footprint-toolbar">
           <div className="range-preset-group">
             {[
-              { value: 'today', label: '今天' },
-              { value: 'yesterday', label: '昨天' },
-              { value: 'this_week', label: '本周' },
-              { value: 'last_week', label: '上周' },
-              { value: 'custom', label: '自定义' }
+              { value: 'today', label: t('今天') },
+              { value: 'yesterday', label: t('昨天') },
+              { value: 'this_week', label: t('本周') },
+              { value: 'last_week', label: t('上周') },
+              { value: 'custom', label: t('自定义') }
             ].map((item) => (
               <button
                 key={item.value}
@@ -721,24 +722,24 @@ function MyFootprintPage() {
               <input
                 value={searchKeyword}
                 onChange={(event) => setSearchKeyword(event.target.value)}
-                placeholder="搜索联系人/群聊/内容"
+                placeholder={t('搜索联系人/群聊/内容')}
               />
             </div>
             <button type="button" className="action-btn" onClick={() => void loadData()} disabled={loading}>
               <RefreshCw size={15} className={loading ? 'spin' : ''} />
-              <span>刷新</span>
+              <span>{t('刷新')}</span>
             </button>
             <button type="button" className="action-btn" onClick={() => void handleGenerateAiSummary()} disabled={loading || footprintAiStatus === 'loading'}>
               {footprintAiStatus === 'loading' ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
-              <span>{footprintAiStatus === 'loading' ? '生成中...' : 'AI 总结'}</span>
+              <span>{footprintAiStatus === 'loading' ? t('生成中...') : t('AI 总结')}</span>
             </button>
             <button type="button" className="action-btn" onClick={() => void handleExport('csv')} disabled={exporting || loading}>
               <Download size={15} />
-              <span>导出 CSV</span>
+              <span>{t('导出 CSV')}</span>
             </button>
             <button type="button" className="action-btn" onClick={() => void handleExport('json')} disabled={exporting || loading}>
               <Download size={15} />
-              <span>导出 JSON</span>
+              <span>{t('导出 JSON')}</span>
             </button>
           </div>
         </div>
@@ -759,42 +760,42 @@ function MyFootprintPage() {
         </section>
       ) : error ? (
         <section className="footprint-error" role="alert">
-          <h3>读取我的足迹失败</h3>
+          <h3>{t('读取我的足迹失败')}</h3>
           <p>{error}</p>
           <button type="button" className="action-btn" onClick={() => void loadData()}>
             <RefreshCw size={15} />
-            <span>重试</span>
+            <span>{t('重试')}</span>
           </button>
         </section>
       ) : (
         <>
           <section className="kpi-grid">
             <button type="button" className="kpi-card" onClick={() => setTimelineMode('private')}>
-              <span className="kpi-label">有聊天的人数</span>
+              <span className="kpi-label">{t('有聊天的人数')}</span>
               <strong>{data.summary.private_inbound_people}</strong>
-              <small>回复了其中 {data.summary.private_replied_people} 人</small>
+              <small>{t('回复了其中 {private_replied_people} 人', { private_replied_people: data.summary.private_replied_people })}</small>
             </button>
             <button type="button" className="kpi-card" onClick={() => setTimelineMode('private')}>
-              <span className="kpi-label">我有回复的人数</span>
+              <span className="kpi-label">{t('我有回复的人数')}</span>
               <strong>{data.summary.private_outbound_people}</strong>
-              <small>回复率 {formatPercent(data.summary.private_reply_rate)}</small>
+              <small>{t('回复率 {v0}', { v0: formatPercent(data.summary.private_reply_rate) })}</small>
             </button>
             <button type="button" className="kpi-card" onClick={() => setTimelineMode('mention')}>
-              <span className="kpi-label">@我次数</span>
+              <span className="kpi-label">{t('@我次数')}</span>
               <strong>{data.summary.mention_count}</strong>
-              <small>可点击查看原消息</small>
+              <small>{t('可点击查看原消息')}</small>
             </button>
             <button type="button" className="kpi-card" onClick={() => setTimelineMode('mention')}>
-              <span className="kpi-label">涉及群聊</span>
+              <span className="kpi-label">{t('涉及群聊')}</span>
               <strong>{data.summary.mention_group_count}</strong>
-              <small>按群聚合 @我消息</small>
+              <small>{t('按群聚合 @我消息')}</small>
             </button>
           </section>
 
           {footprintAiStatus !== 'idle' && (
             <section className={`footprint-ai-result footprint-ai-result-${footprintAiStatus}`}>
               <div className="footprint-ai-head">
-                <strong>AI 足迹总结</strong>
+                <strong>{t('AI 足迹总结')}</strong>
                 <span>{currentRange.label}</span>
               </div>
               <p>{footprintAiText}</p>
@@ -807,36 +808,33 @@ function MyFootprintPage() {
           >
             <div className="timeline-head">
               <div className="timeline-head-left">
-                <h2>联络时间线</h2>
-                <p>最上方是时间区间开始，最下方是时间区间终点，中间按时间展示群聊 @我 与私聊分段会话节点。</p>
+                <h2>{t('联络时间线')}</h2>
+                <p>{t('最上方是时间区间开始，最下方是时间区间终点，中间按时间展示群聊 @我 与私聊分段会话节点。')}</p>
               </div>
               <div className="timeline-mode-row">
                 <button
                   type="button"
                   className={`timeline-mode-chip ${timelineMode === 'all' ? 'active' : ''}`}
                   onClick={() => setTimelineMode('all')}
-                >
-                  全部 {timelineEventCount}
+                >{t('全部 {timelineEventCount}', { timelineEventCount: timelineEventCount })}
                 </button>
                 <button
                   type="button"
                   className={`timeline-mode-chip ${timelineMode === 'mention' ? 'active' : ''}`}
                   onClick={() => setTimelineMode('mention')}
-                >
-                  @我群聊 {mentionTimelineItems.length}
+                >{t('@我群聊 {length}', { length: mentionTimelineItems.length })}
                 </button>
                 <button
                   type="button"
                   className={`timeline-mode-chip ${timelineMode === 'private' ? 'active' : ''}`}
                   onClick={() => setTimelineMode('private')}
-                >
-                  私聊 {privateTimelineItems.length}
+                >{t('私聊 {length}', { length: privateTimelineItems.length })}
                 </button>
               </div>
             </div>
 
             {timelineEventCount === 0 ? (
-              <div className="panel-empty-state">当前区间暂无联络事件，试试切换日期范围或清空关键词筛选。</div>
+              <div className="panel-empty-state">{t('当前区间暂无联络事件，试试切换日期范围或清空关键词筛选。')}</div>
             ) : (
               <div className="timeline-stream">
                 {timelineItems.map((item, index) => (
@@ -892,16 +890,14 @@ function MyFootprintPage() {
                               </div>
                               <div className="timeline-title-group">
                                 <div className="timeline-title">{item.groupName}</div>
-                                <div className="timeline-subtitle">发送人：{item.senderName}</div>
+                                <div className="timeline-subtitle">{t('发送人：{senderName}', { senderName: item.senderName })}</div>
                               </div>
                             </div>
                             <button
                               type="button"
                               className="jump-btn timeline-jump-btn"
                               onClick={() => handleJump(item.sessionId, item.localId, item.createTime)}
-                            >
-                              跳转
-                            </button>
+                            >{t('跳转')}</button>
                           </div>
                           <div className="timeline-message mention-message">{renderMentionContent(item.messageContent)}</div>
                         </div>
@@ -924,15 +920,13 @@ function MyFootprintPage() {
                               </div>
                             </div>
                             <div className="timeline-right-tools">
-                              <span className="timeline-count-badge">共 {item.totalInteractions} 条</span>
+                              <span className="timeline-count-badge">{t('共 {totalInteractions} 条', { totalInteractions: item.totalInteractions })}</span>
                               <button
                                 type="button"
                                 className="jump-btn timeline-jump-btn"
                                 disabled={!item.anchorLocalId || !item.anchorCreateTime}
                                 onClick={() => handleJump(item.sessionId, item.anchorLocalId, item.anchorCreateTime)}
-                              >
-                                跳转
-                              </button>
+                              >{t('跳转')}</button>
                             </div>
                           </div>
                           <div className="timeline-message private-message">{item.summaryText}</div>
@@ -968,9 +962,7 @@ function MyFootprintPage() {
                     setExportModalDescription('')
                     setExportModalPath('')
                   }}
-                >
-                  知道了
-                </button>
+                >{t('知道了')}</button>
               </div>
             )}
           </div>

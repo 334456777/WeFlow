@@ -4,6 +4,7 @@ import type {
   BackgroundTaskStatus,
   BackgroundTaskUpdate
 } from '../types/backgroundTask'
+import { t } from '../i18n'
 
 type BackgroundTaskListener = (tasks: BackgroundTaskRecord[]) => void
 
@@ -141,7 +142,7 @@ export const requestCancelBackgroundTask = (taskId: string): boolean => {
     status: 'cancel_requested',
     cancelRequested: true,
     pauseRequested: false,
-    detail: existing.detail || '停止请求已发出，当前查询完成后会结束后续加载',
+    detail: existing.detail || t('停止请求已发出，当前查询完成后会结束后续加载'),
     updatedAt: Date.now()
   })
   const cancelHandler = cancelHandlers.get(taskId)
@@ -160,7 +161,7 @@ export const requestPauseBackgroundTask = (taskId: string): boolean => {
     ...existing,
     status: 'pause_requested',
     pauseRequested: true,
-    detail: existing.detail || '中断请求已发出，当前处理完成后会暂停',
+    detail: existing.detail || t('中断请求已发出，当前处理完成后会暂停'),
     updatedAt: Date.now()
   })
   const pauseHandler = pauseHandlers.get(taskId)
@@ -180,7 +181,7 @@ export const requestResumeBackgroundTask = (taskId: string): boolean => {
     status: 'running',
     cancelRequested: false,
     pauseRequested: false,
-    detail: existing.detail || '任务已继续',
+    detail: existing.detail || t('任务已继续'),
     updatedAt: Date.now(),
     finishedAt: undefined
   })

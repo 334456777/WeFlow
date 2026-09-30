@@ -8,6 +8,7 @@ import {
   updateBackgroundTask
 } from '../services/backgroundTaskMonitor'
 import './AnnualReportPage.scss'
+import { t } from '../i18n'
 
 type YearOption = number | 'all'
 type YearsLoadPayload = {
@@ -45,7 +46,7 @@ function AnnualReportPage() {
   const [hasYearsLoadFinished, setHasYearsLoadFinished] = useState(false)
   const [loadStrategy, setLoadStrategy] = useState<'cache' | 'native' | 'hybrid'>('native')
   const [loadPhase, setLoadPhase] = useState<'cache' | 'native' | 'scan' | 'done'>('native')
-  const [loadStatusText, setLoadStatusText] = useState('准备加载年份数据...')
+  const [loadStatusText, setLoadStatusText] = useState(t('准备加载年份数据...'))
   const [nativeElapsedMs, setNativeElapsedMs] = useState(0)
   const [scanElapsedMs, setScanElapsedMs] = useState(0)
   const [totalElapsedMs, setTotalElapsedMs] = useState(0)
@@ -65,10 +66,10 @@ function AnnualReportPage() {
     const applyLoadPayload = (payload: YearsLoadPayload) => {
       if (uiTaskId) {
         updateBackgroundTask(uiTaskId, {
-          detail: payload.statusText || '正在加载可用年份',
+          detail: payload.statusText || t('正在加载可用年份'),
           progressText: payload.done
-            ? '已完成'
-            : `${Array.isArray(payload.years) ? payload.years.length : 0} 个年份`
+            ? t('已完成')
+            : t('{v0} 个年份', { v0: Array.isArray(payload.years) ? payload.years.length : 0 })
         })
       }
       if (payload.strategy) setLoadStrategy(payload.strategy)
@@ -103,7 +104,7 @@ function AnnualReportPage() {
       }
 
       if (payload.error && !payload.canceled) {
-        setLoadError(payload.error || '加载年度数据失败')
+        setLoadError(payload.error || t('加载年度数据失败'))
       }
 
       if (payload.done) {
@@ -114,9 +115,9 @@ function AnnualReportPage() {
         if (uiTaskId) {
           finishBackgroundTask(uiTaskId, payload.canceled ? 'canceled' : 'completed', {
             detail: payload.canceled
-              ? '年度报告年份加载已停止'
-              : `年度报告年份加载完成，共 ${years.length} 个年份`,
-            progressText: payload.canceled ? '已停止' : `${years.length} 个年份`
+              ? t('年度报告年份加载已停止')
+              : t('年度报告年份加载完成，共 {length} 个年份', { length: years.length }),
+            progressText: payload.canceled ? t('已停止') : t('{length} 个年份', { length: years.length })
           })
         }
       } else {
@@ -135,9 +136,9 @@ function AnnualReportPage() {
     const startLoad = async () => {
       uiTaskId = registerBackgroundTask({
         sourcePage: 'annualReport',
-        title: '年度报告年份加载',
-        detail: '准备使用原生快速模式加载年份',
-        progressText: '初始化',
+        title: t('年度报告年份加载'),
+        detail: t('准备使用原生快速模式加载年份'),
+        progressText: t('初始化'),
         cancelable: true,
         onCancel: async () => {
           if (taskId) {
@@ -150,7 +151,7 @@ function AnnualReportPage() {
       setHasYearsLoadFinished(false)
       setLoadStrategy('native')
       setLoadPhase('native')
-      setLoadStatusText('准备使用原生快速模式加载年份...')
+      setLoadStatusText(t('准备使用原生快速模式加载年份...'))
       setNativeElapsedMs(0)
       setScanElapsedMs(0)
       setTotalElapsedMs(0)
@@ -161,9 +162,9 @@ function AnnualReportPage() {
         const startResult = await window.electronAPI.annualReport.startAvailableYearsLoad()
         if (!startResult.success || !startResult.taskId) {
           finishBackgroundTask(uiTaskId, 'failed', {
-            detail: startResult.error || '加载年度数据失败'
+            detail: startResult.error || t('加载年度数据失败')
           })
-          setLoadError(startResult.error || '加载年度数据失败')
+          setLoadError(startResult.error || t('加载年度数据失败'))
           setIsLoading(false)
           setIsLoadingMoreYears(false)
           return
@@ -202,7 +203,7 @@ function AnnualReportPage() {
   const handleGenerateReport = () => {
     if (selectedYear === null || isRouteTransitioning) return
     const yearParam = selectedYear === 'all' ? 0 : selectedYear
-    const yearLabel = selectedYear === 'all' ? '全部时间' : `${selectedYear}年`
+    const yearLabel = selectedYear === 'all' ? t('全部时间') : t('{selectedYear}年', { selectedYear: selectedYear })
     setIsGenerating(true)
     setIsRouteTransitioning(true)
     setLaunchingYearLabel(yearLabel)
@@ -230,7 +231,7 @@ function AnnualReportPage() {
     return (
       <div className="annual-report-page">
         <Loader2 size={32} className="spin" style={{ color: 'var(--text-tertiary)' }} />
-        <p style={{ color: 'var(--text-tertiary)', marginTop: 16 }}>正在准备年度报告...</p>
+        <p style={{ color: 'var(--text-tertiary)', marginTop: 16 }}>{t('正在准备年度报告...')}</p>
       </div>
     )
   }
@@ -239,9 +240,9 @@ function AnnualReportPage() {
     return (
       <div className="annual-report-page">
         <Calendar size={64} style={{ color: 'var(--text-tertiary)', opacity: 0.5 }} />
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', margin: '16px 0 8px' }}>暂无聊天记录</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', margin: '16px 0 8px' }}>{t('暂无聊天记录')}</h2>
         <p style={{ color: 'var(--text-tertiary)', margin: 0 }}>
-          {loadError || '请先解密数据库后再生成年度报告'}
+          {loadError || t('请先解密数据库后再生成年度报告')}
         </p>
       </div>
     )
@@ -253,7 +254,7 @@ function AnnualReportPage() {
 
   const getYearLabel = (value: YearOption | null) => {
     if (!value) return ''
-    return value === 'all' ? '全部时间' : `${value} 年`
+    return value === 'all' ? t('全部时间') : t('{value} 年', { value: value })
   }
 
   const loadedYearCount = availableYears.length
@@ -262,10 +263,9 @@ function AnnualReportPage() {
   const renderYearLoadStatus = () => (
     <div className={`year-load-status ${isYearStatusComplete ? 'complete' : 'loading'}`}>
       {isYearStatusComplete ? (
-        <>全部年份已加载完毕</>
+        <>{t('全部年份已加载完毕')}</>
       ) : (
-        <>
-          更多年份加载中<span className="dot-ellipsis" aria-hidden="true">...</span>
+        <>{t('更多年份加载中')}<span className="dot-ellipsis" aria-hidden="true">...</span>
         </>
       )}
     </div>
@@ -274,15 +274,15 @@ function AnnualReportPage() {
   return (
     <div className={`annual-report-page ${isRouteTransitioning ? 'report-route-transitioning' : ''}`}>
       <Sparkles size={32} className="header-icon" />
-      <h1 className="page-title">年度报告</h1>
-      <p className="page-desc">选择年份，回顾你在微信里的点点滴滴</p>
+      <h1 className="page-title">{t('年度报告')}</h1>
+      <p className="page-desc">{t('选择年份，回顾你在微信里的点点滴滴')}</p>
 
       <div className="report-sections">
         <section className="report-section">
           <div className="section-header">
             <div>
-              <h2 className="section-title">总年度报告</h2>
-              <p className="section-desc">包含所有会话与消息</p>
+              <h2 className="section-title">{t('总年度报告')}</h2>
+              <p className="section-desc">{t('包含所有会话与消息')}</p>
             </div>
           </div>
 
@@ -297,8 +297,8 @@ function AnnualReportPage() {
                     setSelectedYear(option)
                   }}
                 >
-                  <span className="year-number">{option === 'all' ? '全部' : option}</span>
-                  <span className="year-label">{option === 'all' ? '时间' : '年'}</span>
+                  <span className="year-number">{option === 'all' ? t('全部') : option}</span>
+                  <span className="year-label">{option === 'all' ? t('时间') : t('年')}</span>
                 </div>
               ))}
             </div>
@@ -312,12 +312,12 @@ function AnnualReportPage() {
             {isGenerating ? (
               <>
                 <Loader2 size={20} className="spin" />
-                <span>{isRouteTransitioning ? '正在进入报告...' : '正在生成...'}</span>
+                <span>{isRouteTransitioning ? t('正在进入报告...') : t('正在生成...')}</span>
               </>
             ) : (
               <>
                 <Sparkles size={20} />
-                <span>生成 {getYearLabel(selectedYear)} 年度报告</span>
+                <span>{t('生成 {v0} 年度报告', { v0: getYearLabel(selectedYear) })}</span>
               </>
             )}
           </button>
@@ -326,12 +326,12 @@ function AnnualReportPage() {
         <section className="report-section">
           <div className="section-header">
             <div>
-              <h2 className="section-title">双人年度报告</h2>
-              <p className="section-desc">选择一位好友，只看你们的私聊</p>
+              <h2 className="section-title">{t('双人年度报告')}</h2>
+              <p className="section-desc">{t('选择一位好友，只看你们的私聊')}</p>
             </div>
             <div className="section-badge">
               <Users size={16} />
-              <span>私聊</span>
+              <span>{t('私聊')}</span>
             </div>
           </div>
 
@@ -346,8 +346,8 @@ function AnnualReportPage() {
                     setSelectedPairYear(option)
                   }}
                 >
-                  <span className="year-number">{option === 'all' ? '全部' : option}</span>
-                  <span className="year-label">{option === 'all' ? '时间' : '年'}</span>
+                  <span className="year-number">{option === 'all' ? t('全部') : option}</span>
+                  <span className="year-label">{option === 'all' ? t('时间') : t('年')}</span>
                 </div>
               ))}
             </div>
@@ -359,9 +359,9 @@ function AnnualReportPage() {
             disabled={!selectedPairYear || isRouteTransitioning}
           >
             <Users size={20} />
-            <span>选择好友并生成报告</span>
+            <span>{t('选择好友并生成报告')}</span>
           </button>
-          <p className="section-hint">从聊天排行中选择好友生成双人报告</p>
+          <p className="section-hint">{t('从聊天排行中选择好友生成双人报告')}</p>
         </section>
       </div>
 
@@ -369,8 +369,8 @@ function AnnualReportPage() {
         <div className="report-launch-overlay" role="status" aria-live="polite">
           <div className="launch-core">
             <Loader2 size={30} className="spin" />
-            <p className="launch-title">正在进入{launchingYearLabel}年度报告</p>
-            <p className="launch-subtitle">正在整理你的聊天记忆...</p>
+            <p className="launch-title">{t('正在进入{launchingYearLabel}年度报告', { launchingYearLabel: launchingYearLabel })}</p>
+            <p className="launch-subtitle">{t('正在整理你的聊天记忆...')}</p>
           </div>
         </div>
       )}
@@ -386,15 +386,15 @@ function getStrategyLabel(params: {
   nativeTimedOut: boolean
 }): string {
   const { loadStrategy, loadPhase, hasYearsLoadFinished, hasSwitchedStrategy, nativeTimedOut } = params
-  if (loadStrategy === 'cache') return '缓存模式（快速）'
+  if (loadStrategy === 'cache') return t('缓存模式（快速）')
   if (hasYearsLoadFinished) {
-    if (loadStrategy === 'native') return '原生快速模式'
-    if (hasSwitchedStrategy || nativeTimedOut) return '混合策略（原生→扫表）'
-    return '扫表兼容模式'
+    if (loadStrategy === 'native') return t('原生快速模式')
+    if (hasSwitchedStrategy || nativeTimedOut) return t('混合策略（原生→扫表）')
+    return t('扫表兼容模式')
   }
-  if (loadPhase === 'native') return '原生快速模式（优先）'
-  if (loadPhase === 'scan') return '扫表兼容模式（回退）'
-  return '混合策略'
+  if (loadPhase === 'native') return t('原生快速模式（优先）')
+  if (loadPhase === 'scan') return t('扫表兼容模式（回退）')
+  return t('混合策略')
 }
 
 export default AnnualReportPage

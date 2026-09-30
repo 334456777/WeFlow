@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, Minus, PanelLeftClose, PanelLeftOpen, Square, X } from 'lucide-react'
 import './TitleBar.scss'
+import { t } from '../i18n'
 
 interface TitleBarProps {
   title?: string
@@ -43,8 +44,8 @@ function TitleBar({
             type="button"
             className="title-sidebar-toggle"
             onClick={onToggleSidebar}
-            title={sidebarCollapsed ? '展开菜单' : '收起菜单'}
-            aria-label={sidebarCollapsed ? '展开菜单' : '收起菜单'}
+            title={sidebarCollapsed ? t('展开菜单') : t('收起菜单')}
+            aria-label={sidebarCollapsed ? t('展开菜单') : t('收起菜单')}
           >
             {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
@@ -56,8 +57,8 @@ function TitleBar({
           <button
             type="button"
             className="title-window-control-btn"
-            aria-label="最小化"
-            title="最小化"
+            aria-label={t('最小化')}
+            title={t('最小化')}
             onClick={() => window.electronAPI.window.minimize()}
           >
             <Minus size={14} />
@@ -65,8 +66,8 @@ function TitleBar({
           <button
             type="button"
             className="title-window-control-btn"
-            aria-label={isMaximized ? '还原' : '最大化'}
-            title={isMaximized ? '还原' : '最大化'}
+            aria-label={isMaximized ? t('还原') : t('最大化')}
+            title={isMaximized ? t('还原') : t('最大化')}
             onClick={() => window.electronAPI.window.maximize()}
           >
             {isMaximized ? <Copy size={12} /> : <Square size={12} />}
@@ -74,8 +75,8 @@ function TitleBar({
           <button
             type="button"
             className="title-window-control-btn is-close"
-            aria-label="关闭"
-            title="关闭"
+            aria-label={t('关闭')}
+            title={t('关闭')}
             onClick={() => window.electronAPI.window.close()}
           >
             <X size={14} />

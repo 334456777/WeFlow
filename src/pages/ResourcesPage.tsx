@@ -3,6 +3,7 @@ import { Calendar, Image as ImageIcon, Info, Loader2, PlayCircle, RefreshCw, Tra
 import { VirtuosoGrid } from 'react-virtuoso'
 import { finishBackgroundTask, registerBackgroundTask, updateBackgroundTask } from '../services/backgroundTaskMonitor'
 import './ResourcesPage.scss'
+import { t, formatLocale } from '../i18n'
 
 type MediaTab = 'image' | 'video'
 
@@ -107,7 +108,7 @@ function getItemKey(item: MediaStreamItem): string {
 
 function formatTimeLabel(timestampSec: number): string {
   if (!timestampSec) return '--:--'
-  return new Date(timestampSec * 1000).toLocaleString('zh-CN', {
+  return new Date(timestampSec * 1000).toLocaleString(formatLocale(), {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -124,10 +125,10 @@ function formatInfoValue(value: unknown): string {
 
 function extractVideoTitle(content?: string): string {
   const xml = String(content || '')
-  if (!xml) return '视频'
+  if (!xml) return t('视频')
   const match = /<title>([\s\S]*?)<\/title>/i.exec(xml)
   const text = String(match?.[1] || '').replace(/<!\[CDATA\[/g, '').replace(/\]\]>/g, '').trim()
-  return text || '视频'
+  return text || t('视频')
 }
 
 function toRenderableMediaSrc(rawPath?: string): string {
@@ -187,10 +188,10 @@ const MediaCard = memo(function MediaCard({
 
   return (
     <article className={`media-card ${selected ? 'selected' : ''} ${isDecryptingVisual ? 'decrypting' : ''}`}>
-      <button type="button" className="floating-info" onClick={() => onShowInfo(item)} aria-label="查看资源信息">
+      <button type="button" className="floating-info" onClick={() => onShowInfo(item)} aria-label={t('查看资源信息')}>
         <Info size={14} />
       </button>
-      <button type="button" className="floating-delete" onClick={() => onDelete(item)} aria-label="删除资源">
+      <button type="button" className="floating-delete" onClick={() => onDelete(item)} aria-label={t('删除资源')}>
         <Trash2 size={14} />
       </button>
 
@@ -200,12 +201,10 @@ const MediaCard = memo(function MediaCard({
           className="floating-update"
           disabled={decrypting}
           onClick={() => onUpdateImageQuality(item)}
-          title="已扫描到高清图，点击更新画质"
-          aria-label="更新画质"
+          title={t('已扫描到高清图，点击更新画质')}
+          aria-label={t('更新画质')}
         >
-          <RefreshCw size={13} />
-          更新
-        </button>
+          <RefreshCw size={13} />{t('更新')}</button>
       )}
 
       <button
@@ -224,7 +223,7 @@ const MediaCard = memo(function MediaCard({
           previewPath
             ? <img
               src={toRenderableMediaSrc(previewPath)}
-              alt="图片资源"
+              alt={t('图片资源')}
               className={imageIsLong ? 'long-image' : ''}
               loading="lazy"
               decoding="async"
@@ -237,7 +236,7 @@ const MediaCard = memo(function MediaCard({
             : <div className="placeholder"><ImageIcon size={30} /></div>
         ) : (
           videoPosterPath
-            ? <img src={toRenderableMediaSrc(videoPosterPath)} alt="视频封面" loading="lazy" decoding="async" />
+            ? <img src={toRenderableMediaSrc(videoPosterPath)} alt={t('视频封面')} loading="lazy" decoding="async" />
             : <div className="placeholder">
               <PlayCircle size={34} />
               <span>{extractVideoTitle(item.content)}</span>
@@ -256,7 +255,7 @@ const MediaCard = memo(function MediaCard({
           <span className="time">{formatTimeLabel(item.createTime)}</span>
         </div>
         <div className="sub-row">
-          <span>{item.mediaType === 'image' ? '图片' : '视频'}</span>
+          <span>{item.mediaType === 'image' ? t('图片') : t('视频')}</span>
           {item.senderUsername && <span>{item.senderUsername}</span>}
         </div>
       </div>
@@ -266,7 +265,7 @@ const MediaCard = memo(function MediaCard({
 
 function ResourcesPage() {
   const [tab, setTab] = useState<MediaTab>('image')
-  const [contacts, setContacts] = useState<ContactOption[]>([{ id: 'all', name: '全部联系人' }])
+  const [contacts, setContacts] = useState<ContactOption[]>([{ id: 'all', name: t('全部联系人') }])
   const [selectedContact, setSelectedContact] = useState('all')
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
@@ -344,23 +343,23 @@ function ResourcesPage() {
     }
   }, [])
 
-  const showAlert = useCallback((message: string, title: string = '提示') => {
+  const showAlert = useCallback((message: string, title: string = t('提示')) => {
     setDialog({
       mode: 'alert',
       title,
       message,
-      confirmText: '确定',
+      confirmText: t('确定'),
       onConfirm: null
     })
   }, [])
 
-  const showConfirm = useCallback((message: string, onConfirm: () => void, title: string = '确认操作') => {
+  const showConfirm = useCallback((message: string, onConfirm: () => void, title: string = t('确认操作')) => {
     setDialog({
       mode: 'confirm',
       title,
       message,
-      confirmText: '确定',
-      cancelText: '取消',
+      confirmText: t('确定'),
+      cancelText: t('取消'),
       onConfirm
     })
   }, [])
@@ -444,7 +443,7 @@ function ResourcesPage() {
       if (reset) {
         const connectResult = await window.electronAPI.chat.connect()
         if (!connectResult.success) {
-          setError(connectResult.error || '连接数据库失败')
+          setError(connectResult.error || t('连接数据库失败'))
           return
         }
       }
@@ -459,7 +458,7 @@ function ResourcesPage() {
       })
 
       if (!streamResult.success) {
-        setError(streamResult.error || '加载失败')
+        setError(streamResult.error || t('加载失败'))
         if (reset) {
           previewPatchRef.current = {}
           updatePatchRef.current = {}
@@ -570,7 +569,7 @@ function ResourcesPage() {
           })
           setSessionNameMap(initialNameMap)
           setContacts([
-            { id: 'all', name: '全部联系人' },
+            { id: 'all', name: t('全部联系人') },
             ...sessionResult.sessions.map((session) => ({
               id: session.username,
               name: session.displayName || session.username
@@ -810,21 +809,21 @@ function ResourcesPage() {
 
   const showMediaInfo = useCallback(async (item: MediaStreamItem) => {
     const itemKey = getItemKey(item)
-    const mediaLabel = item.mediaType === 'image' ? '图片' : '视频'
+    const mediaLabel = item.mediaType === 'image' ? t('图片') : t('视频')
     const baseRows: Array<{ label: string; value: string }> = [
-      { label: '资源类型', value: mediaLabel },
-      { label: '会话 ID', value: formatInfoValue(item.sessionId) },
-      { label: '消息 LocalId', value: formatInfoValue(item.localId) },
-      { label: '消息时间', value: formatTimeLabel(item.createTime) },
-      { label: '发送方', value: formatInfoValue(item.senderUsername) },
-      { label: '是否我发送', value: item.isSend === 1 ? '是' : (item.isSend === 0 ? '否' : '-') }
+      { label: t('资源类型'), value: mediaLabel },
+      { label: t('会话 ID'), value: formatInfoValue(item.sessionId) },
+      { label: t('消息 LocalId'), value: formatInfoValue(item.localId) },
+      { label: t('消息时间'), value: formatTimeLabel(item.createTime) },
+      { label: t('发送方'), value: formatInfoValue(item.senderUsername) },
+      { label: t('是否我发送'), value: item.isSend === 1 ? t('是') : (item.isSend === 0 ? t('否') : '-') }
     ]
 
     setDialog({
       mode: 'info',
-      title: `${mediaLabel}信息`,
-      infoRows: [...baseRows, { label: '状态', value: '正在读取缓存信息...' }],
-      confirmText: '关闭',
+      title: t('{mediaLabel}信息', { mediaLabel: mediaLabel }),
+      infoRows: [...baseRows, { label: t('状态'), value: t('正在读取缓存信息...') }],
+      confirmText: t('关闭'),
       onConfirm: null
     })
 
@@ -846,17 +845,17 @@ function ResourcesPage() {
           ...baseRows,
           { label: 'imageMd5', value: formatInfoValue(normalizeMediaToken(item.imageMd5)) },
           { label: 'imageDatName', value: formatInfoValue(getSafeImageDatName(item)) },
-          { label: '列表预览路径', value: formatInfoValue(previewPath) },
-          { label: '缓存命中', value: resolved?.success && cachePath ? '是' : '否' },
-          { label: '缓存路径', value: formatInfoValue(cachePath) },
-          { label: '缓存可更新', value: resolved?.hasUpdate ? '是' : '否' },
-          { label: '缓存状态', value: resolved?.success ? '可用' : formatInfoValue(resolved?.error || resolved?.failureKind || '未命中') }
+          { label: t('列表预览路径'), value: formatInfoValue(previewPath) },
+          { label: t('缓存命中'), value: resolved?.success && cachePath ? t('是') : t('否') },
+          { label: t('缓存路径'), value: formatInfoValue(cachePath) },
+          { label: t('缓存可更新'), value: resolved?.hasUpdate ? t('是') : t('否') },
+          { label: t('缓存状态'), value: resolved?.success ? t('可用') : formatInfoValue(resolved?.error || resolved?.failureKind || t('未命中')) }
         ]
         setDialog({
           mode: 'info',
-          title: '图片信息',
+          title: t('图片信息'),
           infoRows: rows,
-          confirmText: '关闭',
+          confirmText: t('关闭'),
           onConfirm: null
         })
         return
@@ -869,27 +868,27 @@ function ResourcesPage() {
       const posterPath = videoPosterMapRef.current[itemKey] || posterPatchRef.current[itemKey] || ''
       const rows: Array<{ label: string; value: string }> = [
         ...baseRows,
-        { label: 'videoMd5(消息)', value: formatInfoValue(normalizeMediaToken(item.videoMd5)) },
-        { label: 'videoMd5(解析)', value: formatInfoValue(resolvedMd5) },
-        { label: '视频文件存在', value: videoInfo?.success && videoInfo.exists ? '是' : '否' },
-        { label: '视频路径', value: formatInfoValue(videoInfo?.videoUrl) },
-        { label: '同名封面路径', value: formatInfoValue(videoInfo?.coverUrl) },
-        { label: '列表封面路径', value: formatInfoValue(posterPath) },
-        { label: '视频状态', value: videoInfo?.success ? '可用' : formatInfoValue(videoInfo?.error || '未找到') }
+        { label: t('videoMd5(消息)'), value: formatInfoValue(normalizeMediaToken(item.videoMd5)) },
+        { label: t('videoMd5(解析)'), value: formatInfoValue(resolvedMd5) },
+        { label: t('视频文件存在'), value: videoInfo?.success && videoInfo.exists ? t('是') : t('否') },
+        { label: t('视频路径'), value: formatInfoValue(videoInfo?.videoUrl) },
+        { label: t('同名封面路径'), value: formatInfoValue(videoInfo?.coverUrl) },
+        { label: t('列表封面路径'), value: formatInfoValue(posterPath) },
+        { label: t('视频状态'), value: videoInfo?.success ? t('可用') : formatInfoValue(videoInfo?.error || t('未找到')) }
       ]
       setDialog({
         mode: 'info',
-        title: '视频信息',
+        title: t('视频信息'),
         infoRows: rows,
-        confirmText: '关闭',
+        confirmText: t('关闭'),
         onConfirm: null
       })
     } catch (e) {
       setDialog({
         mode: 'info',
-        title: `${mediaLabel}信息`,
-        infoRows: [...baseRows, { label: '读取失败', value: formatInfoValue(String(e)) }],
-        confirmText: '关闭',
+        title: t('{mediaLabel}信息', { mediaLabel: mediaLabel }),
+        infoRows: [...baseRows, { label: t('读取失败'), value: formatInfoValue(String(e)) }],
+        confirmText: t('关闭'),
         onConfirm: null
       })
     }
@@ -1003,11 +1002,11 @@ function ResourcesPage() {
   }, [queueAspectPatch])
 
   const deleteOne = useCallback((item: MediaStreamItem) => {
-    showConfirm('确认删除该原始记录？此操作不可恢复。', () => {
+    showConfirm(t('确认删除该原始记录？此操作不可恢复。'), () => {
       void (async () => {
         const result = await window.electronAPI.chat.deleteMessage(item.sessionId, item.localId, item.createTime)
         if (!result.success) {
-          showAlert(`删除失败：${result.error || '未知错误'}`, '删除失败')
+          showAlert(t('删除失败：{v0}', { v0: result.error || t('未知错误') }), t('删除失败'))
           return
         }
 
@@ -1030,15 +1029,15 @@ function ResourcesPage() {
           delete next[key]
           return next
         })
-        setActionMessage('删除成功')
+        setActionMessage(t('删除成功'))
       })()
-    }, '删除确认')
+    }, t('删除确认'))
   }, [showAlert, showConfirm])
 
   const batchDelete = useCallback(() => {
     if (selectedItems.length === 0 || batchBusy) return
 
-    showConfirm(`确认删除选中 ${selectedItems.length} 条记录？此操作不可恢复。`, () => {
+    showConfirm(t('确认删除选中 {length} 条记录？此操作不可恢复。', { length: selectedItems.length }), () => {
       void (async () => {
         setBatchBusy(true)
         let success = 0
@@ -1064,13 +1063,13 @@ function ResourcesPage() {
             deletedKeys.forEach((key) => { delete next[key] })
             return next
           })
-          setActionMessage(`批量删除完成：成功 ${success}，失败 ${selectedItems.length - success}`)
-          showAlert(`批量删除完成：成功 ${success}，失败 ${selectedItems.length - success}`, '批量删除完成')
+          setActionMessage(t('批量删除完成：成功 {success}，失败 {v1}', { success: success, v1: selectedItems.length - success }))
+          showAlert(t('批量删除完成：成功 {success}，失败 {v1}', { success: success, v1: selectedItems.length - success }), t('批量删除完成'))
         } finally {
           setBatchBusy(false)
         }
       })()
-    }, '批量删除确认')
+    }, t('批量删除确认'))
   }, [batchBusy, selectedItems, showAlert, showConfirm])
 
   const decryptImage = useCallback(async (
@@ -1081,7 +1080,7 @@ function ResourcesPage() {
 
     const key = getItemKey(item)
     if (!hasImageLocator(item)) {
-      showAlert('当前图片缺少解密所需字段（imageMd5/imageDatName）', '无法解密')
+      showAlert(t('当前图片缺少解密所需字段（imageMd5/imageDatName）'), t('无法解密'))
       return
     }
 
@@ -1105,9 +1104,9 @@ function ResourcesPage() {
       })
       if (!result?.success) {
         if (result?.failureKind === 'decrypt_failed') {
-          showAlert(`解密失败：${result?.error || '解密后不是有效图片'}`, '解密失败')
+          showAlert(t('解密失败：{v0}', { v0: result?.error || t('解密后不是有效图片') }), t('解密失败'))
         } else {
-          showAlert(`本地无数据：${result?.error || '未找到原始 DAT 文件'}`, '未找到本地数据')
+          showAlert(t('本地无数据：{v0}', { v0: result?.error || t('未找到原始 DAT 文件') }), t('未找到本地数据'))
         }
         return undefined
       }
@@ -1116,7 +1115,7 @@ function ResourcesPage() {
         const localPath = result.localPath as string
         setPreviewPathMap((prev) => ({ ...prev, [key]: localPath }))
         setPreviewUpdateMap((prev) => ({ ...prev, [key]: isLikelyThumbnailPreview(localPath) }))
-        setActionMessage('图片解密完成')
+        setActionMessage(t('图片解密完成'))
         return localPath
       }
       try {
@@ -1134,16 +1133,16 @@ function ResourcesPage() {
           const localPath = resolved.localPath
           setPreviewPathMap((prev) => ({ ...prev, [key]: localPath }))
           setPreviewUpdateMap((prev) => ({ ...prev, [key]: Boolean(resolved.hasUpdate) }))
-          setActionMessage('图片解密完成')
+          setActionMessage(t('图片解密完成'))
           return localPath
         }
       } catch {
         // ignore
       }
-      setActionMessage('图片解密完成')
+      setActionMessage(t('图片解密完成'))
       return undefined
     } catch (e) {
-      showAlert(`本地无数据：${String(e)}`, '未找到本地数据')
+      showAlert(t('本地无数据：{v0}', { v0: String(e) }), t('未找到本地数据'))
       return undefined
     } finally {
       setDecryptingKeys((prev) => {
@@ -1217,7 +1216,7 @@ function ResourcesPage() {
 
     const imageItems = selectedItems.filter((item) => item.mediaType === 'image')
     if (imageItems.length === 0) {
-      showAlert('当前选中中没有图片资源', '无法批量解密')
+      showAlert(t('当前选中中没有图片资源'), t('无法批量解密'))
       return
     }
 
@@ -1229,8 +1228,8 @@ function ResourcesPage() {
     const updatePatch: Record<string, boolean> = {}
     const taskId = registerBackgroundTask({
       sourcePage: 'other',
-      title: '资源页图片批量解密',
-      detail: `正在解密图片（0/${imageItems.length}）`,
+      title: t('资源页图片批量解密'),
+      detail: t('正在解密图片（0/{length}）', { length: imageItems.length }),
       progressText: `0 / ${imageItems.length}`,
       cancelable: false
     })
@@ -1246,7 +1245,7 @@ function ResourcesPage() {
         const intervalReached = now - lastProgressUpdateAt >= TASK_PROGRESS_UPDATE_MIN_INTERVAL_MS
         if (!force && !crossedBucket && !intervalReached) return
         updateBackgroundTask(taskId, {
-          detail: `正在解密图片（${completed}/${imageItems.length}）`,
+          detail: t('正在解密图片（{completed}/{length}）', { completed: completed, length: imageItems.length }),
           progressText: `${completed} / ${imageItems.length}`
         })
         lastProgressBucket = bucket
@@ -1325,17 +1324,17 @@ function ResourcesPage() {
       if (Object.keys(updatePatch).length > 0) {
         setPreviewUpdateMap((prev) => ({ ...prev, ...updatePatch }))
       }
-      setActionMessage(`批量解密完成：成功 ${success}，未找到 ${notFound}，解密失败 ${decryptFailed}`)
-      showAlert(`批量解密完成：成功 ${success}，未找到 ${notFound}，解密失败 ${decryptFailed}`, '批量解密完成')
+      setActionMessage(t('批量解密完成：成功 {success}，未找到 {notFound}，解密失败 {decryptFailed}', { success: success, notFound: notFound, decryptFailed: decryptFailed }))
+      showAlert(t('批量解密完成：成功 {success}，未找到 {notFound}，解密失败 {decryptFailed}', { success: success, notFound: notFound, decryptFailed: decryptFailed }), t('批量解密完成'))
       finishBackgroundTask(taskId, decryptFailed > 0 ? 'failed' : 'completed', {
-        detail: `资源页图片批量解密完成：成功 ${success}，未找到 ${notFound}，解密失败 ${decryptFailed}`,
-        progressText: `成功 ${success} / 未找到 ${notFound} / 解密失败 ${decryptFailed}`
+        detail: t('资源页图片批量解密完成：成功 {success}，未找到 {notFound}，解密失败 {decryptFailed}', { success: success, notFound: notFound, decryptFailed: decryptFailed }),
+        progressText: t('成功 {success} / 未找到 {notFound} / 解密失败 {decryptFailed}', { success: success, notFound: notFound, decryptFailed: decryptFailed })
       })
     } catch (e) {
       finishBackgroundTask(taskId, 'failed', {
-        detail: `资源页图片批量解密失败：${String(e)}`
+        detail: t('资源页图片批量解密失败：{v0}', { v0: String(e) })
       })
-      showAlert(`批量解密失败：${String(e)}`, '批量解密失败')
+      showAlert(t('批量解密失败：{v0}', { v0: String(e) }), t('批量解密失败'))
     } finally {
       setBatchBusy(false)
     }
@@ -1346,13 +1345,13 @@ function ResourcesPage() {
 
     const md5 = await resolveItemVideoMd5(item)
     if (!md5) {
-      showAlert('未解析到视频资源标识', '无法播放')
+      showAlert(t('未解析到视频资源标识'), t('无法播放'))
       return
     }
 
     const info = await window.electronAPI.video.getVideoInfo(md5, { includePoster: false })
     if (!info.success || !info.exists || !info.videoUrl) {
-      showAlert(info.error || '未找到视频文件', '无法播放')
+      showAlert(info.error || t('未找到视频文件'), t('无法播放'))
       return
     }
 
@@ -1364,8 +1363,8 @@ function ResourcesPage() {
       <header className="stream-toolbar">
         <div className="toolbar-left">
           <div className="media-tabs">
-            <button type="button" className={tab === 'image' ? 'active' : ''} onClick={() => setTab('image')}>图片</button>
-            <button type="button" className={tab === 'video' ? 'active' : ''} onClick={() => setTab('video')}>视频</button>
+            <button type="button" className={tab === 'image' ? 'active' : ''} onClick={() => setTab('image')}>{t('图片')}</button>
+            <button type="button" className={tab === 'video' ? 'active' : ''} onClick={() => setTab('video')}>{t('视频')}</button>
           </div>
           <div className="filters">
             <label className="filter-field filter-select">
@@ -1389,7 +1388,7 @@ function ResourcesPage() {
                 onChange={(event) => setDateStart(event.target.value)}
               />
             </label>
-            <span className="sep">至</span>
+            <span className="sep">{t('至')}</span>
             <label className="filter-field filter-date">
               <Calendar size={14} />
               <input
@@ -1399,29 +1398,23 @@ function ResourcesPage() {
                 onChange={(event) => setDateEnd(event.target.value)}
               />
             </label>
-            <button type="button" className="ghost reset-btn" onClick={() => { setDateStart(''); setDateEnd('') }}>重置时间</button>
+            <button type="button" className="ghost reset-btn" onClick={() => { setDateStart(''); setDateEnd('') }}>{t('重置时间')}</button>
           </div>
         </div>
         <div className="toolbar-right">
           <button type="button" onClick={() => void loadStream(true)} disabled={loading || loadingMore}>
-            {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
-            刷新
-          </button>
+            {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}{t('刷新')}</button>
           {tab === 'image' && (
-            <button type="button" onClick={() => void batchDecryptImage()} disabled={selectedKeys.size === 0 || batchBusy}>
-              批量解密
-            </button>
+            <button type="button" onClick={() => void batchDecryptImage()} disabled={selectedKeys.size === 0 || batchBusy}>{t('批量解密')}</button>
           )}
-          <button type="button" className="danger" onClick={() => void batchDelete()} disabled={selectedKeys.size === 0 || batchBusy}>
-            批量删除
-          </button>
+          <button type="button" className="danger" onClick={() => void batchDelete()} disabled={selectedKeys.size === 0 || batchBusy}>{t('批量删除')}</button>
         </div>
       </header>
 
       <div className="stream-summary">
-        <span>已加载 {items.length} 条</span>
-        <span>已选 {selectedKeys.size} 条</span>
-        <span>{tab === 'image' ? '图片按时间倒序流式展示' : '视频按时间倒序流式展示'}</span>
+        <span>{t('已加载 {length} 条', { length: items.length })}</span>
+        <span>{t('已选 {size} 条', { size: selectedKeys.size })}</span>
+        <span>{tab === 'image' ? t('图片按时间倒序流式展示') : t('视频按时间倒序流式展示')}</span>
         {actionMessage && <span className="action-message">{actionMessage}</span>}
       </div>
 
@@ -1430,11 +1423,11 @@ function ResourcesPage() {
       )}
 
       {!error && items.length === 0 && (loading || loadingMore) && (
-        <div className="stream-state"><Loader2 size={18} className="spin" /> 正在加载...</div>
+        <div className="stream-state"><Loader2 size={18} className="spin" />{' '}{t('正在加载...')}</div>
       )}
 
       {!error && items.length === 0 && !loading && !loadingMore && (
-        <div className="stream-state">当前筛选条件下没有内容</div>
+        <div className="stream-state">{t('当前筛选条件下没有内容')}</div>
       )}
 
       {!error && items.length > 0 && (
@@ -1479,8 +1472,8 @@ function ResourcesPage() {
               )
             }}
           />
-          {loadingMore && <div className="grid-loading-more"><Loader2 size={16} className="spin" /> 加载更多中...</div>}
-          {!hasMore && <div className="grid-end">已加载到底</div>}
+          {loadingMore && <div className="grid-loading-more"><Loader2 size={16} className="spin" />{' '}{t('加载更多中...')}</div>}
+          {!hasMore && <div className="grid-end">{t('已加载到底')}</div>}
         </div>
       )}
 
@@ -1505,7 +1498,7 @@ function ResourcesPage() {
             <footer className="dialog-actions">
               {dialog.mode === 'confirm' && (
                 <button type="button" className="dialog-btn ghost" onClick={closeDialog}>
-                  {dialog.cancelText || '取消'}
+                  {dialog.cancelText || t('取消')}
                 </button>
               )}
               <button
@@ -1517,7 +1510,7 @@ function ResourcesPage() {
                   callback?.()
                 }}
               >
-                {dialog.confirmText || '确定'}
+                {dialog.confirmText || t('确定')}
               </button>
             </footer>
           </div>

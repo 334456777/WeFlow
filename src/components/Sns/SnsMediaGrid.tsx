@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { Play, Lock, Download, ImageOff } from 'lucide-react'
 import { LivePhotoIcon } from '../../components/LivePhotoIcon'
 import { RefreshCw } from 'lucide-react'
+import { t } from '../../i18n'
 
 interface SnsMedia {
     url: string
@@ -211,7 +212,7 @@ const MediaItem = ({ media, postType, onPreview, onMediaDeleted }: { media: SnsM
                         setVideoPath(local)
                         onPreview(local, true, undefined)
                     } else {
-                        alert('视频解密失败')
+                        alert(t('视频解密失败'))
                     }
                 } catch (e) {
                     console.error(e)
@@ -260,11 +261,11 @@ const MediaItem = ({ media, postType, onPreview, onMediaDeleted }: { media: SnsM
                 link.click()
                 document.body.removeChild(link)
             } else {
-                alert('下载失败: 无法获取资源')
+                alert(t('下载失败: 无法获取资源'))
             }
         } catch (e) {
             console.error('Download error:', e)
-            alert('下载出错')
+            alert(t('下载出错'))
         } finally {
             setLoading(false)
         }
@@ -275,7 +276,7 @@ const MediaItem = ({ media, postType, onPreview, onMediaDeleted }: { media: SnsM
             <div className="sns-media-item deleted-media">
                 <div className="deleted-placeholder">
                     <ImageOff size={24} />
-                    <span>已删除</span>
+                    <span>{t('已删除')}</span>
                 </div>
             </div>
         )
@@ -313,7 +314,7 @@ const MediaItem = ({ media, postType, onPreview, onMediaDeleted }: { media: SnsM
             {isGeneratingCover && (
                 <div className="media-decrypting-mask">
                     <RefreshCw className="spin" size={24} />
-                    <span>解密中...</span>
+                    <span>{t('解密中...')}</span>
                 </div>
             )}
 
@@ -330,7 +331,7 @@ const MediaItem = ({ media, postType, onPreview, onMediaDeleted }: { media: SnsM
                 </div>
             )}
 
-            <div className="media-download-btn" onClick={handleDownload} title="下载">
+            <div className="media-download-btn" onClick={handleDownload} title={t('下载')}>
                 <Download size={16} />
             </div>
         </div>

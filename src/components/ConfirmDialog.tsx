@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import './ConfirmDialog.scss'
+import { t } from '../i18n'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -23,8 +24,8 @@ export default function ConfirmDialog({ open, title, message, onConfirm, onCance
           <p style={{ whiteSpace: 'pre-line' }}>{message}</p>
         </div>
         <div className="dialog-actions">
-          <button className="btn-cancel" onClick={onCancel}>取消</button>
-          <button className="btn-confirm" onClick={onConfirm}>开始获取</button>
+          <button className="btn-cancel" onClick={onCancel}>{t('取消')}</button>
+          <button className="btn-confirm" onClick={onConfirm}>{t('开始获取')}</button>
         </div>
       </div>
     </div>

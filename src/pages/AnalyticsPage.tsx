@@ -13,6 +13,7 @@ import {
 import './AnalyticsPage.scss'
 import { Avatar } from '../components/Avatar'
 import ChatAnalysisHeader from '../components/ChatAnalysisHeader'
+import { t, getLocale } from '../i18n'
 
 interface ExcludeCandidate {
   username: string
@@ -57,9 +58,9 @@ function AnalyticsPage() {
     if (isLoaded && !forceRefresh) return
     const taskId = registerBackgroundTask({
       sourcePage: 'analytics',
-      title: forceRefresh ? '刷新分析看板' : '加载分析看板',
-      detail: '准备读取整体统计数据',
-      progressText: '整体统计',
+      title: forceRefresh ? t('刷新分析看板') : t('加载分析看板'),
+      detail: t('准备读取整体统计数据'),
+      progressText: t('整体统计'),
       cancelable: true
     })
     setIsLoading(true)
@@ -73,15 +74,15 @@ function AnalyticsPage() {
     })
 
     try {
-      setLoadingStatus('正在统计消息数据...')
+      setLoadingStatus(t('正在统计消息数据...'))
       updateBackgroundTask(taskId, {
-        detail: '正在统计消息数据',
-        progressText: '整体统计'
+        detail: t('正在统计消息数据'),
+        progressText: t('整体统计')
       })
       const statsResult = await window.electronAPI.analytics.getOverallStatistics(forceRefresh)
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，当前页面分析流程已结束'
+          detail: t('已停止后续加载，当前页面分析流程已结束')
         })
         setIsLoading(false)
         return
@@ -89,22 +90,22 @@ function AnalyticsPage() {
       if (statsResult.success && statsResult.data) {
         setStatistics(statsResult.data)
       } else {
-        setError(statsResult.error || '加载统计数据失败')
+        setError(statsResult.error || t('加载统计数据失败'))
         finishBackgroundTask(taskId, 'failed', {
-          detail: statsResult.error || '加载统计数据失败'
+          detail: statsResult.error || t('加载统计数据失败')
         })
         setIsLoading(false)
         return
       }
-      setLoadingStatus('正在分析联系人排名...')
+      setLoadingStatus(t('正在分析联系人排名...'))
       updateBackgroundTask(taskId, {
-        detail: '正在分析联系人排名',
-        progressText: '联系人排名'
+        detail: t('正在分析联系人排名'),
+        progressText: t('联系人排名')
       })
       const rankingsResult = await window.electronAPI.analytics.getContactRankings(20)
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，联系人排名后续步骤未继续'
+          detail: t('已停止后续加载，联系人排名后续步骤未继续')
         })
         setIsLoading(false)
         return
@@ -112,15 +113,15 @@ function AnalyticsPage() {
       if (rankingsResult.success && rankingsResult.data) {
         setRankings(rankingsResult.data)
       }
-      setLoadingStatus('正在计算时间分布...')
+      setLoadingStatus(t('正在计算时间分布...'))
       updateBackgroundTask(taskId, {
-        detail: '正在计算时间分布',
-        progressText: '时间分布'
+        detail: t('正在计算时间分布'),
+        progressText: t('时间分布')
       })
       const timeResult = await window.electronAPI.analytics.getTimeDistribution()
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，时间分布结果未继续写入'
+          detail: t('已停止后续加载，时间分布结果未继续写入')
         })
         setIsLoading(false)
         return
@@ -130,8 +131,8 @@ function AnalyticsPage() {
       }
       markLoaded()
       finishBackgroundTask(taskId, 'completed', {
-        detail: '分析看板数据加载完成',
-        progressText: '已完成'
+        detail: t('分析看板数据加载完成'),
+        progressText: t('已完成')
       })
     } catch (e) {
       setError(String(e))
@@ -175,7 +176,7 @@ function AnalyticsPage() {
       if (result.success && result.data) {
         setExcludeCandidates(result.data)
       } else {
-        setExcludeError(result.error || '加载好友列表失败')
+        setExcludeError(result.error || t('加载好友列表失败'))
       }
     } catch (e) {
       setExcludeError(String(e))
@@ -221,7 +222,7 @@ function AnalyticsPage() {
     try {
       const result = await window.electronAPI.analytics.setExcludedUsernames(payload)
       if (!result.success) {
-        alert(result.error || '更新排除名单失败')
+        alert(result.error || t('更新排除名单失败'))
         return
       }
       setExcludedUsernames(new Set((result.data || payload).map(normalizeUsername)))
@@ -229,7 +230,7 @@ function AnalyticsPage() {
       await window.electronAPI.cache.clearAnalytics()
       await loadData(true)
     } catch (e) {
-      alert(`更新排除名单失败：${String(e)}`)
+      alert(t('更新排除名单失败：{v0}', { v0: String(e) }))
     }
   }
 
@@ -237,7 +238,7 @@ function AnalyticsPage() {
     try {
       const result = await window.electronAPI.analytics.setExcludedUsernames([])
       if (!result.success) {
-        setError(result.error || '重置排除好友失败')
+        setError(result.error || t('重置排除好友失败'))
         return
       }
       setExcludedUsernames(new Set())
@@ -246,7 +247,7 @@ function AnalyticsPage() {
       await window.electronAPI.cache.clearAnalytics()
       await loadData(true)
     } catch (e) {
-      setError(`重置排除好友失败: ${String(e)}`)
+      setError(t('重置排除好友失败: {v0}', { v0: String(e) }))
     }
   }
 
@@ -272,7 +273,12 @@ function AnalyticsPage() {
   }
 
   const formatNumber = (num: number) => {
-    if (num >= 10000) return (num / 10000).toFixed(1) + '万'
+    if (getLocale() === 'en') {
+      if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+      if (num >= 10000) return `${(num / 1000).toFixed(1)}k`
+      return num.toLocaleString()
+    }
+    if (num >= 10000) return (num / 10000).toFixed(1) + t('万')
     return num.toLocaleString()
   }
 
@@ -291,12 +297,12 @@ function AnalyticsPage() {
   const getTypeChartOption = () => {
     if (!statistics) return {}
     const data = [
-      { name: '文本', value: statistics.textMessages },
-      { name: '图片', value: statistics.imageMessages },
-      { name: '语音', value: statistics.voiceMessages },
-      { name: '视频', value: statistics.videoMessages },
-      { name: '表情', value: statistics.emojiMessages },
-      { name: '其他', value: statistics.otherMessages },
+      { name: t('文本'), value: statistics.textMessages },
+      { name: t('图片'), value: statistics.imageMessages },
+      { name: t('语音'), value: statistics.voiceMessages },
+      { name: t('视频'), value: statistics.videoMessages },
+      { name: t('表情'), value: statistics.emojiMessages },
+      { name: t('其他'), value: statistics.otherMessages },
     ].filter(d => d.value > 0)
     return {
       tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
@@ -357,8 +363,8 @@ function AnalyticsPage() {
       tooltip: { trigger: 'item' },
       series: [{
         type: 'pie', radius: ['50%', '70%'], data: [
-          { name: '发送', value: statistics.sentMessages, itemStyle: { color: '#07c160' } },
-          { name: '接收', value: statistics.receivedMessages, itemStyle: { color: '#1989fa' } }
+          { name: t('发送'), value: statistics.sentMessages, itemStyle: { color: '#07c160' } },
+          { name: t('接收'), value: statistics.receivedMessages, itemStyle: { color: '#1989fa' } }
         ],
         label: {
           show: true,
@@ -411,7 +417,7 @@ function AnalyticsPage() {
     const data = hours.map(h => timeDistribution.hourlyDistribution[h] || 0)
     return {
       tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: hours.map(h => `${h}时`) },
+      xAxis: { type: 'category', data: hours.map(h => t('{h}时', { h: h })) },
       yAxis: { type: 'value' },
       series: [{ type: 'bar', data, itemStyle: { color: '#07c160', borderRadius: [4, 4, 0, 0] } }]
     }
@@ -428,11 +434,10 @@ function AnalyticsPage() {
     <>
       <button className="btn btn-secondary" onClick={handleRefresh} disabled={isLoading}>
         <RefreshCw size={16} className={isLoading ? 'spin' : ''} />
-        {isLoading ? '刷新中...' : '刷新'}
+        {isLoading ? t('刷新中...') : t('刷新')}
       </button>
       <button className="btn btn-secondary" onClick={openExcludeDialog}>
-        <UserMinus size={16} />
-        排除好友{excludedUsernames.size > 0 ? ` (${excludedUsernames.size})` : ''}
+        <UserMinus size={16} />{t('排除好友{v0}', { v0: excludedUsernames.size > 0 ? ` (${excludedUsernames.size})` : '' })}
       </button>
     </>
   )
@@ -455,12 +460,8 @@ function AnalyticsPage() {
       <div className="error-container">
         <p>{error}</p>
         <div className="error-actions">
-          <button className="btn btn-secondary" onClick={handleResetExcluded}>
-            重置排除好友
-          </button>
-          <button className="btn btn-primary" onClick={() => loadData(true)}>
-            重试
-          </button>
+          <button className="btn btn-secondary" onClick={handleResetExcluded}>{t('重置排除好友')}</button>
+          <button className="btn btn-primary" onClick={() => loadData(true)}>{t('重试')}</button>
         </div>
       </div>
     )
@@ -470,7 +471,7 @@ function AnalyticsPage() {
     return renderPageShell(
       <div className="error-container">
         <p>{error}</p>
-        <button className="btn btn-primary" onClick={() => loadData(true)}>重试</button>
+        <button className="btn btn-primary" onClick={() => loadData(true)}>{t('重试')}</button>
       </div>
     )
   }
@@ -486,45 +487,45 @@ function AnalyticsPage() {
               <div className="stat-icon"><MessageSquare size={24} /></div>
               <div className="stat-info">
                 <span className="stat-value">{formatNumber(statistics?.totalMessages || 0)}</span>
-                <span className="stat-label">总消息数</span>
+                <span className="stat-label">{t('总消息数')}</span>
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-icon"><Send size={24} /></div>
               <div className="stat-info">
                 <span className="stat-value">{formatNumber(statistics?.sentMessages || 0)}</span>
-                <span className="stat-label">发送消息</span>
+                <span className="stat-label">{t('发送消息')}</span>
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-icon"><Inbox size={24} /></div>
               <div className="stat-info">
                 <span className="stat-value">{formatNumber(statistics?.receivedMessages || 0)}</span>
-                <span className="stat-label">接收消息</span>
+                <span className="stat-label">{t('接收消息')}</span>
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-icon"><Calendar size={24} /></div>
               <div className="stat-info">
                 <span className="stat-value">{statistics?.activeDays || 0}</span>
-                <span className="stat-label">活跃天数</span>
+                <span className="stat-label">{t('活跃天数')}</span>
               </div>
             </div>
           </div>
           {statistics && (
             <div className="time-range">
               <Clock size={16} />
-              <span>数据范围: {formatDate(statistics.firstMessageTime)} - {formatDate(statistics.lastMessageTime)}</span>
+              <span>{t('数据范围: {v0} - {v1}', { v0: formatDate(statistics.firstMessageTime), v1: formatDate(statistics.lastMessageTime) })}</span>
             </div>
           )}
           <div className="charts-grid">
-            <div className="chart-card"><h3>消息类型分布</h3><ReactECharts option={getTypeChartOption()} style={{ height: 300 }} /></div>
-            <div className="chart-card"><h3>发送/接收比例</h3><ReactECharts option={getSendReceiveOption()} style={{ height: 300 }} /></div>
-            <div className="chart-card wide"><h3>每小时消息分布</h3><ReactECharts option={getHourlyOption()} style={{ height: 250 }} /></div>
+            <div className="chart-card"><h3>{t('消息类型分布')}</h3><ReactECharts option={getTypeChartOption()} style={{ height: 300 }} /></div>
+            <div className="chart-card"><h3>{t('发送/接收比例')}</h3><ReactECharts option={getSendReceiveOption()} style={{ height: 300 }} /></div>
+            <div className="chart-card wide"><h3>{t('每小时消息分布')}</h3><ReactECharts option={getHourlyOption()} style={{ height: 250 }} /></div>
           </div>
         </section>
         <section className="page-section">
-          <div className="section-header"><div><h2><Users size={20} /> 聊天排名 Top 20</h2></div></div>
+          <div className="section-header"><div><h2><Users size={20} />{' '}{t('聊天排名 Top 20')}</h2></div></div>
           <div className="rankings-list">
             {rankings.map((contact, index) => (
               <div key={contact.username} className="ranking-item">
@@ -535,9 +536,9 @@ function AnalyticsPage() {
                 </div>
                 <div className="contact-info">
                   <span className="contact-name">{contact.displayName}</span>
-                  <span className="contact-stats">发送 {contact.sentCount} / 接收 {contact.receivedCount}</span>
+                  <span className="contact-stats">{t('发送 {sentCount} / 接收 {receivedCount}', { sentCount: contact.sentCount, receivedCount: contact.receivedCount })}</span>
                 </div>
-                <span className="message-count">{formatNumber(contact.messageCount)} 条</span>
+                <span className="message-count">{t('{v0} 条', { v0: formatNumber(contact.messageCount) })}</span>
               </div>
             ))}
           </div>
@@ -547,7 +548,7 @@ function AnalyticsPage() {
         <div className="exclude-modal-overlay" onClick={() => setIsExcludeDialogOpen(false)}>
           <div className="exclude-modal" onClick={e => e.stopPropagation()}>
             <div className="exclude-modal-header">
-              <h3>选择不统计的好友</h3>
+              <h3>{t('选择不统计的好友')}</h3>
               <button className="modal-close" onClick={() => setIsExcludeDialogOpen(false)}>
                 <X size={18} />
               </button>
@@ -556,7 +557,7 @@ function AnalyticsPage() {
               <Search size={16} />
               <input
                 type="text"
-                placeholder="搜索好友"
+                placeholder={t('搜索好友')}
                 value={excludeQuery}
                 onChange={e => setExcludeQuery(e.target.value)}
                 disabled={excludeLoading}
@@ -571,7 +572,7 @@ function AnalyticsPage() {
               {excludeLoading && (
                 <div className="exclude-loading">
                   <Loader2 size={20} className="spin" />
-                  <span>正在加载好友列表...</span>
+                  <span>{t('正在加载好友列表...')}</span>
                 </div>
               )}
               {!excludeLoading && excludeError && (
@@ -601,7 +602,7 @@ function AnalyticsPage() {
                   })}
                   {visibleExcludeCandidates.length === 0 && (
                     <div className="exclude-empty">
-                      {excludeQuery.trim() ? '未找到匹配好友' : '暂无可选好友'}
+                      {excludeQuery.trim() ? t('未找到匹配好友') : t('暂无可选好友')}
                     </div>
                   )}
                 </div>
@@ -609,18 +610,12 @@ function AnalyticsPage() {
             </div>
             <div className="exclude-modal-footer">
               <div className="exclude-footer-left">
-                <span className="exclude-count">已排除 {draftExcluded.size} 人</span>
-                <button className="btn btn-text" onClick={toggleInvertSelection} disabled={excludeLoading}>
-                  反选
-                </button>
+                <span className="exclude-count">{t('已排除 {size} 人', { size: draftExcluded.size })}</span>
+                <button className="btn btn-text" onClick={toggleInvertSelection} disabled={excludeLoading}>{t('反选')}</button>
               </div>
               <div className="exclude-actions">
-                <button className="btn btn-secondary" onClick={() => setIsExcludeDialogOpen(false)}>
-                  取消
-                </button>
-                <button className="btn btn-primary" onClick={handleApplyExcluded} disabled={excludeLoading}>
-                  应用
-                </button>
+                <button className="btn btn-secondary" onClick={() => setIsExcludeDialogOpen(false)}>{t('取消')}</button>
+                <button className="btn btn-primary" onClick={handleApplyExcluded} disabled={excludeLoading}>{t('应用')}</button>
               </div>
             </div>
           </div>

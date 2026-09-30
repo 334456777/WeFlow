@@ -4,6 +4,7 @@ import { Loader2, X, Image as ImageIcon, Clock, CheckCircle, XCircle } from 'luc
 import { useBatchImageDecryptStore } from '../stores/batchImageDecryptStore'
 import { useBatchTranscribeStore } from '../stores/batchTranscribeStore'
 import '../styles/batchTranscribe.scss'
+import { t } from '../i18n'
 
 export const BatchImageDecryptGlobal: React.FC = () => {
   const {
@@ -41,11 +42,11 @@ export const BatchImageDecryptGlobal: React.FC = () => {
       }
       const seconds = Math.ceil((remain / rate) / 1000)
       if (seconds < 60) {
-        setEta(`${seconds}秒`)
+        setEta(t('{seconds}秒', { seconds: seconds }))
       } else {
         const m = Math.floor(seconds / 60)
         const s = seconds % 60
-        setEta(`${m}分${s}秒`)
+        setEta(t('{m}分{s}秒', { m: m, s: s }))
       }
     }, 1000)
 
@@ -67,9 +68,9 @@ export const BatchImageDecryptGlobal: React.FC = () => {
           <div className="batch-progress-toast-header">
             <div className="batch-progress-toast-title">
               <Loader2 size={14} className="spin" />
-              <span>批量解密图片{sessionName ? `（${sessionName}）` : ''}</span>
+              <span>{t('批量解密图片{v0}', { v0: sessionName ? `（${sessionName}）` : '' })}</span>
             </div>
-            <button className="batch-progress-toast-close" onClick={() => setShowToast(false)} title="最小化">
+            <button className="batch-progress-toast-close" onClick={() => setShowToast(false)} title={t('最小化')}>
               <X size={14} />
             </button>
           </div>
@@ -84,7 +85,7 @@ export const BatchImageDecryptGlobal: React.FC = () => {
               {eta && (
                 <div className="progress-eta">
                   <Clock size={12} />
-                  <span>剩余 {eta}</span>
+                  <span>{t('剩余 {eta}', { eta: eta })}</span>
                 </div>
               )}
             </div>
@@ -106,9 +107,9 @@ export const BatchImageDecryptGlobal: React.FC = () => {
           <div className="batch-progress-toast-header">
             <div className="batch-progress-toast-title">
               <ImageIcon size={14} />
-              <span>图片批量解密完成</span>
+              <span>{t('图片批量解密完成')}</span>
             </div>
-            <button className="batch-progress-toast-close" onClick={() => setShowResultToast(false)} title="关闭">
+            <button className="batch-progress-toast-close" onClick={() => setShowResultToast(false)} title={t('关闭')}>
               <X size={14} />
             </button>
           </div>
@@ -116,11 +117,11 @@ export const BatchImageDecryptGlobal: React.FC = () => {
             <div className="batch-inline-result-summary">
               <div className="batch-inline-result-item success">
                 <CheckCircle size={14} />
-                <span>成功 {result.success}</span>
+                <span>{t('成功 {success}', { success: result.success })}</span>
               </div>
               <div className={`batch-inline-result-item ${result.fail > 0 ? 'fail' : 'muted'}`}>
                 <XCircle size={14} />
-                <span>失败 {result.fail}</span>
+                <span>{t('失败 {fail}', { fail: result.fail })}</span>
               </div>
             </div>
           </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useChatStore } from '../stores/chatStore'
 import type { ChatSession, Message } from '../types/models'
 import { useNavigate } from 'react-router-dom'
+import { t } from '../i18n'
 
 export function GlobalSessionMonitor() {
     const navigate = useNavigate()
@@ -158,7 +159,7 @@ export function GlobalSessionMonitor() {
 
                 let title = newSession.displayName || newSession.username
                 let avatarUrl = newSession.avatarUrl
-                let content = newSession.summary || '[新消息]'
+                let content = newSession.summary || t('[新消息]')
 
                 if (newSession.username.includes('@chatroom')) {
                     // 1. 群聊过滤自己发送的消息

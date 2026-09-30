@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react'
+import { t } from '../i18n'
 
 interface Props {
   children: ReactNode
@@ -28,9 +29,9 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return this.props.fallback || (
         <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
-          <p>消息渲染出错</p>
+          <p>{t('消息渲染出错')}</p>
           <p style={{ fontSize: '12px', marginTop: '8px' }}>
-            {this.state.error?.message || '未知错误'}
+            {this.state.error?.message || t('未知错误')}
           </p>
         </div>
       )

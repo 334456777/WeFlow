@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Play, Pause, Volume2, VolumeX, RotateCcw } from 'lucide-react'
 import './VideoWindow.scss'
+import { t } from '../i18n'
 
 export default function VideoWindow() {
     const [searchParams] = useSearchParams()
@@ -97,7 +98,7 @@ export default function VideoWindow() {
     if (!videoPath) {
         return (
             <div className="video-window-empty">
-                <span>无效的视频路径</span>
+                <span>{t('无效的视频路径')}</span>
             </div>
         )
     }
@@ -138,7 +139,7 @@ export default function VideoWindow() {
                     onPause={() => setIsPlaying(false)}
                     onEnded={() => setIsPlaying(false)}
                     onError={() => {
-                        setError('视频加载失败')
+                        setError(t('视频加载失败'))
                         setIsLoading(false)
                     }}
                     onWaiting={() => setIsLoading(true)}
@@ -164,10 +165,10 @@ export default function VideoWindow() {
 
                     <div className="controls-row">
                         <div className="controls-left">
-                            <button onClick={togglePlay} title={isPlaying ? '暂停 (空格)' : '播放 (空格)'}>
+                            <button onClick={togglePlay} title={isPlaying ? t('暂停 (空格)') : t('播放 (空格)')}>
                                 {isPlaying ? <Pause size={18} /> : <Play size={18} />}
                             </button>
-                            <button onClick={handleReplay} title="重新播放">
+                            <button onClick={handleReplay} title={t('重新播放')}>
                                 <RotateCcw size={16} />
                             </button>
                             <span className="time-display">
@@ -177,7 +178,7 @@ export default function VideoWindow() {
 
                         <div className="controls-right">
                             <div className="volume-control">
-                                <button onClick={toggleMute} title={isMuted ? '取消静音 (M)' : '静音 (M)'}>
+                                <button onClick={toggleMute} title={isMuted ? t('取消静音 (M)') : t('静音 (M)')}>
                                     {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
                                 </button>
                                 <input

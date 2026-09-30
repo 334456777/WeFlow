@@ -1,5 +1,6 @@
 import React from 'react'
 import './ReportComponents.scss'
+import { t as tr } from '../i18n'
 
 interface ReportWordCloudProps {
     words: { phrase: string; count: number }[]
@@ -94,7 +95,7 @@ const ReportWordCloud: React.FC<ReportWordCloudProps> = ({ words }) => {
                     fontSize: `${fontSize}px`,
                     animationDelay: `${delay}s`,
                 } as React.CSSProperties}
-                title={`${item.phrase} (出现 ${item.count} 次)`}
+                title={tr('{phrase} (出现 {count} 次)', { phrase: item.phrase, count: item.count })}
             >
                 {item.phrase}
             </span>

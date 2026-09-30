@@ -5,6 +5,7 @@ import { SnsPost, SnsLinkCardData, SnsLocation } from '../../types/sns'
 import { Avatar } from '../Avatar'
 import { SnsMediaGrid } from './SnsMediaGrid'
 import { getEmojiPath } from 'wechat-emojis'
+import { t, formatLocale } from '../../i18n'
 
 // Helper functions (extracted from SnsPage.tsx but simplified/reused)
 const LINK_XML_URL_TAGS = ['url', 'shorturl', 'weburl', 'webpageurl', 'jumpurl']
@@ -133,7 +134,7 @@ const pickCardTitle = (post: SnsPost): string => {
     ]
     return titleCandidates
         .map((value) => decodeHtmlEntities(value))
-        .find((value) => Boolean(value) && !/^https?:\/\//i.test(value)) || '网页链接'
+        .find((value) => Boolean(value) && !/^https?:\/\//i.test(value)) || t('网页链接')
 }
 
 const buildLinkCardData = (post: SnsPost): SnsLinkCardData | null => {
@@ -428,7 +429,7 @@ export const SnsPostItem: React.FC<SnsPostItemProps> = ({ post, onPreview, onDeb
         const date = new Date(ts * 1000)
         const isCurrentYear = date.getFullYear() === new Date().getFullYear()
 
-        return date.toLocaleString('zh-CN', {
+        return date.toLocaleString(formatLocale(), {
             year: isCurrentYear ? undefined : 'numeric',
             month: 'short',
             day: 'numeric',
@@ -488,7 +489,7 @@ export const SnsPostItem: React.FC<SnsPostItemProps> = ({ post, onPreview, onDeb
                         type="button"
                         className="author-trigger-btn avatar-trigger"
                         onClick={handleOpenAuthorPosts}
-                        title="查看该发布者的全部朋友圈"
+                        title={t('查看该发布者的全部朋友圈')}
                     >
                         <Avatar
                             src={post.avatarUrl}
@@ -510,7 +511,7 @@ export const SnsPostItem: React.FC<SnsPostItemProps> = ({ post, onPreview, onDeb
                                 type="button"
                                 className="author-trigger-btn author-name-trigger"
                                 onClick={handleOpenAuthorPosts}
-                                title="查看该发布者的全部朋友圈"
+                                title={t('查看该发布者的全部朋友圈')}
                             >
                                 <span className="author-name">{decodeHtmlEntities(post.nickname)}</span>
                             </button>
@@ -521,21 +522,21 @@ export const SnsPostItem: React.FC<SnsPostItemProps> = ({ post, onPreview, onDeb
                         {(mediaDeleted || dbDeleted) && (
                             <span className="post-deleted-badge">
                                 <Trash2 size={12} />
-                                <span>已删除</span>
+                                <span>{t('已删除')}</span>
                             </span>
                         )}
                         <button
                             className="icon-btn-ghost debug-btn delete-btn"
                             onClick={handleDeleteClick}
                             disabled={deleting || dbDeleted}
-                            title="从数据库删除此条记录"
+                            title={t('从数据库删除此条记录')}
                         >
                             <Trash2 size={14} />
                         </button>
                         <button className="icon-btn-ghost debug-btn" onClick={(e) => {
                             e.stopPropagation();
                             onDebug(post);
-                        }} title="查看原始数据">
+                        }} title={t('查看原始数据')}>
                             <Code size={14} />
                         </button>
                     </div>
@@ -567,7 +568,7 @@ export const SnsPostItem: React.FC<SnsPostItemProps> = ({ post, onPreview, onDeb
                         {post.likes.length > 0 && (
                             <div className="likes-block">
                                 <Heart size={14} className="like-icon" />
-                                <span className="likes-text">{post.likes.join('、')}</span>
+                                <span className="likes-text">{post.likes.join(t('、'))}</span>
                             </div>
                         )}
 
@@ -578,11 +579,11 @@ export const SnsPostItem: React.FC<SnsPostItemProps> = ({ post, onPreview, onDeb
                                         <span className="comment-user">{c.nickname}</span>
                                         {c.refNickname && (
                                             <>
-                                                <span className="reply-text">回复</span>
+                                                <span className="reply-text">{t('回复')}</span>
                                                 <span className="comment-user">{c.refNickname}</span>
                                             </>
                                         )}
-                                        <span className="comment-colon">：</span>
+                                        <span className="comment-colon">: </span>
                                         {c.content && (
                                             <span className="comment-content">{renderTextWithEmoji(c.content)}</span>
                                         )}
@@ -609,11 +610,11 @@ export const SnsPostItem: React.FC<SnsPostItemProps> = ({ post, onPreview, onDeb
                     <div className="sns-confirm-icon">
                         <Trash2 size={22} />
                     </div>
-                    <div className="sns-confirm-title">删除这条记录？</div>
-                    <div className="sns-confirm-desc">将从本地数据库中永久删除，无法恢复。</div>
+                    <div className="sns-confirm-title">{t('删除这条记录？')}</div>
+                    <div className="sns-confirm-desc">{t('将从本地数据库中永久删除，无法恢复。')}</div>
                     <div className="sns-confirm-actions">
-                        <button className="sns-confirm-cancel" onClick={() => setShowDeleteConfirm(false)}>取消</button>
-                        <button className="sns-confirm-ok" onClick={handleDeleteConfirm}>删除</button>
+                        <button className="sns-confirm-cancel" onClick={() => setShowDeleteConfirm(false)}>{t('取消')}</button>
+                        <button className="sns-confirm-ok" onClick={handleDeleteConfirm}>{t('删除')}</button>
                     </div>
                 </div>
             </div>,

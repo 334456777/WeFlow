@@ -5,6 +5,7 @@ import {
   updateBackgroundTask
 } from '../services/backgroundTaskMonitor'
 import type { BackgroundTaskSourcePage, BackgroundTaskStatus } from '../types/backgroundTask'
+import { t } from '../i18n'
 
 interface BatchDecryptTaskControls {
   cancelable?: boolean
@@ -78,20 +79,20 @@ export const useBatchImageDecryptStore = create<BatchImageDecryptState>((set, ge
     if (previousTaskId) {
       taskProgressUpdateMeta.delete(previousTaskId)
       finishBackgroundTask(previousTaskId, 'canceled', {
-        detail: '已被新的批量解密任务替换',
-        progressText: '已替换'
+        detail: t('已被新的批量解密任务替换'),
+        progressText: t('已替换')
       })
     }
 
     const normalizedProgress = clampProgress(0, total)
     const normalizedSessionName = String(sessionName || '').trim()
     const title = normalizedSessionName
-      ? `图片批量解密（${normalizedSessionName}）`
-      : '图片批量解密'
+      ? t('图片批量解密（{normalizedSessionName}）', { normalizedSessionName: normalizedSessionName })
+      : t('图片批量解密')
     const taskId = registerBackgroundTask({
       sourcePage,
       title,
-      detail: `正在解密图片（${normalizedProgress.current}/${normalizedProgress.total}）`,
+      detail: t('正在解密图片（{current}/{total}）', { current: normalizedProgress.current, total: normalizedProgress.total }),
       progressText: `${normalizedProgress.current} / ${normalizedProgress.total}`,
       cancelable: controls?.cancelable !== false,
       resumable: controls?.resumable === true,
@@ -134,7 +135,7 @@ export const useBatchImageDecryptStore = create<BatchImageDecryptState>((set, ge
       shouldCommitUi = shouldPublish
       if (shouldPublish) {
         updateBackgroundTask(taskId, {
-          detail: `正在解密图片（${normalizedProgress.current}/${normalizedProgress.total}）`,
+          detail: t('正在解密图片（{current}/{total}）', { current: normalizedProgress.current, total: normalizedProgress.total }),
           progressText: `${normalizedProgress.current} / ${normalizedProgress.total}`
         })
         taskProgressUpdateMeta.set(taskId, {
@@ -174,8 +175,8 @@ export const useBatchImageDecryptStore = create<BatchImageDecryptState>((set, ge
       taskProgressUpdateMeta.delete(taskId)
       const status = options?.status || (normalizedSuccess > 0 || normalizedFail === 0 ? 'completed' : 'failed')
       finishBackgroundTask(taskId, status, {
-        detail: options?.detail || `图片批量解密完成：成功 ${normalizedSuccess}，失败 ${normalizedFail}`,
-        progressText: options?.progressText || `成功 ${normalizedSuccess} / 失败 ${normalizedFail}`
+        detail: options?.detail || t('图片批量解密完成：成功 {normalizedSuccess}，失败 {normalizedFail}', { normalizedSuccess: normalizedSuccess, normalizedFail: normalizedFail }),
+        progressText: options?.progressText || t('成功 {normalizedSuccess} / 失败 {normalizedFail}', { normalizedSuccess: normalizedSuccess, normalizedFail: normalizedFail })
       })
     }
 
@@ -197,8 +198,8 @@ export const useBatchImageDecryptStore = create<BatchImageDecryptState>((set, ge
     if (taskId) {
       taskProgressUpdateMeta.delete(taskId)
       finishBackgroundTask(taskId, 'canceled', {
-        detail: '批量解密任务已重置',
-        progressText: '已停止'
+        detail: t('批量解密任务已重置'),
+        progressText: t('已停止')
       })
     }
 

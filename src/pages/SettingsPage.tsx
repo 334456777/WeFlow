@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
 import './SettingsPage.scss'
+import { t } from '../i18n'
 
 type SettingsTab =
   | 'appearance'
@@ -35,18 +36,18 @@ type SettingsTab =
   | 'autoDownload'
 
 const tabs: { id: Exclude<SettingsTab, 'insight' | 'aiFootprint'>; label: string; icon: React.ElementType }[] = [
-  { id: 'appearance', label: '外观', icon: Palette },
-  { id: 'notification', label: '通知', icon: Bell },
-  { id: 'antiRevoke', label: '防撤回', icon: RotateCcw },
-  { id: 'database', label: '数据库连接', icon: Database },
-  { id: 'models', label: '模型管理', icon: Mic },
-  { id: 'autoDownload', label: '自动下载', icon: Download },
-  { id: 'cache', label: '缓存', icon: HardDrive },
-  { id: 'api', label: 'API 服务', icon: Globe },
-  { id: 'analytics', label: '分析', icon: BarChart2 },
-  { id: 'security', label: '安全', icon: ShieldCheck },
-  { id: 'updates', label: '版本更新', icon: RefreshCw },
-  { id: 'about', label: '关于', icon: Info }
+  { id: 'appearance', label: t('外观'), icon: Palette },
+  { id: 'notification', label: t('通知'), icon: Bell },
+  { id: 'antiRevoke', label: t('防撤回'), icon: RotateCcw },
+  { id: 'database', label: t('数据库连接'), icon: Database },
+  { id: 'models', label: t('模型管理'), icon: Mic },
+  { id: 'autoDownload', label: t('自动下载'), icon: Download },
+  { id: 'cache', label: t('缓存'), icon: HardDrive },
+  { id: 'api', label: t('API 服务'), icon: Globe },
+  { id: 'analytics', label: t('分析'), icon: BarChart2 },
+  { id: 'security', label: t('安全'), icon: ShieldCheck },
+  { id: 'updates', label: t('版本更新'), icon: RefreshCw },
+  { id: 'about', label: t('关于'), icon: Info }
 ]
 
 const filteredTabs = tabs.filter(tab => {
@@ -57,9 +58,9 @@ const filteredTabs = tabs.filter(tab => {
 })
 
 const aiTabs: Array<{ id: Extract<SettingsTab, 'aiCommon' | 'insight' | 'aiFootprint'>; label: string }> = [
-  { id: 'aiCommon', label: '基础配置' },
-  { id: 'insight', label: 'AI 见解' },
-  { id: 'aiFootprint', label: 'AI 足迹' }
+  { id: 'aiCommon', label: t('基础配置') },
+  { id: 'insight', label: t('AI 见解') },
+  { id: 'aiFootprint', label: t('AI 足迹') }
 ]
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
@@ -67,12 +68,12 @@ const isLinux = navigator.userAgent.toLowerCase().includes('linux')
 const isWindows = !isMac && !isLinux
 const MAC_KEY_FAQ_URL = 'https://github.com/hicccc77/WeFlow/blob/main/docs/MAC-KEY-FAQ.md'
 
-const dbDirName = isMac ? '2.0b4.0.9 目录' : 'xwechat_files 目录'
+const dbDirName = isMac ? t('2.0b4.0.9 目录') : t('xwechat_files 目录')
 const dbPathPlaceholder = isMac
-    ? '例如: ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9'
+    ? t('例如: ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9')
     : isLinux
-        ? '例如: ~/.local/share/WeChat/xwechat_files 或者 ~/Documents/xwechat_files'
-        : '例如: C:\\Users\\xxx\\Documents\\xwechat_files'
+        ? t('例如: ~/.local/share/WeChat/xwechat_files 或者 ~/Documents/xwechat_files')
+        : t('例如: C:\\Users\\xxx\\Documents\\xwechat_files')
 
 
 interface WxidOption {
@@ -95,18 +96,18 @@ interface SessionFilterOption {
 }
 
 const sessionFilterTypeOptions: Array<{ value: SessionFilterTypeValue; label: string }> = [
-  { value: 'all', label: '全部' },
-  { value: 'private', label: '私聊' },
-  { value: 'group', label: '群聊' },
-  { value: 'official', label: '订阅号/服务号' },
-  { value: 'other', label: '其他/非好友' }
+  { value: 'all', label: t('全部') },
+  { value: 'private', label: t('私聊') },
+  { value: 'group', label: t('群聊') },
+  { value: 'official', label: t('订阅号/服务号') },
+  { value: 'other', label: t('其他/非好友') }
 ]
 
 const insightFilterTypeOptions: Array<{ value: InsightSessionFilterTypeValue; label: string }> = [
-  { value: 'all', label: '全部' },
-  { value: 'private', label: '私聊' },
-  { value: 'group', label: '群聊' },
-  { value: 'official', label: '订阅号/服务号' }
+  { value: 'all', label: t('全部') },
+  { value: 'private', label: t('私聊') },
+  { value: 'group', label: t('群聊') },
+  { value: 'official', label: t('订阅号/服务号') }
 ]
 
 interface SettingsPageProps {
@@ -184,13 +185,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
     setHttpApiToken(token)
     await configService.setHttpApiToken(token)
-    showMessage('已生成并保存新的 Access Token', true)
+    showMessage(t('已生成并保存新的 Access Token'), true)
   }
 
   const clearApiToken = async () => {
     setHttpApiToken('')
     await configService.setHttpApiToken('')
-    showMessage('已清除 Access Token，API 将允许无鉴权访问', true)
+    showMessage(t('已清除 Access Token，API 将允许无鉴权访问'), true)
   }
 
 
@@ -635,13 +636,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       setLaunchAtStartupReason(result.reason || '')
 
       if (result.success) {
-        showMessage(enabled ? '已开启开机自启动' : '已关闭开机自启动', true)
+        showMessage(enabled ? t('已开启开机自启动') : t('已关闭开机自启动'), true)
         return
       }
 
-      showMessage(result.error || result.reason || '设置开机自启动失败', false)
+      showMessage(result.error || result.reason || t('设置开机自启动失败'), false)
     } catch (e: any) {
-      showMessage(`设置开机自启动失败: ${e?.message || String(e)}`, false)
+      showMessage(t('设置开机自启动失败: {v0}', { v0: e?.message || String(e) }), false)
     } finally {
       setIsUpdatingLaunchAtStartup(false)
     }
@@ -654,9 +655,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       setIsUpdatingSilentStartup(true)
       await configService.setSilentStartup(enabled)
       setSilentStartup(enabled)
-      showMessage(enabled ? '已开启静默启动' : '已关闭静默启动', true)
+      showMessage(enabled ? t('已开启静默启动') : t('已关闭静默启动'), true)
     } catch (e: any) {
-      showMessage(`设置静默启动失败: ${e?.message || String(e)}`, false)
+      showMessage(t('设置静默启动失败: {v0}', { v0: e?.message || String(e) }), false)
     } finally {
       setIsUpdatingSilentStartup(false)
     }
@@ -730,7 +731,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const getErrorMessage = (error: any): string => {
     const raw = typeof error?.message === 'string' ? error.message : String(error ?? '')
     const normalized = raw.replace(/^Error:\s*/i, '').trim()
-    return normalized || '未知错误'
+    return normalized || t('未知错误')
   }
 
   const handleCheckUpdate = async () => {
@@ -742,12 +743,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       if (result.hasUpdate) {
         setUpdateInfo(result)
         setShowUpdateDialog(true)
-        showMessage(`发现新版：${result.version}`, true)
+        showMessage(t('发现新版：{version}', { version: result.version }), true)
       } else {
-        showMessage('当前已是最新版', true)
+        showMessage(t('当前已是最新版'), true)
       }
     } catch (e: any) {
-      showMessage(`检查更新失败: ${getErrorMessage(e)}`, false)
+      showMessage(t('检查更新失败: {v0}', { v0: getErrorMessage(e) }), false)
     } finally {
       setIsCheckingUpdate(false)
     }
@@ -759,10 +760,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     setIsDownloading(true)
     setDownloadProgress({ percent: 0 })
     try {
-      showMessage('正在下载更新...', true)
+      showMessage(t('正在下载更新...'), true)
       await window.electronAPI.app.downloadAndInstall()
     } catch (e: any) {
-      showMessage(`更新失败: ${getErrorMessage(e)}`, false)
+      showMessage(t('更新失败: {v0}', { v0: getErrorMessage(e) }), false)
       setIsDownloading(false)
     }
   }
@@ -774,9 +775,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       await window.electronAPI.app.ignoreUpdate(updateInfo.version)
       setShowUpdateDialog(false)
       setUpdateInfo(null)
-      showMessage(`已忽略版本 ${updateInfo.version}`, true)
+      showMessage(t('已忽略版本 {version}', { version: updateInfo.version }), true)
     } catch (e: any) {
-      showMessage(`操作失败: ${e}`, false)
+      showMessage(t('操作失败: {e}', { e: e }), false)
     }
   }
 
@@ -789,11 +790,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       await configService.setIgnoredUpdateVersion('')
       setUpdateInfo(null)
       setShowUpdateDialog(false)
-      const channelLabel = channel === 'stable' ? '稳定版' : channel === 'preview' ? '预览版' : '开发版'
-      showMessage(`已切换到${channelLabel}更新渠道，正在检查更新`, true)
+      const channelLabel = channel === 'stable' ? t('稳定版') : channel === 'preview' ? t('预览版') : t('开发版')
+      showMessage(t('已切换到{channelLabel}更新渠道，正在检查更新', { channelLabel: channelLabel }), true)
       await handleCheckUpdate()
     } catch (e: any) {
-      showMessage(`切换更新渠道失败: ${e}`, false)
+      showMessage(t('切换更新渠道失败: {e}', { e: e }), false)
     }
   }
 
@@ -821,7 +822,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     if (current.length > 0) return current
     const sessionsResult = await window.electronAPI.chat.getSessions()
     if (!sessionsResult.success || !sessionsResult.sessions) {
-      throw new Error(sessionsResult.error || '加载会话失败')
+      throw new Error(sessionsResult.error || t('加载会话失败'))
     }
     setChatSessions(sessionsResult.sessions)
     return normalizeSessionIds(sessionsResult.sessions.map((session) => session.username))
@@ -832,7 +833,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     if (current.length > 0) return current
     const sessionsResult = await window.electronAPI.chat.getAntiRevokeSessions()
     if (!sessionsResult.success || !sessionsResult.sessions) {
-      throw new Error(sessionsResult.error || '加载会话失败')
+      throw new Error(sessionsResult.error || t('加载会话失败'))
     }
     const nextSessions = sessionsResult.sessions
     const nextIds = normalizeSessionIds(nextSessions.map((session) => session.username))
@@ -874,14 +875,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       )
       if (targetIds.length === 0) {
         setAntiRevokeStatusMap({})
-        showMessage('暂无可检查的会话', true)
+        showMessage(t('暂无可检查的会话'), true)
         return
       }
       markAntiRevokeRowsLoading(targetIds)
 
       const result = await window.electronAPI.chat.checkAntiRevokeTriggers(targetIds)
       if (!result.success || !result.rows) {
-        const errorText = result.error || '防撤回状态检查失败'
+        const errorText = result.error || t('防撤回状态检查失败')
         setAntiRevokeStatusMap((prev) => {
           const next = { ...prev }
           for (const sessionId of targetIds) {
@@ -904,7 +905,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         rowMap.set(sessionId, row)
       }
       const mergedRows = targetIds.map((sessionId) => (
-        rowMap.get(sessionId) || { sessionId, success: false, error: '状态查询未返回结果' }
+        rowMap.get(sessionId) || { sessionId, success: false, error: t('状态查询未返回结果') }
       ))
       const successCount = mergedRows.filter((row) => row.success).length
       const failedCount = mergedRows.length - successCount
@@ -916,15 +917,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           next[sessionId] = {
             installed: row.installed === true,
             loading: false,
-            error: row.success ? undefined : (row.error || '状态查询失败')
+            error: row.success ? undefined : (row.error || t('状态查询失败'))
           }
         }
         return next
       })
       setAntiRevokeSummary({ action: 'refresh', success: successCount, failed: failedCount })
-      showMessage(`状态刷新完成：成功 ${successCount}，失败 ${failedCount}`, failedCount === 0)
+      showMessage(t('状态刷新完成：成功 {successCount}，失败 {failedCount}', { successCount: successCount, failedCount: failedCount }), failedCount === 0)
     } catch (e: any) {
-      showMessage(`防撤回状态刷新失败: ${e?.message || String(e)}`, false)
+      showMessage(t('防撤回状态刷新失败: {v0}', { v0: e?.message || String(e) }), false)
     } finally {
       setIsAntiRevokeRefreshing(false)
     }
@@ -934,7 +935,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     if (isAntiRevokeRefreshing || isAntiRevokeInstalling || isAntiRevokeUninstalling) return
     const sessionIds = normalizeSessionIds(Array.from(antiRevokeSelectedIds))
     if (sessionIds.length === 0) {
-      showMessage('请先选择至少一个会话', false)
+      showMessage(t('请先选择至少一个会话'), false)
       return
     }
     setAntiRevokeSummary(null)
@@ -943,7 +944,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       markAntiRevokeRowsLoading(sessionIds)
       const result = await window.electronAPI.chat.installAntiRevokeTriggers(sessionIds)
       if (!result.success || !result.rows) {
-        const errorText = result.error || '批量安装失败'
+        const errorText = result.error || t('批量安装失败')
         setAntiRevokeStatusMap((prev) => {
           const next = { ...prev }
           for (const sessionId of sessionIds) {
@@ -966,7 +967,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         rowMap.set(sessionId, row)
       }
       const mergedRows = sessionIds.map((sessionId) => (
-        rowMap.get(sessionId) || { sessionId, success: false, error: '安装未返回结果' }
+        rowMap.get(sessionId) || { sessionId, success: false, error: t('安装未返回结果') }
       ))
       const successCount = mergedRows.filter((row) => row.success).length
       const failedCount = mergedRows.length - successCount
@@ -978,15 +979,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           next[sessionId] = {
             installed: row.success ? true : next[sessionId]?.installed,
             loading: false,
-            error: row.success ? undefined : (row.error || '安装失败')
+            error: row.success ? undefined : (row.error || t('安装失败'))
           }
         }
         return next
       })
       setAntiRevokeSummary({ action: 'install', success: successCount, failed: failedCount })
-      showMessage(`批量安装完成：成功 ${successCount}，失败 ${failedCount}`, failedCount === 0)
+      showMessage(t('批量安装完成：成功 {successCount}，失败 {failedCount}', { successCount: successCount, failedCount: failedCount }), failedCount === 0)
     } catch (e: any) {
-      showMessage(`批量安装失败: ${e?.message || String(e)}`, false)
+      showMessage(t('批量安装失败: {v0}', { v0: e?.message || String(e) }), false)
     } finally {
       setIsAntiRevokeInstalling(false)
     }
@@ -996,7 +997,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     if (isAntiRevokeRefreshing || isAntiRevokeInstalling || isAntiRevokeUninstalling) return
     const sessionIds = normalizeSessionIds(Array.from(antiRevokeSelectedIds))
     if (sessionIds.length === 0) {
-      showMessage('请先选择至少一个会话', false)
+      showMessage(t('请先选择至少一个会话'), false)
       return
     }
     setAntiRevokeSummary(null)
@@ -1005,7 +1006,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       markAntiRevokeRowsLoading(sessionIds)
       const result = await window.electronAPI.chat.uninstallAntiRevokeTriggers(sessionIds)
       if (!result.success || !result.rows) {
-        const errorText = result.error || '批量卸载失败'
+        const errorText = result.error || t('批量卸载失败')
         setAntiRevokeStatusMap((prev) => {
           const next = { ...prev }
           for (const sessionId of sessionIds) {
@@ -1028,7 +1029,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         rowMap.set(sessionId, row)
       }
       const mergedRows = sessionIds.map((sessionId) => (
-        rowMap.get(sessionId) || { sessionId, success: false, error: '卸载未返回结果' }
+        rowMap.get(sessionId) || { sessionId, success: false, error: t('卸载未返回结果') }
       ))
       const successCount = mergedRows.filter((row) => row.success).length
       const failedCount = mergedRows.length - successCount
@@ -1040,15 +1041,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           next[sessionId] = {
             installed: row.success ? false : next[sessionId]?.installed,
             loading: false,
-            error: row.success ? undefined : (row.error || '卸载失败')
+            error: row.success ? undefined : (row.error || t('卸载失败'))
           }
         }
         return next
       })
       setAntiRevokeSummary({ action: 'uninstall', success: successCount, failed: failedCount })
-      showMessage(`批量卸载完成：成功 ${successCount}，失败 ${failedCount}`, failedCount === 0)
+      showMessage(t('批量卸载完成：成功 {successCount}，失败 {failedCount}', { successCount: successCount, failedCount: failedCount }), failedCount === 0)
     } catch (e: any) {
-      showMessage(`批量卸载失败: ${e?.message || String(e)}`, false)
+      showMessage(t('批量卸载失败: {v0}', { v0: e?.message || String(e) }), false)
     } finally {
       setIsAntiRevokeUninstalling(false)
     }
@@ -1066,7 +1067,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         }
       } catch (e: any) {
         if (!canceled) {
-          showMessage(`加载会话失败: ${e?.message || String(e)}`, false)
+          showMessage(t('加载会话失败: {v0}', { v0: e?.message || String(e) }), false)
         }
       }
     })()
@@ -1164,7 +1165,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           showMessage(result.error, false)
         }
       } catch (e: any) {
-        showMessage(`切换账号后重新连接失败: ${e}`, false)
+        showMessage(t('切换账号后重新连接失败: {e}', { e: e }), false)
         setDbConnected(false)
       }
     }
@@ -1174,14 +1175,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       window.dispatchEvent(new CustomEvent('wxid-changed', { detail: { wxid: selectedWxid } }))
     }
     if (options?.showToast ?? true) {
-      showMessage(options?.toastText || `已选择账号：${selectedWxid}`, true)
+      showMessage(options?.toastText || t('已选择账号：{selectedWxid}', { selectedWxid: selectedWxid }), true)
     }
   }
 
   const validatePath = (path: string): string | null => {
     if (!path) return null
     if (/[\u4e00-\u9fa5]/.test(path)) {
-      return '路径包含中文字符，请迁移至全英文目录'
+      return t('路径包含中文字符，请迁移至全英文目录')
     }
     return null
   }
@@ -1198,23 +1199,23 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         } else {
           setDbPath(result.path)
           await configService.setDbPath(result.path)
-          showMessage(`自动检测成功：${result.path}`, true)
+          showMessage(t('自动检测成功：{path}', { path: result.path }), true)
 
           const wxids = await window.electronAPI.dbPath.scanWxids(result.path)
           setWxidOptions(wxids)
           if (wxids.length === 1) {
             await applyWxidSelection(wxids[0].wxid, {
-              toastText: `已检测到账号：${wxids[0].wxid}`
+              toastText: t('已检测到账号：{wxid}', { wxid: wxids[0].wxid })
             })
           } else if (wxids.length > 1) {
             setShowWxidSelect(true)
           }
         }
       } else {
-        showMessage(result.error || '未能自动检测到数据库目录', false)
+        showMessage(result.error || t('未能自动检测到数据库目录'), false)
       }
     } catch (e: any) {
-      showMessage(`自动检测失败: ${e}`, false)
+      showMessage(t('自动检测失败: {e}', { e: e }), false)
     } finally {
       setIsDetectingPath(false)
     }
@@ -1222,7 +1223,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleSelectDbPath = async () => {
     try {
-      const result = await dialog.openFile({ title: '选择微信数据库根目录', properties: ['openDirectory'] })
+      const result = await dialog.openFile({ title: t('选择微信数据库根目录'), properties: ['openDirectory'] })
       if (!result.canceled && result.filePaths.length > 0) {
         const selectedPath = result.filePaths[0]
         const validationError = validatePath(selectedPath)
@@ -1231,11 +1232,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         } else {
           setDbPath(selectedPath)
           await configService.setDbPath(selectedPath)
-          showMessage('已选择数据库目录', true)
+          showMessage(t('已选择数据库目录'), true)
         }
       }
     } catch (e: any) {
-      showMessage('选择目录失败', false)
+      showMessage(t('选择目录失败'), false)
     }
   }
 
@@ -1244,7 +1245,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     options?: { preferCurrentKeys?: boolean; showDialog?: boolean; keysOverride?: WxidKeys }
   ) => {
     if (!dbPath) {
-      if (!silent) showMessage('请先选择数据库目录', false)
+      if (!silent) showMessage(t('请先选择数据库目录'), false)
       return
     }
     try {
@@ -1255,16 +1256,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         await applyWxidSelection(wxids[0].wxid, {
           preferCurrentKeys: options?.preferCurrentKeys ?? false,
           showToast: !silent,
-          toastText: `已检测到账号：${wxids[0].wxid}`,
+          toastText: t('已检测到账号：{wxid}', { wxid: wxids[0].wxid }),
           keysOverride: options?.keysOverride
         })
       } else if (wxids.length > 1 && allowDialog) {
         setShowWxidSelect(true)
       } else {
-        if (!silent) showMessage('未检测到账号目录，请检查路径', false)
+        if (!silent) showMessage(t('未检测到账号目录，请检查路径'), false)
       }
     } catch (e: any) {
-      if (!silent) showMessage(`扫描失败: ${e}`, false)
+      if (!silent) showMessage(t('扫描失败: {e}', { e: e }), false)
     }
   }
 
@@ -1275,15 +1276,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleSelectCachePath = async () => {
     try {
-      const result = await dialog.openFile({ title: '选择缓存目录', properties: ['openDirectory'] })
+      const result = await dialog.openFile({ title: t('选择缓存目录'), properties: ['openDirectory'] })
       if (!result.canceled && result.filePaths.length > 0) {
         const selectedPath = result.filePaths[0]
         setCachePath(selectedPath)
         await configService.setCachePath(selectedPath)
-        showMessage('已选择缓存目录', true)
+        showMessage(t('已选择缓存目录'), true)
       }
     } catch (e: any) {
-      showMessage('选择目录失败', false)
+      showMessage(t('选择目录失败'), false)
     }
   }
 
@@ -1291,15 +1292,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleSelectWhisperModelDir = async () => {
     try {
-      const result = await dialog.openFile({ title: '选择 Whisper 模型下载目录', properties: ['openDirectory'] })
+      const result = await dialog.openFile({ title: t('选择 Whisper 模型下载目录'), properties: ['openDirectory'] })
       if (!result.canceled && result.filePaths.length > 0) {
         const dir = result.filePaths[0]
         setWhisperModelDir(dir)
         await configService.setWhisperModelDir(dir)
-        showMessage('已选择 Whisper 模型目录', true)
+        showMessage(t('已选择 Whisper 模型目录'), true)
       }
     } catch (e: any) {
-      showMessage('选择目录失败', false)
+      showMessage(t('选择目录失败'), false)
     }
   }
 
@@ -1317,13 +1318,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const result = await window.electronAPI.whisper.downloadModel()
       if (result.success) {
         setWhisperDownloadProgress(100)
-        showMessage('SenseVoiceSmall 模型下载完成', true)
+        showMessage(t('SenseVoiceSmall 模型下载完成'), true)
         await refreshWhisperStatus(whisperModelDir)
       } else {
-        showMessage(result.error || '模型下载失败', false)
+        showMessage(result.error || t('模型下载失败'), false)
       }
     } catch (e: any) {
-      showMessage(`模型下载失败: ${e}`, false)
+      showMessage(t('模型下载失败: {e}', { e: e }), false)
     } finally {
       setIsWhisperDownloading(false)
     }
@@ -1339,14 +1340,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     setIsFetchingDbKey(true)
     setIsManualStartPrompt(false)
     setDbKeyError('')
-    setDbKeyStatus('正在连接微信进程...')
+    setDbKeyStatus(t('正在连接微信进程...'))
     try {
       const result = await window.electronAPI.key.autoGetDbKey()
       if (result.success && result.key) {
         setDecryptKey(result.key)
-        setDbKeyStatus('密钥获取成功')
+        setDbKeyStatus(t('密钥获取成功'))
         setDbKeyError('')
-        showMessage('已自动获取解密密钥', true)
+        showMessage(t('已自动获取解密密钥'), true)
         await syncCurrentKeys({ decryptKey: result.key, wxid })
         const keysOverride = buildKeysFromInputs({ decryptKey: result.key })
         await handleScanWxid(true, { preferCurrentKeys: true, showDialog: false, keysOverride })
@@ -1359,16 +1360,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           result.error?.includes('微信进程未运行')
         ) {
           setIsManualStartPrompt(true)
-          setDbKeyStatus('需要手动启动微信')
+          setDbKeyStatus(t('需要手动启动微信'))
           setDbKeyError('')
         } else {
-          const failureMessage = result.error || '自动获取密钥失败'
+          const failureMessage = result.error || t('自动获取密钥失败')
           setDbKeyError(failureMessage)
           showMessage(failureMessage, false)
         }
       }
     } catch (e: any) {
-      const failureMessage = `自动获取密钥失败: ${e}`
+      const failureMessage = t('自动获取密钥失败: {e}', { e: e })
       setDbKeyError(failureMessage)
       showMessage(failureMessage, false)
     } finally {
@@ -1413,10 +1414,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleAutoGetImageKey = async () => {
     if (isFetchingImageKey) return;
-    if (!dbPath) { showMessage('请先选择数据库目录', false); return; }
+    if (!dbPath) { showMessage(t('请先选择数据库目录'), false); return; }
     setIsFetchingImageKey(true);
     setImageKeyPercent(0)
-    setImageKeyStatus('正在初始化...');
+    setImageKeyStatus(t('正在初始化...'));
     setImageKeyProgress(0);
 
     try {
@@ -1425,18 +1426,18 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       if (result.success && result.aesKey) {
         if (typeof result.xorKey === 'number') setImageXorKey(`0x${result.xorKey.toString(16).toUpperCase().padStart(2, '0')}`)
         setImageAesKey(result.aesKey)
-        setImageKeyStatus('已获取图片密钥')
-        showMessage('已自动获取图片密钥', true)
+        setImageKeyStatus(t('已获取图片密钥'))
+        showMessage(t('已自动获取图片密钥'), true)
         const newXorKey = typeof result.xorKey === 'number' ? result.xorKey : 0
         const newAesKey = result.aesKey
         await configService.setImageXorKey(newXorKey)
         await configService.setImageAesKey(newAesKey)
         if (wxid) await configService.setWxidConfig(wxid, { decryptKey, imageXorKey: newXorKey, imageAesKey: newAesKey })
       } else {
-        showMessage(result.error || '自动获取图片密钥失败', false)
+        showMessage(result.error || t('自动获取图片密钥失败'), false)
       }
     } catch (e: any) {
-      showMessage(`自动获取图片密钥失败: ${e}`, false)
+      showMessage(t('自动获取图片密钥失败: {e}', { e: e }), false)
     } finally {
       setIsFetchingImageKey(false)
     }
@@ -1444,10 +1445,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleScanImageKeyFromMemory = async () => {
     if (isFetchingImageKey) return;
-    if (!dbPath) { showMessage('请先选择数据库目录', false); return; }
+    if (!dbPath) { showMessage(t('请先选择数据库目录'), false); return; }
     setIsFetchingImageKey(true);
     setImageKeyPercent(0)
-    setImageKeyStatus('正在扫描内存...');
+    setImageKeyStatus(t('正在扫描内存...'));
 
     try {
       const accountPath = wxid ? `${dbPath}/${wxid}` : dbPath;
@@ -1455,18 +1456,18 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       if (result.success && result.aesKey) {
         if (typeof result.xorKey === 'number') setImageXorKey(`0x${result.xorKey.toString(16).toUpperCase().padStart(2, '0')}`)
         setImageAesKey(result.aesKey)
-        setImageKeyStatus('内存扫描成功，已获取图片密钥')
-        showMessage('内存扫描成功，已获取图片密钥', true)
+        setImageKeyStatus(t('内存扫描成功，已获取图片密钥'))
+        showMessage(t('内存扫描成功，已获取图片密钥'), true)
         const newXorKey = typeof result.xorKey === 'number' ? result.xorKey : 0
         const newAesKey = result.aesKey
         await configService.setImageXorKey(newXorKey)
         await configService.setImageAesKey(newAesKey)
         if (wxid) await configService.setWxidConfig(wxid, { decryptKey, imageXorKey: newXorKey, imageAesKey: newAesKey })
       } else {
-        showMessage(result.error || '内存扫描获取图片密钥失败', false)
+        showMessage(result.error || t('内存扫描获取图片密钥失败'), false)
       }
     } catch (e: any) {
-      showMessage(`内存扫描失败: ${e}`, false)
+      showMessage(t('内存扫描失败: {e}', { e: e }), false)
     } finally {
       setIsFetchingImageKey(false)
     }
@@ -1475,21 +1476,21 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
 
   const handleTestConnection = async () => {
-    if (!dbPath) { showMessage('请先选择数据库目录', false); return }
-    if (!decryptKey) { showMessage('请先输入解密密钥', false); return }
-    if (decryptKey.length !== 64) { showMessage('密钥长度必须为64个字符', false); return }
-    if (!wxid) { showMessage('请先输入或扫描 wxid', false); return }
+    if (!dbPath) { showMessage(t('请先选择数据库目录'), false); return }
+    if (!decryptKey) { showMessage(t('请先输入解密密钥'), false); return }
+    if (decryptKey.length !== 64) { showMessage(t('密钥长度必须为64个字符'), false); return }
+    if (!wxid) { showMessage(t('请先输入或扫描 wxid'), false); return }
 
     setIsTesting(true)
     try {
       const result = await window.electronAPI.wcdb.testConnection(dbPath, decryptKey, wxid)
       if (result.success) {
-        showMessage('连接测试成功！数据库可正常访问', true)
+        showMessage(t('连接测试成功！数据库可正常访问'), true)
       } else {
-        showMessage(result.error || '连接测试失败', false)
+        showMessage(result.error || t('连接测试失败'), false)
       }
     } catch (e: any) {
-      showMessage(`连接测试失败: ${e}`, false)
+      showMessage(t('连接测试失败: {e}', { e: e }), false)
     } finally {
       setIsTesting(false)
     }
@@ -1499,10 +1500,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
 
   const handleClearConfig = async () => {
-    const confirmed = window.confirm('确定要清除当前配置吗？清除后需要重新完成首次配置？')
+    const confirmed = window.confirm(t('确定要清除当前配置吗？清除后需要重新完成首次配置？'))
     if (!confirmed) return
     setIsLoadingState(true)
-    setLoading(true, '正在清除配置...')
+    setLoading(true, t('正在清除配置...'))
     try {
       await window.electronAPI.wcdb.close()
       await configService.clearConfig()
@@ -1523,7 +1524,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       setDbConnected(false)
       await window.electronAPI.window.openOnboardingWindow()
     } catch (e: any) {
-      showMessage(`清除配置失败: ${e}`, false)
+      showMessage(t('清除配置失败: {e}', { e: e }), false)
     } finally {
       setIsLoadingState(false)
       setLoading(false)
@@ -1535,7 +1536,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const logPath = await window.electronAPI.log.getPath()
       await window.electronAPI.shell.openPath(logPath)
     } catch (e: any) {
-      showMessage(`打开日志失败: ${e}`, false)
+      showMessage(t('打开日志失败: {e}', { e: e }), false)
     }
   }
 
@@ -1543,28 +1544,28 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     try {
       const result = await window.electronAPI.log.read()
       if (!result.success) {
-        showMessage(result.error || '读取日志失败', false)
+        showMessage(result.error || t('读取日志失败'), false)
         return
       }
       await navigator.clipboard.writeText(result.content || '')
-      showMessage('日志已复制到剪贴板', true)
+      showMessage(t('日志已复制到剪贴板'), true)
     } catch (e: any) {
-      showMessage(`复制日志失败: ${e}`, false)
+      showMessage(t('复制日志失败: {e}', { e: e }), false)
     }
   }
 
   const handleClearLog = async () => {
-    const confirmed = window.confirm('确定清空 wcdb.log 吗？')
+    const confirmed = window.confirm(t('确定清空 wcdb.log 吗？'))
     if (!confirmed) return
     try {
       const result = await window.electronAPI.log.clear()
       if (!result.success) {
-        showMessage(result.error || '清空日志失败', false)
+        showMessage(result.error || t('清空日志失败'), false)
         return
       }
-      showMessage('日志已清空', true)
+      showMessage(t('日志已清空'), true)
     } catch (e: any) {
-      showMessage(`清空日志失败: ${e}`, false)
+      showMessage(t('清空日志失败: {e}', { e: e }), false)
     }
   }
 
@@ -1575,12 +1576,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const result = await window.electronAPI.cache.clearAnalytics()
       if (result.success) {
         clearAnalyticsStoreCache()
-        showMessage('已清除分析缓存', true)
+        showMessage(t('已清除分析缓存'), true)
       } else {
-        showMessage(`清除分析缓存失败: ${result.error || '未知错误'}`, false)
+        showMessage(t('清除分析缓存失败: {v0}', { v0: result.error || t('未知错误') }), false)
       }
     } catch (e: any) {
-      showMessage(`清除分析缓存失败: ${e}`, false)
+      showMessage(t('清除分析缓存失败: {e}', { e: e }), false)
     } finally {
       setIsClearingAnalyticsCache(false)
     }
@@ -1592,12 +1593,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     try {
       const result = await window.electronAPI.cache.clearImages()
       if (result.success) {
-        showMessage('已清除图片缓存', true)
+        showMessage(t('已清除图片缓存'), true)
       } else {
-        showMessage(`清除图片缓存失败: ${result.error || '未知错误'}`, false)
+        showMessage(t('清除图片缓存失败: {v0}', { v0: result.error || t('未知错误') }), false)
       }
     } catch (e: any) {
-      showMessage(`清除图片缓存失败: ${e}`, false)
+      showMessage(t('清除图片缓存失败: {e}', { e: e }), false)
     } finally {
       setIsClearingImageCache(false)
     }
@@ -1610,12 +1611,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const result = await window.electronAPI.cache.clearAll()
       if (result.success) {
         clearAnalyticsStoreCache()
-        showMessage('已清除所有缓存', true)
+        showMessage(t('已清除所有缓存'), true)
       } else {
-        showMessage(`清除所有缓存失败: ${result.error || '未知错误'}`, false)
+        showMessage(t('清除所有缓存失败: {v0}', { v0: result.error || t('未知错误') }), false)
       }
     } catch (e: any) {
-      showMessage(`清除所有缓存失败: ${e}`, false)
+      showMessage(t('清除所有缓存失败: {e}', { e: e }), false)
     } finally {
       setIsClearingAllCache(false)
     }
@@ -1634,14 +1635,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     <div className="tab-content">
       <div className="theme-mode-toggle">
         <button className={`mode-btn ${themeMode === 'light' ? 'active' : ''}`} onClick={() => setThemeMode('light')}>
-          <Sun size={16} /> 浅色
-        </button>
+          <Sun size={16} />{' '}{t('浅色')}</button>
         <button className={`mode-btn ${themeMode === 'dark' ? 'active' : ''}`} onClick={() => setThemeMode('dark')}>
-          <Moon size={16} /> 深色
-        </button>
+          <Moon size={16} />{' '}{t('深色')}</button>
         <button className={`mode-btn ${themeMode === 'system' ? 'active' : ''}`} onClick={() => setThemeMode('system')}>
-          <Monitor size={16} /> 跟随系统
-        </button>
+          <Monitor size={16} />{' '}{t('跟随系统')}</button>
       </div>
       <div className="theme-grid">
         {themes.map((theme) => (
@@ -1671,19 +1669,19 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group quote-layout-group">
-        <label>引用消息样式</label>
-        <span className="form-hint">选择聊天中引用消息与正文的上下顺序，下方预览会同步展示布局差异。</span>
-        <div className="quote-layout-picker" role="radiogroup" aria-label="引用样式选择">
+        <label>{t('引用消息样式')}</label>
+        <span className="form-hint">{t('选择聊天中引用消息与正文的上下顺序，下方预览会同步展示布局差异。')}</span>
+        <div className="quote-layout-picker" role="radiogroup" aria-label={t('引用样式选择')}>
           {[
             {
               value: 'quote-top' as const,
-              label: '引用在上',
-              successMessage: '已切换为引用在上样式'
+              label: t('引用在上'),
+              successMessage: t('已切换为引用在上样式')
             },
             {
               value: 'quote-bottom' as const,
-              label: '正文在上',
-              successMessage: '已切换为正文在上样式'
+              label: t('正文在上'),
+              successMessage: t('已切换为正文在上样式')
             }
           ].map(option => {
             const selected = quoteLayout === option.value
@@ -1711,16 +1709,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                       <div className={`bubble-content ${isQuoteBottom ? 'quote-layout-bottom' : 'quote-layout-top'}`}>
                         {isQuoteBottom ? (
                           <>
-                            <div className="message-text">拍得真不错!</div>
+                            <div className="message-text">{t('拍得真不错!')}</div>
                             <div className="ambient-reply-wrapper">
                               <div className="reply-anchor">
                                 <svg className="reply-anchor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                   <polyline points="9 14 4 9 9 4" />
                                   <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
                                 </svg>
-                                <span className="reply-anchor-name">张三</span>
+                                <span className="reply-anchor-name">{t('张三')}</span>
                                 <span className="reply-anchor-sep">&middot;</span>
-                                <span className="reply-anchor-excerpt">那天去爬山的照片...</span>
+                                <span className="reply-anchor-excerpt">{t('那天去爬山的照片...')}</span>
                               </div>
                             </div>
                           </>
@@ -1732,12 +1730,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                                   <polyline points="9 14 4 9 9 4" />
                                   <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
                                 </svg>
-                                <span className="reply-anchor-name">张三</span>
+                                <span className="reply-anchor-name">{t('张三')}</span>
                                 <span className="reply-anchor-sep">&middot;</span>
-                                <span className="reply-anchor-excerpt">那天去爬山的照片...</span>
+                                <span className="reply-anchor-excerpt">{t('那天去爬山的照片...')}</span>
                               </div>
                             </div>
-                            <div className="message-text">拍得真不错!</div>
+                            <div className="message-text">{t('拍得真不错!')}</div>
                           </>
                         )}
                       </div>
@@ -1758,19 +1756,19 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>开机自启动</label>
+        <label>{t('开机自启动')}</label>
         <span className="form-hint">
           {launchAtStartupSupported
-            ? '开启后，登录系统时会自动启动 WeFlow。'
-            : launchAtStartupReason || '当前环境暂不支持开机自启动。'}
+            ? t('开启后，登录系统时会自动启动 WeFlow。')
+            : launchAtStartupReason || t('当前环境暂不支持开机自启动。')}
         </span>
         <div className="log-toggle-line">
           <span className="log-status">
             {isUpdatingLaunchAtStartup
-              ? '保存中...'
+              ? t('保存中...')
               : launchAtStartupSupported
-                ? (launchAtStartup ? '已开启' : '已关闭')
-                : '当前不可用'}
+                ? (launchAtStartup ? t('已开启') : t('已关闭'))
+                : t('当前不可用')}
           </span>
           <label className="switch" htmlFor="launch-at-startup-toggle">
             <input
@@ -1791,15 +1789,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>静默启动</label>
-        <span className="form-hint">
-          开启后，无论手动启动还是开机自启动，都会先驻留到系统托盘，不主动显示主窗口。
-        </span>
+        <label>{t('静默启动')}</label>
+        <span className="form-hint">{t('开启后，无论手动启动还是开机自启动，都会先驻留到系统托盘，不主动显示主窗口。')}</span>
         <div className="log-toggle-line">
           <span className="log-status">
             {isUpdatingSilentStartup
-              ? '保存中...'
-              : (silentStartup ? '已开启' : '已关闭')}
+              ? t('保存中...')
+              : (silentStartup ? t('已开启') : t('已关闭'))}
           </span>
           <label className="switch" htmlFor="silent-startup-toggle">
             <input
@@ -1820,8 +1816,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>关闭主窗口时</label>
-        <span className="form-hint">设置点击关闭按钮后的默认行为；选择“每次询问”时会弹出关闭确认。</span>
+        <label>{t('关闭主窗口时')}</label>
+        <span className="form-hint">{t('设置点击关闭按钮后的默认行为；选择“每次询问”时会弹出关闭确认。')}</span>
         <div className="custom-select">
           <div
             className={`custom-select-trigger ${closeBehaviorDropdownOpen ? 'open' : ''}`}
@@ -1829,10 +1825,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           >
             <span className="custom-select-value">
               {windowCloseBehavior === 'tray'
-                ? '最小化到系统托盘'
+                ? t('最小化到系统托盘')
                 : windowCloseBehavior === 'quit'
-                  ? '完全关闭'
-                  : '每次询问'}
+                  ? t('完全关闭')
+                  : t('每次询问')}
             </span>
             <ChevronDown size={14} className={`custom-select-arrow ${closeBehaviorDropdownOpen ? 'rotate' : ''}`} />
           </div>
@@ -1840,18 +1836,18 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             {[
               {
                 value: 'ask' as const,
-                label: '每次询问',
-                successMessage: '已恢复关闭确认弹窗'
+                label: t('每次询问'),
+                successMessage: t('已恢复关闭确认弹窗')
               },
               {
                 value: 'tray' as const,
-                label: '最小化到系统托盘',
-                successMessage: '关闭按钮已改为最小化到托盘'
+                label: t('最小化到系统托盘'),
+                successMessage: t('关闭按钮已改为最小化到托盘')
               },
               {
                 value: 'quit' as const,
-                label: '完全关闭',
-                successMessage: '关闭按钮已改为完全关闭'
+                label: t('完全关闭'),
+                successMessage: t('关闭按钮已改为完全关闭')
               }
             ].map(option => (
               <div
@@ -1882,7 +1878,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const newList = [...notificationFilterList, username]
       setNotificationFilterList(newList)
       await configService.setNotificationFilterList(newList)
-      showMessage('已添加到过滤列表', true)
+      showMessage(t('已添加到过滤列表'), true)
     }
 
     // 从过滤列表移除会话
@@ -1890,16 +1886,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const newList = notificationFilterList.filter(u => u !== username)
       setNotificationFilterList(newList)
       await configService.setNotificationFilterList(newList)
-      showMessage('已从过滤列表移除', true)
+      showMessage(t('已从过滤列表移除'), true)
     }
 
     return (
       <div className="tab-content">
         <div className="form-group">
-          <label>新消息通知</label>
-          <span className="form-hint">开启后，收到新消息时将显示桌面弹窗通知</span>
+          <label>{t('新消息通知')}</label>
+          <span className="form-hint">{t('开启后，收到新消息时将显示桌面弹窗通知')}</span>
           <div className="log-toggle-line">
-            <span className="log-status">{notificationEnabled ? '已开启' : '已关闭'}</span>
+            <span className="log-status">{notificationEnabled ? t('已开启') : t('已关闭')}</span>
             <label className="switch" htmlFor="notification-enabled-toggle">
               <input
                 id="notification-enabled-toggle"
@@ -1910,7 +1906,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   const val = e.target.checked
                   setNotificationEnabled(val)
                   await configService.setNotificationEnabled(val)
-                  showMessage(val ? '已开启通知' : '已关闭通知', true)
+                  showMessage(val ? t('已开启通知') : t('已关闭通知'), true)
                 }}
               />
               <span className="switch-slider" />
@@ -1919,10 +1915,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         </div>
 
         <div className="form-group">
-          <label>AI 见解消息通知</label>
-          <span className="form-hint">仅控制 AI 见解弹窗，不影响新消息通知、会话过滤或 Telegram 推送</span>
+          <label>{t('AI 见解消息通知')}</label>
+          <span className="form-hint">{t('仅控制 AI 见解弹窗，不影响新消息通知、会话过滤或 Telegram 推送')}</span>
           <div className="log-toggle-line">
-            <span className="log-status">{aiInsightNotificationEnabled ? '已开启' : '已关闭'}</span>
+            <span className="log-status">{aiInsightNotificationEnabled ? t('已开启') : t('已关闭')}</span>
             <label className="switch" htmlFor="ai-insight-notification-enabled-toggle">
               <input
                 id="ai-insight-notification-enabled-toggle"
@@ -1933,7 +1929,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   const val = e.target.checked
                   setAiInsightNotificationEnabled(val)
                   await configService.setAiInsightNotificationEnabled(val)
-                  showMessage(val ? '已开启 AI 见解消息通知' : '已关闭 AI 见解消息通知', true)
+                  showMessage(val ? t('已开启 AI 见解消息通知') : t('已关闭 AI 见解消息通知'), true)
                 }}
               />
               <span className="switch-slider" />
@@ -1942,28 +1938,28 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         </div>
 
         <div className="form-group">
-          <label>通知显示位置</label>
-          <span className="form-hint">选择通知弹窗在屏幕上的显示位置</span>
+          <label>{t('通知显示位置')}</label>
+          <span className="form-hint">{t('选择通知弹窗在屏幕上的显示位置')}</span>
           <div className="custom-select">
             <div
               className={`custom-select-trigger ${positionDropdownOpen ? 'open' : ''}`}
               onClick={() => setPositionDropdownOpen(!positionDropdownOpen)}
             >
               <span className="custom-select-value">
-                {notificationPosition === 'top-right' ? '右上角' :
-                  notificationPosition === 'bottom-right' ? '右下角' :
-                    notificationPosition === 'top-left' ? '左上角' :
-                      notificationPosition === 'top-center' ? '中间上方' : '左下角'}
+                {notificationPosition === 'top-right' ? t('右上角') :
+                  notificationPosition === 'bottom-right' ? t('右下角') :
+                    notificationPosition === 'top-left' ? t('左上角') :
+                      notificationPosition === 'top-center' ? t('中间上方') : t('左下角')}
               </span>
               <ChevronDown size={14} className={`custom-select-arrow ${positionDropdownOpen ? 'rotate' : ''}`} />
             </div>
             <div className={`custom-select-dropdown ${positionDropdownOpen ? 'open' : ''}`}>
               {[
-                { value: 'top-center', label: '中间上方' },
-                { value: 'top-right', label: '右上角' },
-                { value: 'bottom-right', label: '右下角' },
-                { value: 'top-left', label: '左上角' },
-                { value: 'bottom-left', label: '左下角' }
+                { value: 'top-center', label: t('中间上方') },
+                { value: 'top-right', label: t('右上角') },
+                { value: 'bottom-right', label: t('右下角') },
+                { value: 'top-left', label: t('左上角') },
+                { value: 'bottom-left', label: t('左下角') }
               ].map(option => (
                 <div
                   key={option.value}
@@ -1973,7 +1969,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                     setNotificationPosition(val)
                     setPositionDropdownOpen(false)
                     await configService.setNotificationPosition(val)
-                    showMessage('通知位置已更新', true)
+                    showMessage(t('通知位置已更新'), true)
                   }}
                 >
                   {option.label}
@@ -1985,24 +1981,24 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         </div>
 
         <div className="form-group">
-          <label>会话过滤</label>
-          <span className="form-hint">选择只接收特定会话的通知，或屏蔽特定会话的通知</span>
+          <label>{t('会话过滤')}</label>
+          <span className="form-hint">{t('选择只接收特定会话的通知，或屏蔽特定会话的通知')}</span>
           <div className="custom-select">
             <div
               className={`custom-select-trigger ${filterModeDropdownOpen ? 'open' : ''}`}
               onClick={() => setFilterModeDropdownOpen(!filterModeDropdownOpen)}
             >
               <span className="custom-select-value">
-                {notificationFilterMode === 'all' ? '接收所有通知' :
-                  notificationFilterMode === 'whitelist' ? '仅接收白名单' : '屏蔽黑名单'}
+                {notificationFilterMode === 'all' ? t('接收所有通知') :
+                  notificationFilterMode === 'whitelist' ? t('仅接收白名单') : t('屏蔽黑名单')}
               </span>
               <ChevronDown size={14} className={`custom-select-arrow ${filterModeDropdownOpen ? 'rotate' : ''}`} />
             </div>
             <div className={`custom-select-dropdown ${filterModeDropdownOpen ? 'open' : ''}`}>
               {[
-                { value: 'all', label: '接收所有通知' },
-                { value: 'whitelist', label: '仅接收白名单' },
-                { value: 'blacklist', label: '屏蔽黑名单' }
+                { value: 'all', label: t('接收所有通知') },
+                { value: 'whitelist', label: t('仅接收白名单') },
+                { value: 'blacklist', label: t('屏蔽黑名单') }
               ].map(option => (
                 <div
                   key={option.value}
@@ -2019,11 +2015,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
         {notificationFilterMode !== 'all' && (
           <div className="form-group">
-            <label>{notificationFilterMode === 'whitelist' ? '白名单会话' : '黑名单会话'}</label>
+            <label>{notificationFilterMode === 'whitelist' ? t('白名单会话') : t('黑名单会话')}</label>
             <span className="form-hint">
               {notificationFilterMode === 'whitelist'
-                ? '点击左侧会话添加到白名单，点击右侧会话从白名单移除'
-                : '点击左侧会话添加到黑名单，点击右侧会话从黑名单移除'}
+                ? t('点击左侧会话添加到白名单，点击右侧会话从白名单移除')
+                : t('点击左侧会话添加到黑名单，点击右侧会话从黑名单移除')}
             </span>
 
             <div className="push-filter-type-tabs">
@@ -2043,21 +2039,19 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               {/* 可选会话列表 */}
               <div className="filter-panel">
                 <div className="filter-panel-header">
-                  <span>可选会话</span>
+                  <span>{t('可选会话')}</span>
                   {notificationAvailableSessions.length > 0 && (
                     <button
                       type="button"
                       className="filter-panel-action"
                       onClick={() => { void handleAddAllNotificationFilterSessions() }}
-                    >
-                      全选当前
-                    </button>
+                    >{t('全选当前')}</button>
                   )}
                   <div className="filter-search-box">
                     <Search size={14} />
                     <input
                       type="text"
-                      placeholder="搜索会话..."
+                      placeholder={t('搜索会话...')}
                       value={filterSearchKeyword}
                       onChange={(e) => setFilterSearchKeyword(e.target.value)}
                     />
@@ -2083,7 +2077,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                     ))
                   ) : (
                     <div className="filter-panel-empty">
-                      {filterSearchKeyword || notificationTypeFilter !== 'all' ? '没有匹配的会话' : '暂无可添加的会话'}
+                      {filterSearchKeyword || notificationTypeFilter !== 'all' ? t('没有匹配的会话') : t('暂无可添加的会话')}
                     </div>
                   )}
                 </div>
@@ -2092,7 +2086,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               {/* 已选会话列表 */}
               <div className="filter-panel">
                 <div className="filter-panel-header">
-                  <span>{notificationFilterMode === 'whitelist' ? '白名单' : '黑名单'}</span>
+                  <span>{notificationFilterMode === 'whitelist' ? t('白名单') : t('黑名单')}</span>
                   {notificationFilterList.length > 0 && (
                     <span className="filter-panel-count">{notificationFilterList.length}</span>
                   )}
@@ -2101,9 +2095,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                       type="button"
                       className="filter-panel-action"
                       onClick={() => { void handleRemoveAllNotificationFilterSessions() }}
-                    >
-                      全不选
-                    </button>
+                    >{t('全不选')}</button>
                   )}
                 </div>
                 <div className="filter-panel-list">
@@ -2128,7 +2120,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                       )
                     })
                   ) : (
-                    <div className="filter-panel-empty">尚未添加任何会话</div>
+                    <div className="filter-panel-empty">{t('尚未添加任何会话')}</div>
                   )}
                 </div>
               </div>
@@ -2192,24 +2184,24 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="tab-content anti-revoke-tab">
         <div className="anti-revoke-hero">
           <div className="anti-revoke-hero-main">
-            <h3>防撤回</h3>
-            <p>你可以根据会话进行防撤回部署，安装后无需保持 WeFlow 运行即可实现防撤回</p>
+            <h3>{t('防撤回')}</h3>
+            <p>{t('你可以根据会话进行防撤回部署，安装后无需保持 WeFlow 运行即可实现防撤回')}</p>
           </div>
           <div className="anti-revoke-metrics">
             <div className="anti-revoke-metric is-total">
-              <span className="label">筛选会话</span>
+              <span className="label">{t('筛选会话')}</span>
               <span className="value">{filteredSessionIds.length}</span>
             </div>
             <div className="anti-revoke-metric is-installed">
-              <span className="label">已安装</span>
+              <span className="label">{t('已安装')}</span>
               <span className="value">{statusStats.installed}</span>
             </div>
             <div className="anti-revoke-metric is-pending">
-              <span className="label">未安装</span>
+              <span className="label">{t('未安装')}</span>
               <span className="value">{statusStats.notInstalled}</span>
             </div>
             <div className="anti-revoke-metric is-error">
-              <span className="label">异常</span>
+              <span className="label">{t('异常')}</span>
               <span className="value">{statusStats.failed}</span>
             </div>
           </div>
@@ -2221,44 +2213,40 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               <Search size={14} />
               <input
                 type="text"
-                placeholder="搜索会话..."
+                placeholder={t('搜索会话...')}
                 value={antiRevokeSearchKeyword}
                 onChange={(e) => setAntiRevokeSearchKeyword(e.target.value)}
               />
             </div>
             <div className="anti-revoke-toolbar-actions">
               <button className="btn btn-secondary btn-sm" onClick={() => void handleRefreshAntiRevokeStatus()} disabled={busy}>
-                <RefreshCw size={14} /> {isAntiRevokeRefreshing ? '刷新中...' : '刷新状态'}
+                <RefreshCw size={14} /> {isAntiRevokeRefreshing ? t('刷新中...') : t('刷新状态')}
               </button>
             </div>
           </div>
 
           <div className="anti-revoke-selection-strip">
             <div className="anti-revoke-selected-count">
-              <span>已选 <strong>{selectedCount}</strong> 个会话</span>
-              <span>筛选命中 <strong>{selectedInFilteredCount}</strong> / {filteredSessionIds.length}</span>
+              <span>{t('已选')}{' '}<strong>{selectedCount}</strong>{' '}{t('个会话')}</span>
+              <span>{t('筛选命中')}{' '}<strong>{selectedInFilteredCount}</strong> / {filteredSessionIds.length}</span>
             </div>
             <div className="anti-revoke-selection-actions">
-              <button className="btn btn-secondary btn-sm" onClick={selectAllFiltered} disabled={busy || filteredSessionIds.length === 0 || allFilteredSelected}>
-                全选
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={clearSelection} disabled={busy || selectedCount === 0}>
-                清空选择
-              </button>
+              <button className="btn btn-secondary btn-sm" onClick={selectAllFiltered} disabled={busy || filteredSessionIds.length === 0 || allFilteredSelected}>{t('全选')}</button>
+              <button className="btn btn-secondary btn-sm" onClick={clearSelection} disabled={busy || selectedCount === 0}>{t('清空选择')}</button>
             </div>
           </div>
 
           <div className="anti-revoke-batch-actions">
             <div className="anti-revoke-batch-copy">
-              <span className="anti-revoke-section-label">批量部署</span>
-              <span>对已选会话执行防撤回安装或卸载</span>
+              <span className="anti-revoke-section-label">{t('批量部署')}</span>
+              <span>{t('对已选会话执行防撤回安装或卸载')}</span>
             </div>
             <div className="anti-revoke-btn-group anti-revoke-batch-btns">
               <button className="btn btn-primary btn-sm" onClick={() => void handleInstallAntiRevokeTriggers()} disabled={busy || selectedCount === 0}>
-                {isAntiRevokeInstalling ? '安装中...' : '批量安装'}
+                {isAntiRevokeInstalling ? t('安装中...') : t('批量安装')}
               </button>
               <button className="btn btn-secondary btn-sm" onClick={() => void handleUninstallAntiRevokeTriggers()} disabled={busy || selectedCount === 0}>
-                {isAntiRevokeUninstalling ? '卸载中...' : '批量卸载'}
+                {isAntiRevokeUninstalling ? t('卸载中...') : t('批量卸载')}
               </button>
             </div>
           </div>
@@ -2266,36 +2254,35 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
         {antiRevokeSummary && (
           <div className={`anti-revoke-summary ${antiRevokeSummary.failed > 0 ? 'error' : 'success'}`}>
-            {antiRevokeSummary.action === 'refresh' ? '刷新' : antiRevokeSummary.action === 'install' ? '安装' : '卸载'}
-            完成：成功 {antiRevokeSummary.success}，失败 {antiRevokeSummary.failed}
+            {t('{v0}完成：成功 {success}，失败 {failed}', { v0: antiRevokeSummary.action === 'refresh' ? t('刷新') : antiRevokeSummary.action === 'install' ? t('安装') : t('卸载'), success: antiRevokeSummary.success, failed: antiRevokeSummary.failed })}
           </div>
         )}
 
         <div className="anti-revoke-list">
           {filteredSessions.length === 0 ? (
-            <div className="anti-revoke-empty">{antiRevokeSearchKeyword ? '没有匹配的会话' : '暂无会话可配置'}</div>
+            <div className="anti-revoke-empty">{antiRevokeSearchKeyword ? t('没有匹配的会话') : t('暂无会话可配置')}</div>
           ) : (
             <>
               <div className="anti-revoke-list-header">
-                <span>会话（{filteredSessions.length}）</span>
-                <span>状态</span>
+                <span>{t('会话（{length}）', { length: filteredSessions.length })}</span>
+                <span>{t('状态')}</span>
               </div>
               {filteredSessions.map((session) => {
                 const rowState = antiRevokeStatusMap[session.username]
                 let statusClass = 'unknown'
-                let statusLabel = '未检查'
+                let statusLabel = t('未检查')
                 if (rowState?.loading) {
                   statusClass = 'checking'
-                  statusLabel = '检查中'
+                  statusLabel = t('检查中')
                 } else if (rowState?.error) {
                   statusClass = 'error'
-                  statusLabel = '失败'
+                  statusLabel = t('失败')
                 } else if (rowState?.installed === true) {
                   statusClass = 'installed'
-                  statusLabel = '已安装'
+                  statusLabel = t('已安装')
                 } else if (rowState?.installed === false) {
                   statusClass = 'not-installed'
-                  statusLabel = '未安装'
+                  statusLabel = t('未安装')
                 }
                 return (
                   <div key={session.username} className={`anti-revoke-row ${antiRevokeSelectedIds.has(session.username) ? 'selected' : ''}`}>
@@ -2340,22 +2327,22 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const renderDatabaseTab = () => (
     <div className="tab-content">
       <div className="form-group">
-        <label>连接测试</label>
-        <span className="form-hint">检测当前数据库配置是否可用</span>
+        <label>{t('连接测试')}</label>
+        <span className="form-hint">{t('检测当前数据库配置是否可用')}</span>
         <button className="btn btn-secondary" onClick={handleTestConnection} disabled={isLoading || isTesting}>
-          <Plug size={16} /> {isTesting ? '测试中...' : '测试连接'}
+          <Plug size={16} /> {isTesting ? t('测试中...') : t('测试连接')}
         </button>
       </div>
 
       <div className="divider" />
 
       <div className="form-group">
-        <label>解密密钥</label>
-        <span className="form-hint">64位十六进制密钥</span>
+        <label>{t('解密密钥')}</label>
+        <span className="form-hint">{t('64位十六进制密钥')}</span>
         <div className="input-with-toggle">
           <input
             type={showDecryptKey ? 'text' : 'password'}
-            placeholder="例如: a1b2c3d4e5f6..."
+            placeholder={t('例如: a1b2c3d4e5f6...')}
             value={decryptKey}
             onChange={(e) => {
               const value = e.target.value
@@ -2372,27 +2359,23 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         </div>
         {isManualStartPrompt ? (
           <div className="manual-prompt">
-            <p className="prompt-text">未能自动启动微信，请手动启动微信，看到登录窗口后点击下方确认</p>
-            <button className="btn btn-primary btn-sm" onClick={handleManualConfirm}>
-              我已看到登录窗口，继续检测
-            </button>
+            <p className="prompt-text">{t('未能自动启动微信，请手动启动微信，看到登录窗口后点击下方确认')}</p>
+            <button className="btn btn-primary btn-sm" onClick={handleManualConfirm}>{t('我已看到登录窗口，继续检测')}</button>
           </div>
         ) : (
           <button className="btn btn-secondary btn-sm" onClick={handleAutoGetDbKey} disabled={isFetchingDbKey}>
-            <Plug size={14} /> {isFetchingDbKey ? '获取中...' : '自动获取密钥'}
+            <Plug size={14} /> {isFetchingDbKey ? t('获取中...') : t('自动获取密钥')}
           </button>
         )}
         {dbKeyStatus && <div className="form-hint status-text">{dbKeyStatus}</div>}
         {isMac && dbKeyError && (
-          <button type="button" className="mac-key-faq-link" onClick={openMacKeyFaq}>
-            查看 macOS 获取密钥排障指引
-          </button>
+          <button type="button" className="mac-key-faq-link" onClick={openMacKeyFaq}>{t('查看 macOS 获取密钥排障指引')}</button>
         )}
       </div>
 
       <div className="form-group">
-        <label>数据库根目录</label>
-        <span className="form-hint">xwechat_files 目录</span>
+        <label>{t('数据库根目录')}</label>
+        <span className="form-hint">{t('xwechat_files 目录')}</span>
         <input
           type="text"
           placeholder={dbPathPlaceholder}
@@ -2409,21 +2392,21 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         />
         <div className="btn-row">
           <button className="btn btn-primary" onClick={handleAutoDetectPath} disabled={isDetectingPath}>
-            <FolderSearch size={16} /> {isDetectingPath ? '检测中...' : '自动检测'}
+            <FolderSearch size={16} /> {isDetectingPath ? t('检测中...') : t('自动检测')}
           </button>
-          <button className="btn btn-secondary" onClick={handleSelectDbPath}><FolderOpen size={16} /> 浏览选择</button>
+          <button className="btn btn-secondary" onClick={handleSelectDbPath}><FolderOpen size={16} />{' '}{t('浏览选择')}</button>
         </div>
       </div>
 
 
 
       <div className="form-group">
-        <label>账号 wxid</label>
-        <span className="form-hint">微信账号标识</span>
+        <label>{t('账号 wxid')}</label>
+        <span className="form-hint">{t('微信账号标识')}</span>
         <div className="wxid-input-wrapper">
           <input
             type="text"
-            placeholder="例如: wxid_xxxxxx"
+            placeholder={t('例如: wxid_xxxxxx')}
             value={wxid}
             onChange={(e) => {
               const value = e.target.value
@@ -2453,7 +2436,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                         showMessage(result.error, false)
                       }
                     } catch (e: any) {
-                      showMessage(`切换账号后重新连接失败: ${e}`, false)
+                      showMessage(t('切换账号后重新连接失败: {e}', { e: e }), false)
                       setDbConnected(false)
                     }
                   }
@@ -2465,15 +2448,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             }}
           />
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => handleScanWxid()}><Search size={14} /> 扫描 wxid</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => handleScanWxid()}><Search size={14} />{' '}{t('扫描 wxid')}</button>
       </div>
 
       <div className="form-group">
-        <label>图片 XOR 密钥 <span className="optional">(可选)</span></label>
-        <span className="form-hint">用于解密图片缓存</span>
+        <label>{t('图片 XOR 密钥')}{' '}<span className="optional">{t('(可选)')}</span></label>
+        <span className="form-hint">{t('用于解密图片缓存')}</span>
         <input
           type="text"
-          placeholder="例如: 0xA4"
+          placeholder={t('例如: 0xA4')}
           value={imageXorKey}
           onChange={(e) => {
             const value = e.target.value
@@ -2487,11 +2470,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>图片 AES 密钥 <span className="optional">(可选)</span></label>
-        <span className="form-hint">16 位密钥</span>
+        <label>{t('图片 AES 密钥')}{' '}<span className="optional">{t('(可选)')}</span></label>
+        <span className="form-hint">{t('16 位密钥')}</span>
         <input
           type="text"
-          placeholder="16 位 AES 密钥"
+          placeholder={t('16 位 AES 密钥')}
           value={imageAesKey}
           onChange={(e) => {
             const value = e.target.value
@@ -2500,30 +2483,30 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           }}
         />
         <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-          <button className="btn btn-primary btn-sm" onClick={handleAutoGetImageKey} disabled={isFetchingImageKey} title="从本地缓存快速计算">
-            <Plug size={14} /> {isFetchingImageKey ? '获取中...' : '缓存计算（推荐）'}
+          <button className="btn btn-primary btn-sm" onClick={handleAutoGetImageKey} disabled={isFetchingImageKey} title={t('从本地缓存快速计算')}>
+            <Plug size={14} /> {isFetchingImageKey ? t('获取中...') : t('缓存计算（推荐）')}
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={handleScanImageKeyFromMemory} disabled={isFetchingImageKey} title="扫描微信进程内存">
-            {isFetchingImageKey ? '扫描中...' : '内存扫描'}
+          <button className="btn btn-secondary btn-sm" onClick={handleScanImageKeyFromMemory} disabled={isFetchingImageKey} title={t('扫描微信进程内存')}>
+            {isFetchingImageKey ? t('扫描中...') : t('内存扫描')}
           </button>
         </div>
         {isFetchingImageKey ? (
           <div className="brute-force-progress">
             <div className="status-header">
-              <span className="status-text">{imageKeyStatus || '正在启动...'}</span>
+              <span className="status-text">{imageKeyStatus || t('正在启动...')}</span>
             </div>
           </div>
         ) : (
           imageKeyStatus && <div className="form-hint status-text" style={{ marginTop: '8px' }}>{imageKeyStatus}</div>
         )}
-        <span className="form-hint">优先推荐缓存计算方案。若图片无法解密，可使用内存扫描（需微信运行并打开 2-3 张图片大图）</span>
+        <span className="form-hint">{t('优先推荐缓存计算方案。若图片无法解密，可使用内存扫描（需微信运行并打开 2-3 张图片大图）')}</span>
       </div>
 
       <div className="form-group">
-        <label>调试日志</label>
-        <span className="form-hint">开启后写入 WCDB 调试日志，便于排查连接问题</span>
+        <label>{t('调试日志')}</label>
+        <span className="form-hint">{t('开启后写入 WCDB 调试日志，便于排查连接问题')}</span>
         <div className="log-toggle-line">
-          <span className="log-status">{logEnabled ? '已开启' : '已关闭'}</span>
+          <span className="log-status">{logEnabled ? t('已开启') : t('已关闭')}</span>
           <label className="switch" htmlFor="log-enabled-toggle">
             <input
               id="log-enabled-toggle"
@@ -2534,7 +2517,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 const enabled = e.target.checked
                 setLogEnabled(enabled)
                 await configService.setLogEnabled(enabled)
-                showMessage(enabled ? '已开启日志' : '已关闭日志', true)
+                showMessage(enabled ? t('已开启日志') : t('已关闭日志'), true)
               }}
             />
             <span className="switch-slider" />
@@ -2542,14 +2525,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         </div>
         <div className="log-actions">
           <button className="btn btn-secondary" onClick={handleOpenLog}>
-            <FolderOpen size={16} /> 打开日志文件
-          </button>
+            <FolderOpen size={16} />{' '}{t('打开日志文件')}</button>
           <button className="btn btn-secondary" onClick={handleCopyLog}>
-            <Copy size={16} /> 复制日志内容
-          </button>
+            <Copy size={16} />{' '}{t('复制日志内容')}</button>
           <button className="btn btn-secondary" onClick={handleClearLog}>
-            <Trash2 size={16} /> 清空日志
-          </button>
+            <Trash2 size={16} />{' '}{t('清空日志')}</button>
         </div>
       </div>
 
@@ -2560,8 +2540,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const renderModelsTab = () => (
     <div className="tab-content">
       <div className="form-group">
-        <label>语音识别模型 (Whisper)</label>
-        <span className="form-hint">用于语音消息转文字功能</span>
+        <label>{t('语音识别模型 (Whisper)')}</label>
+        <span className="form-hint">{t('用于语音消息转文字功能')}</span>
 
         <div className="setting-control vertical has-border">
           <div className="model-status-card">
@@ -2572,9 +2552,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               </div>
               <div className="model-meta">
                 {whisperModelStatus?.exists ? (
-                  <span className="status-indicator success"><Check size={14} /> 已安装</span>
+                  <span className="status-indicator success"><Check size={14} />{' '}{t('已安装')}</span>
                 ) : (
-                  <span className="status-indicator warning">未安装</span>
+                  <span className="status-indicator warning">{t('未安装')}</span>
                 )}
               </div>
             </div>
@@ -2585,8 +2565,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                     className="btn-download"
                     onClick={handleDownloadWhisperModel}
                   >
-                    <Download size={16} /> 下载模型
-                  </button>
+                    <Download size={16} />{' '}{t('下载模型')}</button>
                 )}
                 {isWhisperDownloading && (
                   <div className="download-status">
@@ -2612,25 +2591,23 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 type="text"
                 value={resolvedWhisperModelPath}
                 readOnly
-                placeholder="默认目录"
-                title={resolvedWhisperModelPath || '默认目录'}
+                placeholder={t('默认目录')}
+                title={resolvedWhisperModelPath || t('默认目录')}
               />
-              <button className="btn btn-secondary btn-sm" onClick={handleSelectWhisperModelDir} title="选择自定义目录">
-                <FolderOpen size={14} /> 选择自定义目录
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={handleResetWhisperModelDir} disabled={!whisperModelDir} title="恢复默认">
-                <RotateCcw size={14} /> 恢复默认
-              </button>
+              <button className="btn btn-secondary btn-sm" onClick={handleSelectWhisperModelDir} title={t('选择自定义目录')}>
+                <FolderOpen size={14} />{' '}{t('选择自定义目录')}</button>
+              <button className="btn btn-secondary btn-sm" onClick={handleResetWhisperModelDir} disabled={!whisperModelDir} title={t('恢复默认')}>
+                <RotateCcw size={14} />{' '}{t('恢复默认')}</button>
             </div>
           </div>
         </div>
       </div>
 
       <div className="form-group">
-        <label>自动转文字</label>
-        <span className="form-hint">收到语音消息时自动转换为文字</span>
+        <label>{t('自动转文字')}</label>
+        <span className="form-hint">{t('收到语音消息时自动转换为文字')}</span>
         <div className="log-toggle-line">
-          <span className="log-status">{autoTranscribeVoice ? '已开启' : '已关闭'}</span>
+          <span className="log-status">{autoTranscribeVoice ? t('已开启') : t('已关闭')}</span>
           <label className="switch">
             <input
               type="checkbox"
@@ -2651,13 +2628,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const renderCacheTab = () => (
       <div className="tab-content">
-        <p className="section-desc">管理应用缓存数据</p>
+        <p className="section-desc">{t('管理应用缓存数据')}</p>
         <div className="form-group">
-          <label>缓存目录 <span className="optional">(可选)</span></label>
-          <span className="form-hint">留空使用默认目录</span>
+          <label>{t('缓存目录')}{' '}<span className="optional">{t('(可选)')}</span></label>
+          <span className="form-hint">{t('留空使用默认目录')}</span>
           <input
               type="text"
-              placeholder="留空使用默认目录"
+              placeholder={t('留空使用默认目录')}
               value={cachePath}
               onChange={(e) => {
                 const value = e.target.value
@@ -2666,9 +2643,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               }}
           />
 
-          <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-            当前缓存位置：
-            <code style={{
+          <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>{t('当前缓存位置：')}<code style={{
               background: 'var(--bg-secondary)',
               padding: '3px 6px',
               borderRadius: '4px',
@@ -2676,12 +2651,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               wordBreak: 'break-all',
               marginLeft: '4px'
             }}>
-              {cachePath || (isMac ? '~/Documents/WeFlow' : isLinux ? '~/Documents/WeFlow' : '系统 文档\\WeFlow 目录')}
+              {cachePath || (isMac ? '~/Documents/WeFlow' : isLinux ? '~/Documents/WeFlow' : t('系统 文档\\WeFlow 目录'))}
             </code>
           </div>
 
           <div className="btn-row" style={{ marginTop: '12px' }}>
-            <button className="btn btn-secondary" onClick={handleSelectCachePath}><FolderOpen size={16} /> 浏览选择</button>
+            <button className="btn btn-secondary" onClick={handleSelectCachePath}><FolderOpen size={16} />{' '}{t('浏览选择')}</button>
             <button
                 className="btn btn-secondary"
                 onClick={async () => {
@@ -2689,27 +2664,23 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   await configService.setCachePath('')
                 }}
             >
-              <RotateCcw size={16} /> 恢复默认
-            </button>
+              <RotateCcw size={16} />{' '}{t('恢复默认')}</button>
           </div>
         </div>
 
       <div className="btn-row">
         <button className="btn btn-secondary" onClick={handleClearAnalyticsCache} disabled={isClearingCache}>
-          <Trash2 size={16} /> 清除分析缓存
-        </button>
+          <Trash2 size={16} />{' '}{t('清除分析缓存')}</button>
         <button className="btn btn-secondary" onClick={handleClearImageCache} disabled={isClearingCache}>
-          <Trash2 size={16} /> 清除图片缓存
-        </button>
+          <Trash2 size={16} />{' '}{t('清除图片缓存')}</button>
         <button className="btn btn-danger" onClick={handleClearAllCache} disabled={isClearingCache}>
-          <Trash2 size={16} /> 清除所有缓存</button>
+          <Trash2 size={16} />{' '}{t('清除所有缓存')}</button>
       </div>
       <div className="divider" />
-      <p className="section-desc">清除当前配置并重新开始首次引导</p>
+      <p className="section-desc">{t('清除当前配置并重新开始首次引导')}</p>
       <div className="btn-row">
         <button className="btn btn-danger" onClick={handleClearConfig}>
-          <RefreshCw size={16} /> 清除当前配置
-        </button>
+          <RefreshCw size={16} />{' '}{t('清除当前配置')}</button>
       </div>
     </div>
   )
@@ -2729,9 +2700,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       await window.electronAPI.http.stop()
       setHttpApiRunning(false)
       await configService.setHttpApiEnabled(false)
-      showMessage('API 服务已停止', true)
+      showMessage(t('API 服务已停止'), true)
     } catch (e: any) {
-      showMessage(`操作失败: ${e}`, false)
+      showMessage(t('操作失败: {e}', { e: e }), false)
     } finally {
       setIsTogglingApi(false)
     }
@@ -2750,12 +2721,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         await configService.setHttpApiEnabled(true)
         await configService.setHttpApiPort(result.port || httpApiPort)
 
-        showMessage(`API 服务已启动，端口 ${result.port}`, true)
+        showMessage(t('API 服务已启动，端口 {port}', { port: result.port }), true)
       } else {
-        showMessage(`启动失败: ${result.error}`, false)
+        showMessage(t('启动失败: {error}', { error: result.error }), false)
       }
     } catch (e: any) {
-      showMessage(`操作失败: ${e}`, false)
+      showMessage(t('操作失败: {e}', { e: e }), false)
     } finally {
       setIsTogglingApi(false)
     }
@@ -2764,13 +2735,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const handleCopyApiUrl = () => {
     const url = `http://${httpApiHost}:${httpApiPort}`
     navigator.clipboard.writeText(url)
-    showMessage('已复制 API 地址', true)
+    showMessage(t('已复制 API 地址'), true)
   }
 
   const handleToggleMessagePush = async (enabled: boolean) => {
     setMessagePushEnabled(enabled)
     await configService.setMessagePushEnabled(enabled)
-    showMessage(enabled ? '已开启主动推送' : '已关闭主动推送', true)
+    showMessage(enabled ? t('已开启主动推送') : t('已关闭主动推送'), true)
   }
 
   const getSessionFilterType = (session: { username: string; type?: ContactInfo['type'] | number }): SessionFilterType => {
@@ -2784,10 +2755,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const getSessionFilterTypeLabel = (type: SessionFilterType) => {
     switch (type) {
-      case 'private': return '私聊'
-      case 'group': return '群聊'
-      case 'official': return '订阅号/服务号'
-      default: return '其他/非好友'
+      case 'private': return t('私聊')
+      case 'group': return t('群聊')
+      case 'official': return t('订阅号/服务号')
+      default: return t('其他/非好友')
     }
   }
 
@@ -2796,8 +2767,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     setMessagePushFilterDropdownOpen(false)
     await configService.setMessagePushFilterMode(mode)
     showMessage(
-      mode === 'all' ? '主动推送已设为接收所有会话' :
-        mode === 'whitelist' ? '主动推送已设为仅推送白名单' : '主动推送已设为屏蔽黑名单',
+      mode === 'all' ? t('主动推送已设为接收所有会话') :
+        mode === 'whitelist' ? t('主动推送已设为仅推送白名单') : t('主动推送已设为屏蔽黑名单'),
       true
     )
   }
@@ -2807,14 +2778,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     const next = [...messagePushFilterList, username]
     setMessagePushFilterList(next)
     await configService.setMessagePushFilterList(next)
-    showMessage('已添加到主动推送过滤列表', true)
+    showMessage(t('已添加到主动推送过滤列表'), true)
   }
 
   const handleRemoveMessagePushFilterSession = async (username: string) => {
     const next = messagePushFilterList.filter(item => item !== username)
     setMessagePushFilterList(next)
     await configService.setMessagePushFilterList(next)
-    showMessage('已从主动推送过滤列表移除', true)
+    showMessage(t('已从主动推送过滤列表移除'), true)
   }
 
   const handleAddAllMessagePushFilterSessions = async () => {
@@ -2823,14 +2794,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     const next = Array.from(new Set([...messagePushFilterList, ...usernames]))
     setMessagePushFilterList(next)
     await configService.setMessagePushFilterList(next)
-    showMessage(`已添加 ${usernames.length} 个会话`, true)
+    showMessage(t('已添加 {length} 个会话', { length: usernames.length }), true)
   }
 
   const handleRemoveAllMessagePushFilterSessions = async () => {
     if (messagePushFilterList.length === 0) return
     setMessagePushFilterList([])
     await configService.setMessagePushFilterList([])
-    showMessage('已清空主动推送过滤列表', true)
+    showMessage(t('已清空主动推送过滤列表'), true)
   }
 
   const sessionFilterOptionMap = new Map<string, SessionFilterOption>()
@@ -2909,14 +2880,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     const next = Array.from(new Set([...notificationFilterList, ...usernames]))
     setNotificationFilterList(next)
     await configService.setNotificationFilterList(next)
-    showMessage(`已添加 ${usernames.length} 个会话`, true)
+    showMessage(t('已添加 {length} 个会话', { length: usernames.length }), true)
   }
 
   const handleRemoveAllNotificationFilterSessions = async () => {
     if (notificationFilterList.length === 0) return
     setNotificationFilterList([])
     await configService.setNotificationFilterList([])
-    showMessage('已清空通知过滤列表', true)
+    showMessage(t('已清空通知过滤列表'), true)
   }
 
   const handleSetNotificationFilterMode = async (mode: SessionFilterMode) => {
@@ -2924,8 +2895,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     setFilterModeDropdownOpen(false)
     await configService.setNotificationFilterMode(mode)
     showMessage(
-      mode === 'all' ? '已设为接收所有通知' :
-        mode === 'whitelist' ? '已设为仅接收白名单通知' : '已设为屏蔽黑名单通知',
+      mode === 'all' ? t('已设为接收所有通知') :
+        mode === 'whitelist' ? t('已设为仅接收白名单通知') : t('已设为屏蔽黑名单通知'),
       true
     )
   }
@@ -2937,7 +2908,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const result = await window.electronAPI.insight.testConnection()
       setInsightTestResult(result)
     } catch (e: any) {
-      setInsightTestResult({ success: false, message: `调用失败：${e?.message || String(e)}` })
+      setInsightTestResult({ success: false, message: t('调用失败：{v0}', { v0: e?.message || String(e) }) })
     } finally {
       setIsTestingInsight(false)
     }
@@ -2946,12 +2917,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const renderAiCommonTab = () => (
     <div className="tab-content">
       <div className="form-group">
-        <label>通用 API 地址</label>
-        <span className="form-hint">
-          这是「AI 见解」与「AI 足迹总结」共享的模型接入配置。填写 OpenAI 兼容接口的 <strong>Base URL</strong>，末尾<strong>不要加斜杠</strong>。
-          程序会自动拼接 <code>/chat/completions</code>。
-          <br />
-          示例：<code>https://api.ohmygpt.com/v1</code> 或 <code>https://api.openai.com/v1</code>
+        <label>{t('通用 API 地址')}</label>
+        <span className="form-hint">{t('这是「AI 见解」与「AI 足迹总结」共享的模型接入配置。填写 OpenAI 兼容接口的')}{' '}<strong>Base URL</strong>{t('，末尾')}<strong>{t('不要加斜杠')}</strong>{t('。 程序会自动拼接')}{' '}<code>/chat/completions</code>.
+          <br />{t('示例：')}<code>https://api.ohmygpt.com/v1</code>{' '}{t('或')}{' '}<code>https://api.openai.com/v1</code>
         </span>
         <input
           type="text"
@@ -2967,10 +2935,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>通用 API Key</label>
-        <span className="form-hint">
-          你的 API Key，保存后经过系统加密存储，不会明文写入磁盘。
-        </span>
+        <label>{t('通用 API Key')}</label>
+        <span className="form-hint">{t('你的 API Key，保存后经过系统加密存储，不会明文写入磁盘。')}</span>
         <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
           <input
             type={showInsightApiKey ? 'text' : 'password'}
@@ -2987,7 +2953,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <button
             className="btn btn-secondary"
             onClick={() => setShowInsightApiKey(!showInsightApiKey)}
-            title={showInsightApiKey ? '隐藏' : '显示'}
+            title={showInsightApiKey ? t('隐藏') : t('显示')}
           >
             {showInsightApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
@@ -2998,7 +2964,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 setAiModelApiKey('')
                 await configService.setAiModelApiKey('')
               }}
-              title="清除 Key"
+              title={t('清除 Key')}
             >
               <Trash2 size={14} />
             </button>
@@ -3007,11 +2973,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>通用模型名称</label>
-        <span className="form-hint">
-          填写你的 API 提供商支持的模型名，将同时用于见解和足迹模块。
-          <br />
-          常用示例：<code>gpt-4o-mini</code>、<code>gpt-4o</code>、<code>deepseek-chat</code>、<code>claude-3-5-haiku-20241022</code>
+        <label>{t('通用模型名称')}</label>
+        <span className="form-hint">{t('填写你的 API 提供商支持的模型名，将同时用于见解和足迹模块。')}<br />{t('常用示例：')}<code>gpt-4o-mini</code>, <code>gpt-4o</code>, <code>deepseek-chat</code>, <code>claude-3-5-haiku-20241022</code>
         </span>
         <input
           type="text"
@@ -3028,9 +2991,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>通用 Max Tokens</label>
-        <span className="form-hint">
-          设置单次请求的最大输出 token 数量，见解与足迹共享该值。默认 <code>1024</code>。
+        <label>{t('通用 Max Tokens')}</label>
+        <span className="form-hint">{t('设置单次请求的最大输出 token 数量，见解与足迹共享该值。默认')}{' '}<code>1024</code>.
         </span>
         <input
           type="number"
@@ -3050,10 +3012,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>连接测试</label>
-        <span className="form-hint">
-          测试通用模型连接，见解与足迹都会使用这套配置。
-        </span>
+        <label>{t('连接测试')}</label>
+        <span className="form-hint">{t('测试通用模型连接，见解与足迹都会使用这套配置。')}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '10px' }}>
           <button
             className="btn btn-secondary"
@@ -3061,9 +3021,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             disabled={isTestingInsight || !aiModelApiBaseUrl || !aiModelApiKey}
           >
             {isTestingInsight ? (
-              <><Loader2 size={14} style={{ marginRight: 4, animation: 'spin 1s linear infinite' }} />测试中...</>
+              <><Loader2 size={14} style={{ marginRight: 4, animation: 'spin 1s linear infinite' }} />{t('测试中...')}</>
             ) : (
-              <>测试 API 连接</>
+              <>{t('测试 API 连接')}</>
             )}
           </button>
           {insightTestResult && (
@@ -3109,16 +3069,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const result = await withAsyncTimeout(
         window.electronAPI.social.saveWeiboCookie(draftToSave),
         10000,
-        '保存微博 Cookie 超时，请稍后重试'
+        t('保存微博 Cookie 超时，请稍后重试')
       )
       if (!result.success) {
-        setWeiboCookieError(result.error || '微博 Cookie 保存失败')
+        setWeiboCookieError(result.error || t('微博 Cookie 保存失败'))
         return false
       }
       const normalized = result.normalized || ''
       setAiInsightWeiboCookie(normalized)
       setWeiboCookieDraft(normalized)
-      showMessage(result.hasCookie ? '微博 Cookie 已保存' : '微博 Cookie 已清空', true)
+      showMessage(result.hasCookie ? t('微博 Cookie 已保存') : t('微博 Cookie 已清空'), true)
       return true
     } catch (e: any) {
       setWeiboCookieError(e?.message || String(e))
@@ -3191,10 +3151,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const result = await withAsyncTimeout(
         window.electronAPI.social.validateWeiboUid(draftUid),
         12000,
-        '微博 UID 校验超时，请稍后重试'
+        t('微博 UID 校验超时，请稍后重试')
       )
       if (!result.success || !result.uid) {
-        setWeiboBindingErrors((prev) => ({ ...prev, [sessionId]: result.error || '微博 UID 校验失败' }))
+        setWeiboBindingErrors((prev) => ({ ...prev, [sessionId]: result.error || t('微博 UID 校验失败') }))
         return
       }
 
@@ -3209,7 +3169,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       setAiInsightWeiboBindings(nextBindings)
       await configService.setAiInsightWeiboBindings(nextBindings)
       setWeiboBindingDrafts((prev) => ({ ...prev, [sessionId]: result.uid! }))
-      showMessage(`已为「${displayName}」绑定微博 UID`, true)
+      showMessage(t('已为「{displayName}」绑定微博 UID', { displayName: displayName }), true)
     } catch (e: any) {
       setWeiboBindingErrors((prev) => ({ ...prev, [sessionId]: e?.message || String(e) }))
     } finally {
@@ -3229,18 +3189,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       return next
     })
     await configService.setAiInsightWeiboBindings(nextBindings)
-    if (!silent) showMessage('已清除微博绑定', true)
+    if (!silent) showMessage(t('已清除微博绑定'), true)
   }
   const renderInsightTab = () => (
     <div className="tab-content">
       {/* 总开关 */}
       <div className="form-group">
-        <label>AI 见解</label>
-        <span className="form-hint">
-          开启后，AI 会在后台默默分析聊天数据，在合适的时机通过应用通知送出一针见血的见解——例如提醒你久未联系的朋友，或对你刚刚的对话提出回复建议。默认关闭，所有分析均在本地发起请求，不经过任何第三方中间服务。
-        </span>
+        <label>{t('AI 见解')}</label>
+        <span className="form-hint">{t('开启后，AI 会在后台默默分析聊天数据，在合适的时机通过应用通知送出一针见血的见解——例如提醒你久未联系的朋友，或对你刚刚的对话提出回复建议。默认关闭，所有分析均在本地发起请求，不经过任何第三方中间服务。')}</span>
         <div className="log-toggle-line">
-          <span className="log-status">{aiInsightEnabled ? '已开启' : '已关闭'}</span>
+          <span className="log-status">{aiInsightEnabled ? t('已开启') : t('已关闭')}</span>
           <label className="switch">
             <input
               type="checkbox"
@@ -3249,7 +3207,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 const val = e.target.checked
                 setAiInsightEnabled(val)
                 await configService.setAiInsightEnabled(val)
-                showMessage(val ? 'AI 见解已开启' : 'AI 见解已关闭', true)
+                showMessage(val ? t('AI 见解已开启') : t('AI 见解已关闭'), true)
               }}
             />
             <span className="switch-slider" />
@@ -3260,10 +3218,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>调试工具</label>
-        <span className="form-hint">
-          该功能依赖「基础配置」里的模型配置。用于验证完整链路（数据库→API→弹窗）。
-        </span>
+        <label>{t('调试工具')}</label>
+        <span className="form-hint">{t('该功能依赖「基础配置」里的模型配置。用于验证完整链路（数据库→API→弹窗）。')}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '10px' }}>
           <button
             className="btn btn-secondary"
@@ -3274,18 +3230,18 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 const result = await window.electronAPI.insight.triggerTest()
                 setInsightTriggerResult(result)
               } catch (e: any) {
-                setInsightTriggerResult({ success: false, message: `调用失败：${e?.message || String(e)}` })
+                setInsightTriggerResult({ success: false, message: t('调用失败：{v0}', { v0: e?.message || String(e) }) })
               } finally {
                 setIsTriggeringInsightTest(false)
               }
             }}
             disabled={isTriggeringInsightTest || !aiInsightEnabled || !aiModelApiBaseUrl || !aiModelApiKey}
-            title={!aiInsightEnabled ? '请先开启 AI 见解总开关' : ''}
+            title={!aiInsightEnabled ? t('请先开启 AI 见解总开关') : ''}
           >
             {isTriggeringInsightTest ? (
-              <><Loader2 size={14} style={{ marginRight: 4, animation: 'spin 1s linear infinite' }} />触发中...</>
+              <><Loader2 size={14} style={{ marginRight: 4, animation: 'spin 1s linear infinite' }} />{t('触发中...')}</>
             ) : (
-              <>立即触发测试见解</>
+              <>{t('立即触发测试见解')}</>
             )}
           </button>
           {insightTriggerResult && (
@@ -3301,10 +3257,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       {/* 行为配置 */}
       <div className="form-group">
-        <label>活跃触发冷却期（分钟）</label>
-        <span className="form-hint">
-          有新消息时触发活跃分析的冷却时间。设为 <strong>0</strong> 表示无冷却，每条新消息都可能触发见解（AI 言论自由模式）。建议按需调整，费用自理。
-        </span>
+        <label>{t('活跃触发冷却期（分钟）')}</label>
+        <span className="form-hint">{t('有新消息时触发活跃分析的冷却时间。设为')}{' '}<strong>0</strong>{' '}{t('表示无冷却，每条新消息都可能触发见解（AI 言论自由模式）。建议按需调整，费用自理。')}</span>
         <input
           type="number"
           className="field-input"
@@ -3319,17 +3273,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           style={{ width: 120 }}
         />
         {aiInsightCooldownMinutes === 0 && (
-          <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--color-warning, #f59e0b)' }}>
-            无冷却 — 每次 DB 变更均可触发
-          </span>
+          <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--color-warning, #f59e0b)' }}>{t('无冷却 — 每次 DB 变更均可触发')}</span>
         )}
       </div>
 
       <div className="form-group">
-        <label>沉默联系人扫描间隔（小时）</label>
-        <span className="form-hint">
-          多久扫描一次沉默联系人。重启生效。最小 0.1 小时（6 分钟）。
-        </span>
+        <label>{t('沉默联系人扫描间隔（小时）')}</label>
+        <span className="form-hint">{t('多久扫描一次沉默联系人。重启生效。最小 0.1 小时（6 分钟）。')}</span>
         <input
           type="number"
           className="field-input"
@@ -3347,10 +3297,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>沉默联系人阈值（天）</label>
-        <span className="form-hint">
-          与某私聊联系人超过此天数没有消息往来时，触发沉默类见解。
-        </span>
+        <label>{t('沉默联系人阈值（天）')}</label>
+        <span className="form-hint">{t('与某私聊联系人超过此天数没有消息往来时，触发沉默类见解。')}</span>
         <input
           type="number"
           className="field-input"
@@ -3367,16 +3315,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>允许发送近期对话内容用于分析</label>
-        <span className="form-hint">
-          开启后，触发见解时会将该联系人最近 N 条聊天记录发送给 AI，分析质量显著提升。
-          <br />
-          <strong>关闭时</strong>：不会发送聊天原文，输出质量较低。
-          <br />
-          <strong>开启时</strong>：聊天文本内容（不含图片、语音）会通过你配置的 API 发送给模型提供商。请确认你信任该服务商。
-        </span>
+        <label>{t('允许发送近期对话内容用于分析')}</label>
+        <span className="form-hint">{t('开启后，触发见解时会将该联系人最近 N 条聊天记录发送给 AI，分析质量显著提升。')}<br />
+          <strong>{t('关闭时')}</strong>{t('：不会发送聊天原文，输出质量较低。')}<br />
+          <strong>{t('开启时')}</strong>{t('：聊天文本内容（不含图片、语音）会通过你配置的 API 发送给模型提供商。请确认你信任该服务商。')}</span>
         <div className="log-toggle-line">
-          <span className="log-status">{aiInsightAllowContext ? '已授权' : '未授权'}</span>
+          <span className="log-status">{aiInsightAllowContext ? t('已授权') : t('未授权')}</span>
           <label className="switch">
             <input
               type="checkbox"
@@ -3395,10 +3339,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className={`insight-collapsible-setting ${aiInsightAllowContext ? 'expanded' : 'collapsed'}`} aria-hidden={!aiInsightAllowContext}>
         <div className="insight-collapsible-setting-inner">
           <div className="form-group">
-            <label>发送近期对话条数</label>
-            <span className="form-hint">
-              发送给 AI 的聊天记录最大条数。条数越多分析越准确，token 消耗也越多。
-            </span>
+            <label>{t('发送近期对话条数')}</label>
+            <span className="form-hint">{t('发送给 AI 的聊天记录最大条数。条数越多分析越准确，token 消耗也越多。')}</span>
             <input
               type="number"
               className="field-input"
@@ -3420,12 +3362,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>允许发送近期朋友圈内容用于分析（实验性）</label>
-        <span className="form-hint">
-          开启后，可在下方列表为私聊联系人单独允许朋友圈补充分析。程序只会在触发见解时按需读取，不会做后台持续扫描。
-        </span>
+        <label>{t('允许发送近期朋友圈内容用于分析（实验性）')}</label>
+        <span className="form-hint">{t('开启后，可在下方列表为私聊联系人单独允许朋友圈补充分析。程序只会在触发见解时按需读取，不会做后台持续扫描。')}</span>
         <div className="log-toggle-line">
-          <span className="log-status">{aiInsightAllowMomentsContext ? '已开启' : '已关闭'}</span>
+          <span className="log-status">{aiInsightAllowMomentsContext ? t('已开启') : t('已关闭')}</span>
           <label className="switch">
             <input
               type="checkbox"
@@ -3444,10 +3384,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className={`insight-collapsible-setting ${aiInsightAllowMomentsContext ? 'expanded' : 'collapsed'}`} aria-hidden={!aiInsightAllowMomentsContext}>
         <div className="insight-collapsible-setting-inner">
           <div className="form-group">
-            <label>发送近期朋友圈条数</label>
-            <span className="form-hint">
-              发送给 AI 的朋友圈最大条数。条数越多上下文越充分，token 消耗也越多。
-            </span>
+            <label>{t('发送近期朋友圈条数')}</label>
+            <span className="form-hint">{t('发送给 AI 的朋友圈最大条数。条数越多上下文越充分，token 消耗也越多。')}</span>
             <input
               type="number"
               className="field-input"
@@ -3469,18 +3407,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>允许发送近期社交平台内容用于分析（实验性）</label>
-        <span className="form-hint">
-          当前仅支持微博，且仅对已手动绑定微博 UID 的联系人生效。为了控制资源占用和平台风控，程序只会在触发见解时按需抓取近期公开内容，不会做后台持续扫描。
-        </span>
+        <label>{t('允许发送近期社交平台内容用于分析（实验性）')}</label>
+        <span className="form-hint">{t('当前仅支持微博，且仅对已手动绑定微博 UID 的联系人生效。为了控制资源占用和平台风控，程序只会在触发见解时按需抓取近期公开内容，不会做后台持续扫描。')}</span>
         <div className="log-toggle-line">
-          <span className="log-status">{aiInsightAllowSocialContext ? '已开启' : '已关闭'}</span>
+          <span className="log-status">{aiInsightAllowSocialContext ? t('已开启') : t('已关闭')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: hasWeiboCookieConfigured ? 'var(--color-success, #22c55e)' : 'var(--text-tertiary)' }}>
-              {hasWeiboCookieConfigured ? '微博 Cookie 已配置' : '微博 Cookie 未配置'}
+              {hasWeiboCookieConfigured ? t('微博 Cookie 已配置') : t('微博 Cookie 未配置')}
             </span>
             <button className="btn btn-secondary btn-sm" type="button" onClick={openWeiboCookieModal}>
-              {hasWeiboCookieConfigured ? '编辑微博 Cookie' : '填写微博 Cookie'}
+              {hasWeiboCookieConfigured ? t('编辑微博 Cookie') : t('填写微博 Cookie')}
             </button>
             <label className="switch">
               <input
@@ -3497,20 +3433,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           </div>
         </div>
         {!hasWeiboCookieConfigured && (
-          <span className="form-hint" style={{ marginTop: 8, display: 'block' }}>
-            未配置微博 Cookie 时，也会尝试抓取微博公开内容；但可能因平台风控导致获取失败或内容较少。
-          </span>
+          <span className="form-hint" style={{ marginTop: 8, display: 'block' }}>{t('未配置微博 Cookie 时，也会尝试抓取微博公开内容；但可能因平台风控导致获取失败或内容较少。')}</span>
         )}
       </div>
 
       <div className={`insight-collapsible-setting ${aiInsightAllowSocialContext ? 'expanded' : 'collapsed'}`} aria-hidden={!aiInsightAllowSocialContext}>
         <div className="insight-collapsible-setting-inner">
           <div className="form-group">
-            <label>发送近期社交平台内容条数</label>
-            <span className="form-hint">
-              当前仅支持微博最近发帖。
-              <br />
-              <strong>不建议超过 5，避免触发平台风控。</strong>
+            <label>{t('发送近期社交平台内容条数')}</label>
+            <span className="form-hint">{t('当前仅支持微博最近发帖。')}<br />
+              <strong>{t('不建议超过 5，避免触发平台风控。')}</strong>
             </span>
             <input
               type="number"
@@ -3533,13 +3465,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
       {/* 自定义 System Prompt */}
       {(() => {
-        const DEFAULT_SYSTEM_PROMPT = `你是用户的私人关系观察助手，名叫"见解"。你的任务是主动提供有价值的观察和建议。
-
-要求：
-1. 必须给出见解。基于聊天记录分析对方情绪、话题趋势、关系动态，或给出回复建议、聊天话题推荐。
-2. 控制在 80 字以内，直接、具体、一针见血。不要废话。
-3. 输出纯文本，不使用 Markdown。
-4. 只有在完全没有任何可说的内容时（比如对话只有一条"嗯"），才回复"SKIP"。绝大多数情况下你应该输出见解。`
+        const DEFAULT_SYSTEM_PROMPT = t('你是用户的私人关系观察助手，名叫"见解"。你的任务是主动提供有价值的观察和建议。\n\n要求：\n1. 必须给出见解。基于聊天记录分析对方情绪、话题趋势、关系动态，或给出回复建议、聊天话题推荐。\n2. 控制在 80 字以内，直接、具体、一针见血。不要废话。\n3. 输出纯文本，不使用 Markdown。\n4. 只有在完全没有任何可说的内容时（比如对话只有一条"嗯"），才回复"SKIP"。绝大多数情况下你应该输出见解。')
 
         // 展示值：有自定义内容时显示自定义内容，否则显示默认值（可直接编辑）
         const displayValue = aiInsightSystemPrompt || DEFAULT_SYSTEM_PROMPT
@@ -3547,7 +3473,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         return (
           <div className="form-group">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <label style={{ marginBottom: 0 }}>自定义 AI 见解提示词</label>
+              <label style={{ marginBottom: 0 }}>{t('自定义 AI 见解提示词')}</label>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={async () => {
@@ -3555,13 +3481,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   setAiInsightSystemPrompt('')
                   await configService.setAiInsightSystemPrompt('')
                 }}
-              >
-                恢复默认
-              </button>
+              >{t('恢复默认')}</button>
             </div>
-            <span className="form-hint">
-              当前显示内置默认提示词，可直接编辑修改。修改后立即生效，无需重启。可变的统计信息（触发次数、对话内容）会自动附加在用户消息里，无需在此填写。
-            </span>
+            <span className="form-hint">{t('当前显示内置默认提示词，可直接编辑修改。修改后立即生效，无需重启。可变的统计信息（触发次数、对话内容）会自动附加在用户消息里，无需在此填写。')}</span>
             <textarea
               className="field-input ai-prompt-textarea"
               rows={8}
@@ -3582,12 +3504,10 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       {/* Telegram 推送 */}
       <div className="form-group">
-        <label>Telegram Bot 推送</label>
-        <span className="form-hint">
-          开启后，见解同时推送到指定 Telegram 用户/群组，方便手机即时收到通知。需要先创建 Bot 并获取 Token（通过 @BotFather），Chat ID 可通过 @userinfobot 获取，多个 ID 用英文逗号分隔。
-        </span>
+        <label>{t('Telegram Bot 推送')}</label>
+        <span className="form-hint">{t('开启后，见解同时推送到指定 Telegram 用户/群组，方便手机即时收到通知。需要先创建 Bot 并获取 Token（通过 @BotFather），Chat ID 可通过 @userinfobot 获取，多个 ID 用英文逗号分隔。')}</span>
         <div className="log-toggle-line">
-          <span className="log-status">{aiInsightTelegramEnabled ? '已启用' : '未启用'}</span>
+          <span className="log-status">{aiInsightTelegramEnabled ? t('已启用') : t('未启用')}</span>
           <label className="switch">
             <input
               type="checkbox"
@@ -3611,7 +3531,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               type="password"
               className="field-input"
               style={{ width: '100%' }}
-              placeholder="在此处填入你的 Telegram Bot Token"
+              placeholder={t('在此处填入你的 Telegram Bot Token')}
               value={aiInsightTelegramToken}
               onChange={(e) => {
                 const val = e.target.value
@@ -3621,7 +3541,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             />
           </div>
           <div className="form-group">
-            <label>Chat ID（支持英文逗号分隔多个）</label>
+            <label>{t('Chat ID（支持英文逗号分隔多个）')}</label>
             <input
               type="text"
               className="field-input"
@@ -3669,7 +3589,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           setAiInsightFilterMode(mode)
           setInsightFilterModeDropdownOpen(false)
           await configService.setAiInsightFilterMode(mode)
-          showMessage(mode === 'whitelist' ? '已切换为白名单模式' : '已切换为黑名单模式', true)
+          showMessage(mode === 'whitelist' ? t('已切换为白名单模式') : t('已切换为黑名单模式'), true)
         }
 
         const selectAllFiltered = () => {
@@ -3691,18 +3611,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <div className="anti-revoke-tab insight-social-tab">
             <div className="anti-revoke-hero">
               <div className="anti-revoke-hero-main">
-                <h3>对话黑白名单</h3>
-                <p>
-                  白名单模式下仅对已选会话触发见解；黑名单模式下会跳过已选会话。默认白名单且不选择任何会话。支持私聊、群聊、订阅号/服务号分类筛选后批量选择。
-                </p>
+                <h3>{t('对话黑白名单')}</h3>
+                <p>{t('白名单模式下仅对已选会话触发见解；黑名单模式下会跳过已选会话。默认白名单且不选择任何会话。支持私聊、群聊、订阅号/服务号分类筛选后批量选择。')}</p>
               </div>
               <div className="anti-revoke-metrics">
                 <div className="anti-revoke-metric is-total">
-                  <span className="label">可选会话总数</span>
+                  <span className="label">{t('可选会话总数')}</span>
                   <span className="value">{selectableSessions.length}</span>
                 </div>
                 <div className="anti-revoke-metric is-installed">
-                  <span className="label">已加入名单</span>
+                  <span className="label">{t('已加入名单')}</span>
                   <span className="value">{selectedCount}</span>
                 </div>
               </div>
@@ -3712,8 +3630,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               <div className="log-toggle-line">
                 <span className="log-status" style={{ fontWeight: 600 }}>
                   {aiInsightFilterMode === 'whitelist'
-                    ? '白名单模式（仅对名单内会话生效）'
-                    : '黑名单模式（名单内会话将被忽略）'}
+                    ? t('白名单模式（仅对名单内会话生效）')
+                    : t('黑名单模式（名单内会话将被忽略）')}
                 </span>
                 <div className="custom-select" style={{ minWidth: 210 }}>
                   <div
@@ -3721,14 +3639,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                     onClick={() => setInsightFilterModeDropdownOpen(!insightFilterModeDropdownOpen)}
                   >
                     <span className="custom-select-value">
-                      {aiInsightFilterMode === 'whitelist' ? '白名单模式' : '黑名单模式'}
+                      {aiInsightFilterMode === 'whitelist' ? t('白名单模式') : t('黑名单模式')}
                     </span>
                     <ChevronDown size={14} className={`custom-select-arrow ${insightFilterModeDropdownOpen ? 'rotate' : ''}`} />
                   </div>
                   <div className={`custom-select-dropdown ${insightFilterModeDropdownOpen ? 'open' : ''}`}>
                     {[
-                      { value: 'whitelist', label: '白名单模式' },
-                      { value: 'blacklist', label: '黑名单模式' }
+                      { value: 'whitelist', label: t('白名单模式') },
+                      { value: 'blacklist', label: t('黑名单模式') }
                     ].map(option => (
                       <div
                         key={option.value}
@@ -3762,7 +3680,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   <Search size={14} />
                   <input
                     type="text"
-                    placeholder="搜索对话..."
+                    placeholder={t('搜索对话...')}
                     value={insightWhitelistSearch}
                     onChange={(e) => setInsightWhitelistSearch(e.target.value)}
                   />
@@ -3773,24 +3691,20 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                       className="btn btn-secondary btn-sm"
                       onClick={selectAllFiltered}
                       disabled={filteredIds.length === 0 || allFilteredSelected}
-                    >
-                      全选
-                    </button>
+                    >{t('全选')}</button>
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={clearSelection}
                       disabled={selectedCount === 0}
-                    >
-                      清空选择
-                    </button>
+                    >{t('清空选择')}</button>
                   </div>
                 </div>
               </div>
 
               <div className="anti-revoke-batch-actions">
                 <div className="anti-revoke-selected-count">
-                  <span>已选 <strong>{selectedCount}</strong> 个对话</span>
-                  <span>筛选命中 <strong>{selectedInFilteredCount}</strong> / {filteredIds.length}</span>
+                  <span>{t('已选')}{' '}<strong>{selectedCount}</strong>{' '}{t('个对话')}</span>
+                  <span>{t('筛选命中')}{' '}<strong>{selectedInFilteredCount}</strong> / {filteredIds.length}</span>
                 </div>
               </div>
             </div>
@@ -3798,15 +3712,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             <div className="anti-revoke-list">
               {filteredSessions.length === 0 ? (
                 <div className="anti-revoke-empty">
-                  {insightWhitelistSearch || insightFilterType !== 'all' ? '没有匹配的对话' : '暂无可选对话'}
+                  {insightWhitelistSearch || insightFilterType !== 'all' ? t('没有匹配的对话') : t('暂无可选对话')}
                 </div>
               ) : (
                 <>
                   <div className="anti-revoke-list-header">
-                    <span>对话（{filteredSessions.length}）</span>
-                    <span className="insight-moments-column-title">朋友圈</span>
-                    <span className="insight-social-column-title">社交平台（微博）</span>
-                    <span className="anti-revoke-status-column-title">状态</span>
+                    <span>{t('对话（{length}）', { length: filteredSessions.length })}</span>
+                    <span className="insight-moments-column-title">{t('朋友圈')}</span>
+                    <span className="insight-social-column-title">{t('社交平台（微博）')}</span>
+                    <span className="anti-revoke-status-column-title">{t('状态')}</span>
                   </div>
                   {filteredSessions.map((session) => {
                     const isSelected = aiInsightFilterList.has(session.username)
@@ -3870,12 +3784,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                           {isPrivateSession ? (
                             <>
                               <div className="insight-social-binding-input-wrap">
-                                <span className="binding-platform-chip">微博</span>
+                                <span className="binding-platform-chip">{t('微博')}</span>
                                 <input
                                   type="text"
                                   className="insight-social-binding-input"
                                   value={weiboDraftValue}
-                                  placeholder="填写数字 UID"
+                                  placeholder={t('填写数字 UID')}
                                   onChange={(e) => updateWeiboBindingDraft(session.username, e.target.value)}
                                 />
                               </div>
@@ -3886,16 +3800,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                                   onClick={() => void handleSaveWeiboBinding(session.username, session.displayName || session.username)}
                                   disabled={isBindingLoading || !weiboDraftValue.trim()}
                                 >
-                                  {isBindingLoading ? '绑定中...' : (weiboBinding ? '更新' : '绑定')}
+                                  {isBindingLoading ? t('绑定中...') : (weiboBinding ? t('更新') : t('绑定'))}
                                 </button>
                                 {weiboBinding && (
                                   <button
                                     type="button"
                                     className="btn btn-secondary btn-sm"
                                     onClick={() => void handleClearWeiboBinding(session.username)}
-                                  >
-                                    清除
-                                  </button>
+                                  >{t('清除')}</button>
                                 )}
                               </div>
                               <div className="insight-social-binding-feedback">
@@ -3904,15 +3816,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                                 ) : weiboBinding?.screenName ? (
                                   <span className="binding-feedback">@{weiboBinding.screenName}</span>
                                 ) : weiboBinding?.uid ? (
-                                  <span className="binding-feedback">已绑定 UID：{weiboBinding.uid}</span>
+                                  <span className="binding-feedback">{t('已绑定 UID：{uid}', { uid: weiboBinding.uid })}</span>
                                 ) : (
-                                  <span className="binding-feedback muted">仅支持手动填写数字 UID</span>
+                                  <span className="binding-feedback muted">{t('仅支持手动填写数字 UID')}</span>
                                 )}
                               </div>
                             </>
                           ) : (
                             <div className="insight-social-binding-feedback">
-                              <span className="binding-feedback muted">仅私聊支持微博绑定</span>
+                              <span className="binding-feedback muted">{t('仅私聊支持微博绑定')}</span>
                             </div>
                           )}
                         </div>
@@ -3920,8 +3832,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                           <span className={`status-badge ${isSelected ? 'installed' : 'not-installed'}`}>
                             <i className="status-dot" aria-hidden="true" />
                             {isSelected
-                              ? (aiInsightFilterMode === 'whitelist' ? '已允许' : '已屏蔽')
-                              : (aiInsightFilterMode === 'whitelist' ? '未允许' : '允许')}
+                              ? (aiInsightFilterMode === 'whitelist' ? t('已允许') : t('已屏蔽'))
+                              : (aiInsightFilterMode === 'whitelist' ? t('未允许') : t('允许'))}
                           </span>
                         </div>
                       </div>
@@ -3938,15 +3850,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       {/* 工作原理说明 */}
       <div className="form-group">
-        <label>工作原理</label>
+        <label>{t('工作原理')}</label>
         <div className="api-docs">
           <div className="api-item">
             <p className="api-desc" style={{ lineHeight: 1.7 }}>
-              <strong>触发方式一：活跃会话分析</strong> — 每当微信数据库变化（即你收到新消息）时，经过约 2 秒防抖后，对符合黑白名单规则的活跃会话进行分析。<br />
-              <strong>触发方式二：沉默扫描</strong> — 每 4 小时独立扫描一次，对超过阈值天数无消息的联系人发出提醒。<br />
-              <strong>频率控制</strong> — 冷却期、沉默间隔、黑白名单均在本地判断，不额外发送给模型。<br />
-              <strong>隐私</strong> — 所有分析请求均直接从你的电脑发往你填写的 API 地址，不经过任何 WeFlow 服务器。
-            </p>
+              <strong>{t('触发方式一：活跃会话分析')}</strong>{' '}{t('— 每当微信数据库变化（即你收到新消息）时，经过约 2 秒防抖后，对符合黑白名单规则的活跃会话进行分析。')}<br />
+              <strong>{t('触发方式二：沉默扫描')}</strong>{' '}{t('— 每 4 小时独立扫描一次，对超过阈值天数无消息的联系人发出提醒。')}<br />
+              <strong>{t('频率控制')}</strong>{' '}{t('— 冷却期、沉默间隔、黑白名单均在本地判断，不额外发送给模型。')}<br />
+              <strong>{t('隐私')}</strong>{' '}{t('— 所有分析请求均直接从你的电脑发往你填写的 API 地址，不经过任何 WeFlow 服务器。')}</p>
           </div>
         </div>
       </div>
@@ -3957,21 +3868,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const renderAiFootprintTab = () => (
     <div className="tab-content">
       {(() => {
-        const DEFAULT_FOOTPRINT_PROMPT = `你是用户的聊天足迹教练，负责基于统计数据给出一段简明复盘。
-要求：
-1. 输出 2-3 句，总长度不超过 180 字。
-2. 必须包含：总体观察 + 一个可执行建议。
-3. 语气务实，不夸张，不使用 Markdown。`
+        const DEFAULT_FOOTPRINT_PROMPT = t('你是用户的聊天足迹教练，负责基于统计数据给出一段简明复盘。\n要求：\n1. 输出 2-3 句，总长度不超过 180 字。\n2. 必须包含：总体观察 + 一个可执行建议。\n3. 语气务实，不夸张，不使用 Markdown。')
         const displayValue = aiFootprintSystemPrompt || DEFAULT_FOOTPRINT_PROMPT
         return (
           <>
             <div className="form-group">
-              <label>AI 足迹总结</label>
-              <span className="form-hint">
-                开启后，可在「我的微信足迹」页面一键生成当前范围的 AI 复盘总结。
-              </span>
+              <label>{t('AI 足迹总结')}</label>
+              <span className="form-hint">{t('开启后，可在「我的微信足迹」页面一键生成当前范围的 AI 复盘总结。')}</span>
               <div className="log-toggle-line">
-                <span className="log-status">{aiFootprintEnabled ? '已开启' : '已关闭'}</span>
+                <span className="log-status">{aiFootprintEnabled ? t('已开启') : t('已关闭')}</span>
                 <label className="switch">
                   <input
                     type="checkbox"
@@ -3989,20 +3894,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
             <div className="form-group">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <label style={{ marginBottom: 0 }}>足迹总结提示词</label>
+                <label style={{ marginBottom: 0 }}>{t('足迹总结提示词')}</label>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={async () => {
                     setAiFootprintSystemPrompt('')
                     await configService.setAiFootprintSystemPrompt('')
                   }}
-                >
-                  恢复默认
-                </button>
+                >{t('恢复默认')}</button>
               </div>
-              <span className="form-hint">
-                足迹模块专用的小配置。留空时使用内置默认提示词。
-              </span>
+              <span className="form-hint">{t('足迹模块专用的小配置。留空时使用内置默认提示词。')}</span>
               <textarea
                 className="field-input ai-prompt-textarea"
                 rows={6}
@@ -4024,11 +3925,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const renderApiTab = () => (
     <div className="tab-content">
       <div className="form-group">
-        <label>HTTP API 服务</label>
-        <span className="form-hint">启用后可通过 HTTP 接口查询消息数据（仅限本机访问）</span>
+        <label>{t('HTTP API 服务')}</label>
+        <span className="form-hint">{t('启用后可通过 HTTP 接口查询消息数据（仅限本机访问）')}</span>
         <div className="log-toggle-line">
           <span className="log-status">
-            {httpApiRunning ? '运行中' : '已停止'}
+            {httpApiRunning ? t('运行中') : t('已停止')}
           </span>
           <label className="switch">
             <input
@@ -4043,10 +3944,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>监听地址</label>
-        <span className="form-hint">
-          API 服务绑定的主机地址。默认 <code>127.0.0.1</code> 仅本机访问；Docker/N8N 等容器场景请改为 <code>0.0.0.0</code> 以允许外部访问（注意配合 Token 鉴权）
-        </span>
+        <label>{t('监听地址')}</label>
+        <span className="form-hint">{t('API 服务绑定的主机地址。默认')}{' '}<code>127.0.0.1</code>{' '}{t('仅本机访问；Docker/N8N 等容器场景请改为')}{' '}<code>0.0.0.0</code>{' '}{t('以允许外部访问（注意配合 Token 鉴权）')}</span>
         <input
             type="text"
             className="field-input"
@@ -4063,8 +3962,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>服务端口</label>
-        <span className="form-hint">API 服务监听的端口号（1024-65535）</span>
+        <label>{t('服务端口')}</label>
+        <span className="form-hint">{t('API 服务监听的端口号（1024-65535）')}</span>
         <input
             type="number"
             className="field-input"
@@ -4082,17 +3981,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>Access Token (鉴权凭证)</label>
-        <span className="form-hint">
-          设置后，请求头需携带 <code>Authorization: Bearer &lt;token&gt;</code>，
-          或者参数中携带 <code>?access_token=&lt;token&gt;</code>
+        <label>{t('Access Token (鉴权凭证)')}</label>
+        <span className="form-hint">{t('设置后，请求头需携带')}{' '}<code>Authorization: Bearer &lt;token&gt;</code>{t('， 或者参数中携带')}{' '}<code>?access_token=&lt;token&gt;</code>
         </span>
         <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
           <input
               type="text"
               className="field-input"
               value={httpApiToken}
-              placeholder="留空表示不验证 Token"
+              placeholder={t('留空表示不验证 Token')}
               onChange={(e) => {
                 const val = e.target.value
                 setHttpApiToken(val)
@@ -4101,10 +3998,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               style={{ flex: 1, fontFamily: 'monospace' }}
           />
           <button className="btn btn-secondary" onClick={generateRandomToken}>
-            <RefreshCw size={14} style={{ marginRight: 4 }} /> 随机生成
-          </button>
+            <RefreshCw size={14} style={{ marginRight: 4 }} />{' '}{t('随机生成')}</button>
           {httpApiToken && (
-              <button className="btn btn-danger" onClick={clearApiToken} title="清除 Token">
+              <button className="btn btn-danger" onClick={clearApiToken} title={t('清除 Token')}>
                 <Trash2 size={14} />
               </button>
           )}
@@ -4113,8 +4009,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       {httpApiRunning && (
         <div className="form-group">
-          <label>API 地址</label>
-          <span className="form-hint">使用以下地址访问 API</span>
+          <label>{t('API 地址')}</label>
+          <span className="form-hint">{t('使用以下地址访问 API')}</span>
           <div className="api-url-display">
             <input
               type="text"
@@ -4122,7 +4018,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               value={`http://${httpApiHost}:${httpApiPort}`}
               readOnly
             />
-            <button className="btn btn-secondary" onClick={handleCopyApiUrl} title="复制">
+            <button className="btn btn-secondary" onClick={handleCopyApiUrl} title={t('复制')}>
               <Copy size={16} />
             </button>
           </div>
@@ -4131,12 +4027,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       {/* API 安全警告弹窗 */}
       <div className="form-group">
-        <label>默认媒体导出目录</label>
-        <span className="form-hint">`/api/v1/messages` 在开启 `media=1` 时会把媒体保存到这里</span>
+        <label>{t('默认媒体导出目录')}</label>
+        <span className="form-hint">{t('`/api/v1/messages` 在开启 `media=1` 时会把媒体保存到这里')}</span>
         <input
           type="text"
           className="field-input"
-          value={httpApiMediaExportPath || '未获取到目录'}
+          value={httpApiMediaExportPath || t('未获取到目录')}
           readOnly
         />
       </div>
@@ -4144,11 +4040,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>主动推送</label>
-        <span className="form-hint">检测到新收到的消息后，会通过当前 API 端口下的固定 SSE 地址主动推送给外部订阅端</span>
+        <label>{t('主动推送')}</label>
+        <span className="form-hint">{t('检测到新收到的消息后，会通过当前 API 端口下的固定 SSE 地址主动推送给外部订阅端')}</span>
         <div className="log-toggle-line">
           <span className="log-status">
-            {messagePushEnabled ? '已开启' : '已关闭'}
+            {messagePushEnabled ? t('已开启') : t('已关闭')}
           </span>
           <label className="switch">
             <input
@@ -4162,24 +4058,24 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>推送会话过滤</label>
-        <span className="form-hint">选择只推送特定会话，或屏蔽特定会话</span>
+        <label>{t('推送会话过滤')}</label>
+        <span className="form-hint">{t('选择只推送特定会话，或屏蔽特定会话')}</span>
         <div className="custom-select">
           <div
             className={`custom-select-trigger ${messagePushFilterDropdownOpen ? 'open' : ''}`}
             onClick={() => setMessagePushFilterDropdownOpen(!messagePushFilterDropdownOpen)}
           >
             <span className="custom-select-value">
-              {messagePushFilterMode === 'all' ? '推送所有会话' :
-                messagePushFilterMode === 'whitelist' ? '仅推送白名单' : '屏蔽黑名单'}
+              {messagePushFilterMode === 'all' ? t('推送所有会话') :
+                messagePushFilterMode === 'whitelist' ? t('仅推送白名单') : t('屏蔽黑名单')}
             </span>
             <ChevronDown size={14} className={`custom-select-arrow ${messagePushFilterDropdownOpen ? 'rotate' : ''}`} />
           </div>
           <div className={`custom-select-dropdown ${messagePushFilterDropdownOpen ? 'open' : ''}`}>
             {[
-              { value: 'all', label: '推送所有会话' },
-              { value: 'whitelist', label: '仅推送白名单' },
-              { value: 'blacklist', label: '屏蔽黑名单' }
+              { value: 'all', label: t('推送所有会话') },
+              { value: 'whitelist', label: t('仅推送白名单') },
+              { value: 'blacklist', label: t('屏蔽黑名单') }
             ].map(option => (
               <div
                 key={option.value}
@@ -4196,11 +4092,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       {messagePushFilterMode !== 'all' && (
         <div className="form-group">
-          <label>{messagePushFilterMode === 'whitelist' ? '主动推送白名单' : '主动推送黑名单'}</label>
+          <label>{messagePushFilterMode === 'whitelist' ? t('主动推送白名单') : t('主动推送黑名单')}</label>
           <span className="form-hint">
             {messagePushFilterMode === 'whitelist'
-              ? '点击左侧会话添加到白名单，只有白名单会话会推送'
-              : '点击左侧会话添加到黑名单，黑名单会话不会推送'}
+              ? t('点击左侧会话添加到白名单，只有白名单会话会推送')
+              : t('点击左侧会话添加到黑名单，黑名单会话不会推送')}
           </span>
           <div className="push-filter-type-tabs">
             {sessionFilterTypeOptions.map(option => (
@@ -4217,21 +4113,19 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <div className="notification-filter-container">
             <div className="filter-panel">
               <div className="filter-panel-header">
-                <span>可选会话</span>
+                <span>{t('可选会话')}</span>
                 {messagePushAvailableSessions.length > 0 && (
                   <button
                     type="button"
                     className="filter-panel-action"
                     onClick={() => { void handleAddAllMessagePushFilterSessions() }}
-                  >
-                    全选当前
-                  </button>
+                  >{t('全选当前')}</button>
                 )}
                 <div className="filter-search-box">
                   <Search size={14} />
                   <input
                     type="text"
-                    placeholder="搜索会话..."
+                    placeholder={t('搜索会话...')}
                     value={messagePushFilterSearchKeyword}
                     onChange={(e) => setMessagePushFilterSearchKeyword(e.target.value)}
                   />
@@ -4257,7 +4151,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   ))
                 ) : (
                   <div className="filter-panel-empty">
-                    {messagePushFilterSearchKeyword || messagePushTypeFilter !== 'all' ? '没有匹配的会话' : '暂无可添加的会话'}
+                    {messagePushFilterSearchKeyword || messagePushTypeFilter !== 'all' ? t('没有匹配的会话') : t('暂无可添加的会话')}
                   </div>
                 )}
               </div>
@@ -4265,7 +4159,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
             <div className="filter-panel">
               <div className="filter-panel-header">
-                <span>{messagePushFilterMode === 'whitelist' ? '白名单' : '黑名单'}</span>
+                <span>{messagePushFilterMode === 'whitelist' ? t('白名单') : t('黑名单')}</span>
                 {messagePushFilterList.length > 0 && (
                   <span className="filter-panel-count">{messagePushFilterList.length}</span>
                 )}
@@ -4274,9 +4168,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                     type="button"
                     className="filter-panel-action"
                     onClick={() => { void handleRemoveAllMessagePushFilterSessions() }}
-                  >
-                    全不选
-                  </button>
+                  >{t('全不选')}</button>
                 )}
               </div>
               <div className="filter-panel-list">
@@ -4301,7 +4193,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                     )
                   })
                 ) : (
-                  <div className="filter-panel-empty">尚未添加任何会话</div>
+                  <div className="filter-panel-empty">{t('尚未添加任何会话')}</div>
                 )}
               </div>
             </div>
@@ -4310,8 +4202,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       )}
 
       <div className="form-group">
-        <label>推送地址</label>
-        <span className="form-hint">外部软件连接这个 SSE 地址即可接收新消息推送；需要先开启上方 `HTTP API 服务`</span>
+        <label>{t('推送地址')}</label>
+        <span className="form-hint">{t('外部软件连接这个 SSE 地址即可接收新消息推送；需要先开启上方 `HTTP API 服务`')}</span>
         <div className="api-url-display">
           <input
               type="text"
@@ -4323,9 +4215,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               className="btn btn-secondary"
               onClick={() => {
                 navigator.clipboard.writeText(`http://${httpApiHost}:${httpApiPort}/api/v1/push/messages${httpApiToken ? `?access_token=${httpApiToken}` : ''}`)
-                showMessage('已复制推送地址', true)
+                showMessage(t('已复制推送地址'), true)
               }}
-              title="复制"
+              title={t('复制')}
           >
             <Copy size={16} />
           </button>
@@ -4333,15 +4225,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="form-group">
-        <label>推送内容</label>
-        <span className="form-hint">SSE 事件名包含 `message.new` 和 `message.revoke`；私聊推送 `rawid/avatarUrl/sourceName/content/timestamp`，群聊额外附带 `groupName`，其中 `timestamp` 为秒级 Unix 时间戳</span>
+        <label>{t('推送内容')}</label>
+        <span className="form-hint">{t('SSE 事件名包含 `message.new` 和 `message.revoke`；私聊推送 `rawid/avatarUrl/sourceName/content/timestamp`，群聊额外附带 `groupName`，其中 `timestamp` 为秒级 Unix 时间戳')}</span>
         <div className="api-docs">
           <div className="api-item">
             <div className="api-endpoint">
               <span className="method get">GET</span>
               <code>{`http://${httpApiHost}:${httpApiPort}/api/v1/push/messages`}</code>
             </div>
-            <p className="api-desc">通过 SSE 长连接接收消息事件，建议接收端按 `event + rawid` 去重。</p>
+            <p className="api-desc">{t('通过 SSE 长连接接收消息事件，建议接收端按 `event + rawid` 去重。')}</p>
             <div className="api-params">
               {['event', 'sessionId', 'sessionType', 'rawid', 'avatarUrl', 'sourceName', 'groupName?', 'content', 'timestamp'].map((param) => (
                 <span key={param} className="param">
@@ -4358,32 +4250,28 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <div className="api-warning-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <ShieldCheck size={20} />
-              <h3>安全提示</h3>
+              <h3>{t('安全提示')}</h3>
             </div>
             <div className="modal-body">
-              <p className="warning-text">启用 HTTP API 服务后，本机上的其他程序可通过接口访问您的聊天记录数据。</p>
+              <p className="warning-text">{t('启用 HTTP API 服务后，本机上的其他程序可通过接口访问您的聊天记录数据。')}</p>
               <div className="warning-list">
                 <div className="warning-item">
                   <span className="bullet">•</span>
-                  <span>请确保您了解此功能的用途</span>
+                  <span>{t('请确保您了解此功能的用途')}</span>
                 </div>
                 <div className="warning-item">
                   <span className="bullet">•</span>
-                  <span>不要在公共或不信任的网络环境下使用</span>
+                  <span>{t('不要在公共或不信任的网络环境下使用')}</span>
                 </div>
                 <div className="warning-item">
                   <span className="bullet">•</span>
-                  <span>此功能仅供高级用户或开发者使用</span>
+                  <span>{t('此功能仅供高级用户或开发者使用')}</span>
                 </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowApiWarning(false)}>
-                取消
-              </button>
-              <button className="btn btn-primary" onClick={confirmStartApi}>
-                确认启动
-              </button>
+              <button className="btn btn-secondary" onClick={() => setShowApiWarning(false)}>{t('取消')}</button>
+              <button className="btn btn-primary" onClick={confirmStartApi}>{t('确认启动')}</button>
             </div>
           </div>
         </div>
@@ -4393,32 +4281,32 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleSetupHello = async () => {
     if (!helloPassword) {
-      showMessage('请输入当前密码以开启 Hello', false)
+      showMessage(t('请输入当前密码以开启 Hello'), false)
       return
     }
     if (!isWindows) {
-      showMessage('当前系统不支持 Windows Hello', false)
+      showMessage(t('当前系统不支持 Windows Hello'), false)
       return
     }
     setIsSettingHello(true)
     try {
-      const verifyResult = await window.electronAPI.auth.hello('请验证您的身份以开启 Windows Hello')
+      const verifyResult = await window.electronAPI.auth.hello(t('请验证您的身份以开启 Windows Hello'))
       if (!verifyResult.success) {
-        showMessage(verifyResult.error || 'Windows Hello 验证失败', false)
+        showMessage(verifyResult.error || t('Windows Hello 验证失败'), false)
         return
       }
 
       const saveResult = await window.electronAPI.auth.setHelloSecret(helloPassword)
       if (!saveResult.success) {
-        showMessage('Windows Hello 配置保存失败', false)
+        showMessage(t('Windows Hello 配置保存失败'), false)
         return
       }
 
       setAuthUseHello(true)
       setHelloPassword('')
-      showMessage('Windows Hello 设置成功', true)
+      showMessage(t('Windows Hello 设置成功'), true)
     } catch (e: any) {
-      showMessage(`Windows Hello 设置失败: ${e?.message || String(e)}`, false)
+      showMessage(t('Windows Hello 设置失败: {v0}', { v0: e?.message || String(e) }), false)
     } finally {
       setIsSettingHello(false)
     }
@@ -4426,7 +4314,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleUpdatePassword = async () => {
     if (!newPassword || newPassword !== confirmPassword) {
-      showMessage('两次密码不一致', false)
+      showMessage(t('两次密码不一致'), false)
       return
     }
 
@@ -4436,7 +4324,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       if (authEnabled && lockMode) {
         // 已开启应用锁且已是 lock: 模式 → 修改密码
         if (!oldPassword) {
-          showMessage('请输入旧密码', false)
+          showMessage(t('请输入旧密码'), false)
           return
         }
         const result = await window.electronAPI.auth.changePassword(oldPassword, newPassword)
@@ -4444,9 +4332,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           setNewPassword('')
           setConfirmPassword('')
           setOldPassword('')
-          showMessage('密码已更新', true)
+          showMessage(t('密码已更新'), true)
         } else {
-          showMessage(result.error || '密码更新失败', false)
+          showMessage(result.error || t('密码更新失败'), false)
         }
       } else {
         // 未开启应用锁，或旧版 safe: 模式 → 开启/升级为 lock: 模式
@@ -4457,24 +4345,24 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           setNewPassword('')
           setConfirmPassword('')
           setOldPassword('')
-          showMessage('应用锁已开启', true)
+          showMessage(t('应用锁已开启'), true)
         } else {
-          showMessage(result.error || '开启失败', false)
+          showMessage(result.error || t('开启失败'), false)
         }
       }
     } catch (e: any) {
-      showMessage('操作失败', false)
+      showMessage(t('操作失败'), false)
     }
   }
 
   const renderAnalyticsTab = () => (
     <div className="tab-content">
       <div className="settings-section">
-        <h2>分析设置</h2>
+        <h2>{t('分析设置')}</h2>
         <div className="setting-item">
           <div className="setting-label">
-            <span>词云排除词</span>
-            <span className="setting-desc">输入不需要在词云和常用语中显示的词语，用换行分隔</span>
+            <span>{t('词云排除词')}</span>
+            <span className="setting-desc">{t('输入不需要在词云和常用语中显示的词语，用换行分隔')}</span>
           </div>
           <div className="setting-control" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
             <textarea
@@ -4482,10 +4370,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               style={{ width: '100%', height: '200px', fontFamily: 'monospace' }}
               value={excludeWordsInput}
               onChange={(e) => setExcludeWordsInput(e.target.value)}
-              placeholder="例如：
-第一个词
-第二个词
-第三个词"
+              placeholder={t('例如：\n第一个词\n第二个词\n第三个词')}
             />
             <div className="button-group">
               <button
@@ -4499,17 +4384,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   setExcludeWordsInput(uniqueWords.join('\n'))
                   // Show success toast or feedback if needed (optional)
                 }}
-              >
-                保存排除列表
-              </button>
+              >{t('保存排除列表')}</button>
               <button
                 className="btn btn-secondary"
                 onClick={() => {
                   setExcludeWordsInput(wordCloudExcludeWords.join('\n'))
                 }}
-              >
-                重置
-              </button>
+              >{t('重置')}</button>
             </div>
           </div>
         </div>
@@ -4523,20 +4404,18 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="form-group">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <label>应用锁状态</label>
+            <label>{t('应用锁状态')}</label>
             <span className="form-hint">{
-              isLockMode ? '已开启' :
-                authEnabled ? '旧版模式 — 请重新设置密码以升级为新模式提高安全性' :
-                  '未开启 — 请设置密码以开启'
+              isLockMode ? t('已开启') :
+                authEnabled ? t('旧版模式 — 请重新设置密码以升级为新模式提高安全性') :
+                  t('未开启 — 请设置密码以开启')
             }</span>
           </div>
           {authEnabled && !showDisableLockInput && (
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => setShowDisableLockInput(true)}
-            >
-              关闭应用锁
-            </button>
+            >{t('关闭应用锁')}</button>
           )}
         </div>
         {showDisableLockInput && (
@@ -4544,7 +4423,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             <input
               type="password"
               className="field-input"
-              placeholder="输入当前密码以关闭"
+              placeholder={t('输入当前密码以关闭')}
               value={disableLockPassword}
               onChange={e => setDisableLockPassword(e.target.value)}
               style={{ flex: 1 }}
@@ -4560,16 +4439,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   setIsLockMode(false)
                   setShowDisableLockInput(false)
                   setDisableLockPassword('')
-                  showMessage('应用锁已关闭', true)
+                  showMessage(t('应用锁已关闭'), true)
                 } else {
-                  showMessage(result.error || '关闭失败', false)
+                  showMessage(result.error || t('关闭失败'), false)
                 }
               }}
-            >确认</button>
+            >{t('确认')}</button>
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => { setShowDisableLockInput(false); setDisableLockPassword('') }}
-            >取消</button>
+            >{t('取消')}</button>
           </div>
         )}
       </div>
@@ -4577,15 +4456,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       <div className="divider" />
 
       <div className="form-group">
-        <label>{isLockMode ? '修改密码' : '设置密码并开启应用锁'}</label>
-        <span className="form-hint">{isLockMode ? '修改应用锁密码（需要旧密码验证）' : '设置密码后将自动开启应用锁'}</span>
+        <label>{isLockMode ? t('修改密码') : t('设置密码并开启应用锁')}</label>
+        <span className="form-hint">{isLockMode ? t('修改应用锁密码（需要旧密码验证）') : t('设置密码后将自动开启应用锁')}</span>
 
         <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {isLockMode && (
             <input
               type="password"
               className="field-input"
-              placeholder="旧密码"
+              placeholder={t('旧密码')}
               value={oldPassword}
               onChange={e => setOldPassword(e.target.value)}
             />
@@ -4593,7 +4472,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <input
             type="password"
             className="field-input"
-            placeholder="新密码"
+            placeholder={t('新密码')}
             value={newPassword}
             onChange={e => setNewPassword(e.target.value)}
           />
@@ -4601,13 +4480,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             <input
               type="password"
               className="field-input"
-              placeholder="确认新密码"
+              placeholder={t('确认新密码')}
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               style={{ flex: 1 }}
             />
             <button className="btn btn-primary" onClick={handleUpdatePassword} disabled={!newPassword}>
-              {isLockMode ? '更新' : '开启'}
+              {isLockMode ? t('更新') : t('开启')}
             </button>
           </div>
         </div>
@@ -4619,9 +4498,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <label>Windows Hello</label>
-            <span className="form-hint">使用面容、指纹快速解锁</span>
-            {!authEnabled && <div className="form-hint warning" style={{ color: '#ff4d4f' }}>请先开启应用锁</div>}
-            {!helloAvailable && authEnabled && <div className="form-hint warning" style={{ color: '#ff4d4f' }}>当前设备不支持 Windows Hello</div>}
+            <span className="form-hint">{t('使用面容、指纹快速解锁')}</span>
+            {!authEnabled && <div className="form-hint warning" style={{ color: '#ff4d4f' }}>{t('请先开启应用锁')}</div>}
+            {!helloAvailable && authEnabled && <div className="form-hint warning" style={{ color: '#ff4d4f' }}>{t('当前设备不支持 Windows Hello')}</div>}
           </div>
 
           <div>
@@ -4629,15 +4508,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               <button className="btn btn-secondary btn-sm" onClick={async () => {
                 await window.electronAPI.auth.clearHelloSecret()
                 setAuthUseHello(false)
-                showMessage('Windows Hello 已关闭', true)
-              }}>关闭</button>
+                showMessage(t('Windows Hello 已关闭'), true)
+              }}>{t('关闭')}</button>
             ) : (
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleSetupHello}
                 disabled={!helloAvailable || isSettingHello || !authEnabled || !helloPassword}
               >
-                {isSettingHello ? '配置中...' : '开启与设置'}
+                {isSettingHello ? t('配置中...') : t('开启与设置')}
               </button>
             )}
           </div>
@@ -4647,7 +4526,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
             <input
               type="password"
               className="field-input"
-              placeholder="输入当前密码以开启 Hello"
+              placeholder={t('输入当前密码以开启 Hello')}
               value={helloPassword}
               onChange={e => setHelloPassword(e.target.value)}
             />
@@ -4668,20 +4547,20 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       </div>
 
       <div className="about-footer">
-        <p className="about-desc">微信聊天记录分析工具</p>
+        <p className="about-desc">{t('微信聊天记录分析工具')}</p>
         <div className="about-links">
-          <a href="#" onClick={(e) => { e.preventDefault(); window.electronAPI.shell.openExternal('https://weflow.top') }}>官网</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); window.electronAPI.shell.openExternal('https://weflow.top') }}>{t('官网')}</a>
           <span>·</span>
-          <a href="#" onClick={(e) => { e.preventDefault(); window.electronAPI.shell.openExternal('https://github.com/hicccc77/WeFlow') }}>GitHub 仓库</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); window.electronAPI.shell.openExternal('https://github.com/hicccc77/WeFlow') }}>{t('GitHub 仓库')}</a>
           <span>·</span>
           <a href="#" onClick={(e) => { e.preventDefault(); window.electronAPI.shell.openExternal('https://chatlab.fun') }}>ChatLab</a>
           <span>·</span>
-          <a href="#" onClick={(e) => { e.preventDefault(); window.electronAPI.window.openAgreementWindow() }}>用户协议</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); window.electronAPI.window.openAgreementWindow() }}>{t('用户协议')}</a>
         </div>
         <p className="copyright">© 2026 WeFlow. All rights reserved.</p>
 
         <div className="log-toggle-line" style={{ marginTop: '16px', justifyContent: 'center' }}>
-          <span style={{ fontSize: '13px', opacity: 0.7 }}>匿名数据收集</span>
+          <span style={{ fontSize: '13px', opacity: 0.7 }}>{t('匿名数据收集')}</span>
           <label className="switch">
             <input
               type="checkbox"
@@ -4691,7 +4570,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 const consent = e.target.checked
                 setAnalyticsConsent(consent)
                 await configService.setAnalyticsConsent(consent)
-                showMessage(consent ? '已允许数据收集' : '已拒绝数据收集', true)
+                showMessage(consent ? t('已允许数据收集') : t('已拒绝数据收集'), true)
               }}
             />
             <span className="switch-slider"></span>
@@ -4752,19 +4631,19 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           {/* 顶部 Hero 区域保持不变 */}
           <div className="anti-revoke-hero" style={{ background: 'linear-gradient(110deg, var(--bg-primary) 0%, rgba(245, 158, 11, 0.1) 100%)', borderColor: 'rgba(245, 158, 11, 0.3)' }}>
             <div className="anti-revoke-hero-main">
-              <span className="updates-chip" style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.15)', width: 'fit-content' }}>测试功能 (Test)</span>
-              <h2 style={{ marginTop: '8px' }}>自动下载原图</h2>
-              <p>强制微信在接收图片时下载高清原图。建议仅在必要会话中开启以节省流量和空间。</p>
+              <span className="updates-chip" style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.15)', width: 'fit-content' }}>{t('测试功能 (Test)')}</span>
+              <h2 style={{ marginTop: '8px' }}>{t('自动下载原图')}</h2>
+              <p>{t('强制微信在接收图片时下载高清原图。建议仅在必要会话中开启以节省流量和空间。')}</p>
             </div>
             <div className="anti-revoke-metrics">
               <div className={`anti-revoke-metric ${isHooked ? 'is-installed' : 'is-pending'}`}>
-                <span className="label">服务状态</span>
+                <span className="label">{t('服务状态')}</span>
                 <span className="value" style={{ fontSize: '14px' }}>
-              {isHooked ? '正在监控' : autoDownloadHighRes ? '等待连接' : '未启用'}
+              {isHooked ? t('正在监控') : autoDownloadHighRes ? t('等待连接') : t('未启用')}
             </span>
               </div>
               <div className="anti-revoke-metric">
-                <span className="label">已选会话</span>
+                <span className="label">{t('已选会话')}</span>
                 <span className="value">{selectedCount}</span>
               </div>
             </div>
@@ -4776,19 +4655,15 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 <Search size={14} />
                 <input
                     type="text"
-                    placeholder="搜索联系人或群聊..."
+                    placeholder={t('搜索联系人或群聊...')}
                     value={autoDownloadSearchKeyword}
                     onChange={(e) => setAutoDownloadSearchKeyword(e.target.value)}
                 />
               </div>
               <div className="anti-revoke-toolbar-actions">
                 <div className="anti-revoke-btn-group">
-                  <button className="btn btn-secondary btn-sm" onClick={selectAllFiltered} disabled={filteredSessionIds.length === 0 || allFilteredSelected}>
-                    全选
-                  </button>
-                  <button className="btn btn-secondary btn-sm" onClick={clearSelection} disabled={selectedCount === 0}>
-                    清空选择
-                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={selectAllFiltered} disabled={filteredSessionIds.length === 0 || allFilteredSelected}>{t('全选')}</button>
+                  <button className="btn btn-secondary btn-sm" onClick={clearSelection} disabled={selectedCount === 0}>{t('清空选择')}</button>
                 </div>
                 <div className="anti-revoke-btn-group" style={{ marginLeft: '12px', paddingLeft: '12px', borderLeft: '1px solid var(--border-color)' }}>
                   <label className="switch switch-md">
@@ -4800,7 +4675,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                     <span className="switch-slider" />
                   </label>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                {autoDownloadHighRes ? '服务已开启' : '服务已关闭'}
+                {autoDownloadHighRes ? t('服务已开启') : t('服务已关闭')}
               </span>
                 </div>
               </div>
@@ -4808,19 +4683,19 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
             <div className="anti-revoke-batch-actions">
               <div className="anti-revoke-selected-count">
-                <span>已选 <strong>{selectedCount}</strong> 个目标会话</span>
-                <span style={{ opacity: 0.6 }}>（若不选则默认对所有聊天生效）</span>
+                <span>{t('已选')}{' '}<strong>{selectedCount}</strong>{' '}{t('个目标会话')}</span>
+                <span style={{ opacity: 0.6 }}>{t('（若不选则默认对所有聊天生效）')}</span>
               </div>
             </div>
           </div>
 
           <div className="anti-revoke-list">
             <div className="anti-revoke-list-header">
-              <span>会话（{filteredSessions.length}）</span>
-              <span>状态</span>
+              <span>{t('会话（{length}）', { length: filteredSessions.length })}</span>
+              <span>{t('状态')}</span>
             </div>
             {filteredSessions.length === 0 ? (
-                <div className="anti-revoke-empty">{autoDownloadSearchKeyword ? '没有匹配的会话' : '暂无会话'}</div>
+                <div className="anti-revoke-empty">{autoDownloadSearchKeyword ? t('没有匹配的会话') : t('暂无会话')}</div>
             ) : (
                 filteredSessions.map((session) => {
                   const isSelected = autoDownloadSelectedIds.has(session.username)
@@ -4845,7 +4720,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                         <div className="anti-revoke-row-status">
                   <span className={`status-badge ${isSelected ? 'installed' : 'not-installed'}`}>
                     <i className="status-dot" aria-hidden="true" />
-                    {isSelected ? '已监控' : '未开启'}
+                    {isSelected ? t('已监控') : t('未开启')}
                   </span>
                         </div>
                       </div>
@@ -4858,11 +4733,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <div className="api-warning-modal" style={{ width: '100%', border: '1px solid rgba(239, 68, 68, 0.2)', marginTop: '16px', background: 'rgba(239, 68, 68, 0.02)', animation: 'none', boxShadow: 'none', position: 'static' }}>
             <div className="modal-header" style={{ border: 'none', padding: '12px 20px 0' }}>
               <Lock size={16} color="#ef4444" />
-              <h3 style={{ fontSize: '13px', color: '#ef4444' }}>风险警告</h3>
+              <h3 style={{ fontSize: '13px', color: '#ef4444' }}>{t('风险警告')}</h3>
             </div>
-            <div className="modal-body" style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '8px 20px 12px' }}>
-              此功能通过内存 Hook 修改微信行为，具有一定的风险。请尽量仅在白名单模式下针对必要会话开启。
-            </div>
+            <div className="modal-body" style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '8px 20px 12px' }}>{t('此功能通过内存 Hook 修改微信行为，具有一定的风险。请尽量仅在白名单模式下针对必要会话开启。')}</div>
           </div>
         </div>
     )
@@ -4882,48 +4755,47 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         const result = await (window as any).electronAPI.image.startAutoDownload(currentWhitelist)
         if (result && !result.success) {
           // 如果底层明确返回了失败
-          throw new Error(result.error || '启动自动下载服务失败')
+          throw new Error(result.error || t('启动自动下载服务失败'))
         }
-        showMessage('自动下载已开启，正在尝试连接微信', true)
+        showMessage(t('自动下载已开启，正在尝试连接微信'), true)
         await fetchAutoDownloadStatus()
       } else {
         await (window as any).electronAPI.image.stopAutoDownload()
-        showMessage('自动下载已关闭', true)
+        showMessage(t('自动下载已关闭'), true)
         setAutoDownloadStatus(null)
       }
       await configService.setAutoDownloadHighRes(newVal)
     } catch (e: any) {
       // 发生错误时，将开关拨回去
       setAutoDownloadHighRes(!newVal)
-      showMessage(`操作失败: ${e.message || String(e)}`, false)
+      showMessage(t('操作失败: {v0}', { v0: e.message || String(e) }), false)
     }
   }
 
   const renderUpdatesTab = () => {
     const downloadPercent = Math.max(0, Math.min(100, Number(downloadProgress?.percent || 0)))
     const channelCards: { id: configService.UpdateChannel; title: string; desc: string }[] = [
-      { id: 'stable', title: '稳定版', desc: '正式发布的版本，适合日常使用' },
-      { id: 'preview', title: '预览版', desc: '正式发布前的预览体验版本' },
-      { id: 'dev', title: '开发版', desc: '即刻体验我们的屎山代码' }
+      { id: 'stable', title: t('稳定版'), desc: t('正式发布的版本，适合日常使用') },
+      { id: 'preview', title: t('预览版'), desc: t('正式发布前的预览体验版本') },
+      { id: 'dev', title: t('开发版'), desc: t('即刻体验我们的屎山代码') }
     ]
 
     return (
       <div className="tab-content updates-tab">
         <div className="updates-hero">
           <div className="updates-hero-main">
-            <span className="updates-chip">当前版本</span>
+            <span className="updates-chip">{t('当前版本')}</span>
             <h2>{appVersion || '...'}</h2>
-            <p>{updateInfo?.hasUpdate ? `发现新版本 v${updateInfo.version}` : '当前已是最新版本，可手动检查更新'}</p>
+            <p>{updateInfo?.hasUpdate ? t('发现新版本 v{version}', { version: updateInfo.version }) : t('当前已是最新版本，可手动检查更新')}</p>
           </div>
           <div className="updates-hero-action">
             {updateInfo?.hasUpdate ? (
               <button className="btn btn-primary" onClick={() => setShowUpdateDialog(true)}>
-                <Download size={16} /> 立即更新
-              </button>
+                <Download size={16} />{' '}{t('立即更新')}</button>
             ) : (
               <button className="btn btn-secondary" onClick={handleCheckUpdate} disabled={isCheckingUpdate}>
                 <RefreshCw size={16} className={isCheckingUpdate ? 'spin' : ''} />
-                {isCheckingUpdate ? '检查中...' : '检查更新'}
+                {isCheckingUpdate ? t('检查中...') : t('检查更新')}
               </button>
             )}
           </div>
@@ -4932,24 +4804,22 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         {(isDownloading || updateInfo?.hasUpdate) && (
           <div className="updates-progress-card">
             <div className="updates-progress-header">
-              <h3>{isDownloading ? `正在下载 v${updateInfo?.version || ''}` : `新版本 v${updateInfo?.version} 已就绪`}</h3>
-              {isDownloading ? <strong>{downloadPercent.toFixed(0)}%</strong> : <span>可立即安装</span>}
+              <h3>{isDownloading ? t('正在下载 v{v0}', { v0: updateInfo?.version || '' }) : t('新版本 v{version} 已就绪', { version: updateInfo?.version })}</h3>
+              {isDownloading ? <strong>{downloadPercent.toFixed(0)}%</strong> : <span>{t('可立即安装')}</span>}
             </div>
             <div className="updates-progress-track">
               <div className="updates-progress-fill" style={{ width: `${isDownloading ? downloadPercent : 100}%` }} />
             </div>
             {updateInfo?.hasUpdate && !isDownloading && (
-              <button className="btn btn-secondary updates-ignore-btn" onClick={handleIgnoreUpdate}>
-                暂不提醒此版本
-              </button>
+              <button className="btn btn-secondary updates-ignore-btn" onClick={handleIgnoreUpdate}>{t('暂不提醒此版本')}</button>
             )}
           </div>
         )}
 
         <div className="updates-card">
           <div className="updates-card-header">
-            <h3>更新渠道</h3>
-            <span>切换渠道后会自动重新检查</span>
+            <h3>{t('更新渠道')}</h3>
+            <span>{t('切换渠道后会自动重新检查')}</span>
           </div>
           <div className="update-channel-grid">
             {channelCards.map((channel) => {
@@ -4986,8 +4856,8 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <div className="wxid-dialog-overlay" onClick={() => setShowWxidSelect(false)}>
             <div className="wxid-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="wxid-dialog-header">
-                <h3>检测到多个微信账号</h3>
-                <p>请选择要使用的账号</p>
+                <h3>{t('检测到多个微信账号')}</h3>
+                <p>{t('请选择要使用的账号')}</p>
               </div>
               <div className="wxid-dialog-list">
                 {wxidOptions.map((opt) => (
@@ -5007,12 +4877,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                           {opt.nickname && <span className="wxid-date">{opt.wxid}</span>}
                         </div>
                       </div>
-                      <span className="wxid-date" style={{marginLeft: 'auto'}}>最后修改 {new Date(opt.modifiedTime).toLocaleString()}</span>
+                      <span className="wxid-date" style={{marginLeft: 'auto'}}>{t('最后修改 {v0}', { v0: new Date(opt.modifiedTime).toLocaleString() })}</span>
                     </div>
                 ))}
               </div>
               <div className="wxid-dialog-footer">
-                <button className="btn btn-secondary" onClick={() => setShowWxidSelect(false)}>取消</button>
+                <button className="btn btn-secondary" onClick={() => setShowWxidSelect(false)}>{t('取消')}</button>
               </div>
             </div>
           </div>
@@ -5020,11 +4890,11 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
         <div className="settings-header">
           <div className="settings-title-block">
-            <h1>设置</h1>
+            <h1>{t('设置')}</h1>
           </div>
           <div className="settings-actions">
             {onClose && (
-              <button type="button" className="settings-close-btn" onClick={handleClose} aria-label="关闭设置">
+              <button type="button" className="settings-close-btn" onClick={handleClose} aria-label={t('关闭设置')}>
                 <X size={18} />
               </button>
             )}
@@ -5032,7 +4902,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         </div>
 
         <div className="settings-layout">
-          <div className="settings-tabs" role="tablist" aria-label="设置项">
+          <div className="settings-tabs" role="tablist" aria-label={t('设置项')}>
             {filteredTabs.flatMap((tab) => {
               const row: React.ReactNode[] = [
                 <button
@@ -5054,7 +4924,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                       aria-expanded={aiGroupExpanded}
                     >
                       <Sparkles size={16} />
-                      <span>AI 设置</span>
+                      <span>{t('AI 设置')}</span>
                       <ChevronDown size={14} className={`tab-group-arrow ${aiGroupExpanded ? 'expanded' : ''}`} />
                     </button>
                     <div className={`tab-sublist-wrap ${aiGroupExpanded ? 'expanded' : 'collapsed'}`}>
@@ -5112,16 +4982,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           <div className="settings-inline-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <Globe size={20} />
-              <h3>微博 Cookie（实验性）</h3>
+              <h3>{t('微博 Cookie（实验性）')}</h3>
             </div>
             <div className="modal-body">
-              <p className="warning-text">
-                仅用于微博公开内容补充分析，全局生效，不会写入仓库。支持直接粘贴浏览器导出的 Cookie JSON 数组，也支持原始 <code>name=value</code> 字符串。
-              </p>
+              <p className="warning-text">{t('仅用于微博公开内容补充分析，全局生效，不会写入仓库。支持直接粘贴浏览器导出的 Cookie JSON 数组，也支持原始')}{' '}<code>name=value</code>{' '}{t('字符串。')}</p>
               <textarea
                 className="social-cookie-textarea"
                 value={weiboCookieDraft}
-                placeholder="粘贴微博 Cookie，关闭弹层时自动保存"
+                placeholder={t('粘贴微博 Cookie，关闭弹层时自动保存')}
                 onChange={(e) => {
                   setWeiboCookieDraft(e.target.value)
                   setWeiboCookieError('')
@@ -5132,9 +5000,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               )}
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => void handleCloseWeiboCookieModal(true)}>
-                取消更改
-              </button>
+              <button className="btn btn-secondary" onClick={() => void handleCloseWeiboCookieModal(true)}>{t('取消更改')}</button>
               <button
                 className="btn btn-secondary"
                 onClick={async () => {
@@ -5143,11 +5009,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                   if (ok) setShowWeiboCookieModal(false)
                 }}
                 disabled={isSavingWeiboCookie || !aiInsightWeiboCookie}
-              >
-                清空
-              </button>
+              >{t('清空')}</button>
               <button className="btn btn-primary" onClick={() => { void handleCloseWeiboCookieModal() }} disabled={isSavingWeiboCookie}>
-                {isSavingWeiboCookie ? '保存中...' : '关闭并保存'}
+                {isSavingWeiboCookie ? t('保存中...') : t('关闭并保存')}
               </button>
             </div>
           </div>

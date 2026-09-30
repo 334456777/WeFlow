@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2 } from 'lucide-react'
 import './JumpToDateDialog.scss'
+import { t } from '../i18n'
 
 interface JumpToDateDialogProps {
     isOpen: boolean
@@ -119,9 +120,9 @@ const JumpToDateDialog: React.FC<JumpToDateDialogProps> = ({
         return classes.join(' ')
     }
 
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+    const weekdays = [t('日'), t('一'), t('二'), t('三'), t('四'), t('五'), t('六')]
     const days = generateCalendar()
-    const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
+    const monthNames = [t('一月'), t('二月'), t('三月'), t('四月'), t('五月'), t('六月'), t('七月'), t('八月'), t('九月'), t('十月'), t('十一月'), t('十二月')]
 
     const updateCalendarDate = (nextDate: Date) => {
         setCalendarDate(nextDate)
@@ -168,10 +169,10 @@ const JumpToDateDialog: React.FC<JumpToDateDialogProps> = ({
     }
 
     const navTitle = viewMode === 'day'
-        ? `${calendarDate.getFullYear()}年${calendarDate.getMonth() + 1}月`
+        ? t('{v0}年{v1}月', { v0: calendarDate.getFullYear(), v1: calendarDate.getMonth() + 1 })
         : viewMode === 'month'
-            ? `${calendarDate.getFullYear()}年`
-            : `${yearPageStart}年 - ${yearPageStart + 11}年`
+            ? t('{v0}年', { v0: calendarDate.getFullYear() })
+            : t('{yearPageStart}年 - {v1}年', { yearPageStart: yearPageStart, v1: yearPageStart + 11 })
 
     return (
         <div className="jump-date-overlay" onClick={onClose}>
@@ -179,7 +180,7 @@ const JumpToDateDialog: React.FC<JumpToDateDialogProps> = ({
                 <div className="jump-date-header">
                     <div className="title-area">
                         <CalendarIcon size={18} />
-                        <h3>跳转到日期</h3>
+                        <h3>{t('跳转到日期')}</h3>
                     </div>
                     <button className="close-btn" onClick={onClose}>
                         <X size={18} />
@@ -236,8 +237,7 @@ const JumpToDateDialog: React.FC<JumpToDateDialogProps> = ({
                                             setViewMode('month')
                                         }}
                                     >
-                                        {year}年
-                                    </button>
+                                        {t('{year}年', { year: year })}</button>
                                 ))}
                             </div>
                         </div>
@@ -246,7 +246,7 @@ const JumpToDateDialog: React.FC<JumpToDateDialogProps> = ({
                         {loadingDates && (
                             <div className="calendar-loading">
                                 <Loader2 size={20} className="spin" />
-                                <span>正在加载...</span>
+                                <span>{t('正在加载...')}</span>
                             </div>
                         )}
                         <div className="weekdays" style={{ visibility: loadingDates ? 'hidden' : 'visible' }}>
@@ -277,26 +277,26 @@ const JumpToDateDialog: React.FC<JumpToDateDialogProps> = ({
                         setSelectedDate(d)
                         setCalendarDate(new Date(d))
                         setViewMode('day')
-                    }}>今天</button>
+                    }}>{t('今天')}</button>
                     <button onClick={() => {
                         const d = new Date()
                         d.setDate(d.getDate() - 7)
                         setSelectedDate(d)
                         setCalendarDate(new Date(d))
                         setViewMode('day')
-                    }}>一周前</button>
+                    }}>{t('一周前')}</button>
                     <button onClick={() => {
                         const d = new Date()
                         d.setMonth(d.getMonth() - 1)
                         setSelectedDate(d)
                         setCalendarDate(new Date(d))
                         setViewMode('day')
-                    }}>一月前</button>
+                    }}>{t('一月前')}</button>
                 </div>
 
                 <div className="dialog-footer">
-                    <button className="cancel-btn" onClick={onClose}>取消</button>
-                    <button className="confirm-btn" onClick={handleConfirm}>跳转</button>
+                    <button className="cancel-btn" onClick={onClose}>{t('取消')}</button>
+                    <button className="confirm-btn" onClick={handleConfirm}>{t('跳转')}</button>
                 </div>
             </div>
         </div>

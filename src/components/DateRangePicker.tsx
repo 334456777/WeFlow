@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import './DateRangePicker.scss'
+import { t } from '../i18n'
 
 interface DateRangePickerProps {
   startDate: string
@@ -10,16 +11,16 @@ interface DateRangePickerProps {
   onRangeComplete?: () => void
 }
 
-const MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
-const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六']
+const MONTH_NAMES = [t('一月'), t('二月'), t('三月'), t('四月'), t('五月'), t('六月'), t('七月'), t('八月'), t('九月'), t('十月'), t('十一月'), t('十二月')]
+const WEEKDAY_NAMES = [t('日'), t('一'), t('二'), t('三'), t('四'), t('五'), t('六')]
 
 // 快捷选项
 const QUICK_OPTIONS = [
-  { label: '最近7天', days: 7 },
-  { label: '最近30天', days: 30 },
-  { label: '最近90天', days: 90 },
-  { label: '最近一年', days: 365 },
-  { label: '全部时间', days: 0 },
+  { label: t('最近7天'), days: 7 },
+  { label: t('最近30天'), days: 30 },
+  { label: t('最近90天'), days: 90 },
+  { label: t('最近一年'), days: 365 },
+  { label: t('全部时间'), days: 0 },
 ]
 
 function DateRangePicker({ startDate, endDate, onStartDateChange, onEndDateChange, onRangeComplete }: DateRangePickerProps) {
@@ -63,7 +64,7 @@ function DateRangePicker({ startDate, endDate, onStartDateChange, onEndDateChang
   }
 
   const getDisplayText = () => {
-    if (!startDate && !endDate) return '选择时间范围'
+    if (!startDate && !endDate) return t('选择时间范围')
     if (startDate && endDate) return `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}`
     if (startDate) return `${formatDisplayDate(startDate)} - ?`
     return `? - ${formatDisplayDate(endDate)}`
@@ -211,7 +212,7 @@ function DateRangePicker({ startDate, endDate, onStartDateChange, onEndDateChang
                 <ChevronLeft size={16} />
               </button>
               <span className="month-year clickable" onClick={() => setShowYearMonthPicker(!showYearMonthPicker)}>
-                {currentMonth.getFullYear()}年 {MONTH_NAMES[currentMonth.getMonth()]}
+                {t('{v0}年 {v1}', { v0: currentMonth.getFullYear(), v1: MONTH_NAMES[currentMonth.getMonth()] })}
               </span>
               <button className="nav-btn" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}>
                 <ChevronRight size={16} />
@@ -223,7 +224,7 @@ function DateRangePicker({ startDate, endDate, onStartDateChange, onEndDateChang
                   <button className="nav-btn" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear() - 1, currentMonth.getMonth()))}>
                     <ChevronLeft size={14} />
                   </button>
-                  <span className="year-label">{currentMonth.getFullYear()}年</span>
+                  <span className="year-label">{t('{v0}年', { v0: currentMonth.getFullYear() })}</span>
                   <button className="nav-btn" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear() + 1, currentMonth.getMonth()))}>
                     <ChevronRight size={14} />
                   </button>
@@ -243,7 +244,7 @@ function DateRangePicker({ startDate, endDate, onStartDateChange, onEndDateChang
               </div>
             ) : renderCalendar()}
             <div className="selection-hint">
-              {selectingStart ? '请选择开始日期' : '请选择结束日期'}
+              {selectingStart ? t('请选择开始日期') : t('请选择结束日期')}
             </div>
           </div>
         </div>

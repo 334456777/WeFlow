@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 // 分析数据类型定义
 
 // 聊天统计数据
@@ -37,21 +38,21 @@ export interface ContactRanking {
 
 // 消息类型标签映射
 export const MESSAGE_TYPE_LABELS: Record<number, string> = {
-  1: '文本',
-  244813135921: '文本',
-  3: '图片',
-  34: '语音',
-  42: '名片',
-  43: '视频',
-  47: '表情',
-  48: '位置',
-  49: '链接/文件',
-  50: '通话',
-  10000: '系统消息',
+  1: t('文本'),
+  244813135921: t('文本'),
+  3: t('图片'),
+  34: t('语音'),
+  42: t('名片'),
+  43: t('视频'),
+  47: t('表情'),
+  48: t('位置'),
+  49: t('链接/文件'),
+  50: t('通话'),
+  10000: t('系统消息'),
 }
 
 // 星期几名称
-export const WEEKDAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+export const WEEKDAY_NAMES = [t('周一'), t('周二'), t('周三'), t('周四'), t('周五'), t('周六'), t('周日')]
 
 // 获取消息类型分布（用于图表）
 export function getMessageTypeDistribution(stats: ChatStatistics): Record<string, number> {
@@ -60,7 +61,7 @@ export function getMessageTypeDistribution(stats: ChatStatistics): Record<string
     
     for (const [type, count] of Object.entries(stats.messageTypeCounts)) {
       const typeNum = parseInt(type)
-      const label = MESSAGE_TYPE_LABELS[typeNum] || '其他'
+      const label = MESSAGE_TYPE_LABELS[typeNum] || t('其他')
       distribution[label] = (distribution[label] || 0) + count
     }
     
@@ -68,12 +69,12 @@ export function getMessageTypeDistribution(stats: ChatStatistics): Record<string
   }
   
   return {
-    '文本': stats.textMessages,
-    '图片': stats.imageMessages,
-    '语音': stats.voiceMessages,
-    '视频': stats.videoMessages,
-    '表情': stats.emojiMessages,
-    '其他': stats.otherMessages,
+    [t('文本')]: stats.textMessages,
+    [t('图片')]: stats.imageMessages,
+    [t('语音')]: stats.voiceMessages,
+    [t('视频')]: stats.videoMessages,
+    [t('表情')]: stats.emojiMessages,
+    [t('其他')]: stats.otherMessages,
   }
 }
 

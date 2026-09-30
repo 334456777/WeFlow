@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Search, Users } from 'lucide-react'
 import './DualReportPage.scss'
+import { t } from '../i18n'
 
 interface ContactRanking {
   username: string
@@ -42,7 +43,7 @@ function DualReportPage() {
       if (result.success && result.data) {
         setRankings(result.data)
       } else {
-        setLoadError(result.error || '加载好友列表失败')
+        setLoadError(result.error || t('加载好友列表失败'))
       }
     } catch (e) {
       setLoadError(String(e))
@@ -51,7 +52,7 @@ function DualReportPage() {
     }
   }
 
-  const yearLabel = year === 0 ? '全部时间' : `${year}年`
+  const yearLabel = year === 0 ? t('全部时间') : t('{year}年', { year: year })
 
   const filteredRankings = useMemo(() => {
     if (!keyword.trim()) return rankings
@@ -71,7 +72,7 @@ function DualReportPage() {
     return (
       <div className="dual-report-page loading">
         <Loader2 size={32} className="spin" />
-        <p>正在加载聊天排行...</p>
+        <p>{t('正在加载聊天排行...')}</p>
       </div>
     )
   }
@@ -79,7 +80,7 @@ function DualReportPage() {
   if (loadError) {
     return (
       <div className="dual-report-page loading">
-        <p>加载失败：{loadError}</p>
+        <p>{t('加载失败：{loadError}', { loadError: loadError })}</p>
       </div>
     )
   }
@@ -88,8 +89,8 @@ function DualReportPage() {
     <div className="dual-report-page">
       <div className="page-header">
         <div>
-          <h1>双人年度报告</h1>
-          <p>选择一位好友，生成你们的专属聊天报告</p>
+          <h1>{t('双人年度报告')}</h1>
+          <p>{t('选择一位好友，生成你们的专属聊天报告')}</p>
         </div>
         <div className="year-badge">
           <Users size={14} />
@@ -102,7 +103,7 @@ function DualReportPage() {
         <input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜索好友（昵称/微信号）"
+          placeholder={t('搜索好友（昵称/微信号）')}
         />
       </div>
 
@@ -122,16 +123,16 @@ function DualReportPage() {
             </div>
             <div className="info">
               <div className="name">{item.displayName}</div>
-              <div className="sub">{item.wechatId || '\u672A\u8bbe\u7f6e\u5fae\u4fe1\u53f7'}</div>
+              <div className="sub">{item.wechatId || t('未设置微信号')}</div>
             </div>
             <div className="meta">
-              <div className="count">{item.messageCount.toLocaleString()} 条</div>
-              <div className="hint">总消息</div>
+              <div className="count">{t('{v0} 条', { v0: item.messageCount.toLocaleString() })}</div>
+              <div className="hint">{t('总消息')}</div>
             </div>
           </button>
         ))}
         {filteredRankings.length === 0 ? (
-          <div className="empty">没有匹配的好友</div>
+          <div className="empty">{t('没有匹配的好友')}</div>
         ) : null}
       </div>
     </div>

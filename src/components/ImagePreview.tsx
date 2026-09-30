@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { LivePhotoIcon } from './LivePhotoIcon'
 import { createPortal } from 'react-dom'
 import './ImagePreview.scss'
+import { t } from '../i18n'
 
 interface ImagePreviewProps {
   src: string
@@ -110,7 +111,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({ src, isVideo, liveVi
         ) : (
           <img
             src={src}
-            alt="图片预览"
+            alt={t('图片预览')}
             className={`preview-image ${isDragging ? 'dragging' : ''}`}
             style={{
               transform: `scale(${scale})`,
@@ -132,10 +133,10 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({ src, isVideo, liveVi
               e.stopPropagation()
               setShowLive(!showLive)
             }}
-            title={showLive ? "显示照片" : "播放实况"}
+            title={showLive ? t('显示照片') : t('播放实况')}
           >
             <LivePhotoIcon size={20} />
-            <span>实况</span>
+            <span>{t('实况')}</span>
           </button>
         )}
       </div>

@@ -12,6 +12,7 @@ import {
 } from '../services/backgroundTaskMonitor'
 import './AnnualReportWindow.scss'
 import './DualReportWindow.scss'
+import { t } from '../i18n'
 
 interface DualReportMessage {
   content: string
@@ -117,7 +118,7 @@ function DualReportWindow() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loadingProgress, setLoadingProgress] = useState(0)
-  const [loadingStage, setLoadingStage] = useState('正在初始化...')
+  const [loadingStage, setLoadingStage] = useState(t('正在初始化...'))
 
   const TOTAL_SCENES = 9
   const [currentScene, setCurrentScene] = useState(0)
@@ -140,7 +141,7 @@ function DualReportWindow() {
     const parsedYear = yearParam ? parseInt(yearParam, 10) : 0
     const year = Number.isNaN(parsedYear) ? 0 : parsedYear
     if (!username) {
-      setError('缺少好友信息')
+      setError(t('缺少好友信息'))
       setIsLoading(false)
       return
     }
@@ -150,9 +151,9 @@ function DualReportWindow() {
   const generateReport = async (friendUsername: string, year: number) => {
     const taskId = registerBackgroundTask({
       sourcePage: 'annualReport',
-      title: '双人报告生成',
-      detail: `正在生成 ${year === 0 ? '历史以来' : year + '年'} 双人年度报告`,
-      progressText: '初始化',
+      title: t('双人报告生成'),
+      detail: t('正在生成 {v0} 双人年度报告', { v0: year === 0 ? t('历史以来') : year + t('年') }),
+      progressText: t('初始化'),
       cancelable: true
     })
     setIsLoading(true)
@@ -163,7 +164,7 @@ function DualReportWindow() {
       setLoadingProgress(payload.progress)
       setLoadingStage(payload.status)
       updateBackgroundTask(taskId, {
-        detail: payload.status || '正在生成年度报告',
+        detail: payload.status || t('正在生成年度报告'),
         progressText: `${Math.max(0, Math.round(payload.progress || 0))}%`
       })
     })
@@ -173,15 +174,15 @@ function DualReportWindow() {
       removeProgressListener?.()
       
       if (isBackgroundTaskCancelRequested(taskId)) {
-        finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载' })
+        finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载') })
         setIsLoading(false)
         return
       }
       setLoadingProgress(100)
-      setLoadingStage('完成')
+      setLoadingStage(t('完成'))
 
       if (result.success && result.data) {
-        finishBackgroundTask(taskId, 'completed', { detail: '双人报告生成完成' })
+        finishBackgroundTask(taskId, 'completed', { detail: t('双人报告生成完成') })
         setTimeout(() => {
           setReportData(result.data!)
           setIsLoading(false)
@@ -194,8 +195,8 @@ function DualReportWindow() {
           setFriendEmojiUrl(result.data.stats.friendTopEmojiUrl)
         }
       } else {
-        finishBackgroundTask(taskId, 'failed', { detail: result.error || '生成失败' })
-        setError(result.error || '生成报告失败')
+        finishBackgroundTask(taskId, 'failed', { detail: result.error || t('生成失败') })
+        setError(result.error || t('生成报告失败'))
         setIsLoading(false)
       }
     } catch (e) {
@@ -301,7 +302,7 @@ function DualReportWindow() {
 
   const handleClose = () => { navigate('/home') }
 
-  const formatFileYearLabel = (year: number) => (year === 0 ? '历史以来' : String(year))
+  const formatFileYearLabel = (year: number) => (year === 0 ? t('历史以来') : String(year))
   const formatMonthDayTime = (timestamp?: number) => {
     if (!timestamp || Number.isNaN(timestamp)) return ''
     const msTimestamp = timestamp > 1e12 ? timestamp : timestamp * 1000
@@ -320,9 +321,9 @@ function DualReportWindow() {
   
   const captureSceneDataUrl = async (): Promise<string> => {
     const captureFn = window.electronAPI.annualReport.captureCurrentWindow
-    if (typeof captureFn !== 'function') throw new Error('当前版本未启用原生截图接口')
+    if (typeof captureFn !== 'function') throw new Error(t('当前版本未启用原生截图接口'))
     const captureResult = await captureFn()
-    if (!captureResult.success || !captureResult.dataUrl) throw new Error(captureResult.error || '原生截图失败')
+    if (!captureResult.success || !captureResult.dataUrl) throw new Error(captureResult.error || t('原生截图失败'))
     return captureResult.dataUrl
   }
 
@@ -330,7 +331,7 @@ function DualReportWindow() {
     if (isExtracting || !reportData || !containerRef.current) return
 
     const dirResult = await window.electronAPI.dialog.openDirectory({
-      title: '选择导出文件夹',
+      title: t('选择导出文件夹'),
       properties: ['openDirectory', 'createDirectory']
     })
     if (dirResult.canceled || !dirResult.filePaths?.[0]) return
@@ -373,16 +374,16 @@ function DualReportWindow() {
       const yearFilePrefix = formatFileYearLabel(reportData.year)
       const exportResult = await window.electronAPI.annualReport.exportImages({
         baseDir: dirResult.filePaths[0],
-        folderName: `${yearFilePrefix}双人报告_分页面`,
+        folderName: t('{yearFilePrefix}双人报告_分页面', { yearFilePrefix: yearFilePrefix }),
         images
       })
 
-      if (!exportResult.success) throw new Error(exportResult.error || '导出失败')
+      if (!exportResult.success) throw new Error(exportResult.error || t('导出失败'))
 
       setButtonText('ARCHIVED')
       setTimeout(() => setButtonText('EXTRACT RECORD'), 2000)
     } catch (err: any) {
-      alert(err.message || '导出过程中出现错误')
+      alert(err.message || t('导出过程中出现错误'))
       setButtonText('EXTRACT FAILED')
       setTimeout(() => setButtonText('EXTRACT RECORD'), 2000)
     } finally {
@@ -431,7 +432,7 @@ function DualReportWindow() {
     if (!content) return ''
     if (content.includes('<?xml') || content.includes('<msg>')) {
       const match = content.match(/<title>([^<]+)<\/title>/)
-      return match && match[1] ? `[${match[1]}]` : '[富文本消息]'
+      return match && match[1] ? `[${match[1]}]` : t('[富文本消息]')
     }
     return content.trim()
   }
@@ -460,7 +461,7 @@ function DualReportWindow() {
   return (
     <div className={`annual-report-window dual-report-window dark-theme`} ref={containerRef}>
       <div className="top-controls">
-        <button className="close-btn" onClick={handleClose} title="关闭 (Esc)"><X size={16} /></button>
+        <button className="close-btn" onClick={handleClose} title={t('关闭 (Esc)')}><X size={16} /></button>
       </div>
 
       {/* ============== 背景系统 ============== */}
@@ -482,12 +483,12 @@ function DualReportWindow() {
             </div>
             <div className="reveal-wrap">
               <h1 className="reveal-inner hero-title delay-2">
-                <DecodeText value={reportData.year === 0 ? '所有时间' : `${reportData.year}年`} active={currentScene === 0} />
+                <DecodeText value={reportData.year === 0 ? t('所有时间') : t('{year}年', { year: reportData.year })} active={currentScene === 0} />
               </h1>
             </div>
             <div className="reveal-wrap">
               <div className="reveal-inner hero-desc dual-names delay-3" style={{ fontSize: '1.2rem', marginTop: '20px' }}>
-                <DecodeText value={reportData.selfName || '你'} active={currentScene === 0} /> 
+                <DecodeText value={reportData.selfName || t('你')} active={currentScene === 0} /> 
                 <span className="amp">&</span> 
                 <DecodeText value={reportData.friendName || reportData.friendUsername} active={currentScene === 0} />
               </div>
@@ -499,7 +500,7 @@ function DualReportWindow() {
         <div className={getSceneClass(1)} id="scene-1">
           <div className="s1-layout">
             <div className="reveal-wrap"><div className="reveal-inner en-tag delay-1">FIRST ENCOUNTER</div></div>
-            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">故事的开始</h2></div>
+            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">{t('故事的开始')}</h2></div>
             <div className="s1-messages reveal-inner delay-3">
               {firstChatArray.map((chat: any, idx: number) => (
                 <div key={idx} className={`s1-message-item ${chat.isSentByMe ? 'sent' : ''}`}>
@@ -515,7 +516,7 @@ function DualReportWindow() {
         <div className={getSceneClass(2)} id="scene-2">
           <div className="center-layout">
             <div className="reveal-wrap"><div className="reveal-inner en-tag delay-1">SYNCHRONIZATION</div></div>
-            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">作息波纹</h2></div>
+            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">{t('作息波纹')}</h2></div>
             <div className="reveal-wrap">
               <div className="reveal-inner desc delay-3 s2-active-text">
                 {reportData.heatmap ? (() => {
@@ -525,9 +526,9 @@ function DualReportWindow() {
                        if (val > maxVal) { maxVal = val; maxDay = dayIdx; maxHour = hourIdx; }
                      });
                   });
-                  const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-                  return <>在<span className="hl">{dayNames[maxDay]}</span>的<span className="hl">{String(maxHour).padStart(2, '0')}:00</span>，我们最为活跃</>
-                })() : '我们的时空，在这里高频交叠'}
+                  const dayNames = [t('周一'), t('周二'), t('周三'), t('周四'), t('周五'), t('周六'), t('周日')];
+                  return <>{t('在')}<span className="hl">{dayNames[maxDay]}</span>{t('的')}<span className="hl">{String(maxHour).padStart(2, '0')}:00</span>{t('，我们最为活跃')}</>
+                })() : t('我们的时空，在这里高频交叠')}
               </div>
             </div>
             {reportData.heatmap && (
@@ -544,7 +545,7 @@ function DualReportWindow() {
         <div className={getSceneClass(3)} id="scene-3">
           <div className="center-layout">
             <div className="reveal-wrap"><div className="reveal-inner en-tag delay-1">MUTUAL INITIATIVE</div></div>
-            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">情感的天平</h2></div>
+            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">{t('情感的天平')}</h2></div>
             
             {reportData.initiative && (
             <div className="reveal-wrap">
@@ -581,7 +582,7 @@ function DualReportWindow() {
         <div className={getSceneClass(4)} id="scene-4">
           <div className="center-layout">
             <div className="reveal-wrap"><div className="reveal-inner en-tag delay-1">ECHOES</div></div>
-            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">回应的速度</h2></div>
+            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">{t('回应的速度')}</h2></div>
             
             <div className="reveal-wrap">
               <div className="reveal-inner response-wrapper delay-3">
@@ -605,7 +606,7 @@ function DualReportWindow() {
         <div className={getSceneClass(5)} id="scene-5">
           <div className="center-layout">
             <div className="reveal-wrap"><div className="reveal-inner en-tag delay-1">THE SPARK</div></div>
-            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">连绵不绝的火花</h2></div>
+            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">{t('连绵不绝的火花')}</h2></div>
             
             {showSpark && reportData.streak ? (
               <div className="reveal-wrap">
@@ -620,7 +621,7 @@ function DualReportWindow() {
                 </div>
               </div>
             ) : (
-               <div className="reveal-wrap"><p className="reveal-inner desc delay-3" style={{marginTop:"3vh"}}>火种尚未点亮...</p></div>
+               <div className="reveal-wrap"><p className="reveal-inner desc delay-3" style={{marginTop:"3vh"}}>{t('火种尚未点亮...')}</p></div>
             )}
           </div>
         </div>
@@ -629,19 +630,19 @@ function DualReportWindow() {
         <div className={getSceneClass(6)} id="scene-6">
           <div className="center-layout">
             <div className="reveal-wrap"><div className="reveal-inner en-tag delay-1">LEXICON</div></div>
-            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">专属词典</h2></div>
+            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">{t('专属词典')}</h2></div>
             
             <div className="reveal-wrap">
               <div className="reveal-inner word-cloud-wrapper-outer delay-3">
                 <div className="word-cloud-tabs">
-                  <button className={`tab-item ${activeWordCloudTab === 'shared' ? 'active' : ''}`} onClick={() => setActiveWordCloudTab('shared')}>共同</button>
-                  <button className={`tab-item ${activeWordCloudTab === 'my' ? 'active' : ''}`} onClick={() => setActiveWordCloudTab('my')}>我方</button>
-                  <button className={`tab-item ${activeWordCloudTab === 'friend' ? 'active' : ''}`} onClick={() => setActiveWordCloudTab('friend')}>对方</button>
+                  <button className={`tab-item ${activeWordCloudTab === 'shared' ? 'active' : ''}`} onClick={() => setActiveWordCloudTab('shared')}>{t('共同')}</button>
+                  <button className={`tab-item ${activeWordCloudTab === 'my' ? 'active' : ''}`} onClick={() => setActiveWordCloudTab('my')}>{t('我方')}</button>
+                  <button className={`tab-item ${activeWordCloudTab === 'friend' ? 'active' : ''}`} onClick={() => setActiveWordCloudTab('friend')}>{t('对方')}</button>
                 </div>
                 {currentWordList && currentWordList.length > 0 ? (
                   <ReportWordCloud words={currentWordList} />
                 ) : (
-                  <div style={{textAlign: 'center', marginTop: '10vh', color: 'var(--c-text-muted)'}}>没有足够的词汇数据</div>
+                  <div style={{textAlign: 'center', marginTop: '10vh', color: 'var(--c-text-muted)'}}>{t('没有足够的词汇数据')}</div>
                 )}
               </div>
             </div>
@@ -652,7 +653,7 @@ function DualReportWindow() {
         <div className={getSceneClass(7)} id="scene-7">
           <div className="center-layout">
             <div className="reveal-wrap"><div className="reveal-inner en-tag delay-1">VOLUME</div></div>
-            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">数据归档</h2></div>
+            <div className="reveal-wrap"><h2 className="reveal-inner title delay-2">{t('数据归档')}</h2></div>
             
             <div className="reveal-wrap">
               <div className="reveal-inner stats-grid delay-3" style={{ background: 'transparent' }}>

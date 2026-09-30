@@ -8,6 +8,7 @@ import type { ContactInfo } from '../types/models'
 import { ContactSnsTimelineDialog } from '../components/Sns/ContactSnsTimelineDialog'
 import { type ContactSnsTimelineTarget, isSingleContactSession } from '../components/Sns/contactSnsTimeline'
 import './ContactsPage.scss'
+import { t, formatLocale } from '../i18n'
 
 interface ContactEnrichInfo {
     displayName?: string
@@ -352,9 +353,9 @@ function ContactsPage() {
             const elapsedMs = Date.now() - startedAt
             setLoadIssue({
                 kind: 'timeout',
-                title: '通讯录加载超时',
-                message: `等待超过 ${timeoutMs}ms，联系人列表仍未返回。`,
-                reason: 'chat.getContacts 长时间未返回，可能是数据库查询繁忙或连接异常。',
+                title: t('通讯录加载超时'),
+                message: t('等待超过 {timeoutMs}ms，联系人列表仍未返回。', { timeoutMs: timeoutMs }),
+                reason: t('chat.getContacts 长时间未返回，可能是数据库查询繁忙或连接异常。'),
                 occurredAt: Date.now(),
                 elapsedMs
             })
@@ -412,10 +413,10 @@ function ContactsPage() {
             const elapsedMs = Date.now() - startedAt
             setLoadIssue({
                 kind: 'error',
-                title: '通讯录加载失败',
-                message: '联系人接口返回失败，未拿到联系人列表。',
-                reason: 'chat.getContacts 返回 success=false。',
-                errorDetail: contactsResult.error || '未知错误',
+                title: t('通讯录加载失败'),
+                message: t('联系人接口返回失败，未拿到联系人列表。'),
+                reason: t('chat.getContacts 返回 success=false。'),
+                errorDetail: contactsResult.error || t('未知错误'),
                 occurredAt: Date.now(),
                 elapsedMs
             })
@@ -424,9 +425,9 @@ function ContactsPage() {
             const elapsedMs = Date.now() - startedAt
             setLoadIssue({
                 kind: 'error',
-                title: '通讯录加载失败',
-                message: '联系人请求执行异常。',
-                reason: '调用 chat.getContacts 发生异常。',
+                title: t('通讯录加载失败'),
+                message: t('联系人请求执行异常。'),
+                reason: t('调用 chat.getContacts 发生异常。'),
                 errorDetail: String(e),
                 occurredAt: Date.now(),
                 elapsedMs
@@ -629,10 +630,10 @@ function ContactsPage() {
     const selectedContactSnsEntryLabel = useMemo(() => {
         if (!selectedContactSupportsSns) return ''
         if (selectedContactSnsCount !== null) {
-            return `朋友圈：${selectedContactSnsCount.toLocaleString('zh-CN')}条`
+            return t('朋友圈：{v0}条', { v0: selectedContactSnsCount.toLocaleString(formatLocale()) })
         }
-        if (snsUserPostCountsStatus === 'error') return '朋友圈：查看'
-        return '朋友圈：统计中...'
+        if (snsUserPostCountsStatus === 'error') return t('朋友圈：查看')
+        return t('朋友圈：统计中...')
     }, [selectedContactSupportsSns, selectedContactSnsCount, snsUserPostCountsStatus])
 
     const selectedContactTitle = useMemo(() => {
@@ -643,8 +644,8 @@ function ContactsPage() {
     const selectedContactSubtitle = useMemo(() => {
         if (!selectedContact) return ''
         const parts = [
-            selectedContact.remark && selectedContact.remark !== selectedContactTitle ? `备注 ${selectedContact.remark}` : '',
-            selectedContact.alias ? `微信号 ${selectedContact.alias}` : '',
+            selectedContact.remark && selectedContact.remark !== selectedContactTitle ? t('备注 {remark}', { remark: selectedContact.remark }) : '',
+            selectedContact.alias ? t('微信号 {alias}', { alias: selectedContact.alias }) : '',
             selectedContact.region || ''
         ].filter(Boolean)
         return parts.join(' · ')
@@ -653,18 +654,18 @@ function ContactsPage() {
     const selectedContactDetailRows = useMemo(() => {
         if (!selectedContact) return []
         return [
-            { key: 'username', label: '用户名', value: selectedContact.username },
-            { key: 'nickname', label: '昵称', value: selectedContact.nickname || selectedContact.displayName },
-            selectedContact.remark ? { key: 'remark', label: '备注', value: selectedContact.remark } : null,
-            selectedContact.alias ? { key: 'alias', label: '微信号', value: selectedContact.alias } : null,
+            { key: 'username', label: t('用户名'), value: selectedContact.username },
+            { key: 'nickname', label: t('昵称'), value: selectedContact.nickname || selectedContact.displayName },
+            selectedContact.remark ? { key: 'remark', label: t('备注'), value: selectedContact.remark } : null,
+            selectedContact.alias ? { key: 'alias', label: t('微信号'), value: selectedContact.alias } : null,
             selectedContact.labels && selectedContact.labels.length > 0
-                ? { key: 'labels', label: '标签', value: selectedContact.labels.join('、') }
+                ? { key: 'labels', label: t('标签'), value: selectedContact.labels.join(t('、')) }
                 : null,
             selectedContact.detailDescription
-                ? { key: 'signature', label: '个性签名', value: selectedContact.detailDescription }
+                ? { key: 'signature', label: t('个性签名'), value: selectedContact.detailDescription }
                 : null,
-            selectedContact.region ? { key: 'region', label: '地区', value: selectedContact.region } : null,
-            { key: 'type', label: '类型', value: getContactTypeName(selectedContact.type) }
+            selectedContact.region ? { key: 'region', label: t('地区'), value: selectedContact.region } : null,
+            { key: 'type', label: t('类型'), value: getContactTypeName(selectedContact.type) }
         ].filter((row): row is { key: string; label: string; value: string } => Boolean(row && row.value))
     }, [selectedContact])
 
@@ -713,15 +714,15 @@ function ContactsPage() {
     const diagnosticsText = useMemo(() => {
         if (!loadIssue || !loadSession) return ''
         return [
-            `请求ID: ${loadSession.requestId}`,
-            `请求序号: 第 ${loadSession.attempt} 次`,
-            `阈值配置: ${loadSession.timeoutMs}ms`,
-            `当前状态: ${loadIssue.kind === 'timeout' ? '超时等待中' : '请求失败'}`,
-            `累计耗时: ${(issueElapsedMs / 1000).toFixed(1)}s`,
-            `发生时间: ${new Date(loadIssue.occurredAt).toLocaleString()}`,
-            `阶段: chat.getContacts`,
-            `原因: ${loadIssue.reason}`,
-            `错误详情: ${loadIssue.errorDetail || '无'}`
+            t('请求ID: {requestId}', { requestId: loadSession.requestId }),
+            t('请求序号: 第 {attempt} 次', { attempt: loadSession.attempt }),
+            t('阈值配置: {timeoutMs}ms', { timeoutMs: loadSession.timeoutMs }),
+            t('当前状态: {v0}', { v0: loadIssue.kind === 'timeout' ? t('超时等待中') : t('请求失败') }),
+            t('累计耗时: {v0}s', { v0: (issueElapsedMs / 1000).toFixed(1) }),
+            t('发生时间: {v0}', { v0: new Date(loadIssue.occurredAt).toLocaleString() }),
+            t('阶段: chat.getContacts'),
+            t('原因: {reason}', { reason: loadIssue.reason }),
+            t('错误详情: {v0}', { v0: loadIssue.errorDetail || t('无') })
         ].join('\n')
     }, [issueElapsedMs, loadIssue, loadSession])
 
@@ -729,10 +730,10 @@ function ContactsPage() {
         if (!diagnosticsText) return
         try {
             await navigator.clipboard.writeText(diagnosticsText)
-            alert('诊断信息已复制')
+            alert(t('诊断信息已复制'))
         } catch (error) {
             console.error('复制诊断信息失败:', error)
-            alert('复制失败，请手动复制诊断信息')
+            alert(t('复制失败，请手动复制诊断信息'))
         }
     }, [diagnosticsText])
 
@@ -795,11 +796,11 @@ function ContactsPage() {
 
     function getContactTypeName(type: string) {
         switch (type) {
-            case 'friend': return '好友'
-            case 'group': return '群聊'
-            case 'official': return '公众号'
-            case 'former_friend': return '曾经的好友'
-            default: return '其他'
+            case 'friend': return t('好友')
+            case 'group': return t('群聊')
+            case 'official': return t('公众号')
+            case 'former_friend': return t('曾经的好友')
+            default: return t('其他')
         }
     }
 
@@ -807,7 +808,7 @@ function ContactsPage() {
     const selectExportFolder = async () => {
         try {
             const result = await window.electronAPI.dialog.openDirectory({
-                title: '选择导出位置'
+                title: t('选择导出位置')
             })
             if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
                 setExportFolder(result.filePaths[0])
@@ -820,11 +821,11 @@ function ContactsPage() {
     // 开始导出
     const startExport = async () => {
         if (!exportFolder) {
-            alert('请先选择导出位置')
+            alert(t('请先选择导出位置'))
             return
         }
         if (selectedUsernames.size === 0) {
-            alert('请至少选择一个联系人')
+            alert(t('请至少选择一个联系人'))
             return
         }
 
@@ -844,22 +845,22 @@ function ContactsPage() {
             const result = await window.electronAPI.export.exportContacts(exportFolder, exportOptions)
 
             if (result.success) {
-                alert(`导出成功！共导出 ${result.successCount} 个联系人`)
+                alert(t('导出成功！共导出 {successCount} 个联系人', { successCount: result.successCount }))
             } else {
-                alert(`导出失败：${result.error}`)
+                alert(t('导出失败：{error}', { error: result.error }))
             }
         } catch (e) {
             console.error('导出失败:', e)
-            alert(`导出失败：${String(e)}`)
+            alert(t('导出失败：{v0}', { v0: String(e) }))
         } finally {
             setIsExporting(false)
         }
     }
 
     const exportFormatOptions = [
-        { value: 'json', label: 'JSON', desc: '详细格式，包含完整联系人信息' },
-        { value: 'csv', label: 'CSV (Excel)', desc: '电子表格格式，适合Excel查看' },
-        { value: 'vcf', label: 'VCF (vCard)', desc: '标准名片格式，支持导入手机' }
+        { value: 'json', label: 'JSON', desc: t('详细格式，包含完整联系人信息') },
+        { value: 'csv', label: 'CSV (Excel)', desc: t('电子表格格式，适合Excel查看') },
+        { value: 'vcf', label: 'VCF (vCard)', desc: t('标准名片格式，支持导入手机') }
     ]
 
     const getOptionLabel = (value: string) => {
@@ -871,12 +872,12 @@ function ContactsPage() {
             {/* 左侧：联系人列表 */}
             <div className="contacts-panel">
                 <div className="panel-header">
-                    <h2>通讯录</h2>
+                    <h2>{t('通讯录')}</h2>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <button
                             className={`icon-btn export-mode-btn ${exportMode ? 'active' : ''}`}
                             onClick={() => { setExportMode(!exportMode); setSelectedContact(null) }}
-                            title={exportMode ? '退出导出模式' : '进入导出模式'}
+                            title={exportMode ? t('退出导出模式') : t('进入导出模式')}
                         >
                             <Download size={18} />
                         </button>
@@ -890,7 +891,7 @@ function ContactsPage() {
                     <Search size={16} />
                     <input
                         type="text"
-                        placeholder="搜索联系人..."
+                        placeholder={t('搜索联系人...')}
                         value={searchKeyword}
                         onChange={e => setSearchKeyword(e.target.value)}
                     />
@@ -905,25 +906,25 @@ function ContactsPage() {
                     <label className={`filter-chip ${contactTypes.friends ? 'active' : ''}`}>
                         <input type="checkbox" checked={contactTypes.friends} onChange={e => setContactTypes({ ...contactTypes, friends: e.target.checked })} />
                         <User size={16} />
-                        <span className="chip-label">好友</span>
+                        <span className="chip-label">{t('好友')}</span>
                         <span className="chip-count">{contactTypeCounts.friends}</span>
                     </label>
                     <label className={`filter-chip ${contactTypes.groups ? 'active' : ''}`}>
                         <input type="checkbox" checked={contactTypes.groups} onChange={e => setContactTypes({ ...contactTypes, groups: e.target.checked })} />
                         <Users size={16} />
-                        <span className="chip-label">群聊</span>
+                        <span className="chip-label">{t('群聊')}</span>
                         <span className="chip-count">{contactTypeCounts.groups}</span>
                     </label>
                     <label className={`filter-chip ${contactTypes.officials ? 'active' : ''}`}>
                         <input type="checkbox" checked={contactTypes.officials} onChange={e => setContactTypes({ ...contactTypes, officials: e.target.checked })} />
                         <MessageSquare size={16} />
-                        <span className="chip-label">公众号</span>
+                        <span className="chip-label">{t('公众号')}</span>
                         <span className="chip-count">{contactTypeCounts.officials}</span>
                     </label>
                     <label className={`filter-chip ${contactTypes.deletedFriends ? 'active' : ''}`}>
                         <input type="checkbox" checked={contactTypes.deletedFriends} onChange={e => setContactTypes({ ...contactTypes, deletedFriends: e.target.checked })} />
                         <UserX size={16} />
-                        <span className="chip-label">曾经的好友</span>
+                        <span className="chip-label">{t('曾经的好友')}</span>
                         <span className="chip-count">{contactTypeCounts.deletedFriends}</span>
                     </label>
                 </div>
@@ -938,9 +939,9 @@ function ContactsPage() {
                                 onChange={e => toggleAllFilteredSelected(e.target.checked)}
                                 disabled={filteredContacts.length === 0}
                             />
-                            <span>全选当前筛选结果</span>
+                            <span>{t('全选当前筛选结果')}</span>
                         </label>
-                        <span className="selection-count">已选 {selectedUsernames.size}（当前筛选 {selectedInFilteredCount} / {filteredContacts.length}）</span>
+                        <span className="selection-count">{t('已选 {size}（当前筛选 {selectedInFilteredCount} / {length}）', { size: selectedUsernames.size, selectedInFilteredCount: selectedInFilteredCount, length: filteredContacts.length })}</span>
                     </div>
                 )}
 
@@ -954,21 +955,21 @@ function ContactsPage() {
                             <p className="issue-message">{loadIssue.message}</p>
                             <p className="issue-reason">{loadIssue.reason}</p>
                             <ul className="issue-hints">
-                                <li>可能原因1：数据库当前仍在执行高开销查询（例如导出页后台统计）。</li>
-                                <li>可能原因2：contact.db 数据量较大，首次查询时间过长。</li>
-                                <li>可能原因3：数据库连接状态异常或 IPC 调用卡住。</li>
+                                <li>{t('可能原因1：数据库当前仍在执行高开销查询（例如导出页后台统计）。')}</li>
+                                <li>{t('可能原因2：contact.db 数据量较大，首次查询时间过长。')}</li>
+                                <li>{t('可能原因3：数据库连接状态异常或 IPC 调用卡住。')}</li>
                             </ul>
                             <div className="issue-actions">
                                 <button className="issue-btn primary" onClick={() => void loadContacts()}>
                                     <RefreshCw size={14} />
-                                    <span>重试加载</span>
+                                    <span>{t('重试加载')}</span>
                                 </button>
                                 <button className="issue-btn" onClick={() => setShowDiagnostics(prev => !prev)}>
                                     <ClipboardList size={14} />
-                                    <span>{showDiagnostics ? '收起诊断详情' : '查看诊断详情'}</span>
+                                    <span>{showDiagnostics ? t('收起诊断详情') : t('查看诊断详情')}</span>
                                 </button>
                                 <button className="issue-btn" onClick={copyDiagnostics}>
-                                    <span>复制诊断信息</span>
+                                    <span>{t('复制诊断信息')}</span>
                                 </button>
                             </div>
                             {showDiagnostics && (
@@ -979,11 +980,11 @@ function ContactsPage() {
                 ) : isLoading && contacts.length === 0 ? (
                     <div className="loading-state">
                         <Loader2 size={32} className="spin" />
-                        <span>联系人加载中...</span>
+                        <span>{t('联系人加载中...')}</span>
                     </div>
                 ) : filteredContacts.length === 0 ? (
                     <div className="empty-state">
-                        <span>暂无联系人</span>
+                        <span>{t('暂无联系人')}</span>
                     </div>
                 ) : (
                     <div className="contacts-list" ref={listRef} onScroll={onContactsListScroll}>
@@ -1031,7 +1032,7 @@ function ContactsPage() {
                                         <div className="contact-info">
                                             <div className="contact-name">{contact.displayName}</div>
                                             {contact.remark && contact.remark !== contact.displayName && (
-                                                <div className="contact-remark">备注: {contact.remark}</div>
+                                                <div className="contact-remark">{t('备注: {remark}', { remark: contact.remark })}</div>
                                             )}
                                         </div>
                                         <div className={`contact-type ${contact.type}`}>
@@ -1051,12 +1052,12 @@ function ContactsPage() {
             {exportMode ? (
                 <div className="settings-panel">
                     <div className="panel-header">
-                        <h2>导出设置</h2>
+                        <h2>{t('导出设置')}</h2>
                     </div>
 
                     <div className="settings-content">
                         <div className="setting-section">
-                            <h3>导出格式</h3>
+                            <h3>{t('导出格式')}</h3>
                             <div className="format-select" ref={formatDropdownRef}>
                                 <button
                                     type="button"
@@ -1088,22 +1089,22 @@ function ContactsPage() {
                         </div>
 
                         <div className="setting-section">
-                            <h3>导出选项</h3>
+                            <h3>{t('导出选项')}</h3>
                             <label className="checkbox-item">
                                 <input type="checkbox" checked={exportAvatars} onChange={e => setExportAvatars(e.target.checked)} />
-                                <span>导出头像</span>
+                                <span>{t('导出头像')}</span>
                             </label>
                         </div>
 
                         <div className="setting-section">
-                            <h3>导出位置</h3>
+                            <h3>{t('导出位置')}</h3>
                             <div className="export-path-display">
                                 <FolderOpen size={16} />
-                                <span>{exportFolder || '未设置'}</span>
+                                <span>{exportFolder || t('未设置')}</span>
                             </div>
                             <button className="select-folder-btn" onClick={selectExportFolder}>
                                 <FolderOpen size={16} />
-                                <span>选择导出目录</span>
+                                <span>{t('选择导出目录')}</span>
                             </button>
                         </div>
                     </div>
@@ -1115,9 +1116,9 @@ function ContactsPage() {
                             disabled={!exportFolder || isExporting || selectedUsernames.size === 0}
                         >
                             {isExporting ? (
-                                <><Loader2 size={18} className="spin" /><span>导出中...</span></>
+                                <><Loader2 size={18} className="spin" /><span>{t('导出中...')}</span></>
                             ) : (
-                                <><Download size={18} /><span>开始导出</span></>
+                                <><Download size={18} /><span>{t('开始导出')}</span></>
                             )}
                         </button>
                     </div>
@@ -1143,7 +1144,7 @@ function ContactsPage() {
                             </div>
                         </section>
 
-                        <section className="contact-action-row" aria-label="联系人操作">
+                        <section className="contact-action-row" aria-label={t('联系人操作')}>
                             <button
                                 className="goto-chat-btn"
                                 onClick={() => {
@@ -1152,7 +1153,7 @@ function ContactsPage() {
                                 }}
                             >
                                 <MessageCircle size={18} />
-                                <span>查看聊天记录</span>
+                                <span>{t('查看聊天记录')}</span>
                             </button>
                             {selectedContactSupportsSns && (
                                 <button
@@ -1167,7 +1168,7 @@ function ContactsPage() {
                         </section>
 
                         <section className="contact-detail-section">
-                            <div className="section-title">基础资料</div>
+                            <div className="section-title">{t('基础资料')}</div>
                             <div className="detail-info-list">
                                 {selectedContactDetailRows.map(row => (
                                     <div className="detail-row" key={row.key}>
@@ -1183,7 +1184,7 @@ function ContactsPage() {
                 <div className="settings-panel">
                     <div className="empty-detail">
                         <User size={48} />
-                        <span>点击左侧联系人查看详情</span>
+                        <span>{t('点击左侧联系人查看详情')}</span>
                     </div>
                 </div>
             )}

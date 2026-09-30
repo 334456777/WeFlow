@@ -5,6 +5,7 @@ import TitleBar from '../components/TitleBar'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { Avatar } from '../components/Avatar'
 import './ChatHistoryPage.scss'
+import { t } from '../i18n'
 
 const forwardedImageCache = new Map<string, string>()
 
@@ -13,7 +14,7 @@ export default function ChatHistoryPage() {
   const location = useLocation()
   const [recordList, setRecordList] = useState<ChatRecordItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [title, setTitle] = useState('聊天记录')
+  const [title, setTitle] = useState(t('聊天记录'))
   const [error, setError] = useState('')
 
   // 简单的 XML 标签内容提取
@@ -279,14 +280,14 @@ export default function ChatHistoryPage() {
           const result = await window.electronAPI.window.getChatHistoryPayload(payloadId)
           if (result.success && result.payload) {
             setRecordList(Array.isArray(result.payload.recordList) ? result.payload.recordList : [])
-            setTitle(result.payload.title || '聊天记录')
+            setTitle(result.payload.title || t('聊天记录'))
             setError('')
           } else {
-            setError(result.error || '聊天记录载荷不存在')
+            setError(result.error || t('聊天记录载荷不存在'))
           }
         } catch (e) {
           console.error(e)
-          setError('加载详情失败')
+          setError(t('加载详情失败'))
         } finally {
           setLoading(false)
         }
@@ -295,7 +296,7 @@ export default function ChatHistoryPage() {
 
       const { sid, mid } = ids
       if (!sid || !mid) {
-        setError('无效的聊天记录链接')
+        setError(t('无效的聊天记录链接'))
         setLoading(false)
         return
       }
@@ -316,14 +317,14 @@ export default function ChatHistoryPage() {
             const match = /<title>(.*?)<\/title>/.exec(msg.content || '')
             if (match) setTitle(match[1])
           } else {
-            setError('暂时无法解析这条聊天记录')
+            setError(t('暂时无法解析这条聊天记录'))
           }
         } else {
-          setError(result.error || '获取消息失败')
+          setError(result.error || t('获取消息失败'))
         }
       } catch (e) {
         console.error(e)
-        setError('加载详情失败')
+        setError(t('加载详情失败'))
       } finally {
         setLoading(false)
       }
@@ -336,14 +337,14 @@ export default function ChatHistoryPage() {
       <TitleBar title={title} />
       <div className="history-list">
         {loading ? (
-          <div className="status-msg">加载中...</div>
+          <div className="status-msg">{t('加载中...')}</div>
         ) : error ? (
           <div className="status-msg error">{error}</div>
         ) : recordList.length === 0 ? (
-          <div className="status-msg empty">暂无可显示的聊天记录</div>
+          <div className="status-msg empty">{t('暂无可显示的聊天记录')}</div>
         ) : (
           recordList.map((item, i) => (
-            <ErrorBoundary key={i} fallback={<div className="history-item error-item">消息解析失败</div>}>
+            <ErrorBoundary key={i} fallback={<div className="history-item error-item">{t('消息解析失败')}</div>}>
               <HistoryItem item={item} sessionId={ids.sid} />
             </ErrorBoundary>
           ))
@@ -383,13 +384,13 @@ function normalizeChatRecordText(value?: string): string {
 function getChatRecordPreviewText(item: ChatRecordItem): string {
   const text = normalizeChatRecordText(item.datadesc) || normalizeChatRecordText(item.datatitle)
   if (item.datatype === 17) {
-    return normalizeChatRecordText(item.chatRecordTitle) || normalizeChatRecordText(item.datatitle) || '聊天记录'
+    return normalizeChatRecordText(item.chatRecordTitle) || normalizeChatRecordText(item.datatitle) || t('聊天记录')
   }
-  if (item.datatype === 2 || item.datatype === 3) return '[图片]'
-  if (item.datatype === 43) return '[视频]'
-  if (item.datatype === 34) return '[语音]'
-  if (item.datatype === 47) return '[表情]'
-  return text || '[媒体消息]'
+  if (item.datatype === 2 || item.datatype === 3) return t('[图片]')
+  if (item.datatype === 43) return t('[视频]')
+  if (item.datatype === 34) return t('[语音]')
+  if (item.datatype === 47) return t('[表情]')
+  return text || t('[媒体消息]')
 }
 
 function ForwardedImage({ item, sessionId }: { item: ChatRecordItem; sessionId: string }) {
@@ -486,25 +487,25 @@ function ForwardedImage({ item, sessionId }: { item: ChatRecordItem; sessionId: 
   if (localPath) {
     return (
       <div className="media-content">
-        <img src={localPath} alt="图片" referrerPolicy="no-referrer" />
+        <img src={localPath} alt={t('图片')} referrerPolicy="no-referrer" />
       </div>
     )
   }
 
   if (loading) {
-    return <div className="media-tip">图片加载中...</div>
+    return <div className="media-tip">{t('图片加载中...')}</div>
   }
 
   if (error) {
-    return <div className="media-tip">图片未索引到本地缓存</div>
+    return <div className="media-tip">{t('图片未索引到本地缓存')}</div>
   }
 
-  return <div className="media-placeholder">[图片]</div>
+  return <div className="media-placeholder">{t('[图片]')}</div>
 }
 
 function NestedChatRecordCard({ item, sessionId }: { item: ChatRecordItem; sessionId: string }) {
   const previewItems = (item.chatRecordList || []).slice(0, 3)
-  const title = normalizeChatRecordText(item.chatRecordTitle) || normalizeChatRecordText(item.datatitle) || '聊天记录'
+  const title = normalizeChatRecordText(item.chatRecordTitle) || normalizeChatRecordText(item.datatitle) || t('聊天记录')
   const description = normalizeChatRecordText(item.chatRecordDesc) || normalizeChatRecordText(item.datadesc)
   const canOpen = Boolean(sessionId && item.chatRecordList && item.chatRecordList.length > 0)
 
@@ -523,7 +524,7 @@ function NestedChatRecordCard({ item, sessionId }: { item: ChatRecordItem; sessi
       className={`nested-chat-record-card${canOpen ? ' clickable' : ''}`}
       onClick={handleOpen}
       disabled={!canOpen}
-      title={canOpen ? '点击打开聊天记录' : undefined}
+      title={canOpen ? t('点击打开聊天记录') : undefined}
     >
       <div className="nested-chat-record-title">{title}</div>
       {previewItems.length > 0 ? (
@@ -539,7 +540,7 @@ function NestedChatRecordCard({ item, sessionId }: { item: ChatRecordItem; sessi
           <div className="nested-chat-record-line">{description}</div>
         </div>
       ) : null}
-      <div className="nested-chat-record-footer">聊天记录</div>
+      <div className="nested-chat-record-footer">{t('聊天记录')}</div>
     </button>
   )
 }
@@ -556,7 +557,7 @@ function HistoryItem({ item, sessionId }: { item: ChatRecordItem; sessionId: str
     }
   }
 
-  const senderDisplayName = item.sourcename ?? '未知发送者'
+  const senderDisplayName = item.sourcename ?? t('未知发送者')
 
   const renderContent = () => {
     if (item.datatype === 1) {
@@ -570,13 +571,13 @@ function HistoryItem({ item, sessionId }: { item: ChatRecordItem; sessionId: str
       return <NestedChatRecordCard item={item} sessionId={sessionId} />
     }
     if (item.datatype === 43) {
-      return <div className="media-placeholder">[视频] {item.datatitle}</div>
+      return <div className="media-placeholder">{t('[视频] {datatitle}', { datatitle: item.datatitle })}</div>
     }
     if (item.datatype === 34) {
-      return <div className="media-placeholder">[语音] {item.duration ? (item.duration / 1000).toFixed(0) + '"' : ''}</div>
+      return <div className="media-placeholder">{t('[语音] {v0}', { v0: item.duration ? (item.duration / 1000).toFixed(0) + '"' : '' })}</div>
     }
     // Fallback
-    return <div className="text-content">{item.datadesc || item.datatitle || '[不支持的消息类型]'}</div>
+    return <div className="text-content">{item.datadesc || item.datatitle || t('[不支持的消息类型]')}</div>
   }
 
   return (

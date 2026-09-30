@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import './JumpToDatePopover.scss'
+import { t } from '../i18n'
 
 interface JumpToDatePopoverProps {
   isOpen: boolean
@@ -117,7 +118,7 @@ const JumpToDatePopover: React.FC<JumpToDatePopoverProps> = ({
     return classes.join(' ')
   }
 
-  const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+  const weekdays = [t('日'), t('一'), t('二'), t('三'), t('四'), t('五'), t('六')]
   const days = generateCalendar()
   const mergedClassName = ['jump-date-popover', className || ''].join(' ').trim()
 
@@ -167,18 +168,18 @@ const JumpToDatePopover: React.FC<JumpToDatePopoverProps> = ({
   }
 
   const navTitle = viewMode === 'day'
-    ? `${calendarDate.getFullYear()}年${calendarDate.getMonth() + 1}月`
+    ? t('{v0}年{v1}月', { v0: calendarDate.getFullYear(), v1: calendarDate.getMonth() + 1 })
     : viewMode === 'month'
-      ? `${calendarDate.getFullYear()}年`
-      : `${yearPageStart}年 - ${yearPageStart + 11}年`
+      ? t('{v0}年', { v0: calendarDate.getFullYear() })
+      : t('{yearPageStart}年 - {v1}年', { yearPageStart: yearPageStart, v1: yearPageStart + 11 })
 
   return (
-    <div className={mergedClassName} style={style} role="dialog" aria-label="跳转日期">
+    <div className={mergedClassName} style={style} role="dialog" aria-label={t('跳转日期')}>
       <div className="calendar-nav">
         <button
           className="nav-btn"
           onClick={handlePrev}
-          aria-label="上一月"
+          aria-label={t('上一月')}
         >
           <ChevronLeft size={16} />
         </button>
@@ -192,7 +193,7 @@ const JumpToDatePopover: React.FC<JumpToDatePopoverProps> = ({
         <button
           className="nav-btn"
           onClick={handleNext}
-          aria-label="下一月"
+          aria-label={t('下一月')}
         >
           <ChevronRight size={16} />
         </button>
@@ -202,13 +203,13 @@ const JumpToDatePopover: React.FC<JumpToDatePopoverProps> = ({
         {loadingDates && (
           <span className="status-item">
             <Loader2 size={12} className="spin" />
-            <span>日期加载中</span>
+            <span>{t('日期加载中')}</span>
           </span>
         )}
         {!loadingDates && loadingDateCounts && (
           <span className="status-item">
             <Loader2 size={12} className="spin" />
-            <span>条数加载中</span>
+            <span>{t('条数加载中')}</span>
           </span>
         )}
       </div>
@@ -248,7 +249,7 @@ const JumpToDatePopover: React.FC<JumpToDatePopoverProps> = ({
 
       {viewMode === 'month' && (
         <div className="month-grid">
-          {['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'].map((name, monthIndex) => (
+          {[t('1月'), t('2月'), t('3月'), t('4月'), t('5月'), t('6月'), t('7月'), t('8月'), t('9月'), t('10月'), t('11月'), t('12月')].map((name, monthIndex) => (
             <button
               key={name}
               className={`month-cell ${monthIndex === calendarDate.getMonth() ? 'active' : ''}`}
@@ -276,8 +277,7 @@ const JumpToDatePopover: React.FC<JumpToDatePopoverProps> = ({
               }}
               type="button"
             >
-              {year}年
-            </button>
+              {t('{year}年', { year: year })}</button>
           ))}
         </div>
       )}

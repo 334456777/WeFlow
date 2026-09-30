@@ -15,6 +15,7 @@ import {
 import { Avatar } from '../../components/Avatar'
 import type { ChatSession } from '../../types/models'
 import type { BatchVoiceTaskType } from '../../stores/batchTranscribeStore'
+import { t } from '../../i18n'
 
 export interface ChatHeaderProps {
   session: ChatSession
@@ -81,13 +82,13 @@ function ChatHeader({
 }: ChatHeaderProps) {
   const sessionName = session.displayName || session.username
   const exportTitle = isCurrentSessionExporting
-    ? '导出中'
+    ? t('导出中')
     : isPreparingExportDialog
-      ? '正在准备导出模块'
-      : '导出当前会话'
+      ? t('正在准备导出模块')
+      : t('导出当前会话')
   const batchVoiceTitle = isBatchTranscribing
-    ? `${runningBatchVoiceTaskType === 'decrypt' ? '批量语音解密' : '批量转写'}中，可在导出页任务中心查看进度`
-    : '批量语音处理'
+    ? t('{v0}中，可在导出页任务中心查看进度', { v0: runningBatchVoiceTaskType === 'decrypt' ? t('批量语音解密') : t('批量转写') })
+    : t('批量语音处理')
 
   return (
     <div className="message-header">
@@ -99,11 +100,11 @@ function ChatHeader({
       />
       <div className="header-info">
         <h3>{sessionName}</h3>
-        {isGroupChat && <div className="header-subtitle">群聊</div>}
+        {isGroupChat && <div className="header-subtitle">{t('群聊')}</div>}
       </div>
       <div className="header-actions">
         {!standaloneSessionWindow && isGroupChat && (
-          <button className="icon-btn group-analytics-btn" onClick={onGroupAnalytics} title="群聊分析">
+          <button className="icon-btn group-analytics-btn" onClick={onGroupAnalytics} title={t('群聊分析')}>
             <BarChart3 size={18} />
           </button>
         )}
@@ -111,7 +112,7 @@ function ChatHeader({
           <button
             className={`icon-btn group-members-btn ${showGroupMembersPanel ? 'active' : ''}`}
             onClick={onToggleGroupMembersPanel}
-            title="群成员"
+            title={t('群成员')}
           >
             <Users size={18} />
           </button>
@@ -131,7 +132,7 @@ function ChatHeader({
             className="icon-btn chat-sns-timeline-btn"
             onClick={onOpenSnsTimeline}
             disabled={!currentSessionId}
-            title="查看朋友圈"
+            title={t('查看朋友圈')}
           >
             <Aperture size={18} />
           </button>
@@ -151,7 +152,7 @@ function ChatHeader({
             className={`icon-btn batch-decrypt-btn${isBatchDecrypting ? ' transcribing' : ''}`}
             onClick={onBatchDecrypt}
             disabled={!currentSessionId}
-            title={isBatchDecrypting ? '批量解密中' : '批量解密图片'}
+            title={isBatchDecrypting ? t('批量解密中') : t('批量解密图片')}
           >
             {isBatchDecrypting ? <Loader2 size={18} className="spin" /> : <ImageIcon size={18} />}
           </button>
@@ -160,7 +161,7 @@ function ChatHeader({
           <button
             className={`icon-btn jump-to-time-btn ${showJumpPopover ? 'active' : ''}`}
             onClick={onToggleJumpPopover}
-            title="跳转到指定时间"
+            title={t('跳转到指定时间')}
           >
             <Calendar size={18} />
           </button>
@@ -169,7 +170,7 @@ function ChatHeader({
           className={`icon-btn in-session-search-btn ${showInSessionSearch ? 'active' : ''}`}
           onClick={onToggleInSessionSearch}
           disabled={!currentSessionId}
-          title="搜索会话消息"
+          title={t('搜索会话消息')}
         >
           <Search size={18} />
         </button>
@@ -177,7 +178,7 @@ function ChatHeader({
           className="icon-btn refresh-messages-btn"
           onClick={onRefreshMessages}
           disabled={isRefreshingMessages || isLoadingMessages}
-          title="刷新消息"
+          title={t('刷新消息')}
         >
           <RefreshCw size={18} className={isRefreshingMessages ? 'spin' : ''} />
         </button>
@@ -185,7 +186,7 @@ function ChatHeader({
           <button
             className={`icon-btn detail-btn ${showDetailPanel ? 'active' : ''}`}
             onClick={onToggleDetailPanel}
-            title="会话详情"
+            title={t('会话详情')}
           >
             <Info size={18} />
           </button>

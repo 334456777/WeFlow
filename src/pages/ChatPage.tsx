@@ -321,13 +321,13 @@ function toRenderableImageSrc(path?: string): string | undefined {
 function getChatRecordPreviewText(item: ChatRecordItem): string {
   const text = normalizeChatRecordText(item.datadesc) || normalizeChatRecordText(item.datatitle)
   if (item.datatype === 17) {
-    return normalizeChatRecordText(item.chatRecordTitle) || normalizeChatRecordText(item.datatitle) || '聊天记录'
+    return normalizeChatRecordText(item.chatRecordTitle) || normalizeChatRecordText(item.datatitle) || tr('聊天记录')
   }
-  if (item.datatype === 2 || item.datatype === 3) return '[媒体消息]'
-  if (item.datatype === 43) return '[视频]'
-  if (item.datatype === 34) return '[语音]'
-  if (item.datatype === 47) return '[表情]'
-  return text || '[媒体消息]'
+  if (item.datatype === 2 || item.datatype === 3) return tr('[媒体消息]')
+  if (item.datatype === 43) return tr('[视频]')
+  if (item.datatype === 34) return tr('[语音]')
+  if (item.datatype === 47) return tr('[表情]')
+  return text || tr('[媒体消息]')
 }
 
 function buildChatRecordPreviewItems(recordList: ChatRecordItem[], maxVisible = 3): ChatRecordItem[] {
@@ -363,7 +363,7 @@ function parseSolitaireContent(rawTitle: string): SolitaireContent {
     .map(line => line.trim())
     .filter(Boolean)
 
-  const title = lines[0] || '接龙'
+  const title = lines[0] || tr('接龙')
   const introLines: string[] = []
   const entries: SolitaireEntry[] = []
   let hasStartedEntries = false
@@ -1054,7 +1054,7 @@ async function resolveQuotedSenderDisplayName(options: {
     }
 
     if (isCurrentUserSearchIdentity(normalizedSender, options.myWxid)) {
-      const selfDisplayName = fallbackDisplayName || '我'
+      const selfDisplayName = fallbackDisplayName || tr('我')
       quotedSenderDisplayCache.set(cacheKey, {
         displayName: selfDisplayName,
         updatedAt: Date.now()
@@ -1157,6 +1157,7 @@ type LoadMessagesFn = (
 // 全局头像加载队列管理器已移至 src/utils/AvatarLoadQueue.ts
 import { avatarLoadQueue } from '../utils/AvatarLoadQueue'
 import { Avatar } from '../components/Avatar'
+import { t as tr, formatLocale } from '../i18n'
 
 // 头像组件 - 支持骨架屏加载和懒加载（优化：限制并发，使用 memo 避免不必要的重渲染）
 // 高亮搜索关键词组件
@@ -1268,11 +1269,11 @@ const SessionItem = React.memo(function SessionItem({
         </div>
         <div className="session-info">
           <div className="session-top">
-            <span className="session-name">折叠的聊天</span>
+            <span className="session-name">{tr('折叠的聊天')}</span>
             <span className="session-time">{timeText}</span>
           </div>
           <div className="session-bottom">
-            <span className="session-summary">{session.summary || '暂无消息'}</span>
+            <span className="session-summary">{session.summary || tr('暂无消息')}</span>
           </div>
         </div>
       </div>
@@ -1291,11 +1292,11 @@ const SessionItem = React.memo(function SessionItem({
         </div>
         <div className="session-info">
           <div className="session-top">
-            <span className="session-name">订阅号/服务号</span>
+            <span className="session-name">{tr('订阅号/服务号')}</span>
             <span className="session-time">{timeText}</span>
           </div>
           <div className="session-bottom">
-            <span className="session-summary">{session.summary || '查看公众号历史消息'}</span>
+            <span className="session-summary">{session.summary || tr('查看公众号历史消息')}</span>
             <div className="session-badges">
               {session.unreadCount > 0 && (
                 <span className="unread-badge">
@@ -1312,11 +1313,11 @@ const SessionItem = React.memo(function SessionItem({
   // 根据匹配字段显示不同的 summary
   const summaryContent = useMemo(() => {
     if (session.matchedField === 'wxid') {
-      return <span className="session-summary">wxid：<HighlightTextNoTruncate text={session.username} keyword={searchKeyword || ''} /></span>
+      return <span className="session-summary">wxid: <HighlightTextNoTruncate text={session.username} keyword={searchKeyword || ''} /></span>
     } else if (session.matchedField === 'alias' && session.alias) {
-      return <span className="session-summary">微信号：<HighlightTextNoTruncate text={session.alias} keyword={searchKeyword || ''} /></span>
+      return <span className="session-summary">{tr('微信号：')}<HighlightTextNoTruncate text={session.alias} keyword={searchKeyword || ''} /></span>
     }
-    return <span className="session-summary">{session.summary || '暂无消息'}</span>
+    return <span className="session-summary">{session.summary || tr('暂无消息')}</span>
   }, [session.matchedField, session.username, session.alias, session.summary, searchKeyword])
 
   return (
@@ -1896,13 +1897,13 @@ function ChatPage(props: ChatPageProps) {
       if (!requestId || requestId !== pendingExportRequestIdRef.current) return
 
       if (payload.status === 'initializing') {
-        setExportPrepareHint('正在准备导出模块（首次会稍慢，通常 1-3 秒）')
+        setExportPrepareHint(tr('正在准备导出模块（首次会稍慢，通常 1-3 秒）'))
         if (exportPrepareLongWaitTimerRef.current) {
           window.clearTimeout(exportPrepareLongWaitTimerRef.current)
         }
         exportPrepareLongWaitTimerRef.current = window.setTimeout(() => {
           if (pendingExportRequestIdRef.current !== requestId) return
-          setExportPrepareHint('仍在准备导出模块，请稍候...')
+          setExportPrepareHint(tr('仍在准备导出模块，请稍候...'))
         }, 8000)
         return
       }
@@ -1915,7 +1916,7 @@ function ChatPage(props: ChatPageProps) {
       if (payload.status === 'failed') {
         const message = (typeof payload.message === 'string' && payload.message.trim())
           ? payload.message.trim()
-          : '导出模块初始化失败，请重试'
+          : tr('导出模块初始化失败，请重试')
         clearExportPrepareState()
         window.alert(message)
       }
@@ -2205,9 +2206,9 @@ function ChatPage(props: ChatPageProps) {
     if (!normalizedSessionId) return
     const taskId = registerBackgroundTask({
       sourcePage: 'chat',
-      title: '聊天页会话详情统计',
-      detail: `准备读取 ${sessionMapRef.current.get(normalizedSessionId)?.displayName || normalizedSessionId} 的详情`,
-      progressText: '基础信息',
+      title: tr('聊天页会话详情统计'),
+      detail: tr('准备读取 {v0} 的详情', { v0: sessionMapRef.current.get(normalizedSessionId)?.displayName || normalizedSessionId }),
+      progressText: tr('基础信息'),
       cancelable: true
     })
 
@@ -2274,19 +2275,19 @@ function ChatPage(props: ChatPageProps) {
 
     try {
       updateBackgroundTask(taskId, {
-        detail: '正在读取会话基础详情',
-        progressText: '基础信息'
+        detail: tr('正在读取会话基础详情'),
+        progressText: tr('基础信息')
       })
       const result = await window.electronAPI.chat.getSessionDetailFast(normalizedSessionId)
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，当前基础查询结束后未继续补充统计'
+          detail: tr('已停止后续加载，当前基础查询结束后未继续补充统计')
         })
         return
       }
       if (requestSeq !== detailRequestSeqRef.current) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '会话已切换，旧详情任务已停止'
+          detail: tr('会话已切换，旧详情任务已停止')
         })
         return
       }
@@ -2329,8 +2330,8 @@ function ChatPage(props: ChatPageProps) {
 
     try {
       updateBackgroundTask(taskId, {
-        detail: '正在读取补充信息与导出统计',
-        progressText: '补充统计'
+        detail: tr('正在读取补充信息与导出统计'),
+        progressText: tr('补充统计')
       })
       const [extraResultSettled, statsResultSettled] = await Promise.allSettled([
         window.electronAPI.chat.getSessionDetailExtra(normalizedSessionId),
@@ -2342,13 +2343,13 @@ function ChatPage(props: ChatPageProps) {
 
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，补充统计结果未继续写入'
+          detail: tr('已停止后续加载，补充统计结果未继续写入')
         })
         return
       }
       if (requestSeq !== detailRequestSeqRef.current) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '会话已切换，旧补充统计任务已停止'
+          detail: tr('会话已切换，旧补充统计任务已停止')
         })
         return
       }
@@ -2392,8 +2393,8 @@ function ChatPage(props: ChatPageProps) {
         shouldRefreshStatsInBackground = true
       }
       finishBackgroundTask(taskId, 'completed', {
-        detail: '聊天页会话详情统计完成',
-        progressText: '已完成'
+        detail: tr('聊天页会话详情统计完成'),
+        progressText: tr('已完成')
       })
 
       if (shouldRefreshStatsInBackground) {
@@ -2449,9 +2450,9 @@ function ChatPage(props: ChatPageProps) {
     const requestSeq = detailRequestSeqRef.current
     const taskId = registerBackgroundTask({
       sourcePage: 'chat',
-      title: '聊天页关系统计补算',
-      detail: `正在补算 ${normalizedSessionId} 的共同好友与关联数据`,
-      progressText: '关系统计',
+      title: tr('聊天页关系统计补算'),
+      detail: tr('正在补算 {normalizedSessionId} 的共同好友与关联数据', { normalizedSessionId: normalizedSessionId }),
+      progressText: tr('关系统计'),
       cancelable: true
     })
     setIsLoadingRelationStats(true)
@@ -2462,13 +2463,13 @@ function ChatPage(props: ChatPageProps) {
       )
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，当前关系统计查询结束后未继续刷新'
+          detail: tr('已停止后续加载，当前关系统计查询结束后未继续刷新')
         })
         return
       }
       if (requestSeq !== detailRequestSeqRef.current) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '会话已切换，旧关系统计任务已停止'
+          detail: tr('会话已切换，旧关系统计任务已停止')
         })
         return
       }
@@ -2492,8 +2493,8 @@ function ChatPage(props: ChatPageProps) {
         void (async () => {
           try {
             updateBackgroundTask(taskId, {
-              detail: '正在刷新关系统计结果',
-              progressText: '关系统计刷新'
+              detail: tr('正在刷新关系统计结果'),
+              progressText: tr('关系统计刷新')
             })
             const freshResult = await window.electronAPI.chat.getExportSessionStats(
               [normalizedSessionId],
@@ -2501,13 +2502,13 @@ function ChatPage(props: ChatPageProps) {
             )
             if (isBackgroundTaskCancelRequested(taskId)) {
               finishBackgroundTask(taskId, 'canceled', {
-                detail: '已停止后续加载，刷新结果未继续写入'
+                detail: tr('已停止后续加载，刷新结果未继续写入')
               })
               return
             }
             if (requestSeq !== detailRequestSeqRef.current) {
               finishBackgroundTask(taskId, 'canceled', {
-                detail: '会话已切换，旧关系统计刷新任务已停止'
+                detail: tr('会话已切换，旧关系统计刷新任务已停止')
               })
               return
             }
@@ -2519,8 +2520,8 @@ function ChatPage(props: ChatPageProps) {
               }
             }
             finishBackgroundTask(taskId, 'completed', {
-              detail: '聊天页关系统计补算完成',
-              progressText: '已完成'
+              detail: tr('聊天页关系统计补算完成'),
+              progressText: tr('已完成')
             })
           } catch (error) {
             console.error('刷新会话关系统计失败:', error)
@@ -2535,8 +2536,8 @@ function ChatPage(props: ChatPageProps) {
         })()
       } else {
         finishBackgroundTask(taskId, 'completed', {
-          detail: '聊天页关系统计补算完成',
-          progressText: '已完成'
+          detail: tr('聊天页关系统计补算完成'),
+          progressText: tr('已完成')
         })
       }
     } catch (error) {
@@ -2734,7 +2735,7 @@ function ChatPage(props: ChatPageProps) {
     try {
       const timeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
         timeoutTimer = window.setTimeout(() => {
-          resolve({ success: false, error: '加载群成员超时，请稍后重试' })
+          resolve({ success: false, error: tr('加载群成员超时，请稍后重试') })
         }, timeoutMs)
       })
       return await Promise.race([
@@ -2772,7 +2773,7 @@ function ChatPage(props: ChatPageProps) {
           )
           if (requestSeq !== groupMembersRequestSeqRef.current) return
           if (!countsResult.success || !Array.isArray(countsResult.data)) {
-            setGroupMembersError('成员列表已加载，发言统计稍后再试')
+            setGroupMembersError(tr('成员列表已加载，发言统计稍后再试'))
             setGroupMembersCountStatus('failed', { onlyWhenNotReady: true })
             return
           }
@@ -2788,7 +2789,7 @@ function ChatPage(props: ChatPageProps) {
           hasInitializedGroupMembersRef.current = true
         } catch {
           if (requestSeq !== groupMembersRequestSeqRef.current) return
-          setGroupMembersError('成员列表已加载，发言统计稍后再试')
+          setGroupMembersError(tr('成员列表已加载，发言统计稍后再试'))
           setGroupMembersCountStatus('failed', { onlyWhenNotReady: true })
         } finally {
           if (requestSeq === groupMembersRequestSeqRef.current) {
@@ -2838,8 +2839,8 @@ function ChatPage(props: ChatPageProps) {
       setIsLoadingGroupMembers(true)
       setGroupMembersLoadingHint(
         hasInitializedGroupMembersRef.current
-          ? '加载群成员中...'
-          : '首次加载群成员，正在初始化索引（可能需要几秒）'
+          ? tr('加载群成员中...')
+          : tr('首次加载群成员，正在初始化索引（可能需要几秒）')
       )
     }
 
@@ -2855,7 +2856,7 @@ function ChatPage(props: ChatPageProps) {
         if (!hasCachedMembers) {
           setGroupPanelMembers([])
         }
-        setGroupMembersError(membersResult.error || (hasCachedMembers ? '刷新群成员失败，已显示缓存数据' : '加载群成员失败'))
+        setGroupMembersError(membersResult.error || (hasCachedMembers ? tr('刷新群成员失败，已显示缓存数据') : tr('加载群成员失败')))
         return
       }
 
@@ -2873,7 +2874,7 @@ function ChatPage(props: ChatPageProps) {
       if (!hasCachedMembers) {
         setGroupPanelMembers([])
       }
-      setGroupMembersError(hasCachedMembers ? '刷新群成员失败，已显示缓存数据' : String(e))
+      setGroupMembersError(hasCachedMembers ? tr('刷新群成员失败，已显示缓存数据') : String(e))
     } finally {
       if (requestSeq === groupMembersRequestSeqRef.current) {
         setIsLoadingGroupMembers(false)
@@ -2965,7 +2966,7 @@ function ChatPage(props: ChatPageProps) {
         const wxid = await wxidPromise
         if (wxid) setMyWxid(wxid as string)
       } else {
-        setConnectionError(result.error || '连接失败')
+        setConnectionError(result.error || tr('连接失败'))
       }
     } catch (e) {
       setConnectionError(String(e))
@@ -3189,11 +3190,11 @@ function ChatPage(props: ChatPageProps) {
           void enrichSessionsContactInfo(fallbackSessions)
         }
       } else if (!result.success) {
-        setConnectionError(result.error || '获取会话失败')
+        setConnectionError(result.error || tr('获取会话失败'))
       }
     } catch (e) {
       console.error('加载会话失败:', e)
-      setConnectionError('加载会话失败')
+      setConnectionError(tr('加载会话失败'))
     } finally {
       if (options?.silent) {
         setIsRefreshingSessions(false)
@@ -3210,7 +3211,7 @@ function ChatPage(props: ChatPageProps) {
     try {
       const result = await window.electronAPI.chat.markAllSessionsRead()
       if (!result.success) {
-        setConnectionError(result.error || '一键已读失败')
+        setConnectionError(result.error || tr('一键已读失败'))
         return
       }
 
@@ -3226,7 +3227,7 @@ function ChatPage(props: ChatPageProps) {
       await loadSessions({ silent: true })
     } catch (e) {
       console.error('一键已读失败:', e)
-      setConnectionError(`一键已读失败: ${String(e)}`)
+      setConnectionError(tr('一键已读失败: {v0}', { v0: String(e) }))
     } finally {
       setIsMarkingAllSessionsRead(false)
     }
@@ -3811,7 +3812,7 @@ function ChatPage(props: ChatPageProps) {
       }
     } catch (e) {
       console.error('加载消息失败:', e)
-      setConnectionError('加载消息失败')
+      setConnectionError(tr('加载消息失败'))
       setHasMoreMessages(false)
       if (offset === 0 && currentSessionRef.current === sessionId) {
         setNoMessageTable(false)
@@ -3966,13 +3967,13 @@ function ChatPage(props: ChatPageProps) {
       const senderAvatarUrl = normalizeSearchAvatarUrl(message.senderAvatarUrl)
       const nextIsSend = inferredSelfFromSender ? 1 : message.isSend
       const nextSenderDisplayName = nextIsSend === 1
-        ? (senderDisplayName || '我')
+        ? (senderDisplayName || tr('我'))
         : (
             senderDisplayName ||
             (isDirectSearchSession ? resolvedSessionDisplayName : undefined) ||
             senderUsernameFallback ||
             (isDirectSearchSession ? resolvedSessionUsernameFallback : undefined) ||
-            '未知'
+            tr('未知')
           )
       const nextSenderAvatarUrl = nextIsSend === 1
         ? (senderAvatarUrl || myAvatarUrl)
@@ -4167,14 +4168,14 @@ function ChatPage(props: ChatPageProps) {
       const currentSenderAvatarUrl = normalizeSearchAvatarUrl(message.senderAvatarUrl)
       const nextIsSend = inferredSelfFromSender ? 1 : message.isSend
       const nextSenderDisplayName = nextIsSend === 1
-        ? (currentSenderDisplayName || profileDisplayName || '我')
+        ? (currentSenderDisplayName || profileDisplayName || tr('我'))
         : (
             profileDisplayName ||
             currentSenderDisplayName ||
             (isDirectSearchSession ? resolvedSessionDisplayName : undefined) ||
             senderUsernameFallback ||
             (isDirectSearchSession ? sessionUsernameFallback : undefined) ||
-            '未知'
+            tr('未知')
           )
       const nextSenderAvatarUrl = nextIsSend === 1
         ? (currentSenderAvatarUrl || myAvatarUrl || normalizeSearchAvatarUrl(profile?.avatarUrl))
@@ -4434,7 +4435,7 @@ function ChatPage(props: ChatPageProps) {
       try {
         const res = await window.electronAPI.chat.searchMessages(keyword.trim(), sid, 50, 0)
         if (!res?.success) {
-          throw new Error(res?.error || '搜索失败')
+          throw new Error(res?.error || tr('搜索失败'))
         }
         if (gen !== inSessionSearchGenRef.current || currentSessionRef.current !== sid) return
         const messages = hydrateInSessionSearchResults(res?.messages || [], sid)
@@ -4499,7 +4500,7 @@ function ChatPage(props: ChatPageProps) {
         chunk.map(async (session) => {
           const res = await window.electronAPI.chat.searchMessages(keyword, session.username, GLOBAL_MSG_PER_SESSION_LIMIT, 0)
           if (!res?.success) {
-            throw new Error(res?.error || `搜索失败: ${session.username}`)
+            throw new Error(res?.error || tr('搜索失败: {username}', { username: session.username }))
           }
           return normalizeGlobalMsgSearchMessages(res?.messages || [], session.username)
         })
@@ -4632,7 +4633,7 @@ function ChatPage(props: ChatPageProps) {
 
         const seedResponse = await window.electronAPI.chat.searchMessages(normalizedKeyword, undefined, GLOBAL_MSG_SEED_LIMIT, 0)
         if (!seedResponse?.success) {
-          throw new Error(seedResponse?.error || '搜索失败')
+          throw new Error(seedResponse?.error || tr('搜索失败'))
         }
         ensureGlobalMsgSearchNotStale(gen)
 
@@ -4675,7 +4676,7 @@ function ChatPage(props: ChatPageProps) {
             chunk.map(async (session) => {
               const res = await window.electronAPI.chat.searchMessages(normalizedKeyword, session.username, GLOBAL_MSG_PER_SESSION_LIMIT, 0)
               if (!res?.success) {
-                throw new Error(res?.error || `搜索失败: ${session.username}`)
+                throw new Error(res?.error || tr('搜索失败: {username}', { username: session.username }))
               }
               return {
                 sessionId: session.username,
@@ -5578,10 +5579,10 @@ function ChatPage(props: ChatPageProps) {
 
     const bizEntry: ChatSession = {
       username: OFFICIAL_ACCOUNTS_VIRTUAL_ID,
-      displayName: '公众号',
+      displayName: tr('公众号'),
       summary: latestOfficial
-        ? `${latestOfficial.displayName || latestOfficial.username}: ${latestOfficial.summary || '查看公众号历史消息'}`
-        : '查看公众号历史消息',
+        ? tr('{v0}: {v1}', { v0: latestOfficial.displayName || latestOfficial.username, v1: latestOfficial.summary || tr('查看公众号历史消息') })
+        : tr('查看公众号历史消息'),
       type: 0,
       sortTimestamp: officialLatestTime,
       lastTimestamp: officialLatestTime,
@@ -5605,7 +5606,7 @@ function ChatPage(props: ChatPageProps) {
 
       const foldEntry: ChatSession = {
         username: 'placeholder_foldgroup',
-        displayName: '折叠的聊天',
+        displayName: tr('折叠的聊天'),
         summary: `${latestFolded.displayName || latestFolded.username}: ${latestFolded.summary}`,
         type: 0,
         sortTimestamp: latestFolded.sortTimestamp || latestFolded.lastTimestamp,
@@ -5696,7 +5697,7 @@ function ChatPage(props: ChatPageProps) {
   }, [sessions])
   const groupedGlobalMsgResults = useMemo(() => {
     const grouped = globalMsgResults.reduce((acc, msg) => {
-      const sessionId = (msg as any).sessionId || '未知'
+      const sessionId = (msg as any).sessionId || tr('未知')
       if (!acc[sessionId]) acc[sessionId] = []
       acc[sessionId].push(msg)
       return acc
@@ -5720,9 +5721,9 @@ function ChatPage(props: ChatPageProps) {
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
 
-    if (minutes < 1) return '刚刚'
-    if (minutes < 60) return `${minutes}分钟前`
-    if (hours < 24) return `${hours}小时前`
+    if (minutes < 1) return tr('刚刚')
+    if (minutes < 60) return tr('{minutes}分钟前', { minutes: minutes })
+    if (hours < 24) return tr('{hours}小时前', { hours: hours })
 
     // 超过24小时显示日期
     const date = new Date(msgTime)
@@ -6007,18 +6008,18 @@ function ChatPage(props: ChatPageProps) {
   }
 
   const formatDateDivider = (timestamp: number): string => {
-    if (!Number.isFinite(timestamp) || timestamp <= 0) return '未知时间'
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return tr('未知时间')
     const date = new Date(timestamp * 1000)
     const now = new Date()
     const isToday = date.toDateString() === now.toDateString()
 
-    if (isToday) return '今天'
+    if (isToday) return tr('今天')
 
     const yesterday = new Date(now)
     yesterday.setDate(yesterday.getDate() - 1)
-    if (date.toDateString() === yesterday.toDateString()) return '昨天'
+    if (date.toDateString() === yesterday.toDateString()) return tr('昨天')
 
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(formatLocale(), {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -6035,20 +6036,20 @@ function ChatPage(props: ChatPageProps) {
     if (!currentSessionId) return
     const session = sessions.find(s => s.username === currentSessionId)
     if (!session) {
-      alert('未找到当前会话')
+      alert(tr('未找到当前会话'))
       return
     }
     if (isBatchTranscribing) return
 
     const result = await window.electronAPI.chat.getAllVoiceMessages(currentSessionId)
     if (!result.success || !result.messages) {
-      alert(`获取语音消息失败: ${result.error || '未知错误'}`)
+      alert(tr('获取语音消息失败: {v0}', { v0: result.error || tr('未知错误') }))
       return
     }
 
     const voiceMessages: Message[] = result.messages
     if (voiceMessages.length === 0) {
-      alert('当前会话没有语音消息')
+      alert(tr('当前会话没有语音消息'))
       return
     }
 
@@ -6068,18 +6069,18 @@ function ChatPage(props: ChatPageProps) {
     if (!currentSessionId || isBatchDecrypting) return
     const session = sessions.find(s => s.username === currentSessionId)
     if (!session) {
-      alert('未找到当前会话')
+      alert(tr('未找到当前会话'))
       return
     }
 
     const result = await window.electronAPI.chat.getAllImageMessages(currentSessionId)
     if (!result.success || !result.images) {
-      alert(`获取图片消息失败: ${result.error || '未知错误'}`)
+      alert(tr('获取图片消息失败: {v0}', { v0: result.error || tr('未知错误') }))
       return
     }
 
     if (result.images.length === 0) {
-      alert('当前会话没有图片消息')
+      alert(tr('当前会话没有图片消息'))
       return
     }
 
@@ -6130,7 +6131,7 @@ function ChatPage(props: ChatPageProps) {
 
     const selected = batchSelectedDates
     if (selected.size === 0) {
-      alert('请至少选择一个日期')
+      alert(tr('请至少选择一个日期'))
       return
     }
 
@@ -6144,7 +6145,7 @@ function ChatPage(props: ChatPageProps) {
       selected.has(new Date(m.createTime * 1000).toISOString().slice(0, 10))
     )
     if (voiceMessages.length === 0) {
-      alert('所选日期下没有语音消息')
+      alert(tr('所选日期下没有语音消息'))
       return
     }
 
@@ -6158,7 +6159,7 @@ function ChatPage(props: ChatPageProps) {
 
     const taskType = batchVoiceTaskType
     const totalVoices = voiceMessages.length
-    const taskVerb = taskType === 'decrypt' ? '语音解密' : '语音转写'
+    const taskVerb = taskType === 'decrypt' ? tr('语音解密') : tr('语音转写')
     let successCount = 0
     let failCount = 0
     let completedCount = 0
@@ -6179,7 +6180,7 @@ function ChatPage(props: ChatPageProps) {
         if (!controlState.pauseAnnounced) {
           controlState.pauseAnnounced = true
           updateTranscribeTaskStatus(
-            `${taskVerb}任务已中断，等待继续...`,
+            tr('{taskVerb}任务已中断，等待继续...', { taskVerb: taskVerb }),
             `${completedCount} / ${totalVoices}`,
             'paused'
           )
@@ -6191,7 +6192,7 @@ function ChatPage(props: ChatPageProps) {
       if (controlState.pauseAnnounced && !controlState.cancelRequested) {
         controlState.pauseAnnounced = false
         updateTranscribeTaskStatus(
-          `继续${taskVerb}（${completedCount}/${totalVoices}）`,
+          tr('继续{taskVerb}（{completedCount}/{totalVoices}）', { taskVerb: taskVerb, completedCount: completedCount, totalVoices: totalVoices }),
           `${completedCount} / ${totalVoices}`,
           'running'
         )
@@ -6204,7 +6205,7 @@ function ChatPage(props: ChatPageProps) {
       onPause: () => {
         controlState.pauseRequested = true
         updateTranscribeTaskStatus(
-          `${taskVerb}中断请求已发出，当前处理完成后暂停...`,
+          tr('{taskVerb}中断请求已发出，当前处理完成后暂停...', { taskVerb: taskVerb }),
           `${completedCount} / ${totalVoices}`,
           'pause_requested'
         )
@@ -6218,13 +6219,13 @@ function ChatPage(props: ChatPageProps) {
         controlState.pauseRequested = false
         resolveResumeWaiters()
         updateTranscribeTaskStatus(
-          `${taskVerb}停止请求已发出，当前处理完成后结束...`,
+          tr('{taskVerb}停止请求已发出，当前处理完成后结束...', { taskVerb: taskVerb }),
           `${completedCount} / ${totalVoices}`,
           'cancel_requested'
         )
       }
     })
-    updateTranscribeTaskStatus(`正在准备${taskVerb}任务...`, `0 / ${totalVoices}`, 'running')
+    updateTranscribeTaskStatus(tr('正在准备{taskVerb}任务...', { taskVerb: taskVerb }), `0 / ${totalVoices}`, 'running')
 
     const runOne = async (msg: Message) => {
       try {
@@ -6250,17 +6251,17 @@ function ChatPage(props: ChatPageProps) {
 
     try {
       if (taskType === 'transcribe') {
-        updateTranscribeTaskStatus('正在检查转写模型...', `0 / ${totalVoices}`)
+        updateTranscribeTaskStatus(tr('正在检查转写模型...'), `0 / ${totalVoices}`)
         const modelStatus = await window.electronAPI.whisper.getModelStatus()
         if (!modelStatus?.exists) {
-          alert('SenseVoice 模型未下载，请先在设置中下载模型')
-          updateTranscribeTaskStatus('转写模型缺失，任务已停止', `0 / ${totalVoices}`)
+          alert(tr('SenseVoice 模型未下载，请先在设置中下载模型'))
+          updateTranscribeTaskStatus(tr('转写模型缺失，任务已停止'), `0 / ${totalVoices}`)
           finishTranscribe(0, totalVoices)
           return
         }
       }
 
-      updateTranscribeTaskStatus(`正在${taskVerb}（0/${totalVoices}）`, `0 / ${totalVoices}`)
+      updateTranscribeTaskStatus(tr('正在{taskVerb}（0/{totalVoices}）', { taskVerb: taskVerb, totalVoices: totalVoices }), `0 / ${totalVoices}`)
       const pool = new Set<Promise<void>>()
 
       const runOneTracked = async (msg: Message) => {
@@ -6297,7 +6298,7 @@ function ChatPage(props: ChatPageProps) {
         const remaining = Math.max(0, totalVoices - completedCount)
         finishTranscribe(successCount, failCount, {
           status: 'canceled',
-          detail: `${taskVerb}任务已中断：已完成 ${completedCount}/${totalVoices}（成功 ${successCount}，失败 ${failCount}，未处理 ${remaining}）`,
+          detail: tr('{taskVerb}任务已中断：已完成 {completedCount}/{totalVoices}（成功 {successCount}，失败 {failCount}，未处理 {remaining}）', { taskVerb: taskVerb, completedCount: completedCount, totalVoices: totalVoices, successCount: successCount, failCount: failCount, remaining: remaining }),
           progressText: `${completedCount} / ${totalVoices}`
         })
         return
@@ -6309,11 +6310,11 @@ function ChatPage(props: ChatPageProps) {
     } catch (error) {
       const remaining = Math.max(0, totalVoices - completedCount)
       failCount += remaining
-      updateTranscribeTaskStatus(`${taskVerb}过程中发生异常，正在结束任务...`, `${completedCount} / ${totalVoices}`)
+      updateTranscribeTaskStatus(tr('{taskVerb}过程中发生异常，正在结束任务...', { taskVerb: taskVerb }), `${completedCount} / ${totalVoices}`)
       finishTranscribe(successCount, failCount, {
         status: 'failed'
       })
-      alert(`批量${taskVerb}失败：${String(error)}`)
+      alert(tr('批量{taskVerb}失败：{v1}', { taskVerb: taskVerb, v1: String(error) }))
     }
   }, [sessions, currentSessionId, batchSelectedDates, batchVoiceMessages, batchVoiceTaskType, startTranscribe, updateTranscribeTaskStatus, updateProgress, finishTranscribe])
 
@@ -6336,8 +6337,8 @@ function ChatPage(props: ChatPageProps) {
     ).length
   }, [batchVoiceMessages, batchSelectedDates])
 
-  const batchVoiceTaskTitle = batchVoiceTaskType === 'decrypt' ? '批量解密语音' : '批量语音转文字'
-  const batchVoiceTaskVerb = batchVoiceTaskType === 'decrypt' ? '解密' : '转写'
+  const batchVoiceTaskTitle = batchVoiceTaskType === 'decrypt' ? tr('批量解密语音') : tr('批量语音转文字')
+  const batchVoiceTaskVerb = batchVoiceTaskType === 'decrypt' ? tr('解密') : tr('转写')
   const batchVoiceTaskMinutes = Math.ceil(
     batchSelectedMessageCount * (batchVoiceTaskType === 'decrypt' ? 0.6 : 2) / 60
   )
@@ -6358,7 +6359,7 @@ function ChatPage(props: ChatPageProps) {
 
     const selected = batchImageSelectedDates
     if (selected.size === 0) {
-      alert('请至少选择一个日期')
+      alert(tr('请至少选择一个日期'))
       return
     }
 
@@ -6366,7 +6367,7 @@ function ChatPage(props: ChatPageProps) {
       img.createTime && selected.has(new Date(img.createTime * 1000).toISOString().slice(0, 10))
     )
     if (images.length === 0) {
-      alert('所选日期下没有图片消息')
+      alert(tr('所选日期下没有图片消息'))
       return
     }
 
@@ -6400,7 +6401,7 @@ function ChatPage(props: ChatPageProps) {
         if (!controlState.pauseAnnounced) {
           controlState.pauseAnnounced = true
           updateDecryptTaskStatus(
-            '图片批量解密任务已中断，等待继续...',
+            tr('图片批量解密任务已中断，等待继续...'),
             `${completed} / ${totalImages}`,
             'paused'
           )
@@ -6412,7 +6413,7 @@ function ChatPage(props: ChatPageProps) {
       if (controlState.pauseAnnounced && !controlState.cancelRequested) {
         controlState.pauseAnnounced = false
         updateDecryptTaskStatus(
-          `继续批量解密图片（${completed}/${totalImages}）`,
+          tr('继续批量解密图片（{completed}/{totalImages}）', { completed: completed, totalImages: totalImages }),
           `${completed} / ${totalImages}`,
           'running'
         )
@@ -6425,7 +6426,7 @@ function ChatPage(props: ChatPageProps) {
       onPause: () => {
         controlState.pauseRequested = true
         updateDecryptTaskStatus(
-          '图片解密中断请求已发出，当前处理完成后暂停...',
+          tr('图片解密中断请求已发出，当前处理完成后暂停...'),
           `${completed} / ${totalImages}`,
           'pause_requested'
         )
@@ -6439,13 +6440,13 @@ function ChatPage(props: ChatPageProps) {
         controlState.pauseRequested = false
         resolveResumeWaiters()
         updateDecryptTaskStatus(
-          '图片解密停止请求已发出，当前处理完成后结束...',
+          tr('图片解密停止请求已发出，当前处理完成后结束...'),
           `${completed} / ${totalImages}`,
           'cancel_requested'
         )
       }
     })
-    updateDecryptTaskStatus('正在准备批量图片解密任务...', `0 / ${totalImages}`, 'running')
+    updateDecryptTaskStatus(tr('正在准备批量图片解密任务...'), `0 / ${totalImages}`, 'running')
 
     const hardlinkMd5Set = new Set<string>()
     for (const img of images) {
@@ -6465,13 +6466,13 @@ function ChatPage(props: ChatPageProps) {
         const remaining = Math.max(0, totalImages - completed)
         finishDecrypt(successCount, failCount, {
           status: 'canceled',
-          detail: `图片批量解密已中断：已处理 ${completed}/${totalImages}（成功 ${successCount}，未找到 ${notFoundCount}，解密失败 ${decryptFailedCount}，未处理 ${remaining}）`,
-          progressText: `成功 ${successCount} / 未找到 ${notFoundCount} / 解密失败 ${decryptFailedCount}`
+          detail: tr('图片批量解密已中断：已处理 {completed}/{totalImages}（成功 {successCount}，未找到 {notFoundCount}，解密失败 {decryptFailedCount}，未处理 {remaining}）', { completed: completed, totalImages: totalImages, successCount: successCount, notFoundCount: notFoundCount, decryptFailedCount: decryptFailedCount, remaining: remaining }),
+          progressText: tr('成功 {successCount} / 未找到 {notFoundCount} / 解密失败 {decryptFailedCount}', { successCount: successCount, notFoundCount: notFoundCount, decryptFailedCount: decryptFailedCount })
         })
         return
       }
       updateDecryptTaskStatus(
-        `正在预热图片索引（${hardlinkMd5Set.size} 个标识）...`,
+        tr('正在预热图片索引（{size} 个标识）...', { size: hardlinkMd5Set.size }),
         `0 / ${totalImages}`
       )
       try {
@@ -6480,7 +6481,7 @@ function ChatPage(props: ChatPageProps) {
         // ignore preload failures and continue decrypt
       }
     }
-    updateDecryptTaskStatus(`开始批量解密图片（0/${totalImages}）`, `0 / ${totalImages}`)
+    updateDecryptTaskStatus(tr('开始批量解密图片（0/{totalImages}）', { totalImages: totalImages }), `0 / ${totalImages}`)
 
     const concurrency = batchDecryptConcurrency
 
@@ -6535,16 +6536,16 @@ function ChatPage(props: ChatPageProps) {
       const remaining = Math.max(0, totalImages - completed)
       finishDecrypt(successCount, failCount, {
         status: 'canceled',
-        detail: `图片批量解密已中断：已处理 ${completed}/${totalImages}（成功 ${successCount}，未找到 ${notFoundCount}，解密失败 ${decryptFailedCount}，未处理 ${remaining}）`,
-        progressText: `成功 ${successCount} / 未找到 ${notFoundCount} / 解密失败 ${decryptFailedCount}`
+        detail: tr('图片批量解密已中断：已处理 {completed}/{totalImages}（成功 {successCount}，未找到 {notFoundCount}，解密失败 {decryptFailedCount}，未处理 {remaining}）', { completed: completed, totalImages: totalImages, successCount: successCount, notFoundCount: notFoundCount, decryptFailedCount: decryptFailedCount, remaining: remaining }),
+        progressText: tr('成功 {successCount} / 未找到 {notFoundCount} / 解密失败 {decryptFailedCount}', { successCount: successCount, notFoundCount: notFoundCount, decryptFailedCount: decryptFailedCount })
       })
       return
     }
 
     finishDecrypt(successCount, failCount, {
       status: decryptFailedCount > 0 ? 'failed' : 'completed',
-      detail: `图片批量解密完成：成功 ${successCount}，未找到 ${notFoundCount}，解密失败 ${decryptFailedCount}`,
-      progressText: `成功 ${successCount} / 未找到 ${notFoundCount} / 解密失败 ${decryptFailedCount}`
+      detail: tr('图片批量解密完成：成功 {successCount}，未找到 {notFoundCount}，解密失败 {decryptFailedCount}', { successCount: successCount, notFoundCount: notFoundCount, decryptFailedCount: decryptFailedCount }),
+      progressText: tr('成功 {successCount} / 未找到 {notFoundCount} / 解密失败 {decryptFailedCount}', { successCount: successCount, notFoundCount: notFoundCount, decryptFailedCount: decryptFailedCount })
     })
   }, [batchImageMessages, batchImageSelectedDates, batchDecryptConcurrency, currentSessionId, finishDecrypt, sessions, startDecrypt, updateDecryptTaskStatus, updateDecryptProgress])
 
@@ -6612,7 +6613,7 @@ function ChatPage(props: ChatPageProps) {
 
   const formatBatchDateLabel = useCallback((dateStr: string) => {
     const [y, m, d] = dateStr.split('-').map(Number)
-    return `${y}年${m}月${d}日`
+    return tr('{y}年{m}月{d}日', { y: y, m: m, d: d })
   }, [])
 
   const clampContextMenuPosition = useCallback((x: number, y: number) => {
@@ -6673,11 +6674,11 @@ function ChatPage(props: ChatPageProps) {
         const newMessages = currentMessages.filter(m => getMessageKey(m) !== targetMessageKey)
         useChatStore.getState().setMessages(newMessages)
       } else {
-        alert('删除失败: ' + (result.error || '原因未知'))
+        alert(tr('删除失败: ') + (result.error || tr('原因未知')))
       }
     } catch (e) {
       console.error(e)
-      alert('删除异常: ' + String(e))
+      alert(tr('删除异常: ') + String(e))
     }
   }
 
@@ -6740,10 +6741,10 @@ function ChatPage(props: ChatPageProps) {
           useChatStore.getState().setMessages(newMessages)
           setEditingMessage(null)
         } else {
-          alert('修改失败: ' + result.error)
+          alert(tr('修改失败: ') + result.error)
         }
       } catch (e) {
-        alert('修改异常: ' + String(e))
+        alert(tr('修改异常: ') + String(e))
       }
     }
   }, [editingMessage, currentSessionId, editMode, tempFields, handleDelete])
@@ -6753,7 +6754,7 @@ function ChatPage(props: ChatPageProps) {
 
   const handleBatchDelete = () => {
     if (selectedMessages.size === 0) {
-      alert('请先选择要删除的消息')
+      alert(tr('请先选择要删除的消息'))
       return
     }
     if (!currentSessionId) return
@@ -6810,10 +6811,10 @@ function ChatPage(props: ChatPageProps) {
       lastSelectedKeyRef.current = null
 
       if (cancelDeleteRef.current) {
-        alert(`操作已中止。已删除 ${deletedKeys.size} 条，剩余记录保留。`)
+        alert(tr('操作已中止。已删除 {size} 条，剩余记录保留。', { size: deletedKeys.size }))
       }
     } catch (e) {
-      alert('批量删除出现错误: ' + String(e))
+      alert(tr('批量删除出现错误: ') + String(e))
       console.error(e)
     } finally {
       setIsDeleting(false)
@@ -6829,10 +6830,10 @@ function ChatPage(props: ChatPageProps) {
           {isLoadingMore ? (
             <>
               <Loader2 size={14} />
-              <span>加载更多...</span>
+              <span>{tr('加载更多...')}</span>
             </>
           ) : (
-            <span>向上滚动加载更多</span>
+            <span>{tr('向上滚动加载更多')}</span>
           )}
         </div>
       ) : null
@@ -6843,10 +6844,10 @@ function ChatPage(props: ChatPageProps) {
           {isLoadingMore ? (
             <>
               <Loader2 size={14} />
-              <span>正在加载后续消息...</span>
+              <span>{tr('正在加载后续消息...')}</span>
             </>
           ) : (
-            <span>向下滚动查看更新消息</span>
+            <span>{tr('向下滚动查看更新消息')}</span>
           )}
         </div>
       ) : null
@@ -6919,20 +6920,18 @@ function ChatPage(props: ChatPageProps) {
               <Trash2 size={32} color="var(--danger)" />
             </div>
             <div className="confirm-content">
-              <h3>确认删除</h3>
+              <h3>{tr('确认删除')}</h3>
               <p>
                 {deleteConfirm.mode === 'single'
-                  ? '确定要删除这条消息吗？此操作不可恢复。'
-                  : `确定要删除选中的 ${deleteConfirm.count} 条消息吗？`}
+                  ? tr('确定要删除这条消息吗？此操作不可恢复。')
+                  : tr('确定要删除选中的 {count} 条消息吗？', { count: deleteConfirm.count })}
               </p>
             </div>
             <div className="confirm-actions">
               <button
                 className="btn-secondary"
                 onClick={() => setDeleteConfirm({ ...deleteConfirm, show: false })}
-              >
-                取消
-              </button>
+              >{tr('取消')}</button>
               <button
                 className="btn-danger-filled"
                 onClick={() => {
@@ -6943,9 +6942,7 @@ function ChatPage(props: ChatPageProps) {
                     performBatchDelete();
                   }
                 }}
-              >
-                确定删除
-              </button>
+              >{tr('确定删除')}</button>
             </div>
           </div>
         </div>
@@ -6956,7 +6953,7 @@ function ChatPage(props: ChatPageProps) {
         <div className="delete-progress-overlay">
           <div className="delete-progress-card">
             <div className="progress-header">
-              <h3>正在彻底删除消息...</h3>
+              <h3>{tr('正在彻底删除消息...')}</h3>
               <span className="count">{deleteProgress.current} / {deleteProgress.total}</span>
             </div>
             <div className="progress-bar-container">
@@ -6966,7 +6963,7 @@ function ChatPage(props: ChatPageProps) {
               />
             </div>
             <div className="progress-footer">
-              <p>请勿关闭应用或切换会话，确保所有副本都被清理。</p>
+              <p>{tr('请勿关闭应用或切换会话，确保所有副本都被清理。')}</p>
               <button
                 className="cancel-delete-btn"
                 onClick={() => {
@@ -6975,7 +6972,7 @@ function ChatPage(props: ChatPageProps) {
                 }}
                 disabled={cancelDeleteRequested}
               >
-                {cancelDeleteRequested ? '正在停止...' : '中止删除'}
+                {cancelDeleteRequested ? tr('正在停止...') : tr('中止删除')}
               </button>
             </div>
           </div>
@@ -6997,7 +6994,7 @@ function ChatPage(props: ChatPageProps) {
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder="搜索"
+                  placeholder={tr('搜索')}
                   value={searchKeyword}
                   onChange={(e) => {
                     handleSearch(e.target.value)
@@ -7017,8 +7014,8 @@ function ChatPage(props: ChatPageProps) {
                 className="icon-btn refresh-btn mark-read-btn"
                 onClick={handleMarkAllSessionsRead}
                 disabled={isMarkingAllSessionsRead || isLoadingSessions || isRefreshingSessions}
-                title="一键已读"
-                aria-label="一键已读"
+                title={tr('一键已读')}
+                aria-label={tr('一键已读')}
               >
                 {isMarkingAllSessionsRead ? <Loader2 size={16} className="spin" /> : <CheckSquare size={16} />}
               </button>
@@ -7035,9 +7032,9 @@ function ChatPage(props: ChatPageProps) {
               </button>
               <span className="folded-view-title">
                 {foldedView ? (
-                    <><Users size={14} /> 折叠的群聊</>
+                    <><Users size={14} />{' '}{tr('折叠的群聊')}</>
                 ) : bizView ? (
-                    <><Newspaper size={14} /> 订阅号/服务号</>
+                    <><Newspaper size={14} />{' '}{tr('订阅号/服务号')}</>
                 ) : null}
               </span>
             </div>
@@ -7048,7 +7045,7 @@ function ChatPage(props: ChatPageProps) {
           <div className="connection-error">
             <AlertCircle size={16} />
             <span>{connectionError}</span>
-            <button onClick={connect}>重试</button>
+            <button onClick={connect}>{tr('重试')}</button>
           </div>
         )}
 
@@ -7062,17 +7059,15 @@ function ChatPage(props: ChatPageProps) {
               </div>
             ) : globalMsgResults.length > 0 ? (
               <>
-                <div className="search-section-header">
-                  聊天记录：
-                  {globalMsgSearching && (
+                <div className="search-section-header">{tr('聊天记录：')}{globalMsgSearching && (
                     <span className="search-phase-hint">
                       {globalMsgIsBackfilling
-                        ? `补全中 ${globalMsgAuthoritativeSessionCount > 0 ? `(${globalMsgAuthoritativeSessionCount})` : ''}...`
-                        : '搜索中...'}
+                        ? tr('补全中 {count}...', { count: globalMsgAuthoritativeSessionCount > 0 ? `(${globalMsgAuthoritativeSessionCount})` : '' })
+                        : tr('搜索中...')}
                     </span>
                   )}
                   {!globalMsgSearching && globalMsgSearchPhase === 'done' && (
-                    <span className="search-phase-hint done">已完成</span>
+                    <span className="search-phase-hint done">{tr('已完成')}</span>
                   )}
                 </div>
                 <div className="search-results-list">
@@ -7109,7 +7104,7 @@ function ChatPage(props: ChatPageProps) {
                             <HighlightTextNoTruncate text={firstMsg.parsedContent || firstMsg.content || ''} keyword={globalMsgQuery} />
                           </div>
                           {count > 1 && (
-                            <div className="search-count">共 {count} 条相关聊天记录</div>
+                            <div className="search-count">{tr('共 {count} 条相关聊天记录', { count: count })}</div>
                           )}
                         </div>
                       </div>
@@ -7120,12 +7115,12 @@ function ChatPage(props: ChatPageProps) {
             ) : globalMsgSearching ? (
               <div className="search-loading">
                 <Loader2 className="spin" size={20} />
-                <span>{globalMsgSearchPhase === 'seed' ? '搜索中...' : '补全中...'}</span>
+                <span>{globalMsgSearchPhase === 'seed' ? tr('搜索中...') : tr('补全中...')}</span>
               </div>
             ) : (
               <div className="no-results">
                 <MessageSquare size={32} />
-                <p>未找到相关消息</p>
+                <p>{tr('未找到相关消息')}</p>
               </div>
             )}
           </div>
@@ -7151,7 +7146,7 @@ function ChatPage(props: ChatPageProps) {
               {Array.isArray(filteredSessions) && filteredSessions.length > 0 ? (
                 <>
                   {searchKeyword && (
-                    <div className="search-section-header">联系人：</div>
+                    <div className="search-section-header">{tr('联系人：')}</div>
                   )}
                   <div
                     className="session-list"
@@ -7182,8 +7177,8 @@ function ChatPage(props: ChatPageProps) {
               ) : (
                 <div className="empty-sessions">
                   <MessageSquare />
-                  <p>暂无会话</p>
-                  <p className="hint">检查你的数据库配置</p>
+                  <p>{tr('暂无会话')}</p>
+                  <p className="hint">{tr('检查你的数据库配置')}</p>
                 </div>
               )}
             </div>
@@ -7207,7 +7202,7 @@ function ChatPage(props: ChatPageProps) {
                   ) : (
                       <div className="empty-sessions">
                         <Users size={32} />
-                        <p>没有折叠的群聊</p>
+                        <p>{tr('没有折叠的群聊')}</p>
                       </div>
                   )
               )}
@@ -7312,7 +7307,7 @@ function ChatPage(props: ChatPageProps) {
                   <input
                     ref={inSessionSearchRef}
                     type="text"
-                    placeholder="搜索消息..."
+                    placeholder={tr('搜索消息...')}
                     value={inSessionQuery}
                     onChange={e => handleInSessionSearch(e.target.value)}
                     className="search-input"
@@ -7325,10 +7320,10 @@ function ChatPage(props: ChatPageProps) {
                 {inSessionQuery && (
                   <div className="search-result-header">
                     {inSessionSearching
-                      ? '搜索中...'
+                      ? tr('搜索中...')
                       : inSessionSearchError
-                        ? '搜索失败'
-                        : `找到 ${inSessionResults.length} 条结果`}
+                        ? tr('搜索失败')
+                        : tr('找到 {length} 条结果', { length: inSessionResults.length })}
                   </div>
                 )}
                 {inSessionQuery && !inSessionSearching && inSessionSearchError && (
@@ -7352,10 +7347,10 @@ function ChatPage(props: ChatPageProps) {
                         resolveSearchSenderUsernameFallback(currentSessionId)
                       const senderName = resolvedSenderDisplayName || (
                         msg.isSend === 1
-                          ? '我'
+                          ? tr('我')
                           : (isCurrentSessionPrivateSnsSupported
-                              ? resolvedCurrentSessionName || (inSessionEnriching ? '加载中...' : '未知')
-                              : resolvedSenderUsername || (inSessionEnriching ? '加载中...' : '未知成员'))
+                              ? resolvedCurrentSessionName || (inSessionEnriching ? tr('加载中...') : tr('未知'))
+                              : resolvedSenderUsername || (inSessionEnriching ? tr('加载中...') : tr('未知成员')))
                       )
                       const senderAvatar = resolvedSenderAvatarUrl || (
                         msg.isSend === 1
@@ -7365,7 +7360,7 @@ function ChatPage(props: ChatPageProps) {
                       const senderAvatarLoading = inSessionEnriching && !senderAvatar
                       const previewText = (msg.parsedContent || msg.content || '').slice(0, 80)
                       const displayTime = msg.createTime
-                        ? new Date(msg.createTime * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                        ? new Date(msg.createTime * 1000).toLocaleString(formatLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
                         : ''
                       const resultKey = getMessageKey(msg)
 
@@ -7387,7 +7382,7 @@ function ChatPage(props: ChatPageProps) {
                 {inSessionQuery && !inSessionSearching && !inSessionSearchError && inSessionResults.length === 0 && (
                   <div className="no-results">
                     <MessageSquare size={32} />
-                    <p>未找到相关消息</p>
+                    <p>{tr('未找到相关消息')}</p>
                   </div>
                 )}
               </div>
@@ -7397,14 +7392,14 @@ function ChatPage(props: ChatPageProps) {
               {standaloneSessionWindow && standaloneLoadStage !== 'ready' && (
                 <div className="standalone-phase-overlay" role="status" aria-live="polite">
                   <Loader2 size={22} className="spin" />
-                  <span>{standaloneLoadStage === 'connecting' ? '正在建立连接...' : '正在加载最近消息...'}</span>
+                  <span>{standaloneLoadStage === 'connecting' ? tr('正在建立连接...') : tr('正在加载最近消息...')}</span>
                   {connectionError && <small>{connectionError}</small>}
                 </div>
               )}
               {isLoadingMessages && (!hasInitialMessages || isSessionSwitching) && (
                 <div className="loading-messages loading-overlay">
                   <Loader2 size={24} />
-                  <span>{isSessionSwitching ? '切换会话中...' : '加载消息中...'}</span>
+                  <span>{isSessionSwitching ? tr('切换会话中...') : tr('加载消息中...')}</span>
                 </div>
               )}
               <div
@@ -7416,7 +7411,7 @@ function ChatPage(props: ChatPageProps) {
                 {!isLoadingMessages && messages.length === 0 && !hasMoreMessages ? (
                   <div className="empty-chat-inline">
                     <MessageSquare size={32} />
-                    <span>该联系人没有聊天记录</span>
+                    <span>{tr('该联系人没有聊天记录')}</span>
                   </div>
                 ) : (
                   <Virtuoso
@@ -7443,7 +7438,7 @@ function ChatPage(props: ChatPageProps) {
                 {/* 回到底部按钮 */}
                 <div className={`scroll-to-bottom ${showScrollToBottom ? 'show' : ''}`} onClick={scrollToBottom}>
                   <ChevronDown size={16} />
-                  <span>回到底部</span>
+                  <span>{tr('回到底部')}</span>
                 </div>
               </div>
 
@@ -7451,21 +7446,21 @@ function ChatPage(props: ChatPageProps) {
               {showGroupMembersPanel && isCurrentSessionGroup && (
                 <div className="detail-panel group-members-panel">
                   <div className="detail-header">
-                    <h4>群成员</h4>
+                    <h4>{tr('群成员')}</h4>
                     <button className="close-btn" onClick={() => setShowGroupMembersPanel(false)}>
                       <X size={16} />
                     </button>
                   </div>
 
                   <div className="group-members-toolbar">
-                    <span className="group-members-count">共 {groupPanelMembers.length} 人</span>
+                    <span className="group-members-count">{tr('共 {length} 人', { length: groupPanelMembers.length })}</span>
                     <div className="group-members-search">
                       <Search size={14} />
                       <input
                         type="text"
                         value={groupMemberSearchKeyword}
                         onChange={(event) => setGroupMemberSearchKeyword(event.target.value)}
-                        placeholder="搜索成员"
+                        placeholder={tr('搜索成员')}
                       />
                     </div>
                   </div>
@@ -7473,7 +7468,7 @@ function ChatPage(props: ChatPageProps) {
                   {isRefreshingGroupMembers && (
                     <div className="group-members-status" role="status" aria-live="polite">
                       <Loader2 size={14} className="spin" />
-                      <span>正在统计成员发言数...</span>
+                      <span>{tr('正在统计成员发言数...')}</span>
                     </div>
                   )}
                   {groupMembersError && groupPanelMembers.length > 0 && (
@@ -7485,12 +7480,12 @@ function ChatPage(props: ChatPageProps) {
                   {isLoadingGroupMembers ? (
                     <div className="detail-loading">
                       <Loader2 size={20} className="spin" />
-                      <span>{groupMembersLoadingHint || '加载群成员中...'}</span>
+                      <span>{groupMembersLoadingHint || tr('加载群成员中...')}</span>
                     </div>
                   ) : groupMembersError && groupPanelMembers.length === 0 ? (
                     <div className="detail-empty">{groupMembersError}</div>
                   ) : filteredGroupPanelMembers.length === 0 ? (
-                    <div className="detail-empty">{groupMemberSearchKeyword.trim() ? '暂无匹配成员' : '暂无群成员数据'}</div>
+                    <div className="detail-empty">{groupMemberSearchKeyword.trim() ? tr('暂无匹配成员') : tr('暂无群成员数据')}</div>
                   ) : (
                     <div className="group-members-list">
                       {filteredGroupPanelMembers.map((member) => (
@@ -7509,14 +7504,10 @@ function ChatPage(props: ChatPageProps) {
                                 </span>
                                 <div className="group-member-badges">
                                   {member.isOwner && (
-                                    <span className="member-flag owner" title="群主">
-                                      群主
-                                    </span>
+                                    <span className="member-flag owner" title={tr('群主')}>{tr('群主')}</span>
                                   )}
                                   {member.isFriend && (
-                                    <span className="member-flag friend" title="好友">
-                                      好友
-                                    </span>
+                                    <span className="member-flag friend" title={tr('好友')}>{tr('好友')}</span>
                                   )}
                                 </div>
                               </div>
@@ -7527,10 +7518,10 @@ function ChatPage(props: ChatPageProps) {
                           </div>
                           <span className={`group-member-count ${member.messageCountStatus}`}>
                             {member.messageCountStatus === 'loading'
-                              ? '统计中'
+                              ? tr('统计中')
                               : member.messageCountStatus === 'failed'
-                                ? '统计失败'
-                                : `${member.messageCount.toLocaleString()} 条`}
+                                ? tr('统计失败')
+                                : tr('{v0} 条', { v0: member.messageCount.toLocaleString() })}
                           </span>
                         </div>
                       ))}
@@ -7545,7 +7536,7 @@ function ChatPage(props: ChatPageProps) {
                   {isLoadingDetail && !sessionDetail ? (
                     <div className="detail-loading">
                       <Loader2 size={20} className="spin" />
-                      <span>加载中...</span>
+                      <span>{tr('加载中...')}</span>
                     </div>
                   ) : sessionDetail ? (
                     <div className="detail-content">
@@ -7564,7 +7555,7 @@ function ChatPage(props: ChatPageProps) {
                             {sessionDetail.alias || sessionDetail.wxid}
                           </span>
                         </div>
-                        <button className="detail-overview-close-btn" onClick={() => setShowDetailPanel(false)} title="关闭详情">
+                        <button className="detail-overview-close-btn" onClick={() => setShowDetailPanel(false)} title={tr('关闭详情')}>
                           <X size={16} />
                         </button>
                       </div>
@@ -7572,35 +7563,35 @@ function ChatPage(props: ChatPageProps) {
                       <div className="detail-section detail-basic-section">
                         <div className="detail-item">
                           <Hash size={14} />
-                          <span className="label">微信ID</span>
+                          <span className="label">{tr('微信ID')}</span>
                           <span className="value">{sessionDetail.wxid}</span>
-                          <button className="copy-btn" title="复制" onClick={() => handleCopyField(sessionDetail.wxid, 'wxid')}>
+                          <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(sessionDetail.wxid, 'wxid')}>
                             {copiedField === 'wxid' ? <Check size={12} /> : <Copy size={12} />}
                           </button>
                         </div>
                         {sessionDetail.remark && (
                           <div className="detail-item">
-                            <span className="label">备注</span>
+                            <span className="label">{tr('备注')}</span>
                             <span className="value">{sessionDetail.remark}</span>
-                            <button className="copy-btn" title="复制" onClick={() => handleCopyField(sessionDetail.remark!, 'remark')}>
+                            <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(sessionDetail.remark!, 'remark')}>
                               {copiedField === 'remark' ? <Check size={12} /> : <Copy size={12} />}
                             </button>
                           </div>
                         )}
                         {sessionDetail.nickName && (
                           <div className="detail-item">
-                            <span className="label">昵称</span>
+                            <span className="label">{tr('昵称')}</span>
                             <span className="value">{sessionDetail.nickName}</span>
-                            <button className="copy-btn" title="复制" onClick={() => handleCopyField(sessionDetail.nickName!, 'nickName')}>
+                            <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(sessionDetail.nickName!, 'nickName')}>
                               {copiedField === 'nickName' ? <Check size={12} /> : <Copy size={12} />}
                             </button>
                           </div>
                         )}
                         {sessionDetail.alias && (
                           <div className="detail-item">
-                            <span className="label">微信号</span>
+                            <span className="label">{tr('微信号')}</span>
                             <span className="value">{sessionDetail.alias}</span>
-                            <button className="copy-btn" title="复制" onClick={() => handleCopyField(sessionDetail.alias!, 'alias')}>
+                            <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(sessionDetail.alias!, 'alias')}>
                               {copiedField === 'alias' ? <Check size={12} /> : <Copy size={12} />}
                             </button>
                           </div>
@@ -7610,107 +7601,107 @@ function ChatPage(props: ChatPageProps) {
                       <div className="detail-section detail-stats-section">
                         <div className="section-title">
                           <MessageSquare size={14} />
-                          <span>消息统计</span>
+                          <span>{tr('消息统计')}</span>
                         </div>
                         <div className="detail-stats-meta">
                           {isRefreshingDetailStats
-                            ? '统计刷新中...'
+                            ? tr('统计刷新中...')
                             : sessionDetail.statsUpdatedAt
-                              ? `${sessionDetail.statsStale ? '缓存于' : '更新于'} ${formatYmdHmDateTime(sessionDetail.statsUpdatedAt)}${sessionDetail.statsStale ? '（将后台刷新）' : ''}`
-                              : (isLoadingDetailExtra ? '统计加载中...' : '暂无统计缓存')}
+                              ? tr('{v0} {v1}{v2}', { v0: sessionDetail.statsStale ? tr('缓存于') : tr('更新于'), v1: formatYmdHmDateTime(sessionDetail.statsUpdatedAt), v2: sessionDetail.statsStale ? tr('（将后台刷新）') : '' })
+                              : (isLoadingDetailExtra ? tr('统计加载中...') : tr('暂无统计缓存'))}
                         </div>
                         <div className="detail-item">
-                          <span className="label">消息总数</span>
+                          <span className="label">{tr('消息总数')}</span>
                           <span className="value highlight">
                             {Number.isFinite(sessionDetail.messageCount)
                               ? sessionDetail.messageCount.toLocaleString()
-                              : ((isLoadingDetail || isLoadingDetailExtra) ? '统计中...' : '—')}
+                              : ((isLoadingDetail || isLoadingDetailExtra) ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">语音</span>
+                          <span className="label">{tr('语音')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.voiceMessages)
                               ? (sessionDetail.voiceMessages as number).toLocaleString()
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">图片</span>
+                          <span className="label">{tr('图片')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.imageMessages)
                               ? (sessionDetail.imageMessages as number).toLocaleString()
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">视频</span>
+                          <span className="label">{tr('视频')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.videoMessages)
                               ? (sessionDetail.videoMessages as number).toLocaleString()
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">表情包</span>
+                          <span className="label">{tr('表情包')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.emojiMessages)
                               ? (sessionDetail.emojiMessages as number).toLocaleString()
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">转账消息数</span>
+                          <span className="label">{tr('转账消息数')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.transferMessages)
                               ? (sessionDetail.transferMessages as number).toLocaleString()
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">红包消息数</span>
+                          <span className="label">{tr('红包消息数')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.redPacketMessages)
                               ? (sessionDetail.redPacketMessages as number).toLocaleString()
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">通话消息数</span>
+                          <span className="label">{tr('通话消息数')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.callMessages)
                               ? (sessionDetail.callMessages as number).toLocaleString()
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         {sessionDetail.wxid.includes('@chatroom') ? (
                           <>
                             <div className="detail-item">
-                              <span className="label">我发的消息数</span>
+                              <span className="label">{tr('我发的消息数')}</span>
                               <span className="value">
                                 {Number.isFinite(sessionDetail.groupMyMessages)
                                   ? (sessionDetail.groupMyMessages as number).toLocaleString()
-                                  : (isLoadingDetailExtra ? '统计中...' : '—')}
+                                  : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                               </span>
                             </div>
                             <div className="detail-item">
-                              <span className="label">群人数</span>
+                              <span className="label">{tr('群人数')}</span>
                               <span className="value">
                                 {Number.isFinite(sessionDetail.groupMemberCount)
                                   ? (sessionDetail.groupMemberCount as number).toLocaleString()
-                                  : (isLoadingDetailExtra ? '统计中...' : '—')}
+                                  : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                               </span>
                             </div>
                             <div className="detail-item">
-                              <span className="label">群发言人数</span>
+                              <span className="label">{tr('群发言人数')}</span>
                               <span className="value">
                                 {Number.isFinite(sessionDetail.groupActiveSpeakers)
                                   ? (sessionDetail.groupActiveSpeakers as number).toLocaleString()
-                                  : (isLoadingDetailExtra ? '统计中...' : '—')}
+                                  : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                               </span>
                             </div>
                             <div className="detail-item">
-                              <span className="label">群共同好友数</span>
+                              <span className="label">{tr('群共同好友数')}</span>
                               <span className="value">
                                 {sessionDetail.relationStatsLoaded
                                   ? (Number.isFinite(sessionDetail.groupMutualFriends)
@@ -7722,7 +7713,7 @@ function ChatPage(props: ChatPageProps) {
                                       onClick={() => { void loadRelationStats() }}
                                       disabled={isLoadingRelationStats || isLoadingDetailExtra}
                                     >
-                                      {isLoadingRelationStats ? '加载中...' : '点击加载'}
+                                      {isLoadingRelationStats ? tr('加载中...') : tr('点击加载')}
                                     </button>
                                   )}
                               </span>
@@ -7730,7 +7721,7 @@ function ChatPage(props: ChatPageProps) {
                           </>
                         ) : (
                           <div className="detail-item">
-                            <span className="label">共同群聊数</span>
+                            <span className="label">{tr('共同群聊数')}</span>
                             <span className="value">
                               {sessionDetail.relationStatsLoaded
                                 ? (Number.isFinite(sessionDetail.privateMutualGroups)
@@ -7742,7 +7733,7 @@ function ChatPage(props: ChatPageProps) {
                                     onClick={() => { void loadRelationStats() }}
                                     disabled={isLoadingRelationStats || isLoadingDetailExtra}
                                   >
-                                    {isLoadingRelationStats ? '加载中...' : '点击加载'}
+                                    {isLoadingRelationStats ? tr('加载中...') : tr('点击加载')}
                                   </button>
                                 )}
                             </span>
@@ -7750,20 +7741,20 @@ function ChatPage(props: ChatPageProps) {
                         )}
                         <div className="detail-item">
                           <Calendar size={14} />
-                          <span className="label">首条消息</span>
+                          <span className="label">{tr('首条消息')}</span>
                           <span className="value">
                             {sessionDetail.firstMessageTime
                               ? formatYmdDateFromSeconds(sessionDetail.firstMessageTime)
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
                           <Calendar size={14} />
-                          <span className="label">最新消息</span>
+                          <span className="label">{tr('最新消息')}</span>
                           <span className="value">
                             {sessionDetail.latestMessageTime
                               ? formatYmdDateFromSeconds(sessionDetail.latestMessageTime)
-                              : (isLoadingDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingDetailExtra ? tr('统计中...') : '—')}
                           </span>
                         </div>
                       </div>
@@ -7771,12 +7762,12 @@ function ChatPage(props: ChatPageProps) {
                       <div className="detail-section detail-db-section">
                         <div className="section-title">
                           <Database size={14} />
-                          <span>数据库分布</span>
+                          <span>{tr('数据库分布')}</span>
                         </div>
                         {Array.isArray(sessionDetail.messageTables) && sessionDetail.messageTables.length > 0 ? (
                           <>
                             <div className="table-name-summary">
-                              <span className="table-name-label">表名</span>
+                              <span className="table-name-label">{tr('表名')}</span>
                               <span className="table-name-value">
                                 {(() => {
                                   const tableNames = Array.from(new Set(
@@ -7792,20 +7783,20 @@ function ChatPage(props: ChatPageProps) {
                               {sessionDetail.messageTables.map((t, i) => (
                                 <div key={`${t.dbName}-${t.tableName}-${i}`} className="table-item">
                                   <span className="db-name">{t.dbName || '—'}</span>
-                                  <span className="table-count">{t.count.toLocaleString()} 条</span>
+                                  <span className="table-count">{tr('{v0} 条', { v0: t.count.toLocaleString() })}</span>
                                 </div>
                               ))}
                             </div>
                           </>
                         ) : (
                           <div className="detail-table-placeholder">
-                            {isLoadingDetailExtra ? '统计中...' : '暂无统计数据'}
+                            {isLoadingDetailExtra ? tr('统计中...') : tr('暂无统计数据')}
                           </div>
                         )}
                       </div>
                     </div>
                   ) : (
-                    <div className="detail-empty">暂无详情</div>
+                    <div className="detail-empty">{tr('暂无详情')}</div>
                   )}
                 </div>
               )}
@@ -7814,7 +7805,7 @@ function ChatPage(props: ChatPageProps) {
         ) : (
           <div className="empty-chat">
             <MessageSquare />
-            <p>{standaloneSessionWindow ? '会话加载中或暂无会话记录' : '选择一个会话开始查看聊天记录'}</p>
+            <p>{standaloneSessionWindow ? tr('会话加载中或暂无会话记录') : tr('选择一个会话开始查看聊天记录')}</p>
             {standaloneSessionWindow && connectionError && <p className="hint">{connectionError}</p>}
           </div>
         )}
@@ -7855,28 +7846,24 @@ function ChatPage(props: ChatPageProps) {
               <h3>{batchVoiceTaskTitle}</h3>
             </div>
             <div className="batch-modal-body">
-              <p>先选择任务类型，再选择日期（仅显示有语音的日期），然后开始处理。</p>
-              <div className="batch-task-switch" role="tablist" aria-label="语音批量任务类型">
+              <p>{tr('先选择任务类型，再选择日期（仅显示有语音的日期），然后开始处理。')}</p>
+              <div className="batch-task-switch" role="tablist" aria-label={tr('语音批量任务类型')}>
                 <button
                   type="button"
                   className={`batch-task-btn${batchVoiceTaskType === 'decrypt' ? ' active' : ''}`}
                   onClick={() => setBatchVoiceTaskType('decrypt')}
-                >
-                  批量解密语音
-                </button>
+                >{tr('批量解密语音')}</button>
                 <button
                   type="button"
                   className={`batch-task-btn${batchVoiceTaskType === 'transcribe' ? ' active' : ''}`}
                   onClick={() => setBatchVoiceTaskType('transcribe')}
-                >
-                  批量转文字
-                </button>
+                >{tr('批量转文字')}</button>
               </div>
               {batchVoiceDates.length > 0 && (
                 <div className="batch-dates-list-wrap">
                   <div className="batch-dates-actions">
-                    <button type="button" className="batch-dates-btn" onClick={selectAllBatchDates}>全选</button>
-                    <button type="button" className="batch-dates-btn" onClick={clearAllBatchDates}>取消全选</button>
+                    <button type="button" className="batch-dates-btn" onClick={selectAllBatchDates}>{tr('全选')}</button>
+                    <button type="button" className="batch-dates-btn" onClick={clearAllBatchDates}>{tr('取消全选')}</button>
                   </div>
                   <ul className="batch-dates-list">
                     {batchVoiceDates.map(dateStr => {
@@ -7891,7 +7878,7 @@ function ChatPage(props: ChatPageProps) {
                               onChange={() => toggleBatchDate(dateStr)}
                             />
                             <span className="batch-date-label">{formatBatchDateLabel(dateStr)}</span>
-                            <span className="batch-date-count">{count} 条语音</span>
+                            <span className="batch-date-count">{tr('{count} 条语音', { count: count })}</span>
                           </label>
                         </li>
                       )
@@ -7901,30 +7888,27 @@ function ChatPage(props: ChatPageProps) {
               )}
               <div className="batch-info">
                 <div className="info-item">
-                  <span className="label">已选:</span>
-                  <span className="value">{batchSelectedDates.size} 天有语音，共 {batchSelectedMessageCount} 条语音</span>
+                  <span className="label">{tr('已选:')}</span>
+                  <span className="value">{tr('{size} 天有语音，共 {batchSelectedMessageCount} 条语音', { size: batchSelectedDates.size, batchSelectedMessageCount: batchSelectedMessageCount })}</span>
                 </div>
                 <div className="info-item">
-                  <span className="label">预计耗时:</span>
-                  <span className="value">约 {batchVoiceTaskMinutes} 分钟</span>
+                  <span className="label">{tr('预计耗时:')}</span>
+                  <span className="value">{tr('约 {batchVoiceTaskMinutes} 分钟', { batchVoiceTaskMinutes: batchVoiceTaskMinutes })}</span>
                 </div>
               </div>
               <div className="batch-warning">
                 <AlertCircle size={16} />
                 <span>
                   {batchVoiceTaskType === 'decrypt'
-                    ? '批量解密会预先缓存语音数据，之后播放和转写会更快。解密过程中可以继续使用其他功能，进度会写入导出页任务中心。'
-                    : '批量转写可能需要较长时间，转写过程中可以继续使用其他功能。已转写过的语音会自动跳过，进度会写入导出页任务中心。'}
+                    ? tr('批量解密会预先缓存语音数据，之后播放和转写会更快。解密过程中可以继续使用其他功能，进度会写入导出页任务中心。')
+                    : tr('批量转写可能需要较长时间，转写过程中可以继续使用其他功能。已转写过的语音会自动跳过，进度会写入导出页任务中心。')}
                 </span>
               </div>
             </div>
             <div className="batch-modal-footer">
-              <button className="btn-secondary" onClick={() => setShowBatchConfirm(false)}>
-                取消
-              </button>
+              <button className="btn-secondary" onClick={() => setShowBatchConfirm(false)}>{tr('取消')}</button>
               <button className="btn-primary batch-transcribe-start-btn" onClick={confirmBatchTranscribe}>
-                <Mic size={16} />
-                开始{batchVoiceTaskVerb}
+                <Mic size={16} />{tr('开始{batchVoiceTaskVerb}', { batchVoiceTaskVerb: batchVoiceTaskVerb })}
               </button>
             </div>
           </div>
@@ -7937,15 +7921,15 @@ function ChatPage(props: ChatPageProps) {
           <div className="batch-modal-content batch-confirm-modal" onClick={(e) => e.stopPropagation()}>
             <div className="batch-modal-header">
               <ImageIcon size={20} />
-              <h3>批量解密图片</h3>
+              <h3>{tr('批量解密图片')}</h3>
             </div>
             <div className="batch-modal-body">
-              <p>选择要解密的日期（仅显示有图片的日期），然后开始解密。</p>
+              <p>{tr('选择要解密的日期（仅显示有图片的日期），然后开始解密。')}</p>
               {batchImageDates.length > 0 && (
                 <div className="batch-dates-list-wrap">
                   <div className="batch-dates-actions">
-                    <button type="button" className="batch-dates-btn" onClick={selectAllBatchImageDates}>全选</button>
-                    <button type="button" className="batch-dates-btn" onClick={clearAllBatchImageDates}>取消全选</button>
+                    <button type="button" className="batch-dates-btn" onClick={selectAllBatchImageDates}>{tr('全选')}</button>
+                    <button type="button" className="batch-dates-btn" onClick={clearAllBatchImageDates}>{tr('取消全选')}</button>
                   </div>
                   <ul className="batch-dates-list">
                     {batchImageDates.map(dateStr => {
@@ -7960,7 +7944,7 @@ function ChatPage(props: ChatPageProps) {
                               onChange={() => toggleBatchImageDate(dateStr)}
                             />
                             <span className="batch-date-label">{formatBatchDateLabel(dateStr)}</span>
-                            <span className="batch-date-count">{count} 张图片</span>
+                            <span className="batch-date-count">{tr('{count} 张图片', { count: count })}</span>
                           </label>
                         </li>
                       )
@@ -7970,11 +7954,11 @@ function ChatPage(props: ChatPageProps) {
               )}
               <div className="batch-info">
                 <div className="info-item">
-                  <span className="label">已选:</span>
-                  <span className="value">{batchImageSelectedDates.size} 天，共 {batchImageSelectedCount} 张图片</span>
+                  <span className="label">{tr('已选:')}</span>
+                  <span className="value">{tr('{size} 天，共 {batchImageSelectedCount} 张图片', { size: batchImageSelectedDates.size, batchImageSelectedCount: batchImageSelectedCount })}</span>
                 </div>
                 <div className="info-item">
-                  <span className="label">并发数:</span>
+                  <span className="label">{tr('并发数:')}</span>
                   <div className="batch-concurrency-field">
                     <button
                       type="button"
@@ -8009,17 +7993,13 @@ function ChatPage(props: ChatPageProps) {
               </div>
               <div className="batch-warning">
                 <AlertCircle size={16} />
-                <span>批量解密可能需要较长时间，进度会自动写入导出页任务中心（含准备阶段状态）。</span>
+                <span>{tr('批量解密可能需要较长时间，进度会自动写入导出页任务中心（含准备阶段状态）。')}</span>
               </div>
             </div>
             <div className="batch-modal-footer">
-              <button className="btn-secondary" onClick={() => setShowBatchDecryptConfirm(false)}>
-                取消
-              </button>
+              <button className="btn-secondary" onClick={() => setShowBatchDecryptConfirm(false)}>{tr('取消')}</button>
               <button className="btn-primary" onClick={confirmBatchDecrypt}>
-                <ImageIcon size={16} />
-                开始解密
-              </button>
+                <ImageIcon size={16} />{tr('开始解密')}</button>
             </div>
           </div>
         </div>,
@@ -8043,7 +8023,7 @@ function ChatPage(props: ChatPageProps) {
           >
             <div className="menu-item" onClick={handleEditMessage}>
               <Edit2 size={16} />
-              <span>{contextMenu.message.localType === 1 ? '修改消息' : '编辑源码'}</span>
+              <span>{contextMenu.message.localType === 1 ? tr('修改消息') : tr('编辑源码')}</span>
             </div>
             <div className="menu-item" onClick={() => {
               setIsSelectionMode(true)
@@ -8052,15 +8032,15 @@ function ChatPage(props: ChatPageProps) {
               setContextMenu(null)
             }}>
               <CheckSquare size={16} />
-              <span>多选</span>
+              <span>{tr('多选')}</span>
             </div>
             <div className="menu-item delete" onClick={(e) => { e.stopPropagation(); handleDelete() }}>
               <Trash2 size={16} />
-              <span>删除消息</span>
+              <span>{tr('删除消息')}</span>
             </div>
             <div className="menu-item" onClick={() => { setShowMessageInfo(contextMenu.message); setContextMenu(null) }}>
               <Info size={16} />
-              <span>查看消息信息</span>
+              <span>{tr('查看消息信息')}</span>
             </div>
           </div>
         </>,
@@ -8072,7 +8052,7 @@ function ChatPage(props: ChatPageProps) {
         <div className="message-info-overlay" onClick={() => setShowMessageInfo(null)}>
           <div className="message-info-modal" onClick={(e) => e.stopPropagation()}>
             <div className="detail-header">
-              <h4>消息详情</h4>
+              <h4>{tr('消息详情')}</h4>
               <button className="close-btn" onClick={() => setShowMessageInfo(null)}>
                 <X size={16} />
               </button>
@@ -8083,7 +8063,7 @@ function ChatPage(props: ChatPageProps) {
                   <Hash size={14} />
                   <span className="label">Local ID</span>
                   <span className="value">{showMessageInfo.localId}</span>
-                  <button className="copy-btn" title="复制" onClick={() => handleCopyField(String(showMessageInfo.localId), 'msgLocalId')}>
+                  <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(String(showMessageInfo.localId), 'msgLocalId')}>
                     {copiedField === 'msgLocalId' ? <Check size={12} /> : <Copy size={12} />}
                   </button>
                 </div>
@@ -8093,26 +8073,26 @@ function ChatPage(props: ChatPageProps) {
                   <span className="value">{showMessageInfo.serverId}</span>
                 </div>
                 <div className="detail-item">
-                  <span className="label">消息类型</span>
+                  <span className="label">{tr('消息类型')}</span>
                   <span className="value highlight">{showMessageInfo.localType}</span>
                 </div>
                 <div className="detail-item">
-                  <span className="label">发送者</span>
+                  <span className="label">{tr('发送者')}</span>
                   <span className="value">{showMessageInfo.senderUsername || '-'}</span>
                   {showMessageInfo.senderUsername && (
-                    <button className="copy-btn" title="复制" onClick={() => handleCopyField(showMessageInfo.senderUsername!, 'msgSender')}>
+                    <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(showMessageInfo.senderUsername!, 'msgSender')}>
                       {copiedField === 'msgSender' ? <Check size={12} /> : <Copy size={12} />}
                     </button>
                   )}
                 </div>
                 <div className="detail-item">
                   <Calendar size={14} />
-                  <span className="label">创建时间</span>
+                  <span className="label">{tr('创建时间')}</span>
                   <span className="value">{new Date(showMessageInfo.createTime * 1000).toLocaleString()}</span>
                 </div>
                 <div className="detail-item">
-                  <span className="label">发送状态</span>
-                  <span className="value">{showMessageInfo.isSend === 1 ? '发送' : '接收'}</span>
+                  <span className="label">{tr('发送状态')}</span>
+                  <span className="value">{showMessageInfo.isSend === 1 ? tr('发送') : tr('接收')}</span>
                 </div>
               </div>
 
@@ -8120,20 +8100,20 @@ function ChatPage(props: ChatPageProps) {
                 <div className="detail-section">
                   <div className="section-title">
                     <ImageIcon size={14} />
-                    <span>媒体信息</span>
+                    <span>{tr('媒体信息')}</span>
                   </div>
                   {showMessageInfo.imageMd5 && (
                     <div className="detail-item">
                       <span className="label">Image MD5</span>
                       <span className="value mono">{showMessageInfo.imageMd5}</span>
-                      <button className="copy-btn" title="复制" onClick={() => handleCopyField(showMessageInfo.imageMd5!, 'imgMd5')}>
+                      <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(showMessageInfo.imageMd5!, 'imgMd5')}>
                         {copiedField === 'imgMd5' ? <Check size={12} /> : <Copy size={12} />}
                       </button>
                     </div>
                   )}
                   {showMessageInfo.imageDatName && (
                     <div className="detail-item">
-                      <span className="label">DAT 文件</span>
+                      <span className="label">{tr('DAT 文件')}</span>
                       <span className="value mono">{showMessageInfo.imageDatName}</span>
                     </div>
                   )}
@@ -8141,7 +8121,7 @@ function ChatPage(props: ChatPageProps) {
                     <div className="detail-item">
                       <span className="label">Video MD5</span>
                       <span className="value mono">{showMessageInfo.videoMd5}</span>
-                      <button className="copy-btn" title="复制" onClick={() => handleCopyField(showMessageInfo.videoMd5!, 'vidMd5')}>
+                      <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(showMessageInfo.videoMd5!, 'vidMd5')}>
                         {copiedField === 'vidMd5' ? <Check size={12} /> : <Copy size={12} />}
                       </button>
                     </div>
@@ -8149,8 +8129,8 @@ function ChatPage(props: ChatPageProps) {
                   {showMessageInfo.voiceDurationSeconds != null && (
                     <div className="detail-item">
                       <Mic size={14} />
-                      <span className="label">语音时长</span>
-                      <span className="value">{showMessageInfo.voiceDurationSeconds}秒</span>
+                      <span className="label">{tr('语音时长')}</span>
+                      <span className="value">{tr('{voiceDurationSeconds}秒', { voiceDurationSeconds: showMessageInfo.voiceDurationSeconds })}</span>
                     </div>
                   )}
                 </div>
@@ -8159,7 +8139,7 @@ function ChatPage(props: ChatPageProps) {
               {(showMessageInfo.emojiMd5 || showMessageInfo.emojiCdnUrl) && (
                 <div className="detail-section">
                   <div className="section-title">
-                    <span>表情包信息</span>
+                    <span>{tr('表情包信息')}</span>
                   </div>
                   {showMessageInfo.emojiMd5 && (
                     <div className="detail-item">
@@ -8179,8 +8159,8 @@ function ChatPage(props: ChatPageProps) {
               {showMessageInfo.localType !== 1 && (showMessageInfo.rawContent || showMessageInfo.content) && (
                 <div className="detail-section">
                   <div className="section-title">
-                    <span>原始消息内容</span>
-                    <button className="copy-btn" title="复制" onClick={() => handleCopyField(showMessageInfo.rawContent || showMessageInfo.content || '', 'rawContent')}>
+                    <span>{tr('原始消息内容')}</span>
+                    <button className="copy-btn" title={tr('复制')} onClick={() => handleCopyField(showMessageInfo.rawContent || showMessageInfo.content || '', 'rawContent')}>
                       {copiedField === 'rawContent' ? <Check size={12} /> : <Copy size={12} />}
                     </button>
                   </div>
@@ -8200,7 +8180,7 @@ function ChatPage(props: ChatPageProps) {
         <div className="modal-overlay">
           <div className="modal-content edit-message-modal">
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>{editingMessage.message.localType === 1 ? '修改消息' : '编辑消息'}</h3>
+              <h3 style={{ margin: 0 }}>{editingMessage.message.localType === 1 ? tr('修改消息') : tr('编辑消息')}</h3>
               <button className="close-btn" onClick={() => setEditingMessage(null)}>
                 <X size={16} />
               </button>
@@ -8221,10 +8201,10 @@ function ChatPage(props: ChatPageProps) {
                     <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                          {field.tagName ? field.tagName : '节点'}: <span style={{ color: 'var(--primary)' }}>{field.key}</span>
+                          {field.tagName ? field.tagName : tr('节点')}: <span style={{ color: 'var(--primary)' }}>{field.key}</span>
                         </span>
                         <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', opacity: 0.6 }}>
-                          {field.type === 'attr' ? '属性' : '文本内容'}
+                          {field.type === 'attr' ? tr('属性') : tr('文本内容')}
                         </span>
                       </div>
                       <input
@@ -8269,13 +8249,13 @@ function ChatPage(props: ChatPageProps) {
                       transition: 'all 0.2s',
                     }}
                   >
-                    {editMode === 'raw' ? '可视化编辑' : '源码编辑'}
+                    {editMode === 'raw' ? tr('可视化编辑') : tr('源码编辑')}
                   </button>
                 )}
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
-                <button className="btn-secondary" onClick={() => setEditingMessage(null)}>取消</button>
-                <button className="btn-primary" onClick={handleSaveEdit}>保存</button>
+                <button className="btn-secondary" onClick={() => setEditingMessage(null)}>{tr('取消')}</button>
+                <button className="btn-primary" onClick={handleSaveEdit}>{tr('保存')}</button>
               </div>
             </div>
           </div>
@@ -8302,7 +8282,7 @@ function ChatPage(props: ChatPageProps) {
           border: '1px solid var(--border-color)', // Subtle border
           backdropFilter: 'blur(10px)'
         }}>
-          <span style={{ fontSize: '14px', fontWeight: 500 }}>已选 {selectedMessages.size} 条</span>
+          <span style={{ fontSize: '14px', fontWeight: 500 }}>{tr('已选 {size} 条', { size: selectedMessages.size })}</span>
           <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }}></div>
           <button
             className="btn-danger"
@@ -8317,9 +8297,7 @@ function ChatPage(props: ChatPageProps) {
               fontSize: '13px',
               fontWeight: 500
             }}
-          >
-            删除
-          </button>
+          >{tr('删除')}</button>
           <button
             className="btn-secondary"
             onClick={() => {
@@ -8336,9 +8314,7 @@ function ChatPage(props: ChatPageProps) {
               cursor: 'pointer',
               fontSize: '13px'
             }}
-          >
-            取消
-          </button>
+          >{tr('取消')}</button>
         </div>
       )}
     </div>
@@ -8450,9 +8426,9 @@ function QuotedEmoji({ cdnUrl, md5 }: { cdnUrl: string; md5?: string }) {
     }).catch(() => setError(true)).finally(() => setLoading(false))
   }, [cdnUrl, md5, cacheKey, localPath, loading, error])
 
-  if (error || (!loading && !localPath)) return <span className="quoted-type-label">[动画表情]</span>
-  if (loading) return <span className="quoted-type-label">[动画表情]</span>
-  return <img src={localPath} alt="动画表情" className="quoted-emoji-image" loading="lazy" decoding="async" />
+  if (error || (!loading && !localPath)) return <span className="quoted-type-label">{tr('[动画表情]')}</span>
+  if (loading) return <span className="quoted-type-label">{tr('[动画表情]')}</span>
+  return <img src={localPath} alt={tr('动画表情')} className="quoted-emoji-image" loading="lazy" decoding="async" />
 }
 
 // 消息气泡组件
@@ -8621,13 +8597,13 @@ function MessageBubble({
   }, [isVideo, message.videoMd5, message.content, message.parsedContent])
 
   const formatTime = (timestamp: number): string => {
-    if (!Number.isFinite(timestamp) || timestamp <= 0) return '未知时间'
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return tr('未知时间')
     const date = new Date(timestamp * 1000)
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(formatLocale(), {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
-    }) + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }) + ' ' + date.toLocaleTimeString(formatLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   }
 
   const detectImageMimeFromBase64 = useCallback((base64: string): string => {
@@ -8918,7 +8894,7 @@ function MessageBubble({
           if (!renderPath) {
             if (!silent) {
               setImageError(true)
-              setImageErrorReason('路径无效')
+              setImageErrorReason(tr('路径无效'))
               setImageFailureKind('decrypt_failed')
             }
             return { success: false }
@@ -8954,13 +8930,13 @@ function MessageBubble({
       }
       if (!silent) {
         setImageError(true)
-        setImageErrorReason('图片数据获取失败')
+        setImageErrorReason(tr('图片数据获取失败'))
         setImageFailureKind('not_found')
       }
     } catch (e) {
       if (!silent) {
         setImageError(true)
-        setImageErrorReason(e instanceof Error ? e.message : '解密异常')
+        setImageErrorReason(e instanceof Error ? e.message : tr('解密异常'))
         setImageFailureKind('decrypt_failed')
       }
     } finally {
@@ -9391,12 +9367,9 @@ function MessageBubble({
           console.warn('[ChatPage] 捕获到语音引擎底层段错误');
 
           setSystemAlert({
-            title: '引擎崩溃提示',
+            title: tr('引擎崩溃提示'),
             message: (
-                <>
-                  语音识别引擎发生底层崩溃 (Segmentation Fault)。<br /><br />
-                  如果您使用的是 Linux 等自定义程度较高的系统，请检查 <code>sherpa-onnx</code> 的相关系统动态链接库 (如 glibc 等) 是否兼容。
-                </>
+                <>{tr('语音识别引擎发生底层崩溃 (Segmentation Fault)。')}<br /><br />{tr('如果您使用的是 Linux 等自定义程度较高的系统，请检查')}{' '}<code>sherpa-onnx</code>{' '}{tr('的相关系统动态链接库 (如 glibc 等) 是否兼容。')}</>
             )
           });
 
@@ -9678,7 +9651,7 @@ function MessageBubble({
   const locationMessageMeta = useMemo(() => {
     if (message.localType !== 48) return null
     const raw = message.rawContent || ''
-    const poiname = raw.match(/poiname="([^"]*)"/)?.[1] || message.locationPoiname || '位置'
+    const poiname = raw.match(/poiname="([^"]*)"/)?.[1] || message.locationPoiname || tr('位置')
     const label = raw.match(/label="([^"]*)"/)?.[1] || message.locationLabel || ''
     const lat = parseFloat(raw.match(/x="([^"]*)"/)?.[1] || String(message.locationLat || 0))
     const lng = parseFloat(raw.match(/y="([^"]*)"/)?.[1] || String(message.locationLng || 0))
@@ -9824,7 +9797,7 @@ function MessageBubble({
       ? cleanMessageContent(String(patTitleRaw).replace(/^\s*\[拍一拍\]\s*/i, ''))
       : ''
     const systemContentNode = isPatSystemMessage
-      ? renderTextWithEmoji(patDisplayText || '拍一拍')
+      ? renderTextWithEmoji(patDisplayText || tr('拍一拍'))
       : message.parsedContent
 
     return (
@@ -9881,9 +9854,9 @@ function MessageBubble({
               type="button"
             >
               <ImageIcon size={24} />
-              <span>{imageError ? '解密失败' : '图片未解密'}</span>
+              <span>{imageError ? tr('解密失败') : tr('图片未解密')}</span>
               {imageErrorReason && <span className="image-error-reason">{imageErrorReason}</span>}
-              <span className="image-action">{imageClicked ? '已点击…' : '点击重试'}</span>
+              <span className="image-action">{imageClicked ? tr('已点击…') : tr('点击重试')}</span>
             </button>
           ) : (
             <>
@@ -9891,7 +9864,7 @@ function MessageBubble({
                 <img
                   ref={imageElementRef}
                   src={imageLocalPath}
-                  alt="图片"
+                  alt={tr('图片')}
                   className={`image-message ${imageLoaded ? 'ready' : 'pending'}`}
                   loading="lazy"
                   decoding="async"
@@ -9971,8 +9944,8 @@ function MessageBubble({
               <polygon points="23 7 16 12 23 17 23 7"></polygon>
               <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
             </svg>
-            <span>视频未找到</span>
-            <span className="video-action">{videoClicked ? '已点击…' : '点击重试'}</span>
+            <span>{tr('视频未找到')}</span>
+            <span className="video-action">{videoClicked ? tr('已点击…') : tr('点击重试')}</span>
           </button>
         )
       } else {
@@ -9981,7 +9954,7 @@ function MessageBubble({
         videoContent = (
           <div className="video-thumb-wrapper" ref={videoContainerRef as React.RefObject<HTMLDivElement>} onClick={handlePlayVideo}>
             {thumbSrc ? (
-              <img src={thumbSrc} alt="视频缩略图" className="video-thumb" loading="lazy" decoding="async" />
+              <img src={thumbSrc} alt={tr('视频缩略图')} className="video-thumb" loading="lazy" decoding="async" />
             ) : (
               <div className="video-thumb-placeholder">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -10082,10 +10055,10 @@ function MessageBubble({
       const showTranscript = Boolean(voiceDataUrl) && (voiceTranscriptLoading || voiceTranscriptError || voiceTranscript !== undefined)
       const transcriptText = (voiceTranscript || '').trim()
       const transcriptDisplay = voiceTranscriptLoading
-        ? '转写中...'
+        ? tr('转写中...')
         : voiceTranscriptError
-          ? '转写失败，点击重试'
-          : (transcriptText || '未识别到文字')
+          ? tr('转写失败，点击重试')
+          : (transcriptText || tr('未识别到文字'))
       const handleTranscriptRetry = () => {
         if (!voiceTranscriptError) return
         voiceTranscriptRequestedRef.current = false
@@ -10101,7 +10074,7 @@ function MessageBubble({
                 e.stopPropagation()
                 handleToggle()
               }}
-              aria-label="播放语音"
+              aria-label={tr('播放语音')}
               type="button"
             >
               {isVoicePlaying ? <Pause size={16} /> : <Play size={16} />}
@@ -10132,11 +10105,11 @@ function MessageBubble({
               )}
             </div>
             <div className="voice-info">
-              <span className="voice-label">语音</span>
+              <span className="voice-label">{tr('语音')}</span>
               {durationText && <span className="voice-duration">{durationText}</span>}
-              {voiceLoading && <span className="voice-loading">解码中...</span>}
-              {showDecryptHint && <span className="voice-hint">点击解密</span>}
-              {voiceError && <span className="voice-error">播放失败</span>}
+              {voiceLoading && <span className="voice-loading">{tr('解码中...')}</span>}
+              {showDecryptHint && <span className="voice-hint">{tr('点击解密')}</span>}
+              {voiceError && <span className="voice-error">{tr('播放失败')}</span>}
             </div>
             {/* 转文字按钮 */}
             {voiceDataUrl && !voiceTranscript && !voiceTranscriptLoading && (
@@ -10146,7 +10119,7 @@ function MessageBubble({
                   e.stopPropagation()
                   void requestVoiceTranscript()
                 }}
-                title="转文字"
+                title={tr('转文字')}
                 type="button"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -10159,12 +10132,12 @@ function MessageBubble({
             <div
               className={`voice-transcript ${isSent ? 'sent' : 'received'}${voiceTranscriptError ? ' error' : ''}`}
               onClick={handleTranscriptRetry}
-              title={voiceTranscriptError ? '点击重试语音转写' : undefined}
+              title={voiceTranscriptError ? tr('点击重试语音转写') : undefined}
             >
               {voiceTranscriptError ? (
-                '转写失败，点击重试'
+                tr('转写失败，点击重试')
               ) : !voiceTranscript ? (
-                voiceTranscriptLoading ? '转写中...' : '未识别到文字'
+                voiceTranscriptLoading ? tr('转写中...') : tr('未识别到文字')
               ) : (
                 <AnimatedStreamingText
                   text={transcriptText}
@@ -10188,7 +10161,7 @@ function MessageBubble({
 
     // 名片消息
     if (isCard) {
-      const cardName = message.cardNickname || message.cardUsername || '未知联系人'
+      const cardName = message.cardNickname || message.cardUsername || tr('未知联系人')
       const cardAvatar = message.cardAvatarUrl
       return (
         <div className="card-message">
@@ -10205,9 +10178,9 @@ function MessageBubble({
           <div className="card-info">
             <div className="card-name">{cardName}</div>
             {message.cardUsername && message.cardUsername !== message.cardNickname && (
-              <div className="card-wxid">微信号: {message.cardUsername}</div>
+              <div className="card-wxid">{tr('微信号: {cardUsername}', { cardUsername: message.cardUsername })}</div>
             )}
-            <div className="card-label">个人名片</div>
+            <div className="card-label">{tr('个人名片')}</div>
           </div>
         </div>
       )
@@ -10221,7 +10194,7 @@ function MessageBubble({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
             </svg>
-            <span>{message.parsedContent || '[通话]'}</span>
+            <span>{message.parsedContent || tr('[通话]')}</span>
           </div>
         </div>
       )
@@ -10247,7 +10220,7 @@ function MessageBubble({
           </div>
           {mapTileUrl && (
             <div className="location-map">
-              <img src={mapTileUrl} alt="地图" referrerPolicy="no-referrer" />
+              <img src={mapTileUrl} alt={tr('地图')} referrerPolicy="no-referrer" />
             </div>
           )}
         </div>
@@ -10265,7 +10238,7 @@ function MessageBubble({
       // type 62: 拍一拍（按普通文本渲染，支持 [烟花] 这类 emoji 占位符）
       if (xmlType === '62') {
         const patText = cleanMessageContent((q('title') || cleanedParsedContent || '').replace(/^\s*\[拍一拍\]\s*/i, ''))
-        return <div className="bubble-content">{renderTextWithEmoji(patText || '拍一拍')}</div>
+        return <div className="bubble-content">{renderTextWithEmoji(patText || tr('拍一拍'))}</div>
       }
 
       // type 57: 引用回复消息，解析 refermsg 渲染为引用样式
@@ -10284,7 +10257,7 @@ function MessageBubble({
               const md5 = innerDoc.querySelector('emoji')?.getAttribute('md5') || ''
               if (cdnUrl) return <QuotedEmoji cdnUrl={cdnUrl} md5={md5} />
             } catch { /* 解析失败降级 */ }
-            return <span className="quoted-type-label">[动画表情]</span>
+            return <span className="quoted-type-label">{tr('[动画表情]')}</span>
           }
 
           // 链接类消息：需区分真正的链接和嵌套引用
@@ -10304,13 +10277,13 @@ function MessageBubble({
                 if (innerTitle) return <>{renderTextWithEmoji(cleanMessageContent(innerTitle))}</>
               }
             } catch { /* 解析失败降级 */ }
-            return <span className="quoted-type-label">[链接]</span>
+            return <span className="quoted-type-label">{tr('[链接]')}</span>
           }
 
           // 各类型名称映射
           const typeLabels: Record<string, string> = {
-            '3': '图片', '34': '语音', '43': '视频',
-            '50': '通话', '10000': '系统消息', '10002': '撤回消息',
+            '3': tr('图片'), '34': tr('语音'), '43': tr('视频'),
+            '50': tr('通话'), '10000': tr('系统消息'), '10002': tr('撤回消息'),
           }
           if (referType && typeLabels[referType]) {
             return <span className="quoted-type-label">[{typeLabels[referType]}]</span>
@@ -10329,13 +10302,13 @@ function MessageBubble({
       }
 
       if (xmlType === '53' || message.appMsgKind === 'solitaire') {
-        const solitaireText = message.linkTitle || q('appmsg > title') || q('title') || cleanedParsedContent || '接龙'
+        const solitaireText = message.linkTitle || q('appmsg > title') || q('title') || cleanedParsedContent || tr('接龙')
         const solitaire = parseSolitaireContent(solitaireText)
         const previewEntries = solitaireExpanded ? solitaire.entries : solitaire.entries.slice(0, 3)
         const hiddenEntryCount = Math.max(0, solitaire.entries.length - previewEntries.length)
         const introLines = solitaireExpanded ? solitaire.introLines : solitaire.introLines.slice(0, 4)
         const hasMoreIntro = !solitaireExpanded && solitaire.introLines.length > introLines.length
-        const countText = solitaire.entries.length > 0 ? `${solitaire.entries.length} 人参与` : '接龙消息'
+        const countText = solitaire.entries.length > 0 ? tr('{length} 人参与', { length: solitaire.entries.length }) : tr('接龙消息')
 
         return (
           <div
@@ -10353,7 +10326,7 @@ function MessageBubble({
               e.stopPropagation()
               setSolitaireExpanded(value => !value)
             }}
-            title={solitaireExpanded ? '点击收起接龙' : '点击展开接龙'}
+            title={solitaireExpanded ? tr('点击收起接龙') : tr('点击展开接龙')}
           >
             <div className="solitaire-header">
               <div className="solitaire-icon" aria-hidden="true">
@@ -10381,12 +10354,12 @@ function MessageBubble({
                   </div>
                 ))}
                 {hiddenEntryCount > 0 && (
-                  <div className="solitaire-muted-line">还有 {hiddenEntryCount} 条...</div>
+                  <div className="solitaire-muted-line">{tr('还有 {hiddenEntryCount} 条...', { hiddenEntryCount: hiddenEntryCount })}</div>
                 )}
               </div>
             ) : null}
             <div className="solitaire-footer">
-              <span>{solitaireExpanded ? '收起接龙' : '展开接龙'}</span>
+              <span>{solitaireExpanded ? tr('收起接龙') : tr('展开接龙')}</span>
               <ChevronDown size={14} className="solitaire-chevron" />
             </div>
           </div>
@@ -10443,11 +10416,11 @@ function MessageBubble({
       }
 
       const metaLabel =
-        kind === 'red-packet' ? '红包'
-          : kind === 'finder' ? (finderName || '视频号')
-            : kind === 'location' ? '位置'
-              : kind === 'music' ? (sourceName || appName || '音乐')
-                : (sourceName || appName || (sourceUsername.startsWith('gh_') ? '公众号' : ''))
+        kind === 'red-packet' ? tr('红包')
+          : kind === 'finder' ? (finderName || tr('视频号'))
+            : kind === 'location' ? tr('位置')
+              : kind === 'music' ? (sourceName || appName || tr('音乐'))
+                : (sourceName || appName || (sourceUsername.startsWith('gh_') ? tr('公众号') : ''))
 
       const renderCard = (cardKind: string, clickableUrl?: string) => (
         <div
@@ -10502,8 +10475,8 @@ function MessageBubble({
               </svg>
             </div>
             <div className="hongbao-info">
-              <div className="hongbao-greeting">{greeting || '恭喜发财，大吉大利'}</div>
-              <div className="hongbao-label">微信红包</div>
+              <div className="hongbao-greeting">{greeting || tr('恭喜发财，大吉大利')}</div>
+              <div className="hongbao-label">{tr('微信红包')}</div>
             </div>
           </div>
         )
@@ -10512,7 +10485,7 @@ function MessageBubble({
       if (kind === 'gift') {
         // 礼物卡片
         const giftImg = message.giftImageUrl || thumbUrl
-        const giftWish = message.giftWish || title || '送你一份心意'
+        const giftWish = message.giftWish || title || tr('送你一份心意')
         const giftPriceRaw = message.giftPrice
         const giftPriceYuan = giftPriceRaw ? (parseInt(giftPriceRaw) / 100).toFixed(2) : ''
         return (
@@ -10521,7 +10494,7 @@ function MessageBubble({
             <div className="gift-info">
               <div className="gift-wish">{giftWish}</div>
               {giftPriceYuan && <div className="gift-price">¥{giftPriceYuan}</div>}
-              <div className="gift-label">微信礼物</div>
+              <div className="gift-label">{tr('微信礼物')}</div>
             </div>
           </div>
         )
@@ -10549,10 +10522,10 @@ function MessageBubble({
               {fmtDuration && <span className="channel-video-duration">{fmtDuration}</span>}
             </div>
             <div className="channel-video-info">
-              <div className="channel-video-title">{displayTitle || '视频号视频'}</div>
+              <div className="channel-video-title">{displayTitle || tr('视频号视频')}</div>
               <div className="channel-video-author">
                 {authorAvatar && <img className="channel-video-avatar" src={authorAvatar} alt="" referrerPolicy="no-referrer" />}
-                <span>{authorName || '视频号'}</span>
+                <span>{authorName || tr('视频号')}</span>
               </div>
             </div>
           </div>
@@ -10565,7 +10538,7 @@ function MessageBubble({
         // 音乐专属卡片
         const albumUrl = message.musicAlbumUrl || thumbUrl
         const playUrl = message.musicUrl || musicUrl || url
-        const songTitle = title || '未知歌曲'
+        const songTitle = title || tr('未知歌曲')
         const artist = desc || ''
         const appLabel = sourceName || appName || ''
         return (
@@ -10590,7 +10563,7 @@ function MessageBubble({
 
       if (kind === 'official-link') {
         const authorAvatar = q('publisher > headimg') || q('brand_info > headimgurl') || q('appmsg > avatar') || q('headimgurl') || message.cardAvatarUrl
-        const authorName = sourceDisplayName || q('publisher > nickname') || sourceName || appName || '公众号'
+        const authorName = sourceDisplayName || q('publisher > nickname') || sourceName || appName || tr('公众号')
         const coverPic = q('mmreader > category > item > cover') || thumbUrl
         const digest = q('mmreader > category > item > digest') || desc
         const articleTitle = q('mmreader > category > item > title') || title
@@ -10637,7 +10610,7 @@ function MessageBubble({
             </div>
             <div className="miniapp-info">
               <div className="miniapp-title">{title}</div>
-              <div className="miniapp-label">{metaLabel || '小程序'}</div>
+              <div className="miniapp-label">{metaLabel || tr('小程序')}</div>
             </div>
             {thumbUrl ? (
               <img
@@ -10660,7 +10633,7 @@ function MessageBubble({
 
     if (appMsgContainsTag) {
       const q = queryAppMsgText
-      const title = q('title') || '链接'
+      const title = q('title') || tr('链接')
       const desc = q('des')
       const url = q('url')
       const appMsgType = message.xmlType || q('appmsg > type') || q('type')
@@ -10681,7 +10654,7 @@ function MessageBubble({
               const md5 = innerDoc.querySelector('emoji')?.getAttribute('md5') || ''
               if (cdnUrl) return <QuotedEmoji cdnUrl={cdnUrl} md5={md5} />
             } catch { /* 解析失败降级 */ }
-            return <span className="quoted-type-label">[动画表情]</span>
+            return <span className="quoted-type-label">{tr('[动画表情]')}</span>
           }
           // 链接类消息：需区分真正的链接和嵌套引用
           // 当一个引用了别的消息的消息被引用（B引用A，C又引用B），那么 B 在 C 的 refermsg 里 type=49
@@ -10700,12 +10673,12 @@ function MessageBubble({
                 if (innerTitle) return <>{renderTextWithEmoji(cleanMessageContent(innerTitle))}</>
               }
             } catch { /* 解析失败降级 */ }
-            return <span className="quoted-type-label">[链接]</span>
+            return <span className="quoted-type-label">{tr('[链接]')}</span>
           }
           // 各类型名称映射
           const typeLabels: Record<string, string> = {
-            '3': '图片', '34': '语音', '43': '视频',
-            '50': '通话', '10000': '系统消息', '10002': '撤回消息',
+            '3': tr('图片'), '34': tr('语音'), '43': tr('视频'),
+            '50': tr('通话'), '10000': tr('系统消息'), '10002': tr('撤回消息'),
           }
           if (referType && typeLabels[referType]) {
             return <span className="quoted-type-label">[{typeLabels[referType]}]</span>
@@ -10723,7 +10696,7 @@ function MessageBubble({
 
       // 群公告消息 (type=87)
       if (appMsgType === '87') {
-        const announcementText = textAnnouncement || desc || '群公告'
+        const announcementText = textAnnouncement || desc || tr('群公告')
         return (
           <div className="announcement-message">
             <div className="announcement-icon">
@@ -10732,7 +10705,7 @@ function MessageBubble({
               </svg>
             </div>
             <div className="announcement-content">
-              <div className="announcement-label">群公告</div>
+              <div className="announcement-label">{tr('群公告')}</div>
               <div className="announcement-text">{announcementText}</div>
             </div>
           </div>
@@ -10742,11 +10715,11 @@ function MessageBubble({
       // 聊天记录 (type=19)
       if (appMsgType === '19') {
         const recordList = message.chatRecordList || []
-        const displayTitle = title || '群聊的聊天记录'
+        const displayTitle = title || tr('群聊的聊天记录')
         const metaText =
           recordList.length > 0
-            ? `共 ${recordList.length} 条聊天记录`
-            : desc || '聊天记录'
+            ? tr('共 {length} 条聊天记录', { length: recordList.length })
+            : desc || tr('聊天记录')
 
         const previewItems = buildChatRecordPreviewItems(recordList, 3)
         const remainingCount = Math.max(0, recordList.length - previewItems.length)
@@ -10759,7 +10732,7 @@ function MessageBubble({
               // 打开聊天记录窗口
               window.electronAPI.window.openChatHistoryWindow(session.username, message.localId)
             }}
-            title="点击查看详细聊天记录"
+            title={tr('点击查看详细聊天记录')}
           >
             <div className="chat-record-title" title={displayTitle}>
               {displayTitle}
@@ -10778,22 +10751,22 @@ function MessageBubble({
                   </div>
                 ))}
                 {remainingCount > 0 && (
-                  <div className="chat-record-more">还有 {remainingCount} 条…</div>
+                  <div className="chat-record-more">{tr('还有 {remainingCount} 条…', { remainingCount: remainingCount })}</div>
                 )}
               </div>
             ) : (
               <div className="chat-record-desc">
-                {desc || '点击打开查看完整聊天记录'}
+                {desc || tr('点击打开查看完整聊天记录')}
               </div>
             )}
-            <div className="chat-record-footer">聊天记录</div>
+            <div className="chat-record-footer">{tr('聊天记录')}</div>
           </div>
         )
       }
 
       // 文件消息 (type=6)
       if (appMsgType === '6') {
-        const fileName = message.fileName || title || '文件'
+        const fileName = message.fileName || title || tr('文件')
         const fileSize = message.fileSize
         const fileExt = message.fileExt || fileName.split('.').pop()?.toLowerCase() || ''
 
@@ -10844,11 +10817,11 @@ function MessageBubble({
           const isReceived = paysubtype === '3'
 
           // 如果 feedesc 为空，使用 title 作为降级
-          const displayAmount = feedesc || title || '微信转账'
+          const displayAmount = feedesc || title || tr('微信转账')
 
           // 构建转账描述：A 转账给 B
           const transferDesc = transferPayerName && transferReceiverName
-            ? `${transferPayerName} 转账给 ${transferReceiverName}`
+            ? tr('{transferPayerName} 转账给 {transferReceiverName}', { transferPayerName: transferPayerName, transferReceiverName: transferReceiverName })
             : undefined
 
           return (
@@ -10870,14 +10843,14 @@ function MessageBubble({
                 <div className="transfer-amount">{displayAmount}</div>
                 {transferDesc && <div className="transfer-desc">{transferDesc}</div>}
                 {payMemo && <div className="transfer-memo">{payMemo}</div>}
-                <div className="transfer-label">{isReceived ? '已收款' : '微信转账'}</div>
+                <div className="transfer-label">{isReceived ? tr('已收款') : tr('微信转账')}</div>
               </div>
             </div>
           )
         } catch (e) {
           console.error('[Transfer Debug] Parse error:', e)
           // 解析失败时的降级处理
-          const feedesc = title || '微信转账'
+          const feedesc = title || tr('微信转账')
           return (
             <div className="transfer-message">
               <div className="transfer-icon">
@@ -10888,7 +10861,7 @@ function MessageBubble({
               </div>
               <div className="transfer-info">
                 <div className="transfer-amount">{feedesc}</div>
-                <div className="transfer-label">微信转账</div>
+                <div className="transfer-label">{tr('微信转账')}</div>
               </div>
             </div>
           )
@@ -10906,7 +10879,7 @@ function MessageBubble({
             </div>
             <div className="miniapp-info">
               <div className="miniapp-title">{title}</div>
-              <div className="miniapp-label">小程序</div>
+              <div className="miniapp-label">{tr('小程序')}</div>
             </div>
           </div>
         )
@@ -10951,7 +10924,7 @@ function MessageBubble({
                 <line x1="9" y1="9" x2="9.01" y2="9" />
                 <line x1="15" y1="9" x2="15.01" y2="9" />
               </svg>
-              <span>表情包未缓存</span>
+              <span>{tr('表情包未缓存')}</span>
             </div>
           </div>
         )
@@ -10973,7 +10946,7 @@ function MessageBubble({
         <div className="emoji-message-wrapper" ref={emojiContainerRef}>
           <img
             src={emojiLocalPath}
-            alt="表情"
+            alt={tr('表情')}
             className="emoji-image"
             onLoad={() => {
               setEmojiError(false)
@@ -11020,9 +10993,7 @@ function MessageBubble({
             className="btn-primary"
             onClick={() => setSystemAlert(null)}
             style={{ padding: '8px 32px' }}
-          >
-            确认
-          </button>
+          >{tr('确认')}</button>
         </div>
       </div>
     </div>,

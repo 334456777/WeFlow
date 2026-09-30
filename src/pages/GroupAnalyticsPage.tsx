@@ -14,6 +14,7 @@ import {
   updateBackgroundTask
 } from '../services/backgroundTaskMonitor'
 import './GroupAnalyticsPage.scss'
+import { t, formatLocale } from '../i18n'
 
 interface GroupChatInfo {
   username: string
@@ -84,34 +85,34 @@ const filterMembersByKeyword = (members: GroupMember[], keyword: string) => {
 
 const formatMemberMessageTime = (createTime: number) => {
   if (!createTime) return '-'
-  return new Date(createTime * 1000).toLocaleString('zh-CN', { hour12: false })
+  return new Date(createTime * 1000).toLocaleString(formatLocale(), { hour12: false })
 }
 
 const getMemberMessageTypeLabel = (message: Message) => {
   switch (message.localType) {
     case 1:
-      return '文本'
+      return t('文本')
     case 3:
-      return '图片'
+      return t('图片')
     case 34:
-      return '语音'
+      return t('语音')
     case 42:
-      return '名片'
+      return t('名片')
     case 43:
-      return '视频'
+      return t('视频')
     case 47:
-      return '表情'
+      return t('表情')
     case 48:
-      return '位置'
+      return t('位置')
     case 49:
-      return message.fileName ? '文件' : '链接'
+      return message.fileName ? t('文件') : t('链接')
     case 50:
-      return '通话'
+      return t('通话')
     case 10000:
     case 10002:
-      return '系统'
+      return t('系统')
     default:
-      return `类型 ${message.localType}`
+      return t('类型 {localType}', { localType: message.localType })
   }
 }
 
@@ -121,27 +122,27 @@ const getMemberMessagePreview = (message: Message) => {
     case 1:
     case 10000:
     case 10002:
-      return text || '[空文本]'
+      return text || t('[空文本]')
     case 3:
-      return text || '[图片]'
+      return text || t('[图片]')
     case 34:
-      return message.voiceDurationSeconds ? `[语音] ${message.voiceDurationSeconds} 秒` : '[语音]'
+      return message.voiceDurationSeconds ? t('[语音] {voiceDurationSeconds} 秒', { voiceDurationSeconds: message.voiceDurationSeconds }) : t('[语音]')
     case 42:
-      return `[名片] ${message.cardNickname || message.cardUsername || text || '联系人名片'}`
+      return t('[名片] {v0}', { v0: message.cardNickname || message.cardUsername || text || t('联系人名片') })
     case 43:
-      return text || '[视频]'
+      return text || t('[视频]')
     case 47:
-      return text || '[表情]'
+      return text || t('[表情]')
     case 48:
-      return `[位置] ${message.locationPoiname || message.locationLabel || text || '位置消息'}`
+      return t('[位置] {v0}', { v0: message.locationPoiname || message.locationLabel || text || t('位置消息') })
     case 49:
-      if (message.fileName) return `[文件] ${message.fileName}`
-      if (message.linkTitle) return `[链接] ${message.linkTitle}`
-      return text || '[链接/文件]'
+      if (message.fileName) return t('[文件] {fileName}', { fileName: message.fileName })
+      if (message.linkTitle) return t('[链接] {linkTitle}', { linkTitle: message.linkTitle })
+      return text || t('[链接/文件]')
     case 50:
-      return text || '[通话]'
+      return text || t('[通话]')
     default:
-      return text || `[消息类型 ${message.localType}]`
+      return text || t('[消息类型 {localType}]', { localType: message.localType })
   }
 }
 
@@ -227,23 +228,23 @@ function GroupAnalyticsPage() {
   }, [location.state])
 
   const memberExportFormatOptions = useMemo<MemberExportFormatOption[]>(() => ([
-    { value: 'excel', label: 'Excel', desc: '电子表格，适合统计分析' },
-    { value: 'txt', label: 'TXT', desc: '纯文本，通用格式' },
-    { value: 'json', label: 'JSON', desc: '详细格式，包含完整消息信息' },
-    { value: 'arkme-json', label: 'Arkme JSON', desc: '紧凑 JSON，支持 sender 去重与关系统计' },
-    { value: 'chatlab', label: 'ChatLab', desc: '标准格式，支持其他软件导入' },
-    { value: 'chatlab-jsonl', label: 'ChatLab JSONL', desc: '流式格式，适合大量消息' },
-    { value: 'html', label: 'HTML', desc: '网页格式，可直接浏览' },
-    { value: 'weclone', label: 'WeClone CSV', desc: 'WeClone 兼容字段格式（CSV）' }
+    { value: 'excel', label: 'Excel', desc: t('电子表格，适合统计分析') },
+    { value: 'txt', label: 'TXT', desc: t('纯文本，通用格式') },
+    { value: 'json', label: 'JSON', desc: t('详细格式，包含完整消息信息') },
+    { value: 'arkme-json', label: 'Arkme JSON', desc: t('紧凑 JSON，支持 sender 去重与关系统计') },
+    { value: 'chatlab', label: 'ChatLab', desc: t('标准格式，支持其他软件导入') },
+    { value: 'chatlab-jsonl', label: 'ChatLab JSONL', desc: t('流式格式，适合大量消息') },
+    { value: 'html', label: 'HTML', desc: t('网页格式，可直接浏览') },
+    { value: 'weclone', label: 'WeClone CSV', desc: t('WeClone 兼容字段格式（CSV）') }
   ]), [])
   const displayNameOptions = useMemo<Array<{
     value: MemberMessageExportOptions['displayNamePreference']
     label: string
     desc: string
   }>>(() => ([
-    { value: 'group-nickname', label: '群昵称优先', desc: '仅群聊有效，私聊显示备注/昵称' },
-    { value: 'remark', label: '备注优先', desc: '有备注显示备注，否则显示昵称' },
-    { value: 'nickname', label: '微信昵称', desc: '始终显示微信昵称' }
+    { value: 'group-nickname', label: t('群昵称优先'), desc: t('仅群聊有效，私聊显示备注/昵称') },
+    { value: 'remark', label: t('备注优先'), desc: t('有备注显示备注，否则显示昵称') },
+    { value: 'nickname', label: t('微信昵称'), desc: t('始终显示微信昵称') }
   ]), [])
   const selectedMessageMember = useMemo(
     () => members.find(member => member.username === selectedMessageMemberUsername) || null,
@@ -295,9 +296,9 @@ function GroupAnalyticsPage() {
   const loadGroups = useCallback(async () => {
     const taskId = registerBackgroundTask({
       sourcePage: 'groupAnalytics',
-      title: '群列表加载',
-      detail: '正在读取群聊列表',
-      progressText: '群聊列表',
+      title: t('群列表加载'),
+      detail: t('正在读取群聊列表'),
+      progressText: t('群聊列表'),
       cancelable: true
     })
     setIsLoading(true)
@@ -305,7 +306,7 @@ function GroupAnalyticsPage() {
       const result = await window.electronAPI.groupAnalytics.getGroupChats()
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，群聊列表结果未继续写入'
+          detail: t('已停止后续加载，群聊列表结果未继续写入')
         })
         return
       }
@@ -313,12 +314,12 @@ function GroupAnalyticsPage() {
         setGroups(result.data)
         setFilteredGroups(result.data)
         finishBackgroundTask(taskId, 'completed', {
-          detail: `群聊列表加载完成，共 ${result.data.length} 个群`,
-          progressText: `${result.data.length} 个群`
+          detail: t('群聊列表加载完成，共 {length} 个群', { length: result.data.length }),
+          progressText: t('{length} 个群', { length: result.data.length })
         })
       } else {
         finishBackgroundTask(taskId, 'failed', {
-          detail: result.error || '加载群聊列表失败'
+          detail: result.error || t('加载群聊列表失败')
         })
       }
     } catch (e) {
@@ -464,7 +465,7 @@ function GroupAnalyticsPage() {
       cursor: options?.cursor && options.cursor > 0 ? options.cursor : undefined
     })
     if (!result.success || !result.data) {
-      throw new Error(result.error || '读取成员消息失败')
+      throw new Error(result.error || t('读取成员消息失败'))
     }
 
     setMemberMessages(prev => {
@@ -497,8 +498,8 @@ function GroupAnalyticsPage() {
     if (!targetGroup) return
     const taskId = registerBackgroundTask({
       sourcePage: 'groupAnalytics',
-      title: `群分析：${func}`,
-      detail: `正在读取 ${targetGroup.displayName || targetGroup.username} 的分析数据`,
+      title: t('群分析：{func}', { func: func }),
+      detail: t('正在读取 {v0} 的分析数据', { v0: targetGroup.displayName || targetGroup.username }),
       progressText: func,
       cancelable: true
     })
@@ -510,37 +511,37 @@ function GroupAnalyticsPage() {
       switch (func) {
         case 'members': {
           updateBackgroundTask(taskId, {
-            detail: '正在读取群成员列表',
-            progressText: '成员列表'
+            detail: t('正在读取群成员列表'),
+            progressText: t('成员列表')
           })
           const result = await window.electronAPI.groupAnalytics.getGroupMembers(targetGroup.username)
           if (isBackgroundTaskCancelRequested(taskId)) {
-            finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载，群成员列表未继续写入' })
+            finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载，群成员列表未继续写入') })
             return
           }
           if (result.success && result.data) setMembers(result.data)
           finishBackgroundTask(taskId, result.success ? 'completed' : 'failed', {
-            detail: result.success ? `群成员列表加载完成，共 ${result.data?.length || 0} 人` : (result.error || '读取群成员列表失败'),
-            progressText: result.success ? `${result.data?.length || 0} 人` : '失败'
+            detail: result.success ? t('群成员列表加载完成，共 {v0} 人', { v0: result.data?.length || 0 }) : (result.error || t('读取群成员列表失败')),
+            progressText: result.success ? t('{v0} 人', { v0: result.data?.length || 0 }) : t('失败')
           })
           break
         }
         case 'memberMessages': {
           resetMemberMessageState(false)
           updateBackgroundTask(taskId, {
-            detail: '正在读取成员列表与消息',
-            progressText: '成员消息'
+            detail: t('正在读取成员列表与消息'),
+            progressText: t('成员消息')
           })
           const result = await window.electronAPI.groupAnalytics.getGroupMembers(targetGroup.username)
           if (isBackgroundTaskCancelRequested(taskId)) {
-            finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载，成员消息未继续写入' })
+            finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载，成员消息未继续写入') })
             return
           }
           if (!result.success || !result.data) {
             resetMemberMessageState()
             finishBackgroundTask(taskId, 'failed', {
-              detail: result.error || '读取群成员失败',
-              progressText: '失败'
+              detail: result.error || t('读取群成员失败'),
+              progressText: t('失败')
             })
             break
           }
@@ -551,21 +552,21 @@ function GroupAnalyticsPage() {
           if (!targetMember) {
             resetMemberMessageState()
             finishBackgroundTask(taskId, 'completed', {
-              detail: '当前群暂无可用成员数据',
-              progressText: '0 条'
+              detail: t('当前群暂无可用成员数据'),
+              progressText: t('0 条')
             })
             break
           }
 
           setSelectedMessageMemberUsername(targetMember.username)
           updateBackgroundTask(taskId, {
-            detail: `正在读取 ${targetMember.displayName || targetMember.username} 的发言记录`,
-            progressText: '消息分页'
+            detail: t('正在读取 {v0} 的发言记录', { v0: targetMember.displayName || targetMember.username }),
+            progressText: t('消息分页')
           })
           const page = await loadMemberMessagesPage(targetGroup, targetMember.username, { startTime, endTime })
           finishBackgroundTask(taskId, 'completed', {
-            detail: `成员消息加载完成，已读取 ${page.messages.length} 条`,
-            progressText: `${page.messages.length} 条`
+            detail: t('成员消息加载完成，已读取 {length} 条', { length: page.messages.length }),
+            progressText: t('{length} 条', { length: page.messages.length })
           })
           break
         }
@@ -573,16 +574,16 @@ function GroupAnalyticsPage() {
           setMemberAnalyticsData(null)
           setAnalyticsError(null)
           updateBackgroundTask(taskId, {
-            detail: '正在读取成员列表与消息分析',
-            progressText: '成员分析'
+            detail: t('正在读取成员列表与消息分析'),
+            progressText: t('成员分析')
           })
           const result = await window.electronAPI.groupAnalytics.getGroupMembers(targetGroup.username)
           if (isBackgroundTaskCancelRequested(taskId)) {
-            finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载，成员分析未继续写入' })
+            finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载，成员分析未继续写入') })
             return
           }
           if (!result.success || !result.data) {
-            finishBackgroundTask(taskId, 'failed', { detail: result.error || '获取成员列表失败' })
+            finishBackgroundTask(taskId, 'failed', { detail: result.error || t('获取成员列表失败') })
             return
           }
           setMembers(result.data)
@@ -594,81 +595,81 @@ function GroupAnalyticsPage() {
             setSelectedMessageMemberUsername(targetMember.username)
           }
           if (!targetMember) {
-            finishBackgroundTask(taskId, 'failed', { detail: '找不到目标成员' })
+            finishBackgroundTask(taskId, 'failed', { detail: t('找不到目标成员') })
             return
           }
           updateBackgroundTask(taskId, {
-            detail: `正在分析 ${targetMember.displayName || targetMember.username} 的发言记录`,
-            progressText: '统计分析'
+            detail: t('正在分析 {v0} 的发言记录', { v0: targetMember.displayName || targetMember.username }),
+            progressText: t('统计分析')
           })
           const analyticsResult = await window.electronAPI.groupAnalytics.getGroupMemberAnalytics(targetGroup.username, targetMember.username, startTime, endTime)
           if (isBackgroundTaskCancelRequested(taskId)) {
-            finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载，成员分析未继续写入' })
+            finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载，成员分析未继续写入') })
             return
           }
           if (analyticsResult.success && analyticsResult.data) {
             setMemberAnalyticsData(analyticsResult.data)
             finishBackgroundTask(taskId, 'completed', {
-              detail: `分析完成，共计 ${analyticsResult.data.statistics?.totalMessages || 0} 条消息`,
-              progressText: '已完成'
+              detail: t('分析完成，共计 {v0} 条消息', { v0: analyticsResult.data.statistics?.totalMessages || 0 }),
+              progressText: t('已完成')
             })
           } else {
-            setAnalyticsError(analyticsResult.error || '分析失败')
-            finishBackgroundTask(taskId, 'failed', { detail: analyticsResult.error || '分析失败' })
+            setAnalyticsError(analyticsResult.error || t('分析失败'))
+            finishBackgroundTask(taskId, 'failed', { detail: analyticsResult.error || t('分析失败') })
           }
           break
         }
         case 'ranking': {
           setRankings([])
           updateBackgroundTask(taskId, {
-            detail: '正在计算群消息排行',
-            progressText: '消息排行'
+            detail: t('正在计算群消息排行'),
+            progressText: t('消息排行')
           })
           const result = await window.electronAPI.groupAnalytics.getGroupMessageRanking(targetGroup.username, 20, startTime, endTime)
           if (isBackgroundTaskCancelRequested(taskId)) {
-            finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载，群消息排行未继续写入' })
+            finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载，群消息排行未继续写入') })
             return
           }
           if (result.success && result.data) setRankings(result.data)
           finishBackgroundTask(taskId, result.success ? 'completed' : 'failed', {
-            detail: result.success ? `群消息排行加载完成，共 ${result.data?.length || 0} 条` : (result.error || '读取群消息排行失败'),
-            progressText: result.success ? `${result.data?.length || 0} 条` : '失败'
+            detail: result.success ? t('群消息排行加载完成，共 {v0} 条', { v0: result.data?.length || 0 }) : (result.error || t('读取群消息排行失败')),
+            progressText: result.success ? t('{v0} 条', { v0: result.data?.length || 0 }) : t('失败')
           })
           break
         }
         case 'activeHours': {
           setActiveHours({})
           updateBackgroundTask(taskId, {
-            detail: '正在计算群活跃时段',
-            progressText: '活跃时段'
+            detail: t('正在计算群活跃时段'),
+            progressText: t('活跃时段')
           })
           const result = await window.electronAPI.groupAnalytics.getGroupActiveHours(targetGroup.username, startTime, endTime)
           if (isBackgroundTaskCancelRequested(taskId)) {
-            finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载，群活跃时段未继续写入' })
+            finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载，群活跃时段未继续写入') })
             return
           }
           if (result.success && result.data) setActiveHours(result.data.hourlyDistribution)
           finishBackgroundTask(taskId, result.success ? 'completed' : 'failed', {
-            detail: result.success ? '群活跃时段加载完成' : (result.error || '读取群活跃时段失败'),
-            progressText: result.success ? '24 小时分布' : '失败'
+            detail: result.success ? t('群活跃时段加载完成') : (result.error || t('读取群活跃时段失败')),
+            progressText: result.success ? t('24 小时分布') : t('失败')
           })
           break
         }
         case 'mediaStats': {
           setMediaStats(null)
           updateBackgroundTask(taskId, {
-            detail: '正在统计群消息类型',
-            progressText: '消息类型'
+            detail: t('正在统计群消息类型'),
+            progressText: t('消息类型')
           })
           const result = await window.electronAPI.groupAnalytics.getGroupMediaStats(targetGroup.username, startTime, endTime)
           if (isBackgroundTaskCancelRequested(taskId)) {
-            finishBackgroundTask(taskId, 'canceled', { detail: '已停止后续加载，群消息类型统计未继续写入' })
+            finishBackgroundTask(taskId, 'canceled', { detail: t('已停止后续加载，群消息类型统计未继续写入') })
             return
           }
           if (result.success && result.data) setMediaStats(result.data)
           finishBackgroundTask(taskId, result.success ? 'completed' : 'failed', {
-            detail: result.success ? `群消息类型统计完成，共 ${result.data?.total || 0} 条` : (result.error || '读取群消息类型统计失败'),
-            progressText: result.success ? `${result.data?.total || 0} 条` : '失败'
+            detail: result.success ? t('群消息类型统计完成，共 {v0} 条', { v0: result.data?.total || 0 }) : (result.error || t('读取群消息类型统计失败')),
+            progressText: result.success ? t('{v0} 条', { v0: result.data?.total || 0 }) : t('失败')
           })
           break
         }
@@ -684,7 +685,7 @@ function GroupAnalyticsPage() {
   }
 
   const formatNumber = (num: number) => {
-    if (num >= 10000) return (num / 10000).toFixed(1) + '万'
+    if (num >= 10000) return (num / 10000).toFixed(1) + t('万')
     return num.toLocaleString()
   }
 
@@ -703,7 +704,7 @@ function GroupAnalyticsPage() {
     const data = hours.map(h => activeHours[h] || 0)
     return {
       tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: hours.map(h => `${h}时`) },
+      xAxis: { type: 'category', data: hours.map(h => t('{h}时', { h: h })) },
       yAxis: { type: 'value' },
       series: [{ type: 'bar', data, itemStyle: { color: '#07c160', borderRadius: [4, 4, 0, 0] } }]
     }
@@ -790,7 +791,7 @@ function GroupAnalyticsPage() {
       await loadMemberMessagesPage(selectedGroup, memberUsername, { startTime, endTime })
     } catch (e) {
       console.error('读取成员消息失败:', e)
-      alert(`读取成员消息失败：${String(e)}`)
+      alert(t('读取成员消息失败：{v0}', { v0: String(e) }))
     } finally {
       setFunctionLoading(false)
     }
@@ -809,7 +810,7 @@ function GroupAnalyticsPage() {
       })
     } catch (e) {
       console.error('加载更多成员消息失败:', e)
-      alert(`加载更多成员消息失败：${String(e)}`)
+      alert(t('加载更多成员消息失败：{v0}', { v0: String(e) }))
     } finally {
       setMemberMessagesLoadingMore(false)
     }
@@ -847,11 +848,11 @@ function GroupAnalyticsPage() {
     setIsExportingMembers(true)
     try {
       const downloadsPath = await window.electronAPI.app.getDownloadsPath()
-      const baseName = sanitizeFileName(`${selectedGroup.displayName || selectedGroup.username}_群成员列表`)
+      const baseName = sanitizeFileName(`${selectedGroup.displayName || selectedGroup.username}_${t('群成员列表')}`)
       const separator = downloadsPath && downloadsPath.includes('\\') ? '\\' : '/'
       const defaultPath = downloadsPath ? `${downloadsPath}${separator}${baseName}.xlsx` : `${baseName}.xlsx`
       const saveResult = await window.electronAPI.dialog.saveFile({
-        title: '导出群成员列表',
+        title: t('导出群成员列表'),
         defaultPath,
         filters: [{ name: 'Excel', extensions: ['xlsx'] }]
       })
@@ -860,21 +861,21 @@ function GroupAnalyticsPage() {
       const result = await window.electronAPI.groupAnalytics.exportGroupMembers(selectedGroup.username, saveResult.filePath)
       if (result.success) {
         setExportResultDialog({
-          title: '导出成功',
-          message: `共导出 ${result.count ?? members.length} 人`,
+          title: t('导出成功'),
+          message: t('共导出 {v0} 人', { v0: result.count ?? members.length }),
           tone: 'success'
         })
       } else {
         setExportResultDialog({
-          title: '导出失败',
-          message: result.error || '未知错误',
+          title: t('导出失败'),
+          message: result.error || t('未知错误'),
           tone: 'error'
         })
       }
     } catch (e) {
       console.error('导出群成员失败:', e)
       setExportResultDialog({
-        title: '导出失败',
+        title: t('导出失败'),
         message: String(e),
         tone: 'error'
       })
@@ -903,7 +904,7 @@ function GroupAnalyticsPage() {
   const handleChooseExportFolder = async () => {
     try {
       const result = await window.electronAPI.dialog.openDirectory({
-        title: '选择导出目录'
+        title: t('选择导出目录')
       })
       if (!result.canceled && result.filePaths.length > 0) {
         setExportFolder(result.filePaths[0])
@@ -911,7 +912,7 @@ function GroupAnalyticsPage() {
       }
     } catch (e) {
       console.error('选择导出目录失败:', e)
-      alert(`选择导出目录失败：${String(e)}`)
+      alert(t('选择导出目录失败：{v0}', { v0: String(e) }))
     }
   }
 
@@ -919,7 +920,7 @@ function GroupAnalyticsPage() {
     if (!selectedGroup || !selectedMessageMemberUsername || !exportFolder || isExportingMemberMessages) return
     const member = members.find(item => item.username === selectedMessageMemberUsername)
     if (!member) {
-      alert('请先选择成员')
+      alert(t('请先选择成员'))
       return
     }
 
@@ -953,21 +954,21 @@ function GroupAnalyticsPage() {
       if (result.success && (result.successCount ?? 0) > 0) {
         setShowMemberExportModal(false)
         setExportResultDialog({
-          title: '导出成功',
-          message: `已导出 ${member.displayName || member.username}`,
+          title: t('导出成功'),
+          message: t('已导出 {v0}', { v0: member.displayName || member.username }),
           tone: 'success'
         })
       } else {
         setExportResultDialog({
-          title: '导出失败',
-          message: result.error || '未知错误',
+          title: t('导出失败'),
+          message: result.error || t('未知错误'),
           tone: 'error'
         })
       }
     } catch (e) {
       console.error('导出成员消息失败:', e)
       setExportResultDialog({
-        title: '导出失败',
+        title: t('导出失败'),
         message: String(e),
         tone: 'error'
       })
@@ -1006,15 +1007,15 @@ function GroupAnalyticsPage() {
             <h3 className="member-display-name">{selectedMember.displayName}</h3>
             <div className="member-details">
               <div className="detail-row">
-                <span className="detail-label">微信ID</span>
+                <span className="detail-label">{t('微信ID')}</span>
                 <span className="detail-value">{selectedMember.username}</span>
                 <button className="copy-btn" onClick={() => handleCopy(selectedMember.username, 'username')}>
                   {copiedField === 'username' ? <Check size={14} /> : <Copy size={14} />}
                 </button>
               </div>
               <div className="detail-row">
-                <span className="detail-label">昵称</span>
-                <span className="detail-value">{nickname || '未设置'}</span>
+                <span className="detail-label">{t('昵称')}</span>
+                <span className="detail-value">{nickname || t('未设置')}</span>
                 {nickname && (
                   <button className="copy-btn" onClick={() => handleCopy(nickname, 'nickname')}>
                     {copiedField === 'nickname' ? <Check size={14} /> : <Copy size={14} />}
@@ -1023,7 +1024,7 @@ function GroupAnalyticsPage() {
               </div>
               {alias && (
                 <div className="detail-row">
-                  <span className="detail-label">微信号</span>
+                  <span className="detail-label">{t('微信号')}</span>
                   <span className="detail-value">{alias}</span>
                   <button className="copy-btn" onClick={() => handleCopy(alias, 'alias')}>
                     {copiedField === 'alias' ? <Check size={14} /> : <Copy size={14} />}
@@ -1032,7 +1033,7 @@ function GroupAnalyticsPage() {
               )}
               {groupNickname && (
                 <div className="detail-row">
-                  <span className="detail-label">群昵称</span>
+                  <span className="detail-label">{t('群昵称')}</span>
                   <span className="detail-value">{groupNickname}</span>
                   <button className="copy-btn" onClick={() => handleCopy(groupNickname, 'groupNickname')}>
                     {copiedField === 'groupNickname' ? <Check size={14} /> : <Copy size={14} />}
@@ -1041,7 +1042,7 @@ function GroupAnalyticsPage() {
               )}
               {remark && (
                 <div className="detail-row">
-                  <span className="detail-label">备注</span>
+                  <span className="detail-label">{t('备注')}</span>
                   <span className="detail-value">{remark}</span>
                   <button className="copy-btn" onClick={() => handleCopy(remark, 'remark')}>
                     {copiedField === 'remark' ? <Check size={14} /> : <Copy size={14} />}
@@ -1056,7 +1057,7 @@ function GroupAnalyticsPage() {
                 onClick={() => void handleViewMemberAnalyticsFromModal(selectedMember)}
               >
                 <BarChart3 size={16} />
-                <span>分析该成员聊天</span>
+                <span>{t('分析该成员聊天')}</span>
               </button>
               <button
                 type="button"
@@ -1064,7 +1065,7 @@ function GroupAnalyticsPage() {
                 onClick={() => void handleViewMemberMessagesFromModal(selectedMember)}
               >
                 <MessageSquare size={16} />
-                <span>查看该成员消息</span>
+                <span>{t('查看该成员消息')}</span>
               </button>
             </div>
           </div>
@@ -1081,7 +1082,7 @@ function GroupAnalyticsPage() {
             <Search size={16} />
             <input
               type="text"
-              placeholder="搜索群聊..."
+              placeholder={t('搜索群聊...')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
@@ -1112,7 +1113,7 @@ function GroupAnalyticsPage() {
         ) : filteredGroups.length === 0 ? (
           <div className="empty-groups">
             <Users size={48} />
-            <p>{searchQuery ? '未找到匹配的群聊' : '暂无群聊数据'}</p>
+            <p>{searchQuery ? t('未找到匹配的群聊') : t('暂无群聊数据')}</p>
           </div>
         ) : (
           filteredGroups.map(group => (
@@ -1126,7 +1127,7 @@ function GroupAnalyticsPage() {
               </div>
               <div className="group-info">
                 <span className="group-name">{group.displayName}</span>
-                <span className="group-members">{group.memberCount} 位成员</span>
+                <span className="group-members">{t('{memberCount} 位成员', { memberCount: group.memberCount })}</span>
               </div>
             </div>
           ))
@@ -1143,41 +1144,41 @@ function GroupAnalyticsPage() {
           <Avatar src={selectedGroup?.avatarUrl} name={selectedGroup?.displayName} size={80} />
         </div>
         <div className="selected-group-meta">
-          <span className="group-summary-label">已选择群聊</span>
+          <span className="group-summary-label">{t('已选择群聊')}</span>
           <h2>{selectedGroup?.displayName}</h2>
-          <p>{selectedGroup?.memberCount} 位成员</p>
+          <p>{t('{memberCount} 位成员', { memberCount: selectedGroup?.memberCount })}</p>
         </div>
       </div>
       <div className="function-grid">
         <div className="function-card" onClick={() => handleFunctionSelect('members')}>
           <Users size={32} />
-          <span>群成员查看</span>
-          <small>查看群成员列表和基础资料</small>
+          <span>{t('群成员查看')}</span>
+          <small>{t('查看群成员列表和基础资料')}</small>
         </div>
         <div className="function-card" onClick={() => handleFunctionSelect('memberMessages')}>
           <MessageSquare size={32} />
-          <span>成员消息筛选与导出</span>
-          <small>按成员查看群聊消息，并支持导出当前成员记录</small>
+          <span>{t('成员消息筛选与导出')}</span>
+          <small>{t('按成员查看群聊消息，并支持导出当前成员记录')}</small>
         </div>
         <div className="function-card" onClick={() => handleFunctionSelect('memberAnalytics')}>
           <PieChart size={32} />
-          <span>群成员详细分析</span>
-          <small>针对群聊内某一用户的群聊记录进行详细分析，如发信数量、活跃周期等</small>
+          <span>{t('群成员详细分析')}</span>
+          <small>{t('针对群聊内某一用户的群聊记录进行详细分析，如发信数量、活跃周期等')}</small>
         </div>
         <div className="function-card" onClick={() => handleFunctionSelect('ranking')}>
           <BarChart3 size={32} />
-          <span>群聊发言排行</span>
-          <small>统计成员发言数量排行</small>
+          <span>{t('群聊发言排行')}</span>
+          <small>{t('统计成员发言数量排行')}</small>
         </div>
         <div className="function-card" onClick={() => handleFunctionSelect('activeHours')}>
           <Clock size={32} />
-          <span>群聊活跃时段</span>
-          <small>查看全天活跃时间分布</small>
+          <span>{t('群聊活跃时段')}</span>
+          <small>{t('查看全天活跃时间分布')}</small>
         </div>
         <div className="function-card" onClick={() => handleFunctionSelect('mediaStats')}>
           <Image size={32} />
-          <span>媒体内容统计</span>
-          <small>统计文本、图片、语音等类型</small>
+          <span>{t('媒体内容统计')}</span>
+          <small>{t('统计文本、图片、语音等类型')}</small>
         </div>
       </div>
     </div>
@@ -1186,12 +1187,12 @@ function GroupAnalyticsPage() {
   const renderFunctionContent = () => {
     const getFunctionTitle = () => {
       switch (selectedFunction) {
-        case 'members': return '群成员查看'
-        case 'memberMessages': return '成员消息筛选与导出'
-        case 'memberAnalytics': return '群成员详细分析'
-        case 'ranking': return '群聊发言排行'
-        case 'activeHours': return '群聊活跃时段'
-        case 'mediaStats': return '媒体内容统计'
+        case 'members': return t('群成员查看')
+        case 'memberMessages': return t('成员消息筛选与导出')
+        case 'memberAnalytics': return t('群成员详细分析')
+        case 'ranking': return t('群聊发言排行')
+        case 'activeHours': return t('群聊活跃时段')
+        case 'mediaStats': return t('媒体内容统计')
         default: return ''
       }
     }
@@ -1220,13 +1221,13 @@ function GroupAnalyticsPage() {
           {selectedFunction === 'members' && (
             <button className="export-btn" onClick={handleExportMembers} disabled={functionLoading || isExportingMembers}>
               {isExportingMembers ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-              <span>导出成员</span>
+              <span>{t('导出成员')}</span>
             </button>
           )}
           {selectedFunction === 'memberMessages' && (
             <button className="export-btn" onClick={openSelectedGroupChat}>
               <MessageSquare size={16} />
-              <span>打开群聊</span>
+              <span>{t('打开群聊')}</span>
             </button>
           )}
           <button className="refresh-btn" onClick={handleRefresh} disabled={functionLoading}>
@@ -1253,14 +1254,14 @@ function GroupAnalyticsPage() {
               {selectedFunction === 'memberMessages' && (
                 <div className="member-messages-panel">
                   {members.length === 0 ? (
-                    <div className="member-message-empty">暂无群成员数据，请先刷新。</div>
+                    <div className="member-message-empty">{t('暂无群成员数据，请先刷新。')}</div>
                   ) : (
                     <>
-                      <div className="member-message-summary-text">已加载 {memberMessages.length} 条消息</div>
+                      <div className="member-message-summary-text">{t('已加载 {length} 条消息', { length: memberMessages.length })}</div>
 
                       <div className="member-message-toolbar">
                         <div className="member-export-field" ref={messageMemberSelectDropdownRef}>
-                          <span>查看成员</span>
+                          <span>{t('查看成员')}</span>
                           <button
                             type="button"
                             className={`select-trigger member-message-select-trigger ${showMessageMemberSelect ? 'open' : ''}`}
@@ -1276,7 +1277,7 @@ function GroupAnalyticsPage() {
                                 name={selectedMessageMember?.displayName || selectedMessageMember?.username || '?'}
                                 size={24}
                               />
-                              <span className="select-value">{selectedMessageMember?.displayName || selectedMessageMember?.username || '请选择成员'}</span>
+                              <span className="select-value">{selectedMessageMember?.displayName || selectedMessageMember?.username || t('请选择成员')}</span>
                             </div>
                             <ChevronDown size={16} />
                           </button>
@@ -1288,12 +1289,12 @@ function GroupAnalyticsPage() {
                                   type="text"
                                   value={messageMemberSearchKeyword}
                                   onChange={e => setMessageMemberSearchKeyword(e.target.value)}
-                                  placeholder="搜索 wxid / 昵称 / 备注 / 微信号"
+                                  placeholder={t('搜索 wxid / 昵称 / 备注 / 微信号')}
                                 />
                               </div>
                               <div className="member-select-options">
                                 {filteredMessageMemberOptions.length === 0 ? (
-                                  <div className="member-select-empty">无匹配成员</div>
+                                  <div className="member-select-empty">{t('无匹配成员')}</div>
                                 ) : (
                                   filteredMessageMemberOptions.map(member => (
                                     <button
@@ -1306,10 +1307,10 @@ function GroupAnalyticsPage() {
                                       <span className="member-option-main">{member.displayName || member.username}</span>
                                       <span className="member-option-meta">
                                         wxid: {member.username}
-                                        {member.alias ? ` · 微信号: ${member.alias}` : ''}
-                                        {member.remark ? ` · 备注: ${member.remark}` : ''}
-                                        {member.nickname ? ` · 昵称: ${member.nickname}` : ''}
-                                        {member.groupNickname ? ` · 群昵称: ${member.groupNickname}` : ''}
+                                        {member.alias ? t(' · 微信号: {alias}', { alias: member.alias }) : ''}
+                                        {member.remark ? t(' · 备注: {remark}', { remark: member.remark }) : ''}
+                                        {member.nickname ? t(' · 昵称: {nickname}', { nickname: member.nickname }) : ''}
+                                        {member.groupNickname ? t(' · 群昵称: {groupNickname}', { groupNickname: member.groupNickname }) : ''}
                                       </span>
                                     </button>
                                   ))
@@ -1325,13 +1326,13 @@ function GroupAnalyticsPage() {
                             disabled={!selectedMessageMemberUsername}
                           >
                             <Download size={16} />
-                            <span>导出</span>
+                            <span>{t('导出')}</span>
                           </button>
                         </div>
                       </div>
 
                       {memberMessages.length === 0 ? (
-                        <div className="member-message-empty">当前时间范围内暂无该成员消息。</div>
+                        <div className="member-message-empty">{t('当前时间范围内暂无该成员消息。')}</div>
                       ) : (
                         <div className="member-message-list">
                           {memberMessages.map(message => (
@@ -1356,10 +1357,10 @@ function GroupAnalyticsPage() {
                               onClick={() => void handleLoadMoreMemberMessages()}
                             >
                               {memberMessagesLoadingMore ? <Loader2 size={16} className="spin" /> : null}
-                              <span>{memberMessagesLoadingMore ? '加载中...' : '加载更多'}</span>
+                              <span>{memberMessagesLoadingMore ? t('加载中...') : t('加载更多')}</span>
                             </button>
                           ) : (
-                            <span className="member-message-end">已显示当前可读取的全部消息</span>
+                            <span className="member-message-end">{t('已显示当前可读取的全部消息')}</span>
                           )}
                         </div>
                       )}
@@ -1370,12 +1371,12 @@ function GroupAnalyticsPage() {
               {selectedFunction === 'memberAnalytics' && (
                 <div className="member-analytics-panel">
                   {members.length === 0 ? (
-                    <div className="member-message-empty">暂无群成员数据，请先刷新。</div>
+                    <div className="member-message-empty">{t('暂无群成员数据，请先刷新。')}</div>
                   ) : (
                     <>
                       <div className="member-message-toolbar" style={{ marginBottom: 20 }}>
                         <div className="member-export-field" ref={messageMemberSelectDropdownRef}>
-                          <span>分析成员</span>
+                          <span>{t('分析成员')}</span>
                           <button
                             type="button"
                             className={`select-trigger member-message-select-trigger ${showMessageMemberSelect ? 'open' : ''}`}
@@ -1387,7 +1388,7 @@ function GroupAnalyticsPage() {
                                 name={selectedMessageMember?.displayName || selectedMessageMember?.username || '?'}
                                 size={24}
                               />
-                              <span className="select-value">{selectedMessageMember?.displayName || selectedMessageMember?.username || '请选择成员'}</span>
+                              <span className="select-value">{selectedMessageMember?.displayName || selectedMessageMember?.username || t('请选择成员')}</span>
                             </div>
                             <ChevronDown size={16} />
                           </button>
@@ -1399,13 +1400,13 @@ function GroupAnalyticsPage() {
                                   type="text"
                                   value={messageMemberSearchKeyword}
                                   onChange={e => setMessageMemberSearchKeyword(e.target.value)}
-                                  placeholder="搜索 wxid / 昵称 / 备注 / 微信号"
+                                  placeholder={t('搜索 wxid / 昵称 / 备注 / 微信号')}
                                   onClick={e => e.stopPropagation()}
                                 />
                               </div>
                               <div className="member-select-options">
                                 {filteredMessageMemberOptions.length === 0 ? (
-                                  <div className="member-select-empty">无匹配成员</div>
+                                  <div className="member-select-empty">{t('无匹配成员')}</div>
                                 ) : (
                                   filteredMessageMemberOptions.map(member => (
                                     <button
@@ -1424,10 +1425,10 @@ function GroupAnalyticsPage() {
                                       <span className="member-option-main">{member.displayName || member.username}</span>
                                       <span className="member-option-meta">
                                         wxid: {member.username}
-                                        {member.alias ? ` · 微信号: ${member.alias}` : ''}
-                                        {member.remark ? ` · 备注: ${member.remark}` : ''}
-                                        {member.nickname ? ` · 昵称: ${member.nickname}` : ''}
-                                        {member.groupNickname ? ` · 群昵称: ${member.groupNickname}` : ''}
+                                        {member.alias ? t(' · 微信号: {alias}', { alias: member.alias }) : ''}
+                                        {member.remark ? t(' · 备注: {remark}', { remark: member.remark }) : ''}
+                                        {member.nickname ? t(' · 昵称: {nickname}', { nickname: member.nickname }) : ''}
+                                        {member.groupNickname ? t(' · 群昵称: {groupNickname}', { groupNickname: member.groupNickname }) : ''}
                                       </span>
                                     </button>
                                   ))
@@ -1446,14 +1447,14 @@ function GroupAnalyticsPage() {
                               <div className="stat-icon"><MessageSquare size={24} /></div>
                               <div className="stat-info">
                                 <span className="stat-value">{formatNumber(memberAnalyticsData.statistics.sentMessages)}</span>
-                                <span className="stat-label">发信数量</span>
+                                <span className="stat-label">{t('发信数量')}</span>
                               </div>
                             </div>
                             <div className="stat-card">
                               <div className="stat-icon"><Clock size={24} /></div>
                               <div className="stat-info">
                                 <span className="stat-value">{memberAnalyticsData.statistics.activeDays}</span>
-                                <span className="stat-label">活跃天数</span>
+                                <span className="stat-label">{t('活跃天数')}</span>
                               </div>
                             </div>
                             <div className="stat-card" style={{ gridColumn: 'span 2' }}>
@@ -1462,19 +1463,19 @@ function GroupAnalyticsPage() {
                                 <span className="stat-value">
                                   {formatDate(memberAnalyticsData.statistics.firstMessageTime)} - {formatDate(memberAnalyticsData.statistics.lastMessageTime)}
                                 </span>
-                                <span className="stat-label">活跃周期</span>
+                                <span className="stat-label">{t('活跃周期')}</span>
                               </div>
                             </div>
                           </div>
                           
                           <div className="charts-grid">
                             <div className="chart-card wide">
-                              <h3>活跃时段</h3>
+                              <h3>{t('活跃时段')}</h3>
                               <div className="chart-wrapper">
                                 <ReactECharts 
                                   option={{
                                     tooltip: { trigger: 'axis' },
-                                    xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, i) => `${i}时`) },
+                                    xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, i) => t('{i}时', { i: i })) },
                                     yAxis: { type: 'value' },
                                     series: [{ type: 'bar', data: Array.from({ length: 24 }, (_, i) => memberAnalyticsData.timeDistribution[i] || 0), itemStyle: { color: '#07c160', borderRadius: [4, 4, 0, 0] } }]
                                   }} 
@@ -1484,7 +1485,7 @@ function GroupAnalyticsPage() {
                             </div>
                             
                             <div className="chart-card wide">
-                              <h3>消息类型分布</h3>
+                              <h3>{t('消息类型分布')}</h3>
                               <div className="chart-wrapper">
                                 <ReactECharts 
                                   option={{
@@ -1493,12 +1494,12 @@ function GroupAnalyticsPage() {
                                       type: 'pie',
                                       radius: ['40%', '70%'],
                                       data: [
-                                        { name: '文本', value: memberAnalyticsData.statistics.textMessages, itemStyle: { color: '#3b82f6' } },
-                                        { name: '图片', value: memberAnalyticsData.statistics.imageMessages, itemStyle: { color: '#22c55e' } },
-                                        { name: '语音', value: memberAnalyticsData.statistics.voiceMessages, itemStyle: { color: '#f97316' } },
-                                        { name: '视频', value: memberAnalyticsData.statistics.videoMessages, itemStyle: { color: '#a855f7' } },
-                                        { name: '表情', value: memberAnalyticsData.statistics.emojiMessages, itemStyle: { color: '#ec4899' } },
-                                        { name: '其他', value: memberAnalyticsData.statistics.otherMessages, itemStyle: { color: '#6b7280' } }
+                                        { name: t('文本'), value: memberAnalyticsData.statistics.textMessages, itemStyle: { color: '#3b82f6' } },
+                                        { name: t('图片'), value: memberAnalyticsData.statistics.imageMessages, itemStyle: { color: '#22c55e' } },
+                                        { name: t('语音'), value: memberAnalyticsData.statistics.voiceMessages, itemStyle: { color: '#f97316' } },
+                                        { name: t('视频'), value: memberAnalyticsData.statistics.videoMessages, itemStyle: { color: '#a855f7' } },
+                                        { name: t('表情'), value: memberAnalyticsData.statistics.emojiMessages, itemStyle: { color: '#ec4899' } },
+                                        { name: t('其他'), value: memberAnalyticsData.statistics.otherMessages, itemStyle: { color: '#6b7280' } }
                                       ].filter(item => item.value > 0),
                                       label: { show: true, formatter: '{b} {d}%' }
                                     }]
@@ -1509,32 +1510,32 @@ function GroupAnalyticsPage() {
                             </div>
                             <div className="chart-card wide" style={{ display: 'flex', gap: '32px' }}>
                               <div style={{ flex: 1 }}>
-                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Hash size={18} /> 常用语</h3>
+                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Hash size={18} />{' '}{t('常用语')}</h3>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                   {memberAnalyticsData.commonPhrases && memberAnalyticsData.commonPhrases.length > 0 ? (
                                     memberAnalyticsData.commonPhrases.map((item: any, idx: number) => (
                                       <div key={idx} style={{ background: 'var(--bg-tertiary)', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border-color)' }}>
                                         <span style={{ color: 'var(--text-primary)' }}>{item.phrase}</span>
-                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>{item.count}次</span>
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>{t('{count}次', { count: item.count })}</span>
                                       </div>
                                     ))
                                   ) : (
-                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>暂无常用语数据</span>
+                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>{t('暂无常用语数据')}</span>
                                   )}
                                 </div>
                               </div>
                               <div style={{ flex: 1 }}>
-                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Smile size={18} /> 常用表情</h3>
+                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Smile size={18} />{' '}{t('常用表情')}</h3>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                   {memberAnalyticsData.commonEmojis && memberAnalyticsData.commonEmojis.length > 0 ? (
                                     memberAnalyticsData.commonEmojis.map((item: any, idx: number) => (
                                       <div key={idx} style={{ background: 'var(--bg-tertiary)', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border-color)' }}>
                                         <span style={{ color: 'var(--text-primary)' }}>{item.emoji}</span>
-                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>{item.count}次</span>
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>{t('{count}次', { count: item.count })}</span>
                                       </div>
                                     ))
                                   ) : (
-                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>暂无表情包数据</span>
+                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>{t('暂无表情包数据')}</span>
                                   )}
                                 </div>
                               </div>
@@ -1560,7 +1561,7 @@ function GroupAnalyticsPage() {
                       <div className="contact-info">
                         <span className="contact-name">{item.member.displayName}</span>
                       </div>
-                      <span className="message-count">{formatNumber(item.messageCount)} 条</span>
+                      <span className="message-count">{t('{v0} 条', { v0: formatNumber(item.messageCount) })}</span>
                     </div>
                   ))}
                 </div>
@@ -1587,14 +1588,14 @@ function GroupAnalyticsPage() {
                           <div key={item.type} className="legend-item">
                             <span className="legend-color" style={{ backgroundColor: colorMap[item.type] || '#6b7280' }} />
                             <span className="legend-name">{item.name}</span>
-                            <span className="legend-count">{formatNumber(item.count)} 条</span>
+                            <span className="legend-count">{t('{v0} 条', { v0: formatNumber(item.count) })}</span>
                             <span className="legend-percent">({percentage}%)</span>
                           </div>
                         )
                       })}
                       <div className="legend-total">
-                        <span>总计</span>
-                        <span>{formatNumber(mediaStats.total)} 条</span>
+                        <span>{t('总计')}</span>
+                        <span>{t('{v0} 条', { v0: formatNumber(mediaStats.total) })}</span>
                       </div>
                     </div>
                   </div>
@@ -1619,7 +1620,7 @@ function GroupAnalyticsPage() {
           <div className="detail-drag-region" aria-hidden="true" />
           <div className="placeholder">
             <Users size={64} />
-          <p>请从左侧选择一个群聊进行分析</p>
+          <p>{t('请从左侧选择一个群聊进行分析')}</p>
           </div>
         </>
       )
@@ -1642,14 +1643,14 @@ function GroupAnalyticsPage() {
             <X size={20} />
           </button>
           <div className="member-export-modal-header">
-            <h3>导出成员消息</h3>
-            <p>{selectedMessageMember?.displayName || selectedMessageMember?.username || '未选择成员'}</p>
+            <h3>{t('导出成员消息')}</h3>
+            <p>{selectedMessageMember?.displayName || selectedMessageMember?.username || t('未选择成员')}</p>
           </div>
 
           <div className="member-export-panel">
             <div className="member-export-grid">
               <div className="member-export-field" ref={formatDropdownRef}>
-                <span>导出格式</span>
+                <span>{t('导出格式')}</span>
                 <button
                   type="button"
                   className={`select-trigger ${showFormatSelect ? 'open' : ''}`}
@@ -1681,85 +1682,69 @@ function GroupAnalyticsPage() {
                 )}
               </div>
               <div className="member-export-field member-export-folder">
-                <span>导出目录</span>
+                <span>{t('导出目录')}</span>
                 <div className="member-export-folder-row">
-                  <input value={exportFolder} readOnly placeholder="请选择导出目录" />
-                  <button type="button" onClick={handleChooseExportFolder}>
-                    选择目录
-                  </button>
+                  <input value={exportFolder} readOnly placeholder={t('请选择导出目录')} />
+                  <button type="button" onClick={handleChooseExportFolder}>{t('选择目录')}</button>
                 </div>
               </div>
             </div>
 
             <div className="member-export-options">
               <div className="member-export-chip-group">
-                <span className="chip-group-label">媒体导出</span>
+                <span className="chip-group-label">{t('媒体导出')}</span>
                 <button
                   type="button"
                   className={`export-filter-chip ${memberExportOptions.exportMedia ? 'active' : ''}`}
                   onClick={() => setMemberExportOptions(prev => ({ ...prev, exportMedia: !prev.exportMedia }))}
-                >
-                  导出媒体文件
-                </button>
+                >{t('导出媒体文件')}</button>
               </div>
               <div className="member-export-chip-group">
-                <span className="chip-group-label">媒体类型</span>
+                <span className="chip-group-label">{t('媒体类型')}</span>
                 <div className="member-export-chip-list">
                   <button
                     type="button"
                     className={`export-filter-chip ${memberExportOptions.exportImages ? 'active' : ''} ${!memberExportOptions.exportMedia ? 'disabled' : ''}`}
                     disabled={!memberExportOptions.exportMedia}
                     onClick={() => setMemberExportOptions(prev => ({ ...prev, exportImages: !prev.exportImages }))}
-                  >
-                    图片
-                  </button>
+                  >{t('图片')}</button>
                   <button
                     type="button"
                     className={`export-filter-chip ${memberExportOptions.exportVoices ? 'active' : ''} ${!memberExportOptions.exportMedia ? 'disabled' : ''}`}
                     disabled={!memberExportOptions.exportMedia}
                     onClick={() => setMemberExportOptions(prev => ({ ...prev, exportVoices: !prev.exportVoices }))}
-                  >
-                    语音
-                  </button>
+                  >{t('语音')}</button>
                   <button
                     type="button"
                     className={`export-filter-chip ${memberExportOptions.exportVideos ? 'active' : ''} ${!memberExportOptions.exportMedia ? 'disabled' : ''}`}
                     disabled={!memberExportOptions.exportMedia}
                     onClick={() => setMemberExportOptions(prev => ({ ...prev, exportVideos: !prev.exportVideos }))}
-                  >
-                    视频
-                  </button>
+                  >{t('视频')}</button>
                   <button
                     type="button"
                     className={`export-filter-chip ${memberExportOptions.exportEmojis ? 'active' : ''} ${!memberExportOptions.exportMedia ? 'disabled' : ''}`}
                     disabled={!memberExportOptions.exportMedia}
                     onClick={() => setMemberExportOptions(prev => ({ ...prev, exportEmojis: !prev.exportEmojis }))}
-                  >
-                    表情
-                  </button>
+                  >{t('表情')}</button>
                 </div>
               </div>
               <div className="member-export-chip-group">
-                <span className="chip-group-label">附加选项</span>
+                <span className="chip-group-label">{t('附加选项')}</span>
                 <div className="member-export-chip-list">
                   <button
                     type="button"
                     className={`export-filter-chip ${memberExportOptions.exportVoiceAsText ? 'active' : ''}`}
                     onClick={() => setMemberExportOptions(prev => ({ ...prev, exportVoiceAsText: !prev.exportVoiceAsText }))}
-                  >
-                    语音转文字
-                  </button>
+                  >{t('语音转文字')}</button>
                   <button
                     type="button"
                     className={`export-filter-chip ${memberExportOptions.exportAvatars ? 'active' : ''}`}
                     onClick={() => setMemberExportOptions(prev => ({ ...prev, exportAvatars: !prev.exportAvatars }))}
-                  >
-                    导出头像
-                  </button>
+                  >{t('导出头像')}</button>
                 </div>
               </div>
               <div className="member-export-field" ref={displayNameDropdownRef}>
-                <span>显示名称规则</span>
+                <span>{t('显示名称规则')}</span>
                 <button
                   type="button"
                   className={`select-trigger ${showDisplayNameSelect ? 'open' : ''}`}
@@ -1799,7 +1784,7 @@ function GroupAnalyticsPage() {
                 disabled={isExportingMemberMessages || !selectedMessageMemberUsername || !exportFolder}
               >
                 {isExportingMemberMessages ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-                <span>{isExportingMemberMessages ? '导出中...' : '开始导出'}</span>
+                <span>{isExportingMemberMessages ? t('导出中...') : t('开始导出')}</span>
               </button>
             </div>
           </div>
@@ -1822,9 +1807,7 @@ function GroupAnalyticsPage() {
             <p>{exportResultDialog.message}</p>
           </div>
           <div className="member-result-modal-actions">
-            <button type="button" className="member-result-modal-btn" onClick={() => setExportResultDialog(null)}>
-              知道了
-            </button>
+            <button type="button" className="member-result-modal-btn" onClick={() => setExportResultDialog(null)}>{t('知道了')}</button>
           </div>
         </div>
       </div>
