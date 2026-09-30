@@ -1,5 +1,7 @@
 # Native CLI (`weflow`)
 
+**English** | [简体中文](zh-CN/NATIVE-CLI.md)
+
 A Rust command-line build of WeFlow's backend. Every command prints one JSON document on stdout
 (`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`.
 

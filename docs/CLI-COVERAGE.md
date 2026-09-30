@@ -1,5 +1,7 @@
 # Native Rust CLI — coverage of the original WeFlow backend
 
+**English** | [简体中文](zh-CN/CLI-COVERAGE.md)
+
 Baseline: the TypeScript/Electron backend as of the last upstream commit by the original author,
 `ca6c479` (2026-05-15). Everything under `crates/` was added afterwards.
 

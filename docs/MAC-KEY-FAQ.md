@@ -1,54 +1,54 @@
-# macOS 微信密钥自动获取失败排障指南
+# Troubleshooting automatic WeChat key retrieval on macOS
 
-如果你在 macOS 系统下，遇到了 WeFlow 自动获取微信数据库密钥失败的问题，这篇指南或许可以帮到你。
+**English** | [简体中文](zh-CN/MAC-KEY-FAQ.md)
 
-### 请立刻停止连续重试
+If WeFlow fails to obtain the WeChat database key automatically on macOS, this guide may help.
 
-当你看到下面这些报错时，请务必暂停操作，不要再去反复点击获取：
+### Stop retrying in a row
 
-- SCAN_FAILED，通常伴随 No suitable module found 或 Sink pattern not found
-- HOOK_FAILED 或 Native Hook Failed
+When you see any of the following errors, pause and do not keep clicking the retrieve button:
+
+- SCAN_FAILED, usually accompanied by "No suitable module found" or "Sink pattern not found"
+- HOOK_FAILED or "Native Hook Failed"
 - patch_breakpoint_failed
 - thread_get_state_failed
 
-现在的 macOS 系统和微信防护机制非常敏锐。连续的重试动作不仅无法解决问题，反而容易被判定为异常行为，进而触发微信的安全模式或系统级的内存保护。
+Current macOS and WeChat protections are very sensitive. Repeated attempts do not fix the problem; they are more likely to be treated as abnormal behavior and trigger WeChat's safe mode or system-level memory protection.
 
-### 可能的尝试流程
+### Suggested procedure
 
-根据大量社区用户的反馈，如果你已经遇到了获取失败的情况，按照下面的步骤顺序操作，通常都能顺利解决问题：
+Based on feedback from many community users, if retrieval has already failed, the following steps in order usually solve it:
 
-1. **降级微信版本**。找一个经过大家验证、兼容性更好的老版本，目前最推荐先退回到 4.1.7.57 或者 4.1.8.100。
-2. **彻底退出微信**。请使用快捷键 Command + Q 或在活动监视器中结束进程，而不仅仅是关闭窗口。
-3. **重启你的 Mac**。这一步极其关键，必须是真正的重新启动。注销或睡眠唤醒无法清除系统底层的拦截状态。
-4. **重新打开微信**。随便点击几下保持它在最前台，并且确保它是未登录的状态。
-5. **回到 WeFlow**。仅仅尝试一次“自动获取密钥”。
-6. **输入密码并登录**。先在弹窗中输入你的系统密码后，确认页面弹出允许登录了再登录微信
-7. **恢复日常使用**。只要成功拿到了密钥，你就可以放心地把微信更新回你平时爱用的最新版本。
+1. **Downgrade WeChat.** Use an older version that the community has verified to be more compatible. Currently 4.1.7.57 or 4.1.8.100 are recommended first.
+2. **Quit WeChat completely.** Use Command + Q or end the process in Activity Monitor; closing the window is not enough.
+3. **Restart your Mac.** This step is essential and must be a real restart. Logging out or sleep/wake does not clear the low-level blocking state.
+4. **Reopen WeChat.** Click around a little to keep it in the foreground, and make sure it is **not logged in**.
+5. **Go back to WeFlow.** Try "Get key automatically" **once only**.
+6. **Enter your password and log in.** First enter your system password in the dialog; once the page confirms that login is allowed, log in to WeChat.
+7. **Return to normal use.** As soon as you have the key, you can update WeChat back to the latest version you normally use.
 
-### 常见报错与应对方法
-
-为了方便排查，这里列出了几类最常见的报错及其背后的原因和对策：
+### Common errors and what to do
 
 **SCAN_FAILED: No suitable module found**
-这意味着微信的内存布局并不标准，或者目标模块没有被命中。你可以先确保微信完整启动并保持在前台。如果还是不行，请直接执行上面提到的“降级、重启电脑、获取、再升级”的完整流程。
+WeChat's memory layout is non-standard, or the target module was not hit. Make sure WeChat has fully started and stays in the foreground. If that does not help, go through the full "downgrade, restart the computer, retrieve, upgrade again" procedure above.
 
 **SCAN_FAILED: Sink pattern not found**
-这说明 WeFlow 还没有适配你当前正在使用的微信版本特征。最快的解决办法是直接降级到微信 4.1.7 或 4.1.8.100 版本再试。
+WeFlow does not yet support the signature of the WeChat version you are using. The quickest fix is to downgrade to WeChat 4.1.7 or 4.1.8.100 and try again.
 
-**patch_breakpoint_failed 或 thread_get_state_failed**
-这类错误大多是因为调试断点注入或线程状态读取被 macOS 系统的安全机制拦截了。此时继续尝试毫无意义，彻底退出微信并重启电脑再试。
+**patch_breakpoint_failed or thread_get_state_failed**
+These errors are mostly caused by macOS security mechanisms blocking breakpoint injection or thread state reads. Further attempts are pointless: quit WeChat completely, restart your computer and try again.
 
 **task_for_pid:5**
-这是进程附加权限被系统拒绝的提示。请确保你使用的是打包好的 WeFlow.app，同时检查系统的签名与调试权限是否已经正确配置。
+The system denied permission to attach to the process. Make sure you are using the packaged WeFlow.app, and check that code signing and debugging permissions are configured correctly.
 
-### 关于推荐版本的补充说明
+### About the recommended versions
 
-截至 2026 年 4 月，综合社区的反馈来看，微信 4.1.7 和 4.1.8.100 版本在密钥获取流程中的表现最为稳定，成功率最高。
+As of April 2026, community feedback shows that WeChat 4.1.7 and 4.1.8.100 are the most stable and have the highest success rate for key retrieval.
 
-这并不意味着其他新版本绝对无法获取，只是作为当前的排障参考。未来 WeFlow 也会在后续的更新中逐步适配新版微信的特征，建议大家多留意项目的 Release 动态。
+This does not mean newer versions can never work; it is only a reference for troubleshooting. WeFlow will gradually support the signatures of newer WeChat versions in future updates, so keep an eye on the project's releases.
 
-### 最后的几点建议
+### Final advice
 
-首次失败后，首要任务是排查原因，切忌盲目地连续点击自动获取。如果你在看到这篇文档前已经失败了好几次，最好的做法是直接清零重来：彻底退出微信，重启电脑，然后再进行下一次尝试。
+After the first failure, find the cause first and never click "Get automatically" blindly several times in a row. If you already failed several times before reading this document, the best approach is to start from zero: quit WeChat completely, restart the computer, then try again.
 
-最后，如果尝试了上述所有方法依然无法解决，请记得保存完整的报错文本，特别是 SCAN_FAILED 或 HOOK_FAILED 后面跟着的英文细节。把这些信息提交到[issue](https://github.com/hicccc77/WeFlow/issues/745)，会大大加快定位和修复兼容性问题的速度。
+Finally, if none of the above works, save the complete error text, especially the English details after SCAN_FAILED or HOOK_FAILED, and submit it to [the issue](https://github.com/hicccc77/WeFlow/issues/745). It greatly speeds up locating and fixing compatibility problems.

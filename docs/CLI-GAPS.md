@@ -1,5 +1,7 @@
 # Native Rust CLI — what is NOT covered
 
+**English** | [简体中文](zh-CN/CLI-GAPS.md)
+
 Companion to [CLI-COVERAGE.md](CLI-COVERAGE.md). Baseline is the original TypeScript backend (`ca6c479`). Everything below is
 either missing or behaves differently from the desktop app. Nothing in the CLI has been verified against real WeChat data.
 
