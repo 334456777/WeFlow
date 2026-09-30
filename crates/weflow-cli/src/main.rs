@@ -21,41 +21,72 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Parser, Debug)]
 #[command(name = "weflow", version, about = "Native CLI for WeFlow")]
 struct Cli {
+    /// Path to the config file
     #[arg(long, global = true)]
     config: Option<PathBuf>,
+    /// Config profile name
     #[arg(long, global = true)]
     profile: Option<String>,
+    /// WeChat data directory (overrides config)
     #[arg(long, global = true)]
     db_path: Option<String>,
+    /// Database decrypt key in hex (overrides config)
     #[arg(long, global = true)]
     decrypt_key: Option<String>,
+    /// Account wxid (overrides config)
     #[arg(long, global = true)]
     wxid: Option<String>,
+    /// Output language for generated text (default: from WEFLOW_LANG/LC_ALL/LC_MESSAGES/LANG, else en)
+    #[arg(long, global = true, value_enum)]
+    lang: Option<LangArg>,
+    /// Print JSON (default)
     #[arg(long, global = true)]
     json: bool,
+    /// Print human-readable pretty JSON
     #[arg(long, global = true)]
     pretty: bool,
+    /// Emit NDJSON progress events on stderr
     #[arg(long, global = true)]
     progress: bool,
     #[command(subcommand)]
     command: Commands,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum LangArg {
+    En,
+    Zh,
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Read and write configuration (list, get, set, unset, clear, import)
     Config(ConfigCommand),
+    /// Detect, scan and test WeChat database locations
     Db(DbCommand),
+    /// Extract database and image keys
     Key(KeyCommand),
+    /// Read sessions, messages and contacts; anti-revoke triggers; media
     Chat(ChatCommand),
+    /// Export sessions, contacts, messages, footprint and media
     Export(ExportCommand),
+    /// Overall statistics, rankings and time distribution
     Analytics(AnalyticsCommand),
+    /// Group chat members and statistics
     Group(GroupCommand),
+    /// Annual and dual-person reports
     Report(ReportCommand),
+    /// Moments (SNS) timeline, export and block-delete trigger
     Sns(SnsCommand),
+    /// Official accounts and WeChat Pay records
     Biz(BizCommand),
+    /// AI insights
     Insight(InsightCommand),
+    /// Run the HTTP API, message push, insight and image auto-download services
     Serve(ServeCommand),
+    /// Show the embedded runtime and manifest
     Runtime(RuntimeCommand),
+    /// Create, inspect and restore backups
     Backup(BackupCommand),
 }
 
@@ -448,6 +479,12 @@ async fn main() -> ExitCode {
         .init();
 
     let cli = Cli::parse();
+    if let Some(lang) = cli.lang {
+        weflow_core::locale::set(match lang {
+            LangArg::En => weflow_core::locale::Lang::En,
+            LangArg::Zh => weflow_core::locale::Lang::Zh,
+        });
+    }
     match run(&cli).await {
         Ok(value) => {
             print_response(&success(value), cli.pretty);

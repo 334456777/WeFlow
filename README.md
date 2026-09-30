@@ -70,6 +70,21 @@ WeFlow 是一个**完全本地**的微信**实时**聊天记录查看、分析�
 | macOS | Apple Silicon (M series, arm64) | `.dmg` |
 | Linux | x64 devices (amd64) | `.AppImage`, `.tar.gz` |
 
+## Native CLI / 原生命令行
+
+WeFlow ships a Rust command-line build (`weflow`) next to the desktop app. It defaults to **English** and follows your system locale: Chinese output is used only when `WEFLOW_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG` or `LANGUAGE` starts with `zh` (first one set wins; anything else, including `C`/`POSIX`, gives English). Override it per run with `--lang en|zh`.
+
+```bash
+make build                                  # or: cargo build --release -p weflow-cli
+weflow --help
+weflow --lang zh export messages <session-id> --out chat.txt
+LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
+```
+
+See [docs/NATIVE-CLI.md](docs/NATIVE-CLI.md) for the command list and [docs/CLI-COVERAGE.md](docs/CLI-COVERAGE.md) for how much of the original desktop backend the CLI covers.
+
+Rust 原生命令行 `weflow` 默认输出英文，仅当环境变量 `WEFLOW_LANG` / `LC_ALL` / `LC_MESSAGES` / `LANG` / `LANGUAGE` 以 `zh` 开头时输出中文，也可用 `--lang en|zh` 指定。
+
 ## 快速开始
 
 若你只想使用成品版本，可前往 [Releases](https://github.com/hicccc77/WeFlow/releases) 下载并安装。

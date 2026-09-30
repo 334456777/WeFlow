@@ -8,14 +8,27 @@ use serde_json::{json, Value};
 
 use crate::config::ProfileConfig;
 use crate::error::{AppError, AppResult};
+use crate::locale::{self, Lang};
 
-const DEFAULT_SYSTEM_PROMPT: &str = "你是用户的私人关系观察助手，名叫\"见解\"。你的任务是主动提供有价值的观察和建议。
+const DEFAULT_SYSTEM_PROMPT_ZH: &str = "你是用户的私人关系观察助手，名叫\"见解\"。你的任务是主动提供有价值的观察和建议。
 
 要求：
 1. 必须给出见解。基于聊天记录分析对方情绪、话题趋势、关系动态，或给出回复建议、聊天话题推荐。
 2. 控制在 80 字以内，直接、具体、一针见血。不要废话。
 3. 输出纯文本，不使用 Markdown。
 4. 只有在完全没有任何可说的内容时（比如对话只有一条\"嗯\"），才回复\"SKIP\"。绝大多数情况下你应该输出见解。";
+
+const DEFAULT_SYSTEM_PROMPT_EN: &str = "You are the user's personal relationship observer, named \"Insight\". Your job is to proactively offer useful observations and advice.
+
+Requirements:
+1. Always give an insight. Based on the chat history, read the other person's mood, topic trends and relationship dynamics, or suggest a reply or a conversation topic.
+2. Keep it under 50 words: direct, specific and to the point. No filler.
+3. Output plain text, no Markdown.
+4. Reply \"SKIP\" only when there is truly nothing to say (for example the conversation is a single \"ok\"). In almost every case you should give an insight.";
+
+fn default_system_prompt() -> &'static str {
+    locale::tr(DEFAULT_SYSTEM_PROMPT_EN, DEFAULT_SYSTEM_PROMPT_ZH)
+}
 
 const API_TIMEOUT_SECS: u64 = 45;
 const API_TEMPERATURE: f32 = 0.7;
@@ -185,6 +198,23 @@ pub async fn test_ai_connection(config: &AiModelConfig) -> AppResult<Value> {
     }
 }
 
+fn build_user_prompt(
+    lang: Lang,
+    display_name: &str,
+    session_id: &str,
+    trigger_reason: &str,
+    messages_text: &str,
+) -> String {
+    match lang {
+        Lang::En => format!(
+            "Contact: {display_name} ({session_id})\nTrigger: {trigger_reason}\n\nRecent chat history:\n{messages_text}\n\nGive your insight (under 50 words):"
+        ),
+        Lang::Zh => format!(
+            "联系人：{display_name}（{session_id}）\n触发原因：{trigger_reason}\n\n最近聊天记录：\n{messages_text}\n\n请给出你的见解（≤80字）："
+        ),
+    }
+}
+
 pub async fn generate_insight(
     config: &AiModelConfig,
     session_id: &str,
@@ -192,11 +222,14 @@ pub async fn generate_insight(
     messages_text: &str,
     trigger_reason: &str,
 ) -> AppResult<String> {
-    let user_prompt = format!(
-        "联系人：{}（{}）\n触发原因：{}\n\n最近聊天记录：\n{}\n\n请给出你的见解（≤80字）：",
-        display_name, session_id, trigger_reason, messages_text
+    let user_prompt = build_user_prompt(
+        locale::current(),
+        display_name,
+        session_id,
+        trigger_reason,
+        messages_text,
     );
-    let result = call_ai_api(config, DEFAULT_SYSTEM_PROMPT, &user_prompt)
+    let result = call_ai_api(config, default_system_prompt(), &user_prompt)
         .await
         .map_err(|err| AppError::runtime(format!("AI insight generation failed: {err}")))?;
     if result.trim().eq_ignore_ascii_case("SKIP") {
@@ -262,5 +295,13 @@ mod tests {
         assert_eq!(config.api_key, "sk-test");
         assert_eq!(config.model, "gpt-4");
         assert_eq!(config.max_tokens, API_MAX_TOKENS_DEFAULT);
+    }
+
+    #[test]
+    fn user_prompt_follows_language() {
+        let en = build_user_prompt(Lang::En, "Alice", "wxid_a", "new message", "hi");
+        assert!(en.starts_with("Contact: Alice (wxid_a)"));
+        let zh = build_user_prompt(Lang::Zh, "Alice", "wxid_a", "new message", "hi");
+        assert!(zh.starts_with("联系人：Alice（wxid_a）"));
     }
 }

@@ -5,6 +5,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
+use crate::locale::{self, Lang};
+
 pub fn export_html(
     title: &str,
     messages: &Value,
@@ -78,7 +80,10 @@ pub fn export_excel(messages: &Value, out: &Path) -> Result<()> {
     let mut workbook = rust_xlsxwriter::Workbook::new();
     let worksheet = workbook.add_worksheet();
     let header_format = rust_xlsxwriter::Format::new().set_bold();
-    let headers = ["序号", "时间", "发送者", "消息类型", "内容"];
+    let headers = match locale::current() {
+        Lang::En => ["No.", "Time", "Sender", "Message type", "Content"],
+        Lang::Zh => ["序号", "时间", "发送者", "消息类型", "内容"],
+    };
     for (col, header) in headers.iter().enumerate() {
         worksheet.write_string_with_format(0, col as u16, *header, &header_format)?;
     }
@@ -322,15 +327,23 @@ fn build_contact_map(contacts: &Value) -> std::collections::HashMap<String, Stri
 }
 
 fn message_type_label(msg_type: i64) -> &'static str {
-    match msg_type {
-        1 => "文本",
-        3 => "图片",
-        34 => "语音",
-        43 => "视频",
-        47 => "表情",
-        49 => "链接",
-        10000 => "系统",
-        _ => "其他",
+    message_type_label_in(locale::current(), msg_type)
+}
+
+fn message_type_label_in(lang: Lang, msg_type: i64) -> &'static str {
+    let (en, zh) = match msg_type {
+        1 => ("Text", "文本"),
+        3 => ("Image", "图片"),
+        34 => ("Voice", "语音"),
+        43 => ("Video", "视频"),
+        47 => ("Sticker", "表情"),
+        49 => ("Link", "链接"),
+        10000 => ("System", "系统"),
+        _ => ("Other", "其他"),
+    };
+    match lang {
+        Lang::En => en,
+        Lang::Zh => zh,
     }
 }
 
@@ -445,15 +458,15 @@ pub fn export_txt(
                 }
                 t
             }
-            3 => "[图片]".to_string(),
-            34 => "[语音]".to_string(),
-            43 => "[视频]".to_string(),
-            47 => "[表情]".to_string(),
+            3 => locale::tr("[Image]", "[图片]").to_string(),
+            34 => locale::tr("[Voice]", "[语音]").to_string(),
+            43 => locale::tr("[Video]", "[视频]").to_string(),
+            47 => locale::tr("[Sticker]", "[表情]").to_string(),
             49 => {
                 let raw = decode_wcdb_content(msg);
                 let t = extract_text_after_sender(&raw);
                 if t.is_empty() {
-                    "[链接/文件]".to_string()
+                    locale::tr("[Link/File]", "[链接/文件]").to_string()
                 } else {
                     t
                 }
@@ -464,7 +477,7 @@ pub fn export_txt(
                 if t.is_empty() {
                     continue;
                 }
-                format!("[系统: {t}]")
+                format!("[{}: {t}]", locale::tr("System", "系统"))
             }
             _ => continue,
         };
@@ -570,8 +583,11 @@ mod tests {
 
     #[test]
     fn message_type_labels() {
-        assert_eq!(message_type_label(1), "文本");
-        assert_eq!(message_type_label(3), "图片");
-        assert_eq!(message_type_label(43), "视频");
+        assert_eq!(message_type_label_in(Lang::En, 1), "Text");
+        assert_eq!(message_type_label_in(Lang::En, 3), "Image");
+        assert_eq!(message_type_label_in(Lang::En, 999), "Other");
+        assert_eq!(message_type_label_in(Lang::Zh, 1), "文本");
+        assert_eq!(message_type_label_in(Lang::Zh, 3), "图片");
+        assert_eq!(message_type_label_in(Lang::Zh, 43), "视频");
     }
 }

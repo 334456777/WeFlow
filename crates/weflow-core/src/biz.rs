@@ -72,7 +72,7 @@ pub fn parse_pay_xml(xml_str: &str) -> Option<Value> {
     }
     let merchant_name = {
         let mn = extract_xml_value(xml_str, "display_name");
-        if mn.is_empty() { "微信支付".to_string() } else { mn }
+        if mn.is_empty() { crate::locale::tr("WeChat Pay", "微信支付").to_string() } else { mn }
     };
     let pub_time_str = extract_xml_value(xml_str, "pub_time");
     let pub_time: i64 = pub_time_str.parse().unwrap_or(0);

@@ -5,6 +5,7 @@ pub mod decrypt;
 pub mod error;
 pub mod export;
 pub mod insight;
+pub mod locale;
 pub mod media;
 pub mod output;
 pub mod push;
