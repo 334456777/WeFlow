@@ -75,6 +75,7 @@ help:
 	@printf "  $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)\n"
 	@printf "  $(CYAN)make test$(RESET)            运行全部单元测试\n"
 	@printf "  $(CYAN)make check$(RESET)           cargo check（只检查，不编译）\n"
+	@printf "  $(CYAN)make docs-check$(RESET)      检查 docs/cli-unsupported.md 是否与代码一致\n"
 	@printf "  $(CYAN)make fmt$(RESET)             格式化代码\n"
 	@printf "  $(CYAN)make lint$(RESET)            Clippy 静态分析\n"
 	@printf "  $(CYAN)make clean$(RESET)           清理 target/\n"
@@ -92,7 +93,7 @@ help:
 	@printf "$(BOLD)环境$(RESET)\n"
 	@printf "  $(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具\n"
 	@printf "  $(CYAN)make env$(RESET)             显示当前环境信息\n"
-	@printf "  $(CYAN)make ci$(RESET)              本地模拟 CI 流程 (check+test+release)\n"
+	@printf "  $(CYAN)make ci$(RESET)              本地模拟 CI 流程 (check+docs-check+test+release)\n"
 	@printf "\n"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -157,7 +158,7 @@ check-tools: check-git check-rust
 # ─────────────────────────────────────────────────────────────────────────────
 # 核心构建目标
 # ─────────────────────────────────────────────────────────────────────────────
-.PHONY: build release test check fmt lint clean
+.PHONY: build release test check fmt lint clean docs-check
 
 build: check-rust
 	@printf "$(BOLD)▶ cargo build$(RESET)\n"
@@ -172,6 +173,11 @@ release: check-rust
 test: check-rust
 	@printf "$(BOLD)▶ cargo test --workspace$(RESET)\n"
 	cargo test --workspace
+
+# docs/cli-unsupported.md must list every database function that answers "not implemented" / "not supported"
+docs-check: check-rust
+	@printf "$(BOLD)▶ CLI 不支持清单 (docs/cli-unsupported.md) 与代码一致$(RESET)\n"
+	cargo test -p weflow-native --test unsupported_docs
 
 check: check-rust
 	@printf "$(BOLD)▶ cargo check --workspace$(RESET)\n"
@@ -306,7 +312,7 @@ cross-all: cross-macos cross-linux cross-windows
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: ci env
 
-ci: check check-tools test release
+ci: check check-tools docs-check test release
 	@printf "$(GREEN)$(BOLD)✓ CI 全流程通过$(RESET)\n"
 
 env:

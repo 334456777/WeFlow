@@ -117,28 +117,11 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
     Ok(out)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn rejects_non_silk_input() {
-        assert_eq!(decode(b"RIFF....", 24000), Err(SilkError::InvalidHeader));
-        assert_eq!(decode(b"", 24000), Err(SilkError::InvalidHeader));
-    }
-
-    #[test]
-    fn header_only_stream_decodes_to_nothing() {
-        assert_eq!(decode(b"#!SILK_V3", 24000).unwrap(), Vec::<u8>::new());
-        assert_eq!(decode(b"\x02#!SILK_V3\xff\xff", 24000).unwrap(), Vec::<u8>::new());
-    }
-
-    #[test]
-    fn truncated_packets_are_errors() {
-        assert_eq!(decode(b"#!SILK_V3\x05\x00ab", 24000), Err(SilkError::TruncatedPayload));
-        assert_eq!(decode(b"#!SILK_V3\x05", 24000), Err(SilkError::TruncatedPayload));
-        assert_eq!(decode(b"#!SILK_V3\xfe\xff", 24000), Err(SilkError::InvalidPacketLength));
-    }
+/// Test-only encoder over the vendored SDK, used to build realistic voice fixtures.
+#[cfg(any(test, feature = "test-encoder"))]
+pub mod testenc {
+    use std::ffi::c_void;
 
     #[repr(C)]
     struct EncControl {
@@ -159,7 +142,7 @@ mod tests {
     }
 
     /// Encodes one second of a 440 Hz tone with the vendored encoder into the `.silk` container.
-    fn encode_tone(rate: i32) -> Vec<u8> {
+    pub fn encode_tone(rate: i32) -> Vec<u8> {
         let mut size = 0;
         assert_eq!(unsafe { SKP_Silk_SDK_Get_Encoder_Size(&mut size) }, 0);
         let mut state = vec![0u64; (size as usize + 7) / 8];
@@ -182,6 +165,31 @@ mod tests {
         }
         out.extend_from_slice(&(-1i16).to_le_bytes());
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testenc::encode_tone;
+    use super::*;
+
+    #[test]
+    fn rejects_non_silk_input() {
+        assert_eq!(decode(b"RIFF....", 24000), Err(SilkError::InvalidHeader));
+        assert_eq!(decode(b"", 24000), Err(SilkError::InvalidHeader));
+    }
+
+    #[test]
+    fn header_only_stream_decodes_to_nothing() {
+        assert_eq!(decode(b"#!SILK_V3", 24000).unwrap(), Vec::<u8>::new());
+        assert_eq!(decode(b"\x02#!SILK_V3\xff\xff", 24000).unwrap(), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn truncated_packets_are_errors() {
+        assert_eq!(decode(b"#!SILK_V3\x05\x00ab", 24000), Err(SilkError::TruncatedPayload));
+        assert_eq!(decode(b"#!SILK_V3\x05", 24000), Err(SilkError::TruncatedPayload));
+        assert_eq!(decode(b"#!SILK_V3\xfe\xff", 24000), Err(SilkError::InvalidPacketLength));
     }
 
     #[test]

@@ -29,7 +29,7 @@ struct Cli {
     /// Account wxid (overrides config)
     #[arg(long, global = true)]
     wxid: Option<String>,
-    /// Output language for generated text (default: from WEFLOW_LANG/LC_ALL/LC_MESSAGES/LANG, else en)
+    /// Output language for generated text (default: follows the system: WEFLOW_LANG/LC_ALL/LC_MESSAGES/LANG/LANGUAGE, else the OS display language, else en)
     #[arg(long, global = true, value_enum)]
     lang: Option<LangArg>,
     /// Print JSON (default)

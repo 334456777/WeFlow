@@ -1,4 +1,3 @@
-#![cfg(target_os = "linux")]
 mod common;
 
 use std::sync::Arc;
@@ -104,30 +103,35 @@ async fn sns_routes() {
     let get = |p: &str| auth(s.client.get(format!("{}{p}", s.base)));
     let t: Value = get("/api/v1/sns/timeline?limit=5").send().await.unwrap().json().await.unwrap();
     assert_eq!(t["success"], true);
-    assert_eq!(t["count"], 2);
-    let m = &t["timeline"][0]["media"][0];
+    assert_eq!(t["count"], 5);
+    let post = t["timeline"].as_array().unwrap().iter().find(|p| p["contentDesc"] == "bob trip").expect("the post with media");
+    let m = &post["media"][0];
     assert!(m["proxyUrl"].as_str().unwrap().starts_with(&format!("{}/api/v1/sns/media/proxy?url=", s.base)));
-    assert_eq!(m["rawUrl"], "https://mmsns.qpic.cn/a/0?token=TK&idx=1");
+    assert_eq!(m["rawUrl"], "https://url/1?token=TU1&idx=1");
     assert_eq!(m["url"], m["resolvedUrl"], "replace defaults to true");
     let plain: Value = get("/api/v1/sns/timeline?media=0").send().await.unwrap().json().await.unwrap();
-    assert!(plain["timeline"][0]["media"][0].get("proxyUrl").is_none());
+    let plain_post = plain["timeline"].as_array().unwrap().iter().find(|p| p["contentDesc"] == "bob trip").unwrap();
+    assert!(plain_post["media"][0].get("proxyUrl").is_none());
     let users: Value = get("/api/v1/sns/usernames").send().await.unwrap().json().await.unwrap();
-    assert_eq!(users["usernames"], json!(["wxid_bob", "wxid_carol"]));
+    assert_eq!(users["usernames"], json!(["wxid_bob", "wxid_carol", "wxid_me"]));
     let stats: Value = get("/api/v1/sns/export/stats?fast=1").send().await.unwrap().json().await.unwrap();
-    assert_eq!(stats["data"]["totalPosts"], 2);
+    assert_eq!(stats["data"]["totalPosts"], 5);
     assert_eq!(get("/api/v1/sns/media/proxy").send().await.unwrap().status(), 400);
-    let status: Value = get("/api/v1/sns/block-delete/status").send().await.unwrap().json().await.unwrap();
-    assert_eq!(status["success"], true);
-    let install: Value = auth(s.client.post(format!("{}/api/v1/sns/block-delete/install", s.base))).send().await.unwrap().json().await.unwrap();
-    assert_eq!(install["success"], true);
+    // the native backend is read-only: triggers and deletes are refused, never pretended
+    let status = get("/api/v1/sns/block-delete/status").send().await.unwrap();
+    assert_ne!(status.status(), 200, "status needs a write-capable backend");
+    let install = auth(s.client.post(format!("{}/api/v1/sns/block-delete/install", s.base))).send().await.unwrap();
+    assert_ne!(install.status(), 200);
+    assert!(install.text().await.unwrap().to_lowercase().contains("read-only"));
     let del = auth(s.client.delete(format!("{}/api/v1/sns/post/123", s.base))).send().await.unwrap();
-    assert_eq!(del.status(), 200);
+    assert_ne!(del.status(), 200);
+    assert!(del.text().await.unwrap().to_lowercase().contains("read-only"));
 
     let dir = s._root.join("export-out");
     let res = auth(s.client.post(format!("{}/api/v1/sns/export", s.base))).json(&json!({"outputDir": dir, "format": "arkme-json"})).send().await.unwrap();
     assert_eq!(res.status(), 200);
     let body: Value = res.json().await.unwrap();
-    assert_eq!(body["postCount"], 2);
+    assert_eq!(body["postCount"], 5);
     assert!(std::path::Path::new(body["filePath"].as_str().unwrap()).exists());
     let bad = auth(s.client.post(format!("{}/api/v1/sns/export", s.base))).json(&json!({"outputDir": dir, "format": "pdf"})).send().await.unwrap();
     assert_eq!(bad.status(), 400);

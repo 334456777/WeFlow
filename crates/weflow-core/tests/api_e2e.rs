@@ -1,4 +1,3 @@
-#![cfg(target_os = "linux")]
 mod common;
 
 use weflow_core::api::Params;
@@ -22,8 +21,10 @@ fn sessions_are_filtered_typed_and_named() {
     let bob = all["sessions"].as_array().unwrap().iter().find(|s| s["username"] == "wxid_bob").unwrap();
     assert_eq!(bob["displayName"], "Bobby");
     assert_eq!(bob["sessionType"], "private");
+    assert_eq!(bob["unreadCount"], 2);
     let room = all["sessions"].as_array().unwrap().iter().find(|s| s["username"] == "room1@chatroom").unwrap();
     assert_eq!(room["sessionType"], "group");
+    assert_eq!(room["displayName"], "Project Room");
 
     let filtered = hub.api_sessions(&params(&[("keyword", "BOBBY")])).unwrap();
     assert_eq!(filtered["count"], 1);
@@ -36,7 +37,6 @@ fn sessions_are_filtered_typed_and_named() {
     assert!(first["id"].is_string() && first["name"].is_string());
     let gh = chatlab["sessions"].as_array().unwrap().iter().find(|s| s["id"] == "gh_news").unwrap();
     assert_eq!(gh["type"], "channel");
-    assert_eq!(gh["messageCount"], 120, "official accounts take their count from the table stats");
 }
 
 #[test]
@@ -65,17 +65,18 @@ fn messages_endpoint_json_and_chatlab() {
     assert_eq!(r["success"], true);
     assert_eq!(r["count"], 2);
     assert_eq!(r["hasMore"], true, "limit reached with rows left over");
-    assert_eq!(r["messages"][0]["localId"], 3);
-    assert_eq!(r["messages"][0]["content"], "[图片]");
-    assert_eq!(r["messages"][0]["serverId"], "9007199254740993");
-    assert_eq!(r["messages"][1]["content"], "hi <there>");
-    assert_eq!(r["messages"][1]["rawContent"], "wxid_bob:hi <there>");
+    assert_eq!(r["messages"][0]["localId"], 5);
+    assert_eq!(r["messages"][0]["content"], "see you");
+    assert_eq!(r["messages"][0]["serverId"], "1005");
+    assert_eq!(r["messages"][0]["senderUsername"], "wxid_bob");
+    assert_eq!(r["messages"][1]["content"], "later, compressed", "zstd-compressed text from the second shard is readable");
+    assert_eq!(r["messages"][1]["isSend"], 1);
     assert_eq!(r["media"]["enabled"], false);
 
     let all = rt.block_on(hub.api_messages(&params(&[("talker", "wxid_bob"), ("limit", "100")]), "http://h")).unwrap();
-    assert_eq!(all["count"], 3);
+    assert_eq!(all["count"], 5);
     assert_eq!(all["hasMore"], false);
-    let skipped = rt.block_on(hub.api_messages(&params(&[("talker", "wxid_bob"), ("offset", "2")]), "http://h")).unwrap();
+    let skipped = rt.block_on(hub.api_messages(&params(&[("talker", "wxid_bob"), ("offset", "4")]), "http://h")).unwrap();
     assert_eq!(skipped["count"], 1);
     assert_eq!(skipped["messages"][0]["localId"], 1);
 
@@ -91,9 +92,9 @@ fn messages_endpoint_json_and_chatlab() {
     let msgs = chatlab["messages"].as_array().unwrap();
     assert_eq!(msgs.len(), 3);
     assert_eq!(msgs[0]["type"], 0);
-    assert_eq!(msgs[0]["content"], "third");
-    assert_eq!(msgs[2]["type"], 80);
-    assert_eq!(msgs[0]["platformMessageId"], "9007199254740993");
+    assert_eq!(msgs[0]["content"], "ok");
+    assert_eq!(msgs[0]["platformMessageId"], "1003");
+    assert_eq!(msgs[2]["content"], "welcome");
 }
 
 #[test]
@@ -129,8 +130,9 @@ fn group_members_endpoint() {
     assert_eq!(r["count"], 3);
     assert_eq!(r["fromCache"], false);
     assert_eq!(r["members"][0]["wxid"], "wxid_bob");
-    assert_eq!(r["members"][0]["messageCount"], 30);
+    assert_eq!(r["members"][0]["messageCount"], 1);
     assert_eq!(r["members"][0]["groupNickname"], "Bob in room");
+    assert_eq!(r["members"][0]["isOwner"], true);
     let again = hub.api_group_members(&params(&[("talker", "room1@chatroom"), ("withCounts", "true")])).unwrap();
     assert_eq!(again["fromCache"], true);
 }

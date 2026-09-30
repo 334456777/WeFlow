@@ -10,7 +10,7 @@ import { en } from './locales/en'
  *   (so a missing translation degrades to the original Chinese, never to blank).
  * Placeholders use `{name}`: `t('共 {count} 条', { count: 3 })`.
  *
- * English is the default. The active locale is, in order:
+ * The language follows the system by default. The active locale is, in order:
  *   1. the user's explicit choice (`en` or `zh-CN`), stored in localStorage so every
  *      window picks it up synchronously and follows changes via the `storage` event;
  *   2. otherwise the system locale (`navigator.language`, which Electron derives from

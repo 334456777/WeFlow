@@ -9,3 +9,7 @@ description = "SILK v3 voice decoder (vendored Skype SILK SDK 1.0.9), the codec 
 
 [build-dependencies]
 cc = "1"
+
+[features]
+# Expose the test encoder (`weflow_silk::testenc`) to other crates' tests.
+test-encoder = []

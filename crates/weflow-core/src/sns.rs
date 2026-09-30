@@ -8,7 +8,6 @@ use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyInit, KeyIvInit};
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes128Gcm, Aes256Gcm, Nonce};
 use md5::{Digest, Md5};
-use regex::Regex;
 use serde_json::{json, Map, Value};
 
 use crate::message::rx;
@@ -392,7 +391,7 @@ pub fn parse_likes_from_xml(xml: &str) -> Vec<String> {
 }
 
 fn attr(attrs: &str, name: &str) -> Option<String> {
-    Regex::new(&format!(r#"(?i){}="([^"]+)""#, regex::escape(name))).ok()?.captures(attrs).map(|c| c[1].to_string())
+    rx(&format!(r#"(?i){}="([^"]+)""#, regex::escape(name))).captures(attrs).map(|c| c[1].to_string())
 }
 
 /// `parseMediaFromXml` (only used when the DLL does not hand back parsed media).
@@ -497,7 +496,7 @@ pub fn parse_location_from_xml(xml: &str) -> Option<Value> {
         if attrs.is_empty() {
             return None;
         }
-        let re = Regex::new(&format!(r#"(?i){}\s*=\s*["']([\s\S]*?)["']"#, regex::escape(name))).ok()?;
+        let re = rx(&format!(r#"(?i){}\s*=\s*["']([\s\S]*?)["']"#, regex::escape(name)));
         let m = re.captures(&attrs)?;
         if m[1].is_empty() {
             return None;
@@ -505,7 +504,7 @@ pub fn parse_location_from_xml(xml: &str) -> Option<Value> {
         opt_str(&decode_xml_text(&m[1]))
     };
     let read_tag = |name: &str| -> Option<String> {
-        let re = Regex::new(&format!(r"(?i)<{0}>([\s\S]*?)</{0}>", regex::escape(name))).ok()?;
+        let re = rx(&format!(r"(?i)<{0}>([\s\S]*?)</{0}>", regex::escape(name)));
         let m = re.captures(xml)?;
         if m[1].is_empty() {
             return None;

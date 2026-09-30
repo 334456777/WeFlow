@@ -6,11 +6,11 @@ WeFlow 后端的 Rust 命令行版本。每条命令在 stdout 输出一个 JSON
 
 ## 语言
 
-默认输出英文。只有环境变量要求时才输出中文，优先级如下（第一个已设置且非空的变量决定结果）：
+语言跟随系统(中文系统输出中文,否则输出英文)。优先级依次为:`--lang`、环境变量（第一个已设置且非空的变量决定结果）、操作系统显示语言：
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
 
-以 `zh` 开头的取值（`zh_CN.UTF-8`、`zh-TW`、`zh`）输出中文；其他取值（包括 `C` 和 `POSIX`）输出英文。`--lang en|zh` 可对单次运行覆盖环境变量。
+以 `zh` 开头的取值（`zh_CN.UTF-8`、`zh-TW`、`zh`）输出中文；其他取值（包括 `C` 和 `POSIX`）输出英文。这些变量都没设置时（Windows 上很常见）由操作系统显示语言决定（Windows、macOS）；无法判断时输出英文。`--lang en|zh` 可对单次运行覆盖以上所有。
 
 语言只影响生成的文本：TXT/Excel 导出标签（`[Image]` / `[图片]`）、公众号支付的默认商户名称，以及默认的 AI 见解提示词。JSON 键、错误码和 `--help` 文本始终为英文。
 
@@ -38,6 +38,8 @@ weflow backup    create | inspect | restore
 weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
 ```
+
+数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库,因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`。
 
 进度：运行超过延迟时间（默认 5 秒；可用 `--progress-delay <秒>`、环境变量 `WEFLOW_PROGRESS_DELAY` 或 `weflow config set progress_delay_seconds <秒>` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 始终只有 JSON）。`--no-progress` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
 

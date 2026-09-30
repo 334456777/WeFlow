@@ -4,17 +4,19 @@
 
 基线：原作者最后一次提交 `ca6c479`（2026-05-15）时的 TypeScript/Electron 后端。`crates/` 下的所有内容都是之后添加的。
 
-**方法与说明。** 当某个 CLI 命令或 HTTP 路由复现了某个通道的行为时，该通道记为*已覆盖*；TypeScript 代码是逐函数移植的（相同公式、JSON 结果中相同的键顺序、相同的回退逻辑）。**这些都没有用真实微信数据运行过**：仓库里没有账号数据，Linux 上也没有真实的 WCDB 库，所以所有行为都只通过单元测试、针对生成的 mock WCDB 库（`crates/weflow-native/tests/fixtures/gen_mock.py`）的端到端测试以及本地假 HTTP 服务器验证。mock 无法暴露的差异依然可能存在。下面的 IPC 分类是手工完成的，欢迎提出异议。
+**方法与说明。** 当某个 CLI 命令或 HTTP 路由复现了某个通道的行为时，该通道记为*已覆盖*；TypeScript 代码是逐函数移植的（相同公式、JSON 结果中相同的键顺序、相同的回退逻辑）。数据库层是原生 Rust，已**用一个真实的 Windows 微信 4.x 账号验证**（使用 Linux 构建）；其余部分（HTTP 服务、图片/`.dat` 解密、AI、朋友圈下载）通过单元测试、针对合成加密数据库的端到端测试以及本地假 HTTP 服务器验证。Windows 的 `weflow.exe` 还没有在 Windows 上运行过。合成数据无法暴露的差异依然可能存在。下面的 IPC 分类是手工完成的，欢迎提出异议。
 
 ## 汇总
 
 | 指标 | 已覆盖 | 总数 | 占比 |
 |---|---|---|---|
-| 后端 IPC 通道（`electron/main.ts`；共 172 个，排除 76 个纯 UI 通道）— 完整 | 81 | 96 | **84%** |
-| 同上，完整 + 部分 | 90 | 96 | **94%** |
-| WCDB C-ABI 函数（`wcdbCore.ts` → `weflow-native`） | 90 | 90 | **100%** |
+| 后端 IPC 通道（`electron/main.ts`；共 172 个，排除 76 个纯 UI 通道）— 完整 | 71 | 96 | **74%** |
+| 同上，完整 + 部分 | 80 | 96 | **83%** |
+| CLI 调用的数据库函数（原生 Rust；42 个原生实现，10 个因只读被拒绝，2 个由服务层回退覆盖） | 54 | 54 | **100%** |
 | 聊天消息导出格式（chatlab、chatlab-jsonl、json、arkme-json、html、txt、excel、weclone、sql） | 9 | 9 | **100%** |
 | HTTP API 路由（`httpService.ts`，路径一致，token 鉴权，SSE 推送） | 19 | 19 | **100%** |
+
+10 个写操作通道（`chat:updateMessage`、`chat:deleteMessage`、`chat:{check,install,uninstall}AntiRevokeTriggers`、`chat:markAllSessionsRead`、`sns:{check,install,uninstall}BlockDeleteTrigger`、`sns:deleteSnsPost`）原先记为已覆盖；数据库层改为只读之后它们被拒绝，改记为缺失（见 [cli-unsupported.md](cli-unsupported.md)）。
 
 排除的纯 UI 通道：`window:*`、`dialog:*`、`shell:*`、`app:*`、`auth:*`、`log:*`、`cloud:*`、`diagnostics:*`、`social:*`、`http:*` 启停，以及仅渲染进程使用的 `annualReport:{captureCurrentWindow,exportImages,startAvailableYearsLoad,cancelAvailableYearsLoad}` 和 `sns:{getCacheMigrationStatus,startCacheMigration}`（剩余 96 个）。
 
@@ -28,10 +30,13 @@
 - 派生的图片 AES 密钥是 `md5(code + wxid)` 十六进制的**前 16 个字符按 ASCII 使用**，与桌面端密钥服务一致（CLI 第一版用了 16 个摘要字节）。
 - AI 接口地址是 `<base>/chat/completions`；CLI 第一版多插入了一段 `/v1`。
 - TypeScript 的 ISAAC-64 回退实现有精度问题（`Number(x>>3n)&255`）；Rust 版本遵循厂商 WASM，它才是权威实现。
+- ChatLab 导出：图片、语音、视频、表情、通话消息（类型不是 49 的 `<msg>` XML）被误标为“链接”；现在只有真正的应用消息（类型 49 / 含 `<appmsg`）才是链接。TypeScript 原版有同样的问题。
+- `chat anti-revoke` 在所有会话都失败时也会返回成功；现在会返回错误。
+- 原生行带有 `is_send`（按账号 wxid 计算），导出和报告代码依赖它。
 
 ## 仍然缺失或仅部分覆盖的通道
 
-**缺失（6 个）：** `chat:clearCurrentAccountData`、`chat:getVoiceTranscript`、`whisper:downloadModel`、`whisper:getModelStatus`（语音转写需要 sherpa-onnx）、`cache:clearAll`（只能清理统计分析缓存和图片缓存）、`sns:debugResource`。
+**缺失（16 个）：** 上面的 10 个写操作通道（有意拒绝：原生数据库层以只读方式打开微信数据库）、`chat:clearCurrentAccountData`、`chat:getVoiceTranscript`、`whisper:downloadModel`、`whisper:getModelStatus`（语音转写需要 sherpa-onnx）、`cache:clearAll`（只能清理统计分析缓存和图片缓存）、`sns:debugResource`。
 
 **部分（9 个）：**
 
@@ -53,6 +58,6 @@ UI 事件（`image:cacheResolved`、`image:decryptProgress`、`image:updateAvail
 ## 如何复现这些数字
 
 - IPC：`grep -oE "ipcMain\.handle\('[^']+'" electron/main.ts`（172 个），按上文手工分类。
-- WCDB：`electron/services/wcdbCore.ts` 中的 `lib.func('…wcdb_*(` 声明（90 个）；每个名称都出现在 `crates/weflow-native/src` 或 `crates/weflow-core/src` 中。
+- 数据库函数：`crates/weflow-native/src/wcdb.rs` 中 `Wcdb` 的公开方法里被 `crates/weflow-core` / `weflow-cli` 调用的那些；拒绝或未实现的列在 [cli-unsupported.md](cli-unsupported.md)（有测试保证同步）。
 - 导出格式：`crates/weflow-core` 中的 `MESSAGE_EXPORT_FORMATS` 与 `tests/export_e2e.rs`。
 - HTTP 路由：`electron/services/httpService.ts` 中的 `pathname ===` / `startsWith('/api/v1/…')` 与 `crates/weflow-core/src/http_server.rs` 中的路由（`tests/http_e2e.rs`）对照。

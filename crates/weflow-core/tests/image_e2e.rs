@@ -1,4 +1,3 @@
-#![cfg(target_os = "linux")]
 mod common;
 
 use aes::cipher::{generic_array::GenericArray, BlockEncryptMut, KeyInit};
@@ -147,9 +146,31 @@ fn reports_missing_files_keys_and_bad_keys() {
     let _ = std::fs::remove_dir_all(root2);
 }
 
+/// Two image messages from 2023-11-14 in `wxid_bob`'s chat, image keys configured; returns the hub and the
+/// `Img` directory where `.dat` files belong.
+fn export_world(tag: &str) -> (weflow_core::services::ServiceHub, std::path::PathBuf, std::path::PathBuf) {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, T0};
+    let (hub, root, fixture) = common::custom_hub_with(
+        tag,
+        |f| {
+            f.session_db(&[SessionSpec { username: "wxid_bob", summary: "", last_timestamp: T0, unread: 0, last_msg_type: 3 }]);
+            let image = |id: i64, at: i64, md5: &str| MsgSpec::text(id, "wxid_bob", T0 + at, &format!("<msg><img md5=\"{md5}\"/></msg>")).of_type(3);
+            f.message_shard(0, &[("wxid_bob", vec![image(1, 0, "aabbccddeeff00112233445566778899"), image(2, 100, "11223344556677889900aabbccddeeff")])]);
+        },
+        |p| {
+            p.image_xor_key = Some(0x5a);
+            p.image_aes_key = Some(KEY.into());
+        },
+    );
+    let month = weflow_core::image::year_month_from_create_time(Some(1_700_000_000));
+    let img_dir = fixture.account_dir.join("msg/attach").join(md5_hex("wxid_bob")).join(&month).join("Img");
+    std::fs::create_dir_all(&img_dir).unwrap();
+    (hub, root, img_dir)
+}
+
 #[tokio::test]
 async fn export_media_copies_images_of_a_conversation() {
-    let (hub, root, _account, img_dir) = setup("img-export");
+    let (hub, root, img_dir) = export_world("img-export");
     let md5 = "aabbccddeeff00112233445566778899";
     let plain = jpeg(3000, 7);
     std::fs::write(img_dir.join(format!("{md5}_h.dat")), encrypt_v2(&plain, KEY.as_bytes().try_into().unwrap(), 0x5a)).unwrap();
@@ -159,6 +180,7 @@ async fn export_media_copies_images_of_a_conversation() {
     assert_eq!(r["exported"], 1, "{r}");
     assert_eq!(r["found"], 2, "two image messages, one has no file on disk");
     assert_eq!(r["missing"], 1);
+    assert_eq!(r["thumbOnly"], 0, "the exported file is the HD original");
     let path = r["files"][0]["path"].as_str().unwrap();
     assert!(path.contains("wxid_bob") && path.ends_with(&format!("{md5}.jpg")), "{path}");
     assert_eq!(std::fs::read(path).unwrap(), plain);
@@ -168,10 +190,24 @@ async fn export_media_copies_images_of_a_conversation() {
 }
 
 #[tokio::test]
+async fn export_media_reports_thumbnail_only_images() {
+    let (hub, root, img_dir) = export_world("img-export-thumb");
+    let md5 = "aabbccddeeff00112233445566778899";
+    // only the thumbnail rendition exists on disk
+    let thumb = jpeg(1500, 9);
+    std::fs::write(img_dir.join(format!("{md5}_t.dat")), encrypt_v2(&thumb, KEY.as_bytes().try_into().unwrap(), 0x5a)).unwrap();
+    let r = hub.export_media(Some("wxid_bob"), &root.join("media-thumb"), "image", None, None).await.unwrap();
+    assert_eq!((r["exported"].as_i64(), r["thumbOnly"].as_i64()), (Some(1), Some(1)), "{r}");
+    assert!(r["note"].as_str().unwrap().to_lowercase().contains("thumbnail"), "the note explains what thumbOnly means");
+    assert_eq!(r["files"][0]["isThumb"], true);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn export_media_honours_the_date_range_and_reports_missing_by_kind() {
-    let (hub, root, _account, _img_dir) = setup("img-export-range");
+    let (hub, root, _img_dir) = export_world("img-export-range");
     let out = root.join("media-range");
-    // both canned image messages are from 2023-11-14; a later window matches nothing
+    // both image messages are from 2023-11-14; a later window matches nothing
     let none = hub.export_media(Some("wxid_bob"), &out, "image", Some(1_800_000_000), None).await.unwrap();
     assert_eq!(none["found"], 0);
     let all = hub.export_media(Some("wxid_bob"), &out, "image", Some(1_600_000_000), Some(1_800_000_000)).await.unwrap();

@@ -3,7 +3,7 @@ import { en } from './en'
 
 /**
  * Main-process i18n. Same model as the renderer: the Chinese source string is the key,
- * English is used unless the system locale is Chinese or the user picked Chinese.
+ * The language follows the system (Chinese on a Chinese system, English otherwise) unless the user picked one.
  *
  * Locale precedence: the `uiLanguage` config value ('en' | 'zh-CN'), then the system
  * locale (`app.getLocale()`, which follows LANG / LC_* on Linux); Chinese only when it

@@ -107,8 +107,7 @@ impl ServiceHub {
 
     pub fn db_test(&self) -> AppResult<Value> {
         let (account_dir, key, _) = self.connection_inputs()?;
-        let mut wcdb = unsafe { weflow_native::wcdb::Wcdb::load(&self.ctx.runtime_dir) }
-            .map_err(|err| AppError::native(err.to_string()))?;
+        let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.test_connection(&account_dir, &key)
             .map_err(|err| AppError::native(err.to_string()))?;
         Ok(json!({ "accountDir": account_dir, "connected": true }))
@@ -198,6 +197,12 @@ impl ServiceHub {
                     json!({ "sessionId": session_id, "success": false, "error": err.to_string() }),
                 ),
             }
+        }
+        // Per-session results are kept for partial failures, but when every session failed the command itself failed
+        // (otherwise a script reading only `success` would treat a refused operation as done).
+        if !results.is_empty() && results.iter().all(|r| r["success"] == false) {
+            let first = results[0]["error"].as_str().unwrap_or("anti-revoke failed").to_string();
+            return Err(AppError::native(first));
         }
         Ok(json!({ "results": results }))
     }
@@ -583,6 +588,8 @@ impl ServiceHub {
                 sender_filter: req.sender.as_deref(),
             },
         );
+        // the raw JSON rows are several times larger than the parsed messages: free them before building the output
+        drop(rows);
         if collected.is_empty() {
             return Err(AppError::runtime("no messages found for this session in the given range"));
         }
@@ -725,8 +732,7 @@ impl ServiceHub {
 
     fn open_wcdb(&self) -> AppResult<weflow_native::wcdb::Wcdb> {
         let (account_dir, key, wxid) = self.connection_inputs()?;
-        let mut wcdb = unsafe { weflow_native::wcdb::Wcdb::load(&self.ctx.runtime_dir) }
-            .map_err(|err| AppError::native(err.to_string()))?;
+        let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.open(&account_dir, &key, wxid.as_deref())
             .map_err(|err| AppError::native(err.to_string()))?;
         Ok(wcdb)

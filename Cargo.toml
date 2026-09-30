@@ -48,3 +48,10 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 walkdir = "2.5.0"
 zip = "2"
 zstd = "0.13"
+
+# Debug builds of the crypto/SQLite code are ~30x slower than release, which makes every database
+# open take tens of seconds; keep the dependencies and the native database crate optimized.
+[profile.dev.package."*"]
+opt-level = 2
+[profile.dev.package.weflow-native]
+opt-level = 2

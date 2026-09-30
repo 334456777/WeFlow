@@ -1,0 +1,41 @@
+name: CLI unsupported list
+
+# docs/cli-unsupported.md (and docs/zh-CN/cli-unsupported.md) must list every database function that
+# answers "not implemented" or "not supported", and the READMEs must point to it.
+# The check is the `unsupported_docs` test of the weflow-native crate; `make docs-check` runs the same thing locally.
+
+on:
+  push:
+    paths:
+      - "crates/weflow-native/src/wcdb.rs"
+      - "crates/weflow-native/tests/unsupported_docs.rs"
+      - "docs/cli-unsupported.md"
+      - "docs/zh-CN/cli-unsupported.md"
+      - "README.md"
+      - "README.zh-CN.md"
+      - ".github/weflow/workflows/cli-unsupported-docs.yml"
+  pull_request:
+    paths:
+      - "crates/weflow-native/src/wcdb.rs"
+      - "crates/weflow-native/tests/unsupported_docs.rs"
+      - "docs/cli-unsupported.md"
+      - "docs/zh-CN/cli-unsupported.md"
+      - "README.md"
+      - "README.zh-CN.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unsupported-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out git repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust (stable)
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Unsupported list is in sync with the code
+        run: cargo test -p weflow-native --test unsupported_docs

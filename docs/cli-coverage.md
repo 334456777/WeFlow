@@ -6,21 +6,26 @@ Baseline: the TypeScript/Electron backend as of the last upstream commit by the 
 `ca6c479` (2026-05-15). Everything under `crates/` was added afterwards.
 
 **Method and honesty.** A channel counts as *covered* when a CLI command or HTTP route reproduces its behaviour; the
-TypeScript code was ported function by function (same formulas, same key order in JSON results, same fallbacks). **None of
-it has been run against real WeChat data**: the repository has no account data and no real WCDB library on Linux, so every
-behaviour was verified through unit tests and end-to-end tests against a generated mock WCDB library
-(`crates/weflow-native/tests/fixtures/gen_mock.py`) plus local fake HTTP servers. Expect differences the mock cannot reveal.
+TypeScript code was ported function by function (same formulas, same key order in JSON results, same fallbacks). The
+database layer is native Rust and was **verified against one real Windows WeChat 4.x account** (using a Linux build);
+everything else (HTTP server, image/`.dat` decryption, AI, Moments downloads) was verified through unit tests and
+end-to-end tests against synthetic encrypted databases and local fake HTTP servers. The Windows `weflow.exe` has not been
+run on Windows yet. Expect differences that synthetic data cannot reveal.
 The IPC classification below was done by hand; disagree with it if you like.
 
 ## Summary
 
 | Measure | Covered | Total | % |
 |---|---|---|---|
-| Backend IPC channels (`electron/main.ts`; 172 total, 76 UI-only excluded) — full | 81 | 96 | **84%** |
-| Same, full + partial | 90 | 96 | **94%** |
-| WCDB C-ABI functions (`wcdbCore.ts` → `weflow-native`) | 90 | 90 | **100%** |
+| Backend IPC channels (`electron/main.ts`; 172 total, 76 UI-only excluded) — full | 71 | 96 | **74%** |
+| Same, full + partial | 80 | 96 | **83%** |
+| Database functions the CLI calls (native Rust; 42 native, 10 refused as read-only, 2 covered by the service-layer fallback) | 54 | 54 | **100%** |
 | Chat-message export formats (chatlab, chatlab-jsonl, json, arkme-json, html, txt, excel, weclone, sql) | 9 | 9 | **100%** |
 | HTTP API routes (`httpService.ts`, same path, token auth, SSE push) | 19 | 19 | **100%** |
+
+The 10 write channels (`chat:updateMessage`, `chat:deleteMessage`, `chat:{check,install,uninstall}AntiRevokeTriggers`,
+`chat:markAllSessionsRead`, `sns:{check,install,uninstall}BlockDeleteTrigger`, `sns:deleteSnsPost`) used to count as covered;
+since the database layer became read-only they are refused and counted as missing (see [cli-unsupported.md](cli-unsupported.md)).
 
 UI-only channels excluded: `window:*`, `dialog:*`, `shell:*`, `app:*`, `auth:*`, `log:*`, `cloud:*`, `diagnostics:*`,
 `social:*`, `http:*` start/stop, plus the renderer-only `annualReport:{captureCurrentWindow,exportImages,startAvailableYearsLoad,
@@ -44,10 +49,15 @@ summary) and the Weibo context client.
 - The AI endpoint is `<base>/chat/completions`; the first CLI version inserted an extra `/v1`.
 - TypeScript's ISAAC-64 fallback has a precision bug (`Number(x>>3n)&255`); the Rust port follows the vendor WASM, which is the
   authoritative implementation.
+- ChatLab export: image, voice, video, emoji and call messages (`<msg>` XML with a non-49 type) were mapped to LINK; only
+  real app messages (type 49 / `<appmsg`) are now links. The TypeScript original has the same bug.
+- `chat anti-revoke` reported success even when every session failed; it now returns an error.
+- Native rows carry `is_send` (computed against the account wxid), which the export and report code relies on.
 
 ## Channels that are still missing or partial
 
-**Missing (6):** `chat:clearCurrentAccountData`, `chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus`
+**Missing (16):** the 10 write channels above (refused on purpose: the native database layer opens WeChat's databases read-only),
+`chat:clearCurrentAccountData`, `chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus`
 (voice transcription needs sherpa-onnx), `cache:clearAll` (only the analytics and image caches can be cleared),
 `sns:debugResource`.
 
@@ -77,8 +87,8 @@ with no token configured every other request is refused. It binds to `127.0.0.1`
 ## Reproducing the numbers
 
 - IPC: `grep -oE "ipcMain\.handle\('[^']+'" electron/main.ts` (172), classified by hand as above.
-- WCDB: `lib.func('…wcdb_*(` declarations in `electron/services/wcdbCore.ts` (90); every name appears in
-  `crates/weflow-native/src` or `crates/weflow-core/src`.
+- Database functions: public methods of `Wcdb` in `crates/weflow-native/src/wcdb.rs` that `crates/weflow-core` / `weflow-cli`
+  call; the ones that refuse or are not implemented are listed in [cli-unsupported.md](cli-unsupported.md) (kept in sync by a test).
 - Export formats: `MESSAGE_EXPORT_FORMATS` in `crates/weflow-core` and `tests/export_e2e.rs`.
 - HTTP routes: `pathname ===` / `startsWith('/api/v1/…')` in `electron/services/httpService.ts` vs the router in
   `crates/weflow-core/src/http_server.rs` (`tests/http_e2e.rs`).

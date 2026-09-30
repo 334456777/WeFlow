@@ -7,6 +7,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use regex::Regex;
 use serde_json::{json, Map, Value};
@@ -14,17 +15,20 @@ use serde_json::{json, Map, Value};
 // ───────────────────────────── regex + xml helpers ─────────────────────────────
 
 thread_local! {
-    static RX_CACHE: RefCell<HashMap<String, Regex>> = RefCell::new(HashMap::new());
+    static RX_CACHE: RefCell<HashMap<String, Rc<Regex>>> = RefCell::new(HashMap::new());
 }
 
 /// Compile (and cache) a regex. Patterns here are static or escaped, so failure is a bug.
-pub fn rx(pattern: &str) -> Regex {
+///
+/// The cache hands out a shared  on purpose:  gives the clone a brand-new
+/// (cold) search cache, which made every call re-run the lazy DFA construction and dominated exports.
+pub fn rx(pattern: &str) -> Rc<Regex> {
     RX_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(found) = cache.get(pattern) {
             return found.clone();
         }
-        let compiled = Regex::new(pattern).unwrap_or_else(|e| panic!("bad regex {pattern}: {e}"));
+        let compiled = Rc::new(Regex::new(pattern).unwrap_or_else(|e| panic!("bad regex {pattern}: {e}")));
         cache.insert(pattern.to_string(), compiled.clone());
         compiled
     })
@@ -698,7 +702,11 @@ pub fn convert_message_type(local_type: i64, content: &str) -> i64 {
     }
     let xml_type_raw = extract_app_message_type(&normalized);
     let xml_type: Option<i64> = xml_type_raw.parse().ok();
-    let looks_app = local_type == 49 || normalized.contains("<appmsg") || normalized.contains("<msg>");
+    // Only app messages (local_type 49, or any message carrying an `<appmsg>`) are classified by their XML subtype.
+    // A bare `<msg>` must not count: image, voice, video, call and sticker messages are all stored as `<msg>...`
+    // XML, and treating that as "app message" turned every one of them into a LINK in the ChatLab export
+    // (the TypeScript exporter has the same check).
+    let looks_app = local_type == 49 || normalized.contains("<appmsg");
     if looks_app || xml_type.map_or(false, |t| t != 0) {
         let sub = xml_type.unwrap_or(0);
         match sub {

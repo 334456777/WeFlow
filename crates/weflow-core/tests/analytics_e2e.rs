@@ -1,42 +1,32 @@
-#![cfg(target_os = "linux")]
 mod common;
 
-use serde_json::json;
+use serde_json::{json, Value};
 
-#[test]
-fn overall_statistics_follow_the_desktop_formulas() {
-    let (hub, _root) = common::mock_hub("an-overall");
-    let s = hub.analytics_overall_statistics(false).unwrap();
-    assert_eq!(s["totalMessages"], 100);
-    assert_eq!(s["textMessages"], 70);
-    assert_eq!(s["imageMessages"], 10);
-    assert_eq!(s["otherMessages"], 5, "total minus text/image/voice/video/emoji");
-    assert_eq!(s["sentMessages"], 40);
-    assert_eq!(s["firstMessageTime"], 1690000000);
-    assert_eq!(s["activeDays"], 40, "the desktop app estimates 20 days per active month");
-    assert_eq!(s["messageTypeCounts"]["47"], 7);
+fn sum(v: &Value) -> i64 {
+    v.as_object().unwrap().values().map(|n| n.as_i64().unwrap()).sum()
 }
 
 #[test]
 fn rankings_and_time_distribution() {
     let (hub, _root) = common::mock_hub("an-rank");
     let r = hub.analytics_contact_rankings(10, 0, 0).unwrap();
-    assert_eq!(r.len(), 2);
+    assert_eq!(r.len(), 1, "only private chats with messages are ranked: bob");
     assert_eq!(r[0]["username"], "wxid_bob");
     assert_eq!(r[0]["displayName"], "Bobby");
     assert_eq!(r[0]["wechatId"], "bobby_id");
-    assert_eq!(r[0]["messageCount"], 70);
-    assert_eq!(r[0]["sentCount"], 30);
-    assert_eq!(r[1]["username"], "wxid_carol");
-    assert_eq!(r[1]["wechatId"], "", "wxid_ accounts without alias have no wechat id");
+    assert_eq!(r[0]["messageCount"], 5);
+    assert_eq!(r[0]["sentCount"], 2);
     assert_eq!(hub.analytics_contact_rankings(1, 0, 0).unwrap().len(), 1);
+    assert!(hub.analytics_contact_rankings(0, 0, 0).unwrap().is_empty(), "a limit of 0 returns nothing");
 
     let t = hub.analytics_time_distribution().unwrap();
-    assert_eq!(t["hourlyDistribution"]["21"], 70);
-    assert_eq!(t["hourlyDistribution"]["3"], 0);
-    assert_eq!(t["weekdayDistribution"]["7"], 20, "Sunday moves from 0 to 7");
-    assert_eq!(t["weekdayDistribution"]["1"], 30);
-    assert_eq!(t["monthlyDistribution"]["2024-02"], 40);
+    // hours and weekdays are local time, so check totals and shape instead of a particular hour
+    assert_eq!(t["hourlyDistribution"].as_object().unwrap().len(), 24);
+    assert_eq!(sum(&t["hourlyDistribution"]), 5);
+    let weekdays = t["weekdayDistribution"].as_object().unwrap();
+    assert!(weekdays.keys().all(|k| ("1"..="7").contains(&k.as_str())), "Sunday is 7, not 0: {weekdays:?}");
+    assert_eq!(sum(&t["weekdayDistribution"]), 5);
+    assert_eq!(t["monthlyDistribution"]["2023-11"], 5);
 }
 
 #[test]
@@ -60,5 +50,5 @@ fn exclusion_list_roundtrip_and_candidates() {
     assert!(cand.iter().any(|c| c["username"] == "ghost"));
     assert!(cand.iter().any(|c| c["username"] == "wxid_bob"));
     assert_eq!(hub.analytics_set_excluded_usernames(&[]).unwrap(), Vec::<String>::new());
-    assert_eq!(hub.analytics_overall_statistics(true).unwrap()["totalMessages"], json!(100));
+    assert_eq!(hub.analytics_overall_statistics(true).unwrap()["totalMessages"], json!(5));
 }

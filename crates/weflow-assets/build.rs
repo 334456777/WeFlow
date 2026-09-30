@@ -114,14 +114,10 @@ fn include_resource(logical: &str, target: &str) -> bool {
         return false;
     }
 
-    if logical.starts_with("resources/wcdb/win32/") {
-        return is_windows && arch_match(logical, is_arm64);
-    }
-    if logical.starts_with("resources/wcdb/macos/") {
-        return is_macos;
-    }
-    if logical.starts_with("resources/wcdb/linux/") {
-        return is_linux && arch_match(logical, is_arm64);
+    // The closed-source wcdb_api libraries are no longer used (the database layer is native Rust):
+    // never embed or extract them.
+    if logical.starts_with("resources/wcdb/") {
+        return false;
     }
 
     if logical.starts_with("resources/key/win32/") {

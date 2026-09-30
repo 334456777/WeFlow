@@ -7,13 +7,14 @@ A Rust command-line build of WeFlow's backend. Every command prints one JSON doc
 
 ## Language
 
-English is the default. Chinese is selected only from the environment, in this order
-(the first variable that is set and non-empty decides):
+The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `--lang`, the environment
+(the first variable that is set and non-empty decides), then the operating system's display language:
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
 
 A value starting with `zh` (`zh_CN.UTF-8`, `zh-TW`, `zh`) gives Chinese; anything else, including `C` and `POSIX`, gives English.
-`--lang en|zh` overrides the environment for a single run.
+When none of the variables is set (usual on Windows) the OS display language decides (Windows, macOS); if it cannot be determined, English.
+`--lang en|zh` overrides all of this for a single run.
 
 The language affects generated text: TXT/Excel export labels (`[Image]` / `[图片]`), the default official-account payment
 merchant name, and the default AI insight prompt. JSON keys, error codes and `--help` text are always English.
@@ -42,6 +43,8 @@ weflow backup    create | inspect | restore
 weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
 ```
+
+The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
 
 Progress: commands that run longer than the delay (default 5 seconds; `--progress-delay <s>`, env `WEFLOW_PROGRESS_DELAY`, or `weflow config set progress_delay_seconds <s>`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
 terminal; stdout stays pure JSON). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.

@@ -5,8 +5,21 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+aes.workspace = true
 anyhow.workspace = true
+cbc.workspace = true
+hmac = "0.12"
 libloading.workspace = true
+md-5.workspace = true
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+regex.workspace = true
+rusqlite = { version = "0.40", features = ["bundled", "serialize"] }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+zstd.workspace = true
+
+[features]
+# Expose the synthetic-account builder (src/fixture.rs) to other crates' tests.
+test-fixtures = []

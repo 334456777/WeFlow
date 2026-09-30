@@ -39,3 +39,7 @@ weflow-native = { path = "../weflow-native" }
 weflow-silk = { path = "../weflow-silk" }
 zip.workspace = true
 zstd.workspace = true
+
+[dev-dependencies]
+weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
+weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }

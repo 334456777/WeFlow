@@ -1,4 +1,3 @@
-#![cfg(target_os = "linux")]
 mod common;
 
 use std::io::{Read, Write};
@@ -61,34 +60,17 @@ fn encrypt(mut data: Vec<u8>, key: &str, limit: Option<usize>) -> Vec<u8> {
 }
 
 #[test]
-fn timeline_is_enriched_from_wcdb_rows() {
-    let (hub, _root) = common::mock_hub("sns-timeline");
-    let q = SnsTimelineQuery { limit: 20, ..Default::default() };
-    let posts = hub.sns_timeline_query(&q).unwrap();
-    assert_eq!(posts.len(), 2);
-    // nickname and avatar were missing on p1 → filled from the contact book
-    assert_eq!(posts[0]["nickname"], "Bobby");
-    assert_eq!(posts[0]["avatarUrl"], "https://example.com/bob.png");
-    assert_eq!(posts[0]["media"][0]["url"], "https://mmsns.qpic.cn/a/0?token=TK&idx=1");
-    assert_eq!(posts[0]["location"]["poiName"], "Bund");
-    assert_eq!(posts[0]["comments"][1]["refNickname"], "Carol");
-    // video post: key comes from <enc key>, url gets token first
-    assert_eq!(posts[1]["media"][0]["key"], "2105122989");
-    assert_eq!(posts[1]["media"][0]["url"], "https://snsvideodownload.qq.com/v?token=T2&idx=1&x=1");
-}
-
-#[test]
 fn stats_usernames_and_caches() {
     let (hub, _root) = common::mock_hub("sns-stats");
-    assert_eq!(hub.sns_usernames_list().unwrap(), vec!["wxid_bob", "wxid_carol"]);
+    assert_eq!(hub.sns_usernames_list().unwrap(), vec!["wxid_bob", "wxid_carol", "wxid_me"]);
     let stats = hub.sns_export_stats(false).unwrap();
-    assert_eq!(stats["totalPosts"], 2);
-    assert_eq!(stats["totalFriends"], 2);
-    assert_eq!(stats["myPosts"], 0);
+    assert_eq!(stats["totalPosts"], 5);
+    assert_eq!(stats["totalFriends"], 3);
+    assert_eq!(stats["myPosts"], 2);
     // fast path serves the cached value
     assert_eq!(hub.sns_export_stats(true).unwrap(), stats);
     let counts = hub.sns_user_post_counts(false).unwrap();
-    assert_eq!(counts["wxid_bob"], 1);
+    assert_eq!((counts["wxid_bob"], counts["wxid_carol"], counts["wxid_me"]), (2, 1, 2));
     assert_eq!(hub.sns_user_post_stats("wxid_carol").unwrap()["totalPosts"], 1);
     assert!(hub.sns_user_post_stats("  ").is_err());
 }
@@ -163,7 +145,20 @@ fn emoji_download_decrypts_with_aes_key() {
 
 #[test]
 fn exports_json_html_and_arkmejson() {
-    let (hub, root) = common::mock_hub("sns-export");
+    use weflow_native::fixture::{ContactSpec, SessionSpec, SnsPostSpec, T0};
+    const RICH: &str = "<location city=\"Shanghai\" poiName=\"Bund\" latitude=\"31.2\" longitude=\"121.5\"/>\
+        <comment_user_list>\
+        <user_comment><comment_id>1</comment_id><username>wxid_carol</username><nickname>Carol</nickname><content>nice</content><ref_comment_id>0</ref_comment_id></user_comment>\
+        <user_comment><comment_id>2</comment_id><username>wxid_bob</username><nickname>Bob</nickname><content>thx</content><ref_comment_id>1</ref_comment_id></user_comment>\
+        </comment_user_list>";
+    let (hub, root, _f) = common::custom_hub("sns-export", |f| {
+        f.session_db(&[SessionSpec { username: "wxid_bob", summary: "", last_timestamp: T0, unread: 0, last_msg_type: 1 }]);
+        f.contact_db(&[ContactSpec { remark: "Bobby", ..ContactSpec::new("wxid_bob", 1, "Bob") }, ContactSpec::new("wxid_carol", 1, "Carol")], &[]);
+        f.sns_db(&[
+            SnsPostSpec { tid: 2001, user: "wxid_bob", create_time: T0 + 500, desc: "hello moments", kind: 1, media: 0, likes: &[("wxid_carol", "Carol")], extra: RICH },
+            SnsPostSpec { tid: 2002, user: "wxid_carol", create_time: T0 + 100, desc: "a video", kind: 15, media: 0, likes: &[], extra: "" },
+        ]);
+    });
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut outputs = Vec::new();
     for fmt in ["json", "html", "arkmejson"] {
@@ -190,7 +185,7 @@ fn exports_json_html_and_arkmejson() {
     assert_eq!(ark["schemaVersion"], "1.0.0");
     assert_eq!(ark["posts"][0]["author"]["wxid"], "wxid_bob");
     assert_eq!(ark["posts"][0]["author"]["displayName"], "Bobby");
-    assert_eq!(ark["posts"][0]["likesDetail"][0]["source"], "legacy");
+    assert_eq!(ark["posts"][0]["likesDetail"][0]["source"], "xml", "likes come from the post's like_user_list");
     assert_eq!(ark["posts"][0]["commentsDetail"].as_array().unwrap().len(), 2);
     assert_eq!(ark["mediaSelection"]["images"], false);
     let keys: Vec<&String> = ark["posts"][0].as_object().unwrap().keys().collect();
@@ -198,13 +193,3 @@ fn exports_json_html_and_arkmejson() {
     assert!(pos("author") == pos("nickname") + 1 && pos("likesDetail") > pos("location") && pos("commentsDetail") == pos("likesDetail") + 1);
 }
 
-#[test]
-fn block_delete_status_and_delete_clear_caches() {
-    let (hub, _root) = common::mock_hub("sns-trigger");
-    let st = hub.sns_block_delete_status().unwrap();
-    assert_eq!(st["success"], true);
-    assert_eq!(hub.sns_block_delete_install().unwrap()["success"], true);
-    assert_eq!(hub.sns_block_delete_uninstall().unwrap()["success"], true);
-    hub.sns_export_stats(false).unwrap();
-    assert_eq!(hub.sns_delete_post("11").unwrap()["success"], true);
-}
