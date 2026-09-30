@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
 use crate::error::{AppError, AppResult};
 
+mod analytics;
 mod api;
 mod chat;
 mod group;
@@ -23,6 +24,7 @@ pub struct ServiceHub {
     pub progress_enabled: bool,
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
     group_state: std::sync::Arc<std::sync::Mutex<group::GroupState>>,
+    analytics_state: std::sync::Arc<std::sync::Mutex<analytics::AnalyticsState>>,
 }
 
 impl ServiceHub {
@@ -45,6 +47,7 @@ impl ServiceHub {
             progress_enabled: false,
             sns_state: Default::default(),
             group_state: Default::default(),
+            analytics_state: Default::default(),
         }
     }
 
@@ -191,44 +194,6 @@ impl ServiceHub {
             .map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn analytics_overall(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        wcdb.aggregate_stats(&session_ids, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn analytics_rankings(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        let message_counts = wcdb
-            .session_message_counts(&session_ids)
-            .map_err(|err| AppError::native(err.to_string()))?;
-        let contact_counts = wcdb
-            .contact_type_counts()
-            .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(json!({
-            "messageCounts": message_counts,
-            "contactTypeCounts": contact_counts
-        }))
-    }
-
-    pub fn analytics_time(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        wcdb.aggregate_stats(&session_ids, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn analytics_excluded(&self) -> AppResult<Value> {
-        Ok(json!({ "sessions": [] }))
-    }
-
-    pub fn group_list(&self) -> AppResult<Value> {
-        let sessions = self.sessions()?;
-        Ok(filter_group_sessions(sessions))
-    }
-
     pub fn group_members(&self, chatroom_id: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let members = wcdb
@@ -241,33 +206,6 @@ impl ServiceHub {
             "members": members,
             "nicknames": nicknames,
             "count": count
-        }))
-    }
-
-    pub fn group_stats(&self, chatroom_id: &str, view: &str) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let stats = wcdb
-            .group_stats(chatroom_id, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(json!({ "chatroomId": chatroom_id, "view": view, "stats": stats }))
-    }
-
-    pub fn group_member(&self, chatroom_id: &str, username: &str) -> AppResult<Value> {
-        let members = self.group_members(chatroom_id)?;
-        let matched = members
-            .get("members")
-            .and_then(Value::as_array)
-            .and_then(|items| {
-                items
-                    .iter()
-                    .find(|item| item.to_string().contains(username))
-            })
-            .cloned()
-            .unwrap_or(Value::Null);
-        Ok(json!({
-            "chatroomId": chatroom_id,
-            "username": username,
-            "member": matched
         }))
     }
 
@@ -1053,23 +991,6 @@ fn session_id_from_value(value: &Value) -> Option<String> {
         }
     }
     None
-}
-
-fn filter_group_sessions(value: Value) -> Value {
-    let Some(items) = value.as_array() else {
-        return value;
-    };
-    Value::Array(
-        items
-            .iter()
-            .filter(|item| {
-                session_id_from_value(item)
-                    .map(|session_id| session_id.contains("@chatroom"))
-                    .unwrap_or(false)
-            })
-            .cloned()
-            .collect(),
-    )
 }
 
 fn year_bounds(year: i32) -> AppResult<(i32, i32)> {

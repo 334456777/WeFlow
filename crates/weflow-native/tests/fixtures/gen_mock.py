@@ -34,6 +34,8 @@ CANNED = {
     'wcdb_get_sns_export_stats': '{"total_posts":2,"total_friends":2,"my_posts":0}',
     'wcdb_get_group_stats': '{"sessions":{"room1@chatroom":{"senders":{"1":30,"2":10,"3":5}}},"idMap":{"1":"wxid_bob","2":"wxid_me","3":"wxid_quiet"},"hourly":{"9":4,"21":7},"typeCounts":{"1":30,"3":5,"47":3,"10000":2,"49":4}}',
     'wcdb_get_group_member_counts': '{"room1@chatroom":3}',
+    'wcdb_get_aggregate_stats': '{"total":100,"sent":40,"received":60,"firstTime":1690000000,"lastTime":1700009999,"typeCounts":{"1":70,"3":10,"34":5,"43":3,"47":7,"49":5},"hourly":{"9":30,"21":70},"weekday":{"0":20,"1":30,"6":50},"daily":{"2024-01-01":60,"2024-01-02":40},"monthly":{"2024-01":60,"2024-02":40},"sessions":{"wxid_bob":{"total":70,"sent":30,"received":40,"lastTime":1700009999},"wxid_carol":{"total":30,"sent":10,"received":20,"lastTime":1699999999}},"idMap":{}}',
+    'wcdb_get_contact_alias_map': '{"wxid_bob":"bobby_id"}',
     'wcdb_get_avatar_urls': '{"wxid_bob":"https://example.com/bob.png"}',
 }
 

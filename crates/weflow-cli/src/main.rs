@@ -364,10 +364,35 @@ struct AnalyticsCommand {
 
 #[derive(Subcommand, Debug)]
 enum AnalyticsSubcommand {
-    Overall,
-    Rankings,
+    /// Overall chat statistics (private chats, honouring the exclusion list)
+    Overall {
+        /// Recompute instead of using the cached aggregate
+        #[arg(long)]
+        force: bool,
+    },
+    /// Contacts ranked by message count
+    Rankings {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// First day (YYYY-MM-DD, Beijing time)
+        #[arg(long)]
+        start: Option<String>,
+        /// Last day, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        end: Option<String>,
+    },
+    /// Hour / weekday / month distribution
     Time,
-    Excluded,
+    /// Show the exclusion list, or replace it with --set
+    Excluded {
+        /// Comma-separated usernames that replace the list (pass "" to clear it)
+        #[arg(long = "set", value_delimiter = ',', num_args = 0..)]
+        set: Option<Vec<String>>,
+    },
+    /// Private chats that can be excluded from analytics
+    ExcludeCandidates,
+    /// Drop the cached aggregate
+    ClearCache,
 }
 
 #[derive(Args, Debug)]
@@ -378,23 +403,78 @@ struct GroupCommand {
 
 #[derive(Subcommand, Debug)]
 enum GroupSubcommand {
+    /// Group chats with member counts
     List,
+    /// Members panel (friend flag, owner, group nickname, optional message counts)
     Members {
         chatroom_id: String,
+        /// Include per-member message counts
+        #[arg(long)]
+        counts: bool,
+        /// Bypass the 10-minute panel cache
+        #[arg(long)]
+        refresh: bool,
     },
+    /// Most active members
     Ranking {
         chatroom_id: String,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
     },
+    /// Messages per hour of day
     Hours {
         chatroom_id: String,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
     },
+    /// Message type mix
     Media {
         chatroom_id: String,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
     },
+    /// One member's statistics (types, hours, common phrases and emoji)
     Member {
         chatroom_id: String,
         username: String,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
     },
+    /// A page of one member's messages (newest first)
+    MemberMessages {
+        chatroom_id: String,
+        username: String,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Cursor returned as `nextCursor` by the previous page
+        #[arg(long, default_value_t = 0)]
+        cursor: usize,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
+    },
+    /// Export a member's messages (.csv or .xlsx)
+    ExportMemberMessages {
+        chatroom_id: String,
+        username: String,
+        out: PathBuf,
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
+    },
+    /// Export the member list (.csv or .xlsx)
     ExportMembers {
         chatroom_id: String,
         out: PathBuf,
@@ -920,30 +1000,61 @@ fn parse_date_beijing(s: &str) -> Result<i64, String> {
 }
 
 fn handle_analytics(command: &AnalyticsCommand, hub: &ServiceHub) -> AppResult<Value> {
-    match command.command {
-        AnalyticsSubcommand::Overall => hub.analytics_overall(),
-        AnalyticsSubcommand::Rankings => hub.analytics_rankings(),
-        AnalyticsSubcommand::Time => hub.analytics_time(),
-        AnalyticsSubcommand::Excluded => hub.analytics_excluded(),
+    match &command.command {
+        AnalyticsSubcommand::Overall { force } => hub.analytics_overall_statistics(*force),
+        AnalyticsSubcommand::Rankings { limit, start, end } => {
+            let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
+            Ok(json!(hub.analytics_contact_rankings(*limit, b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0))?))
+        }
+        AnalyticsSubcommand::Time => hub.analytics_time_distribution(),
+        AnalyticsSubcommand::Excluded { set } => match set {
+            Some(list) => Ok(json!(hub.analytics_set_excluded_usernames(&list.iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>())?)),
+            None => Ok(json!(hub.analytics_excluded_usernames()?)),
+        },
+        AnalyticsSubcommand::ExcludeCandidates => Ok(json!(hub.analytics_exclude_candidates()?)),
+        AnalyticsSubcommand::ClearCache => {
+            hub.analytics_clear_cache()?;
+            Ok(json!({ "cleared": true }))
+        }
     }
 }
 
 fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
+    fn range(start: &Option<String>, end: &Option<String>) -> AppResult<(i64, i64)> {
+        let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
+        Ok((b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0)))
+    }
     match &command.command {
-        GroupSubcommand::List => hub.group_list(),
-        GroupSubcommand::Members { chatroom_id } => hub.group_members(chatroom_id),
-        GroupSubcommand::Ranking { chatroom_id } => hub.group_stats(chatroom_id, "ranking"),
-        GroupSubcommand::Hours { chatroom_id } => hub.group_stats(chatroom_id, "hours"),
-        GroupSubcommand::Media { chatroom_id } => hub.group_stats(chatroom_id, "media"),
-        GroupSubcommand::Member {
-            chatroom_id,
-            username,
-        } => hub.group_member(chatroom_id, username),
-        GroupSubcommand::ExportMembers { chatroom_id, out } => {
-            let data = hub.group_members(chatroom_id)?;
-            write_json_file(out, &data)?;
-            Ok(json!({ "out": out, "data": data }))
+        GroupSubcommand::List => Ok(json!(hub.group_chats()?)),
+        GroupSubcommand::Members { chatroom_id, counts, refresh } => {
+            let (members, from_cache, updated_at) = hub.group_members_panel(chatroom_id, *refresh, *counts)?;
+            Ok(json!({ "chatroomId": chatroom_id, "count": members.len(), "fromCache": from_cache, "updatedAt": updated_at, "members": members }))
         }
+        GroupSubcommand::Ranking { chatroom_id, limit, start, end } => {
+            let (b, e) = range(start, end)?;
+            Ok(json!(hub.group_message_ranking(chatroom_id, *limit, b, e)?))
+        }
+        GroupSubcommand::Hours { chatroom_id, start, end } => {
+            let (b, e) = range(start, end)?;
+            hub.group_active_hours(chatroom_id, b, e)
+        }
+        GroupSubcommand::Media { chatroom_id, start, end } => {
+            let (b, e) = range(start, end)?;
+            hub.group_media_stats(chatroom_id, b, e)
+        }
+        GroupSubcommand::Member { chatroom_id, username, start, end } => {
+            let (b, e) = range(start, end)?;
+            hub.group_member_analytics(chatroom_id, username, b, e)
+        }
+        GroupSubcommand::MemberMessages { chatroom_id, username, limit, cursor, start, end } => {
+            let (b, e) = range(start, end)?;
+            hub.group_member_messages(chatroom_id, username, b, e, *limit, *cursor)
+        }
+        GroupSubcommand::ExportMemberMessages { chatroom_id, username, out, start, end } => {
+            let (b, e) = range(start, end)?;
+            hub.group_export_member_messages(chatroom_id, username, out, b, e)
+        }
+        GroupSubcommand::ExportMembers { chatroom_id, out } => hub.group_export_members(chatroom_id, out),
     }
 }
 

@@ -233,7 +233,7 @@ int32_t wcdb_get_contact_alias_map(int64_t handle, const char* usernamesJson, vo
     n += snprintf(buf + n, sizeof(buf) - n, ","); n += esc(buf + n, sizeof(buf) - n, usernamesJson);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"wxid_bob\":\"bobby_id\"}");
 }
 
 int32_t wcdb_get_contact_friend_flags(int64_t handle, const char* usernamesJson, void** outJson) {
@@ -275,7 +275,7 @@ int32_t wcdb_get_aggregate_stats(int64_t handle, const char* sessionIdsJson, int
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", (int)end);
     n += snprintf(buf + n, sizeof(buf) - n, "]}");
     snprintf(g_last, sizeof(g_last), "%s", buf);
-    return ret_json(outJson, buf);
+    return ret_json(outJson, "{\"total\":100,\"sent\":40,\"received\":60,\"firstTime\":1690000000,\"lastTime\":1700009999,\"typeCounts\":{\"1\":70,\"3\":10,\"34\":5,\"43\":3,\"47\":7,\"49\":5},\"hourly\":{\"9\":30,\"21\":70},\"weekday\":{\"0\":20,\"1\":30,\"6\":50},\"daily\":{\"2024-01-01\":60,\"2024-01-02\":40},\"monthly\":{\"2024-01\":60,\"2024-02\":40},\"sessions\":{\"wxid_bob\":{\"total\":70,\"sent\":30,\"received\":40,\"lastTime\":1700009999},\"wxid_carol\":{\"total\":30,\"sent\":10,\"received\":20,\"lastTime\":1699999999}},\"idMap\":{}}");
 }
 
 int32_t wcdb_get_available_years(int64_t handle, const char* sessionIdsJson, void** outJson) {
