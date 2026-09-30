@@ -1,6 +1,6 @@
 # Rust 原生命令行 — 对原 WeFlow 后端的覆盖率
 
-[English](../CLI-COVERAGE.md) | **简体中文**
+[English](../cli-coverage.md) | **简体中文**
 
 基线：原作者最后一次提交 `ca6c479`（2026-05-15）时的 TypeScript/Electron 后端。`crates/` 下的所有内容都是之后添加的。
 

@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-`weflow` is a native Rust command-line build of [WeFlow](docs/WEFLOW-README.md)'s backend. It reads, analyzes and exports your local WeChat 4.0+ chat history from the terminal, without the Electron desktop app.
+`weflow` is a native Rust command-line build of [WeFlow](docs/weflow-readme.md)'s backend. It reads, analyzes and exports your local WeChat 4.0+ chat history from the terminal, without the Electron desktop app.
 
 - Every command prints one JSON document on stdout (`{"success": true, "data": ...}`), which makes it easy to script.
 - Chat sessions, messages, contacts, Moments, group/private analytics, annual and dual reports.
@@ -12,9 +12,9 @@
 - English by default, Chinese on request.
 
 > [!WARNING]
-> The CLI was ported from the original TypeScript backend and tested against a mock WCDB library, **not against real WeChat data**. Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/CLI-COVERAGE.md) · [gaps](docs/CLI-GAPS.md).
+> The CLI was ported from the original TypeScript backend and tested against a mock WCDB library, **not against real WeChat data**. Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [gaps](docs/cli-gaps.md).
 
-The original WeFlow project (Electron desktop app) is documented in [docs/WEFLOW-README.md](docs/WEFLOW-README.md).
+The original WeFlow project (Electron desktop app) is documented in [docs/weflow-readme.md](docs/weflow-readme.md).
 
 ## Build
 
@@ -70,9 +70,9 @@ Useful export options: `--start 2025-01-01 --end 2025-12-31` (Beijing time, incl
 
 ## Documentation
 
-- [Command list](docs/NATIVE-CLI.md)
-- [Coverage of the original backend](docs/CLI-COVERAGE.md) · [What the CLI does not cover](docs/CLI-GAPS.md)
+- [Command list](docs/native-cli.md)
+- [Coverage of the original backend](docs/cli-coverage.md) · [What the CLI does not cover](docs/cli-gaps.md)
 - [HTTP API](docs/HTTP-API.md) · [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
-- [Original WeFlow README](docs/WEFLOW-README.md)
+- [Original WeFlow README](docs/weflow-readme.md)
 
 Please use this tool responsibly and comply with relevant laws and regulations.

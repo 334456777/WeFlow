@@ -1,8 +1,8 @@
 # Native Rust CLI — what is NOT covered
 
-**English** | [简体中文](zh-CN/CLI-GAPS.md)
+**English** | [简体中文](zh-CN/cli-gaps.md)
 
-Companion to [CLI-COVERAGE.md](CLI-COVERAGE.md). Baseline is the original TypeScript backend (`ca6c479`). Everything below is
+Companion to [cli-coverage.md](cli-coverage.md). Baseline is the original TypeScript backend (`ca6c479`). Everything below is
 either missing or behaves differently from the desktop app. Nothing in the CLI has been verified against real WeChat data.
 
 ## 1. Missing entirely
@@ -46,4 +46,4 @@ export task pause/resume, renderer-only report screenshots, the Moments cache-mi
 ## 5. Bugs of the original code that were fixed rather than copied
 
 TypeScript's ISAAC-64 fallback (precision bug, the vendor WASM is followed), and three defects in the *earlier Rust CLI*
-(`.dat` layout/keys, derived AES key, AI endpoint `/v1`). See CLI-COVERAGE.md.
+(`.dat` layout/keys, derived AES key, AI endpoint `/v1`). See cli-coverage.md.

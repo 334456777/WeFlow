@@ -1,8 +1,8 @@
 # Rust 原生命令行 — 未覆盖的部分
 
-[English](../CLI-GAPS.md) | **简体中文**
+[English](../cli-gaps.md) | **简体中文**
 
-本文是 [CLI-COVERAGE.md](CLI-COVERAGE.md) 的补充。基线是原 TypeScript 后端（`ca6c479`）。下面列出的内容要么缺失，要么与桌面端行为不同。CLI 中的任何功能都没有用真实微信数据验证过。
+本文是 [cli-coverage.md](cli-coverage.md) 的补充。基线是原 TypeScript 后端（`ca6c479`）。下面列出的内容要么缺失，要么与桌面端行为不同。CLI 中的任何功能都没有用真实微信数据验证过。
 
 ## 1. 完全缺失
 
@@ -42,4 +42,4 @@
 
 ## 5. 修复而非照搬的问题
 
-TypeScript 的 ISAAC-64 回退实现（精度问题，遵循厂商 WASM），以及*早期 Rust CLI* 中的三个缺陷（`.dat` 布局/密钥、派生 AES 密钥、AI 接口 `/v1`）。详见 CLI-COVERAGE.md。
+TypeScript 的 ISAAC-64 回退实现（精度问题，遵循厂商 WASM），以及*早期 Rust CLI* 中的三个缺陷（`.dat` 布局/密钥、派生 AES 密钥、AI 接口 `/v1`）。详见 cli-coverage.md。

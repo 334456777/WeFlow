@@ -1,6 +1,6 @@
 # WeFlow
 
-**English** | [简体中文](zh-CN/WEFLOW-README.md)
+**English** | [简体中文](zh-CN/weflow-readme.md)
 
 > **Reference copy.** This is the README of the original WeFlow project (Electron desktop app) as of the original author's last README update (`70aff53`, 2026-05-10), kept here as background for the native Rust CLI. English translation of the original bilingual text.
 > Original project: https://github.com/hicccc77/WeFlow

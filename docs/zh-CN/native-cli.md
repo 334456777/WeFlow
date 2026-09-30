@@ -1,6 +1,6 @@
 # 原生命令行 (`weflow`)
 
-[English](../NATIVE-CLI.md) | **简体中文**
+[English](../native-cli.md) | **简体中文**
 
 WeFlow 后端的 Rust 命令行版本。每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。
 

@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-`weflow` 是 [WeFlow](docs/zh-CN/WEFLOW-README.md) 后端的 Rust 原生命令行版本。无需 Electron 桌面端，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
+`weflow` 是 [WeFlow](docs/zh-CN/weflow-readme.md) 后端的 Rust 原生命令行版本。无需 Electron 桌面端，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
 - 每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
 - 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
@@ -12,9 +12,9 @@
 - 默认英文，按需切换中文。
 
 > [!WARNING]
-> CLI 是从原 TypeScript 后端移植而来，只在 mock WCDB 库上测试过，**没有用真实微信数据验证**。可能有粗糙之处，欢迎反馈。已覆盖和未覆盖的内容：[覆盖率](docs/zh-CN/CLI-COVERAGE.md) · [未覆盖部分](docs/zh-CN/CLI-GAPS.md)。
+> CLI 是从原 TypeScript 后端移植而来，只在 mock WCDB 库上测试过，**没有用真实微信数据验证**。可能有粗糙之处，欢迎反馈。已覆盖和未覆盖的内容：[覆盖率](docs/zh-CN/cli-coverage.md) · [未覆盖部分](docs/zh-CN/cli-gaps.md)。
 
-原 WeFlow 项目（Electron 桌面端）的说明见 [docs/zh-CN/WEFLOW-README.md](docs/zh-CN/WEFLOW-README.md)。
+原 WeFlow 项目（Electron 桌面端）的说明见 [docs/zh-CN/weflow-readme.md](docs/zh-CN/weflow-readme.md)。
 
 ## 构建
 
@@ -70,9 +70,9 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 
 ## 文档
 
-- [命令列表](docs/zh-CN/NATIVE-CLI.md)
-- [对原后端的覆盖率](docs/zh-CN/CLI-COVERAGE.md) · [CLI 未覆盖的部分](docs/zh-CN/CLI-GAPS.md)
+- [命令列表](docs/zh-CN/native-cli.md)
+- [对原后端的覆盖率](docs/zh-CN/cli-coverage.md) · [CLI 未覆盖的部分](docs/zh-CN/cli-gaps.md)
 - [HTTP API](docs/zh-CN/HTTP-API.md) · [macOS 密钥排障](docs/zh-CN/MAC-KEY-FAQ.md)
-- [原 WeFlow README](docs/zh-CN/WEFLOW-README.md)
+- [原 WeFlow README](docs/zh-CN/weflow-readme.md)
 
 请负责任地使用本工具，遵守相关法律法规。
