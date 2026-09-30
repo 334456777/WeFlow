@@ -43,6 +43,14 @@ weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
 ```
 
+`key db` (Windows) hooks WeChat through `wx_key.dll` and keeps polling (`--timeout`, default 180 s) because WeChat only
+produces the key while it opens its databases: log in or restart WeChat while the command waits. It needs an administrator
+terminal, looks for `Weixin.exe` then `WeChat.exe`, and accepts `--pid`. `key image` derives the image keys from the `kvcomm`
+cache and verifies them against a `_t.dat` template under the account directory.
+
+Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA%\weflow\runtime\<version>\<target>`
+(on Linux/macOS under the platform's data directory).
+
 `serve --http` exposes the desktop app's HTTP API (token required except `/health`; set `http_api_token` or `--api-token`).
 `serve --insight` runs the AI insight engine; each generated insight is printed to stderr as a JSON line.
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.

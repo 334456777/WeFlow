@@ -39,6 +39,10 @@ weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
 ```
 
+`key db`（Windows）通过 `wx_key.dll` 挂钩微信并持续轮询（`--timeout`，默认 180 秒），因为微信只在打开数据库时才会产生密钥：命令等待期间请登录或重启微信。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`，也可用 `--pid` 指定。`key image` 从 `kvcomm` 缓存推导图片密钥，并用账号目录下的 `_t.dat` 模板校验。
+
+路径：配置 `%APPDATA%\weflow\config.json`，解压出的运行时 `%APPDATA%\weflow\runtime\<版本>\<target>`（Linux/macOS 位于各平台的数据目录）。
+
 `serve --http` 提供桌面端的 HTTP API（除 `/health` 外都需要 token；设置 `http_api_token` 或使用 `--api-token`）。
 `serve --insight` 运行 AI 见解引擎，每条生成的见解以 JSON 行输出到 stderr。
 `image auto-download` 与 `serve --image-auto-download` 通过 `img_helper.dll` 钩住微信，仅支持 Windows x64。

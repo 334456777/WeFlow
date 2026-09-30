@@ -95,11 +95,23 @@ struct ConfigCommand {
 
 #[derive(Subcommand, Debug)]
 enum ConfigSubcommand {
+    /// Show every key of the active profile
     List,
+    /// Show one key (or all when omitted)
     Get { key: Option<String> },
-    Set { key: String, value: String },
+    /// Set a key. Main keys: db_path, wxid, decrypt_key, image_xor_key, image_aes_key, cache_path,
+    /// http_api_token, http_api_host, http_api_port, ai_model_api_base_url, ai_model_api_key,
+    /// ai_model_api_model, ai_model_api_max_tokens, ai_insight_enabled (desktop names such as dbPath also work)
+    Set {
+        /// Key name, see the list above or `config list`
+        key: String,
+        value: String,
+    },
+    /// Remove a key
     Unset { key: String },
+    /// Remove every key of the active profile
     Clear,
+    /// Import settings from the desktop app's config.json
     Import { path: Option<PathBuf> },
 }
 
@@ -125,8 +137,22 @@ struct KeyCommand {
 
 #[derive(Subcommand, Debug)]
 enum KeySubcommand {
-    Db,
-    Image,
+    /// Hook WeChat and wait for the database key (Windows: keep the command running and log in to WeChat)
+    Db {
+        /// WeChat process id (default: the first Weixin.exe / WeChat.exe found)
+        #[arg(long)]
+        pid: Option<u32>,
+        /// How long to wait for the key, in seconds
+        #[arg(long, default_value_t = 180)]
+        timeout: u64,
+    },
+    /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template)
+    Image {
+        /// Account directory to search for templates (default: the configured account directory)
+        #[arg(long)]
+        user_dir: Option<String>,
+    },
+    /// Scan WeChat's memory for the image AES key (macOS)
     ScanImage { user_dir: String },
 }
 
@@ -354,15 +380,21 @@ enum ExportSubcommand {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Export decrypted images and/or voice files found on disk
     Media {
+        /// Output directory
         #[arg(long)]
         out: PathBuf,
+        /// Only media of this conversation id (default: all conversations)
         #[arg(long)]
         session: Option<String>,
+        /// What to export: image, voice or all
         #[arg(long, default_value = "all")]
         r#type: String,
     },
+    /// Export the messages of one conversation
     Messages {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Start date in Beijing time, inclusive (YYYY-MM-DD)
         #[arg(long)]
@@ -370,6 +402,7 @@ enum ExportSubcommand {
         /// End date in Beijing time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
+        /// Output file
         #[arg(long)]
         out: PathBuf,
         /// txt (default), json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql
@@ -1191,8 +1224,8 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
 
 fn handle_key(command: &KeyCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        KeySubcommand::Db => hub.key_db(),
-        KeySubcommand::Image => hub.key_image(),
+        KeySubcommand::Db { pid, timeout } => hub.key_db(*pid, *timeout),
+        KeySubcommand::Image { user_dir } => hub.key_image(user_dir.as_deref()),
         KeySubcommand::ScanImage { user_dir } => hub.key_scan_image(user_dir),
     }
 }

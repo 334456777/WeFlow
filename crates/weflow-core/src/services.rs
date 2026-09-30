@@ -347,14 +347,33 @@ impl ServiceHub {
         wcdb.footprint_stats(&options).map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn key_db(&self) -> AppResult<Value> {
+    /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases,
+    /// so the command keeps polling (default 180 s, like the desktop app) while the user logs in.
+    pub fn key_db(&self, pid_override: Option<u32>, timeout_secs: u64) -> AppResult<Value> {
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
         if wxkey.is_available() {
-            let pid = find_wechat_pid().ok_or_else(|| {
-                AppError::runtime("WeChat process not found; please launch WeChat first")
-            })?;
-            let key = wxkey.get_db_key(pid).map_err(|err| AppError::native(err.to_string()))?;
+            let pid = match pid_override {
+                Some(p) => p,
+                None => find_wechat_pid().ok_or_else(|| {
+                    AppError::runtime("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid")
+                })?,
+            };
+            let show = true;
+            let mut on_status = |msg: &str, level: i32| {
+                if show {
+                    eprintln!("{}", json!({ "type": "key_status", "level": level, "message": msg }));
+                }
+            };
+            eprintln!("{}", json!({ "type": "key_waiting", "pid": pid, "timeoutSeconds": timeout_secs, "hint": "log in to WeChat (or restart it) now; the key appears while WeChat opens its databases" }));
+            let key = wxkey
+                .get_db_key(pid, std::time::Duration::from_secs(timeout_secs), &mut on_status)
+                .map_err(|err| match err {
+                    weflow_native::wxkey::DbKeyError::AccessDenied(detail) => AppError::native(format!(
+                        "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
+                    )),
+                    other => AppError::native(other.to_string()),
+                })?;
             return Ok(json!({ "key": key, "method": "wx_key", "pid": pid }));
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -372,23 +391,49 @@ impl ServiceHub {
         }
     }
 
-    pub fn key_image(&self) -> AppResult<Value> {
+    /// `key:autoGetImageKey`: codes from the `kvcomm` cache, verified per candidate wxid against a
+    /// `_t.dat` template found under `user_dir` (default: the account directory).
+    pub fn key_image(&self, user_dir: Option<&str>) -> AppResult<Value> {
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
-        if wxkey.is_available() {
-            let result = wxkey.get_image_key().map_err(|err| AppError::native(err.to_string()))?;
-            let parsed: Value = serde_json::from_str(&result).unwrap_or(json!({ "raw": result }));
-            return Ok(json!({ "imageKey": parsed, "method": "wx_key" }));
+        if !wxkey.is_available() {
+            let profile = self.profile()?;
+            if let Some(xor_key) = profile.image_xor_key {
+                return Ok(json!({
+                    "xorKey": xor_key,
+                    "aesKey": profile.image_aes_key,
+                    "method": "config",
+                    "note": "from stored config; use key scan-image for live extraction"
+                }));
+            }
+            return Err(AppError::native("image key not available; configure image_xor_key or use the wx_key native library"));
         }
-        let profile = self.profile()?;
-        if let Some(xor_key) = profile.image_xor_key {
-            return Ok(json!({
-                "imageKey": { "xorKey": xor_key },
-                "method": "config",
-                "note": "from stored config; use key scan-image for live extraction"
-            }));
+        let raw = wxkey.get_image_key().map_err(|err| AppError::native(err.to_string()))?;
+        let parsed: Value = serde_json::from_str(&raw).map_err(|_| AppError::native("failed to parse the image key data"))?;
+        let accounts = parsed.get("accounts").and_then(Value::as_array).cloned().unwrap_or_default();
+        let codes: Vec<u64> = accounts.first().and_then(|a| a.get("keys")).and_then(Value::as_array).map(|k| k.iter().filter_map(|k| k.get("code").and_then(Value::as_u64)).collect()).unwrap_or_default();
+        if codes.is_empty() {
+            return Err(AppError::native("no valid key code found (the kvcomm cache is empty); open a few images in WeChat first"));
         }
-        Err(AppError::native("image key not available; configure image_xor_key or use wx_key native library"))
+        let account_dir = self.account_dir_only().ok();
+        let dir_text = user_dir.map(str::to_string).or_else(|| account_dir.as_ref().map(|d| d.to_string_lossy().to_string()));
+        let wxid = self.wxid_override.clone().or_else(|| self.profile().ok().and_then(|p| p.wxid.clone()));
+        let candidates = crate::keys::collect_wxid_candidates(dir_text.as_deref(), wxid.as_deref());
+        let template = dir_text.as_deref().map(Path::new).filter(|d| d.exists()).map(|d| crate::keys::find_template_data(d, 32));
+        if let Some((Some(cipher), _)) = &template {
+            for cand in &candidates {
+                for code in &codes {
+                    let (xor, aes) = crate::keys::derive_image_keys(*code, cand);
+                    if crate::keys::verify_derived_aes_key(&aes, cipher) {
+                        return Ok(json!({ "xorKey": xor, "aesKey": aes, "verified": true, "wxid": cand, "code": code, "method": "wx_key" }));
+                    }
+                }
+            }
+            return Err(AppError::native("the cached codes do not match this account's wxid; check --wxid / the account directory, or use `key scan-image`"));
+        }
+        let fallback_wxid = candidates.first().cloned().or_else(|| accounts.first().and_then(|a| a.get("wxid").and_then(Value::as_str).map(str::to_string))).unwrap_or_else(|| "unknown".into());
+        let (xor, aes) = crate::keys::derive_image_keys(codes[0], &fallback_wxid);
+        Ok(json!({ "xorKey": xor, "aesKey": aes, "verified": false, "wxid": fallback_wxid, "code": codes[0], "method": "wx_key" }))
     }
 
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
@@ -647,7 +692,7 @@ impl ServiceHub {
         out: &Path,
         media_type: &str,
     ) -> AppResult<Value> {
-        let (account_dir, _, _) = self.connection_inputs()?;
+        let account_dir = self.account_dir_only()?;
         let profile = self.profile()?;
         let xor_key = profile.image_xor_key.map(|k| k as u8).unwrap_or(0);
         let aes_key_bytes = profile.image_aes_key.as_deref().and_then(crate::decrypt::parse_aes_key);
@@ -828,8 +873,8 @@ fn default_db_candidates() -> Vec<PathBuf> {
             candidates.push(home.join("Library/Application Support/com.tencent.xinWeChat"));
             candidates.push(home.join("Library/Containers/com.tencent.WeChat/Data/Library/Application Support/com.tencent.WeChat"));
         } else if cfg!(target_os = "windows") {
-            candidates.push(home.join("Documents/WeChat Files"));
-            candidates.push(home.join("Documents/xwechat_files"));
+            candidates.push(home.join("Documents").join("WeChat Files"));
+            candidates.push(home.join("Documents").join("xwechat_files"));
         } else {
             candidates.push(home.join(".xwechat_files"));
             candidates.push(home.join("xwechat_files"));
@@ -908,21 +953,15 @@ fn find_wechat_pid() -> Option<u32> {
     }
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("tasklist")
-            .arg("/FI")
-            .arg("IMAGENAME eq WeChat.exe")
-            .arg("/FO")
-            .arg("CSV")
-            .arg("/NH")
-            .output()
-            .ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            if line.contains("WeChat.exe") {
-                let parts: Vec<&str> = line.split(',').collect();
-                if parts.len() >= 2 {
-                    let pid_str = parts[1].trim().trim_matches('"');
-                    return pid_str.parse().ok();
+        for image in ["Weixin.exe", "WeChat.exe"] {
+            let Ok(output) = std::process::Command::new("tasklist").args(["/FI", &format!("IMAGENAME eq {image}"), "/FO", "CSV", "/NH"]).output() else { continue };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("INFO:")) {
+                let parts: Vec<&str> = line.split("\",\"").map(|p| p.trim_matches('"')).collect();
+                if parts.first().map_or(false, |n| n.eq_ignore_ascii_case(image)) {
+                    if let Some(pid) = parts.get(1).and_then(|p| p.parse::<u32>().ok()) {
+                        return Some(pid);
+                    }
                 }
             }
         }

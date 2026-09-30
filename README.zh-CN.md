@@ -48,7 +48,9 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 # 1. 找到微信数据目录
 .\weflow.exe --lang zh db detect --pretty
 
-# 2. 获取数据库密钥（微信需在运行）和图片密钥
+# 2. 获取数据库密钥和图片密钥（请以管理员身份运行 PowerShell）
+#    `key db` 会挂钩微信并等待（默认 180 秒）：等待期间请退出并重新登录微信（或重启微信），
+#    密钥只会在微信打开数据库时出现。
 .\weflow.exe --lang zh key db --pretty
 .\weflow.exe --lang zh key image --pretty
 
@@ -65,6 +67,8 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 # 5. 导出（私聊为对方 wxid，群聊为 xxx@chatroom）
 .\weflow.exe --lang zh export messages <会话ID> --format html --out chat.html
 ```
+
+Windows 说明：`key db` 需要管理员终端（否则会提示权限不足），会自动查找 `Weixin.exe` / `WeChat.exe`（也可用 `--pid` 指定），`--timeout <秒>` 可调整等待时间。配置文件在 `%APPDATA%\weflow\config.json`，解压出的运行时在 `%APPDATA%\weflow\runtime\<版本>\<target>`。WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`，导出图片前请先准备好。
 
 常用导出选项：`--start 2025-01-01 --end 2025-12-31`（北京时间，含首尾）、`--display-name remark|nickname|group-nickname`、`--sender wxid_xxx`、`--excel-compact`。消息导出不内嵌媒体文件；媒体请单独导出，见 `weflow export media --help`。
 

@@ -11,6 +11,7 @@ pub mod http_server;
 pub mod image;
 pub mod image_download;
 pub mod insight;
+pub mod keys;
 pub mod isaac64;
 pub mod locale;
 pub mod message;

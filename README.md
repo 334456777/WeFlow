@@ -48,7 +48,9 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 # 1. Find the WeChat data directory
 .\weflow.exe db detect --pretty
 
-# 2. Get the database key (WeChat must be running) and the image keys
+# 2. Get the database key and the image keys (run PowerShell as administrator)
+#    `key db` hooks WeChat and WAITS (180 s by default): log out and log in to WeChat (or restart it)
+#    while it is waiting, the key only appears while WeChat opens its databases.
 .\weflow.exe key db --pretty
 .\weflow.exe key image --pretty
 
@@ -65,6 +67,8 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 # 5. Export (private chat: the other party's wxid; group: xxx@chatroom)
 .\weflow.exe export messages <session-id> --format html --out chat.html
 ```
+
+Notes for Windows: `key db` needs an administrator terminal (otherwise it reports "permission denied"), finds `Weixin.exe` / `WeChat.exe` automatically (or use `--pid`), and `--timeout <seconds>` changes the wait. The configuration lives in `%APPDATA%\weflow\config.json`, the extracted runtime in `%APPDATA%\weflow\runtime\<version>\<target>`. WXGF images need `ffmpeg` on `PATH` (or `FFMPEG_PATH`) — set it up before exporting images.
 
 Useful export options: `--start 2025-01-01 --end 2025-12-31` (Beijing time, inclusive), `--display-name remark|nickname|group-nickname`, `--sender wxid_xxx`, `--excel-compact`. Messages are exported without embedded media; export media separately with `weflow export media --help`.
 

@@ -2,7 +2,6 @@ use std::path::Path;
 
 use aes::cipher::{BlockDecryptMut, KeyInit};
 use anyhow::{anyhow, Result};
-use md5::{Digest, Md5};
 use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
@@ -58,18 +57,8 @@ pub fn detect_image_extension(data: &[u8]) -> &str {
     ".bin"
 }
 
-/// `deriveImageKeys`: xor key is the low byte of the code, the AES key is the first 16 hex
-/// characters of `md5(code + cleanedWxid)` used as ASCII text.
-pub fn derive_image_keys(code: u64, wxid: &str) -> (u8, String) {
-    let xor_key = (code & 0xFF) as u8;
-    let cleaned_wxid = clean_wxid(wxid);
-    let data_to_hash = format!("{}{}", code, cleaned_wxid);
-    let mut hasher = Md5::new();
-    hasher.update(data_to_hash.as_bytes());
-    let digest = hasher.finalize();
-    let full: String = digest.iter().map(|b| format!("{b:02x}")).collect();
-    (xor_key, full[..16].to_string())
-}
+/// Re-exported for compatibility; see [`crate::keys::derive_image_keys`].
+pub use crate::keys::derive_image_keys;
 
 /// Default key of V1 (`07 08 56 31 08 07`) `.dat` files.
 pub const V1_AES_KEY: [u8; 16] = *b"cfcd208495d565ef";
@@ -93,21 +82,6 @@ pub fn parse_aes_key(text: &str) -> Option<[u8; 16]> {
     None
 }
 
-fn clean_wxid(wxid: &str) -> String {
-    let trimmed = wxid.trim();
-    if trimmed.to_lowercase().starts_with("wxid_") {
-        if let Some(idx) = trimmed[5..].find('_') {
-            return trimmed[..5 + idx].to_string();
-        }
-    }
-    if let Some(idx) = trimmed.rfind('_') {
-        let suffix = &trimmed[idx + 1..];
-        if suffix.len() == 4 && suffix.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return trimmed[..idx].to_string();
-        }
-    }
-    trimmed.to_string()
-}
 
 pub fn decrypt_dat(data: &[u8], xor_key: u8, aes_key: Option<&[u8; 16]>) -> Result<DecryptResult> {
     let version = detect_dat_version(data);
@@ -345,12 +319,6 @@ mod tests {
         assert_eq!(xor1, (12345u64 & 0xFF) as u8);
         assert_eq!(aes1.len(), 16);
         assert!(aes1.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn clean_wxid_strips_suffix() {
-        assert_eq!(clean_wxid("wxid_abc_1234"), "wxid_abc");
-        assert_eq!(clean_wxid("wxid_abc"), "wxid_abc");
     }
 
     #[test]
