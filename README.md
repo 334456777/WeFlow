@@ -38,7 +38,7 @@ $env:WEFLOW_LANG = "zh"                          # Chinese for the whole PowerSh
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-`--lang` is an option, not a command: it must accompany a subcommand (`weflow.exe --lang zh` alone reports a missing subcommand). The language only affects generated text; JSON keys, error codes and `--help` are always English. The full order of precedence is in [docs/native-cli.md](docs/native-cli.md#language).
+`weflow.exe --lang zh` on its own saves the language in the config file; with a command it applies to that run only. The language affects `--help`, usage errors, runtime errors and generated text; JSON keys and error codes stay English, and so do the HTTP API's error responses. The full order of precedence is in [docs/native-cli.md](docs/native-cli.md#language).
 
 ## First-time setup and export (required steps)
 

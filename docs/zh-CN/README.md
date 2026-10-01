@@ -38,7 +38,7 @@ $env:WEFLOW_LANG = "zh"                          # 整个 PowerShell 会话都�
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-`--lang` 是选项而不是命令,必须配合子命令使用(单独运行 `weflow.exe --lang zh` 会提示缺少子命令)。语言只影响生成的文本;JSON 键、错误码和 `--help` 始终是英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
+单独运行 `weflow.exe --lang zh` 会把语言保存到配置文件;与命令一起使用时只对本次运行生效。语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文,HTTP API 的错误响应也保持英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
 
 ## 首次设置与导出（必要步骤）
 

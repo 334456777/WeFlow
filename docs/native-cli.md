@@ -7,17 +7,17 @@ A Rust command-line build of WeFlow's backend. Every command prints one JSON doc
 
 ## Language
 
-The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `--lang`, the environment
+The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `--lang`, `WEFLOW_LANG`, the language saved in the config file (`weflow --lang zh` on its own saves it; `weflow config unset lang` removes it), the environment
 (the first variable that is set and non-empty decides), then the operating system's display language:
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
 
 A value starting with `zh` (`zh_CN.UTF-8`, `zh-TW`, `zh`) gives Chinese; anything else, including `C` and `POSIX`, gives English.
 When none of the variables is set (usual on Windows) the OS display language decides (Windows, macOS); if it cannot be determined, English.
-`--lang en|zh` overrides all of this for a single run.
+`--lang en|zh <command>` overrides all of this for a single run.
 
-The language affects generated text: TXT/Excel export labels (`[Image]` / `[图片]`), the default official-account payment
-merchant name, and the default AI insight prompt. JSON keys, error codes and `--help` text are always English.
+The language affects `--help`, usage errors, runtime errors, progress text and generated text: TXT/Excel export labels (`[Image]` / `[图片]`), the default official-account payment
+merchant name, and the default AI insight prompt. JSON keys, error codes and the HTTP API's error responses stay English.
 
 ## Commands
 
