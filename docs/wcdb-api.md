@@ -62,8 +62,7 @@ compared byte for byte between versions): see section 4 of [cli-unsupported.md](
 
 ## Discussion
 
-Questions about `wcdb_api.dll` (the new build, comparing it with the Rust layer, its network code, builds for the other
-platforms) are discussed in this issue:
+Questions about `wcdb_api.dll` are discussed in this issue:
 
 
 - Issue: [hicccc77/WeFlow#1220](https://github.com/hicccc77/WeFlow/issues/1220#issuecomment-5925015014)
