@@ -4,7 +4,7 @@
 
 `weflow` is a native Rust command-line build of [WeFlow](docs/weflow-readme.md)'s backend. It reads, analyzes and exports your local WeChat 4.0+ chat history from the terminal, without the Electron desktop app.
 
-- Every command prints one JSON document on stdout (`{"success": true, "data": ...}`), which makes it easy to script.
+- Output is human-readable by default (aligned `key: value` lines and tables; errors go to stderr). Add `--json` (compact) or `--pretty` (indented) for one JSON document on stdout (`{"success": true, "data": ...}`), which makes it easy to script.
 - Chat sessions, messages, contacts, Moments, group/private analytics, annual and dual reports.
 - Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, `sql`.
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, stickers.

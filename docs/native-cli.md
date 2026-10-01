@@ -2,7 +2,8 @@
 
 **English** | [简体中文](zh-CN/native-cli.md)
 
-A Rust command-line build of WeFlow's backend. Every command prints one JSON document on stdout
+A Rust command-line build of WeFlow's backend. By default a command prints human-readable text on stdout (aligned `key: value` lines, tables for lists) and
+errors on stderr, with the same exit codes. With `--json` (compact) or `--pretty` (indented) every command prints one JSON document on stdout
 (`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`.
 
 ## Language
@@ -49,7 +50,7 @@ weflow cache     clear-all
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
 
 Progress: commands that run longer than the delay (default 5 seconds; `--progress-delay <s>`, env `WEFLOW_PROGRESS_DELAY`, or `weflow config set progress_delay_seconds <s>`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
-terminal; stdout stays pure JSON). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.
+terminal; stdout is never touched). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` walks the media
 messages (an image sent twice counts twice, so `found` can exceed the unique files listed by `chat images`). `missing` counts
@@ -72,7 +73,7 @@ Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA
 (on Linux/macOS under the platform's data directory).
 
 `serve --http` exposes the desktop app's HTTP API (token required except `/health`; set `http_api_token` or `--api-token`).
-`serve --insight` runs the AI insight engine; each generated insight is printed to stderr as a JSON line.
+`serve --insight` runs the AI insight engine; each generated insight is printed to stderr (as a JSON line with `--json`).
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
 Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`); WXGF images need `ffmpeg`
 on `PATH` (or `FFMPEG_PATH`).

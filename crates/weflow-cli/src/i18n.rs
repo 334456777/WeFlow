@@ -99,17 +99,13 @@ fn save_language_if_alone(args: &[String]) {
                 Lang::Zh => "已将语言设置为中文",
                 Lang::En => "Language set to English",
             };
-            println!(
-                "{}",
-                serde_json::json!({ "success": true, "data": { "lang": value, "message": message, "configPath": path } })
-            );
+            println!("{message} ({})", path.display());
             std::process::exit(0);
         }
         Err(err) => {
-            let message = weflow_core::locale::localize(err);
-            println!(
+            eprint!(
                 "{}",
-                serde_json::json!({ "success": false, "error": { "code": "config_error", "message": message } })
+                weflow_core::render::render_error(&weflow_core::locale::localize(err), None)
             );
             std::process::exit(3);
         }

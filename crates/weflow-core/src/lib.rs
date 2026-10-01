@@ -21,6 +21,7 @@ pub mod message;
 pub mod messages_zh;
 pub mod output;
 pub mod push;
+pub mod render;
 pub mod services;
 pub mod sns;
 pub mod video;

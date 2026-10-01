@@ -50,6 +50,76 @@ pub fn failure(error: ErrorPayload) -> CliResponse<Value> {
     }
 }
 
+static JSON_OUTPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `--json` / `--pretty`: print JSON (results on stdout, events on stderr) instead of text for people.
+pub fn set_json_output(on: bool) {
+    JSON_OUTPUT.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn json_output() -> bool {
+    JSON_OUTPUT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// A status event on stderr: one JSON line with `--json`, a short text for people otherwise.
+pub fn event(event: Value) {
+    if json_output() {
+        eprintln!("{event}");
+    } else {
+        eprint!("{}", human_event(&event));
+    }
+}
+
+fn human_event(event: &Value) -> String {
+    use crate::render::render;
+    let text = |key: &str| event[key].as_str().unwrap_or("").to_string();
+    let enabled = |key: &str| event[key].as_bool() == Some(true);
+    match event["type"].as_str().unwrap_or("") {
+        "key_status" => format!("{}\n", text("message")),
+        "key_waiting" => format!(
+            "{} (pid {}, {} {}s)\n{}\n",
+            tr("waiting for the WeChat key", "正在等待微信密钥"),
+            event["pid"],
+            tr("up to", "最长"),
+            event["timeoutSeconds"],
+            text("hint")
+        ),
+        "auto_download_started" => format!(
+            "{}\n",
+            tr(
+                "image auto download started (Ctrl+C to stop)",
+                "图片自动下载已启动（按 Ctrl+C 停止）"
+            )
+        ),
+        "insight" => format!(
+            "{}\n{}",
+            tr("insight record:", "洞察记录："),
+            render(&event["record"])
+        ),
+        "server_started" => {
+            let mut services = Vec::new();
+            for (key, en, zh) in [
+                ("http", "HTTP API", "HTTP API"),
+                ("messagePush", "message push", "消息推送"),
+                ("insight", "insight", "洞察"),
+                ("imageAutoDownload", "image auto download", "图片自动下载"),
+            ] {
+                if enabled(key) {
+                    services.push(tr(en, zh));
+                }
+            }
+            format!(
+                "{} {}\n{} {}\n",
+                tr("server started:", "服务已启动："),
+                text("url"),
+                tr("running:", "运行中："),
+                services.join(", ")
+            )
+        }
+        _ => render(event),
+    }
+}
+
 /// How progress events are reported on stderr.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgressMode {

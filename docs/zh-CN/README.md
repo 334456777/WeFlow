@@ -4,7 +4,7 @@
 
 `weflow` 是 [WeFlow](weflow-readme.md) 后端的 Rust 原生命令行版本。无需 Electron 桌面端，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
-- 每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
+- 默认输出便于阅读的文本（对齐的 `键: 值` 和表格；错误写到 stderr）。加 `--json`（紧凑）或 `--pretty`（缩进）则在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
 - 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
