@@ -49,8 +49,8 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 .\weflow.exe --lang zh db detect
 
 # 2. 获取数据库密钥和图片密钥（请以管理员身份运行 PowerShell）
-#    `key db` 会挂钩微信并等待（默认 180 秒）：等待期间请退出并重新登录微信（或重启微信），
-#    密钥只会在微信打开数据库时出现。
+#    `key db` 会等待（默认 180 秒）：请按提示完全退出微信、重新打开，并在登录窗口点击「进入微信」，
+#    因为密钥只会在微信打开数据库时出现。
 .\weflow.exe --lang zh key db
 .\weflow.exe --lang zh key image
 

@@ -49,8 +49,8 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 .\weflow.exe db detect
 
 # 2. Get the database key and the image keys (run PowerShell as administrator)
-#    `key db` hooks WeChat and WAITS (180 s by default): log out and log in to WeChat (or restart it)
-#    while it is waiting, the key only appears while WeChat opens its databases.
+#    `key db` WAITS (180 s by default): quit WeChat completely, open it again and click "Enter WeChat"
+#    in the login window when asked, because the key only appears while WeChat opens its databases.
 .\weflow.exe key db
 .\weflow.exe key image
 

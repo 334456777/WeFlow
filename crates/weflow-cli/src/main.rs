@@ -128,21 +128,31 @@ enum ConfigSubcommand {
     /// Show every key of the active profile
     List,
     /// Show one key (or all when omitted)
-    Get { key: Option<String> },
+    Get {
+        /// Key name (default: show every key)
+        key: Option<String>,
+    },
     /// Set a key. Main keys: db_path, wxid, decrypt_key, image_xor_key, image_aes_key, cache_path,
     /// http_api_token, http_api_host, http_api_port, ai_model_api_base_url, ai_model_api_key,
     /// ai_model_api_model, ai_model_api_max_tokens, ai_insight_enabled, progress_delay_seconds (desktop names such as dbPath also work)
     Set {
         /// Key name, see the list above or `config list`
         key: String,
+        /// Value to store
         value: String,
     },
     /// Remove a key
-    Unset { key: String },
+    Unset {
+        /// Key name
+        key: String,
+    },
     /// Remove every key of the active profile
     Clear,
     /// Import settings from the desktop app's config.json
-    Import { path: Option<PathBuf> },
+    Import {
+        /// Desktop app config.json (default: found in the usual locations)
+        path: Option<PathBuf>,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -153,9 +163,16 @@ struct DbCommand {
 
 #[derive(Subcommand, Debug)]
 enum DbSubcommand {
+    /// Find WeChat data directories on this computer
     Detect,
-    Scan { root: String },
+    /// Scan a folder for WeChat account directories
+    Scan {
+        /// Folder to scan
+        root: String,
+    },
+    /// Test that the configured database can be opened with the key
     Test,
+    /// Open the configured database and show a short summary
     Open,
 }
 
@@ -183,7 +200,10 @@ enum KeySubcommand {
         user_dir: Option<String>,
     },
     /// Scan WeChat's memory for the image AES key (macOS)
-    ScanImage { user_dir: String },
+    ScanImage {
+        /// Account directory (user directory) to scan for the image key
+        user_dir: String,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -208,76 +228,111 @@ enum ChatSubcommand {
         #[arg(long)]
         yes: bool,
     },
+    /// List conversations, newest first
     Sessions {
+        /// Maximum number of sessions (0 = all)
         #[arg(long, default_value_t = 0)]
         limit: usize,
     },
+    /// A page of a conversation's messages
     Messages(PageArgs),
+    /// The latest messages of a conversation
     Latest {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Number of messages
         #[arg(long, default_value_t = 20)]
         limit: i32,
     },
+    /// Search the messages of one conversation or of all of them
     Search {
+        /// Text to search for
         keyword: String,
+        /// Only search this conversation (default: all conversations)
         #[arg(long)]
         session_id: Option<String>,
+        /// Maximum number of results
         #[arg(long, default_value_t = 50)]
         limit: i32,
+        /// Number of results to skip
         #[arg(long, default_value_t = 0)]
         offset: i32,
+        /// Only messages from this time on (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         start: i32,
+        /// Only messages up to this time (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         end: i32,
     },
+    /// List all contacts
     Contacts,
+    /// Show one contact
     Contact {
+        /// Contact username (wxid)
         username: String,
     },
+    /// Edit a message (always refused: the database is read-only)
     UpdateMessage {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Local message id
         local_id: i64,
+        /// Message create time (seconds)
         create_time: i32,
+        /// New message content
         content: String,
     },
+    /// Delete a message (always refused: the database is read-only)
     DeleteMessage {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Local message id
         local_id: i64,
+        /// Message create time (seconds)
         create_time: i32,
+        /// Database file the message is stored in
         #[arg(long)]
         db_path_hint: Option<String>,
     },
+    /// Anti-revoke triggers (installing and removing are refused: the database is read-only)
     AntiRevoke {
         #[command(subcommand)]
         command: AntiRevokeSubcommand,
     },
     /// Look up one message by local id or server id
     Message {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Local message id
         #[arg(long)]
         local_id: Option<i32>,
+        /// Server message id
         #[arg(long)]
         server_id: Option<String>,
     },
     /// Dates that have messages in a session (YYYY-MM-DD)
     Dates {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
     },
     /// Message count per day for a session
     DateCounts {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
     },
     /// Total message counts for several sessions
     Counts {
+        /// Conversation ids
         sessions: Vec<String>,
     },
     /// Folded / muted state of sessions
     Statuses {
+        /// Conversation usernames
         usernames: Vec<String>,
     },
     /// Session details (contact info, message count, message tables, first/latest time)
     Detail {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Only the fast part (contact info + message count)
         #[arg(long)]
@@ -292,6 +347,7 @@ enum ChatSubcommand {
     TabCounts,
     /// Per-session statistics used by the export page
     ExportStats {
+        /// Conversation ids
         sessions: Vec<String>,
         /// Start date, local time (YYYY-MM-DD)
         #[arg(long)]
@@ -305,68 +361,91 @@ enum ChatSubcommand {
     },
     /// Read or set the cached "my message count" of a group chat
     GroupHint {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Store this value as the "my message count"
         #[arg(long)]
         set: Option<i64>,
     },
     /// List image / video / voice / file messages across sessions
     Resources {
+        /// Only this conversation (default: all conversations)
         #[arg(long)]
         session: Option<String>,
         /// image, video, voice, file (repeatable)
         #[arg(long = "type")]
         types: Vec<String>,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
+        /// Maximum number of results
         #[arg(long, default_value_t = 300)]
         limit: usize,
+        /// Number of results to skip
         #[arg(long, default_value_t = 0)]
         offset: usize,
     },
     /// All image identifiers of a session (md5 / dat name), newest first
     Images {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
     },
     /// All voice messages of a session
     VoiceMessages {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
     },
     /// Page through image/video messages with the native media scanner
     MediaStream {
+        /// Only this conversation (default: all conversations)
         #[arg(long)]
         session: Option<String>,
         /// image, video or all
         #[arg(long, default_value = "all")]
         media_type: String,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
+        /// Maximum number of results
         #[arg(long, default_value_t = 200)]
         limit: i32,
+        /// Number of results to skip
         #[arg(long, default_value_t = 0)]
         offset: i32,
     },
     /// Resolve payer / receiver display names of a transfer message
     TransferNames {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Payer username (wxid)
         payer: String,
+        /// Receiver username (wxid)
         receiver: String,
     },
+    /// Export all voice messages of a conversation as WAV files
     Voice {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Output directory (default: the current directory)
         #[arg(long)]
         out: Option<PathBuf>,
     },
     /// Decode one voice message (SILK) into a 24 kHz WAV file
     VoiceData {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
         /// Local message id
         msg_id: String,
+        /// Message create time (seconds)
         #[arg(long)]
         create_time: Option<i64>,
+        /// Server message id
         #[arg(long)]
         server_id: Option<String>,
         /// Sender wxid (important in group chats)
@@ -378,23 +457,33 @@ enum ChatSubcommand {
     },
     /// Decrypt the image of one message and write it to a file
     ImageData {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Local message id
         msg_id: String,
+        /// Output file
         #[arg(long)]
         out: PathBuf,
     },
     /// Check whether a decoded voice WAV is already cached for a message id
     VoiceCache {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Local message id
         msg_id: String,
     },
     /// Decode and cache many voice messages; takes a JSON array of {localId, createTime, serverId?, senderWxid?}
     VoicePreload {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// JSON array of {localId, createTime, serverId?, senderWxid?}
         messages_json: String,
     },
+    /// Download the stickers of a conversation
     Emoji {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
+        /// Output directory
         #[arg(long)]
         out: PathBuf,
     },
@@ -402,9 +491,12 @@ enum ChatSubcommand {
 
 #[derive(Args, Debug)]
 struct PageArgs {
+    /// Conversation id: the other party's wxid, or xxx@chatroom for a group
     session_id: String,
+    /// Maximum number of results
     #[arg(long, default_value_t = 50)]
     limit: i32,
+    /// Number of results to skip
     #[arg(long, default_value_t = 0)]
     offset: i32,
 }
@@ -413,13 +505,19 @@ struct PageArgs {
 enum AntiRevokeSubcommand {
     /// Sessions that anti-revoke can be installed for
     Sessions,
+    /// Check whether the anti-revoke trigger is installed for sessions
     Check {
+        /// Conversation ids
         sessions: Vec<String>,
     },
+    /// Install the anti-revoke trigger for sessions (refused: the database is read-only)
     Install {
+        /// Conversation ids
         sessions: Vec<String>,
     },
+    /// Remove the anti-revoke trigger from sessions (refused: the database is read-only)
     Uninstall {
+        /// Conversation ids
         sessions: Vec<String>,
     },
 }
@@ -432,23 +530,33 @@ struct ExportCommand {
 
 #[derive(Subcommand, Debug)]
 enum ExportSubcommand {
+    /// Export the session list
     Sessions {
+        /// Only these conversations (repeatable; default: all)
         #[arg(long = "session")]
         sessions: Vec<String>,
+        /// Export format (default: json)
         #[arg(long)]
         format: Option<String>,
+        /// Output file
         #[arg(long)]
         out: PathBuf,
     },
+    /// Export the contact list
     Contacts {
+        /// Export format (default: json)
         #[arg(long)]
         format: Option<String>,
+        /// Output file
         #[arg(long)]
         out: PathBuf,
     },
+    /// Export the footprint statistics
     Footprint {
+        /// Export format (default: json)
         #[arg(long)]
         format: Option<String>,
+        /// Output file
         #[arg(long)]
         out: PathBuf,
     },
@@ -519,6 +627,7 @@ enum AnalyticsSubcommand {
     },
     /// Contacts ranked by message count
     Rankings {
+        /// Number of contacts
         #[arg(long, default_value_t = 20)]
         limit: usize,
         /// First day (YYYY-MM-DD, local time)
@@ -554,6 +663,7 @@ enum GroupSubcommand {
     List,
     /// Members panel (friend flag, owner, group nickname, optional message counts)
     Members {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
         /// Include per-member message counts
         #[arg(long)]
@@ -564,65 +674,94 @@ enum GroupSubcommand {
     },
     /// Most active members
     Ranking {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Number of members
         #[arg(long, default_value_t = 20)]
         limit: usize,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
     /// Messages per hour of day
     Hours {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
     /// Message type mix
     Media {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
     /// One member's statistics (types, hours, common phrases and emoji)
     Member {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Member username (wxid)
         username: String,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
     /// A page of one member's messages (newest first)
     MemberMessages {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Member username (wxid)
         username: String,
+        /// Number of messages
         #[arg(long, default_value_t = 50)]
         limit: usize,
         /// Cursor returned as `nextCursor` by the previous page
         #[arg(long, default_value_t = 0)]
         cursor: usize,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
     /// Export a member's messages (.csv or .xlsx)
     ExportMemberMessages {
+        /// Group chat id (xxx@chatroom)
         chatroom_id: String,
+        /// Member username (wxid)
         username: String,
+        /// Output file
         out: PathBuf,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
     /// Export the member list (.csv or .xlsx)
-    ExportMembers { chatroom_id: String, out: PathBuf },
+    ExportMembers {
+        /// Group chat id (xxx@chatroom)
+        chatroom_id: String,
+        /// Output file
+        out: PathBuf,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -633,10 +772,12 @@ struct ReportCommand {
 
 #[derive(Subcommand, Debug)]
 enum ReportSubcommand {
+    /// Annual report
     Annual {
         #[command(subcommand)]
         command: AnnualSubcommand,
     },
+    /// Dual-person report
     Dual {
         #[command(subcommand)]
         command: DualSubcommand,
@@ -645,7 +786,9 @@ enum ReportSubcommand {
 
 #[derive(Subcommand, Debug)]
 enum AnnualSubcommand {
+    /// Years that have data for the annual report
     Years,
+    /// Generate the annual report
     Generate {
         /// Report year; 0 (default) covers all years.
         #[arg(long, default_value_t = 0)]
@@ -655,7 +798,9 @@ enum AnnualSubcommand {
 
 #[derive(Subcommand, Debug)]
 enum DualSubcommand {
+    /// Generate the report for you and one friend
     Generate {
+        /// Friend's username (wxid)
         #[arg(long)]
         friend: String,
         /// Report year; 0 (default) covers all years.
@@ -677,17 +822,22 @@ struct SnsCommand {
 enum SnsSubcommand {
     /// Moments timeline (newest first)
     Timeline {
+        /// Number of posts
         #[arg(long, default_value_t = 20)]
         limit: i32,
+        /// Number of posts to skip
         #[arg(long, default_value_t = 0)]
         offset: i32,
         /// Only posts of these users (repeatable)
         #[arg(long = "user")]
         users: Vec<String>,
+        /// Only posts containing this text
         #[arg(long)]
         keyword: Option<String>,
+        /// Only posts from this time on (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         start: i64,
+        /// Only posts up to this time (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         end: i64,
         /// Download and decrypt images / videos into the cache and inline them as data URLs
@@ -698,32 +848,42 @@ enum SnsSubcommand {
     Users,
     /// Ask the server for the first bytes of a Moments resource and show the status and decryption headers
     DebugResource {
+        /// Resource URL
         url: String,
     },
     /// Export statistics (total posts / friends / mine); --fast reads the cached counts only
     Stats {
+        /// Only read the cached counts
         #[arg(long)]
         fast: bool,
     },
     /// Post counts per user, or the statistics of one user
     PostCounts {
+        /// Statistics of this user only
         #[arg(long)]
         user: Option<String>,
+        /// Prefer the cached counts
         #[arg(long)]
         prefer_cache: bool,
     },
     /// Export the timeline as json, html or arkmejson
     Export {
+        /// Output file
         #[arg(long)]
         out: PathBuf,
+        /// Export format: json, html or arkmejson
         #[arg(long, default_value = "json")]
         format: String,
+        /// Only posts of these users (repeatable)
         #[arg(long = "user")]
         users: Vec<String>,
+        /// Only posts containing this text
         #[arg(long)]
         keyword: Option<String>,
+        /// Only posts from this time on (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         start: i64,
+        /// Only posts up to this time (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         end: i64,
         /// Also save images / live photos / videos next to the export
@@ -732,30 +892,42 @@ enum SnsSubcommand {
     },
     /// Fetch (and decrypt, with --key) a Moments image or video
     Media {
+        /// Resource URL
         url: String,
+        /// Decryption key
         #[arg(long)]
         key: Option<String>,
+        /// Output file (default: print base64 in the result)
         #[arg(long)]
         out: Option<PathBuf>,
     },
     /// Download a Moments sticker (plain or AES-GCM encrypted)
     DownloadEmoji {
+        /// Sticker URL
         url: String,
+        /// URL of the encrypted sticker
         #[arg(long)]
         encrypt_url: Option<String>,
+        /// AES key of the encrypted sticker
         #[arg(long)]
         aes_key: Option<String>,
     },
     /// Download an arbitrary image URL and decrypt it if it is a .dat payload
     DownloadImage {
+        /// Image URL
         url: String,
+        /// Output file (default: print base64 in the result)
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Moments block-delete trigger (installing and removing are refused: the database is read-only)
     BlockDelete {
+        /// check, install or uninstall
         action: TriggerAction,
     },
+    /// Delete a Moments post (always refused: the database is read-only)
     Delete {
+        /// Post id
         post_id: String,
     },
 }
@@ -775,17 +947,25 @@ struct BizCommand {
 
 #[derive(Subcommand, Debug)]
 enum BizSubcommand {
+    /// List official accounts
     Accounts,
+    /// Messages of one official account
     Messages {
+        /// Official account username
         username: String,
+        /// Maximum number of results
         #[arg(long, default_value_t = 50)]
         limit: i32,
+        /// Number of results to skip
         #[arg(long, default_value_t = 0)]
         offset: i32,
     },
+    /// WeChat Pay records
     PayRecords {
+        /// Maximum number of results
         #[arg(long, default_value_t = 50)]
         limit: i32,
+        /// Number of results to skip
         #[arg(long, default_value_t = 0)]
         offset: i32,
     },
@@ -802,8 +982,10 @@ struct ImageTarget {
     /// Conversation the image belongs to (locates msg/attach/<md5(session)>/…)
     #[arg(long)]
     session: Option<String>,
+    /// Image md5 from the message
     #[arg(long)]
     md5: Option<String>,
+    /// Image .dat file name
     #[arg(long)]
     dat_name: Option<String>,
     /// Message create time (seconds); selects the year-month folder
@@ -812,6 +994,7 @@ struct ImageTarget {
     /// Return a file path instead of a base64 data URL
     #[arg(long)]
     prefer_file_path: bool,
+    /// Only look the file up in WeChat's hardlink index
     #[arg(long)]
     hardlink_only: bool,
     /// Do not fall back to scanning by .dat name
@@ -854,7 +1037,10 @@ enum ImageSubcommand {
         target: ImageTarget,
     },
     /// Resolve many images; takes a JSON array of payloads (sessionId, imageMd5, imageDatName, createTime, …)
-    ResolveBatch { payloads_json: String },
+    ResolveBatch {
+        /// JSON array of image payloads
+        payloads_json: String,
+    },
     /// Delete every decrypted image from the cache
     ClearCache,
     /// Windows only: make WeChat download original-size images (img_helper.dll hook)
@@ -872,6 +1058,7 @@ enum AutoDownloadSubcommand {
         #[arg(long, value_delimiter = ',')]
         whitelist: Vec<String>,
     },
+    /// Show whether the image auto-download hook is running
     Status,
 }
 
@@ -885,6 +1072,7 @@ struct VideoCommand {
 enum VideoSubcommand {
     /// Look up the on-disk video (and optional cover/thumbnail) for a message md5
     Info {
+        /// Video md5 from the message
         md5: String,
         /// Skip cover / thumbnail images
         #[arg(long)]
@@ -894,7 +1082,10 @@ enum VideoSubcommand {
         file_url: bool,
     },
     /// Extract the video md5 from a message XML payload
-    ParseMd5 { content: String },
+    ParseMd5 {
+        /// Message XML
+        content: String,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -914,31 +1105,44 @@ enum InsightSubcommand {
     },
     /// List insight records (newest first)
     Records {
+        /// Only records containing this text
         #[arg(long)]
         keyword: Option<String>,
+        /// Only this conversation
         #[arg(long)]
         session: Option<String>,
+        /// Only records from this time on (Unix seconds)
         #[arg(long)]
         start: Option<i64>,
+        /// Only records up to this time (Unix seconds)
         #[arg(long)]
         end: Option<i64>,
+        /// Maximum number of records
         #[arg(long)]
         limit: Option<i64>,
+        /// Number of records to skip
         #[arg(long)]
         offset: Option<i64>,
     },
+    /// Show one insight record
     Get {
+        /// Record id
         id: String,
     },
+    /// Mark an insight record as read
     MarkRead {
+        /// Record id
         id: String,
     },
     /// Delete insight records (all, or filtered)
     Clear {
+        /// Only this conversation
         #[arg(long)]
         session: Option<String>,
+        /// Only records from this time on (Unix seconds)
         #[arg(long)]
         start: Option<i64>,
+        /// Only records up to this time (Unix seconds)
         #[arg(long)]
         end: Option<i64>,
     },
@@ -950,18 +1154,23 @@ enum InsightSubcommand {
     Footprint,
     /// AI footprint summary; takes the JSON payload {rangeLabel, summary, privateSegments, mentionGroups}
     FootprintSummary {
+        /// JSON payload
         payload_json: String,
     },
 }
 
 #[derive(Args, Debug)]
 struct ServeCommand {
+    /// Serve the HTTP API
     #[arg(long)]
     http: bool,
+    /// Push new messages to HTTP clients (SSE)
     #[arg(long)]
     message_push: bool,
+    /// Run the AI insight engine
     #[arg(long)]
     insight: bool,
+    /// Run the image auto-download hook (Windows only)
     #[arg(long)]
     image_auto_download: bool,
     /// Listen address (default: `http_api_host` from the config, else 127.0.0.1).
@@ -983,7 +1192,9 @@ struct RuntimeCommand {
 
 #[derive(Subcommand, Debug)]
 enum RuntimeSubcommand {
+    /// Show where the runtime is unpacked and its version
     Info,
+    /// List the files of the embedded runtime with sizes and hashes
     Manifest,
 }
 
@@ -995,21 +1206,31 @@ struct BackupCommand {
 
 #[derive(Subcommand, Debug)]
 enum BackupSubcommand {
+    /// Create a backup of the current account
     Create {
+        /// Output file
         #[arg(long)]
         out: PathBuf,
+        /// Leave out the cached images
         #[arg(long)]
         no_images: bool,
+        /// Leave out the cached voice files
         #[arg(long)]
         no_voice: bool,
+        /// Leave out the cached stickers
         #[arg(long)]
         no_emojis: bool,
     },
+    /// Show what a backup contains
     Inspect {
+        /// Backup file
         path: PathBuf,
     },
+    /// Restore a backup into a folder
     Restore {
+        /// Backup file
         path: PathBuf,
+        /// Folder to restore into
         #[arg(long)]
         target: Option<PathBuf>,
     },
@@ -2442,10 +2663,48 @@ fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
     } else {
         // Human-readable: the payload itself, without the {success, data} envelope.
         let data = value.get("data").cloned().unwrap_or(Value::Null);
-        print!("{}", weflow_core::render::render(&data));
+        match key_summary(&cli.command, &data) {
+            Some(text) => print!("{text}"),
+            None => print!("{}", weflow_core::render::render(&data)),
+        }
         if let Some(meta) = value.get("meta") {
             print!("\n{}", weflow_core::render::render(meta));
         }
+    }
+}
+
+/// `key db` / `key image` print the keys under the names `config set` expects, so they can be copied over.
+fn key_summary(command: &Commands, data: &Value) -> Option<String> {
+    use weflow_core::locale::tr;
+    let Commands::Key(KeyCommand { command }) = command else {
+        return None;
+    };
+    match command {
+        KeySubcommand::Db { .. } => {
+            let key = data["decrypt_key"].as_str()?;
+            Some(format!(
+                "{}\ndecrypt_key: {key}\n",
+                tr("Database key obtained", "已获取数据库密钥")
+            ))
+        }
+        KeySubcommand::Image { .. } => {
+            let xor = &data["image_xor_key"];
+            let aes = data["image_aes_key"].as_str()?;
+            let mut text = format!(
+                "{}\nimage_xor_key: {}\nimage_aes_key: {aes}\n",
+                tr("Image keys obtained", "已获取图片密钥"),
+                xor.as_i64()
+                    .map_or_else(|| xor.to_string(), |n| n.to_string())
+            );
+            if data["verified"] == false {
+                text.push_str(tr(
+                    "(not verified: no .dat template was found, the keys may be wrong)\n",
+                    "（未验证：没有找到 .dat 模板，密钥可能不正确）\n",
+                ));
+            }
+            Some(text)
+        }
+        KeySubcommand::ScanImage { .. } => None,
     }
 }
 

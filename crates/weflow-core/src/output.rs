@@ -61,6 +61,32 @@ pub fn json_output() -> bool {
     JSON_OUTPUT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+static STATUS_WIDTH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Rewrites one status line in place on stderr (a terminal only, never with `--json`); [`end_status_line`] finishes it.
+pub fn status_line(text: &str) {
+    use std::io::{IsTerminal, Write};
+    if json_output() || !std::io::stderr().is_terminal() {
+        return;
+    }
+    let width = crate::render::display_width(text);
+    let previous = STATUS_WIDTH.swap(width, std::sync::atomic::Ordering::Relaxed);
+    let mut err = std::io::stderr();
+    let _ = write!(
+        err,
+        "\r{text}{}",
+        " ".repeat(previous.saturating_sub(width))
+    );
+    let _ = err.flush();
+}
+
+/// Ends the line started by [`status_line`] so that normal output can follow.
+pub fn end_status_line() {
+    if STATUS_WIDTH.swap(0, std::sync::atomic::Ordering::Relaxed) > 0 {
+        eprintln!();
+    }
+}
+
 /// A status event on stderr: one JSON line with `--json`, a short text for people otherwise.
 pub fn event(event: Value) {
     if json_output() {
@@ -76,14 +102,6 @@ fn human_event(event: &Value) -> String {
     let enabled = |key: &str| event[key].as_bool() == Some(true);
     match event["type"].as_str().unwrap_or("") {
         "key_status" => format!("{}\n", text("message")),
-        "key_waiting" => format!(
-            "{} (pid {}, {} {}s)\n{}\n",
-            tr("waiting for the WeChat key", "正在等待微信密钥"),
-            event["pid"],
-            tr("up to", "最长"),
-            event["timeoutSeconds"],
-            text("hint")
-        ),
         "auto_download_started" => format!(
             "{}\n",
             tr(

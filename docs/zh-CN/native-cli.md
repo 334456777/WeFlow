@@ -51,7 +51,7 @@ weflow cache     clear-all
 
 `chat clear-account-data --cache [--exports-dir <目录>] --yes` 删除 WeFlow 为当前账号保存的缓存（图片、语音、表情、朋友圈、统计），并把该账号从配置档案中移除（删除 `db_path`、`wxid`、`decrypt_key` 和图片密钥）；`--exports-dir` 还会删除该目录下以账号命名的条目。`cache clear-all` 清除所有缓存。两者都不会动微信自己的文件。
 
-`key db`（Windows）通过 `wx_key.dll` 挂钩微信并持续轮询（`--timeout`，默认 180 秒），因为微信只在打开数据库时才会产生密钥：命令等待期间请登录或重启微信。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`，也可用 `--pid` 指定。`key image` 从 `kvcomm` 缓存推导图片密钥，并用账号目录下的 `_t.dat` 模板校验。
+`key db`（Windows）通过 `wx_key.dll` 挂钩微信。微信只在打开数据库时才会产生密钥，所以命令会先请你完全退出微信（如果它正在运行）再重新打开，每秒检查一次微信进程（整个过程超过 `--timeout`，默认 180 秒，就会自动退出，并显示剩余秒数），然后挂钩新启动的微信，并请你在登录窗口点击「进入微信」。结果以 `decrypt_key: <密钥>` 输出，名字与 `config set` 一致。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`；用 `--pid` 指定时直接挂钩该进程，不再等待重启。`key image` 从 `kvcomm` 缓存推导图片密钥，用账号目录下的 `_t.dat` 模板校验，并输出 `image_xor_key` 和 `image_aes_key`。
 
 路径：配置 `%APPDATA%\weflow\config.json`，解压出的运行时 `%APPDATA%\weflow\runtime\<版本>\<target>`（Linux/macOS 位于各平台的数据目录）。
 
