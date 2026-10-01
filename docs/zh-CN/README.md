@@ -42,33 +42,59 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 
 ## 首次设置与导出（必要步骤）
 
-以 Windows PowerShell 为例，先登录并保持微信运行（微信 4.0 及以上）：
+以 Windows PowerShell 为例（这台电脑上至少登录过一次微信 4.0 及以上）。请**以管理员身份运行 PowerShell**，因为第 3 步需要挂钩微信进程。
+`#   …` 的行表示命令会输出的内容。如果系统不是中文，先运行一次 `.\weflow.exe --lang zh`，把语言保存为中文。
 
 ```powershell
-# 1. 找到微信数据目录
-.\weflow.exe --lang zh db detect
-
-# 2. 获取数据库密钥和图片密钥（请以管理员身份运行 PowerShell）
-#    `key db` 会挂钩微信并等待（默认 180 秒）：等待期间请退出并重新登录微信（或重启微信），
-#    密钥只会在微信打开数据库时出现。
-.\weflow.exe --lang zh key db
-.\weflow.exe --lang zh key image
-
-# 3. 写入配置（只需一次）
+# 1. 找到微信数据目录（只显示存在的目录），并保存
+.\weflow.exe db detect
+#   db_path: C:\Users\<你>\Documents\xwechat_files
 .\weflow.exe config set db_path "C:\Users\<你>\Documents\xwechat_files"
+
+# 2. 显示你的 wxid，并保存
+.\weflow.exe db wxid
+#   wxid: wxid_xxxxxxxx
 .\weflow.exe config set wxid wxid_xxxxxxxx
+
+# 3. 获取数据库密钥（按提示操作，见下文），并保存
+.\weflow.exe key db
+#   decrypt_key: <数据库密钥>
 .\weflow.exe config set decrypt_key <数据库密钥>
+
+# 4. 获取图片密钥（先在微信里打开几张图片），并保存
+.\weflow.exe key image
+#   image_xor_key: <图片xor密钥>
+#   image_aes_key: <图片aes密钥>
 .\weflow.exe config set image_xor_key <图片xor密钥>
 .\weflow.exe config set image_aes_key <图片aes密钥>
 
-# 4. 必要步骤：查看会话列表，确认连接成功并找到要导出的会话 ID
-.\weflow.exe --lang zh chat sessions
+# 5. 必要步骤：查看会话列表，确认连接成功并找到要导出的会话 ID
+.\weflow.exe chat sessions
 
-# 5. 导出（私聊为对方 wxid，群聊为 xxx@chatroom）
-.\weflow.exe --lang zh export messages <会话ID> --format html --out chat.html
+# 6. 导出（私聊为对方 wxid，群聊为 xxx@chatroom）
+.\weflow.exe export messages <会话ID> --format html --out chat.html
 ```
 
-Windows 说明：`key db` 需要管理员终端（否则会提示权限不足），会自动查找 `Weixin.exe` / `WeChat.exe`（也可用 `--pid` 指定），`--timeout <秒>` 可调整等待时间。配置文件在 `%APPDATA%\weflow\config.json`，解压出的运行时在 `%APPDATA%\weflow\runtime\<版本>\<target>`。WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`，导出图片前请先准备好。
+`db detect`、`db wxid`、`key db`、`key image` 输出的名字，和 `config set` 要填的名字完全一致，可以逐行照着填。
+`weflow config list` 查看已保存的配置，`weflow config path` 查看配置文件的位置。
+
+**`key db` 做了什么。** 微信只在打开数据库时才会产生数据库密钥，所以命令会引导你操作（180 秒后自动退出，可用 `--timeout <秒>` 调整，并显示剩余秒数）：
+
+```
+检测到微信正在运行（pid 31912）请先完全退出微信：
+右下角托盘图标 → 右键 → 退出微信
+等待微信退出…（剩余 178 秒自动退出）
+微信已退出。请重新打开微信。
+等待微信启动…（剩余 171 秒自动退出）
+检测到微信（pid 20816）请在登录窗口点击「进入微信」。
+等待密钥…（剩余 150 秒自动退出）
+已获取数据库密钥
+decrypt_key: <数据库密钥>
+```
+
+如果微信还没有运行，就从“请打开微信”开始。用 `--pid <进程号>` 指定进程时，会直接挂钩该进程，跳过退出和重新打开的步骤。
+
+Windows 说明：`key db` 需要管理员终端（否则会提示无法打开微信进程），会查找 `Weixin.exe` / `WeChat.exe`。`key image` 会用已保存的 `db_path` 和 `wxid`，拿你账号下的图片来校验密钥；没有配置或没有图片时，会提示“未验证”。配置文件在 `%APPDATA%\weflow\config.json`，解压出的运行时在 `%APPDATA%\weflow\runtime\<版本>\<target>`。WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`，导出图片前请先准备好。
 
 常用导出选项：`--start 2025-01-01 --end 2025-12-31`（本机本地时间，含首尾）、`--display-name remark|nickname|group-nickname`、`--sender wxid_xxx`、`--excel-compact`。加 `--media all`（或 `image,voice,video,emoji`）会把媒体复制到导出文件旁边并在消息里链接到它们；`weflow export media --help` 可单独导出媒体。
 

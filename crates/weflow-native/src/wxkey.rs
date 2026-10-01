@@ -72,6 +72,17 @@ impl WxKey {
         timeout: std::time::Duration,
         on_status: &mut dyn FnMut(&str, i32),
     ) -> std::result::Result<String, DbKeyError> {
+        self.get_db_key_with_tick(pid, timeout, on_status, &mut |_| {})
+    }
+
+    /// Like [`get_db_key`](Self::get_db_key), and calls `on_tick` with the remaining seconds about once per second.
+    pub fn get_db_key_with_tick(
+        &self,
+        pid: u32,
+        timeout: std::time::Duration,
+        on_status: &mut dyn FnMut(&str, i32),
+        on_tick: &mut dyn FnMut(u64),
+    ) -> std::result::Result<String, DbKeyError> {
         let (Some(init), Some(poll), Some(cleanup)) =
             (self.initialize_hook, self.poll_key_data, self.cleanup_hook)
         else {
@@ -103,7 +114,13 @@ impl WxKey {
         let mut login_hint = false;
         let mut buf = vec![0u8; 128];
         let mut result = None;
+        let mut last_tick = u64::MAX;
         while start.elapsed() < timeout {
+            let left = timeout.saturating_sub(start.elapsed()).as_secs();
+            if left != last_tick {
+                last_tick = left;
+                on_tick(left);
+            }
             buf.iter_mut().for_each(|b| *b = 0);
             if unsafe { poll(buf.as_mut_ptr() as *mut c_char, buf.len() as c_int) } {
                 let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());

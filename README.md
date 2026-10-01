@@ -42,33 +42,65 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 
 ## First-time setup and export (required steps)
 
-Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
+Windows PowerShell example (WeChat 4.0+ must have been logged in on this computer at least once). Run PowerShell **as
+administrator**, because step 3 hooks the WeChat process. The `#   …` lines show what each command prints.
 
 ```powershell
-# 1. Find the WeChat data directory
+# 1. Find the WeChat data directory (prints the directories that exist) and save it
 .\weflow.exe db detect
-
-# 2. Get the database key and the image keys (run PowerShell as administrator)
-#    `key db` hooks WeChat and WAITS (180 s by default): log out and log in to WeChat (or restart it)
-#    while it is waiting, the key only appears while WeChat opens its databases.
-.\weflow.exe key db
-.\weflow.exe key image
-
-# 3. Save the configuration (once)
+#   db_path: C:\Users\<you>\Documents\xwechat_files
 .\weflow.exe config set db_path "C:\Users\<you>\Documents\xwechat_files"
+
+# 2. Show your wxid and save it
+.\weflow.exe db wxid
+#   wxid: wxid_xxxxxxxx
 .\weflow.exe config set wxid wxid_xxxxxxxx
+
+# 3. Get the database key (follow the prompts, see below) and save it
+.\weflow.exe key db
+#   decrypt_key: <database key>
 .\weflow.exe config set decrypt_key <database key>
+
+# 4. Get the image keys (open a few images in WeChat first) and save them
+.\weflow.exe key image
+#   image_xor_key: <image xor key>
+#   image_aes_key: <image aes key>
 .\weflow.exe config set image_xor_key <image xor key>
 .\weflow.exe config set image_aes_key <image aes key>
 
-# 4. Required: list the sessions to confirm the connection and find the session ID to export
+# 5. Required: list the sessions to confirm the connection and find the session ID to export
 .\weflow.exe chat sessions
 
-# 5. Export (private chat: the other party's wxid; group: xxx@chatroom)
+# 6. Export (private chat: the other party's wxid; group: xxx@chatroom)
 .\weflow.exe export messages <session-id> --format html --out chat.html
 ```
 
-Notes for Windows: `key db` needs an administrator terminal (otherwise it reports "permission denied"), finds `Weixin.exe` / `WeChat.exe` automatically (or use `--pid`), and `--timeout <seconds>` changes the wait. The configuration lives in `%APPDATA%\weflow\config.json`, the extracted runtime in `%APPDATA%\weflow\runtime\<version>\<target>`. WXGF images need `ffmpeg` on `PATH` (or `FFMPEG_PATH`) — set it up before exporting images.
+The key names printed by `db detect`, `db wxid`, `key db` and `key image` are exactly the names `config set` takes, so each
+line can be copied over as it is. `weflow config list` shows what is saved, `weflow config path` where the file is.
+
+**What `key db` does.** WeChat only produces the database key while it opens its databases, so the command guides you through it
+(it exits by itself after 180 seconds, `--timeout <seconds>` changes that; the seconds left are shown):
+
+```
+WeChat is running (pid 31912). Quit it completely first:
+system tray icon -> right click -> Quit WeChat
+Waiting for WeChat to quit... (exits automatically in 178 s)
+WeChat has quit. Open it again.
+Waiting for WeChat to start... (exits automatically in 171 s)
+WeChat found (pid 20816). Click "Enter WeChat" in the login window.
+Waiting for the key... (exits automatically in 150 s)
+Database key obtained
+decrypt_key: <database key>
+```
+
+If WeChat is not running yet, it starts at "Open WeChat". With `--pid <id>` it hooks that process directly and skips the
+quit-and-reopen steps.
+
+Notes for Windows: `key db` needs an administrator terminal (otherwise it reports that it cannot open the WeChat process) and
+looks for `Weixin.exe` / `WeChat.exe`. `key image` uses the saved `db_path` and `wxid` to check the keys against an image of
+your account; without them (or without images) it prints a "not verified" note. The configuration lives in
+`%APPDATA%\weflow\config.json`, the extracted runtime in `%APPDATA%\weflow\runtime\<version>\<target>`. WXGF images need
+`ffmpeg` on `PATH` (or `FFMPEG_PATH`) — set it up before exporting images.
 
 Useful export options: `--start 2025-01-01 --end 2025-12-31` (local time, inclusive), `--display-name remark|nickname|group-nickname`, `--sender wxid_xxx`, `--excel-compact`. Add `--media all` (or `image,voice,video,emoji`) to copy the media next to the export and link it from the messages; `weflow export media --help` exports media on its own.
 

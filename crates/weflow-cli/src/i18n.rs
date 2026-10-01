@@ -94,12 +94,12 @@ fn save_language_if_alone(args: &[String]) {
             Ok(path)
         });
     match result {
-        Ok(path) => {
+        Ok(_) => {
             let message = match lang {
                 Lang::Zh => "已将语言设置为中文",
                 Lang::En => "Language set to English",
             };
-            println!("{message} ({})", path.display());
+            println!("{message}");
             std::process::exit(0);
         }
         Err(err) => {
@@ -397,6 +397,40 @@ mod tests {
                 .map(|m| format!("{m:?}"))
                 .collect::<Vec<_>>()
                 .join("\n")
+        );
+    }
+
+    /// Every subcommand and every non-global option or argument needs a help text.
+    #[test]
+    fn every_command_and_argument_has_help() {
+        fn walk(cmd: &Command, path: &str, missing: &mut Vec<String>) {
+            for arg in cmd.get_arguments() {
+                let id = arg.get_id().as_str();
+                if arg.is_global_set() || id == "help" || id == "version" {
+                    continue;
+                }
+                if arg.get_help().is_none() && arg.get_long_help().is_none() {
+                    missing.push(format!("{path} --{id}"));
+                }
+            }
+            for sub in cmd.get_subcommands() {
+                let name = sub.get_name();
+                if name == "help" {
+                    continue;
+                }
+                let sub_path = format!("{path} {name}").trim().to_string();
+                if sub.get_about().is_none() && sub.get_long_about().is_none() {
+                    missing.push(format!("{sub_path} (command)"));
+                }
+                walk(sub, &sub_path, missing);
+            }
+        }
+        let mut missing = Vec::new();
+        walk(&crate::Cli::command(), "", &mut missing);
+        assert!(
+            missing.is_empty(),
+            "no help text for:\n{}",
+            missing.join("\n")
         );
     }
 }

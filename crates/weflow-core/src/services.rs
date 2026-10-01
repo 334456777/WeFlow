@@ -107,6 +107,40 @@ impl ServiceHub {
         json!({ "root": root, "accounts": wxids })
     }
 
+    /// The wxid of every account found in the data directory (`root`, else the configured `db_path`, else the
+    /// default locations), as `config set wxid` expects it (without the `_ab12` suffix of the folder name).
+    pub fn db_wxid(&self, root: Option<&str>) -> AppResult<Value> {
+        let configured = root
+            .map(str::to_string)
+            .or_else(|| self.db_path_override.clone())
+            .or_else(|| self.profile().ok().and_then(|p| p.db_path.clone()));
+        let roots: Vec<PathBuf> = match configured {
+            Some(root) => vec![crate::config::expand_home(&root)],
+            None => default_db_candidates()
+                .into_iter()
+                .filter(|p| p.exists())
+                .collect(),
+        };
+        if roots.is_empty() {
+            return Err(AppError::config(
+                "no WeChat data directory found; pass the directory or run config set db_path",
+            ));
+        }
+        let mut accounts = Vec::new();
+        for root in &roots {
+            for (wxid, path) in find_accounts(root) {
+                accounts.push(json!({ "wxid": wxid, "path": path }));
+            }
+        }
+        if accounts.is_empty() {
+            return Err(AppError::runtime(format!(
+                "no WeChat account directory found in {}",
+                roots[0].display()
+            )));
+        }
+        Ok(json!({ "accounts": accounts }))
+    }
+
     pub fn db_test(&self) -> AppResult<Value> {
         let (account_dir, key, _) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
@@ -381,45 +415,21 @@ impl ServiceHub {
             .map_err(|err| AppError::native(err.to_string()))
     }
 
-    /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases,
-    /// so the command keeps polling (default 180 s, like the desktop app) while the user logs in.
+    /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases, so the command
+    /// asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for the
+    /// user to click "Enter WeChat".
     pub fn key_db(&self, pid_override: Option<u32>, timeout_secs: u64) -> AppResult<Value> {
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
         if wxkey.is_available() {
-            let pid = match pid_override {
-                Some(p) => p,
-                None => find_wechat_pid().ok_or_else(|| {
-                    AppError::runtime("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid")
-                })?,
-            };
-            let show = true;
-            let mut on_status = |msg: &str, level: i32| {
-                if show {
-                    crate::output::event(
-                        json!({ "type": "key_status", "level": level, "message": crate::locale::localize(msg.to_string()) }),
-                    );
-                }
-            };
-            crate::output::event(
-                json!({ "type": "key_waiting", "pid": pid, "timeoutSeconds": timeout_secs, "hint": crate::locale::localize("log in to WeChat (or restart it) now; the key appears while WeChat opens its databases".to_string()) }),
-            );
-            let key = wxkey
-                .get_db_key(pid, std::time::Duration::from_secs(timeout_secs), &mut on_status)
-                .map_err(|err| match err {
-                    weflow_native::wxkey::DbKeyError::AccessDenied(detail) => AppError::native(format!(
-                        "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
-                    )),
-                    other => AppError::native(other.to_string()),
-                })?;
-            return Ok(json!({ "key": key, "method": "wx_key", "pid": pid }));
+            return self.key_db_hooked(&wxkey, pid_override, timeout_secs);
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
             let result = weflow_native::wxkey::run_key_helper(&self.ctx.runtime_dir, &["--db-key"])
                 .map_err(|err| AppError::native(err.to_string()))?;
             let key = result.trim().to_string();
-            return Ok(json!({ "key": key, "method": "key_helper" }));
+            return Ok(json!({ "decrypt_key": key, "method": "key_helper" }));
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
@@ -427,6 +437,95 @@ impl ServiceHub {
                 "wx_key library not found; key extraction requires the platform-specific native library"
             ))
         }
+    }
+
+    /// Hooks WeChat and waits for the database key; shared by Windows and macOS.
+    fn key_db_hooked(
+        &self,
+        wxkey: &weflow_native::wxkey::WxKey,
+        pid_override: Option<u32>,
+        timeout_secs: u64,
+    ) -> AppResult<Value> {
+        use crate::output::{end_status_line, status_line};
+        use weflow_native::wxkey::DbKeyError;
+        let started = std::time::Instant::now();
+        let remaining = || timeout_secs.saturating_sub(started.elapsed().as_secs());
+        let timeout_error = || {
+            AppError::native(format!(
+                "timed out after {timeout_secs} s without getting the key; quit WeChat completely, reopen it and click \"Enter WeChat\" in the login window, then run the command again"
+            ))
+        };
+
+        let pid = match pid_override {
+            Some(pid) => pid,
+            None if cfg!(windows) => {
+                let found = wait_for_fresh_wechat(
+                    &mut wechat_pids,
+                    &mut || std::thread::sleep(std::time::Duration::from_secs(1)),
+                    &mut || started.elapsed().as_secs(),
+                    timeout_secs,
+                    &mut |event| report_wait(event),
+                );
+                end_status_line();
+                found.ok_or_else(timeout_error)?
+            }
+            None => find_wechat_pid().ok_or_else(|| {
+                AppError::runtime("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid")
+            })?,
+        };
+        phase(
+            json!({ "type": "key_phase", "phase": "login", "pid": pid }),
+            if crate::locale::current() == crate::locale::Lang::Zh {
+                format!("检测到微信（pid {pid}）请在登录窗口点击「进入微信」。")
+            } else {
+                format!("WeChat found (pid {pid}). Click \"Enter WeChat\" in the login window.")
+            },
+        );
+
+        let key = loop {
+            if remaining() == 0 {
+                end_status_line();
+                return Err(timeout_error());
+            }
+            // wx_key's own progress messages are noise; only its errors are shown
+            let mut on_status = |msg: &str, level: i32| {
+                if level == 2 {
+                    end_status_line();
+                    crate::output::event(
+                        json!({ "type": "key_status", "level": level, "message": crate::locale::localize(msg.to_string()) }),
+                    );
+                }
+            };
+            let mut on_tick = |left: u64| status_line(&wait_text(Wait::Key, left));
+            match wxkey.get_db_key_with_tick(
+                pid,
+                std::time::Duration::from_secs(remaining()),
+                &mut on_status,
+                &mut on_tick,
+            ) {
+                Ok(key) => break key,
+                Err(DbKeyError::AccessDenied(detail)) => {
+                    end_status_line();
+                    return Err(AppError::native(format!(
+                        "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
+                    )));
+                }
+                Err(DbKeyError::Timeout | DbKeyError::LoginRequired) => {
+                    end_status_line();
+                    return Err(timeout_error());
+                }
+                // the process may not be ready to be hooked right after it started: try again
+                Err(DbKeyError::Other(_)) if remaining() > 0 => {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+                Err(other) => {
+                    end_status_line();
+                    return Err(AppError::native(other.to_string()));
+                }
+            }
+        };
+        end_status_line();
+        Ok(json!({ "decrypt_key": key, "method": "wx_key", "pid": pid }))
     }
 
     /// `key:autoGetImageKey`: codes from the `kvcomm` cache, verified per candidate wxid against a
@@ -438,8 +537,8 @@ impl ServiceHub {
             let profile = self.profile()?;
             if let Some(xor_key) = profile.image_xor_key {
                 return Ok(json!({
-                    "xorKey": xor_key,
-                    "aesKey": profile.image_aes_key,
+                    "image_xor_key": xor_key,
+                    "image_aes_key": profile.image_aes_key,
                     "method": "config",
                     "note": "from stored config; use key scan-image for live extraction"
                 }));
@@ -493,7 +592,7 @@ impl ServiceHub {
                     let (xor, aes) = crate::keys::derive_image_keys(*code, cand);
                     if crate::keys::verify_derived_aes_key(&aes, cipher) {
                         return Ok(
-                            json!({ "xorKey": xor, "aesKey": aes, "verified": true, "wxid": cand, "code": code, "method": "wx_key" }),
+                            json!({ "image_xor_key": xor, "image_aes_key": aes, "verified": true, "wxid": cand, "code": code, "method": "wx_key" }),
                         );
                     }
                 }
@@ -511,7 +610,7 @@ impl ServiceHub {
             .unwrap_or_else(|| "unknown".into());
         let (xor, aes) = crate::keys::derive_image_keys(codes[0], &fallback_wxid);
         Ok(
-            json!({ "xorKey": xor, "aesKey": aes, "verified": false, "wxid": fallback_wxid, "code": codes[0], "method": "wx_key" }),
+            json!({ "image_xor_key": xor, "image_aes_key": aes, "verified": false, "wxid": fallback_wxid, "code": codes[0], "method": "wx_key" }),
         )
     }
 
@@ -982,6 +1081,27 @@ impl ServiceHub {
     }
 }
 
+/// Account folders of a WeChat data directory (or the folder itself when it is one), with their wxid.
+fn find_accounts(root: &Path) -> Vec<(String, PathBuf)> {
+    let wxid_of = |path: &Path| {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string());
+        clean_account_dir_name(&name.unwrap_or_default())
+    };
+    if crate::config::is_account_dir(root) {
+        return vec![(wxid_of(root), root.to_path_buf())];
+    }
+    let mut accounts: Vec<(String, PathBuf)> = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && crate::config::is_account_dir(p))
+        .map(|p| (wxid_of(&p), p))
+        .collect();
+    accounts.sort();
+    accounts
+}
+
 fn default_db_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(home) = dirs::home_dir() {
@@ -1079,6 +1199,133 @@ fn find_wechat_pid() -> Option<u32> {
     }
     #[cfg(target_os = "windows")]
     {
+        wechat_pids().first().copied()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Wait {
+    Quit,
+    Open,
+    Key,
+}
+
+enum WaitEvent {
+    AskQuit(Vec<u32>),
+    AskOpen { was_running: bool },
+    Tick { phase: Wait, remaining: u64 },
+}
+
+/// The remaining-time line shown while waiting.
+fn wait_text(phase: Wait, remaining: u64) -> String {
+    let zh = crate::locale::current() == crate::locale::Lang::Zh;
+    let what = match (phase, zh) {
+        (Wait::Quit, true) => "等待微信退出…",
+        (Wait::Quit, false) => "Waiting for WeChat to quit...",
+        (Wait::Open, true) => "等待微信启动…",
+        (Wait::Open, false) => "Waiting for WeChat to start...",
+        (Wait::Key, true) => "等待密钥…",
+        (Wait::Key, false) => "Waiting for the key...",
+    };
+    if zh {
+        format!("{what}（剩余 {remaining} 秒自动退出）")
+    } else {
+        format!("{what} (exits automatically in {remaining} s)")
+    }
+}
+
+/// One status message: JSON event with `--json`, a plain line otherwise.
+fn phase(json_event: Value, text: String) {
+    crate::output::end_status_line();
+    if crate::output::json_output() {
+        crate::output::event(json_event);
+    } else {
+        eprintln!("{text}");
+    }
+}
+
+fn report_wait(event: WaitEvent) {
+    let zh = crate::locale::current() == crate::locale::Lang::Zh;
+    match event {
+        WaitEvent::AskQuit(pids) => {
+            let list = pids
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            phase(
+                json!({ "type": "key_phase", "phase": "quit_wechat", "pids": pids }),
+                if zh {
+                    format!("检测到微信正在运行（pid {list}）请先完全退出微信：\n右下角托盘图标 → 右键 → 退出微信")
+                } else {
+                    format!("WeChat is running (pid {list}). Quit it completely first:\nsystem tray icon -> right click -> Quit WeChat")
+                },
+            );
+        }
+        WaitEvent::AskOpen { was_running } => phase(
+            json!({ "type": "key_phase", "phase": "open_wechat", "wasRunning": was_running }),
+            match (was_running, zh) {
+                (true, true) => "微信已退出。请重新打开微信。".to_string(),
+                (true, false) => "WeChat has quit. Open it again.".to_string(),
+                (false, true) => "未检测到微信，请打开微信。".to_string(),
+                (false, false) => "WeChat is not running. Open it.".to_string(),
+            },
+        ),
+        WaitEvent::Tick { phase, remaining } => {
+            crate::output::status_line(&wait_text(phase, remaining))
+        }
+    }
+}
+
+/// Waits until WeChat has been quit (when it is running now) and started again; returns the new process id, or
+/// `None` once `timeout_secs` have passed. Time and process list are passed in so the logic can be tested.
+fn wait_for_fresh_wechat(
+    list: &mut dyn FnMut() -> Vec<u32>,
+    sleep: &mut dyn FnMut(),
+    elapsed: &mut dyn FnMut() -> u64,
+    timeout_secs: u64,
+    report: &mut dyn FnMut(WaitEvent),
+) -> Option<u32> {
+    let running = list();
+    let mut phase = if running.is_empty() {
+        report(WaitEvent::AskOpen { was_running: false });
+        Wait::Open
+    } else {
+        report(WaitEvent::AskQuit(running));
+        Wait::Quit
+    };
+    loop {
+        let used = elapsed();
+        if used >= timeout_secs {
+            return None;
+        }
+        let pids = list();
+        match phase {
+            Wait::Quit if pids.is_empty() => {
+                phase = Wait::Open;
+                report(WaitEvent::AskOpen { was_running: true });
+                continue;
+            }
+            Wait::Open if !pids.is_empty() => return pids.first().copied(),
+            _ => {}
+        }
+        report(WaitEvent::Tick {
+            phase,
+            remaining: timeout_secs - used,
+        });
+        sleep();
+    }
+}
+
+/// Process ids of the running WeChat (Weixin.exe / WeChat.exe on Windows), in the order the system lists them.
+fn wechat_pids() -> Vec<u32> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut pids = Vec::new();
         for image in ["Weixin.exe", "WeChat.exe"] {
             let Ok(output) = std::process::Command::new("tasklist")
                 .args(["/FI", &format!("IMAGENAME eq {image}"), "/FO", "CSV", "/NH"])
@@ -1093,21 +1340,18 @@ fn find_wechat_pid() -> Option<u32> {
                 .filter(|l| !l.is_empty() && !l.starts_with("INFO:"))
             {
                 let parts: Vec<&str> = line.split("\",\"").map(|p| p.trim_matches('"')).collect();
-                if parts
-                    .first()
-                    .map_or(false, |n| n.eq_ignore_ascii_case(image))
-                {
+                if parts.first().is_some_and(|n| n.eq_ignore_ascii_case(image)) {
                     if let Some(pid) = parts.get(1).and_then(|p| p.parse::<u32>().ok()) {
-                        return Some(pid);
+                        pids.push(pid);
                     }
                 }
             }
         }
-        None
+        pids
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    #[cfg(not(target_os = "windows"))]
     {
-        None
+        find_wechat_pid().into_iter().collect()
     }
 }
 
@@ -1282,6 +1526,90 @@ fn extract_member_ids(value: &Value) -> Vec<String> {
 
 #[cfg(test)]
 mod export_tests {
+    #[test]
+    fn finds_account_folders_and_strips_the_suffix() {
+        let root = std::env::temp_dir().join(format!("weflow-wxid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("wxid_abc123_ab12/db_storage")).unwrap();
+        std::fs::create_dir_all(root.join("someone_a1b2/db_storage")).unwrap();
+        std::fs::create_dir_all(root.join("all_users")).unwrap();
+        let found: Vec<String> = find_accounts(&root).into_iter().map(|a| a.0).collect();
+        assert_eq!(found, ["someone", "wxid_abc123"]);
+        // the account folder itself works too
+        let one = find_accounts(&root.join("wxid_abc123_ab12"));
+        assert_eq!(one[0].0, "wxid_abc123");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Drives `wait_for_fresh_wechat` with a scripted process list; each `sleep` is one second.
+    fn run_wait(script: Vec<Vec<u32>>, timeout: u64) -> (Option<u32>, Vec<&'static str>, u64) {
+        use std::cell::{Cell, RefCell};
+        let calls = Cell::new(0usize);
+        let seconds = Cell::new(0u64);
+        let events = RefCell::new(Vec::new());
+        let found = wait_for_fresh_wechat(
+            &mut || {
+                let i = calls.get().min(script.len() - 1);
+                calls.set(calls.get() + 1);
+                script[i].clone()
+            },
+            &mut || seconds.set(seconds.get() + 1),
+            &mut || seconds.get(),
+            timeout,
+            &mut |event| {
+                events.borrow_mut().push(match event {
+                    WaitEvent::AskQuit(_) => "ask_quit",
+                    WaitEvent::AskOpen { was_running: true } => "ask_open_after_quit",
+                    WaitEvent::AskOpen { .. } => "ask_open",
+                    WaitEvent::Tick {
+                        phase: Wait::Quit, ..
+                    } => "tick_quit",
+                    WaitEvent::Tick {
+                        phase: Wait::Open, ..
+                    } => "tick_open",
+                    WaitEvent::Tick { .. } => "tick",
+                });
+            },
+        );
+        (found, events.into_inner(), seconds.get())
+    }
+
+    #[test]
+    fn waits_for_quit_then_a_new_start() {
+        // running at first, gone after the third check, a new process after two more
+        let (found, events, _) = run_wait(
+            vec![vec![10], vec![10], vec![10], vec![], vec![], vec![77]],
+            180,
+        );
+        assert_eq!(found, Some(77));
+        assert_eq!(
+            events,
+            [
+                "ask_quit",
+                "tick_quit",
+                "tick_quit",
+                "ask_open_after_quit",
+                "tick_open"
+            ]
+        );
+    }
+
+    #[test]
+    fn skips_the_quit_step_when_wechat_is_not_running() {
+        let (found, events, _) = run_wait(vec![vec![], vec![], vec![5]], 180);
+        assert_eq!(found, Some(5));
+        assert_eq!(events, ["ask_open", "tick_open"]);
+    }
+
+    #[test]
+    fn gives_up_after_the_timeout() {
+        // WeChat never quits
+        let (found, events, seconds) = run_wait(vec![vec![10]], 5);
+        assert_eq!(found, None);
+        assert_eq!(seconds, 5);
+        assert_eq!(events.iter().filter(|e| **e == "tick_quit").count(), 5);
+    }
+
     use super::*;
 
     #[test]
