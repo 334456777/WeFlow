@@ -67,7 +67,7 @@ enum LangArg {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Read and write configuration (list, get, set, unset, clear, import)
+    /// Read and write configuration (path, list, get, set, unset, clear, import)
     Config(ConfigCommand),
     /// Detect, scan and test WeChat database locations
     Db(DbCommand),
@@ -123,6 +123,8 @@ struct ConfigCommand {
 
 #[derive(Subcommand, Debug)]
 enum ConfigSubcommand {
+    /// Show the path of the config file
+    Path,
     /// Show every key of the active profile
     List,
     /// Show one key (or all when omitted)
@@ -1225,6 +1227,7 @@ fn handle_config(
     cli: &Cli,
 ) -> AppResult<Value> {
     match &command.command {
+        ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
         ConfigSubcommand::List => Ok(serde_json::to_value(config).unwrap()),
         ConfigSubcommand::Get { key } => {
             if let Some(key) = key {

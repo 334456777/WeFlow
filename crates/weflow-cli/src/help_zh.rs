@@ -1,5 +1,6 @@
 // Chinese help text: (English doc comment, Chinese). Keep in sync with the doc comments in main.rs; a test fails on gaps.
 const HELP: &[(&str, &str)] = &[
+    ("Show the path of the config file", "显示配置文件路径"),
     ("A page of one member's messages (newest first)", "某位成员的一页消息（最新在前）"),
     ("AI footprint summary; takes the JSON payload {rangeLabel, summary, privateSegments, mentionGroups}", "AI 足迹总结；接收 JSON 载荷 {rangeLabel, summary, privateSegments, mentionGroups}"),
     ("AI insights", "AI 洞察"),
@@ -115,7 +116,7 @@ const HELP: &[(&str, &str)] = &[
     ("Print compact JSON (for scripts) instead of the human-readable output", "输出紧凑 JSON（供脚本使用），而不是便于阅读的文本"),
     ("Print indented JSON (implies --json)", "输出带缩进的 JSON（隐含 --json）"),
     ("Private chats that can be excluded from analytics", "可从统计中排除的私聊"),
-    ("Read and write configuration (list, get, set, unset, clear, import)", "读写配置（list、get、set、unset、clear、import）"),
+    ("Read and write configuration (path, list, get, set, unset, clear, import)", "读写配置（path、list、get、set、unset、clear、import）"),
     ("Read or set the cached \"my message count\" of a group chat", "读取或设置群聊中缓存的“我的消息数”"),
     ("Read sessions, messages and contacts; anti-revoke triggers; media", "读取会话、消息和联系人；防撤回触发器；媒体"),
     ("Recompute instead of using the cached aggregate", "重新计算，而不是使用缓存的汇总数据"),
