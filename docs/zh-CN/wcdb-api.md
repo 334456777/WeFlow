@@ -59,4 +59,4 @@ Rust 层另有自己的验证(测试套件里的合成加密账号、一个真�
 
 关于 `wcdb_api.dll` 的问题在这个 issue 里讨论:
 
-- Issue: [hicccc77/WeFlow#1220](https://github.com/hicccc77/WeFlow/issues/1220#issuecomment-5925015014)
+- Issue: [hicccc77/WeFlow#1220](https://github.com/hicccc77/WeFlow/issues/1220)
