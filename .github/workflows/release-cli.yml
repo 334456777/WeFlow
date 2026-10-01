@@ -1,6 +1,5 @@
 name: Release CLI
 
-# Push a tag such as v0.0.1 to build the `weflow` CLI for Windows, Linux and macOS and publish a GitHub Release.
 on:
   push:
     tags:
@@ -33,7 +32,7 @@ jobs:
             name: macos-arm64
             ext: ""
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         shell: bash
@@ -80,7 +79,7 @@ jobs:
           if command -v sha256sum >/dev/null; then sha256sum "$ASSET" > "$ASSET.sha256"; else shasum -a 256 "$ASSET" > "$ASSET.sha256"; fi
           cat "$ASSET.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: weflow-${{ matrix.name }}
           path: |
@@ -92,7 +91,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
