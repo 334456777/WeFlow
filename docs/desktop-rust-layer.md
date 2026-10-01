@@ -2,9 +2,9 @@
 
 **English** | [简体中文](zh-CN/desktop-rust-layer.md)
 
-The desktop app (Electron) used to read WeChat's databases through the closed-source `wcdb_api` library, which stopped working
-after 2026-09-30 (`wcdb_init` returns `-1000`). On this branch it loads **`weflow_wcdb`** instead: a C library built from
-`crates/weflow-wcdb-ffi` on top of the same pure-Rust, read-only layer as the CLI.
+The desktop app (Electron) used to read WeChat's databases through the closed-source `wcdb_api` library, whose build in this
+repository stopped working after 2026-09-30 (`wcdb_init` returns `-1000`). It now loads **`weflow_wcdb`** instead: a C library
+built from `crates/weflow-wcdb-ffi` on top of the same pure-Rust, read-only layer as the CLI.
 
 ## How it fits
 

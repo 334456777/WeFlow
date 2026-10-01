@@ -4,12 +4,12 @@
 
 ## 要点
 
-- **原生 Rust CLI**(`weflow`)和**改用 Rust 层的桌面端**(本分支,见 [desktop-rust-layer.md](desktop-rust-layer.md))
+- **原生 Rust CLI**(`weflow`)和本仓库的**桌面端**(已改用 Rust 层,见 [desktop-rust-layer.md](desktop-rust-layer.md))
   **不加载、不内嵌、不打包** `wcdb_api.dll`(也不需要 `libwcdb_api.so`、`libwcdb_api.dylib`、`WCDB.dll`、`SDL2.dll`、
   `libWCDB.dylib`)。它们用仓库自己的纯 Rust 只读数据库层(`crates/weflow-native`)读取微信数据库;桌面端通过
   `weflow_wcdb`(`crates/weflow-wcdb-ffi`)使用这一层。构建、运行、打包它们都不需要 `resources/wcdb/` 里的任何文件。
-- `resources/wcdb/` 留在仓库里,是给**原版桌面端**用的(即通过 `electron/services/wcdbCore.ts` 加载 `wcdb_api`
-  的那条 TypeScript 代码路径):用于补充、修复和维护原版,也作为参考。原作者提供的新版 `wcdb_api.dll` 已替换其中过期的
+- `resources/wcdb/` 留在仓库里,是给**原版桌面端**用的(即上游 WeFlow,它的 `electron/services/wcdbCore.ts` 加载
+  `wcdb_api`;本仓库的 `wcdbCore.ts` 则通过同一套 C 接口加载 `weflow_wcdb`):用于补充、修复和维护原版,也作为参考。原作者提供的新版 `wcdb_api.dll` 已替换其中过期的
   那份;过期的旧文件保留在原位。
 
 ## 各文件说明
@@ -26,8 +26,8 @@
 | | 加载 `wcdb_api` | 打包 `resources/wcdb/` |
 |---|---|---|
 | 原生 Rust CLI(`weflow`) | 否 | 否(`crates/weflow-assets/build.rs` 从不内嵌 `resources/wcdb/`) |
-| 改用 Rust 层的桌面端(本分支) | 否(`wcdbCore.ts` 加载 `weflow_wcdb`) | 否(`package.json` 排除了 `wcdb/**`) |
-| 原版桌面端(`claude/jolly-cannon-wez9ek` 分支及上游) | 是 | 是 |
+| 本仓库的桌面端(Rust 层) | 否(`wcdbCore.ts` 加载 `weflow_wcdb`) | 否(`package.json` 排除了 `wcdb/**`) |
+| 原版桌面端(上游 WeFlow,以及本仓库改用 Rust 层之前的版本) | 是 | 是 |
 
 ## x64 新旧两版的差别
 

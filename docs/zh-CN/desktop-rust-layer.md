@@ -2,7 +2,7 @@
 
 [English](../desktop-rust-layer.md) | **简体中文**
 
-桌面端(Electron)原来通过闭源的 `wcdb_api` 库读取微信数据库,这个库在 2026-09-30 之后失效(`wcdb_init` 返回 `-1000`)。在这个分支上,桌面端改为加载 **`weflow_wcdb`**:一个由 `crates/weflow-wcdb-ffi` 构建的 C 接口库,底层是与 CLI 相同的纯 Rust 只读数据库层。
+桌面端(Electron)原来通过闭源的 `wcdb_api` 库读取微信数据库,仓库里那份在 2026-09-30 之后失效(`wcdb_init` 返回 `-1000`)。桌面端现在改为加载 **`weflow_wcdb`**:一个由 `crates/weflow-wcdb-ffi` 构建的 C 接口库,底层是与 CLI 相同的纯 Rust 只读数据库层。
 
 ## 结构
 
