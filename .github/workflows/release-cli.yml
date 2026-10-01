@@ -1,0 +1,107 @@
+name: Release CLI
+
+# Push a tag such as v0.0.1 to build the `weflow` CLI for Windows, Linux and macOS and publish a GitHub Release.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+            ext: .exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+            ext: ""
+          - os: macos-14
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            ext: ""
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Check formatting and tests
+        shell: bash
+        run: |
+          rustup component add rustfmt
+          cargo fmt --all -- --check
+          cargo test --workspace
+
+      - name: Build
+        shell: bash
+        run: cargo build --release -p weflow-cli --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          DIR="weflow-${TAG}-${{ matrix.name }}"
+          mkdir "$DIR"
+          cp "target/${{ matrix.target }}/release/weflow${{ matrix.ext }}" "$DIR/"
+          cp README.md LICENSE "$DIR/"
+          if [ "${{ matrix.name }}" = "windows-x64" ]; then
+            7z a "$DIR.zip" "$DIR" > /dev/null
+            echo "ASSET=$DIR.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "$DIR.tar.gz" "$DIR"
+            echo "ASSET=$DIR.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Checksum
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null; then sha256sum "$ASSET" > "$ASSET.sha256"; else shasum -a 256 "$ASSET" > "$ASSET.sha256"; fi
+          cat "$ASSET.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weflow-${{ matrix.name }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l dist
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --prerelease
