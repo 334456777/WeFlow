@@ -123,6 +123,8 @@ pub fn set_progress_mode(mode: ProgressMode) {
     st.is_tty = std::io::stderr().is_terminal();
 }
 
+use crate::locale::tr;
+
 pub fn format_duration(secs: u64) -> String {
     if secs >= 3600 {
         format!("{}h{:02}m{:02}s", secs / 3600, secs % 3600 / 60, secs % 60)
@@ -146,8 +148,9 @@ pub fn render_bar(
 ) -> String {
     if total == 0 {
         let spin = ['|', '/', '-', '\\'][tick % 4];
+        let (processed, elapsed) = (tr("processed", "已处理"), tr("elapsed", "已用时"));
         return format!(
-            "{message}  {spin} {current} processed  elapsed {}",
+            "{message}  {spin} {current} {processed}  {elapsed} {}",
             format_duration(elapsed_secs)
         );
     }
@@ -155,12 +158,15 @@ pub fn render_bar(
     let filled = (frac * width as f64).round() as usize;
     let bar: String = "█".repeat(filled) + &"░".repeat(width.saturating_sub(filled));
     let eta = match eta_secs {
-        Some(e) if current < total => format!("  remaining {}", format_duration(e)),
+        Some(e) if current < total => {
+            format!("  {} {}", tr("remaining", "剩余"), format_duration(e))
+        }
         _ => String::new(),
     };
     format!(
-        "{message}  [{bar}] {}%  {current}/{total}  elapsed {}{eta}",
+        "{message}  [{bar}] {}%  {current}/{total}  {} {}{eta}",
         (frac * 100.0) as u32,
+        tr("elapsed", "已用时"),
         format_duration(elapsed_secs)
     )
 }
@@ -182,6 +188,7 @@ fn terminal_columns() -> usize {
 }
 
 pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
+    let message = &crate::locale::localize(message.to_string());
     let mut st = bar_state().lock().unwrap();
     match st.mode {
         ProgressMode::Off => {}

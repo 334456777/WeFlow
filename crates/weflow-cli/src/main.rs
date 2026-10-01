@@ -2173,8 +2173,17 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         let started = svc.start(config_whitelist(hub));
         if started["success"] != true {
             eprintln!(
-                "warning: image auto download not started: {}",
-                started["error"].as_str().unwrap_or("unknown error")
+                "{}{}",
+                weflow_core::locale::tr(
+                    "warning: image auto download not started: ",
+                    "警告：图片自动下载未启动："
+                ),
+                weflow_core::locale::localize(
+                    started["error"]
+                        .as_str()
+                        .unwrap_or("unknown error")
+                        .to_string()
+                )
             );
         }
         Some(svc)
@@ -2222,7 +2231,13 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         .unwrap()
     );
     if command.http && token.is_none() {
-        eprintln!("warning: no HTTP API token configured; every request except /health will be refused (set http_api_token or pass --api-token)");
+        eprintln!(
+            "{}",
+            weflow_core::locale::tr(
+                "warning: no HTTP API token configured; every request except /health will be refused (set http_api_token or pass --api-token)",
+                "警告：未配置 HTTP API 令牌；除 /health 外的所有请求都会被拒绝（请设置 http_api_token 或传入 --api-token）"
+            )
+        );
     }
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -2425,10 +2440,12 @@ fn parse_config_value(raw: &str) -> Value {
 }
 
 fn print_response<T: serde::Serialize>(response: &T, pretty: bool) {
+    let mut value = serde_json::to_value(response).unwrap();
+    weflow_core::locale::localize_json(&mut value);
     if pretty {
-        println!("{}", serde_json::to_string_pretty(response).unwrap());
+        println!("{}", serde_json::to_string_pretty(&value).unwrap());
     } else {
-        println!("{}", serde_json::to_string(response).unwrap());
+        println!("{}", serde_json::to_string(&value).unwrap());
     }
 }
 

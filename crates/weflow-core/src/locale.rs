@@ -183,6 +183,39 @@ fn fill_template(template: &str, captures: &[&str]) -> String {
     out
 }
 
+/// Localise the human-readable fields (`error`, `message`, `note`, `hint`, `warnings`, `errors`) of a CLI result.
+/// Only the CLI output goes through this; the HTTP API keeps its documented English messages.
+pub fn localize_json(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    if current() == Lang::En {
+        return;
+    }
+    match value {
+        Value::Object(map) => {
+            for (key, v) in map.iter_mut() {
+                if matches!(
+                    key.as_str(),
+                    "error" | "message" | "note" | "hint" | "warnings" | "errors"
+                ) {
+                    localize_strings(v);
+                }
+                localize_json(v);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(localize_json),
+        _ => {}
+    }
+}
+
+fn localize_strings(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    match value {
+        Value::String(text) => *text = localize(std::mem::take(text)),
+        Value::Array(items) => items.iter_mut().for_each(localize_strings),
+        _ => {}
+    }
+}
+
 /// Localise a runtime message (errors) for the active language; English text passes through unchanged.
 pub fn localize(message: String) -> String {
     if current() == Lang::En {

@@ -398,13 +398,13 @@ impl ServiceHub {
                 if show {
                     eprintln!(
                         "{}",
-                        json!({ "type": "key_status", "level": level, "message": msg })
+                        json!({ "type": "key_status", "level": level, "message": crate::locale::localize(msg.to_string()) })
                     );
                 }
             };
             eprintln!(
                 "{}",
-                json!({ "type": "key_waiting", "pid": pid, "timeoutSeconds": timeout_secs, "hint": "log in to WeChat (or restart it) now; the key appears while WeChat opens its databases" })
+                json!({ "type": "key_waiting", "pid": pid, "timeoutSeconds": timeout_secs, "hint": crate::locale::localize("log in to WeChat (or restart it) now; the key appears while WeChat opens its databases".to_string()) })
             );
             let key = wxkey
                 .get_db_key(pid, std::time::Duration::from_secs(timeout_secs), &mut on_status)

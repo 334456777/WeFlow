@@ -640,7 +640,13 @@ impl ServiceHub {
             .map(|a| a.trim().to_string())
             .filter(|a| !a.is_empty());
         if ai.base.is_empty() || ai.key.is_empty() {
-            eprintln!("[insight] API address or key not configured, skipping");
+            eprintln!(
+                "[insight] {}",
+                crate::locale::tr(
+                    "API address or key not configured, skipping",
+                    "未配置 API 地址或密钥，已跳过"
+                )
+            );
             return None;
         }
         let mut context = String::new();
@@ -694,7 +700,10 @@ impl ServiceHub {
         {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("[insight] API call failed ({name}): {e}");
+                eprintln!(
+                    "[insight] {}",
+                    crate::locale::localize(format!("API call failed ({name}): {e}"))
+                );
                 return None;
             }
         };
@@ -737,11 +746,22 @@ impl ServiceHub {
                 let text = format!("【WeFlow】 {title}\n\n{insight}");
                 for id in chat_ids.split(',').map(str::trim).filter(|s| !s.is_empty()) {
                     if let Err(e) = ins::send_telegram(&token, id, &text).await {
-                        eprintln!("[insight] Telegram push failed (chatId={id}): {e}");
+                        eprintln!(
+                            "[insight] {}",
+                            crate::locale::localize(format!(
+                                "Telegram push failed (chatId={id}): {e}"
+                            ))
+                        );
                     }
                 }
             } else {
-                eprintln!("[insight] Telegram is enabled but the token or chat id is missing");
+                eprintln!(
+                    "[insight] {}",
+                    crate::locale::tr(
+                        "Telegram is enabled but the token or chat id is missing",
+                        "已启用 Telegram，但缺少令牌或聊天 ID"
+                    )
+                );
             }
         }
         let mut st = self.insight_state.lock().unwrap();
