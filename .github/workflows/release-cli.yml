@@ -1,5 +1,7 @@
 name: Release CLI
 
+# Push a tag such as v0.0.1 to build the `weflow` CLI for Windows, Linux and macOS and publish a GitHub Release.
+# v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1, v1.2.3-rc1, ...) is a pre-release.
 on:
   push:
     tags:
@@ -23,13 +25,25 @@ jobs:
             target: x86_64-pc-windows-msvc
             name: windows-x64
             ext: .exe
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            name: windows-arm64
+            ext: .exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             name: linux-x64
             ext: ""
-          - os: macos-14
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            ext: ""
+          - os: macos-15
             target: aarch64-apple-darwin
             name: macos-arm64
+            ext: ""
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            name: macos-x64
             ext: ""
     steps:
       - uses: actions/checkout@v7
@@ -46,7 +60,7 @@ jobs:
 
       # The test suite assumes Unix paths in several places (it passes on Linux and macOS), so Windows only builds.
       - name: Check formatting and tests
-        if: matrix.name != 'windows-x64'
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           rustup component add rustfmt
@@ -65,7 +79,7 @@ jobs:
           mkdir "$DIR"
           cp "target/${{ matrix.target }}/release/weflow${{ matrix.ext }}" "$DIR/"
           cp README.md LICENSE "$DIR/"
-          if [ "${{ matrix.name }}" = "windows-x64" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "$DIR.zip" "$DIR" > /dev/null
             echo "ASSET=$DIR.zip" >> "$GITHUB_ENV"
           else
@@ -90,19 +104,36 @@ jobs:
     name: Publish release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write       # sign the attestation
+      attestations: write   # store the attestation
     steps:
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+
       - name: Create the release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -l dist
+          # Stable only when the tag is plain vX.Y.Z; anything with letters is a pre-release.
+          FLAGS=()
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            FLAGS+=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            --prerelease
+            "${FLAGS[@]}"
