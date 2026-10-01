@@ -24,7 +24,7 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 
 ```
 weflow config    list | get | set | unset | clear | import
-weflow db        detect | scan <root> | test | open
+weflow db        detect | scan <root> | wxid [root] | test | open
 weflow key       db | image | scan-image <user-dir>
 weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts

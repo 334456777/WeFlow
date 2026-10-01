@@ -18,7 +18,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 ```
 weflow config    list | get | set | unset | clear | import
-weflow db        detect | scan <root> | test | open
+weflow db        detect | scan <root> | wxid [root] | test | open
 weflow key       db | image | scan-image <user-dir>
 weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts

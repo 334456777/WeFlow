@@ -54,8 +54,9 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 .\weflow.exe --lang zh key db
 .\weflow.exe --lang zh key image
 
-# 3. 写入配置（只需一次）
+# 3. 写入配置（只需一次）；`db wxid` 会显示要填的 wxid
 .\weflow.exe config set db_path "C:\Users\<你>\Documents\xwechat_files"
+.\weflow.exe --lang zh db wxid
 .\weflow.exe config set wxid wxid_xxxxxxxx
 .\weflow.exe config set decrypt_key <数据库密钥>
 .\weflow.exe config set image_xor_key <图片xor密钥>

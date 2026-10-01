@@ -54,6 +54,8 @@ const CATALOG: &[(&str, &str)] = &[
     ("image download failed with status {}", "图片下载失败，状态码 {}"),
     ("failed to read image response: {}", "读取图片响应失败：{}"),
     ("timed out after {} s without getting the key; quit WeChat completely, reopen it and click \"Enter WeChat\" in the login window, then run the command again", "等待超时（{} 秒），没有获取到密钥。请确认已完全退出微信后重新打开，并在登录窗口点击「进入微信」，然后重新运行。"),
+    ("no WeChat data directory found; pass the directory or run config set db_path", "未找到微信数据目录；请指定目录或运行 config set db_path"),
+    ("no WeChat account directory found in {}", "在 {} 中没有找到微信账号目录"),
     ("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid", "未找到微信进程（已查找 Weixin.exe 和 WeChat.exe）；请先启动微信或传入 --pid"),
     ("permission denied: cannot open the WeChat process (pid {}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({})", "无法打开微信进程（pid {0}）。请以管理员身份运行终端，关闭可能拦截的安全软件，并确认微信本身没有以管理员身份运行。（{1}）"),
     ("wx_key library not found; key extraction requires the platform-specific native library", "未找到 wx_key 库；提取密钥需要对应平台的原生库"),

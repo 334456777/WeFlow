@@ -174,6 +174,11 @@ enum DbSubcommand {
     Test,
     /// Open the configured database and show a short summary
     Open,
+    /// Show the wxid of the account(s) in the WeChat data directory (the value for `config set wxid`)
+    Wxid {
+        /// WeChat data directory (default: `db_path` from the config, else the usual locations)
+        root: Option<String>,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -1528,6 +1533,7 @@ fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
         DbSubcommand::Detect => Ok(hub.db_detect()),
         DbSubcommand::Scan { root } => Ok(hub.db_scan(root)),
         DbSubcommand::Test | DbSubcommand::Open => hub.db_test(),
+        DbSubcommand::Wxid { root } => hub.db_wxid(root.as_deref()),
     }
 }
 
@@ -2676,6 +2682,45 @@ fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
 /// `key db` / `key image` print the keys under the names `config set` expects, so they can be copied over.
 fn key_summary(command: &Commands, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
+    if let Commands::Db(DbCommand {
+        command: DbSubcommand::Detect,
+    }) = command
+    {
+        // only the directories that exist, named like the setting that takes them
+        let found: Vec<&str> = data["candidates"]
+            .as_array()?
+            .iter()
+            .filter(|c| c["exists"] == true)
+            .filter_map(|c| c["path"].as_str())
+            .collect();
+        return Some(if found.is_empty() {
+            format!(
+                "{}\n",
+                tr("No WeChat data directory found", "未找到微信数据目录")
+            )
+        } else {
+            found.iter().map(|p| format!("db_path: {p}\n")).collect()
+        });
+    }
+    if let Commands::Db(DbCommand {
+        command: DbSubcommand::Wxid { .. },
+    }) = command
+    {
+        let accounts = data["accounts"].as_array()?;
+        return Some(match accounts.as_slice() {
+            [one] => format!("wxid: {}\n", one["wxid"].as_str()?),
+            many => many
+                .iter()
+                .map(|a| {
+                    format!(
+                        "wxid: {}  {}\n",
+                        a["wxid"].as_str().unwrap_or(""),
+                        a["path"].as_str().unwrap_or("")
+                    )
+                })
+                .collect(),
+        });
+    }
     let Commands::Key(KeyCommand { command }) = command else {
         return None;
     };

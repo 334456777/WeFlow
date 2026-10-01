@@ -463,7 +463,7 @@ fn clean_account_dir_name(value: &str) -> String {
     trimmed.to_string()
 }
 
-fn is_account_dir(path: &Path) -> bool {
+pub fn is_account_dir(path: &Path) -> bool {
     path.join("db_storage").exists()
         || path.join("FileStorage/Image").exists()
         || path.join("FileStorage/Image2").exists()

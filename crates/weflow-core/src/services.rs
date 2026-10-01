@@ -107,6 +107,40 @@ impl ServiceHub {
         json!({ "root": root, "accounts": wxids })
     }
 
+    /// The wxid of every account found in the data directory (`root`, else the configured `db_path`, else the
+    /// default locations), as `config set wxid` expects it (without the `_ab12` suffix of the folder name).
+    pub fn db_wxid(&self, root: Option<&str>) -> AppResult<Value> {
+        let configured = root
+            .map(str::to_string)
+            .or_else(|| self.db_path_override.clone())
+            .or_else(|| self.profile().ok().and_then(|p| p.db_path.clone()));
+        let roots: Vec<PathBuf> = match configured {
+            Some(root) => vec![crate::config::expand_home(&root)],
+            None => default_db_candidates()
+                .into_iter()
+                .filter(|p| p.exists())
+                .collect(),
+        };
+        if roots.is_empty() {
+            return Err(AppError::config(
+                "no WeChat data directory found; pass the directory or run config set db_path",
+            ));
+        }
+        let mut accounts = Vec::new();
+        for root in &roots {
+            for (wxid, path) in find_accounts(root) {
+                accounts.push(json!({ "wxid": wxid, "path": path }));
+            }
+        }
+        if accounts.is_empty() {
+            return Err(AppError::runtime(format!(
+                "no WeChat account directory found in {}",
+                roots[0].display()
+            )));
+        }
+        Ok(json!({ "accounts": accounts }))
+    }
+
     pub fn db_test(&self) -> AppResult<Value> {
         let (account_dir, key, _) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
@@ -442,7 +476,7 @@ impl ServiceHub {
         phase(
             json!({ "type": "key_phase", "phase": "login", "pid": pid }),
             if crate::locale::current() == crate::locale::Lang::Zh {
-                format!("检测到微信（pid {pid}）。请在登录窗口点击「进入微信」。")
+                format!("检测到微信（pid {pid}）请在登录窗口点击「进入微信」。")
             } else {
                 format!("WeChat found (pid {pid}). Click \"Enter WeChat\" in the login window.")
             },
@@ -1047,6 +1081,27 @@ impl ServiceHub {
     }
 }
 
+/// Account folders of a WeChat data directory (or the folder itself when it is one), with their wxid.
+fn find_accounts(root: &Path) -> Vec<(String, PathBuf)> {
+    let wxid_of = |path: &Path| {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string());
+        clean_account_dir_name(&name.unwrap_or_default())
+    };
+    if crate::config::is_account_dir(root) {
+        return vec![(wxid_of(root), root.to_path_buf())];
+    }
+    let mut accounts: Vec<(String, PathBuf)> = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && crate::config::is_account_dir(p))
+        .map(|p| (wxid_of(&p), p))
+        .collect();
+    accounts.sort();
+    accounts
+}
+
 fn default_db_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(home) = dirs::home_dir() {
@@ -1205,7 +1260,7 @@ fn report_wait(event: WaitEvent) {
             phase(
                 json!({ "type": "key_phase", "phase": "quit_wechat", "pids": pids }),
                 if zh {
-                    format!("检测到微信正在运行（pid {list}）。请先完全退出微信：\n右下角托盘图标 → 右键 → 退出微信")
+                    format!("检测到微信正在运行（pid {list}）请先完全退出微信：\n右下角托盘图标 → 右键 → 退出微信")
                 } else {
                     format!("WeChat is running (pid {list}). Quit it completely first:\nsystem tray icon -> right click -> Quit WeChat")
                 },
@@ -1216,7 +1271,7 @@ fn report_wait(event: WaitEvent) {
             match (was_running, zh) {
                 (true, true) => "微信已退出。请重新打开微信。".to_string(),
                 (true, false) => "WeChat has quit. Open it again.".to_string(),
-                (false, true) => "未检测到微信。请打开微信。".to_string(),
+                (false, true) => "未检测到微信，请打开微信。".to_string(),
                 (false, false) => "WeChat is not running. Open it.".to_string(),
             },
         ),
@@ -1471,6 +1526,21 @@ fn extract_member_ids(value: &Value) -> Vec<String> {
 
 #[cfg(test)]
 mod export_tests {
+    #[test]
+    fn finds_account_folders_and_strips_the_suffix() {
+        let root = std::env::temp_dir().join(format!("weflow-wxid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("wxid_abc123_ab12/db_storage")).unwrap();
+        std::fs::create_dir_all(root.join("someone_a1b2/db_storage")).unwrap();
+        std::fs::create_dir_all(root.join("all_users")).unwrap();
+        let found: Vec<String> = find_accounts(&root).into_iter().map(|a| a.0).collect();
+        assert_eq!(found, ["someone", "wxid_abc123"]);
+        // the account folder itself works too
+        let one = find_accounts(&root.join("wxid_abc123_ab12"));
+        assert_eq!(one[0].0, "wxid_abc123");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     /// Drives `wait_for_fresh_wechat` with a scripted process list; each `sleep` is one second.
     fn run_wait(script: Vec<Vec<u32>>, timeout: u64) -> (Option<u32>, Vec<&'static str>, u64) {
         use std::cell::{Cell, RefCell};

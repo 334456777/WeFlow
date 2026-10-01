@@ -54,8 +54,9 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 .\weflow.exe key db
 .\weflow.exe key image
 
-# 3. Save the configuration (once)
+# 3. Save the configuration (once); `db wxid` shows the wxid to use
 .\weflow.exe config set db_path "C:\Users\<you>\Documents\xwechat_files"
+.\weflow.exe db wxid
 .\weflow.exe config set wxid wxid_xxxxxxxx
 .\weflow.exe config set decrypt_key <database key>
 .\weflow.exe config set image_xor_key <image xor key>
