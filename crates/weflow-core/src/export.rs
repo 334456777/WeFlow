@@ -421,14 +421,15 @@ pub fn export_txt(
             34 => locale::tr("[Voice]", "[语音]").to_string(),
             43 => locale::tr("[Video]", "[视频]").to_string(),
             47 => locale::tr("[Sticker]", "[表情]").to_string(),
-            49 => {
-                let t = extract_text_after_sender(&msg.content);
-                if t.is_empty() {
-                    locale::tr("[Link/File]", "[链接/文件]").to_string()
-                } else {
-                    t
-                }
-            }
+            49 => crate::message::parse_message_content(
+                &msg.content,
+                msg.local_type,
+                None,
+                Some(&msg.sender),
+                None,
+            )
+            .filter(|t| !t.trim().is_empty())
+            .unwrap_or_else(|| locale::tr("[Link/File]", "[链接/文件]").to_string()),
             10000 => {
                 let t = extract_text_after_sender(&msg.content);
                 if t.is_empty() {
@@ -436,7 +437,18 @@ pub fn export_txt(
                 }
                 format!("[{}: {t}]", locale::tr("System", "系统"))
             }
-            _ => continue,
+            // 引用消息、聊天记录、小程序、文件、转账、拍一拍等：localType 高 32 位带有子类型，
+            // 交给与 JSON / ChatLab 相同的解析逻辑，避免整类消息被丢掉。
+            _ => match crate::message::parse_message_content(
+                &msg.content,
+                msg.local_type,
+                None,
+                Some(&msg.sender),
+                None,
+            ) {
+                Some(t) if !t.trim().is_empty() => t,
+                _ => continue,
+            },
         };
         let nickname = nickname_map.get(&msg.sender).unwrap_or(&msg.sender);
         let dt = format_timestamp(msg.create_time);
@@ -456,7 +468,7 @@ pub struct TxtMessage {
 }
 
 impl TxtMessage {
-    /// From a raw message row; `None` for the kinds the TXT layout leaves out.
+    /// From a raw message row; every kind is kept (kinds the layout cannot render are skipped when printing).
     pub fn from_row(row: &Value) -> Option<Self> {
         let int = |key: &str, default: i64| {
             row.get(key)
@@ -469,9 +481,8 @@ impl TxtMessage {
         };
         let local_type = int("local_type", 1);
         let content = match local_type {
-            1 | 49 | 10000 => decode_wcdb_content(row),
             3 | 34 | 43 | 47 => String::new(),
-            _ => return None,
+            _ => decode_wcdb_content(row),
         };
         Some(Self {
             create_time: int("create_time", 0),
@@ -578,5 +589,34 @@ mod tests {
         assert_eq!(message_type_label_in(Lang::Zh, 1), "文本");
         assert_eq!(message_type_label_in(Lang::Zh, 3), "图片");
         assert_eq!(message_type_label_in(Lang::Zh, 43), "视频");
+    }
+
+    #[test]
+    fn txt_keeps_quote_and_other_app_messages() {
+        let quote = "wxid_a:\n<msg><appmsg><title>收到，明天见</title><type>57</type>\
+            <refermsg><type>1</type><displayname>Alice</displayname>\
+            <content>明天下午三点开会</content></refermsg></appmsg></msg>";
+        let forward = "wxid_a:\n<msg><appmsg><title>项目讨论</title><type>19</type></appmsg></msg>";
+        let mk = |local_type: i64, content: &str| TxtMessage {
+            create_time: 1_700_000_000,
+            sender: "wxid_a".into(),
+            local_type,
+            content: content.into(),
+        };
+        let msgs = vec![
+            mk(244_813_135_921, quote),
+            mk(81_604_378_673, forward),
+            mk(999, ""),
+        ];
+        let out = std::env::temp_dir().join("weflow_txt_quote_test.txt");
+        export_txt(&msgs, &HashMap::new(), &out).unwrap();
+        let text = std::fs::read_to_string(&out).unwrap();
+        let _ = std::fs::remove_file(&out);
+        assert!(
+            text.contains("收到，明天见[引用 Alice：明天下午三点开会]"),
+            "{text}"
+        );
+        assert!(text.contains("项目讨论"), "{text}");
+        assert_eq!(text.matches(" 'wxid_a'").count(), 2, "{text}");
     }
 }
