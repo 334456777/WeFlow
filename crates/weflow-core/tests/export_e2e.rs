@@ -144,7 +144,12 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
     assert!(members.iter().any(|m| m["wxid"] == "wxid_quiet"));
     let msgs = v["messages"].as_array().unwrap();
     let system = msgs.iter().find(|m| m["localType"] == 10000).unwrap();
-    assert_eq!(system["content"], "Bob joined");
+    assert!(
+        ["[System: Bob joined]", "[系统: Bob joined]"]
+            .contains(&system["content"].as_str().unwrap()),
+        "system messages are wrapped: {}",
+        system["content"]
+    );
     // arkme-json lists each sender once and refers to it by `senderID`
     let senders = v["senders"].as_array().unwrap();
     let bob = senders.iter().find(|s| s["wxid"] == "wxid_bob").unwrap();

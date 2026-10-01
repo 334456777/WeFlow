@@ -658,33 +658,28 @@ impl ServiceHub {
         sender: Option<&str>,
         display: Option<crate::export_msg::DisplayPref>,
     ) -> AppResult<Value> {
-        use crate::export::TxtMessage;
         use std::collections::{HashMap, HashSet};
+        use std::io::Write;
 
-        let wcdb = self.open_wcdb()?;
-        wcdb.set_low_memory(true); // one pass over the conversation
-        let (_, _, wxid) = self.connection_inputs()?;
-        let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
-        let sender = sender.map(str::trim).filter(|s| !s.is_empty());
-
-        // Only what the TXT layout prints is kept, so a 200,000-message group stays small.
-        let mut all_messages: Vec<TxtMessage> = Vec::new();
-        let mut count = 0usize; // every message in range, including kinds the layout does not print
-        fetch_message_pages(&wcdb, session_id, start_ts, end_ts, true, &mut |page| {
-            for row in &page {
-                if let Some(want) = sender {
-                    if !crate::message::is_same_wxid(
-                        &crate::message::row_sender(row, session_id, &my_wxid),
-                        want,
-                    ) {
-                        continue;
-                    }
-                }
-                count += 1;
-                all_messages.extend(TxtMessage::from_row(row));
-            }
-        })?;
-        all_messages.sort_by_key(|m| m.create_time);
+        // 与 detailed JSON 共用同一套消息文本（Exporter::message_text），两种格式的写法保持一致。
+        let req = MessageExportRequest {
+            session_id: session_id.to_string(),
+            format: "txt".into(),
+            start: start_ts,
+            end: end_ts,
+            sender: sender
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            display_pref: display.unwrap_or(crate::export_msg::DisplayPref::GroupNickname),
+            excel_compact: false,
+        };
+        let (wcdb, collected) = self.export_collect(&req)?;
+        let (texts, session_name) =
+            self.with_exporter(session_id, req.display_pref, false, &wcdb, |ex| {
+                let texts: Vec<String> = collected.iter().map(|m| ex.message_text(m)).collect();
+                (texts, ex.session.display_name.clone())
+            })?;
 
         // Names: (nickname, remark, alias) from the contact table, and group nicknames.
         type Names = (String, String, String);
@@ -730,9 +725,9 @@ impl ServiceHub {
             HashMap::new()
         };
         // senders the contact list does not know: ask the contact table one by one
-        let missing: HashSet<&str> = all_messages
+        let missing: HashSet<&str> = collected
             .iter()
-            .map(|m| m.sender.as_str())
+            .map(|m| m.sender_username.as_str())
             .filter(|s| !s.is_empty() && !contacts.contains_key(*s))
             .collect();
         for id in missing {
@@ -749,11 +744,11 @@ impl ServiceHub {
                 .map_or_else(|| id.to_string(), |v| v.to_string())
         };
         let mut nickname_map: HashMap<String, String> = HashMap::new();
-        for m in &all_messages {
-            if nickname_map.contains_key(&m.sender) {
+        for m in &collected {
+            if nickname_map.contains_key(&m.sender_username) {
                 continue;
             }
-            let id = m.sender.as_str();
+            let id = m.sender_username.as_str();
             let (nick, remark, alias) = contacts
                 .get(id)
                 .map(|(n, r, a)| (n.as_str(), r.as_str(), a.as_str()))
@@ -766,10 +761,38 @@ impl ServiceHub {
             nickname_map.insert(id.to_string(), name);
         }
 
-        crate::export::export_txt(&all_messages, &nickname_map, out)
-            .map_err(|e| AppError::runtime(e.to_string()))?;
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| AppError::runtime(format!("create {}: {e}", parent.display())))?;
+        }
+        let file = std::fs::File::create(out)
+            .map_err(|e| AppError::runtime(format!("write {}: {e}", out.display())))?;
+        let mut w = std::io::BufWriter::new(file);
+        for (m, text) in collected.iter().zip(&texts) {
+            // 系统消息没有发送者，署会话名（群名 / 对方），而不是留空
+            let who = if m.sender_username.is_empty() {
+                session_name.as_str()
+            } else {
+                nickname_map
+                    .get(&m.sender_username)
+                    .map_or(m.sender_username.as_str(), String::as_str)
+            };
+            let text = if text.trim().is_empty() {
+                "[消息]"
+            } else {
+                text.trim()
+            };
+            write!(
+                w,
+                "{} '{who}'\n\n{text}\n\n",
+                crate::message::format_timestamp(m.create_time)
+            )
+            .map_err(|e| AppError::runtime(format!("write {}: {e}", out.display())))?;
+        }
+        w.flush()
+            .map_err(|e| AppError::runtime(format!("write {}: {e}", out.display())))?;
 
-        Ok(json!({ "out": out, "count": count, "session": session_id }))
+        Ok(json!({ "out": out, "count": collected.len(), "session": session_id }))
     }
 
     /// Export a conversation's messages in one of the desktop app's formats
@@ -843,13 +866,15 @@ impl ServiceHub {
         Ok((wcdb, collected))
     }
 
-    fn export_write(
+    /// 按会话建好 [`Exporter`](crate::export_msg::Exporter)（联系人名、群昵称、自己的账号），再交给 `f` 使用。
+    fn with_exporter<R>(
         &self,
-        req: &MessageExportRequest,
-        out: &Path,
+        session_id: &str,
+        display_pref: crate::export_msg::DisplayPref,
+        excel_compact: bool,
         wcdb: &weflow_native::wcdb::Wcdb,
-        collected: Vec<crate::message::ExportMsg>,
-    ) -> AppResult<Value> {
+        f: impl FnOnce(&mut crate::export_msg::Exporter<'_, '_>) -> R,
+    ) -> AppResult<R> {
         use crate::export_msg::*;
         let (_, _, wxid) = self.connection_inputs()?;
         let raw_my_wxid = wxid.unwrap_or_default();
@@ -860,9 +885,9 @@ impl ServiceHub {
                 .filter(|v| v.is_object() && !v.as_object().map_or(true, |o| o.is_empty()))
                 .map(|v| ContactInfo::from_value(username, &v))
         });
-        let is_group = req.session_id.ends_with("@chatroom");
+        let is_group = session_id.ends_with("@chatroom");
         let (group_nicks, group_members) = if is_group {
-            let nick_value = wcdb.group_nicknames(&req.session_id).unwrap_or(Value::Null);
+            let nick_value = wcdb.group_nicknames(&session_id).unwrap_or(Value::Null);
             let nick_obj = nick_value
                 .get("nicknames")
                 .and_then(Value::as_object)
@@ -874,7 +899,7 @@ impl ServiceHub {
                         .collect()
                 })
                 .unwrap_or_default();
-            let members_value = wcdb.group_members(&req.session_id).unwrap_or(Value::Null);
+            let members_value = wcdb.group_members(&session_id).unwrap_or(Value::Null);
             (
                 build_trusted_group_nicknames(entries),
                 extract_member_ids(&members_value),
@@ -883,12 +908,12 @@ impl ServiceHub {
             (std::collections::HashMap::new(), Vec::new())
         };
 
-        let session_display = names.display_name(&req.session_id);
-        let session_contact = names.get(&req.session_id);
+        let session_display = names.display_name(&session_id);
+        let session_contact = names.get(&session_id);
         let my_display = names.display_name(&my_wxid);
         let mut exporter = Exporter {
             session: SessionInfo {
-                id: req.session_id.clone(),
+                id: session_id.to_string(),
                 display_name: session_display,
                 nickname: session_contact
                     .as_ref()
@@ -911,29 +936,47 @@ impl ServiceHub {
             group_members,
             names: &mut names,
             settings: Settings {
-                display_pref: req.display_pref,
-                excel_compact: req.excel_compact,
+                display_pref,
+                excel_compact,
                 ..Default::default()
             },
         };
+        Ok(f(&mut exporter))
+    }
+
+    fn export_write(
+        &self,
+        req: &MessageExportRequest,
+        out: &Path,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        collected: Vec<crate::message::ExportMsg>,
+    ) -> AppResult<Value> {
         let format = req.format.to_ascii_lowercase();
-        let result = match format.as_str() {
-            "chatlab" => exporter.write_chatlab(&collected, out, false),
-            "chatlab-jsonl" => exporter.write_chatlab(&collected, out, true),
-            "json" => exporter.write_json(&collected, out, false),
-            "arkme-json" => exporter.write_json(&collected, out, true),
-            "excel" | "xlsx" => exporter.write_excel(&collected, out),
-            "txt" => exporter.write_txt(&collected, out),
-            "weclone" => exporter.write_weclone(&collected, out),
-            "html" => exporter.write_html(&collected, out),
-            "sql" => exporter.write_sql(&collected, out),
-            other => {
-                return Err(AppError::usage(format!(
-                "unsupported message export format: {other}; supported: {MESSAGE_EXPORT_FORMATS}"
-            )))
-            }
-        };
-        result.map_err(|e| AppError::runtime(e.to_string()))?;
+        let runtime = |e: anyhow::Error| AppError::runtime(e.to_string());
+        self.with_exporter(
+            &req.session_id,
+            req.display_pref,
+            req.excel_compact,
+            wcdb,
+            |exporter| match format.as_str() {
+                "chatlab" => exporter
+                    .write_chatlab(&collected, out, false)
+                    .map_err(runtime),
+                "chatlab-jsonl" => exporter
+                    .write_chatlab(&collected, out, true)
+                    .map_err(runtime),
+                "json" => exporter.write_json(&collected, out, false).map_err(runtime),
+                "arkme-json" => exporter.write_json(&collected, out, true).map_err(runtime),
+                "excel" | "xlsx" => exporter.write_excel(&collected, out).map_err(runtime),
+                "txt" => exporter.write_txt(&collected, out).map_err(runtime),
+                "weclone" => exporter.write_weclone(&collected, out).map_err(runtime),
+                "html" => exporter.write_html(&collected, out).map_err(runtime),
+                "sql" => exporter.write_sql(&collected, out).map_err(runtime),
+                other => Err(AppError::usage(format!(
+                    "unsupported message export format: {other}; supported: {MESSAGE_EXPORT_FORMATS}"
+                ))),
+            },
+        )??;
         Ok(
             json!({ "out": out, "count": collected.len(), "session": req.session_id, "format": format }),
         )

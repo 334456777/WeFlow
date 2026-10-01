@@ -101,10 +101,15 @@ fn normalize_app_message_cow(content: &str) -> std::borrow::Cow<'_, str> {
 
 /// Strip a leading `wxid_xxx:` sender prefix (but not `http://`).
 pub fn strip_sender_prefix(content: &str) -> String {
-    let re = rx(r"^\s*([A-Za-z0-9_-]+):");
-    if let Some(m) = re.find(content) {
-        if !content[m.end()..].starts_with("//") {
-            return content[m.end()..].to_string();
+    // 数据库里的群消息是 "wxid:\n正文"；同一行的 "1:3-1:6" 这类是正文本身，不能当作前缀去掉。
+    let re = rx(r"^\s*([A-Za-z0-9_-]+):(\r?\n|)");
+    if let Some(c) = re.captures(content) {
+        let whole = c.get(0).unwrap();
+        let name = &c[1];
+        let has_newline = !c[2].is_empty();
+        let looks_like_id = name.starts_with("wxid_") || name.starts_with("gh_");
+        if (has_newline || looks_like_id) && !content[whole.end()..].starts_with("//") {
+            return content[whole.end()..].to_string();
         }
     }
     content.to_string()
@@ -1025,11 +1030,8 @@ pub fn percent_decode_bytes(s: &str) -> Vec<u8> {
     out
 }
 
-pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
-    match caption.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("[表情包：{c}]"),
-        None => "[表情包]".into(),
-    }
+pub fn format_emoji_semantic_text(_caption: Option<&str>) -> String {
+    "[表情]".into()
 }
 
 // ─────────────────────────── image / video / file ───────────────────────────
@@ -1487,7 +1489,7 @@ fn format_forward_item_text(item: &ForwardRecord) -> String {
         3 => "[图片]".into(),
         34 => "[语音消息]".into(),
         43 => "[视频]".into(),
-        47 => "[表情包]".into(),
+        47 => "[表情]".into(),
         49 | 8 => "[文件]".into(),
         17 => item
             .chat_record_desc
@@ -1574,7 +1576,9 @@ pub struct QuoteInfo {
 
 fn refermsg_xml(normalized: &str) -> Option<String> {
     let start = normalized.find("<refermsg>")?;
-    let end = normalized.find("</refermsg>")?;
+    // 被引用的是「带引用的图片」等消息时，其 content 里还嵌着一层（已解码的）<refermsg>，
+    // 取最后一个结束标签才是外层，否则 type / displayname 会被截掉。
+    let end = normalized.rfind("</refermsg>")?;
     if end < start {
         return None;
     }
@@ -1686,19 +1690,19 @@ pub fn parse_quote_message(content: &str) -> QuoteInfo {
     let display = match refer_type.as_str() {
         "1" => extract_preferred_quoted_text(&refer),
         "3" => "[图片]".into(),
-        "34" => "[语音]".into(),
+        "34" => "[语音消息]".into(),
         "43" => "[视频]".into(),
-        "47" => "[表情包]".into(),
+        "47" => "[表情]".into(),
         "49" => "[链接]".into(),
         "42" => "[名片]".into(),
         "48" => "[位置]".into(),
-        _ => {
-            if refer_content.is_empty() || refer_content.contains("wxid_") {
-                "[消息]".into()
-            } else {
-                sanitize_quoted_content(&refer_content)
-            }
-        }
+        _ => quoted_other_preview(&refer_content),
+    };
+    // 被引用的文字本身是 XML（如引用了一条夹带图片的消息）时，换成可读预览
+    let display = if looks_like_xml_payload(&display) {
+        quoted_xml_preview(&display)
+    } else {
+        display
     };
     let opt = |s: String| if s.is_empty() { None } else { Some(s) };
     QuoteInfo {
@@ -1709,10 +1713,87 @@ pub fn parse_quote_message(content: &str) -> QuoteInfo {
     }
 }
 
+/// 被引用消息的内容本身是 XML（引用的是另一条引用、文件、图片、笔记……）时的可读预览。
+fn quoted_xml_preview(content: &str) -> String {
+    let normalized = normalize_app_message_content(content);
+    let title = extract_xml_value(&normalized, "title");
+    if normalized.contains("<appmsg") {
+        let with_title = |label: &str| {
+            if title.is_empty() {
+                label.to_string()
+            } else {
+                format!("{label} {title}")
+            }
+        };
+        return match extract_app_message_type(&normalized).as_str() {
+            "57" => {
+                if title.is_empty() {
+                    "[引用消息]".into()
+                } else {
+                    title
+                }
+            }
+            "8" => "[表情]".into(),
+            "6" => with_title("[文件]"),
+            "19" => "[聊天记录]".into(),
+            "24" => "[笔记]".into(),
+            "33" | "36" => "[小程序]".into(),
+            _ => {
+                if title.is_empty() {
+                    "[链接]".into()
+                } else {
+                    title
+                }
+            }
+        };
+    }
+    if normalized.contains("<img") {
+        "[图片]".into()
+    } else if normalized.contains("<emoji") {
+        "[表情]".into()
+    } else if normalized.contains("<voicemsg") {
+        "[语音消息]".into()
+    } else if normalized.contains("<videomsg") {
+        "[视频]".into()
+    } else {
+        "[消息]".into()
+    }
+}
+
+/// 微信会把过长的被引用内容截断，XML 可能没有结尾标签，所以只看开头。
+fn looks_like_xml_payload(text: &str) -> bool {
+    let head = text.trim_start();
+    [
+        "<?xml",
+        "<msg",
+        "<img",
+        "<appmsg",
+        "<emoji",
+        "<voicemsg",
+        "<videomsg",
+    ]
+    .iter()
+    .any(|p| head.starts_with(p))
+}
+
+/// 引用里「被引用内容」的文本；XML 内容改成可读预览，普通文本去掉清洗后原样返回。
+fn quoted_other_preview(refer_content: &str) -> String {
+    let decoded = decode_html_entities(refer_content);
+    let body = strip_sender_prefix(&decoded);
+    if looks_like_xml_payload(&body) {
+        return quoted_xml_preview(&body);
+    }
+    if refer_content.is_empty() || refer_content.contains("wxid_") {
+        "[消息]".into()
+    } else {
+        sanitize_quoted_content(refer_content)
+    }
+}
+
 fn format_quoted_reference_preview(content: &str, refer_type: &str) -> String {
     let t: Option<i64> = refer_type.trim().parse().ok();
     let Some(ty) = t else {
-        let s = sanitize_quoted_content(content);
+        let s = quoted_other_preview(content);
         return if s.is_empty() { "[消息]".into() } else { s };
     };
     if ty == 49 {
@@ -1805,6 +1886,19 @@ pub fn is_quoted_reply_message(local_type: i64, content: &str) -> bool {
         return false;
     }
     extract_app_message_type(&normalized) == "57" || normalized.contains("<refermsg>")
+}
+
+/// 是不是「回复/引用」消息：只认 localType 244813135921 或 appmsg type 57。
+/// 图片、转发的聊天记录等消息里也可能夹带 `<refermsg>`，它们不是文字引用。
+pub fn is_text_quote_message(local_type: i64, content: &str) -> bool {
+    if local_type == 244_813_135_921 {
+        return true;
+    }
+    if matches!(local_type & 0xFFFF_FFFF, 3 | 34 | 43 | 47) {
+        return false;
+    }
+    let normalized = normalize_app_message_content(content);
+    extract_app_message_type(&normalized) == "57"
 }
 
 pub fn extract_reply_to_message_id(content: &str) -> Option<String> {
@@ -1960,6 +2054,21 @@ fn extract_amount_from_text(text: &str) -> Option<String> {
         .map(|c| rx(r"\s+").replace_all(&c[1], "").to_string())
 }
 
+/// appmsg type 24 是微信「笔记」，标题通常为空，正文摘要在 `<des>` 里。
+fn note_text(normalized: &str, title: &str) -> String {
+    let body = if title.is_empty() {
+        extract_xml_value(normalized, "des")
+    } else {
+        title.to_string()
+    };
+    let body = body.trim();
+    if body.is_empty() {
+        "[笔记]".into()
+    } else {
+        format!("[笔记] {body}")
+    }
+}
+
 /// `parseMessageContent` — text used by ChatLab / JSON / WeClone.
 pub fn parse_message_content(
     content: &str,
@@ -2009,6 +2118,8 @@ pub fn parse_message_content(
                 return Some(prefix.to_string());
             }
             Some(match ty.as_str() {
+                "8" => "[表情]".into(),
+                "24" => note_text(&normalized, &title),
                 "3" => {
                     if !song.is_empty() {
                         with_title("[音乐]", &song)
@@ -2049,6 +2160,8 @@ pub fn parse_message_content(
             if !xml_type.is_empty() {
                 let title = extract_xml_value(content, "title");
                 match xml_type.as_str() {
+                    "8" => return Some("[表情]".into()),
+                    "24" => return Some(note_text(&normalized, &title)),
                     "87" => {
                         let t = extract_xml_value(content, "textannouncement");
                         return Some(if t.is_empty() {
@@ -2184,6 +2297,12 @@ pub fn format_plain_export_content(
                 extract_xml_value(&normalized, "appname")
             }
         };
+        if sub == 8 {
+            return "[表情]".into();
+        }
+        if sub == 24 {
+            return note_text(&normalized, &title);
+        }
         if sub == 87 {
             let t = extract_xml_value(&normalized, "textannouncement");
             return if t.is_empty() {
@@ -2981,7 +3100,11 @@ mod tests {
     fn sender_prefix_keeps_urls() {
         assert_eq!(strip_sender_prefix("wxid_abc:hello"), "hello");
         assert_eq!(strip_sender_prefix("http://x.y"), "http://x.y");
-        assert_eq!(strip_sender_prefix("  a-b_c:x"), "x");
+        assert_eq!(strip_sender_prefix("  a-b_c:\nx"), "x");
+        // 正文里的 "1:3-1:6"、"4:1" 不是发送者前缀
+        assert_eq!(strip_sender_prefix("1:3-1:6"), "1:3-1:6");
+        assert_eq!(strip_sender_prefix("4:1"), "4:1");
+        assert_eq!(strip_sender_prefix("10:1 abc"), "10:1 abc");
     }
 
     #[test]
