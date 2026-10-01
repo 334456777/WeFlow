@@ -428,7 +428,7 @@ pub fn export_txt(
                 Some(&msg.sender),
                 None,
             )
-            .filter(|t| !t.trim().is_empty())
+            .filter(|t| !t.trim().is_empty() && !t.trim_start().starts_with('<'))
             .unwrap_or_else(|| locale::tr("[Link/File]", "[链接/文件]").to_string()),
             10000 => {
                 let t = extract_text_after_sender(&msg.content);
@@ -446,6 +446,8 @@ pub fn export_txt(
                 Some(&msg.sender),
                 None,
             ) {
+                // 解析不出可读文本时（如标题为空的 appmsg），原样输出会是一大段 XML，改用占位符。
+                Some(t) if t.trim_start().starts_with('<') => "[消息]".to_string(),
                 Some(t) if !t.trim().is_empty() => t,
                 _ => continue,
             },
