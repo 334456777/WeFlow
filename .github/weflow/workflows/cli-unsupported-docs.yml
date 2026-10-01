@@ -12,7 +12,7 @@ on:
       - "docs/cli-unsupported.md"
       - "docs/zh-CN/cli-unsupported.md"
       - "README.md"
-      - "README.zh-CN.md"
+      - "docs/zh-CN/README.md"
       - ".github/weflow/workflows/cli-unsupported-docs.yml"
   pull_request:
     paths:
@@ -21,7 +21,7 @@ on:
       - "docs/cli-unsupported.md"
       - "docs/zh-CN/cli-unsupported.md"
       - "README.md"
-      - "README.zh-CN.md"
+      - "docs/zh-CN/README.md"
   workflow_dispatch:
 
 permissions:

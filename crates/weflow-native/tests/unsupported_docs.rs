@@ -59,5 +59,5 @@ fn documented_functions_still_exist_and_still_refuse() {
 #[test]
 fn readmes_point_to_the_list() {
     assert!(read("../../README.md").contains("docs/cli-unsupported.md"));
-    assert!(read("../../README.zh-CN.md").contains("docs/zh-CN/cli-unsupported.md"));
+    assert!(read("../../docs/zh-CN/README.md").contains("](cli-unsupported.md)"));
 }

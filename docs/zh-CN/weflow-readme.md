@@ -1,6 +1,6 @@
 # WeFlow
 
-[English](../weflow-readme.md) | **简体中文**
+[English](../weflow-readme.md) | **简体中文** | [Español](../es-ES/weflow-readme.md)
 
 > **参考资料。** 这是原 WeFlow 项目（Electron 桌面端）的 README，对应原作者最后一次更新 README 时的内容（`70aff53`，2026-05-10），作为原生 Rust CLI 的背景资料保存在这里。由原中英混排文本整理而成的中文版。
 > 原项目：https://github.com/hicccc77/WeFlow
