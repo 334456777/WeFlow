@@ -30,8 +30,8 @@ Windows x64 releases are a single `weflow.exe`. WXGF images need `ffmpeg` on `PA
 The language follows the system: Chinese on a Chinese system, English otherwise. `weflow --lang zh` (on its own, no command) saves the choice in the config file (`weflow config unset lang` goes back to the system language); `weflow --lang zh <command>` applies to a single run, or use the environment:
 
 ```powershell
-.\weflow.exe --lang zh chat sessions --pretty    # Chinese output for this run
-$env:WEFLOW_LANG = "zh"                          # Chinese for the whole PowerShell session
+.\weflow.exe --lang zh chat sessions       # Chinese output for this run
+$env:WEFLOW_LANG = "zh"                     # Chinese for the whole PowerShell session
 ```
 
 ```bash
@@ -46,13 +46,13 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 
 ```powershell
 # 1. Find the WeChat data directory
-.\weflow.exe db detect --pretty
+.\weflow.exe db detect
 
 # 2. Get the database key and the image keys (run PowerShell as administrator)
 #    `key db` hooks WeChat and WAITS (180 s by default): log out and log in to WeChat (or restart it)
 #    while it is waiting, the key only appears while WeChat opens its databases.
-.\weflow.exe key db --pretty
-.\weflow.exe key image --pretty
+.\weflow.exe key db
+.\weflow.exe key image
 
 # 3. Save the configuration (once)
 .\weflow.exe config set db_path "C:\Users\<you>\Documents\xwechat_files"
@@ -62,7 +62,7 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 .\weflow.exe config set image_aes_key <image aes key>
 
 # 4. Required: list the sessions to confirm the connection and find the session ID to export
-.\weflow.exe chat sessions --pretty
+.\weflow.exe chat sessions
 
 # 5. Export (private chat: the other party's wxid; group: xxx@chatroom)
 .\weflow.exe export messages <session-id> --format html --out chat.html
