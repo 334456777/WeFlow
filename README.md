@@ -1,6 +1,6 @@
 # WeFlow Native CLI
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](docs/zh-CN/README.md)
 
 `weflow` is a native Rust command-line build of [WeFlow](docs/weflow-readme.md)'s backend. It reads, analyzes and exports your local WeChat 4.0+ chat history from the terminal, without the Electron desktop app.
 
@@ -88,6 +88,6 @@ The detailed list is in **[docs/cli-unsupported.md](docs/cli-unsupported.md)** (
 - [Desktop app on the Rust database layer](docs/desktop-rust-layer.md)
 - [`wcdb_api.dll`: not needed by the CLI or the new desktop app; old and new builds](docs/wcdb-api.md)
 - [HTTP API](docs/HTTP-API.md) · [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
-- [Original WeFlow README](docs/weflow-readme.md)
+- [Original WeFlow README](docs/weflow-readme.md) · [Español](docs/es-ES/weflow-readme.md)
 
 Please use this tool responsibly and comply with relevant laws and regulations.

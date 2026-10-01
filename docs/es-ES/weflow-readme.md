@@ -1,11 +1,16 @@
 # WeFlow
 
+[English](../weflow-readme.md) | [简体中文](../zh-CN/weflow-readme.md) | **Español**
+
+> **Copia de referencia.** Traducción al español de una versión anterior del README del proyecto WeFlow original (aplicación de escritorio), aportada por webbrain-one (#1); puede estar desactualizada.
+> Proyecto original: https://github.com/hicccc77/WeFlow
+
 WeFlow es una herramienta **completamente local** para visualizar, analizar y exportar el historial de chat de WeChat en **tiempo real**. Puede obtener tus registros de chat de WeChat en tiempo real y exportarlos, así como generar informes de análisis únicos basados en tu historial.
 
 ---
 
 <p align="center">
-  <img src="app.jpg" alt="WeFlow 应用预览" width="90%">
+  <img src="../../app.jpg" alt="WeFlow 应用预览" width="90%">
 </p>
 
 <p align="center">
@@ -78,7 +83,7 @@ WeFlow proporciona un servicio de HTTP API local que permite consultar datos de 
 - **Dirección de Acceso**: `http://127.0.0.1:5031`
 - **Formatos Soportados**: JSON puro o formato estándar de [ChatLab](https://chatlab.fun/)
 
-Documentación completa de la API: [Haga clic para ver](docs/HTTP-API.md)
+Documentación completa de la API: [Haga clic para ver](../HTTP-API.md)
 
 ## Para Desarrolladores
 
