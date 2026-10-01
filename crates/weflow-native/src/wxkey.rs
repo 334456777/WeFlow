@@ -35,9 +35,15 @@ impl WxKey {
                     initialize_hook: load_symbol::<InitializeHookFn>(&lib, b"InitializeHook\0"),
                     poll_key_data: load_symbol::<PollKeyDataFn>(&lib, b"PollKeyData\0"),
                     cleanup_hook: load_symbol::<CleanupHookFn>(&lib, b"CleanupHook\0"),
-                    get_last_error_msg: load_symbol::<GetLastErrorMsgFn>(&lib, b"GetLastErrorMsg\0"),
+                    get_last_error_msg: load_symbol::<GetLastErrorMsgFn>(
+                        &lib,
+                        b"GetLastErrorMsg\0",
+                    ),
                     get_image_key: load_symbol::<GetImageKeyFn>(&lib, b"GetImageKey\0"),
-                    get_status_message: load_symbol::<GetStatusMessageFn>(&lib, b"GetStatusMessage\0"),
+                    get_status_message: load_symbol::<GetStatusMessageFn>(
+                        &lib,
+                        b"GetStatusMessage\0",
+                    ),
                     _lib: Some(lib),
                 })
             }
@@ -60,21 +66,38 @@ impl WxKey {
     /// Hooks WeChat (`pid`) and waits up to `timeout` for the 64-hex-digit database key, which
     /// WeChat only produces while it opens its databases (i.e. while the user logs in).
     /// `on_status` receives the DLL's status messages (`level`: 0 info, 1 success, 2 error).
-    pub fn get_db_key(&self, pid: u32, timeout: std::time::Duration, on_status: &mut dyn FnMut(&str, i32)) -> std::result::Result<String, DbKeyError> {
-        let (Some(init), Some(poll), Some(cleanup)) = (self.initialize_hook, self.poll_key_data, self.cleanup_hook) else {
+    pub fn get_db_key(
+        &self,
+        pid: u32,
+        timeout: std::time::Duration,
+        on_status: &mut dyn FnMut(&str, i32),
+    ) -> std::result::Result<String, DbKeyError> {
+        let (Some(init), Some(poll), Some(cleanup)) =
+            (self.initialize_hook, self.poll_key_data, self.cleanup_hook)
+        else {
             return Err(DbKeyError::Other("wx_key library not loaded".into()));
         };
         let ok = unsafe { init(pid) };
         if !ok {
-            let error = self.get_last_error_msg.map(|f| unsafe { take_cstr(f()) }).unwrap_or_default();
+            let error = self
+                .get_last_error_msg
+                .map(|f| unsafe { take_cstr(f()) })
+                .unwrap_or_default();
             if !error.is_empty() {
-                if error.contains("0xC0000022") || error.contains("ACCESS_DENIED") || error.contains("打开目标进程失败") {
+                if error.contains("0xC0000022")
+                    || error.contains("ACCESS_DENIED")
+                    || error.contains("打开目标进程失败")
+                {
                     return Err(DbKeyError::AccessDenied(error));
                 }
                 return Err(DbKeyError::Other(error));
             }
             let status = self.status_message().map(|(m, _)| m).unwrap_or_default();
-            return Err(DbKeyError::Other(if status.is_empty() { "initialization failed".into() } else { status }));
+            return Err(DbKeyError::Other(if status.is_empty() {
+                "initialization failed".into()
+            } else {
+                status
+            }));
         }
         let start = std::time::Instant::now();
         let mut login_hint = false;
@@ -92,7 +115,9 @@ impl WxKey {
                 }
             }
             for _ in 0..5 {
-                let Some((msg, level)) = self.status_message() else { break };
+                let Some((msg, level)) = self.status_message() else {
+                    break;
+                };
                 if !msg.is_empty() {
                     if is_login_related(&msg) {
                         login_hint = true;
@@ -114,24 +139,43 @@ impl WxKey {
         let f = self.get_status_message?;
         let mut buf = vec![0u8; 256];
         let mut level: c_int = 0;
-        if !unsafe { f(buf.as_mut_ptr() as *mut c_char, buf.len() as c_int, &mut level) } {
+        if !unsafe {
+            f(
+                buf.as_mut_ptr() as *mut c_char,
+                buf.len() as c_int,
+                &mut level,
+            )
+        } {
             return None;
         }
         let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        Some((String::from_utf8_lossy(&buf[..len]).trim().to_string(), level))
+        Some((
+            String::from_utf8_lossy(&buf[..len]).trim().to_string(),
+            level,
+        ))
     }
 
     /// Raw JSON of the `kvcomm` cache scan: `{"accounts":[{"wxid":…,"keys":[{"code":…}]}]}`.
     pub fn get_image_key(&self) -> Result<String> {
-        let get_image_key = self.get_image_key.ok_or_else(|| anyhow!("wx_key library not loaded"))?;
+        let get_image_key = self
+            .get_image_key
+            .ok_or_else(|| anyhow!("wx_key library not loaded"))?;
         let mut buffer = vec![0u8; 8192];
-        let ok = unsafe { get_image_key(buffer.as_mut_ptr() as *mut c_char, buffer.len() as c_int) };
+        let ok =
+            unsafe { get_image_key(buffer.as_mut_ptr() as *mut c_char, buffer.len() as c_int) };
         if ok {
             let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
             Ok(String::from_utf8_lossy(&buffer[..len]).to_string())
         } else {
-            let msg = self.get_last_error_msg.map(|f| unsafe { take_cstr(f()) }).unwrap_or_default();
-            Err(anyhow!(if msg.is_empty() { "failed to read the image key cache".to_string() } else { msg }))
+            let msg = self
+                .get_last_error_msg
+                .map(|f| unsafe { take_cstr(f()) })
+                .unwrap_or_default();
+            Err(anyhow!(if msg.is_empty() {
+                "failed to read the image key cache".to_string()
+            } else {
+                msg
+            }))
         }
     }
 }
@@ -160,7 +204,20 @@ impl std::fmt::Display for DbKeyError {
 /// `isLoginRelatedText`
 pub fn is_login_related(value: &str) -> bool {
     let n: String = value.split_whitespace().collect::<String>().to_lowercase();
-    !n.is_empty() && ["登录", "扫码", "二维码", "请在手机上确认", "手机确认", "切换账号", "wechatlogin", "qrcode", "scan"].iter().any(|k| n.contains(k))
+    !n.is_empty()
+        && [
+            "登录",
+            "扫码",
+            "二维码",
+            "请在手机上确认",
+            "手机确认",
+            "切换账号",
+            "wechatlogin",
+            "qrcode",
+            "scan",
+        ]
+        .iter()
+        .any(|k| n.contains(k))
 }
 
 unsafe fn take_cstr(ptr: *const c_char) -> String {
@@ -186,9 +243,7 @@ fn find_wx_key_library(runtime_dir: &Path) -> Option<PathBuf> {
         ];
         candidates.into_iter().find(|p| p.exists())
     } else if cfg!(target_os = "macos") {
-        let candidates = [
-            runtime_dir.join("key/macos/universal/libwx_key.dylib"),
-        ];
+        let candidates = [runtime_dir.join("key/macos/universal/libwx_key.dylib")];
         candidates.into_iter().find(|p| p.exists())
     } else {
         None
@@ -227,12 +282,16 @@ fn find_key_helper(runtime_dir: &Path) -> Result<PathBuf> {
             runtime_dir.join("key/macos/universal/xkey_helper"),
             runtime_dir.join("key/macos/xkey_helper"),
         ];
-        candidates.into_iter().find(|p| p.exists()).ok_or_else(|| anyhow!("xkey_helper not found"))
+        candidates
+            .into_iter()
+            .find(|p| p.exists())
+            .ok_or_else(|| anyhow!("xkey_helper not found"))
     } else if cfg!(target_os = "linux") {
-        let candidates = [
-            runtime_dir.join("key/linux/x64/xkey_helper_linux"),
-        ];
-        candidates.into_iter().find(|p| p.exists()).ok_or_else(|| anyhow!("xkey_helper_linux not found"))
+        let candidates = [runtime_dir.join("key/linux/x64/xkey_helper_linux")];
+        candidates
+            .into_iter()
+            .find(|p| p.exists())
+            .ok_or_else(|| anyhow!("xkey_helper_linux not found"))
     } else {
         Err(anyhow!("key helper is not available on this platform"))
     }
@@ -244,9 +303,14 @@ fn find_image_scan_helper(runtime_dir: &Path) -> Result<PathBuf> {
             runtime_dir.join("key/macos/universal/image_scan_helper"),
             runtime_dir.join("key/macos/image_scan_helper"),
         ];
-        candidates.into_iter().find(|p| p.exists()).ok_or_else(|| anyhow!("image_scan_helper not found"))
+        candidates
+            .into_iter()
+            .find(|p| p.exists())
+            .ok_or_else(|| anyhow!("image_scan_helper not found"))
     } else {
-        Err(anyhow!("image scan helper is not available on this platform"))
+        Err(anyhow!(
+            "image scan helper is not available on this platform"
+        ))
     }
 }
 

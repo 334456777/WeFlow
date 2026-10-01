@@ -18,7 +18,11 @@ pub enum PosterFormat {
 
 impl PosterFormat {
     pub fn parse(s: &str) -> Self {
-        if s == "fileUrl" { Self::FileUrl } else { Self::DataUrl }
+        if s == "fileUrl" {
+            Self::FileUrl
+        } else {
+            Self::DataUrl
+        }
     }
 }
 
@@ -58,7 +62,12 @@ impl VideoInfo {
 /// Year-month directories, newest first (`b.localeCompare(a)` on ASCII names).
 fn year_month_dirs(base: &Path) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(base)
-        .map(|rd| rd.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect())
+        .map(|rd| {
+            rd.filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect()
+        })
         .unwrap_or_default();
     dirs.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
     dirs
@@ -67,10 +76,14 @@ fn year_month_dirs(base: &Path) -> Vec<PathBuf> {
 fn build_index(base: &Path) -> HashMap<String, IndexEntry> {
     let mut index: HashMap<String, IndexEntry> = HashMap::new();
     for dir in year_month_dirs(base) {
-        let mut files: Vec<PathBuf> = std::fs::read_dir(&dir).map(|rd| rd.filter_map(Result::ok).map(|e| e.path()).collect()).unwrap_or_default();
+        let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .map(|rd| rd.filter_map(Result::ok).map(|e| e.path()).collect())
+            .unwrap_or_default();
         files.sort();
         for full in files {
-            let Some(name) = full.file_name().and_then(|n| n.to_str()) else { continue };
+            let Some(name) = full.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
             let lower = name.to_lowercase();
             if let Some(md5) = lower.strip_suffix(".mp4") {
                 let e = index.entry(md5.to_string()).or_default();
@@ -85,7 +98,9 @@ fn build_index(base: &Path) -> HashMap<String, IndexEntry> {
                 }
                 continue;
             }
-            let Some(jpg) = lower.strip_suffix(".jpg") else { continue };
+            let Some(jpg) = lower.strip_suffix(".jpg") else {
+                continue;
+            };
             if let Some(base_md5) = jpg.strip_suffix("_thumb") {
                 let e = index.entry(base_md5.to_string()).or_default();
                 if e.thumb.is_none() {
@@ -99,10 +114,16 @@ fn build_index(base: &Path) -> HashMap<String, IndexEntry> {
             }
         }
     }
-    let raw_keys: Vec<String> = index.keys().filter(|k| k.ends_with("_raw")).cloned().collect();
+    let raw_keys: Vec<String> = index
+        .keys()
+        .filter(|k| k.ends_with("_raw"))
+        .cloned()
+        .collect();
     for key in raw_keys {
         let base_key = key.trim_end_matches("_raw").to_string();
-        let Some(base_entry) = index.get(&base_key).cloned() else { continue };
+        let Some(base_entry) = index.get(&base_key).cloned() else {
+            continue;
+        };
         let e = index.get_mut(&key).unwrap();
         if e.cover.is_none() {
             e.cover = base_entry.cover;
@@ -116,7 +137,11 @@ fn build_index(base: &Path) -> HashMap<String, IndexEntry> {
 
 /// `pathToFileURL(path).toString()`
 pub fn path_to_file_url(path: &Path) -> String {
-    let abs = if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir().unwrap_or_default().join(path) };
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(path)
+    };
     let text = abs.to_string_lossy().replace('\\', "/");
     let mut out = String::from("file://");
     if !text.starts_with('/') {
@@ -124,7 +149,27 @@ pub fn path_to_file_url(path: &Path) -> String {
     }
     for b in text.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@' | b'/' => out.push(b as char),
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'.'
+            | b'_'
+            | b'~'
+            | b'!'
+            | b'$'
+            | b'&'
+            | b'\''
+            | b'('
+            | b')'
+            | b'*'
+            | b'+'
+            | b','
+            | b';'
+            | b'='
+            | b':'
+            | b'@'
+            | b'/' => out.push(b as char),
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -137,13 +182,26 @@ fn poster_url(path: Option<&Path>, mime: &str, format: PosterFormat) -> Option<S
         PosterFormat::FileUrl => Some(path_to_file_url(path)),
         PosterFormat::DataUrl => {
             let bytes = std::fs::read(path).ok()?;
-            Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+            Some(format!(
+                "data:{mime};base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            ))
         }
     }
 }
 
-fn info_for(video: &Path, cover: Option<&Path>, thumb: Option<&Path>, include_poster: bool, format: PosterFormat) -> VideoInfo {
-    let mut info = VideoInfo { video_url: Some(video.to_string_lossy().to_string()), exists: true, ..Default::default() };
+fn info_for(
+    video: &Path,
+    cover: Option<&Path>,
+    thumb: Option<&Path>,
+    include_poster: bool,
+    format: PosterFormat,
+) -> VideoInfo {
+    let mut info = VideoInfo {
+        video_url: Some(video.to_string_lossy().to_string()),
+        exists: true,
+        ..Default::default()
+    };
     if include_poster {
         info.cover_url = poster_url(cover, "image/jpeg", format);
         info.thumb_url = poster_url(thumb, "image/jpeg", format);
@@ -152,7 +210,12 @@ fn info_for(video: &Path, cover: Option<&Path>, thumb: Option<&Path>, include_po
 }
 
 /// `getVideoInfo`: index lookup (md5, then the `_raw` twin), then a directory scan.
-pub fn video_info(video_base_dir: &Path, md5: &str, include_poster: bool, format: PosterFormat) -> VideoInfo {
+pub fn video_info(
+    video_base_dir: &Path,
+    md5: &str,
+    include_poster: bool,
+    format: PosterFormat,
+) -> VideoInfo {
     let normalized = md5.trim().to_lowercase();
     if normalized.is_empty() || !video_base_dir.exists() {
         return VideoInfo::default();
@@ -165,9 +228,19 @@ pub fn video_info(video_base_dir: &Path, md5: &str, include_poster: bool, format
         None => candidates.push(format!("{real}_raw")),
     }
     for key in &candidates {
-        let Some(entry) = index.get(key) else { continue };
-        let Some(video) = entry.video.as_ref().filter(|p| p.exists()) else { continue };
-        return info_for(video, entry.cover.as_deref(), entry.thumb.as_deref(), include_poster, format);
+        let Some(entry) = index.get(key) else {
+            continue;
+        };
+        let Some(video) = entry.video.as_ref().filter(|p| p.exists()) else {
+            continue;
+        };
+        return info_for(
+            video,
+            entry.cover.as_deref(),
+            entry.thumb.as_deref(),
+            include_poster,
+            format,
+        );
     }
     // fallback scan
     for dir in year_month_dirs(video_base_dir) {
@@ -176,7 +249,13 @@ pub fn video_info(video_base_dir: &Path, md5: &str, include_poster: bool, format
             continue;
         }
         let base = real.trim_end_matches("_raw");
-        return info_for(&video, Some(&dir.join(format!("{base}.jpg"))), Some(&dir.join(format!("{base}_thumb.jpg"))), include_poster, format);
+        return info_for(
+            &video,
+            Some(&dir.join(format!("{base}.jpg"))),
+            Some(&dir.join(format!("{base}_thumb.jpg"))),
+            include_poster,
+            format,
+        );
     }
     VideoInfo::default()
 }
@@ -187,10 +266,13 @@ pub fn parse_video_md5(content: &str) -> Option<String> {
         return None;
     }
     let lower = |c: &regex::Captures| c[1].to_lowercase();
-    if let Some(c) = rx(r#"(?i)<videomsg[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content) {
+    if let Some(c) = rx(r#"(?i)<videomsg[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content)
+    {
         return Some(lower(&c));
     }
-    if let Some(c) = rx(r#"(?i)<videomsg[^>]*\srawmd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content) {
+    if let Some(c) =
+        rx(r#"(?i)<videomsg[^>]*\srawmd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content)
+    {
         return Some(lower(&c));
     }
     // `(?<![a-z])md5\s*=` without lookbehind: require a non-letter (or start) before it
@@ -219,12 +301,29 @@ mod tests {
 
     #[test]
     fn md5_strategies_follow_the_desktop_priority() {
-        assert_eq!(parse_video_md5(r#"<msg><videomsg length="1" md5="ABCD12" rawmd5="ffff"/></msg>"#).as_deref(), Some("abcd12"));
-        assert_eq!(parse_video_md5(r#"<videomsg length="1" rawmd5="EEee"/>"#).as_deref(), Some("eeee"));
-        assert_eq!(parse_video_md5(r#"<x md5='aa11'/>"#).as_deref(), Some("aa11"));
+        assert_eq!(
+            parse_video_md5(r#"<msg><videomsg length="1" md5="ABCD12" rawmd5="ffff"/></msg>"#)
+                .as_deref(),
+            Some("abcd12")
+        );
+        assert_eq!(
+            parse_video_md5(r#"<videomsg length="1" rawmd5="EEee"/>"#).as_deref(),
+            Some("eeee")
+        );
+        assert_eq!(
+            parse_video_md5(r#"<x md5='aa11'/>"#).as_deref(),
+            Some("aa11")
+        );
         assert_eq!(parse_video_md5("<md5>ab12</md5>").as_deref(), Some("ab12"));
-        assert_eq!(parse_video_md5(r#"<x newmd5="zz" rawmd5="beef"/>"#).as_deref(), Some("beef"));
-        assert_eq!(parse_video_md5(r#"<x cdnthumbmd5="abcd"/>"#), None, "a longer attribute name never matches the bare md5 rule");
+        assert_eq!(
+            parse_video_md5(r#"<x newmd5="zz" rawmd5="beef"/>"#).as_deref(),
+            Some("beef")
+        );
+        assert_eq!(
+            parse_video_md5(r#"<x cdnthumbmd5="abcd"/>"#),
+            None,
+            "a longer attribute name never matches the bare md5 rule"
+        );
         assert_eq!(parse_video_md5(""), None);
     }
 
@@ -236,13 +335,25 @@ mod tests {
         let md5 = "0123456789abcdef0123456789abcdef";
         std::fs::write(base.join("2024-01").join(format!("{md5}.mp4")), b"old").unwrap();
         std::fs::write(base.join("2024-02").join(format!("{md5}.mp4")), b"new").unwrap();
-        std::fs::write(base.join("2024-02").join(format!("{md5}.jpg")), b"\xff\xd8cover").unwrap();
-        std::fs::write(base.join("2024-02").join(format!("{md5}_thumb.jpg")), b"\xff\xd8thumb").unwrap();
+        std::fs::write(
+            base.join("2024-02").join(format!("{md5}.jpg")),
+            b"\xff\xd8cover",
+        )
+        .unwrap();
+        std::fs::write(
+            base.join("2024-02").join(format!("{md5}_thumb.jpg")),
+            b"\xff\xd8thumb",
+        )
+        .unwrap();
 
         let info = video_info(&base, md5, true, PosterFormat::DataUrl);
         assert!(info.exists);
         assert!(info.video_url.as_deref().unwrap().contains("2024-02"));
-        assert!(info.cover_url.as_deref().unwrap().starts_with("data:image/jpeg;base64,"));
+        assert!(info
+            .cover_url
+            .as_deref()
+            .unwrap()
+            .starts_with("data:image/jpeg;base64,"));
         assert!(info.thumb_url.is_some());
 
         let info = video_info(&base, &md5.to_uppercase(), false, PosterFormat::DataUrl);
@@ -257,12 +368,23 @@ mod tests {
         let fu = video_info(&base, md5, true, PosterFormat::FileUrl);
         assert!(fu.cover_url.unwrap().starts_with("file:///"));
 
-        assert!(!video_info(&base, "ffffffffffffffffffffffffffffffff", true, PosterFormat::DataUrl).exists);
+        assert!(
+            !video_info(
+                &base,
+                "ffffffffffffffffffffffffffffffff",
+                true,
+                PosterFormat::DataUrl
+            )
+            .exists
+        );
         assert!(!video_info(&base.join("missing"), md5, true, PosterFormat::DataUrl).exists);
     }
 
     #[test]
     fn file_urls_percent_encode_like_node() {
-        assert_eq!(path_to_file_url(Path::new("/a b/c#d/é.mp4")), "file:///a%20b/c%23d/%C3%A9.mp4");
+        assert_eq!(
+            path_to_file_url(Path::new("/a b/c#d/é.mp4")),
+            "file:///a%20b/c%23d/%C3%A9.mp4"
+        );
     }
 }

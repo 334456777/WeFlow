@@ -38,14 +38,12 @@ pub fn parse_biz_content_list(xml_str: &str) -> Vec<Value> {
             let item_xml = &xml_str[abs_start..abs_start + end];
             let title = extract_xml_value(item_xml, "title");
             if !title.is_empty() {
-                let cover = fallback_or_empty(
-                    &extract_xml_value(item_xml, "cover"),
-                    || extract_xml_value(item_xml, "thumburl"),
-                );
-                let summary = fallback_or_empty(
-                    &extract_xml_value(item_xml, "summary"),
-                    || extract_xml_value(item_xml, "digest"),
-                );
+                let cover = fallback_or_empty(&extract_xml_value(item_xml, "cover"), || {
+                    extract_xml_value(item_xml, "thumburl")
+                });
+                let summary = fallback_or_empty(&extract_xml_value(item_xml, "summary"), || {
+                    extract_xml_value(item_xml, "digest")
+                });
                 items.push(json!({
                     "title": title,
                     "url": extract_xml_value(item_xml, "url"),
@@ -72,7 +70,11 @@ pub fn parse_pay_xml(xml_str: &str) -> Option<Value> {
     }
     let merchant_name = {
         let mn = extract_xml_value(xml_str, "display_name");
-        if mn.is_empty() { crate::locale::tr("WeChat Pay", "微信支付").to_string() } else { mn }
+        if mn.is_empty() {
+            crate::locale::tr("WeChat Pay", "微信支付").to_string()
+        } else {
+            mn
+        }
     };
     let pub_time_str = extract_xml_value(xml_str, "pub_time");
     let pub_time: i64 = pub_time_str.parse().unwrap_or(0);
@@ -158,10 +160,9 @@ pub fn parse_biz_messages(messages: &Value) -> Vec<Value> {
         let title = extract_xml_value(content, "title");
         let des = extract_xml_value(content, "des");
         let url = extract_xml_value(content, "url");
-        let cover = fallback_or_empty(
-            &extract_xml_value(content, "cover"),
-            || extract_xml_value(content, "thumburl"),
-        );
+        let cover = fallback_or_empty(&extract_xml_value(content, "cover"), || {
+            extract_xml_value(content, "thumburl")
+        });
         let content_list_str = extract_xml_value(content, "content_list");
         let content_list = parse_biz_content_list(&content_list_str);
 

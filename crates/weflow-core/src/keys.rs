@@ -9,7 +9,9 @@ const V2_MAGIC: [u8; 6] = [0x07, 0x08, 0x56, 0x32, 0x08, 0x07];
 
 /// `cleanWxid` of the key service: keeps everything before the second underscore.
 pub fn clean_wxid(wxid: &str) -> String {
-    let Some(first) = wxid.find('_') else { return wxid.to_string() };
+    let Some(first) = wxid.find('_') else {
+        return wxid.to_string();
+    };
     match wxid[first + 1..].find('_') {
         Some(rel) => wxid[..first + 1 + rel].to_string(),
         None => wxid.to_string(),
@@ -19,7 +21,10 @@ pub fn clean_wxid(wxid: &str) -> String {
 /// `deriveImageKeys`: xor = code & 0xFF, aes = first 16 hex chars of md5(code + cleanedWxid).
 pub fn derive_image_keys(code: u64, wxid: &str) -> (u8, String) {
     use md5::{Digest, Md5};
-    let hash: String = Md5::digest(format!("{code}{}", clean_wxid(wxid)).as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    let hash: String = Md5::digest(format!("{code}{}", clean_wxid(wxid)).as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     ((code & 0xff) as u8, hash[..16].to_string())
 }
 
@@ -43,7 +48,9 @@ fn collect_t_dat(dir: &Path, out: &mut Vec<PathBuf>, max: usize) {
     if out.len() >= max {
         return;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.filter_map(Result::ok) {
         if out.len() >= max {
             break;
@@ -52,7 +59,10 @@ fn collect_t_dat(dir: &Path, out: &mut Vec<PathBuf>, max: usize) {
         let Ok(t) = e.file_type() else { continue };
         if t.is_dir() {
             collect_t_dat(&p, out, max);
-        } else if t.is_file() && p.file_name().map_or(false, |n| n.to_string_lossy().ends_with("_t.dat")) {
+        } else if t.is_file()
+            && p.file_name()
+                .map_or(false, |n| n.to_string_lossy().ends_with("_t.dat"))
+        {
             out.push(p);
         }
     }
@@ -123,7 +133,12 @@ pub fn collect_wxid_candidates(manual_dir: Option<&str>, wxid: Option<&str>) -> 
             if let Some(pos) = lower.find(marker) {
                 let root = &norm[..pos + marker.len()];
                 if let Ok(rd) = std::fs::read_dir(root) {
-                    let mut names: Vec<String> = rd.filter_map(Result::ok).filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with("wxid_")).collect();
+                    let mut names: Vec<String> = rd
+                        .filter_map(Result::ok)
+                        .filter(|e| e.path().is_dir())
+                        .map(|e| e.file_name().to_string_lossy().to_string())
+                        .filter(|n| n.starts_with("wxid_"))
+                        .collect();
                     names.sort();
                     for n in names {
                         push(&n);
@@ -147,7 +162,11 @@ mod tests {
         assert_eq!(clean_wxid("wxid_abc123_e50d"), "wxid_abc123");
         assert_eq!(clean_wxid("wxid_abc123"), "wxid_abc123");
         assert_eq!(clean_wxid("plain"), "plain");
-        assert_eq!(clean_wxid("name_1234"), "name_1234", "only wxid-style names with two underscores are cut");
+        assert_eq!(
+            clean_wxid("name_1234"),
+            "name_1234",
+            "only wxid-style names with two underscores are cut"
+        );
     }
 
     #[test]
@@ -155,12 +174,20 @@ mod tests {
         let (xor, aes) = derive_image_keys(0x1234_5a5a, "wxid_abc_e50d");
         assert_eq!(xor, 0x5a);
         assert_eq!(aes.len(), 16);
-        assert_eq!((xor, aes.clone()), derive_image_keys(0x1234_5a5a, "wxid_abc"));
+        assert_eq!(
+            (xor, aes.clone()),
+            derive_image_keys(0x1234_5a5a, "wxid_abc")
+        );
         let cipher = aes::Aes128::new(GenericArray::from_slice(aes.as_bytes()));
-        let mut block = GenericArray::clone_from_slice(&[0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+        let mut block = GenericArray::clone_from_slice(&[
+            0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+        ]);
         cipher.encrypt_block(&mut block);
         assert!(verify_derived_aes_key(&aes, block.as_slice()));
-        assert!(!verify_derived_aes_key("0123456789abcdef", block.as_slice()));
+        assert!(!verify_derived_aes_key(
+            "0123456789abcdef",
+            block.as_slice()
+        ));
         assert!(!verify_derived_aes_key("short", block.as_slice()));
     }
 
@@ -189,12 +216,16 @@ mod tests {
 
     #[test]
     fn candidates_include_siblings() {
-        let root = std::env::temp_dir().join(format!("weflow-cand-{}/xwechat_files", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("weflow-cand-{}/xwechat_files", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("wxid_a_1111")).unwrap();
         std::fs::create_dir_all(root.join("wxid_b_2222")).unwrap();
         std::fs::create_dir_all(root.join("all_users")).unwrap();
-        let c = collect_wxid_candidates(Some(root.join("wxid_b_2222").to_str().unwrap()), Some("wxid_cfg"));
+        let c = collect_wxid_candidates(
+            Some(root.join("wxid_b_2222").to_str().unwrap()),
+            Some("wxid_cfg"),
+        );
         assert_eq!(c, vec!["wxid_cfg", "wxid_b_2222", "wxid_a_1111", "unknown"]);
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }

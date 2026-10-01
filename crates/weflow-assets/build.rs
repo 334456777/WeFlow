@@ -37,8 +37,12 @@ fn main() {
     generated.push_str("pub const EMBEDDED_ASSETS: &[EmbeddedAsset] = &[\n");
     for (logical, absolute) in assets {
         // hashed here, so starting the program never has to hash the embedded files
-        let bytes = fs::read(&absolute).unwrap_or_else(|e| panic!("read {}: {e}", absolute.display()));
-        let sha256: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+        let bytes =
+            fs::read(&absolute).unwrap_or_else(|e| panic!("read {}: {e}", absolute.display()));
+        let sha256: String = Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         generated.push_str("    EmbeddedAsset { logical_path: ");
         generated.push_str(&format!("{:?}", logical));
         generated.push_str(", bytes: include_bytes!(");
@@ -51,7 +55,13 @@ fn main() {
         .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()
-        .and_then(|out| if out.status.success() { Some(out.stdout) } else { None })
+        .and_then(|out| {
+            if out.status.success() {
+                Some(out.stdout)
+            } else {
+                None
+            }
+        })
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())

@@ -24,9 +24,20 @@ fn fake_ai(answer: &'static str) -> (String, Arc<Mutex<Vec<String>>>) {
                 total += n;
                 let text = String::from_utf8_lossy(&buf[..total]).to_string();
                 if let Some(pos) = text.find("\r\n\r\n") {
-                    let len: usize = text.lines().find_map(|l| l.to_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse().unwrap())).unwrap_or(0);
+                    let len: usize = text
+                        .lines()
+                        .find_map(|l| {
+                            l.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse().unwrap())
+                        })
+                        .unwrap_or(0);
                     if total >= pos + 4 + len || n == 0 {
-                        seen2.lock().unwrap().push(format!("{}\n{}", &text[..pos], &text[pos + 4..]));
+                        seen2.lock().unwrap().push(format!(
+                            "{}\n{}",
+                            &text[..pos],
+                            &text[pos + 4..]
+                        ));
                         break;
                     }
                 } else if n == 0 {
@@ -47,7 +58,8 @@ fn hub_with_ai(tag: &str, base: String, filter: &[&str]) -> weflow_core::service
         p.ai_model_api_key = Some("sk-test".into());
         p.ai_model_api_model = Some("test-model".into());
         p.ai_insight_enabled = Some(true);
-        p.extra.insert("aiInsightFilterMode".into(), json!("whitelist"));
+        p.extra
+            .insert("aiInsightFilterMode".into(), json!("whitelist"));
         p.extra.insert("aiInsightFilterList".into(), json!(filter));
         p.extra.insert("aiInsightAllowContext".into(), json!(true));
         p.extra.insert("aiFootprintEnabled".into(), json!(true));
@@ -61,7 +73,10 @@ async fn connection_test_uses_chat_completions_without_adding_v1() {
     let hub = hub_with_ai("ins-test", base, &[]);
     let r = hub.insight_test_connection().await;
     assert_eq!(r["success"], true, "{r}");
-    assert!(r["message"].as_str().unwrap().contains("connection successful"));
+    assert!(r["message"]
+        .as_str()
+        .unwrap()
+        .contains("connection successful"));
     let req = seen.lock().unwrap()[0].clone();
     assert!(req.starts_with("POST /v1/chat/completions "), "{req}");
     assert!(req.to_lowercase().contains("authorization: bearer sk-test"));
@@ -75,7 +90,10 @@ async fn trigger_test_builds_context_and_stores_a_record() {
     let r = hub.insight_trigger_test().await;
     assert_eq!(r["success"], true, "{r}");
     let req = seen.lock().unwrap()[0].clone();
-    assert!(req.contains("Recent chat history"), "context section present: {req}");
+    assert!(
+        req.contains("Recent chat history"),
+        "context section present: {req}"
+    );
     assert!(req.contains("Give your insight"), "{req}");
     assert!(req.contains("Current system time"), "{req}");
 
@@ -89,11 +107,20 @@ async fn trigger_test_builds_context_and_stores_a_record() {
     let id = rec["id"].as_str().unwrap().to_string();
     let full = hub.insight_get_record(&id);
     assert_eq!(full["record"]["log"]["model"], "test-model");
-    assert!(full["record"]["log"]["endpoint"].as_str().unwrap().ends_with("/v1/chat/completions"));
+    assert!(full["record"]["log"]["endpoint"]
+        .as_str()
+        .unwrap()
+        .ends_with("/v1/chat/completions"));
     assert_eq!(hub.insight_mark_record_read(&id)["success"], true);
-    assert_eq!(hub.insight_list_records(&RecordFilters::default())["unreadCount"], 0);
+    assert_eq!(
+        hub.insight_list_records(&RecordFilters::default())["unreadCount"],
+        0
+    );
     assert_eq!(hub.insight_today_stats().as_array().unwrap().len(), 1);
-    assert_eq!(hub.insight_clear_records(&RecordFilters::default())["removed"], 1);
+    assert_eq!(
+        hub.insight_clear_records(&RecordFilters::default())["removed"],
+        1
+    );
 }
 
 #[tokio::test]
@@ -109,7 +136,11 @@ async fn silence_scan_and_skip_answers() {
     let (base2, _) = fake_ai("SKIP");
     let hub2 = hub_with_ai("ins-skip", base2, &["wxid_bob"]);
     assert_eq!(hub2.insight_silence_scan(&mut |_| {}).await, 0);
-    assert_eq!(hub2.insight_list_records(&RecordFilters::default())["total"], 0, "SKIP answers are dropped");
+    assert_eq!(
+        hub2.insight_list_records(&RecordFilters::default())["total"],
+        0,
+        "SKIP answers are dropped"
+    );
 }
 
 #[tokio::test]

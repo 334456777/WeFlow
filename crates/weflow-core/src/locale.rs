@@ -26,8 +26,17 @@ impl Lang {
     /// Parse a locale string such as `zh_CN.UTF-8`, `zh-TW`, `zh-Hans-CN`, `en_US` or `zh`.
     pub fn from_locale(value: &str) -> Lang {
         // LANGUAGE may hold a colon-separated priority list: use its first entry.
-        let first = value.split(':').next().unwrap_or("").trim().to_ascii_lowercase();
-        if first == "zh" || first.starts_with("zh_") || first.starts_with("zh-") || first.starts_with("zh.") {
+        let first = value
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if first == "zh"
+            || first.starts_with("zh_")
+            || first.starts_with("zh-")
+            || first.starts_with("zh.")
+        {
             Lang::Zh
         } else {
             Lang::En
@@ -35,7 +44,10 @@ impl Lang {
     }
 
     /// The environment decides when any of the variables is set; otherwise `system` (the OS display language).
-    pub fn detect_with(get: impl Fn(&str) -> Option<String>, system: impl Fn() -> Option<String>) -> Lang {
+    pub fn detect_with(
+        get: impl Fn(&str) -> Option<String>,
+        system: impl Fn() -> Option<String>,
+    ) -> Lang {
         for key in ENV_PRECEDENCE {
             if let Some(value) = get(key) {
                 if !value.trim().is_empty() {
@@ -62,11 +74,18 @@ pub fn system_locale() -> Option<String> {
         // SAFETY: a plain Win32 call without arguments.
         let langid = unsafe { GetUserDefaultUILanguage() };
         // The primary language lives in the low 10 bits; 0x04 is Chinese (all scripts and regions).
-        return Some(if langid & 0x3ff == 0x04 { "zh".to_string() } else { "other".to_string() });
+        return Some(if langid & 0x3ff == 0x04 {
+            "zh".to_string()
+        } else {
+            "other".to_string()
+        });
     }
     #[cfg(target_os = "macos")]
     {
-        let out = std::process::Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output().ok()?;
+        let out = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleLanguages"])
+            .output()
+            .ok()?;
         return first_apple_language(&String::from_utf8_lossy(&out.stdout));
     }
     #[cfg(not(any(windows, target_os = "macos")))]
@@ -108,15 +127,21 @@ mod tests {
     use std::collections::HashMap;
 
     fn detect(pairs: &[(&str, &str)], system: Option<&str>) -> Lang {
-        let map: HashMap<String, String> =
-            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         Lang::detect_with(|key| map.get(key).cloned(), || system.map(str::to_string))
     }
 
     #[test]
     fn unknown_locales_resolve_to_english() {
         assert_eq!(detect(&[], None), Lang::En, "nothing to go on");
-        assert_eq!(detect(&[("LANG", "C")], Some("zh-CN")), Lang::En, "an explicit C locale is respected");
+        assert_eq!(
+            detect(&[("LANG", "C")], Some("zh-CN")),
+            Lang::En,
+            "an explicit C locale is respected"
+        );
         assert_eq!(detect(&[("LANG", "POSIX")], None), Lang::En);
         assert_eq!(detect(&[("LANG", "en_US.UTF-8")], None), Lang::En);
         assert_eq!(detect(&[("LANG", "ja_JP.UTF-8")], None), Lang::En);
@@ -131,11 +156,23 @@ mod tests {
 
     #[test]
     fn precedence_follows_posix() {
-        assert_eq!(detect(&[("LANG", "zh_CN.UTF-8"), ("LC_ALL", "en_US.UTF-8")], None), Lang::En);
-        assert_eq!(detect(&[("LANG", "en_US"), ("LC_MESSAGES", "zh_CN")], None), Lang::Zh);
-        assert_eq!(detect(&[("LC_ALL", "C"), ("LANG", "zh_CN")], None), Lang::En);
+        assert_eq!(
+            detect(&[("LANG", "zh_CN.UTF-8"), ("LC_ALL", "en_US.UTF-8")], None),
+            Lang::En
+        );
+        assert_eq!(
+            detect(&[("LANG", "en_US"), ("LC_MESSAGES", "zh_CN")], None),
+            Lang::Zh
+        );
+        assert_eq!(
+            detect(&[("LC_ALL", "C"), ("LANG", "zh_CN")], None),
+            Lang::En
+        );
         assert_eq!(detect(&[("LC_ALL", ""), ("LANG", "zh_CN")], None), Lang::Zh);
-        assert_eq!(detect(&[("WEFLOW_LANG", "en"), ("LANG", "zh_CN")], Some("zh-CN")), Lang::En);
+        assert_eq!(
+            detect(&[("WEFLOW_LANG", "en"), ("LANG", "zh_CN")], Some("zh-CN")),
+            Lang::En
+        );
         assert_eq!(detect(&[("LANGUAGE", "zh_CN:en")], None), Lang::Zh);
     }
 
@@ -146,7 +183,11 @@ mod tests {
         assert_eq!(detect(&[], Some("zh")), Lang::Zh);
         assert_eq!(detect(&[], Some("en-US")), Lang::En);
         assert_eq!(detect(&[], Some("other")), Lang::En);
-        assert_eq!(detect(&[("LC_ALL", "  ")], Some("zh-TW")), Lang::Zh, "blank variables do not count as set");
+        assert_eq!(
+            detect(&[("LC_ALL", "  ")], Some("zh-TW")),
+            Lang::Zh,
+            "blank variables do not count as set"
+        );
         // any environment variable beats the system language, in either direction
         assert_eq!(detect(&[("LANG", "en_US.UTF-8")], Some("zh-CN")), Lang::En);
         assert_eq!(detect(&[("WEFLOW_LANG", "zh")], Some("en-US")), Lang::Zh);
@@ -154,7 +195,10 @@ mod tests {
 
     #[test]
     fn apple_languages_output_is_parsed() {
-        assert_eq!(first_apple_language("(\n    \"zh-Hans-CN\",\n    \"en-CN\"\n)\n").as_deref(), Some("zh-Hans-CN"));
+        assert_eq!(
+            first_apple_language("(\n    \"zh-Hans-CN\",\n    \"en-CN\"\n)\n").as_deref(),
+            Some("zh-Hans-CN")
+        );
         assert_eq!(first_apple_language("(\n    en\n)").as_deref(), Some("en"));
         assert_eq!(first_apple_language(""), None);
         assert_eq!(first_apple_language("(\n)"), None);

@@ -28,7 +28,8 @@ pub fn rx(pattern: &str) -> Rc<Regex> {
         if let Some(found) = cache.get(pattern) {
             return found.clone();
         }
-        let compiled = Rc::new(Regex::new(pattern).unwrap_or_else(|e| panic!("bad regex {pattern}: {e}")));
+        let compiled =
+            Rc::new(Regex::new(pattern).unwrap_or_else(|e| panic!("bad regex {pattern}: {e}")));
         cache.insert(pattern.to_string(), compiled.clone());
         compiled
     })
@@ -39,7 +40,8 @@ pub fn extract_xml_value(xml: &str, tag: &str) -> String {
         crate::xml::tag_inner(xml, tag)
     } else {
         let re = rx(&format!(r"(?is)<{0}>(.*?)</{0}>", regex::escape(tag)));
-        re.captures(xml).map(|c| c.get(1).map_or("", |m| m.as_str()))
+        re.captures(xml)
+            .map(|c| c.get(1).map_or("", |m| m.as_str()))
     };
     match inner {
         Some(c) => strip_cdata(c),
@@ -51,7 +53,9 @@ pub fn extract_xml_value(xml: &str, tag: &str) -> String {
 fn strip_cdata(c: &str) -> String {
     use crate::xml::replace_cow;
     use std::borrow::Cow;
-    replace_cow(replace_cow(Cow::Borrowed(c), "<![CDATA[", ""), "]]>", "").trim().to_string()
+    replace_cow(replace_cow(Cow::Borrowed(c), "<![CDATA[", ""), "]]>", "")
+        .trim()
+        .to_string()
 }
 
 pub fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
@@ -60,7 +64,9 @@ pub fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
         regex::escape(tag),
         regex::escape(attr)
     ));
-    re.captures(xml).map(|c| c[1].to_string()).unwrap_or_default()
+    re.captures(xml)
+        .map(|c| c[1].to_string())
+        .unwrap_or_default()
 }
 
 pub fn decode_html_entities(text: &str) -> String {
@@ -138,7 +144,9 @@ pub fn sanitize_quoted_content(content: &str) -> String {
     if content.is_empty() {
         return String::new();
     }
-    let mut r = rx(r"wxid_[A-Za-z0-9_-]{3,}").replace_all(content, "").to_string();
+    let mut r = rx(r"wxid_[A-Za-z0-9_-]{3,}")
+        .replace_all(content, "")
+        .to_string();
     r = rx(r"^[\s:：\-]+").replace(&r, "").to_string();
     r = rx(r"[:：]{2,}").replace_all(&r, ":").to_string();
     r = rx(r"^[\s:：\-]+").replace(&r, "").to_string();
@@ -181,13 +189,23 @@ use chrono::{Local, TimeZone};
 /// (a daylight-saving jump at 00:00) starts at the first moment that does.
 pub fn local_midnight(year: i32, month: u32, day: u32) -> Option<i64> {
     let midnight = chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(0, 0, 0)?;
-    (0..=3 * 60).find_map(|minutes| Local.from_local_datetime(&(midnight + chrono::Duration::minutes(minutes))).earliest()).map(|t| t.timestamp())
+    (0..=3 * 60)
+        .find_map(|minutes| {
+            Local
+                .from_local_datetime(&(midnight + chrono::Duration::minutes(minutes)))
+                .earliest()
+        })
+        .map(|t| t.timestamp())
 }
 
 /// Unix time of 00:00 on the day after a calendar date, local time zone.
 pub fn local_midnight_after(year: i32, month: u32, day: u32) -> Option<i64> {
     let next = chrono::NaiveDate::from_ymd_opt(year, month, day)?.succ_opt()?;
-    local_midnight(chrono::Datelike::year(&next), chrono::Datelike::month(&next), chrono::Datelike::day(&next))
+    local_midnight(
+        chrono::Datelike::year(&next),
+        chrono::Datelike::month(&next),
+        chrono::Datelike::day(&next),
+    )
 }
 
 pub fn format_timestamp(ts: i64) -> String {
@@ -227,10 +245,19 @@ fn parse_compact_datetime(raw: &str) -> i64 {
     let hour = if raw.len() >= 12 { num(8, 10) } else { 0 };
     let minute = if raw.len() >= 12 { num(10, 12) } else { 0 };
     let second = if raw.len() >= 14 { num(12, 14) } else { 0 };
-    if !(1990..=2200).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 59 {
+    if !(1990..=2200).contains(&year)
+        || !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
         return 0;
     }
-    match Local.with_ymd_and_hms(year, month, day, hour, minute, second).single() {
+    match Local
+        .with_ymd_and_hms(year, month, day, hour, minute, second)
+        .single()
+    {
         Some(dt) => dt.timestamp().max(0),
         None => 0,
     }
@@ -252,11 +279,20 @@ fn parse_datetime_text(value: &str) -> i64 {
     }
     let normalized = raw.replace('T', " ");
     let normalized = rx(r"\.\d+$").replace(&normalized, "").replace('/', "-");
-    let Some(c) = rx(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?: (\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$").captures(&normalized) else {
+    let Some(c) = rx(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?: (\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$")
+        .captures(&normalized)
+    else {
         return 0;
     };
-    let g = |i: usize| c.get(i).map(|m| m.as_str().parse::<u32>().unwrap_or(0)).unwrap_or(0);
-    match Local.with_ymd_and_hms(g(1) as i32, g(2), g(3), g(4), g(5), g(6)).single() {
+    let g = |i: usize| {
+        c.get(i)
+            .map(|m| m.as_str().parse::<u32>().unwrap_or(0))
+            .unwrap_or(0)
+    };
+    match Local
+        .with_ymd_and_hms(g(1) as i32, g(2), g(3), g(4), g(5), g(6))
+        .single()
+    {
         Some(dt) => dt.timestamp().max(0),
         None => 0,
     }
@@ -308,7 +344,9 @@ fn value_to_string(v: &Value) -> String {
 }
 
 pub fn row_int(row: &Value, keys: &[&str], fallback: i64) -> i64 {
-    let Some(obj) = row.as_object() else { return fallback };
+    let Some(obj) = row.as_object() else {
+        return fallback;
+    };
     for key in keys {
         if let Some(v) = obj.get(*key) {
             let text = match v {
@@ -337,7 +375,11 @@ pub fn normalize_unsigned_token(value: &str) -> String {
     }
     if raw.chars().all(|c| c.is_ascii_digit()) {
         let t = raw.trim_start_matches('0');
-        return if t.is_empty() { "0".into() } else { t.to_string() };
+        return if t.is_empty() {
+            "0".into()
+        } else {
+            t.to_string()
+        };
     }
     match raw.parse::<f64>() {
         Ok(n) if n.is_finite() && n > 0.0 => format!("{}", n.floor() as i128),
@@ -348,7 +390,17 @@ pub fn normalize_unsigned_token(value: &str) -> String {
 pub fn get_timestamp_seconds(row: &Value) -> i64 {
     let primary_raw = row_field(
         row,
-        &["create_time", "createTime", "createtime", "msg_create_time", "msgCreateTime", "msg_time", "msgTime", "time", "WCDB_CT_create_time"],
+        &[
+            "create_time",
+            "createTime",
+            "createtime",
+            "msg_create_time",
+            "msgCreateTime",
+            "msg_time",
+            "msgTime",
+            "time",
+            "WCDB_CT_create_time",
+        ],
     );
     let primary = primary_raw.map(normalize_row_timestamp).unwrap_or(0);
     let sort_seq = row_field(row, &["sort_seq", "sortSeq", "server_seq", "serverSeq"])
@@ -535,14 +587,29 @@ impl ExportMsg {
     pub fn to_json(&self, my_wxid: &str) -> Value {
         let mut o = Map::new();
         o.insert("localId".into(), json!(self.local_id));
-        o.insert("serverId".into(), json!(self.server_id_raw.clone().unwrap_or_else(|| self.server_id.to_string())));
+        o.insert(
+            "serverId".into(),
+            json!(self
+                .server_id_raw
+                .clone()
+                .unwrap_or_else(|| self.server_id.to_string())),
+        );
         o.insert("createTime".into(), json!(self.create_time));
         o.insert("localType".into(), json!(self.local_type));
         o.insert("isSend".into(), json!(if self.is_send { 1 } else { 0 }));
         o.insert("senderUsername".into(), json!(self.sender_username));
         o.insert("content".into(), json!(self.content));
-        let text = parse_message_content(&self.content, self.local_type, Some(my_wxid), Some(&self.sender_username), self.emoji_caption.as_deref());
-        o.insert("text".into(), text.map(Value::String).unwrap_or(Value::Null));
+        let text = parse_message_content(
+            &self.content,
+            self.local_type,
+            Some(my_wxid),
+            Some(&self.sender_username),
+            self.emoji_caption.as_deref(),
+        );
+        o.insert(
+            "text".into(),
+            text.map(Value::String).unwrap_or(Value::Null),
+        );
         let mut put = |k: &str, v: &Option<String>| {
             if let Some(v) = v {
                 o.insert(k.into(), json!(v));
@@ -560,10 +627,18 @@ impl ExportMsg {
         if let Some(size) = self.file_size {
             o.insert("fileSize".into(), json!(size));
         }
-        if let Some(v) = self.location_lat { o.insert("locationLat".into(), json!(v)); }
-        if let Some(v) = self.location_lng { o.insert("locationLng".into(), json!(v)); }
-        if let Some(v) = &self.location_poiname { o.insert("locationPoiname".into(), json!(v)); }
-        if let Some(v) = &self.location_label { o.insert("locationLabel".into(), json!(v)); }
+        if let Some(v) = self.location_lat {
+            o.insert("locationLat".into(), json!(v));
+        }
+        if let Some(v) = self.location_lng {
+            o.insert("locationLng".into(), json!(v));
+        }
+        if let Some(v) = &self.location_poiname {
+            o.insert("locationPoiname".into(), json!(v));
+        }
+        if let Some(v) = &self.location_label {
+            o.insert("locationLabel".into(), json!(v));
+        }
         if let Some(meta) = extract_arkme_app_message_meta(&self.content, self.local_type) {
             if let Some(kind) = meta.get("appMsgKind") {
                 o.insert("appMsgKind".into(), kind.clone());
@@ -573,7 +648,10 @@ impl ExportMsg {
     }
 
     pub fn stable_key(&self) -> String {
-        let raw = self.server_id_raw.clone().unwrap_or_else(|| self.server_id.to_string());
+        let raw = self
+            .server_id_raw
+            .clone()
+            .unwrap_or_else(|| self.server_id.to_string());
         format!(
             "{}:{}:{}",
             normalize_unsigned_token(&self.local_id.to_string()),
@@ -583,7 +661,10 @@ impl ExportMsg {
     }
 
     pub fn platform_message_id(&self) -> Option<String> {
-        let raw = self.server_id_raw.clone().unwrap_or_else(|| self.server_id.to_string());
+        let raw = self
+            .server_id_raw
+            .clone()
+            .unwrap_or_else(|| self.server_id.to_string());
         let v = normalize_unsigned_token(&raw);
         if v != "0" {
             Some(v)
@@ -602,23 +683,43 @@ pub struct RevokeInfo {
 }
 
 pub fn extract_revoker_info(content: &str) -> RevokeInfo {
-    let none = RevokeInfo { is_revoke: false, is_self_revoke: false, revoker_wxid: None };
+    let none = RevokeInfo {
+        is_revoke: false,
+        is_self_revoke: false,
+        revoker_wxid: None,
+    };
     if content.is_empty() || (!content.contains("revokemsg") && !content.contains("撤回")) {
         return none;
     }
     if content.contains("你撤回") {
-        return RevokeInfo { is_revoke: true, is_self_revoke: true, revoker_wxid: None };
+        return RevokeInfo {
+            is_revoke: true,
+            is_self_revoke: true,
+            revoker_wxid: None,
+        };
     }
     if let Some(c) = rx(r"(?i)<session>([^<]+)</session>").captures(content) {
         let session = c[1].trim().to_string();
         if session.starts_with("wxid_") || rx(r"^[a-zA-Z][a-zA-Z0-9_-]+$").is_match(&session) {
-            return RevokeInfo { is_revoke: true, is_self_revoke: false, revoker_wxid: Some(session) };
+            return RevokeInfo {
+                is_revoke: true,
+                is_self_revoke: false,
+                revoker_wxid: Some(session),
+            };
         }
     }
     if let Some(c) = rx(r"(?i)<fromusername>([^<]+)</fromusername>").captures(content) {
-        return RevokeInfo { is_revoke: true, is_self_revoke: false, revoker_wxid: Some(c[1].trim().to_string()) };
+        return RevokeInfo {
+            is_revoke: true,
+            is_self_revoke: false,
+            revoker_wxid: Some(c[1].trim().to_string()),
+        };
     }
-    RevokeInfo { is_revoke: true, is_self_revoke: false, revoker_wxid: None }
+    RevokeInfo {
+        is_revoke: true,
+        is_self_revoke: false,
+        revoker_wxid: None,
+    }
 }
 
 pub fn is_readable_system_message(local_type: i64, content: &str) -> bool {
@@ -646,19 +747,28 @@ pub fn clean_system_message(content: &str) -> String {
         let replaced = rx(r"\$\{([^}]+)\}").replace_all(&template, |caps: &regex::Captures| {
             let name = regex::escape(&caps[1]);
             let pat = format!(r"(?i)<{0}><!\[CDATA\[([^\]]*)\]\]></{0}>", name);
-            rx(&pat).captures(&source).map(|m| m[1].to_string()).unwrap_or_default()
+            rx(&pat)
+                .captures(&source)
+                .map(|m| m[1].to_string())
+                .unwrap_or_default()
         });
         return rx(r"<[^>]+>").replace_all(&replaced, "").trim().to_string();
     }
     if let Some(c) = rx(r"(?is)<title>(.*?)</title>").captures(&content) {
-        let title = c[1].replace("<![CDATA[", "").replace("]]>", "").trim().to_string();
+        let title = c[1]
+            .replace("<![CDATA[", "")
+            .replace("]]>", "")
+            .trim()
+            .to_string();
         if !title.is_empty() {
             return title;
         }
     }
     content = content.replace("<![CDATA[", "").replace("]]>", "");
     let stripped = rx(r"(?i)<img[^>]*>").replace_all(&content, "").to_string();
-    let stripped = rx(r"</?[a-zA-Z0-9_:]+[^>]*>").replace_all(&stripped, "").to_string();
+    let stripped = rx(r"</?[a-zA-Z0-9_:]+[^>]*>")
+        .replace_all(&stripped, "")
+        .to_string();
     let stripped = rx(r"\s+").replace_all(&stripped, " ").trim().to_string();
     if stripped.is_empty() {
         "[系统消息]".into()
@@ -707,7 +817,11 @@ pub fn parse_voip_message(content: &str) -> String {
             .captures(&msg)
             .map(|c| c[1].to_string())
             .unwrap_or_default();
-        return if duration.is_empty() { format!("[{call_type}] 已接听") } else { format!("[{call_type}] {duration}") };
+        return if duration.is_empty() {
+            format!("[{call_type}] 已接听")
+        } else {
+            format!("[{call_type}] {duration}")
+        };
     }
     let status = if msg.contains("对方无应答") {
         Some("对方无应答")
@@ -848,11 +962,14 @@ pub fn extract_loose_hex_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    let keyed = rx(r"(?i)(?:emoji|sticker|md5)[^a-fA-F0-9]{0,32}([a-fA-F0-9]{32})").captures(content);
+    let keyed =
+        rx(r"(?i)(?:emoji|sticker|md5)[^a-fA-F0-9]{0,32}([a-fA-F0-9]{32})").captures(content);
     if let Some(c) = keyed {
         return normalize_md5(&c[1]);
     }
-    rx(r"(?i)([a-fA-F0-9]{32})").captures(content).and_then(|c| normalize_md5(&c[1]))
+    rx(r"(?i)([a-fA-F0-9]{32})")
+        .captures(content)
+        .and_then(|c| normalize_md5(&c[1]))
 }
 
 pub fn extract_emoji_url(content: &str) -> Option<String> {
@@ -863,7 +980,9 @@ pub fn extract_emoji_url(content: &str) -> Option<String> {
         let url = c[1].replace("&amp;", "&");
         return Some(percent_decode(&url));
     }
-    rx(r"(?i)cdnurl[^>]*>([^<]+)").captures(content).map(|c| c[1].to_string())
+    rx(r"(?i)cdnurl[^>]*>([^<]+)")
+        .captures(content)
+        .map(|c| c[1].to_string())
 }
 
 pub fn extract_emoji_md5(content: &str) -> Option<String> {
@@ -874,7 +993,9 @@ pub fn extract_emoji_md5(content: &str) -> Option<String> {
         .captures(content)
         .or_else(|| rx(r"(?i)md5\s*=\s*([a-fA-F0-9]{32})").captures(content))
         .or_else(|| rx(r"(?i)<md5>([a-fA-F0-9]{32})</md5>").captures(content));
-    found.and_then(|c| normalize_md5(&c[1])).or_else(|| extract_loose_hex_md5(content))
+    found
+        .and_then(|c| normalize_md5(&c[1]))
+        .or_else(|| extract_loose_hex_md5(content))
 }
 
 fn percent_decode(s: &str) -> String {
@@ -925,11 +1046,18 @@ pub fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     }
     let no_query = text.split(['?', '#']).next().unwrap_or("").to_string();
     let base = rx(r"^.*[\\/]").replace(&no_query, "").to_string();
-    let base = rx(r"(?i)\.(?:t\.)?dat$").replace(&base, "").trim().to_string();
+    let base = rx(r"(?i)\.(?:t\.)?dat$")
+        .replace(&base, "")
+        .trim()
+        .to_string();
     if base.is_empty() {
         return None;
     }
-    let cdn_token = if base.contains('_') { base.split('_').next().unwrap_or("").to_string() } else { base.clone() };
+    let cdn_token = if base.contains('_') {
+        base.split('_').next().unwrap_or("").to_string()
+    } else {
+        base.clone()
+    };
     if rx(r"^[a-fA-F0-9]{16,64}$").is_match(&cdn_token) {
         return Some(cdn_token.to_lowercase());
     }
@@ -951,27 +1079,61 @@ fn extract_image_dat_name(content: &str) -> Option<String> {
         extract_xml_attribute(content, "img", "cdnmidimgurl"),
         extract_xml_attribute(content, "img", "cdnthumburl"),
     ];
-    let pick = candidates.into_iter().find(|c| !c.is_empty()).unwrap_or_default();
+    let pick = candidates
+        .into_iter()
+        .find(|c| !c.is_empty())
+        .unwrap_or_default();
     normalize_image_dat_name_token(&pick)
 }
 
 pub fn extract_image_dat_name_from_row(row: &Value, content: &str) -> Option<String> {
-    let by_column = row_field(row, &["image_path", "imagePath", "image_dat_name", "imageDatName", "img_path", "imgPath", "img_name", "imgName"])
-        .map(value_to_string)
-        .and_then(|v| normalize_image_dat_name_token(&v));
+    let by_column = row_field(
+        row,
+        &[
+            "image_path",
+            "imagePath",
+            "image_dat_name",
+            "imageDatName",
+            "img_path",
+            "imgPath",
+            "img_name",
+            "imgName",
+        ],
+    )
+    .map(value_to_string)
+    .and_then(|v| normalize_image_dat_name_token(&v));
     if by_column.is_some() {
         return by_column;
     }
     let packed = row_field(
         row,
         &[
-            "packed_info_data", "packedInfoData", "packed_info_blob", "packedInfoBlob", "packed_info", "packedInfo",
-            "BytesExtra", "bytes_extra", "WCDB_CT_packed_info", "reserved0", "Reserved0", "WCDB_CT_Reserved0",
+            "packed_info_data",
+            "packedInfoData",
+            "packed_info_blob",
+            "packedInfoBlob",
+            "packed_info",
+            "packedInfo",
+            "BytesExtra",
+            "bytes_extra",
+            "WCDB_CT_packed_info",
+            "reserved0",
+            "Reserved0",
+            "WCDB_CT_Reserved0",
         ],
     )
     .and_then(|v| decode_packed_info(&value_to_string(v)));
     if let Some(bytes) = packed {
-        let text: String = bytes.iter().map(|b| if (0x20..=0x7e).contains(b) { *b as char } else { ' ' }).collect();
+        let text: String = bytes
+            .iter()
+            .map(|b| {
+                if (0x20..=0x7e).contains(b) {
+                    *b as char
+                } else {
+                    ' '
+                }
+            })
+            .collect();
         if let Some(c) = rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat").captures(&text) {
             return Some(c[1].to_lowercase());
         }
@@ -1001,17 +1163,22 @@ pub fn extract_image_md5(content: &str) -> Option<String> {
     if let Some(c) = attr {
         return Some(c[1].to_lowercase());
     }
-    rx(r"(?i)<md5>([^<]+)</md5>").captures(content).map(|c| c[1].to_lowercase())
+    rx(r"(?i)<md5>([^<]+)</md5>")
+        .captures(content)
+        .map(|c| c[1].to_lowercase())
 }
 
 pub fn extract_video_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    if let Some(c) = rx(r#"(?i)<videomsg[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content) {
+    if let Some(c) = rx(r#"(?i)<videomsg[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content)
+    {
         return Some(c[1].to_lowercase());
     }
-    rx(r"(?i)<md5>([^<]+)</md5>").captures(content).map(|c| c[1].to_lowercase())
+    rx(r"(?i)<md5>([^<]+)</md5>")
+        .captures(content)
+        .map(|c| c[1].to_lowercase())
 }
 
 pub struct FileMeta {
@@ -1031,7 +1198,12 @@ pub fn extract_file_app_message_meta(content: &str) -> Option<FileMeta> {
     if xml_type.is_empty() {
         return None;
     }
-    let first = |keys: &[&str]| keys.iter().map(|k| extract_xml_value(&normalized, k)).find(|v| !v.is_empty()).unwrap_or_default();
+    let first = |keys: &[&str]| {
+        keys.iter()
+            .map(|k| extract_xml_value(&normalized, k))
+            .find(|v| !v.is_empty())
+            .unwrap_or_default()
+    };
     let raw_name = first(&["filename", "title"]);
     let raw_ext = extract_xml_value(&normalized, "fileext");
     let raw_size = first(&["totallen", "datasize", "filesize"]);
@@ -1045,36 +1217,66 @@ pub fn extract_file_app_message_meta(content: &str) -> Option<FileMeta> {
     let size = raw_size.trim().parse::<i64>().ok().filter(|n| *n > 0);
     let non_empty = |s: String| {
         let t = decode_html_entities(&s).trim().to_string();
-        if t.is_empty() { None } else { Some(t) }
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
     };
     Some(FileMeta {
         xml_type: Some(xml_type),
         file_name: non_empty(raw_name),
         file_size: size,
         file_ext: non_empty(raw_ext),
-        file_md5: if raw_md5.len() == 32 && raw_md5.chars().all(|c| c.is_ascii_hexdigit()) { Some(raw_md5.to_lowercase()) } else { None },
+        file_md5: if raw_md5.len() == 32 && raw_md5.chars().all(|c| c.is_ascii_hexdigit()) {
+            Some(raw_md5.to_lowercase())
+        } else {
+            None
+        },
     })
 }
 
-pub fn extract_location_meta(content: &str, local_type: i64) -> Option<(Option<f64>, Option<f64>, Option<String>, Option<String>)> {
+pub fn extract_location_meta(
+    content: &str,
+    local_type: i64,
+) -> Option<(Option<f64>, Option<f64>, Option<String>, Option<String>)> {
     if content.is_empty() || local_type != 48 {
         return None;
     }
     let n = normalize_app_message_content(content);
     let pick = |a: String, b: String| if !a.is_empty() { a } else { b };
-    let raw_lat = pick(extract_xml_attribute(&n, "location", "x"), extract_xml_attribute(&n, "location", "latitude"));
-    let raw_lng = pick(extract_xml_attribute(&n, "location", "y"), extract_xml_attribute(&n, "location", "longitude"));
+    let raw_lat = pick(
+        extract_xml_attribute(&n, "location", "x"),
+        extract_xml_attribute(&n, "location", "latitude"),
+    );
+    let raw_lng = pick(
+        extract_xml_attribute(&n, "location", "y"),
+        extract_xml_attribute(&n, "location", "longitude"),
+    );
     let poiname = {
         let a = extract_xml_attribute(&n, "location", "poiname");
-        if !a.is_empty() { a } else {
+        if !a.is_empty() {
+            a
+        } else {
             let b = extract_xml_value(&n, "poiname");
-            if !b.is_empty() { b } else { extract_xml_value(&n, "poiName") }
+            if !b.is_empty() {
+                b
+            } else {
+                extract_xml_value(&n, "poiName")
+            }
         }
     };
-    let label = pick(extract_xml_attribute(&n, "location", "label"), extract_xml_value(&n, "label"));
+    let label = pick(
+        extract_xml_attribute(&n, "location", "label"),
+        extract_xml_value(&n, "label"),
+    );
     let lat = raw_lat.trim().parse::<f64>().ok().filter(|v| v.is_finite());
     let lng = raw_lng.trim().parse::<f64>().ok().filter(|v| v.is_finite());
-    let poi = if poiname.is_empty() { None } else { Some(poiname) };
+    let poi = if poiname.is_empty() {
+        None
+    } else {
+        Some(poiname)
+    };
     let lab = if label.is_empty() { None } else { Some(label) };
     if lat.is_none() && lng.is_none() && poi.is_none() && lab.is_none() {
         return None;
@@ -1085,10 +1287,23 @@ pub fn extract_location_meta(content: &str, local_type: i64) -> Option<(Option<f
 fn location_text(content: &str) -> String {
     let n = normalize_app_message_content(content);
     let first = |vals: Vec<String>| vals.into_iter().find(|v| !v.is_empty()).unwrap_or_default();
-    let poiname = first(vec![extract_xml_attribute(&n, "location", "poiname"), extract_xml_value(&n, "poiname"), extract_xml_value(&n, "poiName")]);
-    let label = first(vec![extract_xml_attribute(&n, "location", "label"), extract_xml_value(&n, "label")]);
-    let lat = first(vec![extract_xml_attribute(&n, "location", "x"), extract_xml_attribute(&n, "location", "latitude")]);
-    let lng = first(vec![extract_xml_attribute(&n, "location", "y"), extract_xml_attribute(&n, "location", "longitude")]);
+    let poiname = first(vec![
+        extract_xml_attribute(&n, "location", "poiname"),
+        extract_xml_value(&n, "poiname"),
+        extract_xml_value(&n, "poiName"),
+    ]);
+    let label = first(vec![
+        extract_xml_attribute(&n, "location", "label"),
+        extract_xml_value(&n, "label"),
+    ]);
+    let lat = first(vec![
+        extract_xml_attribute(&n, "location", "x"),
+        extract_xml_attribute(&n, "location", "latitude"),
+    ]);
+    let lng = first(vec![
+        extract_xml_attribute(&n, "location", "y"),
+        extract_xml_attribute(&n, "location", "longitude"),
+    ]);
     let mut parts: Vec<String> = Vec::new();
     if !poiname.is_empty() {
         parts.push(poiname.clone());
@@ -1116,7 +1331,16 @@ pub fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
     }
     let mut items: Vec<ForwardRecord> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let dedupe_key = |r: &ForwardRecord| format!("{}|{}|{}|{}|{}", r.datatype, r.sourcename, r.sourcetime, r.datadesc.clone().unwrap_or_default(), r.datatitle.clone().unwrap_or_default());
+    let dedupe_key = |r: &ForwardRecord| {
+        format!(
+            "{}|{}|{}|{}|{}",
+            r.datatype,
+            r.sourcename,
+            r.sourcetime,
+            r.datadesc.clone().unwrap_or_default(),
+            r.datatitle.clone().unwrap_or_default()
+        )
+    };
     for c in rx(r"(?is)<recorditem>(.*?)</recorditem>").captures_iter(&normalized) {
         for item in parse_forward_container(&c[1]) {
             if seen.insert(dedupe_key(&item)) {
@@ -1131,7 +1355,11 @@ pub fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
             }
         }
     }
-    if items.is_empty() { None } else { Some(items) }
+    if items.is_empty() {
+        None
+    } else {
+        Some(items)
+    }
 }
 
 fn parse_forward_container(container: &str) -> Vec<ForwardRecord> {
@@ -1161,7 +1389,14 @@ fn parse_forward_container(container: &str) -> Vec<ForwardRecord> {
         }
         for c in rx(r"(?is)<dataitem\b([^>]*)>(.*?)</dataitem>").captures_iter(seg) {
             if let Some(parsed) = parse_forward_data_item(&c[2], &c[1]) {
-                let key = format!("{}|{}|{}|{}|{}", parsed.datatype, parsed.sourcename, parsed.sourcetime, parsed.datadesc.clone().unwrap_or_default(), parsed.datatitle.clone().unwrap_or_default());
+                let key = format!(
+                    "{}|{}|{}|{}|{}",
+                    parsed.datatype,
+                    parsed.sourcename,
+                    parsed.sourcetime,
+                    parsed.datadesc.clone().unwrap_or_default(),
+                    parsed.datatitle.clone().unwrap_or_default()
+                );
                 if seen.insert(key) {
                     items.push(parsed);
                 }
@@ -1192,7 +1427,9 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<ForwardRecord> {
     let datadesc = decode_html_entities(&datadesc);
     let datatitle = decode_html_entities(&extract_xml_value(body, "datatitle"));
     let fileext = extract_xml_value(body, "fileext");
-    let datasize = extract_xml_value(body, "datasize").parse::<i64>().unwrap_or(0);
+    let datasize = extract_xml_value(body, "datasize")
+        .parse::<i64>()
+        .unwrap_or(0);
     let nested_xml = extract_xml_value(body, "recordxml");
     let nested_list = if datatype == 17 && !nested_xml.is_empty() {
         Some(parse_forward_container(&nested_xml)).filter(|l| !l.is_empty())
@@ -1200,8 +1437,22 @@ fn parse_forward_data_item(body: &str, attrs: &str) -> Option<ForwardRecord> {
         None
     };
     let pick = |a: String, b: &str| if !a.is_empty() { a } else { b.to_string() };
-    let chat_record_title = decode_html_entities(&pick(if nested_xml.is_empty() { String::new() } else { extract_xml_value(&nested_xml, "title") }, &datatitle));
-    let chat_record_desc = decode_html_entities(&pick(if nested_xml.is_empty() { String::new() } else { extract_xml_value(&nested_xml, "desc") }, &datadesc));
+    let chat_record_title = decode_html_entities(&pick(
+        if nested_xml.is_empty() {
+            String::new()
+        } else {
+            extract_xml_value(&nested_xml, "title")
+        },
+        &datatitle,
+    ));
+    let chat_record_desc = decode_html_entities(&pick(
+        if nested_xml.is_empty() {
+            String::new()
+        } else {
+            extract_xml_value(&nested_xml, "desc")
+        },
+        &datadesc,
+    ));
     if sourcename.is_empty() && datadesc.is_empty() && datatitle.is_empty() {
         return None;
     }
@@ -1238,14 +1489,26 @@ fn format_forward_item_text(item: &ForwardRecord) -> String {
         43 => "[视频]".into(),
         47 => "[表情包]".into(),
         49 | 8 => "[文件]".into(),
-        17 => item.chat_record_desc.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| "[聊天记录]".into()),
+        17 => item
+            .chat_record_desc
+            .clone()
+            .filter(|d| !d.is_empty())
+            .unwrap_or_else(|| "[聊天记录]".into()),
         _ => "[消息]".into(),
     }
 }
 
 fn build_forward_lines(record: &ForwardRecord, depth: usize) -> Vec<String> {
-    let indent = if depth > 0 { "  ".repeat(depth.min(8)) } else { String::new() };
-    let prefix = if record.sourcename.is_empty() { String::new() } else { format!("{}: ", record.sourcename) };
+    let indent = if depth > 0 {
+        "  ".repeat(depth.min(8))
+    } else {
+        String::new()
+    };
+    let prefix = if record.sourcename.is_empty() {
+        String::new()
+    } else {
+        format!("{}: ", record.sourcename)
+    };
     if let Some(list) = record.chat_record_list.as_ref().filter(|l| !l.is_empty()) {
         let title = record
             .chat_record_title
@@ -1263,7 +1526,13 @@ fn build_forward_lines(record: &ForwardRecord, depth: usize) -> Vec<String> {
     let text = if record.datatype == 49 || record.datatype == 8 {
         let d = record.datadesc.clone().unwrap_or_default();
         let t = record.datatitle.clone().unwrap_or_default();
-        if !d.trim().is_empty() { d.trim().to_string() } else if !t.trim().is_empty() { t.trim().to_string() } else { "[文件]".into() }
+        if !d.trim().is_empty() {
+            d.trim().to_string()
+        } else if !t.trim().is_empty() {
+            t.trim().to_string()
+        } else {
+            "[文件]".into()
+        }
     } else {
         format_forward_item_text(record)
     };
@@ -1277,10 +1546,17 @@ pub fn format_forward_chat_record_content(content: &str) -> String {
         .map(|t| extract_xml_value(&normalized, t))
         .find(|v| !v.is_empty())
         .unwrap_or_else(|| "聊天记录".into());
-    let header = if name.is_empty() { "[转发的聊天记录]".to_string() } else { format!("[转发的聊天记录]{name}") };
+    let header = if name.is_empty() {
+        "[转发的聊天记录]".to_string()
+    } else {
+        format!("[转发的聊天记录]{name}")
+    };
     match parse_chat_history(&normalized) {
         Some(records) if !records.is_empty() => {
-            let lines: Vec<String> = records.iter().flat_map(|r| build_forward_lines(r, 0)).collect();
+            let lines: Vec<String> = records
+                .iter()
+                .flat_map(|r| build_forward_lines(r, 0))
+                .collect();
             format!("{header}\n{}", lines.join("\n"))
         }
         _ => header,
@@ -1329,7 +1605,11 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
     }
     if let (Some(s), Some(e)) = (start_index, end_index) {
         if e >= s && s >= 0 {
-            let sliced: String = full.chars().skip(s as usize).take((e - s + 1) as usize).collect();
+            let sliced: String = full
+                .chars()
+                .skip(s as usize)
+                .take((e - s + 1) as usize)
+                .collect();
             let sliced = sliced.trim().to_string();
             if !sliced.is_empty() {
                 return sliced;
@@ -1351,15 +1631,28 @@ fn extract_preferred_quoted_text(refer_xml: &str) -> String {
             sources.push(decoded);
         }
     }
-    let first = if sources[0].is_empty() { refer_xml.to_string() } else { sources[0].clone() };
+    let first = if sources[0].is_empty() {
+        refer_xml.to_string()
+    } else {
+        sources[0].clone()
+    };
     let full = sanitize_quoted_content(&extract_xml_value(&first, "content"));
     let partial = extract_partial_quoted_text(&first, &full);
     if !partial.is_empty() {
         return partial;
     }
     let tags = [
-        "selectedcontent", "selectedtext", "selectcontent", "selecttext", "quotecontent", "quotetext",
-        "partcontent", "parttext", "excerpt", "summary", "preview",
+        "selectedcontent",
+        "selectedtext",
+        "selectcontent",
+        "selecttext",
+        "quotecontent",
+        "quotetext",
+        "partcontent",
+        "parttext",
+        "excerpt",
+        "summary",
+        "preview",
     ];
     for source in &sources {
         for tag in tags {
@@ -1373,9 +1666,16 @@ fn extract_preferred_quoted_text(refer_xml: &str) -> String {
 }
 
 pub fn parse_quote_message(content: &str) -> QuoteInfo {
-    let empty = QuoteInfo { content: None, sender: None, quote_type: None, svrid: None };
+    let empty = QuoteInfo {
+        content: None,
+        sender: None,
+        quote_type: None,
+        svrid: None,
+    };
     let normalized = normalize_app_message_content(content);
-    let Some(refer) = refermsg_xml(&normalized) else { return empty };
+    let Some(refer) = refermsg_xml(&normalized) else {
+        return empty;
+    };
     let mut sender = extract_xml_value(&refer, "displayname");
     if !sender.is_empty() && looks_like_wxid(&sender) {
         sender.clear();
@@ -1401,7 +1701,12 @@ pub fn parse_quote_message(content: &str) -> QuoteInfo {
         }
     };
     let opt = |s: String| if s.is_empty() { None } else { Some(s) };
-    QuoteInfo { content: opt(display), sender: opt(sender), quote_type: opt(refer_type), svrid: opt(svrid) }
+    QuoteInfo {
+        content: opt(display),
+        sender: opt(sender),
+        quote_type: opt(refer_type),
+        svrid: opt(svrid),
+    }
 }
 
 fn format_quoted_reference_preview(content: &str, refer_type: &str) -> String {
@@ -1420,15 +1725,31 @@ fn format_quoted_reference_preview(content: &str, refer_type: &str) -> String {
         if !title.is_empty() {
             return strip_sender_prefix(&title);
         }
-        return match extract_app_message_type(&normalized).parse::<i64>().unwrap_or(0) {
+        return match extract_app_message_type(&normalized)
+            .parse::<i64>()
+            .unwrap_or(0)
+        {
             6 => "[文件]".into(),
             19 => "[聊天记录]".into(),
             33 | 36 => "[小程序]".into(),
             _ => "[链接]".into(),
         };
     }
-    let out = format_plain_export_content(content, ty, &PlainOpts::default(), None, None, None, false, None);
-    if out.is_empty() { "[消息]".into() } else { out }
+    let out = format_plain_export_content(
+        content,
+        ty,
+        &PlainOpts::default(),
+        None,
+        None,
+        None,
+        false,
+        None,
+    );
+    if out.is_empty() {
+        "[消息]".into()
+    } else {
+        out
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1444,7 +1765,10 @@ pub fn extract_quoted_reply_display(content: &str) -> Option<QuotedDisplay> {
     let info = parse_quote_message(&normalized);
     let reply_text = strip_sender_prefix(&extract_xml_value(&normalized, "title"));
     let preview = info.content.clone().unwrap_or_else(|| {
-        format_quoted_reference_preview(&extract_xml_value(&refer, "content"), &extract_xml_value(&refer, "type"))
+        format_quoted_reference_preview(
+            &extract_xml_value(&refer, "content"),
+            &extract_xml_value(&refer, "type"),
+        )
     });
     if reply_text.is_empty() && preview.is_empty() {
         return None;
@@ -1452,7 +1776,11 @@ pub fn extract_quoted_reply_display(content: &str) -> Option<QuotedDisplay> {
     Some(QuotedDisplay {
         reply_text,
         quoted_sender: info.sender,
-        quoted_preview: if preview.is_empty() { "[消息]".into() } else { preview },
+        quoted_preview: if preview.is_empty() {
+            "[消息]".into()
+        } else {
+            preview
+        },
     })
 }
 
@@ -1483,7 +1811,11 @@ pub fn extract_reply_to_message_id(content: &str) -> Option<String> {
     let normalized = normalize_app_message_content(content);
     let refer = refermsg_xml(&normalized)?;
     let v = normalize_unsigned_token(&extract_xml_value(&refer, "svrid"));
-    if v != "0" { Some(v) } else { None }
+    if v != "0" {
+        Some(v)
+    } else {
+        None
+    }
 }
 
 /// Sender wxid of a quoted message, following `resolveQuotedSenderUsername`.
@@ -1499,7 +1831,11 @@ pub fn quoted_sender_username(content: &str) -> Option<String> {
         return None;
     }
     let f = from.trim().to_string();
-    if f.is_empty() { None } else { Some(f) }
+    if f.is_empty() {
+        None
+    } else {
+        Some(f)
+    }
 }
 
 // ─────────────────────────────── transfers ───────────────────────────────
@@ -1516,14 +1852,23 @@ fn candidate_ids(values: &[&str]) -> Vec<String> {
 }
 
 pub fn is_same_wxid(lhs: &str, rhs: &str) -> bool {
-    let left: Vec<String> = candidate_ids(&[lhs]).into_iter().map(|s| s.to_lowercase()).collect();
+    let left: Vec<String> = candidate_ids(&[lhs])
+        .into_iter()
+        .map(|s| s.to_lowercase())
+        .collect();
     if left.is_empty() {
         return false;
     }
-    candidate_ids(&[rhs]).iter().any(|r| left.contains(&r.to_lowercase()))
+    candidate_ids(&[rhs])
+        .iter()
+        .any(|r| left.contains(&r.to_lowercase()))
 }
 
-pub fn get_transfer_prefix(content: &str, my_wxid: Option<&str>, sender_wxid: Option<&str>) -> &'static str {
+pub fn get_transfer_prefix(
+    content: &str,
+    my_wxid: Option<&str>,
+    sender_wxid: Option<&str>,
+) -> &'static str {
     let normalized = normalize_app_message_content(content);
     if normalized.is_empty() {
         return "[转账]";
@@ -1561,7 +1906,11 @@ pub fn is_transfer_export_content(content: &str) -> bool {
 }
 
 pub fn append_transfer_desc(content: &str, desc: &str) -> String {
-    let prefix = if content.starts_with("[转账收款]") { "[转账收款]" } else { "[转账]" };
+    let prefix = if content.starts_with("[转账收款]") {
+        "[转账收款]"
+    } else {
+        "[转账]"
+    };
     content.replacen(prefix, &format!("{prefix} ({desc})"), 1)
 }
 
@@ -1595,7 +1944,11 @@ fn parse_duration_seconds(value: &str) -> Option<i64> {
     if !n.is_finite() || n <= 0.0 {
         return None;
     }
-    Some(if n >= 1000.0 { (n / 1000.0).round() as i64 } else { n.round() as i64 })
+    Some(if n >= 1000.0 {
+        (n / 1000.0).round() as i64
+    } else {
+        n.round() as i64
+    })
 }
 
 fn extract_amount_from_text(text: &str) -> Option<String> {
@@ -1623,7 +1976,13 @@ pub fn parse_message_content(
     }
     let normalized = normalize_app_message_content(content);
     let xml_type = extract_app_message_type(&normalized);
-    let with_title = |prefix: &str, title: &str| if title.is_empty() { prefix.to_string() } else { format!("{prefix} {title}") };
+    let with_title = |prefix: &str, title: &str| {
+        if title.is_empty() {
+            prefix.to_string()
+        } else {
+            format!("{prefix} {title}")
+        }
+    };
     match local_type {
         1 => Some(strip_sender_prefix(content)),
         3 => Some("[图片]".into()),
@@ -1641,18 +2000,34 @@ pub fn parse_message_content(
                 let memo = extract_xml_value(&normalized, "pay_memo");
                 let prefix = get_transfer_prefix(&normalized, my_wxid, sender_wxid);
                 if !feedesc.is_empty() {
-                    return Some(if memo.is_empty() { format!("{prefix} {feedesc}") } else { format!("{prefix} {feedesc} {memo}") });
+                    return Some(if memo.is_empty() {
+                        format!("{prefix} {feedesc}")
+                    } else {
+                        format!("{prefix} {feedesc} {memo}")
+                    });
                 }
                 return Some(prefix.to_string());
             }
             Some(match ty.as_str() {
-                "3" => if !song.is_empty() { with_title("[音乐]", &song) } else { with_title("[音乐]", &title) },
+                "3" => {
+                    if !song.is_empty() {
+                        with_title("[音乐]", &song)
+                    } else {
+                        with_title("[音乐]", &title)
+                    }
+                }
                 "6" => with_title("[文件]", &title),
                 "19" => format_forward_chat_record_content(&normalized),
                 "33" | "36" => with_title("[小程序]", &title),
                 "57" => match extract_quoted_reply_display(content) {
                     Some(d) => build_quoted_reply_text(&d),
-                    None => if title.is_empty() { "[引用消息]".into() } else { title },
+                    None => {
+                        if title.is_empty() {
+                            "[引用消息]".into()
+                        } else {
+                            title
+                        }
+                    }
                 },
                 _ => with_title("[链接]", &title),
             })
@@ -1663,7 +2038,11 @@ pub fn parse_message_content(
             Some(d) => Some(build_quoted_reply_text(&d)),
             None => {
                 let t = extract_xml_value(content, "title");
-                Some(if t.is_empty() { "[引用消息]".into() } else { t })
+                Some(if t.is_empty() {
+                    "[引用消息]".into()
+                } else {
+                    t
+                })
             }
         },
         _ => {
@@ -1672,14 +2051,22 @@ pub fn parse_message_content(
                 match xml_type.as_str() {
                     "87" => {
                         let t = extract_xml_value(content, "textannouncement");
-                        return Some(if t.is_empty() { "[群公告]".into() } else { format!("[群公告] {t}") });
+                        return Some(if t.is_empty() {
+                            "[群公告]".into()
+                        } else {
+                            format!("[群公告] {t}")
+                        });
                     }
                     "2000" => {
                         let feedesc = extract_xml_value(content, "feedesc");
                         let memo = extract_xml_value(content, "pay_memo");
                         let prefix = get_transfer_prefix(content, my_wxid, sender_wxid);
                         if !feedesc.is_empty() {
-                            return Some(if memo.is_empty() { format!("{prefix} {feedesc}") } else { format!("{prefix} {feedesc} {memo}") });
+                            return Some(if memo.is_empty() {
+                                format!("{prefix} {feedesc}")
+                            } else {
+                                format!("{prefix} {feedesc} {memo}")
+                            });
                         }
                         return Some(prefix.to_string());
                     }
@@ -1690,14 +2077,25 @@ pub fn parse_message_content(
                     "57" => {
                         return Some(match extract_quoted_reply_display(content) {
                             Some(d) => build_quoted_reply_text(&d),
-                            None => if title.is_empty() { "[引用消息]".into() } else { title },
+                            None => {
+                                if title.is_empty() {
+                                    "[引用消息]".into()
+                                } else {
+                                    title
+                                }
+                            }
                         })
                     }
                     "53" => {
                         if title.is_empty() {
                             return Some("[接龙]".into());
                         }
-                        let first = title.lines().map(|l| l.trim()).find(|l| !l.is_empty()).unwrap_or(&title).to_string();
+                        let first = title
+                            .lines()
+                            .map(|l| l.trim())
+                            .find(|l| !l.is_empty())
+                            .unwrap_or(&title)
+                            .to_string();
                         return Some(format!("[接龙] {first}"));
                     }
                     "5" | "49" => return Some(with_title("[链接]", &title)),
@@ -1708,7 +2106,11 @@ pub fn parse_message_content(
                 }
             }
             let s = strip_sender_prefix(&normalized);
-            if s.is_empty() { None } else { Some(s) }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
         }
     }
 }
@@ -1733,18 +2135,32 @@ pub fn format_plain_export_content(
         1 => return strip_sender_prefix(content),
         34 => {
             if opts.export_voice_as_text {
-                return voice_transcript.filter(|t| !t.is_empty()).map(str::to_string).unwrap_or_else(|| "[语音消息 - 转文字失败]".into());
+                return voice_transcript
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| "[语音消息 - 转文字失败]".into());
             }
             return "[其他消息]".into();
         }
         42 => {
             let n = normalize_app_message_content(content);
-            let nick = ["nickname", "displayname", "name"].iter().map(|k| extract_xml_value(&n, k)).find(|v| !v.is_empty()).unwrap_or_default();
-            return if nick.is_empty() { "[名片]".into() } else { format!("[名片]{nick}") };
+            let nick = ["nickname", "displayname", "name"]
+                .iter()
+                .map(|k| extract_xml_value(&n, k))
+                .find(|v| !v.is_empty())
+                .unwrap_or_default();
+            return if nick.is_empty() {
+                "[名片]".into()
+            } else {
+                format!("[名片]{nick}")
+            };
         }
         43 => {
             let n = normalize_app_message_content(content);
-            let len = ["playlength", "playLength", "length", "duration"].iter().map(|k| extract_xml_value(&n, k)).find(|v| !v.is_empty());
+            let len = ["playlength", "playLength", "length", "duration"]
+                .iter()
+                .map(|k| extract_xml_value(&n, k))
+                .find(|v| !v.is_empty());
             return match len.and_then(|v| parse_duration_seconds(&v)) {
                 Some(s) if s > 0 => format!("[视频]{s}s"),
                 _ => "[视频]".into(),
@@ -1762,18 +2178,30 @@ pub fn format_plain_export_content(
         let sub: i64 = extract_app_message_type(&normalized).parse().unwrap_or(0);
         let title = {
             let t = extract_xml_value(&normalized, "title");
-            if !t.is_empty() { t } else { extract_xml_value(&normalized, "appname") }
+            if !t.is_empty() {
+                t
+            } else {
+                extract_xml_value(&normalized, "appname")
+            }
         };
         if sub == 87 {
             let t = extract_xml_value(&normalized, "textannouncement");
-            return if t.is_empty() { "[群公告]".into() } else { format!("[群公告]{t}") };
+            return if t.is_empty() {
+                "[群公告]".into()
+            } else {
+                format!("[群公告]{t}")
+            };
         }
         if sub == 2000 || title.contains("转账") || normalized.contains("transfer") {
             let feedesc = extract_xml_value(&normalized, "feedesc");
             let memo = extract_xml_value(&normalized, "pay_memo");
             let prefix = get_transfer_prefix(&normalized, my_wxid, sender_wxid);
             if !feedesc.is_empty() {
-                return if memo.is_empty() { format!("{prefix}{feedesc}") } else { format!("{prefix}{feedesc} {memo}") };
+                return if memo.is_empty() {
+                    format!("{prefix}{feedesc}")
+                } else {
+                    format!("{prefix}{feedesc} {memo}")
+                };
             }
             let joined: Vec<String> = [
                 title.clone(),
@@ -1792,30 +2220,59 @@ pub fn format_plain_export_content(
         }
         if sub == 3 || normalized.contains("<musicurl") || normalized.contains("<songname") {
             let song = extract_xml_value(&normalized, "songname");
-            let name = if !song.is_empty() { song } else if !title.is_empty() { title.clone() } else { "音乐".into() };
+            let name = if !song.is_empty() {
+                song
+            } else if !title.is_empty() {
+                title.clone()
+            } else {
+                "音乐".into()
+            };
             return format!("[音乐]{name}");
         }
         if sub == 6 {
             let f = extract_xml_value(&normalized, "filename");
-            let name = if !f.is_empty() { f } else if !title.is_empty() { title.clone() } else { "文件".into() };
+            let name = if !f.is_empty() {
+                f
+            } else if !title.is_empty() {
+                title.clone()
+            } else {
+                "文件".into()
+            };
             return format!("[文件]{name}");
         }
         if title.contains("红包") || normalized.contains("hongbao") {
-            return format!("[红包]{}", if title.is_empty() { "微信红包" } else { &title });
+            return format!(
+                "[红包]{}",
+                if title.is_empty() {
+                    "微信红包"
+                } else {
+                    &title
+                }
+            );
         }
         if sub == 19 || normalized.contains("<recorditem") {
             return format_forward_chat_record_content(&normalized);
         }
         if sub == 33 || sub == 36 {
             let a = extract_xml_value(&normalized, "appname");
-            let name = if !a.is_empty() { a } else if !title.is_empty() { title.clone() } else { "小程序".into() };
+            let name = if !a.is_empty() {
+                a
+            } else if !title.is_empty() {
+                title.clone()
+            } else {
+                "小程序".into()
+            };
             return format!("[小程序]{name}");
         }
         if sub == 57 {
             if let Some(d) = extract_quoted_reply_display(content) {
                 return build_quoted_reply_text(&d);
             }
-            return if title.is_empty() { "[引用消息]".into() } else { title };
+            return if title.is_empty() {
+                "[引用消息]".into()
+            } else {
+                title
+            };
         }
         if !title.is_empty() {
             return format!("[链接]{title}");
@@ -1839,7 +2296,10 @@ pub fn normalize_http_link_url(raw: &str) -> String {
     }
     let parse_http = |candidate: &str| -> String {
         let lower = candidate.to_ascii_lowercase();
-        if (lower.starts_with("http://") || lower.starts_with("https://")) && candidate.len() > 8 && !candidate.contains(' ') {
+        if (lower.starts_with("http://") || lower.starts_with("https://"))
+            && candidate.len() > 8
+            && !candidate.contains(' ')
+        {
             candidate.to_string()
         } else {
             String::new()
@@ -1873,10 +2333,20 @@ pub fn extract_html_link_card(content: &str, local_type: i64) -> Option<LinkCard
     if !sub.is_empty() && sub != "5" && sub != "49" {
         return None;
     }
-    let url = ["url", "shareurlopen", "shareurloriginal", "shareurl", "shorturl", "dataurl", "lowurl", "streamvideoweburl", "weburl"]
-        .iter()
-        .map(|k| normalize_http_link_url(&extract_xml_value(&normalized, k)))
-        .find(|u| !u.is_empty())?;
+    let url = [
+        "url",
+        "shareurlopen",
+        "shareurloriginal",
+        "shareurl",
+        "shorturl",
+        "dataurl",
+        "lowurl",
+        "streamvideoweburl",
+        "weburl",
+    ]
+    .iter()
+    .map(|k| normalize_http_link_url(&extract_xml_value(&normalized, k)))
+    .find(|u| !u.is_empty())?;
     let mut title = extract_xml_value(&normalized, "title");
     if title.is_empty() {
         title = extract_xml_value(&normalized, "des");
@@ -1906,7 +2376,11 @@ pub enum LinkStyle {
     AppendUrl,
 }
 
-pub fn format_link_card_export_text(content: &str, local_type: i64, style: LinkStyle) -> Option<String> {
+pub fn format_link_card_export_text(
+    content: &str,
+    local_type: i64,
+    style: LinkStyle,
+) -> Option<String> {
     let card = extract_html_link_card(content, local_type)?;
     if card.url.is_empty() {
         return None;
@@ -1915,7 +2389,11 @@ pub fn format_link_card_export_text(content: &str, local_type: i64, style: LinkS
     Some(match style {
         LinkStyle::Markdown => format!("[{title}]({})", card.url),
         LinkStyle::AppendUrl => {
-            let prefix = if !title.is_empty() && title != card.url { format!("[链接] {title}") } else { "[链接]".to_string() };
+            let prefix = if !title.is_empty() && title != card.url {
+                format!("[链接] {title}")
+            } else {
+                "[链接]".to_string()
+            };
             format!("{prefix}\n{}", card.url)
         }
     })
@@ -1926,25 +2404,45 @@ pub fn format_link_card_export_text(content: &str, local_type: i64, style: LinkS
 fn extract_finder_feed_desc(content: &str) -> String {
     rx(r"(?is)<finderFeed.*?<desc>(.*?)</desc>")
         .captures(content)
-        .map(|c| c[1].replace("<![CDATA[", "").replace("]]>", "").trim().to_string())
+        .map(|c| {
+            c[1].replace("<![CDATA[", "")
+                .replace("]]>", "")
+                .trim()
+                .to_string()
+        })
         .unwrap_or_default()
 }
 
 fn first_non_empty(n: &str, tags: &[&str]) -> String {
-    tags.iter().map(|t| extract_xml_value(n, t)).find(|v| !v.is_empty()).unwrap_or_default()
+    tags.iter()
+        .map(|t| extract_xml_value(n, t))
+        .find(|v| !v.is_empty())
+        .unwrap_or_default()
 }
 
 /// `extractArkmeAppMessageMeta` — extra structured fields for `arkme-json` / `json`.
-pub fn extract_arkme_app_message_meta(content: &str, local_type: i64) -> Option<Map<String, Value>> {
+pub fn extract_arkme_app_message_meta(
+    content: &str,
+    local_type: i64,
+) -> Option<Map<String, Value>> {
     if content.is_empty() {
         return None;
     }
     let n = normalize_app_message_content(content);
-    let looks_app = local_type == 49 || local_type == 244813135921 || n.contains("<appmsg") || n.contains("<msg>");
+    let looks_app = local_type == 49
+        || local_type == 244813135921
+        || n.contains("<appmsg")
+        || n.contains("<msg>");
     let has_refer = n.contains("<refermsg>");
     let xml_type = extract_app_message_type(&n);
-    let is_finder = xml_type == "51" || n.contains("<finder") || n.contains("finderusername") || n.contains("finderobjectid");
-    let is_music = xml_type == "3" || n.contains("<musicurl") || n.contains("<playurl>") || n.contains("<dataurl>");
+    let is_finder = xml_type == "51"
+        || n.contains("<finder")
+        || n.contains("finderusername")
+        || n.contains("finderobjectid");
+    let is_music = xml_type == "3"
+        || n.contains("<musicurl")
+        || n.contains("<playurl>")
+        || n.contains("<dataurl>");
     if !looks_app && !is_finder && !has_refer {
         return None;
     }
@@ -1993,7 +2491,17 @@ pub fn extract_arkme_app_message_meta(content: &str, local_type: i64) -> Option<
     let app_name = extract_xml_value(&n, "appname");
     let source_name = first_non_empty(&n, &["sourcename", "sourcedisplayname"]);
     let source_user = extract_xml_value(&n, "sourceusername");
-    let thumb = first_non_empty(&n, &["thumburl", "cdnthumburl", "cover", "coverurl", "thumbUrl", "coverUrl"]);
+    let thumb = first_non_empty(
+        &n,
+        &[
+            "thumburl",
+            "cdnthumburl",
+            "cover",
+            "coverurl",
+            "thumbUrl",
+            "coverUrl",
+        ],
+    );
     put(&mut meta, "appMsgDesc", desc);
     put(&mut meta, "appMsgAppName", app_name.clone());
     put(&mut meta, "appMsgSourceName", source_name.clone());
@@ -2009,9 +2517,13 @@ pub fn extract_arkme_app_message_meta(content: &str, local_type: i64) -> Option<
     }
     if kind == Some("link") {
         let card = extract_html_link_card(&n, local_type);
-        let url = card.as_ref().map(|c| c.url.clone()).filter(|u| !u.is_empty()).unwrap_or_else(|| {
-            normalize_http_link_url(&first_non_empty(&n, &["shareurl", "shorturl", "dataurl"]))
-        });
+        let url = card
+            .as_ref()
+            .map(|c| c.url.clone())
+            .filter(|u| !u.is_empty())
+            .unwrap_or_else(|| {
+                normalize_http_link_url(&first_non_empty(&n, &["shareurl", "shorturl", "dataurl"]))
+            });
         if let Some(c) = &card {
             put(&mut meta, "linkTitle", c.title.clone());
         }
@@ -2019,14 +2531,42 @@ pub fn extract_arkme_app_message_meta(content: &str, local_type: i64) -> Option<
         put(&mut meta, "linkThumb", thumb.clone());
     }
     if is_music {
-        put(&mut meta, "musicTitle", first_non_empty(&n, &["songname", "title"]));
-        put(&mut meta, "musicUrl", first_non_empty(&n, &["musicurl", "playurl", "songalbumurl"]));
-        put(&mut meta, "musicDataUrl", first_non_empty(&n, &["dataurl", "lowurl"]));
-        put(&mut meta, "musicAlbumUrl", extract_xml_value(&n, "songalbumurl"));
-        put(&mut meta, "musicCoverUrl", first_non_empty(&n, &["thumburl", "cdnthumburl", "coverurl", "cover"]));
-        put(&mut meta, "musicSinger", first_non_empty(&n, &["singername", "artist", "albumartist"]));
+        put(
+            &mut meta,
+            "musicTitle",
+            first_non_empty(&n, &["songname", "title"]),
+        );
+        put(
+            &mut meta,
+            "musicUrl",
+            first_non_empty(&n, &["musicurl", "playurl", "songalbumurl"]),
+        );
+        put(
+            &mut meta,
+            "musicDataUrl",
+            first_non_empty(&n, &["dataurl", "lowurl"]),
+        );
+        put(
+            &mut meta,
+            "musicAlbumUrl",
+            extract_xml_value(&n, "songalbumurl"),
+        );
+        put(
+            &mut meta,
+            "musicCoverUrl",
+            first_non_empty(&n, &["thumburl", "cdnthumburl", "coverurl", "cover"]),
+        );
+        put(
+            &mut meta,
+            "musicSinger",
+            first_non_empty(&n, &["singername", "artist", "albumartist"]),
+        );
         put(&mut meta, "musicAppName", app_name);
-        put(&mut meta, "musicSourceName", extract_xml_value(&n, "sourcename"));
+        put(
+            &mut meta,
+            "musicSourceName",
+            extract_xml_value(&n, "sourcename"),
+        );
         let dur = first_non_empty(&n, &["playlength", "play_length", "duration"]);
         if let Some(d) = parse_duration_seconds(&dur) {
             meta.insert("musicDuration".into(), json!(d));
@@ -2037,32 +2577,80 @@ pub fn extract_arkme_app_message_meta(content: &str, local_type: i64) -> Option<
     }
     let raw_title = extract_xml_value(&n, "title");
     let feed_desc = extract_finder_feed_desc(&n);
-    let finder_title = if raw_title.is_empty() || raw_title.contains("不支持") { feed_desc } else { raw_title };
+    let finder_title = if raw_title.is_empty() || raw_title.contains("不支持") {
+        feed_desc
+    } else {
+        raw_title
+    };
     put(&mut meta, "finderTitle", finder_title);
-    put(&mut meta, "finderDesc", first_non_empty(&n, &["des", "desc"]));
-    put(&mut meta, "finderUsername", first_non_empty(&n, &["finderusername", "finder_username", "finderuser"]));
-    put(&mut meta, "finderNickname", first_non_empty(&n, &["findernickname", "finder_nickname"]));
-    put(&mut meta, "finderCoverUrl", first_non_empty(&n, &["thumbUrl", "coverUrl", "thumburl", "coverurl"]));
+    put(
+        &mut meta,
+        "finderDesc",
+        first_non_empty(&n, &["des", "desc"]),
+    );
+    put(
+        &mut meta,
+        "finderUsername",
+        first_non_empty(&n, &["finderusername", "finder_username", "finderuser"]),
+    );
+    put(
+        &mut meta,
+        "finderNickname",
+        first_non_empty(&n, &["findernickname", "finder_nickname"]),
+    );
+    put(
+        &mut meta,
+        "finderCoverUrl",
+        first_non_empty(&n, &["thumbUrl", "coverUrl", "thumburl", "coverurl"]),
+    );
     put(&mut meta, "finderAvatar", extract_xml_value(&n, "avatar"));
     let dur = first_non_empty(&n, &["videoPlayDuration", "duration"]);
     if let Some(d) = parse_duration_seconds(&dur) {
         meta.insert("finderDuration".into(), json!(d));
     }
-    put(&mut meta, "finderObjectId", first_non_empty(&n, &["finderobjectid", "finder_objectid", "objectid", "object_id"]));
-    put(&mut meta, "finderUrl", first_non_empty(&n, &["url", "shareurl"]));
-    if meta.is_empty() { None } else { Some(meta) }
+    put(
+        &mut meta,
+        "finderObjectId",
+        first_non_empty(
+            &n,
+            &["finderobjectid", "finder_objectid", "objectid", "object_id"],
+        ),
+    );
+    put(
+        &mut meta,
+        "finderUrl",
+        first_non_empty(&n, &["url", "shareurl"]),
+    );
+    if meta.is_empty() {
+        None
+    } else {
+        Some(meta)
+    }
 }
 
-pub fn extract_arkme_contact_card_meta(content: &str, local_type: i64) -> Option<Map<String, Value>> {
+pub fn extract_arkme_contact_card_meta(
+    content: &str,
+    local_type: i64,
+) -> Option<Map<String, Value>> {
     if content.is_empty() || local_type != 42 {
         return None;
     }
     let n = normalize_app_message_content(content);
     let read = |attr: &str| {
         let a = extract_xml_attribute(&n, "msg", attr);
-        if !a.is_empty() { a } else { extract_xml_value(&n, attr) }
+        if !a.is_empty() {
+            a
+        } else {
+            extract_xml_value(&n, attr)
+        }
     };
-    let first = |attrs: &[&str]| attrs.iter().map(|a| read(a)).find(|v| !v.is_empty()).unwrap_or_default();
+    let first = |attrs: &[&str]| {
+        attrs
+            .iter()
+            .map(|a| read(a))
+            .find(|v| !v.is_empty())
+            .unwrap_or_default()
+    };
     let mut meta = Map::new();
     meta.insert("cardKind".into(), json!("contact-card"));
     let mut put = |key: &str, value: String| {
@@ -2070,14 +2658,20 @@ pub fn extract_arkme_contact_card_meta(content: &str, local_type: i64) -> Option
             meta.insert(key.into(), Value::String(value));
         }
     };
-    put("contactCardWxid", first(&["username", "encryptusername", "encrypt_user_name"]));
+    put(
+        "contactCardWxid",
+        first(&["username", "encryptusername", "encrypt_user_name"]),
+    );
     put("contactCardNickname", read("nickname"));
     put("contactCardAlias", read("alias"));
     put("contactCardRemark", read("remark"));
     put("contactCardProvince", read("province"));
     put("contactCardCity", read("city"));
     put("contactCardSignature", first(&["sign", "signature"]));
-    put("contactCardAvatar", first(&["smallheadimgurl", "bigheadimgurl", "headimgurl", "avatar"]));
+    put(
+        "contactCardAvatar",
+        first(&["smallheadimgurl", "bigheadimgurl", "headimgurl", "avatar"]),
+    );
     let sex = read("sex");
     if let Ok(g) = sex.trim().parse::<i64>() {
         if g >= 0 {
@@ -2099,7 +2693,14 @@ pub struct CollectOptions<'a> {
 
 /// Who sent a message, as the exports name it: the revoker of a revoke notice, the account for its own messages,
 /// else the row's sender, else the conversation itself.
-pub fn message_sender(local_type: i64, content: &str, is_send: bool, sender_username: &str, session_id: &str, my_wxid: &str) -> String {
+pub fn message_sender(
+    local_type: i64,
+    content: &str,
+    is_send: bool,
+    sender_username: &str,
+    session_id: &str,
+    my_wxid: &str,
+) -> String {
     if local_type == 10000 || local_type == 266287972401 {
         let info = extract_revoker_info(content);
         if !info.is_revoke {
@@ -2120,11 +2721,40 @@ pub fn message_sender(local_type: i64, content: &str, is_send: bool, sender_user
 
 /// [`message_sender`] of a raw message row.
 pub fn row_sender(row: &Value, session_id: &str, my_wxid: &str) -> String {
-    let local_type = row_int(row, &["local_type", "localType", "type", "msg_type", "msgType", "WCDB_CT_local_type"], 1);
-    let is_send_raw = row.get("computed_is_send").or_else(|| row.get("is_send")).map(value_to_string).unwrap_or_else(|| "0".into());
-    let sender_username = row.get("sender_username").map(value_to_string).unwrap_or_default();
-    let content = if local_type == 10000 || local_type == 266287972401 { decode_message_content(row) } else { String::new() };
-    message_sender(local_type, &content, is_send_raw.trim().parse::<i64>().unwrap_or(0) == 1, &sender_username, session_id, my_wxid)
+    let local_type = row_int(
+        row,
+        &[
+            "local_type",
+            "localType",
+            "type",
+            "msg_type",
+            "msgType",
+            "WCDB_CT_local_type",
+        ],
+        1,
+    );
+    let is_send_raw = row
+        .get("computed_is_send")
+        .or_else(|| row.get("is_send"))
+        .map(value_to_string)
+        .unwrap_or_else(|| "0".into());
+    let sender_username = row
+        .get("sender_username")
+        .map(value_to_string)
+        .unwrap_or_default();
+    let content = if local_type == 10000 || local_type == 266287972401 {
+        decode_message_content(row)
+    } else {
+        String::new()
+    };
+    message_sender(
+        local_type,
+        &content,
+        is_send_raw.trim().parse::<i64>().unwrap_or(0) == 1,
+        &sender_username,
+        session_id,
+        my_wxid,
+    )
 }
 
 /// `collectMessages` (full mode): normalise raw rows and sort chronologically.
@@ -2142,17 +2772,74 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
                 continue;
             }
         }
-        let local_type = row_int(row, &["local_type", "localType", "type", "msg_type", "msgType", "WCDB_CT_local_type"], 1);
+        let local_type = row_int(
+            row,
+            &[
+                "local_type",
+                "localType",
+                "type",
+                "msg_type",
+                "msgType",
+                "WCDB_CT_local_type",
+            ],
+            1,
+        );
         let content = decode_message_content(row);
-        let sender_username = row.get("sender_username").map(value_to_string).unwrap_or_default();
-        let is_send_raw = row.get("computed_is_send").or_else(|| row.get("is_send")).map(value_to_string).unwrap_or_else(|| "0".into());
+        let sender_username = row
+            .get("sender_username")
+            .map(value_to_string)
+            .unwrap_or_default();
+        let is_send_raw = row
+            .get("computed_is_send")
+            .or_else(|| row.get("is_send"))
+            .map(value_to_string)
+            .unwrap_or_else(|| "0".into());
         let is_send = is_send_raw.trim().parse::<i64>().unwrap_or(0) == 1;
-        let local_id = row_int(row, &["local_id", "localId", "LocalId", "msg_local_id", "msgLocalId", "MsgLocalId", "msg_id", "msgId", "MsgId", "id", "WCDB_CT_local_id"], 0);
-        let server_keys = ["server_id", "serverId", "ServerId", "msg_server_id", "msgServerId", "MsgServerId", "svr_id", "svrId", "msg_svr_id", "msgSvrId", "MsgSvrId", "WCDB_CT_server_id"];
-        let server_raw = row_field(row, &server_keys).map(value_to_string).map(|v| normalize_unsigned_token(&v)).unwrap_or_else(|| "0".into());
+        let local_id = row_int(
+            row,
+            &[
+                "local_id",
+                "localId",
+                "LocalId",
+                "msg_local_id",
+                "msgLocalId",
+                "MsgLocalId",
+                "msg_id",
+                "msgId",
+                "MsgId",
+                "id",
+                "WCDB_CT_local_id",
+            ],
+            0,
+        );
+        let server_keys = [
+            "server_id",
+            "serverId",
+            "ServerId",
+            "msg_server_id",
+            "msgServerId",
+            "MsgServerId",
+            "svr_id",
+            "svrId",
+            "msg_svr_id",
+            "msgSvrId",
+            "MsgSvrId",
+            "WCDB_CT_server_id",
+        ];
+        let server_raw = row_field(row, &server_keys)
+            .map(value_to_string)
+            .map(|v| normalize_unsigned_token(&v))
+            .unwrap_or_else(|| "0".into());
         let server_id = row_int(row, &server_keys, 0);
 
-        let actual_sender = message_sender(local_type, &content, is_send, &sender_username, opts.session_id, opts.my_wxid);
+        let actual_sender = message_sender(
+            local_type,
+            &content,
+            is_send,
+            &sender_username,
+            opts.session_id,
+            opts.my_wxid,
+        );
         if let Some(filter) = opts.sender_filter.filter(|f| !f.trim().is_empty()) {
             if !is_same_wxid(&actual_sender, filter.trim()) {
                 continue;
@@ -2162,7 +2849,11 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
         let mut msg = ExportMsg {
             local_id,
             server_id,
-            server_id_raw: if server_raw != "0" { Some(server_raw) } else { None },
+            server_id_raw: if server_raw != "0" {
+                Some(server_raw)
+            } else {
+                None
+            },
             create_time,
             local_type,
             content: content.clone(),
@@ -2180,12 +2871,21 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
             }
         }
         if local_type == 47 {
-            let col = |keys: &[&str]| row_field(row, keys).map(value_to_string).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+            let col = |keys: &[&str]| {
+                row_field(row, keys)
+                    .map(value_to_string)
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty())
+            };
             msg.emoji_cdn_url = col(&["emoji_cdn_url", "emojiCdnUrl"]);
             msg.emoji_md5 = col(&["emoji_md5", "emojiMd5"]).and_then(|v| normalize_md5(&v));
             let packed = col(&["packed_info", "packedInfo", "PackedInfo"]).unwrap_or_default();
             let reserved = col(&["reserved0", "Reserved0"]).unwrap_or_default();
-            let supplemental = format!("{}\n{}", decode_maybe_compressed(&packed), decode_maybe_compressed(&reserved));
+            let supplemental = format!(
+                "{}\n{}",
+                decode_maybe_compressed(&packed),
+                decode_maybe_compressed(&reserved)
+            );
             if !content.is_empty() {
                 if msg.emoji_cdn_url.is_none() {
                     msg.emoji_cdn_url = extract_emoji_url(&content);
@@ -2198,10 +2898,14 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
                 msg.emoji_cdn_url = extract_emoji_url(&supplemental);
             }
             if msg.emoji_md5.is_none() {
-                msg.emoji_md5 = extract_emoji_md5(&supplemental).or_else(|| extract_loose_hex_md5(&supplemental));
+                msg.emoji_md5 = extract_emoji_md5(&supplemental)
+                    .or_else(|| extract_loose_hex_md5(&supplemental));
             }
         }
-        msg.image_md5 = row_field(row, &["image_md5", "imageMd5"]).map(value_to_string).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        msg.image_md5 = row_field(row, &["image_md5", "imageMd5"])
+            .map(value_to_string)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
         if local_type == 3 {
             msg.image_dat_name = extract_image_dat_name_from_row(row, &content);
             if msg.image_md5.is_none() && !content.is_empty() {
@@ -2211,7 +2915,8 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
         if local_type == 43 && !content.is_empty() {
             msg.video_md5 = extract_video_md5(&content);
         }
-        let app_like = local_type == 49 || content.contains("<appmsg") || content.contains("&lt;appmsg");
+        let app_like =
+            local_type == 49 || content.contains("<appmsg") || content.contains("&lt;appmsg");
         if !content.is_empty() && app_like {
             if let Some(meta) = extract_file_app_message_meta(&content) {
                 msg.xml_type = meta.xml_type;
@@ -2227,7 +2932,11 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
         }
         out.push(msg);
     }
-    out.sort_by(|a, b| a.create_time.cmp(&b.create_time).then(a.local_id.cmp(&b.local_id)));
+    out.sort_by(|a, b| {
+        a.create_time
+            .cmp(&b.create_time)
+            .then(a.local_id.cmp(&b.local_id))
+    });
     out
 }
 
@@ -2239,9 +2948,16 @@ mod tests {
     fn local_midnights_round_trip_through_the_local_formatter() {
         for (y, m, d) in [(2026, 9, 24), (2024, 2, 29), (2026, 12, 31), (2026, 1, 1)] {
             let start = local_midnight(y, m, d).unwrap();
-            assert_eq!(format_timestamp(start), format!("{y}-{m:02}-{d:02} 00:00:00"));
+            assert_eq!(
+                format_timestamp(start),
+                format!("{y}-{m:02}-{d:02} 00:00:00")
+            );
             let next = local_midnight_after(y, m, d).unwrap();
-            assert!((23 * 3600..=25 * 3600).contains(&(next - start)), "a day is 23 to 25 hours long: {}", next - start);
+            assert!(
+                (23 * 3600..=25 * 3600).contains(&(next - start)),
+                "a day is 23 to 25 hours long: {}",
+                next - start
+            );
             assert!(format_timestamp(next).ends_with("00:00:00"));
         }
         assert!(local_midnight(2026, 2, 30).is_none());
@@ -2251,7 +2967,14 @@ mod tests {
     fn xml_value_strips_cdata() {
         let xml = "<msg><title><![CDATA[ hello ]]></title></msg>";
         assert_eq!(extract_xml_value(xml, "title"), "hello");
-        assert_eq!(extract_xml_attribute(r#"<location x="1.5" y="2" poiname="P"/>"#, "location", "poiname"), "P");
+        assert_eq!(
+            extract_xml_attribute(
+                r#"<location x="1.5" y="2" poiname="P"/>"#,
+                "location",
+                "poiname"
+            ),
+            "P"
+        );
     }
 
     #[test]
@@ -2273,7 +2996,10 @@ mod tests {
         let d = extract_quoted_reply_display(xml).unwrap();
         assert_eq!(build_quoted_reply_text(&d), "ok[引用 Bob：hi there]");
         assert_eq!(extract_reply_to_message_id(xml).as_deref(), Some("123"));
-        assert_eq!(parse_message_content(xml, 49, None, None, None).unwrap(), "ok[引用 Bob：hi there]");
+        assert_eq!(
+            parse_message_content(xml, 49, None, None, None).unwrap(),
+            "ok[引用 Bob：hi there]"
+        );
     }
 
     #[test]
@@ -2285,8 +3011,14 @@ mod tests {
     #[test]
     fn transfer_texts() {
         let xml = "<msg><appmsg><title>转账</title><type>2000</type><wcpayinfo><feedesc>￥1.00</feedesc><paysubtype>1</paysubtype></wcpayinfo></appmsg></msg>";
-        assert_eq!(parse_message_content(xml, 49, None, None, None).unwrap(), "[转账] ￥1.00");
-        assert_eq!(append_transfer_desc("[转账] ￥1.00", "A 转账给 B"), "[转账] (A 转账给 B) ￥1.00");
+        assert_eq!(
+            parse_message_content(xml, 49, None, None, None).unwrap(),
+            "[转账] ￥1.00"
+        );
+        assert_eq!(
+            append_transfer_desc("[转账] ￥1.00", "A 转账给 B"),
+            "[转账] (A 转账给 B) ￥1.00"
+        );
         let xml2 = "<appmsg><type>2000</type><paysubtype>3</paysubtype></appmsg>";
         assert_eq!(get_transfer_prefix(xml2, None, None), "[转账收款]");
     }
@@ -2319,13 +3051,29 @@ mod tests {
     #[test]
     fn plain_content_per_type() {
         let opts = PlainOpts::default();
-        assert_eq!(format_plain_export_content("wxid_a:hi", 1, &opts, None, None, None, false, None), "hi");
-        assert_eq!(format_plain_export_content("", 3, &opts, None, None, None, false, None), "[图片]");
-        assert_eq!(format_plain_export_content("x", 34, &opts, None, None, None, false, None), "[其他消息]");
+        assert_eq!(
+            format_plain_export_content("wxid_a:hi", 1, &opts, None, None, None, false, None),
+            "hi"
+        );
+        assert_eq!(
+            format_plain_export_content("", 3, &opts, None, None, None, false, None),
+            "[图片]"
+        );
+        assert_eq!(
+            format_plain_export_content("x", 34, &opts, None, None, None, false, None),
+            "[其他消息]"
+        );
         let v = "<msg><videomsg playlength=\"12\"/><playlength>12</playlength></msg>";
-        assert_eq!(format_plain_export_content(v, 43, &opts, None, None, None, false, None), "[视频]12s");
-        let loc = "<msg><location x=\"31.2\" y=\"121.4\" poiname=\"Tower\" label=\"Road 1\"/></msg>";
-        assert_eq!(format_plain_export_content(loc, 48, &opts, None, None, None, false, None), "[位置] Tower Road 1 (31.2,121.4)");
+        assert_eq!(
+            format_plain_export_content(v, 43, &opts, None, None, None, false, None),
+            "[视频]12s"
+        );
+        let loc =
+            "<msg><location x=\"31.2\" y=\"121.4\" poiname=\"Tower\" label=\"Road 1\"/></msg>";
+        assert_eq!(
+            format_plain_export_content(loc, 48, &opts, None, None, None, false, None),
+            "[位置] Tower Road 1 (31.2,121.4)"
+        );
     }
 
     #[test]
@@ -2333,8 +3081,14 @@ mod tests {
         let xml = "<msg><appmsg><title>Hello</title><type>5</type><url>https://example.com/a?b=1&amp;c=2</url></appmsg></msg>";
         let c = extract_html_link_card(xml, 49).unwrap();
         assert_eq!(c.url, "https://example.com/a?b=1&c=2");
-        assert_eq!(format_link_card_export_text(xml, 49, LinkStyle::Markdown).unwrap(), "[Hello](https://example.com/a?b=1&c=2)");
-        assert_eq!(normalize_http_link_url("example.com/x"), "https://example.com/x");
+        assert_eq!(
+            format_link_card_export_text(xml, 49, LinkStyle::Markdown).unwrap(),
+            "[Hello](https://example.com/a?b=1&c=2)"
+        );
+        assert_eq!(
+            normalize_http_link_url("example.com/x"),
+            "https://example.com/x"
+        );
         assert_eq!(normalize_http_link_url("javascript:alert(1)"), "");
     }
 
@@ -2356,12 +3110,30 @@ mod tests {
             json!({"local_id": "2", "server_id": "9007199254740993", "create_time": "1700000100", "local_type": "1", "message_content": "wxid_b:second", "sender_username": "wxid_b", "is_send": "0"}),
             json!({"local_id": "1", "create_time": "1700000000", "local_type": "1", "message_content": "first", "is_send": "1"}),
         ];
-        let msgs = collect_messages(&rows, &CollectOptions { session_id: "wxid_b", my_wxid: "wxid_me", start: None, end: None, sender_filter: None });
+        let msgs = collect_messages(
+            &rows,
+            &CollectOptions {
+                session_id: "wxid_b",
+                my_wxid: "wxid_me",
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        );
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].content, "first");
         assert_eq!(msgs[0].sender_username, "wxid_me");
         assert_eq!(msgs[1].server_id_raw.as_deref(), Some("9007199254740993"));
-        let filtered = collect_messages(&rows, &CollectOptions { session_id: "wxid_b", my_wxid: "wxid_me", start: Some(1700000050), end: None, sender_filter: None });
+        let filtered = collect_messages(
+            &rows,
+            &CollectOptions {
+                session_id: "wxid_b",
+                my_wxid: "wxid_me",
+                start: Some(1700000050),
+                end: None,
+                sender_filter: None,
+            },
+        );
         assert_eq!(filtered.len(), 1);
     }
 
@@ -2377,20 +3149,40 @@ mod tests {
 
     #[test]
     fn timestamps() {
-        assert_eq!(normalize_timestamp_seconds(1_700_000_000_000.0), 1_700_000_000);
+        assert_eq!(
+            normalize_timestamp_seconds(1_700_000_000_000.0),
+            1_700_000_000
+        );
         assert_eq!(normalize_row_timestamp(&json!("20240102030405")) > 0, true);
         assert_eq!(normalize_unsigned_token("00012"), "12");
         assert_eq!(normalize_unsigned_token("abc"), "0");
-        assert_eq!(last_hex_token("zz0123456789abcdef0123456789abcdef00zz", 32, 32).unwrap().len(), 32);
+        assert_eq!(
+            last_hex_token("zz0123456789abcdef0123456789abcdef00zz", 32, 32)
+                .unwrap()
+                .len(),
+            32
+        );
     }
 
     #[test]
     fn percent_decoding_never_splits_characters() {
         assert_eq!(percent_decode_bytes("%E4%B8%AD%2F"), "中/".as_bytes());
-        assert_eq!(percent_decode_bytes("%a中"), "%a中".as_bytes(), "a multi-byte character after % is not a hex digit");
+        assert_eq!(
+            percent_decode_bytes("%a中"),
+            "%a中".as_bytes(),
+            "a multi-byte character after % is not a hex digit"
+        );
         assert_eq!(percent_decode_bytes("%中x"), "%中x".as_bytes());
-        assert_eq!(percent_decode_bytes("%+5"), b"%+5", "a sign is not a hex digit");
+        assert_eq!(
+            percent_decode_bytes("%+5"),
+            b"%+5",
+            "a sign is not a hex digit"
+        );
         assert_eq!(percent_decode_bytes("a%4"), b"a%4");
-        assert_eq!(percent_decode("%ff"), "%ff", "invalid UTF-8 keeps the input");
+        assert_eq!(
+            percent_decode("%ff"),
+            "%ff",
+            "invalid UTF-8 keeps the input"
+        );
     }
 }

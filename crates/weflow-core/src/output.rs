@@ -65,7 +65,8 @@ pub enum ProgressMode {
 /// Default number of seconds a command must run before the automatic progress bar appears.
 pub const DEFAULT_BAR_DELAY_SECS: u64 = 5;
 
-static BAR_DELAY_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(DEFAULT_BAR_DELAY_SECS);
+static BAR_DELAY_SECS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(DEFAULT_BAR_DELAY_SECS);
 
 /// Sets the delay before the automatic bar appears (`0` = from the start).
 pub fn set_progress_delay(secs: u64) {
@@ -97,7 +98,19 @@ fn bar_state() -> &'static std::sync::Mutex<BarState> {
     static STATE: std::sync::OnceLock<std::sync::Mutex<BarState>> = std::sync::OnceLock::new();
     STATE.get_or_init(|| {
         let now = std::time::Instant::now();
-        std::sync::Mutex::new(BarState { mode: ProgressMode::Off, started: now, stage: String::new(), stage_started: now, last_draw: None, last_line: String::new(), last_width: 0, rate: None, rate_sample: None, drawn: false, is_tty: false })
+        std::sync::Mutex::new(BarState {
+            mode: ProgressMode::Off,
+            started: now,
+            stage: String::new(),
+            stage_started: now,
+            last_draw: None,
+            last_line: String::new(),
+            last_width: 0,
+            rate: None,
+            rate_sample: None,
+            drawn: false,
+            is_tty: false,
+        })
     })
 }
 
@@ -122,10 +135,21 @@ pub fn format_duration(secs: u64) -> String {
 
 /// One line of the bar; `total == 0` means the total is unknown (spinner, no percentage).
 /// `eta_secs` is the (smoothed) remaining time, when known.
-pub fn render_bar(message: &str, current: usize, total: usize, elapsed_secs: u64, eta_secs: Option<u64>, width: usize, tick: usize) -> String {
+pub fn render_bar(
+    message: &str,
+    current: usize,
+    total: usize,
+    elapsed_secs: u64,
+    eta_secs: Option<u64>,
+    width: usize,
+    tick: usize,
+) -> String {
     if total == 0 {
         let spin = ['|', '/', '-', '\\'][tick % 4];
-        return format!("{message}  {spin} {current} processed  elapsed {}", format_duration(elapsed_secs));
+        return format!(
+            "{message}  {spin} {current} processed  elapsed {}",
+            format_duration(elapsed_secs)
+        );
     }
     let frac = (current as f64 / total as f64).clamp(0.0, 1.0);
     let filled = (frac * width as f64).round() as usize;
@@ -134,16 +158,27 @@ pub fn render_bar(message: &str, current: usize, total: usize, elapsed_secs: u64
         Some(e) if current < total => format!("  remaining {}", format_duration(e)),
         _ => String::new(),
     };
-    format!("{message}  [{bar}] {}%  {current}/{total}  elapsed {}{eta}", (frac * 100.0) as u32, format_duration(elapsed_secs))
+    format!(
+        "{message}  [{bar}] {}%  {current}/{total}  elapsed {}{eta}",
+        (frac * 100.0) as u32,
+        format_duration(elapsed_secs)
+    )
 }
 
 /// Cuts a line to `max` characters so it never wraps (a wrapped line cannot be redrawn in place).
 pub fn fit_line(line: &str, max: usize) -> String {
-    if max == 0 || line.chars().count() <= max { line.to_string() } else { line.chars().take(max).collect() }
+    if max == 0 || line.chars().count() <= max {
+        line.to_string()
+    } else {
+        line.chars().take(max).collect()
+    }
 }
 
 fn terminal_columns() -> usize {
-    terminal_size::terminal_size_of(std::io::stderr()).map(|(w, _)| w.0 as usize).filter(|w| *w > 8).unwrap_or(100)
+    terminal_size::terminal_size_of(std::io::stderr())
+        .map(|(w, _)| w.0 as usize)
+        .filter(|w| *w > 8)
+        .unwrap_or(100)
 }
 
 pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
@@ -152,7 +187,11 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
         ProgressMode::Off => {}
         ProgressMode::Ndjson => {
             drop(st);
-            let percent = if total > 0 { ((current as f64 / total as f64) * 100.0) as u8 } else { 0 };
+            let percent = if total > 0 {
+                ((current as f64 / total as f64) * 100.0) as u8
+            } else {
+                0
+            };
             eprintln!(
                 "{}",
                 serde_json::json!({ "type": "progress", "stage": stage, "message": message, "current": current, "total": total, "percent": percent })
@@ -177,18 +216,31 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
                 None => st.rate_sample = Some((now, current)),
                 _ => {}
             }
-            if !st.is_tty || now.duration_since(st.started).as_secs() < BAR_DELAY_SECS.load(std::sync::atomic::Ordering::Relaxed) {
+            if !st.is_tty
+                || now.duration_since(st.started).as_secs()
+                    < BAR_DELAY_SECS.load(std::sync::atomic::Ordering::Relaxed)
+            {
                 return;
             }
             let done = total > 0 && current >= total;
-            if !done && st.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 200) {
+            if !done
+                && st
+                    .last_draw
+                    .map_or(false, |t| now.duration_since(t).as_millis() < 200)
+            {
                 return;
             }
             let elapsed = now.duration_since(st.stage_started).as_secs();
-            let eta = st.rate.filter(|r| *r > 0.0 && total > current).map(|r| ((total - current) as f64 / r).round() as u64);
+            let eta = st
+                .rate
+                .filter(|r| *r > 0.0 && total > current)
+                .map(|r| ((total - current) as f64 / r).round() as u64);
             let tick = (now.duration_since(st.started).as_millis() / 200) as usize;
             let cols = terminal_columns();
-            let line = fit_line(&render_bar(message, current, total, elapsed, eta, 16, tick), cols.saturating_sub(1));
+            let line = fit_line(
+                &render_bar(message, current, total, elapsed, eta, 16, tick),
+                cols.saturating_sub(1),
+            );
             if line == st.last_line {
                 return;
             }

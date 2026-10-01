@@ -21,16 +21,28 @@ fn normalize_username(u: &str) -> String {
 }
 
 fn normalize_excluded(v: &Value) -> Vec<String> {
-    let Some(items) = v.as_array() else { return Vec::new() };
+    let Some(items) = v.as_array() else {
+        return Vec::new();
+    };
     let mut seen = HashSet::new();
-    items.iter().filter_map(Value::as_str).map(normalize_username).filter(|s| !s.is_empty()).filter(|s| seen.insert(s.clone())).collect()
+    items
+        .iter()
+        .filter_map(Value::as_str)
+        .map(normalize_username)
+        .filter(|s| !s.is_empty())
+        .filter(|s| seen.insert(s.clone()))
+        .collect()
 }
 
 fn is_private_session(username: &str, cleaned_wxid: &str) -> bool {
     if username.is_empty() || username.to_lowercase() == cleaned_wxid.to_lowercase() {
         return false;
     }
-    if username.contains("@chatroom") || username == "filehelper" || username.starts_with("gh_") || username.to_lowercase() == "weixin" {
+    if username.contains("@chatroom")
+        || username == "filehelper"
+        || username.starts_with("gh_")
+        || username.to_lowercase() == "weixin"
+    {
         return false;
     }
     for prefix in [
@@ -54,11 +66,16 @@ fn is_private_session(username: &str, cleaned_wxid: &str) -> bool {
             return false;
         }
     }
-    !(username.contains("@kefu.openim") || username.contains("@openim") || username.contains("service_"))
+    !(username.contains("@kefu.openim")
+        || username.contains("@openim")
+        || username.contains("service_"))
 }
 
 fn num(v: &Value) -> i64 {
-    v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)).or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())).unwrap_or(0)
+    v.as_i64()
+        .or_else(|| v.as_f64().map(|f| f as i64))
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+        .unwrap_or(0)
 }
 
 fn map_get<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
@@ -74,18 +91,24 @@ impl ServiceHub {
         if !self.ctx.config_path.exists() {
             return self.config.clone();
         }
-        crate::config::ConfigStore::load(&self.ctx.config_path).unwrap_or_else(|_| self.config.clone())
+        crate::config::ConfigStore::load(&self.ctx.config_path)
+            .unwrap_or_else(|_| self.config.clone())
     }
 
     /// Persists one key of the active profile to the config file.
     pub fn set_config_value(&self, key: &str, value: Value) -> AppResult<()> {
         let mut cfg = self.fresh_config();
         cfg.set_key(Some(&self.profile_name), key, value)?;
-        cfg.save(&self.ctx.config_path).map_err(|e| AppError::config(e.to_string()))
+        cfg.save(&self.ctx.config_path)
+            .map_err(|e| AppError::config(e.to_string()))
     }
 
     fn excluded_list(&self) -> Vec<String> {
-        normalize_excluded(&self.fresh_config().get_key(Some(&self.profile_name), "analyticsExcludedUsernames"))
+        normalize_excluded(
+            &self
+                .fresh_config()
+                .get_key(Some(&self.profile_name), "analyticsExcludedUsernames"),
+        )
     }
 
     /// `getExcludedUsernames`
@@ -108,8 +131,15 @@ impl ServiceHub {
         Ok(())
     }
 
-    fn private_sessions(&self, wcdb: &weflow_native::wcdb::Wcdb, cleaned_wxid: &str, excluded: Option<&HashSet<String>>) -> AppResult<Vec<String>> {
-        let raw = wcdb.sessions().map_err(|e| AppError::native(e.to_string()))?;
+    fn private_sessions(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        cleaned_wxid: &str,
+        excluded: Option<&HashSet<String>>,
+    ) -> AppResult<Vec<String>> {
+        let raw = wcdb
+            .sessions()
+            .map_err(|e| AppError::native(e.to_string()))?;
         let rows = raw.as_array().cloned().unwrap_or_default();
         let own;
         let excluded = match excluded {
@@ -121,26 +151,68 @@ impl ServiceHub {
         };
         Ok(rows
             .iter()
-            .map(|r| ["username", "user_name", "userName"].iter().filter_map(|k| r.get(*k).and_then(Value::as_str)).find(|s| !s.is_empty()).unwrap_or("").to_string())
+            .map(|r| {
+                ["username", "user_name", "userName"]
+                    .iter()
+                    .filter_map(|k| r.get(*k).and_then(Value::as_str))
+                    .find(|s| !s.is_empty())
+                    .unwrap_or("")
+                    .to_string()
+            })
             .filter(|u| is_private_session(u, cleaned_wxid))
             .filter(|u| excluded.is_empty() || !excluded.contains(&normalize_username(u)))
             .collect())
     }
 
     /// `getAggregateStats` with the numeric-id retry of the WCDB wrapper.
-    fn aggregate_raw(&self, wcdb: &weflow_native::wcdb::Wcdb, session_ids: &[String], begin: i64, end: i64) -> AppResult<Value> {
+    fn aggregate_raw(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        session_ids: &[String],
+        begin: i64,
+        end: i64,
+    ) -> AppResult<Value> {
         let (b, e) = normalize_range(begin, end);
         let call = |ids: &[String]| -> AppResult<Value> {
-            let numeric = !ids.is_empty() && ids.iter().all(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit()));
-            let payload = if numeric { json!(ids.iter().filter_map(|i| i.parse::<u64>().ok()).collect::<Vec<_>>()) } else { json!(ids) };
-            wcdb.invoke_json("wcdb_get_aggregate_stats", &[weflow_native::wcdb::Arg::S(&payload.to_string()), weflow_native::wcdb::Arg::I32(b), weflow_native::wcdb::Arg::I32(e)])
-                .map_err(|err| AppError::native(err.to_string()))
+            let numeric = !ids.is_empty()
+                && ids
+                    .iter()
+                    .all(|i| !i.is_empty() && i.chars().all(|c| c.is_ascii_digit()));
+            let payload = if numeric {
+                json!(ids
+                    .iter()
+                    .filter_map(|i| i.parse::<u64>().ok())
+                    .collect::<Vec<_>>())
+            } else {
+                json!(ids)
+            };
+            wcdb.invoke_json(
+                "wcdb_get_aggregate_stats",
+                &[
+                    weflow_native::wcdb::Arg::S(&payload.to_string()),
+                    weflow_native::wcdb::Arg::I32(b),
+                    weflow_native::wcdb::Arg::I32(e),
+                ],
+            )
+            .map_err(|err| AppError::native(err.to_string()))
         };
         let mut result = call(session_ids)?;
         if num(&result["total"]) == 0 {
             if let Some(id_map) = result.get("idMap").and_then(Value::as_object) {
-                let reverse: HashMap<&str, &str> = id_map.iter().filter_map(|(id, name)| name.as_str().filter(|n| !n.is_empty()).map(|n| (n, id.as_str()))).collect();
-                let numeric_ids: Vec<String> = session_ids.iter().filter_map(|s| reverse.get(s.as_str())).filter(|id| id.chars().all(|c| c.is_ascii_digit()) && !id.is_empty()).map(|s| s.to_string()).collect();
+                let reverse: HashMap<&str, &str> = id_map
+                    .iter()
+                    .filter_map(|(id, name)| {
+                        name.as_str()
+                            .filter(|n| !n.is_empty())
+                            .map(|n| (n, id.as_str()))
+                    })
+                    .collect();
+                let numeric_ids: Vec<String> = session_ids
+                    .iter()
+                    .filter_map(|s| reverse.get(s.as_str()))
+                    .filter(|id| id.chars().all(|c| c.is_ascii_digit()) && !id.is_empty())
+                    .map(|s| s.to_string())
+                    .collect();
                 if !numeric_ids.is_empty() {
                     if let Ok(retry) = call(&numeric_ids) {
                         result = retry;
@@ -152,10 +224,17 @@ impl ServiceHub {
     }
 
     /// `computeAggregateByCursor`: cursor-based fallback when the native aggregate is empty.
-    fn aggregate_by_cursor(&self, wcdb: &weflow_native::wcdb::Wcdb, session_ids: &[String], begin: i64, end: i64) -> AppResult<Value> {
+    fn aggregate_by_cursor(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        session_ids: &[String],
+        begin: i64,
+        end: i64,
+    ) -> AppResult<Value> {
         use chrono::{Datelike, Local, TimeZone, Timelike};
         let my = self.my_wxid_cleaned().to_lowercase();
-        let (mut total, mut sent, mut received, mut first, mut last) = (0i64, 0i64, 0i64, 0i64, 0i64);
+        let (mut total, mut sent, mut received, mut first, mut last) =
+            (0i64, 0i64, 0i64, 0i64, 0i64);
         let mut type_counts: BTreeMap<i64, i64> = BTreeMap::new();
         let mut hourly: BTreeMap<u32, i64> = BTreeMap::new();
         let mut weekday: BTreeMap<u32, i64> = BTreeMap::new();
@@ -163,21 +242,59 @@ impl ServiceHub {
         let mut monthly: BTreeMap<String, i64> = BTreeMap::new();
         let mut sessions = Map::new();
         for session_id in session_ids {
-            let Ok(cursor) = wcdb.open_message_cursor(session_id, 500, true, begin.clamp(0, i32::MAX as i64) as i32, end.clamp(0, i32::MAX as i64) as i32, false) else { continue };
+            let Ok(cursor) = wcdb.open_message_cursor(
+                session_id,
+                500,
+                true,
+                begin.clamp(0, i32::MAX as i64) as i32,
+                end.clamp(0, i32::MAX as i64) as i32,
+                false,
+            ) else {
+                continue;
+            };
             let (mut s_total, mut s_sent, mut s_recv, mut s_last) = (0i64, 0i64, 0i64, 0i64);
             loop {
-                let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else { break };
+                let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                    break;
+                };
                 let Some(rows) = rows.as_array() else { break };
                 for row in rows {
-                    let create_time = ["create_time", "createTime", "create_time_ms"].iter().filter_map(|k| row.get(*k)).map(num).find(|n| *n != 0).unwrap_or(0);
-                    if create_time == 0 || (begin > 0 && create_time < begin) || (end > 0 && create_time > end) {
+                    let create_time = ["create_time", "createTime", "create_time_ms"]
+                        .iter()
+                        .filter_map(|k| row.get(*k))
+                        .map(num)
+                        .find(|n| *n != 0)
+                        .unwrap_or(0);
+                    if create_time == 0
+                        || (begin > 0 && create_time < begin)
+                        || (end > 0 && create_time > end)
+                    {
                         continue;
                     }
-                    let local_type = ["local_type", "type"].iter().filter_map(|k| row.get(*k)).map(num).find(|n| *n != 0).unwrap_or(1);
-                    let raw = row.get("computed_is_send").filter(|v| !v.is_null()).or_else(|| row.get("is_send")).or_else(|| row.get("isSend")).filter(|v| !v.is_null());
-                    let mut is_send = raw.map_or(false, |v| v.as_str().map_or(v.as_i64() == Some(1) || v.as_bool() == Some(true), |s| s == "1"));
+                    let local_type = ["local_type", "type"]
+                        .iter()
+                        .filter_map(|k| row.get(*k))
+                        .map(num)
+                        .find(|n| *n != 0)
+                        .unwrap_or(1);
+                    let raw = row
+                        .get("computed_is_send")
+                        .filter(|v| !v.is_null())
+                        .or_else(|| row.get("is_send"))
+                        .or_else(|| row.get("isSend"))
+                        .filter(|v| !v.is_null());
+                    let mut is_send = raw.map_or(false, |v| {
+                        v.as_str()
+                            .map_or(v.as_i64() == Some(1) || v.as_bool() == Some(true), |s| {
+                                s == "1"
+                            })
+                    });
                     if raw.is_none() {
-                        if let Some(sender) = ["sender_username", "senderUsername", "sender"].iter().filter_map(|k| row.get(*k).and_then(Value::as_str)).find(|s| !s.is_empty()) {
+                        if let Some(sender) = ["sender_username", "senderUsername", "sender"]
+                            .iter()
+                            .filter_map(|k| row.get(*k).and_then(Value::as_str))
+                            .find(|s| !s.is_empty())
+                        {
                             if !my.is_empty() {
                                 let s = sender.to_lowercase();
                                 is_send = s == my || s.starts_with(&format!("{my}_"));
@@ -202,7 +319,9 @@ impl ServiceHub {
                     if let Some(d) = Local.timestamp_opt(create_time, 0).single() {
                         let month = format!("{}-{:02}", d.year(), d.month());
                         *hourly.entry(d.hour()).or_insert(0) += 1;
-                        *weekday.entry(d.weekday().num_days_from_sunday()).or_insert(0) += 1;
+                        *weekday
+                            .entry(d.weekday().num_days_from_sunday())
+                            .or_insert(0) += 1;
                         *daily.entry(format!("{month}-{:02}", d.day())).or_insert(0) += 1;
                         *monthly.entry(month).or_insert(0) += 1;
                     }
@@ -216,7 +335,9 @@ impl ServiceHub {
                 sessions.insert(session_id.clone(), json!({ "total": s_total, "sent": s_sent, "received": s_recv, "lastTime": s_last }));
             }
         }
-        let obj = |m: &BTreeMap<u32, i64>| -> Value { Value::Object(m.iter().map(|(k, v)| (k.to_string(), json!(v))).collect()) };
+        let obj = |m: &BTreeMap<u32, i64>| -> Value {
+            Value::Object(m.iter().map(|(k, v)| (k.to_string(), json!(v))).collect())
+        };
         Ok(json!({
             "total": total, "sent": sent, "received": received, "firstTime": first, "lastTime": last,
             "typeCounts": type_counts.iter().map(|(k, v)| (k.to_string(), json!(v))).collect::<Map<_, _>>(),
@@ -231,7 +352,12 @@ impl ServiceHub {
         if ids.is_empty() {
             return format!("{begin}-{end}-0-empty");
         }
-        let mut uniq: Vec<String> = ids.iter().cloned().collect::<HashSet<_>>().into_iter().collect();
+        let mut uniq: Vec<String> = ids
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
         uniq.sort();
         use sha1::{Digest, Sha1};
         let mut h = Sha1::new();
@@ -242,7 +368,14 @@ impl ServiceHub {
 
     /// `getAggregateWithFallback`: memory cache → file cache → native aggregate → cursor scan.
     /// Returns `(data, source)`.
-    fn aggregate_with_fallback(&self, wcdb: &weflow_native::wcdb::Wcdb, ids: &[String], begin: i64, end: i64, force: bool) -> AppResult<(Value, &'static str)> {
+    fn aggregate_with_fallback(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        ids: &[String],
+        begin: i64,
+        end: i64,
+        force: bool,
+    ) -> AppResult<(Value, &'static str)> {
         let key = Self::aggregate_key(ids, begin, end);
         if force {
             self.analytics_state.lock().unwrap().cache = None;
@@ -257,7 +390,8 @@ impl ServiceHub {
                 if let Ok(v) = serde_json::from_str::<Value>(&raw) {
                     if v["key"].as_str() == Some(key.as_str()) && v.get("data").is_some() {
                         let data = v["data"].clone();
-                        self.analytics_state.lock().unwrap().cache = Some((key.clone(), data.clone(), Instant::now()));
+                        self.analytics_state.lock().unwrap().cache =
+                            Some((key.clone(), data.clone(), Instant::now()));
                         return Ok((data, "file-cache"));
                     }
                 }
@@ -267,7 +401,8 @@ impl ServiceHub {
             Ok(d) if num(&d["total"]) > 0 => (d, "dll"),
             _ => (self.aggregate_by_cursor(wcdb, ids, begin, end)?, "cursor"),
         };
-        self.analytics_state.lock().unwrap().cache = Some((key.clone(), data.clone(), Instant::now()));
+        self.analytics_state.lock().unwrap().cache =
+            Some((key.clone(), data.clone(), Instant::now()));
         let _ = std::fs::create_dir_all(self.cache_base());
         let _ = std::fs::write(self.analytics_cache_path(), serde_json::to_string(&json!({ "key": key, "data": data, "updatedAt": chrono::Utc::now().timestamp_millis() })).unwrap_or_default());
         Ok((data, source))
@@ -275,19 +410,36 @@ impl ServiceHub {
 
     fn analytics_connect(&self) -> AppResult<(weflow_native::wcdb::Wcdb, String)> {
         let profile = self.profile()?;
-        let wxid = self.wxid_override.clone().or_else(|| profile.wxid.clone()).filter(|w| !w.is_empty()).ok_or_else(|| AppError::config("wxid is not configured"))?;
+        let wxid = self
+            .wxid_override
+            .clone()
+            .or_else(|| profile.wxid.clone())
+            .filter(|w| !w.is_empty())
+            .ok_or_else(|| AppError::config("wxid is not configured"))?;
         let wcdb = self.open_wcdb()?;
         Ok((wcdb, clean_account_dir_name(&wxid)))
     }
 
-    fn alias_map(&self, wcdb: &weflow_native::wcdb::Wcdb, usernames: &[String]) -> HashMap<String, String> {
+    fn alias_map(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        usernames: &[String],
+    ) -> HashMap<String, String> {
         if usernames.is_empty() {
             return HashMap::new();
         }
         wcdb.contact_alias_map(&serde_json::to_string(usernames).unwrap())
             .ok()
             .and_then(|v| v.as_object().cloned())
-            .map(|m| m.into_iter().filter_map(|(k, v)| v.as_str().filter(|a| !a.is_empty()).map(|a| (k, a.to_string()))).collect())
+            .map(|m| {
+                m.into_iter()
+                    .filter_map(|(k, v)| {
+                        v.as_str()
+                            .filter(|a| !a.is_empty())
+                            .map(|a| (k, a.to_string()))
+                    })
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -295,7 +447,8 @@ impl ServiceHub {
     pub fn analytics_exclude_candidates(&self) -> AppResult<Vec<Value>> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let excluded: HashSet<String> = self.excluded_list().into_iter().collect();
-        let mut usernames: Vec<String> = self.private_sessions(&wcdb, &cleaned, Some(&HashSet::new()))?;
+        let mut usernames: Vec<String> =
+            self.private_sessions(&wcdb, &cleaned, Some(&HashSet::new()))?;
         for name in &excluded {
             if !usernames.contains(name) {
                 usernames.push(name.clone());
@@ -310,10 +463,23 @@ impl ServiceHub {
             .iter()
             .map(|u| {
                 let alias = aliases.get(u).cloned().unwrap_or_default();
-                let wechat_id = if !alias.is_empty() { alias } else if !u.starts_with("wxid_") { u.clone() } else { String::new() };
+                let wechat_id = if !alias.is_empty() {
+                    alias
+                } else if !u.starts_with("wxid_") {
+                    u.clone()
+                } else {
+                    String::new()
+                };
                 let mut o = Map::new();
                 o.insert("username".into(), json!(u));
-                o.insert("displayName".into(), json!(names.get(u).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| u.clone())));
+                o.insert(
+                    "displayName".into(),
+                    json!(names
+                        .get(u)
+                        .filter(|n| !n.is_empty())
+                        .cloned()
+                        .unwrap_or_else(|| u.clone())),
+                );
                 if let Some(a) = avatars.get(u) {
                     o.insert("avatarUrl".into(), json!(a));
                 }
@@ -335,7 +501,12 @@ impl ServiceHub {
         let type_count = |t: i64| d["typeCounts"].get(t.to_string()).map(num).unwrap_or(0);
         let total = num(&d["total"]);
         let text = type_count(1) + type_count(244813135921);
-        let (image, voice, video, emoji) = (type_count(3), type_count(34), type_count(43), type_count(47));
+        let (image, voice, video, emoji) = (
+            type_count(3),
+            type_count(34),
+            type_count(43),
+            type_count(47),
+        );
         let other = (total - text - image - voice - video - emoji).max(0);
         let active_months = d["monthly"].as_object().map_or(0, |m| m.len()) as i64;
         let opt = |v: i64| if v != 0 { json!(v) } else { Value::Null };
@@ -350,17 +521,42 @@ impl ServiceHub {
     }
 
     /// `getContactRankings`
-    pub fn analytics_contact_rankings(&self, limit: usize, begin: i64, end: i64) -> AppResult<Vec<Value>> {
+    pub fn analytics_contact_rankings(
+        &self,
+        limit: usize,
+        begin: i64,
+        end: i64,
+    ) -> AppResult<Vec<Value>> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
         let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, begin, end, false)?;
-        let mut sessions = d.get("sessions").and_then(Value::as_object).cloned().unwrap_or_default();
+        let mut sessions = d
+            .get("sessions")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
         if let Some(id_map) = d.get("idMap").and_then(Value::as_object) {
-            if !sessions.is_empty() && sessions.keys().all(|k| !k.is_empty() && k.chars().all(|c| c.is_ascii_digit())) {
-                sessions = sessions.into_iter().map(|(id, stat)| (id_map.get(&id).and_then(Value::as_str).unwrap_or(&id).to_string(), stat)).collect();
+            if !sessions.is_empty()
+                && sessions
+                    .keys()
+                    .all(|k| !k.is_empty() && k.chars().all(|c| c.is_ascii_digit()))
+            {
+                sessions = sessions
+                    .into_iter()
+                    .map(|(id, stat)| {
+                        (
+                            id_map
+                                .get(&id)
+                                .and_then(Value::as_str)
+                                .unwrap_or(&id)
+                                .to_string(),
+                            stat,
+                        )
+                    })
+                    .collect();
             }
         }
         let names: Vec<String> = sessions.keys().cloned().collect();
@@ -371,10 +567,23 @@ impl ServiceHub {
             .map(|u| {
                 let stat = &sessions[u];
                 let alias = aliases.get(u).cloned().unwrap_or_default();
-                let wechat_id = if !alias.is_empty() { alias } else if !u.starts_with("wxid_") { u.clone() } else { String::new() };
+                let wechat_id = if !alias.is_empty() {
+                    alias
+                } else if !u.starts_with("wxid_") {
+                    u.clone()
+                } else {
+                    String::new()
+                };
                 let mut o = Map::new();
                 o.insert("username".into(), json!(u));
-                o.insert("displayName".into(), json!(display.get(u).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| u.clone())));
+                o.insert(
+                    "displayName".into(),
+                    json!(display
+                        .get(u)
+                        .filter(|n| !n.is_empty())
+                        .cloned()
+                        .unwrap_or_else(|| u.clone())),
+                );
                 if let Some(a) = avatars.get(u) {
                     o.insert("avatarUrl".into(), json!(a));
                 }
@@ -383,7 +592,10 @@ impl ServiceHub {
                 o.insert("sentCount".into(), json!(num(&stat["sent"])));
                 o.insert("receivedCount".into(), json!(num(&stat["received"])));
                 let last = num(&stat["lastTime"]);
-                o.insert("lastMessageTime".into(), if last != 0 { json!(last) } else { Value::Null });
+                o.insert(
+                    "lastMessageTime".into(),
+                    if last != 0 { json!(last) } else { Value::Null },
+                );
                 (num(&stat["total"]), Value::Object(o))
             })
             .collect();
@@ -410,8 +622,13 @@ impl ServiceHub {
         }
         let mut hourly = Map::new();
         for i in 0..24 {
-            hourly.insert(i.to_string(), json!(map_get(&d["hourly"], &i.to_string()).map(num).unwrap_or(0)));
+            hourly.insert(
+                i.to_string(),
+                json!(map_get(&d["hourly"], &i.to_string()).map(num).unwrap_or(0)),
+            );
         }
-        Ok(json!({ "hourlyDistribution": hourly, "weekdayDistribution": weekday, "monthlyDistribution": d["monthly"] }))
+        Ok(
+            json!({ "hourlyDistribution": hourly, "weekdayDistribution": weekday, "monthlyDistribution": d["monthly"] }),
+        )
     }
 }

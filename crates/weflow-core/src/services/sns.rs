@@ -115,24 +115,52 @@ impl ServiceHub {
     }
 
     fn sns_cache_file(&self, url: &str) -> PathBuf {
-        let ext = if sns::is_video_url(url) { ".mp4" } else { ".jpg" };
-        self.sns_cache_dir().join(format!("{}{}", md5_hex(url.as_bytes()), ext))
+        let ext = if sns::is_video_url(url) {
+            ".mp4"
+        } else {
+            ".jpg"
+        };
+        self.sns_cache_dir()
+            .join(format!("{}{}", md5_hex(url.as_bytes()), ext))
     }
 
     // ── contacts ──
 
     /// Desktop `contacts.json` cache (if present) topped up from WCDB for the given users.
-    pub(super) fn contact_book(&self, wcdb: &weflow_native::wcdb::Wcdb, usernames: &[String]) -> HashMap<String, CachedContact> {
+    pub(super) fn contact_book(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        usernames: &[String],
+    ) -> HashMap<String, CachedContact> {
         let mut book: HashMap<String, CachedContact> = HashMap::new();
         if let Ok(raw) = std::fs::read_to_string(self.cache_base().join("contacts.json")) {
             if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) {
                 for (k, v) in map {
-                    let avatar = v.get("avatarUrl").and_then(Value::as_str).filter(|a| !a.contains("base64,ffd8")).map(str::to_string);
-                    book.insert(k, CachedContact { display_name: v.get("displayName").and_then(Value::as_str).map(str::to_string), avatar_url: avatar });
+                    let avatar = v
+                        .get("avatarUrl")
+                        .and_then(Value::as_str)
+                        .filter(|a| !a.contains("base64,ffd8"))
+                        .map(str::to_string);
+                    book.insert(
+                        k,
+                        CachedContact {
+                            display_name: v
+                                .get("displayName")
+                                .and_then(Value::as_str)
+                                .map(str::to_string),
+                            avatar_url: avatar,
+                        },
+                    );
                 }
             }
         }
-        let missing: Vec<&String> = usernames.iter().filter(|u| book.get(*u).map_or(true, |c| c.display_name.is_none() && c.avatar_url.is_none())).collect();
+        let missing: Vec<&String> = usernames
+            .iter()
+            .filter(|u| {
+                book.get(*u)
+                    .map_or(true, |c| c.display_name.is_none() && c.avatar_url.is_none())
+            })
+            .collect();
         if !missing.is_empty() {
             let payload = serde_json::to_string(&missing).unwrap_or_else(|_| "[]".into());
             if let Ok(Value::Object(names)) = wcdb.display_names(&payload) {
@@ -153,7 +181,13 @@ impl ServiceHub {
         book
     }
 
-    fn contact_identity(&self, wcdb: &weflow_native::wcdb::Wcdb, book: &HashMap<String, CachedContact>, cache: &mut HashMap<String, Option<Value>>, username: &str) -> Option<Value> {
+    fn contact_identity(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        book: &HashMap<String, CachedContact>,
+        cache: &mut HashMap<String, Option<Value>>,
+        username: &str,
+    ) -> Option<Value> {
         let username = username.trim();
         if username.is_empty() {
             return None;
@@ -173,12 +207,21 @@ impl ServiceHub {
             .clone()
             .or_else(|| nick.clone())
             .or_else(|| alias.clone())
-            .or_else(|| book.get(username).and_then(|c| c.display_name.clone()).filter(|d| !d.is_empty()))
+            .or_else(|| {
+                book.get(username)
+                    .and_then(|c| c.display_name.clone())
+                    .filter(|d| !d.is_empty())
+            })
             .unwrap_or_else(|| username.to_string());
         let mut o = Map::new();
         o.insert("username".into(), json!(username));
         o.insert("wxid".into(), json!(username));
-        for (k, v) in [("alias", alias.clone()), ("wechatId", alias), ("remark", remark), ("nickName", nick)] {
+        for (k, v) in [
+            ("alias", alias.clone()),
+            ("wechatId", alias),
+            ("remark", remark),
+            ("nickName", nick),
+        ] {
             if let Some(v) = v {
                 o.insert(k.into(), json!(v));
             }
@@ -197,10 +240,25 @@ impl ServiceHub {
         self.sns_timeline_with(&wcdb, q)
     }
 
-    fn sns_timeline_with(&self, wcdb: &weflow_native::wcdb::Wcdb, q: &SnsTimelineQuery) -> AppResult<Vec<Value>> {
-        let usernames_json = if q.usernames.is_empty() { None } else { Some(serde_json::to_string(&q.usernames).unwrap()) };
+    fn sns_timeline_with(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        q: &SnsTimelineQuery,
+    ) -> AppResult<Vec<Value>> {
+        let usernames_json = if q.usernames.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&q.usernames).unwrap())
+        };
         let raw = wcdb
-            .sns_timeline(q.limit, q.offset, usernames_json.as_deref(), q.keyword.as_deref(), q.start as i32, q.end as i32)
+            .sns_timeline(
+                q.limit,
+                q.offset,
+                usernames_json.as_deref(),
+                q.keyword.as_deref(),
+                q.start as i32,
+                q.end as i32,
+            )
             .map_err(err_native)?;
         let rows = raw.as_array().cloned().unwrap_or_default();
         if rows.is_empty() {
@@ -208,16 +266,39 @@ impl ServiceHub {
         }
         let users: Vec<String> = {
             let mut seen = std::collections::BTreeSet::new();
-            rows.iter().filter_map(|p| p.get("username").and_then(Value::as_str)).filter(|u| seen.insert(u.to_string())).map(str::to_string).collect()
+            rows.iter()
+                .filter_map(|p| p.get("username").and_then(Value::as_str))
+                .filter(|u| seen.insert(u.to_string()))
+                .map(str::to_string)
+                .collect()
         };
         let book = self.contact_book(wcdb, &users);
-        Ok(rows.iter().map(|p| sns::enrich_post(p, p.get("username").and_then(Value::as_str).and_then(|u| book.get(u)))).collect())
+        Ok(rows
+            .iter()
+            .map(|p| {
+                sns::enrich_post(
+                    p,
+                    p.get("username")
+                        .and_then(Value::as_str)
+                        .and_then(|u| book.get(u)),
+                )
+            })
+            .collect())
     }
 
     pub fn sns_usernames_list(&self) -> AppResult<Vec<String>> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb.sns_usernames().map_err(err_native)?;
-        let direct: Vec<String> = raw.as_array().map(|a| a.iter().filter_map(|u| u.as_str()).map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).collect()).unwrap_or_default();
+        let direct: Vec<String> = raw
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|u| u.as_str())
+                    .map(|u| u.trim().to_string())
+                    .filter(|u| !u.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
         if !direct.is_empty() {
             return Ok(direct);
         }
@@ -229,11 +310,18 @@ impl ServiceHub {
         Ok(direct)
     }
 
-    fn scan_timeline_rows(&self, wcdb: &weflow_native::wcdb::Wcdb, max_rounds: usize, mut visit: impl FnMut(&Value)) -> AppResult<()> {
+    fn scan_timeline_rows(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        max_rounds: usize,
+        mut visit: impl FnMut(&Value),
+    ) -> AppResult<()> {
         let page = 500;
         let mut offset = 0;
         for _ in 0..max_rounds {
-            let raw = wcdb.sns_timeline(page, offset, None, None, 0, 0).map_err(err_native)?;
+            let raw = wcdb
+                .sns_timeline(page, offset, None, None, 0, 0)
+                .map_err(err_native)?;
             let Some(rows) = raw.as_array() else {
                 return Err(AppError::native("failed to read the Moments timeline"));
             };
@@ -249,7 +337,11 @@ impl ServiceHub {
         Ok(())
     }
 
-    fn collect_timeline_usernames(&self, wcdb: &weflow_native::wcdb::Wcdb, max_rounds: usize) -> AppResult<Vec<String>> {
+    fn collect_timeline_usernames(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        max_rounds: usize,
+    ) -> AppResult<Vec<String>> {
         let mut seen = std::collections::BTreeSet::new();
         let mut order = Vec::new();
         self.scan_timeline_rows(wcdb, max_rounds, |row| {
@@ -263,10 +355,22 @@ impl ServiceHub {
 
     // ── stats ──
 
-    fn export_stats_from_table(&self, wcdb: &weflow_native::wcdb::Wcdb, my_wxid: Option<&str>) -> (i64, i64, Option<i64>) {
+    fn export_stats_from_table(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        my_wxid: Option<&str>,
+    ) -> (i64, i64, Option<i64>) {
         match wcdb.sns_export_stats(my_wxid) {
             Ok(raw) if raw.is_object() => {
-                let n = |k: &str| raw.get(k).and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)).or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0);
+                let n = |k: &str| {
+                    raw.get(k)
+                        .and_then(|v| {
+                            v.as_i64()
+                                .or_else(|| v.as_f64().map(|f| f as i64))
+                                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                        })
+                        .unwrap_or(0)
+                };
                 let my = match raw.get("my_posts") {
                     None | Some(Value::Null) => None,
                     Some(_) => Some(n("my_posts")),
@@ -277,7 +381,11 @@ impl ServiceHub {
         }
     }
 
-    fn export_stats_from_timeline(&self, wcdb: &weflow_native::wcdb::Wcdb, my_wxid: Option<&str>) -> AppResult<(i64, i64, Option<i64>)> {
+    fn export_stats_from_timeline(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        my_wxid: Option<&str>,
+    ) -> AppResult<(i64, i64, Option<i64>)> {
         let (mut total, mut mine) = (0i64, 0i64);
         let mut users = std::collections::HashSet::new();
         self.scan_timeline_rows(wcdb, 2000, |row| {
@@ -306,10 +414,16 @@ impl ServiceHub {
             }
         }
         let wcdb = self.open_wcdb()?;
-        let (mut total, mut friends, mut mine) = self.export_stats_from_table(&wcdb, my_wxid.as_deref());
+        let (mut total, mut friends, mut mine) =
+            self.export_stats_from_table(&wcdb, my_wxid.as_deref());
         let mut fallback_error: Option<String> = None;
         let mut fallback_attempted = false;
-        let cooled_down = self.sns_state.lock().unwrap().last_timeline_fallback.map_or(true, |t| t.elapsed() >= TIMELINE_FALLBACK_COOLDOWN);
+        let cooled_down = self
+            .sns_state
+            .lock()
+            .unwrap()
+            .last_timeline_fallback
+            .map_or(true, |t| t.elapsed() >= TIMELINE_FALLBACK_COOLDOWN);
         if allow_fallback && (total <= 0 || friends <= 0) && cooled_down {
             fallback_attempted = true;
             match self.export_stats_from_timeline(&wcdb, my_wxid.as_deref()) {
@@ -328,9 +442,19 @@ impl ServiceHub {
                 Err(e) => fallback_error = Some(e.message),
             }
         }
-        let normalized = export_stats_value(total.max(0), friends.max(0), if my_wxid.is_some() { mine.map(|m| m.max(0)) } else { None });
+        let normalized = export_stats_value(
+            total.max(0),
+            friends.max(0),
+            if my_wxid.is_some() {
+                mine.map(|m| m.max(0))
+            } else {
+                None
+            },
+        );
         let has_data = total > 0 || friends > 0;
-        let cache_has_data = cached.as_ref().map_or(false, |(v, _)| v["totalPosts"].as_i64().unwrap_or(0) > 0 || v["totalFriends"].as_i64().unwrap_or(0) > 0);
+        let cache_has_data = cached.as_ref().map_or(false, |(v, _)| {
+            v["totalPosts"].as_i64().unwrap_or(0) > 0 || v["totalFriends"].as_i64().unwrap_or(0) > 0
+        });
         if !has_data && cache_has_data {
             return Ok(cached.unwrap().0);
         }
@@ -377,7 +501,9 @@ impl ServiceHub {
             return Err(AppError::usage("username must not be empty"));
         }
         let counts = self.sns_user_post_counts(true)?;
-        Ok(json!({ "username": username, "totalPosts": counts.get(username).copied().unwrap_or(0).max(0) }))
+        Ok(
+            json!({ "username": username, "totalPosts": counts.get(username).copied().unwrap_or(0).max(0) }),
+        )
     }
 
     // ── block-delete trigger / delete ──
@@ -389,11 +515,17 @@ impl ServiceHub {
 
     pub fn sns_block_delete_install(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
-        let (rc, msg) = wcdb.invoke_status_code("wcdb_install_sns_block_delete_trigger", &[]).map_err(err_native)?;
+        let (rc, msg) = wcdb
+            .invoke_status_code("wcdb_install_sns_block_delete_trigger", &[])
+            .map_err(err_native)?;
         match rc {
             1 => Ok(json!({ "success": true, "alreadyInstalled": true })),
             0 => Ok(json!({ "success": true, "alreadyInstalled": false })),
-            _ => Err(AppError::native(if msg.is_empty() { format!("DLL error {rc}") } else { msg })),
+            _ => Err(AppError::native(if msg.is_empty() {
+                format!("DLL error {rc}")
+            } else {
+                msg
+            })),
         }
     }
 
@@ -434,7 +566,13 @@ impl ServiceHub {
             .header("Range", "bytes=0-10");
         match req.send().await {
             Ok(res) => {
-                let h = |k: &str| res.headers().get(k).and_then(|v| v.to_str().ok()).map(|v| json!(v)).unwrap_or(Value::Null);
+                let h = |k: &str| {
+                    res.headers()
+                        .get(k)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| json!(v))
+                        .unwrap_or(Value::Null)
+                };
                 let headers = json!({ "x-enc": h("x-enc"), "x-time": h("x-time"), "content-length": h("content-length"), "content-type": h("content-type") });
                 json!({ "success": true, "status": res.status().as_u16(), "headers": headers })
             }
@@ -462,12 +600,20 @@ impl ServiceHub {
 
         if cache_path.exists() {
             if is_video {
-                return Ok(SnsMediaFetch { data: None, content_type: "video/mp4".into(), cache_path: Some(cache_path) });
+                return Ok(SnsMediaFetch {
+                    data: None,
+                    content_type: "video/mp4".into(),
+                    cache_path: Some(cache_path),
+                });
             }
             match std::fs::read(&cache_path) {
                 Ok(data) if sns::detect_image_mime(&data, "").starts_with("image/") => {
                     let ct = sns::detect_image_mime(&data, "image/jpeg");
-                    return Ok(SnsMediaFetch { data: Some(data), content_type: ct, cache_path: Some(cache_path) });
+                    return Ok(SnsMediaFetch {
+                        data: Some(data),
+                        content_type: ct,
+                        cache_path: Some(cache_path),
+                    });
                 }
                 Ok(_) => {
                     let _ = std::fs::remove_file(&cache_path);
@@ -477,26 +623,57 @@ impl ServiceHub {
         }
 
         let client = self.sns_http_client(false)?;
-        let mut req = client.get(url).header("User-Agent", "MicroMessenger Client").header("Accept", "*/*").header("Connection", "keep-alive");
+        let mut req = client
+            .get(url)
+            .header("User-Agent", "MicroMessenger Client")
+            .header("Accept", "*/*")
+            .header("Connection", "keep-alive");
         if !is_video {
             req = req.header("Accept-Language", "zh-CN,zh;q=0.9");
         }
-        let resp = req.send().await.map_err(|e| AppError::runtime(if e.is_timeout() { "request timed out".to_string() } else { e.to_string() }))?;
+        let resp = req.send().await.map_err(|e| {
+            AppError::runtime(if e.is_timeout() {
+                "request timed out".to_string()
+            } else {
+                e.to_string()
+            })
+        })?;
         let status = resp.status();
         if status.as_u16() != 200 && status.as_u16() != 206 {
             return Err(AppError::runtime(format!("HTTP {}", status.as_u16())));
         }
-        let x_enc = resp.headers().get("x-enc").and_then(|v| v.to_str().ok()).unwrap_or("").trim().to_string();
-        let header_ct = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("image/jpeg").to_string();
-        let mut raw = resp.bytes().await.map_err(|e| AppError::runtime(e.to_string()))?.to_vec();
+        let x_enc = resp
+            .headers()
+            .get("x-enc")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let header_ct = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/jpeg")
+            .to_string();
+        let mut raw = resp
+            .bytes()
+            .await
+            .map_err(|e| AppError::runtime(e.to_string()))?
+            .to_vec();
         let key = truthy_key(key);
 
         if is_video {
             if let Some(k) = key {
                 isaac64::xor_in_place(&mut raw, k, Some(VIDEO_HEADER_BYTES));
             }
-            std::fs::write(&cache_path, &raw).map_err(|e| AppError::runtime(format!("failed to write {}: {e}", cache_path.display())))?;
-            return Ok(SnsMediaFetch { data: Some(raw), content_type: "video/mp4".into(), cache_path: Some(cache_path) });
+            std::fs::write(&cache_path, &raw).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", cache_path.display()))
+            })?;
+            return Ok(SnsMediaFetch {
+                data: Some(raw),
+                content_type: "video/mp4".into(),
+                cache_path: Some(cache_path),
+            });
         }
 
         let mut decoded = raw.clone();
@@ -513,11 +690,17 @@ impl ServiceHub {
             }
         }
         if !sns::detect_image_mime(&decoded, "").starts_with("image/") {
-            return Err(AppError::runtime("image decryption failed: unrecognized image format"));
+            return Err(AppError::runtime(
+                "image decryption failed: unrecognized image format",
+            ));
         }
         let _ = std::fs::write(&cache_path, &decoded);
         let ct = sns::detect_image_mime(&decoded, &header_ct);
-        Ok(SnsMediaFetch { data: Some(decoded), content_type: ct, cache_path: Some(cache_path) })
+        Ok(SnsMediaFetch {
+            data: Some(decoded),
+            content_type: ct,
+            cache_path: Some(cache_path),
+        })
     }
 
     /// `proxyImage`: image → `data:` URL (memoised for 15 minutes), video → local path.
@@ -537,7 +720,8 @@ impl ServiceHub {
                 if valid {
                     st.image_order.retain(|k| k != &cache_key);
                     st.image_order.push_back(cache_key.clone());
-                    st.image_cache.insert(cache_key, (data_url.clone(), Instant::now()));
+                    st.image_cache
+                        .insert(cache_key, (data_url.clone(), Instant::now()));
                     return Ok(SnsProxyResult::DataUrl(data_url));
                 }
                 st.image_cache.remove(&cache_key);
@@ -548,18 +732,32 @@ impl ServiceHub {
         if fetched.content_type.starts_with("video/") {
             return Ok(SnsProxyResult::VideoPath(fetched.cache_path));
         }
-        let data = fetched.data.ok_or_else(|| AppError::runtime("empty image data"))?;
+        let data = fetched
+            .data
+            .ok_or_else(|| AppError::runtime("empty image data"))?;
         if !sns::detect_image_mime(&data, "").starts_with("image/") {
-            return Err(AppError::runtime("invalid image data (wrong key or corrupt cache)"));
+            return Err(AppError::runtime(
+                "invalid image data (wrong key or corrupt cache)",
+            ));
         }
         use base64::Engine;
-        let data_url = format!("data:{};base64,{}", fetched.content_type, base64::engine::general_purpose::STANDARD.encode(&data));
+        let data_url = format!(
+            "data:{};base64,{}",
+            fetched.content_type,
+            base64::engine::general_purpose::STANDARD.encode(&data)
+        );
         let mut st = self.sns_state.lock().unwrap();
         st.image_order.retain(|k| k != &cache_key);
         st.image_order.push_back(cache_key.clone());
-        st.image_cache.insert(cache_key, (data_url.clone(), Instant::now()));
+        st.image_cache
+            .insert(cache_key, (data_url.clone(), Instant::now()));
         let now = Instant::now();
-        let expired: Vec<String> = st.image_cache.iter().filter(|(_, (_, at))| now.duration_since(*at) > IMAGE_CACHE_TTL).map(|(k, _)| k.clone()).collect();
+        let expired: Vec<String> = st
+            .image_cache
+            .iter()
+            .filter(|(_, (_, at))| now.duration_since(*at) > IMAGE_CACHE_TTL)
+            .map(|(k, _)| k.clone())
+            .collect();
         for k in expired {
             st.image_cache.remove(&k);
             st.image_order.retain(|o| o != &k);
@@ -606,7 +804,11 @@ impl ServiceHub {
             if bytes.is_empty() {
                 return None;
             }
-            let ext = if sns::is_valid_image_buffer(&bytes) { sns::image_ext_from_buffer(&bytes) } else { ".bin" };
+            let ext = if sns::is_valid_image_buffer(&bytes) {
+                sns::image_ext_from_buffer(&bytes)
+            } else {
+                ".bin"
+            };
             let path = dir.join(format!("{cache_key}{ext}"));
             std::fs::write(&path, &bytes).ok()?;
             return Some(path);
@@ -615,13 +817,25 @@ impl ServiceHub {
     }
 
     /// `downloadSnsEmoji`: cached download of a comment emoji, decrypting with the AES key when needed.
-    pub async fn sns_download_emoji(&self, url: &str, encrypt_url: Option<&str>, aes_key: Option<&str>) -> AppResult<Value> {
+    pub async fn sns_download_emoji(
+        &self,
+        url: &str,
+        encrypt_url: Option<&str>,
+        aes_key: Option<&str>,
+    ) -> AppResult<Value> {
         let encrypt_url = encrypt_url.filter(|u| !u.is_empty());
         let aes_key = aes_key.filter(|k| !k.is_empty());
         if url.is_empty() && encrypt_url.is_none() {
             return Err(AppError::usage("url must not be empty"));
         }
-        let cache_key = md5_hex(if url.is_empty() { encrypt_url.unwrap() } else { url }.as_bytes());
+        let cache_key = md5_hex(
+            if url.is_empty() {
+                encrypt_url.unwrap()
+            } else {
+                url
+            }
+            .as_bytes(),
+        );
         let dir = self.emoji_cache_dir();
         for ext in [".gif", ".png", ".webp", ".jpg", ".jpeg"] {
             let p = dir.join(format!("{cache_key}{ext}"));
@@ -630,16 +844,24 @@ impl ServiceHub {
             }
         }
         let save_decrypted = |buf: &[u8]| -> Option<PathBuf> {
-            let ext = if sns::is_valid_image_buffer(buf) { sns::image_ext_from_buffer(buf) } else { ".gif" };
+            let ext = if sns::is_valid_image_buffer(buf) {
+                sns::image_ext_from_buffer(buf)
+            } else {
+                ".gif"
+            };
             let p = dir.join(format!("{cache_key}{ext}"));
             std::fs::write(&p, buf).ok().map(|_| p)
         };
 
         if let (Some(enc_url), Some(key)) = (encrypt_url, aes_key) {
-            if let Some(enc_path) = self.download_raw(enc_url, &format!("{cache_key}_enc"), &dir).await {
+            if let Some(enc_path) = self
+                .download_raw(enc_url, &format!("{cache_key}_enc"), &dir)
+                .await
+            {
                 if let Ok(enc) = std::fs::read(&enc_path) {
                     if sns::is_valid_image_buffer(&enc) {
-                        let p = dir.join(format!("{cache_key}{}", sns::image_ext_from_buffer(&enc)));
+                        let p =
+                            dir.join(format!("{cache_key}{}", sns::image_ext_from_buffer(&enc)));
                         if std::fs::write(&p, &enc).is_ok() {
                             let _ = std::fs::remove_file(&enc_path);
                             return Ok(json!({ "success": true, "localPath": p }));
@@ -683,12 +905,29 @@ impl ServiceHub {
     /// `exportTimeline`: json / html / arkmejson with optional media download.
     pub async fn sns_export_timeline(&self, opts: &SnsExportOptions) -> AppResult<Value> {
         use futures::StreamExt;
-        let explicit = opts.export_images.is_some() || opts.export_live_photos.is_some() || opts.export_videos.is_some();
-        let pick = |v: Option<bool>| if explicit { v == Some(true) } else { opts.export_media };
-        let (want_images, want_live, want_videos) = (pick(opts.export_images), pick(opts.export_live_photos), pick(opts.export_videos));
+        let explicit = opts.export_images.is_some()
+            || opts.export_live_photos.is_some()
+            || opts.export_videos.is_some();
+        let pick = |v: Option<bool>| {
+            if explicit {
+                v == Some(true)
+            } else {
+                opts.export_media
+            }
+        };
+        let (want_images, want_live, want_videos) = (
+            pick(opts.export_images),
+            pick(opts.export_live_photos),
+            pick(opts.export_videos),
+        );
         let want_media = want_images || want_live || want_videos;
 
-        std::fs::create_dir_all(&opts.output_dir).map_err(|e| AppError::runtime(format!("failed to create {}: {e}", opts.output_dir.display())))?;
+        std::fs::create_dir_all(&opts.output_dir).map_err(|e| {
+            AppError::runtime(format!(
+                "failed to create {}: {e}",
+                opts.output_dir.display()
+            ))
+        })?;
         let usernames = &opts.usernames;
         let keyword = opts.keyword.as_deref().filter(|k| !k.is_empty());
 
@@ -699,12 +938,23 @@ impl ServiceHub {
         let mut end_ts = opts.end;
         self.emit_progress("sns", "loading Moments…", 0, 0);
         loop {
-            let q = SnsTimelineQuery { limit: page, offset: 0, usernames: usernames.clone(), keyword: keyword.map(str::to_string), start: opts.start, end: end_ts };
+            let q = SnsTimelineQuery {
+                limit: page,
+                offset: 0,
+                usernames: usernames.clone(),
+                keyword: keyword.map(str::to_string),
+                start: opts.start,
+                end: end_ts,
+            };
             let batch = match self.sns_timeline_with(&wcdb, &q) {
                 Ok(b) if !b.is_empty() => b,
                 _ => break,
             };
-            let last_ts = batch.last().and_then(|p| p.get("createTime").and_then(Value::as_i64)).unwrap_or(0) - 1;
+            let last_ts = batch
+                .last()
+                .and_then(|p| p.get("createTime").and_then(Value::as_i64))
+                .unwrap_or(0)
+                - 1;
             let n = batch.len();
             posts.extend(batch);
             end_ts = last_ts;
@@ -733,23 +983,61 @@ impl ServiceHub {
             }
             let mut tasks = Vec::new();
             for (pi, post) in posts.iter().enumerate() {
-                let post_id = post.get("id").and_then(Value::as_str).unwrap_or("").to_string();
-                for (mi, m) in post.get("media").and_then(Value::as_array).cloned().unwrap_or_default().iter().enumerate() {
-                    let url = m.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+                let post_id = post
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                for (mi, m) in post
+                    .get("media")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .enumerate()
+                {
+                    let url = m
+                        .get("url")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
                     let key = m.get("key").and_then(Value::as_str).map(str::to_string);
                     let video = sns::is_video_url(&url);
                     if want_images && !video && !url.is_empty() {
-                        tasks.push(Task { kind: "image", url: url.clone(), key: key.clone(), post_idx: pi, media_idx: mi, post_id: post_id.clone() });
+                        tasks.push(Task {
+                            kind: "image",
+                            url: url.clone(),
+                            key: key.clone(),
+                            post_idx: pi,
+                            media_idx: mi,
+                            post_id: post_id.clone(),
+                        });
                     }
                     if want_videos && video && !url.is_empty() {
-                        tasks.push(Task { kind: "video", url: url.clone(), key: key.clone(), post_idx: pi, media_idx: mi, post_id: post_id.clone() });
+                        tasks.push(Task {
+                            kind: "video",
+                            url: url.clone(),
+                            key: key.clone(),
+                            post_idx: pi,
+                            media_idx: mi,
+                            post_id: post_id.clone(),
+                        });
                     }
                     if let Some(lp) = m.get("livePhoto").filter(|_| want_live) {
-                        if let Some(lurl) = lp.get("url").and_then(Value::as_str).filter(|u| !u.is_empty()) {
+                        if let Some(lurl) = lp
+                            .get("url")
+                            .and_then(Value::as_str)
+                            .filter(|u| !u.is_empty())
+                        {
                             tasks.push(Task {
                                 kind: "livephoto",
                                 url: lurl.to_string(),
-                                key: lp.get("key").and_then(Value::as_str).filter(|k| !k.is_empty()).map(str::to_string).or(key.clone()),
+                                key: lp
+                                    .get("key")
+                                    .and_then(Value::as_str)
+                                    .filter(|k| !k.is_empty())
+                                    .map(str::to_string)
+                                    .or(key.clone()),
                                 post_idx: pi,
                                 media_idx: mi,
                                 post_id: post_id.clone(),
@@ -763,10 +1051,17 @@ impl ServiceHub {
             let media_dir_ref = &media_dir;
             let results: Vec<(Task, Option<String>)> = futures::stream::iter(tasks)
                 .map(|task| async move {
-                    let is_video = task.kind == "video" || task.kind == "livephoto" || sns::is_video_url(&task.url);
+                    let is_video = task.kind == "video"
+                        || task.kind == "livephoto"
+                        || sns::is_video_url(&task.url);
                     let ext = if is_video { "mp4" } else { "jpg" };
-                    let suffix = if task.kind == "livephoto" { "_live" } else { "" };
-                    let file_name = format!("{}_{}{}.{}", task.post_id, task.media_idx, suffix, ext);
+                    let suffix = if task.kind == "livephoto" {
+                        "_live"
+                    } else {
+                        ""
+                    };
+                    let file_name =
+                        format!("{}_{}{}.{}", task.post_id, task.media_idx, suffix, ext);
                     let path = media_dir_ref.join(&file_name);
                     if path.exists() {
                         return (task, Some(format!("media/{file_name}")));
@@ -791,7 +1086,11 @@ impl ServiceHub {
             for (task, local) in results {
                 let Some(local) = local else { continue };
                 media_count += 1;
-                if let Some(m) = posts[task.post_idx].get_mut("media").and_then(|m| m.get_mut(task.media_idx)).and_then(Value::as_object_mut) {
+                if let Some(m) = posts[task.post_idx]
+                    .get_mut("media")
+                    .and_then(|m| m.get_mut(task.media_idx))
+                    .and_then(Value::as_object_mut)
+                {
                     if task.kind == "livephoto" {
                         if let Some(lp) = m.get_mut("livePhoto").and_then(Value::as_object_mut) {
                             lp.insert("localPath".into(), json!(local));
@@ -809,7 +1108,12 @@ impl ServiceHub {
             std::fs::create_dir_all(&media_dir).map_err(|e| AppError::runtime(e.to_string()))?;
             let mut unique: Vec<(String, String)> = Vec::new();
             for p in &posts {
-                if let (Some(u), Some(a)) = (p.get("username").and_then(Value::as_str), p.get("avatarUrl").and_then(Value::as_str).filter(|a| !a.is_empty())) {
+                if let (Some(u), Some(a)) = (
+                    p.get("username").and_then(Value::as_str),
+                    p.get("avatarUrl")
+                        .and_then(Value::as_str)
+                        .filter(|a| !a.is_empty()),
+                ) {
                     if !unique.iter().any(|(x, _)| x == u) {
                         unique.push((u.to_string(), a.to_string()));
                     }
@@ -850,16 +1154,23 @@ impl ServiceHub {
         match opts.format.as_str() {
             "json" => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.json"));
-                let posts_json: Vec<Value> = posts.iter().map(|p| export_post_json(p, false)).collect();
+                let posts_json: Vec<Value> =
+                    posts.iter().map(|p| export_post_json(p, false)).collect();
                 let data = json!({ "exportTime": export_time, "totalPosts": posts.len(), "filters": filters, "posts": posts_json });
-                std::fs::write(&out_path, serde_json::to_string_pretty(&data).unwrap()).map_err(|e| AppError::runtime(e.to_string()))?;
+                std::fs::write(&out_path, serde_json::to_string_pretty(&data).unwrap())
+                    .map_err(|e| AppError::runtime(e.to_string()))?;
             }
             "arkmejson" => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.json"));
                 let mut identity_cache: HashMap<String, Option<Value>> = HashMap::new();
                 let uniq: Vec<String> = {
                     let mut seen = std::collections::BTreeSet::new();
-                    posts.iter().filter_map(|p| p.get("username").and_then(Value::as_str)).filter(|u| seen.insert(u.to_string())).map(str::to_string).collect()
+                    posts
+                        .iter()
+                        .filter_map(|p| p.get("username").and_then(Value::as_str))
+                        .filter(|u| seen.insert(u.to_string()))
+                        .map(str::to_string)
+                        .collect()
                 };
                 let book = self.contact_book(&wcdb, &uniq);
                 let mut built = Vec::with_capacity(posts.len());
@@ -868,7 +1179,8 @@ impl ServiceHub {
                     let author = self.contact_identity(&wcdb, &book, &mut identity_cache, username).unwrap_or_else(|| {
                         json!({ "username": username, "wxid": username, "displayName": post.get("nickname").and_then(Value::as_str).filter(|n| !n.is_empty()).unwrap_or(username) })
                     });
-                    let (likes_detail, comments_detail) = self.arkme_interaction_details(&wcdb, &book, &mut identity_cache, post);
+                    let (likes_detail, comments_detail) =
+                        self.arkme_interaction_details(&wcdb, &book, &mut identity_cache, post);
                     let base = export_post_json(post, true);
                     let b = base.as_object().cloned().unwrap_or_default();
                     let mut o = Map::new();
@@ -876,7 +1188,16 @@ impl ServiceHub {
                         o.insert(k.into(), b.get(k).cloned().unwrap_or(Value::Null));
                     }
                     o.insert("author".into(), author);
-                    for k in ["createTime", "createTimeStr", "contentDesc", "type", "media", "likes", "comments", "location"] {
+                    for k in [
+                        "createTime",
+                        "createTimeStr",
+                        "contentDesc",
+                        "type",
+                        "media",
+                        "likes",
+                        "comments",
+                        "location",
+                    ] {
                         if let Some(v) = b.get(k) {
                             o.insert(k.into(), v.clone());
                         }
@@ -895,7 +1216,9 @@ impl ServiceHub {
                 }
                 let owner_wxid = Some(self.my_wxid_cleaned()).filter(|w| !w.is_empty());
                 let record_owner = match owner_wxid.as_deref() {
-                    Some(w) => self.contact_identity(&wcdb, &book, &mut identity_cache, w).unwrap_or_else(|| json!({ "username": w, "wxid": w, "displayName": w })),
+                    Some(w) => self
+                        .contact_identity(&wcdb, &book, &mut identity_cache, w)
+                        .unwrap_or_else(|| json!({ "username": w, "wxid": w, "displayName": w })),
                     None => json!({ "username": "", "wxid": "", "displayName": "" }),
                 };
                 let data = json!({
@@ -908,7 +1231,8 @@ impl ServiceHub {
                     "filters": filters,
                     "posts": built
                 });
-                std::fs::write(&out_path, serde_json::to_string_pretty(&data).unwrap()).map_err(|e| AppError::runtime(e.to_string()))?;
+                std::fs::write(&out_path, serde_json::to_string_pretty(&data).unwrap())
+                    .map_err(|e| AppError::runtime(e.to_string()))?;
             }
             _ => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.html"));
@@ -917,7 +1241,9 @@ impl ServiceHub {
             }
         }
         self.emit_progress("sns", "export finished", posts.len(), posts.len());
-        Ok(json!({ "success": true, "filePath": out_path, "postCount": posts.len(), "mediaCount": media_count }))
+        Ok(
+            json!({ "success": true, "filePath": out_path, "postCount": posts.len(), "mediaCount": media_count }),
+        )
     }
 
     /// `buildArkmeInteractionDetails`
@@ -933,15 +1259,42 @@ impl ServiceHub {
         let legacy_likes: Vec<sns::LikeUser> = post
             .get("likes")
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(Value::as_str).map(|n| sns::LikeUser { username: None, nickname: Some(n.to_string()) }).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(|n| sns::LikeUser {
+                        username: None,
+                        nickname: Some(n.to_string()),
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
-        let (like_candidates, like_source) = if xml_likes.is_empty() { (legacy_likes, "legacy") } else { (xml_likes, "xml") };
+        let (like_candidates, like_source) = if xml_likes.is_empty() {
+            (legacy_likes, "legacy")
+        } else {
+            (xml_likes, "xml")
+        };
         let mut likes_detail = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for like in like_candidates {
-            let identity = like.username.as_deref().and_then(|u| self.contact_identity(wcdb, book, cache, u));
-            let idv = |k: &str| identity.as_ref().and_then(|i| i.get(k)).and_then(Value::as_str).map(str::to_string);
-            let nickname = like.nickname.clone().filter(|n| !n.is_empty()).or_else(|| idv("displayName")).or_else(|| like.username.clone()).unwrap_or_default();
+            let identity = like
+                .username
+                .as_deref()
+                .and_then(|u| self.contact_identity(wcdb, book, cache, u));
+            let idv = |k: &str| {
+                identity
+                    .as_ref()
+                    .and_then(|i| i.get(k))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            };
+            let nickname = like
+                .nickname
+                .clone()
+                .filter(|n| !n.is_empty())
+                .or_else(|| idv("displayName"))
+                .or_else(|| like.username.clone())
+                .unwrap_or_default();
             let username = idv("username").or_else(|| like.username.clone());
             let key = format!("{}|{}", username.clone().unwrap_or_default(), nickname);
             if !seen.insert(key) {
@@ -961,21 +1314,47 @@ impl ServiceHub {
                     o.insert(k.into(), json!(v));
                 }
             }
-            o.insert("displayName".into(), json!(idv("displayName").filter(|d| !d.is_empty()).or_else(|| Some(nickname.clone()).filter(|n| !n.is_empty())).or(username).unwrap_or_default()));
+            o.insert(
+                "displayName".into(),
+                json!(idv("displayName")
+                    .filter(|d| !d.is_empty())
+                    .or_else(|| Some(nickname.clone()).filter(|n| !n.is_empty()))
+                    .or(username)
+                    .unwrap_or_default()),
+            );
             o.insert("source".into(), json!(like_source));
             likes_detail.push(Value::Object(o));
         }
 
         let xml_comments = sns::parse_comments_from_xml(raw_xml);
-        let post_comments: Vec<Value> = post.get("comments").and_then(Value::as_array).cloned().unwrap_or_default();
-        let by_id: HashMap<String, &Value> = post_comments.iter().filter_map(|c| c.get("id").and_then(Value::as_str).filter(|i| !i.is_empty()).map(|i| (i.to_string(), c))).collect();
+        let post_comments: Vec<Value> = post
+            .get("comments")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let by_id: HashMap<String, &Value> = post_comments
+            .iter()
+            .filter_map(|c| {
+                c.get("id")
+                    .and_then(Value::as_str)
+                    .filter(|i| !i.is_empty())
+                    .map(|i| (i.to_string(), c))
+            })
+            .collect();
         let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        let non_empty_arr = |v: Option<&Value>| v.filter(|e| e.as_array().map_or(false, |a| !a.is_empty())).cloned();
+        let non_empty_arr = |v: Option<&Value>| {
+            v.filter(|e| e.as_array().map_or(false, |a| !a.is_empty()))
+                .cloned()
+        };
 
         let mut base: Vec<Value> = Vec::new();
         if !xml_comments.is_empty() {
             for c in &xml_comments {
-                let fb = c.get("id").and_then(Value::as_str).and_then(|i| by_id.get(i)).copied();
+                let fb = c
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .and_then(|i| by_id.get(i))
+                    .copied();
                 let pick = |k: &str| -> String {
                     let own = s(c, k);
                     if !own.is_empty() {
@@ -995,18 +1374,35 @@ impl ServiceHub {
                 if let Some(u) = c.get("refUsername") {
                     o.insert("refUsername".into(), u.clone());
                 }
-                let ref_nick = c.get("refNickname").filter(|v| truthy_json(v)).cloned().or_else(|| fb.and_then(|f| f.get("refNickname")).cloned());
+                let ref_nick = c
+                    .get("refNickname")
+                    .filter(|v| truthy_json(v))
+                    .cloned()
+                    .or_else(|| fb.and_then(|f| f.get("refNickname")).cloned());
                 if let Some(r) = ref_nick {
                     o.insert("refNickname".into(), r);
                 }
-                if let Some(e) = non_empty_arr(c.get("emojis")).or_else(|| fb.and_then(|f| f.get("emojis")).cloned()) {
+                if let Some(e) = non_empty_arr(c.get("emojis"))
+                    .or_else(|| fb.and_then(|f| f.get("emojis")).cloned())
+                {
                     o.insert("emojis".into(), e);
                 }
                 base.push(Value::Object(o));
             }
-            let mapped: std::collections::HashSet<String> = base.iter().filter_map(|c| c.get("id").and_then(Value::as_str).filter(|i| !i.is_empty()).map(str::to_string)).collect();
+            let mapped: std::collections::HashSet<String> = base
+                .iter()
+                .filter_map(|c| {
+                    c.get("id")
+                        .and_then(Value::as_str)
+                        .filter(|i| !i.is_empty())
+                        .map(str::to_string)
+                })
+                .collect();
             for c in &post_comments {
-                if c.get("id").and_then(Value::as_str).map_or(false, |i| !i.is_empty() && mapped.contains(i)) {
+                if c.get("id")
+                    .and_then(Value::as_str)
+                    .map_or(false, |i| !i.is_empty() && mapped.contains(i))
+                {
                     continue;
                 }
                 base.push(legacy_comment(c));
@@ -1015,15 +1411,40 @@ impl ServiceHub {
             base.extend(post_comments.iter().map(legacy_comment));
         }
 
-        let comment_source = if xml_comments.is_empty() { "legacy" } else { "xml" };
+        let comment_source = if xml_comments.is_empty() {
+            "legacy"
+        } else {
+            "xml"
+        };
         let mut comments_detail = Vec::new();
         for c in &base {
-            let username = c.get("username").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string);
-            let ref_username = c.get("refUsername").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string);
-            let actor = username.as_deref().and_then(|u| self.contact_identity(wcdb, book, cache, u));
-            let ref_actor = ref_username.as_deref().and_then(|u| self.contact_identity(wcdb, book, cache, u));
-            let av = |a: &Option<Value>, k: &str| a.as_ref().and_then(|i| i.get(k)).and_then(Value::as_str).map(str::to_string);
-            let nickname = Some(s(c, "nickname")).filter(|n| !n.is_empty()).or_else(|| av(&actor, "displayName")).or_else(|| username.clone()).unwrap_or_default();
+            let username = c
+                .get("username")
+                .and_then(Value::as_str)
+                .filter(|u| !u.is_empty())
+                .map(str::to_string);
+            let ref_username = c
+                .get("refUsername")
+                .and_then(Value::as_str)
+                .filter(|u| !u.is_empty())
+                .map(str::to_string);
+            let actor = username
+                .as_deref()
+                .and_then(|u| self.contact_identity(wcdb, book, cache, u));
+            let ref_actor = ref_username
+                .as_deref()
+                .and_then(|u| self.contact_identity(wcdb, book, cache, u));
+            let av = |a: &Option<Value>, k: &str| {
+                a.as_ref()
+                    .and_then(|i| i.get(k))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            };
+            let nickname = Some(s(c, "nickname"))
+                .filter(|n| !n.is_empty())
+                .or_else(|| av(&actor, "displayName"))
+                .or_else(|| username.clone())
+                .unwrap_or_default();
             let eff_username = av(&actor, "username").or_else(|| username.clone());
             let eff_ref_username = av(&ref_actor, "username").or_else(|| ref_username.clone());
             let mut o = Map::new();
@@ -1040,10 +1461,19 @@ impl ServiceHub {
             put("wechatId", av(&actor, "wechatId"));
             put("remark", av(&actor, "remark"));
             put("nickName", av(&actor, "nickName"));
-            o.insert("displayName".into(), json!(av(&actor, "displayName").filter(|d| !d.is_empty()).or_else(|| Some(nickname.clone()).filter(|n| !n.is_empty())).or(eff_username).unwrap_or_default()));
+            o.insert(
+                "displayName".into(),
+                json!(av(&actor, "displayName")
+                    .filter(|d| !d.is_empty())
+                    .or_else(|| Some(nickname.clone()).filter(|n| !n.is_empty()))
+                    .or(eff_username)
+                    .unwrap_or_default()),
+            );
             o.insert("content".into(), json!(s(c, "content")));
             o.insert("refCommentId".into(), json!(s(c, "refCommentId")));
-            let ref_nickname = Some(s(c, "refNickname")).filter(|n| !n.is_empty()).or_else(|| av(&ref_actor, "displayName"));
+            let ref_nickname = Some(s(c, "refNickname"))
+                .filter(|n| !n.is_empty())
+                .or_else(|| av(&ref_actor, "displayName"));
             let mut put2 = |k: &str, v: Option<String>| {
                 if let Some(v) = v {
                     o.insert(k.into(), json!(v));
@@ -1067,21 +1497,43 @@ impl ServiceHub {
     }
 
     /// Adds `media.proxyUrl` style fields used by the HTTP timeline (`enrichSnsTimelineMedia`).
-    pub async fn sns_enrich_timeline_media(&self, posts: Vec<Value>, proxy_base: &str, inline: bool, replace: bool) -> Vec<Value> {
+    pub async fn sns_enrich_timeline_media(
+        &self,
+        posts: Vec<Value>,
+        proxy_base: &str,
+        inline: bool,
+        replace: bool,
+    ) -> Vec<Value> {
         let mut out = Vec::with_capacity(posts.len());
         for post in posts {
-            let media_list = post.get("media").and_then(Value::as_array).cloned().unwrap_or_default();
+            let media_list = post
+                .get("media")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
             if media_list.is_empty() {
                 out.push(post);
                 continue;
             }
             let mut next_media = Vec::with_capacity(media_list.len());
             for media in &media_list {
-                let raw_url = media.get("url").and_then(Value::as_str).unwrap_or("").to_string();
-                let raw_thumb = media.get("thumb").and_then(Value::as_str).unwrap_or("").to_string();
+                let raw_url = media
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let raw_thumb = media
+                    .get("thumb")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
                 let media_key = media_key_string(media.get("key"));
-                let (url_resolved, url_proxy) = self.resolve_media_url(proxy_base, &raw_url, media_key.as_deref(), inline).await;
-                let (thumb_resolved, thumb_proxy) = self.resolve_media_url(proxy_base, &raw_thumb, media_key.as_deref(), inline).await;
+                let (url_resolved, url_proxy) = self
+                    .resolve_media_url(proxy_base, &raw_url, media_key.as_deref(), inline)
+                    .await;
+                let (thumb_resolved, thumb_proxy) = self
+                    .resolve_media_url(proxy_base, &raw_thumb, media_key.as_deref(), inline)
+                    .await;
                 let mut item = media.as_object().cloned().unwrap_or_default();
                 item.insert("rawUrl".into(), json!(raw_url));
                 item.insert("rawThumb".into(), json!(raw_thumb));
@@ -1090,15 +1542,33 @@ impl ServiceHub {
                 set_opt(&mut item, "proxyUrl", url_proxy);
                 set_opt(&mut item, "proxyThumbUrl", thumb_proxy);
                 if replace {
-                    item.insert("url".into(), json!(url_resolved.unwrap_or_else(|| raw_url.clone())));
-                    item.insert("thumb".into(), json!(thumb_resolved.unwrap_or_else(|| raw_thumb.clone())));
+                    item.insert(
+                        "url".into(),
+                        json!(url_resolved.unwrap_or_else(|| raw_url.clone())),
+                    );
+                    item.insert(
+                        "thumb".into(),
+                        json!(thumb_resolved.unwrap_or_else(|| raw_thumb.clone())),
+                    );
                 }
                 if let Some(lp) = media.get("livePhoto").filter(|v| v.is_object()) {
-                    let raw_l_url = lp.get("url").and_then(Value::as_str).unwrap_or("").to_string();
-                    let raw_l_thumb = lp.get("thumb").and_then(Value::as_str).unwrap_or("").to_string();
+                    let raw_l_url = lp
+                        .get("url")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    let raw_l_thumb = lp
+                        .get("thumb")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
                     let live_key = media_key_string(lp.get("key")).or_else(|| media_key.clone());
-                    let (lu, lu_proxy) = self.resolve_media_url(proxy_base, &raw_l_url, live_key.as_deref(), inline).await;
-                    let (lt, lt_proxy) = self.resolve_media_url(proxy_base, &raw_l_thumb, live_key.as_deref(), inline).await;
+                    let (lu, lu_proxy) = self
+                        .resolve_media_url(proxy_base, &raw_l_url, live_key.as_deref(), inline)
+                        .await;
+                    let (lt, lt_proxy) = self
+                        .resolve_media_url(proxy_base, &raw_l_thumb, live_key.as_deref(), inline)
+                        .await;
                     let mut live = lp.as_object().cloned().unwrap_or_default();
                     live.insert("rawUrl".into(), json!(raw_l_url));
                     live.insert("rawThumb".into(), json!(raw_l_thumb));
@@ -1108,7 +1578,10 @@ impl ServiceHub {
                     set_opt(&mut live, "proxyThumbUrl", lt_proxy);
                     if replace {
                         live.insert("url".into(), json!(lu.unwrap_or_else(|| raw_l_url.clone())));
-                        live.insert("thumb".into(), json!(lt.unwrap_or_else(|| raw_l_thumb.clone())));
+                        live.insert(
+                            "thumb".into(),
+                            json!(lt.unwrap_or_else(|| raw_l_thumb.clone())),
+                        );
                     }
                     item.insert("livePhoto".into(), Value::Object(live));
                 }
@@ -1121,12 +1594,22 @@ impl ServiceHub {
         out
     }
 
-    async fn resolve_media_url(&self, proxy_base: &str, raw_url: &str, key: Option<&str>, inline: bool) -> (Option<String>, Option<String>) {
+    async fn resolve_media_url(
+        &self,
+        proxy_base: &str,
+        raw_url: &str,
+        key: Option<&str>,
+        inline: bool,
+    ) -> (Option<String>, Option<String>) {
         let target = raw_url.trim();
         if target.is_empty() {
             return (None, None);
         }
-        let mut proxy = format!("{}/api/v1/sns/media/proxy?url={}", proxy_base.trim_end_matches('/'), url_encode(target));
+        let mut proxy = format!(
+            "{}/api/v1/sns/media/proxy?url={}",
+            proxy_base.trim_end_matches('/'),
+            url_encode(target)
+        );
         if let Some(k) = key {
             proxy.push_str(&format!("&key={}", url_encode(k)));
         }
@@ -1177,7 +1660,9 @@ pub fn url_encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -1209,8 +1694,14 @@ fn export_post_json(p: &Value, arkme: bool) -> Value {
     }
     let create_time = p.get("createTime").and_then(Value::as_i64).unwrap_or(0);
     o.insert("createTime".into(), json!(create_time));
-    o.insert("createTimeStr".into(), json!(sns::zh_locale_from_ts(create_time)));
-    o.insert("contentDesc".into(), p.get("contentDesc").cloned().unwrap_or(Value::Null));
+    o.insert(
+        "createTimeStr".into(),
+        json!(sns::zh_locale_from_ts(create_time)),
+    );
+    o.insert(
+        "contentDesc".into(),
+        p.get("contentDesc").cloned().unwrap_or(Value::Null),
+    );
     if let Some(t) = get("type") {
         o.insert("type".into(), t);
     }
@@ -1223,7 +1714,10 @@ fn export_post_json(p: &Value, arkme: bool) -> Value {
         .map(|m| {
             let mut mo = Map::new();
             mo.insert("url".into(), m.get("url").cloned().unwrap_or(Value::Null));
-            mo.insert("thumb".into(), m.get("thumb").cloned().unwrap_or(Value::Null));
+            mo.insert(
+                "thumb".into(),
+                m.get("thumb").cloned().unwrap_or(Value::Null),
+            );
             if let Some(l) = m.get("localPath").filter(|v| truthy_json(v)) {
                 mo.insert("localPath".into(), l.clone());
             }
@@ -1231,7 +1725,10 @@ fn export_post_json(p: &Value, arkme: bool) -> Value {
                 if let Some(lp) = m.get("livePhoto").filter(|v| v.is_object()) {
                     let mut lo = Map::new();
                     lo.insert("url".into(), lp.get("url").cloned().unwrap_or(Value::Null));
-                    lo.insert("thumb".into(), lp.get("thumb").cloned().unwrap_or(Value::Null));
+                    lo.insert(
+                        "thumb".into(),
+                        lp.get("thumb").cloned().unwrap_or(Value::Null),
+                    );
                     if let Some(l) = lp.get("localPath").filter(|v| truthy_json(v)) {
                         lo.insert("localPath".into(), l.clone());
                     }
@@ -1242,8 +1739,14 @@ fn export_post_json(p: &Value, arkme: bool) -> Value {
         })
         .collect();
     o.insert("media".into(), Value::Array(media));
-    o.insert("likes".into(), p.get("likes").cloned().unwrap_or_else(|| json!([])));
-    o.insert("comments".into(), p.get("comments").cloned().unwrap_or_else(|| json!([])));
+    o.insert(
+        "likes".into(),
+        p.get("likes").cloned().unwrap_or_else(|| json!([])),
+    );
+    o.insert(
+        "comments".into(),
+        p.get("comments").cloned().unwrap_or_else(|| json!([])),
+    );
     if let Some(l) = get("location") {
         o.insert("location".into(), l);
     }

@@ -48,7 +48,8 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
         let target_path = runtime_dir.join(relative);
         // An extracted file is reused only when it is byte for byte the embedded one (cheaper than hashing it,
         // and stricter); a missing, truncated or modified file is written again.
-        let up_to_date = fs::metadata(&target_path).is_ok_and(|m| m.len() == asset.bytes.len() as u64)
+        let up_to_date = fs::metadata(&target_path)
+            .is_ok_and(|m| m.len() == asset.bytes.len() as u64)
             && fs::read(&target_path).is_ok_and(|existing| existing == asset.bytes);
         if !up_to_date {
             if let Some(parent) = target_path.parent() {
@@ -90,7 +91,8 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
     let manifest_path = runtime_dir.join("manifest.json");
     let json = serde_json::to_vec_pretty(&manifest).context("serialize runtime manifest")?;
     if fs::read(&manifest_path).ok().as_deref() != Some(&json[..]) {
-        fs::write(&manifest_path, &json).with_context(|| format!("failed to write {}", manifest_path.display()))?;
+        fs::write(&manifest_path, &json)
+            .with_context(|| format!("failed to write {}", manifest_path.display()))?;
     }
 
     Ok(runtime_dir)
@@ -157,7 +159,10 @@ mod tests {
     fn build_time_hashes_match_the_embedded_bytes() {
         use sha2::{Digest, Sha256};
         for asset in EMBEDDED_ASSETS {
-            let hex: String = Sha256::digest(asset.bytes).iter().map(|b| format!("{b:02x}")).collect();
+            let hex: String = Sha256::digest(asset.bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
             assert_eq!(asset.sha256, hex, "{}", asset.logical_path);
         }
     }
@@ -170,7 +175,10 @@ mod tests {
         let asset = &EMBEDDED_ASSETS[0];
         let path = dir.join(asset_relative_path(asset.logical_path));
         assert_eq!(fs::read(&path).unwrap(), asset.bytes);
-        let manifest_time = fs::metadata(dir.join("manifest.json")).unwrap().modified().unwrap();
+        let manifest_time = fs::metadata(dir.join("manifest.json"))
+            .unwrap()
+            .modified()
+            .unwrap();
         // a damaged file (same size) is written again; an unchanged manifest is left alone
         let mut damaged = asset.bytes.to_vec();
         if let Some(b) = damaged.first_mut() {
@@ -180,7 +188,13 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(20));
         ensure_runtime(&home, "test").unwrap();
         assert_eq!(fs::read(&path).unwrap(), asset.bytes);
-        assert_eq!(fs::metadata(dir.join("manifest.json")).unwrap().modified().unwrap(), manifest_time);
+        assert_eq!(
+            fs::metadata(dir.join("manifest.json"))
+                .unwrap()
+                .modified()
+                .unwrap(),
+            manifest_time
+        );
         let _ = fs::remove_dir_all(&home);
     }
 }

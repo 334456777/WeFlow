@@ -202,15 +202,15 @@ pub fn export_chatlab(
                 .and_then(Value::as_i64)
                 .unwrap_or(1);
             let chatlab_type = match msg_type {
-                1 => 0,    // TEXT
-                3 => 1,    // IMAGE
-                34 => 2,   // VOICE
-                43 => 3,   // VIDEO
-                47 => 5,   // EMOJI
-                48 => 8,   // LOCATION
-                49 => 7,   // LINK
-                42 => 27,  // CONTACT
-                50 => 23,  // CALL
+                1 => 0,      // TEXT
+                3 => 1,      // IMAGE
+                34 => 2,     // VOICE
+                43 => 3,     // VIDEO
+                47 => 5,     // EMOJI
+                48 => 8,     // LOCATION
+                49 => 7,     // LINK
+                42 => 27,    // CONTACT
+                50 => 23,    // CALL
                 10000 => 80, // SYSTEM
                 _ => 0,
             };
@@ -253,12 +253,7 @@ pub fn export_chatlab(
     write_bytes(out, &bytes)
 }
 
-pub fn export_weclone(
-    wxid: &str,
-    messages: &Value,
-    contacts: &Value,
-    out: &Path,
-) -> Result<()> {
+pub fn export_weclone(wxid: &str, messages: &Value, contacts: &Value, out: &Path) -> Result<()> {
     let contact_map = build_contact_map(contacts);
     let items = messages.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
     let mut csv = String::from("talker,type,text\n");
@@ -295,7 +290,12 @@ pub fn export_weclone(
             .or_else(|| msg.get("text"))
             .and_then(Value::as_str)
             .unwrap_or("");
-        csv.push_str(&format!("{},{},{}\n", csv_escape(&talker), type_name, csv_escape(content)));
+        csv.push_str(&format!(
+            "{},{},{}\n",
+            csv_escape(&talker),
+            type_name,
+            csv_escape(content)
+        ));
     }
     write_file(out, &csv)
 }
@@ -377,16 +377,14 @@ fn csv_escape(s: &str) -> String {
 
 fn write_file(path: &Path, content: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     fs::write(path, content).with_context(|| format!("write {}", path.display()))
 }
 
 fn write_bytes(path: &Path, data: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     fs::write(path, data).with_context(|| format!("write {}", path.display()))
 }
@@ -399,7 +397,11 @@ fn write_bytes(path: &Path, data: &[u8]) -> Result<()> {
 ///
 ///   content
 ///
-pub fn export_txt(messages: &[TxtMessage], nickname_map: &HashMap<String, String>, out: &Path) -> Result<()> {
+pub fn export_txt(
+    messages: &[TxtMessage],
+    nickname_map: &HashMap<String, String>,
+    out: &Path,
+) -> Result<()> {
     use std::io::Write;
     if let Some(parent) = out.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
@@ -438,9 +440,11 @@ pub fn export_txt(messages: &[TxtMessage], nickname_map: &HashMap<String, String
         };
         let nickname = nickname_map.get(&msg.sender).unwrap_or(&msg.sender);
         let dt = format_timestamp(msg.create_time);
-        write!(w, "{dt} '{nickname}'\n\n{content}\n\n").with_context(|| format!("write {}", out.display()))?;
+        write!(w, "{dt} '{nickname}'\n\n{content}\n\n")
+            .with_context(|| format!("write {}", out.display()))?;
     }
-    w.flush().with_context(|| format!("write {}", out.display()))
+    w.flush()
+        .with_context(|| format!("write {}", out.display()))
 }
 
 /// One message of the TXT export: just what its layout prints.
@@ -455,7 +459,13 @@ impl TxtMessage {
     /// From a raw message row; `None` for the kinds the TXT layout leaves out.
     pub fn from_row(row: &Value) -> Option<Self> {
         let int = |key: &str, default: i64| {
-            row.get(key).and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).unwrap_or(default)
+            row.get(key)
+                .and_then(|v| {
+                    v.as_str()
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .or_else(|| v.as_i64())
+                })
+                .unwrap_or(default)
         };
         let local_type = int("local_type", 1);
         let content = match local_type {
@@ -465,7 +475,11 @@ impl TxtMessage {
         };
         Some(Self {
             create_time: int("create_time", 0),
-            sender: row.get("sender_username").and_then(Value::as_str).unwrap_or("").to_string(),
+            sender: row
+                .get("sender_username")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             local_type,
             content,
         })

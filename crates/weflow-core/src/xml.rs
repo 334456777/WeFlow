@@ -20,7 +20,11 @@ pub fn find_ci(hay: &str, from: usize, needle: &str) -> Option<usize> {
     let mut i = from;
     while i <= last_start {
         let window = &h[i..=last_start];
-        let rel = if lo == up { memchr::memchr(lo, window) } else { memchr::memchr2(lo, up, window) }?;
+        let rel = if lo == up {
+            memchr::memchr(lo, window)
+        } else {
+            memchr::memchr2(lo, up, window)
+        }?;
         let p = i + rel;
         if h[p..p + n.len()].eq_ignore_ascii_case(n) {
             return Some(p);
@@ -73,7 +77,9 @@ pub fn element_inner<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a st
 
 /// `Regex::new("(?is)<open.*?</close>").replace_all(s, "")` for ASCII `open` / `close`.
 pub fn remove_blocks<'a>(s: &'a str, open: &str, close: &str) -> Cow<'a, str> {
-    let Some(mut p) = find_ci(s, 0, open) else { return Cow::Borrowed(s) };
+    let Some(mut p) = find_ci(s, 0, open) else {
+        return Cow::Borrowed(s);
+    };
     let mut out = String::with_capacity(s.len());
     let mut kept = 0;
     while let Some(c) = find_ci(s, p + open.len(), close) {
@@ -145,8 +151,16 @@ mod tests {
         for s in SAMPLES {
             let want = appmsg.captures(s).map(|c| c.get(1).unwrap().as_str());
             assert_eq!(element_inner(s, "<appmsg", "</appmsg>"), want, "{s:?}");
-            assert_eq!(remove_blocks(s, "<refermsg", "</refermsg>"), refer.replace_all(s, ""), "{s:?}");
-            assert_eq!(remove_blocks(s, "<patmsg", "</patmsg>"), pat.replace_all(s, ""), "{s:?}");
+            assert_eq!(
+                remove_blocks(s, "<refermsg", "</refermsg>"),
+                refer.replace_all(s, ""),
+                "{s:?}"
+            );
+            assert_eq!(
+                remove_blocks(s, "<patmsg", "</patmsg>"),
+                pat.replace_all(s, ""),
+                "{s:?}"
+            );
         }
     }
 
@@ -154,8 +168,29 @@ mod tests {
     fn random_snippets_match_the_regexes() {
         use rand::{rngs::StdRng, Rng, SeedableRng};
         const TOKENS: &[&str] = &[
-            "<title>", "</title>", "<TITLE>", "</Title>", "<title", "title>", "<appmsg", "<APPMSG ", "</appmsg>", "</AppMsg>",
-            "<refermsg>", "</refermsg>", "<patMsg>", "</PATMSG>", "<type>", "</type>", "<", ">", "/", "x", "中", "\n", " ",
+            "<title>",
+            "</title>",
+            "<TITLE>",
+            "</Title>",
+            "<title",
+            "title>",
+            "<appmsg",
+            "<APPMSG ",
+            "</appmsg>",
+            "</AppMsg>",
+            "<refermsg>",
+            "</refermsg>",
+            "<patMsg>",
+            "</PATMSG>",
+            "<type>",
+            "</type>",
+            "<",
+            ">",
+            "/",
+            "x",
+            "中",
+            "\n",
+            " ",
         ];
         let title = Regex::new(r"(?is)<title>(.*?)</title>").unwrap();
         let ty = Regex::new(r"(?is)<type>(.*?)</type>").unwrap();
@@ -163,11 +198,29 @@ mod tests {
         let refer = Regex::new(r"(?is)<refermsg.*?</refermsg>").unwrap();
         let mut rng = StdRng::seed_from_u64(7);
         for _ in 0..20_000 {
-            let s: String = (0..rng.gen_range(0..14)).map(|_| TOKENS[rng.gen_range(0..TOKENS.len())]).collect();
-            assert_eq!(tag_inner(&s, "title"), title.captures(&s).map(|c| c.get(1).unwrap().as_str()), "{s:?}");
-            assert_eq!(tag_inner(&s, "type"), ty.captures(&s).map(|c| c.get(1).unwrap().as_str()), "{s:?}");
-            assert_eq!(element_inner(&s, "<appmsg", "</appmsg>"), appmsg.captures(&s).map(|c| c.get(1).unwrap().as_str()), "{s:?}");
-            assert_eq!(remove_blocks(&s, "<refermsg", "</refermsg>"), refer.replace_all(&s, ""), "{s:?}");
+            let s: String = (0..rng.gen_range(0..14))
+                .map(|_| TOKENS[rng.gen_range(0..TOKENS.len())])
+                .collect();
+            assert_eq!(
+                tag_inner(&s, "title"),
+                title.captures(&s).map(|c| c.get(1).unwrap().as_str()),
+                "{s:?}"
+            );
+            assert_eq!(
+                tag_inner(&s, "type"),
+                ty.captures(&s).map(|c| c.get(1).unwrap().as_str()),
+                "{s:?}"
+            );
+            assert_eq!(
+                element_inner(&s, "<appmsg", "</appmsg>"),
+                appmsg.captures(&s).map(|c| c.get(1).unwrap().as_str()),
+                "{s:?}"
+            );
+            assert_eq!(
+                remove_blocks(&s, "<refermsg", "</refermsg>"),
+                refer.replace_all(&s, ""),
+                "{s:?}"
+            );
         }
     }
 

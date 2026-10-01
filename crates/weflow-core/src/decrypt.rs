@@ -49,9 +49,7 @@ pub fn detect_image_extension(data: &[u8]) -> &str {
     if data[..3] == [0x47, 0x49, 0x46] {
         return ".gif";
     }
-    if data.len() >= 4
-        && data[..4] == [0x77, 0x78, 0x67, 0x66]
-    {
+    if data.len() >= 4 && data[..4] == [0x77, 0x78, 0x67, 0x66] {
         return ".wxgf";
     }
     ".bin"
@@ -82,7 +80,6 @@ pub fn parse_aes_key(text: &str) -> Option<[u8; 16]> {
     None
 }
 
-
 pub fn decrypt_dat(data: &[u8], xor_key: u8, aes_key: Option<&[u8; 16]>) -> Result<DecryptResult> {
     let version = detect_dat_version(data);
     match version {
@@ -90,16 +87,28 @@ pub fn decrypt_dat(data: &[u8], xor_key: u8, aes_key: Option<&[u8; 16]>) -> Resu
             let ext = detect_image_extension(data).to_string();
             if ext != ".bin" {
                 let is_wxgf = ext == ".wxgf";
-                return Ok(DecryptResult { data: data.to_vec(), ext, is_wxgf });
+                return Ok(DecryptResult {
+                    data: data.to_vec(),
+                    ext,
+                    is_wxgf,
+                });
             }
             // legacy V3: the whole file is XOR-ed with a single byte
             let xored: Vec<u8> = data.iter().map(|b| b ^ xor_key).collect();
             let ext = detect_image_extension(&xored).to_string();
             if ext != ".bin" {
                 let is_wxgf = ext == ".wxgf";
-                return Ok(DecryptResult { data: xored, ext, is_wxgf });
+                return Ok(DecryptResult {
+                    data: xored,
+                    ext,
+                    is_wxgf,
+                });
             }
-            Ok(DecryptResult { data: data.to_vec(), ext, is_wxgf: false })
+            Ok(DecryptResult {
+                data: data.to_vec(),
+                ext,
+                is_wxgf: false,
+            })
         }
         1 => decrypt_dat_v4(data, xor_key, &V1_AES_KEY),
         2 => {
@@ -150,12 +159,20 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
     out.extend(remaining[raw_len..].iter().map(|b| b ^ xor_key));
     let ext = detect_image_extension(&out).to_string();
     let is_wxgf = ext == ".wxgf";
-    Ok(DecryptResult { data: out, ext, is_wxgf })
+    Ok(DecryptResult {
+        data: out,
+        ext,
+        is_wxgf,
+    })
 }
 
 fn strict_remove_pkcs7(mut data: Vec<u8>) -> Result<Vec<u8>> {
     let pad = *data.last().ok_or_else(|| anyhow!("empty decrypted data"))? as usize;
-    if pad == 0 || pad > 16 || pad > data.len() || data[data.len() - pad..].iter().any(|b| *b as usize != pad) {
+    if pad == 0
+        || pad > 16
+        || pad > data.len()
+        || data[data.len() - pad..].iter().any(|b| *b as usize != pad)
+    {
         return Err(anyhow!("invalid pkcs7 padding"));
     }
     data.truncate(data.len() - pad);
@@ -177,13 +194,16 @@ pub fn decrypt_file(
     xor_key: u8,
     aes_key: Option<&[u8; 16]>,
 ) -> AppResult<DecryptResult> {
-    let data = std::fs::read(path).map_err(|err| {
-        AppError::runtime(format!("failed to read {}: {err}", path.display()))
-    })?;
+    let data = std::fs::read(path)
+        .map_err(|err| AppError::runtime(format!("failed to read {}: {err}", path.display())))?;
     decrypt_dat(&data, xor_key, aes_key).map_err(|err| AppError::runtime(err.to_string()))
 }
 
-pub fn decrypt_file_to_json(path: &Path, xor_key: u8, aes_key: Option<&[u8; 16]>) -> AppResult<Value> {
+pub fn decrypt_file_to_json(
+    path: &Path,
+    xor_key: u8,
+    aes_key: Option<&[u8; 16]>,
+) -> AppResult<Value> {
     let result = decrypt_file(path, xor_key, aes_key)?;
     Ok(json!({
         "path": path.to_string_lossy(),
@@ -224,15 +244,14 @@ mod tests {
 
     #[test]
     fn detects_png() {
-        assert_eq!(
-            detect_image_extension(&[0x89, 0x50, 0x4E, 0x47]),
-            ".png"
-        );
+        assert_eq!(detect_image_extension(&[0x89, 0x50, 0x4E, 0x47]), ".png");
     }
 
     #[test]
     fn detects_webp() {
-        let data = [0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50];
+        let data = [
+            0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+        ];
         assert_eq!(detect_image_extension(&data), ".webp");
     }
 
@@ -242,7 +261,14 @@ mod tests {
     }
 
     /// Builds a V4-layout `.dat` the way WeChat writes it.
-    fn encrypt_v4(sig: [u8; 6], plain: &[u8], aes_len: usize, xor_len: usize, key: &[u8; 16], xor_key: u8) -> Vec<u8> {
+    fn encrypt_v4(
+        sig: [u8; 6],
+        plain: &[u8],
+        aes_len: usize,
+        xor_len: usize,
+        key: &[u8; 16],
+        xor_key: u8,
+    ) -> Vec<u8> {
         use aes::cipher::{generic_array::GenericArray, BlockEncryptMut, KeyInit};
         let aes_part = &plain[..aes_len];
         let xor_part = &plain[plain.len() - xor_len..];
@@ -283,8 +309,15 @@ mod tests {
             assert_eq!(got.data, plain, "aes_len={aes_len}");
             assert_eq!(got.ext, ".jpg");
         }
-        assert!(decrypt_dat(&encrypt_v4(V2_MAGIC, &plain, 1024, 0, &key, 1), 1, None).is_err(), "V2 needs a key");
-        let wrong = decrypt_dat(&encrypt_v4(V2_MAGIC, &plain, 1024, 0, &key, 1), 1, Some(b"ffffffffffffffff"));
+        assert!(
+            decrypt_dat(&encrypt_v4(V2_MAGIC, &plain, 1024, 0, &key, 1), 1, None).is_err(),
+            "V2 needs a key"
+        );
+        let wrong = decrypt_dat(
+            &encrypt_v4(V2_MAGIC, &plain, 1024, 0, &key, 1),
+            1,
+            Some(b"ffffffffffffffff"),
+        );
         assert!(wrong.is_err(), "bad key fails the strict padding check");
     }
 
@@ -303,8 +336,14 @@ mod tests {
 
     #[test]
     fn aes_keys_parse_from_ascii_or_hex() {
-        assert_eq!(parse_aes_key("0123456789abcdef"), Some(*b"0123456789abcdef"));
-        assert_eq!(parse_aes_key(" 0123456789abcdefXYZ "), Some(*b"0123456789abcdef"));
+        assert_eq!(
+            parse_aes_key("0123456789abcdef"),
+            Some(*b"0123456789abcdef")
+        );
+        assert_eq!(
+            parse_aes_key(" 0123456789abcdefXYZ "),
+            Some(*b"0123456789abcdef")
+        );
         let hex = "00112233445566778899aabbccddeeff";
         assert_eq!(parse_aes_key(hex).unwrap()[15], 0xff);
         assert_eq!(parse_aes_key("short"), None);
@@ -323,7 +362,10 @@ mod tests {
 
     #[test]
     fn read_i32_le_correct() {
-        let data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00];
+        let data = [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00,
+            0x00,
+        ];
         assert_eq!(read_i32_le(&data, 6), 7);
         assert_eq!(read_i32_le(&data, 10), 8);
     }

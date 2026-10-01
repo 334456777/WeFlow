@@ -10,7 +10,8 @@ use crate::api::{self, ApiError, ApiExportedMedia, ApiMediaOptions, Params};
 use crate::chat_msg::{self, ChatMessage};
 use crate::message::{row_field, row_int, rx};
 
-const FRIEND_EXCLUDE_USERNAMES: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
+const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =
+    ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
 fn js_int(v: Option<&Value>) -> Option<i64> {
     match v? {
@@ -102,7 +103,11 @@ fn summary_from_message(m: &ChatMessage) -> String {
         34 => "[语音]".into(),
         43 => "[视频]".into(),
         47 => "[表情]".into(),
-        42 => m.card_nickname.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| "[名片]".into()),
+        42 => m
+            .card_nickname
+            .clone()
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "[名片]".into()),
         48 => "[位置]".into(),
         49 => m
             .link_title()
@@ -121,7 +126,10 @@ fn summary_from_message(m: &ChatMessage) -> String {
             }
         }
     };
-    rx(r"^\s*\[视频号\]\s*").replace(&chat_msg::clean_utf16(&raw), "").trim().to_string()
+    rx(r"^\s*\[视频号\]\s*")
+        .replace(&chat_msg::clean_utf16(&raw), "")
+        .trim()
+        .to_string()
 }
 
 impl ServiceHub {
@@ -144,9 +152,14 @@ impl ServiceHub {
 
     /// Raw `id → group nickname` map of a chatroom.
     pub fn group_nicknames_pub(&self, chatroom_id: &str) -> Vec<(String, String)> {
-        let Ok(wcdb) = self.open_wcdb() else { return Vec::new() };
+        let Ok(wcdb) = self.open_wcdb() else {
+            return Vec::new();
+        };
         match wcdb.group_nicknames(chatroom_id) {
-            Ok(Value::Object(m)) => m.into_iter().map(|(k, v)| (k, v.as_str().unwrap_or("").to_string())).collect(),
+            Ok(Value::Object(m)) => m
+                .into_iter()
+                .map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -163,8 +176,20 @@ impl ServiceHub {
             .ok()
             .and_then(|m| m.get(username).and_then(Value::as_str).map(str::to_string))
             .filter(|a| !a.is_empty() && !a.contains("base64,ffd8"));
-        let pick = |keys: &[&str]| contact.as_ref().and_then(|c| keys.iter().find_map(|k| c.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)));
-        let name = pick(&["remark"]).or_else(|| pick(&["nickName", "nick_name"])).or_else(|| pick(&["alias"])).unwrap_or_else(|| username.to_string());
+        let pick = |keys: &[&str]| {
+            contact.as_ref().and_then(|c| {
+                keys.iter().find_map(|k| {
+                    c.get(*k)
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                })
+            })
+        };
+        let name = pick(&["remark"])
+            .or_else(|| pick(&["nickName", "nick_name"]))
+            .or_else(|| pick(&["alias"]))
+            .unwrap_or_else(|| username.to_string());
         Some((avatar, name))
     }
 
@@ -172,26 +197,54 @@ impl ServiceHub {
         self.my_wxid_cleaned()
     }
 
-    fn contacts_compact_for(&self, wcdb: &weflow_native::wcdb::Wcdb, usernames: &[String]) -> Vec<Value> {
+    fn contacts_compact_for(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        usernames: &[String],
+    ) -> Vec<Value> {
         let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
-        match wcdb.invoke_json("wcdb_get_contacts_compact", &[weflow_native::wcdb::Arg::S(&payload)]) {
+        match wcdb.invoke_json(
+            "wcdb_get_contacts_compact",
+            &[weflow_native::wcdb::Arg::S(&payload)],
+        ) {
             Ok(Value::Array(rows)) => rows,
             _ => Vec::new(),
         }
     }
 
     /// `getNewMessages`: one ascending cursor batch starting at `min_time`.
-    pub fn chat_new_messages(&self, session_id: &str, min_time: i64, limit: i32) -> AppResult<Vec<ChatMessage>> {
+    pub fn chat_new_messages(
+        &self,
+        session_id: &str,
+        min_time: i64,
+        limit: i32,
+    ) -> AppResult<Vec<ChatMessage>> {
         let wcdb = self.open_wcdb()?;
         self.new_messages_with(&wcdb, session_id, min_time, limit)
     }
 
-    fn new_messages_with(&self, wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, min_time: i64, limit: i32) -> AppResult<Vec<ChatMessage>> {
-        let cursor = wcdb.open_message_cursor(session_id, limit, true, min_time.clamp(0, i32::MAX as i64) as i32, 0, false).map_err(|e| AppError::native(e.to_string()))?;
+    fn new_messages_with(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        session_id: &str,
+        min_time: i64,
+        limit: i32,
+    ) -> AppResult<Vec<ChatMessage>> {
+        let cursor = wcdb
+            .open_message_cursor(
+                session_id,
+                limit,
+                true,
+                min_time.clamp(0, i32::MAX as i64) as i32,
+                0,
+                false,
+            )
+            .map_err(|e| AppError::native(e.to_string()))?;
         let fetched = wcdb.fetch_message_batch(cursor);
         let _ = wcdb.close_message_cursor(cursor);
         let (rows, _) = fetched.map_err(|e| AppError::native(e.to_string()))?;
-        let mut msgs = chat_msg::map_rows(&rows.as_array().cloned().unwrap_or_default(), &self.wmy());
+        let mut msgs =
+            chat_msg::map_rows(&rows.as_array().cloned().unwrap_or_default(), &self.wmy());
         // `normalizeMessageOrder`
         msgs.sort_by(|a, b| {
             let (asq, bsq) = (a.sort_seq.max(0), b.sort_seq.max(0));
@@ -216,16 +269,39 @@ impl ServiceHub {
     }
 
     fn sessions_with(&self, wcdb: &weflow_native::wcdb::Wcdb) -> AppResult<Vec<Value>> {
-        let raw = wcdb.sessions().map_err(|e| AppError::native(e.to_string()))?;
+        let raw = wcdb
+            .sessions()
+            .map_err(|e| AppError::native(e.to_string()))?;
         let rows = raw.as_array().cloned().unwrap_or_default();
         if let Some(first) = rows.first() {
             if first.get("_error").is_some() || first.get("_info").is_some() {
-                let detail = first.get("_error").or_else(|| first.get("_info")).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).unwrap_or_default();
+                let detail = first
+                    .get("_error")
+                    .or_else(|| first.get("_info"))
+                    .map(|v| {
+                        v.as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| v.to_string())
+                    })
+                    .unwrap_or_default();
                 return Err(AppError::native(format!("session table error: {detail}")));
             }
         }
-        let username_keys = ["username", "user_name", "userName", "usrName", "UsrName", "talker", "talker_id", "talkerId"];
-        let openim_ids: Vec<String> = rows.iter().map(|r| first_str(r, &username_keys).trim().to_string()).filter(|u| is_enterprise_openim(u)).collect();
+        let username_keys = [
+            "username",
+            "user_name",
+            "userName",
+            "usrName",
+            "UsrName",
+            "talker",
+            "talker_id",
+            "talkerId",
+        ];
+        let openim_ids: Vec<String> = rows
+            .iter()
+            .map(|r| first_str(r, &username_keys).trim().to_string())
+            .filter(|u| is_enterprise_openim(u))
+            .collect();
         let mut openim_types: HashMap<String, i64> = HashMap::new();
         if !openim_ids.is_empty() {
             for row in self.contacts_compact_for(wcdb, &openim_ids) {
@@ -246,18 +322,82 @@ impl ServiceHub {
             if !should_keep_session(&username, local_type) {
                 continue;
             }
-            let sort_ts = js_int(["sort_timestamp", "sortTimestamp", "sort_time", "sortTime"].iter().filter_map(|k| row.get(*k)).find(|v| truthy(v))).unwrap_or(0);
-            let last_ts = js_int(["last_timestamp", "lastTimestamp", "last_msg_time", "lastMsgTime"].iter().filter_map(|k| row.get(*k)).find(|v| truthy(v))).unwrap_or(sort_ts);
-            let summary = chat_msg::clean_utf16(&first_str(row, &["summary", "digest", "last_msg", "lastMsg"]));
-            let last_msg_type = js_int(row.get("last_msg_type").filter(|v| truthy(v)).or_else(|| row.get("lastMsgType").filter(|v| truthy(v)))).unwrap_or(0);
-            let hint_raw = ["message_count", "messageCount", "msg_count", "msgCount", "total_count", "totalCount", "n_msg", "nMsg", "message_num", "messageNum"].iter().filter_map(|k| row.get(*k)).find(|v| !v.is_null());
-            let hint = hint_raw.and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))).filter(|n: &f64| n.is_finite() && *n >= 0.0).map(|n| n.floor() as i64);
+            let sort_ts = js_int(
+                ["sort_timestamp", "sortTimestamp", "sort_time", "sortTime"]
+                    .iter()
+                    .filter_map(|k| row.get(*k))
+                    .find(|v| truthy(v)),
+            )
+            .unwrap_or(0);
+            let last_ts = js_int(
+                [
+                    "last_timestamp",
+                    "lastTimestamp",
+                    "last_msg_time",
+                    "lastMsgTime",
+                ]
+                .iter()
+                .filter_map(|k| row.get(*k))
+                .find(|v| truthy(v)),
+            )
+            .unwrap_or(sort_ts);
+            let summary = chat_msg::clean_utf16(&first_str(
+                row,
+                &["summary", "digest", "last_msg", "lastMsg"],
+            ));
+            let last_msg_type = js_int(
+                row.get("last_msg_type")
+                    .filter(|v| truthy(v))
+                    .or_else(|| row.get("lastMsgType").filter(|v| truthy(v))),
+            )
+            .unwrap_or(0);
+            let hint_raw = [
+                "message_count",
+                "messageCount",
+                "msg_count",
+                "msgCount",
+                "total_count",
+                "totalCount",
+                "n_msg",
+                "nMsg",
+                "message_num",
+                "messageNum",
+            ]
+            .iter()
+            .filter_map(|k| row.get(*k))
+            .find(|v| !v.is_null());
+            let hint = hint_raw
+                .and_then(|v| {
+                    v.as_f64()
+                        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+                })
+                .filter(|n: &f64| n.is_finite() && *n >= 0.0)
+                .map(|n| n.floor() as i64);
 
             let mut o = Map::new();
             o.insert("username".into(), json!(username));
-            o.insert("type".into(), json!(js_int(row.get("type").filter(|v| truthy(v))).unwrap_or(0)));
-            o.insert("unreadCount".into(), json!(js_int(["unread_count", "unreadCount", "unreadcount"].iter().filter_map(|k| row.get(*k)).find(|v| truthy(v))).unwrap_or(0)));
-            o.insert("summary".into(), json!(if summary.is_empty() { message_label(last_msg_type).to_string() } else { summary }));
+            o.insert(
+                "type".into(),
+                json!(js_int(row.get("type").filter(|v| truthy(v))).unwrap_or(0)),
+            );
+            o.insert(
+                "unreadCount".into(),
+                json!(js_int(
+                    ["unread_count", "unreadCount", "unreadcount"]
+                        .iter()
+                        .filter_map(|k| row.get(*k))
+                        .find(|v| truthy(v))
+                )
+                .unwrap_or(0)),
+            );
+            o.insert(
+                "summary".into(),
+                json!(if summary.is_empty() {
+                    message_label(last_msg_type).to_string()
+                } else {
+                    summary
+                }),
+            );
             o.insert("sortTimestamp".into(), json!(sort_ts));
             o.insert("lastTimestamp".into(), json!(last_ts));
             o.insert("lastMsgType".into(), json!(last_msg_type));
@@ -276,7 +416,10 @@ impl ServiceHub {
         }
 
         // addMissingOfficialSessions
-        let existing: HashSet<String> = sessions.iter().filter_map(|s| s["username"].as_str().map(str::to_string)).collect();
+        let existing: HashSet<String> = sessions
+            .iter()
+            .filter_map(|s| s["username"].as_str().map(str::to_string))
+            .collect();
         let mut existing = existing;
         if let Ok(Value::Array(contacts)) = wcdb.contacts() {
             for row in contacts {
@@ -285,19 +428,32 @@ impl ServiceHub {
                     continue;
                 }
                 let lowered = username.to_lowercase();
-                let local_type = row_field(&row, &["local_type", "localType", "WCDB_CT_local_type"]).and_then(|v| js_int(Some(v)));
+                let local_type =
+                    row_field(&row, &["local_type", "localType", "WCDB_CT_local_type"])
+                        .and_then(|v| js_int(Some(v)));
                 let is_official = username.starts_with("gh_");
                 let special_weixin = lowered.starts_with("weixin") && lowered != "weixin";
                 let special_openim = allowed_openim_by_local_type(&username, local_type);
                 if !is_official && !special_weixin && !special_openim {
                     continue;
                 }
-                let display = ["remark", "nick_name", "alias"].iter().map(|k| first_str(&row, &[k])).find(|s| !s.is_empty()).unwrap_or_else(|| username.clone());
+                let display = ["remark", "nick_name", "alias"]
+                    .iter()
+                    .map(|k| first_str(&row, &[k]))
+                    .find(|s| !s.is_empty())
+                    .unwrap_or_else(|| username.clone());
                 let mut o = Map::new();
                 o.insert("username".into(), json!(username));
                 o.insert("type".into(), json!(0));
                 o.insert("unreadCount".into(), json!(0));
-                o.insert("summary".into(), json!(if is_official { "查看公众号历史消息" } else { "暂无会话记录" }));
+                o.insert(
+                    "summary".into(),
+                    json!(if is_official {
+                        "查看公众号历史消息"
+                    } else {
+                        "暂无会话记录"
+                    }),
+                );
                 o.insert("sortTimestamp".into(), json!(0));
                 o.insert("lastTimestamp".into(), json!(0));
                 o.insert("lastMsgType".into(), json!(0));
@@ -309,29 +465,62 @@ impl ServiceHub {
         }
 
         // applySyntheticUnreadCounts (official accounts have no unread column)
-        for s in sessions.iter_mut().filter(|s| s["username"].as_str().map_or(false, |u| u.trim().starts_with("gh_"))) {
+        for s in sessions.iter_mut().filter(|s| {
+            s["username"]
+                .as_str()
+                .map_or(false, |u| u.trim().starts_with("gh_"))
+        }) {
             let name = s["username"].as_str().unwrap_or("").to_string();
             let (mut total, mut latest_snapshot) = (0i64, 0i64);
             if let Ok(Value::Array(tables)) = wcdb.message_table_stats(&name) {
                 for t in tables {
-                    let c = ["count", "message_count", "messageCount"].iter().filter_map(|k| t.get(*k)).find_map(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0.0);
+                    let c = ["count", "message_count", "messageCount"]
+                        .iter()
+                        .filter_map(|k| t.get(*k))
+                        .find_map(|v| {
+                            v.as_f64()
+                                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                        })
+                        .unwrap_or(0.0);
                     if c.is_finite() && c > 0.0 {
                         total += c.floor() as i64;
                     }
-                    let l = ["last_timestamp", "lastTimestamp", "last_time", "lastTime", "max_create_time", "maxCreateTime"].iter().filter_map(|k| t.get(*k)).find_map(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0.0);
+                    let l = [
+                        "last_timestamp",
+                        "lastTimestamp",
+                        "last_time",
+                        "lastTime",
+                        "max_create_time",
+                        "maxCreateTime",
+                    ]
+                    .iter()
+                    .filter_map(|k| t.get(*k))
+                    .find_map(|v| {
+                        v.as_f64()
+                            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    })
+                    .unwrap_or(0.0);
                     if l.is_finite() && l as i64 > latest_snapshot {
                         latest_snapshot = l.floor() as i64;
                     }
                 }
             }
-            let latest = s["lastTimestamp"].as_i64().unwrap_or(0).max(s["sortTimestamp"].as_i64().unwrap_or(0)).max(latest_snapshot);
+            let latest = s["lastTimestamp"]
+                .as_i64()
+                .unwrap_or(0)
+                .max(s["sortTimestamp"].as_i64().unwrap_or(0))
+                .max(latest_snapshot);
             if latest > 0 {
                 s.insert("lastTimestamp".into(), json!(latest));
                 let sort = s["sortTimestamp"].as_i64().unwrap_or(0).max(latest);
                 s.insert("sortTimestamp".into(), json!(sort));
             }
             if total > 0 {
-                let hint = s.get("messageCountHint").and_then(Value::as_i64).unwrap_or(0).max(total);
+                let hint = s
+                    .get("messageCountHint")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .max(total);
                 s.insert("messageCountHint".into(), json!(hint));
             }
             let mut unread = 0i64;
@@ -339,7 +528,10 @@ impl ServiceHub {
             let now = chrono::Utc::now().timestamp();
             if latest > 0 && (now - latest).abs() <= 10 * 60 {
                 if let Ok(msgs) = self.new_messages_with(wcdb, &name, (latest - 1).max(0), 20) {
-                    let fresh: Vec<&ChatMessage> = msgs.iter().filter(|m| m.create_time >= latest && m.is_send != Some(1)).collect();
+                    let fresh: Vec<&ChatMessage> = msgs
+                        .iter()
+                        .filter(|m| m.create_time >= latest && m.is_send != Some(1))
+                        .collect();
                     unread = fresh.len() as i64;
                     latest_msg = fresh.last().map(|m| (*m).clone());
                 }
@@ -365,7 +557,10 @@ impl ServiceHub {
         });
 
         // resolve names / avatars (the desktop app fills these from its contact cache)
-        let names: Vec<String> = sessions.iter().filter_map(|s| s["username"].as_str().map(str::to_string)).collect();
+        let names: Vec<String> = sessions
+            .iter()
+            .filter_map(|s| s["username"].as_str().map(str::to_string))
+            .collect();
         let book = self.contact_book(wcdb, &names);
         for s in sessions.iter_mut() {
             let u = s["username"].as_str().unwrap_or("").to_string();
@@ -388,14 +583,52 @@ impl ServiceHub {
     /// `getContactLabelNameMap`: label id → name from the contact database (empty when it has no labels).
     fn contact_label_names(&self, wcdb: &weflow_native::wcdb::Wcdb) -> HashMap<i64, String> {
         let mut map = HashMap::new();
-        let Ok(info) = wcdb.exec_query("contact", "", "select name from pragma_table_info('contact_label')") else { return map };
-        let columns: Vec<String> = info.as_array().map(|a| a.iter().filter_map(|r| r["name"].as_str().map(str::to_string)).collect()).unwrap_or_default();
-        let id = crate::contact_extra::pick_column(&columns, &["label_id_", "label_id", "labelId", "labelid", "id"]);
-        let name = crate::contact_extra::pick_column(&columns, &["label_name_", "label_name", "labelName", "labelname", "name"]);
-        let (Some(id), Some(name)) = (id, name) else { return map };
-        let sql = format!("select \"{id}\" as label_id, \"{name}\" as label_name from contact_label");
-        for row in wcdb.exec_query("contact", "", &sql).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default() {
-            let (Some(id), name) = (row["label_id"].as_i64(), first_str(&row, &["label_name"]).trim().to_string()) else { continue };
+        let Ok(info) = wcdb.exec_query(
+            "contact",
+            "",
+            "select name from pragma_table_info('contact_label')",
+        ) else {
+            return map;
+        };
+        let columns: Vec<String> = info
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|r| r["name"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let id = crate::contact_extra::pick_column(
+            &columns,
+            &["label_id_", "label_id", "labelId", "labelid", "id"],
+        );
+        let name = crate::contact_extra::pick_column(
+            &columns,
+            &[
+                "label_name_",
+                "label_name",
+                "labelName",
+                "labelname",
+                "name",
+            ],
+        );
+        let (Some(id), Some(name)) = (id, name) else {
+            return map;
+        };
+        let sql =
+            format!("select \"{id}\" as label_id, \"{name}\" as label_name from contact_label");
+        for row in wcdb
+            .exec_query("contact", "", &sql)
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+        {
+            let (Some(id), name) = (
+                row["label_id"].as_i64(),
+                first_str(&row, &["label_name"]).trim().to_string(),
+            ) else {
+                continue;
+            };
             if id > 0 && !name.is_empty() {
                 map.insert(id, name);
             }
@@ -406,13 +639,21 @@ impl ServiceHub {
     /// `getContacts`: friends / groups / official accounts / former friends, newest contact first.
     pub fn chat_contacts_list(&self) -> AppResult<Vec<Value>> {
         let wcdb = self.open_wcdb()?;
-        let raw = wcdb.contacts().map_err(|e| AppError::native(e.to_string()))?;
+        let raw = wcdb
+            .contacts()
+            .map_err(|e| AppError::native(e.to_string()))?;
         let rows = raw.as_array().cloned().unwrap_or_default();
         let mut last_contact: HashMap<String, i64> = HashMap::new();
         if let Ok(Value::Array(sessions)) = wcdb.sessions() {
             for s in sessions {
                 let u = first_str(&s, &["username", "user_name", "userName"]);
-                let ts = js_int(["sort_timestamp", "sortTimestamp"].iter().filter_map(|k| s.get(*k)).find(|v| truthy(v))).unwrap_or(0);
+                let ts = js_int(
+                    ["sort_timestamp", "sortTimestamp"]
+                        .iter()
+                        .filter_map(|k| s.get(*k))
+                        .find(|v| truthy(v)),
+                )
+                .unwrap_or(0);
                 if !u.is_empty() && ts != 0 {
                     last_contact.insert(u, ts);
                 }
@@ -426,7 +667,9 @@ impl ServiceHub {
                 continue;
             }
             let local_type = row_int(row, &["local_type", "localType", "WCDB_CT_local_type"], 0);
-            let quan_pin = first_str(row, &["quan_pin", "quanPin", "WCDB_CT_quan_pin"]).trim().to_string();
+            let quan_pin = first_str(row, &["quan_pin", "quanPin", "WCDB_CT_quan_pin"])
+                .trim()
+                .to_string();
             let lowered = username.to_lowercase();
             let openim = is_enterprise_openim(&username);
             if openim && !allowed_openim_by_local_type(&username, Some(local_type)) {
@@ -437,7 +680,10 @@ impl ServiceHub {
                 "group"
             } else if username.starts_with("gh_") {
                 "official"
-            } else if openim || visible_weixin || (local_type == 1 && !FRIEND_EXCLUDE_USERNAMES.contains(&username.as_str())) {
+            } else if openim
+                || visible_weixin
+                || (local_type == 1 && !FRIEND_EXCLUDE_USERNAMES.contains(&username.as_str()))
+            {
                 "friend"
             } else if local_type == 0 && !quan_pin.is_empty() {
                 "former_friend"
@@ -447,7 +693,11 @@ impl ServiceHub {
             let remark = first_str(row, &["remark"]);
             let nick = first_str(row, &["nick_name"]);
             let alias = first_str(row, &["alias"]);
-            let display = [&remark, &nick, &alias].into_iter().find(|s| !s.is_empty()).cloned().unwrap_or_else(|| username.clone());
+            let display = [&remark, &nick, &alias]
+                .into_iter()
+                .find(|s| !s.is_empty())
+                .cloned()
+                .unwrap_or_else(|| username.clone());
             let mut o = Map::new();
             o.insert("username".into(), json!(username));
             o.insert("displayName".into(), json!(display));
@@ -460,7 +710,13 @@ impl ServiceHub {
             if !labels.is_empty() {
                 o.insert("labels".into(), json!(labels));
             }
-            for (key, value) in [("detailDescription", crate::contact_extra::contact_signature(row)), ("region", crate::contact_extra::contact_region(row))] {
+            for (key, value) in [
+                (
+                    "detailDescription",
+                    crate::contact_extra::contact_signature(row),
+                ),
+                ("region", crate::contact_extra::contact_region(row)),
+            ] {
                 if !value.is_empty() {
                     o.insert(key.into(), json!(value));
                 }
@@ -480,7 +736,10 @@ impl ServiceHub {
             if tb != 0 {
                 return std::cmp::Ordering::Greater;
             }
-            crate::collate::compare_zh(a.0["displayName"].as_str().unwrap_or(""), b.0["displayName"].as_str().unwrap_or(""))
+            crate::collate::compare_zh(
+                a.0["displayName"].as_str().unwrap_or(""),
+                b.0["displayName"].as_str().unwrap_or(""),
+            )
         });
         Ok(contacts.into_iter().map(|c| c.0).collect())
     }
@@ -489,14 +748,32 @@ impl ServiceHub {
 
     /// `GET /api/v1/sessions`
     pub fn api_sessions(&self, params: &Params) -> Result<Value, ApiError> {
-        let keyword = params.get("keyword").map(|k| k.trim().to_string()).unwrap_or_default();
-        let limit = api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
-        let format = params.get("format").map(|f| f.trim().to_lowercase()).unwrap_or_default();
-        let sessions = self.chat_sessions_list().map_err(|e| ApiError::new(500, e.message))?;
+        let keyword = params
+            .get("keyword")
+            .map(|k| k.trim().to_string())
+            .unwrap_or_default();
+        let limit =
+            api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
+        let format = params
+            .get("format")
+            .map(|f| f.trim().to_lowercase())
+            .unwrap_or_default();
+        let sessions = self
+            .chat_sessions_list()
+            .map_err(|e| ApiError::new(500, e.message))?;
         let mut filtered: Vec<Value> = sessions;
         if !keyword.is_empty() {
             let k = keyword.to_lowercase();
-            filtered.retain(|s| s["username"].as_str().unwrap_or("").to_lowercase().contains(&k) || s["displayName"].as_str().map_or(false, |d| !d.is_empty() && d.to_lowercase().contains(&k)));
+            filtered.retain(|s| {
+                s["username"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&k)
+                    || s["displayName"]
+                        .as_str()
+                        .map_or(false, |d| !d.is_empty() && d.to_lowercase().contains(&k))
+            });
         }
         filtered.truncate(limit);
         if format == "chatlab" {
@@ -506,10 +783,20 @@ impl ServiceHub {
                     let u = s["username"].as_str().unwrap_or("");
                     let mut o = Map::new();
                     o.insert("id".into(), json!(u));
-                    o.insert("name".into(), json!(s["displayName"].as_str().filter(|n| !n.is_empty()).unwrap_or(u)));
+                    o.insert(
+                        "name".into(),
+                        json!(s["displayName"]
+                            .as_str()
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or(u)),
+                    );
                     o.insert("platform".into(), json!("wechat"));
                     o.insert("type".into(), json!(api::api_session_type(u)));
-                    if let Some(c) = s.get("messageCountHint").and_then(Value::as_i64).filter(|c| *c != 0) {
+                    if let Some(c) = s
+                        .get("messageCountHint")
+                        .and_then(Value::as_i64)
+                        .filter(|c| *c != 0)
+                    {
                         o.insert("messageCount".into(), json!(c));
                     }
                     o.insert("lastMessageAt".into(), s["lastTimestamp"].clone());
@@ -533,12 +820,26 @@ impl ServiceHub {
 
     /// `GET /api/v1/contacts`
     pub fn api_contacts(&self, params: &Params) -> Result<Value, ApiError> {
-        let keyword = params.get("keyword").map(|k| k.trim().to_lowercase()).unwrap_or_default();
-        let limit = api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
-        let contacts = self.chat_contacts_list().map_err(|e| ApiError::new(500, e.message))?;
+        let keyword = params
+            .get("keyword")
+            .map(|k| k.trim().to_lowercase())
+            .unwrap_or_default();
+        let limit =
+            api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
+        let contacts = self
+            .chat_contacts_list()
+            .map_err(|e| ApiError::new(500, e.message))?;
         let mut filtered = contacts;
         if !keyword.is_empty() {
-            filtered.retain(|c| ["username", "nickname", "remark", "displayName"].iter().any(|k| c.get(*k).and_then(Value::as_str).map_or(false, |v| !v.is_empty() && v.to_lowercase().contains(&keyword))));
+            filtered.retain(|c| {
+                ["username", "nickname", "remark", "displayName"]
+                    .iter()
+                    .any(|k| {
+                        c.get(*k).and_then(Value::as_str).map_or(false, |v| {
+                            !v.is_empty() && v.to_lowercase().contains(&keyword)
+                        })
+                    })
+            });
         }
         filtered.truncate(limit);
         Ok(json!({ "success": true, "count": filtered.len(), "contacts": filtered }))
@@ -546,20 +847,31 @@ impl ServiceHub {
 
     /// `GET /api/v1/group-members`
     pub fn api_group_members(&self, params: &Params) -> Result<Value, ApiError> {
-        let chatroom_id = params.get("chatroomId").filter(|v| !v.trim().is_empty()).or_else(|| params.get("talker")).map(|v| v.trim().to_string()).unwrap_or_default();
-        let include_counts = api::parse_bool_param(params, &["includeMessageCounts", "withCounts"], false);
+        let chatroom_id = params
+            .get("chatroomId")
+            .filter(|v| !v.trim().is_empty())
+            .or_else(|| params.get("talker"))
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default();
+        let include_counts =
+            api::parse_bool_param(params, &["includeMessageCounts", "withCounts"], false);
         let force = api::parse_bool_param(params, &["forceRefresh"], false);
         if chatroom_id.is_empty() {
             return Err(ApiError::new(400, "Missing chatroomId"));
         }
-        let (entries, from_cache, updated_at) = self.group_members_panel(&chatroom_id, force, include_counts).map_err(|e| ApiError::new(500, e.message))?;
+        let (entries, from_cache, updated_at) = self
+            .group_members_panel(&chatroom_id, force, include_counts)
+            .map_err(|e| ApiError::new(500, e.message))?;
         let members: Vec<Value> = entries
             .iter()
             .map(|m| {
                 let s = |k: &str| m.get(k).and_then(Value::as_str).unwrap_or("").to_string();
                 let mut o = Map::new();
                 o.insert("wxid".into(), json!(s("username")));
-                o.insert("displayName".into(), m.get("displayName").cloned().unwrap_or(Value::Null));
+                o.insert(
+                    "displayName".into(),
+                    m.get("displayName").cloned().unwrap_or(Value::Null),
+                );
                 o.insert("nickname".into(), json!(s("nickname")));
                 o.insert("remark".into(), json!(s("remark")));
                 o.insert("alias".into(), json!(s("alias")));
@@ -567,27 +879,54 @@ impl ServiceHub {
                 if let Some(a) = m.get("avatarUrl") {
                     o.insert("avatarUrl".into(), a.clone());
                 }
-                o.insert("isOwner".into(), json!(m.get("isOwner").and_then(Value::as_bool).unwrap_or(false)));
-                o.insert("isFriend".into(), json!(m.get("isFriend").and_then(Value::as_bool).unwrap_or(false)));
-                o.insert("messageCount".into(), json!(m.get("messageCount").and_then(Value::as_i64).unwrap_or(0)));
+                o.insert(
+                    "isOwner".into(),
+                    json!(m.get("isOwner").and_then(Value::as_bool).unwrap_or(false)),
+                );
+                o.insert(
+                    "isFriend".into(),
+                    json!(m.get("isFriend").and_then(Value::as_bool).unwrap_or(false)),
+                );
+                o.insert(
+                    "messageCount".into(),
+                    json!(m.get("messageCount").and_then(Value::as_i64).unwrap_or(0)),
+                );
                 Value::Object(o)
             })
             .collect();
-        Ok(json!({ "success": true, "chatroomId": chatroom_id, "count": members.len(), "fromCache": from_cache, "updatedAt": updated_at, "members": members }))
+        Ok(
+            json!({ "success": true, "chatroomId": chatroom_id, "count": members.len(), "fromCache": from_cache, "updatedAt": updated_at, "members": members }),
+        )
     }
 
     /// `fetchMessagesBatch`: cursor paging with offset skipping; returns the raw rows.
-    fn fetch_rows_batch(&self, wcdb: &weflow_native::wcdb::Wcdb, talker: &str, offset: usize, limit: usize, start: i64, end: i64, ascending: bool, lite: bool) -> Result<(Vec<Value>, bool), ApiError> {
+    fn fetch_rows_batch(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        talker: &str,
+        offset: usize,
+        limit: usize,
+        start: i64,
+        end: i64,
+        ascending: bool,
+        lite: bool,
+    ) -> Result<(Vec<Value>, bool), ApiError> {
         let batch_size = limit.clamp(500, 2000) as i32;
-        let norm = |t: i64| -> i32 { (if t > 10_000_000_000 { t / 1000 } else { t }).clamp(0, i32::MAX as i64) as i32 };
-        let cursor = wcdb.open_message_cursor(talker, batch_size, ascending, norm(start), norm(end), lite).map_err(|e| ApiError::new(500, e.to_string()))?;
+        let norm = |t: i64| -> i32 {
+            (if t > 10_000_000_000 { t / 1000 } else { t }).clamp(0, i32::MAX as i64) as i32
+        };
+        let cursor = wcdb
+            .open_message_cursor(talker, batch_size, ascending, norm(start), norm(end), lite)
+            .map_err(|e| ApiError::new(500, e.to_string()))?;
         let mut collected: Vec<Value> = Vec::new();
         let mut has_more = true;
         let mut skipped = 0usize;
         let mut reached_limit = false;
         let result = (|| -> Result<(), ApiError> {
             while collected.len() < limit && has_more {
-                let (rows, more) = wcdb.fetch_message_batch(cursor).map_err(|e| ApiError::new(500, e.to_string()))?;
+                let (rows, more) = wcdb
+                    .fetch_message_batch(cursor)
+                    .map_err(|e| ApiError::new(500, e.to_string()))?;
                 let rows = rows.as_array().cloned().unwrap_or_default();
                 if rows.is_empty() {
                     has_more = false;
@@ -620,18 +959,35 @@ impl ServiceHub {
     }
 
     /// `backfillMissingSenderUsernames` for group chats (detail lookups are capped like the desktop app).
-    fn backfill_senders(&self, wcdb: &weflow_native::wcdb::Wcdb, talker: &str, messages: &mut [ChatMessage]) {
+    fn backfill_senders(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        talker: &str,
+        messages: &mut [ChatMessage],
+    ) {
         if !talker.ends_with("@chatroom") {
             return;
         }
         let my = self.wmy();
-        let targets: Vec<usize> = messages.iter().enumerate().filter(|(_, m)| m.sender_username.as_deref().map_or(true, |s| s.trim().is_empty())).map(|(i, _)| i).collect();
+        let targets: Vec<usize> = messages
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| {
+                m.sender_username
+                    .as_deref()
+                    .map_or(true, |s| s.trim().is_empty())
+            })
+            .map(|(i, _)| i)
+            .collect();
         if targets.is_empty() {
             return;
         }
         if targets.len() > 120 {
             for i in targets {
-                if messages[i].sender_username.is_none() && messages[i].is_send == Some(1) && !my.is_empty() {
+                if messages[i].sender_username.is_none()
+                    && messages[i].is_send == Some(1)
+                    && !my.is_empty()
+                {
                     messages[i].sender_username = Some(my.clone());
                 }
             }
@@ -647,7 +1003,10 @@ impl ServiceHub {
                 attempted += 1;
                 match wcdb.message_by_id(talker, local_id as i32) {
                     Ok(row) if row.is_object() => {
-                        if let Some(h) = chat_msg::map_rows(std::slice::from_ref(&row), &my).into_iter().next() {
+                        if let Some(h) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
+                            .into_iter()
+                            .next()
+                        {
                             if let Some(s) = h.sender_username.clone().filter(|s| !s.is_empty()) {
                                 messages[i].sender_username = Some(s);
                             }
@@ -668,24 +1027,42 @@ impl ServiceHub {
                     _ => miss += 1,
                 }
             }
-            if messages[i].sender_username.is_none() && messages[i].is_send == Some(1) && !my.is_empty() {
+            if messages[i].sender_username.is_none()
+                && messages[i].is_send == Some(1)
+                && !my.is_empty()
+            {
                 messages[i].sender_username = Some(my.clone());
             }
         }
     }
 
-    fn convert_to_chatlab(&self, wcdb: &weflow_native::wcdb::Wcdb, messages: &[ChatMessage], talker: &str, talker_name: &str, media: &HashMap<i64, ApiExportedMedia>, base_url: &str) -> Value {
+    fn convert_to_chatlab(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        messages: &[ChatMessage],
+        talker: &str,
+        talker_name: &str,
+        media: &HashMap<i64, ApiExportedMedia>,
+        base_url: &str,
+    ) -> Value {
         let is_group = talker.ends_with("@chatroom");
         let my = self.wmy();
         let my_norm = api::normalize_account_id(&my).to_lowercase();
         let senders: Vec<String> = {
             let mut seen = HashSet::new();
-            messages.iter().filter_map(|m| m.sender_username.clone()).filter(|s| !s.is_empty() && seen.insert(s.clone())).collect()
+            messages
+                .iter()
+                .filter_map(|m| m.sender_username.clone())
+                .filter(|s| !s.is_empty() && seen.insert(s.clone()))
+                .collect()
         };
         let (names, _) = self.names_and_avatars_pub(wcdb, &senders);
         let group_nicks: HashMap<String, String> = if is_group {
             match wcdb.group_nicknames(talker) {
-                Ok(Value::Object(m)) => crate::export_msg::build_trusted_group_nicknames(m.into_iter().map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))),
+                Ok(Value::Object(m)) => crate::export_msg::build_trusted_group_nicknames(
+                    m.into_iter()
+                        .map(|(k, v)| (k, v.as_str().unwrap_or("").to_string())),
+                ),
                 _ => HashMap::new(),
             }
         } else {
@@ -694,7 +1071,8 @@ impl ServiceHub {
         let mut member_order: Vec<String> = Vec::new();
         let mut members: HashMap<String, Map<String, Value>> = HashMap::new();
         for m in messages {
-            let info = api::resolve_chatlab_sender_info(m, talker, &my, is_group, &names, &group_nicks);
+            let info =
+                api::resolve_chatlab_sender_info(m, talker, &my, is_group, &names, &group_nicks);
             if !members.contains_key(&info.sender) {
                 let mut o = Map::new();
                 o.insert("platformId".into(), json!(info.sender));
@@ -726,14 +1104,23 @@ impl ServiceHub {
         };
         let mut avatar_map: HashMap<String, String> = HashMap::new();
         if !lookup.is_empty() {
-            if let Ok(Value::Object(m)) = wcdb.avatar_urls(&serde_json::to_string(&lookup).unwrap()) {
+            if let Ok(Value::Object(m)) = wcdb.avatar_urls(&serde_json::to_string(&lookup).unwrap())
+            {
                 for (u, url) in m {
-                    let (u, url) = (u.trim().to_string(), url.as_str().unwrap_or("").trim().to_string());
+                    let (u, url) = (
+                        u.trim().to_string(),
+                        url.as_str().unwrap_or("").trim().to_string(),
+                    );
                     if u.is_empty() || url.is_empty() {
                         continue;
                     }
                     let cleaned = api::normalize_account_id(&u);
-                    for k in [u.clone(), u.to_lowercase(), cleaned.clone(), cleaned.to_lowercase()] {
+                    for k in [
+                        u.clone(),
+                        u.to_lowercase(),
+                        cleaned.clone(),
+                        cleaned.to_lowercase(),
+                    ] {
                         if !k.is_empty() {
                             avatar_map.insert(k, url.clone());
                         }
@@ -749,7 +1136,16 @@ impl ServiceHub {
                 v.dedup();
                 v
             };
-            wcdb.avatar_urls(&serde_json::to_string(&list).unwrap()).ok().and_then(|m| list.iter().find_map(|k| m.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)))
+            wcdb.avatar_urls(&serde_json::to_string(&list).unwrap())
+                .ok()
+                .and_then(|m| {
+                    list.iter().find_map(|k| {
+                        m.get(k)
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string)
+                    })
+                })
         };
         for sender in &member_order {
             if sender.starts_with("unknown_sender_") {
@@ -757,7 +1153,11 @@ impl ServiceHub {
             }
             let norm = api::normalize_account_id(sender).to_lowercase();
             let is_self = !my_norm.is_empty() && !norm.is_empty() && norm == my_norm;
-            let candidates: Vec<&str> = if is_self { vec![sender.as_str(), my.as_str()] } else { vec![sender.as_str()] };
+            let candidates: Vec<&str> = if is_self {
+                vec![sender.as_str(), my.as_str()]
+            } else {
+                vec![sender.as_str()]
+            };
             let url = is_self.then(|| my_avatar.clone()).flatten().or_else(|| {
                 candidates.iter().find_map(|c| {
                     let n = c.trim();
@@ -765,19 +1165,42 @@ impl ServiceHub {
                         return None;
                     }
                     let cleaned = api::normalize_account_id(n);
-                    avatar_map.get(n).or_else(|| avatar_map.get(&n.to_lowercase())).or_else(|| avatar_map.get(&cleaned)).or_else(|| avatar_map.get(&cleaned.to_lowercase())).cloned()
+                    avatar_map
+                        .get(n)
+                        .or_else(|| avatar_map.get(&n.to_lowercase()))
+                        .or_else(|| avatar_map.get(&cleaned))
+                        .or_else(|| avatar_map.get(&cleaned.to_lowercase()))
+                        .cloned()
                 })
             });
             if let (Some(u), Some(m)) = (url, members.get_mut(sender)) {
                 m.insert("avatar".into(), json!(u));
             }
         }
-        let group_avatar = if is_group { wcdb.avatar_urls(&serde_json::to_string(&[talker]).unwrap()).ok().and_then(|m| m.get(talker).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)) } else { None };
+        let group_avatar = if is_group {
+            wcdb.avatar_urls(&serde_json::to_string(&[talker]).unwrap())
+                .ok()
+                .and_then(|m| {
+                    m.get(talker)
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                })
+        } else {
+            None
+        };
 
         let chat_messages: Vec<Value> = messages
             .iter()
             .map(|m| {
-                let info = api::resolve_chatlab_sender_info(m, talker, &my, is_group, &names, &group_nicks);
+                let info = api::resolve_chatlab_sender_info(
+                    m,
+                    talker,
+                    &my,
+                    is_group,
+                    &names,
+                    &group_nicks,
+                );
                 let quote = api::extract_api_quote_info(m);
                 let mut o = Map::new();
                 o.insert("sender".into(), json!(info.sender));
@@ -787,7 +1210,12 @@ impl ServiceHub {
                 }
                 o.insert("timestamp".into(), json!(m.create_time));
                 o.insert("type".into(), json!(api::map_message_type(m)));
-                o.insert("content".into(), api::message_content(m, quote.as_ref()).map(Value::from).unwrap_or(Value::Null));
+                o.insert(
+                    "content".into(),
+                    api::message_content(m, quote.as_ref())
+                        .map(Value::from)
+                        .unwrap_or(Value::Null),
+                );
                 let sid = api::message_server_id(m);
                 if !sid.is_empty() {
                     o.insert("platformMessageId".into(), json!(sid));
@@ -796,7 +1224,14 @@ impl ServiceHub {
                     o.insert("replyToMessageId".into(), json!(id));
                 }
                 if let Some(md) = media.get(&m.local_id) {
-                    o.insert("mediaPath".into(), json!(format!("{}/api/v1/media/{}", base_url.trim_end_matches('/'), md.relative_path)));
+                    o.insert(
+                        "mediaPath".into(),
+                        json!(format!(
+                            "{}/api/v1/media/{}",
+                            base_url.trim_end_matches('/'),
+                            md.relative_path
+                        )),
+                    );
                 }
                 Value::Object(o)
             })
@@ -823,38 +1258,87 @@ impl ServiceHub {
         })
     }
 
-    pub(super) fn names_and_avatars_pub(&self, wcdb: &weflow_native::wcdb::Wcdb, usernames: &[String]) -> (HashMap<String, String>, HashMap<String, String>) {
+    pub(super) fn names_and_avatars_pub(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        usernames: &[String],
+    ) -> (HashMap<String, String>, HashMap<String, String>) {
         let payload = serde_json::to_string(usernames).unwrap_or_else(|_| "[]".into());
-        let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> { v.ok().and_then(|v| v.as_object().cloned()).map(|m| m.into_iter().filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string()))).collect()).unwrap_or_default() };
+        let to_map = |v: anyhow::Result<Value>| -> HashMap<String, String> {
+            v.ok()
+                .and_then(|v| v.as_object().cloned())
+                .map(|m| {
+                    m.into_iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
         if usernames.is_empty() {
             return (HashMap::new(), HashMap::new());
         }
-        (to_map(wcdb.display_names(&payload)), to_map(wcdb.avatar_urls(&payload)))
+        (
+            to_map(wcdb.display_names(&payload)),
+            to_map(wcdb.avatar_urls(&payload)),
+        )
     }
 
     /// `GET /api/v1/messages`
     pub async fn api_messages(&self, params: &Params, base_url: &str) -> Result<Value, ApiError> {
-        let talker = params.get("talker").map(|t| t.trim().to_string()).unwrap_or_default();
-        let limit = api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
-        let offset = api::parse_int_param(params.get("offset").map(String::as_str), 0, 0, i64::MAX) as usize;
-        let keyword = params.get("keyword").map(|k| k.trim().to_string()).unwrap_or_default();
+        let talker = params
+            .get("talker")
+            .map(|t| t.trim().to_string())
+            .unwrap_or_default();
+        let limit =
+            api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
+        let offset =
+            api::parse_int_param(params.get("offset").map(String::as_str), 0, 0, i64::MAX) as usize;
+        let keyword = params
+            .get("keyword")
+            .map(|k| k.trim().to_string())
+            .unwrap_or_default();
         let chatlab = api::parse_bool_param(params, &["chatlab"], false);
-        let format_param = params.get("format").map(|f| f.trim().to_lowercase()).unwrap_or_default();
-        let format = if format_param.is_empty() { if chatlab { "chatlab".to_string() } else { "json".to_string() } } else { format_param };
+        let format_param = params
+            .get("format")
+            .map(|f| f.trim().to_lowercase())
+            .unwrap_or_default();
+        let format = if format_param.is_empty() {
+            if chatlab {
+                "chatlab".to_string()
+            } else {
+                "json".to_string()
+            }
+        } else {
+            format_param
+        };
         let media_opts = api::parse_media_options(params);
         if talker.is_empty() {
             return Err(ApiError::new(400, "Missing required parameter: talker"));
         }
         if format != "json" && format != "chatlab" {
-            return Err(ApiError::new(400, "Invalid format, supported: json/chatlab"));
+            return Err(ApiError::new(
+                400,
+                "Invalid format, supported: json/chatlab",
+            ));
         }
         let start = api::parse_time_param(params.get("start").map(String::as_str), false);
         let end = api::parse_time_param(params.get("end").map(String::as_str), true);
-        let wcdb = self.open_wcdb().map_err(|e| ApiError::new(500, e.message))?;
+        let wcdb = self
+            .open_wcdb()
+            .map_err(|e| ApiError::new(500, e.message))?;
         let my = self.wmy();
         let (mut messages, has_more);
         if !keyword.is_empty() {
-            let rows = wcdb.search(&keyword, Some(&talker), (limit + 1) as i32, offset as i32, start as i32, end as i32).map_err(|e| ApiError::new(500, e.to_string()))?;
+            let rows = wcdb
+                .search(
+                    &keyword,
+                    Some(&talker),
+                    (limit + 1) as i32,
+                    offset as i32,
+                    start as i32,
+                    end as i32,
+                )
+                .map_err(|e| ApiError::new(500, e.to_string()))?;
             let rows = rows.as_array().cloned().unwrap_or_default();
             let mut mapped = chat_msg::map_rows(&rows, &my);
             has_more = mapped.len() > limit;
@@ -867,8 +1351,12 @@ impl ServiceHub {
                     if m.local_id > 0 && (m.sender_username.is_none() || m.is_send.is_none()) {
                         if let Ok(row) = wcdb.message_by_id(&talker, m.local_id as i32) {
                             if row.is_object() {
-                                if let Some(d) = chat_msg::map_rows(std::slice::from_ref(&row), &my).into_iter().next() {
-                                    let (parsed, raw) = (m.parsed_content.clone(), m.raw_content.clone());
+                                if let Some(d) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
+                                    .into_iter()
+                                    .next()
+                                {
+                                    let (parsed, raw) =
+                                        (m.parsed_content.clone(), m.raw_content.clone());
                                     *m = d;
                                     if !parsed.is_empty() {
                                         m.parsed_content = parsed;
@@ -883,39 +1371,108 @@ impl ServiceHub {
                 }
             }
         } else {
-            let (rows, more) = self.fetch_rows_batch(&wcdb, &talker, offset, limit, start, end, false, !media_opts.enabled)?;
-            messages = if media_opts.enabled { chat_msg::map_rows(&rows, &my) } else { chat_msg::map_rows_lite(&rows, &my) };
+            let (rows, more) = self.fetch_rows_batch(
+                &wcdb,
+                &talker,
+                offset,
+                limit,
+                start,
+                end,
+                false,
+                !media_opts.enabled,
+            )?;
+            messages = if media_opts.enabled {
+                chat_msg::map_rows(&rows, &my)
+            } else {
+                chat_msg::map_rows_lite(&rows, &my)
+            };
             self.backfill_senders(&wcdb, &talker, &mut messages);
             has_more = more;
         }
 
-        let media_map = if media_opts.enabled { self.export_media_for_messages(&wcdb, &messages, &talker, &media_opts).await } else { HashMap::new() };
+        let media_map = if media_opts.enabled {
+            self.export_media_for_messages(&wcdb, &messages, &talker, &media_opts)
+                .await
+        } else {
+            HashMap::new()
+        };
         let (names, _) = self.names_and_avatars_pub(&wcdb, std::slice::from_ref(&talker));
-        let talker_name = names.get(&talker).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| talker.clone());
+        let talker_name = names
+            .get(&talker)
+            .filter(|n| !n.is_empty())
+            .cloned()
+            .unwrap_or_else(|| talker.clone());
         let media_info = json!({ "enabled": media_opts.enabled, "exportPath": self.api_media_dir(), "count": media_map.len() });
         if format == "chatlab" {
-            let mut data = self.convert_to_chatlab(&wcdb, &messages, &talker, &talker_name, &media_map, base_url);
-            data.as_object_mut().unwrap().insert("media".into(), media_info);
+            let mut data = self.convert_to_chatlab(
+                &wcdb,
+                &messages,
+                &talker,
+                &talker_name,
+                &media_map,
+                base_url,
+            );
+            data.as_object_mut()
+                .unwrap()
+                .insert("media".into(), media_info);
             return Ok(data);
         }
-        let api_messages: Vec<Value> = messages.iter().map(|m| api::to_api_message(m, media_map.get(&m.local_id), base_url)).collect();
-        Ok(json!({ "success": true, "talker": talker, "count": api_messages.len(), "hasMore": has_more, "media": media_info, "messages": api_messages }))
+        let api_messages: Vec<Value> = messages
+            .iter()
+            .map(|m| api::to_api_message(m, media_map.get(&m.local_id), base_url))
+            .collect();
+        Ok(
+            json!({ "success": true, "talker": talker, "count": api_messages.len(), "hasMore": has_more, "media": media_info, "messages": api_messages }),
+        )
     }
 
     /// `GET /api/v1/sessions/:id/messages` (ChatLab Pull)
-    pub async fn api_pull_messages(&self, session_id: &str, params: &Params, base_url: &str) -> Result<Value, ApiError> {
+    pub async fn api_pull_messages(
+        &self,
+        session_id: &str,
+        params: &Params,
+        base_url: &str,
+    ) -> Result<Value, ApiError> {
         const PULL_MAX: i64 = 5000;
-        let limit = api::parse_int_param(params.get("limit").map(String::as_str), PULL_MAX, 1, PULL_MAX) as usize;
-        let offset = api::parse_int_param(params.get("offset").map(String::as_str), 0, 0, i64::MAX) as usize;
-        let start = params.get("since").filter(|s| !s.is_empty()).map(|s| api::parse_time_param(Some(s), false)).unwrap_or(0);
-        let end = params.get("end").filter(|s| !s.is_empty()).map(|s| api::parse_time_param(Some(s), true)).unwrap_or(0);
-        let wcdb = self.open_wcdb().map_err(|e| ApiError::new(500, e.message))?;
-        let (rows, has_more) = self.fetch_rows_batch(&wcdb, session_id, offset, limit, start, end, true, true)?;
+        let limit = api::parse_int_param(
+            params.get("limit").map(String::as_str),
+            PULL_MAX,
+            1,
+            PULL_MAX,
+        ) as usize;
+        let offset =
+            api::parse_int_param(params.get("offset").map(String::as_str), 0, 0, i64::MAX) as usize;
+        let start = params
+            .get("since")
+            .filter(|s| !s.is_empty())
+            .map(|s| api::parse_time_param(Some(s), false))
+            .unwrap_or(0);
+        let end = params
+            .get("end")
+            .filter(|s| !s.is_empty())
+            .map(|s| api::parse_time_param(Some(s), true))
+            .unwrap_or(0);
+        let wcdb = self
+            .open_wcdb()
+            .map_err(|e| ApiError::new(500, e.message))?;
+        let (rows, has_more) =
+            self.fetch_rows_batch(&wcdb, session_id, offset, limit, start, end, true, true)?;
         let mut messages = chat_msg::map_rows_lite(&rows, &self.wmy());
         self.backfill_senders(&wcdb, session_id, &mut messages);
         let (names, _) = self.names_and_avatars_pub(&wcdb, &[session_id.to_string()]);
-        let talker_name = names.get(session_id).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| session_id.to_string());
-        let mut data = self.convert_to_chatlab(&wcdb, &messages, session_id, &talker_name, &HashMap::new(), base_url);
+        let talker_name = names
+            .get(session_id)
+            .filter(|n| !n.is_empty())
+            .cloned()
+            .unwrap_or_else(|| session_id.to_string());
+        let mut data = self.convert_to_chatlab(
+            &wcdb,
+            &messages,
+            session_id,
+            &talker_name,
+            &HashMap::new(),
+            base_url,
+        );
         let last_ts = messages.last().map(|m| m.create_time);
         let mut sync = Map::new();
         sync.insert("hasMore".into(), json!(has_more));
@@ -926,21 +1483,30 @@ impl ServiceHub {
             sync.insert("nextOffset".into(), json!(offset + messages.len()));
         }
         sync.insert("watermark".into(), json!(chrono::Utc::now().timestamp()));
-        data.as_object_mut().unwrap().insert("sync".into(), Value::Object(sync));
+        data.as_object_mut()
+            .unwrap()
+            .insert("sync".into(), Value::Object(sync));
         Ok(data)
     }
 
     /// `downloadEmoji`: cached fetch of a sticker by CDN URL.
-    pub async fn chat_download_emoji(&self, cdn_url: &str, md5: Option<&str>) -> AppResult<PathBuf> {
+    pub async fn chat_download_emoji(
+        &self,
+        cdn_url: &str,
+        md5: Option<&str>,
+    ) -> AppResult<PathBuf> {
         if cdn_url.is_empty() {
             return Err(AppError::usage("invalid CDN URL"));
         }
-        let key = md5.filter(|m| !m.is_empty()).map(str::to_string).unwrap_or_else(|| {
-            use md5::{Digest, Md5};
-            let mut h = Md5::new();
-            h.update(cdn_url.as_bytes());
-            h.finalize().iter().map(|b| format!("{b:02x}")).collect()
-        });
+        let key = md5
+            .filter(|m| !m.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                use md5::{Digest, Md5};
+                let mut h = Md5::new();
+                h.update(cdn_url.as_bytes());
+                h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+            });
         let dir = self.emoji_cache_dir();
         for ext in [".gif", ".png", ".webp", ".jpg", ".jpeg"] {
             let p = dir.join(format!("{key}{ext}"));
@@ -948,10 +1514,17 @@ impl ServiceHub {
                 return Ok(p);
             }
         }
-        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().map_err(|e| AppError::runtime(e.to_string()))?;
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| AppError::runtime(e.to_string()))?;
         let mut url = cdn_url.to_string();
         for _ in 0..5 {
-            let resp = client.get(&url).send().await.map_err(|e| AppError::runtime(e.to_string()))?;
+            let resp = client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| AppError::runtime(e.to_string()))?;
             let code = resp.status().as_u16();
             if code == 301 || code == 302 {
                 if let Some(loc) = resp.headers().get("location").and_then(|v| v.to_str().ok()) {
@@ -962,12 +1535,18 @@ impl ServiceHub {
             if code != 200 {
                 return Err(AppError::runtime("download failed"));
             }
-            let bytes = resp.bytes().await.map_err(|e| AppError::runtime(e.to_string()))?;
+            let bytes = resp
+                .bytes()
+                .await
+                .map_err(|e| AppError::runtime(e.to_string()))?;
             if bytes.is_empty() {
                 return Err(AppError::runtime("download failed"));
             }
             let ext = match crate::decrypt::detect_image_extension(&bytes) {
-                ".bin" | ".wxgf" => rx(r"(?i)\.(gif|png|jpe?g|webp)(?:\?|$)").captures(&url).map(|c| format!(".{}", c[1].to_lowercase())).unwrap_or_else(|| ".gif".into()),
+                ".bin" | ".wxgf" => rx(r"(?i)\.(gif|png|jpe?g|webp)(?:\?|$)")
+                    .captures(&url)
+                    .map(|c| format!(".{}", c[1].to_lowercase()))
+                    .unwrap_or_else(|| ".gif".into()),
                 e => e.to_string(),
             };
             let path = dir.join(format!("{key}{ext}"));
@@ -979,7 +1558,13 @@ impl ServiceHub {
 
     /// `exportMediaForMessages`: copies message media into `api-media/<session>/…`.
     /// Images, voice (SILK → WAV), videos and stickers.
-    pub(super) async fn export_media_for_messages(&self, wcdb: &weflow_native::wcdb::Wcdb, messages: &[ChatMessage], talker: &str, opts: &ApiMediaOptions) -> HashMap<i64, ApiExportedMedia> {
+    pub(super) async fn export_media_for_messages(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        messages: &[ChatMessage],
+        talker: &str,
+        opts: &ApiMediaOptions,
+    ) -> HashMap<i64, ApiExportedMedia> {
         let mut map = HashMap::new();
         if !opts.enabled || messages.is_empty() {
             return map;
@@ -988,31 +1573,79 @@ impl ServiceHub {
         let session_dir = self.api_media_dir().join(&safe_talker);
         let _ = std::fs::create_dir_all(&session_dir);
         for msg in messages {
-            if let Some(m) = self.export_media_for_message(wcdb, msg, talker, &safe_talker, &session_dir, opts).await {
+            if let Some(m) = self
+                .export_media_for_message(wcdb, msg, talker, &safe_talker, &session_dir, opts)
+                .await
+            {
                 map.insert(msg.local_id, m);
             }
         }
         map
     }
 
-    async fn export_media_for_message(&self, wcdb: &weflow_native::wcdb::Wcdb, msg: &ChatMessage, talker: &str, safe_talker: &str, session_dir: &Path, opts: &ApiMediaOptions) -> Option<ApiExportedMedia> {
+    async fn export_media_for_message(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        msg: &ChatMessage,
+        talker: &str,
+        safe_talker: &str,
+        session_dir: &Path,
+        opts: &ApiMediaOptions,
+    ) -> Option<ApiExportedMedia> {
         let _ = wcdb;
         if msg.local_type == 47 && opts.emojis {
             let url = msg.emoji_cdn_url.as_deref().filter(|u| !u.is_empty())?;
-            let path = self.chat_download_emoji(url, msg.emoji_md5.as_deref()).await.ok()?;
-            let ext = path.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_else(|| ".gif".into());
-            let base = api::sanitize_file_name(msg.emoji_md5.as_deref().filter(|s| !s.is_empty()).unwrap_or(""), &format!("emoji_{}", msg.local_id));
-            return put_media(session_dir, safe_talker, "emoji", "emojis", format!("{base}{ext}"), None, Some(&path));
+            let path = self
+                .chat_download_emoji(url, msg.emoji_md5.as_deref())
+                .await
+                .ok()?;
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| format!(".{e}"))
+                .unwrap_or_else(|| ".gif".into());
+            let base = api::sanitize_file_name(
+                msg.emoji_md5
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(""),
+                &format!("emoji_{}", msg.local_id),
+            );
+            return put_media(
+                session_dir,
+                safe_talker,
+                "emoji",
+                "emojis",
+                format!("{base}{ext}"),
+                None,
+                Some(&path),
+            );
         }
         self.export_local_media(msg, talker, safe_talker, session_dir, opts)
     }
 
     /// Copies the media of `msgs` into `<out dir>/media/<out name>/{images,voices,videos,emojis}` and records each
     /// file on its message. Returns `{ requested, exported, missing, dir }`.
-    pub(super) async fn attach_export_media(&self, wcdb: &weflow_native::wcdb::Wcdb, msgs: &mut [crate::message::ExportMsg], session_id: &str, out: &Path, opts: &ApiMediaOptions) -> Value {
+    pub(super) async fn attach_export_media(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        msgs: &mut [crate::message::ExportMsg],
+        session_id: &str,
+        out: &Path,
+        opts: &ApiMediaOptions,
+    ) -> Value {
         use crate::message::MediaRef;
-        let out_dir = out.parent().filter(|p| !p.as_os_str().is_empty()).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
-        let name = api::sanitize_file_name(&out.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(), "export");
+        let out_dir = out
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let name = api::sanitize_file_name(
+            &out.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            "export",
+        );
         let session_dir = out_dir.join("media").join(&name);
         let prefix = format!("media/{name}");
         let wanted = |t: i64| match t {
@@ -1022,7 +1655,9 @@ impl ServiceHub {
             47 => opts.emojis,
             _ => false,
         };
-        let todo: Vec<usize> = (0..msgs.len()).filter(|i| wanted(msgs[*i].local_type)).collect();
+        let todo: Vec<usize> = (0..msgs.len())
+            .filter(|i| wanted(msgs[*i].local_type))
+            .collect();
         let chat_msg = |m: &crate::message::ExportMsg| ChatMessage {
             local_id: m.local_id,
             server_id: m.server_id,
@@ -1040,8 +1675,13 @@ impl ServiceHub {
         let total = todo.len();
         let mut results: Vec<Option<ApiExportedMedia>> = (0..total).map(|_| None).collect();
         {
-            let local: Vec<usize> = (0..total).filter(|k| msgs[todo[*k]].local_type != 47).collect();
-            let workers = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(1, 8).min(local.len().max(1));
+            let local: Vec<usize> = (0..total)
+                .filter(|k| msgs[todo[*k]].local_type != 47)
+                .collect();
+            let workers = std::thread::available_parallelism()
+                .map_or(2, |n| n.get())
+                .clamp(1, 8)
+                .min(local.len().max(1));
             let next = std::sync::atomic::AtomicUsize::new(0);
             let finished = std::sync::atomic::AtomicUsize::new(0);
             let found = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
@@ -1051,7 +1691,13 @@ impl ServiceHub {
                     scope.spawn(|| loop {
                         let n = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         let Some(&k) = local.get(n) else { break };
-                        let r = self.export_local_media(&chat_msg(&shared[todo[k]]), session_id, &safe, &session_dir, opts);
+                        let r = self.export_local_media(
+                            &chat_msg(&shared[todo[k]]),
+                            session_id,
+                            &safe,
+                            &session_dir,
+                            opts,
+                        );
                         found.lock().unwrap().push((k, r));
                         let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         self.emit_progress("export", "copying media", done, total);
@@ -1065,7 +1711,16 @@ impl ServiceHub {
         for k in 0..total {
             let m = &msgs[todo[k]];
             if m.local_type == 47 {
-                results[k] = self.export_media_for_message(wcdb, &chat_msg(m), session_id, &safe, &session_dir, opts).await;
+                results[k] = self
+                    .export_media_for_message(
+                        wcdb,
+                        &chat_msg(m),
+                        session_id,
+                        &safe,
+                        &session_dir,
+                        opts,
+                    )
+                    .await;
                 self.emit_progress("export", "copying media", k + 1, total);
             }
         }
@@ -1078,15 +1733,39 @@ impl ServiceHub {
                 "video" => "videos",
                 _ => "emojis",
             };
-            msgs[todo[k]].media = Some(MediaRef { kind: r.kind, relative_path: format!("{prefix}/{sub}/{}", r.file_name) });
+            msgs[todo[k]].media = Some(MediaRef {
+                kind: r.kind,
+                relative_path: format!("{prefix}/{sub}/{}", r.file_name),
+            });
             exported += 1;
         }
         json!({ "requested": total, "exported": exported, "missing": total - exported, "dir": session_dir })
     }
 
     /// Images, voices and videos: everything that needs no network, so it can run on several threads.
-    fn export_local_media(&self, msg: &ChatMessage, talker: &str, safe_talker: &str, session_dir: &Path, opts: &ApiMediaOptions) -> Option<ApiExportedMedia> {
-        let put = |kind: &'static str, sub: &str, file_name: String, bytes: Option<&[u8]>, copy_from: Option<&Path>| put_media(session_dir, safe_talker, kind, sub, file_name, bytes, copy_from);
+    fn export_local_media(
+        &self,
+        msg: &ChatMessage,
+        talker: &str,
+        safe_talker: &str,
+        session_dir: &Path,
+        opts: &ApiMediaOptions,
+    ) -> Option<ApiExportedMedia> {
+        let put = |kind: &'static str,
+                   sub: &str,
+                   file_name: String,
+                   bytes: Option<&[u8]>,
+                   copy_from: Option<&Path>| {
+            put_media(
+                session_dir,
+                safe_talker,
+                kind,
+                sub,
+                file_name,
+                bytes,
+                copy_from,
+            )
+        };
         if msg.local_type == 3 && opts.images {
             let payload = crate::services::ImagePayload {
                 session_id: Some(talker.to_string()),
@@ -1100,7 +1779,10 @@ impl ServiceHub {
             };
             let mut path = self.image_decrypt(&payload).local_path;
             if path.is_none() {
-                let cached = self.image_resolve_cache(&crate::services::ImagePayload { force: false, ..payload.clone() });
+                let cached = self.image_resolve_cache(&crate::services::ImagePayload {
+                    force: false,
+                    ..payload.clone()
+                });
                 if cached.success {
                     path = cached.local_path;
                 }
@@ -1115,31 +1797,81 @@ impl ServiceHub {
                 std::fs::read(&path).ok()?
             };
             let ext = api_detect_image_ext(&bytes);
-            let base = api::sanitize_file_name(msg.image_md5.as_deref().filter(|s| !s.is_empty()).or(msg.image_dat_name.as_deref()).unwrap_or(""), &format!("image_{}", msg.local_id));
-            return put("image", "images", format!("{base}{ext}"), Some(&bytes), None).map(|mut m| {
+            let base = api::sanitize_file_name(
+                msg.image_md5
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .or(msg.image_dat_name.as_deref())
+                    .unwrap_or(""),
+                &format!("image_{}", msg.local_id),
+            );
+            return put(
+                "image",
+                "images",
+                format!("{base}{ext}"),
+                Some(&bytes),
+                None,
+            )
+            .map(|mut m| {
                 m.thumbnail = thumbnail;
                 m
             });
         }
         if msg.local_type == 34 && opts.voices {
-            let server = if msg.server_id_raw.is_empty() || msg.server_id_raw == "0" { msg.server_id.to_string() } else { msg.server_id_raw.clone() };
+            let server = if msg.server_id_raw.is_empty() || msg.server_id_raw == "0" {
+                msg.server_id.to_string()
+            } else {
+                msg.server_id_raw.clone()
+            };
             let server = if server == "0" { None } else { Some(server) };
-            let wav = self.voice_data(talker, &msg.local_id.to_string(), Some(msg.create_time).filter(|t| *t != 0), server.as_deref(), None).ok()?;
-            return put("voice", "voices", format!("voice_{}.wav", msg.local_id), Some(&wav), None);
+            let wav = self
+                .voice_data(
+                    talker,
+                    &msg.local_id.to_string(),
+                    Some(msg.create_time).filter(|t| *t != 0),
+                    server.as_deref(),
+                    None,
+                )
+                .ok()?;
+            return put(
+                "voice",
+                "voices",
+                format!("voice_{}.wav", msg.local_id),
+                Some(&wav),
+                None,
+            );
         }
         if msg.local_type == 43 && opts.videos {
             let md5 = msg.video_md5.as_deref().filter(|m| !m.is_empty())?;
             let video = self.video_file_path(md5)?;
-            let ext = video.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_else(|| ".mp4".into());
+            let ext = video
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| format!(".{e}"))
+                .unwrap_or_else(|| ".mp4".into());
             let base = api::sanitize_file_name(md5, &format!("video_{}", msg.local_id));
-            return put("video", "videos", format!("{base}{ext}"), None, Some(&video));
+            return put(
+                "video",
+                "videos",
+                format!("{base}{ext}"),
+                None,
+                Some(&video),
+            );
         }
         None
     }
 }
 
 /// Write (or copy) one exported file below `<session_dir>/<sub>` unless it is already there.
-fn put_media(session_dir: &Path, safe_talker: &str, kind: &'static str, sub: &str, file_name: String, bytes: Option<&[u8]>, copy_from: Option<&Path>) -> Option<ApiExportedMedia> {
+fn put_media(
+    session_dir: &Path,
+    safe_talker: &str,
+    kind: &'static str,
+    sub: &str,
+    file_name: String,
+    bytes: Option<&[u8]>,
+    copy_from: Option<&Path>,
+) -> Option<ApiExportedMedia> {
     let dir = session_dir.join(sub);
     std::fs::create_dir_all(&dir).ok()?;
     let full = dir.join(&file_name);
@@ -1152,7 +1884,13 @@ fn put_media(session_dir: &Path, safe_talker: &str, kind: &'static str, sub: &st
             _ => return None,
         }
     }
-    Some(ApiExportedMedia { kind, file_name: file_name.clone(), full_path: full.to_string_lossy().to_string(), relative_path: format!("{safe_talker}/{sub}/{file_name}"), thumbnail: false })
+    Some(ApiExportedMedia {
+        kind,
+        file_name: file_name.clone(),
+        full_path: full.to_string_lossy().to_string(),
+        relative_path: format!("{safe_talker}/{sub}/{file_name}"),
+        thumbnail: false,
+    })
 }
 
 /// httpService `detectImageExt`
@@ -1184,27 +1922,48 @@ fn truthy(v: &Value) -> bool {
 
 impl ServiceHub {
     /// `getLatestMessages`: the newest `limit` messages, oldest first (direct-offset read).
-    pub fn chat_latest_messages(&self, session_id: &str, limit: usize) -> AppResult<Vec<ChatMessage>> {
+    pub fn chat_latest_messages(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> AppResult<Vec<ChatMessage>> {
         let wcdb = self.open_wcdb()?;
         let page = limit.max(1);
         let probe = (page + 1).min(500);
-        let rows = wcdb.messages(session_id, probe as i32, 0).map_err(|e| AppError::native(e.to_string()))?;
+        let rows = wcdb
+            .messages(session_id, probe as i32, 0)
+            .map_err(|e| AppError::native(e.to_string()))?;
         let rows: Vec<Value> = rows.as_array().cloned().unwrap_or_default();
         let selected: Vec<Value> = rows.into_iter().take(page).collect();
         let mapped = chat_msg::map_rows(&selected, &self.wmy());
         let is_group = session_id.contains("@chatroom");
         let visible: Vec<ChatMessage> = mapped
             .iter()
-            .filter(|m| is_group || m.sender_username.as_deref().map_or(true, |s| s.is_empty() || s == session_id) || m.is_send == Some(1))
+            .filter(|m| {
+                is_group
+                    || m.sender_username
+                        .as_deref()
+                        .map_or(true, |s| s.is_empty() || s == session_id)
+                    || m.is_send == Some(1)
+            })
             .cloned()
             .collect();
-        let mut out = if visible.is_empty() && !mapped.is_empty() { mapped } else { visible };
+        let mut out = if visible.is_empty() && !mapped.is_empty() {
+            mapped
+        } else {
+            visible
+        };
         out.sort_by(|a, b| {
             let (asq, bsq) = (a.sort_seq.max(0), b.sort_seq.max(0));
             if asq > 0 && bsq > 0 && asq != bsq {
                 return asq.cmp(&bsq);
             }
-            a.create_time.max(0).cmp(&b.create_time.max(0)).then(asq.cmp(&bsq)).then(a.local_id.max(0).cmp(&b.local_id.max(0))).then(a.server_id.max(0).cmp(&b.server_id.max(0)))
+            a.create_time
+                .max(0)
+                .cmp(&b.create_time.max(0))
+                .then(asq.cmp(&bsq))
+                .then(a.local_id.max(0).cmp(&b.local_id.max(0)))
+                .then(a.server_id.max(0).cmp(&b.server_id.max(0)))
         });
         Ok(out)
     }
@@ -1216,19 +1975,44 @@ impl ServiceHub {
     /// per-message pipeline as the HTTP API (`media=1`). `media_type`: image, voice, video, emoji, all.
     /// `start` / `end` (Unix seconds, `end` exclusive) restrict the message time.
     /// `found` counts media *messages* (an image sent twice counts twice; `chat images` lists unique files).
-    pub async fn export_media(&self, session: Option<&str>, out: &Path, media_type: &str, start: Option<i64>, end: Option<i64>) -> AppResult<Value> {
+    pub async fn export_media(
+        &self,
+        session: Option<&str>,
+        out: &Path,
+        media_type: &str,
+        start: Option<i64>,
+        end: Option<i64>,
+    ) -> AppResult<Value> {
         let wanted = |k: &str| media_type == "all" || media_type == k;
         if !["image", "voice", "video", "emoji", "all"].contains(&media_type) {
-            return Err(AppError::usage(format!("unsupported media type: {media_type}; use image, voice, video, emoji or all")));
+            return Err(AppError::usage(format!(
+                "unsupported media type: {media_type}; use image, voice, video, emoji or all"
+            )));
         }
-        std::fs::create_dir_all(out).map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
+        std::fs::create_dir_all(out)
+            .map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
         let wcdb = self.open_wcdb()?;
         let sessions: Vec<String> = match session {
             Some(s) => vec![s.to_string()],
-            None => self.sessions_with(&wcdb)?.iter().filter_map(|s| s["username"].as_str().map(str::to_string)).collect(),
+            None => self
+                .sessions_with(&wcdb)?
+                .iter()
+                .filter_map(|s| s["username"].as_str().map(str::to_string))
+                .collect(),
         };
-        let opts = ApiMediaOptions { enabled: true, images: wanted("image"), voices: wanted("voice"), videos: wanted("video"), emojis: wanted("emoji") };
-        let types: Vec<(i64, &'static str, bool)> = vec![(3, "image", opts.images), (34, "voice", opts.voices), (43, "video", opts.videos), (47, "emoji", opts.emojis)];
+        let opts = ApiMediaOptions {
+            enabled: true,
+            images: wanted("image"),
+            voices: wanted("voice"),
+            videos: wanted("video"),
+            emojis: wanted("emoji"),
+        };
+        let types: Vec<(i64, &'static str, bool)> = vec![
+            (3, "image", opts.images),
+            (34, "voice", opts.voices),
+            (43, "video", opts.videos),
+            (47, "emoji", opts.emojis),
+        ];
         let my = self.wmy();
 
         // pass 1: collect the media messages so the progress bar knows the total
@@ -1239,12 +2023,16 @@ impl ServiceHub {
                 if !enabled {
                     continue;
                 }
-                let Ok(rows) = wcdb.messages_by_type(sid, *code, false, 0, 0) else { continue };
+                let Ok(rows) = wcdb.messages_by_type(sid, *code, false, 0, 0) else {
+                    continue;
+                };
                 let msgs = chat_msg::map_rows(&rows.as_array().cloned().unwrap_or_default(), &my);
                 let mut seen: HashSet<(i64, i64)> = HashSet::new();
                 for m in msgs {
-                    let in_range = start.map_or(true, |s| m.create_time >= s) && end.map_or(true, |e| m.create_time < e);
-                    if m.local_type == *code && in_range && seen.insert((m.local_id, m.create_time)) {
+                    let in_range = start.map_or(true, |s| m.create_time >= s)
+                        && end.map_or(true, |e| m.create_time < e);
+                    if m.local_type == *code && in_range && seen.insert((m.local_id, m.create_time))
+                    {
                         work.push((sid.clone(), kind, m));
                     }
                 }
@@ -1262,7 +2050,10 @@ impl ServiceHub {
         let mut done: Vec<Option<Option<ApiExportedMedia>>> = (0..total).map(|_| None).collect();
         {
             let local: Vec<usize> = (0..total).filter(|i| work[*i].2.local_type != 47).collect();
-            let workers = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(1, 8).min(local.len().max(1));
+            let workers = std::thread::available_parallelism()
+                .map_or(2, |n| n.get())
+                .clamp(1, 8)
+                .min(local.len().max(1));
             let next = std::sync::atomic::AtomicUsize::new(0);
             let finished = std::sync::atomic::AtomicUsize::new(0);
             let results = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
@@ -1276,7 +2067,12 @@ impl ServiceHub {
                         let r = self.export_local_media(msg, sid, &safe, &out.join(&safe), &opts);
                         results.lock().unwrap().push((i, r));
                         let n = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                        self.emit_progress("media", &format!("exporting {media_type} media"), n, total);
+                        self.emit_progress(
+                            "media",
+                            &format!("exporting {media_type} media"),
+                            n,
+                            total,
+                        );
                     });
                 }
             });
@@ -1289,7 +2085,11 @@ impl ServiceHub {
             let session_dir = out.join(&safe);
             let (exported, in_parallel) = match done[n].take() {
                 Some(r) => (r, true),
-                None => (self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts).await, false),
+                None => (
+                    self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts)
+                        .await,
+                    false,
+                ),
             };
             match exported {
                 Some(m) => {
@@ -1305,10 +2105,17 @@ impl ServiceHub {
                 None => *missing_by_kind.entry(kind).or_default() += 1,
             }
             if !in_parallel {
-                self.emit_progress("media", &format!("exporting {media_type} media"), n + 1, total);
+                self.emit_progress(
+                    "media",
+                    &format!("exporting {media_type} media"),
+                    n + 1,
+                    total,
+                );
             }
         }
         let missing: usize = missing_by_kind.values().sum();
-        Ok(json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files }))
+        Ok(
+            json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files }),
+        )
     }
 }

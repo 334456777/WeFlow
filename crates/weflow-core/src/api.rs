@@ -17,7 +17,10 @@ pub struct ApiError {
 
 impl ApiError {
     pub fn new(status: u16, message: impl Into<String>) -> Self {
-        Self { status, message: message.into() }
+        Self {
+            status,
+            message: message.into(),
+        }
     }
 }
 
@@ -51,7 +54,9 @@ pub type Params = HashMap<String, String>;
 
 /// JS `parseInt(value, 10)`, NaN → `None`.
 pub fn js_parse_int(s: &str) -> Option<i64> {
-    rx(r"^\s*[+-]?\d+").find(s).and_then(|m| m.as_str().trim().parse().ok())
+    rx(r"^\s*[+-]?\d+")
+        .find(s)
+        .and_then(|m| m.as_str().trim().parse().ok())
 }
 
 pub fn parse_int_param(value: Option<&str>, default: i64, min: i64, max: i64) -> i64 {
@@ -63,7 +68,9 @@ pub fn parse_int_param(value: Option<&str>, default: i64, min: i64, max: i64) ->
 
 pub fn parse_bool_param(params: &Params, keys: &[&str], default: bool) -> bool {
     for key in keys {
-        let Some(raw) = params.get(*key) else { continue };
+        let Some(raw) = params.get(*key) else {
+            continue;
+        };
         match raw.trim().to_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => return true,
             "0" | "false" | "no" | "off" => return false,
@@ -76,19 +83,39 @@ pub fn parse_bool_param(params: &Params, keys: &[&str], default: bool) -> bool {
 pub fn parse_string_list_param(value: Option<&str>) -> Option<Vec<String>> {
     let value = value.filter(|v| !v.is_empty())?;
     let mut seen = std::collections::HashSet::new();
-    let list: Vec<String> = value.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).filter(|s| seen.insert(s.clone())).collect();
+    let list: Vec<String> = value
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .filter(|s| seen.insert(s.clone()))
+        .collect();
     (!list.is_empty()).then_some(list)
 }
 
 /// `parseTimeParam`: `YYYYMMDD` (local time; end → 23:59:59) or a unix timestamp in s / ms.
 pub fn parse_time_param(param: Option<&str>, is_end: bool) -> i64 {
     use chrono::{Local, NaiveDate, TimeZone};
-    let Some(p) = param.filter(|p| !p.is_empty()) else { return 0 };
+    let Some(p) = param.filter(|p| !p.is_empty()) else {
+        return 0;
+    };
     if p.len() == 8 && p.chars().all(|c| c.is_ascii_digit()) {
-        let (y, m, d): (i32, u32, u32) = (p[..4].parse().unwrap(), p[4..6].parse().unwrap(), p[6..8].parse().unwrap());
-        let Some(date) = NaiveDate::from_ymd_opt(y, m, d) else { return 0 };
-        let naive = if is_end { date.and_hms_milli_opt(23, 59, 59, 999) } else { date.and_hms_opt(0, 0, 0) };
-        return naive.and_then(|n| Local.from_local_datetime(&n).earliest()).map(|dt| dt.timestamp()).unwrap_or(0);
+        let (y, m, d): (i32, u32, u32) = (
+            p[..4].parse().unwrap(),
+            p[4..6].parse().unwrap(),
+            p[6..8].parse().unwrap(),
+        );
+        let Some(date) = NaiveDate::from_ymd_opt(y, m, d) else {
+            return 0;
+        };
+        let naive = if is_end {
+            date.and_hms_milli_opt(23, 59, 59, 999)
+        } else {
+            date.and_hms_opt(0, 0, 0)
+        };
+        return naive
+            .and_then(|n| Local.from_local_datetime(&n).earliest())
+            .map(|dt| dt.timestamp())
+            .unwrap_or(0);
     }
     if p.chars().all(|c| c.is_ascii_digit()) {
         let ts: i64 = p.parse().unwrap_or(0);
@@ -126,7 +153,10 @@ pub fn api_session_type(username: &str) -> &'static str {
         "other"
     } else if l.ends_with("@chatroom") {
         "group"
-    } else if l.starts_with("gh_") || l.contains("@openim") || (l.starts_with("weixin") && l != "weixin") {
+    } else if l.starts_with("gh_")
+        || l.contains("@openim")
+        || (l.starts_with("weixin") && l != "weixin")
+    {
         "channel"
     } else {
         "private"
@@ -134,7 +164,19 @@ pub fn api_session_type(username: &str) -> &'static str {
 }
 
 pub fn sanitize_file_name(value: &str, fallback: &str) -> String {
-    let replaced: String = value.trim().chars().map(|c| if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || (c as u32) < 0x20 { '_' } else { c }).collect();
+    let replaced: String = value
+        .trim()
+        .chars()
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+                || (c as u32) < 0x20
+            {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
     let safe = replaced.trim_end_matches('.').to_string();
     if safe.is_empty() {
         fallback.to_string()
@@ -149,9 +191,15 @@ pub fn normalize_account_id(value: &str) -> String {
         return String::new();
     }
     if t.to_lowercase().starts_with("wxid_") {
-        return rx(r"(?i)^(wxid_[^_]+)").captures(t).map(|c| c[1].to_string()).unwrap_or_else(|| t.to_string());
+        return rx(r"(?i)^(wxid_[^_]+)")
+            .captures(t)
+            .map(|c| c[1].to_string())
+            .unwrap_or_else(|| t.to_string());
     }
-    rx(r"^(.+)_([a-zA-Z0-9]{4})$").captures(t).map(|c| c[1].to_string()).unwrap_or_else(|| t.to_string())
+    rx(r"^(.+)_([a-zA-Z0-9]{4})$")
+        .captures(t)
+        .map(|c| c[1].to_string())
+        .unwrap_or_else(|| t.to_string())
 }
 
 // ───────────────────────── XML helpers (http flavour) ─────────────────────────
@@ -160,7 +208,12 @@ pub fn decode_entities(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
-    text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'")
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
 }
 
 fn normalize_app_content(content: &str) -> String {
@@ -172,16 +225,25 @@ fn xml_block(xml: &str, tag: &str) -> String {
         return String::new();
     }
     let re = rx(&format!(r"(?is)<{0}\b[^>]*>.*?</{0}>", regex::escape(tag)));
-    re.find(xml).map(|m| m.as_str().to_string()).unwrap_or_default()
+    re.find(xml)
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default()
 }
 
 fn xml_value(xml: &str, tag: &str) -> String {
     if xml.is_empty() || tag.is_empty() {
         return String::new();
     }
-    let re = rx(&format!(r"(?is)<{0}\b[^>]*>(.*?)</{0}>", regex::escape(tag)));
+    let re = rx(&format!(
+        r"(?is)<{0}\b[^>]*>(.*?)</{0}>",
+        regex::escape(tag)
+    ));
     match re.captures(xml) {
-        Some(c) => decode_entities(&c[1]).replace("<![CDATA[", "").replace("]]>", "").trim().to_string(),
+        Some(c) => decode_entities(&c[1])
+            .replace("<![CDATA[", "")
+            .replace("]]>", "")
+            .trim()
+            .to_string(),
         None => String::new(),
     }
 }
@@ -201,7 +263,14 @@ pub fn app_message_title(content: &str) -> String {
         return String::new();
     }
     let block = xml_block(&normalized, "appmsg");
-    sanitize_quoted(&xml_value(if block.is_empty() { &normalized } else { &block }, "title"))
+    sanitize_quoted(&xml_value(
+        if block.is_empty() {
+            &normalized
+        } else {
+            &block
+        },
+        "title",
+    ))
 }
 
 pub fn normalize_unsigned_token(value: &str) -> String {
@@ -211,7 +280,11 @@ pub fn normalize_unsigned_token(value: &str) -> String {
     }
     if text.chars().all(|c| c.is_ascii_digit()) {
         let stripped = text.trim_start_matches('0');
-        return if stripped.is_empty() { "0".into() } else { stripped.to_string() };
+        return if stripped.is_empty() {
+            "0".into()
+        } else {
+            stripped.to_string()
+        };
     }
     match text.parse::<f64>() {
         Ok(f) if f.is_finite() && f > 0.0 => format!("{}", f.floor() as i64),
@@ -226,13 +299,29 @@ pub fn extract_type49_subtype(raw: &str) -> String {
         return String::new();
     }
     if let Some(c) = rx(r"(?is)<appmsg.*?>(.*?)</appmsg>").captures(&content) {
-        let inner = rx(r"(?is)<refermsg.*?</refermsg>").replace_all(&c[1], "").to_string();
-        let inner = rx(r"(?is)<patMsg.*?</patMsg>").replace_all(&inner, "").to_string();
+        let inner = rx(r"(?is)<refermsg.*?</refermsg>")
+            .replace_all(&c[1], "")
+            .to_string();
+        let inner = rx(r"(?is)<patMsg.*?</patMsg>")
+            .replace_all(&inner, "")
+            .to_string();
         if let Some(t) = rx(r"(?is)<type>(.*?)</type>").captures(&inner) {
-            return t[1].replace("<![CDATA[", "").replace("]]>", "").trim().to_string();
+            return t[1]
+                .replace("<![CDATA[", "")
+                .replace("]]>", "")
+                .trim()
+                .to_string();
         }
     }
-    rx(r"(?is)<type>(.*?)</type>").captures(&content).map(|t| t[1].replace("<![CDATA[", "").replace("]]>", "").trim().to_string()).unwrap_or_default()
+    rx(r"(?is)<type>(.*?)</type>")
+        .captures(&content)
+        .map(|t| {
+            t[1].replace("<![CDATA[", "")
+                .replace("]]>", "")
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default()
 }
 
 pub fn resolve_type49_subtype(msg: &ChatMessage) -> String {
@@ -275,11 +364,17 @@ pub struct ApiQuoteInfo {
 }
 
 fn message_may_contain_quote(content: &str) -> bool {
-    content.contains("<refermsg>") || content.contains("&lt;refermsg&gt;") || content.contains("<type>57</type>") || content.contains("&lt;type&gt;57&lt;/type&gt;")
+    content.contains("<refermsg>")
+        || content.contains("&lt;refermsg&gt;")
+        || content.contains("<type>57</type>")
+        || content.contains("&lt;type&gt;57&lt;/type&gt;")
 }
 
 fn extract_reply_to_id(refer_xml: &str) -> Option<String> {
-    ["svrid", "msgsvrid", "newmsgid", "msgid"].iter().map(|t| normalize_unsigned_token(&xml_value(refer_xml, t))).find(|n| !n.is_empty() && n != "0")
+    ["svrid", "msgsvrid", "newmsgid", "msgid"]
+        .iter()
+        .map(|t| normalize_unsigned_token(&xml_value(refer_xml, t)))
+        .find(|n| !n.is_empty() && n != "0")
 }
 
 fn preferred_quoted_text(refer_xml: &str) -> String {
@@ -370,7 +465,11 @@ fn map_quoted_message_type(refer_type: &str, refer_content: &str) -> Option<i64>
 }
 
 pub fn extract_api_quote_info(msg: &ChatMessage) -> Option<ApiQuoteInfo> {
-    let raw = if msg.raw_content.is_empty() { "" } else { &msg.raw_content };
+    let raw = if msg.raw_content.is_empty() {
+        ""
+    } else {
+        &msg.raw_content
+    };
     if raw.is_empty() || !message_may_contain_quote(raw) {
         return None;
     }
@@ -414,7 +513,11 @@ pub fn extract_api_quote_info(msg: &ChatMessage) -> Option<ApiQuoteInfo> {
     if reply_to.is_none() && quote.is_empty() && reply_text.is_empty() {
         return None;
     }
-    Some(ApiQuoteInfo { reply_text: (!reply_text.is_empty()).then_some(reply_text), reply_to_message_id: reply_to, quote })
+    Some(ApiQuoteInfo {
+        reply_text: (!reply_text.is_empty()).then_some(reply_text),
+        reply_to_message_id: reply_to,
+        quote,
+    })
 }
 
 // ───────────────────────── message content / type ─────────────────────────
@@ -433,9 +536,19 @@ fn type49_content(msg: &ChatMessage, quote: Option<&ApiQuoteInfo>) -> String {
         .link_title()
         .filter(|t| !t.is_empty())
         .map(str::to_string)
-        .or_else(|| msg.file_name().filter(|t| !t.is_empty()).map(str::to_string))
+        .or_else(|| {
+            msg.file_name()
+                .filter(|t| !t.is_empty())
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| app_message_title(&msg.raw_content));
-    let with = |label: &str| if title.is_empty() { format!("[{label}]") } else { format!("[{label}] {title}") };
+    let with = |label: &str| {
+        if title.is_empty() {
+            format!("[{label}]")
+        } else {
+            format!("[{label}] {title}")
+        }
+    };
     match subtype.as_str() {
         "5" | "49" => with("链接"),
         "6" => with("文件"),
@@ -444,7 +557,10 @@ fn type49_content(msg: &ChatMessage, quote: Option<&ApiQuoteInfo>) -> String {
         "57" => {
             if !msg.parsed_content.is_empty() {
                 msg.parsed_content.clone()
-            } else if let Some(t) = quote.and_then(|q| q.reply_text.clone()).filter(|t| !t.is_empty()) {
+            } else if let Some(t) = quote
+                .and_then(|q| q.reply_text.clone())
+                .filter(|t| !t.is_empty())
+            {
                 t
             } else if !title.is_empty() {
                 title
@@ -488,7 +604,10 @@ pub fn message_content(msg: &ChatMessage, quote: Option<&ApiQuoteInfo>) -> Optio
     if is_reply_message(msg, quote) {
         let t = if !msg.parsed_content.is_empty() {
             msg.parsed_content.clone()
-        } else if let Some(t) = quote.and_then(|q| q.reply_text.clone()).filter(|t| !t.is_empty()) {
+        } else if let Some(t) = quote
+            .and_then(|q| q.reply_text.clone())
+            .filter(|t| !t.is_empty())
+        {
             t
         } else {
             let t = app_message_title(&msg.raw_content);
@@ -504,14 +623,27 @@ pub fn message_content(msg: &ChatMessage, quote: Option<&ApiQuoteInfo>) -> Optio
         return Some(msg.parsed_content.clone());
     }
     match msg.local_type {
-        1 => normalize_text_content(if msg.parsed_content.is_empty() { &msg.raw_content } else { &msg.parsed_content }),
+        1 => normalize_text_content(if msg.parsed_content.is_empty() {
+            &msg.raw_content
+        } else {
+            &msg.parsed_content
+        }),
         3 => Some("[图片]".into()),
         34 => Some("[语音]".into()),
         43 => Some("[视频]".into()),
         47 => Some("[表情]".into()),
-        42 => Some(msg.card_nickname.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| "[名片]".into())),
+        42 => Some(
+            msg.card_nickname
+                .clone()
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| "[名片]".into()),
+        ),
         48 => Some("[位置]".into()),
-        _ => normalize_text_content(if msg.parsed_content.is_empty() { &msg.raw_content } else { &msg.parsed_content }),
+        _ => normalize_text_content(if msg.parsed_content.is_empty() {
+            &msg.raw_content
+        } else {
+            &msg.parsed_content
+        }),
     }
 }
 
@@ -573,24 +705,56 @@ pub struct ApiExportedMedia {
 }
 
 /// `toApiMessage`
-pub fn to_api_message(msg: &ChatMessage, media: Option<&ApiExportedMedia>, base_url: &str) -> Value {
+pub fn to_api_message(
+    msg: &ChatMessage,
+    media: Option<&ApiExportedMedia>,
+    base_url: &str,
+) -> Value {
     let server_id = message_server_id(msg);
     let quote = extract_api_quote_info(msg);
     let mut o = Map::new();
     o.insert("localId".into(), json!(msg.local_id));
-    o.insert("serverId".into(), json!(if server_id.is_empty() { "0".to_string() } else { server_id }));
+    o.insert(
+        "serverId".into(),
+        json!(if server_id.is_empty() {
+            "0".to_string()
+        } else {
+            server_id
+        }),
+    );
     o.insert("localType".into(), json!(msg.local_type));
     o.insert("createTime".into(), json!(msg.create_time));
     o.insert("sortSeq".into(), json!(msg.sort_seq));
-    o.insert("isSend".into(), msg.is_send.map(Value::from).unwrap_or(Value::Null));
-    o.insert("senderUsername".into(), msg.sender_username.clone().map(Value::from).unwrap_or(Value::Null));
-    o.insert("content".into(), message_content(msg, quote.as_ref()).map(Value::from).unwrap_or(Value::Null));
+    o.insert(
+        "isSend".into(),
+        msg.is_send.map(Value::from).unwrap_or(Value::Null),
+    );
+    o.insert(
+        "senderUsername".into(),
+        msg.sender_username
+            .clone()
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+    );
+    o.insert(
+        "content".into(),
+        message_content(msg, quote.as_ref())
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+    );
     o.insert("rawContent".into(), json!(msg.raw_content));
     o.insert("parsedContent".into(), json!(msg.parsed_content));
     if let Some(m) = media {
         o.insert("mediaType".into(), json!(m.kind));
         o.insert("mediaFileName".into(), json!(m.file_name));
-        o.insert("mediaUrl".into(), json!(format!("{}/api/v1/media/{}", base_url.trim_end_matches('/'), m.relative_path)));
+        o.insert(
+            "mediaUrl".into(),
+            json!(format!(
+                "{}/api/v1/media/{}",
+                base_url.trim_end_matches('/'),
+                m.relative_path
+            )),
+        );
         o.insert("mediaLocalPath".into(), json!(m.full_path));
     }
     if let Some(q) = &quote {
@@ -621,9 +785,16 @@ pub fn resolve_chatlab_sender_info(
     sender_names: &HashMap<String, String>,
     group_nicknames: &HashMap<String, String>,
 ) -> SenderInfo {
-    let mut sender = msg.sender_username.clone().unwrap_or_default().trim().to_string();
+    let mut sender = msg
+        .sender_username
+        .clone()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     let mut used_unknown = false;
-    let same_as_me = !sender.is_empty() && !my_wxid.is_empty() && sender.to_lowercase() == my_wxid.to_lowercase();
+    let same_as_me = !sender.is_empty()
+        && !my_wxid.is_empty()
+        && sender.to_lowercase() == my_wxid.to_lowercase();
     let is_self = msg.is_send == Some(1) || same_as_me;
     if sender.is_empty() && is_self && !my_wxid.is_empty() {
         sender = my_wxid.to_string();
@@ -632,18 +803,35 @@ pub fn resolve_chatlab_sender_info(
         if msg.local_type == 10000 || msg.local_type == 266287972401 {
             sender = talker_id.to_string();
         } else {
-            let id = if msg.local_id != 0 { msg.local_id } else { msg.create_time };
+            let id = if msg.local_id != 0 {
+                msg.local_id
+            } else {
+                msg.create_time
+            };
             sender = format!("unknown_sender_{id}");
             used_unknown = true;
         }
     }
-    let group_nickname = if is_group { group_nicknames.get(&sender.trim().to_lowercase()).cloned().unwrap_or_default() } else { String::new() };
+    let group_nickname = if is_group {
+        group_nicknames
+            .get(&sender.trim().to_lowercase())
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
     let display = sender_names
         .get(&sender)
         .filter(|n| !n.is_empty())
         .cloned()
         .or_else(|| Some(group_nickname.clone()).filter(|n| !n.is_empty()))
-        .unwrap_or_else(|| if used_unknown { String::new() } else { sender.clone() });
+        .unwrap_or_else(|| {
+            if used_unknown {
+                String::new()
+            } else {
+                sender.clone()
+            }
+        });
     let account_name = if is_self {
         "我".to_string()
     } else if display.is_empty() {
@@ -651,7 +839,11 @@ pub fn resolve_chatlab_sender_info(
     } else {
         display
     };
-    SenderInfo { sender, account_name, group_nickname: (!group_nickname.is_empty()).then_some(group_nickname) }
+    SenderInfo {
+        sender,
+        account_name,
+        group_nickname: (!group_nickname.is_empty()).then_some(group_nickname),
+    }
 }
 
 #[cfg(test)]
@@ -670,11 +862,17 @@ mod tests {
         p.insert("tupian".into(), "0".into());
         let m = parse_media_options(&p);
         assert!(m.enabled && !m.images && m.voices && m.videos && m.emojis);
-        assert_eq!(parse_string_list_param(Some("a, b,a,,c")), Some(vec!["a".into(), "b".into(), "c".into()]));
+        assert_eq!(
+            parse_string_list_param(Some("a, b,a,,c")),
+            Some(vec!["a".into(), "b".into(), "c".into()])
+        );
         assert_eq!(parse_time_param(Some("1700000000000"), false), 1700000000);
         assert_eq!(parse_time_param(Some("1700000000"), true), 1700000000);
         assert_eq!(parse_time_param(Some("garbage"), false), 0);
-        let (s, e) = (parse_time_param(Some("20240102"), false), parse_time_param(Some("20240102"), true));
+        let (s, e) = (
+            parse_time_param(Some("20240102"), false),
+            parse_time_param(Some("20240102"), true),
+        );
         assert_eq!(e - s, 86399);
     }
 
@@ -715,25 +913,43 @@ mod tests {
         assert_eq!(map_message_type(&msgs[0]), chatlab::REPLY);
         let c = to_api_message(&msgs[2], None, "http://h:1");
         assert_eq!(c["content"], "hello");
-        let media = ApiExportedMedia { kind: "image", file_name: "a.jpg".into(), full_path: "/x/a.jpg".into(), relative_path: "s/images/a.jpg".into(), thumbnail: false };
+        let media = ApiExportedMedia {
+            kind: "image",
+            file_name: "a.jpg".into(),
+            full_path: "/x/a.jpg".into(),
+            relative_path: "s/images/a.jpg".into(),
+            thumbnail: false,
+        };
         let d = to_api_message(&msgs[2], Some(&media), "http://h:1/");
         assert_eq!(d["mediaUrl"], "http://h:1/api/v1/media/s/images/a.jpg");
     }
 
     #[test]
     fn chatlab_sender() {
-        let rows = vec![json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "is_send": "0"})];
+        let rows = vec![
+            json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "is_send": "0"}),
+        ];
         let msgs = map_rows(&rows, "wxid_me");
-        let info = resolve_chatlab_sender_info(&msgs[0], "room@chatroom", "wxid_me", true, &HashMap::new(), &HashMap::new());
+        let info = resolve_chatlab_sender_info(
+            &msgs[0],
+            "room@chatroom",
+            "wxid_me",
+            true,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(info.sender, "unknown_sender_9");
         assert_eq!(info.account_name, "未知发送者");
         let mut names = HashMap::new();
         names.insert("wxid_bob".to_string(), "Bob".to_string());
-        let rows = vec![json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "sender_username": "wxid_bob", "is_send": "0"})];
+        let rows = vec![
+            json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "sender_username": "wxid_bob", "is_send": "0"}),
+        ];
         let msgs = map_rows(&rows, "wxid_me");
         let mut nicks = HashMap::new();
         nicks.insert("wxid_bob".to_string(), "Bobby".to_string());
-        let info = resolve_chatlab_sender_info(&msgs[0], "room@chatroom", "wxid_me", true, &names, &nicks);
+        let info =
+            resolve_chatlab_sender_info(&msgs[0], "room@chatroom", "wxid_me", true, &names, &nicks);
         assert_eq!(info.account_name, "Bob");
         assert_eq!(info.group_nickname.as_deref(), Some("Bobby"));
     }

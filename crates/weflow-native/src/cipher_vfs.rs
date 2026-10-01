@@ -81,7 +81,11 @@ impl ShmState {
             return None;
         }
         let u32_at = |i: usize| u32::from_ne_bytes(b[i..i + 4].try_into().expect("4 bytes"));
-        Some(Self { salt: b[32..40].try_into().expect("8 bytes"), backfilled: u32_at(96), attempted: u32_at(128) })
+        Some(Self {
+            salt: b[32..40].try_into().expect("8 bytes"),
+            backfilled: u32_at(96),
+            attempted: u32_at(128),
+        })
     }
 
     /// Frames a checkpoint may have written into the main file.
@@ -98,7 +102,10 @@ struct MainStamp {
 
 fn main_stamp(file: &File) -> Option<MainStamp> {
     let m = file.metadata().ok()?;
-    Some(MainStamp { len: m.len(), mtime: m.modified().ok() })
+    Some(MainStamp {
+        len: m.len(),
+        mtime: m.modified().ok(),
+    })
 }
 
 /// Decides whether pages read from the main file still belong to the snapshot.
@@ -150,7 +157,9 @@ impl ChangeGuard {
                     return true;
                 }
                 // Not our WAL generation: only safe when nothing moved since we opened (and no checkpoint was running).
-                self.at_open == Some(now) && now.attempted == now.backfilled && main_stamp(main) == self.stamp_at_open
+                self.at_open == Some(now)
+                    && now.attempted == now.backfilled
+                    && main_stamp(main) == self.stamp_at_open
             }
             None => self.at_open.is_none() && main_stamp(main) == self.stamp_at_open,
         }
@@ -202,17 +211,23 @@ impl CipherFile {
                 read_at(f, &mut b, 0).ok().and_then(|_| ShmState::parse(&b))
             });
             let wal = fs::read(&wal_path).ok();
-            let file = File::open(path).with_context(|| format!("cannot read {}", path.display()))?;
+            let file =
+                File::open(path).with_context(|| format!("cannot read {}", path.display()))?;
             let stamp_at_open = main_stamp(&file);
             let len = stamp_at_open.map(|s| s.len).unwrap_or(0);
             let mut first = vec![0u8; PAGE_SIZE];
-            read_at(&file, &mut first, 0).with_context(|| format!("{} is smaller than one page", path.display()))?;
+            read_at(&file, &mut first, 0)
+                .with_context(|| format!("{} is smaller than one page", path.display()))?;
             let c = match &cipher {
                 Some(c) => c.clone(),
                 None => {
-                    let c = Arc::new(sqlcipher::verify_key(&first, raw_key).with_context(|| {
-                        format!("cannot decrypt {} with the configured database key", path.display())
-                    })?);
+                    let c =
+                        Arc::new(sqlcipher::verify_key(&first, raw_key).with_context(|| {
+                            format!(
+                                "cannot decrypt {} with the configured database key",
+                                path.display()
+                            )
+                        })?);
                     cipher = Some(c.clone());
                     c
                 }
@@ -223,7 +238,8 @@ impl CipherFile {
             if let Some(wal) = &wal {
                 for (&pgno, &off) in &overlay.pages {
                     if pgno <= total_pages {
-                        wal_pages.insert(pgno, wal[off..off + PAGE_SIZE].to_vec().into_boxed_slice());
+                        wal_pages
+                            .insert(pgno, wal[off..off + PAGE_SIZE].to_vec().into_boxed_slice());
                     }
                 }
             }
@@ -247,16 +263,24 @@ impl CipherFile {
                 stamp_at_open,
             };
             // A WAL reset between reading the index and the WAL shows up as a different salt in the WAL header.
-            let wal_header_now = fs::read(&wal_path).ok().map(|w| w.get(..32).map(<[u8]>::to_vec));
-            let wal_stable = wal_header_now == wal.as_ref().map(|w| w.get(..32).map(<[u8]>::to_vec));
+            let wal_header_now = fs::read(&wal_path)
+                .ok()
+                .map(|w| w.get(..32).map(<[u8]>::to_vec));
+            let wal_stable =
+                wal_header_now == wal.as_ref().map(|w| w.get(..32).map(<[u8]>::to_vec));
             // A checkpoint running right now over frames we do not hold may be rewriting main-file pages: wait for it.
             // Anything else is fine to start from; the guard watches what happens next.
             let index_ok = match &at_open {
-                Some(s) => guard.describes_our_wal(s) || s.attempted == s.backfilled || attempt >= 3,
+                Some(s) => {
+                    guard.describes_our_wal(s) || s.attempted == s.backfilled || attempt >= 3
+                }
                 None => true,
             };
             if !wal_stable || !index_ok {
-                last_err = Some(anyhow!("{} kept changing while it was being opened", path.display()));
+                last_err = Some(anyhow!(
+                    "{} kept changing while it was being opened",
+                    path.display()
+                ));
                 continue;
             }
             return Ok(Self {
@@ -274,7 +298,9 @@ impl CipherFile {
                 pages_decrypted: AtomicU64::new(0),
             });
         }
-        Err(last_err.unwrap_or_else(|| anyhow!("{} kept changing while it was being opened", path.display())))
+        Err(last_err.unwrap_or_else(|| {
+            anyhow!("{} kept changing while it was being opened", path.display())
+        }))
     }
 
     pub fn cipher(&self) -> Arc<PageCipher> {
@@ -308,7 +334,12 @@ impl CipherFile {
     fn chunk(&self, pgno: u32) -> std::result::Result<(Arc<[u8]>, u32), c_int> {
         let idx = (pgno - 1) / CHUNK_PAGES;
         let first = idx * CHUNK_PAGES + 1;
-        if let Some(c) = self.chunks.lock().ok().and_then(|c| c.chunks.get(&idx).cloned()) {
+        if let Some(c) = self
+            .chunks
+            .lock()
+            .ok()
+            .and_then(|c| c.chunks.get(&idx).cloned())
+        {
             return Ok((c, first));
         }
         let count = CHUNK_PAGES.min(self.main_pages + 1 - first);
@@ -318,7 +349,10 @@ impl CipherFile {
         }
         // The pages are in memory now; if no checkpoint moved past our snapshot until this moment, they are ours.
         if !self.guard.consistent(&self.file) {
-            return Err(self.fail(format!("{} changed while it was being read", self.path.display())));
+            return Err(self.fail(format!(
+                "{} changed while it was being read",
+                self.path.display()
+            )));
         }
         let chunk: Arc<[u8]> = buf.into();
         if let Ok(mut cache) = self.chunks.lock() {
@@ -347,7 +381,8 @@ impl CipherFile {
         } else {
             let (chunk, first) = self.chunk(pgno)?;
             let i = (pgno - first) as usize * PAGE_SIZE;
-            self.cipher.decrypt_page(pgno, &chunk[i..i + PAGE_SIZE], out)
+            self.cipher
+                .decrypt_page(pgno, &chunk[i..i + PAGE_SIZE], out)
         };
         self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
         // A torn page (written while we read it) fails its HMAC: treat it like any other change.
@@ -372,7 +407,8 @@ impl CipherFile {
                 self.page_into(pgno, &mut out[done..done + PAGE_SIZE])
             } else {
                 let buf = scratch.get_or_insert_with(|| vec![0u8; PAGE_SIZE]);
-                self.page_into(pgno, buf).map(|_| out[done..done + n].copy_from_slice(&buf[in_page..in_page + n]))
+                self.page_into(pgno, buf)
+                    .map(|_| out[done..done + n].copy_from_slice(&buf[in_page..in_page + n]))
             };
             if let Err(rc) = result {
                 return rc;
@@ -399,10 +435,20 @@ pub fn open_connection(file: Arc<CipherFile>) -> Result<Connection> {
     register_vfs()?;
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let name = format!("{NAME_PREFIX}{}", NEXT.fetch_add(1, Ordering::Relaxed));
-    registry().lock().map_err(|_| anyhow!("vfs registry poisoned"))?.insert(name.clone(), file.clone());
-    let conn = Connection::open_with_flags_and_vfs(&name, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX, VFS_NAME);
+    registry()
+        .lock()
+        .map_err(|_| anyhow!("vfs registry poisoned"))?
+        .insert(name.clone(), file.clone());
+    let conn = Connection::open_with_flags_and_vfs(
+        &name,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        VFS_NAME,
+    );
     // The connection holds its own reference from `xOpen` on.
-    registry().lock().map_err(|_| anyhow!("vfs registry poisoned"))?.remove(&name);
+    registry()
+        .lock()
+        .map_err(|_| anyhow!("vfs registry poisoned"))?
+        .remove(&name);
     let conn = conn.with_context(|| format!("cannot open {}", file.path.display()))?;
     Ok(conn)
 }
@@ -423,7 +469,10 @@ unsafe fn our_name(name: *const c_char) -> Option<&'static str> {
     if name.is_null() {
         return None;
     }
-    CStr::from_ptr(name).to_str().ok().filter(|n| n.starts_with(NAME_PREFIX))
+    CStr::from_ptr(name)
+        .to_str()
+        .ok()
+        .filter(|n| n.starts_with(NAME_PREFIX))
 }
 
 fn register_vfs() -> Result<()> {
@@ -461,23 +510,38 @@ fn register_vfs() -> Result<()> {
         });
         match ffi::sqlite3_vfs_register(Box::leak(vfs), 0) {
             ffi::SQLITE_OK => Ok(()),
-            rc => Err(format!("cannot register the decrypting SQLite VFS (code {rc})")),
+            rc => Err(format!(
+                "cannot register the decrypting SQLite VFS (code {rc})"
+            )),
         }
     })
     .clone()
     .map_err(|e| anyhow!(e))
 }
 
-unsafe extern "C" fn x_open(vfs: *mut ffi::sqlite3_vfs, name: *const c_char, file: *mut ffi::sqlite3_file, flags: c_int, out_flags: *mut c_int) -> c_int {
+unsafe extern "C" fn x_open(
+    vfs: *mut ffi::sqlite3_vfs,
+    name: *const c_char,
+    file: *mut ffi::sqlite3_file,
+    flags: c_int,
+    out_flags: *mut c_int,
+) -> c_int {
     (*file).pMethods = std::ptr::null();
     if let Some(n) = our_name(name) {
-        let found = if flags & ffi::SQLITE_OPEN_MAIN_DB != 0 { registry().lock().ok().and_then(|r| r.get(n).cloned()) } else { None };
-        let Some(cf) = found else { return ffi::SQLITE_CANTOPEN };
+        let found = if flags & ffi::SQLITE_OPEN_MAIN_DB != 0 {
+            registry().lock().ok().and_then(|r| r.get(n).cloned())
+        } else {
+            None
+        };
+        let Some(cf) = found else {
+            return ffi::SQLITE_CANTOPEN;
+        };
         let f = file.cast::<VfsFile>();
         (*f).file = Arc::into_raw(cf);
         (*f).base.pMethods = &IO_METHODS;
         if !out_flags.is_null() {
-            *out_flags = (flags & !(ffi::SQLITE_OPEN_READWRITE | ffi::SQLITE_OPEN_CREATE)) | ffi::SQLITE_OPEN_READONLY;
+            *out_flags = (flags & !(ffi::SQLITE_OPEN_READWRITE | ffi::SQLITE_OPEN_CREATE))
+                | ffi::SQLITE_OPEN_READONLY;
         }
         return ffi::SQLITE_OK;
     }
@@ -489,24 +553,40 @@ unsafe extern "C" fn x_open(vfs: *mut ffi::sqlite3_vfs, name: *const c_char, fil
     }
 }
 
-unsafe extern "C" fn x_delete(vfs: *mut ffi::sqlite3_vfs, name: *const c_char, sync_dir: c_int) -> c_int {
+unsafe extern "C" fn x_delete(
+    vfs: *mut ffi::sqlite3_vfs,
+    name: *const c_char,
+    sync_dir: c_int,
+) -> c_int {
     if our_name(name).is_some() {
         return ffi::SQLITE_OK;
     }
     let d = default_vfs(vfs);
-    (*d).xDelete.map_or(ffi::SQLITE_IOERR_DELETE, |f| f(d, name, sync_dir))
+    (*d).xDelete
+        .map_or(ffi::SQLITE_IOERR_DELETE, |f| f(d, name, sync_dir))
 }
 
-unsafe extern "C" fn x_access(vfs: *mut ffi::sqlite3_vfs, name: *const c_char, flags: c_int, out: *mut c_int) -> c_int {
+unsafe extern "C" fn x_access(
+    vfs: *mut ffi::sqlite3_vfs,
+    name: *const c_char,
+    flags: c_int,
+    out: *mut c_int,
+) -> c_int {
     if our_name(name).is_some() {
         *out = 0; // no journal, no WAL: a snapshot is a single immutable file
         return ffi::SQLITE_OK;
     }
     let d = default_vfs(vfs);
-    (*d).xAccess.map_or(ffi::SQLITE_IOERR_ACCESS, |f| f(d, name, flags, out))
+    (*d).xAccess
+        .map_or(ffi::SQLITE_IOERR_ACCESS, |f| f(d, name, flags, out))
 }
 
-unsafe extern "C" fn x_full_pathname(vfs: *mut ffi::sqlite3_vfs, name: *const c_char, n_out: c_int, out: *mut c_char) -> c_int {
+unsafe extern "C" fn x_full_pathname(
+    vfs: *mut ffi::sqlite3_vfs,
+    name: *const c_char,
+    n_out: c_int,
+    out: *mut c_char,
+) -> c_int {
     if let Some(n) = our_name(name) {
         let bytes = n.as_bytes();
         if bytes.len() + 1 > n_out.max(0) as usize {
@@ -517,7 +597,8 @@ unsafe extern "C" fn x_full_pathname(vfs: *mut ffi::sqlite3_vfs, name: *const c_
         return ffi::SQLITE_OK;
     }
     let d = default_vfs(vfs);
-    (*d).xFullPathname.map_or(ffi::SQLITE_CANTOPEN, |f| f(d, name, n_out, out))
+    (*d).xFullPathname
+        .map_or(ffi::SQLITE_CANTOPEN, |f| f(d, name, n_out, out))
 }
 
 static IO_METHODS: ffi::sqlite3_io_methods = ffi::sqlite3_io_methods {
@@ -555,7 +636,12 @@ unsafe extern "C" fn io_close(f: *mut ffi::sqlite3_file) -> c_int {
     ffi::SQLITE_OK
 }
 
-unsafe extern "C" fn io_read(f: *mut ffi::sqlite3_file, buf: *mut c_void, amt: c_int, offset: ffi::sqlite3_int64) -> c_int {
+unsafe extern "C" fn io_read(
+    f: *mut ffi::sqlite3_file,
+    buf: *mut c_void,
+    amt: c_int,
+    offset: ffi::sqlite3_int64,
+) -> c_int {
     if amt < 0 || offset < 0 {
         return ffi::SQLITE_IOERR_READ;
     }
@@ -564,7 +650,12 @@ unsafe extern "C" fn io_read(f: *mut ffi::sqlite3_file, buf: *mut c_void, amt: c
     catch_unwind(AssertUnwindSafe(|| cf.read(out, offset as u64))).unwrap_or(ffi::SQLITE_IOERR_READ)
 }
 
-unsafe extern "C" fn io_write(_: *mut ffi::sqlite3_file, _: *const c_void, _: c_int, _: ffi::sqlite3_int64) -> c_int {
+unsafe extern "C" fn io_write(
+    _: *mut ffi::sqlite3_file,
+    _: *const c_void,
+    _: c_int,
+    _: ffi::sqlite3_int64,
+) -> c_int {
     ffi::SQLITE_READONLY
 }
 
@@ -576,7 +667,10 @@ unsafe extern "C" fn io_sync(_: *mut ffi::sqlite3_file, _: c_int) -> c_int {
     ffi::SQLITE_OK
 }
 
-unsafe extern "C" fn io_file_size(f: *mut ffi::sqlite3_file, size: *mut ffi::sqlite3_int64) -> c_int {
+unsafe extern "C" fn io_file_size(
+    f: *mut ffi::sqlite3_file,
+    size: *mut ffi::sqlite3_int64,
+) -> c_int {
     *size = cipher_file(f).size() as ffi::sqlite3_int64;
     ffi::SQLITE_OK
 }
@@ -616,7 +710,10 @@ mod tests {
 
     fn rows(conn: &Connection) -> Vec<String> {
         let mut stmt = conn.prepare("select v from t order by id").unwrap();
-        stmt.query_map([], |r| r.get::<_, String>(0)).unwrap().map(|r| r.unwrap()).collect()
+        stmt.query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
     }
 
     fn open(path: &Path) -> (Arc<CipherFile>, Connection) {
@@ -630,7 +727,9 @@ mod tests {
         let dir = temp_dir("rows");
         let cipher = PageCipher::derive(&KEY, &SALT);
         // big enough for several chunks: ~3000 rows of 200 bytes
-        let values: Vec<String> = (0..3000).map(|i| format!("{i:05}{}", "x".repeat(200))).collect();
+        let values: Vec<String> = (0..3000)
+            .map(|i| format!("{i:05}{}", "x".repeat(200)))
+            .collect();
         let refs: Vec<&str> = values.iter().map(String::as_str).collect();
         let enc = encrypt_db(&plain_db(&refs), &cipher);
         let pages = (enc.len() / PAGE_SIZE) as u64;
@@ -638,13 +737,20 @@ mod tests {
         let path = dir.join("a.db");
         fs::write(&path, &enc).unwrap();
         let (cf, conn) = open(&path);
-        let one: String = conn.query_row("select v from t where id = 1234", [], |r| r.get(0)).unwrap();
+        let one: String = conn
+            .query_row("select v from t where id = 1234", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(one, values[1234]);
-        assert!(cf.pages_decrypted() < 10, "a point lookup decrypted {} of {pages} pages", cf.pages_decrypted());
+        assert!(
+            cf.pages_decrypted() < 10,
+            "a point lookup decrypted {} of {pages} pages",
+            cf.pages_decrypted()
+        );
         assert_eq!(rows(&conn), values);
         let full = sqlcipher::decrypt_database(&enc, None, &cipher).unwrap();
         let mut mem = Connection::open_in_memory().unwrap();
-        mem.deserialize_read_exact(rusqlite::MAIN_DB, &full[..], full.len(), true).unwrap();
+        mem.deserialize_read_exact(rusqlite::MAIN_DB, &full[..], full.len(), true)
+            .unwrap();
         assert_eq!(rows(&mem), values);
         assert!(!cf.is_stale());
     }
@@ -674,10 +780,18 @@ mod tests {
     /// A WAL holding one committed transaction that rewrites every page of `newer`.
     fn wal_with(cipher: &PageCipher, newer: &[u8], salt: (u32, u32)) -> Vec<u8> {
         let mut wal = wal_header(salt);
-        let mut sum = (u32::from_be_bytes(wal[24..28].try_into().unwrap()), u32::from_be_bytes(wal[28..32].try_into().unwrap()));
+        let mut sum = (
+            u32::from_be_bytes(wal[24..28].try_into().unwrap()),
+            u32::from_be_bytes(wal[28..32].try_into().unwrap()),
+        );
         let n = (newer.len() / PAGE_SIZE) as u32;
         for pgno in 1..=n {
-            let page = encrypt_page(cipher, pgno, &newer[(pgno as usize - 1) * PAGE_SIZE..pgno as usize * PAGE_SIZE], [0x55; 16]);
+            let page = encrypt_page(
+                cipher,
+                pgno,
+                &newer[(pgno as usize - 1) * PAGE_SIZE..pgno as usize * PAGE_SIZE],
+                [0x55; 16],
+            );
             let mut fh = Vec::new();
             fh.extend(pgno.to_be_bytes());
             fh.extend((if pgno == n { n } else { 0 }).to_be_bytes());
@@ -715,14 +829,20 @@ mod tests {
         let cipher = PageCipher::derive(&KEY, &SALT);
         let path = dir.join("a.db");
         fs::write(&path, encrypt_db(&plain_db(&["old"]), &cipher)).unwrap();
-        fs::write(sibling(&path, "-wal"), wal_with(&cipher, &plain_db(&["new"]), (1, 2))).unwrap();
+        fs::write(
+            sibling(&path, "-wal"),
+            wal_with(&cipher, &plain_db(&["new"]), (1, 2)),
+        )
+        .unwrap();
         let (_, conn) = open(&path);
         assert_eq!(rows(&conn), ["new"]);
     }
 
     /// Many rows, so a scan reads the main file chunk by chunk after the open.
     fn big(tag: &str) -> Vec<u8> {
-        let values: Vec<String> = (0..2000).map(|i| format!("{tag}{i:05}{}", "y".repeat(300))).collect();
+        let values: Vec<String> = (0..2000)
+            .map(|i| format!("{tag}{i:05}{}", "y".repeat(300)))
+            .collect();
         let refs: Vec<&str> = values.iter().map(String::as_str).collect();
         plain_db(&refs)
     }
@@ -737,7 +857,10 @@ mod tests {
         // our WAL: salt (1,2), one committed transaction rewriting page 1 only (frames = 1)
         let mut wal = wal_header((1, 2));
         let first_page = encrypt_page(&cipher, 1, &plain[..PAGE_SIZE], [7; 16]);
-        let sum = (u32::from_be_bytes(wal[24..28].try_into().unwrap()), u32::from_be_bytes(wal[28..32].try_into().unwrap()));
+        let sum = (
+            u32::from_be_bytes(wal[24..28].try_into().unwrap()),
+            u32::from_be_bytes(wal[28..32].try_into().unwrap()),
+        );
         let pages = (plain.len() / PAGE_SIZE) as u32;
         let mut fh = Vec::new();
         fh.extend(1u32.to_be_bytes());
@@ -761,14 +884,21 @@ mod tests {
         // a checkpoint of frames we do not hold (written = 5 > frames = 1): the next main-file read fails
         let (cf, conn) = open(&path);
         fs::write(sibling(&path, "-shm"), shm((1, 2), 1, 5)).unwrap();
-        assert!(conn.prepare("select v from t order by id").and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()).is_err());
+        assert!(conn
+            .prepare("select v from t order by id")
+            .and_then(|mut s| s
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>())
+            .is_err());
         assert!(cf.is_stale());
 
         // a new WAL generation (salt changed): stale as well
         fs::write(sibling(&path, "-shm"), shm((1, 2), 1, 1)).unwrap();
         let (cf, conn) = open(&path);
         fs::write(sibling(&path, "-shm"), shm((2, 9), 0, 0)).unwrap();
-        assert!(conn.query_row("select count(v) from t", [], |r| r.get::<_, i64>(0)).is_err());
+        assert!(conn
+            .query_row("select count(v) from t", [], |r| r.get::<_, i64>(0))
+            .is_err());
         assert!(cf.is_stale());
     }
 
@@ -798,7 +928,9 @@ mod tests {
         let last = enc.len() - PAGE_SIZE + 100;
         enc[last] ^= 0xff;
         fs::write(&path, &enc).unwrap();
-        assert!(conn.query_row("select count(v) from t", [], |r| r.get::<_, i64>(0)).is_err());
+        assert!(conn
+            .query_row("select count(v) from t", [], |r| r.get::<_, i64>(0))
+            .is_err());
         assert!(cf.is_stale());
         assert!(cf.read_error().is_some());
     }
@@ -813,9 +945,15 @@ mod tests {
         enc[last] ^= 0xff;
         fs::write(&path, &enc).unwrap();
         let (cf, conn) = open(&path);
-        assert!(conn.query_row("select count(v) from t", [], |r| r.get::<_, i64>(0)).is_err());
+        assert!(conn
+            .query_row("select count(v) from t", [], |r| r.get::<_, i64>(0))
+            .is_err());
         assert!(cf.is_stale());
-        assert!(cf.read_error().unwrap().contains("HMAC"), "{:?}", cf.read_error());
+        assert!(
+            cf.read_error().unwrap().contains("HMAC"),
+            "{:?}",
+            cf.read_error()
+        );
     }
 
     #[test]
@@ -828,9 +966,19 @@ mod tests {
         let (_, conn) = open(&path);
         conn.pragma_update(None, "cache_size", 10).unwrap();
         conn.pragma_update(None, "temp_store", 1).unwrap();
-        let n: i64 = conn.query_row("select count(*) from (select v from t order by substr(v, 3) desc)", [], |r| r.get(0)).unwrap();
+        let n: i64 = conn
+            .query_row(
+                "select count(*) from (select v from t order by substr(v, 3) desc)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(n, 2000);
-        assert!(conn.execute("insert into t values (99999, 'x')", []).is_err(), "snapshots are read-only");
+        assert!(
+            conn.execute("insert into t values (99999, 'x')", [])
+                .is_err(),
+            "snapshots are read-only"
+        );
     }
 }
 

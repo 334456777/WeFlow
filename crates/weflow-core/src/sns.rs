@@ -47,7 +47,11 @@ fn truthy(v: Option<&Value>) -> bool {
 /// JS `parseFloat` (leading numeric prefix).
 pub fn parse_float(s: &str) -> Option<f64> {
     let m = rx(r"^\s*[+-]?(?:\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)").find(s)?;
-    m.as_str().trim().parse::<f64>().ok().filter(|f| f.is_finite())
+    m.as_str()
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|f| f.is_finite())
 }
 
 /// JS `parseInt(x)` with NaN → `None`.
@@ -83,7 +87,9 @@ pub fn decode_xml_text(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
-    let t = rx(r"(?s)<!\[CDATA\[(.*?)\]\]>").replace_all(text, "$1").to_string();
+    let t = rx(r"(?s)<!\[CDATA\[(.*?)\]\]>")
+        .replace_all(text, "$1")
+        .to_string();
     let t = rx(r"(?i)&amp;").replace_all(&t, "&").to_string();
     let t = rx(r"(?i)&lt;").replace_all(&t, "<").to_string();
     let t = rx(r"(?i)&gt;").replace_all(&t, ">").to_string();
@@ -151,7 +157,10 @@ pub fn detect_image_mime(buf: &[u8], fallback: &str) -> String {
         if window.contains("avif") || window.contains("avis") {
             return "image/avif".into();
         }
-        if ["heic", "heix", "hevc", "hevx", "mif1", "msf1"].iter().any(|k| window.contains(k)) {
+        if ["heic", "heix", "hevc", "hevx", "mif1", "msf1"]
+            .iter()
+            .any(|k| window.contains(k))
+        {
             return "image/heic".into();
         }
         return "video/mp4".into();
@@ -167,7 +176,10 @@ pub fn is_valid_image_buffer(buf: &[u8]) -> bool {
     if buf.len() < 12 {
         return false;
     }
-    if buf[..3] == [0x47, 0x49, 0x46] || buf[..4] == [0x89, 0x50, 0x4e, 0x47] || buf[..3] == [0xff, 0xd8, 0xff] {
+    if buf[..3] == [0x47, 0x49, 0x46]
+        || buf[..4] == [0x89, 0x50, 0x4e, 0x47]
+        || buf[..3] == [0xff, 0xd8, 0xff]
+    {
         return true;
     }
     if &buf[..4] == b"RIFF" && &buf[8..12] == b"WEBP" {
@@ -175,7 +187,11 @@ pub fn is_valid_image_buffer(buf: &[u8]) -> bool {
     }
     if &buf[4..8] == b"ftyp" {
         let window = String::from_utf8_lossy(&buf[8..buf.len().min(64)]).to_lowercase();
-        return ["avif", "avis", "heic", "heix", "hevc", "hevx", "mif1", "msf1"].iter().any(|k| window.contains(k));
+        return [
+            "avif", "avis", "heic", "heix", "hevc", "hevx", "mif1", "msf1",
+        ]
+        .iter()
+        .any(|k| window.contains(k));
     }
     false
 }
@@ -202,7 +218,9 @@ pub fn extract_video_key(xml: &str) -> Option<String> {
     if xml.is_empty() {
         return None;
     }
-    rx(r#"(?i)<enc\s+key="(\d+)""#).captures(xml).map(|c| c[1].to_string())
+    rx(r#"(?i)<enc\s+key="(\d+)""#)
+        .captures(xml)
+        .map(|c| c[1].to_string())
 }
 
 fn tag_value(block: &str, pattern: &str) -> Option<String> {
@@ -236,15 +254,27 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
         emojis: Vec<Value>,
     }
     let mut items: Vec<Item> = Vec::new();
-    let item_re = rx(r"(?is)<(?:CommentUser|commentUser|comment|user_comment)>(.*?)</(?:CommentUser|commentUser|comment|user_comment)>");
+    let item_re = rx(
+        r"(?is)<(?:CommentUser|commentUser|comment|user_comment)>(.*?)</(?:CommentUser|commentUser|comment|user_comment)>",
+    );
     for m in item_re.captures_iter(&list) {
         let c = &m[1];
-        let id = tag_value(c, r"(?is)<(?:cmtid|commentId|comment_id|id)>([^<]*)</(?:cmtid|commentId|comment_id|id)>");
+        let id = tag_value(
+            c,
+            r"(?is)<(?:cmtid|commentId|comment_id|id)>([^<]*)</(?:cmtid|commentId|comment_id|id)>",
+        );
         let username = tag_value(c, r"(?is)<username>([^<]*)</username>");
-        let nickname = tag_value(c, r"(?is)<nickname>([^<]*)</nickname>").or_else(|| tag_value(c, r"(?is)<nickName>([^<]*)</nickName>"));
+        let nickname = tag_value(c, r"(?is)<nickname>([^<]*)</nickname>")
+            .or_else(|| tag_value(c, r"(?is)<nickName>([^<]*)</nickName>"));
         let content = tag_value(c, r"(?is)<content>([^<]*)</content>");
-        let ref_id = tag_value(c, r"(?is)<(?:refCommentId|replyCommentId|ref_comment_id)>([^<]*)</(?:refCommentId|replyCommentId|ref_comment_id)>");
-        let ref_nick = tag_value(c, r"(?is)<(?:refNickname|refNickName|replyNickname)>([^<]*)</(?:refNickname|refNickName|replyNickname)>");
+        let ref_id = tag_value(
+            c,
+            r"(?is)<(?:refCommentId|replyCommentId|ref_comment_id)>([^<]*)</(?:refCommentId|replyCommentId|ref_comment_id)>",
+        );
+        let ref_nick = tag_value(
+            c,
+            r"(?is)<(?:refNickname|refNickName|replyNickname)>([^<]*)</(?:refNickname|refNickName|replyNickname)>",
+        );
         let ref_user = tag_value(c, r"(?is)<ref_username>([^<]*)</ref_username>");
 
         let mut emojis = Vec::new();
@@ -258,15 +288,30 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
             let h = tag_value(ex, r"(?is)<height>([^<]*)</height>");
             let enc = tag_value(ex, r"(?is)<encrypt_url>([^<]*)</encrypt_url>");
             let aes = tag_value(ex, r"(?is)<aes_key>([^<]*)</aes_key>");
-            let url = url_raw.map(|u| u.trim().replace("&amp;", "&")).unwrap_or_default();
+            let url = url_raw
+                .map(|u| u.trim().replace("&amp;", "&"))
+                .unwrap_or_default();
             let encrypt_url = enc.map(|u| u.trim().replace("&amp;", "&"));
             let aes_key = aes.map(|a| a.trim().to_string());
             if !url.is_empty() || encrypt_url.as_deref().map_or(false, |u| !u.is_empty()) {
                 let mut o = Map::new();
                 o.insert("url".into(), json!(url));
-                o.insert("md5".into(), json!(md5.map(|m| m.trim().to_string()).unwrap_or_default()));
-                o.insert("width".into(), w.and_then(|w| parse_int(&w)).map(|n| json!(n)).unwrap_or(Value::Null));
-                o.insert("height".into(), h.and_then(|h| parse_int(&h)).map(|n| json!(n)).unwrap_or(Value::Null));
+                o.insert(
+                    "md5".into(),
+                    json!(md5.map(|m| m.trim().to_string()).unwrap_or_default()),
+                );
+                o.insert(
+                    "width".into(),
+                    w.and_then(|w| parse_int(&w))
+                        .map(|n| json!(n))
+                        .unwrap_or(Value::Null),
+                );
+                o.insert(
+                    "height".into(),
+                    h.and_then(|h| parse_int(&h))
+                        .map(|n| json!(n))
+                        .unwrap_or(Value::Null),
+                );
                 if let Some(e) = encrypt_url.filter(|e| !e.is_empty()) {
                     o.insert("encryptUrl".into(), json!(e));
                 }
@@ -281,7 +326,11 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
             let ref_id = ref_id.map(|r| r.trim().to_string()).unwrap_or_default();
             items.push(Item {
                 id: id.map(|i| i.trim().to_string()).unwrap_or_else(|| {
-                    format!("cmt_{}_{}", chrono::Utc::now().timestamp_millis(), CMT_COUNTER.fetch_add(1, Ordering::Relaxed))
+                    format!(
+                        "cmt_{}_{}",
+                        chrono::Utc::now().timestamp_millis(),
+                        CMT_COUNTER.fetch_add(1, Ordering::Relaxed)
+                    )
                 }),
                 nickname: nickname.map(|n| n.trim().to_string()).unwrap_or_default(),
                 username: username.map(|u| u.trim().to_string()),
@@ -353,20 +402,26 @@ fn like_list(xml: &str) -> Option<String> {
     .map(|c| c[1].to_string())
 }
 
-const LIKE_ITEM: &str = r"(?is)<(?:LikeUser|likeUser|user_comment)>(.*?)</(?:LikeUser|likeUser|user_comment)>";
+const LIKE_ITEM: &str =
+    r"(?is)<(?:LikeUser|likeUser|user_comment)>(.*?)</(?:LikeUser|likeUser|user_comment)>";
 
 pub fn parse_like_users_from_xml(xml: &str) -> Vec<LikeUser> {
     if xml.is_empty() {
         return Vec::new();
     }
-    let Some(list) = like_list(xml) else { return Vec::new() };
+    let Some(list) = like_list(xml) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for m in rx(LIKE_ITEM).captures_iter(&list) {
         let block = &m[1];
-        let username = tag_value(block, r"(?is)<username>([^<]*)</username>").and_then(|u| opt_str(&u));
+        let username =
+            tag_value(block, r"(?is)<username>([^<]*)</username>").and_then(|u| opt_str(&u));
         let nickname = tag_value(block, r"(?is)<nickname>([^<]*)</nickname>")
             .and_then(|n| opt_str(&n))
-            .or_else(|| tag_value(block, r"(?is)<nickName>([^<]*)</nickName>").and_then(|n| opt_str(&n)));
+            .or_else(|| {
+                tag_value(block, r"(?is)<nickName>([^<]*)</nickName>").and_then(|n| opt_str(&n))
+            });
         if username.is_some() || nickname.is_some() {
             out.push(LikeUser { username, nickname });
         }
@@ -379,7 +434,9 @@ pub fn parse_likes_from_xml(xml: &str) -> Vec<String> {
     if xml.is_empty() {
         return Vec::new();
     }
-    let Some(list) = like_list(xml) else { return Vec::new() };
+    let Some(list) = like_list(xml) else {
+        return Vec::new();
+    };
     rx(LIKE_ITEM)
         .captures_iter(&list)
         .filter_map(|m| {
@@ -391,7 +448,9 @@ pub fn parse_likes_from_xml(xml: &str) -> Vec<String> {
 }
 
 fn attr(attrs: &str, name: &str) -> Option<String> {
-    rx(&format!(r#"(?i){}="([^"]+)""#, regex::escape(name))).captures(attrs).map(|c| c[1].to_string())
+    rx(&format!(r#"(?i){}="([^"]+)""#, regex::escape(name)))
+        .captures(attrs)
+        .map(|c| c[1].to_string())
 }
 
 /// `parseMediaFromXml` (only used when the DLL does not hand back parsed media).
@@ -408,13 +467,27 @@ pub fn parse_media_from_xml(xml: &str) -> (Vec<Value>, Option<String>) {
         let thumb = tag_value(mx, r"(?i)<thumb[^>]*>([^<]+)</thumb>");
         let thumb_attrs = tag_value(mx, r"(?i)<thumb([^>]*)>").unwrap_or_default();
 
-        let (url_token, url_key, url_md5, url_enc) =
-            (attr(&url_attrs, "token"), attr(&url_attrs, "key"), attr(&url_attrs, "md5"), attr(&url_attrs, "enc_idx"));
-        let (thumb_token, thumb_key, thumb_enc) = (attr(&thumb_attrs, "token"), attr(&thumb_attrs, "key"), attr(&thumb_attrs, "enc_idx"));
+        let (url_token, url_key, url_md5, url_enc) = (
+            attr(&url_attrs, "token"),
+            attr(&url_attrs, "key"),
+            attr(&url_attrs, "md5"),
+            attr(&url_attrs, "enc_idx"),
+        );
+        let (thumb_token, thumb_key, thumb_enc) = (
+            attr(&thumb_attrs, "token"),
+            attr(&thumb_attrs, "key"),
+            attr(&thumb_attrs, "enc_idx"),
+        );
 
         let mut item = Map::new();
-        item.insert("url".into(), json!(url.map(|u| u.trim().to_string()).unwrap_or_default()));
-        item.insert("thumb".into(), json!(thumb.map(|u| u.trim().to_string()).unwrap_or_default()));
+        item.insert(
+            "url".into(),
+            json!(url.map(|u| u.trim().to_string()).unwrap_or_default()),
+        );
+        item.insert(
+            "thumb".into(),
+            json!(thumb.map(|u| u.trim().to_string()).unwrap_or_default()),
+        );
         for (k, v) in [
             ("token", url_token.or(thumb_token)),
             ("key", url_key.or(thumb_key)),
@@ -436,8 +509,14 @@ pub fn parse_media_from_xml(xml: &str) -> (Vec<Value>, Option<String>) {
             let key = attr(&lp_url_attrs, "key").or_else(|| attr(&lp_thumb_attrs, "key"));
             let enc = attr(&lp_url_attrs, "enc_idx");
             let mut live = Map::new();
-            live.insert("url".into(), json!(lp_url.map(|u| u.trim().to_string()).unwrap_or_default()));
-            live.insert("thumb".into(), json!(lp_thumb.map(|u| u.trim().to_string()).unwrap_or_default()));
+            live.insert(
+                "url".into(),
+                json!(lp_url.map(|u| u.trim().to_string()).unwrap_or_default()),
+            );
+            live.insert(
+                "thumb".into(),
+                json!(lp_thumb.map(|u| u.trim().to_string()).unwrap_or_default()),
+            );
             for (k, v) in [("token", token), ("key", key), ("encIdx", enc)] {
                 if let Some(v) = v {
                     live.insert(k.into(), json!(v));
@@ -452,7 +531,16 @@ pub fn parse_media_from_xml(xml: &str) -> (Vec<Value>, Option<String>) {
 
 // ───────────────────────── location ─────────────────────────
 
-const LOCATION_FIELDS: [&str; 8] = ["latitude", "longitude", "city", "country", "poiName", "poiAddress", "poiAddressName", "label"];
+const LOCATION_FIELDS: [&str; 8] = [
+    "latitude",
+    "longitude",
+    "city",
+    "country",
+    "poiName",
+    "poiAddress",
+    "poiAddressName",
+    "label",
+];
 
 fn build_location(values: Vec<(&str, Option<Value>)>) -> Option<Value> {
     let mut o = Map::new();
@@ -467,7 +555,10 @@ fn build_location(values: Vec<(&str, Option<Value>)>) -> Option<Value> {
 pub fn normalize_location(input: Option<&Value>) -> Option<Value> {
     let row = input?.as_object()?;
     let text = |keys: &[&str]| -> Option<Value> {
-        let v = keys.iter().filter_map(|k| row.get(*k)).find(|v| !v.is_null())?;
+        let v = keys
+            .iter()
+            .filter_map(|k| row.get(*k))
+            .find(|v| !v.is_null())?;
         let s = v.as_str()?;
         to_optional_string(Some(&json!(decode_xml_text(s)))).map(Value::from)
     };
@@ -482,7 +573,10 @@ pub fn normalize_location(input: Option<&Value>) -> Option<Value> {
         ("country", text(&["country"])),
         ("poiName", text(&["poiName", "poiname"])),
         ("poiAddress", text(&["poiAddress", "poiaddress"])),
-        ("poiAddressName", text(&["poiAddressName", "poiaddressname"])),
+        (
+            "poiAddressName",
+            text(&["poiAddressName", "poiaddressname"]),
+        ),
         ("label", text(&["label"])),
     ])
 }
@@ -491,12 +585,18 @@ pub fn parse_location_from_xml(xml: &str) -> Option<Value> {
     if xml.is_empty() {
         return None;
     }
-    let attrs = rx(r"(?i)<location\b([^>]*)>").captures(xml).map(|c| c[1].to_string()).unwrap_or_default();
+    let attrs = rx(r"(?i)<location\b([^>]*)>")
+        .captures(xml)
+        .map(|c| c[1].to_string())
+        .unwrap_or_default();
     let read_attr = |name: &str| -> Option<String> {
         if attrs.is_empty() {
             return None;
         }
-        let re = rx(&format!(r#"(?i){}\s*=\s*["']([\s\S]*?)["']"#, regex::escape(name)));
+        let re = rx(&format!(
+            r#"(?i){}\s*=\s*["']([\s\S]*?)["']"#,
+            regex::escape(name)
+        ));
         let m = re.captures(&attrs)?;
         if m[1].is_empty() {
             return None;
@@ -534,8 +634,14 @@ pub fn parse_location_from_xml(xml: &str) -> Option<Value> {
         ("city", first(&["city"]).map(Value::from)),
         ("country", first(&["country"]).map(Value::from)),
         ("poiName", first(&["poiName", "poiname"]).map(Value::from)),
-        ("poiAddress", first(&["poiAddress", "poiaddress"]).map(Value::from)),
-        ("poiAddressName", first(&["poiAddressName", "poiaddressname"]).map(Value::from)),
+        (
+            "poiAddress",
+            first(&["poiAddress", "poiaddress"]).map(Value::from),
+        ),
+        (
+            "poiAddressName",
+            first(&["poiAddressName", "poiaddressname"]).map(Value::from),
+        ),
         ("label", first(&["label"]).map(Value::from)),
     ])
 }
@@ -545,7 +651,11 @@ pub fn merge_location(primary: Option<&Value>, fallback: Option<&Value>) -> Opti
         return None;
     }
     let pick = |k: &str| -> Option<Value> {
-        primary.and_then(|p| p.get(k)).filter(|v| !v.is_null()).or_else(|| fallback.and_then(|f| f.get(k)).filter(|v| !v.is_null())).cloned()
+        primary
+            .and_then(|p| p.get(k))
+            .filter(|v| !v.is_null())
+            .or_else(|| fallback.and_then(|f| f.get(k)).filter(|v| !v.is_null()))
+            .cloned()
     };
     build_location(LOCATION_FIELDS.iter().map(|k| (*k, pick(k))).collect())
 }
@@ -578,10 +688,27 @@ pub fn fix_comment_refs(comments: &[Value]) -> Vec<Value> {
                 .filter(|e| truthy(e.get("url")) || truthy(e.get("encryptUrl")))
                 .map(|e| {
                     let mut o = Map::new();
-                    o.insert("url".into(), json!(s_of(e.get("url")).unwrap_or_default().replace("&amp;", "&")));
+                    o.insert(
+                        "url".into(),
+                        json!(s_of(e.get("url")).unwrap_or_default().replace("&amp;", "&")),
+                    );
                     o.insert("md5".into(), json!(s_of(e.get("md5")).unwrap_or_default()));
-                    o.insert("width".into(), if truthy(e.get("width")) { e["width"].clone() } else { json!(0) });
-                    o.insert("height".into(), if truthy(e.get("height")) { e["height"].clone() } else { json!(0) });
+                    o.insert(
+                        "width".into(),
+                        if truthy(e.get("width")) {
+                            e["width"].clone()
+                        } else {
+                            json!(0)
+                        },
+                    );
+                    o.insert(
+                        "height".into(),
+                        if truthy(e.get("height")) {
+                            e["height"].clone()
+                        } else {
+                            json!(0)
+                        },
+                    );
                     if let Some(u) = s_of(e.get("encryptUrl")).filter(|u| !u.is_empty()) {
                         o.insert("encryptUrl".into(), json!(u.replace("&amp;", "&")));
                     }
@@ -593,9 +720,18 @@ pub fn fix_comment_refs(comments: &[Value]) -> Vec<Value> {
                 .collect();
             let mut o = Map::new();
             o.insert("id".into(), json!(s_of(c.get("id")).unwrap_or_default()));
-            o.insert("nickname".into(), json!(s_of(c.get("nickname")).unwrap_or_default()));
-            o.insert("content".into(), json!(s_of(c.get("content")).unwrap_or_default()));
-            o.insert("refCommentId".into(), json!(if ref_id == "0" { String::new() } else { ref_id }));
+            o.insert(
+                "nickname".into(),
+                json!(s_of(c.get("nickname")).unwrap_or_default()),
+            );
+            o.insert(
+                "content".into(),
+                json!(s_of(c.get("content")).unwrap_or_default()),
+            );
+            o.insert(
+                "refCommentId".into(),
+                json!(if ref_id == "0" { String::new() } else { ref_id }),
+            );
             o.insert("refNickname".into(), json!(ref_nick));
             if !emojis.is_empty() {
                 o.insert("emojis".into(), Value::Array(emojis));
@@ -632,7 +768,10 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
     let is_video_post = post.get("type").and_then(Value::as_i64) == Some(15);
     let raw_xml = s_of(post.get("rawXml")).unwrap_or_default();
     let video_key = extract_video_key(&raw_xml);
-    let location = merge_location(normalize_location(post.get("location")).as_ref(), parse_location_from_xml(&raw_xml).as_ref());
+    let location = merge_location(
+        normalize_location(post.get("location")).as_ref(),
+        parse_location_from_xml(&raw_xml).as_ref(),
+    );
 
     let fixed_media: Vec<Value> = post
         .get("media")
@@ -643,20 +782,42 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
         .map(|m| {
             let token = s_of(m.get("token"));
             let mut o = Map::new();
-            o.insert("url".into(), json!(fix_sns_url(&s_of(m.get("url")).unwrap_or_default(), token.as_deref(), is_video_post)));
-            o.insert("thumb".into(), json!(fix_sns_url(&s_of(m.get("thumb")).unwrap_or_default(), token.as_deref(), false)));
+            o.insert(
+                "url".into(),
+                json!(fix_sns_url(
+                    &s_of(m.get("url")).unwrap_or_default(),
+                    token.as_deref(),
+                    is_video_post
+                )),
+            );
+            o.insert(
+                "thumb".into(),
+                json!(fix_sns_url(
+                    &s_of(m.get("thumb")).unwrap_or_default(),
+                    token.as_deref(),
+                    false
+                )),
+            );
             for (k, v) in [
                 ("md5", m.get("md5").filter(|v| !v.is_null()).cloned()),
                 ("token", m.get("token").filter(|v| !v.is_null()).cloned()),
                 (
                     "key",
                     if is_video_post {
-                        video_key.clone().map(Value::from).or_else(|| m.get("key").filter(|v| !v.is_null()).cloned())
+                        video_key
+                            .clone()
+                            .map(Value::from)
+                            .or_else(|| m.get("key").filter(|v| !v.is_null()).cloned())
                     } else {
                         m.get("key").filter(|v| !v.is_null()).cloned()
                     },
                 ),
-                ("encIdx", coalesce(&[m.get("encIdx"), m.get("enc_idx")]).filter(|v| truthy(Some(v))).cloned()),
+                (
+                    "encIdx",
+                    coalesce(&[m.get("encIdx"), m.get("enc_idx")])
+                        .filter(|v| truthy(Some(v)))
+                        .cloned(),
+                ),
             ] {
                 if let Some(v) = v {
                     o.insert(k.into(), v);
@@ -665,24 +826,56 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
             if let Some(lp) = m.get("livePhoto").filter(|v| v.is_object()) {
                 let mut live = lp.as_object().cloned().unwrap_or_default();
                 let lp_token = s_of(lp.get("token"));
-                live.insert("url".into(), json!(fix_sns_url(&s_of(lp.get("url")).unwrap_or_default(), lp_token.as_deref(), true)));
-                live.insert("thumb".into(), json!(fix_sns_url(&s_of(lp.get("thumb")).unwrap_or_default(), lp_token.as_deref(), false)));
-                set_or_remove(&mut live, "token", lp.get("token").filter(|v| !v.is_null()).cloned());
+                live.insert(
+                    "url".into(),
+                    json!(fix_sns_url(
+                        &s_of(lp.get("url")).unwrap_or_default(),
+                        lp_token.as_deref(),
+                        true
+                    )),
+                );
+                live.insert(
+                    "thumb".into(),
+                    json!(fix_sns_url(
+                        &s_of(lp.get("thumb")).unwrap_or_default(),
+                        lp_token.as_deref(),
+                        false
+                    )),
+                );
+                set_or_remove(
+                    &mut live,
+                    "token",
+                    lp.get("token").filter(|v| !v.is_null()).cloned(),
+                );
                 let key = video_key
                     .clone()
                     .map(Value::from)
                     .or_else(|| lp.get("key").filter(|v| truthy(Some(v))).cloned())
                     .or_else(|| m.get("key").filter(|v| !v.is_null()).cloned());
                 set_or_remove(&mut live, "key", key);
-                set_or_remove(&mut live, "encIdx", coalesce(&[lp.get("encIdx"), lp.get("enc_idx")]).filter(|v| truthy(Some(v))).cloned());
+                set_or_remove(
+                    &mut live,
+                    "encIdx",
+                    coalesce(&[lp.get("encIdx"), lp.get("enc_idx")])
+                        .filter(|v| truthy(Some(v)))
+                        .cloned(),
+                );
                 o.insert("livePhoto".into(), Value::Object(live));
             }
             Value::Object(o)
         })
         .collect();
 
-    let dll_comments: Vec<Value> = post.get("comments").and_then(Value::as_array).cloned().unwrap_or_default();
-    let has_emojis_in_dll = dll_comments.iter().any(|c| c.get("emojis").and_then(Value::as_array).map_or(false, |e| !e.is_empty()));
+    let dll_comments: Vec<Value> = post
+        .get("comments")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let has_emojis_in_dll = dll_comments.iter().any(|c| {
+        c.get("emojis")
+            .and_then(Value::as_array)
+            .map_or(false, |e| !e.is_empty())
+    });
     let final_comments = if !dll_comments.is_empty() && (has_emojis_in_dll || raw_xml.is_empty()) {
         fix_comment_refs(&dll_comments)
     } else if !raw_xml.is_empty() {
@@ -697,9 +890,20 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
     };
 
     let username = s_of(post.get("username")).unwrap_or_default();
-    let nickname = s_of(post.get("nickname")).filter(|n| !n.is_empty()).or_else(|| contact.and_then(|c| c.display_name.clone()).filter(|n| !n.is_empty())).unwrap_or(username);
+    let nickname = s_of(post.get("nickname"))
+        .filter(|n| !n.is_empty())
+        .or_else(|| {
+            contact
+                .and_then(|c| c.display_name.clone())
+                .filter(|n| !n.is_empty())
+        })
+        .unwrap_or(username);
 
-    set_or_remove(&mut out, "avatarUrl", contact.and_then(|c| c.avatar_url.clone()).map(Value::from));
+    set_or_remove(
+        &mut out,
+        "avatarUrl",
+        contact.and_then(|c| c.avatar_url.clone()).map(Value::from),
+    );
     set_or_remove(&mut out, "nickname", str_or_none(nickname));
     out.insert("media".into(), Value::Array(fixed_media));
     out.insert("comments".into(), Value::Array(final_comments));
@@ -720,22 +924,36 @@ pub fn pick_timeline_username(post: &Value) -> String {
 // ───────────────────────── HTML export ─────────────────────────
 
 fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\n', "<br>")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\n', "<br>")
 }
 
 fn normalize_location_text(v: Option<&Value>) -> String {
     let raw = s_of(v).unwrap_or_default();
-    rx(r"\s+").replace_all(&decode_xml_text(&raw), " ").trim().to_string()
+    rx(r"\s+")
+        .replace_all(&decode_xml_text(&raw), " ")
+        .trim()
+        .to_string()
 }
 
 fn resolve_location_text(location: Option<&Value>) -> String {
-    let Some(loc) = location.filter(|l| l.is_object()) else { return String::new() };
+    let Some(loc) = location.filter(|l| l.is_object()) else {
+        return String::new();
+    };
     let primary = ["poiName", "poiAddressName", "label", "poiAddress"]
         .iter()
         .map(|k| normalize_location_text(loc.get(*k)))
         .find(|s| !s.is_empty())
         .unwrap_or_default();
-    let region = ["country", "city"].iter().map(|k| normalize_location_text(loc.get(*k))).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+    let region = ["country", "city"]
+        .iter()
+        .map(|k| normalize_location_text(loc.get(*k)))
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
     if !primary.is_empty() && !region.is_empty() && !primary.contains(&region) {
         return format!("{primary} · {region}");
     }
@@ -760,17 +978,34 @@ fn format_post_time(ts: i64, now: chrono::DateTime<chrono::Local>) -> String {
 /// `toLocaleString('zh-CN')` → `2026/9/30 15:04:05`
 pub fn zh_locale_string(dt: chrono::DateTime<chrono::Local>) -> String {
     use chrono::{Datelike, Timelike};
-    format!("{}/{}/{} {:02}:{:02}:{:02}", dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second())
+    format!(
+        "{}/{}/{} {:02}:{:02}:{:02}",
+        dt.year(),
+        dt.month(),
+        dt.day(),
+        dt.hour(),
+        dt.minute(),
+        dt.second()
+    )
 }
 
 pub fn zh_locale_from_ts(ts: i64) -> String {
     use chrono::TimeZone;
-    chrono::Local.timestamp_opt(ts, 0).single().map(zh_locale_string).unwrap_or_default()
+    chrono::Local
+        .timestamp_opt(ts, 0)
+        .single()
+        .map(zh_locale_string)
+        .unwrap_or_default()
 }
 
 const HTML_STYLE: &str = include_str!("sns_export.css");
 
-pub fn generate_html(posts: &[Value], usernames: &[String], keyword: Option<&str>, avatar_map: &std::collections::HashMap<String, String>) -> String {
+pub fn generate_html(
+    posts: &[Value],
+    usernames: &[String],
+    keyword: Option<&str>,
+    avatar_map: &std::collections::HashMap<String, String>,
+) -> String {
     let now = chrono::Local::now();
     let mut filter_info = String::new();
     if let Some(k) = keyword.filter(|k| !k.is_empty()) {
@@ -925,7 +1160,9 @@ fn build_key_tries(aes_key: &str) -> Vec<Vec<u8>> {
     let hex: String = aes_key.chars().filter(|c| !c.is_whitespace()).collect();
     if hex.len() >= 32 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
         let first32 = &hex[..32];
-        let decoded: Vec<u8> = (0..16).filter_map(|i| u8::from_str_radix(&first32[i * 2..i * 2 + 2], 16).ok()).collect();
+        let decoded: Vec<u8> = (0..16)
+            .filter_map(|i| u8::from_str_radix(&first32[i * 2..i * 2 + 2], 16).ok())
+            .collect();
         if decoded.len() == 16 {
             tries.push(decoded);
         }
@@ -965,11 +1202,20 @@ fn try_gcm_decrypt(key: &[u8], nonce: &[u8], ciphertext: &[u8], tag: &[u8]) -> O
     let mut joined = Vec::with_capacity(ciphertext.len() + tag.len());
     joined.extend_from_slice(ciphertext);
     joined.extend_from_slice(tag);
-    let payload = Payload { msg: &joined, aad: &[] };
+    let payload = Payload {
+        msg: &joined,
+        aad: &[],
+    };
     let n = Nonce::from_slice(nonce);
     let decrypted = match key.len() {
-        16 => Aes128Gcm::new_from_slice(key).ok()?.decrypt(n, payload).ok()?,
-        32 => Aes256Gcm::new_from_slice(key).ok()?.decrypt(n, payload).ok()?,
+        16 => Aes128Gcm::new_from_slice(key)
+            .ok()?
+            .decrypt(n, payload)
+            .ok()?,
+        32 => Aes256Gcm::new_from_slice(key)
+            .ok()?
+            .decrypt(n, payload)
+            .ok()?,
         _ => return None,
     };
     if is_valid_image_buffer(&decrypted) {
@@ -996,18 +1242,38 @@ fn build_gcm_layouts(enc: &[u8]) -> Vec<GcmLayout<'_>> {
         let payload_size = u32::from_le_bytes([enc[10], enc[11], enc[12], enc[13]]) as usize;
         if payload_size > 16 && 63 + payload_size <= n {
             let payload = &enc[63..63 + payload_size];
-            layouts.push(GcmLayout { nonce: enc[19..31].to_vec(), ciphertext: &payload[..payload.len() - 16], tag: &payload[payload.len() - 16..] });
+            layouts.push(GcmLayout {
+                nonce: enc[19..31].to_vec(),
+                ciphertext: &payload[..payload.len() - 16],
+                tag: &payload[payload.len() - 16..],
+            });
         }
     }
     if n > 28 {
-        layouts.push(GcmLayout { ciphertext: &enc[..n - 28], nonce: enc[n - 28..n - 16].to_vec(), tag: &enc[n - 16..] });
-        layouts.push(GcmLayout { nonce: enc[..12].to_vec(), ciphertext: &enc[12..n - 16], tag: &enc[n - 16..] });
+        layouts.push(GcmLayout {
+            ciphertext: &enc[..n - 28],
+            nonce: enc[n - 28..n - 16].to_vec(),
+            tag: &enc[n - 16..],
+        });
+        layouts.push(GcmLayout {
+            nonce: enc[..12].to_vec(),
+            ciphertext: &enc[12..n - 16],
+            tag: &enc[n - 16..],
+        });
     }
     if n > 16 {
-        layouts.push(GcmLayout { nonce: vec![0; 12], ciphertext: &enc[..n - 16], tag: &enc[n - 16..] });
+        layouts.push(GcmLayout {
+            nonce: vec![0; 12],
+            ciphertext: &enc[..n - 16],
+            tag: &enc[n - 16..],
+        });
     }
     if n > 28 {
-        layouts.push(GcmLayout { nonce: enc[..12].to_vec(), tag: &enc[12..28], ciphertext: &enc[28..] });
+        layouts.push(GcmLayout {
+            nonce: enc[..12].to_vec(),
+            tag: &enc[12..28],
+            ciphertext: &enc[28..],
+        });
     }
     layouts
 }
@@ -1024,7 +1290,9 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
 
     if n > 28 {
         for key in keys.iter().filter(usable) {
-            if let Some(r) = try_gcm_decrypt(key, &enc[n - 28..n - 16], &enc[..n - 28], &enc[n - 16..]) {
+            if let Some(r) =
+                try_gcm_decrypt(key, &enc[n - 28..n - 16], &enc[..n - 28], &enc[n - 16..])
+            {
                 return Some(r);
             }
         }
@@ -1074,7 +1342,9 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
         }
         if n % 16 == 0 {
             let mut buf = enc.to_vec();
-            if let Ok(plain) = EcbDec::new_from_slice(key).map(|d| d.decrypt_padded_mut::<Pkcs7>(&mut buf)) {
+            if let Ok(plain) =
+                EcbDec::new_from_slice(key).map(|d| d.decrypt_padded_mut::<Pkcs7>(&mut buf))
+            {
                 if let Ok(plain) = plain {
                     if is_valid_image_buffer(plain) {
                         return Some(plain.to_vec());
@@ -1094,18 +1364,39 @@ mod tests {
 
     #[test]
     fn fixes_urls_like_the_desktop_app() {
-        assert_eq!(fix_sns_url("http://x.qq.com/a/150", Some("T"), false), "https://x.qq.com/a/0?token=T&idx=1");
-        assert_eq!(fix_sns_url("http://x.qq.com/v?a=1", Some("T"), true), "https://x.qq.com/v?token=T&idx=1&a=1");
-        assert_eq!(fix_sns_url("https://x/a?token=Z", Some("T"), false), "https://x/a?token=Z");
-        assert_eq!(fix_sns_url("http://x/a/150?q=1", None, false), "https://x/a/0?q=1");
-        assert!(is_video_url("https://x/snsvideodownload?a") && !is_video_url("https://vweixinthumb.x/video"));
+        assert_eq!(
+            fix_sns_url("http://x.qq.com/a/150", Some("T"), false),
+            "https://x.qq.com/a/0?token=T&idx=1"
+        );
+        assert_eq!(
+            fix_sns_url("http://x.qq.com/v?a=1", Some("T"), true),
+            "https://x.qq.com/v?token=T&idx=1&a=1"
+        );
+        assert_eq!(
+            fix_sns_url("https://x/a?token=Z", Some("T"), false),
+            "https://x/a?token=Z"
+        );
+        assert_eq!(
+            fix_sns_url("http://x/a/150?q=1", None, false),
+            "https://x/a/0?q=1"
+        );
+        assert!(
+            is_video_url("https://x/snsvideodownload?a")
+                && !is_video_url("https://vweixinthumb.x/video")
+        );
     }
 
     #[test]
     fn detects_mime() {
-        assert_eq!(detect_image_mime(&[0xff, 0xd8, 0xff, 0xe0], ""), "image/jpeg");
+        assert_eq!(
+            detect_image_mime(&[0xff, 0xd8, 0xff, 0xe0], ""),
+            "image/jpeg"
+        );
         assert_eq!(detect_image_mime(b"GIF89a....", ""), "image/gif");
-        assert_eq!(detect_image_mime(b"\0\0\0\x18ftypmp42abcd", ""), "video/mp4");
+        assert_eq!(
+            detect_image_mime(b"\0\0\0\x18ftypmp42abcd", ""),
+            "video/mp4"
+        );
         assert_eq!(detect_image_mime(b"abcd", "image/png"), "image/png");
     }
 
@@ -1130,7 +1421,10 @@ mod tests {
         assert_eq!(likes.len(), 2);
         assert_eq!(likes[0].username.as_deref(), Some("u1"));
         assert_eq!(parse_likes_from_xml(xml), vec!["N1", "N2"]);
-        let loc = parse_location_from_xml("<location latitude=\"31.2\" longitude=\"121.5\" city=\"上海\" poiName=\"A &amp; B\"/>").unwrap();
+        let loc = parse_location_from_xml(
+            "<location latitude=\"31.2\" longitude=\"121.5\" city=\"上海\" poiName=\"A &amp; B\"/>",
+        )
+        .unwrap();
         assert_eq!(loc["latitude"], 31.2);
         assert_eq!(loc["poiName"], "A & B");
         let merged = merge_location(Some(&json!({"city": "X"})), Some(&loc)).unwrap();
@@ -1146,12 +1440,18 @@ mod tests {
             "media": [{"url": "http://v/snsvideodownload?x=1", "thumb": "http://t/150", "token": "T", "key": "old"}],
             "comments": [{"id": "1", "nickname": "A", "content": "c"}, {"id": "2", "nickname": "B", "content": "d", "refCommentId": "1"}]
         });
-        let contact = CachedContact { display_name: Some("Alice".into()), avatar_url: Some("http://a".into()) };
+        let contact = CachedContact {
+            display_name: Some("Alice".into()),
+            avatar_url: Some("http://a".into()),
+        };
         let e = enrich_post(&post, Some(&contact));
         assert_eq!(e["nickname"], "Alice");
         assert_eq!(e["avatarUrl"], "http://a");
         assert_eq!(e["media"][0]["key"], "777");
-        assert_eq!(e["media"][0]["url"], "https://v/snsvideodownload?token=T&idx=1&x=1");
+        assert_eq!(
+            e["media"][0]["url"],
+            "https://v/snsvideodownload?token=T&idx=1&x=1"
+        );
         assert_eq!(e["media"][0]["thumb"], "https://t/0?token=T&idx=1");
         assert_eq!(e["comments"][1]["refNickname"], "A");
         assert_eq!(e["location"]["city"], "X");
@@ -1159,8 +1459,10 @@ mod tests {
 
     #[test]
     fn html_export_escapes_and_embeds() {
-        let posts = vec![json!({"username": "u", "nickname": "<Nick>", "createTime": 1700000000, "contentDesc": "a\nb",
-            "media": [{"url": "https://x/1.jpg", "localPath": "media/1_0.jpg"}], "likes": ["L"], "comments": [{"nickname": "C", "content": "hi", "refNickname": "R"}]})];
+        let posts = vec![
+            json!({"username": "u", "nickname": "<Nick>", "createTime": 1700000000, "contentDesc": "a\nb",
+            "media": [{"url": "https://x/1.jpg", "localPath": "media/1_0.jpg"}], "likes": ["L"], "comments": [{"nickname": "C", "content": "hi", "refNickname": "R"}]}),
+        ];
         let html = generate_html(&posts, &[], Some("kw"), &Default::default());
         assert!(html.contains("&lt;Nick&gt;"));
         assert!(html.contains("a<br>b"));
@@ -1174,14 +1476,24 @@ mod tests {
         use aes_gcm::aead::Aead;
         let key = [7u8; 16];
         let nonce = [9u8; 12];
-        let plain: Vec<u8> = b"GIF89a".iter().copied().chain(std::iter::repeat(1u8).take(40)).collect();
-        let cipher = Aes128Gcm::new_from_slice(&key).unwrap().encrypt(Nonce::from_slice(&nonce), plain.as_slice()).unwrap();
+        let plain: Vec<u8> = b"GIF89a"
+            .iter()
+            .copied()
+            .chain(std::iter::repeat(1u8).take(40))
+            .collect();
+        let cipher = Aes128Gcm::new_from_slice(&key)
+            .unwrap()
+            .encrypt(Nonce::from_slice(&nonce), plain.as_slice())
+            .unwrap();
         let (ct, tag) = cipher.split_at(cipher.len() - 16);
         let mut enc = ct.to_vec();
         enc.extend_from_slice(&nonce);
         enc.extend_from_slice(tag);
         let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
-        assert_eq!(decrypt_emoji_aes(&enc, &hex).as_deref(), Some(plain.as_slice()));
+        assert_eq!(
+            decrypt_emoji_aes(&enc, &hex).as_deref(),
+            Some(plain.as_slice())
+        );
         assert!(decrypt_emoji_aes(&enc, "wrong-key-wrong-key").is_none());
     }
 

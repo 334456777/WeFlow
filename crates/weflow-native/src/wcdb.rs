@@ -37,10 +37,22 @@ impl Wcdb {
             return Err(anyhow!("WCDB is not connected"));
         }
         // by-name calls (install/uninstall triggers, deletes, ...) that would write to WeChat's databases
-        if ["install", "uninstall", "delete", "update_message", "mark_all", "trigger"].iter().any(|w| name.contains(w)) {
+        if [
+            "install",
+            "uninstall",
+            "delete",
+            "update_message",
+            "mark_all",
+            "trigger",
+        ]
+        .iter()
+        .any(|w| name.contains(w))
+        {
             return self.read_only(name);
         }
-        Err(anyhow!("{name} is not implemented in the native database backend yet"))
+        Err(anyhow!(
+            "{name} is not implemented in the native database backend yet"
+        ))
     }
 
     /// Operations that would modify WeChat's own database files (triggers, edits, deletes, read marks).
@@ -49,7 +61,9 @@ impl Wcdb {
     }
 
     fn account(&self) -> Result<&NativeAccount> {
-        self.native.as_ref().ok_or_else(|| anyhow!("WCDB is not connected"))
+        self.native
+            .as_ref()
+            .ok_or_else(|| anyhow!("WCDB is not connected"))
     }
 
     /// Open the account: decrypt `session.db` with the key to prove the key and path are right.
@@ -65,16 +79,26 @@ impl Wcdb {
     /// [`open`](Self::open) without proving the key up front: each database checks the key when it is first
     /// read, so a command that never reads `session.db` skips its (slow) key derivation. A wrong key still fails,
     /// at the first read, with the same "cannot decrypt ... with the configured database key" error.
-    pub fn open_unchecked(&mut self, account_dir: &Path, hex_key: &str, wxid: Option<&str>) -> Result<()> {
+    pub fn open_unchecked(
+        &mut self,
+        account_dir: &Path,
+        hex_key: &str,
+        wxid: Option<&str>,
+    ) -> Result<()> {
         self.native = None;
         let session_db = find_session_db(&account_dir.join("db_storage"))
             .ok_or_else(|| anyhow!("session.db not found under {}", account_dir.display()))?;
         // session.db lives in <db_storage>/session/, so its grandparent is db_storage.
-        let db_storage = session_db.parent().and_then(Path::parent).unwrap_or(account_dir);
+        let db_storage = session_db
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or(account_dir);
         // Without an explicit wxid, the account directory name (`<wxid>_<4 chars>`) identifies the owner.
-        let me = wxid
-            .map(str::to_string)
-            .or_else(|| account_dir.file_name().map(|n| n.to_string_lossy().to_string()));
+        let me = wxid.map(str::to_string).or_else(|| {
+            account_dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+        });
         self.native = Some(NativeAccount::new(db_storage, hex_key)?.with_my_wxid(me));
         Ok(())
     }
@@ -89,7 +113,10 @@ impl Wcdb {
     pub fn session_salt(&self) -> Option<[u8; 16]> {
         use std::io::Read;
         let mut salt = [0u8; 16];
-        std::fs::File::open(self.account().ok()?.session_db()).ok()?.read_exact(&mut salt).ok()?;
+        std::fs::File::open(self.account().ok()?.session_db())
+            .ok()?
+            .read_exact(&mut salt)
+            .ok()?;
         Some(salt)
     }
 
@@ -129,8 +156,16 @@ impl Wcdb {
         self.account()?.session_message_date_counts(session_id)
     }
 
-    pub fn messages_by_type(&self, session_id: &str, local_type: i64, ascending: bool, limit: i32, offset: i32) -> Result<Value> {
-        self.account()?.messages_by_type(session_id, local_type, ascending, limit, offset)
+    pub fn messages_by_type(
+        &self,
+        session_id: &str,
+        local_type: i64,
+        ascending: bool,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Value> {
+        self.account()?
+            .messages_by_type(session_id, local_type, ascending, limit, offset)
     }
 
     pub fn message_by_id(&self, session_id: &str, local_id: i32) -> Result<Value> {
@@ -141,14 +176,42 @@ impl Wcdb {
         self.account()?.message_by_server_id(session_id, svrid)
     }
 
-    pub fn open_message_cursor(&self, session_id: &str, batch_size: i32, ascending: bool, begin: i32, end: i32, lite: bool) -> Result<i64> {
-        self.account()?.open_message_cursor(session_id, batch_size, ascending, begin, end, lite)
+    pub fn open_message_cursor(
+        &self,
+        session_id: &str,
+        batch_size: i32,
+        ascending: bool,
+        begin: i32,
+        end: i32,
+        lite: bool,
+    ) -> Result<i64> {
+        self.account()?
+            .open_message_cursor(session_id, batch_size, ascending, begin, end, lite)
     }
 
     /// A cursor over one member's messages only (see `NativeAccount::open_message_cursor_for_senders`).
     #[allow(clippy::too_many_arguments)]
-    pub fn open_message_cursor_for_senders(&self, session_id: &str, batch_size: i32, ascending: bool, begin: i32, end: i32, lite: bool, sender_ok: &dyn Fn(&str) -> bool, include_mine: bool) -> Result<i64> {
-        self.account()?.open_message_cursor_for_senders(session_id, batch_size, ascending, begin, end, lite, sender_ok, include_mine)
+    pub fn open_message_cursor_for_senders(
+        &self,
+        session_id: &str,
+        batch_size: i32,
+        ascending: bool,
+        begin: i32,
+        end: i32,
+        lite: bool,
+        sender_ok: &dyn Fn(&str) -> bool,
+        include_mine: bool,
+    ) -> Result<i64> {
+        self.account()?.open_message_cursor_for_senders(
+            session_id,
+            batch_size,
+            ascending,
+            begin,
+            end,
+            lite,
+            sender_ok,
+            include_mine,
+        )
     }
 
     /// Returns the next batch of rows and whether more remain.
@@ -172,14 +235,26 @@ impl Wcdb {
     /// Call a database function by its historical `wcdb_*` name and get JSON back.
     pub fn invoke_json(&self, name: &str, args: &[Arg<'_>]) -> Result<Value> {
         match (name, args) {
-            ("wcdb_get_contacts_compact", [Arg::S(payload)]) => self.account()?.contacts_compact(&crate::native_contact::usernames_from_json(payload)),
+            ("wcdb_get_contacts_compact", [Arg::S(payload)]) => self
+                .account()?
+                .contacts_compact(&crate::native_contact::usernames_from_json(payload)),
             ("wcdb_get_aggregate_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
-                self.account()?.aggregate_stats(&crate::native_contact::usernames_from_json(ids), *b as i64, *e as i64)
+                self.account()?.aggregate_stats(
+                    &crate::native_contact::usernames_from_json(ids),
+                    *b as i64,
+                    *e as i64,
+                )
             }
             ("wcdb_get_annual_report_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
-                self.account()?.annual_report_stats(&crate::native_contact::usernames_from_json(ids), *b as i64, *e as i64)
+                self.account()?.annual_report_stats(
+                    &crate::native_contact::usernames_from_json(ids),
+                    *b as i64,
+                    *e as i64,
+                )
             }
-            ("wcdb_get_message_table_time_range", [Arg::S(db), Arg::S(table)]) => self.account()?.message_table_time_range(db, table),
+            ("wcdb_get_message_table_time_range", [Arg::S(db), Arg::S(table)]) => {
+                self.account()?.message_table_time_range(db, table)
+            }
             _ => self.pending(name),
         }
     }
@@ -201,8 +276,23 @@ impl Wcdb {
 
     // ── not ported yet ──
 
-    pub fn search(&self, keyword: &str, session_id: Option<&str>, limit: i32, offset: i32, begin: i32, end: i32) -> Result<Value> {
-        self.account()?.search_messages(keyword, session_id, limit, offset, begin as i64, end as i64)
+    pub fn search(
+        &self,
+        keyword: &str,
+        session_id: Option<&str>,
+        limit: i32,
+        offset: i32,
+        begin: i32,
+        end: i32,
+    ) -> Result<Value> {
+        self.account()?.search_messages(
+            keyword,
+            session_id,
+            limit,
+            offset,
+            begin as i64,
+            end as i64,
+        )
     }
 
     pub fn contact(&self, username: &str) -> Result<Value> {
@@ -230,35 +320,71 @@ impl Wcdb {
     }
 
     pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {
-        self.account()?.group_stats(chatroom_id, begin as i64, end as i64)
+        self.account()?
+            .group_stats(chatroom_id, begin as i64, end as i64)
     }
 
     pub fn aggregate_stats(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
-        self.account()?.aggregate_stats(session_ids, begin as i64, end as i64)
+        self.account()?
+            .aggregate_stats(session_ids, begin as i64, end as i64)
     }
 
     pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
         self.account()?.available_years(session_ids)
     }
 
-    pub fn annual_report_stats(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
-        self.account()?.annual_report_stats(session_ids, begin as i64, end as i64)
+    pub fn annual_report_stats(
+        &self,
+        session_ids: &[String],
+        begin: i32,
+        end: i32,
+    ) -> Result<Value> {
+        self.account()?
+            .annual_report_stats(session_ids, begin as i64, end as i64)
     }
 
     pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
-        self.account()?.dual_report_stats(session_id, begin as i64, end as i64)
+        self.account()?
+            .dual_report_stats(session_id, begin as i64, end as i64)
     }
 
     pub fn footprint_stats(&self, options: &Value) -> Result<Value> {
         self.account()?.footprint_stats(options)
     }
 
-    pub fn session_message_type_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
-        self.account()?.session_message_type_stats_batch(&[session_id.to_string()], &serde_json::json!({ "begin": begin, "end": end })).map(|v| v[session_id].clone())
+    pub fn session_message_type_stats(
+        &self,
+        session_id: &str,
+        begin: i32,
+        end: i32,
+    ) -> Result<Value> {
+        self.account()?
+            .session_message_type_stats_batch(
+                &[session_id.to_string()],
+                &serde_json::json!({ "begin": begin, "end": end }),
+            )
+            .map(|v| v[session_id].clone())
     }
 
-    pub fn sns_timeline(&self, limit: i32, offset: i32, username: Option<&str>, keyword: Option<&str>, start: i32, end: i32) -> Result<Value> {
-        self.account()?.sns_timeline(limit, offset, &username.map(crate::native_contact::usernames_from_json).unwrap_or_default(), keyword, start as i64, end as i64)
+    pub fn sns_timeline(
+        &self,
+        limit: i32,
+        offset: i32,
+        username: Option<&str>,
+        keyword: Option<&str>,
+        start: i32,
+        end: i32,
+    ) -> Result<Value> {
+        self.account()?.sns_timeline(
+            limit,
+            offset,
+            &username
+                .map(crate::native_contact::usernames_from_json)
+                .unwrap_or_default(),
+            keyword,
+            start as i64,
+            end as i64,
+        )
     }
 
     pub fn sns_annual_stats(&self, begin: i32, end: i32) -> Result<Value> {
@@ -293,11 +419,23 @@ impl Wcdb {
         self.account()?.exec_query(kind, Some(path), sql)
     }
 
-    pub fn update_message(&self, session_id: &str, local_id: i64, create_time: i32, content: &str) -> Result<Value> {
+    pub fn update_message(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: i32,
+        content: &str,
+    ) -> Result<Value> {
         self.read_only("update_message")
     }
 
-    pub fn delete_message(&self, session_id: &str, local_id: i64, create_time: i32, db_path_hint: Option<&str>) -> Result<Value> {
+    pub fn delete_message(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: i32,
+        db_path_hint: Option<&str>,
+    ) -> Result<Value> {
         self.read_only("delete_message")
     }
 
@@ -313,8 +451,23 @@ impl Wcdb {
         self.read_only("anti_revoke_uninstall")
     }
 
-    pub fn scan_media_stream(&self, session_ids_json: &str, media_type: i32, begin: i32, end: i32, limit: i32, offset: i32) -> Result<(Value, bool)> {
-        self.account()?.scan_media_stream(&crate::native_contact::usernames_from_json(session_ids_json), media_type, begin as i64, end as i64, limit, offset)
+    pub fn scan_media_stream(
+        &self,
+        session_ids_json: &str,
+        media_type: i32,
+        begin: i32,
+        end: i32,
+        limit: i32,
+        offset: i32,
+    ) -> Result<(Value, bool)> {
+        self.account()?.scan_media_stream(
+            &crate::native_contact::usernames_from_json(session_ids_json),
+            media_type,
+            begin as i64,
+            end as i64,
+            limit,
+            offset,
+        )
     }
 
     pub fn mark_all_sessions_read(&self) -> Result<Value> {
@@ -322,35 +475,49 @@ impl Wcdb {
     }
 
     pub fn display_names(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?.display_names(&crate::native_contact::usernames_from_json(usernames_json))
+        self.account()?
+            .display_names(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn avatar_urls(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?.avatar_urls(&crate::native_contact::usernames_from_json(usernames_json))
+        self.account()?
+            .avatar_urls(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn group_member_counts(&self, chatroom_ids_json: &str) -> Result<Value> {
-        self.account()?.group_member_counts(&crate::native_contact::usernames_from_json(chatroom_ids_json))
+        self.account()?
+            .group_member_counts(&crate::native_contact::usernames_from_json(
+                chatroom_ids_json,
+            ))
     }
 
     pub fn message_tables(&self, session_id: &str) -> Result<Value> {
         self.account()?.message_tables_json(session_id)
     }
 
-    pub fn message_meta(&self, db_path: &str, table: &str, limit: i32, offset: i32) -> Result<Value> {
+    pub fn message_meta(
+        &self,
+        db_path: &str,
+        table: &str,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Value> {
         self.account()?.message_meta(db_path, table, limit, offset)
     }
 
     pub fn contact_status(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?.contact_status(&crate::native_contact::usernames_from_json(usernames_json))
+        self.account()?
+            .contact_status(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn contact_alias_map(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?.contact_alias_map(&crate::native_contact::usernames_from_json(usernames_json))
+        self.account()?
+            .contact_alias_map(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn contact_friend_flags(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?.contact_friend_flags(&crate::native_contact::usernames_from_json(usernames_json))
+        self.account()?
+            .contact_friend_flags(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> {
@@ -361,8 +528,21 @@ impl Wcdb {
         self.account()?.message_table_stats(session_id)
     }
 
-    pub fn annual_report_extras(&self, session_ids_json: &str, begin: i32, end: i32, peak_begin: i32, peak_end: i32) -> Result<Value> {
-        self.account()?.annual_report_extras(&crate::native_contact::usernames_from_json(session_ids_json), begin as i64, end as i64, peak_begin as i64, peak_end as i64)
+    pub fn annual_report_extras(
+        &self,
+        session_ids_json: &str,
+        begin: i32,
+        end: i32,
+        peak_begin: i32,
+        peak_end: i32,
+    ) -> Result<Value> {
+        self.account()?.annual_report_extras(
+            &crate::native_contact::usernames_from_json(session_ids_json),
+            begin as i64,
+            end as i64,
+            peak_begin as i64,
+            peak_end as i64,
+        )
     }
 
     pub fn emoticon_cdn_url(&self, db_path: &str, md5: &str) -> Result<String> {
@@ -389,28 +569,51 @@ impl Wcdb {
         self.account()?.db_status()
     }
 
-    pub fn voice_data(&self, session_id: &str, create_time: i32, local_id: i32, svr_id: i64, candidates_json: &str) -> Result<String> {
-        self.account()?.voice_data(create_time as i64, local_id as i64, svr_id, &crate::native_contact::usernames_from_json(candidates_json))
+    pub fn voice_data(
+        &self,
+        session_id: &str,
+        create_time: i32,
+        local_id: i32,
+        svr_id: i64,
+        candidates_json: &str,
+    ) -> Result<String> {
+        self.account()?.voice_data(
+            create_time as i64,
+            local_id as i64,
+            svr_id,
+            &crate::native_contact::usernames_from_json(candidates_json),
+        )
     }
 
     pub fn voice_data_batch(&self, requests_json: &str) -> Result<Value> {
-        self.account()?.voice_data_batch(&serde_json::from_str(requests_json).unwrap_or_default())
+        self.account()?
+            .voice_data_batch(&serde_json::from_str(requests_json).unwrap_or_default())
     }
 
     pub fn media_schema_summary(&self, db_path: &str) -> Result<Value> {
         self.account()?.media_schema_summary(db_path)
     }
 
-    pub fn session_message_type_stats_batch(&self, session_ids_json: &str, options_json: &str) -> Result<Value> {
-        self.account()?.session_message_type_stats_batch(&crate::native_contact::usernames_from_json(session_ids_json), &serde_json::from_str(options_json).unwrap_or_default())
+    pub fn session_message_type_stats_batch(
+        &self,
+        session_ids_json: &str,
+        options_json: &str,
+    ) -> Result<Value> {
+        self.account()?.session_message_type_stats_batch(
+            &crate::native_contact::usernames_from_json(session_ids_json),
+            &serde_json::from_str(options_json).unwrap_or_default(),
+        )
     }
 
     pub fn session_message_date_counts_batch(&self, session_ids_json: &str) -> Result<Value> {
-        self.account()?.session_message_date_counts_batch(&crate::native_contact::usernames_from_json(session_ids_json))
+        self.account()?.session_message_date_counts_batch(
+            &crate::native_contact::usernames_from_json(session_ids_json),
+        )
     }
 
     pub fn head_image_buffers(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?.head_image_buffers(&crate::native_contact::usernames_from_json(usernames_json))
+        self.account()?
+            .head_image_buffers(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn message_table_columns(&self, db_path: &str, table: &str) -> Result<Value> {
@@ -425,15 +628,35 @@ impl Wcdb {
         self.account()?.table_schema(kind, Some(db_path), table)
     }
 
-    pub fn export_table_snapshot(&self, kind: &str, db_path: &str, table: &str, output_path: &str) -> Result<Value> {
-        self.account()?.export_table_snapshot(kind, Some(db_path), table, output_path)
+    pub fn export_table_snapshot(
+        &self,
+        kind: &str,
+        db_path: &str,
+        table: &str,
+        output_path: &str,
+    ) -> Result<Value> {
+        self.account()?
+            .export_table_snapshot(kind, Some(db_path), table, output_path)
     }
 
-    pub fn import_table_snapshot(&self, kind: &str, db_path: &str, table: &str, input_path: &str) -> Result<Value> {
+    pub fn import_table_snapshot(
+        &self,
+        kind: &str,
+        db_path: &str,
+        table: &str,
+        input_path: &str,
+    ) -> Result<Value> {
         self.read_only("import_table_snapshot")
     }
 
-    pub fn import_table_snapshot_with_schema(&self, kind: &str, db_path: &str, table: &str, input_path: &str, create_table_sql: &str) -> Result<Value> {
+    pub fn import_table_snapshot_with_schema(
+        &self,
+        kind: &str,
+        db_path: &str,
+        table: &str,
+        input_path: &str,
+        create_table_sql: &str,
+    ) -> Result<Value> {
         self.read_only("import_table_snapshot_with_schema")
     }
 
@@ -442,19 +665,24 @@ impl Wcdb {
     }
 
     pub fn resolve_image_hardlink(&self, md5: &str, account_dir: &str) -> Result<Value> {
-        self.account()?.resolve_image_hardlink(md5, Some(account_dir))
+        self.account()?
+            .resolve_image_hardlink(md5, Some(account_dir))
     }
 
     pub fn resolve_image_hardlink_batch(&self, requests_json: &str) -> Result<Value> {
-        self.account()?.resolve_image_hardlink_batch(&serde_json::from_str(requests_json).unwrap_or_default())
+        self.account()?
+            .resolve_image_hardlink_batch(&serde_json::from_str(requests_json).unwrap_or_default())
     }
 
     pub fn resolve_video_hardlink_md5(&self, md5: &str, db_path: &str) -> Result<Value> {
-        self.account()?.resolve_video_hardlink_md5(md5, Some(db_path))
+        self.account()?
+            .resolve_video_hardlink_md5(md5, Some(db_path))
     }
 
     pub fn resolve_video_hardlink_md5_batch(&self, requests_json: &str) -> Result<Value> {
-        self.account()?.resolve_video_hardlink_md5_batch(&serde_json::from_str(requests_json).unwrap_or_default())
+        self.account()?.resolve_video_hardlink_md5_batch(
+            &serde_json::from_str(requests_json).unwrap_or_default(),
+        )
     }
 }
 

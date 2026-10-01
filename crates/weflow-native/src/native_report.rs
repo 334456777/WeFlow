@@ -28,9 +28,21 @@ const PHRASES_TOP: usize = 50;
 const PHRASES_SIDE: usize = 200;
 /// Accounts that are never "people" in the footprint.
 const NOT_PEOPLE: &[&str] = &[
-    "weixin", "medianote", "floatbottle", "qmessage", "qqmail", "fmessage", "notifymessage", "newsapp",
-    "brandsessionholder", "brandservicesessionholder", "opencustomerservicemsg", "notification_messages",
-    "userexperience_alarm", "helper_folders", "@helper_folders",
+    "weixin",
+    "medianote",
+    "floatbottle",
+    "qmessage",
+    "qqmail",
+    "fmessage",
+    "notifymessage",
+    "newsapp",
+    "brandsessionholder",
+    "brandservicesessionholder",
+    "opencustomerservicemsg",
+    "notification_messages",
+    "userexperience_alarm",
+    "helper_folders",
+    "@helper_folders",
 ];
 
 fn int(row: &Value, key: &str) -> i64 {
@@ -38,7 +50,10 @@ fn int(row: &Value, key: &str) -> i64 {
 }
 
 fn text(row: &Value, key: &str) -> String {
-    row.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    row.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 /// One message of a conversation, reduced to what the reports need.
@@ -72,9 +87,18 @@ fn phrase_list(texts: &[&str], cap: usize) -> Value {
     for (i, t) in texts.iter().enumerate() {
         counts.entry(t).or_insert((0, i)).0 += 1;
     }
-    let mut v: Vec<(&str, i64, usize)> = counts.into_iter().filter(|(_, (c, _))| *c >= 2).map(|(p, (c, i))| (p, c, i)).collect();
+    let mut v: Vec<(&str, i64, usize)> = counts
+        .into_iter()
+        .filter(|(_, (c, _))| *c >= 2)
+        .map(|(p, (c, i))| (p, c, i))
+        .collect();
     v.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
-    Value::Array(v.into_iter().take(cap).map(|(p, c, _)| json!({ "phrase": p, "count": c })).collect())
+    Value::Array(
+        v.into_iter()
+            .take(cap)
+            .map(|(p, c, _)| json!({ "phrase": p, "count": c }))
+            .collect(),
+    )
 }
 
 fn is_phrase(t: &str) -> bool {
@@ -89,7 +113,8 @@ impl NativeAccount {
         let mut rows: Vec<((i64, i64, i64), Msg)> = Vec::new();
         for t in self.message_tables(session_id)? {
             let mine = self.my_ids(&t.db)?;
-            let local = |f: &str| format!("strftime('{f}', m.create_time, 'unixepoch', 'localtime')");
+            let local =
+                |f: &str| format!("strftime('{f}', m.create_time, 'unixepoch', 'localtime')");
             let sql = format!(
                 "select m.create_time as t, m.sort_seq as s, m.local_id as l, coalesce(nullif(m.local_type, 0), 1) as k, \
                  (m.real_sender_id in ({mine})) as mine, cast({h} as integer) as h, cast({w} as integer) as w, \
@@ -104,24 +129,33 @@ impl NativeAccount {
             // turned into `Msg` as they are read (the JSON rows would be several times larger)
             let base = rows.len();
             let cell = std::cell::RefCell::new(&mut rows);
-            self.query_each(&t.db, &sql, &[], || cell.borrow_mut().truncate(base), |r| {
-                let time = int(&r, "t");
-                let seq = match int(&r, "s") { 0 => time * 1000, s => s };
-                cell.borrow_mut().push((
-                    (seq, time, int(&r, "l")),
-                    Msg {
-                        time,
-                        local_id: int(&r, "l"),
-                        kind: int(&r, "k"),
-                        mine: int(&r, "mine") == 1,
-                        hour: int(&r, "h").clamp(0, 23) as usize,
-                        weekday_mon: ((int(&r, "w") + 6) % 7) as usize,
-                        day: text(&r, "d"),
-                        day_no: int(&r, "dn"),
-                        content: text(&r, "c"),
-                    },
-                ));
-            })?;
+            self.query_each(
+                &t.db,
+                &sql,
+                &[],
+                || cell.borrow_mut().truncate(base),
+                |r| {
+                    let time = int(&r, "t");
+                    let seq = match int(&r, "s") {
+                        0 => time * 1000,
+                        s => s,
+                    };
+                    cell.borrow_mut().push((
+                        (seq, time, int(&r, "l")),
+                        Msg {
+                            time,
+                            local_id: int(&r, "l"),
+                            kind: int(&r, "k"),
+                            mine: int(&r, "mine") == 1,
+                            hour: int(&r, "h").clamp(0, 23) as usize,
+                            weekday_mon: ((int(&r, "w") + 6) % 7) as usize,
+                            day: text(&r, "d"),
+                            day_no: int(&r, "dn"),
+                            content: text(&r, "c"),
+                        },
+                    ));
+                },
+            )?;
         }
         rows.sort_by_key(|a| a.0);
         Ok(rows.into_iter().map(|(_, m)| m).collect())
@@ -132,12 +166,20 @@ impl NativeAccount {
     /// `conversation` (`initiated`/`received` per session), `response` (my replies, only sessions with at least
     /// 10), `peakDay` (messages per session inside `[peak_begin, peak_end]`), `topPhrases` (my phrases, at most 32)
     /// and `streak` (the longest run of consecutive days with messages in one session; the first session wins ties).
-    pub fn annual_report_extras(&self, session_ids: &[String], begin: i64, end: i64, peak_begin: i64, peak_end: i64) -> Result<Value> {
+    pub fn annual_report_extras(
+        &self,
+        session_ids: &[String],
+        begin: i64,
+        end: i64,
+        peak_begin: i64,
+        peak_end: i64,
+    ) -> Result<Value> {
         /// Sessions need this many replies of mine to take part in the response statistics.
         const MIN_REPLIES: usize = 10;
         const PHRASES: usize = 32;
         let mut heatmap = vec![vec![0i64; 24]; 7];
-        let (mut midnight, mut conversation, mut response, mut peak) = (Map::new(), Map::new(), Map::new(), Map::new());
+        let (mut midnight, mut conversation, mut response, mut peak) =
+            (Map::new(), Map::new(), Map::new(), Map::new());
         let mut my_texts: Vec<String> = Vec::new();
         let mut streak: Option<(String, i64, String, String)> = None;
         for sid in session_ids {
@@ -165,7 +207,11 @@ impl NativeAccount {
                         }
                     }
                     _ => {
-                        if m.mine { initiated += 1 } else { received += 1 }
+                        if m.mine {
+                            initiated += 1
+                        } else {
+                            received += 1
+                        }
                     }
                 }
                 last = Some((m.time, m.mine));
@@ -191,7 +237,10 @@ impl NativeAccount {
             if night > 0 {
                 midnight.insert(sid.clone(), json!(night));
             }
-            conversation.insert(sid.clone(), json!({ "initiated": initiated, "received": received }));
+            conversation.insert(
+                sid.clone(),
+                json!({ "initiated": initiated, "received": received }),
+            );
             if replies.len() >= MIN_REPLIES {
                 response.insert(sid.clone(), json!({ "count": replies.len(), "avg": replies.iter().sum::<i64>() as f64 / replies.len() as f64 }));
             }
@@ -208,7 +257,8 @@ impl NativeAccount {
             "peakDay": peak, "topPhrases": phrase_list(&refs, PHRASES),
         });
         if let Some((sid, days, start, end)) = streak {
-            out["streak"] = json!({ "sessionId": sid, "days": days, "startDate": start, "endDate": end });
+            out["streak"] =
+                json!({ "sessionId": sid, "days": days, "startDate": start, "endDate": end });
         }
         Ok(out)
     }
@@ -236,7 +286,11 @@ impl NativeAccount {
                     let t = m.content.trim();
                     words += t.chars().count() as i64;
                     if is_phrase(t) {
-                        if m.mine { mine_texts.push(t) } else { their_texts.push(t) }
+                        if m.mine {
+                            mine_texts.push(t)
+                        } else {
+                            their_texts.push(t)
+                        }
                     }
                 }
                 _ => {}
@@ -255,7 +309,11 @@ impl NativeAccount {
                     }
                 }
                 _ => {
-                    if m.mine { initiated += 1 } else { received += 1 }
+                    if m.mine {
+                        initiated += 1
+                    } else {
+                        received += 1
+                    }
                 }
             }
             last = Some((m.time, m.mine));
@@ -273,7 +331,11 @@ impl NativeAccount {
             }
         }
 
-        let all_texts: Vec<&str> = mine_texts.iter().chain(their_texts.iter()).copied().collect();
+        let all_texts: Vec<&str> = mine_texts
+            .iter()
+            .chain(their_texts.iter())
+            .copied()
+            .collect();
         let mut out = json!({
             "counts": { "total": msgs.len(), "words": words, "image": images, "voice": voices, "emoji": emojis },
             // empty on purpose: the service layer then tallies the stickers itself
@@ -301,13 +363,24 @@ impl NativeAccount {
     /// Whether a message's `source` XML lists the account owner (or everyone) in `<atuserlist>`.
     fn mentions_me(&self, source: &str) -> bool {
         let lower = source.to_ascii_lowercase();
-        let Some(start) = lower.find("<atuserlist") else { return false };
-        let Some(open_end) = lower[start..].find('>') else { return false };
+        let Some(start) = lower.find("<atuserlist") else {
+            return false;
+        };
+        let Some(open_end) = lower[start..].find('>') else {
+            return false;
+        };
         let body_start = start + open_end + 1;
-        let Some(len) = lower[body_start..].find("</atuserlist>") else { return false };
+        let Some(len) = lower[body_start..].find("</atuserlist>") else {
+            return false;
+        };
         let body = &source[body_start..body_start + len];
-        let body = body.trim().trim_start_matches("<![CDATA[").trim_end_matches("]]>");
-        body.split(',').map(|t| t.trim().trim_start_matches('@')).any(|t| t.eq_ignore_ascii_case("notify@all") || self.is_me(t))
+        let body = body
+            .trim()
+            .trim_start_matches("<![CDATA[")
+            .trim_end_matches("]]>");
+        body.split(',')
+            .map(|t| t.trim().trim_start_matches('@'))
+            .any(|t| t.eq_ignore_ascii_case("notify@all") || self.is_me(t))
     }
 
     /// `{ summary, private_sessions, private_segments, mentions, mention_groups, diagnostics }`.
@@ -315,12 +388,29 @@ impl NativeAccount {
         let started = Instant::now();
         let pick = |keys: &[&str]| keys.iter().find_map(|k| options.get(*k));
         let num = |keys: &[&str]| pick(keys).and_then(Value::as_i64).unwrap_or(0).max(0);
-        let (begin, end) = (num(&["begin", "beginTimestamp"]), num(&["end", "endTimestamp"]));
-        let (mention_limit, private_limit) = (num(&["mention_limit", "mentionLimit"]) as usize, num(&["private_limit", "privateLimit"]) as usize);
+        let (begin, end) = (
+            num(&["begin", "beginTimestamp"]),
+            num(&["end", "endTimestamp"]),
+        );
+        let (mention_limit, private_limit) = (
+            num(&["mention_limit", "mentionLimit"]) as usize,
+            num(&["private_limit", "privateLimit"]) as usize,
+        );
         let list = |key: &str| -> Vec<String> {
-            options.get(key).and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default()
+            options
+                .get(key)
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default()
         };
-        let (mut private_ids, mut group_ids) = (list("private_session_ids"), list("group_session_ids"));
+        let (mut private_ids, mut group_ids) =
+            (list("private_session_ids"), list("group_session_ids"));
         if private_ids.is_empty() && group_ids.is_empty() {
             for u in crate::native_msg::session_usernames(self)? {
                 if u.ends_with("@chatroom") {
@@ -387,8 +477,17 @@ impl NativeAccount {
                 "anchor_local_id": anchor, "anchor_create_time": latest
             }));
         }
-        sessions.sort_by(|a, b| int(b, "latest_ts").cmp(&int(a, "latest_ts")).then(text(a, "session_id").cmp(&text(b, "session_id"))));
-        segments.sort_by(|a, b| int(a, "start_ts").cmp(&int(b, "start_ts")).then(text(a, "session_id").cmp(&text(b, "session_id"))).then(int(a, "segment_index").cmp(&int(b, "segment_index"))));
+        sessions.sort_by(|a, b| {
+            int(b, "latest_ts")
+                .cmp(&int(a, "latest_ts"))
+                .then(text(a, "session_id").cmp(&text(b, "session_id")))
+        });
+        segments.sort_by(|a, b| {
+            int(a, "start_ts")
+                .cmp(&int(b, "start_ts"))
+                .then(text(a, "session_id").cmp(&text(b, "session_id")))
+                .then(int(a, "segment_index").cmp(&int(b, "segment_index")))
+        });
         let private_truncated = private_limit > 0 && sessions.len() > private_limit;
         if private_truncated {
             sessions.truncate(private_limit);
@@ -421,7 +520,11 @@ impl NativeAccount {
                 mentions.extend(found.into_inner());
             }
         }
-        mentions.sort_by(|a, b| int(b, "create_time").cmp(&int(a, "create_time")).then(int(b, "local_id").cmp(&int(a, "local_id"))));
+        mentions.sort_by(|a, b| {
+            int(b, "create_time")
+                .cmp(&int(a, "create_time"))
+                .then(int(b, "local_id").cmp(&int(a, "local_id")))
+        });
         let mention_truncated = mention_limit > 0 && mentions.len() > mention_limit;
         if mention_truncated {
             mentions.truncate(mention_limit);
@@ -432,12 +535,19 @@ impl NativeAccount {
             g.0 += 1;
             g.1 = g.1.max(int(m, "create_time"));
         }
-        let mut mention_groups: Vec<(String, i64, i64)> = groups.into_iter().map(|(s, (c, l))| (s, c, l)).collect();
+        let mut mention_groups: Vec<(String, i64, i64)> =
+            groups.into_iter().map(|(s, (c, l))| (s, c, l)).collect();
         mention_groups.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)).then(a.0.cmp(&b.0)));
 
-        let inbound = sessions.iter().filter(|s| int(s, "incoming_count") > 0).count();
+        let inbound = sessions
+            .iter()
+            .filter(|s| int(s, "incoming_count") > 0)
+            .count();
         let replied = sessions.iter().filter(|s| s["replied"] == true).count();
-        let outbound = sessions.iter().filter(|s| int(s, "outgoing_count") > 0).count();
+        let outbound = sessions
+            .iter()
+            .filter(|s| int(s, "outgoing_count") > 0)
+            .count();
         Ok(json!({
             "summary": {
                 "private_inbound_people": inbound, "private_replied_people": replied, "private_outbound_people": outbound,
@@ -469,7 +579,16 @@ struct Segment {
 
 impl Segment {
     fn new(index: i64, start: i64, anchor_local_id: i64) -> Self {
-        Self { index, start, end: start, inc: 0, out: 0, first_in: 0, first_reply: 0, anchor_local_id }
+        Self {
+            index,
+            start,
+            end: start,
+            inc: 0,
+            out: 0,
+            first_in: 0,
+            first_reply: 0,
+            anchor_local_id,
+        }
     }
 
     fn finish(self, session_id: &str) -> Value {
@@ -501,15 +620,24 @@ mod tests {
         // tests run in parallel and several build the same world: every call gets its own directory
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!("weflow-report-{}-{tag}-{n}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("weflow-report-{}-{tag}-{n}", std::process::id()));
         let f = Fixture::new(&root, "wxid_me_ab12");
         f.session_db(sessions);
         f.message_shard(0, shard);
-        NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap().with_my_wxid(Some("wxid_me_ab12".into()))
+        NativeAccount::new(f.db_storage(), &f.key_hex())
+            .unwrap()
+            .with_my_wxid(Some("wxid_me_ab12".into()))
     }
 
     fn session(username: &'static str) -> SessionSpec {
-        SessionSpec { username, summary: "", last_timestamp: T0, unread: 0, last_msg_type: 1 }
+        SessionSpec {
+            username,
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }
     }
 
     fn dual() -> NativeAccount {
@@ -538,15 +666,35 @@ mod tests {
     #[test]
     fn dual_report_counts_words_and_kinds() {
         let v = dual().dual_report_stats("wxid_pal", 0, 0).unwrap();
-        assert_eq!(v["counts"], json!({"total": 10, "words": 18, "image": 1, "voice": 1, "emoji": 1}));
-        assert_eq!(v["emojis"], json!([]), "the service layer tallies stickers itself");
+        assert_eq!(
+            v["counts"],
+            json!({"total": 10, "words": 18, "image": 1, "voice": 1, "emoji": 1})
+        );
+        assert_eq!(
+            v["emojis"],
+            json!([]),
+            "the service layer tallies stickers itself"
+        );
         let heat = v["heatmap"].as_array().unwrap();
         assert_eq!((heat.len(), heat[0].as_array().unwrap().len()), (7, 24));
-        let total: i64 = heat.iter().flat_map(|r| r.as_array().unwrap()).map(|n| n.as_i64().unwrap()).sum();
+        let total: i64 = heat
+            .iter()
+            .flat_map(|r| r.as_array().unwrap())
+            .map(|n| n.as_i64().unwrap())
+            .sum();
         assert_eq!(total, 10);
-        let monthly: i64 = v["monthly"].as_object().unwrap().values().map(|n| n.as_i64().unwrap()).sum();
+        let monthly: i64 = v["monthly"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|n| n.as_i64().unwrap())
+            .sum();
         assert_eq!(monthly, 10);
-        assert!(v["monthly"].as_object().unwrap().keys().all(|k| k.len() == 7));
+        assert!(v["monthly"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|k| k.len() == 7));
     }
 
     #[test]
@@ -555,17 +703,30 @@ mod tests {
         // conversations start at messages 1 (pal), 5 (me), 7 (me), 9 (pal)
         assert_eq!(v["initiative"], json!({"initiated": 2, "received": 2}));
         // my replies to pal inside a conversation: 10 s, 10 s and 5 s
-        assert_eq!(v["response"], json!({"avg": 8, "fastest": 5, "slowest": 10, "count": 3}));
+        assert_eq!(
+            v["response"],
+            json!({"avg": 8, "fastest": 5, "slowest": 10, "count": 3})
+        );
     }
 
     #[test]
     fn dual_report_phrases_and_streak() {
         let v = dual().dual_report_stats("wxid_pal", 0, 0).unwrap();
-        assert_eq!(v["phrases"], json!([{"phrase": "ok", "count": 5}, {"phrase": "haha", "count": 2}]));
-        assert_eq!(v["myPhrases"], json!([{"phrase": "ok", "count": 3}]), "haha was typed once: below the 2-occurrence floor");
+        assert_eq!(
+            v["phrases"],
+            json!([{"phrase": "ok", "count": 5}, {"phrase": "haha", "count": 2}])
+        );
+        assert_eq!(
+            v["myPhrases"],
+            json!([{"phrase": "ok", "count": 3}]),
+            "haha was typed once: below the 2-occurrence floor"
+        );
         assert_eq!(v["friendPhrases"], json!([{"phrase": "ok", "count": 2}]));
         assert_eq!(v["streak"]["days"], 3);
-        let (s, e) = (v["streak"]["startDate"].as_str().unwrap(), v["streak"]["endDate"].as_str().unwrap());
+        let (s, e) = (
+            v["streak"]["startDate"].as_str().unwrap(),
+            v["streak"]["endDate"].as_str().unwrap(),
+        );
         assert!(s.len() == 10 && e.len() == 10 && s < e, "{s} .. {e}");
     }
 
@@ -585,15 +746,31 @@ mod tests {
         assert!(is_phrase("ok") && is_phrase("好的呀"));
         assert!(!is_phrase("a") && !is_phrase(&"x".repeat(21)));
         assert!(!is_phrase("see http://x") && !is_phrase("<b>hi</b>") && !is_phrase("[Smile]"));
-        assert_eq!(phrase_list(&["b", "a", "b", "a", "c"], 10), json!([{"phrase": "b", "count": 2}, {"phrase": "a", "count": 2}]), "ties keep first-seen order");
-        assert_eq!(phrase_list(&["a", "a", "a", "b", "b"], 1), json!([{"phrase": "a", "count": 3}]));
+        assert_eq!(
+            phrase_list(&["b", "a", "b", "a", "c"], 10),
+            json!([{"phrase": "b", "count": 2}, {"phrase": "a", "count": 2}]),
+            "ties keep first-seen order"
+        );
+        assert_eq!(
+            phrase_list(&["a", "a", "a", "b", "b"], 1),
+            json!([{"phrase": "a", "count": 3}])
+        );
     }
 
     fn footprint() -> NativeAccount {
         let at = |who: &str| format!("<msgsource><atuserlist>{who}</atuserlist></msgsource>");
         world(
             "footprint",
-            &["wxid_pal", "wxid_lone", "wxid_quiet", "gh_x", "medianote", "g1@chatroom", "g2@chatroom"].map(session),
+            &[
+                "wxid_pal",
+                "wxid_lone",
+                "wxid_quiet",
+                "gh_x",
+                "medianote",
+                "g1@chatroom",
+                "g2@chatroom",
+            ]
+            .map(session),
             &[
                 (
                     "wxid_pal",
@@ -605,31 +782,74 @@ mod tests {
                         MsgSpec::text(5, "wxid_pal", T0 + 3 * DAY, "e"),
                     ],
                 ),
-                ("wxid_lone", vec![MsgSpec::text(1, "wxid_lone", T0 + 5, "x"), MsgSpec::text(2, "wxid_lone", T0 + 6, "y")]),
-                ("wxid_quiet", vec![MsgSpec::text(1, "wxid_me", T0 + 70, "hello?")]),
+                (
+                    "wxid_lone",
+                    vec![
+                        MsgSpec::text(1, "wxid_lone", T0 + 5, "x"),
+                        MsgSpec::text(2, "wxid_lone", T0 + 6, "y"),
+                    ],
+                ),
+                (
+                    "wxid_quiet",
+                    vec![MsgSpec::text(1, "wxid_me", T0 + 70, "hello?")],
+                ),
                 (
                     "g1@chatroom",
                     vec![
-                        MsgSpec::text(1, "wxid_bob", T0 + 10, "wxid_bob:\n@Me hello").with_source(&at("wxid_me")),
-                        MsgSpec::text(2, "wxid_bob", T0 + 20, "wxid_bob:\n@Carol hi").with_source(&at("wxid_carol")),
-                        MsgSpec::text(3, "wxid_quiet", T0 + 100, "wxid_quiet:\n@all meeting").with_source(&at("notify@all")),
-                        MsgSpec::text(4, "wxid_bob", T0 + 150, "no at sign here").with_source(&at("wxid_me")),
-                        MsgSpec::text(5, "wxid_bob", T0 + 200, "wxid_bob:\n@Me again").with_source(&at("wxid_me_ab12,wxid_carol")),
+                        MsgSpec::text(1, "wxid_bob", T0 + 10, "wxid_bob:\n@Me hello")
+                            .with_source(&at("wxid_me")),
+                        MsgSpec::text(2, "wxid_bob", T0 + 20, "wxid_bob:\n@Carol hi")
+                            .with_source(&at("wxid_carol")),
+                        MsgSpec::text(3, "wxid_quiet", T0 + 100, "wxid_quiet:\n@all meeting")
+                            .with_source(&at("notify@all")),
+                        MsgSpec::text(4, "wxid_bob", T0 + 150, "no at sign here")
+                            .with_source(&at("wxid_me")),
+                        MsgSpec::text(5, "wxid_bob", T0 + 200, "wxid_bob:\n@Me again")
+                            .with_source(&at("wxid_me_ab12,wxid_carol")),
                     ],
                 ),
-                ("g2@chatroom", vec![MsgSpec::text(1, "wxid_bob", T0 + 50, "@Me there").with_source(&at("wxid_me"))]),
+                (
+                    "g2@chatroom",
+                    vec![MsgSpec::text(1, "wxid_bob", T0 + 50, "@Me there")
+                        .with_source(&at("wxid_me"))],
+                ),
             ],
         )
     }
 
     #[test]
     fn footprint_private_sessions_summary_and_segments() {
-        let v = footprint().footprint_stats(&json!({"myWxid": "wxid_me_ab12"})).unwrap();
-        let ids: Vec<&str> = v["private_sessions"].as_array().unwrap().iter().map(|s| s["session_id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["wxid_pal", "wxid_quiet", "wxid_lone"], "people only, newest activity first; gh_/medianote are not people");
+        let v = footprint()
+            .footprint_stats(&json!({"myWxid": "wxid_me_ab12"}))
+            .unwrap();
+        let ids: Vec<&str> = v["private_sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["session_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            ["wxid_pal", "wxid_quiet", "wxid_lone"],
+            "people only, newest activity first; gh_/medianote are not people"
+        );
         let pal = &v["private_sessions"][0];
-        assert_eq!((pal["incoming_count"].as_i64(), pal["outgoing_count"].as_i64(), pal["replied"].as_bool()), (Some(3), Some(2), Some(true)));
-        assert_eq!((pal["first_incoming_ts"].as_i64(), pal["first_reply_ts"].as_i64(), pal["latest_ts"].as_i64()), (Some(T0), Some(T0 + 60), Some(T0 + 3 * DAY)));
+        assert_eq!(
+            (
+                pal["incoming_count"].as_i64(),
+                pal["outgoing_count"].as_i64(),
+                pal["replied"].as_bool()
+            ),
+            (Some(3), Some(2), Some(true))
+        );
+        assert_eq!(
+            (
+                pal["first_incoming_ts"].as_i64(),
+                pal["first_reply_ts"].as_i64(),
+                pal["latest_ts"].as_i64()
+            ),
+            (Some(T0), Some(T0 + 60), Some(T0 + 3 * DAY))
+        );
         assert_eq!(pal["anchor_local_id"], 5);
         assert_eq!(v["private_sessions"][2]["replied"], false);
         assert_eq!(v["summary"]["private_inbound_people"], 2);
@@ -637,48 +857,117 @@ mod tests {
         assert_eq!(v["summary"]["private_outbound_people"], 2);
         assert_eq!(v["summary"]["private_reply_rate"], 0.5);
 
-        let segs: Vec<&Value> = v["private_segments"].as_array().unwrap().iter().filter(|s| s["session_id"] == "wxid_pal").collect();
+        let segs: Vec<&Value> = v["private_segments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["session_id"] == "wxid_pal")
+            .collect();
         assert_eq!(segs.len(), 3, "gaps of more than an hour split the chat");
-        assert_eq!((segs[0]["message_count"].as_i64(), segs[0]["duration_sec"].as_i64(), segs[0]["replied"].as_bool()), (Some(2), Some(60), Some(true)));
-        assert_eq!((segs[2]["message_count"].as_i64(), segs[2]["replied"].as_bool(), segs[2]["segment_index"].as_i64()), (Some(1), Some(false), Some(3)));
+        assert_eq!(
+            (
+                segs[0]["message_count"].as_i64(),
+                segs[0]["duration_sec"].as_i64(),
+                segs[0]["replied"].as_bool()
+            ),
+            (Some(2), Some(60), Some(true))
+        );
+        assert_eq!(
+            (
+                segs[2]["message_count"].as_i64(),
+                segs[2]["replied"].as_bool(),
+                segs[2]["segment_index"].as_i64()
+            ),
+            (Some(1), Some(false), Some(3))
+        );
         assert_eq!(segs[1]["anchor_local_id"], 3);
     }
 
     #[test]
     fn footprint_mentions_use_the_atuserlist_and_count_at_all() {
-        let v = footprint().footprint_stats(&json!({"myWxid": "wxid_me_ab12"})).unwrap();
-        let got: Vec<(String, i64)> = v["mentions"].as_array().unwrap().iter().map(|m| (m["session_id"].as_str().unwrap().to_string(), m["local_id"].as_i64().unwrap())).collect();
+        let v = footprint()
+            .footprint_stats(&json!({"myWxid": "wxid_me_ab12"}))
+            .unwrap();
+        let got: Vec<(String, i64)> = v["mentions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                (
+                    m["session_id"].as_str().unwrap().to_string(),
+                    m["local_id"].as_i64().unwrap(),
+                )
+            })
+            .collect();
         // newest first; @Carol is not me; "no at sign here" has no @ in its text
-        assert_eq!(got, [("g1@chatroom".into(), 5), ("g1@chatroom".into(), 3), ("g2@chatroom".into(), 1), ("g1@chatroom".into(), 1)]);
+        assert_eq!(
+            got,
+            [
+                ("g1@chatroom".into(), 5),
+                ("g1@chatroom".into(), 3),
+                ("g2@chatroom".into(), 1),
+                ("g1@chatroom".into(), 1)
+            ]
+        );
         assert_eq!(v["mentions"][0]["sender_username"], "wxid_bob");
-        assert_eq!((v["summary"]["mention_count"].as_i64(), v["summary"]["mention_group_count"].as_i64()), (Some(4), Some(2)));
-        assert_eq!(v["mention_groups"], json!([{"session_id": "g1@chatroom", "count": 3, "latest_ts": T0 + 200}, {"session_id": "g2@chatroom", "count": 1, "latest_ts": T0 + 50}]));
+        assert_eq!(
+            (
+                v["summary"]["mention_count"].as_i64(),
+                v["summary"]["mention_group_count"].as_i64()
+            ),
+            (Some(4), Some(2))
+        );
+        assert_eq!(
+            v["mention_groups"],
+            json!([{"session_id": "g1@chatroom", "count": 3, "latest_ts": T0 + 200}, {"session_id": "g2@chatroom", "count": 1, "latest_ts": T0 + 50}])
+        );
     }
 
     #[test]
     fn footprint_options_limit_scope_and_truncate() {
         let a = footprint();
-        let v = a.footprint_stats(&json!({"begin": T0 + 60, "end": T0 + 150, "mention_limit": 1, "private_limit": 1})).unwrap();
+        let v = a
+            .footprint_stats(
+                &json!({"begin": T0 + 60, "end": T0 + 150, "mention_limit": 1, "private_limit": 1}),
+            )
+            .unwrap();
         // in [T0+60, T0+150] only g1#3 (@all at T0+100) is a mention; g2#1 (T0+50) is before the range
         assert_eq!(v["mentions"].as_array().unwrap().len(), 1);
-        assert_eq!(v["diagnostics"]["mention_truncated"], false, "the limit was not exceeded");
+        assert_eq!(
+            v["diagnostics"]["mention_truncated"], false,
+            "the limit was not exceeded"
+        );
         // pal (my reply at T0+60) and quiet (T0+70) are active in range, so a limit of 1 truncates
         assert_eq!(v["private_sessions"].as_array().unwrap().len(), 1);
         assert_eq!(v["diagnostics"]["private_truncated"], true);
         assert_eq!(v["diagnostics"]["truncated"], true);
-        let scoped = a.footprint_stats(&json!({"private_session_ids": ["wxid_lone"], "group_session_ids": []})).unwrap();
+        let scoped = a
+            .footprint_stats(
+                &json!({"private_session_ids": ["wxid_lone"], "group_session_ids": []}),
+            )
+            .unwrap();
         assert_eq!(scoped["private_sessions"].as_array().unwrap().len(), 1);
-        assert_eq!(scoped["mentions"], json!([]), "explicit scope: no groups were asked for");
+        assert_eq!(
+            scoped["mentions"],
+            json!([]),
+            "explicit scope: no groups were asked for"
+        );
         let cut = a.footprint_stats(&json!({"private_limit": 1})).unwrap();
         assert_eq!(cut["private_sessions"].as_array().unwrap().len(), 1);
         assert_eq!(cut["diagnostics"]["private_truncated"], true);
-        assert!(cut["private_segments"].as_array().unwrap().iter().all(|s| s["session_id"] == "wxid_pal"));
+        assert!(cut["private_segments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["session_id"] == "wxid_pal"));
     }
 
     #[test]
     fn mention_parsing_edge_cases() {
         let a = account_for_mentions();
-        assert!(a.mentions_me("<msgsource><atuserlist><![CDATA[wxid_me, wxid_x]]></atuserlist></msgsource>"));
+        assert!(a.mentions_me(
+            "<msgsource><atuserlist><![CDATA[wxid_me, wxid_x]]></atuserlist></msgsource>"
+        ));
         assert!(a.mentions_me("<ATUSERLIST>@wxid_me</ATUSERLIST>"));
         assert!(a.mentions_me("<atuserlist>notify@all</atuserlist>"));
         assert!(!a.mentions_me("<atuserlist>wxid_other</atuserlist>"));
@@ -694,47 +983,127 @@ mod tests {
     #[test]
     fn annual_extras_follow_the_service_layer_definitions() {
         let a = dual();
-        let v = a.annual_report_extras(&ids(&["wxid_pal"]), 0, 0, 0, 0).unwrap();
-        let heat: i64 = v["heatmap"].as_array().unwrap().iter().flat_map(|r| r.as_array().unwrap()).map(|n| n.as_i64().unwrap()).sum();
+        let v = a
+            .annual_report_extras(&ids(&["wxid_pal"]), 0, 0, 0, 0)
+            .unwrap();
+        let heat: i64 = v["heatmap"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|r| r.as_array().unwrap())
+            .map(|n| n.as_i64().unwrap())
+            .sum();
         assert_eq!((v["heatmap"].as_array().unwrap().len(), heat), (7, 10));
-        assert_eq!(v["conversation"], json!({"wxid_pal": {"initiated": 2, "received": 2}}));
-        assert_eq!(v["response"], json!({}), "3 replies is below the 10-reply floor");
-        assert_eq!(v["topPhrases"], json!([{"phrase": "ok", "count": 3}]), "only my phrases, seen at least twice");
-        assert_eq!((v["streak"]["sessionId"].clone(), v["streak"]["days"].clone()), (json!("wxid_pal"), json!(3)));
-        assert!(v["streak"]["startDate"].as_str().unwrap() < v["streak"]["endDate"].as_str().unwrap());
+        assert_eq!(
+            v["conversation"],
+            json!({"wxid_pal": {"initiated": 2, "received": 2}})
+        );
+        assert_eq!(
+            v["response"],
+            json!({}),
+            "3 replies is below the 10-reply floor"
+        );
+        assert_eq!(
+            v["topPhrases"],
+            json!([{"phrase": "ok", "count": 3}]),
+            "only my phrases, seen at least twice"
+        );
+        assert_eq!(
+            (
+                v["streak"]["sessionId"].clone(),
+                v["streak"]["days"].clone()
+            ),
+            (json!("wxid_pal"), json!(3))
+        );
+        assert!(
+            v["streak"]["startDate"].as_str().unwrap() < v["streak"]["endDate"].as_str().unwrap()
+        );
         assert_eq!(v["peakDay"], json!({}), "no peak window asked for");
-        assert!(v["midnight"].as_object().unwrap().values().all(|n| n.as_i64().unwrap() <= 10));
+        assert!(v["midnight"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|n| n.as_i64().unwrap() <= 10));
 
-        let peak = a.annual_report_extras(&ids(&["wxid_pal"]), 0, 0, T0, T0 + 100).unwrap();
+        let peak = a
+            .annual_report_extras(&ids(&["wxid_pal"]), 0, 0, T0, T0 + 100)
+            .unwrap();
         assert_eq!(peak["peakDay"], json!({"wxid_pal": 4}));
-        let ranged = a.annual_report_extras(&ids(&["wxid_pal"]), T0 + DAY, 0, 0, 0).unwrap();
-        assert_eq!(ranged["conversation"], json!({"wxid_pal": {"initiated": 1, "received": 1}}));
-        let none = a.annual_report_extras(&ids(&["nobody"]), 0, 0, 0, 0).unwrap();
-        assert!(none.get("streak").is_none() && none["conversation"] == json!({}) && none["topPhrases"] == json!([]));
+        let ranged = a
+            .annual_report_extras(&ids(&["wxid_pal"]), T0 + DAY, 0, 0, 0)
+            .unwrap();
+        assert_eq!(
+            ranged["conversation"],
+            json!({"wxid_pal": {"initiated": 1, "received": 1}})
+        );
+        let none = a
+            .annual_report_extras(&ids(&["nobody"]), 0, 0, 0, 0)
+            .unwrap();
+        assert!(
+            none.get("streak").is_none()
+                && none["conversation"] == json!({})
+                && none["topPhrases"] == json!([])
+        );
     }
 
     #[test]
     fn annual_extras_response_needs_ten_replies_and_streak_ties_go_to_the_first_session() {
         let mut quick = Vec::new();
         for i in 0..10 {
-            quick.push(MsgSpec::text(i * 2 + 1, "wxid_fast", T0 + i * 7_200, "ping"));
-            quick.push(MsgSpec::text(i * 2 + 2, "wxid_me", T0 + i * 7_200 + 30, "pong"));
+            quick.push(MsgSpec::text(
+                i * 2 + 1,
+                "wxid_fast",
+                T0 + i * 7_200,
+                "ping",
+            ));
+            quick.push(MsgSpec::text(
+                i * 2 + 2,
+                "wxid_me",
+                T0 + i * 7_200 + 30,
+                "pong",
+            ));
         }
         let a = world(
             "annual-response",
             &[session("wxid_fast"), session("wxid_slow")],
             &[
                 ("wxid_fast", quick),
-                ("wxid_slow", vec![MsgSpec::text(1, "wxid_slow", T0, "hi"), MsgSpec::text(2, "wxid_me", T0 + 20, "yo"), MsgSpec::text(3, "wxid_slow", T0 + DAY, "again")]),
+                (
+                    "wxid_slow",
+                    vec![
+                        MsgSpec::text(1, "wxid_slow", T0, "hi"),
+                        MsgSpec::text(2, "wxid_me", T0 + 20, "yo"),
+                        MsgSpec::text(3, "wxid_slow", T0 + DAY, "again"),
+                    ],
+                ),
             ],
         );
-        let v = a.annual_report_extras(&ids(&["wxid_slow", "wxid_fast"]), 0, 0, 0, 0).unwrap();
-        assert_eq!(v["response"], json!({"wxid_fast": {"count": 10, "avg": 30.0}}));
-        assert_eq!(v["conversation"]["wxid_fast"], json!({"initiated": 0, "received": 10}));
+        let v = a
+            .annual_report_extras(&ids(&["wxid_slow", "wxid_fast"]), 0, 0, 0, 0)
+            .unwrap();
+        assert_eq!(
+            v["response"],
+            json!({"wxid_fast": {"count": 10, "avg": 30.0}})
+        );
+        assert_eq!(
+            v["conversation"]["wxid_fast"],
+            json!({"initiated": 0, "received": 10})
+        );
         // wxid_slow spans 2 days; wxid_fast spans at most 2 (18 hours) and slow is listed first, so slow wins
-        assert_eq!((v["streak"]["sessionId"].clone(), v["streak"]["days"].clone()), (json!("wxid_slow"), json!(2)));
-        let tie = a.annual_report_extras(&ids(&["wxid_fast", "wxid_slow"]), 0, T0 + 2 * 3_600, 0, 0).unwrap();
-        assert_eq!(tie["streak"]["sessionId"], "wxid_fast", "a tie keeps the first session");
+        assert_eq!(
+            (
+                v["streak"]["sessionId"].clone(),
+                v["streak"]["days"].clone()
+            ),
+            (json!("wxid_slow"), json!(2))
+        );
+        let tie = a
+            .annual_report_extras(&ids(&["wxid_fast", "wxid_slow"]), 0, T0 + 2 * 3_600, 0, 0)
+            .unwrap();
+        assert_eq!(
+            tie["streak"]["sessionId"], "wxid_fast",
+            "a tie keeps the first session"
+        );
     }
 
     #[test]
@@ -743,11 +1112,28 @@ mod tests {
         let v = a.annual_report_stats(&ids(&["wxid_pal"]), 0, 0).unwrap();
         let plain = a.aggregate_stats(&ids(&["wxid_pal"]), 0, 0).unwrap();
         assert_eq!(v["total"], plain["total"]);
-        assert!(plain["sessions"]["wxid_pal"].get("monthly").is_none(), "the plain aggregate keeps its shape");
+        assert!(
+            plain["sessions"]["wxid_pal"].get("monthly").is_none(),
+            "the plain aggregate keeps its shape"
+        );
         let monthly = v["sessions"]["wxid_pal"]["monthly"].as_object().unwrap();
-        assert!(monthly.keys().all(|k| (1..=12).contains(&k.parse::<i64>().unwrap())), "{monthly:?}");
-        assert_eq!(monthly.values().map(|n| n.as_i64().unwrap()).sum::<i64>(), 10);
-        assert_eq!((v["sessions"]["wxid_pal"]["sent"].clone(), v["sessions"]["wxid_pal"]["received"].clone()), (json!(5), json!(5)));
+        assert!(
+            monthly
+                .keys()
+                .all(|k| (1..=12).contains(&k.parse::<i64>().unwrap())),
+            "{monthly:?}"
+        );
+        assert_eq!(
+            monthly.values().map(|n| n.as_i64().unwrap()).sum::<i64>(),
+            10
+        );
+        assert_eq!(
+            (
+                v["sessions"]["wxid_pal"]["sent"].clone(),
+                v["sessions"]["wxid_pal"]["received"].clone()
+            ),
+            (json!(5), json!(5))
+        );
     }
 
     fn account_for_mentions() -> NativeAccount {

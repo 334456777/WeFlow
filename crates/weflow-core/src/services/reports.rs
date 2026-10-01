@@ -12,11 +12,16 @@ use crate::message::{decode_message_content, row_int, rx};
 const CONVERSATION_GAP: i64 = 3600;
 
 fn num(v: &Value) -> i64 {
-    v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)).or_else(|| v.as_str().and_then(|s| crate::api::js_parse_int(s))).unwrap_or(0)
+    v.as_i64()
+        .or_else(|| v.as_f64().map(|f| f as i64))
+        .or_else(|| v.as_str().and_then(|s| crate::api::js_parse_int(s)))
+        .unwrap_or(0)
 }
 
 fn fnum(v: &Value) -> f64 {
-    v.as_f64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())).unwrap_or(0.0)
+    v.as_f64()
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+        .unwrap_or(0.0)
 }
 
 fn local_ts(year: i32, month: u32, day: u32, h: u32, m: u32, s: u32) -> i64 {
@@ -31,15 +36,23 @@ fn year_range(year: i32) -> (i64, i64) {
     if year <= 0 {
         (0, 0)
     } else {
-        (local_ts(year, 1, 1, 0, 0, 0), local_ts(year, 12, 31, 23, 59, 59))
+        (
+            local_ts(year, 1, 1, 0, 0, 0),
+            local_ts(year, 12, 31, 23, 59, 59),
+        )
     }
 }
 
 fn is_report_private_session(username: &str, cleaned_wxid: &str) -> bool {
-    if username.is_empty() || username.contains("@chatroom") || username == "filehelper" || username.starts_with("gh_") {
+    if username.is_empty()
+        || username.contains("@chatroom")
+        || username == "filehelper"
+        || username.starts_with("gh_")
+    {
         return false;
     }
-    if username.to_lowercase() == cleaned_wxid.to_lowercase() || username.to_lowercase() == "weixin" {
+    if username.to_lowercase() == cleaned_wxid.to_lowercase() || username.to_lowercase() == "weixin"
+    {
         return false;
     }
     for prefix in [
@@ -63,7 +76,9 @@ fn is_report_private_session(username: &str, cleaned_wxid: &str) -> bool {
             return false;
         }
     }
-    !(username.contains("@kefu.openim") || username.contains("@openim") || username.contains("service_"))
+    !(username.contains("@kefu.openim")
+        || username.contains("@openim")
+        || username.contains("service_"))
 }
 
 fn ymd(d: chrono::DateTime<Local>) -> String {
@@ -72,12 +87,17 @@ fn ymd(d: chrono::DateTime<Local>) -> String {
 
 fn parse_local_day(s: &str) -> Option<chrono::DateTime<Local>> {
     let d = NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
-    Local.from_local_datetime(&d.and_hms_opt(0, 0, 0)?).earliest()
+    Local
+        .from_local_datetime(&d.and_hms_opt(0, 0, 0)?)
+        .earliest()
 }
 
 fn day_index(dt: chrono::DateTime<Local>) -> i64 {
     // local midnight as unix days, like `Math.floor(dayDate.getTime() / 86400000)`
-    let midnight = Local.from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap()).earliest().unwrap_or(dt);
+    let midnight = Local
+        .from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap())
+        .earliest()
+        .unwrap_or(dt);
     midnight.timestamp().div_euclid(86400)
 }
 
@@ -92,7 +112,9 @@ fn normalize_emoji_md5(raw: &str) -> Option<String> {
     if t.is_empty() {
         return None;
     }
-    rx(r"([a-fA-F0-9]{16,64})").captures(t).map(|c| c[1].to_lowercase())
+    rx(r"([a-fA-F0-9]{16,64})")
+        .captures(t)
+        .map(|c| c[1].to_lowercase())
 }
 
 fn normalize_emoji_url(raw: &str) -> Option<String> {
@@ -131,11 +153,15 @@ fn extract_emoji_url(content: &str) -> Option<String> {
     if let Some(d) = normalize_emoji_url(content).filter(|d| rx(r"(?i)^https?://").is_match(d)) {
         return Some(d);
     }
-    let attr = rx(r#"(?i)(?:cdnurl|thumburl)\s*=\s*['"]([^'"]+)['"]"#).captures(content).or_else(|| rx(r#"(?i)(?:cdnurl|thumburl)\s*=\s*([^'"\s>]+)"#).captures(content));
+    let attr = rx(r#"(?i)(?:cdnurl|thumburl)\s*=\s*['"]([^'"]+)['"]"#)
+        .captures(content)
+        .or_else(|| rx(r#"(?i)(?:cdnurl|thumburl)\s*=\s*([^'"\s>]+)"#).captures(content));
     if let Some(c) = attr {
         return normalize_emoji_url(&c[1]);
     }
-    let tag = rx(r"(?i)<(?:cdnurl|thumburl)>([^<]+)</(?:cdnurl|thumburl)>").captures(content).or_else(|| rx(r"(?i)(?:cdnurl|thumburl)[^>]*>([^<]+)").captures(content));
+    let tag = rx(r"(?i)<(?:cdnurl|thumburl)>([^<]+)</(?:cdnurl|thumburl)>")
+        .captures(content)
+        .or_else(|| rx(r"(?i)(?:cdnurl|thumburl)[^>]*>([^<]+)").captures(content));
     tag.and_then(|c| normalize_emoji_url(&c[1]))
 }
 
@@ -158,7 +184,9 @@ fn strip_emoji_owner_prefix(content: &str) -> String {
 }
 
 fn record_field<'a>(rec: &'a Value, keys: &[&str]) -> Option<&'a Value> {
-    keys.iter().filter_map(|k| rec.get(*k)).find(|v| !v.is_null())
+    keys.iter()
+        .filter_map(|k| rec.get(*k))
+        .find(|v| !v.is_null())
 }
 
 fn coerce_string(v: Option<&Value>) -> String {
@@ -178,9 +206,17 @@ fn coerce_bool(v: Option<&Value>) -> Option<bool> {
             let n = s.trim().to_lowercase();
             if n.is_empty() {
                 None
-            } else if ["1", "true", "yes", "me", "self", "mine", "sent", "out", "outgoing"].contains(&n.as_str()) {
+            } else if [
+                "1", "true", "yes", "me", "self", "mine", "sent", "out", "outgoing",
+            ]
+            .contains(&n.as_str())
+            {
                 Some(true)
-            } else if ["0", "false", "no", "friend", "peer", "other", "recv", "received", "in", "incoming"].contains(&n.as_str()) {
+            } else if [
+                "0", "false", "no", "friend", "peer", "other", "recv", "received", "in", "incoming",
+            ]
+            .contains(&n.as_str())
+            {
                 Some(false)
             } else {
                 None
@@ -198,20 +234,62 @@ struct EmojiCandidate {
 }
 
 fn parse_emoji_candidate(item: &Value) -> EmojiCandidate {
-    let raw_content = coerce_string(record_field(item, &["content", "xml", "message_content", "messageContent", "msg", "payload", "raw"]));
+    let raw_content = coerce_string(record_field(
+        item,
+        &[
+            "content",
+            "xml",
+            "message_content",
+            "messageContent",
+            "msg",
+            "payload",
+            "raw",
+        ],
+    ));
     let content = strip_emoji_owner_prefix(&raw_content);
-    let count = record_field(item, &["count", "cnt", "times", "total", "num"]).map(num).filter(|n| *n > 0).unwrap_or(0);
-    let direct_md5 = normalize_emoji_md5(&coerce_string(record_field(item, &["md5", "emojiMd5", "emoji_md5", "emd5"])));
+    let count = record_field(item, &["count", "cnt", "times", "total", "num"])
+        .map(num)
+        .filter(|n| *n > 0)
+        .unwrap_or(0);
+    let direct_md5 = normalize_emoji_md5(&coerce_string(record_field(
+        item,
+        &["md5", "emojiMd5", "emoji_md5", "emd5"],
+    )));
     let md5 = direct_md5.or_else(|| extract_emoji_md5(&content));
-    let direct_url = normalize_emoji_url(&coerce_string(record_field(item, &["cdnUrl", "cdnurl", "emojiUrl", "emoji_url", "url", "thumbUrl", "thumburl"])));
+    let direct_url = normalize_emoji_url(&coerce_string(record_field(
+        item,
+        &[
+            "cdnUrl",
+            "cdnurl",
+            "emojiUrl",
+            "emoji_url",
+            "url",
+            "thumbUrl",
+            "thumburl",
+        ],
+    )));
     let url = direct_url.or_else(|| extract_emoji_url(&content));
     // owner
-    let mut is_me = coerce_bool(record_field(item, &["isMe", "is_me", "isSent", "is_sent", "isSend", "is_send", "fromMe", "from_me"]));
+    let mut is_me = coerce_bool(record_field(
+        item,
+        &[
+            "isMe", "is_me", "isSent", "is_sent", "isSend", "is_send", "fromMe", "from_me",
+        ],
+    ));
     if is_me.is_none() {
-        let side = coerce_string(record_field(item, &["side", "sender", "from", "owner", "role", "direction"])).trim().to_lowercase();
+        let side = coerce_string(record_field(
+            item,
+            &["side", "sender", "from", "owner", "role", "direction"],
+        ))
+        .trim()
+        .to_lowercase();
         if ["me", "self", "mine", "out", "outgoing", "sent"].contains(&side.as_str()) {
             is_me = Some(true);
-        } else if ["friend", "peer", "other", "in", "incoming", "received", "recv"].contains(&side.as_str()) {
+        } else if [
+            "friend", "peer", "other", "in", "incoming", "received", "recv",
+        ]
+        .contains(&side.as_str())
+        {
             is_me = Some(false);
         }
     }
@@ -220,25 +298,52 @@ fn parse_emoji_candidate(item: &Value) -> EmojiCandidate {
             is_me = Some(&c[1] == "1");
         }
     }
-    EmojiCandidate { is_me, md5, url, count }
+    EmojiCandidate {
+        is_me,
+        md5,
+        url,
+        count,
+    }
 }
 
 fn resolve_is_sent(row: &Value, raw_wxid: &str, cleaned_wxid: &str) -> bool {
-    let raw = row.get("computed_is_send").filter(|v| !v.is_null()).or_else(|| row.get("is_send")).filter(|v| !v.is_null());
+    let raw = row
+        .get("computed_is_send")
+        .filter(|v| !v.is_null())
+        .or_else(|| row.get("is_send"))
+        .filter(|v| !v.is_null());
     if let Some(v) = raw {
-        return crate::api::js_parse_int(&v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())) == Some(1);
+        return crate::api::js_parse_int(
+            &v.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| v.to_string()),
+        ) == Some(1);
     }
-    let sender = ["sender_username", "sender", "talker"].iter().filter_map(|k| row.get(*k).and_then(Value::as_str)).find(|s| !s.is_empty()).unwrap_or("").to_lowercase();
+    let sender = ["sender_username", "sender", "talker"]
+        .iter()
+        .filter_map(|k| row.get(*k).and_then(Value::as_str))
+        .find(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_lowercase();
     if sender.is_empty() {
         return false;
     }
     let (r, c) = (raw_wxid.to_lowercase(), cleaned_wxid.to_lowercase());
-    sender == r || sender == c || (!r.is_empty() && r.starts_with(&format!("{sender}_"))) || (!c.is_empty() && c.starts_with(&format!("{sender}_")))
+    sender == r
+        || sender == c
+        || (!r.is_empty() && r.starts_with(&format!("{sender}_")))
+        || (!c.is_empty() && c.starts_with(&format!("{sender}_")))
 }
 
 fn format_date_time(ms: i64) -> String {
     match Local.timestamp_millis_opt(ms).single() {
-        Some(d) => format!("{:02}/{:02} {:02}:{:02}", d.month(), d.day(), d.hour(), d.minute()),
+        Some(d) => format!(
+            "{:02}/{:02} {:02}:{:02}",
+            d.month(),
+            d.day(),
+            d.hour(),
+            d.minute()
+        ),
         None => String::new(),
     }
 }
@@ -246,16 +351,36 @@ fn format_date_time(ms: i64) -> String {
 impl ServiceHub {
     fn report_connect(&self) -> AppResult<(weflow_native::wcdb::Wcdb, String, String)> {
         let profile = self.profile()?;
-        let raw = self.wxid_override.clone().or_else(|| profile.wxid.clone()).filter(|w| !w.is_empty()).ok_or_else(|| AppError::config("wxid is not configured"))?;
+        let raw = self
+            .wxid_override
+            .clone()
+            .or_else(|| profile.wxid.clone())
+            .filter(|w| !w.is_empty())
+            .ok_or_else(|| AppError::config("wxid is not configured"))?;
         let wcdb = self.open_wcdb()?;
         let cleaned = clean_account_dir_name(&raw);
         Ok((wcdb, cleaned, raw))
     }
 
-    fn report_private_sessions(&self, wcdb: &weflow_native::wcdb::Wcdb, cleaned: &str) -> Vec<String> {
-        let rows = wcdb.sessions().ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
+    fn report_private_sessions(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        cleaned: &str,
+    ) -> Vec<String> {
+        let rows = wcdb
+            .sessions()
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default();
         rows.iter()
-            .map(|r| ["username", "user_name", "userName"].iter().filter_map(|k| r.get(*k).and_then(Value::as_str)).find(|s| !s.is_empty()).unwrap_or("").to_string())
+            .map(|r| {
+                ["username", "user_name", "userName"]
+                    .iter()
+                    .filter_map(|k| r.get(*k).and_then(Value::as_str))
+                    .find(|s| !s.is_empty())
+                    .unwrap_or("")
+                    .to_string()
+            })
             .filter(|u| is_report_private_session(u, cleaned))
             .collect()
     }
@@ -267,7 +392,13 @@ impl ServiceHub {
         if min_ts <= 0 || max_ts <= 0 {
             return;
         }
-        let year_of = |ts: i64| Local.timestamp_opt(ts, 0).single().map(|d| d.year()).unwrap_or(0);
+        let year_of = |ts: i64| {
+            Local
+                .timestamp_opt(ts, 0)
+                .single()
+                .map(|d| d.year())
+                .unwrap_or(0)
+        };
         for y in year_of(min_ts)..=year_of(max_ts) {
             if (2010..=current).contains(&y) {
                 years.insert(y);
@@ -276,7 +407,11 @@ impl ServiceHub {
     }
 
     fn normalize_years(years: impl IntoIterator<Item = i64>) -> Vec<i64> {
-        let mut v: Vec<i64> = years.into_iter().collect::<HashSet<_>>().into_iter().collect();
+        let mut v: Vec<i64> = years
+            .into_iter()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
         v.sort_by(|a, b| b.cmp(a));
         v
     }
@@ -290,22 +425,51 @@ impl ServiceHub {
         }
         if let Ok(Value::Array(native)) = wcdb.available_years(&sessions) {
             if !native.is_empty() {
-                return Ok(json!({ "years": Self::normalize_years(native.iter().map(num)), "strategy": "native" }));
+                return Ok(
+                    json!({ "years": Self::normalize_years(native.iter().map(num)), "strategy": "native" }),
+                );
             }
         }
         // table scan
         let mut years: HashSet<i32> = HashSet::new();
         for sid in &sessions {
-            let Ok(Value::Array(tables)) = wcdb.message_table_stats(sid) else { continue };
+            let Ok(Value::Array(tables)) = wcdb.message_table_stats(sid) else {
+                continue;
+            };
             for t in tables {
-                let name = ["table_name", "name"].iter().filter_map(|k| t.get(*k).and_then(Value::as_str)).next().unwrap_or("").trim().to_string();
-                let db = ["db_path", "dbPath"].iter().filter_map(|k| t.get(*k).and_then(Value::as_str)).next().unwrap_or("").trim().to_string();
+                let name = ["table_name", "name"]
+                    .iter()
+                    .filter_map(|k| t.get(*k).and_then(Value::as_str))
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                let db = ["db_path", "dbPath"]
+                    .iter()
+                    .filter_map(|k| t.get(*k).and_then(Value::as_str))
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 if name.is_empty() || db.is_empty() {
                     continue;
                 }
-                let Ok(range) = wcdb.invoke_json("wcdb_get_message_table_time_range", &[weflow_native::wcdb::Arg::S(&db), weflow_native::wcdb::Arg::S(&name)]) else { continue };
+                let Ok(range) = wcdb.invoke_json(
+                    "wcdb_get_message_table_time_range",
+                    &[
+                        weflow_native::wcdb::Arg::S(&db),
+                        weflow_native::wcdb::Arg::S(&name),
+                    ],
+                ) else {
+                    continue;
+                };
                 let ts = |keys: &[&str]| {
-                    let n = keys.iter().filter_map(|k| range.get(*k)).map(fnum).find(|n| *n != 0.0).unwrap_or(0.0);
+                    let n = keys
+                        .iter()
+                        .filter_map(|k| range.get(*k))
+                        .map(fnum)
+                        .find(|n| *n != 0.0)
+                        .unwrap_or(0.0);
                     if n <= 0.0 || !n.is_finite() {
                         0
                     } else if n > 1e12 {
@@ -314,7 +478,11 @@ impl ServiceHub {
                         n.floor() as i64
                     }
                 };
-                Self::add_years_from_range(&mut years, ts(&["first_ts", "firstTs", "min_ts", "minTs"]), ts(&["last_ts", "lastTs", "max_ts", "maxTs"]));
+                Self::add_years_from_range(
+                    &mut years,
+                    ts(&["first_ts", "firstTs", "min_ts", "minTs"]),
+                    ts(&["last_ts", "lastTs", "max_ts", "maxTs"]),
+                );
             }
         }
         let mut strategy = "table-scan";
@@ -322,15 +490,24 @@ impl ServiceHub {
             strategy = "edge-scan";
             for sid in &sessions {
                 let edge = |asc: bool| -> i64 {
-                    let Ok(cursor) = wcdb.open_message_cursor(sid, 1, asc, 0, 0, false) else { return 0 };
+                    let Ok(cursor) = wcdb.open_message_cursor(sid, 1, asc, 0, 0, false) else {
+                        return 0;
+                    };
                     let r = wcdb.fetch_message_batch(cursor);
                     let _ = wcdb.close_message_cursor(cursor);
-                    r.ok().and_then(|(rows, _)| rows.as_array().and_then(|a| a.first().map(|r| num(&r["create_time"])))).unwrap_or(0)
+                    r.ok()
+                        .and_then(|(rows, _)| {
+                            rows.as_array()
+                                .and_then(|a| a.first().map(|r| num(&r["create_time"])))
+                        })
+                        .unwrap_or(0)
                 };
                 Self::add_years_from_range(&mut years, edge(true), edge(false));
             }
         }
-        Ok(json!({ "years": Self::normalize_years(years.into_iter().map(|y| y as i64)), "strategy": strategy }))
+        Ok(
+            json!({ "years": Self::normalize_years(years.into_iter().map(|y| y as i64)), "strategy": strategy }),
+        )
     }
 
     /// `annualReport:generateReport`
@@ -348,7 +525,14 @@ impl ServiceHub {
 
         let (nb, ne) = normalize_range(start, end);
         let d = wcdb
-            .invoke_json("wcdb_get_annual_report_stats", &[weflow_native::wcdb::Arg::S(&serde_json::to_string(&sessions).unwrap()), weflow_native::wcdb::Arg::I32(nb), weflow_native::wcdb::Arg::I32(ne)])
+            .invoke_json(
+                "wcdb_get_annual_report_stats",
+                &[
+                    weflow_native::wcdb::Arg::S(&serde_json::to_string(&sessions).unwrap()),
+                    weflow_native::wcdb::Arg::I32(nb),
+                    weflow_native::wcdb::Arg::I32(ne),
+                ],
+            )
             .or_else(|_| self.aggregate_for_reports(&wcdb, &sessions, start, end))
             .map_err(|e| AppError::native(format!("base statistics failed: {e}")))?;
         let total_messages = num(&d["total"]);
@@ -358,7 +542,15 @@ impl ServiceHub {
         if let Some(ss) = d.get("sessions").and_then(Value::as_object) {
             for (sid, stat) in ss {
                 contact_stats.push((sid.clone(), num(&stat["sent"]), num(&stat["received"])));
-                let m: HashMap<i64, i64> = stat.get("monthly").and_then(Value::as_object).map(|o| o.iter().map(|(k, v)| (crate::api::js_parse_int(k).unwrap_or(0), num(v))).collect()).unwrap_or_default();
+                let m: HashMap<i64, i64> = stat
+                    .get("monthly")
+                    .and_then(Value::as_object)
+                    .map(|o| {
+                        o.iter()
+                            .map(|(k, v)| (crate::api::js_parse_int(k).unwrap_or(0), num(v)))
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 monthly_stats.push((sid.clone(), m));
             }
         }
@@ -381,7 +573,10 @@ impl ServiceHub {
         let mut response_sql: Option<Map<String, Value>> = None;
         let mut top_phrases_sql: Option<Vec<Value>> = None;
         let (mut streak_sid, mut streak_days) = (String::new(), 0i64);
-        let (mut streak_start, mut streak_end): (Option<chrono::DateTime<Local>>, Option<chrono::DateTime<Local>>) = (None, None);
+        let (mut streak_start, mut streak_end): (
+            Option<chrono::DateTime<Local>>,
+            Option<chrono::DateTime<Local>>,
+        ) = (None, None);
         let mut streak_done = false;
         let mut use_sql_extras = false;
 
@@ -395,9 +590,19 @@ impl ServiceHub {
         };
         self.emit_progress("annual-report", "loading extended statistics…", 30, 100);
         let (eb, ee) = normalize_range(start, end);
-        let extras = wcdb.annual_report_extras(&serde_json::to_string(&sessions).unwrap(), eb, ee, normalize_timestamp(peak_begin), normalize_timestamp(peak_end));
+        let extras = wcdb.annual_report_extras(
+            &serde_json::to_string(&sessions).unwrap(),
+            eb,
+            ee,
+            normalize_timestamp(peak_begin),
+            normalize_timestamp(peak_end),
+        );
         if let Ok(ex) = extras {
-            if let Some(hm) = ex.get("heatmap").and_then(Value::as_array).filter(|h| h.len() == 7) {
+            if let Some(hm) = ex
+                .get("heatmap")
+                .and_then(Value::as_array)
+                .filter(|h| h.len() == 7)
+            {
                 for (w, row) in hm.iter().enumerate() {
                     if let Some(row) = row.as_array() {
                         for h in 0..24 {
@@ -417,13 +622,20 @@ impl ServiceHub {
                 }
             }
             response_sql = ex.get("response").and_then(Value::as_object).cloned();
-            if let (false, Some(p)) = (peak_day_key.is_empty(), ex.get("peakDay").and_then(Value::as_object)) {
+            if let (false, Some(p)) = (
+                peak_day_key.is_empty(),
+                ex.get("peakDay").and_then(Value::as_object),
+            ) {
                 let m: HashMap<String, i64> = p.iter().map(|(k, v)| (k.clone(), num(v))).collect();
                 if !m.is_empty() {
                     daily_contact.insert(peak_day_key.clone(), m);
                 }
             }
-            if let Some(p) = ex.get("topPhrases").and_then(Value::as_array).filter(|p| !p.is_empty()) {
+            if let Some(p) = ex
+                .get("topPhrases")
+                .and_then(Value::as_array)
+                .filter(|p| !p.is_empty())
+            {
                 top_phrases_sql = Some(p.clone());
             }
             if let Some(s) = ex.get("streak") {
@@ -432,8 +644,14 @@ impl ServiceHub {
                 if !sid.is_empty() && days > 0 {
                     streak_sid = sid.to_string();
                     streak_days = days;
-                    streak_start = s.get("startDate").and_then(Value::as_str).and_then(parse_local_day);
-                    streak_end = s.get("endDate").and_then(Value::as_str).and_then(parse_local_day);
+                    streak_start = s
+                        .get("startDate")
+                        .and_then(Value::as_str)
+                        .and_then(parse_local_day);
+                    streak_end = s
+                        .get("endDate")
+                        .and_then(Value::as_str)
+                        .and_then(parse_local_day);
                     if streak_start.is_some() && streak_end.is_some() {
                         streak_done = true;
                     }
@@ -449,25 +667,64 @@ impl ServiceHub {
         if !use_sql_extras {
             let mut last_message: HashMap<String, (i64, bool)> = HashMap::new();
             for (i, sid) in sessions.iter().enumerate() {
-                let Ok(cursor) = wcdb.open_message_cursor(sid, 1000, true, start.clamp(0, i32::MAX as i64) as i32, end.clamp(0, i32::MAX as i64) as i32, true) else { continue };
+                let Ok(cursor) = wcdb.open_message_cursor(
+                    sid,
+                    1000,
+                    true,
+                    start.clamp(0, i32::MAX as i64) as i32,
+                    end.clamp(0, i32::MAX as i64) as i32,
+                    true,
+                ) else {
+                    continue;
+                };
                 let (mut last_day, mut cur_streak, mut max_streak) = (None::<i64>, 0i64, 0i64);
-                let (mut cur_start, mut max_start, mut max_end) = (None::<chrono::DateTime<Local>>, None::<chrono::DateTime<Local>>, None::<chrono::DateTime<Local>>);
+                let (mut cur_start, mut max_start, mut max_end) = (
+                    None::<chrono::DateTime<Local>>,
+                    None::<chrono::DateTime<Local>>,
+                    None::<chrono::DateTime<Local>>,
+                );
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else { break };
+                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                        break;
+                    };
                     let Some(rows) = rows.as_array() else { break };
                     for row in rows {
                         let create_time = num(&row["create_time"]);
                         if create_time == 0 {
                             continue;
                         }
-                        let raw_is_send = row.get("computed_is_send").filter(|v| !v.is_null()).or_else(|| row.get("is_send")).cloned().unwrap_or(json!("0"));
-                        let mut sent = crate::api::js_parse_int(&raw_is_send.as_str().map(str::to_string).unwrap_or_else(|| raw_is_send.to_string())) == Some(1);
-                        let local_type = ["local_type", "type"].iter().filter_map(|k| row.get(*k)).map(num).find(|n| *n != 0).unwrap_or(1);
+                        let raw_is_send = row
+                            .get("computed_is_send")
+                            .filter(|v| !v.is_null())
+                            .or_else(|| row.get("is_send"))
+                            .cloned()
+                            .unwrap_or(json!("0"));
+                        let mut sent = crate::api::js_parse_int(
+                            &raw_is_send
+                                .as_str()
+                                .map(str::to_string)
+                                .unwrap_or_else(|| raw_is_send.to_string()),
+                        ) == Some(1);
+                        let local_type = ["local_type", "type"]
+                            .iter()
+                            .filter_map(|k| row.get(*k))
+                            .map(num)
+                            .find(|n| *n != 0)
+                            .unwrap_or(1);
                         if !sent {
-                            let sender = ["sender_username", "sender", "talker"].iter().filter_map(|k| row.get(*k).and_then(Value::as_str)).find(|s| !s.is_empty()).unwrap_or("").to_lowercase();
+                            let sender = ["sender_username", "sender", "talker"]
+                                .iter()
+                                .filter_map(|k| row.get(*k).and_then(Value::as_str))
+                                .find(|s| !s.is_empty())
+                                .unwrap_or("")
+                                .to_lowercase();
                             if !sender.is_empty() {
                                 let (r, c) = (raw_wxid.to_lowercase(), cleaned.to_lowercase());
-                                if sender == r || sender == c || r.starts_with(&format!("{sender}_")) || c.starts_with(&format!("{sender}_")) {
+                                if sender == r
+                                    || sender == c
+                                    || r.starts_with(&format!("{sender}_"))
+                                    || c.starts_with(&format!("{sender}_"))
+                                {
                                     sent = true;
                                 }
                             }
@@ -494,7 +751,11 @@ impl ServiceHub {
                         if (local_type == 1 || local_type == 244813135921) && sent {
                             let text = decode_message_content(row).trim().to_string();
                             let n = text.chars().count();
-                            if (2..=20).contains(&n) && !text.contains("http") && !text.contains('<') && !text.starts_with('[') {
+                            if (2..=20).contains(&n)
+                                && !text.contains("http")
+                                && !text.contains('<')
+                                && !text.starts_with('[')
+                            {
                                 let e = phrase_count.entry(text.clone()).or_insert(0);
                                 if *e == 0 {
                                     phrase_order.push(text);
@@ -502,11 +763,16 @@ impl ServiceHub {
                                 *e += 1;
                             }
                         }
-                        let Some(dt) = Local.timestamp_opt(create_time, 0).single() else { continue };
+                        let Some(dt) = Local.timestamp_opt(create_time, 0).single() else {
+                            continue;
+                        };
                         let wd = dt.weekday().num_days_from_monday() as usize;
                         heatmap[wd][dt.hour() as usize] += 1;
                         let idx = day_index(dt);
-                        let day_date = Local.from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap()).earliest().unwrap_or(dt);
+                        let day_date = Local
+                            .from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap())
+                            .earliest()
+                            .unwrap_or(dt);
                         if last_day != Some(idx) {
                             if last_day.map_or(false, |l| idx - l == 1) {
                                 cur_streak += 1;
@@ -525,7 +791,11 @@ impl ServiceHub {
                             *midnight_stats.entry(sid.clone()).or_insert(0) += 1;
                         }
                         if !peak_day_key.is_empty() && ymd(dt) == peak_day_key {
-                            *daily_contact.entry(peak_day_key.clone()).or_default().entry(sid.clone()).or_insert(0) += 1;
+                            *daily_contact
+                                .entry(peak_day_key.clone())
+                                .or_default()
+                                .entry(sid.clone())
+                                .or_insert(0) += 1;
                         }
                     }
                     if !more {
@@ -546,22 +816,42 @@ impl ServiceHub {
         if !streak_done {
             // cursor-based longest streak
             for sid in &sessions {
-                let Ok(cursor) = wcdb.open_message_cursor(sid, 2000, true, start.clamp(0, i32::MAX as i64) as i32, end.clamp(0, i32::MAX as i64) as i32, true) else { continue };
+                let Ok(cursor) = wcdb.open_message_cursor(
+                    sid,
+                    2000,
+                    true,
+                    start.clamp(0, i32::MAX as i64) as i32,
+                    end.clamp(0, i32::MAX as i64) as i32,
+                    true,
+                ) else {
+                    continue;
+                };
                 let (mut last_day, mut cur_streak, mut max_streak) = (None::<i64>, 0i64, 0i64);
-                let (mut cur_start, mut max_start, mut max_end) = (None::<chrono::DateTime<Local>>, None::<chrono::DateTime<Local>>, None::<chrono::DateTime<Local>>);
+                let (mut cur_start, mut max_start, mut max_end) = (
+                    None::<chrono::DateTime<Local>>,
+                    None::<chrono::DateTime<Local>>,
+                    None::<chrono::DateTime<Local>>,
+                );
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else { break };
+                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                        break;
+                    };
                     for row in rows.as_array().map(|a| a.as_slice()).unwrap_or(&[]) {
                         let ct = num(&row["create_time"]);
                         if ct == 0 {
                             continue;
                         }
-                        let Some(dt) = Local.timestamp_opt(ct, 0).single() else { continue };
+                        let Some(dt) = Local.timestamp_opt(ct, 0).single() else {
+                            continue;
+                        };
                         let idx = day_index(dt);
                         if last_day == Some(idx) {
                             continue;
                         }
-                        let day_date = Local.from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap()).earliest().unwrap_or(dt);
+                        let day_date = Local
+                            .from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap())
+                            .earliest()
+                            .unwrap_or(dt);
                         if last_day.map_or(false, |l| idx - l == 1) {
                             cur_streak += 1;
                         } else {
@@ -592,12 +882,24 @@ impl ServiceHub {
         // Moments
         self.emit_progress("annual-report", "analysing Moments…", 75, 100);
         let mut sns_stats: Option<Value> = None;
-        let (sb, se) = if is_all { (0, now.timestamp()) } else { (start, end) };
-        if let Ok(sd) = wcdb.sns_annual_stats(sb.clamp(0, i32::MAX as i64) as i32, se.clamp(0, i32::MAX as i64) as i32) {
+        let (sb, se) = if is_all {
+            (0, now.timestamp())
+        } else {
+            (start, end)
+        };
+        if let Ok(sd) = wcdb.sns_annual_stats(
+            sb.clamp(0, i32::MAX as i64) as i32,
+            se.clamp(0, i32::MAX as i64) as i32,
+        ) {
             if sd.is_object() {
                 let mut users: Vec<String> = Vec::new();
                 for key in ["topLikers", "topLiked"] {
-                    for u in sd.get(key).and_then(Value::as_array).map(|a| a.as_slice()).unwrap_or(&[]) {
+                    for u in sd
+                        .get(key)
+                        .and_then(Value::as_array)
+                        .map(|a| a.as_slice())
+                        .unwrap_or(&[])
+                    {
                         if let Some(n) = u.get("username").and_then(Value::as_str) {
                             if !users.contains(&n.to_string()) {
                                 users.push(n.to_string());
@@ -615,7 +917,14 @@ impl ServiceHub {
                         .map(|u| {
                             let mut o = u.as_object().cloned().unwrap_or_default();
                             let name = u.get("username").and_then(Value::as_str).unwrap_or("");
-                            o.insert("displayName".into(), json!(names.get(name).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| name.to_string())));
+                            o.insert(
+                                "displayName".into(),
+                                json!(names
+                                    .get(name)
+                                    .filter(|n| !n.is_empty())
+                                    .cloned()
+                                    .unwrap_or_else(|| name.to_string())),
+                            );
                             match avatars.get(name) {
                                 Some(a) => {
                                     o.insert("avatarUrl".into(), json!(a));
@@ -638,8 +947,16 @@ impl ServiceHub {
                 sns_stats = Some(Value::Object(o));
             }
         }
-        if is_all && sns_stats.as_ref().map_or(true, |s| num(&s["totalPosts"]) <= 0) {
-            let id = if cleaned.is_empty() { raw_wxid.clone() } else { cleaned.clone() };
+        if is_all
+            && sns_stats
+                .as_ref()
+                .map_or(true, |s| num(&s["totalPosts"]) <= 0)
+        {
+            let id = if cleaned.is_empty() {
+                raw_wxid.clone()
+            } else {
+                cleaned.clone()
+            };
             if let Ok(st) = wcdb.sns_export_stats(Some(&id)) {
                 let total = num(&st["total_posts"]).max(0);
                 let mut o = Map::new();
@@ -647,8 +964,20 @@ impl ServiceHub {
                 if let Some(t) = sns_stats.as_ref().and_then(|s| s.get("typeCounts")) {
                     o.insert("typeCounts".into(), t.clone());
                 }
-                o.insert("topLikers".into(), sns_stats.as_ref().and_then(|s| s.get("topLikers").cloned()).unwrap_or_else(|| json!([])));
-                o.insert("topLiked".into(), sns_stats.as_ref().and_then(|s| s.get("topLiked").cloned()).unwrap_or_else(|| json!([])));
+                o.insert(
+                    "topLikers".into(),
+                    sns_stats
+                        .as_ref()
+                        .and_then(|s| s.get("topLikers").cloned())
+                        .unwrap_or_else(|| json!([])),
+                );
+                o.insert(
+                    "topLiked".into(),
+                    sns_stats
+                        .as_ref()
+                        .and_then(|s| s.get("topLiked").cloned())
+                        .unwrap_or_else(|| json!([])),
+                );
                 sns_stats = Some(Value::Object(o));
             }
         }
@@ -657,10 +986,26 @@ impl ServiceHub {
         self.emit_progress("annual-report", "collecting contact info…", 85, 100);
         let contact_ids: Vec<String> = contact_stats.iter().map(|c| c.0.clone()).collect();
         let (names, avatars) = self.names_and_avatars_pub(&wcdb, &contact_ids);
-        let info = |sid: &str| -> (String, Option<String>) { (names.get(sid).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| sid.to_string()), avatars.get(sid).cloned()) };
+        let info = |sid: &str| -> (String, Option<String>) {
+            (
+                names
+                    .get(sid)
+                    .filter(|n| !n.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| sid.to_string()),
+                avatars.get(sid).cloned(),
+            )
+        };
         let self_avatar = {
             let list = vec![raw_wxid.clone(), cleaned.clone()];
-            wcdb.avatar_urls(&serde_json::to_string(&list).unwrap()).ok().and_then(|m| m.get(&raw_wxid).or_else(|| m.get(&cleaned)).and_then(Value::as_str).map(str::to_string))
+            wcdb.avatar_urls(&serde_json::to_string(&list).unwrap())
+                .ok()
+                .and_then(|m| {
+                    m.get(&raw_wxid)
+                        .or_else(|| m.get(&cleaned))
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
         };
 
         let mut core: Vec<(String, i64, i64)> = contact_stats.clone();
@@ -693,7 +1038,11 @@ impl ServiceHub {
                         top = sid.clone();
                     }
                 }
-                let (name, avatar) = if top.is_empty() { ("暂无".to_string(), None) } else { info(&top) };
+                let (name, avatar) = if top.is_empty() {
+                    ("暂无".to_string(), None)
+                } else {
+                    info(&top)
+                };
                 let mut o = Map::new();
                 o.insert("month".into(), json!(month));
                 o.insert("displayName".into(), json!(name));
@@ -737,8 +1086,15 @@ impl ServiceHub {
             Value::Null
         };
 
-        let longest_streak = match (streak_sid.is_empty(), streak_days > 0, streak_start, streak_end) {
-            (false, true, Some(s), Some(e)) => json!({ "friendName": info(&streak_sid).0, "days": streak_days, "startDate": ymd(s), "endDate": ymd(e) }),
+        let longest_streak = match (
+            streak_sid.is_empty(),
+            streak_days > 0,
+            streak_start,
+            streak_end,
+        ) {
+            (false, true, Some(s), Some(e)) => {
+                json!({ "friendName": info(&streak_sid).0, "days": streak_days, "startDate": ymd(s), "endDate": ymd(e) })
+            }
             _ => Value::Null,
         };
 
@@ -764,7 +1120,8 @@ impl ServiceHub {
             }
         }
 
-        let (mut total_init, mut total_recv, mut top_init_sid, mut top_init) = (0i64, 0i64, String::new(), 0i64);
+        let (mut total_init, mut total_recv, mut top_init_sid, mut top_init) =
+            (0i64, 0i64, String::new(), 0i64);
         for (sid, (i, r)) in &conversation {
             total_init += i;
             total_recv += r;
@@ -778,7 +1135,10 @@ impl ServiceHub {
             let mut o = Map::new();
             o.insert("initiatedChats".into(), json!(total_init));
             o.insert("receivedChats".into(), json!(total_recv));
-            o.insert("initiativeRate".into(), json!(round1(total_init as f64 / total_conv as f64 * 100.0)));
+            o.insert(
+                "initiativeRate".into(),
+                json!(round1(total_init as f64 / total_conv as f64 * 100.0)),
+            );
             if top_init > 0 {
                 o.insert("topInitiatedFriend".into(), json!(info(&top_init_sid).0));
                 o.insert("topInitiatedCount".into(), json!(top_init));
@@ -790,7 +1150,8 @@ impl ServiceHub {
 
         self.emit_progress("annual-report", "building report…", 95, 100);
         let response_speed = if let Some(resp) = response_sql.as_ref().filter(|r| !r.is_empty()) {
-            let (mut sum, mut cnt, mut fastest_id, mut fastest) = (0.0f64, 0.0f64, String::new(), f64::INFINITY);
+            let (mut sum, mut cnt, mut fastest_id, mut fastest) =
+                (0.0f64, 0.0f64, String::new(), f64::INFINITY);
             for (sid, st) in resp {
                 let (count, avg) = (fnum(&st["count"]), fnum(&st["avg"]));
                 if count <= 0.0 || avg <= 0.0 {
@@ -809,7 +1170,8 @@ impl ServiceHub {
                 Value::Null
             }
         } else {
-            let (mut all, mut fastest_id, mut fastest) = (Vec::<i64>::new(), String::new(), f64::INFINITY);
+            let (mut all, mut fastest_id, mut fastest) =
+                (Vec::<i64>::new(), String::new(), f64::INFINITY);
             for (sid, times) in &response_times {
                 if times.len() >= 10 {
                     all.extend(times);
@@ -831,30 +1193,54 @@ impl ServiceHub {
         let top_phrases: Vec<Value> = match top_phrases_sql {
             Some(p) if !p.is_empty() => p,
             _ => {
-                let mut v: Vec<(String, i64)> = phrase_order.iter().map(|k| (k.clone(), phrase_count[k])).filter(|(_, c)| *c >= 2).collect();
+                let mut v: Vec<(String, i64)> = phrase_order
+                    .iter()
+                    .map(|k| (k.clone(), phrase_count[k]))
+                    .filter(|(_, c)| *c >= 2)
+                    .collect();
                 v.sort_by(|a, b| b.1.cmp(&a.1));
                 v.truncate(32);
-                v.into_iter().map(|(p, c)| json!({ "phrase": p, "count": c })).collect()
+                v.into_iter()
+                    .map(|(p, c)| json!({ "phrase": p, "count": c }))
+                    .collect()
             }
         };
 
         // "once close friend"
         let mut lost = Value::Null;
-        let (mut max_early, mut best_early, mut best_late, mut best_sid, mut best_desc) = (80i64, 0i64, 0i64, String::new(), String::new());
+        let (mut max_early, mut best_early, mut best_late, mut best_sid, mut best_desc) =
+            (80i64, 0i64, 0i64, String::new(), String::new());
         let current_year = now.year();
-        let sums = |data: &Value, sid: &str| -> i64 { data.get("sessions").and_then(|s| s.get(sid)).map(|s| num(&s["sent"]) + num(&s["received"])).unwrap_or(0) };
+        let sums = |data: &Value, sid: &str| -> i64 {
+            data.get("sessions")
+                .and_then(|s| s.get(sid))
+                .map(|s| num(&s["sent"]) + num(&s["received"]))
+                .unwrap_or(0)
+        };
         if is_all {
-            let mut days: Vec<String> = d.get("daily").and_then(Value::as_object).map(|o| o.keys().cloned().collect()).unwrap_or_default();
+            let mut days: Vec<String> = d
+                .get("daily")
+                .and_then(Value::as_object)
+                .map(|o| o.keys().cloned().collect())
+                .unwrap_or_default();
             days.sort();
             if days.len() >= 2 {
-                let first = parse_local_day(&days[0]).map(|d| d.timestamp()).unwrap_or(0);
-                let last = parse_local_day(days.last().unwrap()).map(|d| d.timestamp()).unwrap_or(0);
+                let first = parse_local_day(&days[0])
+                    .map(|d| d.timestamp())
+                    .unwrap_or(0);
+                let last = parse_local_day(days.last().unwrap())
+                    .map(|d| d.timestamp())
+                    .unwrap_or(0);
                 let mid = (first + last).div_euclid(2);
-                if let (Ok(e), Ok(l)) = (self.aggregate_for_reports(&wcdb, &sessions, 0, mid), self.aggregate_for_reports(&wcdb, &sessions, mid, 0)) {
+                if let (Ok(e), Ok(l)) = (
+                    self.aggregate_for_reports(&wcdb, &sessions, 0, mid),
+                    self.aggregate_for_reports(&wcdb, &sessions, mid, 0),
+                ) {
                     for sid in &sessions {
                         let (early, late) = (sums(&e, sid), sums(&l, sid));
                         if early > 100 && early > late * 5 && early > max_early {
-                            (max_early, best_early, best_late, best_sid, best_desc) = (early, early, late, sid.clone(), "这段时间以来".into());
+                            (max_early, best_early, best_late, best_sid, best_desc) =
+                                (early, early, late, sid.clone(), "这段时间以来".into());
                         }
                     }
                 }
@@ -862,25 +1248,43 @@ impl ServiceHub {
         } else if year == current_year {
             let month_start = |back: i32| {
                 let total = now.year() * 12 + now.month0() as i32 - back;
-                local_ts(total.div_euclid(12), (total.rem_euclid(12) + 1) as u32, 1, 0, 0, 0)
+                local_ts(
+                    total.div_euclid(12),
+                    (total.rem_euclid(12) + 1) as u32,
+                    1,
+                    0,
+                    0,
+                    0,
+                )
             };
-            let (rolling_start, rolling_mid, rolling_end) = (month_start(11), month_start(5), now.timestamp());
-            if let (Ok(e), Ok(l)) = (self.aggregate_for_reports(&wcdb, &sessions, rolling_start, rolling_mid - 1), self.aggregate_for_reports(&wcdb, &sessions, rolling_mid, rolling_end)) {
+            let (rolling_start, rolling_mid, rolling_end) =
+                (month_start(11), month_start(5), now.timestamp());
+            if let (Ok(e), Ok(l)) = (
+                self.aggregate_for_reports(&wcdb, &sessions, rolling_start, rolling_mid - 1),
+                self.aggregate_for_reports(&wcdb, &sessions, rolling_mid, rolling_end),
+            ) {
                 for sid in &sessions {
                     let (early, late) = (sums(&e, sid), sums(&l, sid));
                     if early > 80 && early > late * 5 && early > max_early {
-                        (max_early, best_early, best_late, best_sid, best_desc) = (early, early, late, sid.clone(), "去年的这个时候".into());
+                        (max_early, best_early, best_late, best_sid, best_desc) =
+                            (early, early, late, sid.clone(), "去年的这个时候".into());
                     }
                 }
             }
         } else if let Some(ss) = d.get("sessions").and_then(Value::as_object) {
             for (sid, stat) in ss {
                 let monthly = stat.get("monthly");
-                let m = |k: i64| monthly.and_then(|m| m.get(k.to_string())).map(num).unwrap_or(0);
+                let m = |k: i64| {
+                    monthly
+                        .and_then(|m| m.get(k.to_string()))
+                        .map(num)
+                        .unwrap_or(0)
+                };
                 let early: i64 = (1..=6).map(m).sum();
                 let late: i64 = (7..=12).map(m).sum();
                 if early > 80 && early > late * 5 && early > max_early {
-                    (max_early, best_early, best_late, best_sid, best_desc) = (early, early, late, sid.clone(), format!("{year}年上半年"));
+                    (max_early, best_early, best_late, best_sid, best_desc) =
+                        (early, early, late, sid.clone(), format!("{year}年上半年"));
                 }
             }
         }
@@ -889,7 +1293,13 @@ impl ServiceHub {
                 info(&best_sid)
             } else {
                 let (n, a) = self.names_and_avatars_pub(&wcdb, std::slice::from_ref(&best_sid));
-                (n.get(&best_sid).filter(|x| !x.is_empty()).cloned().unwrap_or_else(|| best_sid.clone()), a.get(&best_sid).cloned())
+                (
+                    n.get(&best_sid)
+                        .filter(|x| !x.is_empty())
+                        .cloned()
+                        .unwrap_or_else(|| best_sid.clone()),
+                    a.get(&best_sid).cloned(),
+                )
             };
             let mut o = Map::new();
             o.insert("username".into(), json!(best_sid));
@@ -927,18 +1337,53 @@ impl ServiceHub {
         Ok(Value::Object(report))
     }
 
-    fn aggregate_for_reports(&self, wcdb: &weflow_native::wcdb::Wcdb, ids: &[String], begin: i64, end: i64) -> anyhow::Result<Value> {
+    fn aggregate_for_reports(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        ids: &[String],
+        begin: i64,
+        end: i64,
+    ) -> anyhow::Result<Value> {
         let (b, e) = normalize_range(begin, end);
-        wcdb.invoke_json("wcdb_get_aggregate_stats", &[weflow_native::wcdb::Arg::S(&serde_json::to_string(ids).unwrap()), weflow_native::wcdb::Arg::I32(b), weflow_native::wcdb::Arg::I32(e)])
+        wcdb.invoke_json(
+            "wcdb_get_aggregate_stats",
+            &[
+                weflow_native::wcdb::Arg::S(&serde_json::to_string(ids).unwrap()),
+                weflow_native::wcdb::Arg::I32(b),
+                weflow_native::wcdb::Arg::I32(e),
+            ],
+        )
     }
 
-    fn first_messages(&self, wcdb: &weflow_native::wcdb::Wcdb, session: &str, limit: usize, begin: i64, end: i64) -> Vec<Value> {
+    fn first_messages(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        session: &str,
+        limit: usize,
+        begin: i64,
+        end: i64,
+    ) -> Vec<Value> {
         let safe_begin = begin.max(0);
-        let safe_end = if end > 0 { end } else { chrono::Utc::now().timestamp() };
-        let Ok(cursor) = wcdb.open_message_cursor(session, limit.max(1) as i32, true, safe_begin.clamp(0, i32::MAX as i64) as i32, safe_end.clamp(0, i32::MAX as i64) as i32, false) else { return Vec::new() };
+        let safe_end = if end > 0 {
+            end
+        } else {
+            chrono::Utc::now().timestamp()
+        };
+        let Ok(cursor) = wcdb.open_message_cursor(
+            session,
+            limit.max(1) as i32,
+            true,
+            safe_begin.clamp(0, i32::MAX as i64) as i32,
+            safe_end.clamp(0, i32::MAX as i64) as i32,
+            false,
+        ) else {
+            return Vec::new();
+        };
         let mut rows: Vec<Value> = Vec::new();
         loop {
-            let Ok((batch, more)) = wcdb.fetch_message_batch(cursor) else { break };
+            let Ok((batch, more)) = wcdb.fetch_message_batch(cursor) else {
+                break;
+            };
             let Some(list) = batch.as_array() else { break };
             for r in list {
                 rows.push(r.clone());
@@ -956,14 +1401,29 @@ impl ServiceHub {
     }
 
     /// `dualReport:generateReport`
-    pub fn report_dual(&self, friend: &str, year: i32, exclude_words: &[String]) -> AppResult<Value> {
+    pub fn report_dual(
+        &self,
+        friend: &str,
+        year: i32,
+        exclude_words: &[String],
+    ) -> AppResult<Value> {
         self.emit_progress("dual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
         let report_year = year.max(0);
         let is_all = report_year == 0;
         let (start, end) = year_range(report_year);
 
-        let display = |u: &str, fb: &str| -> String { wcdb.display_names(&serde_json::to_string(&[u]).unwrap()).ok().and_then(|m| m.get(u).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)).unwrap_or_else(|| fb.to_string()) };
+        let display = |u: &str, fb: &str| -> String {
+            wcdb.display_names(&serde_json::to_string(&[u]).unwrap())
+                .ok()
+                .and_then(|m| {
+                    m.get(u)
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| fb.to_string())
+        };
         let friend_name = display(friend, friend);
         let mut my_name = display(&raw_wxid, &raw_wxid);
         if my_name == raw_wxid && !cleaned.is_empty() && cleaned != raw_wxid {
@@ -971,26 +1431,53 @@ impl ServiceHub {
         }
         let candidates: Vec<String> = {
             let mut seen = HashSet::new();
-            [friend.to_string(), raw_wxid.clone(), cleaned.clone()].into_iter().filter(|s| !s.is_empty() && seen.insert(s.clone())).collect()
+            [friend.to_string(), raw_wxid.clone(), cleaned.clone()]
+                .into_iter()
+                .filter(|s| !s.is_empty() && seen.insert(s.clone()))
+                .collect()
         };
-        let avatars = wcdb.avatar_urls(&serde_json::to_string(&candidates).unwrap()).ok();
-        let av = |k: &str| avatars.as_ref().and_then(|m| m.get(k)).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+        let avatars = wcdb
+            .avatar_urls(&serde_json::to_string(&candidates).unwrap())
+            .ok();
+        let av = |k: &str| {
+            avatars
+                .as_ref()
+                .and_then(|m| m.get(k))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        };
         let self_avatar = av(&raw_wxid).or_else(|| av(&cleaned));
         let friend_avatar = av(friend);
 
         let message_view = |row: &Value| -> Value {
             let create_ms = num(&row["create_time"]) * 1000;
             let raw_content = decode_message_content(row);
-            let local_type = row_int(row, &["local_type", "localType", "type", "msg_type", "msgType"], 0);
+            let local_type = row_int(
+                row,
+                &["local_type", "localType", "type", "msg_type", "msgType"],
+                0,
+            );
             let (mut md5, mut url) = (None, None);
             if local_type == 47 {
                 let stripped = strip_emoji_owner_prefix(&raw_content);
-                md5 = normalize_emoji_md5(&coerce_string(record_field(row, &["emoji_md5", "emojiMd5", "md5"]))).or_else(|| extract_emoji_md5(&stripped));
-                url = normalize_emoji_url(&coerce_string(record_field(row, &["emoji_cdn_url", "emojiCdnUrl", "cdnurl"]))).or_else(|| extract_emoji_url(&stripped));
+                md5 = normalize_emoji_md5(&coerce_string(record_field(
+                    row,
+                    &["emoji_md5", "emojiMd5", "md5"],
+                )))
+                .or_else(|| extract_emoji_md5(&stripped));
+                url = normalize_emoji_url(&coerce_string(record_field(
+                    row,
+                    &["emoji_cdn_url", "emojiCdnUrl", "cdnurl"],
+                )))
+                .or_else(|| extract_emoji_url(&stripped));
             }
             let mut o = Map::new();
             o.insert("content".into(), json!(raw_content));
-            o.insert("isSentByMe".into(), json!(resolve_is_sent(row, &raw_wxid, &cleaned)));
+            o.insert(
+                "isSentByMe".into(),
+                json!(resolve_is_sent(row, &raw_wxid, &cleaned)),
+            );
             o.insert("createTime".into(), json!(create_ms));
             o.insert("createTimeStr".into(), json!(format_date_time(create_ms)));
             o.insert("localType".into(), json!(local_type));
@@ -1008,7 +1495,11 @@ impl ServiceHub {
         let first_chat = first_rows.first().map(|row| {
             let mut v = message_view(row);
             let o = v.as_object_mut().unwrap();
-            if let Some(s) = ["sender_username", "sender"].iter().filter_map(|k| row.get(*k)).find(|v| !v.is_null()) {
+            if let Some(s) = ["sender_username", "sender"]
+                .iter()
+                .filter_map(|k| row.get(*k))
+                .find(|v| !v.is_null())
+            {
                 // `senderUsername` sits after isSentByMe in the desktop object
                 let mut rebuilt = Map::new();
                 for (k, val) in o.iter() {
@@ -1035,7 +1526,10 @@ impl ServiceHub {
                 o.insert("content".into(), view["content"].clone());
                 o.insert("isSentByMe".into(), view["isSentByMe"].clone());
                 o.insert("friendName".into(), json!(friend_name));
-                o.insert("firstThreeMessages".into(), json!(rows.iter().map(&message_view).collect::<Vec<_>>()));
+                o.insert(
+                    "firstThreeMessages".into(),
+                    json!(rows.iter().map(&message_view).collect::<Vec<_>>()),
+                );
                 o.insert("localType".into(), view["localType"].clone());
                 for k in ["emojiMd5", "emojiCdnUrl"] {
                     if let Some(v) = view.get(k) {
@@ -1048,7 +1542,9 @@ impl ServiceHub {
 
         self.emit_progress("dual-report", "chat statistics…", 30, 100);
         let (b, e) = normalize_range(start, end);
-        let cpp = wcdb.dual_report_stats(friend, b, e).map_err(|err| AppError::native(format!("failed to get dual-report statistics: {err}")))?;
+        let cpp = wcdb.dual_report_stats(friend, b, e).map_err(|err| {
+            AppError::native(format!("failed to get dual-report statistics: {err}"))
+        })?;
         let counts = cpp.get("counts").cloned().unwrap_or_else(|| json!({}));
         let mut stats = Map::new();
         stats.insert("totalMessages".into(), json!(num(&counts["total"])));
@@ -1060,9 +1556,16 @@ impl ServiceHub {
 
         let (mut my_md5, mut my_url, mut my_count) = (None::<String>, None::<String>, -1i64);
         let (mut fr_md5, mut fr_url, mut fr_count) = (None::<String>, None::<String>, -1i64);
-        for item in cpp.get("emojis").and_then(Value::as_array).map(|a| a.as_slice()).unwrap_or(&[]) {
+        for item in cpp
+            .get("emojis")
+            .and_then(Value::as_array)
+            .map(|a| a.as_slice())
+            .unwrap_or(&[])
+        {
             let c = parse_emoji_candidate(item);
-            let (Some(md5), Some(is_me)) = (c.md5.clone(), c.is_me) else { continue };
+            let (Some(md5), Some(is_me)) = (c.md5.clone(), c.is_me) else {
+                continue;
+            };
             if c.count <= 0 {
                 continue;
             }
@@ -1077,18 +1580,57 @@ impl ServiceHub {
         if emoji_count > 0 && (my_md5.is_none() || fr_md5.is_none()) {
             // fallback: scan the conversation
             let mut tally: Vec<(bool, String, Option<String>, i64)> = Vec::new();
-            if let Ok(cursor) = wcdb.open_message_cursor(friend, 500, true, start.clamp(0, i32::MAX as i64) as i32, end.clamp(0, i32::MAX as i64) as i32, false) {
+            if let Ok(cursor) = wcdb.open_message_cursor(
+                friend,
+                500,
+                true,
+                start.clamp(0, i32::MAX as i64) as i32,
+                end.clamp(0, i32::MAX as i64) as i32,
+                false,
+            ) {
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else { break };
+                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                        break;
+                    };
                     let Some(rows) = rows.as_array() else { break };
                     for row in rows {
-                        if row_int(row, &["local_type", "localType", "type", "msg_type", "msgType", "WCDB_CT_local_type"], 0) != 47 {
+                        if row_int(
+                            row,
+                            &[
+                                "local_type",
+                                "localType",
+                                "type",
+                                "msg_type",
+                                "msgType",
+                                "WCDB_CT_local_type",
+                            ],
+                            0,
+                        ) != 47
+                        {
                             continue;
                         }
                         let content = strip_emoji_owner_prefix(&decode_message_content(row));
-                        let md5 = normalize_emoji_md5(&coerce_string(record_field(row, &["emoji_md5", "emojiMd5", "md5"]))).or_else(|| extract_emoji_md5(&content));
+                        let md5 = normalize_emoji_md5(&coerce_string(record_field(
+                            row,
+                            &["emoji_md5", "emojiMd5", "md5"],
+                        )))
+                        .or_else(|| extract_emoji_md5(&content));
                         let Some(md5) = md5 else { continue };
-                        let url = normalize_emoji_url(&coerce_string(record_field(row, &["emoji_cdn_url", "emojiCdnUrl", "cdnurl", "cdn_url", "emoji_url", "emojiUrl", "url", "thumburl", "thumb_url"]))).or_else(|| extract_emoji_url(&content));
+                        let url = normalize_emoji_url(&coerce_string(record_field(
+                            row,
+                            &[
+                                "emoji_cdn_url",
+                                "emojiCdnUrl",
+                                "cdnurl",
+                                "cdn_url",
+                                "emoji_url",
+                                "emojiUrl",
+                                "url",
+                                "thumburl",
+                                "thumb_url",
+                            ],
+                        )))
+                        .or_else(|| extract_emoji_url(&content));
                         let me = resolve_is_sent(row, &raw_wxid, &cleaned);
                         match tally.iter_mut().find(|t| t.0 == me && t.1 == md5) {
                             Some(t) => {
@@ -1106,7 +1648,10 @@ impl ServiceHub {
                 }
                 let _ = wcdb.close_message_cursor(cursor);
             }
-            let (mut my_top, mut fr_top): (Option<&(bool, String, Option<String>, i64)>, Option<&(bool, String, Option<String>, i64)>) = (None, None);
+            let (mut my_top, mut fr_top): (
+                Option<&(bool, String, Option<String>, i64)>,
+                Option<&(bool, String, Option<String>, i64)>,
+            ) = (None, None);
             for t in &tally {
                 if t.0 {
                     if my_top.map_or(true, |m| t.3 > m.3) {
@@ -1131,7 +1676,10 @@ impl ServiceHub {
                 }
             }
         }
-        let db_path = self.connection_inputs().map(|(dir, _, _)| dir.to_string_lossy().to_string()).unwrap_or_default();
+        let db_path = self
+            .connection_inputs()
+            .map(|(dir, _, _)| dir.to_string_lossy().to_string())
+            .unwrap_or_default();
         if my_url.is_none() {
             if let Some(m) = &my_md5 {
                 if let Ok(u) = wcdb.emoticon_cdn_url(&db_path, m) {
@@ -1150,7 +1698,12 @@ impl ServiceHub {
                 }
             }
         }
-        for (k, v) in [("myTopEmojiMd5", &my_md5), ("myTopEmojiUrl", &my_url), ("friendTopEmojiMd5", &fr_md5), ("friendTopEmojiUrl", &fr_url)] {
+        for (k, v) in [
+            ("myTopEmojiMd5", &my_md5),
+            ("myTopEmojiUrl", &my_url),
+            ("friendTopEmojiMd5", &fr_md5),
+            ("friendTopEmojiUrl", &fr_url),
+        ] {
             if let Some(v) = v {
                 stats.insert(k.into(), json!(v));
             }
@@ -1163,12 +1716,43 @@ impl ServiceHub {
         }
 
         let exclude: HashSet<&str> = exclude_words.iter().map(String::as_str).collect();
-        let filter = |key: &str| -> Vec<Value> { cpp.get(key).and_then(Value::as_array).map(|a| a.as_slice()).unwrap_or(&[]).iter().filter(|p| !exclude.contains(p["phrase"].as_str().unwrap_or(""))).cloned().collect() };
-        let (clean, clean_my, clean_fr) = (filter("phrases"), filter("myPhrases"), filter("friendPhrases"));
-        let top_phrases: Vec<Value> = clean.iter().map(|p| json!({ "phrase": p["phrase"], "count": p["count"] })).collect();
-        let phrase_map = |list: &[Value]| -> Vec<(String, i64)> { list.iter().map(|p| (p["phrase"].as_str().unwrap_or("").to_string(), num(&p["count"]))).collect() };
+        let filter = |key: &str| -> Vec<Value> {
+            cpp.get(key)
+                .and_then(Value::as_array)
+                .map(|a| a.as_slice())
+                .unwrap_or(&[])
+                .iter()
+                .filter(|p| !exclude.contains(p["phrase"].as_str().unwrap_or("")))
+                .cloned()
+                .collect()
+        };
+        let (clean, clean_my, clean_fr) = (
+            filter("phrases"),
+            filter("myPhrases"),
+            filter("friendPhrases"),
+        );
+        let top_phrases: Vec<Value> = clean
+            .iter()
+            .map(|p| json!({ "phrase": p["phrase"], "count": p["count"] }))
+            .collect();
+        let phrase_map = |list: &[Value]| -> Vec<(String, i64)> {
+            list.iter()
+                .map(|p| {
+                    (
+                        p["phrase"].as_str().unwrap_or("").to_string(),
+                        num(&p["count"]),
+                    )
+                })
+                .collect()
+        };
         let (my_map, fr_map) = (phrase_map(&clean_my), phrase_map(&clean_fr));
-        let lookup = |m: &[(String, i64)], k: &str| m.iter().rev().find(|(p, _)| p == k).map(|(_, c)| *c).unwrap_or(0);
+        let lookup = |m: &[(String, i64)], k: &str| {
+            m.iter()
+                .rev()
+                .find(|(p, _)| p == k)
+                .map(|(_, c)| *c)
+                .unwrap_or(0)
+        };
         let exclusive = |own: &[(String, i64)], other: &[(String, i64)]| -> Vec<Value> {
             let mut seen = HashSet::new();
             let mut v: Vec<(String, i64)> = Vec::new();
@@ -1184,7 +1768,9 @@ impl ServiceHub {
             }
             v.sort_by(|a, b| b.1.cmp(&a.1));
             v.truncate(20);
-            v.into_iter().map(|(p, c)| json!({ "phrase": p, "count": c })).collect()
+            v.into_iter()
+                .map(|(p, c)| json!({ "phrase": p, "count": c }))
+                .collect()
         };
         let my_excl = exclusive(&my_map, &fr_map);
         let fr_excl = exclusive(&fr_map, &my_map);
@@ -1207,7 +1793,13 @@ impl ServiceHub {
         report.insert("topPhrases".into(), json!(top_phrases));
         report.insert("myExclusivePhrases".into(), json!(my_excl));
         report.insert("friendExclusivePhrases".into(), json!(fr_excl));
-        for (k, src) in [("heatmap", "heatmap"), ("initiative", "initiative"), ("response", "response"), ("monthly", "monthly"), ("streak", "streak")] {
+        for (k, src) in [
+            ("heatmap", "heatmap"),
+            ("initiative", "initiative"),
+            ("response", "response"),
+            ("monthly", "monthly"),
+            ("streak", "streak"),
+        ] {
             if let Some(v) = cpp.get(src).filter(|v| !v.is_null()) {
                 report.insert(k.into(), v.clone());
             }

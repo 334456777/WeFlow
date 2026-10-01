@@ -36,7 +36,9 @@ pub fn name() -> Option<String> {
 
 /// Starts the monitor (once); returns its pipe or socket name.
 pub fn start(watch: impl Fn() -> Vec<PathBuf> + Send + 'static) -> std::io::Result<String> {
-    let mut guard = running().lock().map_err(|_| std::io::Error::other("monitor lock poisoned"))?;
+    let mut guard = running()
+        .lock()
+        .map_err(|_| std::io::Error::other("monitor lock poisoned"))?;
     if let Some(r) = guard.as_ref() {
         return Ok(r.name.clone());
     }
@@ -45,12 +47,17 @@ pub fn start(watch: impl Fn() -> Vec<PathBuf> + Send + 'static) -> std::io::Resu
     let name = listen(stop.clone(), clients.clone())?;
     let watcher_stop = stop.clone();
     std::thread::spawn(move || watch_loop(watch, clients, watcher_stop));
-    *guard = Some(Running { name: name.clone(), stop });
+    *guard = Some(Running {
+        name: name.clone(),
+        stop,
+    });
     Ok(name)
 }
 
 pub fn stop() {
-    let Some(r) = running().lock().ok().and_then(|mut g| g.take()) else { return };
+    let Some(r) = running().lock().ok().and_then(|mut g| g.take()) else {
+        return;
+    };
     r.stop.store(true, Ordering::Relaxed);
     unblock(&r.name);
 }
@@ -60,7 +67,11 @@ pub fn stop() {
 type Stamp = (u64, Option<SystemTime>, u64, Option<SystemTime>);
 
 fn stamp(db: &Path) -> Stamp {
-    let meta = |p: &Path| std::fs::metadata(p).ok().map(|m| (m.len(), m.modified().ok()));
+    let meta = |p: &Path| {
+        std::fs::metadata(p)
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()))
+    };
     let (a, b) = meta(db).unwrap_or((0, None));
     let mut wal = db.as_os_str().to_os_string();
     wal.push("-wal");
@@ -70,12 +81,22 @@ fn stamp(db: &Path) -> Stamp {
 
 /// The databases worth watching under each `db_storage` folder.
 pub fn databases(db_storage: &Path) -> Vec<PathBuf> {
-    let mut out = vec![db_storage.join("session/session.db"), db_storage.join("contact/contact.db")];
+    let mut out = vec![
+        db_storage.join("session/session.db"),
+        db_storage.join("contact/contact.db"),
+    ];
     if let Ok(entries) = std::fs::read_dir(db_storage.join("message")) {
         let mut shards: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("message_") && n.ends_with(".db") && !n.contains("fts") && !n.contains("resource")))
+            .filter(|p| {
+                p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    n.starts_with("message_")
+                        && n.ends_with(".db")
+                        && !n.contains("fts")
+                        && !n.contains("resource")
+                })
+            })
             .collect();
         shards.sort();
         out.extend(shards);
@@ -97,7 +118,11 @@ pub fn event(db: &Path) -> String {
     v.to_string()
 }
 
-fn watch_loop(watch: impl Fn() -> Vec<PathBuf>, clients: Arc<Mutex<Vec<Client>>>, stop: Arc<AtomicBool>) {
+fn watch_loop(
+    watch: impl Fn() -> Vec<PathBuf>,
+    clients: Arc<Mutex<Vec<Client>>>,
+    stop: Arc<AtomicBool>,
+) {
     let mut known: HashMap<PathBuf, Stamp> = HashMap::new();
     while !stop.load(Ordering::Relaxed) {
         let mut lines: Vec<String> = Vec::new();
@@ -111,7 +136,11 @@ fn watch_loop(watch: impl Fn() -> Vec<PathBuf>, clients: Arc<Mutex<Vec<Client>>>
         if !lines.is_empty() {
             if let Ok(mut list) = clients.lock() {
                 let payload = lines.join("\n") + "\n";
-                list.retain_mut(|c| c.write_all(payload.as_bytes()).and_then(|_| c.flush()).is_ok());
+                list.retain_mut(|c| {
+                    c.write_all(payload.as_bytes())
+                        .and_then(|_| c.flush())
+                        .is_ok()
+                });
             }
         }
         std::thread::sleep(Duration::from_millis(1000));
@@ -151,9 +180,14 @@ fn unblock(_name: &str) {}
 #[cfg(windows)]
 mod pipe {
     use std::io::{Error, Result, Write};
-    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, HANDLE, INVALID_HANDLE_VALUE,
+    };
     use windows_sys::Win32::Storage::FileSystem::{WriteFile, PIPE_ACCESS_DUPLEX};
-    use windows_sys::Win32::System::Pipes::{ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT};
+    use windows_sys::Win32::System::Pipes::{
+        ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_TYPE_BYTE,
+        PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
+    };
 
     pub struct Instance(pub HANDLE);
     // SAFETY: a pipe handle can be used from any thread; each instance is owned by one client entry.
@@ -163,7 +197,18 @@ mod pipe {
         pub fn create(name: &str) -> Result<Self> {
             let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
             // SAFETY: `wide` is NUL-terminated and outlives the call.
-            let h = unsafe { CreateNamedPipeW(wide.as_ptr(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 64 * 1024, 4 * 1024, 0, std::ptr::null()) };
+            let h = unsafe {
+                CreateNamedPipeW(
+                    wide.as_ptr(),
+                    PIPE_ACCESS_DUPLEX,
+                    PIPE_TYPE_BYTE | PIPE_WAIT,
+                    PIPE_UNLIMITED_INSTANCES,
+                    64 * 1024,
+                    4 * 1024,
+                    0,
+                    std::ptr::null(),
+                )
+            };
             if h == INVALID_HANDLE_VALUE {
                 return Err(Error::last_os_error());
             }
@@ -186,7 +231,15 @@ mod pipe {
         fn write(&mut self, buf: &[u8]) -> Result<usize> {
             let mut written = 0u32;
             // SAFETY: valid handle; `buf` is readable for its length.
-            let ok = unsafe { WriteFile(self.0, buf.as_ptr(), buf.len() as u32, &mut written, std::ptr::null_mut()) };
+            let ok = unsafe {
+                WriteFile(
+                    self.0,
+                    buf.as_ptr(),
+                    buf.len() as u32,
+                    &mut written,
+                    std::ptr::null_mut(),
+                )
+            };
             if ok == 0 {
                 return Err(Error::last_os_error());
             }
@@ -217,7 +270,11 @@ fn listen(stop: Arc<AtomicBool>, clients: Arc<Mutex<Vec<Client>>>) -> std::io::R
     std::thread::spawn(move || {
         let mut next = Some(first);
         while !stop.load(Ordering::Relaxed) {
-            let instance = match next.take().map(Ok).unwrap_or_else(|| pipe::Instance::create(&pipe_name)) {
+            let instance = match next
+                .take()
+                .map(Ok)
+                .unwrap_or_else(|| pipe::Instance::create(&pipe_name))
+            {
                 Ok(i) => i,
                 Err(_) => {
                     std::thread::sleep(Duration::from_millis(500));
@@ -237,7 +294,10 @@ fn listen(stop: Arc<AtomicBool>, clients: Arc<Mutex<Vec<Client>>>) -> std::io::R
 /// Wakes the accept loop that is blocked waiting for a client.
 #[cfg(windows)]
 fn unblock(name: &str) {
-    let _ = std::fs::OpenOptions::new().read(true).write(true).open(name);
+    let _ = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(name);
 }
 
 #[cfg(test)]
@@ -246,11 +306,17 @@ mod tests {
 
     #[test]
     fn events_name_the_kind_of_database() {
-        let v: serde_json::Value = serde_json::from_str(&event(Path::new("/a/db_storage/session/session.db"))).unwrap();
-        assert_eq!((v["action"].as_str(), v["table"].as_str()), (Some("session_change"), Some("SessionTable")));
-        let v: serde_json::Value = serde_json::from_str(&event(Path::new("/a/db_storage/message/message_3.db"))).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&event(Path::new("/a/db_storage/session/session.db"))).unwrap();
+        assert_eq!(
+            (v["action"].as_str(), v["table"].as_str()),
+            (Some("session_change"), Some("SessionTable"))
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(&event(Path::new("/a/db_storage/message/message_3.db"))).unwrap();
         assert_eq!(v["action"], "message_change");
-        let v: serde_json::Value = serde_json::from_str(&event(Path::new("/a/db_storage/contact/contact.db"))).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&event(Path::new("/a/db_storage/contact/contact.db"))).unwrap();
         assert_eq!(v["action"], "contact_change");
     }
 
@@ -266,7 +332,9 @@ mod tests {
         let name = start(move || vec![watched.clone()]).unwrap();
         assert_eq!(super::name().as_deref(), Some(name.as_str()));
         let stream = std::os::unix::net::UnixStream::connect(&name).unwrap();
-        stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
         std::thread::sleep(Duration::from_millis(1500)); // the watcher records the first stamp
         std::fs::write(&db, b"one two").unwrap();
         let mut line = String::new();
