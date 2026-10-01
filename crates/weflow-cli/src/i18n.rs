@@ -7,26 +7,111 @@ use weflow_core::locale::{self, translate_with, Lang};
 
 include!("help_zh.rs");
 
-/// `--lang` is needed before clap parses (help is printed during parsing), so look for it by hand.
-pub fn prescan_lang(args: &[String]) {
+/// The value of a global option given as `--name value` or `--name=value`.
+fn option_value(args: &[String], name: &str) -> Option<String> {
+    let eq = format!("{name}=");
     let mut it = args.iter().skip(1);
     while let Some(arg) = it.next() {
         if arg == "--" {
             break;
         }
-        let value = if let Some(v) = arg.strip_prefix("--lang=") {
-            Some(v.to_string())
-        } else if arg == "--lang" {
-            it.next().cloned()
-        } else {
-            None
-        };
-        if let Some(v) = value {
-            match v.as_str() {
-                "zh" => locale::set(Lang::Zh),
-                "en" => locale::set(Lang::En),
-                _ => {}
-            }
+        if let Some(v) = arg.strip_prefix(&eq) {
+            return Some(v.to_string());
+        }
+        if arg == name {
+            return it.next().cloned();
+        }
+    }
+    None
+}
+
+fn parse_lang(value: &str) -> Option<Lang> {
+    match value {
+        "zh" => Some(Lang::Zh),
+        "en" => Some(Lang::En),
+        _ => None,
+    }
+}
+
+/// Settle the output language before clap runs (help is printed during parsing). Precedence: `--lang`,
+/// `WEFLOW_LANG`, the language saved in the config file, then the system.
+fn prescan_lang(args: &[String]) {
+    if let Some(lang) = option_value(args, "--lang").as_deref().and_then(parse_lang) {
+        locale::set(lang);
+        return;
+    }
+    if std::env::var("WEFLOW_LANG").is_ok_and(|v| !v.trim().is_empty()) {
+        return;
+    }
+    let path = option_value(args, "--config")
+        .map(std::path::PathBuf::from)
+        .or_else(weflow_core::config::default_config_path);
+    let saved = path
+        .and_then(|p| weflow_core::config::ConfigStore::load(&p).ok())
+        .and_then(|c| c.lang);
+    if let Some(lang) = saved.as_deref().and_then(parse_lang) {
+        locale::set(lang);
+    }
+}
+
+/// `weflow --lang zh` on its own (no command) saves the language in the config file.
+fn save_language_if_alone(args: &[String]) {
+    // `--config <path>` may accompany it; anything else (a command, other options) means a normal run.
+    let mut rest: Vec<&str> = Vec::new();
+    let mut it = args.iter().skip(1);
+    while let Some(arg) = it.next() {
+        if arg == "--config" {
+            it.next();
+        } else if !arg.starts_with("--config=") {
+            rest.push(arg);
+        }
+    }
+    let alone = match rest.as_slice() {
+        [flag, _] => *flag == "--lang",
+        [one] => one.starts_with("--lang="),
+        _ => false,
+    };
+    if !alone {
+        return;
+    }
+    let Some(value) = option_value(args, "--lang") else {
+        return;
+    };
+    let Some(lang) = parse_lang(&value) else {
+        return;
+    };
+    let path = option_value(args, "--config")
+        .map(std::path::PathBuf::from)
+        .or_else(weflow_core::config::default_config_path);
+    let result = path
+        .clone()
+        .ok_or_else(|| "failed to locate platform config directory".to_string())
+        .and_then(|path| {
+            let mut config =
+                weflow_core::config::ConfigStore::load(&path).map_err(|e| e.to_string())?;
+            config.lang = Some(value.clone());
+            config.save(&path).map_err(|e| e.to_string())?;
+            Ok(path)
+        });
+    match result {
+        Ok(path) => {
+            let message = match lang {
+                Lang::Zh => "已将语言设置为中文",
+                Lang::En => "Language set to English",
+            };
+            println!(
+                "{}",
+                serde_json::json!({ "success": true, "data": { "lang": value, "message": message, "configPath": path } })
+            );
+            std::process::exit(0);
+        }
+        Err(err) => {
+            let message = weflow_core::locale::localize(err);
+            println!(
+                "{}",
+                serde_json::json!({ "success": false, "error": { "code": "config_error", "message": message } })
+            );
+            std::process::exit(3);
         }
     }
 }
@@ -227,6 +312,7 @@ fn inline_notes(line: &str) -> String {
 /// Parse the command line; help and parse errors are printed in the active language.
 pub fn parse<T: CommandFactory + FromArgMatches>() -> T {
     let args: Vec<String> = std::env::args().collect();
+    save_language_if_alone(&args);
     prescan_lang(&args);
     if locale::current() == Lang::En {
         return T::parse_from_clap();

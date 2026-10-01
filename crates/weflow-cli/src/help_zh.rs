@@ -104,7 +104,7 @@ const HELP: &[(&str, &str)] = &[
     ("Output WAV path (default: print base64 in the JSON result)", "输出 WAV 路径（默认：在 JSON 结果中输出 base64）"),
     ("Output directory", "输出目录"),
     ("Output file", "输出文件"),
-    ("Output language for generated text (default: follows the system: WEFLOW_LANG/LC_ALL/LC_MESSAGES/LANG/LANGUAGE, else the OS display language, else en)", "生成文本的输出语言（默认跟随系统：WEFLOW_LANG/LC_ALL/LC_MESSAGES/LANG/LANGUAGE，否则取操作系统显示语言，再否则为 en）"),
+    ("Output language: en or zh. Given on its own (`weflow --lang zh`) it is saved in the config file; with a command it applies to that run only. Default: the saved language, else the system language", "输出语言：en 或 zh。单独使用（`weflow --lang zh`）时保存到配置文件；与命令一起使用时仅对本次运行生效。默认：已保存的语言，否则跟随系统语言"),
     ("Overall chat statistics (private chats, honouring the exclusion list)", "整体聊天统计（私聊，遵循排除列表）"),
     ("Overall statistics, rankings and time distribution", "整体统计、排行与时间分布"),
     ("Page through image/video messages with the native media scanner", "用原生媒体扫描器分页浏览图片 / 视频消息"),

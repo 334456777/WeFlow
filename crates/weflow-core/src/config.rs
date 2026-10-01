@@ -54,6 +54,8 @@ impl AppContext {
 #[serde(default)]
 pub struct ConfigStore {
     pub current_profile: String,
+    /// Output language chosen with `weflow --lang en|zh` (`None` = follow the system).
+    pub lang: Option<String>,
     pub profiles: BTreeMap<String, ProfileConfig>,
     pub extra: BTreeMap<String, Value>,
 }
@@ -85,6 +87,7 @@ impl Default for ConfigStore {
         profiles.insert("default".to_string(), ProfileConfig::default());
         Self {
             current_profile: "default".to_string(),
+            lang: None,
             profiles,
             extra: BTreeMap::new(),
         }
@@ -127,6 +130,9 @@ impl ConfigStore {
         if key == "current_profile" || key == "currentProfile" {
             return Value::String(self.current_profile.clone());
         }
+        if key == "lang" {
+            return self.lang.clone().map_or(Value::Null, Value::String);
+        }
         if key == "profiles" {
             return serde_json::to_value(&self.profiles).unwrap_or(Value::Null);
         }
@@ -142,6 +148,16 @@ impl ConfigStore {
     }
 
     pub fn set_key(&mut self, profile: Option<&str>, key: &str, value: Value) -> AppResult<()> {
+        if key == "lang" {
+            let lang = as_string(value)?;
+            if !matches!(lang.as_str(), "en" | "zh") {
+                return Err(AppError::usage(format!(
+                    "invalid value '{lang}' for lang; use en or zh"
+                )));
+            }
+            self.lang = Some(lang);
+            return Ok(());
+        }
         if key == "current_profile" || key == "currentProfile" {
             self.current_profile = as_string(value)?;
             self.profiles
@@ -188,6 +204,10 @@ impl ConfigStore {
     }
 
     pub fn unset_key(&mut self, profile: Option<&str>, key: &str) {
+        if key == "lang" {
+            self.lang = None;
+            return;
+        }
         if key == "current_profile" || key == "currentProfile" {
             self.current_profile = "default".to_string();
             self.profiles
@@ -409,6 +429,11 @@ pub fn old_electron_config_candidates() -> Vec<PathBuf> {
         candidates.push(home.join("Library/Application Support/WeFlow/config.json"));
     }
     candidates
+}
+
+/// Where the config file lives when `--config` is not given.
+pub fn default_config_path() -> Option<PathBuf> {
+    default_home_dir().ok().map(|dir| dir.join("config.json"))
 }
 
 fn default_home_dir() -> AppResult<PathBuf> {

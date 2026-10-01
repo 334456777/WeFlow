@@ -27,7 +27,7 @@ Windows x64 releases are a single `weflow.exe`. WXGF images need `ffmpeg` on `PA
 
 ## Switching between English and Chinese
 
-The language follows the system: Chinese on a Chinese system, English otherwise. Use `--lang en|zh` for a single run, or the environment:
+The language follows the system: Chinese on a Chinese system, English otherwise. `weflow --lang zh` (on its own, no command) saves the choice in the config file (`weflow config unset lang` goes back to the system language); `weflow --lang zh <command>` applies to a single run, or use the environment:
 
 ```powershell
 .\weflow.exe --lang zh chat sessions --pretty    # Chinese output for this run

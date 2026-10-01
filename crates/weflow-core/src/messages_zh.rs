@@ -33,6 +33,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("unsupported export format: {}; supported: json, csv, txt, html, excel, sql, chatlab, weclone", "不支持的导出格式：{}；支持：json、csv、txt、html、excel、sql、chatlab、weclone"),
     ("CSV export expects an array; use --format json for nested data", "CSV 导出需要数组数据；嵌套数据请使用 --format json"),
     // config
+    ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),
     ("config override must include a parent directory", "配置文件路径必须包含上级目录"),
     ("failed to prepare runtime assets: {}", "准备运行时资源失败：{}"),
     ("failed to locate platform config directory", "无法定位系统配置目录"),

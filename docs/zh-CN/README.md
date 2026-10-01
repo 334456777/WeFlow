@@ -27,7 +27,7 @@ Windows x64 发布版是单个 `weflow.exe`。WXGF 图片需要 `PATH`（或 `FF
 
 ## 切换中英文
 
-语言跟随系统:中文系统输出中文,否则输出英文。单次运行用 `--lang en|zh`,也可以用环境变量:
+语言跟随系统:中文系统输出中文,否则输出英文。单独运行 `weflow --lang zh`(不带命令)会把选择保存到配置文件(`weflow config unset lang` 恢复为跟随系统);`weflow --lang zh <命令>` 只对单次运行生效,也可以用环境变量:
 
 ```powershell
 .\weflow.exe --lang zh chat sessions --pretty    # 本次输出中文

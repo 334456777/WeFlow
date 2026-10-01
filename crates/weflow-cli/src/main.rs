@@ -31,7 +31,7 @@ struct Cli {
     /// Account wxid (overrides config)
     #[arg(long, global = true)]
     wxid: Option<String>,
-    /// Output language for generated text (default: follows the system: WEFLOW_LANG/LC_ALL/LC_MESSAGES/LANG/LANGUAGE, else the OS display language, else en)
+    /// Output language: en or zh. Given on its own (`weflow --lang zh`) it is saved in the config file; with a command it applies to that run only. Default: the saved language, else the system language
     #[arg(long, global = true, value_enum)]
     lang: Option<LangArg>,
     /// Print JSON (default)
