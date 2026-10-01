@@ -364,6 +364,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     /// Text for TXT / Excel rows (formatPlainExportContent + transfer + quote + link).
     pub fn plain_row_content(&mut self, msg: &ExportMsg) -> (String, bool) {
+        if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
+            return (m.relative_path.clone(), false);
+        }
         let my = self.my_wxid.clone();
         let mut content = format_plain_export_content(
             &msg.content,
@@ -422,6 +425,13 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     pub fn build_chatlab(&mut self, msgs: &[ExportMsg]) -> Value {
+        let mut out_msgs: Vec<Value> = Vec::new();
+        let (chatlab, meta, members) = self.chatlab_parts(msgs, &mut |m| out_msgs.push(Value::Object(m)));
+        json!({ "chatlab": chatlab, "meta": meta, "members": members, "messages": out_msgs })
+    }
+
+    /// Header, meta and (resolved) members of a ChatLab export; every message object goes to `sink` in order.
+    fn chatlab_parts(&mut self, msgs: &[ExportMsg], sink: &mut dyn FnMut(Map<String, Value>)) -> (Value, Value, Vec<Value>) {
         let is_group = self.session.is_group;
         let mut members: Vec<Map<String, Value>> = Vec::new();
         let mut member_index: HashMap<String, usize> = HashMap::new();
@@ -433,7 +443,6 @@ impl<'a, 'n> Exporter<'a, 'n> {
             member_index.insert(id, members.len());
             members.push(m);
         }
-        let mut out_msgs: Vec<Value> = Vec::new();
         for msg in msgs {
             let member_name = members
                 .get(*member_index.get(&msg.sender_username).unwrap_or(&usize::MAX))
@@ -463,6 +472,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
             }
             if let Some(link) = format_link_card_export_text(&msg.content, msg.local_type, LinkStyle::Markdown) {
                 content = Some(link);
+            }
+            if let Some(media) = msg.media.as_ref().filter(|_| msg.local_type == 3) {
+                content = Some(media.relative_path.clone());
             }
             let mut m = Map::new();
             m.insert("sender".into(), json!(msg.sender_username));
@@ -505,7 +517,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 }
                 m.insert("chatRecords".into(), Value::Array(chat_records));
             }
-            out_msgs.push(Value::Object(m));
+            sink(m);
         }
         // enrich members with resolved names like the desktop app does for groups
         let mut final_members: Vec<Value> = Vec::new();
@@ -525,30 +537,59 @@ impl<'a, 'n> Exporter<'a, 'n> {
             final_members.push(Value::Object(m));
         }
         let (chatlab, meta) = self.chatlab_meta();
-        json!({ "chatlab": chatlab, "meta": meta, "members": final_members, "messages": out_msgs })
+        (chatlab, meta, final_members)
     }
 
     pub fn write_chatlab(&mut self, msgs: &[ExportMsg], out: &Path, jsonl: bool) -> Result<()> {
-        let export = self.build_chatlab(msgs);
-        if !jsonl {
-            return write_bytes(out, serde_json::to_string_pretty(&export)?.as_bytes());
-        }
-        let mut lines: Vec<String> = Vec::new();
-        lines.push(serde_json::to_string(&json!({ "_type": "header", "chatlab": export["chatlab"], "meta": export["meta"] }))?);
-        for key in ["members", "messages"] {
-            let ty = if key == "members" { "member" } else { "message" };
-            for item in export[key].as_array().into_iter().flatten() {
+        use std::io::Write;
+        // Messages are serialized as they are built and only their text is kept; members are known afterwards.
+        let mut lines: Vec<String> = Vec::with_capacity(msgs.len());
+        let (chatlab, meta, members) = self.chatlab_parts(msgs, &mut |m| {
+            lines.push(if jsonl {
                 let mut obj = Map::new();
-                obj.insert("_type".into(), json!(ty));
-                if let Some(o) = item.as_object() {
-                    for (k, v) in o {
-                        obj.insert(k.clone(), v.clone());
-                    }
-                }
-                lines.push(serde_json::to_string(&Value::Object(obj))?);
-            }
+                obj.insert("_type".into(), json!("message"));
+                obj.extend(m);
+                serde_json::to_string(&Value::Object(obj)).unwrap_or_default()
+            } else {
+                pretty_indented(&Value::Object(m), 4)
+            });
+        });
+        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
         }
-        write_bytes(out, lines.join("\n").as_bytes())
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+        if jsonl {
+            write!(w, "{}", serde_json::to_string(&json!({ "_type": "header", "chatlab": chatlab, "meta": meta }))?)?;
+            for member in &members {
+                let mut obj = Map::new();
+                obj.insert("_type".into(), json!("member"));
+                if let Some(o) = member.as_object() {
+                    obj.extend(o.clone());
+                }
+                write!(w, "\n{}", serde_json::to_string(&Value::Object(obj))?)?;
+            }
+            for line in &lines {
+                w.write_all(b"\n")?;
+                w.write_all(line.as_bytes())?;
+            }
+        } else {
+            write!(w, "{{\n  \"chatlab\": {},\n  \"meta\": {},\n  \"members\": {},\n  \"messages\": ", pretty_indented(&chatlab, 2), pretty_indented(&meta, 2), pretty_indented(&Value::Array(members), 2))?;
+            if lines.is_empty() {
+                w.write_all(b"[]")?;
+            } else {
+                w.write_all(b"[\n    ")?;
+                for (i, line) in lines.iter().enumerate() {
+                    if i > 0 {
+                        w.write_all(b",\n    ")?;
+                    }
+                    w.write_all(line.as_bytes())?;
+                }
+                w.write_all(b"\n  ]")?;
+            }
+            w.write_all(b"\n}")?;
+        }
+        w.flush()?;
+        Ok(())
     }
 
     // ─────────────────────────── detailed JSON / arkme-json ───────────────────────────
@@ -564,11 +605,11 @@ impl<'a, 'n> Exporter<'a, 'n> {
         Value::Object(h)
     }
 
-    pub fn build_json(&mut self, msgs: &[ExportMsg], arkme: bool) -> Value {
+    /// Builds the detailed-JSON object of every message in order and hands each to `sink`, so a caller can write
+    /// it out and drop it instead of holding the whole conversation as JSON values. Returns the sender profiles.
+    fn json_messages(&mut self, msgs: &[ExportMsg], arkme: bool, sink: &mut dyn FnMut(Map<String, Value>, &Profile)) -> HashMap<String, Profile> {
         let my = self.my_wxid.clone();
-        let is_group = self.session.is_group;
-        let mut out: Vec<Map<String, Value>> = Vec::new();
-        let mut transfer_idx: Vec<(usize, String)> = Vec::new();
+        let mut count = 0usize;
         let mut profiles: HashMap<String, Profile> = HashMap::new();
         for msg in msgs {
             let source = rx(r"(?i)<msgsource>[\s\S]*?</msgsource>").find(&msg.content).map(|m| m.as_str().to_string()).unwrap_or_default();
@@ -588,6 +629,16 @@ impl<'a, 'n> Exporter<'a, 'n> {
                     content = Some(l);
                 }
             }
+            if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
+                content = Some(m.relative_path.clone());
+            }
+            if let Some(c) = content.clone() {
+                if is_transfer_export_content(&c) && !msg.content.is_empty() {
+                    if let Some(desc) = self.transfer_desc(&msg.content) {
+                        content = Some(append_transfer_desc(&c, &desc));
+                    }
+                }
+            }
             let sender = msg.sender_username.clone();
             let nickname = self.names.get(&sender).map(|c| c.nickname).filter(|n| !n.is_empty()).unwrap_or_else(|| self.names.display_name(&sender));
             let remark = self.names.get(&sender).map(|c| c.remark).unwrap_or_default();
@@ -596,7 +647,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             profiles.entry(sender.clone()).or_insert_with(|| Profile { wxid: sender.clone(), nickname: nickname.clone(), remark: remark.clone(), group_nickname: group_nick.clone(), display_name: display.clone(), ..Default::default() });
 
             let mut o = Map::new();
-            o.insert("localId".into(), json!(out.len() + 1));
+            o.insert("localId".into(), json!(count + 1));
             o.insert("createTime".into(), json!(msg.create_time));
             o.insert("formattedTime".into(), json!(format_timestamp(msg.create_time)));
             o.insert("type".into(), json!(message_type_name(msg.local_type, Some(&msg.content))));
@@ -637,34 +688,26 @@ impl<'a, 'n> Exporter<'a, 'n> {
                     for (k, v) in meta { o.insert(k, v); }
                 }
             }
-            if let Some(c) = &content {
-                if is_transfer_export_content(c) && !msg.content.is_empty() {
-                    transfer_idx.push((out.len(), msg.content.clone()));
-                }
-            }
             if msg.local_type == 48 {
                 if let Some(v) = msg.location_lat { o.insert("locationLat".into(), json!(v)); }
                 if let Some(v) = msg.location_lng { o.insert("locationLng".into(), json!(v)); }
                 if let Some(v) = &msg.location_poiname { o.insert("locationPoiname".into(), json!(v)); }
                 if let Some(v) = &msg.location_label { o.insert("locationLabel".into(), json!(v)); }
             }
-            out.push(o);
+            count += 1;
+            sink(o, &profiles[&msg.sender_username]);
         }
-        for (idx, xml) in transfer_idx {
-            if let Some(desc) = self.transfer_desc(&xml) {
-                if let Some(Value::String(c)) = out[idx].get("content").cloned() {
-                    out[idx].insert("content".into(), json!(append_transfer_desc(&c, &desc)));
-                }
-            }
-        }
-        out.sort_by_key(|o| o.get("createTime").and_then(Value::as_i64).unwrap_or(0));
+        profiles
+    }
 
+    /// `{ wxid, nickname, remark, displayName, type, lastTimestamp, messageCount }` of the exported session.
+    fn json_session(&mut self, count: usize, last_ts: Option<i64>) -> Map<String, Value> {
+        let is_group = self.session.is_group;
         let session_contact = self.names.get(&self.session.id.clone());
         let session_nickname = session_contact.as_ref().map(|c| c.nickname.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| self.session.display_name.clone());
         let session_remark = session_contact.as_ref().map(|c| c.remark.clone()).unwrap_or_default();
         let session_group_nick = if is_group { resolve_group_nickname(&self.group_nicks, &[self.session.id.as_str()]) } else { String::new() };
         let session_display = self.settings.display_pref.pick(&self.session.id, &session_nickname, &session_remark, &session_group_nick);
-        let last_ts = out.iter().filter_map(|o| o.get("createTime").and_then(Value::as_i64)).max();
         let mut session = Map::new();
         session.insert("wxid".into(), json!(self.session.id));
         session.insert("nickname".into(), json!(session_nickname));
@@ -672,66 +715,40 @@ impl<'a, 'n> Exporter<'a, 'n> {
         session.insert("displayName".into(), json!(session_display));
         session.insert("type".into(), json!(if is_group { "群聊" } else { "私聊" }));
         session.insert("lastTimestamp".into(), last_ts.map(|t| json!(t)).unwrap_or(Value::Null));
-        session.insert("messageCount".into(), json!(out.len()));
+        session.insert("messageCount".into(), json!(count));
+
+        session
+    }
+
+    pub fn build_json(&mut self, msgs: &[ExportMsg], arkme: bool) -> Value {
+        let is_group = self.session.is_group;
+        let mut out: Vec<Map<String, Value>> = Vec::new();
+        let profiles = self.json_messages(msgs, arkme, &mut |m, _| out.push(m));
+        out.sort_by_key(|o| o.get("createTime").and_then(Value::as_i64).unwrap_or(0));
+        let last_ts = out.iter().filter_map(|o| o.get("createTime").and_then(Value::as_i64)).max();
+        let session = self.json_session(out.len(), last_ts);
 
         if !arkme {
             return json!({ "weflow": self.weflow_header(None), "session": Value::Object(session), "messages": out.into_iter().map(Value::Object).collect::<Vec<_>>() });
         }
 
         // arkme-json: compact messages + sender table (+ group members)
-        let mut sender_ids: HashMap<String, usize> = HashMap::new();
-        let mut senders: Vec<Value> = Vec::new();
-        let mut compact: Vec<Value> = Vec::new();
-        const KEEP: &[&str] = &[
-            "localId", "createTime", "formattedTime", "type", "localType", "content", "isSend", "senderID", "source", "platformMessageId", "replyToMessageId",
-            "locationLat", "locationLng", "locationPoiname", "locationLabel", "appMsgType", "appMsgKind", "appMsgDesc", "appMsgAppName", "appMsgSourceName",
-            "appMsgSourceUsername", "appMsgThumbUrl", "quotedContent", "quotedSender", "quotedType", "linkTitle", "linkUrl", "linkThumb", "emojiMd5", "emojiCdnUrl",
-            "emojiCaption", "finderTitle", "finderDesc", "finderUsername", "finderNickname", "finderCoverUrl", "finderAvatar", "finderDuration", "finderObjectId",
-            "finderUrl", "musicTitle", "musicUrl", "musicDataUrl", "musicAlbumUrl", "musicCoverUrl", "musicSinger", "musicAppName", "musicSourceName", "musicDuration",
-            "cardKind", "contactCardWxid", "contactCardNickname", "contactCardAlias", "contactCardRemark", "contactCardGender", "contactCardProvince",
-            "contactCardCity", "contactCardSignature", "contactCardAvatar",
-        ];
-        for o in &out {
-            let sender = {
-                let s = o.get("senderUsername").and_then(Value::as_str).unwrap_or("").trim().to_string();
-                if s.is_empty() { "unknown".to_string() } else { s }
-            };
-            let sid = match sender_ids.get(&sender) {
-                Some(i) => *i,
-                None => {
-                    let id = senders.len() + 1;
-                    sender_ids.insert(sender.clone(), id);
-                    let p = profiles.get(&sender).cloned().unwrap_or_default();
-                    let mut s = Map::new();
-                    s.insert("senderID".into(), json!(id));
-                    s.insert("wxid".into(), json!(sender));
-                    s.insert("displayName".into(), json!(if p.display_name.is_empty() { sender.clone() } else { p.display_name.clone() }));
-                    s.insert("nickname".into(), json!(if !p.nickname.is_empty() { p.nickname.clone() } else if !p.display_name.is_empty() { p.display_name.clone() } else { sender.clone() }));
-                    if !p.remark.is_empty() { s.insert("remark".into(), json!(p.remark)); }
-                    if !p.group_nickname.is_empty() { s.insert("groupNickname".into(), json!(p.group_nickname)); }
-                    senders.push(Value::Object(s));
-                    id
-                }
-            };
-            let mut c = Map::new();
-            let mut src = o.clone();
-            src.insert("senderID".into(), json!(sid));
-            for key in KEEP {
-                if let Some(v) = src.get(*key) {
-                    let skip = matches!(*key, "source") && false;
-                    if !skip {
-                        c.insert((*key).into(), v.clone());
-                    }
-                }
-            }
-            compact.push(Value::Object(c));
-        }
+        let mut ark_state = ArkCompact::default();
+        let compact: Vec<Value> = out.iter().map(|o| Value::Object(ark_state.compact(o, &|s| profiles.get(s).cloned()))).collect();
         let mut ark = Map::new();
         ark.insert("weflow".into(), self.weflow_header(Some("arkme-json")));
         ark.insert("session".into(), Value::Object(session));
-        ark.insert("senders".into(), Value::Array(senders));
+        ark.insert("senders".into(), Value::Array(ark_state.senders));
         ark.insert("messages".into(), Value::Array(compact));
         if is_group {
+            let members = self.ark_group_members(msgs);
+            ark.insert("groupMembers".into(), members);
+        }
+        Value::Object(ark)
+    }
+
+    /// `groupMembers` of the arkme export: every sender plus the group's member list, busiest first.
+    fn ark_group_members(&mut self, msgs: &[ExportMsg]) -> Value {
             let ids: Vec<String> = {
                 let mut v: Vec<String> = Vec::new();
                 for m in msgs {
@@ -764,16 +781,67 @@ impl<'a, 'n> Exporter<'a, 'n> {
             members.sort_by(|a, b| {
                 let ca = a["messageCount"].as_i64().unwrap_or(0);
                 let cb = b["messageCount"].as_i64().unwrap_or(0);
-                cb.cmp(&ca).then_with(|| a["displayName"].as_str().unwrap_or("").cmp(b["displayName"].as_str().unwrap_or("")))
+                let name = |m: &Map<String, Value>| ["displayName", "wxid"].iter().filter_map(|k| m.get(*k).and_then(Value::as_str)).find(|s| !s.is_empty()).unwrap_or("").to_string();
+                cb.cmp(&ca).then_with(|| crate::collate::compare_zh(&name(a), &name(b)))
             });
-            ark.insert("groupMembers".into(), Value::Array(members.into_iter().map(Value::Object).collect()));
-        }
-        Value::Object(ark)
+            Value::Array(members.into_iter().map(Value::Object).collect())
     }
 
     pub fn write_json(&mut self, msgs: &[ExportMsg], out: &Path, arkme: bool) -> Result<()> {
+        // Written message by message (the same bytes as pretty-printing the whole value); that needs the messages
+        // in time order, which collected conversations always are.
+        if msgs.windows(2).all(|w| w[0].create_time <= w[1].create_time) {
+            return self.write_json_streaming(msgs, out, arkme);
+        }
         let v = self.build_json(msgs, arkme);
         write_bytes(out, serde_json::to_string_pretty(&v)?.as_bytes())
+    }
+
+    fn write_json_streaming(&mut self, msgs: &[ExportMsg], out: &Path, arkme: bool) -> Result<()> {
+        use std::io::Write;
+        let is_group = self.session.is_group;
+        let session = Value::Object(self.json_session(msgs.len(), msgs.iter().map(|m| m.create_time).max()));
+        // Each message is serialized as soon as it is built; only the text is kept until the file is written.
+        let mut lines: Vec<String> = Vec::with_capacity(msgs.len());
+        let mut ark = ArkCompact::default();
+        self.json_messages(msgs, arkme, &mut |message, profile| {
+            let value = if arkme {
+                let sender = message.get("senderUsername").and_then(Value::as_str).unwrap_or("").trim().to_string();
+                Value::Object(ark.compact(&message, &|s| (s == sender).then(|| profile.clone())))
+            } else {
+                Value::Object(message)
+            };
+            lines.push(pretty_indented(&value, 4));
+        });
+        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+        write!(w, "{{\n  \"weflow\": {},\n  \"session\": {}", pretty_indented(&self.weflow_header(arkme.then_some("arkme-json")), 2), pretty_indented(&session, 2))?;
+        if arkme {
+            write!(w, ",\n  \"senders\": {}", pretty_indented(&Value::Array(std::mem::take(&mut ark.senders)), 2))?;
+        }
+        w.write_all(b",\n  \"messages\": ")?;
+        if lines.is_empty() {
+            w.write_all(b"[]")?;
+        } else {
+            w.write_all(b"[\n    ")?;
+            for (i, line) in lines.iter().enumerate() {
+                if i > 0 {
+                    w.write_all(b",\n    ")?;
+                }
+                w.write_all(line.as_bytes())?;
+            }
+            w.write_all(b"\n  ]")?;
+        }
+        drop(lines);
+        if arkme && is_group {
+            let members = self.ark_group_members(msgs);
+            write!(w, ",\n  \"groupMembers\": {}", pretty_indented(&members, 2))?;
+        }
+        w.write_all(b"\n}")?;
+        w.flush()?;
+        Ok(())
     }
 
     // ─────────────────────────────────── TXT ───────────────────────────────────
@@ -834,6 +902,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 }
                 _ => String::new(),
             };
+            let src = msg.media.as_ref().map(|m| m.relative_path.clone()).unwrap_or(src);
             let cells = [
                 (i + 1).to_string(),
                 msg.platform_message_id().unwrap_or_default(),
@@ -1019,7 +1088,20 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 String::new()
             };
             let sender_html = if is_group { format!("<div class=\"sender-name\">{}</div>", html_escape(&sender_name)) } else { String::new() };
-            let body = format!("<div class=\"message-time\">{}</div>{}<div class=\"message-content\">{}</div>", html_escape(&time_text), sender_html, text_html);
+            let (media_html, text_html) = match &msg.media {
+                Some(m) => {
+                    let path = html_attr_escape(&encode_uri(&m.relative_path));
+                    let html = match m.kind {
+                        "image" | "emoji" => format!("<img class=\"message-media {} previewable\" src=\"{path}\" data-full=\"{path}\" alt=\"{}\" />", m.kind, m.kind),
+                        "voice" => format!("<audio class=\"message-media audio\" controls src=\"{path}\"></audio>"),
+                        _ => format!("<video class=\"message-media video\" controls preload=\"metadata\" src=\"{path}\"></video>"),
+                    };
+                    // an image message has no caption of its own
+                    (html, if msg.local_type == 3 { String::new() } else { text_html })
+                }
+                None => (String::new(), text_html),
+            };
+            let body = format!("<div class=\"message-time\">{}</div>{}<div class=\"message-content\">{}{}</div>", html_escape(&time_text), sender_html, media_html, text_html);
             let mut item = Map::new();
             item.insert("i".into(), json!(i + 1));
             item.insert("t".into(), json!(msg.create_time));
@@ -1093,6 +1175,77 @@ impl<'a, 'n> Exporter<'a, 'n> {
 }
 
 // ─────────────────────────────── small helpers ───────────────────────────────
+
+/// Turns detailed-JSON message objects into arkme-json's compact form and numbers the senders on first sight.
+#[derive(Default)]
+struct ArkCompact {
+    sender_ids: HashMap<String, usize>,
+    senders: Vec<Value>,
+}
+
+impl ArkCompact {
+    const KEEP: &'static [&'static str] = &[
+        "localId", "createTime", "formattedTime", "type", "localType", "content", "isSend", "senderID", "source", "platformMessageId", "replyToMessageId",
+        "locationLat", "locationLng", "locationPoiname", "locationLabel", "appMsgType", "appMsgKind", "appMsgDesc", "appMsgAppName", "appMsgSourceName",
+        "appMsgSourceUsername", "appMsgThumbUrl", "quotedContent", "quotedSender", "quotedType", "linkTitle", "linkUrl", "linkThumb", "emojiMd5", "emojiCdnUrl",
+        "emojiCaption", "finderTitle", "finderDesc", "finderUsername", "finderNickname", "finderCoverUrl", "finderAvatar", "finderDuration", "finderObjectId",
+        "finderUrl", "musicTitle", "musicUrl", "musicDataUrl", "musicAlbumUrl", "musicCoverUrl", "musicSinger", "musicAppName", "musicSourceName", "musicDuration",
+        "cardKind", "contactCardWxid", "contactCardNickname", "contactCardAlias", "contactCardRemark", "contactCardGender", "contactCardProvince",
+        "contactCardCity", "contactCardSignature", "contactCardAvatar",
+    ];
+
+    /// `profile_of(sender)` supplies the sender's name data the first time that sender appears.
+    fn compact(&mut self, o: &Map<String, Value>, profile_of: &dyn Fn(&str) -> Option<Profile>) -> Map<String, Value> {
+        let sender = {
+            let s = o.get("senderUsername").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            if s.is_empty() { "unknown".to_string() } else { s }
+        };
+        let sid = match self.sender_ids.get(&sender) {
+            Some(i) => *i,
+            None => {
+                let id = self.senders.len() + 1;
+                self.sender_ids.insert(sender.clone(), id);
+                let p = profile_of(&sender).unwrap_or_default();
+                let mut s = Map::new();
+                s.insert("senderID".into(), json!(id));
+                s.insert("wxid".into(), json!(sender));
+                s.insert("displayName".into(), json!(if p.display_name.is_empty() { sender.clone() } else { p.display_name.clone() }));
+                s.insert("nickname".into(), json!(if !p.nickname.is_empty() { p.nickname.clone() } else if !p.display_name.is_empty() { p.display_name.clone() } else { sender.clone() }));
+                if !p.remark.is_empty() { s.insert("remark".into(), json!(p.remark)); }
+                if !p.group_nickname.is_empty() { s.insert("groupNickname".into(), json!(p.group_nickname)); }
+                self.senders.push(Value::Object(s));
+                id
+            }
+        };
+        let mut c = Map::new();
+        for key in Self::KEEP {
+            if *key == "senderID" {
+                c.insert((*key).into(), json!(sid));
+            } else if let Some(v) = o.get(*key) {
+                c.insert((*key).into(), v.clone());
+            }
+        }
+        c
+    }
+}
+
+/// JSON text of `value`, pretty-printed, with every line after the first indented by `spaces`.
+fn pretty_indented(value: &Value, spaces: usize) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_default().replace('\n', &format!("\n{}", " ".repeat(spaces)))
+}
+
+/// JavaScript's `encodeURI`: everything except letters, digits and `;,/?:@&=+$-_.!~*'()#` is percent-encoded.
+fn encode_uri(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for b in path.bytes() {
+        if b.is_ascii_alphanumeric() || b";,/?:@&=+$-_.!~*'()#".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
 
 fn avatar_fallback(name: &str) -> String {
     name.chars().next().map(|c| c.to_string()).unwrap_or_else(|| "?".into())
@@ -1340,6 +1493,53 @@ mod tests {
         assert!(a["messages"][0].get("senderID").is_some());
         assert!(a["messages"][0].get("senderUsername").is_none());
         assert!(a["groupMembers"].as_array().unwrap().len() >= 2);
+    }
+
+    /// The JSONL a whole `build_chatlab` value turns into (header, members, messages).
+    fn chatlab_jsonl_reference(export: &Value) -> String {
+        let mut lines = vec![serde_json::to_string(&json!({ "_type": "header", "chatlab": export["chatlab"], "meta": export["meta"] })).unwrap()];
+        for (key, ty) in [("members", "member"), ("messages", "message")] {
+            for item in export[key].as_array().into_iter().flatten() {
+                let mut obj = Map::new();
+                obj.insert("_type".into(), json!(ty));
+                obj.extend(item.as_object().unwrap().clone());
+                lines.push(serde_json::to_string(&Value::Object(obj)).unwrap());
+            }
+        }
+        lines.join("\n")
+    }
+
+    #[test]
+    fn streamed_exports_are_byte_identical_to_serializing_the_whole_value() {
+        let dir = std::env::temp_dir().join(format!("weflow-json-stream-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let read = |f: &Path| std::fs::read_to_string(f).unwrap();
+        for group in [false, true] {
+            let file = dir.join(format!("g{group}.json"));
+            let (detailed, arkme) = (file.with_extension("detailed"), file.with_extension("arkme"));
+            let (lab, jsonl) = (file.with_extension("lab"), file.with_extension("jsonl"));
+            with_exporter(group, |ex, msgs| {
+                ex.write_json(msgs, &detailed, false).unwrap();
+                ex.write_json(msgs, &arkme, true).unwrap();
+                ex.write_chatlab(msgs, &lab, false).unwrap();
+                ex.write_chatlab(msgs, &jsonl, true).unwrap();
+            });
+            assert_eq!(read(&detailed), with_exporter(group, |ex, msgs| serde_json::to_string_pretty(&ex.build_json(msgs, false)).unwrap()), "detailed, group={group}");
+            assert_eq!(read(&arkme), with_exporter(group, |ex, msgs| serde_json::to_string_pretty(&ex.build_json(msgs, true)).unwrap()), "arkme, group={group}");
+            assert_eq!(read(&lab), with_exporter(group, |ex, msgs| serde_json::to_string_pretty(&ex.build_chatlab(msgs)).unwrap()), "chatlab, group={group}");
+            assert_eq!(read(&jsonl), with_exporter(group, |ex, msgs| chatlab_jsonl_reference(&ex.build_chatlab(msgs))), "chatlab-jsonl, group={group}");
+        }
+        // no messages: empty arrays print like serde_json does
+        let (empty_json, empty_ark, empty_lab) = (dir.join("e.detailed"), dir.join("e.arkme"), dir.join("e.lab"));
+        with_exporter(false, |ex, _| {
+            ex.write_json(&[], &empty_json, false).unwrap();
+            ex.write_json(&[], &empty_ark, true).unwrap();
+            ex.write_chatlab(&[], &empty_lab, false).unwrap();
+        });
+        assert_eq!(read(&empty_json), with_exporter(false, |ex, _| serde_json::to_string_pretty(&ex.build_json(&[], false)).unwrap()));
+        assert_eq!(read(&empty_ark), with_exporter(false, |ex, _| serde_json::to_string_pretty(&ex.build_json(&[], true)).unwrap()));
+        assert_eq!(read(&empty_lab), with_exporter(false, |ex, _| serde_json::to_string_pretty(&ex.build_chatlab(&[])).unwrap()));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

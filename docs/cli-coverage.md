@@ -9,17 +9,18 @@ Baseline: the TypeScript/Electron backend as of the last upstream commit by the 
 TypeScript code was ported function by function (same formulas, same key order in JSON results, same fallbacks). The
 database layer is native Rust and was **verified against one real Windows WeChat 4.x account** (using a Linux build);
 everything else (HTTP server, image/`.dat` decryption, AI, Moments downloads) was verified through unit tests and
-end-to-end tests against synthetic encrypted databases and local fake HTTP servers. The Windows `weflow.exe` has not been
-run on Windows yet. Expect differences that synthetic data cannot reveal.
+end-to-end tests against synthetic encrypted databases and local fake HTTP servers. The cross-compiled Windows `weflow.exe` was
+run on Windows against the same account (about 80 commands, exports with media); macOS and Linux accounts were not tried. Expect
+differences that synthetic data cannot reveal.
 The IPC classification below was done by hand; disagree with it if you like.
 
 ## Summary
 
 | Measure | Covered | Total | % |
 |---|---|---|---|
-| Backend IPC channels (`electron/main.ts`; 172 total, 76 UI-only excluded) — full | 71 | 96 | **74%** |
+| Backend IPC channels (`electron/main.ts`; 172 total, 76 UI-only excluded) — full | 76 | 96 | **79%** |
 | Same, full + partial | 80 | 96 | **83%** |
-| Database functions the CLI calls (native Rust; 42 native, 10 refused as read-only, 2 covered by the service-layer fallback) | 54 | 54 | **100%** |
+| Database functions the CLI calls (native Rust; 44 native, 10 refused as read-only) | 54 | 54 | **100%** |
 | Chat-message export formats (chatlab, chatlab-jsonl, json, arkme-json, html, txt, excel, weclone, sql) | 9 | 9 | **100%** |
 | HTTP API routes (`httpService.ts`, same path, token auth, SSE push) | 19 | 19 | **100%** |
 
@@ -52,6 +53,7 @@ summary) and the Weibo context client.
 - ChatLab export: image, voice, video, emoji and call messages (`<msg>` XML with a non-49 type) were mapped to LINK; only
   real app messages (type 49 / `<appmsg`) are now links. The TypeScript original has the same bug.
 - `chat anti-revoke` reported success even when every session failed; it now returns an error.
+- The annual report's "top friend per month" came out empty on the native layer (the per-session monthly counts were missing); they are native now, and the extended statistics (heatmap, night owl, initiative, response speed, phrases, streak) are native too, with the same numbers as the cursor fallback.
 - Native rows carry `is_send` (computed against the account wxid), which the export and report code relies on.
 
 ## Channels that are still missing or partial
@@ -61,17 +63,15 @@ summary) and the Weibo context client.
 (voice transcription needs sherpa-onnx), `cache:clearAll` (only the analytics and image caches can be cleared),
 `sns:debugResource`.
 
-**Partial (9):**
+**Partial (4):**
 
 - `chat:getNewMessages`, message push and insight triggers poll instead of reacting to WCDB monitor callbacks.
-- `chat:getContacts` / `getContact`: no contact labels, signature or region (needs the extended-column parser and the 9.4k-line
-  region table).
-- `export:exportSession(s)`, `export:getExportStats`: message exports do not embed media files (image/voice/video/emoji
-  export runs separately via `export media` or the HTTP API).
 - `image:startAutoDownload` / `stopAutoDownload` / `getAutoDownloadStatus`: Windows x64 only; the hook lives only while the
   `weflow` process runs, so `status` from another process cannot see it.
-- WXGF → JPEG needs an `ffmpeg` binary on `PATH` (the desktop app bundles `ffmpeg-static`).
-- `localeCompare` ordering of Chinese names is approximated.
+
+Also different, without changing a channel's classification: WXGF → JPEG needs an `ffmpeg` binary on `PATH` (the desktop app
+bundles `ffmpeg-static`), and message exports copy media with `export messages --media …` into `media/<output name>/` instead of
+the desktop app's folder layout.
 
 UI events (`image:cacheResolved`, `image:decryptProgress`, `image:updateAvailable`, notification popups) have no CLI counterpart;
 like the desktop app's headless worker mode the image service does not emit them and never reports `hasUpdate`.

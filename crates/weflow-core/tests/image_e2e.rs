@@ -216,3 +216,98 @@ async fn export_media_honours_the_date_range_and_reports_missing_by_kind() {
     assert_eq!(all["missingByKind"]["image"], 2);
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// bob's chat: text, an image on disk, an image that was never downloaded, a voice message and a sticker.
+fn embed_world(tag: &str) -> (weflow_core::services::ServiceHub, std::path::PathBuf) {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, VoiceSpec, T0};
+    let md5 = "aabbccddeeff00112233445566778899";
+    let (hub, root, fixture) = common::custom_hub_with(
+        tag,
+        |f| {
+            f.session_db(&[SessionSpec { username: "wxid_bob", summary: "", last_timestamp: T0, unread: 0, last_msg_type: 3 }]);
+            let image = |id: i64, at: i64, md5: &str| MsgSpec::text(id, "wxid_bob", T0 + at, &format!("<msg><img md5=\"{md5}\"/></msg>")).of_type(3);
+            f.message_shard(
+                0,
+                &[(
+                    "wxid_bob",
+                    vec![
+                        MsgSpec::text(1, "wxid_bob", T0, "hello"),
+                        image(2, 10, md5),
+                        image(3, 20, "11223344556677889900aabbccddeeff"),
+                        MsgSpec::text(4, "wxid_me", T0 + 200, "<voicemsg length=\"1000\" voicelength=\"1000\"/>").of_type(34),
+                        MsgSpec::text(5, "wxid_bob", T0 + 300, "<msg><emoji md5=\"00112233445566778899aabbccddeeff\" cdnurl=\"http://127.0.0.1:9/x\"/></msg>").of_type(47),
+                    ],
+                )],
+            );
+            let silk = weflow_silk::testenc::encode_tone(24000);
+            f.media_db(0, &[VoiceSpec { chat: "wxid_bob", create_time: T0 + 200, local_id: 4, svr_id: 1004, data: silk, index: "0" }]);
+        },
+        |p| {
+            p.image_xor_key = Some(0x5a);
+            p.image_aes_key = Some(KEY.into());
+        },
+    );
+    let month = weflow_core::image::year_month_from_create_time(Some(1_700_000_000));
+    let img_dir = fixture.account_dir.join("msg/attach").join(md5_hex("wxid_bob")).join(&month).join("Img");
+    std::fs::create_dir_all(&img_dir).unwrap();
+    std::fs::write(img_dir.join(format!("{md5}_h.dat")), encrypt_v2(&jpeg(3000, 7), KEY.as_bytes().try_into().unwrap(), 0x5a)).unwrap();
+    (hub, root)
+}
+
+fn media_request(format: &str) -> weflow_core::services::MessageExportRequest {
+    weflow_core::services::MessageExportRequest {
+        session_id: "wxid_bob".into(),
+        format: format.into(),
+        start: None,
+        end: None,
+        sender: None,
+        display_pref: weflow_core::export_msg::DisplayPref::Remark,
+        excel_compact: false,
+    }
+}
+
+#[tokio::test]
+async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for_it() {
+    let (hub, root) = embed_world("embed");
+    let opts = weflow_core::api::ApiMediaOptions { enabled: true, images: true, voices: true, videos: false, emojis: false };
+    let dir = root.join("exp");
+    std::fs::create_dir_all(&dir).unwrap();
+    let image_rel = "media/chat/images/aabbccddeeff00112233445566778899.jpg";
+    let voice_rel = "media/chat/voices/voice_4.wav";
+
+    let r = hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts).await.unwrap();
+    assert_eq!((r["media"]["requested"].as_i64(), r["media"]["exported"].as_i64(), r["media"]["missing"].as_i64()), (Some(3), Some(2), Some(1)), "{r}");
+    assert!(dir.join(image_rel).exists() && std::fs::read(dir.join(voice_rel)).unwrap().starts_with(b"RIFF"));
+    assert!(!dir.join("media/chat/emojis").exists(), "stickers were not asked for");
+    let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("chat.json")).unwrap()).unwrap();
+    let content = |t: i64, n: usize| json["messages"].as_array().unwrap().iter().filter(|m| m["localType"] == t).nth(n).unwrap()["content"].as_str().unwrap().to_string();
+    assert_eq!(content(3, 0), image_rel);
+    assert_eq!(content(3, 1), "[图片]", "an image that is not on disk keeps its placeholder");
+    assert_eq!(content(34, 0), voice_rel);
+    assert_eq!(content(1, 0), "hello");
+    assert!(!content(47, 0).contains("media/"), "stickers keep their caption text");
+
+    // chatlab only has room for images
+    hub.export_messages_with_media(&media_request("chatlab"), &dir.join("chat.chatlab.json"), &opts).await.unwrap();
+    let lab: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("chat.chatlab.json")).unwrap()).unwrap();
+    let contents: Vec<&str> = lab["messages"].as_array().unwrap().iter().map(|m| m["content"].as_str().unwrap_or("")).collect();
+    // the media folder is named after the output file (`chat.chatlab.json` -> `media/chat.chatlab/`)
+    assert!(contents.contains(&"media/chat.chatlab/images/aabbccddeeff00112233445566778899.jpg") && !contents.iter().any(|c| c.ends_with(".wav")), "{contents:?}");
+
+    // txt rows, weclone `src`, html tags
+    hub.export_messages_with_media(&media_request("txt"), &dir.join("chat.txt"), &opts).await.unwrap();
+    let txt = std::fs::read_to_string(dir.join("chat.txt")).unwrap();
+    assert!(txt.contains(image_rel) && txt.contains(voice_rel));
+    hub.export_messages_with_media(&media_request("weclone"), &dir.join("chat.csv"), &opts).await.unwrap();
+    assert!(std::fs::read_to_string(dir.join("chat.csv")).unwrap().contains(image_rel));
+    hub.export_messages_with_media(&media_request("html"), &dir.join("chat.html"), &opts).await.unwrap();
+    let html = std::fs::read_to_string(dir.join("chat.html")).unwrap();
+    assert!(html.contains("message-media image previewable") && html.contains("<audio class=") && html.contains(&format!("src=\\\"{image_rel}\\\"")), "media tags are embedded in the message bodies");
+
+    // without media nothing is copied and the placeholders stay
+    let plain_dir = root.join("plain");
+    std::fs::create_dir_all(&plain_dir).unwrap();
+    hub.export_messages_with_media(&media_request("json"), &plain_dir.join("chat.json"), &weflow_core::api::ApiMediaOptions::default()).await.unwrap();
+    assert!(!plain_dir.join("media").exists());
+    let _ = std::fs::remove_dir_all(root);
+}

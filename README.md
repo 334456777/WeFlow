@@ -70,14 +70,13 @@ Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 
 Notes for Windows: `key db` needs an administrator terminal (otherwise it reports "permission denied"), finds `Weixin.exe` / `WeChat.exe` automatically (or use `--pid`), and `--timeout <seconds>` changes the wait. The configuration lives in `%APPDATA%\weflow\config.json`, the extracted runtime in `%APPDATA%\weflow\runtime\<version>\<target>`. WXGF images need `ffmpeg` on `PATH` (or `FFMPEG_PATH`) — set it up before exporting images.
 
-Useful export options: `--start 2025-01-01 --end 2025-12-31` (Beijing time, inclusive), `--display-name remark|nickname|group-nickname`, `--sender wxid_xxx`, `--excel-compact`. Messages are exported without embedded media; export media separately with `weflow export media --help`.
+Useful export options: `--start 2025-01-01 --end 2025-12-31` (local time, inclusive), `--display-name remark|nickname|group-nickname`, `--sender wxid_xxx`, `--excel-compact`. Add `--media all` (or `image,voice,video,emoji`) to copy the media next to the export and link it from the messages; `weflow export media --help` exports media on its own.
 
 ## What the CLI does not support
 
 The database layer is pure Rust and **read-only**: it never writes into WeChat's files. So commands that would modify WeChat's
 databases (`chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete`, `sns delete`) are
-refused on purpose, a few database-level functions are not implemented yet, and some desktop-app features are missing (voice-to-text,
-contact labels/region, media embedded in exports, and more).
+refused on purpose, and some desktop-app features are missing (voice-to-text, cache management, and more).
 
 The detailed list is in **[docs/cli-unsupported.md](docs/cli-unsupported.md)** ([简体中文](docs/zh-CN/cli-unsupported.md)).
 

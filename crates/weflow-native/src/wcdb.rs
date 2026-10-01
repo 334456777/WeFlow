@@ -120,6 +120,12 @@ impl Wcdb {
         self.account()?.open_message_cursor(session_id, batch_size, ascending, begin, end, lite)
     }
 
+    /// A cursor over one member's messages only (see `NativeAccount::open_message_cursor_for_senders`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn open_message_cursor_for_senders(&self, session_id: &str, batch_size: i32, ascending: bool, begin: i32, end: i32, lite: bool, sender_ok: &dyn Fn(&str) -> bool, include_mine: bool) -> Result<i64> {
+        self.account()?.open_message_cursor_for_senders(session_id, batch_size, ascending, begin, end, lite, sender_ok, include_mine)
+    }
+
     /// Returns the next batch of rows and whether more remain.
     pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
         self.account()?.fetch_message_batch(cursor)
@@ -137,6 +143,9 @@ impl Wcdb {
             ("wcdb_get_contacts_compact", [Arg::S(payload)]) => self.account()?.contacts_compact(&crate::native_contact::usernames_from_json(payload)),
             ("wcdb_get_aggregate_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
                 self.account()?.aggregate_stats(&crate::native_contact::usernames_from_json(ids), *b as i64, *e as i64)
+            }
+            ("wcdb_get_annual_report_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
+                self.account()?.annual_report_stats(&crate::native_contact::usernames_from_json(ids), *b as i64, *e as i64)
             }
             ("wcdb_get_message_table_time_range", [Arg::S(db), Arg::S(table)]) => self.account()?.message_table_time_range(db, table),
             _ => self.pending(name),
@@ -201,7 +210,7 @@ impl Wcdb {
     }
 
     pub fn annual_report_stats(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
-        self.pending("annual_report_stats")
+        self.account()?.annual_report_stats(session_ids, begin as i64, end as i64)
     }
 
     pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
@@ -297,7 +306,7 @@ impl Wcdb {
     }
 
     pub fn message_meta(&self, db_path: &str, table: &str, limit: i32, offset: i32) -> Result<Value> {
-        self.pending("message_meta")
+        self.account()?.message_meta(db_path, table, limit, offset)
     }
 
     pub fn contact_status(&self, usernames_json: &str) -> Result<Value> {
@@ -321,7 +330,7 @@ impl Wcdb {
     }
 
     pub fn annual_report_extras(&self, session_ids_json: &str, begin: i32, end: i32, peak_begin: i32, peak_end: i32) -> Result<Value> {
-        self.pending("annual_report_extras")
+        self.account()?.annual_report_extras(&crate::native_contact::usernames_from_json(session_ids_json), begin as i64, end as i64, peak_begin as i64, peak_end as i64)
     }
 
     pub fn emoticon_cdn_url(&self, db_path: &str, md5: &str) -> Result<String> {
@@ -345,7 +354,7 @@ impl Wcdb {
     }
 
     pub fn db_status(&self) -> Result<Value> {
-        self.pending("db_status")
+        self.account()?.db_status()
     }
 
     pub fn voice_data(&self, session_id: &str, create_time: i32, local_id: i32, svr_id: i64, candidates_json: &str) -> Result<String> {
@@ -357,7 +366,7 @@ impl Wcdb {
     }
 
     pub fn media_schema_summary(&self, db_path: &str) -> Result<Value> {
-        self.pending("media_schema_summary")
+        self.account()?.media_schema_summary(db_path)
     }
 
     pub fn session_message_type_stats_batch(&self, session_ids_json: &str, options_json: &str) -> Result<Value> {
@@ -369,31 +378,31 @@ impl Wcdb {
     }
 
     pub fn head_image_buffers(&self, usernames_json: &str) -> Result<Value> {
-        self.pending("head_image_buffers")
+        self.account()?.head_image_buffers(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn message_table_columns(&self, db_path: &str, table: &str) -> Result<Value> {
-        self.pending("message_table_columns")
+        self.account()?.message_table_columns(db_path, table)
     }
 
     pub fn list_tables(&self, kind: &str, db_path: &str) -> Result<Value> {
-        self.pending("list_tables")
+        self.account()?.list_tables(kind, Some(db_path))
     }
 
     pub fn table_schema(&self, kind: &str, db_path: &str, table: &str) -> Result<Value> {
-        self.pending("table_schema")
+        self.account()?.table_schema(kind, Some(db_path), table)
     }
 
     pub fn export_table_snapshot(&self, kind: &str, db_path: &str, table: &str, output_path: &str) -> Result<Value> {
-        self.pending("export_table_snapshot")
+        self.account()?.export_table_snapshot(kind, Some(db_path), table, output_path)
     }
 
     pub fn import_table_snapshot(&self, kind: &str, db_path: &str, table: &str, input_path: &str) -> Result<Value> {
-        self.pending("import_table_snapshot")
+        self.read_only("import_table_snapshot")
     }
 
     pub fn import_table_snapshot_with_schema(&self, kind: &str, db_path: &str, table: &str, input_path: &str, create_table_sql: &str) -> Result<Value> {
-        self.pending("import_table_snapshot_with_schema")
+        self.read_only("import_table_snapshot_with_schema")
     }
 
     pub fn message_table_time_range(&self, db_path: &str, table: &str) -> Result<Value> {
@@ -401,19 +410,19 @@ impl Wcdb {
     }
 
     pub fn resolve_image_hardlink(&self, md5: &str, account_dir: &str) -> Result<Value> {
-        self.pending("resolve_image_hardlink")
+        self.account()?.resolve_image_hardlink(md5, Some(account_dir))
     }
 
     pub fn resolve_image_hardlink_batch(&self, requests_json: &str) -> Result<Value> {
-        self.pending("resolve_image_hardlink_batch")
+        self.account()?.resolve_image_hardlink_batch(&serde_json::from_str(requests_json).unwrap_or_default())
     }
 
     pub fn resolve_video_hardlink_md5(&self, md5: &str, db_path: &str) -> Result<Value> {
-        self.pending("resolve_video_hardlink_md5")
+        self.account()?.resolve_video_hardlink_md5(md5, Some(db_path))
     }
 
     pub fn resolve_video_hardlink_md5_batch(&self, requests_json: &str) -> Result<Value> {
-        self.pending("resolve_video_hardlink_md5_batch")
+        self.account()?.resolve_video_hardlink_md5_batch(&serde_json::from_str(requests_json).unwrap_or_default())
     }
 }
 

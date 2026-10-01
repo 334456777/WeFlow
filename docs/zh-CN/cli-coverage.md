@@ -4,15 +4,15 @@
 
 基线：原作者最后一次提交 `ca6c479`（2026-05-15）时的 TypeScript/Electron 后端。`crates/` 下的所有内容都是之后添加的。
 
-**方法与说明。** 当某个 CLI 命令或 HTTP 路由复现了某个通道的行为时，该通道记为*已覆盖*；TypeScript 代码是逐函数移植的（相同公式、JSON 结果中相同的键顺序、相同的回退逻辑）。数据库层是原生 Rust，已**用一个真实的 Windows 微信 4.x 账号验证**（使用 Linux 构建）；其余部分（HTTP 服务、图片/`.dat` 解密、AI、朋友圈下载）通过单元测试、针对合成加密数据库的端到端测试以及本地假 HTTP 服务器验证。Windows 的 `weflow.exe` 还没有在 Windows 上运行过。合成数据无法暴露的差异依然可能存在。下面的 IPC 分类是手工完成的，欢迎提出异议。
+**方法与说明。** 当某个 CLI 命令或 HTTP 路由复现了某个通道的行为时，该通道记为*已覆盖*；TypeScript 代码是逐函数移植的（相同公式、JSON 结果中相同的键顺序、相同的回退逻辑）。数据库层是原生 Rust，已**用一个真实的 Windows 微信 4.x 账号验证**（使用 Linux 构建）；其余部分（HTTP 服务、图片/`.dat` 解密、AI、朋友圈下载）通过单元测试、针对合成加密数据库的端到端测试以及本地假 HTTP 服务器验证。交叉编译出的 Windows `weflow.exe` 已在 Windows 上对同一个账号运行过（约 80 个命令、带媒体的导出）；macOS 和 Linux 账号没有试过。合成数据无法暴露的差异依然可能存在。下面的 IPC 分类是手工完成的，欢迎提出异议。
 
 ## 汇总
 
 | 指标 | 已覆盖 | 总数 | 占比 |
 |---|---|---|---|
-| 后端 IPC 通道（`electron/main.ts`；共 172 个，排除 76 个纯 UI 通道）— 完整 | 71 | 96 | **74%** |
+| 后端 IPC 通道（`electron/main.ts`；共 172 个，排除 76 个纯 UI 通道）— 完整 | 76 | 96 | **79%** |
 | 同上，完整 + 部分 | 80 | 96 | **83%** |
-| CLI 调用的数据库函数（原生 Rust；42 个原生实现，10 个因只读被拒绝，2 个由服务层回退覆盖） | 54 | 54 | **100%** |
+| CLI 调用的数据库函数（原生 Rust；44 个原生实现，10 个因只读被拒绝） | 54 | 54 | **100%** |
 | 聊天消息导出格式（chatlab、chatlab-jsonl、json、arkme-json、html、txt、excel、weclone、sql） | 9 | 9 | **100%** |
 | HTTP API 路由（`httpService.ts`，路径一致，token 鉴权，SSE 推送） | 19 | 19 | **100%** |
 
@@ -32,20 +32,19 @@
 - TypeScript 的 ISAAC-64 回退实现有精度问题（`Number(x>>3n)&255`）；Rust 版本遵循厂商 WASM，它才是权威实现。
 - ChatLab 导出：图片、语音、视频、表情、通话消息（类型不是 49 的 `<msg>` XML）被误标为“链接”；现在只有真正的应用消息（类型 49 / 含 `<appmsg`）才是链接。TypeScript 原版有同样的问题。
 - `chat anti-revoke` 在所有会话都失败时也会返回成功；现在会返回错误。
+- 年度报告里的“每月聊得最多的人”在原生层上是空的（缺少每个会话的月度计数）；现在已原生提供，扩展统计（热力图、夜猫子、主动发起、响应速度、常用语、连续天数）也已原生实现，数字与游标回退一致。
 - 原生行带有 `is_send`（按账号 wxid 计算），导出和报告代码依赖它。
 
 ## 仍然缺失或仅部分覆盖的通道
 
 **缺失（16 个）：** 上面的 10 个写操作通道（有意拒绝：原生数据库层以只读方式打开微信数据库）、`chat:clearCurrentAccountData`、`chat:getVoiceTranscript`、`whisper:downloadModel`、`whisper:getModelStatus`（语音转写需要 sherpa-onnx）、`cache:clearAll`（只能清理统计分析缓存和图片缓存）、`sns:debugResource`。
 
-**部分（9 个）：**
+**部分（4 个）：**
 
 - `chat:getNewMessages`、消息推送和见解触发采用轮询，而不是响应 WCDB 监听回调。
-- `chat:getContacts` / `getContact`：没有联系人标签、个性签名和地区（需要扩展列解析器和 9.4k 行的地区表）。
-- `export:exportSession(s)`、`export:getExportStats`：消息导出不内嵌媒体文件（图片/语音/视频/表情的导出通过 `export media` 或 HTTP API 单独进行）。
 - `image:startAutoDownload` / `stopAutoDownload` / `getAutoDownloadStatus`：仅 Windows x64；钩子只在 `weflow` 进程运行期间存在，因此从另一个进程执行 `status` 看不到它。
-- WXGF → JPEG 需要 `PATH` 中有 `ffmpeg` 可执行文件（桌面端自带 `ffmpeg-static`）。
-- 中文名称的 `localeCompare` 排序只是近似实现。
+
+另有不同之处，但不改变通道的分类：WXGF → JPEG 需要 `PATH` 中有 `ffmpeg` 可执行文件（桌面端自带 `ffmpeg-static`）；消息导出用 `export messages --media …` 把媒体复制到 `media/<输出文件名>/`，目录布局与桌面端不同。
 
 UI 事件（`image:cacheResolved`、`image:decryptProgress`、`image:updateAvailable`、通知弹窗）在命令行中没有对应物；与桌面端无界面的 worker 模式一样，图片服务不发出这些事件，也从不报告 `hasUpdate`。
 

@@ -39,6 +39,8 @@ weflow-native = { path = "../weflow-native" }
 weflow-silk = { path = "../weflow-silk" }
 zip.workspace = true
 zstd.workspace = true
+icu_collator.workspace = true
+icu_locale_core.workspace = true
 
 [dev-dependencies]
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }

@@ -54,7 +54,7 @@ messages (an image sent twice counts twice, so `found` can exceed the unique fil
 messages whose file is not on disk (never downloaded in WeChat) or could not be resolved, per kind in `missingByKind`.
 `thumbOnly` counts exported images that are only the thumbnail (each image entry also has `isThumb`); open the original in WeChat and export again to get the HD file. `export media` always prefers the HD original (like `image decrypt --force`). Stickers may need network access; voice export decodes every message, so a full export of hundreds of voices takes minutes.
 
-`export messages` reads only the requested date range from the database (cost follows the range size, not its age) and shows a progress bar; the output file is written once reading finishes.
+`export messages` reads only the requested date range from the database (cost follows the range size, not its age) and shows a progress bar; `--start/--end` are dates in the machine's local time zone. `--media image,voice,video,emoji` (or `all`) copies the media into `media/<output name>/` beside the output file and points the messages at the copies (for `json`, `arkme-json`, `txt`, `excel`, `weclone`, `html`; `chatlab` for images; not `sql`). The messages are written as they are built, so a 200,000-message group needs well under 1 GB.
 
 `key db` (Windows) hooks WeChat through `wx_key.dll` and keeps polling (`--timeout`, default 180 s) because WeChat only
 produces the key while it opens its databases: log in or restart WeChat while the command waits. It needs an administrator

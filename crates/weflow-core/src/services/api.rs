@@ -385,8 +385,25 @@ impl ServiceHub {
         Ok(sessions.into_iter().map(Value::Object).collect())
     }
 
+    /// `getContactLabelNameMap`: label id → name from the contact database (empty when it has no labels).
+    fn contact_label_names(&self, wcdb: &weflow_native::wcdb::Wcdb) -> HashMap<i64, String> {
+        let mut map = HashMap::new();
+        let Ok(info) = wcdb.exec_query("contact", "", "select name from pragma_table_info('contact_label')") else { return map };
+        let columns: Vec<String> = info.as_array().map(|a| a.iter().filter_map(|r| r["name"].as_str().map(str::to_string)).collect()).unwrap_or_default();
+        let id = crate::contact_extra::pick_column(&columns, &["label_id_", "label_id", "labelId", "labelid", "id"]);
+        let name = crate::contact_extra::pick_column(&columns, &["label_name_", "label_name", "labelName", "labelname", "name"]);
+        let (Some(id), Some(name)) = (id, name) else { return map };
+        let sql = format!("select \"{id}\" as label_id, \"{name}\" as label_name from contact_label");
+        for row in wcdb.exec_query("contact", "", &sql).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default() {
+            let (Some(id), name) = (row["label_id"].as_i64(), first_str(&row, &["label_name"]).trim().to_string()) else { continue };
+            if id > 0 && !name.is_empty() {
+                map.insert(id, name);
+            }
+        }
+        map
+    }
+
     /// `getContacts`: friends / groups / official accounts / former friends, newest contact first.
-    /// Labels, signature and region need the extended contact columns and are not filled.
     pub fn chat_contacts_list(&self) -> AppResult<Vec<Value>> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb.contacts().map_err(|e| AppError::native(e.to_string()))?;
@@ -401,6 +418,7 @@ impl ServiceHub {
                 }
             }
         }
+        let label_names = self.contact_label_names(&wcdb);
         let mut contacts: Vec<(Value, i64)> = Vec::new();
         for row in &rows {
             let username = first_str(row, &["username"]).trim().to_string();
@@ -438,6 +456,15 @@ impl ServiceHub {
                     o.insert(k.into(), json!(v));
                 }
             }
+            let labels = crate::contact_extra::contact_labels(row, &label_names);
+            if !labels.is_empty() {
+                o.insert("labels".into(), json!(labels));
+            }
+            for (key, value) in [("detailDescription", crate::contact_extra::contact_signature(row)), ("region", crate::contact_extra::contact_region(row))] {
+                if !value.is_empty() {
+                    o.insert(key.into(), json!(value));
+                }
+            }
             o.insert("type".into(), json!(kind));
             let t = last_contact.get(&username).copied().unwrap_or(0);
             contacts.push((Value::Object(o), t));
@@ -453,7 +480,7 @@ impl ServiceHub {
             if tb != 0 {
                 return std::cmp::Ordering::Greater;
             }
-            a.0["displayName"].as_str().unwrap_or("").to_lowercase().cmp(&b.0["displayName"].as_str().unwrap_or("").to_lowercase())
+            crate::collate::compare_zh(a.0["displayName"].as_str().unwrap_or(""), b.0["displayName"].as_str().unwrap_or(""))
         });
         Ok(contacts.into_iter().map(|c| c.0).collect())
     }
@@ -970,21 +997,96 @@ impl ServiceHub {
 
     async fn export_media_for_message(&self, wcdb: &weflow_native::wcdb::Wcdb, msg: &ChatMessage, talker: &str, safe_talker: &str, session_dir: &Path, opts: &ApiMediaOptions) -> Option<ApiExportedMedia> {
         let _ = wcdb;
-        let put = |kind: &'static str, sub: &str, file_name: String, bytes: Option<&[u8]>, copy_from: Option<&Path>| -> Option<ApiExportedMedia> {
-            let dir = session_dir.join(sub);
-            std::fs::create_dir_all(&dir).ok()?;
-            let full = dir.join(&file_name);
-            if !full.exists() {
-                match (bytes, copy_from) {
-                    (Some(b), _) => std::fs::write(&full, b).ok()?,
-                    (None, Some(src)) => {
-                        std::fs::copy(src, &full).ok()?;
-                    }
-                    _ => return None,
-                }
-            }
-            Some(ApiExportedMedia { kind, file_name: file_name.clone(), full_path: full.to_string_lossy().to_string(), relative_path: format!("{safe_talker}/{sub}/{file_name}"), thumbnail: false })
+        if msg.local_type == 47 && opts.emojis {
+            let url = msg.emoji_cdn_url.as_deref().filter(|u| !u.is_empty())?;
+            let path = self.chat_download_emoji(url, msg.emoji_md5.as_deref()).await.ok()?;
+            let ext = path.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_else(|| ".gif".into());
+            let base = api::sanitize_file_name(msg.emoji_md5.as_deref().filter(|s| !s.is_empty()).unwrap_or(""), &format!("emoji_{}", msg.local_id));
+            return put_media(session_dir, safe_talker, "emoji", "emojis", format!("{base}{ext}"), None, Some(&path));
+        }
+        self.export_local_media(msg, talker, safe_talker, session_dir, opts)
+    }
+
+    /// Copies the media of `msgs` into `<out dir>/media/<out name>/{images,voices,videos,emojis}` and records each
+    /// file on its message. Returns `{ requested, exported, missing, dir }`.
+    pub(super) async fn attach_export_media(&self, wcdb: &weflow_native::wcdb::Wcdb, msgs: &mut [crate::message::ExportMsg], session_id: &str, out: &Path, opts: &ApiMediaOptions) -> Value {
+        use crate::message::MediaRef;
+        let out_dir = out.parent().filter(|p| !p.as_os_str().is_empty()).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+        let name = api::sanitize_file_name(&out.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(), "export");
+        let session_dir = out_dir.join("media").join(&name);
+        let prefix = format!("media/{name}");
+        let wanted = |t: i64| match t {
+            3 => opts.images,
+            34 => opts.voices,
+            43 => opts.videos,
+            47 => opts.emojis,
+            _ => false,
         };
+        let todo: Vec<usize> = (0..msgs.len()).filter(|i| wanted(msgs[*i].local_type)).collect();
+        let chat_msg = |m: &crate::message::ExportMsg| ChatMessage {
+            local_id: m.local_id,
+            server_id: m.server_id,
+            server_id_raw: m.server_id_raw.clone().unwrap_or_default(),
+            local_type: m.local_type,
+            create_time: m.create_time,
+            image_md5: m.image_md5.clone(),
+            image_dat_name: m.image_dat_name.clone(),
+            video_md5: m.video_md5.clone(),
+            emoji_cdn_url: m.emoji_cdn_url.clone(),
+            emoji_md5: m.emoji_md5.clone(),
+            ..Default::default()
+        };
+        let safe = api::sanitize_file_name(session_id, "session");
+        let total = todo.len();
+        let mut results: Vec<Option<ApiExportedMedia>> = (0..total).map(|_| None).collect();
+        {
+            let local: Vec<usize> = (0..total).filter(|k| msgs[todo[*k]].local_type != 47).collect();
+            let workers = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(1, 8).min(local.len().max(1));
+            let next = std::sync::atomic::AtomicUsize::new(0);
+            let finished = std::sync::atomic::AtomicUsize::new(0);
+            let found = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
+            let shared: &[crate::message::ExportMsg] = msgs;
+            std::thread::scope(|scope| {
+                for _ in 0..workers {
+                    scope.spawn(|| loop {
+                        let n = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(&k) = local.get(n) else { break };
+                        let r = self.export_local_media(&chat_msg(&shared[todo[k]]), session_id, &safe, &session_dir, opts);
+                        found.lock().unwrap().push((k, r));
+                        let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                        self.emit_progress("export", "copying media", done, total);
+                    });
+                }
+            });
+            for (k, r) in found.into_inner().unwrap() {
+                results[k] = r;
+            }
+        }
+        for k in 0..total {
+            let m = &msgs[todo[k]];
+            if m.local_type == 47 {
+                results[k] = self.export_media_for_message(wcdb, &chat_msg(m), session_id, &safe, &session_dir, opts).await;
+                self.emit_progress("export", "copying media", k + 1, total);
+            }
+        }
+        let mut exported = 0usize;
+        for (k, r) in results.into_iter().enumerate() {
+            let Some(r) = r else { continue };
+            let sub = match r.kind {
+                "image" => "images",
+                "voice" => "voices",
+                "video" => "videos",
+                _ => "emojis",
+            };
+            msgs[todo[k]].media = Some(MediaRef { kind: r.kind, relative_path: format!("{prefix}/{sub}/{}", r.file_name) });
+            exported += 1;
+        }
+        json!({ "requested": total, "exported": exported, "missing": total - exported, "dir": session_dir })
+    }
+
+    /// Images, voices and videos: everything that needs no network, so it can run on several threads.
+    fn export_local_media(&self, msg: &ChatMessage, talker: &str, safe_talker: &str, session_dir: &Path, opts: &ApiMediaOptions) -> Option<ApiExportedMedia> {
+        let put = |kind: &'static str, sub: &str, file_name: String, bytes: Option<&[u8]>, copy_from: Option<&Path>| put_media(session_dir, safe_talker, kind, sub, file_name, bytes, copy_from);
         if msg.local_type == 3 && opts.images {
             let payload = crate::services::ImagePayload {
                 session_id: Some(talker.to_string()),
@@ -1032,15 +1134,25 @@ impl ServiceHub {
             let base = api::sanitize_file_name(md5, &format!("video_{}", msg.local_id));
             return put("video", "videos", format!("{base}{ext}"), None, Some(&video));
         }
-        if msg.local_type == 47 && opts.emojis {
-            let url = msg.emoji_cdn_url.as_deref().filter(|u| !u.is_empty())?;
-            let path = self.chat_download_emoji(url, msg.emoji_md5.as_deref()).await.ok()?;
-            let ext = path.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_else(|| ".gif".into());
-            let base = api::sanitize_file_name(msg.emoji_md5.as_deref().filter(|s| !s.is_empty()).unwrap_or(""), &format!("emoji_{}", msg.local_id));
-            return put("emoji", "emojis", format!("{base}{ext}"), None, Some(&path));
-        }
         None
     }
+}
+
+/// Write (or copy) one exported file below `<session_dir>/<sub>` unless it is already there.
+fn put_media(session_dir: &Path, safe_talker: &str, kind: &'static str, sub: &str, file_name: String, bytes: Option<&[u8]>, copy_from: Option<&Path>) -> Option<ApiExportedMedia> {
+    let dir = session_dir.join(sub);
+    std::fs::create_dir_all(&dir).ok()?;
+    let full = dir.join(&file_name);
+    if !full.exists() {
+        match (bytes, copy_from) {
+            (Some(b), _) => std::fs::write(&full, b).ok()?,
+            (None, Some(src)) => {
+                std::fs::copy(src, &full).ok()?;
+            }
+            _ => return None,
+        }
+    }
+    Some(ApiExportedMedia { kind, file_name: file_name.clone(), full_path: full.to_string_lossy().to_string(), relative_path: format!("{safe_talker}/{sub}/{file_name}"), thumbnail: false })
 }
 
 /// httpService `detectImageExt`
@@ -1145,10 +1257,41 @@ impl ServiceHub {
         let mut files: Vec<Value> = Vec::new();
         let mut missing_by_kind: BTreeMap<&str, usize> = BTreeMap::new();
         let mut thumb_only = 0usize;
+        // Images (WXGF needs an ffmpeg process each), voices and videos have no network step: run them on a few
+        // threads first, then walk the list in order for emojis and the report.
+        let mut done: Vec<Option<Option<ApiExportedMedia>>> = (0..total).map(|_| None).collect();
+        {
+            let local: Vec<usize> = (0..total).filter(|i| work[*i].2.local_type != 47).collect();
+            let workers = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(1, 8).min(local.len().max(1));
+            let next = std::sync::atomic::AtomicUsize::new(0);
+            let finished = std::sync::atomic::AtomicUsize::new(0);
+            let results = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
+            std::thread::scope(|scope| {
+                for _ in 0..workers {
+                    scope.spawn(|| loop {
+                        let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(&i) = local.get(k) else { break };
+                        let (sid, _, msg) = &work[i];
+                        let safe = api::sanitize_file_name(sid, "session");
+                        let r = self.export_local_media(msg, sid, &safe, &out.join(&safe), &opts);
+                        results.lock().unwrap().push((i, r));
+                        let n = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                        self.emit_progress("media", &format!("exporting {media_type} media"), n, total);
+                    });
+                }
+            });
+            for (i, r) in results.into_inner().unwrap() {
+                done[i] = Some(r);
+            }
+        }
         for (n, (sid, kind, msg)) in work.iter().enumerate() {
             let safe = api::sanitize_file_name(sid, "session");
             let session_dir = out.join(&safe);
-            match self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts).await {
+            let (exported, in_parallel) = match done[n].take() {
+                Some(r) => (r, true),
+                None => (self.export_media_for_message(&wcdb, msg, sid, &safe, &session_dir, &opts).await, false),
+            };
+            match exported {
                 Some(m) => {
                     if m.thumbnail {
                         thumb_only += 1;
@@ -1161,7 +1304,9 @@ impl ServiceHub {
                 }
                 None => *missing_by_kind.entry(kind).or_default() += 1,
             }
-            self.emit_progress("media", &format!("exporting {media_type} media"), n + 1, total);
+            if !in_parallel {
+                self.emit_progress("media", &format!("exporting {media_type} media"), n + 1, total);
+            }
         }
         let missing: usize = missing_by_kind.values().sum();
         Ok(json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files }))

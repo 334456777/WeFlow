@@ -440,7 +440,7 @@ impl ServiceHub {
             b.1.cmp(&a.1)
                 .then(b.2.cmp(&a.2))
                 .then(b.3.cmp(&a.3))
-                .then_with(|| a.4.to_lowercase().cmp(&b.4.to_lowercase()))
+                .then_with(|| crate::collate::compare_zh(&a.4, &b.4))
         });
         Ok(data.into_iter().map(|d| d.0).collect())
     }
@@ -689,12 +689,16 @@ impl ServiceHub {
         String::new()
     }
 
-    fn member_cursor(&self, wcdb: &weflow_native::wcdb::Wcdb, chatroom_id: &str, batch: i32, ascending: bool, start: i64, end: i64) -> AppResult<i64> {
+    /// A cursor over the messages `member` may have sent: only their rows (and rows with an unresolved sender) are
+    /// read, which keeps a per-member scan of a 200,000-message group to that member's share of the work.
+    fn member_cursor(&self, wcdb: &weflow_native::wcdb::Wcdb, chatroom_id: &str, member: &str, batch: i32, ascending: bool, start: i64, end: i64) -> AppResult<i64> {
         let norm = |v: i64| if v <= 0 { 0 } else if v > 10_000_000_000 { (v / 1000) as i32 } else { v as i32 };
         let (b, e) = (norm(start), norm(end));
-        match wcdb.open_message_cursor(chatroom_id, batch, ascending, b, e, true) {
+        let ok = |name: &str| same_identity(member, name);
+        let mine = same_identity(member, &self.my_wxid_cleaned());
+        match wcdb.open_message_cursor_for_senders(chatroom_id, batch, ascending, b, e, true, &ok, mine) {
             Ok(c) if c != 0 => Ok(c),
-            _ => self.wrap_native(wcdb.open_message_cursor(chatroom_id, batch, ascending, b, e, false)),
+            _ => self.wrap_native(wcdb.open_message_cursor_for_senders(chatroom_id, batch, ascending, b, e, false, &ok, mine)),
         }
     }
 
@@ -704,7 +708,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let (chatroom_id, member) = (chatroom_id.trim(), member.trim());
         let my_wxid = Some(self.my_wxid_cleaned()).unwrap_or_default();
-        let cursor = self.member_cursor(&wcdb, chatroom_id, 10000, true, start, end)?;
+        let cursor = self.member_cursor(&wcdb, chatroom_id, member, 10000, true, start, end)?;
 
         let mut match_cache: HashMap<String, bool> = HashMap::new();
         let mut total = 0i64;
@@ -828,7 +832,7 @@ impl ServiceHub {
 
     fn collect_member_messages(&self, wcdb: &weflow_native::wcdb::Wcdb, chatroom_id: &str, member: &str, start: i64, end: i64) -> AppResult<Vec<chat_msg::ChatMessage>> {
         let my_wxid = self.my_wxid_cleaned();
-        let cursor = self.member_cursor(wcdb, chatroom_id, 800, true, start, end)?;
+        let cursor = self.member_cursor(wcdb, chatroom_id, member, 800, true, start, end)?;
         let mut out = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
         let matches = |s: &str, cache: &mut HashMap<String, bool>| -> bool {
@@ -879,7 +883,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let my_wxid = self.my_wxid_cleaned();
         let batch_size = (limit * 4).max(240) as i32;
-        let db_cursor = self.member_cursor(&wcdb, chatroom_id, batch_size, false, start.max(0), end.max(0))?;
+        let db_cursor = self.member_cursor(&wcdb, chatroom_id, member, batch_size, false, start.max(0), end.max(0))?;
         let mut matched: Vec<chat_msg::ChatMessage> = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
         let mut consumed = 0usize;

@@ -521,7 +521,19 @@ impl ServiceHub {
         }
 
         let wcdb = self.open_wcdb()?;
-        let mut all_messages = fetch_message_rows(&wcdb, session_id, start_ts, end_ts)?;
+        // The TXT layout reads five columns: keep just those, so a 200,000-message group stays small.
+        let mut all_messages: Vec<Value> = Vec::new();
+        fetch_message_pages(&wcdb, session_id, start_ts, end_ts, true, &mut |page| {
+            all_messages.extend(page.into_iter().map(|mut row| {
+                let mut small = serde_json::Map::new();
+                for key in ["create_time", "sender_username", "sender_user_name", "senderUserName", "local_type", "message_content", "WCDB_CT_message_content"] {
+                    if let Some(v) = row.get_mut(key) {
+                        small.insert(key.to_string(), v.take());
+                    }
+                }
+                Value::Object(small)
+            }));
+        })?;
 
         // Sort ascending by create_time for chronological output
         all_messages.sort_by_key(|m| {
@@ -570,30 +582,48 @@ impl ServiceHub {
     /// Export a conversation's messages in one of the desktop app's formats
     /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
     pub fn export_messages(&self, req: &MessageExportRequest, out: &Path) -> AppResult<Value> {
-        use crate::export_msg::*;
+        let (wcdb, collected) = self.export_collect(req)?;
+        self.export_write(req, out, &wcdb, collected)
+    }
+
+    /// [`export_messages`](Self::export_messages) that also copies the selected media (images, voices, videos,
+    /// stickers) to `<out dir>/media/<out name>/` and points the exported messages at the copies.
+    pub async fn export_messages_with_media(&self, req: &MessageExportRequest, out: &Path, media: &crate::api::ApiMediaOptions) -> AppResult<Value> {
+        if !media.enabled {
+            return self.export_messages(req, out);
+        }
+        let (wcdb, mut collected) = self.export_collect(req)?;
+        let stats = self.attach_export_media(&wcdb, &mut collected, &req.session_id, out, media).await;
+        let mut result = self.export_write(req, out, &wcdb, collected)?;
+        result["media"] = stats;
+        Ok(result)
+    }
+
+    fn export_collect(&self, req: &MessageExportRequest) -> AppResult<(weflow_native::wcdb::Wcdb, Vec<crate::message::ExportMsg>)> {
         use crate::message::{collect_messages, CollectOptions};
         let (_, _, wxid) = self.connection_inputs()?;
         let raw_my_wxid = wxid.unwrap_or_default();
         let my_wxid = clean_account_dir_name(&raw_my_wxid);
         let wcdb = self.open_wcdb()?;
 
-        let rows = fetch_message_rows(&wcdb, &req.session_id, req.start, req.end)?;
-        let collected = collect_messages(
-            &rows,
-            &CollectOptions {
-                session_id: &req.session_id,
-                my_wxid: &my_wxid,
-                start: req.start,
-                end: req.end,
-                sender_filter: req.sender.as_deref(),
-            },
-        );
-        // the raw JSON rows are several times larger than the parsed messages: free them before building the output
-        drop(rows);
+        // Raw JSON rows are several times larger than the parsed messages: turn each page into messages as it
+        // arrives instead of holding every row of the conversation.
+        let opts = CollectOptions { session_id: &req.session_id, my_wxid: &my_wxid, start: req.start, end: req.end, sender_filter: req.sender.as_deref() };
+        let mut collected: Vec<crate::message::ExportMsg> = Vec::new();
+        fetch_message_pages(&wcdb, &req.session_id, req.start, req.end, false, &mut |page| collected.extend(collect_messages(&page, &opts)))?;
+        collected.sort_by(|a, b| a.create_time.cmp(&b.create_time).then(a.local_id.cmp(&b.local_id)));
         if collected.is_empty() {
             return Err(AppError::runtime("no messages found for this session in the given range"));
         }
 
+        Ok((wcdb, collected))
+    }
+
+    fn export_write(&self, req: &MessageExportRequest, out: &Path, wcdb: &weflow_native::wcdb::Wcdb, collected: Vec<crate::message::ExportMsg>) -> AppResult<Value> {
+        use crate::export_msg::*;
+        let (_, _, wxid) = self.connection_inputs()?;
+        let raw_my_wxid = wxid.unwrap_or_default();
+        let my_wxid = clean_account_dir_name(&raw_my_wxid);
         let mut names = NameBook::new(|username: &str| {
             wcdb.contact(username)
                 .ok()
@@ -940,28 +970,33 @@ pub fn clean_account_dir_name(dir_name: &str) -> String {
 /// Read a session's messages inside `[start, end)` (Unix seconds) with a bounded WCDB cursor,
 /// so the cost follows the range size, not how far back the range lies. Reports progress
 /// (`total` is the session's message count when the whole history is requested, else unknown).
-fn fetch_message_rows(wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, start: Option<i64>, end: Option<i64>) -> AppResult<Vec<Value>> {
+/// Reads a conversation page by page (oldest first); `on_page` gets the rows of each page that fall inside
+/// `[start, end)`.
+fn fetch_message_pages(wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, start: Option<i64>, end: Option<i64>, lite: bool, on_page: &mut dyn FnMut(Vec<Value>)) -> AppResult<()> {
     let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
     let (begin, finish) = (start.map_or(0, clamp), end.map_or(0, clamp));
     let total = if begin == 0 && finish == 0 { wcdb.message_count(session_id).unwrap_or(0).max(0) as usize } else { 0 };
     let cursor = wcdb
-        .open_message_cursor(session_id, 2000, true, begin, finish, false)
+        .open_message_cursor(session_id, 2000, true, begin, finish, lite)
         .map_err(|e| AppError::native(e.to_string()))?;
-    let mut rows: Vec<Value> = Vec::new();
+    let mut seen = 0usize;
     let result = (|| -> AppResult<()> {
         loop {
             let (page, more) = wcdb.fetch_message_batch(cursor).map_err(|e| AppError::native(e.to_string()))?;
-            let Some(page) = page.as_array() else { break };
-            if page.is_empty() {
+            let Value::Array(items) = page else { break };
+            if items.is_empty() {
                 break;
             }
-            for m in page {
-                let ts = crate::message::get_timestamp_seconds(m);
-                if start.map_or(true, |s| ts >= s) && end.map_or(true, |e| ts < e) {
-                    rows.push(m.clone());
-                }
-            }
-            crate::output::progress("messages", "reading messages", rows.len(), if total == 0 { 0 } else { total.max(rows.len()) });
+            let kept: Vec<Value> = items
+                .into_iter()
+                .filter(|m| {
+                    let ts = crate::message::get_timestamp_seconds(m);
+                    start.map_or(true, |s| ts >= s) && end.map_or(true, |e| ts < e)
+                })
+                .collect();
+            seen += kept.len();
+            on_page(kept);
+            crate::output::progress("messages", "reading messages", seen, if total == 0 { 0 } else { total.max(seen) });
             if !more {
                 break;
             }
@@ -969,8 +1004,7 @@ fn fetch_message_rows(wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, start:
         Ok(())
     })();
     let _ = wcdb.close_message_cursor(cursor);
-    result?;
-    Ok(rows)
+    result
 }
 
 fn extract_member_ids(value: &Value) -> Vec<String> {

@@ -435,7 +435,7 @@ pub fn convert_hevc_to_jpg(hevc: &[u8]) -> Option<Vec<u8>> {
             let status = loop {
                 match child.try_wait() {
                     Ok(Some(s)) => break Some(s),
-                    Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(20)),
+                    Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(2)),
                     _ => {
                         let _ = child.kill();
                         let _ = child.wait();

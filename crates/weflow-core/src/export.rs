@@ -347,32 +347,13 @@ fn message_type_label_in(lang: Lang, msg_type: i64) -> &'static str {
     }
 }
 
+/// `YYYY-MM-DD HH:MM:SS` in the machine's local time zone, like the desktop app.
 fn format_timestamp(ts: i64) -> String {
     if ts <= 0 {
-        return String::new();
-    }
-    let secs = ts as i64;
-    let days = secs / 86400;
-    let time_of_day = secs % 86400;
-    let year = 1970 + (days * 400 + 800) / 146097;
-    let remaining = days - ((year - 1970) * 365 + (year - 1969) / 4 - (year - 2001) / 100 + (year - 2001) / 400);
-    let (year, remaining) = if remaining < 0 {
-        (year - 1, remaining + 365 + (if (year - 1) % 4 == 0 && ((year - 1) % 100 != 0 || (year - 1) % 400 == 0) { 1 } else { 0 }))
+        String::new()
     } else {
-        (year, remaining)
-    };
-    let hours = (time_of_day / 3600) as u32;
-    let minutes = ((time_of_day % 3600) / 60) as u32;
-    let seconds = (time_of_day % 60) as u32;
-    let month_days = [31, 28 + if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { 1 } else { 0 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut day = remaining as u32 + 1;
-    let mut month = 1u32;
-    for &md in &month_days {
-        if day <= md { break; }
-        day -= md;
-        month += 1;
+        crate::message::format_timestamp(ts)
     }
-    format!("{year:04}-{month:02}-{day:02} {hours:02}:{minutes:02}:{seconds:02}")
 }
 
 fn html_escape(s: &str) -> String {
@@ -487,7 +468,7 @@ pub fn export_txt(
             .cloned()
             .unwrap_or_else(|| sender_wxid.clone());
 
-        let dt = format_timestamp_beijing(ts);
+        let dt = format_timestamp(ts);
         text.push_str(&format!("{dt} '{nickname}'\n\n{content}\n\n"));
     }
     write_file(out, &text)
@@ -547,10 +528,6 @@ fn hex_nibble(c: u8) -> Option<u8> {
         b'A'..=b'F' => Some(c - b'A' + 10),
         _ => None,
     }
-}
-
-fn format_timestamp_beijing(ts: i64) -> String {
-    format_timestamp(ts + 8 * 3600)
 }
 
 #[cfg(test)]

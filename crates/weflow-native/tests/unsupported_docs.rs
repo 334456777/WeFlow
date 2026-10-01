@@ -19,7 +19,7 @@ fn read(rel: &str) -> String {
 #[test]
 fn every_refusing_function_is_documented_in_both_languages() {
     let names = refusing_functions(&read("src/wcdb.rs"));
-    assert!(names.len() >= 20, "the source scan found only {names:?}; did the stub layout change?");
+    assert!(names.len() >= 12, "the source scan found only {names:?}; did the stub layout change?");
     for doc in ["../../docs/cli-unsupported.md", "../../docs/zh-CN/cli-unsupported.md"] {
         let text = read(doc);
         let missing: Vec<&String> = names.iter().filter(|n| !text.contains(&format!("`{n}`"))).collect();

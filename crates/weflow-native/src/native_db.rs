@@ -156,6 +156,19 @@ impl NativeAccount {
         &self.db_storage
     }
 
+    /// Account directory (`db_storage`'s parent): where `msg/`, `cache/` and friends live.
+    pub fn account_dir(&self) -> PathBuf {
+        self.db_storage.parent().map(Path::to_path_buf).unwrap_or_else(|| self.db_storage.clone())
+    }
+
+    /// (number of decrypted snapshots held, their total size in bytes, the budget in bytes).
+    pub fn cache_stats(&self) -> (usize, usize, usize) {
+        match self.cache.lock() {
+            Ok(c) => (c.entries.len(), c.entries.values().map(|s| s.bytes).sum(), CACHE_BUDGET),
+            Err(_) => (0, 0, CACHE_BUDGET),
+        }
+    }
+
     /// Absolute path of a database given relative to `db_storage` (`session/session.db`).
     pub fn db_path(&self, rel: &str) -> PathBuf {
         self.db_storage.join(rel)

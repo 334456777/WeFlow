@@ -21,15 +21,13 @@ work at all is in [cli-unsupported.md](cli-unsupported.md).
 | Area | Difference |
 |---|---|
 | Message push / insight triggers / `chat:getNewMessages` | The desktop app reacts to WCDB monitor callbacks; the CLI polls (push ≈ 5 s, insight ≈ 5 s). |
-| Contacts (`chat:getContacts`, `getContact`) | No contact labels, signature or region: needs the extended-column parser and the ~9.4k-line region table. |
-| Message export (`export messages`, `exportSession(s)`, `getExportStats`) | All 9 formats work, but media files are **not embedded** into the export; export media separately (`export media`, HTTP API `media=1`). |
+| Message export (`export messages`, `exportSession(s)`, `getExportStats`) | All 9 formats work. `--media image,voice,video,emoji` copies the media to `media/<output name>/` beside the file (the desktop app uses its own folder layout); stickers need network access and `sql` has no place for media. |
 | Voice in the HTTP API / `chat voice-data` | Works only if the media database holds the SILK data (WeChat must have played the message once). |
 | WXGF images | Converted through an external `ffmpeg` (`PATH` or `FFMPEG_PATH`); the desktop app bundles `ffmpeg-static`. Without it the image is reported as a failed decrypt. |
 | Image auto-download (`image auto-download`, `serve --image-auto-download`) | Windows x64 only (`img_helper.dll`). The hook lives only while the `weflow` process runs, so `status` from another process always says "not hooked". |
 | Image service events | `image:cacheResolved`, `decryptProgress`, `updateAvailable` and the background "better quality available" check are not emitted; `hasUpdate` is always `false`. |
 | AI insight notifications | No popup window; `serve --insight` prints each insight as a JSON line on stderr (Telegram push still works). |
 | Image key memory scan | `key scan-image` (scan WeChat memory for the AES key) works on macOS only; on Windows use `key image` (kvcomm cache + template verification). The desktop app's Windows memory-scan fallback is not ported. |
-| Sorting | `localeCompare` ordering of Chinese names is approximated. |
 | Video | Looks up the file WeChat already stored under `msg/video`; there is no download or decrypt path (the desktop app has none either). |
 
 ## 3. Deliberately not ported (desktop-process concerns)
@@ -43,7 +41,7 @@ export task pause/resume, renderer-only report screenshots, the Moments cache-mi
   WeChat 4.x account using a Linux build. The other parts (HTTP server, image/`.dat` decryption, AI, Moments network
   downloads) were tested only against synthetic encrypted fixtures and fake HTTP servers, never against real `.dat` files,
   real Moments servers or a real AI provider.
-- The Windows build is cross-compiled (`x86_64-pc-windows-gnu`) from Linux; it has not been run on Windows yet.
+- The Windows build is cross-compiled (`x86_64-pc-windows-gnu`) from Linux and was run on Windows against the same account (about 80 commands, exports with media); other Windows versions have not been tried.
 - Backup archives are not verified for compatibility with the desktop app's own backups.
 - The Windows-only image hook and the key-extraction helpers can only be tested on a machine with WeChat running.
 
@@ -59,7 +57,6 @@ The closed-source `wcdb_api` library is **no longer used, embedded or loaded**: 
 code. The CLI now decrypts the WeChat 4.x databases itself (SQLCipher 4 layout: PBKDF2-HMAC-SHA512 with the raw 32-byte key,
 AES-256-CBC pages with HMAC-SHA512, encrypted WAL) and reads them with bundled SQLite; nothing plaintext is written to disk.
 
-Ported so far: sessions, messages (all shards, zstd-compressed content, paging, per-day statistics, cursors), contacts,
-display names, avatars, group members/nicknames/owner. Every other database call still returns
-`... is not implemented in the native database backend yet` until it is ported; see `crates/weflow-native/src/wcdb.rs` for
-the list and `#[ignore = "pending native port ..."]` in `crates/weflow-core/tests` for the tests waiting on them.
+Every database function the service layer calls is implemented natively (sessions, messages across all shards, contacts, groups,
+statistics, reports, Moments, media, search, hardlink lookups, schema browsing); the ones that would write are refused on purpose.
+See [cli-unsupported.md](cli-unsupported.md).

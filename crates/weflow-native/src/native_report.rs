@@ -3,7 +3,8 @@
 //! The formulas are the desktop app's, taken from the service layer's own cursor fallbacks:
 //! a *conversation* is a run of messages with gaps of at most one hour; replies are measured only for the
 //! account owner; phrases are short exact-match texts; days and hours are local time.
-//! Annual-report statistics need no native function: the service layer computes them from message cursors.
+//! The annual report's extended statistics (`annual_report_extras`) use the same definitions as the service
+//! layer's cursor fallback, so both paths give the same numbers.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
@@ -121,6 +122,92 @@ impl NativeAccount {
         }
         rows.sort_by_key(|a| a.0);
         Ok(rows.into_iter().map(|(_, m)| m).collect())
+    }
+
+    /// Extended annual-report statistics over `session_ids` inside `[begin, end]`:
+    /// `heatmap` (weekday Monday-first × hour), `midnight` (messages between 00:00 and 05:59 per session),
+    /// `conversation` (`initiated`/`received` per session), `response` (my replies, only sessions with at least
+    /// 10), `peakDay` (messages per session inside `[peak_begin, peak_end]`), `topPhrases` (my phrases, at most 32)
+    /// and `streak` (the longest run of consecutive days with messages in one session; the first session wins ties).
+    pub fn annual_report_extras(&self, session_ids: &[String], begin: i64, end: i64, peak_begin: i64, peak_end: i64) -> Result<Value> {
+        /// Sessions need this many replies of mine to take part in the response statistics.
+        const MIN_REPLIES: usize = 10;
+        const PHRASES: usize = 32;
+        let mut heatmap = vec![vec![0i64; 24]; 7];
+        let (mut midnight, mut conversation, mut response, mut peak) = (Map::new(), Map::new(), Map::new(), Map::new());
+        let mut my_texts: Vec<String> = Vec::new();
+        let mut streak: Option<(String, i64, String, String)> = None;
+        for sid in session_ids {
+            let msgs = self.conversation(sid, begin, end)?;
+            if msgs.is_empty() {
+                continue;
+            }
+            let (mut initiated, mut received, mut night, mut in_peak) = (0i64, 0i64, 0i64, 0i64);
+            let mut replies: Vec<i64> = Vec::new();
+            let mut last: Option<(i64, bool)> = None;
+            let (mut last_day, mut run, mut run_start) = (None::<i64>, 0i64, String::new());
+            let (mut best, mut best_start, mut best_end) = (0i64, String::new(), String::new());
+            for m in &msgs {
+                heatmap[m.weekday_mon][m.hour] += 1;
+                if m.hour < 6 {
+                    night += 1;
+                }
+                if peak_begin > 0 && peak_end > 0 && m.time >= peak_begin && m.time <= peak_end {
+                    in_peak += 1;
+                }
+                match last {
+                    Some((t, was_mine)) if m.time - t <= GAP => {
+                        if !was_mine && m.mine && m.time - t > 0 && m.time - t < MAX_RESPONSE {
+                            replies.push(m.time - t);
+                        }
+                    }
+                    _ => {
+                        if m.mine { initiated += 1 } else { received += 1 }
+                    }
+                }
+                last = Some((m.time, m.mine));
+                if m.kind == TEXT && m.mine {
+                    let t = m.content.trim();
+                    if is_phrase(t) {
+                        my_texts.push(t.to_string());
+                    }
+                }
+                if last_day != Some(m.day_no) {
+                    if last_day.is_some_and(|l| m.day_no - l == 1) {
+                        run += 1;
+                    } else {
+                        run = 1;
+                        run_start = m.day.clone();
+                    }
+                    if run > best {
+                        (best, best_start, best_end) = (run, run_start.clone(), m.day.clone());
+                    }
+                    last_day = Some(m.day_no);
+                }
+            }
+            if night > 0 {
+                midnight.insert(sid.clone(), json!(night));
+            }
+            conversation.insert(sid.clone(), json!({ "initiated": initiated, "received": received }));
+            if replies.len() >= MIN_REPLIES {
+                response.insert(sid.clone(), json!({ "count": replies.len(), "avg": replies.iter().sum::<i64>() as f64 / replies.len() as f64 }));
+            }
+            if in_peak > 0 {
+                peak.insert(sid.clone(), json!(in_peak));
+            }
+            if best > streak.as_ref().map_or(0, |s| s.1) {
+                streak = Some((sid.clone(), best, best_start, best_end));
+            }
+        }
+        let refs: Vec<&str> = my_texts.iter().map(String::as_str).collect();
+        let mut out = json!({
+            "heatmap": heatmap, "midnight": midnight, "conversation": conversation, "response": response,
+            "peakDay": peak, "topPhrases": phrase_list(&refs, PHRASES),
+        });
+        if let Some((sid, days, start, end)) = streak {
+            out["streak"] = json!({ "sessionId": sid, "days": days, "startDate": start, "endDate": end });
+        }
+        Ok(out)
     }
 
     /// Two-person report statistics for `friend` (see the module docs for the definitions).
@@ -593,6 +680,69 @@ mod tests {
         assert!(!a.mentions_me("<msgsource><other/></msgsource>"));
         assert!(!a.mentions_me(""));
         assert!(!a.mentions_me("<atuserlist>wxid_me"), "unterminated list");
+    }
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn annual_extras_follow_the_service_layer_definitions() {
+        let a = dual();
+        let v = a.annual_report_extras(&ids(&["wxid_pal"]), 0, 0, 0, 0).unwrap();
+        let heat: i64 = v["heatmap"].as_array().unwrap().iter().flat_map(|r| r.as_array().unwrap()).map(|n| n.as_i64().unwrap()).sum();
+        assert_eq!((v["heatmap"].as_array().unwrap().len(), heat), (7, 10));
+        assert_eq!(v["conversation"], json!({"wxid_pal": {"initiated": 2, "received": 2}}));
+        assert_eq!(v["response"], json!({}), "3 replies is below the 10-reply floor");
+        assert_eq!(v["topPhrases"], json!([{"phrase": "ok", "count": 3}]), "only my phrases, seen at least twice");
+        assert_eq!((v["streak"]["sessionId"].clone(), v["streak"]["days"].clone()), (json!("wxid_pal"), json!(3)));
+        assert!(v["streak"]["startDate"].as_str().unwrap() < v["streak"]["endDate"].as_str().unwrap());
+        assert_eq!(v["peakDay"], json!({}), "no peak window asked for");
+        assert!(v["midnight"].as_object().unwrap().values().all(|n| n.as_i64().unwrap() <= 10));
+
+        let peak = a.annual_report_extras(&ids(&["wxid_pal"]), 0, 0, T0, T0 + 100).unwrap();
+        assert_eq!(peak["peakDay"], json!({"wxid_pal": 4}));
+        let ranged = a.annual_report_extras(&ids(&["wxid_pal"]), T0 + DAY, 0, 0, 0).unwrap();
+        assert_eq!(ranged["conversation"], json!({"wxid_pal": {"initiated": 1, "received": 1}}));
+        let none = a.annual_report_extras(&ids(&["nobody"]), 0, 0, 0, 0).unwrap();
+        assert!(none.get("streak").is_none() && none["conversation"] == json!({}) && none["topPhrases"] == json!([]));
+    }
+
+    #[test]
+    fn annual_extras_response_needs_ten_replies_and_streak_ties_go_to_the_first_session() {
+        let mut quick = Vec::new();
+        for i in 0..10 {
+            quick.push(MsgSpec::text(i * 2 + 1, "wxid_fast", T0 + i * 7_200, "ping"));
+            quick.push(MsgSpec::text(i * 2 + 2, "wxid_me", T0 + i * 7_200 + 30, "pong"));
+        }
+        let a = world(
+            "annual-response",
+            &[session("wxid_fast"), session("wxid_slow")],
+            &[
+                ("wxid_fast", quick),
+                ("wxid_slow", vec![MsgSpec::text(1, "wxid_slow", T0, "hi"), MsgSpec::text(2, "wxid_me", T0 + 20, "yo"), MsgSpec::text(3, "wxid_slow", T0 + DAY, "again")]),
+            ],
+        );
+        let v = a.annual_report_extras(&ids(&["wxid_slow", "wxid_fast"]), 0, 0, 0, 0).unwrap();
+        assert_eq!(v["response"], json!({"wxid_fast": {"count": 10, "avg": 30.0}}));
+        assert_eq!(v["conversation"]["wxid_fast"], json!({"initiated": 0, "received": 10}));
+        // wxid_slow spans 2 days; wxid_fast spans at most 2 (18 hours) and slow is listed first, so slow wins
+        assert_eq!((v["streak"]["sessionId"].clone(), v["streak"]["days"].clone()), (json!("wxid_slow"), json!(2)));
+        let tie = a.annual_report_extras(&ids(&["wxid_fast", "wxid_slow"]), 0, T0 + 2 * 3_600, 0, 0).unwrap();
+        assert_eq!(tie["streak"]["sessionId"], "wxid_fast", "a tie keeps the first session");
+    }
+
+    #[test]
+    fn annual_stats_add_month_of_year_counts_per_session() {
+        let a = dual();
+        let v = a.annual_report_stats(&ids(&["wxid_pal"]), 0, 0).unwrap();
+        let plain = a.aggregate_stats(&ids(&["wxid_pal"]), 0, 0).unwrap();
+        assert_eq!(v["total"], plain["total"]);
+        assert!(plain["sessions"]["wxid_pal"].get("monthly").is_none(), "the plain aggregate keeps its shape");
+        let monthly = v["sessions"]["wxid_pal"]["monthly"].as_object().unwrap();
+        assert!(monthly.keys().all(|k| (1..=12).contains(&k.parse::<i64>().unwrap())), "{monthly:?}");
+        assert_eq!(monthly.values().map(|n| n.as_i64().unwrap()).sum::<i64>(), 10);
+        assert_eq!((v["sessions"]["wxid_pal"]["sent"].clone(), v["sessions"]["wxid_pal"]["received"].clone()), (json!(5), json!(5)));
     }
 
     fn account_for_mentions() -> NativeAccount {

@@ -161,6 +161,19 @@ fn last_hex_token(text: &str, min: usize, max: usize) -> Option<String> {
 use chrono::{Local, TimeZone};
 
 /// `YYYY-MM-DD HH:MM:SS` in the local time zone (same as the desktop app).
+/// Unix time of 00:00 on a calendar date in the machine's local time zone. A date whose midnight does not exist
+/// (a daylight-saving jump at 00:00) starts at the first moment that does.
+pub fn local_midnight(year: i32, month: u32, day: u32) -> Option<i64> {
+    let midnight = chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(0, 0, 0)?;
+    (0..=3 * 60).find_map(|minutes| Local.from_local_datetime(&(midnight + chrono::Duration::minutes(minutes))).earliest()).map(|t| t.timestamp())
+}
+
+/// Unix time of 00:00 on the day after a calendar date, local time zone.
+pub fn local_midnight_after(year: i32, month: u32, day: u32) -> Option<i64> {
+    let next = chrono::NaiveDate::from_ymd_opt(year, month, day)?.succ_opt()?;
+    local_midnight(chrono::Datelike::year(&next), chrono::Datelike::month(&next), chrono::Datelike::day(&next))
+}
+
 pub fn format_timestamp(ts: i64) -> String {
     match Local.timestamp_opt(ts, 0).single() {
         Some(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -462,6 +475,15 @@ pub struct ForwardRecord {
     pub chat_record_list: Option<Vec<ForwardRecord>>,
 }
 
+/// A media file copied next to the export: what the exported message points at instead of its placeholder text.
+#[derive(Clone, Debug, Default)]
+pub struct MediaRef {
+    /// `image`, `voice`, `video` or `emoji`.
+    pub kind: &'static str,
+    /// Path of the file relative to the export file, with `/` separators.
+    pub relative_path: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ExportMsg {
     pub local_id: i64,
@@ -488,6 +510,8 @@ pub struct ExportMsg {
     pub location_poiname: Option<String>,
     pub location_label: Option<String>,
     pub chat_record_list: Option<Vec<ForwardRecord>>,
+    /// Set when the export was asked to embed media and the file could be found.
+    pub media: Option<MediaRef>,
 }
 
 impl ExportMsg {
@@ -2182,6 +2206,18 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_midnights_round_trip_through_the_local_formatter() {
+        for (y, m, d) in [(2026, 9, 24), (2024, 2, 29), (2026, 12, 31), (2026, 1, 1)] {
+            let start = local_midnight(y, m, d).unwrap();
+            assert_eq!(format_timestamp(start), format!("{y}-{m:02}-{d:02} 00:00:00"));
+            let next = local_midnight_after(y, m, d).unwrap();
+            assert!((23 * 3600..=25 * 3600).contains(&(next - start)), "a day is 23 to 25 hours long: {}", next - start);
+            assert!(format_timestamp(next).ends_with("00:00:00"));
+        }
+        assert!(local_midnight(2026, 2, 30).is_none());
+    }
 
     #[test]
     fn xml_value_strips_cdata() {

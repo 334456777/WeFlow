@@ -70,13 +70,13 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 
 Windows 说明：`key db` 需要管理员终端（否则会提示权限不足），会自动查找 `Weixin.exe` / `WeChat.exe`（也可用 `--pid` 指定），`--timeout <秒>` 可调整等待时间。配置文件在 `%APPDATA%\weflow\config.json`，解压出的运行时在 `%APPDATA%\weflow\runtime\<版本>\<target>`。WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`，导出图片前请先准备好。
 
-常用导出选项：`--start 2025-01-01 --end 2025-12-31`（北京时间，含首尾）、`--display-name remark|nickname|group-nickname`、`--sender wxid_xxx`、`--excel-compact`。消息导出不内嵌媒体文件；媒体请单独导出，见 `weflow export media --help`。
+常用导出选项：`--start 2025-01-01 --end 2025-12-31`（本机本地时间，含首尾）、`--display-name remark|nickname|group-nickname`、`--sender wxid_xxx`、`--excel-compact`。加 `--media all`（或 `image,voice,video,emoji`）会把媒体复制到导出文件旁边并在消息里链接到它们；`weflow export media --help` 可单独导出媒体。
 
 ## CLI 不支持的功能
 
 数据库层是纯 Rust 且**只读**:不会往微信的文件里写任何东西。因此会修改微信数据库的命令(`chat update-message`、`chat delete-message`、
-`chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)被有意拒绝,少数数据库层函数尚未实现,另有一些桌面端功能缺失
-(语音转文字、联系人标签/地区、导出时内嵌媒体等)。
+`chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)被有意拒绝,另有一些桌面端功能缺失
+(语音转文字、缓存管理等)。
 
 详细清单见 **[docs/zh-CN/cli-unsupported.md](docs/zh-CN/cli-unsupported.md)**([English](docs/cli-unsupported.md))。
 

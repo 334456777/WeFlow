@@ -45,7 +45,7 @@ weflow runtime   info | manifest
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` 按媒体消息遍历（同一张图发两次算两条，所以 `found` 可能大于 `chat images` 列出的唯一文件数）。`missing` 统计文件不在磁盘上（微信里没下载过）或无法解析的消息，按类型分列在 `missingByKind`。`thumbOnly` 统计只导出了缩略图的图片（每条图片记录也带 `isThumb`）；在微信里点开原图后再导出即可得到高清图。`export media` 始终优先使用高清原图（等同 `image decrypt --force`）。表情可能需要联网；语音导出要逐条解码，几百条语音的全量导出需要数分钟。
 
-`export messages` 只从数据库读取所选日期范围（耗时与范围大小相关，与日期早晚无关），并显示进度条；读取完成后才写出文件。
+`export messages` 只从数据库读取所选日期范围（耗时与范围大小相关，与日期早晚无关），并显示进度条；`--start/--end` 是本机本地时区的日期。`--media image,voice,video,emoji`（或 `all`）把媒体复制到输出文件旁边的 `media/<输出文件名>/`，并让消息指向这些副本（适用于 `json`、`arkme-json`、`txt`、`excel`、`weclone`、`html`；`chatlab` 仅图片；`sql` 不支持）。消息边构建边写出，20 万条消息的群远低于 1 GB。
 
 `key db`（Windows）通过 `wx_key.dll` 挂钩微信并持续轮询（`--timeout`，默认 180 秒），因为微信只在打开数据库时才会产生密钥：命令等待期间请登录或重启微信。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`，也可用 `--pid` 指定。`key image` 从 `kvcomm` 缓存推导图片密钥，并用账号目录下的 `_t.dat` 模板校验。
 

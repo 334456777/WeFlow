@@ -234,12 +234,42 @@ impl NativeAccount {
 
     /// Open a cursor over `[begin, end]` (seconds; `0` = unbounded). Only sort keys are held in memory.
     pub fn open_message_cursor(&self, session_id: &str, batch: i32, ascending: bool, begin: i32, end: i32, lite: bool) -> Result<i64> {
+        self.open_cursor(session_id, batch, ascending, begin, end, lite, None)
+    }
+
+    /// Like [`open_message_cursor`](Self::open_message_cursor), but only over messages whose sender `sender_ok`
+    /// accepts (plus the account owner's own messages when `include_mine`). Messages whose sender cannot be
+    /// resolved from `Name2Id` are always kept, so callers that look at the text prefix still see them.
+    /// This lets a per-member scan of a huge group read only that member's rows.
+    #[allow(clippy::too_many_arguments)]
+    pub fn open_message_cursor_for_senders(&self, session_id: &str, batch: i32, ascending: bool, begin: i32, end: i32, lite: bool, sender_ok: &dyn Fn(&str) -> bool, include_mine: bool) -> Result<i64> {
+        self.open_cursor(session_id, batch, ascending, begin, end, lite, Some((sender_ok, include_mine)))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn open_cursor(&self, session_id: &str, batch: i32, ascending: bool, begin: i32, end: i32, lite: bool, senders: Option<(&dyn Fn(&str) -> bool, bool)>) -> Result<i64> {
         let tables = self.message_tables(session_id)?;
         let (begin, end) = (begin.max(0) as i64, end.max(0) as i64);
         let mut keys: Vec<Key> = Vec::new();
         for (idx, t) in tables.iter().enumerate() {
+            let who = match senders {
+                None => String::new(),
+                Some((ok, include_mine)) => {
+                    let names = self.query(&t.db, "select rowid as id, user_name from Name2Id", &[])?;
+                    let wanted: Vec<String> = names
+                        .iter()
+                        .filter(|r| {
+                            let name = r["user_name"].as_str().unwrap_or("");
+                            ok(name) || (include_mine && self.is_me(name))
+                        })
+                        .map(|r| int(r, "id").to_string())
+                        .collect();
+                    let known = if wanted.is_empty() { String::new() } else { format!("real_sender_id in ({}) or ", wanted.join(",")) };
+                    format!(" and ({known}real_sender_id is null or real_sender_id not in (select rowid from Name2Id))")
+                }
+            };
             let sql = format!(
-                "select sort_seq, create_time, local_id from \"{}\" where create_time >= ?1 and (?2 = 0 or create_time <= ?2)",
+                "select sort_seq, create_time, local_id from \"{}\" where create_time >= ?1 and (?2 = 0 or create_time <= ?2){who}",
                 t.table
             );
             for r in self.query(&t.db, &sql, &[&begin, &end])? {
@@ -440,5 +470,24 @@ mod tests {
         let first = &rows.as_array().unwrap()[0];
         assert!(first.get("packed_info_data").is_none() && first.get("compress_content").is_none());
         assert!(first.get("message_content").is_some() && first.get("sender_username").is_some());
+    }
+
+    #[test]
+    fn sender_filtered_cursor_reads_only_the_wanted_senders() {
+        let (acct, _dir) = account("senders");
+        let acct = acct.with_my_wxid(Some("wxid_me".into()));
+        let read = |ok: &dyn Fn(&str) -> bool, mine: bool| -> Vec<String> {
+            let c = acct.open_message_cursor_for_senders("wxid_bob", 100, true, 0, 0, true, ok, mine).unwrap();
+            let (rows, _) = acct.fetch_message_batch(c).unwrap();
+            acct.close_message_cursor(c).unwrap();
+            texts(&rows)
+        };
+        // wxid_bob wrote messages 1, 3 and 5 (in time order), wxid_me the others
+        assert_eq!(read(&|n| n == "wxid_bob", false), ["hello", "third", "voice"]);
+        assert_eq!(read(&|n| n == "wxid_me", false), ["img", "fourth"]);
+        assert_eq!(read(&|_| false, true), ["img", "fourth"], "the owner's own messages can be asked for separately");
+        assert_eq!(read(&|n| n == "wxid_bob", true).len(), 5);
+        assert!(read(&|_| false, false).is_empty(), "nobody asked for: nothing read");
+        assert_eq!(read(&|_| true, false).len(), 5);
     }
 }

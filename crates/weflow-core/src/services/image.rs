@@ -530,7 +530,9 @@ impl ServiceHub {
         let prefer_hd = p.force && !fallback_to_thumbnail;
         if let Some(existing) = self.find_cached_output(&dat, p.session_id.as_deref(), prefer_hd) {
             let is_hd = img::is_hd_path(&existing);
-            if !(p.force && !is_hd) {
+            // With --force a cached thumbnail is re-decrypted in case the HD file has appeared since; when `dat` is
+            // already the best file on disk (`fallback_to_thumbnail`) the cached output is that very rendition.
+            if !(p.force && !is_hd && !fallback_to_thumbnail) {
                 self.cache_resolved_paths(cache_key, p.image_md5.as_deref(), p.image_dat_name.as_deref(), &existing);
                 return ImageResult::ok(local_path_for_payload(&existing, p.prefer_file_path), Some(img::is_thumbnail_path(&existing)));
             }

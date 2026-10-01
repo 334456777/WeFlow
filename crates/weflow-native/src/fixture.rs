@@ -21,6 +21,7 @@ pub struct SessionSpec {
     pub last_msg_type: i64,
 }
 
+#[derive(Clone)]
 pub struct ContactSpec {
     pub username: &'static str,
     pub local_type: i64,
@@ -30,11 +31,15 @@ pub struct ContactSpec {
     pub avatar: &'static str,
     pub flag: i64,
     pub chat_room_notify: i64,
+    /// The `description` column.
+    pub description: &'static str,
+    /// Raw protobuf bytes of the `extra_buffer` column (signature, region, label ids).
+    pub extra: &'static [u8],
 }
 
 impl ContactSpec {
     pub const fn new(username: &'static str, local_type: i64, nick_name: &'static str) -> Self {
-        Self { username, local_type, nick_name, remark: "", alias: "", avatar: "", flag: 0, chat_room_notify: 0 }
+        Self { username, local_type, nick_name, remark: "", alias: "", avatar: "", flag: 0, chat_room_notify: 0, description: "", extra: &[] }
     }
 }
 
@@ -135,6 +140,30 @@ pub struct EmoticonSpec {
     pub extern_url: &'static str,
 }
 
+/// One row of `hardlink.db`: `kind` 1 = file, 2 = image, 3 = video, 4 = directory entry.
+/// Images live in `<dir1>/<dir2>/Img/`, videos in `<dir1>/`, files in `<dir1>/`.
+#[derive(Clone)]
+pub struct HardlinkSpec {
+    pub md5: &'static str,
+    pub file_name: &'static str,
+    pub kind: i64,
+    pub dir1: &'static str,
+    pub dir2: &'static str,
+    pub size: i64,
+    pub modify_time: i64,
+}
+
+impl HardlinkSpec {
+    /// An image rendition stored under the talker directory `talker_dir` and month `month`.
+    pub fn image(md5: &'static str, file_name: &'static str, talker_dir: &'static str, month: &'static str) -> Self {
+        Self { md5, file_name, kind: 2, dir1: talker_dir, dir2: month, size: 1000, modify_time: T0 }
+    }
+
+    pub fn video(md5: &'static str, file_name: &'static str, month: &'static str) -> Self {
+        Self { md5, file_name, kind: 3, dir1: month, dir2: "", size: 5000, modify_time: T0 }
+    }
+}
+
 pub struct Fixture {
     pub root: PathBuf,
     pub account_dir: PathBuf,
@@ -146,7 +175,7 @@ impl Fixture {
     pub fn new(root: &Path, account: &str) -> Self {
         let _ = std::fs::remove_dir_all(root);
         let account_dir = root.join(account);
-        for d in ["session", "contact", "message", "sns", "emoticon"] {
+        for d in ["session", "contact", "message", "sns", "emoticon", "hardlink", "head_image"] {
             std::fs::create_dir_all(account_dir.join("db_storage").join(d)).unwrap();
         }
         Self { root: root.to_path_buf(), account_dir, cipher: PageCipher::derive(&KEY, &SALT) }
@@ -238,6 +267,62 @@ impl Fixture {
         );
     }
 
+    /// `hardlink/hardlink.db` with the image/video/file tables and the `dir2id` directory names.
+    pub fn hardlink_db(&self, rows: &[HardlinkSpec]) {
+        let rows = rows.to_vec();
+        self.write(
+            "hardlink/hardlink.db",
+            plain_db_with(move |c: &Connection| {
+                let table = "(md5_hash integer, md5 text, type integer, file_name text, file_size integer, modify_time integer, dir1 integer, dir2 integer, _rowid_ integer primary key asc, extra_buffer blob)";
+                c.execute_batch(&format!(
+                    "create table dir2id(username text primary key); create table image_hardlink_info_v4{table}; \
+                     create table video_hardlink_info_v4{table}; create table file_hardlink_info_v4{table};"
+                ))
+                .unwrap();
+                fn id(name: &'static str, dirs: &mut Vec<&'static str>) -> i64 {
+                    if name.is_empty() {
+                        return 0;
+                    }
+                    if !dirs.contains(&name) {
+                        dirs.push(name);
+                    }
+                    dirs.iter().position(|d| *d == name).unwrap() as i64 + 1
+                }
+                let mut dir_list: Vec<&'static str> = Vec::new();
+                for r in &rows {
+                    let (d1, d2) = (id(r.dir1, &mut dir_list), id(r.dir2, &mut dir_list));
+                    let t = match r.kind {
+                        2 | 4 => "image_hardlink_info_v4",
+                        3 => "video_hardlink_info_v4",
+                        _ => "file_hardlink_info_v4",
+                    };
+                    c.execute(
+                        &format!("insert into {t}(md5, type, file_name, file_size, modify_time, dir1, dir2) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)"),
+                        params![r.md5, r.kind, r.file_name, r.size, r.modify_time, d1, d2],
+                    )
+                    .unwrap();
+                }
+                for (i, d) in dir_list.iter().enumerate() {
+                    c.execute("insert into dir2id(rowid, username) values (?1, ?2)", params![i as i64 + 1, d]).unwrap();
+                }
+            }),
+        );
+    }
+
+    /// `head_image/head_image.db`: `(username, image bytes)` per avatar.
+    pub fn head_image_db(&self, avatars: &[(&'static str, &[u8])]) {
+        let avatars: Vec<(&'static str, Vec<u8>)> = avatars.iter().map(|(u, b)| (*u, b.to_vec())).collect();
+        self.write(
+            "head_image/head_image.db",
+            plain_db_with(move |c: &Connection| {
+                c.execute_batch("create table head_image(username text primary key, md5 text, image_buffer blob, update_time integer)").unwrap();
+                for (u, b) in &avatars {
+                    c.execute("insert into head_image values (?1, 'md5', ?2, 1)", params![u, b]).unwrap();
+                }
+            }),
+        );
+    }
+
     pub fn session_db(&self, sessions: &[SessionSpec]) {
         let rows: Vec<(String, String, i64, i64, i64)> =
             sessions.iter().map(|s| (s.username.to_string(), s.summary.to_string(), s.last_timestamp, s.unread, s.last_msg_type)).collect();
@@ -264,12 +349,14 @@ impl Fixture {
     }
 
     pub fn contact_db(&self, contacts: &[ContactSpec], rooms: &[RoomSpec]) {
-        let contacts: Vec<(i64, &'static str, i64, &'static str, &'static str, &'static str, &'static str, i64, i64)> = contacts
-            .iter()
-            .enumerate()
-            .map(|(i, c)| (i as i64 + 1, c.username, c.local_type, c.nick_name, c.remark, c.alias, c.avatar, c.flag, c.chat_room_notify))
-            .collect();
-        let ids: std::collections::HashMap<&str, i64> = contacts.iter().map(|c| (c.1, c.0)).collect();
+        self.contact_db_with_labels(contacts, rooms, &[]);
+    }
+
+    /// Like [`contact_db`](Self::contact_db) with `(label id, name)` rows in `contact_label`.
+    pub fn contact_db_with_labels(&self, contacts: &[ContactSpec], rooms: &[RoomSpec], labels: &[(i64, &'static str)]) {
+        let labels = labels.to_vec();
+        let contacts: Vec<(i64, ContactSpec)> = contacts.iter().cloned().enumerate().map(|(i, c)| (i as i64 + 1, c)).collect();
+        let ids: std::collections::HashMap<&str, i64> = contacts.iter().map(|(id, c)| (c.username, *id)).collect();
         let rooms: Vec<(i64, &'static str, &'static str, &'static [(&'static str, &'static str)], Vec<i64>)> = rooms
             .iter()
             .map(|r| {
@@ -287,18 +374,23 @@ impl Fixture {
                             is_in_chat_room integer, description text, extra_buffer blob, chat_room_type integer";
                 c.execute_batch(&format!(
                     "create table contact({cols}); create table stranger({cols}); create table name2id(username text primary key);
+                     create table contact_label(label_id_ integer primary key, label_name_ text, sort_order_ integer);
                      create table chat_room(id integer primary key, username text, owner text, ext_buffer blob);
                      create table chatroom_member(room_id integer, member_id integer, constraint room_member unique(room_id, member_id));"
                 ))
                 .unwrap();
-                for (id, user, lt, nick, remark, alias, avatar, flag, notify) in &contacts {
+                for (id, name) in &labels {
+                    c.execute("insert into contact_label(label_id_, label_name_, sort_order_) values (?1, ?2, ?1)", params![id, name]).unwrap();
+                }
+                for (id, ct) in &contacts {
+                    let extra: Option<&[u8]> = Some(ct.extra).filter(|e| !e.is_empty());
                     c.execute(
-                        "insert into contact(id, username, local_type, alias, flag, remark, nick_name, quan_pin, big_head_url, chat_room_notify) \
-                         values (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-                        params![id, user, lt, alias, flag, remark, nick, nick.to_lowercase(), avatar, notify],
+                        "insert into contact(id, username, local_type, alias, flag, remark, nick_name, quan_pin, big_head_url, chat_room_notify, description, extra_buffer) \
+                         values (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                        params![id, ct.username, ct.local_type, ct.alias, ct.flag, ct.remark, ct.nick_name, ct.nick_name.to_lowercase(), ct.avatar, ct.chat_room_notify, ct.description, extra],
                     )
                     .unwrap();
-                    c.execute("insert into name2id(rowid, username) values (?1, ?2)", params![id, user]).unwrap();
+                    c.execute("insert into name2id(rowid, username) values (?1, ?2)", params![id, ct.username]).unwrap();
                 }
                 for (rid, user, owner, members, member_ids) in &rooms {
                     let mut ext = vec![0x08, 0x01];

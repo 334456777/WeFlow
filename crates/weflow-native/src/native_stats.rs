@@ -55,6 +55,16 @@ impl NativeAccount {
 
     /// `{ total, sent, received, firstTime, lastTime, typeCounts, hourly, weekday, daily, monthly, sessions, idMap }`.
     pub fn aggregate_stats(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
+        self.aggregate_inner(session_ids, begin, end, false)
+    }
+
+    /// [`aggregate_stats`](Self::aggregate_stats) plus, for every session, `monthly`: messages per month of the
+    /// year (`"1"`..`"12"`, summed over the years in range) — what the annual report ranks friends by.
+    pub fn annual_report_stats(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
+        self.aggregate_inner(session_ids, begin, end, true)
+    }
+
+    fn aggregate_inner(&self, session_ids: &[String], begin: i64, end: i64, per_session_months: bool) -> Result<Value> {
         let (mut total, mut sent, mut first, mut last) = (0i64, 0i64, 0i64, 0i64);
         let mut types: BTreeMap<i64, i64> = BTreeMap::new();
         let mut hourly: BTreeMap<i64, i64> = BTreeMap::new();
@@ -65,6 +75,7 @@ impl NativeAccount {
         let range = range_sql(begin, end);
         for sid in session_ids {
             let (mut s_total, mut s_sent, mut s_last) = (0i64, 0i64, 0i64);
+            let mut s_months: BTreeMap<i64, i64> = BTreeMap::new();
             for t in self.message_tables(sid)? {
                 let mine = self.my_ids(&t.db)?;
                 let sql = format!(
@@ -96,12 +107,19 @@ impl NativeAccount {
                     let day = r["d"].as_str().unwrap_or("").to_string();
                     if day.len() >= 7 {
                         *monthly.entry(day[..7].to_string()).or_default() += n;
+                        if let Ok(month) = day[5..7].parse::<i64>() {
+                            *s_months.entry(month).or_default() += n;
+                        }
                     }
                     *daily.entry(day).or_default() += n;
                 }
             }
             if s_total > 0 {
-                sessions.insert(sid.clone(), json!({ "total": s_total, "sent": s_sent, "received": s_total - s_sent, "lastTime": s_last }));
+                let mut entry = json!({ "total": s_total, "sent": s_sent, "received": s_total - s_sent, "lastTime": s_last });
+                if per_session_months {
+                    entry["monthly"] = Value::Object(s_months.iter().map(|(k, v)| (k.to_string(), json!(v))).collect());
+                }
+                sessions.insert(sid.clone(), entry);
             }
         }
         let keyed = |m: &BTreeMap<i64, i64>| Value::Object(m.iter().map(|(k, v)| (k.to_string(), json!(v))).collect());
@@ -301,7 +319,7 @@ impl NativeAccount {
 }
 
 /// Table names come from our own listings, but they are interpolated into SQL, so check them anyway.
-fn check_ident(name: &str) -> Result<()> {
+pub(crate) fn check_ident(name: &str) -> Result<()> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         bail!("invalid table name: {name}");
     }

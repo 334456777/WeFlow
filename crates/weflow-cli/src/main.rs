@@ -248,10 +248,10 @@ enum ChatSubcommand {
     /// Per-session statistics used by the export page
     ExportStats {
         sessions: Vec<String>,
-        /// Start date in Beijing time (YYYY-MM-DD)
+        /// Start date, local time (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
-        /// End date in Beijing time, inclusive (YYYY-MM-DD)
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
         /// Skip mutual group / friend relations
@@ -398,10 +398,10 @@ enum ExportSubcommand {
         /// What to export: image, voice, video, emoji or all
         #[arg(long, default_value = "all")]
         r#type: String,
-        /// Only messages from this date, Beijing time, inclusive (YYYY-MM-DD)
+        /// Only messages from this date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
-        /// Only messages up to this date, Beijing time, inclusive (YYYY-MM-DD)
+        /// Only messages up to this date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
     },
@@ -409,10 +409,10 @@ enum ExportSubcommand {
     Messages {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
         session_id: String,
-        /// Start date in Beijing time, inclusive (YYYY-MM-DD)
+        /// Start date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         start: Option<String>,
-        /// End date in Beijing time, inclusive (YYYY-MM-DD)
+        /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
         /// Output file
@@ -430,6 +430,10 @@ enum ExportSubcommand {
         /// Excel: compact columns (time, sender, type, content)
         #[arg(long)]
         excel_compact: bool,
+        /// Copy media next to the export and point the messages at the copies: any of image, voice, video, emoji
+        /// (comma separated) or all. Files go to `media/<output name>/` beside the output file.
+        #[arg(long, value_delimiter = ',')]
+        media: Vec<String>,
     },
 }
 
@@ -451,7 +455,7 @@ enum AnalyticsSubcommand {
     Rankings {
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        /// First day (YYYY-MM-DD, Beijing time)
+        /// First day (YYYY-MM-DD, local time)
         #[arg(long)]
         start: Option<String>,
         /// Last day, inclusive (YYYY-MM-DD)
@@ -1284,13 +1288,15 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
             hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts).await
         }
-        ExportSubcommand::Messages { session_id, start, end, out, format, sender, display_name, excel_compact } => {
+        ExportSubcommand::Messages { session_id, start, end, out, format, sender, display_name, excel_compact, media } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
             let fmt = format.to_ascii_lowercase();
-            if fmt == "txt" {
+            let media_opts = parse_media_selection(media)?;
+            if fmt == "txt" && !media_opts.enabled {
                 return hub.export_messages_txt(session_id, start_ts, end_ts, out);
             }
             let ext = match fmt.as_str() {
+                "txt" => "txt",
                 "json" | "arkme-json" => "json",
                 "chatlab" => "chatlab.json",
                 "chatlab-jsonl" => "jsonl",
@@ -1319,19 +1325,41 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 display_pref,
                 excel_compact: *excel_compact,
             };
-            hub.export_messages(&request, &target)
+            if media_opts.enabled {
+                hub.export_messages_with_media(&request, &target, &media_opts).await
+            } else {
+                hub.export_messages(&request, &target)
+            }
         }
     }
 }
 
-fn parse_date_beijing(s: &str) -> Result<i64, String> {
+/// `--media image,voice` / `--media all` → the media kinds to copy next to a message export.
+fn parse_media_selection(values: &[String]) -> Result<weflow_core::api::ApiMediaOptions, AppError> {
+    let mut opts = weflow_core::api::ApiMediaOptions::default();
+    for v in values.iter().map(|v| v.trim().to_ascii_lowercase()).filter(|v| !v.is_empty()) {
+        match v.as_str() {
+            "all" => (opts.images, opts.voices, opts.videos, opts.emojis) = (true, true, true, true),
+            "image" | "images" => opts.images = true,
+            "voice" | "voices" => opts.voices = true,
+            "video" | "videos" => opts.videos = true,
+            "emoji" | "emojis" | "sticker" | "stickers" => opts.emojis = true,
+            other => return Err(AppError::usage(format!("unknown media kind: {other}; use image, voice, video, emoji or all"))),
+        }
+    }
+    opts.enabled = opts.images || opts.voices || opts.videos || opts.emojis;
+    Ok(opts)
+}
+
+/// `YYYY-MM-DD` → (year, month, day), validated.
+fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
     let parts: Vec<&str> = s.splitn(3, '-').collect();
     if parts.len() != 3 {
         return Err(format!("invalid date '{s}'; use YYYY-MM-DD"));
     }
-    let y: i64 = parts[0].parse().map_err(|_| format!("invalid year in '{s}'"))?;
-    let m: i64 = parts[1].parse().map_err(|_| format!("invalid month in '{s}'"))?;
-    let d: i64 = parts[2].parse().map_err(|_| format!("invalid day in '{s}'"))?;
+    let y: i32 = parts[0].parse().map_err(|_| format!("invalid year in '{s}'"))?;
+    let m: u32 = parts[1].parse().map_err(|_| format!("invalid month in '{s}'"))?;
+    let d: u32 = parts[2].parse().map_err(|_| format!("invalid day in '{s}'"))?;
     if !(1970..=2100).contains(&y) {
         return Err(format!("invalid year in '{s}'; use 1970-2100"));
     }
@@ -1347,19 +1375,27 @@ fn parse_date_beijing(s: &str) -> Result<i64, String> {
     if !(1..=dim).contains(&d) {
         return Err(format!("invalid day in '{s}'; {y}-{m:02} has {dim} days"));
     }
-    // Days since Unix epoch for this calendar date
-    let (y2, m2) = if m <= 2 { (y - 1, m + 9) } else { (y, m - 3) };
-    let days = 365 * y2 + y2 / 4 - y2 / 100 + y2 / 400 + (153 * m2 + 2) / 5 + d - 719_469;
-    // UTC midnight of that date minus 8 h = Beijing midnight
-    Ok(days * 86400 - 8 * 3600)
+    Ok((y, m, d))
+}
+
+/// Unix time of 00:00 on that date in the machine's local time zone (the zone `chat dates` and the statistics use).
+fn parse_date_local(s: &str) -> Result<i64, String> {
+    let (y, m, d) = parse_date_parts(s)?;
+    weflow_core::message::local_midnight(y, m, d).ok_or_else(|| format!("'{s}' does not exist in the local time zone"))
+}
+
+/// Unix time of 00:00 on the day after that date (a 23- or 25-hour day is handled by the zone rules).
+fn parse_next_date_local(s: &str) -> Result<i64, String> {
+    let (y, m, d) = parse_date_parts(s)?;
+    weflow_core::message::local_midnight_after(y, m, d).ok_or_else(|| format!("'{s}' does not exist in the local time zone"))
 }
 
 /// Parses an optional `--start` / `--end` pair (`end` becomes the exclusive next-midnight bound) and
 /// rejects a start that is after the end.
-/// `--start` / `--end` dates (Beijing time). The end is returned exclusive (next midnight).
+/// `--start` / `--end` dates (local time). The end is returned exclusive (next midnight).
 fn date_range_args(start: Option<&str>, end: Option<&str>) -> AppResult<(Option<i64>, Option<i64>)> {
-    let b = start.map(parse_date_beijing).transpose().map_err(AppError::usage)?;
-    let e = end.map(|d| parse_date_beijing(d).map(|ts| ts + 86400)).transpose().map_err(AppError::usage)?;
+    let b = start.map(parse_date_local).transpose().map_err(AppError::usage)?;
+    let e = end.map(parse_next_date_local).transpose().map_err(AppError::usage)?;
     if let (Some(b), Some(e)) = (b, e) {
         if b >= e {
             return Err(AppError::usage(format!("--start ({}) is after --end ({})", start.unwrap_or(""), end.unwrap_or(""))));
@@ -1856,11 +1892,19 @@ mod tests {
 
     #[test]
     fn dates_are_validated() {
-        assert!(parse_date_beijing("2026-09-24").is_ok());
-        assert!(parse_date_beijing("2024-02-29").is_ok());
+        assert!(parse_date_local("2026-09-24").is_ok());
+        assert!(parse_date_local("2024-02-29").is_ok());
         for bad in ["2026-13-40", "2026-02-29", "2026-04-31", "2026-00-10", "1969-01-01", "abc", "2026-09"] {
-            assert!(parse_date_beijing(bad).is_err(), "{bad}");
+            assert!(parse_date_local(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn range_ends_are_the_next_local_midnight() {
+        let (b, e) = date_range_args(Some("2026-09-30"), Some("2026-09-30")).unwrap();
+        let day = e.unwrap() - b.unwrap();
+        assert!((23 * 3600..=25 * 3600).contains(&day), "one local day: {day}");
+        assert_eq!(date_range_args(None, None).unwrap(), (None, None));
     }
 
     #[test]

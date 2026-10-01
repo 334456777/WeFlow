@@ -21,25 +21,15 @@
 | `chat mark-read` | `mark_all_sessions_read` | 清除所有会话的未读数 |
 | `sns block-delete`(check / install / uninstall) | `sns_block_delete_check`、`sns_block_delete_install`、`sns_block_delete_uninstall` | 保留好友已删除朋友圈的触发器 |
 | `sns delete` | `sns_delete_post` | 从本地数据库删除一条朋友圈 |
+| (无命令) | `import_table_snapshot`、`import_table_snapshot_with_schema` | 把表快照恢复进数据库(导出一侧可用,且只写到 `db_storage` 之外) |
 
 原因:正在运行的微信同时打开着这些数据库,往里写可能损坏它们,而且 SQLCipher 文件还得逐页重新加密。
 如果确实需要其中某项,需要单独设计(先关闭微信、先备份)。
 
 ## 2. 原生数据库层尚未实现
 
-调用这些函数会返回 `<函数名> is not implemented in the native database backend yet`。**目前没有任何 CLI 命令会调用它们**,
-所以正常使用中不会遇到;如果遇到了,那是一个值得反馈的 bug。
-
-| 函数 | 用途 | 状态 |
-|---|---|---|
-| `annual_report_stats`、`annual_report_extras` | 年度报告的原生加速入口 | 有意不实现:`report annual` 用消息游标自己算出同样的数字(服务层把这个错误当作"自己计算") |
-| `message_meta` | 消息表的轻量 id/时间/类型行 | 没有命令需要 |
-| `db_status` | 各数据库的打开/可读状态 | 不需要 |
-| `media_schema_summary` | 媒体库的列概要 | 不需要 |
-| `message_table_columns`、`list_tables`、`table_schema` | 原始表结构浏览 | 不需要;可用 `db scan` / `chat detail` |
-| `export_table_snapshot`、`import_table_snapshot`、`import_table_snapshot_with_schema` | 旧备份工具用的原始表导出/恢复 | 导出可以补;导入会写库(见第 1 节)。`backup` 改为按文件处理 |
-| `head_image_buffers` | `head_image.db` 里的头像图片字节 | 不需要;头像用联系人里的 URL |
-| `resolve_image_hardlink`、`resolve_image_hardlink_batch`、`resolve_video_hardlink_md5`、`resolve_video_hardlink_md5_batch` | 通过 `hardlink.db` 查找图片/视频文件 | 不需要;媒体文件由 CLI 自己的路径逻辑定位 |
+目前没有:服务层能调用的每个数据库函数,要么已实现,要么被有意拒绝(第 1 节)。如果有函数先加进 `crates/weflow-native/src/wcdb.rs`、还没移植,
+它会返回 `<函数名> is not implemented in the native database backend yet`;在移植完成前把它列在这里。
 
 ## 3. 桌面端有、CLI 没有的功能
 
@@ -48,8 +38,6 @@
 - 语音转文字,以及 Whisper 模型的下载/状态(需要 sherpa-onnx 和 Whisper 模型)。
 - "清除当前账号数据"和"清除所有缓存"(CLI 没有长期缓存,只有 `analytics clear-cache` 和 `image clear-cache`)。
 - `sns:debugResource`(朋友圈资源调试导出)。
-- 联系人标签、个性签名和地区(需要扩展列解析器和地区表)。
-- 消息导出**不会内嵌**媒体文件,需要另外导出媒体(`export media`)。
 - WXGF 图片需要外部 `ffmpeg`(在 `PATH` 中,或设置 `FFMPEG_PATH`)。
 - 图片自动下载钩子(`image auto-download`、`serve --image-auto-download`)只支持 Windows x64,且只在进程运行期间有效。
 - `key scan-image`(内存扫描 AES 密钥)只支持 macOS;Windows 上用 `key image`。
@@ -58,8 +46,8 @@
 
 ## 4. 平台与验证范围
 
-- 原生数据库层用一个真实的 Windows 微信 4.x 账号(会话、消息、联系人、朋友圈、媒体、语音库)做过验证,用的是 **Linux 构建**。
-  Windows 的 `weflow.exe` 是交叉编译的,还没有在 Windows 上运行过。
+- 原生数据库层用一个真实的 Windows 微信 4.x 账号(会话、消息、联系人、朋友圈、媒体、语音库)做过验证,用的是 **Linux 构建**;交叉编译出的
+  Windows `weflow.exe` 也在 Windows 上对同一个账号运行过(约 80 个命令、带媒体的消息导出、图片导出)。其他 Windows 版本没有试过。
 - macOS 和 Linux 的微信数据库文件格式相同,但没有测试过。
 - 密钥提取辅助程序(`key db`、`key image`)需要微信正在运行,无法离线测试。
 - 只用了一个账号的数据验证;特殊的数据库(特别大的分片、旧版本表结构)可能暴露遗漏。
@@ -68,8 +56,13 @@
 
 - **快照**:命令第一次接触某个数据库时,会把它解密到内存里(大的消息分片要几百 MB,缓存上限约 1.5 GB)。长时间运行的
   `serve` 会在文件或其 `-wal` 变化时读到新消息。
-- **大会话导出的内存**:`export messages` 构建文件时会把整个会话放在内存里。20 万条消息的群,峰值约 1.3 GB(`txt`)到 1.8 GB(`json`、`excel`、`chatlab`);仅打开消息数据库约 200 MB。内存紧张时请导出日期范围(`--start/--end`),耗时只与范围大小有关,和日期远近无关。
-- **时区**:`export ... --start/--end` 按北京日期(UTC+8)计,而 `chat dates`、`chat date-counts` 和按日统计使用本机本地时间,所以在 UTC+8 以外的机器上,两者在日界附近可能差几条消息。
+- **大会话导出的内存**:`export messages` 按页把会话转成导出记录,再据此写文件。20 万条消息的群,峰值约 0.6 GB(`txt`、`weclone`、`sql`、`excel`、`chatlab`)
+  到 0.8 GB(`json`、`arkme-json`、`html`),其中约 200 MB 是解密后的消息数据库。内存紧张时请导出日期范围(`--start/--end`),耗时只与范围大小有关,和日期远近无关。
+- **时区**:导出的 `--start/--end` 日期、写进导出文件的时间、`chat dates`、`chat date-counts` 和按日统计都使用本机本地时区(与桌面端一致)。同一份数据库在另一个时区的机器上读取,深夜的消息会归到不同的日子。
+- **导出里的媒体**:`export messages --media image,voice,video,emoji`(或 `all`)把文件复制到输出文件旁边的 `media/<输出文件名>/{images,voices,videos,emojis}`,并让消息指向它们。
+  哪些格式有位置放媒体:`json`/`arkme-json`、`txt`、`excel`、`weclone`(内容或 `src` 变成相对路径)、`chatlab`(仅图片)、`html`(`<img>`、`<audio>`、`<video>`);`sql` 没有。磁盘上找不到的文件保留占位文字。
+  表情需要联网;桌面端用自己的目录布局。
+- **中文名称排序**(联系人列表、群成员)遵循 ICU/CLDR 拼音排序,与 `Intl.Collator('zh-CN')` 一致:数字在前,然后是按拼音排列的汉字,最后是拉丁字母。
 - **群聊文本**:导出的群消息保留发送者前缀后面的换行(`wxid_xxx:` 被去掉,换行还在),与桌面端导出一致。
 - **搜索**覆盖文本、链接/文件、引用回复消息;关键字按字面匹配(不区分大小写),压缩消息会先解码再匹配。图片、语音、表情不参与搜索。
 - **折叠 / 免打扰**状态由联系人标志位推断(折叠:第 28 位;免打扰:第 9 位或群通知标志),依据微信的惯例;没有用真实的折叠会话验证过。

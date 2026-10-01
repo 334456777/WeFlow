@@ -339,7 +339,7 @@ fn dual_report_combines_native_counts_with_service_side_details() {
 }
 
 #[test]
-fn annual_report_is_computed_from_cursors_and_native_moments() {
+fn annual_report_uses_native_extras_and_native_moments() {
     let (hub, _root) = common::mock_hub("n-annual");
     let a = hub.report_annual(2023).unwrap();
     assert_eq!((a["totalMessages"].as_i64(), a["totalFriends"].as_i64()), (Some(5), Some(1)), "private chats only");
@@ -350,6 +350,9 @@ fn annual_report_is_computed_from_cursors_and_native_moments() {
     assert_eq!(a["socialInitiative"]["receivedChats"], 3);
     assert_eq!(a["longestStreak"]["days"], 2);
     assert_eq!(a["peakDay"]["messageCount"], 2);
+    let november = &a["monthlyTopFriends"][10];
+    assert_eq!((november["month"].as_i64(), november["displayName"].as_str(), november["messageCount"].as_i64()), (Some(11), Some("Bobby"), Some(5)), "the per-month ranking needs the native per-session monthly counts");
+    assert_eq!(a["monthlyTopFriends"][0]["messageCount"], 0);
     assert_eq!(a["snsStats"]["totalPosts"], 2, "the owner's own Moments posts");
     assert_eq!(a["snsStats"]["topLikers"][0]["username"], "wxid_bob");
     // a year without messages is an empty report, not an error; year 0 covers everything
@@ -371,4 +374,50 @@ fn footprint_reports_private_chats_segments_and_mentions() {
     assert_eq!(f["private_segments"][0]["message_count"], 2);
     assert_eq!(f["diagnostics"]["truncated"], false);
     assert_eq!(hub.insight_footprint().unwrap()["summary"]["private_inbound_people"], 1);
+}
+
+/// Protobuf bytes (length-delimited string fields) the way WeChat stores a contact's `extra_buffer`.
+fn extra(fields: &[(u8, &str)]) -> &'static [u8] {
+    let mut out = Vec::new();
+    for (n, text) in fields {
+        let tag = (*n as u32) << 3 | 2;
+        if tag >= 0x80 {
+            out.extend([(tag & 0x7f) as u8 | 0x80, (tag >> 7) as u8]);
+        } else {
+            out.push(tag as u8);
+        }
+        out.push(text.len() as u8);
+        out.extend(text.as_bytes());
+    }
+    Box::leak(out.into_boxed_slice())
+}
+
+#[test]
+fn contacts_carry_labels_signature_and_region_and_sort_by_pinyin() {
+    use weflow_native::fixture::{ContactSpec, SessionSpec, T0};
+    let (hub, _root, _f) = common::custom_hub("n-contact-extra", |f| {
+        f.session_db(&[SessionSpec { username: "wxid_dummy", summary: "", last_timestamp: T0, unread: 0, last_msg_type: 1 }]);
+        f.contact_db_with_labels(
+            &[
+                ContactSpec { extra: extra(&[(4, "hello sign"), (5, "CN"), (6, "Guangdong"), (7, "Shenzhen"), (30, "1,3")]), ..ContactSpec::new("wxid_zhang", 1, "张三") },
+                ContactSpec { extra: extra(&[(5, "US"), (6, "California")]), ..ContactSpec::new("wxid_alice", 1, "Alice") },
+                ContactSpec { description: "my desc", ..ContactSpec::new("wxid_li", 1, "李四") },
+                ContactSpec::new("wxid_plain", 1, "Zed"),
+            ],
+            &[],
+            &[(1, "Family"), (3, "Gym")],
+        );
+    });
+    let list = hub.chat_contacts_list().unwrap();
+    let names: Vec<&str> = list.iter().map(|c| c["displayName"].as_str().unwrap()).collect();
+    assert_eq!(names, ["李四", "张三", "Alice", "Zed"], "no recent chat: pinyin order, Han before Latin");
+    let by = |u: &str| list.iter().find(|c| c["username"] == u).unwrap();
+    let zhang = by("wxid_zhang");
+    assert_eq!(zhang["labels"], json!(["Family", "Gym"]));
+    assert_eq!(zhang["detailDescription"], "hello sign");
+    assert_eq!(zhang["region"], "广东 深圳", "the domestic country is hidden and the names are Chinese");
+    assert_eq!(by("wxid_alice")["region"], "美国 California");
+    assert_eq!(by("wxid_li")["detailDescription"], "my desc");
+    let plain = by("wxid_plain");
+    assert!(plain.get("labels").is_none() && plain.get("region").is_none() && plain.get("detailDescription").is_none());
 }

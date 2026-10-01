@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use weflow_core::isaac64;
-use weflow_core::services::{SnsExportOptions, SnsProxyResult, SnsTimelineQuery};
+use weflow_core::services::{SnsExportOptions, SnsProxyResult};
 
 /// Tiny HTTP server: path → (extra headers, body). Runs until the process exits.
 fn serve(routes: Vec<(&'static str, Vec<(&'static str, &'static str)>, Vec<u8>)>) -> String {
