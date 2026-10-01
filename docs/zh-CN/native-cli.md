@@ -70,13 +70,14 @@ weflow cache     clear-all
 |---|---|
 | `crates/weflow-cli` | 命令入口、参数解析、输出 |
 | `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、HTTP API |
-| `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、WASM、平台封装 |
+| `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、ISAAC-64 密钥流(移植自厂商 WASM)、平台封装 |
 | `crates/weflow-assets` | 内嵌资源、解压、哈希校验 |
 | `crates/weflow-silk` | 内置的 SILK 解码器,用于语音消息 |
 
-无法重写的平台辅助程序(`wx_key.dll`、`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`、WASM 解码器)内嵌在程序里:
+无法重写的平台辅助程序(`wx_key.dll`、`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`)内嵌在程序里:
 每个二进制只内嵌本平台需要的辅助程序,解压到 `WEFLOW_HOME/runtime/<版本>/<target>/`;每次启动校验清单里的哈希(版本或哈希
 不一致时重新解压);动态库只从这个目录加载,不会隐式从当前目录加载。
+厂商的 WASM 解码器(`WxIsaac64`)不在其中:它已用纯 Rust 移植在 `weflow-core/src/isaac64.rs`,并用从原模块抓取的测试向量验证过。
 
 配置放在 `WEFLOW_HOME`,否则是平台配置目录下的 `weflow`:配置文件 `config.json`(也接受 TOML),缓存、日志、运行时分目录存放。
 `weflow config import` 迁移桌面端可读的设置,加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。

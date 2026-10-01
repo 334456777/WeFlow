@@ -92,14 +92,14 @@ Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, 
 |---|---|
 | `crates/weflow-cli` | Command entry, argument parsing, output |
 | `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, HTTP API |
-| `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, WASM, platform wrappers |
+| `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, ISAAC-64 keystream (ported from the vendor WASM), platform wrappers |
 | `crates/weflow-assets` | Embedded resources, unpacking, hash check |
 | `crates/weflow-silk` | Vendored SILK decoder for voice messages |
 
-The platform helpers that cannot be rewritten (`wx_key.dll`, `img_helper.dll`, `libwx_key.dylib`, `xkey_helper_linux`, the WASM
-decoder) are embedded: each binary carries only its own platform's helpers, unpacks them into
+The platform helpers that cannot be rewritten (`wx_key.dll`, `img_helper.dll`, `libwx_key.dylib`, `xkey_helper_linux`) are embedded: each binary carries only its own platform's helpers, unpacks them into
 `WEFLOW_HOME/runtime/<version>/<target>/`, checks the manifest hash on every start (unpacking again when the version or a hash
 differs) and loads libraries only from that directory, never implicitly from the current directory.
+The vendor WASM decoder (`WxIsaac64`) is not among them: it is ported to pure Rust in `weflow-core/src/isaac64.rs` and verified against vectors captured from the original module.
 
 Configuration lives in `WEFLOW_HOME`, otherwise in `weflow` under the platform's configuration directory: `config.json` (TOML is
 accepted too), with caches, logs and the runtime in separate directories. `weflow config import` migrates the desktop app's
