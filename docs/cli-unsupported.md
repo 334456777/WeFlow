@@ -2,12 +2,13 @@
 
 **English** | [简体中文](zh-CN/cli-unsupported.md)
 
-This is the detailed list of what `weflow` cannot do, cannot do yet, or does differently from the desktop app. It complements
-[cli-gaps.md](cli-gaps.md) (comparison with the original TypeScript backend) and [cli-coverage.md](cli-coverage.md).
+Everything `weflow` cannot do, does not do yet, or does differently from the desktop app, compared with the original TypeScript
+backend (`ca6c479`). What *is* covered, with numbers, is in [cli-coverage.md](cli-coverage.md).
 
 The database layer is pure Rust: it decrypts WeChat 4.x databases itself and opens them **read-only** (nothing is written to
-WeChat's files, nothing plaintext is written to disk). Sections 1 and 2 list every database-level function that does not work;
-a test keeps them in sync with the code (see [section 6](#6-keeping-this-list-current)).
+WeChat's files, nothing plaintext is written to disk). The closed-source `wcdb_api` library is no longer used, embedded or loaded.
+Sections 1 and 2 list every database-level function that does not work; a test keeps them in sync with the code (see
+[section 6](#6-keeping-this-list-current)).
 
 ## 1. Refused by design: anything that would modify WeChat's databases
 
@@ -33,27 +34,38 @@ None at the moment: every database function the service layer can call is either
 A function that is added to `crates/weflow-native/src/wcdb.rs` before it is ported answers
 `<function> is not implemented in the native database backend yet`; list it here until it is ported.
 
-## 3. Features of the desktop app the CLI does not have
+## 3. Desktop features that are missing or different
 
-Details and reasons are in [cli-gaps.md](cli-gaps.md). In short:
+| Area | Difference |
+|---|---|
+| Voice-to-text (`chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus`) | Missing: needs sherpa-onnx and Whisper models; not planned. |
+| Live updates (message push, insight triggers, `chat:getNewMessages`) | The desktop app reacts to WCDB monitor callbacks; the CLI polls (push and insights about every 5 s). |
+| Message export | All 9 formats work; `--media` copies media into the CLI's own folder layout (section 5). |
+| Voice in the HTTP API / `chat voice-data` | Works only if the media database holds the SILK data (WeChat must have played the message once). |
+| WXGF images | Converted through an external `ffmpeg` (`PATH` or `FFMPEG_PATH`); the desktop app bundles `ffmpeg-static`. Without it the image is reported as a failed decrypt. |
+| Image auto-download (`image auto-download`, `serve --image-auto-download`) | Windows x64 only (`img_helper.dll`). The hook lives only while the `weflow` process runs, so `status` from another process always says "not hooked". |
+| Image service events | `image:cacheResolved`, `decryptProgress`, `updateAvailable` and the background "better quality available" check are not emitted; `hasUpdate` is always `false` (like the desktop app's headless worker mode). |
+| AI insight notifications | No popup window; `serve --insight` prints each insight as a JSON line on stderr (Telegram push still works). |
+| Image key memory scan | `key scan-image` works on macOS only; on Windows use `key image` (kvcomm cache + template verification). The desktop app's Windows memory-scan fallback is not ported. |
+| Video | Looks up the file WeChat already stored under `msg/video`; there is no download or decrypt path (the desktop app has none either). |
 
-- Speech-to-text of voice messages and the Whisper model download/status (needs sherpa-onnx + Whisper models).
-- WXGF images need an external `ffmpeg` (`PATH` or `FFMPEG_PATH`).
-- Image auto-download hook (`image auto-download`, `serve --image-auto-download`) works on Windows x64 only and only while the process runs.
-- `key scan-image` (AES key memory scan) works on macOS only; on Windows use `key image`.
-- Live updates use polling (message push and insights about every 5 s) instead of WCDB monitor callbacks.
-- No popup windows, auto update, autostart, app lock, cloud control or other desktop-process features.
+Deliberately not ported because they only make sense in the desktop process: window/dialog/shell/app/auth/log IPC, auto update,
+autostart, app lock, cloud control, diagnostics, social-cookie UI helpers, message/contact/session/avatar caches, export task
+pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
 
 ## 4. Platform and verification limits
 
-- The native database layer was verified against a real Windows WeChat 4.x account (session, message, contact, Moments, media and
-  voice databases) with a **Linux build**, and the cross-compiled Windows `weflow.exe` was run on Windows against the same account
-  (about 80 commands, message exports with media, image exports). Other Windows versions have not been tried.
+- The native database layer (session, message, contact, Moments, media and voice databases) was verified against one real Windows
+  WeChat 4.x account with a **Linux build**, and the cross-compiled Windows `weflow.exe` (`x86_64-pc-windows-gnu`) was run on
+  Windows against the same account (about 80 commands, message exports with media, image exports). Other Windows versions have
+  not been tried.
 - macOS and Linux WeChat databases use the same file format but have not been tested.
-- The key extraction helpers (`key db`, `key image`) need a running WeChat and cannot be tested offline.
+- The HTTP server, image `.dat` decryption, AI and Moments downloads were also checked against synthetic encrypted fixtures and
+  local fake HTTP servers; Moments servers and AI providers have not been tried for real.
+- The key extraction helpers (`key db`, `key image`) and the Windows image hook need a running WeChat and cannot be tested offline.
+- Only one account's data was used; unusual databases (very large shards, old schema versions) may expose gaps.
 - Still to verify (macOS/Linux real accounts, the Windows image auto-download hook, AI insight with a real provider, backup
-  compatibility with the desktop app): see [verification-plan.md](verification-plan.md).
-- Only one account's data was used for verification; unusual databases (very large shards, old schema versions) may expose gaps.
+  compatibility with the desktop app): see [plan.md](plan.md#verification-still-to-do).
 
 ## 5. Behaviour you may not expect
 

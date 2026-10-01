@@ -12,7 +12,7 @@
 - Follows the system language (Chinese or English); `--lang en|zh` overrides it per run.
 
 > [!WARNING]
-> The CLI was ported from the original TypeScript backend. Its database layer is pure Rust (it decrypts and reads WeChat's databases itself, read-only) and was verified against one real Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows; macOS/Linux WeChat data is untested ([verification plan](docs/verification-plan.md)). Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [gaps](docs/cli-gaps.md) · [unsupported](docs/cli-unsupported.md).
+> The CLI was ported from the original TypeScript backend. Its database layer is pure Rust (it decrypts and reads WeChat's databases itself, read-only) and was verified against one real Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows; macOS/Linux WeChat data is untested ([plan](docs/plan.md#verification-still-to-do)). Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [unsupported](docs/cli-unsupported.md).
 
 The original WeFlow project (Electron desktop app) is documented in [docs/weflow-readme.md](docs/weflow-readme.md).
 
@@ -38,7 +38,7 @@ $env:WEFLOW_LANG = "zh"                          # Chinese for the whole PowerSh
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-Order: `--lang`, then the first of `WEFLOW_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, `LANGUAGE` that is set and non-empty (Chinese when it starts with `zh`; anything else, including `C`/`POSIX`, gives English), then — when none of them is set, which is usual on Windows — the operating system's display language (Windows, macOS), then English. `--lang` is an option, not a command: it must accompany a subcommand, e.g. `weflow.exe --lang zh chat sessions --pretty`; running `weflow.exe --lang zh` alone reports a missing subcommand. The language only affects generated text (export labels such as `[Image]` / `[图片]`, default AI prompt); JSON keys, error codes and `--help` are always English.
+`--lang` is an option, not a command: it must accompany a subcommand (`weflow.exe --lang zh` alone reports a missing subcommand). The language only affects generated text; JSON keys, error codes and `--help` are always English. The full order of precedence is in [docs/native-cli.md](docs/native-cli.md#language).
 
 ## First-time setup and export (required steps)
 
@@ -83,8 +83,8 @@ The detailed list is in **[docs/cli-unsupported.md](docs/cli-unsupported.md)** (
 ## Documentation
 
 - [Command list](docs/native-cli.md)
-- [What the CLI does not support (detailed list)](docs/cli-unsupported.md) · [Verification plan](docs/verification-plan.md)
-- [Coverage of the original backend](docs/cli-coverage.md) · [What the CLI does not cover](docs/cli-gaps.md)
+- [What the CLI does not support (detailed list)](docs/cli-unsupported.md) · [Coverage of the original backend](docs/cli-coverage.md)
+- [Plan, status and verification still to do](docs/plan.md)
 - [HTTP API](docs/HTTP-API.md) · [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
 - [Original WeFlow README](docs/weflow-readme.md)
 

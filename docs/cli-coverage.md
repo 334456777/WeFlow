@@ -5,14 +5,10 @@
 Baseline: the TypeScript/Electron backend as of the last upstream commit by the original author,
 `ca6c479` (2026-05-15). Everything under `crates/` was added afterwards.
 
-**Method and honesty.** A channel counts as *covered* when a CLI command or HTTP route reproduces its behaviour; the
-TypeScript code was ported function by function (same formulas, same key order in JSON results, same fallbacks). The
-database layer is native Rust and was **verified against one real Windows WeChat 4.x account** (using a Linux build);
-everything else (HTTP server, image/`.dat` decryption, AI, Moments downloads) was verified through unit tests and
-end-to-end tests against synthetic encrypted databases and local fake HTTP servers. The cross-compiled Windows `weflow.exe` was
-run on Windows against the same account (about 80 commands, exports with media); macOS and Linux accounts were not tried. Expect
-differences that synthetic data cannot reveal.
-The IPC classification below was done by hand; disagree with it if you like.
+**Method.** A channel counts as *covered* when a CLI command or HTTP route reproduces its behaviour; the TypeScript code was
+ported function by function (same formulas, same key order in JSON results, same fallbacks). How far this was verified against
+real data is in section 4 of [cli-unsupported.md](cli-unsupported.md#4-platform-and-verification-limits). The IPC
+classification below was done by hand; disagree with it if you like.
 
 ## Summary
 
@@ -61,21 +57,12 @@ summary) and the Weibo context client.
 **Missing (13):** the 10 write channels above (refused on purpose: the native database layer opens WeChat's databases read-only),
 `chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus` (voice transcription needs sherpa-onnx; not planned).
 
-**Partial (4):**
+**Partial (4):** `chat:getNewMessages` (polls instead of reacting to WCDB monitor callbacks), and
+`image:startAutoDownload` / `stopAutoDownload` / `getAutoDownloadStatus` (Windows x64 only, and only while the `weflow` process
+runs).
 
-- `chat:getNewMessages`, message push and insight triggers poll instead of reacting to WCDB monitor callbacks.
-- `image:startAutoDownload` / `stopAutoDownload` / `getAutoDownloadStatus`: Windows x64 only; the hook lives only while the
-  `weflow` process runs, so `status` from another process cannot see it.
-
-Also different, without changing a channel's classification: WXGF → JPEG needs an `ffmpeg` binary on `PATH` (the desktop app
-bundles `ffmpeg-static`), and message exports copy media with `export messages --media …` into `media/<output name>/` instead of
-the desktop app's folder layout.
-
-UI events (`image:cacheResolved`, `image:decryptProgress`, `image:updateAvailable`, notification popups) have no CLI counterpart;
-like the desktop app's headless worker mode the image service does not emit them and never reports `hasUpdate`.
-
-Not ported because they only make sense in the desktop process: message/contact/session/avatar caches, cloud control, export
-task pause/resume.
+The details of these, and the differences that do not change a channel's classification (WXGF needs `ffmpeg`, the media folder
+layout of exports, image service events, desktop-only features), are in [cli-unsupported.md](cli-unsupported.md) section 3.
 
 ## Security note
 
