@@ -4,14 +4,14 @@
 
 ## In short
 
-- The **native Rust CLI** (`weflow`) and the **desktop app on the Rust layer** (this branch, see
-  [desktop-rust-layer.md](desktop-rust-layer.md)) do **not** load, embed or ship `wcdb_api.dll` (nor `libwcdb_api.so`,
+- The **native Rust CLI** (`weflow`) and this repository's **desktop app**, which runs on the Rust layer (see
+  [desktop-rust-layer.md](desktop-rust-layer.md)), do **not** load, embed or ship `wcdb_api.dll` (nor `libwcdb_api.so`,
   `libwcdb_api.dylib`, `WCDB.dll`, `SDL2.dll`, `libWCDB.dylib`). They read WeChat's databases with the repository's own
   pure-Rust, read-only layer (`crates/weflow-native`); the desktop app reaches it through `weflow_wcdb`
   (`crates/weflow-wcdb-ffi`). Nothing in `resources/wcdb/` is needed to build, run or package them.
-- `resources/wcdb/` stays in the repository for the **original desktop app** (the TypeScript code path that loads
-  `wcdb_api` through `electron/services/wcdbCore.ts`): to supplement, fix and maintain the original version, and as a
-  reference. A new build of `wcdb_api.dll` from the original author replaces the expired one there; the expired one is
+- `resources/wcdb/` stays in the repository for the **original desktop app** (upstream WeFlow, whose
+  `electron/services/wcdbCore.ts` loads `wcdb_api`; this repository's own `wcdbCore.ts` loads `weflow_wcdb` through the same
+  C interface): to supplement, fix and maintain the original version, and as a reference. A new build of `wcdb_api.dll` from the original author replaces the expired one there; the expired one is
   kept next to it.
 
 ## Which file is which
@@ -28,8 +28,8 @@ Where the libraries are used:
 | | Loads `wcdb_api` | Packages `resources/wcdb/` |
 |---|---|---|
 | Native Rust CLI (`weflow`) | No | No (`crates/weflow-assets/build.rs` never embeds `resources/wcdb/`) |
-| Desktop app on the Rust layer (this branch) | No (`wcdbCore.ts` loads `weflow_wcdb`) | No (`package.json` leaves out `wcdb/**`) |
-| Original desktop app (`claude/jolly-cannon-wez9ek` and upstream) | Yes | Yes |
+| Desktop app in this repository (Rust layer) | No (`wcdbCore.ts` loads `weflow_wcdb`) | No (`package.json` leaves out `wcdb/**`) |
+| Original desktop app (upstream WeFlow, and this repository before the move to the Rust layer) | Yes | Yes |
 
 ## Differences between the old and the new x64 build
 

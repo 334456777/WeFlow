@@ -18,8 +18,9 @@ Linux x64), keeping the full backend: key extraction, image decryption, Moments,
 **Change of plan (2026-10):** the database layer was first meant to call the closed-source `wcdb_api` library through FFI. That
 library has an expiry check (after 2026-09-30 23:59:59 `wcdb_init` returns `-1000`) and unverified network code, so the CLI now
 decrypts WeChat 4.x databases itself (SQLCipher 4) and reads them **read-only** in pure Rust
-(`crates/weflow-native/src/{sqlcipher,native_*}.rs`). `wcdb_api`, `WCDB.dll`, `libwcdb_api.*` and `libWCDB.dylib` are no longer
-embedded or loaded; they stay in the repository for reference only.
+(`crates/weflow-native/src/{sqlcipher,native_*}.rs`). Neither the CLI nor the desktop app embeds or loads `wcdb_api`, `WCDB.dll`,
+`libwcdb_api.*` or `libWCDB.dylib` any more; they stay in the repository for the original desktop app (including a new
+`wcdb_api.dll` build from the original author), see [wcdb-api.md](wcdb-api.md).
 
 ## Architecture
 
@@ -89,7 +90,7 @@ update section 4 of [cli-unsupported.md](cli-unsupported.md).
 | 2a | **Windows image auto-download hook** (`image auto-download start`, `serve --image-auto-download`) | Planned | With WeChat running on Windows x64: start the hook, open chats with images that were never downloaded, check that the files appear under `msg/attach/…/Img` and that `export media` then finds them; stop the hook and confirm WeChat keeps working. | Images are downloaded while the hook runs, nothing happens after it stops, WeChat is unaffected. |
 | 2b | **AI insight against a real provider** (`insight test`, `insight trigger`, `serve --insight`, footprint summary) | Planned | Configure `ai_model_api_base_url`, `ai_model_api_key`, `ai_model_api_model` for an OpenAI-compatible provider; run `insight test`, a manual trigger and a footprint summary; check the request (`/chat/completions`, no extra `/v1`), the parsed answer and the stored records; optionally Telegram delivery. | All insight commands work end to end with one real provider; errors from the provider are reported clearly. |
 | 3 | **Backup compatibility with the desktop app** | Planned | Create a backup with the desktop app and with `weflow backup create`; `weflow backup inspect` both; restore each with the other tool into an empty folder and compare file lists and hashes; open the restored account with `db test` and the desktop app. | Both directions restore the same files, or the differences are documented with a reason. |
-| 4 | **Desktop app on the Rust layer, with its UI** (branch `claude/desktop-rust-layer`) | Planned | Build with `npm run build` on Windows, macOS and Linux; open an account, browse chats, contacts, groups, Moments, run each report and export, watch new messages arrive (monitor pipe), try an edit/delete (expect the read-only error). | The app works for the read-only features on all three platforms; differences are fixed or documented in [desktop-rust-layer.md](desktop-rust-layer.md). |
+| 4 | **Desktop app on the Rust layer, with its UI** ([desktop-rust-layer.md](desktop-rust-layer.md)) | Planned | Build with `npm run build` on Windows, macOS and Linux; open an account, browse chats, contacts, groups, Moments, run each report and export, watch new messages arrive (monitor pipe), try an edit/delete (expect the read-only error). | The app works for the read-only features on all three platforms; differences are fixed or documented in [desktop-rust-layer.md](desktop-rust-layer.md). |
 
 Release checks, once release builds exist: the downloaded executable runs on its own, the first run creates the runtime cache, a
 deleted cache is restored, nothing needs Node, npm or Electron.

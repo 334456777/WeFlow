@@ -16,8 +16,8 @@
 
 **计划变更(2026-10):** 数据库层原计划通过 FFI 调用闭源的 `wcdb_api` 库。这个库带有效期检查(2026-09-30 23:59:59 之后
 `wcdb_init` 返回 `-1000`)和未经核实的网络代码,所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4),用纯 Rust **只读**
-读取(`crates/weflow-native/src/{sqlcipher,native_*}.rs`)。`wcdb_api`、`WCDB.dll`、`libwcdb_api.*`、`libWCDB.dylib`
-不再内嵌或加载,只留在仓库里供研究。
+读取(`crates/weflow-native/src/{sqlcipher,native_*}.rs`)。命令行和桌面端都不再内嵌或加载 `wcdb_api`、`WCDB.dll`、
+`libwcdb_api.*`、`libWCDB.dylib`;它们留在仓库里给原版桌面端使用(包括原作者提供的新版 `wcdb_api.dll`),见 [wcdb-api.md](wcdb-api.md)。
 
 ## 结构
 
@@ -82,6 +82,6 @@
 | 2a | **Windows 图片自动下载钩子**(`image auto-download start`、`serve --image-auto-download`) | 计划中 | 在运行着微信的 Windows x64 上:启动钩子,打开含有从未下载过图片的聊天,确认文件出现在 `msg/attach/…/Img` 下,之后 `export media` 能找到它们;停止钩子,确认微信工作正常。 | 钩子运行期间图片会被下载,停止后不再有动作,微信不受影响。 |
 | 2b | **AI 见解对接真实服务商**(`insight test`、`insight trigger`、`serve --insight`、足迹总结) | 计划中 | 为一个 OpenAI 兼容的服务商配置 `ai_model_api_base_url`、`ai_model_api_key`、`ai_model_api_model`;运行 `insight test`、手动触发和足迹总结;检查请求(`/chat/completions`,没有多余的 `/v1`)、解析出的回答和保存的记录;可选验证 Telegram 推送。 | 所有见解命令在一个真实服务商上端到端可用;服务商返回的错误能清楚地报出来。 |
 | 3 | **备份与桌面端是否兼容** | 计划中 | 分别用桌面端和 `weflow backup create` 生成备份;用 `weflow backup inspect` 查看两者;用另一个工具把各自的备份恢复到空目录,比较文件列表和哈希;用 `db test` 和桌面端打开恢复出的账号。 | 两个方向恢复出的文件一致,或者差异有记录并说明原因。 |
-| 4 | **桌面端在 Rust 层上运行,包括界面**(分支 `claude/desktop-rust-layer`) | 计划中 | 在 Windows、macOS、Linux 上用 `npm run build` 构建;打开账号,浏览聊天、联系人、群、朋友圈,运行各个报告和导出,观察新消息能否到达(监听管道),尝试编辑/删除(应出现只读错误)。 | 三个平台上只读功能都可用;差异要么修复,要么写进 [desktop-rust-layer.md](desktop-rust-layer.md)。 |
+| 4 | **桌面端在 Rust 层上运行,包括界面**([desktop-rust-layer.md](desktop-rust-layer.md)) | 计划中 | 在 Windows、macOS、Linux 上用 `npm run build` 构建;打开账号,浏览聊天、联系人、群、朋友圈,运行各个报告和导出,观察新消息能否到达(监听管道),尝试编辑/删除(应出现只读错误)。 | 三个平台上只读功能都可用;差异要么修复,要么写进 [desktop-rust-layer.md](desktop-rust-layer.md)。 |
 
 有了发布构建之后还要检查:下载的可执行文件能单独运行,首次运行会生成运行时缓存,缓存被删后能自动恢复,不需要 Node、npm 或 Electron。

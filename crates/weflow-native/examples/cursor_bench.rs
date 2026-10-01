@@ -1,5 +1,5 @@
 //! Time a full lite-cursor scan of one conversation (no content is printed).
-//! usage: cursor_bench <account_dir> <key_file> <session id> [lite=1|0]
+//! usage: cursor_bench <account_dir> <key_file> <session id> [lite=1|0] [your wxid]
 use std::time::Instant;
 use weflow_native::native_db::NativeAccount;
 
@@ -7,11 +7,12 @@ fn main() -> anyhow::Result<()> {
     let mut a = std::env::args().skip(1);
     let (dir, keyf, sid) = (a.next().unwrap(), a.next().unwrap(), a.next().unwrap());
     let lite = a.next().map_or(true, |v| v != "0");
+    let my_wxid = a.next();
     let acct = NativeAccount::new(
         format!("{dir}/db_storage"),
         std::fs::read_to_string(keyf)?.trim(),
     )?
-    .with_my_wxid(Some("wxid_example".into()));
+    .with_my_wxid(my_wxid);
     let t = Instant::now();
     acct.test_connection()?;
     let cursor = acct.open_message_cursor(&sid, 10_000, true, 0, 0, lite)?;
