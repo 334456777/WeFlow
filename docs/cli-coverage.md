@@ -15,7 +15,7 @@ classification below was done by hand; disagree with it if you like.
 | Measure | Covered | Total | % |
 |---|---|---|---|
 | Backend IPC channels (`electron/main.ts`; 172 total, 76 UI-only excluded) — full | 79 | 96 | **82%** |
-| Same, full + partial | 83 | 96 | **86%** |
+| Same, full + [partial](https://github.com/334456777/WeFlow/blob/main/docs/cli-coverage.md#channels-that-are-still-missing-or-partial) | 83 | 96 | **86%** |
 | Database functions the CLI calls (native Rust; 44 native, 10 refused as read-only) | 54 | 54 | **100%** |
 | Chat-message export formats (chatlab, chatlab-jsonl, json, arkme-json, html, txt, excel, weclone, sql) | 9 | 9 | **100%** |
 | HTTP API routes (`httpService.ts`, same path, token auth, SSE push) | 19 | 19 | **100%** |
