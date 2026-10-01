@@ -10,8 +10,8 @@
 
 | 指标 | 已覆盖 | 总数 | 占比 |
 |---|---|---|---|
-| 后端 IPC 通道（`electron/main.ts`；共 172 个，排除 76 个纯 UI 通道）— 完整 | 76 | 96 | **79%** |
-| 同上，完整 + 部分 | 80 | 96 | **83%** |
+| 后端 IPC 通道（`electron/main.ts`；共 172 个，排除 76 个纯 UI 通道）— 完整 | 79 | 96 | **82%** |
+| 同上，完整 + 部分 | 83 | 96 | **86%** |
 | CLI 调用的数据库函数（原生 Rust；44 个原生实现，10 个因只读被拒绝） | 54 | 54 | **100%** |
 | 聊天消息导出格式（chatlab、chatlab-jsonl、json、arkme-json、html、txt、excel、weclone、sql） | 9 | 9 | **100%** |
 | HTTP API 路由（`httpService.ts`，路径一致，token 鉴权，SSE 推送） | 19 | 19 | **100%** |
@@ -37,7 +37,7 @@
 
 ## 仍然缺失或仅部分覆盖的通道
 
-**缺失（16 个）：** 上面的 10 个写操作通道（有意拒绝：原生数据库层以只读方式打开微信数据库）、`chat:clearCurrentAccountData`、`chat:getVoiceTranscript`、`whisper:downloadModel`、`whisper:getModelStatus`（语音转写需要 sherpa-onnx）、`cache:clearAll`（只能清理统计分析缓存和图片缓存）、`sns:debugResource`。
+**缺失（13 个）：** 上面的 10 个写操作通道（有意拒绝：原生数据库层以只读方式打开微信数据库）、`chat:getVoiceTranscript`、`whisper:downloadModel`、`whisper:getModelStatus`（语音转写需要 sherpa-onnx；不打算做）。
 
 **部分（4 个）：**
 

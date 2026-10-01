@@ -12,9 +12,6 @@ work at all is in [cli-unsupported.md](cli-unsupported.md).
 |---|---|---|
 | `chat:getVoiceTranscript` | Speech-to-text of a voice message | Needs sherpa-onnx + Whisper models; no Rust binding wired up |
 | `whisper:downloadModel`, `whisper:getModelStatus` | Download / inspect the Whisper model | Same |
-| `chat:clearCurrentAccountData` | Wipes cached data of the current account | Not ported |
-| `cache:clearAll` | Clears every cache | Only `analytics clear-cache` and `image clear-cache` exist; the message/contact/avatar caches are not ported (the CLI has no long-lived cache) |
-| `sns:debugResource` | Debug dump of a Moments resource | Not ported |
 
 ## 2. Partial or different behaviour
 

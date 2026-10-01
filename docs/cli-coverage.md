@@ -18,8 +18,8 @@ The IPC classification below was done by hand; disagree with it if you like.
 
 | Measure | Covered | Total | % |
 |---|---|---|---|
-| Backend IPC channels (`electron/main.ts`; 172 total, 76 UI-only excluded) — full | 76 | 96 | **79%** |
-| Same, full + partial | 80 | 96 | **83%** |
+| Backend IPC channels (`electron/main.ts`; 172 total, 76 UI-only excluded) — full | 79 | 96 | **82%** |
+| Same, full + partial | 83 | 96 | **86%** |
 | Database functions the CLI calls (native Rust; 44 native, 10 refused as read-only) | 54 | 54 | **100%** |
 | Chat-message export formats (chatlab, chatlab-jsonl, json, arkme-json, html, txt, excel, weclone, sql) | 9 | 9 | **100%** |
 | HTTP API routes (`httpService.ts`, same path, token auth, SSE push) | 19 | 19 | **100%** |
@@ -58,10 +58,8 @@ summary) and the Weibo context client.
 
 ## Channels that are still missing or partial
 
-**Missing (16):** the 10 write channels above (refused on purpose: the native database layer opens WeChat's databases read-only),
-`chat:clearCurrentAccountData`, `chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus`
-(voice transcription needs sherpa-onnx), `cache:clearAll` (only the analytics and image caches can be cleared),
-`sns:debugResource`.
+**Missing (13):** the 10 write channels above (refused on purpose: the native database layer opens WeChat's databases read-only),
+`chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus` (voice transcription needs sherpa-onnx; not planned).
 
 **Partial (4):**
 

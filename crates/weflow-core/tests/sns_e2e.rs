@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::Arc;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use weflow_core::isaac64;
 use weflow_core::services::{SnsExportOptions, SnsProxyResult};
 
@@ -193,3 +193,18 @@ fn exports_json_html_and_arkmejson() {
     assert!(pos("author") == pos("nickname") + 1 && pos("likesDetail") > pos("location") && pos("commentsDetail") == pos("likesDetail") + 1);
 }
 
+
+#[test]
+fn debug_resource_reports_status_and_decryption_headers() {
+    let (hub, _root) = common::mock_hub("sns-debug");
+    let base = serve(vec![("/res", vec![("x-enc", "1"), ("x-time", "123"), ("Content-Type", "image/jpeg")], vec![1, 2, 3])]);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let r = rt.block_on(hub.sns_debug_resource(&format!("{base}/res")));
+    assert_eq!(r["success"], true, "{r}");
+    assert_eq!(r["status"], 200);
+    assert_eq!((r["headers"]["x-enc"].clone(), r["headers"]["x-time"].clone(), r["headers"]["content-type"].clone()), (json!("1"), json!("123"), json!("image/jpeg")));
+    assert_eq!(r["headers"]["content-length"], "3");
+    assert_eq!(rt.block_on(hub.sns_debug_resource(&format!("{base}/missing")))["status"], 404);
+    assert_eq!(rt.block_on(hub.sns_debug_resource(" "))["success"], false);
+    assert_eq!(rt.block_on(hub.sns_debug_resource("http://127.0.0.1:9/x"))["success"], false, "connection refused");
+}

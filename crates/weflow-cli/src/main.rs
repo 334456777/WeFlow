@@ -92,6 +92,20 @@ enum Commands {
     Runtime(RuntimeCommand),
     /// Create, inspect and restore backups
     Backup(BackupCommand),
+    /// Clear WeFlow's caches
+    Cache(CacheCommand),
+}
+
+#[derive(Args, Debug)]
+struct CacheCommand {
+    #[command(subcommand)]
+    command: CacheSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum CacheSubcommand {
+    /// Clear every cache: analytics, decrypted images, and the in-memory Moments / group caches
+    ClearAll,
 }
 
 #[derive(Args, Debug)]
@@ -171,6 +185,20 @@ struct ChatCommand {
 
 #[derive(Subcommand, Debug)]
 enum ChatSubcommand {
+    /// Remove WeFlow's data of the current account: its caches (and the account settings of this profile) with
+    /// --cache, and entries named after the account in the given export folders. WeChat's own files are never touched.
+    ClearAccountData {
+        /// Remove the cached images, voices, stickers, Moments and analytics of the account, then reset db_path,
+        /// wxid, decrypt_key and the image keys of the profile
+        #[arg(long)]
+        cache: bool,
+        /// Folder of exports; files and folders named after the account are removed (repeatable)
+        #[arg(long = "exports-dir")]
+        exports_dir: Vec<PathBuf>,
+        /// Confirm the removal
+        #[arg(long)]
+        yes: bool,
+    },
     Sessions {
         #[arg(long, default_value_t = 0)]
         limit: usize,
@@ -633,6 +661,8 @@ enum SnsSubcommand {
     },
     /// Users that have posted
     Users,
+    /// Ask the server for the first bytes of a Moments resource and show the status and decryption headers
+    DebugResource { url: String },
     /// Export statistics (total posts / friends / mine); --fast reads the cached counts only
     Stats {
         #[arg(long)]
@@ -988,6 +1018,21 @@ async fn run(cli: &Cli) -> AppResult<Value> {
     match &cli.command {
         Commands::Config(command) => return handle_config(command, &ctx, &mut config, cli),
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
+        Commands::Chat(ChatCommand { command: ChatSubcommand::ClearAccountData { cache, exports_dir, yes } }) => {
+            if !*yes {
+                return Err(AppError::usage("this removes files; add --yes to confirm"));
+            }
+            let hub = ServiceHub::new(ctx.clone(), config.clone(), cli.profile.clone(), cli.db_path.clone(), cli.decrypt_key.clone(), cli.wxid.clone());
+            let result = hub.clear_current_account_data(*cache, exports_dir)?;
+            if *cache {
+                // like the desktop app: the account is signed out of this profile
+                for key in ["db_path", "wxid", "decrypt_key", "image_xor_key", "image_aes_key"] {
+                    config.unset_key(cli.profile.as_deref(), key);
+                }
+                config.save(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
+            }
+            return Ok(result);
+        }
         _ => {}
     }
 
@@ -1043,6 +1088,13 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         },
         Commands::Serve(command) => handle_serve(command, &hub).await,
         Commands::Backup(command) => handle_backup(command, &hub),
+        Commands::Cache(CacheCommand { command: CacheSubcommand::ClearAll }) => {
+            let r = hub.cache_clear_all();
+            if r["success"] != true {
+                return Err(AppError::runtime(r["error"].as_str().unwrap_or("clearing the caches failed").to_string()));
+            }
+            Ok(r)
+        }
         Commands::Runtime(_) | Commands::Config(_) => unreachable!(),
     }
 }
@@ -1132,6 +1184,7 @@ fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
 
 async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
+        ChatSubcommand::ClearAccountData { .. } => unreachable!("handled in run()"),
         ChatSubcommand::Sessions { limit } => {
             let mut sessions = hub.chat_sessions_list()?;
             if *limit > 0 {
@@ -1478,6 +1531,13 @@ fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> 
 async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::services::{SnsExportOptions, SnsTimelineQuery};
     match &command.command {
+        SnsSubcommand::DebugResource { url } => {
+            let r = hub.sns_debug_resource(url).await;
+            if r["success"] != true {
+                return Err(AppError::runtime(r["error"].as_str().unwrap_or("request failed").to_string()));
+            }
+            Ok(r)
+        }
         SnsSubcommand::Timeline { limit, offset, users, keyword, start, end, with_media } => {
             let posts = hub.sns_timeline_query(&SnsTimelineQuery { limit: *limit, offset: *offset, usernames: users.clone(), keyword: keyword.clone(), start: *start, end: *end })?;
             let posts = if *with_media { hub.sns_enrich_timeline_media(posts, "", true, true).await } else { posts };

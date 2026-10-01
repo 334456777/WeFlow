@@ -38,8 +38,6 @@ A function that is added to `crates/weflow-native/src/wcdb.rs` before it is port
 Details and reasons are in [cli-gaps.md](cli-gaps.md). In short:
 
 - Speech-to-text of voice messages and the Whisper model download/status (needs sherpa-onnx + Whisper models).
-- "Clear current account data" and "clear all caches" (the CLI has no long-lived cache; only `analytics clear-cache` and `image clear-cache` exist).
-- `sns:debugResource` (Moments resource debug dump).
 - WXGF images need an external `ffmpeg` (`PATH` or `FFMPEG_PATH`).
 - Image auto-download hook (`image auto-download`, `serve --image-auto-download`) works on Windows x64 only and only while the process runs.
 - `key scan-image` (AES key memory scan) works on macOS only; on Windows use `key image`.
@@ -53,6 +51,8 @@ Details and reasons are in [cli-gaps.md](cli-gaps.md). In short:
   (about 80 commands, message exports with media, image exports). Other Windows versions have not been tried.
 - macOS and Linux WeChat databases use the same file format but have not been tested.
 - The key extraction helpers (`key db`, `key image`) need a running WeChat and cannot be tested offline.
+- Still to verify (macOS/Linux real accounts, the Windows image auto-download hook, AI insight with a real provider, backup
+  compatibility with the desktop app): see [verification-plan.md](verification-plan.md).
 - Only one account's data was used for verification; unusual databases (very large shards, old schema versions) may expose gaps.
 
 ## 5. Behaviour you may not expect

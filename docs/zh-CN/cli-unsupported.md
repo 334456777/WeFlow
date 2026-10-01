@@ -36,8 +36,6 @@
 细节和原因见 [cli-gaps.md](cli-gaps.md)。简要如下:
 
 - 语音转文字,以及 Whisper 模型的下载/状态(需要 sherpa-onnx 和 Whisper 模型)。
-- "清除当前账号数据"和"清除所有缓存"(CLI 没有长期缓存,只有 `analytics clear-cache` 和 `image clear-cache`)。
-- `sns:debugResource`(朋友圈资源调试导出)。
 - WXGF 图片需要外部 `ffmpeg`(在 `PATH` 中,或设置 `FFMPEG_PATH`)。
 - 图片自动下载钩子(`image auto-download`、`serve --image-auto-download`)只支持 Windows x64,且只在进程运行期间有效。
 - `key scan-image`(内存扫描 AES 密钥)只支持 macOS;Windows 上用 `key image`。
@@ -50,6 +48,7 @@
   Windows `weflow.exe` 也在 Windows 上对同一个账号运行过(约 80 个命令、带媒体的消息导出、图片导出)。其他 Windows 版本没有试过。
 - macOS 和 Linux 的微信数据库文件格式相同,但没有测试过。
 - 密钥提取辅助程序(`key db`、`key image`)需要微信正在运行,无法离线测试。
+- 尚待验证的项目(macOS/Linux 真实账号、Windows 图片自动下载钩子、AI 洞察对接真实服务商、备份与桌面端的兼容性)见 [verification-plan.md](verification-plan.md)。
 - 只用了一个账号的数据验证;特殊的数据库(特别大的分片、旧版本表结构)可能暴露遗漏。
 
 ## 5. 可能出乎意料的行为

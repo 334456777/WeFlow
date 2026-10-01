@@ -28,13 +28,14 @@ weflow key       db | image | scan-image <user-dir>
 weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
-                 voice | voice-data | voice-cache | voice-preload | image-data | emoji
+                 voice | voice-data | voice-cache | voice-preload | image-data | emoji | clear-account-data
 weflow export    sessions | contacts | footprint | media | messages   (messages: chatlab, chatlab-jsonl, json,
                  arkme-json, html, txt, excel, weclone, sql)
 weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
 weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
 weflow report    annual years|generate | dual generate
-weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | block-delete | delete
+weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | debug-resource
+                 block-delete | delete
 weflow biz       accounts | messages | pay-records
 weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
 weflow video     info | parse-md5
@@ -42,6 +43,7 @@ weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-do
 weflow backup    create | inspect | restore
 weflow serve     --http --message-push --insight --image-auto-download
 weflow runtime   info | manifest
+weflow cache     clear-all
 ```
 
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
@@ -55,6 +57,11 @@ messages whose file is not on disk (never downloaded in WeChat) or could not be 
 `thumbOnly` counts exported images that are only the thumbnail (each image entry also has `isThumb`); open the original in WeChat and export again to get the HD file. `export media` always prefers the HD original (like `image decrypt --force`). Stickers may need network access; voice export decodes every message, so a full export of hundreds of voices takes minutes.
 
 `export messages` reads only the requested date range from the database (cost follows the range size, not its age) and shows a progress bar; `--start/--end` are dates in the machine's local time zone. `--media image,voice,video,emoji` (or `all`) copies the media into `media/<output name>/` beside the output file and points the messages at the copies (for `json`, `arkme-json`, `txt`, `excel`, `weclone`, `html`; `chatlab` for images; not `sql`). The messages are written as they are built, so a 200,000-message group needs well under 1 GB.
+
+`chat clear-account-data --cache [--exports-dir <dir>] --yes` removes WeFlow's caches of the current account (images, voices,
+stickers, Moments, analytics) and signs the account out of the profile (`db_path`, `wxid`, `decrypt_key` and the image keys are
+removed); `--exports-dir` also removes the entries named after the account in that folder. `cache clear-all` clears every cache.
+Neither touches WeChat's files.
 
 `key db` (Windows) hooks WeChat through `wx_key.dll` and keeps polling (`--timeout`, default 180 s) because WeChat only
 produces the key while it opens its databases: log in or restart WeChat while the command waits. It needs an administrator

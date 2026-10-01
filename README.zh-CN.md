@@ -76,7 +76,7 @@ Windows 说明：`key db` 需要管理员终端（否则会提示权限不足）
 
 数据库层是纯 Rust 且**只读**:不会往微信的文件里写任何东西。因此会修改微信数据库的命令(`chat update-message`、`chat delete-message`、
 `chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)被有意拒绝,另有一些桌面端功能缺失
-(语音转文字、缓存管理等)。
+(语音转文字、弹窗等桌面进程功能)。
 
 详细清单见 **[docs/zh-CN/cli-unsupported.md](docs/zh-CN/cli-unsupported.md)**([English](docs/cli-unsupported.md))。
 

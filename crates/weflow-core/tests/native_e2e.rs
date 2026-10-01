@@ -421,3 +421,42 @@ fn contacts_carry_labels_signature_and_region_and_sort_by_pinyin() {
     let plain = by("wxid_plain");
     assert!(plain.get("labels").is_none() && plain.get("region").is_none() && plain.get("detailDescription").is_none());
 }
+
+#[test]
+fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
+    let (hub, root) = common::mock_hub("n-clear");
+    let base = hub.image_cache_root().parent().unwrap().to_path_buf();
+    let put = |p: std::path::PathBuf| {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, b"x").unwrap();
+        p
+    };
+    let mine = [put(base.join("Images/wxid_me/a.jpg")), put(base.join("Voices/wxid_me_ab12/v.wav")), put(base.join("wxid_me-moments.json"))];
+    let other = put(base.join("Emojis/wxid_other/e.gif"));
+    let exports = root.join("exports");
+    let mine_export = put(exports.join("wxid_me_chat.json"));
+    let other_export = put(exports.join("someone_else.json"));
+
+    assert!(hub.clear_current_account_data(false, &[]).is_err(), "nothing selected");
+    let r = hub.clear_current_account_data(true, &[exports.clone()]).unwrap();
+    assert_eq!((r["success"].clone(), r["profileReset"].clone()), (json!(true), json!(true)));
+    assert!(mine.iter().all(|p| !p.exists()), "{r}");
+    assert!(!mine_export.exists());
+    assert!(other.exists() && other_export.exists(), "other accounts and unrelated exports stay");
+
+    // exports only: caches stay, the profile is not reset
+    let again = put(base.join("Images/wxid_me/b.jpg"));
+    let r = hub.clear_current_account_data(false, &[exports]).unwrap();
+    assert_eq!(r["profileReset"], false);
+    assert!(again.exists());
+}
+
+#[test]
+fn clearing_all_caches_empties_the_image_cache() {
+    let (hub, _root) = common::mock_hub("n-clear-all");
+    let cached = hub.image_cache_root().join("wxid_bob/2023-11/x.jpg");
+    std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
+    std::fs::write(&cached, b"jpg").unwrap();
+    assert_eq!(hub.cache_clear_all()["success"], true);
+    assert!(!cached.exists());
+}

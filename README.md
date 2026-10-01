@@ -76,7 +76,7 @@ Useful export options: `--start 2025-01-01 --end 2025-12-31` (local time, inclus
 
 The database layer is pure Rust and **read-only**: it never writes into WeChat's files. So commands that would modify WeChat's
 databases (`chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete`, `sns delete`) are
-refused on purpose, and some desktop-app features are missing (voice-to-text, cache management, and more).
+refused on purpose, and some desktop-app features are missing (voice-to-text, popups and other desktop-process features).
 
 The detailed list is in **[docs/cli-unsupported.md](docs/cli-unsupported.md)** ([简体中文](docs/zh-CN/cli-unsupported.md)).
 

@@ -411,6 +411,37 @@ impl ServiceHub {
         Ok(json!({ "success": true, "result": v }))
     }
 
+    /// `clearMemoryCache`: drops the in-memory image cache and the cached statistics.
+    pub fn sns_clear_memory_cache(&self) {
+        *self.sns_state.lock().unwrap() = SnsState::default();
+    }
+
+    /// `sns:debugResource`: asks the server for the first bytes of a Moments resource the way WeChat does and
+    /// reports the status and the headers that matter for decryption (`x-enc`, `x-time`, length, type).
+    pub async fn sns_debug_resource(&self, url: &str) -> Value {
+        if url.trim().is_empty() {
+            return json!({ "success": false, "error": "url must not be empty" });
+        }
+        let client = match self.sns_http_client(false) {
+            Ok(c) => c,
+            Err(e) => return json!({ "success": false, "error": e.message }),
+        };
+        let req = client
+            .get(url.trim())
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090719) XWEB/8351")
+            .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+            .header("Accept-Language", "zh-CN,zh;q=0.9")
+            .header("Range", "bytes=0-10");
+        match req.send().await {
+            Ok(res) => {
+                let h = |k: &str| res.headers().get(k).and_then(|v| v.to_str().ok()).map(|v| json!(v)).unwrap_or(Value::Null);
+                let headers = json!({ "x-enc": h("x-enc"), "x-time": h("x-time"), "content-length": h("content-length"), "content-type": h("content-type") });
+                json!({ "success": true, "status": res.status().as_u16(), "headers": headers })
+            }
+            Err(e) => json!({ "success": false, "error": e.to_string() }),
+        }
+    }
+
     // ── media download / decrypt ──
 
     fn sns_http_client(&self, insecure: bool) -> AppResult<reqwest::Client> {

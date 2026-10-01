@@ -10,9 +10,6 @@
 |---|---|---|
 | `chat:getVoiceTranscript` | 语音消息转文字 | 需要 sherpa-onnx 和 Whisper 模型；尚未接入 Rust 绑定 |
 | `whisper:downloadModel`、`whisper:getModelStatus` | 下载/查看 Whisper 模型 | 同上 |
-| `chat:clearCurrentAccountData` | 清除当前账号的缓存数据 | 未移植 |
-| `cache:clearAll` | 清除所有缓存 | 只有 `analytics clear-cache` 和 `image clear-cache`；消息/联系人/头像缓存未移植（CLI 没有长期驻留的缓存） |
-| `sns:debugResource` | 朋友圈资源调试输出 | 未移植 |
 
 ## 2. 部分覆盖或行为不同
 
