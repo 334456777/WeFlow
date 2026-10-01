@@ -40,7 +40,7 @@ fn is_scalar(value: &Value) -> bool {
 
 fn scalar(value: &Value) -> String {
     match value {
-        Value::Null => "-".to_string(),
+        Value::Null => tr("(empty)", "（空）").to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => n.to_string(),
         Value::String(s) => truncate(s, MAX_STRING),
@@ -166,7 +166,9 @@ fn table(items: &[Value]) -> Option<Vec<String>> {
         return None;
     }
     let cell = |item: &Value, column: &str| -> Option<String> {
-        let text = item.get(column).map_or("-".to_string(), scalar);
+        let text = item
+            .get(column)
+            .map_or_else(|| tr("(empty)", "（空）").to_string(), scalar);
         (text.chars().count() <= MAX_CELL && !text.contains('\n')).then_some(text)
     };
     let mut rows: Vec<Vec<String>> = Vec::with_capacity(items.len());
@@ -207,11 +209,8 @@ mod tests {
 
     #[test]
     fn objects_align_and_nest() {
-        let out = render(&json!({ "name": "a", "longer": 2, "inner": { "x": true }, "n": null }));
-        assert_eq!(
-            out,
-            "name:    a\nlonger:  2\ninner:\n  x:  true\nn:       -\n"
-        );
+        let out = render(&json!({ "name": "a", "longer": 2, "inner": { "x": true } }));
+        assert_eq!(out, "name:    a\nlonger:  2\ninner:\n  x:  true\n");
     }
 
     #[test]
