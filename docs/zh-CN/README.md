@@ -30,8 +30,8 @@ Windows x64 发布版是单个 `weflow.exe`。WXGF 图片需要 `PATH`（或 `FF
 语言跟随系统:中文系统输出中文,否则输出英文。单独运行 `weflow --lang zh`(不带命令)会把选择保存到配置文件(`weflow config unset lang` 恢复为跟随系统);`weflow --lang zh <命令>` 只对单次运行生效,也可以用环境变量:
 
 ```powershell
-.\weflow.exe --lang zh chat sessions --pretty    # 本次输出中文
-$env:WEFLOW_LANG = "zh"                          # 整个 PowerShell 会话都用中文
+.\weflow.exe --lang zh chat sessions       # 本次输出中文
+$env:WEFLOW_LANG = "zh"                     # 整个 PowerShell 会话都用中文
 ```
 
 ```bash
@@ -46,13 +46,13 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 
 ```powershell
 # 1. 找到微信数据目录
-.\weflow.exe --lang zh db detect --pretty
+.\weflow.exe --lang zh db detect
 
 # 2. 获取数据库密钥和图片密钥（请以管理员身份运行 PowerShell）
 #    `key db` 会挂钩微信并等待（默认 180 秒）：等待期间请退出并重新登录微信（或重启微信），
 #    密钥只会在微信打开数据库时出现。
-.\weflow.exe --lang zh key db --pretty
-.\weflow.exe --lang zh key image --pretty
+.\weflow.exe --lang zh key db
+.\weflow.exe --lang zh key image
 
 # 3. 写入配置（只需一次）
 .\weflow.exe config set db_path "C:\Users\<你>\Documents\xwechat_files"
@@ -62,7 +62,7 @@ LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 .\weflow.exe config set image_aes_key <图片aes密钥>
 
 # 4. 必要步骤：查看会话列表，确认连接成功并找到要导出的会话 ID
-.\weflow.exe --lang zh chat sessions --pretty
+.\weflow.exe --lang zh chat sessions
 
 # 5. 导出（私聊为对方 wxid，群聊为 xxx@chatroom）
 .\weflow.exe --lang zh export messages <会话ID> --format html --out chat.html
