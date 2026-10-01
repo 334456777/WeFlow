@@ -16,7 +16,7 @@
 
 | 文件 | 版本 | 状态 |
 |---|---|---|
-| `resources/wcdb/win32/x64/wcdb_api.dll` | 原作者提供的新版(PE 时间戳 2026-07-07,sha256 `0904956c…a79350`) | 据原作者说明没有到期时间。只供原版桌面端使用。 |
+| `resources/wcdb/win32/x64/wcdb_api.dll` | 原作者提供的新版(PE 时间戳 2026-07-07,sha256 `0904956c…a79350`) |  2099 年到期 |
 | `resources/wcdb/win32/x64/wcdb_api.dll.old` | 旧版(PE 时间戳 2026-05-07,sha256 `6915913a…9d44b8`) | 2026-09-30 23:59:59(本地时间)之后失效:`wcdb_init` 返回 `-1000`,并登记删除自身。原样保留,供研究。 |
 | `resources/wcdb/win32/arm64/wcdb_api.dll`、`resources/wcdb/linux/x64/libwcdb_api.so`、`resources/wcdb/macos/universal/libwcdb_api.dylib` | 旧版 | 未替换:这些平台没有新版。是否带有同样的到期时间,没有检查过。 |
 | `WCDB.dll`、`SDL2.dll`、`libWCDB.dylib` | 未变 | `wcdb_api` 的依赖;新版使用同一个 `WCDB.dll`。 |
