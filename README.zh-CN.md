@@ -12,7 +12,7 @@
 - 默认跟随系统语言(中文或英文);`--lang en|zh` 可对单次运行覆盖。
 
 > [!WARNING]
-> CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号在 Linux 构建上验证过;Windows 的 `weflow.exe` 是交叉编译的,还没有在 Windows 上运行过,macOS/Linux 的微信数据也没有测试过。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](docs/zh-CN/cli-coverage.md) · [未覆盖部分](docs/zh-CN/cli-gaps.md) · [不支持的功能](docs/zh-CN/cli-unsupported.md)。
+> CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建,以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过([验证计划](docs/zh-CN/verification-plan.md))。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](docs/zh-CN/cli-coverage.md) · [未覆盖部分](docs/zh-CN/cli-gaps.md) · [不支持的功能](docs/zh-CN/cli-unsupported.md)。
 
 原 WeFlow 项目（Electron 桌面端）的说明见 [docs/zh-CN/weflow-readme.md](docs/zh-CN/weflow-readme.md)。
 
@@ -83,7 +83,7 @@ Windows 说明：`key db` 需要管理员终端（否则会提示权限不足）
 ## 文档
 
 - [命令列表](docs/zh-CN/native-cli.md)
-- [CLI 不支持的功能(详细清单)](docs/zh-CN/cli-unsupported.md)
+- [CLI 不支持的功能(详细清单)](docs/zh-CN/cli-unsupported.md) · [验证计划](docs/zh-CN/verification-plan.md)
 - [对原后端的覆盖率](docs/zh-CN/cli-coverage.md) · [CLI 未覆盖的部分](docs/zh-CN/cli-gaps.md)
 - [HTTP API](docs/zh-CN/HTTP-API.md) · [macOS 密钥排障](docs/zh-CN/MAC-KEY-FAQ.md)
 - [原 WeFlow README](docs/zh-CN/weflow-readme.md)
