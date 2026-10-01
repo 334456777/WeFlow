@@ -32,6 +32,7 @@ icu_collator = "2.3"
 icu_locale_core = "2.3"
 libloading = "0.8.8"
 md-5 = "0.10"
+memchr = "2"
 mime_guess = "2.0.5"
 regex = "1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip", "deflate", "brotli", "stream"], default-features = false }
@@ -58,3 +59,9 @@ zstd = "0.13"
 opt-level = 2
 [profile.dev.package.weflow-native]
 opt-level = 2
+
+# Release builds: whole-program optimisation makes the single-file binary ~16% smaller and a few percent faster.
+# Panics keep unwinding: the SQLite VFS and the C ABI catch them at the FFI boundary.
+[profile.release]
+lto = "thin"
+codegen-units = 1

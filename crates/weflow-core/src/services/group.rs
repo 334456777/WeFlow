@@ -707,7 +707,7 @@ impl ServiceHub {
         use chrono::{Datelike, Local, TimeZone, Timelike};
         let wcdb = self.open_wcdb()?;
         let (chatroom_id, member) = (chatroom_id.trim(), member.trim());
-        let my_wxid = Some(self.my_wxid_cleaned()).unwrap_or_default();
+        let my_wxid = self.my_wxid_cleaned();
         let cursor = self.member_cursor(&wcdb, chatroom_id, member, 10000, true, start, end)?;
 
         let mut match_cache: HashMap<String, bool> = HashMap::new();

@@ -452,9 +452,10 @@ enum ExportSubcommand {
         /// Only export messages sent by this wxid
         #[arg(long)]
         sender: Option<String>,
-        /// How senders are named: group-nickname, remark (default) or nickname
-        #[arg(long, default_value = "remark")]
-        display_name: String,
+        /// How senders are named: group-nickname, remark or nickname (default: remark; plain txt: group nickname,
+        /// then remark, nickname, alias)
+        #[arg(long)]
+        display_name: Option<String>,
         /// Excel: compact columns (time, sender, type, content)
         #[arg(long)]
         excel_compact: bool,
@@ -1345,8 +1346,12 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
             let fmt = format.to_ascii_lowercase();
             let media_opts = parse_media_selection(media)?;
+            let parse_display = |s: &str| {
+                weflow_core::export_msg::DisplayPref::parse(s).ok_or_else(|| AppError::usage("--display-name must be group-nickname, remark or nickname"))
+            };
             if fmt == "txt" && !media_opts.enabled {
-                return hub.export_messages_txt(session_id, start_ts, end_ts, out);
+                let display = display_name.as_deref().map(parse_display).transpose()?;
+                return hub.export_messages_txt(session_id, start_ts, end_ts, out, sender.as_deref(), display);
             }
             let ext = match fmt.as_str() {
                 "txt" => "txt",
@@ -1364,8 +1369,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                     )))
                 }
             };
-            let display_pref = weflow_core::export_msg::DisplayPref::parse(display_name)
-                .ok_or_else(|| AppError::usage("--display-name must be group-nickname, remark or nickname"))?;
+            let display_pref = parse_display(display_name.as_deref().unwrap_or("remark"))?;
             let safe_name: String = session_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '@' || c == '.' { c } else { '_' }).collect();
             let target = export_path(out, &format!("{safe_name}.{ext}"));
             let request = weflow_core::services::MessageExportRequest {

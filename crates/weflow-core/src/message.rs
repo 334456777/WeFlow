@@ -35,11 +35,23 @@ pub fn rx(pattern: &str) -> Rc<Regex> {
 }
 
 pub fn extract_xml_value(xml: &str, tag: &str) -> String {
-    let re = rx(&format!(r"(?is)<{0}>(.*?)</{0}>", regex::escape(tag)));
-    match re.captures(xml) {
-        Some(c) => c[1].replace("<![CDATA[", "").replace("]]>", "").trim().to_string(),
+    let inner = if tag.is_ascii() {
+        crate::xml::tag_inner(xml, tag)
+    } else {
+        let re = rx(&format!(r"(?is)<{0}>(.*?)</{0}>", regex::escape(tag)));
+        re.captures(xml).map(|c| c.get(1).map_or("", |m| m.as_str()))
+    };
+    match inner {
+        Some(c) => strip_cdata(c),
         None => String::new(),
     }
+}
+
+/// `c.replace("<![CDATA[", "").replace("]]>", "").trim()`, without copying when there is nothing to remove.
+fn strip_cdata(c: &str) -> String {
+    use crate::xml::replace_cow;
+    use std::borrow::Cow;
+    replace_cow(replace_cow(Cow::Borrowed(c), "<![CDATA[", ""), "]]>", "").trim().to_string()
 }
 
 pub fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
@@ -64,18 +76,21 @@ pub fn decode_html_entities(text: &str) -> String {
 }
 
 pub fn normalize_app_message_content(content: &str) -> String {
-    if content.is_empty() {
-        return String::new();
-    }
+    normalize_app_message_cow(content).into_owned()
+}
+
+/// [`normalize_app_message_content`] without a copy when the content has no escaped markup.
+fn normalize_app_message_cow(content: &str) -> std::borrow::Cow<'_, str> {
+    use crate::xml::replace_cow;
+    use std::borrow::Cow;
     if content.contains("&lt;") && content.contains("&gt;") {
-        return content
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&")
-            .replace("&quot;", "\"")
-            .replace("&#39;", "'");
+        let s = replace_cow(Cow::Borrowed(content), "&lt;", "<");
+        let s = replace_cow(s, "&gt;", ">");
+        let s = replace_cow(s, "&amp;", "&");
+        let s = replace_cow(s, "&quot;", "\"");
+        return replace_cow(s, "&#39;", "'");
     }
-    content.to_string()
+    Cow::Borrowed(content)
 }
 
 /// Strip a leading `wxid_xxx:` sender prefix (but not `http://`).
@@ -93,12 +108,13 @@ pub fn extract_app_message_type(content: &str) -> String {
     if content.is_empty() {
         return String::new();
     }
-    let normalized = normalize_app_message_content(content);
-    if let Some(c) = rx(r"(?is)<appmsg.*?>(.*?)</appmsg>").captures(&normalized) {
-        let inner = rx(r"(?is)<refermsg.*?</refermsg>").replace_all(&c[1], "").to_string();
-        let inner = rx(r"(?is)<patMsg.*?</patMsg>").replace_all(&inner, "").to_string();
-        if let Some(t) = rx(r"(?is)<type>(.*?)</type>").captures(&inner) {
-            return t[1].trim().to_string();
+    let normalized = normalize_app_message_cow(content);
+    // `(?is)<appmsg.*?>(.*?)</appmsg>`, minus `<refermsg…</refermsg>` and `<patMsg…</patMsg>` blocks, then `<type>`
+    if let Some(c) = crate::xml::element_inner(&normalized, "<appmsg", "</appmsg>") {
+        let inner = crate::xml::remove_blocks(c, "<refermsg", "</refermsg>");
+        let inner = crate::xml::remove_blocks(&inner, "<patmsg", "</patmsg>");
+        if let Some(t) = crate::xml::tag_inner(&inner, "type") {
+            return t.trim().to_string();
         }
     }
     if !normalized.contains("<appmsg") && !normalized.contains("<msg>") {
@@ -865,14 +881,18 @@ fn percent_decode(s: &str) -> String {
     if !s.contains('%') {
         return s.to_string();
     }
+    String::from_utf8(percent_decode_bytes(s)).unwrap_or_else(|_| s.to_string())
+}
+
+/// `%XX` escapes (two hex digits) turned into bytes; anything else is kept as it is.
+pub fn percent_decode_bytes(s: &str) -> Vec<u8> {
     let bytes = s.as_bytes();
+    let hex = |b: u8| (b as char).to_digit(16);
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() + 0 && i + 2 <= bytes.len() - 1 + 0 {
-            let h = (bytes[i + 1] as char).to_digit(16);
-            let l = (bytes[i + 2] as char).to_digit(16);
-            if let (Some(h), Some(l)) = (h, l) {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
                 out.push((h * 16 + l) as u8);
                 i += 3;
                 continue;
@@ -881,10 +901,7 @@ fn percent_decode(s: &str) -> String {
         out.push(bytes[i]);
         i += 1;
     }
-    match String::from_utf8(out) {
-        Ok(s) => s,
-        Err(_) => s.to_string(),
-    }
+    out
 }
 
 pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
@@ -2080,6 +2097,36 @@ pub struct CollectOptions<'a> {
     pub sender_filter: Option<&'a str>,
 }
 
+/// Who sent a message, as the exports name it: the revoker of a revoke notice, the account for its own messages,
+/// else the row's sender, else the conversation itself.
+pub fn message_sender(local_type: i64, content: &str, is_send: bool, sender_username: &str, session_id: &str, my_wxid: &str) -> String {
+    if local_type == 10000 || local_type == 266287972401 {
+        let info = extract_revoker_info(content);
+        if !info.is_revoke {
+            session_id.to_string()
+        } else if info.is_self_revoke {
+            my_wxid.to_string()
+        } else {
+            info.revoker_wxid.unwrap_or_else(|| session_id.to_string())
+        }
+    } else if is_send {
+        my_wxid.to_string()
+    } else if !sender_username.is_empty() {
+        sender_username.to_string()
+    } else {
+        session_id.to_string()
+    }
+}
+
+/// [`message_sender`] of a raw message row.
+pub fn row_sender(row: &Value, session_id: &str, my_wxid: &str) -> String {
+    let local_type = row_int(row, &["local_type", "localType", "type", "msg_type", "msgType", "WCDB_CT_local_type"], 1);
+    let is_send_raw = row.get("computed_is_send").or_else(|| row.get("is_send")).map(value_to_string).unwrap_or_else(|| "0".into());
+    let sender_username = row.get("sender_username").map(value_to_string).unwrap_or_default();
+    let content = if local_type == 10000 || local_type == 266287972401 { decode_message_content(row) } else { String::new() };
+    message_sender(local_type, &content, is_send_raw.trim().parse::<i64>().unwrap_or(0) == 1, &sender_username, session_id, my_wxid)
+}
+
 /// `collectMessages` (full mode): normalise raw rows and sort chronologically.
 pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
     let mut out: Vec<ExportMsg> = Vec::new();
@@ -2105,26 +2152,7 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
         let server_raw = row_field(row, &server_keys).map(value_to_string).map(|v| normalize_unsigned_token(&v)).unwrap_or_else(|| "0".into());
         let server_id = row_int(row, &server_keys, 0);
 
-        let actual_sender = if local_type == 10000 || local_type == 266287972401 {
-            let info = extract_revoker_info(&content);
-            if info.is_revoke {
-                if info.is_self_revoke {
-                    opts.my_wxid.to_string()
-                } else if let Some(w) = info.revoker_wxid {
-                    w
-                } else {
-                    opts.session_id.to_string()
-                }
-            } else {
-                opts.session_id.to_string()
-            }
-        } else if is_send {
-            opts.my_wxid.to_string()
-        } else if !sender_username.is_empty() {
-            sender_username.clone()
-        } else {
-            opts.session_id.to_string()
-        };
+        let actual_sender = message_sender(local_type, &content, is_send, &sender_username, opts.session_id, opts.my_wxid);
         if let Some(filter) = opts.sender_filter.filter(|f| !f.trim().is_empty()) {
             if !is_same_wxid(&actual_sender, filter.trim()) {
                 continue;
@@ -2354,5 +2382,15 @@ mod tests {
         assert_eq!(normalize_unsigned_token("00012"), "12");
         assert_eq!(normalize_unsigned_token("abc"), "0");
         assert_eq!(last_hex_token("zz0123456789abcdef0123456789abcdef00zz", 32, 32).unwrap().len(), 32);
+    }
+
+    #[test]
+    fn percent_decoding_never_splits_characters() {
+        assert_eq!(percent_decode_bytes("%E4%B8%AD%2F"), "中/".as_bytes());
+        assert_eq!(percent_decode_bytes("%a中"), "%a中".as_bytes(), "a multi-byte character after % is not a hex digit");
+        assert_eq!(percent_decode_bytes("%中x"), "%中x".as_bytes());
+        assert_eq!(percent_decode_bytes("%+5"), b"%+5", "a sign is not a hex digit");
+        assert_eq!(percent_decode_bytes("a%4"), b"a%4");
+        assert_eq!(percent_decode("%ff"), "%ff", "invalid UTF-8 keeps the input");
     }
 }

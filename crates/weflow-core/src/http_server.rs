@@ -97,22 +97,7 @@ fn query_params(uri: &axum::http::Uri) -> Params {
 }
 
 fn url_decode(s: &str) -> String {
-    let s = s.replace('+', " ");
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() + 0 + 1 && i + 2 <= b.len().saturating_sub(1) {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    String::from_utf8_lossy(&crate::message::percent_decode_bytes(&s.replace('+', " "))).into_owned()
 }
 
 fn cors(headers: &HeaderMap, mut resp: Response) -> Response {

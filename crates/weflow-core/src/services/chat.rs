@@ -466,15 +466,13 @@ impl ServiceHub {
             3 => Some("image"),
             43 => Some("video"),
             34 => Some("voice"),
+            // every file app type is a file; a type-49 app message only when it says so (the metadata parse is
+            // the expensive part, so it comes last)
             t if FILE_APP_TYPES.contains(&t) => {
-                let kind = extract_arkme_app_message_meta(&msg.content, t).and_then(|m| m.get("appMsgKind").and_then(Value::as_str).map(str::to_string));
-                if kind.as_deref() == Some("file") || msg.xml_type.as_deref() == Some("6") {
-                    Some("file")
-                } else if t != 49 {
-                    Some("file")
-                } else {
-                    None
-                }
+                let is_file = t != 49
+                    || msg.xml_type.as_deref() == Some("6")
+                    || extract_arkme_app_message_meta(&msg.content, t).is_some_and(|m| m.get("appMsgKind").and_then(Value::as_str) == Some("file"));
+                is_file.then_some("file")
             }
             _ => None,
         }

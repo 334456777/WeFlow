@@ -24,6 +24,7 @@ pub mod sns;
 pub mod video;
 pub mod weibo;
 pub mod services;
+pub mod xml;
 
 pub use config::{AppContext, ConfigStore, ProfileConfig};
 pub use error::{AppError, AppResult};

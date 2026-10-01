@@ -2594,6 +2594,7 @@ dependencies = [
  "icu_locale_core",
  "libloading",
  "md-5",
+ "memchr",
  "mime_guess",
  "rand 0.8.8",
  "regex",
