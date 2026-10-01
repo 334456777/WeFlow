@@ -14,8 +14,8 @@ after 2026-09-30 (`wcdb_init` returns `-1000`). On this branch it loads **`weflo
 - `wcdbCore.ts` only changed where it looks for the library: `resources/native-db/<platform>/<arch>/weflow_wcdb.dll`
   (`libweflow_wcdb.so`, `libweflow_wcdb.dylib`), or `target/release/` during development, or `WCDB_DLL_PATH`. It no longer
   preloads `WCDB.dll` / `SDL2.dll` / `libWCDB.dylib`.
-- Packaging ships `resources/native-db/` and leaves out `resources/wcdb/` (the old library stays in the repository for
-  reference only).
+- Packaging ships `resources/native-db/` and leaves out `resources/wcdb/`. Those libraries stay in the repository for the
+  original desktop app (the new build of `wcdb_api.dll` and the expired one): see [wcdb-api.md](wcdb-api.md).
 - Change notifications: `wcdb_start_monitor_pipe` opens a named pipe (Windows) or a Unix socket and sends one JSON line per
   database change (`session_change`, `message_change`, `contact_change`), found by checking the files once a second. The app's
   existing pipe client receives them unchanged.

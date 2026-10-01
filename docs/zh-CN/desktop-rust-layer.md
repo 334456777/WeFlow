@@ -8,7 +8,7 @@
 
 - `crates/weflow-wcdb-ffi` 导出 `electron/services/wcdbCore.ts` 声明的函数(`wcdb_open_account`、`wcdb_get_sessions`、`wcdb_open_message_cursor` 等,92 个里的 88 个),参数、状态码和 JSON 结果都与原来一致。字符串仍通过 `_Out_ void**` 参数返回,并用 `wcdb_free_string` 释放。
 - `wcdbCore.ts` 只改了查找库文件的位置:`resources/native-db/<平台>/<架构>/weflow_wcdb.dll`(`libweflow_wcdb.so`、`libweflow_wcdb.dylib`),开发时也会找 `target/release/`,或者用 `WCDB_DLL_PATH` 指定。不再预加载 `WCDB.dll` / `SDL2.dll` / `libWCDB.dylib`。
-- 打包时带上 `resources/native-db/`,不再带 `resources/wcdb/`(旧库只留在仓库里供研究)。
+- 打包时带上 `resources/native-db/`,不再带 `resources/wcdb/`。这些库(新版 `wcdb_api.dll` 和过期的旧版)留在仓库里给原版桌面端用,见 [wcdb-api.md](wcdb-api.md)。
 - 变更通知:`wcdb_start_monitor_pipe` 打开命名管道(Windows)或 Unix 套接字,每当数据库有变化就发一行 JSON(`session_change`、`message_change`、`contact_change`),变化通过每秒检查一次文件得到。桌面端原有的管道客户端不用改就能收到。
 
 ## 构建
