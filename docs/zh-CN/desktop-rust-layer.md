@@ -36,4 +36,4 @@ npm run build                    # 先执行 native-db:build,再执行 tsc、vit
 - 在 Windows 上用 Node 的 `koffi` 加载 `weflow_wcdb.dll`,对真实账号测试:打开、会话、消息、20 万条消息的游标、联系人、头像、年度报告、写操作被拒绝,以及连接监听管道。
 - 把桌面端自己的 `wcdbCore.ts` 打包后在 Node 下运行,用 Linux 库对真实账号测试:约 60 个调用(会话、消息、计数、游标、联系人、群、统计、报告、朋友圈、搜索、媒体流、hardlink、表浏览、监听)全部成功,写操作按预期被拒绝。
 - `tsc -p tsconfig.node.json` 没有新增错误。
-- **还没做:** 在 Windows、macOS、Linux 上运行打包后的桌面端界面(见 [plan.md](plan.md#还需要验证的部分) 第 4 项)。
+- **还没做:** 在 Windows、macOS、Linux 上运行打包后的桌面端界面(见 [cli-unsupported.md](cli-unsupported.md#尚待验证) 第 4 项)。

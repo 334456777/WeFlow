@@ -12,7 +12,7 @@
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`--lang en|zh` 可对单次运行覆盖。
 
 > [!WARNING]
-> CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建,以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过([计划](plan.md#还需要验证的部分))。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](cli-coverage.md) · [不支持的功能](cli-unsupported.md)。
+> CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建,以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过([尚待验证](cli-unsupported.md#尚待验证))。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](cli-coverage.md) · [不支持的功能](cli-unsupported.md)。
 
 原 WeFlow 项目（Electron 桌面端）的说明见 [docs/zh-CN/weflow-readme.md](weflow-readme.md)。
 
@@ -84,7 +84,6 @@ Windows 说明：`key db` 需要管理员终端（否则会提示权限不足）
 
 - [命令列表](native-cli.md)
 - [CLI 不支持的功能(详细清单)](cli-unsupported.md) · [对原后端的覆盖率](cli-coverage.md)
-- [计划、进度和还需要验证的部分](plan.md)
 - [桌面端改用 Rust 数据库层](desktop-rust-layer.md)
 - [`wcdb_api.dll` 说明:CLI 和新桌面端不依赖它;新旧版本](wcdb-api.md)
 - [HTTP API](HTTP-API.md) · [macOS 密钥排障](MAC-KEY-FAQ.md)

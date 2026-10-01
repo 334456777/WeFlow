@@ -12,7 +12,7 @@
 - Follows the system language (Chinese or English) for `--help`, usage errors, runtime errors and generated text; `--lang en|zh` overrides it per run.
 
 > [!WARNING]
-> The CLI was ported from the original TypeScript backend. Its database layer is pure Rust (it decrypts and reads WeChat's databases itself, read-only) and was verified against one real Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows; macOS/Linux WeChat data is untested ([plan](docs/plan.md#verification-still-to-do)). Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [unsupported](docs/cli-unsupported.md).
+> The CLI was ported from the original TypeScript backend. Its database layer is pure Rust (it decrypts and reads WeChat's databases itself, read-only) and was verified against one real Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows; macOS/Linux WeChat data is untested ([what is still to verify](docs/cli-unsupported.md#still-to-verify)). Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [unsupported](docs/cli-unsupported.md).
 
 The original WeFlow project (Electron desktop app) is documented in [docs/weflow-readme.md](docs/weflow-readme.md).
 
@@ -84,7 +84,6 @@ The detailed list is in **[docs/cli-unsupported.md](docs/cli-unsupported.md)** (
 
 - [Command list](docs/native-cli.md)
 - [What the CLI does not support (detailed list)](docs/cli-unsupported.md) · [Coverage of the original backend](docs/cli-coverage.md)
-- [Plan, status and verification still to do](docs/plan.md)
 - [Desktop app on the Rust database layer](docs/desktop-rust-layer.md)
 - [`wcdb_api.dll`: not needed by the CLI or the new desktop app; old and new builds](docs/wcdb-api.md)
 - [HTTP API](docs/HTTP-API.md) · [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)

@@ -50,4 +50,4 @@ Cross-building, for example the Windows library from Linux:
   table browsing, monitor) all succeed; the write calls are refused as expected.
 - `tsc -p tsconfig.node.json` reports no new errors.
 - **Not done yet:** running the packaged desktop app with its UI on Windows, macOS and Linux (see
-  [plan.md](plan.md#verification-still-to-do), item 4).
+  [cli-unsupported.md](cli-unsupported.md#still-to-verify), item 4).
