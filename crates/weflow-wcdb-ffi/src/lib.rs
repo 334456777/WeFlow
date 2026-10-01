@@ -103,7 +103,12 @@ fn status_of(e: &anyhow::Error) -> i32 {
 }
 
 /// Runs `f` with the account, catching panics; on error writes the message to `err_out` and the log.
-fn run(name: &str, handle: i64, err_out: *mut *mut c_void, f: impl FnOnce(&Wcdb) -> Result<()>) -> i32 {
+fn run(
+    name: &str,
+    handle: i64,
+    err_out: *mut *mut c_void,
+    f: impl FnOnce(&Wcdb) -> Result<()>,
+) -> i32 {
     let Some(acct) = account(handle) else {
         log(format!("{name}: unknown handle {handle}"));
         // SAFETY: caller contract of every exported function.
@@ -126,7 +131,12 @@ fn run(name: &str, handle: i64, err_out: *mut *mut c_void, f: impl FnOnce(&Wcdb)
 }
 
 /// `run` for functions whose result is JSON in `out`.
-fn json(name: &str, handle: i64, out: *mut *mut c_void, f: impl FnOnce(&Wcdb) -> Result<Value>) -> i32 {
+fn json(
+    name: &str,
+    handle: i64,
+    out: *mut *mut c_void,
+    f: impl FnOnce(&Wcdb) -> Result<Value>,
+) -> i32 {
     run(name, handle, out, |db| {
         let v = f(db)?;
         // SAFETY: caller contract.
@@ -136,7 +146,12 @@ fn json(name: &str, handle: i64, out: *mut *mut c_void, f: impl FnOnce(&Wcdb) ->
 }
 
 /// `run` for functions whose result is plain text in `out`.
-fn string(name: &str, handle: i64, out: *mut *mut c_void, f: impl FnOnce(&Wcdb) -> Result<String>) -> i32 {
+fn string(
+    name: &str,
+    handle: i64,
+    out: *mut *mut c_void,
+    f: impl FnOnce(&Wcdb) -> Result<String>,
+) -> i32 {
     run(name, handle, out, |db| {
         let v = f(db)?;
         // SAFETY: caller contract.
@@ -146,7 +161,9 @@ fn string(name: &str, handle: i64, out: *mut *mut c_void, f: impl FnOnce(&Wcdb) 
 }
 
 fn read_only(name: &str, out: *mut *mut c_void) -> i32 {
-    let msg = format!("{name} is not supported: the native database backend opens WeChat's databases read-only");
+    let msg = format!(
+        "{name} is not supported: the native database backend opens WeChat's databases read-only"
+    );
     log(msg.clone());
     // SAFETY: caller contract.
     unsafe { put(out, &msg) };
@@ -183,9 +200,17 @@ pub extern "C" fn wcdb_shutdown() -> i32 {
 /// when it already is a directory.
 fn account_dir_of(path: &Path) -> PathBuf {
     if path.is_dir() {
-        return if path.file_name().is_some_and(|n| n == "db_storage") { path.parent().unwrap_or(path).to_path_buf() } else { path.to_path_buf() };
+        return if path.file_name().is_some_and(|n| n == "db_storage") {
+            path.parent().unwrap_or(path).to_path_buf()
+        } else {
+            path.to_path_buf()
+        };
     }
-    path.ancestors().find(|p| p.file_name().is_some_and(|n| n == "db_storage")).and_then(Path::parent).unwrap_or(path).to_path_buf()
+    path.ancestors()
+        .find(|p| p.file_name().is_some_and(|n| n == "db_storage"))
+        .and_then(Path::parent)
+        .unwrap_or(path)
+        .to_path_buf()
 }
 
 fn open(dir: &Path, key: &str, wxid: Option<&str>) -> Result<Wcdb> {
@@ -197,7 +222,11 @@ fn open(dir: &Path, key: &str, wxid: Option<&str>) -> Result<Wcdb> {
 /// # Safety
 /// `path` and `key` are NUL-terminated strings; `handle` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_open_account(path: *const c_char, key: *const c_char, handle: *mut i64) -> i32 {
+pub unsafe extern "C" fn wcdb_open_account(
+    path: *const c_char,
+    key: *const c_char,
+    handle: *mut i64,
+) -> i32 {
     let (path, key) = (text(path), text(key));
     if path.trim().is_empty() || key.trim().is_empty() {
         return STATUS_BAD_ARGUMENT;
@@ -207,7 +236,14 @@ pub unsafe extern "C" fn wcdb_open_account(path: *const c_char, key: *const c_ch
         Ok(Ok(db)) => {
             let id = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
             if let Ok(mut a) = accounts().lock() {
-                a.insert(id, Arc::new(Account { dir, key: key.trim().to_string(), db }));
+                a.insert(
+                    id,
+                    Arc::new(Account {
+                        dir,
+                        key: key.trim().to_string(),
+                        db,
+                    }),
+                );
             }
             put_value(handle, id);
             STATUS_OK
@@ -235,11 +271,20 @@ pub extern "C" fn wcdb_close_account(handle: i64) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn wcdb_set_my_wxid(handle: i64, wxid: *const c_char) -> i32 {
     let wxid = text(wxid);
-    let Some(acct) = account(handle) else { return STATUS_BAD_HANDLE };
+    let Some(acct) = account(handle) else {
+        return STATUS_BAD_HANDLE;
+    };
     match open(&acct.dir, &acct.key, opt(wxid).as_deref()) {
         Ok(db) => {
             if let Ok(mut a) = accounts().lock() {
-                a.insert(handle, Arc::new(Account { dir: acct.dir.clone(), key: acct.key.clone(), db }));
+                a.insert(
+                    handle,
+                    Arc::new(Account {
+                        dir: acct.dir.clone(),
+                        key: acct.key.clone(),
+                        db,
+                    }),
+                );
             }
             STATUS_OK
         }
@@ -265,7 +310,10 @@ pub unsafe extern "C" fn wcdb_free_string(ptr: *mut c_void) {
 /// `out` is null or writable.
 #[no_mangle]
 pub unsafe extern "C" fn wcdb_get_logs(out: *mut *mut c_void) -> i32 {
-    let lines: Vec<String> = logs().lock().map(|l| l.iter().cloned().collect()).unwrap_or_default();
+    let lines: Vec<String> = logs()
+        .lock()
+        .map(|l| l.iter().cloned().collect())
+        .unwrap_or_default();
     put(out, &Value::from(lines).to_string());
     STATUS_OK
 }
@@ -343,7 +391,7 @@ fn ids(json: &str) -> Vec<String> {
     weflow_native::native_contact::usernames_from_json(json)
 }
 
-json_fn!(wcdb_get_sessions() |db| db.sessions());
+json_fn!(wcdb_get_sessions() | db | db.sessions());
 json_fn!(wcdb_get_messages(username: Str, limit: i32, offset: i32) |db| db.messages(&username, limit, offset));
 json_fn!(wcdb_get_message_dates(session_id: Str) |db| db.message_dates(&session_id));
 json_fn!(wcdb_get_session_message_counts(session_ids_json: Str) |db| db.session_message_counts(&ids(&session_ids_json)));
@@ -357,7 +405,7 @@ json_fn!(wcdb_get_message_by_svrid(session_id: Str, svrid: Str) |db| db.message_
 json_fn!(wcdb_search_messages(session_id: Str, keyword: Str, limit: i32, offset: i32, begin: i32, end: i32) |db| db.search(&keyword, opt(session_id).as_deref(), limit, offset, begin, end));
 json_fn!(wcdb_get_contact(username: Str) |db| db.contact(&username));
 json_fn!(wcdb_get_contacts_compact(usernames_json: Str) |db| db.invoke_json("wcdb_get_contacts_compact", &[Arg::S(&usernames_json)]));
-json_fn!(wcdb_get_contact_type_counts() |db| db.contact_type_counts());
+json_fn!(wcdb_get_contact_type_counts() | db | db.contact_type_counts());
 json_fn!(wcdb_get_contact_status(usernames_json: Str) |db| db.contact_status(&usernames_json));
 json_fn!(wcdb_get_contact_alias_map(usernames_json: Str) |db| db.contact_alias_map(&usernames_json));
 json_fn!(wcdb_get_contact_friend_flags(usernames_json: Str) |db| db.contact_friend_flags(&usernames_json));
@@ -377,7 +425,7 @@ json_fn!(wcdb_get_dual_report_stats(session_id: Str, begin: i32, end: i32) |db| 
 json_fn!(wcdb_get_my_footprint_stats(options_json: Str) |db| db.footprint_stats(&serde_json::from_str(&options_json).unwrap_or(Value::Null)));
 json_fn!(wcdb_get_sns_timeline(limit: i32, offset: i32, username: Str, keyword: Str, start: i32, end: i32) |db| db.sns_timeline(limit, offset, opt(username).as_deref(), opt(keyword).as_deref(), start, end));
 json_fn!(wcdb_get_sns_annual_stats(begin: i32, end: i32) |db| db.sns_annual_stats(begin, end));
-json_fn!(wcdb_get_sns_usernames() |db| db.sns_usernames());
+json_fn!(wcdb_get_sns_usernames() | db | db.sns_usernames());
 json_fn!(wcdb_get_sns_export_stats(my_wxid: Str) |db| db.sns_export_stats(opt(my_wxid).as_deref()));
 json_fn!(wcdb_exec_query(kind: Str, path: Str, sql: Str) |db| db.exec_query(&kind, &path, &sql));
 json_fn!(wcdb_get_message_tables(session_id: Str) |db| db.message_tables(&session_id));
@@ -385,9 +433,9 @@ json_fn!(wcdb_get_message_meta(db_path: Str, table: Str, limit: i32, offset: i32
 json_fn!(wcdb_get_message_table_stats(session_id: Str) |db| db.message_table_stats(&session_id));
 json_fn!(wcdb_get_message_table_columns(db_path: Str, table: Str) |db| db.message_table_columns(&db_path, &table));
 json_fn!(wcdb_get_message_table_time_range(db_path: Str, table: Str) |db| db.message_table_time_range(&db_path, &table));
-json_fn!(wcdb_list_message_dbs() |db| db.list_message_dbs());
-json_fn!(wcdb_list_media_dbs() |db| db.list_media_dbs());
-json_fn!(wcdb_get_db_status() |db| db.db_status());
+json_fn!(wcdb_list_message_dbs() | db | db.list_message_dbs());
+json_fn!(wcdb_list_media_dbs() | db | db.list_media_dbs());
+json_fn!(wcdb_get_db_status() | db | db.db_status());
 json_fn!(wcdb_get_media_schema_summary(db_path: Str) |db| db.media_schema_summary(&db_path));
 json_fn!(wcdb_list_tables(kind: Str, db_path: Str) |db| db.list_tables(&kind, &db_path));
 json_fn!(wcdb_get_table_schema(kind: Str, db_path: Str, table: Str) |db| db.table_schema(&kind, &db_path, &table));
@@ -408,33 +456,67 @@ string_fn!(wcdb_get_emoticon_caption_strict(md5: Str) |db| db.emoticon_caption_s
 /// # Safety
 /// `username` is NUL-terminated; `out_count` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_get_message_count(handle: i64, username: *const c_char, out_count: *mut i32) -> i32 {
+pub unsafe extern "C" fn wcdb_get_message_count(
+    handle: i64,
+    username: *const c_char,
+    out_count: *mut i32,
+) -> i32 {
     let username = text(username);
-    run("wcdb_get_message_count", handle, std::ptr::null_mut(), |db| {
-        put_value(out_count, db.message_count(&username)?);
-        Ok(())
-    })
+    run(
+        "wcdb_get_message_count",
+        handle,
+        std::ptr::null_mut(),
+        |db| {
+            put_value(out_count, db.message_count(&username)?);
+            Ok(())
+        },
+    )
 }
 
 /// # Safety
 /// `chatroom_id` is NUL-terminated; `out_count` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_get_group_member_count(handle: i64, chatroom_id: *const c_char, out_count: *mut i32) -> i32 {
+pub unsafe extern "C" fn wcdb_get_group_member_count(
+    handle: i64,
+    chatroom_id: *const c_char,
+    out_count: *mut i32,
+) -> i32 {
     let id = text(chatroom_id);
-    run("wcdb_get_group_member_count", handle, std::ptr::null_mut(), |db| {
-        let v = db.group_member_count(&id)?;
-        let n = v.as_i64().or_else(|| v.get("count").and_then(Value::as_i64)).ok_or_else(|| anyhow!("unexpected member count {v}"))?;
-        put_value(out_count, n as i32);
-        Ok(())
-    })
+    run(
+        "wcdb_get_group_member_count",
+        handle,
+        std::ptr::null_mut(),
+        |db| {
+            let v = db.group_member_count(&id)?;
+            let n = v
+                .as_i64()
+                .or_else(|| v.get("count").and_then(Value::as_i64))
+                .ok_or_else(|| anyhow!("unexpected member count {v}"))?;
+            put_value(out_count, n as i32);
+            Ok(())
+        },
+    )
 }
 
 /// # Safety
 /// See [`wcdb_open_message_cursor`].
-unsafe fn open_cursor(name: &str, handle: i64, session_id: *const c_char, batch: i32, ascending: i32, begin: i32, end: i32, lite: bool, out: *mut i64) -> i32 {
+unsafe fn open_cursor(
+    name: &str,
+    handle: i64,
+    session_id: *const c_char,
+    batch: i32,
+    ascending: i32,
+    begin: i32,
+    end: i32,
+    lite: bool,
+    out: *mut i64,
+) -> i32 {
     let sid = text(session_id);
     run(name, handle, std::ptr::null_mut(), |db| {
-        put_value(out, db.open_message_cursor(&sid, batch, ascending != 0, begin, end, lite)?);
+        put_value(
+            out,
+            db.open_message_cursor(&sid, batch, ascending != 0, begin, end, lite)?,
+        );
         Ok(())
     })
 }
@@ -442,21 +524,62 @@ unsafe fn open_cursor(name: &str, handle: i64, session_id: *const c_char, batch:
 /// # Safety
 /// `session_id` is NUL-terminated; `out_cursor` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_open_message_cursor(handle: i64, session_id: *const c_char, batch_size: i32, ascending: i32, begin: i32, end: i32, out_cursor: *mut i64) -> i32 {
-    open_cursor("wcdb_open_message_cursor", handle, session_id, batch_size, ascending, begin, end, false, out_cursor)
+pub unsafe extern "C" fn wcdb_open_message_cursor(
+    handle: i64,
+    session_id: *const c_char,
+    batch_size: i32,
+    ascending: i32,
+    begin: i32,
+    end: i32,
+    out_cursor: *mut i64,
+) -> i32 {
+    open_cursor(
+        "wcdb_open_message_cursor",
+        handle,
+        session_id,
+        batch_size,
+        ascending,
+        begin,
+        end,
+        false,
+        out_cursor,
+    )
 }
 
 /// # Safety
 /// As [`wcdb_open_message_cursor`]; rows leave out the heavy binary columns.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_open_message_cursor_lite(handle: i64, session_id: *const c_char, batch_size: i32, ascending: i32, begin: i32, end: i32, out_cursor: *mut i64) -> i32 {
-    open_cursor("wcdb_open_message_cursor_lite", handle, session_id, batch_size, ascending, begin, end, true, out_cursor)
+pub unsafe extern "C" fn wcdb_open_message_cursor_lite(
+    handle: i64,
+    session_id: *const c_char,
+    batch_size: i32,
+    ascending: i32,
+    begin: i32,
+    end: i32,
+    out_cursor: *mut i64,
+) -> i32 {
+    open_cursor(
+        "wcdb_open_message_cursor_lite",
+        handle,
+        session_id,
+        batch_size,
+        ascending,
+        begin,
+        end,
+        true,
+        out_cursor,
+    )
 }
 
 /// # Safety
 /// `out_json` and `out_has_more` are null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_fetch_message_batch(handle: i64, cursor: i64, out_json: *mut *mut c_void, out_has_more: *mut i32) -> i32 {
+pub unsafe extern "C" fn wcdb_fetch_message_batch(
+    handle: i64,
+    cursor: i64,
+    out_json: *mut *mut c_void,
+    out_has_more: *mut i32,
+) -> i32 {
     run("wcdb_fetch_message_batch", handle, out_json, |db| {
         let (rows, more) = db.fetch_message_batch(cursor)?;
         put(out_json, &rows.to_string());
@@ -467,16 +590,32 @@ pub unsafe extern "C" fn wcdb_fetch_message_batch(handle: i64, cursor: i64, out_
 
 #[no_mangle]
 pub extern "C" fn wcdb_close_message_cursor(handle: i64, cursor: i64) -> i32 {
-    run("wcdb_close_message_cursor", handle, std::ptr::null_mut(), |db| db.close_message_cursor(cursor))
+    run(
+        "wcdb_close_message_cursor",
+        handle,
+        std::ptr::null_mut(),
+        |db| db.close_message_cursor(cursor),
+    )
 }
 
 /// # Safety
 /// `session_ids_json` is NUL-terminated; `out_json` and `out_has_more` are null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_scan_media_stream(handle: i64, session_ids_json: *const c_char, media_type: i32, begin: i32, end: i32, limit: i32, offset: i32, out_json: *mut *mut c_void, out_has_more: *mut i32) -> i32 {
+pub unsafe extern "C" fn wcdb_scan_media_stream(
+    handle: i64,
+    session_ids_json: *const c_char,
+    media_type: i32,
+    begin: i32,
+    end: i32,
+    limit: i32,
+    offset: i32,
+    out_json: *mut *mut c_void,
+    out_has_more: *mut i32,
+) -> i32 {
     let sessions = text(session_ids_json);
     run("wcdb_scan_media_stream", handle, out_json, |db| {
-        let (rows, more) = db.scan_media_stream(&sessions, media_type, begin, end, limit, offset)?;
+        let (rows, more) =
+            db.scan_media_stream(&sessions, media_type, begin, end, limit, offset)?;
         put(out_json, &rows.to_string());
         put_value(out_has_more, more as i32);
         Ok(())
@@ -488,42 +627,71 @@ pub unsafe extern "C" fn wcdb_scan_media_stream(handle: i64, session_ids_json: *
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_update_message(_handle: i64, _session_id: *const c_char, _local_id: i64, _create_time: i32, _content: *const c_char, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_update_message(
+    _handle: i64,
+    _session_id: *const c_char,
+    _local_id: i64,
+    _create_time: i32,
+    _content: *const c_char,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("update_message", out_error)
 }
 
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_delete_message(_handle: i64, _session_id: *const c_char, _local_id: i64, _create_time: i32, _db_path_hint: *const c_char, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_delete_message(
+    _handle: i64,
+    _session_id: *const c_char,
+    _local_id: i64,
+    _create_time: i32,
+    _db_path_hint: *const c_char,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("delete_message", out_error)
 }
 
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_delete_sns_post(_handle: i64, _post_id: *const c_char, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_delete_sns_post(
+    _handle: i64,
+    _post_id: *const c_char,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("sns_delete_post", out_error)
 }
 
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_mark_all_sessions_read(_handle: i64, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_mark_all_sessions_read(
+    _handle: i64,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("mark_all_sessions_read", out_error)
 }
 
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_install_message_anti_revoke_trigger(_handle: i64, _session_id: *const c_char, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_install_message_anti_revoke_trigger(
+    _handle: i64,
+    _session_id: *const c_char,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("anti_revoke_install", out_error)
 }
 
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_uninstall_message_anti_revoke_trigger(_handle: i64, _session_id: *const c_char, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_uninstall_message_anti_revoke_trigger(
+    _handle: i64,
+    _session_id: *const c_char,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("anti_revoke_uninstall", out_error)
 }
 
@@ -532,7 +700,11 @@ pub unsafe extern "C" fn wcdb_uninstall_message_anti_revoke_trigger(_handle: i64
 /// # Safety
 /// `out_installed` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_check_message_anti_revoke_trigger(_handle: i64, _session_id: *const c_char, out_installed: *mut i32) -> i32 {
+pub unsafe extern "C" fn wcdb_check_message_anti_revoke_trigger(
+    _handle: i64,
+    _session_id: *const c_char,
+    out_installed: *mut i32,
+) -> i32 {
     put_value(out_installed, 0);
     read_only("anti_revoke_check", std::ptr::null_mut())
 }
@@ -540,21 +712,30 @@ pub unsafe extern "C" fn wcdb_check_message_anti_revoke_trigger(_handle: i64, _s
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_install_sns_block_delete_trigger(_handle: i64, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_install_sns_block_delete_trigger(
+    _handle: i64,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("sns_block_delete_install", out_error)
 }
 
 /// # Safety
 /// `out_error` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_uninstall_sns_block_delete_trigger(_handle: i64, out_error: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_uninstall_sns_block_delete_trigger(
+    _handle: i64,
+    out_error: *mut *mut c_void,
+) -> i32 {
     read_only("sns_block_delete_uninstall", out_error)
 }
 
 /// # Safety
 /// `out_installed` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_check_sns_block_delete_trigger(_handle: i64, out_installed: *mut i32) -> i32 {
+pub unsafe extern "C" fn wcdb_check_sns_block_delete_trigger(
+    _handle: i64,
+    out_installed: *mut i32,
+) -> i32 {
     put_value(out_installed, 0);
     read_only("sns_block_delete_check", std::ptr::null_mut())
 }
@@ -562,7 +743,14 @@ pub unsafe extern "C" fn wcdb_check_sns_block_delete_trigger(_handle: i64, out_i
 /// # Safety
 /// `out_json` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_import_table_snapshot(_handle: i64, _kind: *const c_char, _db_path: *const c_char, _table: *const c_char, _input: *const c_char, out_json: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_import_table_snapshot(
+    _handle: i64,
+    _kind: *const c_char,
+    _db_path: *const c_char,
+    _table: *const c_char,
+    _input: *const c_char,
+    out_json: *mut *mut c_void,
+) -> i32 {
     put(out_json, &serde_json::json!({ "success": false, "error": "import_table_snapshot is not supported: the native database backend opens WeChat's databases read-only" }).to_string());
     read_only("import_table_snapshot", std::ptr::null_mut())
 }
@@ -570,7 +758,15 @@ pub unsafe extern "C" fn wcdb_import_table_snapshot(_handle: i64, _kind: *const 
 /// # Safety
 /// `out_json` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn wcdb_import_table_snapshot_with_schema(_handle: i64, _kind: *const c_char, _db_path: *const c_char, _table: *const c_char, _input: *const c_char, _sql: *const c_char, out_json: *mut *mut c_void) -> i32 {
+pub unsafe extern "C" fn wcdb_import_table_snapshot_with_schema(
+    _handle: i64,
+    _kind: *const c_char,
+    _db_path: *const c_char,
+    _table: *const c_char,
+    _input: *const c_char,
+    _sql: *const c_char,
+    out_json: *mut *mut c_void,
+) -> i32 {
     put(out_json, &serde_json::json!({ "success": false, "error": "import_table_snapshot_with_schema is not supported: the native database backend opens WeChat's databases read-only" }).to_string());
     read_only("import_table_snapshot_with_schema", std::ptr::null_mut())
 }
@@ -583,8 +779,13 @@ mod monitor;
 #[no_mangle]
 pub extern "C" fn wcdb_start_monitor_pipe() -> i32 {
     let watch = || -> Vec<PathBuf> {
-        let dirs: Vec<PathBuf> = accounts().lock().map(|a| a.values().map(|acct| acct.dir.clone()).collect()).unwrap_or_default();
-        dirs.iter().flat_map(|d| monitor::databases(&d.join("db_storage"))).collect()
+        let dirs: Vec<PathBuf> = accounts()
+            .lock()
+            .map(|a| a.values().map(|acct| acct.dir.clone()).collect())
+            .unwrap_or_default();
+        dirs.iter()
+            .flat_map(|d| monitor::databases(&d.join("db_storage")))
+            .collect()
     };
     match catch_unwind(|| monitor::start(watch)) {
         Ok(Ok(_)) => STATUS_OK,

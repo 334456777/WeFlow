@@ -33,7 +33,10 @@ type HmacSha512 = Hmac<Sha512>;
 pub fn parse_key(hex_key: &str) -> Result<[u8; 32]> {
     let hex_key = hex_key.trim();
     if hex_key.len() != 64 {
-        bail!("database key must be 64 hex characters (got {})", hex_key.len());
+        bail!(
+            "database key must be 64 hex characters (got {})",
+            hex_key.len()
+        );
     }
     let mut out = [0u8; 32];
     for (i, byte) in out.iter_mut().enumerate() {
@@ -59,8 +62,13 @@ impl PageCipher {
         let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
         let mut mac_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(&enc_key, &mac_salt, 2, &mut mac_key);
-        let mac = <HmacSha512 as Mac>::new_from_slice(&mac_key).expect("hmac accepts any key length");
-        Self { enc_key, mac_key, mac }
+        let mac =
+            <HmacSha512 as Mac>::new_from_slice(&mac_key).expect("hmac accepts any key length");
+        Self {
+            enc_key,
+            mac_key,
+            mac,
+        }
     }
 
     /// Verify and decrypt one encrypted page into `out` (`PAGE_SIZE` bytes).
@@ -81,8 +89,9 @@ impl PageCipher {
         let mut mac = self.mac.clone();
         mac.update(&page[start..body_end + IV_LEN]);
         mac.update(&pgno.to_le_bytes());
-        mac.verify_slice(stored_mac)
-            .map_err(|_| anyhow!("HMAC check failed for page {pgno} (wrong key, or the page is corrupt)"))?;
+        mac.verify_slice(stored_mac).map_err(|_| {
+            anyhow!("HMAC check failed for page {pgno} (wrong key, or the page is corrupt)")
+        })?;
 
         out.fill(0);
         if pgno == 1 {
@@ -152,7 +161,12 @@ pub struct WalOverlay {
 /// Parse a WAL (see [`WalOverlay`]). A missing or invalid WAL gives an empty overlay.
 pub fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
     let salt = wal.and_then(wal_salt);
-    let mut overlay = WalOverlay { salt, frames: 0, db_pages: None, pages: HashMap::new() };
+    let mut overlay = WalOverlay {
+        salt,
+        frames: 0,
+        db_pages: None,
+        pages: HashMap::new(),
+    };
     if let Some((frames, db_pages)) = wal.and_then(committed_wal_frames) {
         overlay.frames = frames.len() as u32;
         overlay.db_pages = Some(db_pages);
@@ -209,7 +223,12 @@ fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
             break;
         }
         let (c0, c1) = wal_checksum(&fh[..8], big_endian, s0, s1);
-        let (c0, c1) = wal_checksum(&wal[pos + FRAME_HEADER..pos + frame_size], big_endian, c0, c1);
+        let (c0, c1) = wal_checksum(
+            &wal[pos + FRAME_HEADER..pos + frame_size],
+            big_endian,
+            c0,
+            c1,
+        );
         if c0 != be32(&fh[16..20]) || c1 != be32(&fh[20..24]) {
             break;
         }
@@ -218,7 +237,10 @@ fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
         if pgno == 0 {
             break;
         }
-        pending.push(WalFrame { pgno, data_offset: pos + FRAME_HEADER });
+        pending.push(WalFrame {
+            pgno,
+            data_offset: pos + FRAME_HEADER,
+        });
         let commit = be32(&fh[4..8]);
         if commit != 0 {
             committed.append(&mut pending);
@@ -267,7 +289,11 @@ pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> R
         for (&pgno, &off) in &overlay.pages {
             if pgno <= total {
                 let i = (pgno as usize - 1) * PAGE_SIZE;
-                cipher.decrypt_page(pgno, &wal[off..off + PAGE_SIZE], &mut out[i..i + PAGE_SIZE])?;
+                cipher.decrypt_page(
+                    pgno,
+                    &wal[off..off + PAGE_SIZE],
+                    &mut out[i..i + PAGE_SIZE],
+                )?;
             }
         }
     }
@@ -315,7 +341,12 @@ pub mod testutil {
         let mut reserve: std::os::raw::c_int = RESERVE as _;
         // SQLITE_FCNTL_RESERVE_BYTES = 38; only legal while the database is still empty.
         let rc = unsafe {
-            rusqlite::ffi::sqlite3_file_control(conn.handle(), c"main".as_ptr(), 38, (&mut reserve as *mut std::os::raw::c_int).cast())
+            rusqlite::ffi::sqlite3_file_control(
+                conn.handle(),
+                c"main".as_ptr(),
+                38,
+                (&mut reserve as *mut std::os::raw::c_int).cast(),
+            )
         };
         assert_eq!(rc, 0);
         setup(&conn);
@@ -326,9 +357,14 @@ pub mod testutil {
 
     pub fn plain_db(rows: &[&str]) -> Vec<u8> {
         plain_db_with(|conn| {
-            conn.execute_batch("create table t(id integer primary key, v text)").unwrap();
+            conn.execute_batch("create table t(id integer primary key, v text)")
+                .unwrap();
             for (i, r) in rows.iter().enumerate() {
-                conn.execute("insert into t values (?1, ?2)", rusqlite::params![i as i64, r]).unwrap();
+                conn.execute(
+                    "insert into t values (?1, ?2)",
+                    rusqlite::params![i as i64, r],
+                )
+                .unwrap();
             }
         })
     }
@@ -336,7 +372,12 @@ pub mod testutil {
     pub fn encrypt_db(plain: &[u8], cipher: &PageCipher) -> Vec<u8> {
         let mut out = Vec::new();
         for (i, page) in plain.chunks(PAGE_SIZE).enumerate() {
-            out.extend(encrypt_page(cipher, i as u32 + 1, page, [(i as u8).wrapping_add(1); 16]));
+            out.extend(encrypt_page(
+                cipher,
+                i as u32 + 1,
+                page,
+                [(i as u8).wrapping_add(1); 16],
+            ));
         }
         out
     }
@@ -351,9 +392,13 @@ mod tests {
     fn rows_of(image: Vec<u8>) -> Vec<String> {
         let mut conn = Connection::open_in_memory().unwrap();
         let n = image.len();
-        conn.deserialize_read_exact(rusqlite::MAIN_DB, &image[..], n, true).unwrap();
+        conn.deserialize_read_exact(rusqlite::MAIN_DB, &image[..], n, true)
+            .unwrap();
         let mut stmt = conn.prepare("select v from t order by id").unwrap();
-        stmt.query_map([], |r| r.get::<_, String>(0)).unwrap().map(|r| r.unwrap()).collect()
+        stmt.query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
     }
 
     #[test]
@@ -361,7 +406,10 @@ mod tests {
         let cipher = PageCipher::derive(&KEY, &SALT);
         let enc = encrypt_db(&plain_db(&["alpha", "beta"]), &cipher);
         let derived = verify_key(&enc, &KEY).unwrap();
-        assert_eq!(rows_of(decrypt_database(&enc, None, &derived).unwrap()), ["alpha", "beta"]);
+        assert_eq!(
+            rows_of(decrypt_database(&enc, None, &derived).unwrap()),
+            ["alpha", "beta"]
+        );
     }
 
     #[test]
@@ -391,7 +439,14 @@ mod tests {
     }
 
     /// Append one WAL frame carrying the already-encrypted `page`; returns the running checksum.
-    fn push_frame(wal: &mut Vec<u8>, sum: (u32, u32), pgno: u32, commit: u32, salts: (u32, u32), page: &[u8]) -> (u32, u32) {
+    fn push_frame(
+        wal: &mut Vec<u8>,
+        sum: (u32, u32),
+        pgno: u32,
+        commit: u32,
+        salts: (u32, u32),
+        page: &[u8],
+    ) -> (u32, u32) {
         let mut fh = Vec::new();
         fh.extend(pgno.to_be_bytes());
         fh.extend(commit.to_be_bytes());
@@ -425,14 +480,34 @@ mod tests {
         for pgno in 1..=db_pages {
             let pg = &newer[(pgno as usize - 1) * PAGE_SIZE..pgno as usize * PAGE_SIZE];
             let commit = if pgno == db_pages { db_pages } else { 0 };
-            sum = push_frame(&mut wal, sum, pgno, commit, salts, &encrypt_page(&cipher, pgno, pg, [0x55; 16]));
+            sum = push_frame(
+                &mut wal,
+                sum,
+                pgno,
+                commit,
+                salts,
+                &encrypt_page(&cipher, pgno, pg, [0x55; 16]),
+            );
         }
         // A later transaction that never committed (commit == 0): must not be applied.
         let pg = &newest[..PAGE_SIZE];
-        push_frame(&mut wal, sum, 1, 0, salts, &encrypt_page(&cipher, 1, pg, [0x66; 16]));
+        push_frame(
+            &mut wal,
+            sum,
+            1,
+            0,
+            salts,
+            &encrypt_page(&cipher, 1, pg, [0x66; 16]),
+        );
 
-        assert_eq!(rows_of(decrypt_database(&enc_main, None, &derived).unwrap()), ["old"]);
-        assert_eq!(rows_of(decrypt_database(&enc_main, Some(&wal), &derived).unwrap()), ["new"]);
+        assert_eq!(
+            rows_of(decrypt_database(&enc_main, None, &derived).unwrap()),
+            ["old"]
+        );
+        assert_eq!(
+            rows_of(decrypt_database(&enc_main, Some(&wal), &derived).unwrap()),
+            ["new"]
+        );
     }
 
     #[test]
@@ -447,7 +522,17 @@ mod tests {
         let other = plain_db(&["stale"]);
         let pg = &other[..PAGE_SIZE];
         // Frame written under a different salt pair (leftover from before a WAL reset).
-        push_frame(&mut wal, sum, 1, 1, (9, 9), &encrypt_page(&cipher, 1, pg, [3; 16]));
-        assert_eq!(rows_of(decrypt_database(&enc, Some(&wal), &derived).unwrap()), ["kept"]);
+        push_frame(
+            &mut wal,
+            sum,
+            1,
+            1,
+            (9, 9),
+            &encrypt_page(&cipher, 1, pg, [3; 16]),
+        );
+        assert_eq!(
+            rows_of(decrypt_database(&enc, Some(&wal), &derived).unwrap()),
+            ["kept"]
+        );
     }
 }

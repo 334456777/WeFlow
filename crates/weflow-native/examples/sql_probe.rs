@@ -5,8 +5,16 @@ use weflow_native::native_db::NativeAccount;
 
 fn main() -> anyhow::Result<()> {
     let mut a = std::env::args().skip(1);
-    let (dir, keyf, rel, sql) = (a.next().unwrap(), a.next().unwrap(), a.next().unwrap(), a.next().unwrap());
-    let acct = NativeAccount::new(format!("{dir}/db_storage"), std::fs::read_to_string(keyf)?.trim())?;
+    let (dir, keyf, rel, sql) = (
+        a.next().unwrap(),
+        a.next().unwrap(),
+        a.next().unwrap(),
+        a.next().unwrap(),
+    );
+    let acct = NativeAccount::new(
+        format!("{dir}/db_storage"),
+        std::fs::read_to_string(keyf)?.trim(),
+    )?;
     let rows = acct.query(&acct.db_path(&rel), &sql, &[])?;
     println!("{}", serde_json::to_string(&rows)?);
     Ok(())

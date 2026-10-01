@@ -42,10 +42,11 @@ pub fn create_backup(
     out_path: &Path,
     progress_cb: &dyn Fn(usize, usize),
 ) -> Result<BackupManifest> {
-    let file = fs::File::create(out_path)
-        .with_context(|| format!("create {}", out_path.display()))?;
+    let file =
+        fs::File::create(out_path).with_context(|| format!("create {}", out_path.display()))?;
     let mut zip = ZipWriter::new(file);
-    let zip_options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let zip_options =
+        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     let mut entries = Vec::new();
     let wxid = account_dir
@@ -107,16 +108,18 @@ pub fn create_backup(
     };
 
     let manifest_bytes = serde_json::to_vec_pretty(&manifest).context("serialize manifest")?;
-    zip.start_file(MANIFEST_NAME, zip_options).context("zip manifest")?;
-    zip.write_all(&manifest_bytes).context("zip write manifest")?;
+    zip.start_file(MANIFEST_NAME, zip_options)
+        .context("zip manifest")?;
+    zip.write_all(&manifest_bytes)
+        .context("zip write manifest")?;
     zip.finish().context("zip finish")?;
 
     Ok(manifest)
 }
 
 pub fn inspect_backup(archive_path: &Path) -> Result<BackupManifest> {
-    let file = fs::File::open(archive_path)
-        .with_context(|| format!("open {}", archive_path.display()))?;
+    let file =
+        fs::File::open(archive_path).with_context(|| format!("open {}", archive_path.display()))?;
     let mut zip = ZipArchive::new(file).context("open zip archive")?;
     let mut entry = zip
         .by_name(MANIFEST_NAME)
@@ -131,8 +134,8 @@ pub fn restore_backup(
     target_dir: &Path,
     progress_cb: &dyn Fn(usize, usize),
 ) -> Result<()> {
-    let file = fs::File::open(archive_path)
-        .with_context(|| format!("open {}", archive_path.display()))?;
+    let file =
+        fs::File::open(archive_path).with_context(|| format!("open {}", archive_path.display()))?;
     let mut zip = ZipArchive::new(file).context("open zip archive")?;
 
     // Load manifest first for sha256 verification
@@ -158,11 +161,12 @@ pub fn restore_backup(
         }
         let out_path = target_dir.join(&name);
         if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("create {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
         }
         let mut data = Vec::new();
-        entry.read_to_end(&mut data).with_context(|| format!("read {name}"))?;
+        entry
+            .read_to_end(&mut data)
+            .with_context(|| format!("read {name}"))?;
 
         if let Some(expected_sha) = sha_map.get(name.as_str()) {
             let actual = sha256_hex(&data);
@@ -171,8 +175,7 @@ pub fn restore_backup(
             }
         }
 
-        fs::write(&out_path, &data)
-            .with_context(|| format!("write {}", out_path.display()))?;
+        fs::write(&out_path, &data).with_context(|| format!("write {}", out_path.display()))?;
     }
     progress_cb(total, total);
     Ok(())
@@ -245,7 +248,10 @@ mod tests {
 
         assert_eq!(manifest.entries.len(), 1);
         assert!(manifest.entries[0].path.ends_with("session.db"));
-        assert_eq!(manifest.entries[0].size, b"fake-database-content".len() as u64);
+        assert_eq!(
+            manifest.entries[0].size,
+            b"fake-database-content".len() as u64
+        );
 
         let inspected = inspect_backup(&archive).unwrap();
         assert_eq!(inspected.entries.len(), manifest.entries.len());
@@ -265,7 +271,14 @@ mod tests {
         let out_dir = temp_dir("weflow-restore-out");
         let archive = out_dir.join("backup.zip");
 
-        create_backup(&account_dir, &BackupOptions::default(), None, &archive, &|_, _| {}).unwrap();
+        create_backup(
+            &account_dir,
+            &BackupOptions::default(),
+            None,
+            &archive,
+            &|_, _| {},
+        )
+        .unwrap();
 
         let restore_dir = temp_dir("weflow-restore-target");
         restore_backup(&archive, &restore_dir, &|_, _| {}).unwrap();

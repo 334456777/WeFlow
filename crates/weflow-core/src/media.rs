@@ -76,7 +76,11 @@ pub fn scan_voice_files(account_dir: &Path) -> Vec<VoiceEntry> {
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
-        entries.push(VoiceEntry { path, relative, session_id });
+        entries.push(VoiceEntry {
+            path,
+            relative,
+            session_id,
+        });
     }
     entries
 }
@@ -93,7 +97,12 @@ pub fn export_images(
     let mut results = Vec::new();
     for (idx, entry) in entries.iter().enumerate() {
         progress_cb(idx, total);
-        let is_dat = entry.path.extension().and_then(|e| e.to_str()).unwrap_or("") == "dat";
+        let is_dat = entry
+            .path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            == "dat";
         if is_dat {
             let data = match fs::read(&entry.path) {
                 Ok(d) => d,
@@ -111,14 +120,20 @@ pub fn export_images(
                             continue;
                         }
                     }
-                    let stem = entry.path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+                    let stem = entry
+                        .path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("file");
                     let out_name = format!("{}{}", stem, result.ext);
                     let out_path = out_dir.join(&out_name);
                     if let Some(parent) = out_path.parent() {
                         fs::create_dir_all(parent).ok();
                     }
                     if fs::write(&out_path, &result.data).is_ok() {
-                        results.push(json!({ "src": entry.relative, "out": out_name, "ext": result.ext }));
+                        results.push(
+                            json!({ "src": entry.relative, "out": out_name, "ext": result.ext }),
+                        );
                     }
                 }
                 Err(_) => continue,
@@ -130,7 +145,11 @@ pub fn export_images(
                     continue;
                 }
             }
-            let file_name = entry.path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+            let file_name = entry
+                .path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file");
             let out_path = out_dir.join(file_name);
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).ok();
@@ -162,7 +181,11 @@ pub fn export_voices(
     let mut results = Vec::new();
     for (idx, entry) in filtered.iter().enumerate() {
         progress_cb(idx, total);
-        let file_name = entry.path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+        let file_name = entry
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file");
         let out_path = out_dir.join(&entry.session_id).join(file_name);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).ok();
@@ -208,7 +231,11 @@ pub fn extract_emoji_urls(messages: &Value) -> Vec<EmojiMeta> {
             .or_else(|| extract_attr(content, "thumburl"))
             .or_else(|| {
                 let v = extract_xml_value(content, "cdnurl");
-                if v.is_empty() { None } else { Some(v) }
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v)
+                }
             })
             .unwrap_or_default();
         if cdn_url.is_empty() {
@@ -217,7 +244,11 @@ pub fn extract_emoji_urls(messages: &Value) -> Vec<EmojiMeta> {
         let md5 = extract_attr(content, "md5")
             .or_else(|| {
                 let v = extract_xml_value(content, "md5");
-                if v.is_empty() { None } else { Some(v) }
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v)
+                }
             })
             .unwrap_or_else(|| simple_hash(&cdn_url));
         out.push(EmojiMeta { cdn_url, md5 });
@@ -309,7 +340,11 @@ fn extract_attr(xml: &str, attr: &str) -> Option<String> {
     let start = xml.find(&needle)? + needle.len();
     let end = xml[start..].find('"')? + start;
     let val = xml[start..end].trim().to_string();
-    if val.is_empty() { None } else { Some(val) }
+    if val.is_empty() {
+        None
+    } else {
+        Some(val)
+    }
 }
 
 fn simple_hash(s: &str) -> String {
@@ -350,7 +385,8 @@ mod tests {
 
     #[test]
     fn extract_emoji_urls_from_messages() {
-        let xml = r#"<msg><emoji cdnurl="https://cdn.example.com/emoji.gif" md5="abc123def456" /></msg>"#;
+        let xml =
+            r#"<msg><emoji cdnurl="https://cdn.example.com/emoji.gif" md5="abc123def456" /></msg>"#;
         let messages = json!([
             { "type": 47, "content": xml },
             { "type": 1, "content": "hello" }
@@ -398,7 +434,8 @@ mod tests {
 
     #[test]
     fn extract_emoji_no_emoji_type_skipped() {
-        let messages = json!([{ "type": 1, "content": r#"<emoji cdnurl="https://x.com/e.gif" md5="aaa"/>"# }]);
+        let messages =
+            json!([{ "type": 1, "content": r#"<emoji cdnurl="https://x.com/e.gif" md5="aaa"/>"# }]);
         assert!(extract_emoji_urls(&messages).is_empty());
     }
 }

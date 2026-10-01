@@ -165,11 +165,21 @@ impl ConfigStore {
             "http_api_token" | "httpApiToken" => target.http_api_token = Some(as_string(value)?),
             "http_api_host" | "httpApiHost" => target.http_api_host = Some(as_string(value)?),
             "http_api_port" | "httpApiPort" => target.http_api_port = Some(as_i64(value)? as u16),
-            "ai_model_api_base_url" | "aiModelApiBaseUrl" => target.ai_model_api_base_url = Some(as_string(value)?),
-            "ai_model_api_key" | "aiModelApiKey" => target.ai_model_api_key = Some(as_string(value)?),
-            "ai_model_api_model" | "aiModelApiModel" => target.ai_model_api_model = Some(as_string(value)?),
-            "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => target.ai_model_api_max_tokens = Some(as_i64(value)? as u32),
-            "ai_insight_enabled" | "aiInsightEnabled" => target.ai_insight_enabled = Some(as_bool(value)?),
+            "ai_model_api_base_url" | "aiModelApiBaseUrl" => {
+                target.ai_model_api_base_url = Some(as_string(value)?)
+            }
+            "ai_model_api_key" | "aiModelApiKey" => {
+                target.ai_model_api_key = Some(as_string(value)?)
+            }
+            "ai_model_api_model" | "aiModelApiModel" => {
+                target.ai_model_api_model = Some(as_string(value)?)
+            }
+            "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => {
+                target.ai_model_api_max_tokens = Some(as_i64(value)? as u32)
+            }
+            "ai_insight_enabled" | "aiInsightEnabled" => {
+                target.ai_insight_enabled = Some(as_bool(value)?)
+            }
             other => {
                 target.extra.insert(other.to_string(), value);
             }
@@ -202,7 +212,9 @@ impl ConfigStore {
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => target.ai_model_api_base_url = None,
             "ai_model_api_key" | "aiModelApiKey" => target.ai_model_api_key = None,
             "ai_model_api_model" | "aiModelApiModel" => target.ai_model_api_model = None,
-            "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => target.ai_model_api_max_tokens = None,
+            "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => {
+                target.ai_model_api_max_tokens = None
+            }
             "ai_insight_enabled" | "aiInsightEnabled" => target.ai_insight_enabled = None,
             other => {
                 target.extra.remove(other);

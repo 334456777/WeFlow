@@ -39,7 +39,18 @@ pub struct ContactSpec {
 
 impl ContactSpec {
     pub const fn new(username: &'static str, local_type: i64, nick_name: &'static str) -> Self {
-        Self { username, local_type, nick_name, remark: "", alias: "", avatar: "", flag: 0, chat_room_notify: 0, description: "", extra: &[] }
+        Self {
+            username,
+            local_type,
+            nick_name,
+            remark: "",
+            alias: "",
+            avatar: "",
+            flag: 0,
+            chat_room_notify: 0,
+            description: "",
+            extra: &[],
+        }
     }
 }
 
@@ -67,7 +78,16 @@ pub struct MsgSpec {
 
 impl MsgSpec {
     pub fn text(local_id: i64, sender: &'static str, create_time: i64, content: &str) -> Self {
-        Self { local_id, server_id: 1_000 + local_id, local_type: 1, sender, create_time, content: content.to_string(), compressed: false, source: String::new() }
+        Self {
+            local_id,
+            server_id: 1_000 + local_id,
+            local_type: 1,
+            sender,
+            create_time,
+            content: content.to_string(),
+            compressed: false,
+            source: String::new(),
+        }
     }
     pub fn with_source(mut self, source: &str) -> Self {
         self.source = source.to_string();
@@ -82,7 +102,6 @@ impl MsgSpec {
         self
     }
 }
-
 
 /// One Moments post for [`Fixture::sns_db`].
 pub struct SnsPostSpec {
@@ -112,7 +131,11 @@ impl SnsPostSpec {
         let likes: String = self
             .likes
             .iter()
-            .map(|(u, n)| format!("<user_comment><username>{u}</username><nickname>{n}</nickname></user_comment>"))
+            .map(|(u, n)| {
+                format!(
+                    "<user_comment><username>{u}</username><nickname>{n}</nickname></user_comment>"
+                )
+            })
             .collect();
         format!(
             "<SnsDataItem><TimelineObject><id>{}</id><username>{}</username><createTime>{}</createTime><contentDesc>{}</contentDesc>\
@@ -155,12 +178,33 @@ pub struct HardlinkSpec {
 
 impl HardlinkSpec {
     /// An image rendition stored under the talker directory `talker_dir` and month `month`.
-    pub fn image(md5: &'static str, file_name: &'static str, talker_dir: &'static str, month: &'static str) -> Self {
-        Self { md5, file_name, kind: 2, dir1: talker_dir, dir2: month, size: 1000, modify_time: T0 }
+    pub fn image(
+        md5: &'static str,
+        file_name: &'static str,
+        talker_dir: &'static str,
+        month: &'static str,
+    ) -> Self {
+        Self {
+            md5,
+            file_name,
+            kind: 2,
+            dir1: talker_dir,
+            dir2: month,
+            size: 1000,
+            modify_time: T0,
+        }
     }
 
     pub fn video(md5: &'static str, file_name: &'static str, month: &'static str) -> Self {
-        Self { md5, file_name, kind: 3, dir1: month, dir2: "", size: 5000, modify_time: T0 }
+        Self {
+            md5,
+            file_name,
+            kind: 3,
+            dir1: month,
+            dir2: "",
+            size: 5000,
+            modify_time: T0,
+        }
     }
 }
 
@@ -175,10 +219,22 @@ impl Fixture {
     pub fn new(root: &Path, account: &str) -> Self {
         let _ = std::fs::remove_dir_all(root);
         let account_dir = root.join(account);
-        for d in ["session", "contact", "message", "sns", "emoticon", "hardlink", "head_image"] {
+        for d in [
+            "session",
+            "contact",
+            "message",
+            "sns",
+            "emoticon",
+            "hardlink",
+            "head_image",
+        ] {
             std::fs::create_dir_all(account_dir.join("db_storage").join(d)).unwrap();
         }
-        Self { root: root.to_path_buf(), account_dir, cipher: PageCipher::derive(&KEY, &SALT) }
+        Self {
+            root: root.to_path_buf(),
+            account_dir,
+            cipher: PageCipher::derive(&KEY, &SALT),
+        }
     }
 
     pub fn key_hex(&self) -> String {
@@ -190,12 +246,16 @@ impl Fixture {
     }
 
     fn write(&self, rel: &str, plain: Vec<u8>) {
-        std::fs::write(self.db_storage().join(rel), encrypt_db(&plain, &self.cipher)).unwrap();
+        std::fs::write(
+            self.db_storage().join(rel),
+            encrypt_db(&plain, &self.cipher),
+        )
+        .unwrap();
     }
 
-
     pub fn sns_db(&self, posts: &[SnsPostSpec]) {
-        let rows: Vec<(i64, &'static str, String)> = posts.iter().map(|p| (p.tid, p.user, p.xml())).collect();
+        let rows: Vec<(i64, &'static str, String)> =
+            posts.iter().map(|p| (p.tid, p.user, p.xml())).collect();
         self.write(
             "sns/sns.db",
             plain_db_with(move |c: &Connection| {
@@ -207,7 +267,6 @@ impl Fixture {
         );
     }
 
-
     pub fn media_db(&self, n: u32, voices: &[VoiceSpec]) {
         let rows: Vec<(i64, i64, i64, i64, Vec<u8>, &'static str)> = {
             let mut names: Vec<&str> = Vec::new();
@@ -217,7 +276,14 @@ impl Fixture {
                     if !names.contains(&v.chat) {
                         names.push(v.chat);
                     }
-                    (names.iter().position(|c| *c == v.chat).unwrap() as i64 + 1, v.create_time, v.local_id, v.svr_id, v.data.clone(), v.index)
+                    (
+                        names.iter().position(|c| *c == v.chat).unwrap() as i64 + 1,
+                        v.create_time,
+                        v.local_id,
+                        v.svr_id,
+                        v.data.clone(),
+                        v.index,
+                    )
                 })
                 .collect()
         };
@@ -246,8 +312,15 @@ impl Fixture {
     }
 
     /// `store` rows are (md5, language, caption) of the sticker-store caption table.
-    pub fn emoticon_db(&self, own: &[EmoticonSpec], store: &[(&'static str, &'static str, &'static str)]) {
-        let own: Vec<(&str, &str, &str, &str)> = own.iter().map(|e| (e.md5, e.caption, e.cdn_url, e.extern_url)).collect();
+    pub fn emoticon_db(
+        &self,
+        own: &[EmoticonSpec],
+        store: &[(&'static str, &'static str, &'static str)],
+    ) {
+        let own: Vec<(&str, &str, &str, &str)> = own
+            .iter()
+            .map(|e| (e.md5, e.caption, e.cdn_url, e.extern_url))
+            .collect();
         let store = store.to_vec();
         self.write(
             "emoticon/emoticon.db",
@@ -311,7 +384,8 @@ impl Fixture {
 
     /// `head_image/head_image.db`: `(username, image bytes)` per avatar.
     pub fn head_image_db(&self, avatars: &[(&'static str, &[u8])]) {
-        let avatars: Vec<(&'static str, Vec<u8>)> = avatars.iter().map(|(u, b)| (*u, b.to_vec())).collect();
+        let avatars: Vec<(&'static str, Vec<u8>)> =
+            avatars.iter().map(|(u, b)| (*u, b.to_vec())).collect();
         self.write(
             "head_image/head_image.db",
             plain_db_with(move |c: &Connection| {
@@ -324,8 +398,18 @@ impl Fixture {
     }
 
     pub fn session_db(&self, sessions: &[SessionSpec]) {
-        let rows: Vec<(String, String, i64, i64, i64)> =
-            sessions.iter().map(|s| (s.username.to_string(), s.summary.to_string(), s.last_timestamp, s.unread, s.last_msg_type)).collect();
+        let rows: Vec<(String, String, i64, i64, i64)> = sessions
+            .iter()
+            .map(|s| {
+                (
+                    s.username.to_string(),
+                    s.summary.to_string(),
+                    s.last_timestamp,
+                    s.unread,
+                    s.last_msg_type,
+                )
+            })
+            .collect();
         self.write(
             "session/session.db",
             plain_db_with(move |c: &Connection| {
@@ -353,15 +437,41 @@ impl Fixture {
     }
 
     /// Like [`contact_db`](Self::contact_db) with `(label id, name)` rows in `contact_label`.
-    pub fn contact_db_with_labels(&self, contacts: &[ContactSpec], rooms: &[RoomSpec], labels: &[(i64, &'static str)]) {
+    pub fn contact_db_with_labels(
+        &self,
+        contacts: &[ContactSpec],
+        rooms: &[RoomSpec],
+        labels: &[(i64, &'static str)],
+    ) {
         let labels = labels.to_vec();
-        let contacts: Vec<(i64, ContactSpec)> = contacts.iter().cloned().enumerate().map(|(i, c)| (i as i64 + 1, c)).collect();
-        let ids: std::collections::HashMap<&str, i64> = contacts.iter().map(|(id, c)| (c.username, *id)).collect();
-        let rooms: Vec<(i64, &'static str, &'static str, &'static [(&'static str, &'static str)], Vec<i64>)> = rooms
+        let contacts: Vec<(i64, ContactSpec)> = contacts
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, c)| (i as i64 + 1, c))
+            .collect();
+        let ids: std::collections::HashMap<&str, i64> =
+            contacts.iter().map(|(id, c)| (c.username, *id)).collect();
+        let rooms: Vec<(
+            i64,
+            &'static str,
+            &'static str,
+            &'static [(&'static str, &'static str)],
+            Vec<i64>,
+        )> = rooms
             .iter()
             .map(|r| {
-                let rid = *ids.get(r.username).unwrap_or_else(|| panic!("room {} needs a contact row", r.username));
-                let members = r.members.iter().map(|(m, _)| *ids.get(m).unwrap_or_else(|| panic!("member {m} needs a contact row"))).collect();
+                let rid = *ids
+                    .get(r.username)
+                    .unwrap_or_else(|| panic!("room {} needs a contact row", r.username));
+                let members = r
+                    .members
+                    .iter()
+                    .map(|(m, _)| {
+                        *ids.get(m)
+                            .unwrap_or_else(|| panic!("member {m} needs a contact row"))
+                    })
+                    .collect();
                 (rid, r.username, r.owner, r.members, members)
             })
             .collect();
@@ -414,7 +524,10 @@ impl Fixture {
     /// Add `msgs` of `session` to `message/message_<n>.db` (created when missing, merged when present
     /// is not supported: one call per session per shard, several sessions per shard are fine).
     pub fn message_shard(&self, n: u32, sessions: &[(&str, Vec<MsgSpec>)]) {
-        let sessions: Vec<(String, Vec<MsgSpec>)> = sessions.iter().map(|(s, m)| (s.to_string(), m.clone())).collect();
+        let sessions: Vec<(String, Vec<MsgSpec>)> = sessions
+            .iter()
+            .map(|(s, m)| (s.to_string(), m.clone()))
+            .collect();
         self.write(
             &format!("message/message_{n}.db"),
             plain_db_with(move |c: &Connection| {
@@ -469,23 +582,54 @@ impl Fixture {
         f.contact_db(
             &[
                 ContactSpec::new("wxid_me", 1, "Me Nick"),
-                ContactSpec { remark: "Bobby", alias: "bobby_id", avatar: "https://example.com/bob.png", ..ContactSpec::new("wxid_bob", 1, "Bob") },
+                ContactSpec {
+                    remark: "Bobby",
+                    alias: "bobby_id",
+                    avatar: "https://example.com/bob.png",
+                    ..ContactSpec::new("wxid_bob", 1, "Bob")
+                },
                 ContactSpec::new("wxid_carol", 1, "Carol"),
                 ContactSpec::new("wxid_quiet", 3, "Quiet"),
                 ContactSpec::new("gh_news", 5, "News"),
                 ContactSpec::new("medianote", 1, "File Helper"),
-                ContactSpec { flag: 1 << 28, chat_room_notify: 1, ..ContactSpec::new("room1@chatroom", 2, "Project Room") },
+                ContactSpec {
+                    flag: 1 << 28,
+                    chat_room_notify: 1,
+                    ..ContactSpec::new("room1@chatroom", 2, "Project Room")
+                },
             ],
             &[RoomSpec {
                 username: "room1@chatroom",
                 owner: "wxid_bob",
-                members: &[("wxid_me", ""), ("wxid_bob", "Bob in room"), ("wxid_quiet", "")],
+                members: &[
+                    ("wxid_me", ""),
+                    ("wxid_bob", "Bob in room"),
+                    ("wxid_quiet", ""),
+                ],
             }],
         );
         f.session_db(&[
-            SessionSpec { username: "wxid_bob", summary: "see you", last_timestamp: T0 + 4 * DAY, unread: 2, last_msg_type: 1 },
-            SessionSpec { username: "room1@chatroom", summary: "ok", last_timestamp: T0 + 2 * DAY, unread: 0, last_msg_type: 1 },
-            SessionSpec { username: "gh_news", summary: "daily", last_timestamp: T0, unread: 0, last_msg_type: 49 },
+            SessionSpec {
+                username: "wxid_bob",
+                summary: "see you",
+                last_timestamp: T0 + 4 * DAY,
+                unread: 2,
+                last_msg_type: 1,
+            },
+            SessionSpec {
+                username: "room1@chatroom",
+                summary: "ok",
+                last_timestamp: T0 + 2 * DAY,
+                unread: 0,
+                last_msg_type: 1,
+            },
+            SessionSpec {
+                username: "gh_news",
+                summary: "daily",
+                last_timestamp: T0,
+                unread: 0,
+                last_msg_type: 49,
+            },
         ]);
         f.message_shard(
             0,
@@ -495,7 +639,13 @@ impl Fixture {
                     vec![
                         MsgSpec::text(1, "wxid_bob", T0, "hello"),
                         MsgSpec::text(2, "wxid_me", T0 + 60, "hi bob"),
-                        MsgSpec::text(3, "wxid_bob", T0 + DAY, "<msg><img md5=\"aabbccddeeff00112233445566778899\"/></msg>").of_type(3),
+                        MsgSpec::text(
+                            3,
+                            "wxid_bob",
+                            T0 + DAY,
+                            "<msg><img md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+                        )
+                        .of_type(3),
                     ],
                 ),
                 (
@@ -519,27 +669,113 @@ impl Fixture {
             )],
         );
         f.sns_db(&[
-            SnsPostSpec { tid: 1001, user: "wxid_bob", create_time: T0 + 100, desc: "bob trip", kind: 1, media: 2, likes: &[("wxid_me", "Me Nick"), ("wxid_carol", "Carol")], extra: "" },
-            SnsPostSpec { tid: 1002, user: "wxid_me", create_time: T0 + 200, desc: "my post", kind: 2, media: 0, likes: &[("wxid_bob", "Bob"), ("wxid_carol", "Carol")], extra: "" },
-            SnsPostSpec { tid: 1003, user: "wxid_me", create_time: T0 + DAY, desc: "second post", kind: 1, media: 1, likes: &[("wxid_bob", "Bob")], extra: "" },
-            SnsPostSpec { tid: 1004, user: "wxid_carol", create_time: T0 + 2 * DAY, desc: "carol video", kind: 15, media: 1, likes: &[("wxid_me", "Me Nick")], extra: "" },
-            SnsPostSpec { tid: -5, user: "wxid_bob", create_time: T0 + 3 * DAY, desc: "old style", kind: 1, media: 0, likes: &[], extra: "" },
+            SnsPostSpec {
+                tid: 1001,
+                user: "wxid_bob",
+                create_time: T0 + 100,
+                desc: "bob trip",
+                kind: 1,
+                media: 2,
+                likes: &[("wxid_me", "Me Nick"), ("wxid_carol", "Carol")],
+                extra: "",
+            },
+            SnsPostSpec {
+                tid: 1002,
+                user: "wxid_me",
+                create_time: T0 + 200,
+                desc: "my post",
+                kind: 2,
+                media: 0,
+                likes: &[("wxid_bob", "Bob"), ("wxid_carol", "Carol")],
+                extra: "",
+            },
+            SnsPostSpec {
+                tid: 1003,
+                user: "wxid_me",
+                create_time: T0 + DAY,
+                desc: "second post",
+                kind: 1,
+                media: 1,
+                likes: &[("wxid_bob", "Bob")],
+                extra: "",
+            },
+            SnsPostSpec {
+                tid: 1004,
+                user: "wxid_carol",
+                create_time: T0 + 2 * DAY,
+                desc: "carol video",
+                kind: 15,
+                media: 1,
+                likes: &[("wxid_me", "Me Nick")],
+                extra: "",
+            },
+            SnsPostSpec {
+                tid: -5,
+                user: "wxid_bob",
+                create_time: T0 + 3 * DAY,
+                desc: "old style",
+                kind: 1,
+                media: 0,
+                likes: &[],
+                extra: "",
+            },
         ]);
         f.media_db(
             0,
             &[
-                VoiceSpec { chat: "wxid_bob", create_time: T0 + 500, local_id: 6, svr_id: 9_000_000_000_001, data: vec![1, 2, 3, 4], index: "0" },
-                VoiceSpec { chat: "wxid_bob", create_time: T0 + 600, local_id: 7, svr_id: 9_000_000_000_002, data: vec![0xaa, 0xbb], index: "0" },
-                VoiceSpec { chat: "wxid_bob", create_time: T0 + 600, local_id: 7, svr_id: 9_000_000_000_002, data: vec![0xcc], index: "1" },
-                VoiceSpec { chat: "wxid_me", create_time: T0 + 700, local_id: 8, svr_id: 9_000_000_000_003, data: vec![9], index: "0" },
+                VoiceSpec {
+                    chat: "wxid_bob",
+                    create_time: T0 + 500,
+                    local_id: 6,
+                    svr_id: 9_000_000_000_001,
+                    data: vec![1, 2, 3, 4],
+                    index: "0",
+                },
+                VoiceSpec {
+                    chat: "wxid_bob",
+                    create_time: T0 + 600,
+                    local_id: 7,
+                    svr_id: 9_000_000_000_002,
+                    data: vec![0xaa, 0xbb],
+                    index: "0",
+                },
+                VoiceSpec {
+                    chat: "wxid_bob",
+                    create_time: T0 + 600,
+                    local_id: 7,
+                    svr_id: 9_000_000_000_002,
+                    data: vec![0xcc],
+                    index: "1",
+                },
+                VoiceSpec {
+                    chat: "wxid_me",
+                    create_time: T0 + 700,
+                    local_id: 8,
+                    svr_id: 9_000_000_000_003,
+                    data: vec![9],
+                    index: "0",
+                },
             ],
         );
         f.emoticon_db(
             &[
-                EmoticonSpec { md5: "AABBCCDDEEFF00112233445566778899", caption: "smile", cdn_url: "http://cdn/e1", extern_url: "http://ext/e1" },
-                EmoticonSpec { md5: "11223344556677889900aabbccddeeff", caption: "", cdn_url: "", extern_url: "http://ext/e2" },
+                EmoticonSpec {
+                    md5: "AABBCCDDEEFF00112233445566778899",
+                    caption: "smile",
+                    cdn_url: "http://cdn/e1",
+                    extern_url: "http://ext/e1",
+                },
+                EmoticonSpec {
+                    md5: "11223344556677889900aabbccddeeff",
+                    caption: "",
+                    cdn_url: "",
+                    extern_url: "http://ext/e2",
+                },
             ],
-            &[("deadbeefdeadbeefdeadbeefdeadbeef", "en", "store caption"), ("deadbeefdeadbeefdeadbeefdeadbeef", "zh_CN", "商店表情")],
+            &[
+                ("deadbeefdeadbeefdeadbeefdeadbeef", "en", "store caption"),
+                ("deadbeefdeadbeefdeadbeefdeadbeef", "zh_CN", "商店表情"),
+            ],
         );
         f
     }

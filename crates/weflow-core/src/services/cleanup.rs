@@ -17,10 +17,20 @@ pub fn normalize_account_id(value: &str) -> String {
         // `wxid_` plus everything up to the next underscore
         let rest = &trimmed[5..];
         let end = rest.find('_').unwrap_or(rest.len());
-        return if end == 0 { trimmed.to_string() } else { trimmed[..5 + end].to_string() };
+        return if end == 0 {
+            trimmed.to_string()
+        } else {
+            trimmed[..5 + end].to_string()
+        };
     }
     match trimmed.rsplit_once('_') {
-        Some((head, tail)) if !head.is_empty() && tail.len() == 4 && tail.chars().all(|c| c.is_ascii_alphanumeric()) => head.to_string(),
+        Some((head, tail))
+            if !head.is_empty()
+                && tail.len() == 4
+                && tail.chars().all(|c| c.is_ascii_alphanumeric()) =>
+        {
+            head.to_string()
+        }
         _ => trimmed.to_string(),
     }
 }
@@ -29,22 +39,38 @@ pub fn normalize_account_id(value: &str) -> String {
 /// `<id>_` or contains one of the ids (case-insensitive).
 fn account_name_matches(name: &str, ids: &[String]) -> bool {
     let lowered = name.trim().to_lowercase();
-    !lowered.is_empty() && ids.iter().any(|id| lowered == *id || lowered.starts_with(&format!("{id}_")) || lowered.contains(id.as_str()))
+    !lowered.is_empty()
+        && ids.iter().any(|id| {
+            lowered == *id
+                || lowered.starts_with(&format!("{id}_"))
+                || lowered.contains(id.as_str())
+        })
 }
 
 fn remove_path(path: &Path, removed: &mut Vec<String>, warnings: &mut Vec<String>) {
     if !path.exists() {
         return;
     }
-    let result = if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
+    let result = if path.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    };
     match result {
         Ok(()) => removed.push(path.to_string_lossy().to_string()),
         Err(e) => warnings.push(format!("{}: {e}", path.display())),
     }
 }
 
-fn remove_matched_entries(root: &Path, ids: &[String], removed: &mut Vec<String>, warnings: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(root) else { return };
+fn remove_matched_entries(
+    root: &Path,
+    ids: &[String],
+    removed: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
     for entry in entries.flatten() {
         if account_name_matches(&entry.file_name().to_string_lossy(), ids) {
             remove_path(&entry.path(), removed, warnings);
@@ -75,13 +101,21 @@ impl ServiceHub {
     /// `chat:clearCurrentAccountData`. `clear_cache` removes WeFlow's caches of the current account (images, voices,
     /// stickers, Moments, analytics); `export_dirs` are folders whose entries named after the account are removed.
     /// The caller resets the account settings of the profile when `clear_cache` is set, as the desktop app does.
-    pub fn clear_current_account_data(&self, clear_cache: bool, export_dirs: &[PathBuf]) -> AppResult<Value> {
+    pub fn clear_current_account_data(
+        &self,
+        clear_cache: bool,
+        export_dirs: &[PathBuf],
+    ) -> AppResult<Value> {
         if !clear_cache && export_dirs.is_empty() {
-            return Err(AppError::usage("choose at least one thing to clear: --cache and/or --exports-dir <dir>"));
+            return Err(AppError::usage(
+                "choose at least one thing to clear: --cache and/or --exports-dir <dir>",
+            ));
         }
         let raw = self.my_wxid_cleaned();
         if raw.trim().is_empty() {
-            return Err(AppError::config("no current account (wxid) configured, nothing to clear"));
+            return Err(AppError::config(
+                "no current account (wxid) configured, nothing to clear",
+            ));
         }
         let normalized = normalize_account_id(&raw);
         let mut ids: Vec<String> = vec![raw.trim().to_lowercase()];
@@ -101,8 +135,16 @@ impl ServiceHub {
             *self.group_state.lock().unwrap() = Default::default();
             self.sns_clear_memory_cache();
             let base = self.cache_base();
-            let roots = [base.clone(), base.join("Images"), base.join("Voices"), base.join("Emojis")];
-            for id in [raw.trim().to_string(), normalized.clone()].into_iter().filter(|s| !s.is_empty()) {
+            let roots = [
+                base.clone(),
+                base.join("Images"),
+                base.join("Voices"),
+                base.join("Emojis"),
+            ];
+            for id in [raw.trim().to_string(), normalized.clone()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+            {
                 for root in &roots {
                     remove_path(&root.join(&id), &mut removed, &mut warnings);
                 }
@@ -120,7 +162,8 @@ impl ServiceHub {
             remove_matched_entries(dir, &ids, &mut removed, &mut warnings);
         }
         removed.dedup();
-        let mut out = json!({ "success": true, "removedPaths": removed, "profileReset": clear_cache });
+        let mut out =
+            json!({ "success": true, "removedPaths": removed, "profileReset": clear_cache });
         if !warnings.is_empty() {
             out["warning"] = json!(warnings.join("; "));
         }

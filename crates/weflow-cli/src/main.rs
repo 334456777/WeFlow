@@ -46,7 +46,12 @@ struct Cli {
     no_progress: bool,
     /// Seconds a command must run before the automatic progress bar appears (default 5; 0 = always).
     /// Also settable with WEFLOW_PROGRESS_DELAY or `config set progress_delay_seconds <n>`
-    #[arg(long, global = true, value_name = "SECONDS", env = "WEFLOW_PROGRESS_DELAY")]
+    #[arg(
+        long,
+        global = true,
+        value_name = "SECONDS",
+        env = "WEFLOW_PROGRESS_DELAY"
+    )]
     progress_delay: Option<u64>,
     #[command(subcommand)]
     command: Commands,
@@ -252,13 +257,21 @@ enum ChatSubcommand {
         server_id: Option<String>,
     },
     /// Dates that have messages in a session (YYYY-MM-DD)
-    Dates { session_id: String },
+    Dates {
+        session_id: String,
+    },
     /// Message count per day for a session
-    DateCounts { session_id: String },
+    DateCounts {
+        session_id: String,
+    },
     /// Total message counts for several sessions
-    Counts { sessions: Vec<String> },
+    Counts {
+        sessions: Vec<String>,
+    },
     /// Folded / muted state of sessions
-    Statuses { usernames: Vec<String> },
+    Statuses {
+        usernames: Vec<String>,
+    },
     /// Session details (contact info, message count, message tables, first/latest time)
     Detail {
         session_id: String,
@@ -309,9 +322,13 @@ enum ChatSubcommand {
         offset: usize,
     },
     /// All image identifiers of a session (md5 / dat name), newest first
-    Images { session_id: String },
+    Images {
+        session_id: String,
+    },
     /// All voice messages of a session
-    VoiceMessages { session_id: String },
+    VoiceMessages {
+        session_id: String,
+    },
     /// Page through image/video messages with the native media scanner
     MediaStream {
         #[arg(long)]
@@ -329,7 +346,11 @@ enum ChatSubcommand {
         offset: i32,
     },
     /// Resolve payer / receiver display names of a transfer message
-    TransferNames { chatroom_id: String, payer: String, receiver: String },
+    TransferNames {
+        chatroom_id: String,
+        payer: String,
+        receiver: String,
+    },
     Voice {
         session_id: String,
         #[arg(long)]
@@ -359,9 +380,15 @@ enum ChatSubcommand {
         out: PathBuf,
     },
     /// Check whether a decoded voice WAV is already cached for a message id
-    VoiceCache { session_id: String, msg_id: String },
+    VoiceCache {
+        session_id: String,
+        msg_id: String,
+    },
     /// Decode and cache many voice messages; takes a JSON array of {localId, createTime, serverId?, senderWxid?}
-    VoicePreload { session_id: String, messages_json: String },
+    VoicePreload {
+        session_id: String,
+        messages_json: String,
+    },
     Emoji {
         session_id: String,
         #[arg(long)]
@@ -382,9 +409,15 @@ struct PageArgs {
 enum AntiRevokeSubcommand {
     /// Sessions that anti-revoke can be installed for
     Sessions,
-    Check { sessions: Vec<String> },
-    Install { sessions: Vec<String> },
-    Uninstall { sessions: Vec<String> },
+    Check {
+        sessions: Vec<String>,
+    },
+    Install {
+        sessions: Vec<String>,
+    },
+    Uninstall {
+        sessions: Vec<String>,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -585,10 +618,7 @@ enum GroupSubcommand {
         end: Option<String>,
     },
     /// Export the member list (.csv or .xlsx)
-    ExportMembers {
-        chatroom_id: String,
-        out: PathBuf,
-    },
+    ExportMembers { chatroom_id: String, out: PathBuf },
 }
 
 #[derive(Args, Debug)]
@@ -663,7 +693,9 @@ enum SnsSubcommand {
     /// Users that have posted
     Users,
     /// Ask the server for the first bytes of a Moments resource and show the status and decryption headers
-    DebugResource { url: String },
+    DebugResource {
+        url: String,
+    },
     /// Export statistics (total posts / friends / mine); --fast reads the cached counts only
     Stats {
         #[arg(long)]
@@ -716,8 +748,12 @@ enum SnsSubcommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    BlockDelete { action: TriggerAction },
-    Delete { post_id: String },
+    BlockDelete {
+        action: TriggerAction,
+    },
+    Delete {
+        post_id: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -788,7 +824,11 @@ impl ImageTarget {
             create_time: self.create_time,
             prefer_file_path: self.prefer_file_path,
             hardlink_only: self.hardlink_only,
-            allow_cache_index: if self.no_cache_index { Some(false) } else { None },
+            allow_cache_index: if self.no_cache_index {
+                Some(false)
+            } else {
+                None
+            },
             force,
         }
     }
@@ -883,8 +923,12 @@ enum InsightSubcommand {
         #[arg(long)]
         offset: Option<i64>,
     },
-    Get { id: String },
-    MarkRead { id: String },
+    Get {
+        id: String,
+    },
+    MarkRead {
+        id: String,
+    },
     /// Delete insight records (all, or filtered)
     Clear {
         #[arg(long)]
@@ -901,7 +945,9 @@ enum InsightSubcommand {
     /// Footprint statistics from the database
     Footprint,
     /// AI footprint summary; takes the JSON payload {rangeLabel, summary, privateSegments, mentionGroups}
-    FootprintSummary { payload_json: String },
+    FootprintSummary {
+        payload_json: String,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -1010,7 +1056,9 @@ async fn run(cli: &Cli) -> AppResult<Value> {
 
     if cli.progress_delay.is_none() {
         let v = config.get_key(cli.profile.as_deref(), "progress_delay_seconds");
-        let delay = v.as_u64().or_else(|| v.as_str().and_then(weflow_core::output::parse_delay));
+        let delay = v
+            .as_u64()
+            .or_else(|| v.as_str().and_then(weflow_core::output::parse_delay));
         if let Some(d) = delay {
             weflow_core::output::set_progress_delay(d);
         }
@@ -1019,18 +1067,40 @@ async fn run(cli: &Cli) -> AppResult<Value> {
     match &cli.command {
         Commands::Config(command) => return handle_config(command, &ctx, &mut config, cli),
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
-        Commands::Chat(ChatCommand { command: ChatSubcommand::ClearAccountData { cache, exports_dir, yes } }) => {
+        Commands::Chat(ChatCommand {
+            command:
+                ChatSubcommand::ClearAccountData {
+                    cache,
+                    exports_dir,
+                    yes,
+                },
+        }) => {
             if !*yes {
                 return Err(AppError::usage("this removes files; add --yes to confirm"));
             }
-            let hub = ServiceHub::new(ctx.clone(), config.clone(), cli.profile.clone(), cli.db_path.clone(), cli.decrypt_key.clone(), cli.wxid.clone());
+            let hub = ServiceHub::new(
+                ctx.clone(),
+                config.clone(),
+                cli.profile.clone(),
+                cli.db_path.clone(),
+                cli.decrypt_key.clone(),
+                cli.wxid.clone(),
+            );
             let result = hub.clear_current_account_data(*cache, exports_dir)?;
             if *cache {
                 // like the desktop app: the account is signed out of this profile
-                for key in ["db_path", "wxid", "decrypt_key", "image_xor_key", "image_aes_key"] {
+                for key in [
+                    "db_path",
+                    "wxid",
+                    "decrypt_key",
+                    "image_xor_key",
+                    "image_aes_key",
+                ] {
                     config.unset_key(cli.profile.as_deref(), key);
                 }
-                config.save(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
+                config
+                    .save(&ctx.config_path)
+                    .map_err(|err| AppError::config(err.to_string()))?;
             }
             return Ok(result);
         }
@@ -1057,42 +1127,91 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         Commands::Sns(command) => handle_sns(command, &hub).await,
         Commands::Biz(command) => handle_biz(command, &hub),
         Commands::Insight(command) => handle_insight(command, &hub).await,
-        Commands::Image(ImageCommand { command: ImageSubcommand::AutoDownload { command } }) => match command {
+        Commands::Image(ImageCommand {
+            command: ImageSubcommand::AutoDownload { command },
+        }) => match command {
             AutoDownloadSubcommand::Start { whitelist } => {
                 let svc = weflow_core::image_download::ImageAutoDownload::new(hub.runtime_dir());
-                let list = if whitelist.is_empty() { config_whitelist(&hub) } else { whitelist.clone() };
+                let list = if whitelist.is_empty() {
+                    config_whitelist(&hub)
+                } else {
+                    whitelist.clone()
+                };
                 let started = svc.start(list);
                 if started["success"] != true {
-                    return Err(AppError::runtime(started["error"].as_str().unwrap_or("auto download failed to start").to_string()));
+                    return Err(AppError::runtime(
+                        started["error"]
+                            .as_str()
+                            .unwrap_or("auto download failed to start")
+                            .to_string(),
+                    ));
                 }
-                eprintln!("{}", serde_json::to_string(&json!({ "type": "auto_download_started", "status": svc.status() })).unwrap());
+                eprintln!(
+                    "{}",
+                    serde_json::to_string(
+                        &json!({ "type": "auto_download_started", "status": svc.status() })
+                    )
+                    .unwrap()
+                );
                 let _ = tokio::signal::ctrl_c().await;
                 svc.stop();
                 Ok(json!({ "stopped": true }))
             }
-            AutoDownloadSubcommand::Status => Ok(json!({ "isHooked": false, "pid": null, "supported": weflow_core::image_download::supported() })),
+            AutoDownloadSubcommand::Status => Ok(
+                json!({ "isHooked": false, "pid": null, "supported": weflow_core::image_download::supported() }),
+            ),
         },
         Commands::Image(command) => Ok(match &command.command {
             ImageSubcommand::AutoDownload { .. } => unreachable!("handled above"),
-            ImageSubcommand::Decrypt { target, force } => hub.image_decrypt(&target.payload(*force)).to_json(),
-            ImageSubcommand::ResolveCache { target } => hub.image_resolve_cache(&target.payload(false)).to_json(),
+            ImageSubcommand::Decrypt { target, force } => {
+                hub.image_decrypt(&target.payload(*force)).to_json()
+            }
+            ImageSubcommand::ResolveCache { target } => {
+                hub.image_resolve_cache(&target.payload(false)).to_json()
+            }
             ImageSubcommand::ResolveBatch { payloads_json } => {
-                let list: Vec<Value> = serde_json::from_str(payloads_json).map_err(|e| AppError::usage(format!("payloads_json must be a JSON array: {e}")))?;
-                let payloads: Vec<_> = list.iter().map(weflow_core::services::ImagePayload::from_json).collect();
+                let list: Vec<Value> = serde_json::from_str(payloads_json).map_err(|e| {
+                    AppError::usage(format!("payloads_json must be a JSON array: {e}"))
+                })?;
+                let payloads: Vec<_> = list
+                    .iter()
+                    .map(weflow_core::services::ImagePayload::from_json)
+                    .collect();
                 hub.image_resolve_cache_batch(&payloads)
             }
             ImageSubcommand::ClearCache => hub.image_clear_cache(),
         }),
         Commands::Video(command) => match &command.command {
-            VideoSubcommand::Info { md5, no_poster, file_url } => hub.video_info(md5, !*no_poster, if *file_url { weflow_core::video::PosterFormat::FileUrl } else { weflow_core::video::PosterFormat::DataUrl }),
-            VideoSubcommand::ParseMd5 { content } => Ok(serde_json::json!({ "md5": weflow_core::video::parse_video_md5(content) })),
+            VideoSubcommand::Info {
+                md5,
+                no_poster,
+                file_url,
+            } => hub.video_info(
+                md5,
+                !*no_poster,
+                if *file_url {
+                    weflow_core::video::PosterFormat::FileUrl
+                } else {
+                    weflow_core::video::PosterFormat::DataUrl
+                },
+            ),
+            VideoSubcommand::ParseMd5 { content } => {
+                Ok(serde_json::json!({ "md5": weflow_core::video::parse_video_md5(content) }))
+            }
         },
         Commands::Serve(command) => handle_serve(command, &hub).await,
         Commands::Backup(command) => handle_backup(command, &hub),
-        Commands::Cache(CacheCommand { command: CacheSubcommand::ClearAll }) => {
+        Commands::Cache(CacheCommand {
+            command: CacheSubcommand::ClearAll,
+        }) => {
             let r = hub.cache_clear_all();
             if r["success"] != true {
-                return Err(AppError::runtime(r["error"].as_str().unwrap_or("clearing the caches failed").to_string()));
+                return Err(AppError::runtime(
+                    r["error"]
+                        .as_str()
+                        .unwrap_or("clearing the caches failed")
+                        .to_string(),
+                ));
             }
             Ok(r)
         }
@@ -1116,8 +1235,14 @@ fn handle_config(
             }
         }
         ConfigSubcommand::Set { key, value } => {
-            if matches!(key.as_str(), "progress_delay_seconds" | "progressDelaySeconds") && weflow_core::output::parse_delay(value).is_none() {
-                return Err(AppError::usage(format!("invalid value '{value}' for {key}; use a whole number of seconds (0 or more)")));
+            if matches!(
+                key.as_str(),
+                "progress_delay_seconds" | "progressDelaySeconds"
+            ) && weflow_core::output::parse_delay(value).is_none()
+            {
+                return Err(AppError::usage(format!(
+                    "invalid value '{value}' for {key}; use a whole number of seconds (0 or more)"
+                )));
             }
             let value = parse_config_value(value);
             config.set_key(cli.profile.as_deref(), key, value)?;
@@ -1230,31 +1355,58 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             AntiRevokeSubcommand::Install { sessions } => hub.anti_revoke("install", sessions),
             AntiRevokeSubcommand::Uninstall { sessions } => hub.anti_revoke("uninstall", sessions),
         },
-        ChatSubcommand::Message { session_id, local_id, server_id } => match (local_id, server_id) {
+        ChatSubcommand::Message {
+            session_id,
+            local_id,
+            server_id,
+        } => match (local_id, server_id) {
             (Some(id), None) => hub.chat_message_by_id(session_id, *id),
             (None, Some(svr)) => hub.chat_message_by_server_id(session_id, svr),
-            _ => Err(AppError::usage("pass exactly one of --local-id or --server-id")),
+            _ => Err(AppError::usage(
+                "pass exactly one of --local-id or --server-id",
+            )),
         },
         ChatSubcommand::Dates { session_id } => hub.chat_dates(session_id),
         ChatSubcommand::DateCounts { session_id } => hub.chat_date_counts(session_id),
         ChatSubcommand::Counts { sessions } => hub.chat_counts(sessions),
         ChatSubcommand::Statuses { usernames } => hub.chat_statuses(usernames),
-        ChatSubcommand::Detail { session_id, fast, extra } => match (fast, extra) {
+        ChatSubcommand::Detail {
+            session_id,
+            fast,
+            extra,
+        } => match (fast, extra) {
             (true, false) => hub.chat_detail_fast(session_id),
             (false, true) => hub.chat_detail_extra(session_id),
             _ => hub.chat_detail(session_id),
         },
         ChatSubcommand::MarkRead => hub.chat_mark_all_read(),
         ChatSubcommand::TabCounts => hub.chat_tab_counts(),
-        ChatSubcommand::ExportStats { sessions, start, end, no_relations } => {
+        ChatSubcommand::ExportStats {
+            sessions,
+            start,
+            end,
+            no_relations,
+        } => {
             let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-            hub.chat_export_stats(sessions, b.unwrap_or(0), e.map(|x| x - 1).unwrap_or(0), !no_relations)
+            hub.chat_export_stats(
+                sessions,
+                b.unwrap_or(0),
+                e.map(|x| x - 1).unwrap_or(0),
+                !no_relations,
+            )
         }
         ChatSubcommand::GroupHint { chatroom_id, set } => match set {
             Some(count) => hub.set_group_hint(chatroom_id, *count),
             None => hub.get_group_hint(chatroom_id),
         },
-        ChatSubcommand::Resources { session, types, start, end, limit, offset } => {
+        ChatSubcommand::Resources {
+            session,
+            types,
+            start,
+            end,
+            limit,
+            offset,
+        } => {
             let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
             hub.chat_resources(&weflow_core::services::ResourceQuery {
                 session_id: session.clone(),
@@ -1267,42 +1419,98 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         }
         ChatSubcommand::Images { session_id } => hub.chat_all_images(session_id),
         ChatSubcommand::VoiceMessages { session_id } => hub.chat_all_voices(session_id),
-        ChatSubcommand::MediaStream { session, media_type, start, end, limit, offset } => {
+        ChatSubcommand::MediaStream {
+            session,
+            media_type,
+            start,
+            end,
+            limit,
+            offset,
+        } => {
             let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-            hub.chat_media_stream(session.as_deref(), media_type, b.unwrap_or(0), e.map(|x| x - 1).unwrap_or(0), *limit, *offset)
+            hub.chat_media_stream(
+                session.as_deref(),
+                media_type,
+                b.unwrap_or(0),
+                e.map(|x| x - 1).unwrap_or(0),
+                *limit,
+                *offset,
+            )
         }
-        ChatSubcommand::TransferNames { chatroom_id, payer, receiver } => hub.chat_transfer_names(chatroom_id, payer, receiver),
+        ChatSubcommand::TransferNames {
+            chatroom_id,
+            payer,
+            receiver,
+        } => hub.chat_transfer_names(chatroom_id, payer, receiver),
         ChatSubcommand::Voice { session_id, out } => {
             let out_path = out.as_deref().unwrap_or(Path::new("."));
-            hub.export_media(Some(session_id), out_path, "voice", None, None).await
+            hub.export_media(Some(session_id), out_path, "voice", None, None)
+                .await
         }
-        ChatSubcommand::VoiceData { session_id, msg_id, create_time, server_id, sender, out } => {
-            let wav = hub.voice_data(session_id, msg_id, *create_time, server_id.as_deref(), sender.as_deref())?;
+        ChatSubcommand::VoiceData {
+            session_id,
+            msg_id,
+            create_time,
+            server_id,
+            sender,
+            out,
+        } => {
+            let wav = hub.voice_data(
+                session_id,
+                msg_id,
+                *create_time,
+                server_id.as_deref(),
+                sender.as_deref(),
+            )?;
             match out {
                 Some(path) => {
                     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-                        std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(format!("failed to create {}: {e}", parent.display())))?;
+                        std::fs::create_dir_all(parent).map_err(|e| {
+                            AppError::runtime(format!("failed to create {}: {e}", parent.display()))
+                        })?;
                     }
-                    std::fs::write(path, &wav).map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
-                    Ok(serde_json::json!({ "success": true, "path": path.to_string_lossy(), "bytes": wav.len() }))
+                    std::fs::write(path, &wav).map_err(|e| {
+                        AppError::runtime(format!("failed to write {}: {e}", path.display()))
+                    })?;
+                    Ok(
+                        serde_json::json!({ "success": true, "path": path.to_string_lossy(), "bytes": wav.len() }),
+                    )
                 }
                 None => {
                     use base64::Engine;
-                    Ok(serde_json::json!({ "success": true, "data": base64::engine::general_purpose::STANDARD.encode(&wav) }))
+                    Ok(
+                        serde_json::json!({ "success": true, "data": base64::engine::general_purpose::STANDARD.encode(&wav) }),
+                    )
                 }
             }
         }
-        ChatSubcommand::ImageData { session_id, msg_id, out } => {
+        ChatSubcommand::ImageData {
+            session_id,
+            msg_id,
+            out,
+        } => {
             let bytes = hub.image_data_for_message(session_id, msg_id)?;
             if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-                std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(format!("failed to create {}: {e}", parent.display())))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    AppError::runtime(format!("failed to create {}: {e}", parent.display()))
+                })?;
             }
-            std::fs::write(out, &bytes).map_err(|e| AppError::runtime(format!("failed to write {}: {e}", out.display())))?;
-            Ok(serde_json::json!({ "success": true, "path": out.to_string_lossy(), "bytes": bytes.len() }))
+            std::fs::write(out, &bytes).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", out.display()))
+            })?;
+            Ok(
+                serde_json::json!({ "success": true, "path": out.to_string_lossy(), "bytes": bytes.len() }),
+            )
         }
-        ChatSubcommand::VoiceCache { session_id, msg_id } => Ok(hub.voice_resolve_cache(session_id, msg_id)),
-        ChatSubcommand::VoicePreload { session_id, messages_json } => {
-            let messages: Vec<Value> = serde_json::from_str(messages_json).map_err(|e| AppError::usage(format!("messages_json must be a JSON array: {e}")))?;
+        ChatSubcommand::VoiceCache { session_id, msg_id } => {
+            Ok(hub.voice_resolve_cache(session_id, msg_id))
+        }
+        ChatSubcommand::VoicePreload {
+            session_id,
+            messages_json,
+        } => {
+            let messages: Vec<Value> = serde_json::from_str(messages_json)
+                .map_err(|e| AppError::usage(format!("messages_json must be a JSON array: {e}")))?;
             hub.voice_preload(session_id, &messages)
         }
         ChatSubcommand::Emoji { session_id, out } => hub.emoji_download(session_id, out).await,
@@ -1338,20 +1546,46 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             let data = hub.footprint()?;
             write_export("footprint", format.as_deref(), out, &data)
         }
-        ExportSubcommand::Media { out, session, r#type, start, end } => {
+        ExportSubcommand::Media {
+            out,
+            session,
+            r#type,
+            start,
+            end,
+        } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
-            hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts).await
+            hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts)
+                .await
         }
-        ExportSubcommand::Messages { session_id, start, end, out, format, sender, display_name, excel_compact, media } => {
+        ExportSubcommand::Messages {
+            session_id,
+            start,
+            end,
+            out,
+            format,
+            sender,
+            display_name,
+            excel_compact,
+            media,
+        } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
             let fmt = format.to_ascii_lowercase();
             let media_opts = parse_media_selection(media)?;
             let parse_display = |s: &str| {
-                weflow_core::export_msg::DisplayPref::parse(s).ok_or_else(|| AppError::usage("--display-name must be group-nickname, remark or nickname"))
+                weflow_core::export_msg::DisplayPref::parse(s).ok_or_else(|| {
+                    AppError::usage("--display-name must be group-nickname, remark or nickname")
+                })
             };
             if fmt == "txt" && !media_opts.enabled {
                 let display = display_name.as_deref().map(parse_display).transpose()?;
-                return hub.export_messages_txt(session_id, start_ts, end_ts, out, sender.as_deref(), display);
+                return hub.export_messages_txt(
+                    session_id,
+                    start_ts,
+                    end_ts,
+                    out,
+                    sender.as_deref(),
+                    display,
+                );
             }
             let ext = match fmt.as_str() {
                 "txt" => "txt",
@@ -1370,7 +1604,16 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 }
             };
             let display_pref = parse_display(display_name.as_deref().unwrap_or("remark"))?;
-            let safe_name: String = session_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '@' || c == '.' { c } else { '_' }).collect();
+            let safe_name: String = session_id
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '@' || c == '.' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
             let target = export_path(out, &format!("{safe_name}.{ext}"));
             let request = weflow_core::services::MessageExportRequest {
                 session_id: session_id.clone(),
@@ -1383,7 +1626,8 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 excel_compact: *excel_compact,
             };
             if media_opts.enabled {
-                hub.export_messages_with_media(&request, &target, &media_opts).await
+                hub.export_messages_with_media(&request, &target, &media_opts)
+                    .await
             } else {
                 hub.export_messages(&request, &target)
             }
@@ -1394,14 +1638,24 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
 /// `--media image,voice` / `--media all` → the media kinds to copy next to a message export.
 fn parse_media_selection(values: &[String]) -> Result<weflow_core::api::ApiMediaOptions, AppError> {
     let mut opts = weflow_core::api::ApiMediaOptions::default();
-    for v in values.iter().map(|v| v.trim().to_ascii_lowercase()).filter(|v| !v.is_empty()) {
+    for v in values
+        .iter()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty())
+    {
         match v.as_str() {
-            "all" => (opts.images, opts.voices, opts.videos, opts.emojis) = (true, true, true, true),
+            "all" => {
+                (opts.images, opts.voices, opts.videos, opts.emojis) = (true, true, true, true)
+            }
             "image" | "images" => opts.images = true,
             "voice" | "voices" => opts.voices = true,
             "video" | "videos" => opts.videos = true,
             "emoji" | "emojis" | "sticker" | "stickers" => opts.emojis = true,
-            other => return Err(AppError::usage(format!("unknown media kind: {other}; use image, voice, video, emoji or all"))),
+            other => {
+                return Err(AppError::usage(format!(
+                    "unknown media kind: {other}; use image, voice, video, emoji or all"
+                )))
+            }
         }
     }
     opts.enabled = opts.images || opts.voices || opts.videos || opts.emojis;
@@ -1414,9 +1668,15 @@ fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
     if parts.len() != 3 {
         return Err(format!("invalid date '{s}'; use YYYY-MM-DD"));
     }
-    let y: i32 = parts[0].parse().map_err(|_| format!("invalid year in '{s}'"))?;
-    let m: u32 = parts[1].parse().map_err(|_| format!("invalid month in '{s}'"))?;
-    let d: u32 = parts[2].parse().map_err(|_| format!("invalid day in '{s}'"))?;
+    let y: i32 = parts[0]
+        .parse()
+        .map_err(|_| format!("invalid year in '{s}'"))?;
+    let m: u32 = parts[1]
+        .parse()
+        .map_err(|_| format!("invalid month in '{s}'"))?;
+    let d: u32 = parts[2]
+        .parse()
+        .map_err(|_| format!("invalid day in '{s}'"))?;
     if !(1970..=2100).contains(&y) {
         return Err(format!("invalid year in '{s}'; use 1970-2100"));
     }
@@ -1425,7 +1685,13 @@ fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
     }
     let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
     let dim = match m {
-        2 => if leap { 29 } else { 28 },
+        2 => {
+            if leap {
+                29
+            } else {
+                28
+            }
+        }
         4 | 6 | 9 | 11 => 30,
         _ => 31,
     };
@@ -1438,24 +1704,39 @@ fn parse_date_parts(s: &str) -> Result<(i32, u32, u32), String> {
 /// Unix time of 00:00 on that date in the machine's local time zone (the zone `chat dates` and the statistics use).
 fn parse_date_local(s: &str) -> Result<i64, String> {
     let (y, m, d) = parse_date_parts(s)?;
-    weflow_core::message::local_midnight(y, m, d).ok_or_else(|| format!("'{s}' does not exist in the local time zone"))
+    weflow_core::message::local_midnight(y, m, d)
+        .ok_or_else(|| format!("'{s}' does not exist in the local time zone"))
 }
 
 /// Unix time of 00:00 on the day after that date (a 23- or 25-hour day is handled by the zone rules).
 fn parse_next_date_local(s: &str) -> Result<i64, String> {
     let (y, m, d) = parse_date_parts(s)?;
-    weflow_core::message::local_midnight_after(y, m, d).ok_or_else(|| format!("'{s}' does not exist in the local time zone"))
+    weflow_core::message::local_midnight_after(y, m, d)
+        .ok_or_else(|| format!("'{s}' does not exist in the local time zone"))
 }
 
 /// Parses an optional `--start` / `--end` pair (`end` becomes the exclusive next-midnight bound) and
 /// rejects a start that is after the end.
 /// `--start` / `--end` dates (local time). The end is returned exclusive (next midnight).
-fn date_range_args(start: Option<&str>, end: Option<&str>) -> AppResult<(Option<i64>, Option<i64>)> {
-    let b = start.map(parse_date_local).transpose().map_err(AppError::usage)?;
-    let e = end.map(parse_next_date_local).transpose().map_err(AppError::usage)?;
+fn date_range_args(
+    start: Option<&str>,
+    end: Option<&str>,
+) -> AppResult<(Option<i64>, Option<i64>)> {
+    let b = start
+        .map(parse_date_local)
+        .transpose()
+        .map_err(AppError::usage)?;
+    let e = end
+        .map(parse_next_date_local)
+        .transpose()
+        .map_err(AppError::usage)?;
     if let (Some(b), Some(e)) = (b, e) {
         if b >= e {
-            return Err(AppError::usage(format!("--start ({}) is after --end ({})", start.unwrap_or(""), end.unwrap_or(""))));
+            return Err(AppError::usage(format!(
+                "--start ({}) is after --end ({})",
+                start.unwrap_or(""),
+                end.unwrap_or("")
+            )));
         }
     }
     Ok((b, e))
@@ -1466,11 +1747,21 @@ fn handle_analytics(command: &AnalyticsCommand, hub: &ServiceHub) -> AppResult<V
         AnalyticsSubcommand::Overall { force } => hub.analytics_overall_statistics(*force),
         AnalyticsSubcommand::Rankings { limit, start, end } => {
             let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-            Ok(json!(hub.analytics_contact_rankings(*limit, b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0))?))
+            Ok(json!(hub.analytics_contact_rankings(
+                *limit,
+                b.unwrap_or(0),
+                e.map(|e| e - 1).unwrap_or(0)
+            )?))
         }
         AnalyticsSubcommand::Time => hub.analytics_time_distribution(),
         AnalyticsSubcommand::Excluded { set } => match set {
-            Some(list) => Ok(json!(hub.analytics_set_excluded_usernames(&list.iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>())?)),
+            Some(list) => Ok(json!(hub.analytics_set_excluded_usernames(
+                &list
+                    .iter()
+                    .filter(|s| !s.is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            )?)),
             None => Ok(json!(hub.analytics_excluded_usernames()?)),
         },
         AnalyticsSubcommand::ExcludeCandidates => Ok(json!(hub.analytics_exclude_candidates()?)),
@@ -1488,35 +1779,80 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
     }
     match &command.command {
         GroupSubcommand::List => Ok(json!(hub.group_chats()?)),
-        GroupSubcommand::Members { chatroom_id, counts, refresh } => {
-            let (members, from_cache, updated_at) = hub.group_members_panel(chatroom_id, *refresh, *counts)?;
-            Ok(json!({ "chatroomId": chatroom_id, "count": members.len(), "fromCache": from_cache, "updatedAt": updated_at, "members": members }))
+        GroupSubcommand::Members {
+            chatroom_id,
+            counts,
+            refresh,
+        } => {
+            let (members, from_cache, updated_at) =
+                hub.group_members_panel(chatroom_id, *refresh, *counts)?;
+            Ok(
+                json!({ "chatroomId": chatroom_id, "count": members.len(), "fromCache": from_cache, "updatedAt": updated_at, "members": members }),
+            )
         }
-        GroupSubcommand::Ranking { chatroom_id, limit, start, end } => {
+        GroupSubcommand::Ranking {
+            chatroom_id,
+            limit,
+            start,
+            end,
+        } => {
             let (b, e) = range(start, end)?;
-            Ok(json!(hub.group_message_ranking(chatroom_id, *limit, b, e)?))
+            Ok(json!(hub.group_message_ranking(
+                chatroom_id,
+                *limit,
+                b,
+                e
+            )?))
         }
-        GroupSubcommand::Hours { chatroom_id, start, end } => {
+        GroupSubcommand::Hours {
+            chatroom_id,
+            start,
+            end,
+        } => {
             let (b, e) = range(start, end)?;
             hub.group_active_hours(chatroom_id, b, e)
         }
-        GroupSubcommand::Media { chatroom_id, start, end } => {
+        GroupSubcommand::Media {
+            chatroom_id,
+            start,
+            end,
+        } => {
             let (b, e) = range(start, end)?;
             hub.group_media_stats(chatroom_id, b, e)
         }
-        GroupSubcommand::Member { chatroom_id, username, start, end } => {
+        GroupSubcommand::Member {
+            chatroom_id,
+            username,
+            start,
+            end,
+        } => {
             let (b, e) = range(start, end)?;
             hub.group_member_analytics(chatroom_id, username, b, e)
         }
-        GroupSubcommand::MemberMessages { chatroom_id, username, limit, cursor, start, end } => {
+        GroupSubcommand::MemberMessages {
+            chatroom_id,
+            username,
+            limit,
+            cursor,
+            start,
+            end,
+        } => {
             let (b, e) = range(start, end)?;
             hub.group_member_messages(chatroom_id, username, b, e, *limit, *cursor)
         }
-        GroupSubcommand::ExportMemberMessages { chatroom_id, username, out, start, end } => {
+        GroupSubcommand::ExportMemberMessages {
+            chatroom_id,
+            username,
+            out,
+            start,
+            end,
+        } => {
             let (b, e) = range(start, end)?;
             hub.group_export_member_messages(chatroom_id, username, out, b, e)
         }
-        GroupSubcommand::ExportMembers { chatroom_id, out } => hub.group_export_members(chatroom_id, out),
+        GroupSubcommand::ExportMembers { chatroom_id, out } => {
+            hub.group_export_members(chatroom_id, out)
+        }
     }
 }
 
@@ -1527,7 +1863,11 @@ fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> 
             AnnualSubcommand::Generate { year } => hub.report_annual(*year),
         },
         ReportSubcommand::Dual { command } => match command {
-            DualSubcommand::Generate { friend, year, exclude_words } => hub.report_dual(friend, *year, exclude_words),
+            DualSubcommand::Generate {
+                friend,
+                year,
+                exclude_words,
+            } => hub.report_dual(friend, *year, exclude_words),
         },
     }
 }
@@ -1538,13 +1878,34 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
         SnsSubcommand::DebugResource { url } => {
             let r = hub.sns_debug_resource(url).await;
             if r["success"] != true {
-                return Err(AppError::runtime(r["error"].as_str().unwrap_or("request failed").to_string()));
+                return Err(AppError::runtime(
+                    r["error"].as_str().unwrap_or("request failed").to_string(),
+                ));
             }
             Ok(r)
         }
-        SnsSubcommand::Timeline { limit, offset, users, keyword, start, end, with_media } => {
-            let posts = hub.sns_timeline_query(&SnsTimelineQuery { limit: *limit, offset: *offset, usernames: users.clone(), keyword: keyword.clone(), start: *start, end: *end })?;
-            let posts = if *with_media { hub.sns_enrich_timeline_media(posts, "", true, true).await } else { posts };
+        SnsSubcommand::Timeline {
+            limit,
+            offset,
+            users,
+            keyword,
+            start,
+            end,
+            with_media,
+        } => {
+            let posts = hub.sns_timeline_query(&SnsTimelineQuery {
+                limit: *limit,
+                offset: *offset,
+                usernames: users.clone(),
+                keyword: keyword.clone(),
+                start: *start,
+                end: *end,
+            })?;
+            let posts = if *with_media {
+                hub.sns_enrich_timeline_media(posts, "", true, true).await
+            } else {
+                posts
+            };
             Ok(json!({ "timeline": posts }))
         }
         SnsSubcommand::Users => Ok(json!({ "usernames": hub.sns_usernames_list()? })),
@@ -1553,8 +1914,26 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
             Some(u) => hub.sns_user_post_stats(u),
             None => Ok(json!(hub.sns_user_post_counts(*prefer_cache)?)),
         },
-        SnsSubcommand::Export { out, format, users, keyword, start, end, media } => {
-            hub.sns_export_timeline(&SnsExportOptions { output_dir: out.clone(), format: format.clone(), usernames: users.clone(), keyword: keyword.clone(), export_media: *media, start: *start, end: *end, ..Default::default() }).await
+        SnsSubcommand::Export {
+            out,
+            format,
+            users,
+            keyword,
+            start,
+            end,
+            media,
+        } => {
+            hub.sns_export_timeline(&SnsExportOptions {
+                output_dir: out.clone(),
+                format: format.clone(),
+                usernames: users.clone(),
+                keyword: keyword.clone(),
+                export_media: *media,
+                start: *start,
+                end: *end,
+                ..Default::default()
+            })
+            .await
         }
         SnsSubcommand::Media { url, key, out } => {
             let fetched = hub.sns_fetch_media(url, key.as_deref()).await?;
@@ -1562,16 +1941,33 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
             match out {
                 Some(path) => {
                     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-                        std::fs::create_dir_all(parent).map_err(|e| AppError::runtime(format!("failed to create {}: {e}", parent.display())))?;
+                        std::fs::create_dir_all(parent).map_err(|e| {
+                            AppError::runtime(format!("failed to create {}: {e}", parent.display()))
+                        })?;
                     }
-                    std::fs::write(path, &data).map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
-                    Ok(json!({ "out": path.to_string_lossy(), "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path }))
+                    std::fs::write(path, &data).map_err(|e| {
+                        AppError::runtime(format!("failed to write {}: {e}", path.display()))
+                    })?;
+                    Ok(
+                        json!({ "out": path.to_string_lossy(), "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path }),
+                    )
                 }
-                None => Ok(json!({ "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path })),
+                None => Ok(
+                    json!({ "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path }),
+                ),
             }
         }
-        SnsSubcommand::DownloadEmoji { url, encrypt_url, aes_key } => hub.sns_download_emoji(url, encrypt_url.as_deref(), aes_key.as_deref()).await,
-        SnsSubcommand::DownloadImage { url, out } => hub.sns_download_image(url, out.as_deref()).await,
+        SnsSubcommand::DownloadEmoji {
+            url,
+            encrypt_url,
+            aes_key,
+        } => {
+            hub.sns_download_emoji(url, encrypt_url.as_deref(), aes_key.as_deref())
+                .await
+        }
+        SnsSubcommand::DownloadImage { url, out } => {
+            hub.sns_download_image(url, out.as_deref()).await
+        }
         SnsSubcommand::BlockDelete { action } => match action {
             TriggerAction::Check => hub.sns_block_delete_status(),
             TriggerAction::Install => hub.sns_block_delete_install(),
@@ -1584,17 +1980,38 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
 fn handle_biz(command: &BizCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
         BizSubcommand::Accounts => hub.biz_accounts(),
-        BizSubcommand::Messages { username, limit, offset } => hub.biz_messages(username, *limit, *offset),
+        BizSubcommand::Messages {
+            username,
+            limit,
+            offset,
+        } => hub.biz_messages(username, *limit, *offset),
         BizSubcommand::PayRecords { limit, offset } => hub.biz_pay_records(*limit, *offset),
     }
 }
 
-fn insight_filters(session: &Option<String>, keyword: &Option<String>, start: &Option<i64>, end: &Option<i64>, limit: &Option<i64>, offset: &Option<i64>) -> weflow_core::insight::RecordFilters {
-    weflow_core::insight::RecordFilters { keyword: keyword.clone().unwrap_or_default(), session_id: session.clone().unwrap_or_default(), start_time: start.unwrap_or(0), end_time: end.unwrap_or(0), limit: *limit, offset: *offset }
+fn insight_filters(
+    session: &Option<String>,
+    keyword: &Option<String>,
+    start: &Option<i64>,
+    end: &Option<i64>,
+    limit: &Option<i64>,
+    offset: &Option<i64>,
+) -> weflow_core::insight::RecordFilters {
+    weflow_core::insight::RecordFilters {
+        keyword: keyword.clone().unwrap_or_default(),
+        session_id: session.clone().unwrap_or_default(),
+        start_time: start.unwrap_or(0),
+        end_time: end.unwrap_or(0),
+        limit: *limit,
+        offset: *offset,
+    }
 }
 
 fn print_insight(r: &weflow_core::insight::InsightRecord) {
-    eprintln!("{}", serde_json::to_string(&json!({ "type": "insight", "record": r.summary() })).unwrap());
+    eprintln!(
+        "{}",
+        serde_json::to_string(&json!({ "type": "insight", "record": r.summary() })).unwrap()
+    );
 }
 
 async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
@@ -1603,30 +2020,56 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
         InsightSubcommand::Trigger { session_id } => match session_id {
             None => Ok(hub.insight_trigger_test().await),
             Some(id) => {
-                let name = hub.chat_contact_avatar(id).map(|(_, n)| n).unwrap_or_else(|| id.clone());
-                match hub.insight_generate(id, &name, weflow_core::services::InsightTrigger::Test, None).await {
+                let name = hub
+                    .chat_contact_avatar(id)
+                    .map(|(_, n)| n)
+                    .unwrap_or_else(|| id.clone());
+                match hub
+                    .insight_generate(id, &name, weflow_core::services::InsightTrigger::Test, None)
+                    .await
+                {
                     Some(r) => Ok(json!({ "success": true, "record": r.summary() })),
-                    None => Ok(json!({ "success": false, "message": "no insight was generated (AI not configured, request failed, or the model answered SKIP)" })),
+                    None => Ok(
+                        json!({ "success": false, "message": "no insight was generated (AI not configured, request failed, or the model answered SKIP)" }),
+                    ),
                 }
             }
         },
-        InsightSubcommand::Records { keyword, session, start, end, limit, offset } => Ok(hub.insight_list_records(&insight_filters(session, keyword, start, end, limit, offset))),
+        InsightSubcommand::Records {
+            keyword,
+            session,
+            start,
+            end,
+            limit,
+            offset,
+        } => Ok(hub.insight_list_records(&insight_filters(
+            session, keyword, start, end, limit, offset,
+        ))),
         InsightSubcommand::Get { id } => Ok(hub.insight_get_record(id)),
         InsightSubcommand::MarkRead { id } => Ok(hub.insight_mark_record_read(id)),
-        InsightSubcommand::Clear { session, start, end } => Ok(hub.insight_clear_records(&insight_filters(session, &None, start, end, &None, &None))),
+        InsightSubcommand::Clear {
+            session,
+            start,
+            end,
+        } => {
+            Ok(hub
+                .insight_clear_records(&insight_filters(session, &None, start, end, &None, &None)))
+        }
         InsightSubcommand::TodayStats => Ok(hub.insight_today_stats()),
         InsightSubcommand::Scan => {
             let mut found = Vec::new();
-            let n = hub.insight_silence_scan(&mut |r| {
-                print_insight(r);
-                found.push(r.summary());
-            })
-            .await;
+            let n = hub
+                .insight_silence_scan(&mut |r| {
+                    print_insight(r);
+                    found.push(r.summary());
+                })
+                .await;
             Ok(json!({ "generated": n, "records": found }))
         }
         InsightSubcommand::Footprint => hub.insight_footprint(),
         InsightSubcommand::FootprintSummary { payload_json } => {
-            let payload: Value = serde_json::from_str(payload_json).map_err(|e| AppError::usage(format!("payload_json must be JSON: {e}")))?;
+            let payload: Value = serde_json::from_str(payload_json)
+                .map_err(|e| AppError::usage(format!("payload_json must be JSON: {e}")))?;
             Ok(hub.insight_footprint_summary(&payload).await)
         }
     }
@@ -1637,12 +2080,18 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
 fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
     use std::sync::atomic::Ordering;
     std::thread::spawn(move || {
-        let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return };
+        let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        else {
+            return;
+        };
         rt.block_on(async move {
             let mut next_scan = std::time::Instant::now() + std::time::Duration::from_secs(3 * 60);
             while !stop.load(Ordering::Relaxed) {
                 if hub.insight_enabled() {
-                    let notify = hub.config_value("aiInsightNotificationEnabled") != Value::Bool(false);
+                    let notify =
+                        hub.config_value("aiInsightNotificationEnabled") != Value::Bool(false);
                     let mut emit = |r: &weflow_core::insight::InsightRecord| {
                         if notify {
                             print_insight(r);
@@ -1650,8 +2099,14 @@ fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic:
                     };
                     if std::time::Instant::now() >= next_scan {
                         hub.insight_silence_scan(&mut emit).await;
-                        let hours = hub.config_value("aiInsightScanIntervalHours").as_f64().filter(|h| *h != 0.0).unwrap_or(4.0).max(0.1);
-                        next_scan = std::time::Instant::now() + std::time::Duration::from_secs_f64(hours * 3600.0);
+                        let hours = hub
+                            .config_value("aiInsightScanIntervalHours")
+                            .as_f64()
+                            .filter(|h| *h != 0.0)
+                            .unwrap_or(4.0)
+                            .max(0.1);
+                        next_scan = std::time::Instant::now()
+                            + std::time::Duration::from_secs_f64(hours * 3600.0);
                     }
                     hub.insight_analyze_activity(&mut emit).await;
                 }
@@ -1669,7 +2124,14 @@ fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic:
 fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
     hub.config_value("autoDownloadWhitelist")
         .as_array()
-        .map(|a| a.iter().filter_map(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -1680,13 +2142,26 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         ));
     }
 
-    let cfg_str = |key: &str| hub.config_value(key).as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-    let host = command.host.clone().or_else(|| cfg_str("httpApiHost")).unwrap_or_else(|| "127.0.0.1".into());
+    let cfg_str = |key: &str| {
+        hub.config_value(key)
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let host = command
+        .host
+        .clone()
+        .or_else(|| cfg_str("httpApiHost"))
+        .unwrap_or_else(|| "127.0.0.1".into());
     let port = command
         .port
         .or_else(|| hub.config_value("httpApiPort").as_u64().map(|p| p as u16))
         .unwrap_or(5031);
-    let token = command.api_token.clone().or_else(|| cfg_str("httpApiToken"));
+    let token = command
+        .api_token
+        .clone()
+        .or_else(|| cfg_str("httpApiToken"));
     let addr = format!("{host}:{port}")
         .parse::<std::net::SocketAddr>()
         .map_err(|err| AppError::usage(format!("invalid listen address: {err}")))?;
@@ -1695,7 +2170,10 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         let svc = weflow_core::image_download::ImageAutoDownload::new(hub.runtime_dir());
         let started = svc.start(config_whitelist(hub));
         if started["success"] != true {
-            eprintln!("warning: image auto download not started: {}", started["error"].as_str().unwrap_or("unknown error"));
+            eprintln!(
+                "warning: image auto download not started: {}",
+                started["error"].as_str().unwrap_or("unknown error")
+            );
         }
         Some(svc)
     } else {
@@ -1751,7 +2229,8 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         host,
         port: listener.local_addr().map(|a| a.port()).unwrap_or(port),
         token,
-        push_enabled: command.message_push || hub.config_value("messagePushEnabled").as_bool() == Some(true),
+        push_enabled: command.message_push
+            || hub.config_value("messagePushEnabled").as_bool() == Some(true),
     };
     let server = async {
         if command.http {
@@ -1925,14 +2404,15 @@ fn filter_named_items(value: Value, needles: &[String]) -> Value {
 
 fn handle_backup(command: &BackupCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        BackupSubcommand::Create { out, no_images, no_voice, no_emojis } => {
-            hub.backup_create(out, !no_images, !no_voice, !no_emojis)
-        }
+        BackupSubcommand::Create {
+            out,
+            no_images,
+            no_voice,
+            no_emojis,
+        } => hub.backup_create(out, !no_images, !no_voice, !no_emojis),
         BackupSubcommand::Inspect { path } => hub.backup_inspect(path),
         BackupSubcommand::Restore { path, target } => {
-            let target_dir = target
-                .as_deref()
-                .unwrap_or_else(|| Path::new("."));
+            let target_dir = target.as_deref().unwrap_or_else(|| Path::new("."));
             hub.backup_restore(path, target_dir)
         }
     }
@@ -1958,7 +2438,15 @@ mod tests {
     fn dates_are_validated() {
         assert!(parse_date_local("2026-09-24").is_ok());
         assert!(parse_date_local("2024-02-29").is_ok());
-        for bad in ["2026-13-40", "2026-02-29", "2026-04-31", "2026-00-10", "1969-01-01", "abc", "2026-09"] {
+        for bad in [
+            "2026-13-40",
+            "2026-02-29",
+            "2026-04-31",
+            "2026-00-10",
+            "1969-01-01",
+            "abc",
+            "2026-09",
+        ] {
             assert!(parse_date_local(bad).is_err(), "{bad}");
         }
     }
@@ -1967,14 +2455,20 @@ mod tests {
     fn range_ends_are_the_next_local_midnight() {
         let (b, e) = date_range_args(Some("2026-09-30"), Some("2026-09-30")).unwrap();
         let day = e.unwrap() - b.unwrap();
-        assert!((23 * 3600..=25 * 3600).contains(&day), "one local day: {day}");
+        assert!(
+            (23 * 3600..=25 * 3600).contains(&day),
+            "one local day: {day}"
+        );
         assert_eq!(date_range_args(None, None).unwrap(), (None, None));
     }
 
     #[test]
     fn ranges_must_be_ordered() {
         assert!(date_range_args(Some("2026-09-01"), Some("2026-09-30")).is_ok());
-        assert!(date_range_args(Some("2026-09-30"), Some("2026-09-30")).is_ok(), "the end day is inclusive");
+        assert!(
+            date_range_args(Some("2026-09-30"), Some("2026-09-30")).is_ok(),
+            "the end day is inclusive"
+        );
         assert!(date_range_args(Some("2026-09-30"), Some("2026-09-01")).is_err());
         assert!(date_range_args(None, Some("2026-09-01")).is_ok());
     }

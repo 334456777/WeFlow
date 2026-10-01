@@ -19,7 +19,10 @@ const NOT_PRIVATE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail",
 const CHUNK: usize = 400;
 
 fn text(row: &Value, key: &str) -> String {
-    row.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    row.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn int(row: &Value, key: &str) -> i64 {
@@ -27,7 +30,10 @@ fn int(row: &Value, key: &str) -> i64 {
 }
 
 fn first_non_empty(row: &Value, keys: &[&str]) -> String {
-    keys.iter().map(|k| text(row, k)).find(|s| !s.is_empty()).unwrap_or_default()
+    keys.iter()
+        .map(|k| text(row, k))
+        .find(|s| !s.is_empty())
+        .unwrap_or_default()
 }
 
 fn placeholders(n: usize) -> String {
@@ -50,7 +56,10 @@ pub fn usernames_from_json(payload: &str) -> Vec<String> {
         Ok(Value::String(s)) => vec![s.trim().to_string()],
         _ => Vec::new(),
     };
-    items.into_iter().filter(|u| !u.is_empty() && seen.insert(u.clone())).collect()
+    items
+        .into_iter()
+        .filter(|u| !u.is_empty() && seen.insert(u.clone()))
+        .collect()
 }
 
 fn read_varint(buf: &[u8], mut i: usize) -> Option<(usize, usize)> {
@@ -74,7 +83,9 @@ fn is_member_id(id: &str) -> bool {
     }
     let mut chars = id.chars();
     chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-        && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '@' | '-'))
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '@' | '-'))
 }
 
 /// Extract `username -> group nickname` pairs from a `chat_room.ext_buffer`.
@@ -99,7 +110,9 @@ pub fn parse_group_nicknames(buf: &[u8]) -> BTreeMap<String, String> {
             i += 1;
             continue;
         }
-        let id = String::from_utf8_lossy(&buf[id_start..id_end]).trim().to_string();
+        let id = String::from_utf8_lossy(&buf[id_start..id_end])
+            .trim()
+            .to_string();
         if !is_member_id(&id) {
             i += 1;
             continue;
@@ -143,7 +156,10 @@ impl NativeAccount {
         for table in ["contact", "stranger"] {
             let wanted: Vec<&String> = usernames.iter().filter(|u| !found.contains(*u)).collect();
             for chunk in wanted.chunks(CHUNK) {
-                let sql = format!("select * from {table} where username in ({})", placeholders(chunk.len()));
+                let sql = format!(
+                    "select * from {table} where username in ({})",
+                    placeholders(chunk.len())
+                );
                 let params: Vec<&dyn ToSql> = chunk.iter().map(|u| *u as &dyn ToSql).collect();
                 for r in self.query(&self.contact_db(), &sql, &params)? {
                     found.insert(text(&r, "username"));
@@ -156,7 +172,11 @@ impl NativeAccount {
 
     /// Every row of `contact`.
     pub fn contacts(&self) -> Result<Value> {
-        Ok(Value::Array(self.query(&self.contact_db(), "select * from contact", &[])?))
+        Ok(Value::Array(self.query(
+            &self.contact_db(),
+            "select * from contact",
+            &[],
+        )?))
     }
 
     /// Rows for the given usernames; an empty list means every contact.
@@ -169,13 +189,21 @@ impl NativeAccount {
 
     /// One contact row, or `{}` when unknown.
     pub fn contact(&self, username: &str) -> Result<Value> {
-        Ok(self.contact_rows(&[username.to_string()])?.into_iter().next().unwrap_or_else(|| json!({})))
+        Ok(self
+            .contact_rows(&[username.to_string()])?
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| json!({})))
     }
 
     /// `{ "private": n, "group": n, "official": n, "former_friend": n }`.
     pub fn contact_type_counts(&self) -> Result<Value> {
         let (mut private, mut group, mut official, mut former) = (0, 0, 0, 0);
-        let rows = self.query(&self.contact_db(), "select username, local_type, quan_pin from contact", &[])?;
+        let rows = self.query(
+            &self.contact_db(),
+            "select username, local_type, quan_pin from contact",
+            &[],
+        )?;
         for r in &rows {
             let username = text(r, "username");
             if username.is_empty() {
@@ -191,7 +219,9 @@ impl NativeAccount {
                 former += 1;
             }
         }
-        Ok(json!({ "private": private, "group": group, "official": official, "former_friend": former }))
+        Ok(
+            json!({ "private": private, "group": group, "official": official, "former_friend": former }),
+        )
     }
 
     /// `{ username: name }`: remark, else nickname, else alias, else the username itself.
@@ -237,7 +267,10 @@ impl NativeAccount {
         let mut map = Map::new();
         for r in self.contact_rows(usernames)? {
             let u = text(&r, "username");
-            let friend = int(&r, "local_type") == 1 && !u.ends_with("@chatroom") && !u.starts_with("gh_") && !NOT_PRIVATE.contains(&u.as_str());
+            let friend = int(&r, "local_type") == 1
+                && !u.ends_with("@chatroom")
+                && !u.starts_with("gh_")
+                && !NOT_PRIVATE.contains(&u.as_str());
             map.insert(u, json!(friend));
         }
         Ok(Value::Object(map))
@@ -253,13 +286,20 @@ impl NativeAccount {
             let flag = int(&r, "flag");
             let muted = int(&r, "chat_room_notify") == 1 || flag & (1 << 9) != 0;
             let folded = flag & (1 << 28) != 0;
-            map.insert(text(&r, "username"), json!({ "isFolded": folded, "isMuted": muted }));
+            map.insert(
+                text(&r, "username"),
+                json!({ "isFolded": folded, "isMuted": muted }),
+            );
         }
         Ok(Value::Object(map))
     }
 
     fn room(&self, chatroom_id: &str) -> Result<Option<Value>> {
-        let rows = self.query(&self.contact_db(), "select id, username, owner, ext_buffer from chat_room where username = ?1", &[&chatroom_id])?;
+        let rows = self.query(
+            &self.contact_db(),
+            "select id, username, owner, ext_buffer from chat_room where username = ?1",
+            &[&chatroom_id],
+        )?;
         Ok(rows.into_iter().next())
     }
 
@@ -299,7 +339,11 @@ impl NativeAccount {
         let Some(room) = self.room(chatroom_id)? else {
             return Ok(json!({ "count": 0 }));
         };
-        let rows = self.query(&self.contact_db(), "select count(*) as n from chatroom_member where room_id = ?1", &[&int(&room, "id")])?;
+        let rows = self.query(
+            &self.contact_db(),
+            "select count(*) as n from chatroom_member where room_id = ?1",
+            &[&int(&room, "id")],
+        )?;
         Ok(json!({ "count": int(&rows[0], "n") }))
     }
 
@@ -319,7 +363,12 @@ impl NativeAccount {
             return Ok(json!({}));
         };
         let buf = decode_hex(&text(&room, "ext_buffer"));
-        Ok(Value::Object(parse_group_nicknames(&buf).into_iter().map(|(k, v)| (k, json!(v))).collect()))
+        Ok(Value::Object(
+            parse_group_nicknames(&buf)
+                .into_iter()
+                .map(|(k, v)| (k, json!(v)))
+                .collect(),
+        ))
     }
 
     /// `{ "ext_buffer": "<hex>" }`, empty object when the room is unknown.
@@ -335,7 +384,9 @@ fn decode_hex(s: &str) -> Vec<u8> {
     if s.len() % 2 != 0 {
         return Vec::new();
     }
-    (0..s.len() / 2).filter_map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()).collect()
+    (0..s.len() / 2)
+        .filter_map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok())
+        .collect()
 }
 
 #[cfg(test)]
@@ -378,13 +429,61 @@ mod tests {
             )
             .unwrap();
             // (id, username, local_type, alias, flag, remark, nick, quan_pin, big, small, notify)
-            type Row = (i64, &'static str, i64, &'static str, i64, &'static str, &'static str, &'static str, &'static str, &'static str, i64);
+            type Row = (
+                i64,
+                &'static str,
+                i64,
+                &'static str,
+                i64,
+                &'static str,
+                &'static str,
+                &'static str,
+                &'static str,
+                &'static str,
+                i64,
+            );
             let rows: [Row; 7] = [
                 (1, "wxid_me", 1, "", 0, "", "Me", "me", "", "", 0),
-                (2, "wxid_bob", 1, "bb", 0, "Bobby", "Bob", "bob", "http://big", "http://small", 0),
-                (3, "wxid_eve", 3, "", 0, "", "Eve", "eve", "", "http://eve-small", 0),
+                (
+                    2,
+                    "wxid_bob",
+                    1,
+                    "bb",
+                    0,
+                    "Bobby",
+                    "Bob",
+                    "bob",
+                    "http://big",
+                    "http://small",
+                    0,
+                ),
+                (
+                    3,
+                    "wxid_eve",
+                    3,
+                    "",
+                    0,
+                    "",
+                    "Eve",
+                    "eve",
+                    "",
+                    "http://eve-small",
+                    0,
+                ),
                 (4, "gh_news", 5, "", 0, "", "News", "news", "", "", 0),
-                (5, "room1@chatroom", 2, "", 1 << 28, "", "Room", "room", "", "", 1),
+                (
+                    5,
+                    "room1@chatroom",
+                    2,
+                    "",
+                    1 << 28,
+                    "",
+                    "Room",
+                    "room",
+                    "",
+                    "",
+                    1,
+                ),
                 (6, "medianote", 1, "", 0, "", "Note", "note", "", "", 0),
                 (7, "wxid_old", 0, "", 0, "", "Old", "old", "", "", 0),
             ];
@@ -394,10 +493,17 @@ mod tests {
                     params![r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10],
                 )
                 .unwrap();
-                c.execute("insert into name2id(rowid, username) values (?1, ?2)", params![r.0, r.1]).unwrap();
+                c.execute(
+                    "insert into name2id(rowid, username) values (?1, ?2)",
+                    params![r.0, r.1],
+                )
+                .unwrap();
             }
             c.execute("insert into chat_room(id, username, owner, ext_buffer) values (5, 'room1@chatroom', 'wxid_bob', ?1)", params![ext]).unwrap();
-            c.execute_batch("insert into chatroom_member(room_id, member_id) values (5,1),(5,2),(5,3)").unwrap();
+            c.execute_batch(
+                "insert into chatroom_member(room_id, member_id) values (5,1),(5,2),(5,3)",
+            )
+            .unwrap();
         });
         let cipher = PageCipher::derive(&KEY, &SALT);
         std::fs::write(dir.join("contact/contact.db"), encrypt_db(&db, &cipher)).unwrap();
@@ -414,8 +520,17 @@ mod tests {
         assert_eq!(acct.contact("wxid_bob").unwrap()["nick_name"], "Bob");
         assert_eq!(acct.contact("nobody").unwrap(), json!({}));
         assert_eq!(acct.contacts().unwrap().as_array().unwrap().len(), 7);
-        assert_eq!(acct.contacts_compact(&[]).unwrap().as_array().unwrap().len(), 7);
-        let some = acct.contacts_compact(&ids(&["wxid_bob", "gh_news", "nobody"])).unwrap();
+        assert_eq!(
+            acct.contacts_compact(&[])
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            7
+        );
+        let some = acct
+            .contacts_compact(&ids(&["wxid_bob", "gh_news", "nobody"]))
+            .unwrap();
         assert_eq!(some.as_array().unwrap().len(), 2);
     }
 
@@ -423,23 +538,41 @@ mod tests {
     fn type_counts_follow_the_desktop_rules() {
         let (acct, _d) = account("counts");
         // wxid_me + wxid_bob (medianote excluded), one group, one official, one former friend (local_type 0 with a pinyin)
-        assert_eq!(acct.contact_type_counts().unwrap(), json!({"private": 2, "group": 1, "official": 1, "former_friend": 1}));
+        assert_eq!(
+            acct.contact_type_counts().unwrap(),
+            json!({"private": 2, "group": 1, "official": 1, "former_friend": 1})
+        );
     }
 
     #[test]
     fn names_avatars_aliases_flags_status() {
         let (acct, _d) = account("names");
         let who = ids(&["wxid_bob", "wxid_eve", "nobody"]);
-        assert_eq!(acct.display_names(&who).unwrap(), json!({"wxid_bob": "Bobby", "wxid_eve": "Eve", "nobody": "nobody"}));
-        // big avatar wins, small is the fallback, none means no entry
-        assert_eq!(acct.avatar_urls(&who).unwrap(), json!({"wxid_bob": "http://big", "wxid_eve": "http://eve-small"}));
-        assert_eq!(acct.contact_alias_map(&who).unwrap(), json!({"wxid_bob": "bb"}));
         assert_eq!(
-            acct.contact_friend_flags(&ids(&["wxid_bob", "wxid_eve", "room1@chatroom"])).unwrap(),
+            acct.display_names(&who).unwrap(),
+            json!({"wxid_bob": "Bobby", "wxid_eve": "Eve", "nobody": "nobody"})
+        );
+        // big avatar wins, small is the fallback, none means no entry
+        assert_eq!(
+            acct.avatar_urls(&who).unwrap(),
+            json!({"wxid_bob": "http://big", "wxid_eve": "http://eve-small"})
+        );
+        assert_eq!(
+            acct.contact_alias_map(&who).unwrap(),
+            json!({"wxid_bob": "bb"})
+        );
+        assert_eq!(
+            acct.contact_friend_flags(&ids(&["wxid_bob", "wxid_eve", "room1@chatroom"]))
+                .unwrap(),
             json!({"wxid_bob": true, "wxid_eve": false, "room1@chatroom": false})
         );
-        let st = acct.contact_status(&ids(&["room1@chatroom", "wxid_bob"])).unwrap();
-        assert_eq!(st["room1@chatroom"], json!({"isFolded": true, "isMuted": true}));
+        let st = acct
+            .contact_status(&ids(&["room1@chatroom", "wxid_bob"]))
+            .unwrap();
+        assert_eq!(
+            st["room1@chatroom"],
+            json!({"isFolded": true, "isMuted": true})
+        );
         assert_eq!(st["wxid_bob"], json!({"isFolded": false, "isMuted": false}));
     }
 
@@ -448,15 +581,33 @@ mod tests {
         let (acct, _d) = account("group");
         let m = acct.group_members("room1@chatroom").unwrap();
         let members = m.as_array().unwrap();
-        let names: Vec<&str> = members.iter().map(|x| x["username"].as_str().unwrap()).collect();
+        let names: Vec<&str> = members
+            .iter()
+            .map(|x| x["username"].as_str().unwrap())
+            .collect();
         assert_eq!(names, ["wxid_me", "wxid_bob", "wxid_eve"]);
         assert_eq!(members[1]["isOwner"], true);
         assert!(members[0].get("isOwner").is_none());
         assert_eq!(members[1]["remark"], "Bobby");
-        assert_eq!(acct.group_member_count("room1@chatroom").unwrap(), json!({"count": 3}));
-        assert_eq!(acct.group_member_counts(&ids(&["room1@chatroom", "x@chatroom"])).unwrap(), json!({"room1@chatroom": 3, "x@chatroom": 0}));
-        assert_eq!(acct.group_nicknames("room1@chatroom").unwrap(), json!({"wxid_bob": "Bobby-in-room", "wxid_eve": "Eve!"}));
-        assert!(!acct.chat_room_ext_buffer("room1@chatroom").unwrap()["ext_buffer"].as_str().unwrap().is_empty());
+        assert_eq!(
+            acct.group_member_count("room1@chatroom").unwrap(),
+            json!({"count": 3})
+        );
+        assert_eq!(
+            acct.group_member_counts(&ids(&["room1@chatroom", "x@chatroom"]))
+                .unwrap(),
+            json!({"room1@chatroom": 3, "x@chatroom": 0})
+        );
+        assert_eq!(
+            acct.group_nicknames("room1@chatroom").unwrap(),
+            json!({"wxid_bob": "Bobby-in-room", "wxid_eve": "Eve!"})
+        );
+        assert!(
+            !acct.chat_room_ext_buffer("room1@chatroom").unwrap()["ext_buffer"]
+                .as_str()
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(acct.group_members("x@chatroom").unwrap(), json!([]));
         assert_eq!(acct.group_nicknames("x@chatroom").unwrap(), json!({}));
         assert_eq!(acct.chat_room_ext_buffer("x@chatroom").unwrap(), json!({}));

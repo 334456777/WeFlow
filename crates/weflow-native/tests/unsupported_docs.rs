@@ -19,10 +19,19 @@ fn read(rel: &str) -> String {
 #[test]
 fn every_refusing_function_is_documented_in_both_languages() {
     let names = refusing_functions(&read("src/wcdb.rs"));
-    assert!(names.len() >= 12, "the source scan found only {names:?}; did the stub layout change?");
-    for doc in ["../../docs/cli-unsupported.md", "../../docs/zh-CN/cli-unsupported.md"] {
+    assert!(
+        names.len() >= 12,
+        "the source scan found only {names:?}; did the stub layout change?"
+    );
+    for doc in [
+        "../../docs/cli-unsupported.md",
+        "../../docs/zh-CN/cli-unsupported.md",
+    ] {
         let text = read(doc);
-        let missing: Vec<&String> = names.iter().filter(|n| !text.contains(&format!("`{n}`"))).collect();
+        let missing: Vec<&String> = names
+            .iter()
+            .filter(|n| !text.contains(&format!("`{n}`")))
+            .collect();
         assert!(missing.is_empty(), "{doc} does not list: {missing:?}");
     }
 }
@@ -39,7 +48,10 @@ fn documented_functions_still_exist_and_still_refuse() {
         let n = &c[1];
         // only identifiers that look like native function names and exist as Wcdb methods
         if source.contains(&format!("pub fn {n}(")) {
-            assert!(names.iter().any(|x| x == n), "`{n}` is listed as unsupported but is implemented now");
+            assert!(
+                names.iter().any(|x| x == n),
+                "`{n}` is listed as unsupported but is implemented now"
+            );
         }
     }
 }

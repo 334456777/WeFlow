@@ -67,7 +67,11 @@ pub fn same_identity(a: &str, b: &str) -> bool {
     if a.is_empty() || b.is_empty() {
         return false;
     }
-    let suffixed = |long: &str, short: &str| long.len() == short.len() + 5 && long.starts_with(short) && long.as_bytes()[short.len()] == b'_';
+    let suffixed = |long: &str, short: &str| {
+        long.len() == short.len() + 5
+            && long.starts_with(short)
+            && long.as_bytes()[short.len()] == b'_'
+    };
     a == b || suffixed(&a, &b) || suffixed(&b, &a)
 }
 
@@ -85,7 +89,9 @@ fn configure_sqlite() {
 static SHARED_CACHE: OnceLock<Arc<Mutex<Cache>>> = OnceLock::new();
 
 fn shared_cache() -> Arc<Mutex<Cache>> {
-    SHARED_CACHE.get_or_init(|| Arc::new(Mutex::new(Cache::default()))).clone()
+    SHARED_CACHE
+        .get_or_init(|| Arc::new(Mutex::new(Cache::default())))
+        .clone()
 }
 
 pub struct NativeAccount {
@@ -117,7 +123,13 @@ fn stamp_of(db: &Path) -> Result<FileStamp> {
 }
 
 /// BLOB columns that carry binary payloads (protobuf and friends): always exposed as lowercase hex.
-const HEX_BLOB_COLUMNS: &[&str] = &["packed_info_data", "extra_buffer", "ext_buffer", "reserved0", "voice_data"];
+const HEX_BLOB_COLUMNS: &[&str] = &[
+    "packed_info_data",
+    "extra_buffer",
+    "ext_buffer",
+    "reserved0",
+    "voice_data",
+];
 
 /// Turn one SQLite value into JSON. zstd blobs (WCDB compresses some text columns) are inflated;
 /// other blobs become text when the column is a text column, hex when it is a binary one.
@@ -176,7 +188,8 @@ impl NativeAccount {
     /// Low-memory mode for long one-way reads (exports): the snapshots this handle uses keep a small page cache,
     /// so a pass over a whole message database does not keep all of it decrypted in memory.
     pub fn set_low_memory(&self, on: bool) {
-        self.low_memory.store(on, std::sync::atomic::Ordering::Relaxed);
+        self.low_memory
+            .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Set the account owner's wxid (see [`NativeAccount::is_me`]).
@@ -188,7 +201,9 @@ impl NativeAccount {
     /// Whether `sender` is the account owner. Message databases store the bare wxid while the account
     /// directory is `<wxid>_<4 chars>`, so a bare id matches its suffixed form and the other way round.
     pub fn is_me(&self, sender: &str) -> bool {
-        self.my_wxid.as_deref().is_some_and(|me| same_identity(sender, me))
+        self.my_wxid
+            .as_deref()
+            .is_some_and(|me| same_identity(sender, me))
     }
 
     pub fn db_storage(&self) -> &Path {
@@ -197,18 +212,31 @@ impl NativeAccount {
 
     /// Account directory (`db_storage`'s parent): where `msg/`, `cache/` and friends live.
     pub fn account_dir(&self) -> PathBuf {
-        self.db_storage.parent().map(Path::to_path_buf).unwrap_or_else(|| self.db_storage.clone())
+        self.db_storage
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| self.db_storage.clone())
     }
 
     /// (number of open snapshots, bytes of decrypted pages they cache, the soft limit in bytes).
     pub fn cache_stats(&self) -> (usize, usize, usize) {
-        let Ok(c) = self.cache.lock() else { return (0, 0, HEAP_SOFT_LIMIT as usize) };
+        let Ok(c) = self.cache.lock() else {
+            return (0, 0, HEAP_SOFT_LIMIT as usize);
+        };
         let mut used = 0usize;
         for s in c.entries.values() {
             if let Ok(c) = s.conn.lock() {
                 let (mut cur, mut hi) = (0, 0);
                 // SAFETY: a valid connection handle and two out-parameters.
-                unsafe { rusqlite::ffi::sqlite3_db_status(c.conn.handle(), rusqlite::ffi::SQLITE_DBSTATUS_CACHE_USED, &mut cur, &mut hi, 0) };
+                unsafe {
+                    rusqlite::ffi::sqlite3_db_status(
+                        c.conn.handle(),
+                        rusqlite::ffi::SQLITE_DBSTATUS_CACHE_USED,
+                        &mut cur,
+                        &mut hi,
+                        0,
+                    )
+                };
                 used += cur.max(0) as usize;
             }
         }
@@ -224,13 +252,23 @@ impl NativeAccount {
     ///
     /// When WeChat changes the file under the snapshot while `f` reads it, `f` fails, and it is run again on a fresh
     /// snapshot; so `f` must be safe to repeat (a pure query, or one that starts its output over).
-    pub fn with_db<T>(&self, path: &Path, mut f: impl FnMut(&Connection) -> Result<T>) -> Result<T> {
+    pub fn with_db<T>(
+        &self,
+        path: &Path,
+        mut f: impl FnMut(&Connection) -> Result<T>,
+    ) -> Result<T> {
         let mut attempt = 0;
-        let cache_kib = if self.low_memory.load(std::sync::atomic::Ordering::Relaxed) { LOW_MEMORY_CACHE_KIB } else { PAGE_CACHE_KIB };
+        let cache_kib = if self.low_memory.load(std::sync::atomic::Ordering::Relaxed) {
+            LOW_MEMORY_CACHE_KIB
+        } else {
+            PAGE_CACHE_KIB
+        };
         loop {
             let (conn, file) = self.snapshot(path)?;
             let result = {
-                let mut guard = conn.lock().map_err(|_| anyhow!("database snapshot lock poisoned"))?;
+                let mut guard = conn
+                    .lock()
+                    .map_err(|_| anyhow!("database snapshot lock poisoned"))?;
                 if guard.cache_kib != cache_kib {
                     guard.conn.pragma_update(None, "cache_size", -cache_kib)?;
                     guard.cache_kib = cache_kib;
@@ -243,7 +281,10 @@ impl NativeAccount {
                     attempt += 1;
                     if attempt >= STALE_RETRIES {
                         let why = file.read_error().unwrap_or_else(|| e.to_string());
-                        return Err(e.context(format!("{} kept changing while it was being read ({why})", path.display())));
+                        return Err(e.context(format!(
+                            "{} kept changing while it was being read ({why})",
+                            path.display()
+                        )));
                     }
                 }
                 other => return other,
@@ -254,7 +295,11 @@ impl NativeAccount {
     /// Drop the cached snapshot of `path` if it is still `file`.
     fn forget(&self, path: &Path, file: &Arc<CipherFile>) {
         if let Ok(mut cache) = self.cache.lock() {
-            if cache.entries.get(path).is_some_and(|s| Arc::ptr_eq(&s.file, file)) {
+            if cache
+                .entries
+                .get(path)
+                .is_some_and(|s| Arc::ptr_eq(&s.file, file))
+            {
                 cache.entries.remove(path);
             }
         }
@@ -266,7 +311,15 @@ impl NativeAccount {
     pub fn prefetch(&self, paths: &[PathBuf]) {
         let missing: Vec<&PathBuf> = {
             let Ok(cache) = self.cache.lock() else { return };
-            paths.iter().filter(|p| !cache.entries.get(p.as_path()).is_some_and(|s| s.key == self.raw_key)).collect()
+            paths
+                .iter()
+                .filter(|p| {
+                    !cache
+                        .entries
+                        .get(p.as_path())
+                        .is_some_and(|s| s.key == self.raw_key)
+                })
+                .collect()
         };
         if missing.len() < 2 {
             return;
@@ -283,7 +336,10 @@ impl NativeAccount {
     fn snapshot(&self, path: &Path) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
         let stamp = stamp_of(path)?;
         let known_cipher = {
-            let mut cache = self.cache.lock().map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
+            let mut cache = self
+                .cache
+                .lock()
+                .map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
             cache.tick += 1;
             let tick = cache.tick;
             match cache.entries.get_mut(path) {
@@ -304,12 +360,29 @@ impl NativeAccount {
         let conn = cipher_vfs::open_connection(file.clone())?;
         configure_sqlite();
         let conn = Arc::new(Mutex::new(Conn { conn, cache_kib: 0 })); // sized by `with_db`
-        let mut cache = self.cache.lock().map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
         cache.tick += 1;
         let tick = cache.tick;
-        cache.entries.insert(path.to_path_buf(), Snapshot { conn: conn.clone(), file: file.clone(), key: self.raw_key, stamp, last_used: tick });
+        cache.entries.insert(
+            path.to_path_buf(),
+            Snapshot {
+                conn: conn.clone(),
+                file: file.clone(),
+                key: self.raw_key,
+                stamp,
+                last_used: tick,
+            },
+        );
         while cache.entries.len() > MAX_SNAPSHOTS {
-            let victim = cache.entries.iter().filter(|(p, _)| p.as_path() != path).min_by_key(|(_, s)| s.last_used).map(|(p, _)| p.clone());
+            let victim = cache
+                .entries
+                .iter()
+                .filter(|(p, _)| p.as_path() != path)
+                .min_by_key(|(_, s)| s.last_used)
+                .map(|(p, _)| p.clone());
             match victim {
                 Some(p) => cache.entries.remove(&p),
                 None => break,
@@ -319,19 +392,39 @@ impl NativeAccount {
     }
 
     /// Run a read-only query on `path` and return every row as a JSON object.
-    pub fn query(&self, path: &Path, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<Value>> {
+    pub fn query(
+        &self,
+        path: &Path,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<Vec<Value>> {
         let out = std::cell::RefCell::new(Vec::new());
-        self.query_each(path, sql, params, || out.borrow_mut().clear(), |row| out.borrow_mut().push(row))?;
+        self.query_each(
+            path,
+            sql,
+            params,
+            || out.borrow_mut().clear(),
+            |row| out.borrow_mut().push(row),
+        )?;
         Ok(out.into_inner())
     }
 
     /// Like [`query`](Self::query), but hands each row to `each` as it is read instead of collecting them.
     /// `start` runs before the first row, and again if the snapshot went stale and the rows are read once more
     /// from the beginning (see [`with_db`](Self::with_db)): it must reset whatever `each` accumulated.
-    pub fn query_each(&self, path: &Path, sql: &str, params: &[&dyn rusqlite::ToSql], mut start: impl FnMut(), mut each: impl FnMut(Value)) -> Result<()> {
+    pub fn query_each(
+        &self,
+        path: &Path,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+        mut start: impl FnMut(),
+        mut each: impl FnMut(Value),
+    ) -> Result<()> {
         self.with_db(path, |conn| {
             start();
-            let mut stmt = conn.prepare(sql).with_context(|| format!("bad query: {sql}"))?;
+            let mut stmt = conn
+                .prepare(sql)
+                .with_context(|| format!("bad query: {sql}"))?;
             let names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
             let mut rows = stmt.query(params)?;
             while let Some(row) = rows.next()? {
@@ -352,14 +445,20 @@ impl NativeAccount {
     /// Probe the account: decrypt `session.db` and read its schema.
     pub fn test_connection(&self) -> Result<()> {
         self.with_db(&self.session_db(), |conn| {
-            conn.query_row("select count(*) from sqlite_master", [], |r| r.get::<_, i64>(0))?;
+            conn.query_row("select count(*) from sqlite_master", [], |r| {
+                r.get::<_, i64>(0)
+            })?;
             Ok(())
         })
     }
 
     /// Rows of `SessionTable`, newest first — the same columns WeChat stores.
     pub fn sessions(&self) -> Result<Value> {
-        let rows = self.query(&self.session_db(), "select * from SessionTable order by sort_timestamp desc", &[])?;
+        let rows = self.query(
+            &self.session_db(),
+            "select * from SessionTable order by sort_timestamp desc",
+            &[],
+        )?;
         Ok(Value::Array(rows))
     }
 }

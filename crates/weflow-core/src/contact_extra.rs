@@ -24,7 +24,10 @@ struct RegionData {
 
 fn data() -> &'static RegionData {
     static DATA: OnceLock<RegionData> = OnceLock::new();
-    DATA.get_or_init(|| serde_json::from_str(include_str!("../data/contact_region.json")).expect("bundled region table is valid JSON"))
+    DATA.get_or_init(|| {
+        serde_json::from_str(include_str!("../data/contact_region.json"))
+            .expect("bundled region table is valid JSON")
+    })
 }
 
 fn rx(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
@@ -46,7 +49,13 @@ fn value_text(v: &Value) -> String {
 /// Value of the first of `names` present in the row (exact name first, then ignoring case).
 fn field<'a>(row: &'a Value, names: &[&str]) -> Option<&'a Value> {
     let obj = row.as_object()?;
-    names.iter().find_map(|n| obj.get(*n).or_else(|| obj.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v)))
+    names.iter().find_map(|n| {
+        obj.get(*n).or_else(|| {
+            obj.iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(n))
+                .map(|(_, v)| v)
+        })
+    })
 }
 
 /// `normalizeContactRegionPart`: strips NULs and placeholder values such as `-` or `null`.
@@ -68,10 +77,16 @@ fn has_cjk(s: &str) -> bool {
 fn extra_buffer_bytes(row: &Value) -> Option<Vec<u8>> {
     let text = value_text(field(row, &["extra_buffer", "extraBuffer"])?);
     let compact: String = text.split_whitespace().collect();
-    if compact.len() < 2 || compact.len() % 2 != 0 || !compact.chars().all(|c| c.is_ascii_hexdigit()) {
+    if compact.len() < 2
+        || compact.len() % 2 != 0
+        || !compact.chars().all(|c| c.is_ascii_hexdigit())
+    {
         return None;
     }
-    let bytes: Vec<u8> = (0..compact.len()).step_by(2).filter_map(|i| u8::from_str_radix(&compact[i..i + 2], 16).ok()).collect();
+    let bytes: Vec<u8> = (0..compact.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(&compact[i..i + 2], 16).ok())
+        .collect();
     Some(bytes).filter(|b| !b.is_empty())
 }
 
@@ -94,11 +109,15 @@ fn read_varint(buf: &[u8], mut offset: usize) -> Option<(u64, usize)> {
 
 /// Top-level length-delimited fields numbered `target`, as trimmed UTF-8 text without NULs (empty ones dropped).
 pub fn extra_buffer_strings(row: &Value, target: u64) -> Vec<String> {
-    let Some(bytes) = extra_buffer_bytes(row) else { return Vec::new() };
+    let Some(bytes) = extra_buffer_bytes(row) else {
+        return Vec::new();
+    };
     let mut values = Vec::new();
     let mut offset = 0;
     while offset < bytes.len() {
-        let Some((tag, next)) = read_varint(&bytes, offset) else { break };
+        let Some((tag, next)) = read_varint(&bytes, offset) else {
+            break;
+        };
         offset = next;
         let (field_no, wire) = (tag / 8, tag & 7);
         match wire {
@@ -113,14 +132,17 @@ pub fn extra_buffer_strings(row: &Value, target: u64) -> Vec<String> {
                 offset += 8;
             }
             2 => {
-                let Some((len, n)) = read_varint(&bytes, offset) else { break };
+                let Some((len, n)) = read_varint(&bytes, offset) else {
+                    break;
+                };
                 let len = len as usize;
                 offset = n;
                 if offset + len > bytes.len() {
                     break;
                 }
                 if field_no == target {
-                    let text = String::from_utf8_lossy(&bytes[offset..offset + len]).replace('\0', "");
+                    let text =
+                        String::from_utf8_lossy(&bytes[offset..offset + len]).replace('\0', "");
                     if !text.trim().is_empty() {
                         values.push(text.trim().to_string());
                     }
@@ -143,7 +165,9 @@ pub fn extra_buffer_strings(row: &Value, target: u64) -> Vec<String> {
 
 /// Pick the first candidate column that exists (case-insensitive), returning its real name.
 pub fn pick_column(columns: &[String], candidates: &[&str]) -> Option<String> {
-    candidates.iter().find_map(|c| columns.iter().find(|n| n.eq_ignore_ascii_case(c)).cloned())
+    candidates
+        .iter()
+        .find_map(|c| columns.iter().find(|n| n.eq_ignore_ascii_case(c)).cloned())
 }
 
 /// Label names of a contact row: a direct label column, any `*label*`/`*tag*` column, or the label ids in
@@ -155,7 +179,11 @@ pub fn contact_labels(row: &Value, label_names: &HashMap<i64, String>) -> Vec<St
             other => {
                 static SEP: OnceLock<Regex> = OnceLock::new();
                 let text = value_text(other);
-                rx(&SEP, "[；;、|]+").replace_all(text.trim(), ",").split(',').map(|s| s.trim().to_string()).collect()
+                rx(&SEP, "[；;、|]+")
+                    .replace_all(text.trim(), ",")
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .collect()
             }
         };
         let mut seen = Vec::new();
@@ -166,7 +194,19 @@ pub fn contact_labels(row: &Value, label_names: &HashMap<i64, String>) -> Vec<St
         }
         seen
     }
-    if let Some(raw) = field(row, &["label_list", "labelList", "labels", "label_names", "labelNames", "tags", "tag_list", "tagList"]) {
+    if let Some(raw) = field(
+        row,
+        &[
+            "label_list",
+            "labelList",
+            "labels",
+            "label_names",
+            "labelNames",
+            "tags",
+            "tag_list",
+            "tagList",
+        ],
+    ) {
         let direct = split(raw);
         if !direct.is_empty() {
             return direct;
@@ -175,7 +215,10 @@ pub fn contact_labels(row: &Value, label_names: &HashMap<i64, String>) -> Vec<St
     if let Some(obj) = row.as_object() {
         for (key, value) in obj {
             let k = key.to_lowercase();
-            if !(k.contains("label") || k.contains("tag")) || k.contains("img") || k.contains("head") {
+            if !(k.contains("label") || k.contains("tag"))
+                || k.contains("img")
+                || k.contains("head")
+            {
                 continue;
             }
             let fallback = split(value);
@@ -189,7 +232,9 @@ pub fn contact_labels(row: &Value, label_names: &HashMap<i64, String>) -> Vec<St
     let mut names: Vec<String> = Vec::new();
     for text in extra_buffer_strings(row, 30) {
         for m in digits.find_iter(&text) {
-            let Ok(id) = m.as_str().parse::<i64>() else { continue };
+            let Ok(id) = m.as_str().parse::<i64>() else {
+                continue;
+            };
             if id <= 0 {
                 continue;
             }
@@ -215,8 +260,18 @@ pub fn contact_signature(row: &Value) -> String {
         }
     };
     let names = [
-        "signature", "sign", "personal_signature", "personalSignature", "profile", "introduction", "detail_description",
-        "detailDescription", "description", "desc", "contact_description", "contactDescription",
+        "signature",
+        "sign",
+        "personal_signature",
+        "personalSignature",
+        "profile",
+        "introduction",
+        "detail_description",
+        "detailDescription",
+        "description",
+        "desc",
+        "contact_description",
+        "contactDescription",
     ];
     if let Some(v) = field(row, &names) {
         let direct = normalize(&value_text(v));
@@ -227,8 +282,22 @@ pub fn contact_signature(row: &Value) -> String {
     if let Some(obj) = row.as_object() {
         for (key, value) in obj {
             let k = key.to_lowercase();
-            let candidate = ["sign", "signature", "profile", "intro", "description", "detail", "desc"].iter().any(|t| k.contains(t));
-            if !candidate || ["avatar", "img", "head", "label", "tag"].iter().any(|t| k.contains(t)) {
+            let candidate = [
+                "sign",
+                "signature",
+                "profile",
+                "intro",
+                "description",
+                "detail",
+                "desc",
+            ]
+            .iter()
+            .any(|t| k.contains(t));
+            if !candidate
+                || ["avatar", "img", "head", "label", "tag"]
+                    .iter()
+                    .any(|t| k.contains(t))
+            {
                 continue;
             }
             let text = normalize(&value_text(value));
@@ -237,14 +306,20 @@ pub fn contact_signature(row: &Value) -> String {
             }
         }
     }
-    extra_buffer_strings(row, 4).iter().map(|s| normalize(s)).find(|s| !s.is_empty()).unwrap_or_default()
+    extra_buffer_strings(row, 4)
+        .iter()
+        .map(|s| normalize(s))
+        .find(|s| !s.is_empty())
+        .unwrap_or_default()
 }
 
 // ── region ──
 
 fn lookup_key(raw: &str) -> String {
     static RE: OnceLock<Regex> = OnceLock::new();
-    rx(&RE, r"[^a-z0-9\u{4e00}-\u{9fa5}]+").replace_all(&raw.to_lowercase(), "").into_owned()
+    rx(&RE, r"[^a-z0-9\u{4e00}-\u{9fa5}]+")
+        .replace_all(&raw.to_lowercase(), "")
+        .into_owned()
 }
 
 fn lookup_candidates(raw: &str) -> Vec<String> {
@@ -253,7 +328,9 @@ fn lookup_candidates(raw: &str) -> Vec<String> {
         return Vec::new();
     }
     let mut out = vec![normalized.clone()];
-    let trimmed = normalized.trim_end_matches(|c: char| c.is_ascii_digit()).to_string();
+    let trimmed = normalized
+        .trim_end_matches(|c: char| c.is_ascii_digit())
+        .to_string();
     if !trimmed.is_empty() && trimmed != normalized {
         out.push(trimmed);
     }
@@ -271,7 +348,18 @@ fn strip_suffixes(raw: &str, suffixes: &[&str]) -> String {
 }
 
 fn chinese_province(raw: &str) -> String {
-    strip_suffixes(raw, &["特别行政区", "维吾尔自治区", "壮族自治区", "回族自治区", "自治区", "省", "市"])
+    strip_suffixes(
+        raw,
+        &[
+            "特别行政区",
+            "维吾尔自治区",
+            "壮族自治区",
+            "回族自治区",
+            "自治区",
+            "省",
+            "市",
+        ],
+    )
 }
 
 fn chinese_city(raw: &str) -> String {
@@ -297,7 +385,10 @@ fn country_name(raw: &str) -> String {
     if text.is_empty() {
         return text;
     }
-    lookup_candidates(&text).iter().find_map(|c| data().country_name_by_key.get(c).cloned()).unwrap_or(text)
+    lookup_candidates(&text)
+        .iter()
+        .find_map(|c| data().country_name_by_key.get(c).cloned())
+        .unwrap_or(text)
 }
 
 fn province_name(raw: &str) -> String {
@@ -311,7 +402,11 @@ fn province_name(raw: &str) -> String {
     }
     let d = data();
     let key = province_lookup_key(&text);
-    let mapped = d.province_name_by_key.get(&key).cloned().or_else(|| candidates.iter().find_map(|c| d.province_name_by_key.get(c).cloned()));
+    let mapped = d.province_name_by_key.get(&key).cloned().or_else(|| {
+        candidates
+            .iter()
+            .find_map(|c| d.province_name_by_key.get(c).cloned())
+    });
     if let Some(m) = mapped {
         return m;
     }
@@ -356,7 +451,11 @@ fn region_text(raw: &str) -> String {
         return text;
     }
     static SPLIT: OnceLock<Regex> = OnceLock::new();
-    let tokens: Vec<String> = rx(&SPLIT, r"[\s,，、/|·]+").split(&text).map(normalize_part).filter(|t| !t.is_empty()).collect();
+    let tokens: Vec<String> = rx(&SPLIT, r"[\s,，、/|·]+")
+        .split(&text)
+        .map(normalize_part)
+        .filter(|t| !t.is_empty())
+        .collect();
     if tokens.is_empty() {
         return text;
     }
@@ -396,10 +495,17 @@ fn hide_country(country: &str, has_province_or_city: bool) -> bool {
 /// `"广东 深圳"`-style region of a contact row (empty when nothing is known).
 pub fn contact_region(row: &Value) -> String {
     let pick_by_tokens = |tokens: &[&str]| -> String {
-        let Some(obj) = row.as_object() else { return String::new() };
+        let Some(obj) = row.as_object() else {
+            return String::new();
+        };
         for (key, value) in obj {
             let k = key.to_lowercase();
-            if k.is_empty() || k.contains("avatar") || k.contains("img") || k.contains("head") || !tokens.iter().any(|t| k.contains(t)) {
+            if k.is_empty()
+                || k.contains("avatar")
+                || k.contains("img")
+                || k.contains("head")
+                || !tokens.iter().any(|t| k.contains(t))
+            {
                 continue;
             }
             let text = normalize_part(&value_text(value));
@@ -410,21 +516,51 @@ pub fn contact_region(row: &Value) -> String {
         String::new()
     };
     let direct = |names: &[&str], tokens: &[&str]| -> String {
-        let first = field(row, names).map(|v| normalize_part(&value_text(v))).unwrap_or_default();
-        if first.is_empty() { pick_by_tokens(tokens) } else { first }
+        let first = field(row, names)
+            .map(|v| normalize_part(&value_text(v)))
+            .unwrap_or_default();
+        if first.is_empty() {
+            pick_by_tokens(tokens)
+        } else {
+            first
+        }
     };
-    let (direct_country, direct_province, direct_city) = (direct(&["country", "Country"], &["country"]), direct(&["province", "Province"], &["province"]), direct(&["city", "City"], &["city"]));
-    let direct_region = direct(&["region", "Region", "location", "area"], &["region", "location", "area", "addr", "address"]);
+    let (direct_country, direct_province, direct_city) = (
+        direct(&["country", "Country"], &["country"]),
+        direct(&["province", "Province"], &["province"]),
+        direct(&["city", "City"], &["city"]),
+    );
+    let direct_region = direct(
+        &["region", "Region", "location", "area"],
+        &["region", "location", "area", "addr", "address"],
+    );
     if !direct_region.is_empty() {
         let normalized = region_text(&direct_region);
-        let parts: Vec<String> = normalized.split_whitespace().map(normalize_part).filter(|p| !p.is_empty()).collect();
+        let parts: Vec<String> = normalized
+            .split_whitespace()
+            .map(normalize_part)
+            .filter(|p| !p.is_empty())
+            .collect();
         if parts.len() > 1 && hide_country(&parts[0], true) {
             return parts[1..].join(" ").trim().to_string();
         }
         return normalized;
     }
-    let extra = |n: u64| normalize_part(extra_buffer_strings(row, n).first().map(String::as_str).unwrap_or(""));
-    let pick = |direct: &str, fallback: String| if direct.is_empty() { fallback } else { direct.to_string() };
+    let extra = |n: u64| {
+        normalize_part(
+            extra_buffer_strings(row, n)
+                .first()
+                .map(String::as_str)
+                .unwrap_or(""),
+        )
+    };
+    let pick = |direct: &str, fallback: String| {
+        if direct.is_empty() {
+            fallback
+        } else {
+            direct.to_string()
+        }
+    };
     let country = country_name(&pick(&direct_country, extra(5)));
     let province_raw = pick(&direct_province, extra(6));
     let province = province_name(&province_raw);
@@ -476,57 +612,131 @@ mod tests {
         // varint (wire type 0) and fixed fields are skipped; truncated payloads stop the scan
         let mut hex = String::from("0801"); // field 1 varint 1
         hex.push_str(&buffer(&[(4, "kept")]));
-        assert_eq!(extra_buffer_strings(&json!({ "extra_buffer": hex }), 4), ["kept"]);
-        assert!(extra_buffer_strings(&json!({ "extra_buffer": "2205ab" }), 4).is_empty(), "length runs past the end");
+        assert_eq!(
+            extra_buffer_strings(&json!({ "extra_buffer": hex }), 4),
+            ["kept"]
+        );
+        assert!(
+            extra_buffer_strings(&json!({ "extra_buffer": "2205ab" }), 4).is_empty(),
+            "length runs past the end"
+        );
     }
 
     #[test]
     fn signature_prefers_the_description_column_then_extra_buffer() {
         assert_eq!(contact_signature(&json!({ "description": " hi \0" })), "hi");
-        assert_eq!(contact_signature(&json!({ "description": "-", "extra_buffer": buffer(&[(4, "from buffer")]) })), "from buffer");
-        assert_eq!(contact_signature(&json!({ "extra_buffer": buffer(&[(4, "null"), (4, "second")]) })), "second");
-        assert_eq!(contact_signature(&json!({ "remark": "x", "big_head_url": "http://sign" })), "");
-        assert_eq!(contact_signature(&json!({ "detail_text": "found by key scan", "description_img": "no" })), "found by key scan");
-        assert_eq!(contact_signature(&json!({ "description_img": "no", "label_desc": "no" })), "", "image, label and tag columns never count");
-        assert_eq!(contact_signature(&json!({ "my_signature_text": "scanned" })), "scanned");
+        assert_eq!(
+            contact_signature(
+                &json!({ "description": "-", "extra_buffer": buffer(&[(4, "from buffer")]) })
+            ),
+            "from buffer"
+        );
+        assert_eq!(
+            contact_signature(&json!({ "extra_buffer": buffer(&[(4, "null"), (4, "second")]) })),
+            "second"
+        );
+        assert_eq!(
+            contact_signature(&json!({ "remark": "x", "big_head_url": "http://sign" })),
+            ""
+        );
+        assert_eq!(
+            contact_signature(
+                &json!({ "detail_text": "found by key scan", "description_img": "no" })
+            ),
+            "found by key scan"
+        );
+        assert_eq!(
+            contact_signature(&json!({ "description_img": "no", "label_desc": "no" })),
+            "",
+            "image, label and tag columns never count"
+        );
+        assert_eq!(
+            contact_signature(&json!({ "my_signature_text": "scanned" })),
+            "scanned"
+        );
     }
 
     #[test]
     fn labels_come_from_columns_or_extra_buffer_ids() {
-        let names: HashMap<i64, String> = [(1, "Family".to_string()), (2, "Work".to_string()), (3, "Gym".to_string())].into();
-        assert_eq!(contact_labels(&json!({ "labels": "A；B,A、C" }), &names), ["A", "B", "C"]);
-        assert_eq!(contact_labels(&json!({ "label_list": ["x", "x", " y "] }), &names), ["x", "y"]);
-        assert_eq!(contact_labels(&json!({ "extra_buffer": buffer(&[(30, "2,1,2,99,0")]) }), &names), ["Work", "Family"]);
-        assert_eq!(contact_labels(&json!({ "extra_buffer": buffer(&[(30, "7")]) }), &names), Vec::<String>::new());
-        assert!(contact_labels(&json!({ "username": "x", "head_img_md5": "abc" }), &names).is_empty());
+        let names: HashMap<i64, String> = [
+            (1, "Family".to_string()),
+            (2, "Work".to_string()),
+            (3, "Gym".to_string()),
+        ]
+        .into();
+        assert_eq!(
+            contact_labels(&json!({ "labels": "A；B,A、C" }), &names),
+            ["A", "B", "C"]
+        );
+        assert_eq!(
+            contact_labels(&json!({ "label_list": ["x", "x", " y "] }), &names),
+            ["x", "y"]
+        );
+        assert_eq!(
+            contact_labels(
+                &json!({ "extra_buffer": buffer(&[(30, "2,1,2,99,0")]) }),
+                &names
+            ),
+            ["Work", "Family"]
+        );
+        assert_eq!(
+            contact_labels(&json!({ "extra_buffer": buffer(&[(30, "7")]) }), &names),
+            Vec::<String>::new()
+        );
+        assert!(
+            contact_labels(&json!({ "username": "x", "head_img_md5": "abc" }), &names).is_empty()
+        );
         assert_eq!(contact_labels(&json!({ "tag_x": "t1" }), &names), ["t1"]);
     }
 
     #[test]
     fn column_picking_ignores_case() {
         let cols = vec!["Label_ID_".to_string(), "label_name_".to_string()];
-        assert_eq!(pick_column(&cols, &["label_id_", "id"]).as_deref(), Some("Label_ID_"));
+        assert_eq!(
+            pick_column(&cols, &["label_id_", "id"]).as_deref(),
+            Some("Label_ID_")
+        );
         assert_eq!(pick_column(&cols, &["name"]), None);
     }
 
     #[test]
     fn regions_are_translated_and_the_domestic_country_is_hidden() {
-        let r = |country: &str, province: &str, city: &str| contact_region(&json!({ "extra_buffer": buffer(&[(5, country), (6, province), (7, city)]) }));
+        let r = |country: &str, province: &str, city: &str| {
+            contact_region(
+                &json!({ "extra_buffer": buffer(&[(5, country), (6, province), (7, city)]) }),
+            )
+        };
         assert_eq!(r("CN", "Guangdong", "Shenzhen"), "广东 深圳");
         assert_eq!(r("CN", "Beijing", ""), "北京");
-        assert_eq!(r("CN", "北京", "北京市"), "北京", "a city equal to its province appears once");
+        assert_eq!(
+            r("CN", "北京", "北京市"),
+            "北京",
+            "a city equal to its province appears once"
+        );
         assert_eq!(r("US", "California", ""), "美国 California");
         assert_eq!(r("JP", "", ""), "日本");
         assert_eq!(r("", "", ""), "");
-        assert_eq!(r("CN", "", ""), "中国", "a bare domestic country is kept: nothing else says where");
+        assert_eq!(
+            r("CN", "", ""),
+            "中国",
+            "a bare domestic country is kept: nothing else says where"
+        );
         assert_eq!(r("-", "null", "Hangzhou"), "杭州");
     }
 
     #[test]
     fn direct_region_columns_win_over_extra_buffer() {
-        assert_eq!(contact_region(&json!({ "region": "CN Guangdong Shenzhen", "extra_buffer": buffer(&[(5, "JP")]) })), "广东 深圳");
+        assert_eq!(
+            contact_region(
+                &json!({ "region": "CN Guangdong Shenzhen", "extra_buffer": buffer(&[(5, "JP")]) })
+            ),
+            "广东 深圳"
+        );
         assert_eq!(contact_region(&json!({ "country": "JP" })), "日本");
-        assert_eq!(contact_region(&json!({ "province": "浙江省", "city": "杭州市" })), "浙江 杭州");
+        assert_eq!(
+            contact_region(&json!({ "province": "浙江省", "city": "杭州市" })),
+            "浙江 杭州"
+        );
         assert_eq!(contact_region(&json!({ "username": "x" })), "");
     }
 

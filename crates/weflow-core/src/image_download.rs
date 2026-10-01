@@ -56,7 +56,10 @@ pub fn pick_main_pid(processes: &Value) -> Option<u32> {
             if !cmd.to_lowercase().contains("weixin.exe") {
                 return None;
             }
-            Some((cmd.len(), p.get("ProcessId").and_then(Value::as_u64)? as u32))
+            Some((
+                cmd.len(),
+                p.get("ProcessId").and_then(Value::as_u64)? as u32,
+            ))
         })
         .min_by_key(|(len, _)| *len)
         .map(|(_, pid)| pid)
@@ -64,7 +67,10 @@ pub fn pick_main_pid(processes: &Value) -> Option<u32> {
 
 fn find_main_wechat_pid() -> Option<u32> {
     let script = "Get-CimInstance Win32_Process -Filter \"Name = 'Weixin.exe'\" | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress";
-    let out = std::process::Command::new("powershell").args(["-NoProfile", "-Command", script]).output().ok()?;
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", script])
+        .output()
+        .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let text = text.trim();
     if text.is_empty() {
@@ -85,7 +91,10 @@ pub fn whitelist_buffer(whitelist: &[String]) -> Option<Vec<u8>> {
 
 impl ImageAutoDownload {
     pub fn new(runtime_dir: &Path) -> Self {
-        Self { inner: Arc::new(Mutex::new(Inner::default())), runtime_dir: runtime_dir.to_path_buf() }
+        Self {
+            inner: Arc::new(Mutex::new(Inner::default())),
+            runtime_dir: runtime_dir.to_path_buf(),
+        }
     }
 
     fn dll_path(&self) -> PathBuf {
@@ -104,9 +113,22 @@ impl ImageAutoDownload {
             return false;
         }
         unsafe {
-            let Ok(lib) = Library::new(&path) else { return false };
-            let (Ok(init), Ok(uninstall), Ok(error)) = (lib.get::<InitFn>(b"InitImgHelper\0").map(|s| *s), lib.get::<UninstallFn>(b"UninstallImgHelper\0").map(|s| *s), lib.get::<ErrorFn>(b"GetImgHelperError\0").map(|s| *s)) else { return false };
-            inner.helper = Some(Helper { _lib: lib, init, uninstall, error });
+            let Ok(lib) = Library::new(&path) else {
+                return false;
+            };
+            let (Ok(init), Ok(uninstall), Ok(error)) = (
+                lib.get::<InitFn>(b"InitImgHelper\0").map(|s| *s),
+                lib.get::<UninstallFn>(b"UninstallImgHelper\0").map(|s| *s),
+                lib.get::<ErrorFn>(b"GetImgHelperError\0").map(|s| *s),
+            ) else {
+                return false;
+            };
+            inner.helper = Some(Helper {
+                _lib: lib,
+                init,
+                uninstall,
+                error,
+            });
         }
         true
     }
@@ -137,8 +159,17 @@ impl ImageAutoDownload {
             Self::unhook_locked(&mut inner);
         }
         let whitelist = whitelist_buffer(&inner.whitelist);
-        let Some(helper) = &inner.helper else { return json!({ "success": false, "error": "core component initialization failed" }) };
-        let ok = unsafe { (helper.init)(pid, whitelist.as_ref().map_or(std::ptr::null(), |b| b.as_ptr() as *const c_char)) };
+        let Some(helper) = &inner.helper else {
+            return json!({ "success": false, "error": "core component initialization failed" });
+        };
+        let ok = unsafe {
+            (helper.init)(
+                pid,
+                whitelist
+                    .as_ref()
+                    .map_or(std::ptr::null(), |b| b.as_ptr() as *const c_char),
+            )
+        };
         if ok {
             inner.hooked = true;
             inner.pid = Some(pid);
@@ -146,7 +177,11 @@ impl ImageAutoDownload {
         }
         let msg = unsafe {
             let p = (helper.error)();
-            if p.is_null() { String::new() } else { CStr::from_ptr(p).to_string_lossy().to_string() }
+            if p.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(p).to_string_lossy().to_string()
+            }
         };
         if manual_start {
             if let Some(stop) = inner.poll_stop.take() {
@@ -217,15 +252,25 @@ mod tests {
             { "ProcessId": 9, "CommandLine": null }
         ]);
         assert_eq!(pick_main_pid(&procs), Some(7));
-        assert_eq!(pick_main_pid(&json!({ "ProcessId": 3, "CommandLine": "weixin.exe" })), Some(3), "a single process is an object, not an array");
+        assert_eq!(
+            pick_main_pid(&json!({ "ProcessId": 3, "CommandLine": "weixin.exe" })),
+            Some(3),
+            "a single process is an object, not an array"
+        );
         assert_eq!(pick_main_pid(&json!([])), None);
-        assert_eq!(pick_main_pid(&json!([{ "ProcessId": 1, "CommandLine": "other.exe" }])), None);
+        assert_eq!(
+            pick_main_pid(&json!([{ "ProcessId": 1, "CommandLine": "other.exe" }])),
+            None
+        );
     }
 
     #[test]
     fn whitelist_is_nul_separated_and_double_nul_terminated() {
         assert_eq!(whitelist_buffer(&[]), None);
-        assert_eq!(whitelist_buffer(&["a".into(), "b".into()]), Some(b"a\0b\0\0".to_vec()));
+        assert_eq!(
+            whitelist_buffer(&["a".into(), "b".into()]),
+            Some(b"a\0b\0\0".to_vec())
+        );
     }
 
     #[test]

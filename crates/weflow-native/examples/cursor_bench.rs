@@ -7,7 +7,11 @@ fn main() -> anyhow::Result<()> {
     let mut a = std::env::args().skip(1);
     let (dir, keyf, sid) = (a.next().unwrap(), a.next().unwrap(), a.next().unwrap());
     let lite = a.next().map_or(true, |v| v != "0");
-    let acct = NativeAccount::new(format!("{dir}/db_storage"), std::fs::read_to_string(keyf)?.trim())?.with_my_wxid(Some("wxid_example".into()));
+    let acct = NativeAccount::new(
+        format!("{dir}/db_storage"),
+        std::fs::read_to_string(keyf)?.trim(),
+    )?
+    .with_my_wxid(Some("wxid_example".into()));
     let t = Instant::now();
     acct.test_connection()?;
     let cursor = acct.open_message_cursor(&sid, 10_000, true, 0, 0, lite)?;
@@ -23,6 +27,10 @@ fn main() -> anyhow::Result<()> {
             break;
         }
     }
-    println!("fetched {rows} rows ({} MB of JSON) in {:.2}s", bytes / 1_000_000, t.elapsed().as_secs_f64());
+    println!(
+        "fetched {rows} rows ({} MB of JSON) in {:.2}s",
+        bytes / 1_000_000,
+        t.elapsed().as_secs_f64()
+    );
     Ok(())
 }

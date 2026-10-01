@@ -11,7 +11,12 @@ fn main() {
         .collect();
     files.sort();
     let mut build = cc::Build::new();
-    build.include(&src).include(root.join("interface")).files(&files).warnings(false).opt_level(2);
+    build
+        .include(&src)
+        .include(root.join("interface"))
+        .files(&files)
+        .warnings(false)
+        .opt_level(2);
     build.compile("silk");
     println!("cargo:rerun-if-changed=vendor");
 }

@@ -21,7 +21,10 @@ pub fn mock_hub(tag: &str) -> (ServiceHub, PathBuf) {
 }
 
 /// Like [`mock_hub`], with a hook to adjust the default profile (keys, cache path, …).
-pub fn mock_hub_with(tag: &str, tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig)) -> (ServiceHub, PathBuf) {
+pub fn mock_hub_with(
+    tag: &str,
+    tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
+) -> (ServiceHub, PathBuf) {
     let root = temp_dir(tag);
     let fixture = Fixture::standard(&root.join("data"));
     (hub_for(&root, &fixture, tweak), root)
@@ -43,7 +46,11 @@ pub fn custom_hub_with(
     (hub_for(&root, &fixture, tweak), root, fixture)
 }
 
-fn hub_for(root: &PathBuf, fixture: &Fixture, tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig)) -> ServiceHub {
+fn hub_for(
+    root: &PathBuf,
+    fixture: &Fixture,
+    tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
+) -> ServiceHub {
     let ctx = AppContext {
         home_dir: root.join("home"),
         config_path: root.join("home/config.json"),

@@ -102,9 +102,21 @@ fn normalize_id_token(value: &str) -> String {
 }
 
 fn push_xml_value(xml: &str, tag: &str) -> String {
-    let decoded = xml.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&");
+    let decoded = xml
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&");
     let re = rx(&format!(r"(?is)<{0}>(.*?)</{0}>", regex::escape(tag)));
-    re.captures(&decoded).map(|c| c[1].replace("<![CDATA[", "").replace("]]>", "").trim().to_string()).unwrap_or_default()
+    re.captures(&decoded)
+        .map(|c| {
+            c[1].replace("<![CDATA[", "")
+                .replace("]]>", "")
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default()
 }
 
 fn is_revoke_system_message(m: &ChatMessage) -> bool {
@@ -123,7 +135,9 @@ fn is_self_revoke(m: &ChatMessage) -> bool {
 }
 
 fn is_revoke_session_summary(s: &Session) -> bool {
-    s.last_msg_type == 10002 || s.summary.trim().contains("撤回了一条消息") || s.summary.trim().contains("尝试撤回此消息")
+    s.last_msg_type == 10002
+        || s.summary.trim().contains("撤回了一条消息")
+        || s.summary.trim().contains("尝试撤回此消息")
 }
 
 fn message_id_tokens(m: &ChatMessage) -> HashSet<String> {
@@ -144,7 +158,11 @@ fn message_id_tokens(m: &ChatMessage) -> HashSet<String> {
 }
 
 fn extract_revoked_message_id(m: &ChatMessage) -> Option<String> {
-    let content = if !m.raw_content.is_empty() { &m.raw_content } else { &m.parsed_content };
+    let content = if !m.raw_content.is_empty() {
+        &m.raw_content
+    } else {
+        &m.parsed_content
+    };
     let candidates = [
         push_xml_value(content, "newmsgid"),
         push_xml_value(content, "msgid"),
@@ -153,11 +171,18 @@ fn extract_revoked_message_id(m: &ChatMessage) -> Option<String> {
         m.server_id_raw.clone(),
         m.server_id.to_string(),
     ];
-    candidates.iter().map(|c| normalize_id_token(c)).find(|c| !c.is_empty())
+    candidates
+        .iter()
+        .map(|c| normalize_id_token(c))
+        .find(|c| !c.is_empty())
 }
 
 fn compare_position(a: &ChatMessage, b: &ChatMessage) -> std::cmp::Ordering {
-    a.create_time.cmp(&b.create_time).then(a.sort_seq.cmp(&b.sort_seq)).then(a.local_id.cmp(&b.local_id)).then_with(|| a.message_key.cmp(&b.message_key))
+    a.create_time
+        .cmp(&b.create_time)
+        .then(a.sort_seq.cmp(&b.sort_seq))
+        .then(a.local_id.cmp(&b.local_id))
+        .then_with(|| a.message_key.cmp(&b.message_key))
 }
 
 fn message_display_content(m: &ChatMessage) -> Option<String> {
@@ -177,16 +202,31 @@ fn message_display_content(m: &ChatMessage) -> Option<String> {
         let cleaned = rx(r"^\s*\[视频号\]\s*").replace(&v, "").trim().to_string();
         Some(if cleaned.is_empty() { v } else { cleaned })
     };
-    let text_source = if !m.parsed_content.is_empty() { &m.parsed_content } else { &m.raw_content };
+    let text_source = if !m.parsed_content.is_empty() {
+        &m.parsed_content
+    } else {
+        &m.raw_content
+    };
     match m.local_type {
         1 => clean_official(normalize_text(text_source)),
         3 => Some("[图片]".into()),
         34 => Some("[语音]".into()),
         43 => Some("[视频]".into()),
         47 => Some("[表情]".into()),
-        42 => clean_official(Some(m.card_nickname.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| "[名片]".into()))),
+        42 => clean_official(Some(
+            m.card_nickname
+                .clone()
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| "[名片]".into()),
+        )),
         48 => Some("[位置]".into()),
-        49 => clean_official(Some(m.link_title().filter(|t| !t.is_empty()).or_else(|| m.file_name().filter(|t| !t.is_empty())).unwrap_or("[消息]").to_string())),
+        49 => clean_official(Some(
+            m.link_title()
+                .filter(|t| !t.is_empty())
+                .or_else(|| m.file_name().filter(|t| !t.is_empty()))
+                .unwrap_or("[消息]")
+                .to_string(),
+        )),
         _ => clean_official(normalize_text(text_source).filter(|s| !s.is_empty())),
     }
 }
@@ -240,7 +280,14 @@ impl PushEngine {
         if mode != "whitelist" && mode != "blacklist" {
             return true;
         }
-        let listed = self.hub.config_value("messagePushFilterList").as_array().map_or(false, |l| l.iter().any(|i| i.as_str().map(str::trim) == Some(session_id)));
+        let listed = self
+            .hub
+            .config_value("messagePushFilterList")
+            .as_array()
+            .map_or(false, |l| {
+                l.iter()
+                    .any(|i| i.as_str().map(str::trim) == Some(session_id))
+            });
         if mode == "whitelist" {
             listed
         } else {
@@ -249,7 +296,10 @@ impl PushEngine {
     }
 
     fn sessions(&self) -> Option<Vec<Session>> {
-        self.hub.chat_sessions_list().ok().map(|s| s.iter().map(Session::from_value).collect())
+        self.hub
+            .chat_sessions_list()
+            .ok()
+            .map(|s| s.iter().map(Session::from_value).collect())
     }
 
     fn set_baseline(&mut self, sessions: &[Session]) {
@@ -260,11 +310,18 @@ impl PushEngine {
                 continue;
             }
             let prev = previous.get(&s.username);
-            let initial = if s.last_timestamp > 0 { s.last_timestamp } else { now };
+            let initial = if s.last_timestamp > 0 {
+                s.last_timestamp
+            } else {
+                now
+            };
             self.baseline.insert(
                 s.username.clone(),
                 Baseline {
-                    last_timestamp: s.last_timestamp.max(prev.map_or(0, |p| p.last_timestamp)).max(if prev.is_some() { 0 } else { initial }),
+                    last_timestamp: s
+                        .last_timestamp
+                        .max(prev.map_or(0, |p| p.last_timestamp))
+                        .max(if prev.is_some() { 0 } else { initial }),
                     unread_count: s.unread_count,
                 },
             );
@@ -287,7 +344,9 @@ impl PushEngine {
         if s.username.is_empty() || s.username.to_lowercase().contains("placeholder_foldgroup") {
             return false;
         }
-        let Some(prev) = prev else { return s.unread_count > 0 && s.last_timestamp > 0 };
+        let Some(prev) = prev else {
+            return s.unread_count > 0 && s.last_timestamp > 0;
+        };
         if is_revoke_session_summary(s) && s.last_timestamp >= prev.last_timestamp {
             return true;
         }
@@ -307,7 +366,9 @@ impl PushEngine {
     /// One `flushPendingChanges` pass. Returns the payloads that should be broadcast.
     pub fn flush(&mut self, scan_message_backed: bool) -> Vec<Value> {
         let mut out = Vec::new();
-        let Some(sessions) = self.sessions() else { return out };
+        let Some(sessions) = self.sessions() else {
+            return out;
+        };
         if !self.baseline_ready {
             self.set_baseline(&sessions);
             self.baseline_ready = true;
@@ -319,14 +380,18 @@ impl PushEngine {
             .iter()
             .filter(|s| {
                 let prev = previous.get(&s.username);
-                self.should_inspect(prev, s) || (scan_message_backed && self.should_scan_message_backed(prev, s))
+                self.should_inspect(prev, s)
+                    || (scan_message_backed && self.should_scan_message_backed(prev, s))
             })
             .collect();
         for s in candidates {
             if !s.username.is_empty() {
                 candidate_ids.insert(s.username.clone());
             }
-            let prev = previous.get(&s.username).or_else(|| self.baseline.get(&s.username)).copied();
+            let prev = previous
+                .get(&s.username)
+                .or_else(|| self.baseline.get(&s.username))
+                .copied();
             let decreased = prev.map_or(false, |p| s.unread_count < p.unread_count);
             let changed = prev.map_or(false, |p| s.unread_count != p.unread_count);
             let scan_revokes = decreased || (changed && is_revoke_session_summary(s));
@@ -340,22 +405,48 @@ impl PushEngine {
             let prev = previous.get(&s.username);
             self.baseline.insert(
                 s.username.clone(),
-                Baseline { last_timestamp: s.last_timestamp.max(prev.map_or(0, |p| p.last_timestamp)), unread_count: s.unread_count },
+                Baseline {
+                    last_timestamp: s.last_timestamp.max(prev.map_or(0, |p| p.last_timestamp)),
+                    unread_count: s.unread_count,
+                },
             );
         }
         out
     }
 
-    fn update_inspected_baseline(&mut self, s: &Session, prev: Option<&Baseline>, result: &PushResult) {
+    fn update_inspected_baseline(
+        &mut self,
+        s: &Session,
+        prev: Option<&Baseline>,
+        result: &PushResult,
+    ) {
         if s.username.is_empty() {
             return;
         }
         let prev_ts = prev.map_or(0, |p| p.last_timestamp);
-        let current = self.baseline.get(&s.username).copied().or(prev.copied()).unwrap_or_default();
-        let next_ts = if result.retry { prev_ts } else { prev_ts.max(current.last_timestamp).max(result.max_fetched_timestamp) };
+        let current = self
+            .baseline
+            .get(&s.username)
+            .copied()
+            .or(prev.copied())
+            .unwrap_or_default();
+        let next_ts = if result.retry {
+            prev_ts
+        } else {
+            prev_ts
+                .max(current.last_timestamp)
+                .max(result.max_fetched_timestamp)
+        };
         self.baseline.insert(
             s.username.clone(),
-            Baseline { last_timestamp: next_ts, unread_count: if result.retry { prev.map_or(0, |p| p.unread_count) } else { s.unread_count } },
+            Baseline {
+                last_timestamp: next_ts,
+                unread_count: if result.retry {
+                    prev.map_or(0, |p| p.unread_count)
+                } else {
+                    s.unread_count
+                },
+            },
         );
     }
 
@@ -376,22 +467,53 @@ impl PushEngine {
         }
         let cur = self.baseline.get(key).copied().unwrap_or_default();
         if m.create_time > cur.last_timestamp {
-            self.baseline.insert(key.to_string(), Baseline { last_timestamp: m.create_time, ..cur });
+            self.baseline.insert(
+                key.to_string(),
+                Baseline {
+                    last_timestamp: m.create_time,
+                    ..cur
+                },
+            );
         }
     }
 
-    fn push_session_messages(&mut self, session: &Session, previous: Option<&Baseline>, scan_recent_revokes: bool, out: &mut Vec<Value>) -> PushResult {
+    fn push_session_messages(
+        &mut self,
+        session: &Session,
+        previous: Option<&Baseline>,
+        scan_recent_revokes: bool,
+        out: &mut Vec<Value>,
+    ) -> PushResult {
         let prev_ts = previous.map_or(0, |p| p.last_timestamp.max(0));
         let prev_unread = previous.map_or(0, |p| p.unread_count.max(0));
         let current_unread = session.unread_count.max(0);
-        let expected_incoming = if previous.is_some() { (current_unread - prev_unread).max(0) } else { 0 };
-        let since = if previous.is_some() { (prev_ts - LOOKBACK_SECONDS).max(0) } else { 0 };
-        let fetched: Vec<ChatMessage> = self.hub.chat_new_messages(&session.username, since, 1000).unwrap_or_default();
+        let expected_incoming = if previous.is_some() {
+            (current_unread - prev_unread).max(0)
+        } else {
+            0
+        };
+        let since = if previous.is_some() {
+            (prev_ts - LOOKBACK_SECONDS).max(0)
+        } else {
+            0
+        };
+        let fetched: Vec<ChatMessage> = self
+            .hub
+            .chat_new_messages(&session.username, since, 1000)
+            .unwrap_or_default();
         if fetched.is_empty() && !scan_recent_revokes {
-            return PushResult { max_fetched_timestamp: prev_ts, retry: expected_incoming > 0 };
+            return PushResult {
+                max_fetched_timestamp: prev_ts,
+                retry: expected_incoming > 0,
+            };
         }
         let session_id = session.username.clone();
-        let max_fetched = fetched.iter().map(|m| m.create_time).filter(|t| *t > prev_ts).max().unwrap_or(prev_ts);
+        let max_fetched = fetched
+            .iter()
+            .map(|m| m.create_time)
+            .filter(|t| *t > prev_ts)
+            .max()
+            .unwrap_or(prev_ts);
         let seen_primed = self.seen_primed.contains(&session_id);
         let mut same_ts_incoming: Vec<&ChatMessage> = Vec::new();
         let mut candidates: Vec<&ChatMessage> = Vec::new();
@@ -406,7 +528,11 @@ impl PushEngine {
             let seen = Self::is_fresh(&mut self.seen, key);
             let recent = Self::is_fresh(&mut self.recent, key);
             let revoke = is_revoke_system_message(m);
-            if m.is_send != Some(1) && (previous.is_none() || create_time > prev_ts || (seen_primed && create_time == prev_ts)) {
+            if m.is_send != Some(1)
+                && (previous.is_none()
+                    || create_time > prev_ts
+                    || (seen_primed && create_time == prev_ts))
+            {
                 observed_incoming += 1;
             }
             if previous.is_some() && !seen_primed && create_time < prev_ts {
@@ -437,19 +563,42 @@ impl PushEngine {
             candidates.push(m);
         }
 
-        let future_incoming = candidates.iter().filter(|m| previous.is_none() || m.create_time > prev_ts || seen_primed).count() as i64;
-        let allowance = if previous.is_some() && !seen_primed { (expected_incoming - future_incoming).max(0) as usize } else { 0 };
-        let selected_same: Vec<&ChatMessage> = if allowance > 0 { same_ts_incoming.iter().rev().take(allowance).rev().copied().collect() } else { Vec::new() };
+        let future_incoming = candidates
+            .iter()
+            .filter(|m| previous.is_none() || m.create_time > prev_ts || seen_primed)
+            .count() as i64;
+        let allowance = if previous.is_some() && !seen_primed {
+            (expected_incoming - future_incoming).max(0) as usize
+        } else {
+            0
+        };
+        let selected_same: Vec<&ChatMessage> = if allowance > 0 {
+            same_ts_incoming
+                .iter()
+                .rev()
+                .take(allowance)
+                .rev()
+                .copied()
+                .collect()
+        } else {
+            Vec::new()
+        };
         let to_push: Vec<&ChatMessage> = selected_same.into_iter().chain(candidates).collect();
 
         // normal messages whose own revoke notice is also in this batch are suppressed
-        let push_keys: HashSet<&str> = to_push.iter().map(|m| m.message_key.trim()).filter(|k| !k.is_empty()).collect();
+        let push_keys: HashSet<&str> = to_push
+            .iter()
+            .map(|m| m.message_key.trim())
+            .filter(|k| !k.is_empty())
+            .collect();
         let mut suppressed: HashSet<String> = HashSet::new();
         for m in &to_push {
             if !is_revoke_system_message(m) {
                 continue;
             }
-            if let Some(orig) = Self::find_revoked_in(&fetched, m, extract_revoked_message_id(m).as_deref()) {
+            if let Some(orig) =
+                Self::find_revoked_in(&fetched, m, extract_revoked_message_id(m).as_deref())
+            {
                 let k = orig.message_key.trim();
                 if !k.is_empty() && push_keys.contains(k) {
                     suppressed.insert(k.to_string());
@@ -471,7 +620,11 @@ impl PushEngine {
                 Self::remember(&mut self.seen, &key);
                 continue;
             }
-            let payload = if revoke { self.build_revoke_payload(session, m, &fetched) } else { self.build_payload(session, m) };
+            let payload = if revoke {
+                self.build_revoke_payload(session, m, &fetched)
+            } else {
+                self.build_payload(session, m)
+            };
             let Some(payload) = payload else { continue };
             if !self.filter_allows(payload["sessionId"].as_str().unwrap_or("")) {
                 continue;
@@ -506,10 +659,15 @@ impl PushEngine {
                 }
                 for m in &revokes {
                     let key = m.message_key.trim().to_string();
-                    if key.is_empty() || !is_revoke_system_message(m) || Self::is_fresh(&mut self.recent, &key) {
+                    if key.is_empty()
+                        || !is_revoke_system_message(m)
+                        || Self::is_fresh(&mut self.recent, &key)
+                    {
                         continue;
                     }
-                    let Some(payload) = self.build_revoke_payload(session, m, &merged) else { continue };
+                    let Some(payload) = self.build_revoke_payload(session, m, &merged) else {
+                        continue;
+                    };
                     if !self.filter_allows(payload["sessionId"].as_str().unwrap_or("")) {
                         continue;
                     }
@@ -523,25 +681,57 @@ impl PushEngine {
             }
         }
         let _ = pushed_count;
-        PushResult { max_fetched_timestamp: max_fetched.max(max_pushed), retry: expected_incoming > 0 && observed_incoming < expected_incoming }
+        PushResult {
+            max_fetched_timestamp: max_fetched.max(max_pushed),
+            retry: expected_incoming > 0 && observed_incoming < expected_incoming,
+        }
     }
 
     fn recent_revoke_scan_since(&self, session: &Session, previous: Option<&Baseline>) -> i64 {
         let now = chrono::Utc::now().timestamp();
-        let anchor = now.max(session.last_timestamp).max(previous.map_or(0, |p| p.last_timestamp));
+        let anchor = now
+            .max(session.last_timestamp)
+            .max(previous.map_or(0, |p| p.last_timestamp));
         (anchor - RECENT_REVOKE_SCAN_SECONDS).max(0)
     }
 
-    fn candidate_tables(&self, wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, since: i64) -> Vec<(String, String, i64)> {
-        let Ok(Value::Array(tables)) = wcdb.message_table_stats(session_id) else { return Vec::new() };
+    fn candidate_tables(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        session_id: &str,
+        since: i64,
+    ) -> Vec<(String, String, i64)> {
+        let Ok(Value::Array(tables)) = wcdb.message_table_stats(session_id) else {
+            return Vec::new();
+        };
         let mut v: Vec<(String, String, i64)> = tables
             .iter()
             .map(|t| {
-                let g = |keys: &[&str]| keys.iter().filter_map(|k| t.get(*k)).find_map(|x| x.as_str().map(str::to_string)).unwrap_or_default().trim().to_string();
-                let last = ["last_time", "lastTime"].iter().filter_map(|k| t.get(*k)).find_map(|x| x.as_f64().or_else(|| x.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0.0) as i64;
-                (g(&["db_path", "dbPath"]), g(&["table_name", "tableName"]), last)
+                let g = |keys: &[&str]| {
+                    keys.iter()
+                        .filter_map(|k| t.get(*k))
+                        .find_map(|x| x.as_str().map(str::to_string))
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string()
+                };
+                let last = ["last_time", "lastTime"]
+                    .iter()
+                    .filter_map(|k| t.get(*k))
+                    .find_map(|x| {
+                        x.as_f64()
+                            .or_else(|| x.as_str().and_then(|s| s.parse().ok()))
+                    })
+                    .unwrap_or(0.0) as i64;
+                (
+                    g(&["db_path", "dbPath"]),
+                    g(&["table_name", "tableName"]),
+                    last,
+                )
             })
-            .filter(|(db, table, last)| !db.is_empty() && !table.is_empty() && (since <= 0 || *last >= since))
+            .filter(|(db, table, last)| {
+                !db.is_empty() && !table.is_empty() && (since <= 0 || *last >= since)
+            })
             .collect();
         v.sort_by(|a, b| b.2.cmp(&a.2));
         v
@@ -550,13 +740,19 @@ impl PushEngine {
     fn query_rows(&self, wcdb: &weflow_native::wcdb::Wcdb, db_path: &str, sql: &str) -> Vec<Value> {
         match wcdb.exec_query("message", db_path, sql) {
             Ok(Value::Array(rows)) => rows,
-            Ok(v) => v.get("rows").and_then(Value::as_array).cloned().unwrap_or_default(),
+            Ok(v) => v
+                .get("rows")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default(),
             Err(_) => Vec::new(),
         }
     }
 
     fn recent_revoke_messages(&self, session_id: &str, since: i64) -> Vec<ChatMessage> {
-        let Ok(wcdb) = self.hub.open_wcdb_pub() else { return Vec::new() };
+        let Ok(wcdb) = self.hub.open_wcdb_pub() else {
+            return Vec::new();
+        };
         let my = self.hub.my_wxid_pub();
         let mut msgs = Vec::new();
         for (db_path, table, _) in self.candidate_tables(&wcdb, session_id, since) {
@@ -568,7 +764,10 @@ impl PushEngine {
                 since.max(0),
                 DIRECT_REVOKE_SCAN_LIMIT
             );
-            msgs.extend(chat_msg::map_rows(&self.query_rows(&wcdb, &db_path, &sql), &my));
+            msgs.extend(chat_msg::map_rows(
+                &self.query_rows(&wcdb, &db_path, &sql),
+                &my,
+            ));
         }
         msgs.retain(is_revoke_system_message);
         msgs.sort_by(compare_position);
@@ -576,7 +775,9 @@ impl PushEngine {
     }
 
     fn recent_context_messages(&self, session_id: &str, since: i64) -> Vec<ChatMessage> {
-        let Ok(wcdb) = self.hub.open_wcdb_pub() else { return Vec::new() };
+        let Ok(wcdb) = self.hub.open_wcdb_pub() else {
+            return Vec::new();
+        };
         let my = self.hub.my_wxid_pub();
         let mut msgs = Vec::new();
         for (db_path, table, _) in self.candidate_tables(&wcdb, session_id, since) {
@@ -588,13 +789,21 @@ impl PushEngine {
                 since.max(0),
                 DIRECT_REVOKE_SCAN_LIMIT * 4
             );
-            msgs.extend(chat_msg::map_rows(&self.query_rows(&wcdb, &db_path, &sql), &my));
+            msgs.extend(chat_msg::map_rows(
+                &self.query_rows(&wcdb, &db_path, &sql),
+                &my,
+            ));
         }
         msgs.sort_by(compare_position);
         msgs
     }
 
-    fn find_by_server_id_direct(&self, session_id: &str, revoke: &ChatMessage, server_id: &str) -> Option<ChatMessage> {
+    fn find_by_server_id_direct(
+        &self,
+        session_id: &str,
+        revoke: &ChatMessage,
+        server_id: &str,
+    ) -> Option<ChatMessage> {
         let id = normalize_id_token(server_id);
         if id.is_empty() {
             return None;
@@ -604,19 +813,34 @@ impl PushEngine {
         let source = parse_message_key_source(&revoke.message_key);
         let tables: Vec<(String, String)> = match source {
             Some(s) => vec![s],
-            None => self.candidate_tables(&wcdb, session_id, (revoke.create_time - 5 * 60).max(0)).into_iter().map(|t| (t.0, t.1)).collect(),
+            None => self
+                .candidate_tables(&wcdb, session_id, (revoke.create_time - 5 * 60).max(0))
+                .into_iter()
+                .map(|t| (t.0, t.1))
+                .collect(),
         };
         for (db_path, table) in tables {
             let col = "\"server_id\"";
-            let pred = if id.chars().all(|c| c.is_ascii_digit()) { format!("({col} = {id} OR CAST({col} AS TEXT) = '{id}')") } else { format!("CAST({col} AS TEXT) = '{}'", id.replace('\'', "''")) };
-            let local_filter = if revoke.local_id > 0 { format!("AND local_id <> {}", revoke.local_id) } else { String::new() };
+            let pred = if id.chars().all(|c| c.is_ascii_digit()) {
+                format!("({col} = {id} OR CAST({col} AS TEXT) = '{id}')")
+            } else {
+                format!("CAST({col} AS TEXT) = '{}'", id.replace('\'', "''"))
+            };
+            let local_filter = if revoke.local_id > 0 {
+                format!("AND local_id <> {}", revoke.local_id)
+            } else {
+                String::new()
+            };
             let sql = format!(
                 "SELECT *, '{}' AS _db_path, '{}' AS table_name FROM \"{}\" WHERE {pred} {local_filter} AND local_type NOT IN (10000, 10002) ORDER BY local_id ASC LIMIT 1",
                 db_path.replace('\'', "''"),
                 table.replace('\'', "''"),
                 table.replace('"', "\"\"")
             );
-            if let Some(m) = chat_msg::map_rows(&self.query_rows(&wcdb, &db_path, &sql), &my).into_iter().next() {
+            if let Some(m) = chat_msg::map_rows(&self.query_rows(&wcdb, &db_path, &sql), &my)
+                .into_iter()
+                .next()
+            {
                 if !is_revoke_system_message(&m) {
                     return Some(m);
                 }
@@ -625,11 +849,19 @@ impl PushEngine {
         None
     }
 
-    fn find_revoked_in<'a>(messages: &'a [ChatMessage], revoke: &ChatMessage, revoked_id: Option<&str>) -> Option<&'a ChatMessage> {
+    fn find_revoked_in<'a>(
+        messages: &'a [ChatMessage],
+        revoke: &ChatMessage,
+        revoked_id: Option<&str>,
+    ) -> Option<&'a ChatMessage> {
         if let Some(id) = revoked_id {
             let target = normalize_id_token(id);
             if !target.is_empty() {
-                if let Some(m) = messages.iter().find(|m| m.message_key != revoke.message_key && !is_revoke_system_message(m) && message_id_tokens(m).contains(&target)) {
+                if let Some(m) = messages.iter().find(|m| {
+                    m.message_key != revoke.message_key
+                        && !is_revoke_system_message(m)
+                        && message_id_tokens(m).contains(&target)
+                }) {
                     return Some(m);
                 }
             }
@@ -637,7 +869,10 @@ impl PushEngine {
         // nearest earlier incoming message
         let mut best: Option<&ChatMessage> = None;
         for m in messages {
-            if m.message_key == revoke.message_key || m.is_send == Some(1) || is_revoke_system_message(m) {
+            if m.message_key == revoke.message_key
+                || m.is_send == Some(1)
+                || is_revoke_system_message(m)
+            {
                 continue;
             }
             if revoke.create_time > 0 && m.create_time > revoke.create_time {
@@ -651,14 +886,22 @@ impl PushEngine {
                     continue;
                 }
             }
-            if best.map_or(true, |b| compare_position(m, b) == std::cmp::Ordering::Greater) {
+            if best.map_or(true, |b| {
+                compare_position(m, b) == std::cmp::Ordering::Greater
+            }) {
                 best = Some(m);
             }
         }
         best
     }
 
-    fn find_revoked_original(&self, session_id: &str, revoke: &ChatMessage, fetched: &[ChatMessage], revoked_id: Option<&str>) -> Option<ChatMessage> {
+    fn find_revoked_original(
+        &self,
+        session_id: &str,
+        revoke: &ChatMessage,
+        fetched: &[ChatMessage],
+        revoked_id: Option<&str>,
+    ) -> Option<ChatMessage> {
         if let Some(m) = Self::find_revoked_in(fetched, revoke, revoked_id) {
             return Some(m.clone());
         }
@@ -683,10 +926,19 @@ impl PushEngine {
             return false;
         }
         prune(&mut self.recently_revoked);
-        message_id_tokens(m).iter().any(|t| self.recently_revoked.contains_key(&format!("{prefix}\u{0}{t}")))
+        message_id_tokens(m).iter().any(|t| {
+            self.recently_revoked
+                .contains_key(&format!("{prefix}\u{0}{t}"))
+        })
     }
 
-    fn remember_revoked_tokens(&mut self, session_id: &str, original: Option<&ChatMessage>, revoked_id: Option<&str>, revoke: &ChatMessage) {
+    fn remember_revoked_tokens(
+        &mut self,
+        session_id: &str,
+        original: Option<&ChatMessage>,
+        revoked_id: Option<&str>,
+        revoke: &ChatMessage,
+    ) {
         let prefix = session_id.trim();
         if prefix.is_empty() {
             return;
@@ -709,7 +961,8 @@ impl PushEngine {
         add(&revoke.server_id_raw);
         add(&revoke.server_id.to_string());
         for t in tokens {
-            self.recently_revoked.insert(format!("{prefix}\u{0}{t}"), Instant::now());
+            self.recently_revoked
+                .insert(format!("{prefix}\u{0}{t}"), Instant::now());
         }
     }
 
@@ -721,20 +974,38 @@ impl PushEngine {
         }
         let nicks = self.hub.group_nicknames_pub(chatroom_id);
         let trusted = crate::export_msg::build_trusted_group_nicknames(nicks.into_iter());
-        self.group_nicknames.insert(chatroom_id.to_string(), (trusted.clone(), Instant::now()));
+        self.group_nicknames
+            .insert(chatroom_id.to_string(), (trusted.clone(), Instant::now()));
         trusted
     }
 
-    fn resolve_group_source_name(&mut self, chatroom_id: &str, m: &ChatMessage, session: &Session) -> String {
-        let sender = m.sender_username.clone().unwrap_or_default().trim().to_string();
+    fn resolve_group_source_name(
+        &mut self,
+        chatroom_id: &str,
+        m: &ChatMessage,
+        session: &Session,
+    ) -> String {
+        let sender = m
+            .sender_username
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         if sender.is_empty() {
-            return session.last_sender_display_name.clone().unwrap_or_else(|| "未知发送者".into());
+            return session
+                .last_sender_display_name
+                .clone()
+                .unwrap_or_else(|| "未知发送者".into());
         }
         let nicks = self.group_nicknames_for(chatroom_id);
         if let Some(n) = nicks.get(&sender.to_lowercase()).filter(|n| !n.is_empty()) {
             return n.clone();
         }
-        self.hub.chat_contact_avatar(&sender).map(|c| c.1).filter(|n| !n.is_empty()).unwrap_or(sender)
+        self.hub
+            .chat_contact_avatar(&sender)
+            .map(|c| c.1)
+            .filter(|n| !n.is_empty())
+            .unwrap_or(sender)
     }
 
     fn normalize_avatar(&mut self, avatar: Option<String>) -> Option<String> {
@@ -775,7 +1046,17 @@ impl PushEngine {
         Some(url)
     }
 
-    fn payload(&self, event: &str, session_id: &str, raw_id: String, avatar: Option<String>, group_name: Option<String>, source_name: String, content: Option<String>, timestamp: i64) -> Value {
+    fn payload(
+        &self,
+        event: &str,
+        session_id: &str,
+        raw_id: String,
+        avatar: Option<String>,
+        group_name: Option<String>,
+        source_name: String,
+        content: Option<String>,
+        timestamp: i64,
+    ) -> Value {
         let mut o = Map::new();
         o.insert("event".into(), json!(event));
         o.insert("sessionId".into(), json!(session_id));
@@ -788,7 +1069,10 @@ impl PushEngine {
             o.insert("groupName".into(), json!(g));
         }
         o.insert("sourceName".into(), json!(source_name));
-        o.insert("content".into(), content.map(Value::from).unwrap_or(Value::Null));
+        o.insert(
+            "content".into(),
+            content.map(Value::from).unwrap_or(Value::Null),
+        );
         o.insert("timestamp".into(), json!(timestamp));
         Value::Object(o)
     }
@@ -802,18 +1086,59 @@ impl PushEngine {
         let raw_id = m.server_id_raw.trim().to_string();
         if session_id.ends_with("@chatroom") {
             let info = self.hub.chat_contact_avatar(&session_id);
-            let group_name = Some(session.display_name.clone()).filter(|n| !n.is_empty()).or_else(|| info.as_ref().map(|i| i.1.clone())).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.clone());
+            let group_name = Some(session.display_name.clone())
+                .filter(|n| !n.is_empty())
+                .or_else(|| info.as_ref().map(|i| i.1.clone()))
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| session_id.clone());
             let source = self.resolve_group_source_name(&session_id, m, session);
-            let avatar = self.normalize_avatar(session.avatar_url.clone().or_else(|| info.and_then(|i| i.0)));
-            return Some(self.payload("message.new", &session_id, raw_id, avatar, Some(group_name), source, content, m.create_time));
+            let avatar = self.normalize_avatar(
+                session
+                    .avatar_url
+                    .clone()
+                    .or_else(|| info.and_then(|i| i.0)),
+            );
+            return Some(self.payload(
+                "message.new",
+                &session_id,
+                raw_id,
+                avatar,
+                Some(group_name),
+                source,
+                content,
+                m.create_time,
+            ));
         }
         let info = self.hub.chat_contact_avatar(&session_id);
-        let avatar = self.normalize_avatar(session.avatar_url.clone().or_else(|| info.as_ref().and_then(|i| i.0.clone())));
-        let source = Some(session.display_name.clone()).filter(|n| !n.is_empty()).or_else(|| info.map(|i| i.1)).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.clone());
-        Some(self.payload("message.new", &session_id, raw_id, avatar, None, source, content, m.create_time))
+        let avatar = self.normalize_avatar(
+            session
+                .avatar_url
+                .clone()
+                .or_else(|| info.as_ref().and_then(|i| i.0.clone())),
+        );
+        let source = Some(session.display_name.clone())
+            .filter(|n| !n.is_empty())
+            .or_else(|| info.map(|i| i.1))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| session_id.clone());
+        Some(self.payload(
+            "message.new",
+            &session_id,
+            raw_id,
+            avatar,
+            None,
+            source,
+            content,
+            m.create_time,
+        ))
     }
 
-    fn build_revoke_payload(&mut self, session: &Session, m: &ChatMessage, fetched: &[ChatMessage]) -> Option<Value> {
+    fn build_revoke_payload(
+        &mut self,
+        session: &Session,
+        m: &ChatMessage,
+        fetched: &[ChatMessage],
+    ) -> Option<Value> {
         let session_id = session.username.trim().to_string();
         if session_id.is_empty() || m.message_key.trim().is_empty() || is_self_revoke(m) {
             return None;
@@ -822,38 +1147,98 @@ impl PushEngine {
         let original = self.find_revoked_original(&session_id, m, fetched, revoked_id.as_deref());
         let raw_id = {
             let candidates: Vec<String> = match &original {
-                Some(o) => vec![o.server_id_raw.clone(), revoked_id.clone().unwrap_or_default()],
-                None => vec![revoked_id.clone().unwrap_or_default(), m.server_id_raw.clone()],
+                Some(o) => vec![
+                    o.server_id_raw.clone(),
+                    revoked_id.clone().unwrap_or_default(),
+                ],
+                None => vec![
+                    revoked_id.clone().unwrap_or_default(),
+                    m.server_id_raw.clone(),
+                ],
             };
-            candidates.iter().map(|c| normalize_id_token(c)).find(|c| !c.is_empty()).unwrap_or_else(|| "未知".into())
+            candidates
+                .iter()
+                .map(|c| normalize_id_token(c))
+                .find(|c| !c.is_empty())
+                .unwrap_or_else(|| "未知".into())
         };
         let original_content = match &original {
             Some(o) => message_display_content(o),
             None => {
-                let content = if !m.raw_content.is_empty() { &m.raw_content } else { &m.parsed_content };
+                let content = if !m.raw_content.is_empty() {
+                    &m.raw_content
+                } else {
+                    &m.parsed_content
+                };
                 let rep = push_xml_value(content, "replacemsg");
                 (!rep.is_empty() && !rep.contains("撤回了一条消息")).then_some(rep)
             }
         };
-        let safe = original_content.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).unwrap_or_else(|| "未知内容".into());
+        let safe = original_content
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty())
+            .unwrap_or_else(|| "未知内容".into());
         let content = format!("对方撤回了一条消息（rawid：{raw_id}） 内容为“{safe}”");
         self.remember_revoked_tokens(&session_id, original.as_ref(), revoked_id.as_deref(), m);
         if session_id.ends_with("@chatroom") {
             let info = self.hub.chat_contact_avatar(&session_id);
-            let group_name = Some(session.display_name.clone()).filter(|n| !n.is_empty()).or_else(|| info.as_ref().map(|i| i.1.clone())).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.clone());
-            let revoker = [push_xml_value(&m.raw_content, "fromusername"), push_xml_value(&m.raw_content, "session"), m.sender_username.clone().unwrap_or_default()].into_iter().map(|s| s.trim().to_string()).find(|s| !s.is_empty());
+            let group_name = Some(session.display_name.clone())
+                .filter(|n| !n.is_empty())
+                .or_else(|| info.as_ref().map(|i| i.1.clone()))
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| session_id.clone());
+            let revoker = [
+                push_xml_value(&m.raw_content, "fromusername"),
+                push_xml_value(&m.raw_content, "session"),
+                m.sender_username.clone().unwrap_or_default(),
+            ]
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .find(|s| !s.is_empty());
             let mut source_msg = m.clone();
             if let Some(r) = revoker {
                 source_msg.sender_username = Some(r);
             }
             let source = self.resolve_group_source_name(&session_id, &source_msg, session);
-            let avatar = self.normalize_avatar(session.avatar_url.clone().or_else(|| info.and_then(|i| i.0)));
-            return Some(self.payload("message.revoke", &session_id, raw_id, avatar, Some(group_name), source, Some(content), m.create_time));
+            let avatar = self.normalize_avatar(
+                session
+                    .avatar_url
+                    .clone()
+                    .or_else(|| info.and_then(|i| i.0)),
+            );
+            return Some(self.payload(
+                "message.revoke",
+                &session_id,
+                raw_id,
+                avatar,
+                Some(group_name),
+                source,
+                Some(content),
+                m.create_time,
+            ));
         }
         let info = self.hub.chat_contact_avatar(&session_id);
-        let avatar = self.normalize_avatar(session.avatar_url.clone().or_else(|| info.as_ref().and_then(|i| i.0.clone())));
-        let source = Some(session.display_name.clone()).filter(|n| !n.is_empty()).or_else(|| info.map(|i| i.1)).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.clone());
-        Some(self.payload("message.revoke", &session_id, raw_id, avatar, None, source, Some(content), m.create_time))
+        let avatar = self.normalize_avatar(
+            session
+                .avatar_url
+                .clone()
+                .or_else(|| info.as_ref().and_then(|i| i.0.clone())),
+        );
+        let source = Some(session.display_name.clone())
+            .filter(|n| !n.is_empty())
+            .or_else(|| info.map(|i| i.1))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| session_id.clone());
+        Some(self.payload(
+            "message.revoke",
+            &session_id,
+            raw_id,
+            avatar,
+            None,
+            source,
+            Some(content),
+            m.create_time,
+        ))
     }
 }
 
@@ -899,22 +1284,41 @@ const REPLAY_LIMIT: usize = 1000;
 impl PushBroker {
     pub fn new() -> std::sync::Arc<Self> {
         let (tx, _) = broadcast::channel(512);
-        std::sync::Arc::new(Self { inner: std::sync::Mutex::new(BrokerInner { next_id: 0, buffer: Default::default() }), tx })
+        std::sync::Arc::new(Self {
+            inner: std::sync::Mutex::new(BrokerInner {
+                next_id: 0,
+                buffer: Default::default(),
+            }),
+            tx,
+        })
     }
 
     fn prune(inner: &mut BrokerInner) {
         let now = Instant::now();
-        while inner.buffer.front().map_or(false, |(_, _, at)| now.duration_since(*at) > RECENT_TTL) {
+        while inner
+            .buffer
+            .front()
+            .map_or(false, |(_, _, at)| now.duration_since(*at) > RECENT_TTL)
+        {
             inner.buffer.pop_front();
         }
     }
 
     pub fn broadcast(&self, payload: &Value) {
-        let name = payload.get("event").and_then(Value::as_str).map(str::trim).filter(|n| rx(r"^[a-zA-Z0-9._-]+$").is_match(n)).unwrap_or("message.new").to_string();
+        let name = payload
+            .get("event")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|n| rx(r"^[a-zA-Z0-9._-]+$").is_match(n))
+            .unwrap_or("message.new")
+            .to_string();
         let mut inner = self.inner.lock().unwrap();
         inner.next_id += 1;
         let id = inner.next_id;
-        let body = std::sync::Arc::new(format!("id: {id}\nevent: {name}\ndata: {}\n\n", serde_json::to_string(payload).unwrap_or_default()));
+        let body = std::sync::Arc::new(format!(
+            "id: {id}\nevent: {name}\ndata: {}\n\n",
+            serde_json::to_string(payload).unwrap_or_default()
+        ));
         Self::prune(&mut inner);
         inner.buffer.push_back((id, body.clone(), Instant::now()));
         while inner.buffer.len() > REPLAY_LIMIT {
@@ -932,7 +1336,12 @@ impl PushBroker {
     pub fn replay_since(&self, last_id: u64) -> Vec<(u64, std::sync::Arc<String>)> {
         let mut inner = self.inner.lock().unwrap();
         Self::prune(&mut inner);
-        inner.buffer.iter().filter(|(id, _, _)| last_id == 0 || *id > last_id).map(|(id, body, _)| (*id, body.clone())).collect()
+        inner
+            .buffer
+            .iter()
+            .filter(|(id, _, _)| last_id == 0 || *id > last_id)
+            .map(|(id, body, _)| (*id, body.clone()))
+            .collect()
     }
 }
 
@@ -974,8 +1383,16 @@ mod tests {
         assert_eq!(found.local_id, 1);
         assert_eq!(message_display_content(found).as_deref(), Some("secret"));
         // without the id, the nearest earlier incoming message is used
-        assert_eq!(PushEngine::find_revoked_in(&m, &m[1], None).unwrap().local_id, 1);
-        assert_eq!(parse_message_key_source(&m[0].message_key), Some(("/m.db".into(), "Msg_x".into())));
+        assert_eq!(
+            PushEngine::find_revoked_in(&m, &m[1], None)
+                .unwrap()
+                .local_id,
+            1
+        );
+        assert_eq!(
+            parse_message_key_source(&m[0].message_key),
+            Some(("/m.db".into(), "Msg_x".into()))
+        );
     }
 
     #[test]
@@ -989,7 +1406,10 @@ mod tests {
         assert!(first.1.starts_with("id: 1\nevent: message.new\ndata: {"));
         let all = b.replay_since(0);
         assert_eq!(all.len(), 2);
-        assert!(all[1].1.contains("event: message.new"), "invalid event names fall back to message.new");
+        assert!(
+            all[1].1.contains("event: message.new"),
+            "invalid event names fall back to message.new"
+        );
         let after = b.replay_since(1);
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].0, 2);
