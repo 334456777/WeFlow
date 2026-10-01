@@ -4,12 +4,12 @@
 
 `weflow` 是 [WeFlow](weflow-readme.md) 后端的 Rust 原生命令行版本。无需 Electron 桌面端，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
-- 每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
+- 默认输出便于阅读的文本（对齐的 `键: 值` 和表格；错误写到 stderr）。加 `--json`（紧凑）或 `--pretty`（缩进）则在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
 - 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
 - 本地 HTTP API（token 鉴权、SSE 推送，`serve --http`）、消息推送、AI 见解。
-- 默认跟随系统语言(中文或英文);`--lang en|zh` 可对单次运行覆盖。
+- `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`--lang en|zh` 可对单次运行覆盖。
 
 > [!WARNING]
 > CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建,以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过([计划](plan.md#还需要验证的部分))。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](cli-coverage.md) · [不支持的功能](cli-unsupported.md)。
@@ -27,7 +27,7 @@ Windows x64 发布版是单个 `weflow.exe`。WXGF 图片需要 `PATH`（或 `FF
 
 ## 切换中英文
 
-语言跟随系统:中文系统输出中文,否则输出英文。单次运行用 `--lang en|zh`,也可以用环境变量:
+语言跟随系统:中文系统输出中文,否则输出英文。单独运行 `weflow --lang zh`(不带命令)会把选择保存到配置文件(`weflow config unset lang` 恢复为跟随系统);`weflow --lang zh <命令>` 只对单次运行生效,也可以用环境变量:
 
 ```powershell
 .\weflow.exe --lang zh chat sessions --pretty    # 本次输出中文
@@ -38,7 +38,7 @@ $env:WEFLOW_LANG = "zh"                          # 整个 PowerShell 会话都�
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-`--lang` 是选项而不是命令,必须配合子命令使用(单独运行 `weflow.exe --lang zh` 会提示缺少子命令)。语言只影响生成的文本;JSON 键、错误码和 `--help` 始终是英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
+单独运行 `weflow.exe --lang zh` 会把语言保存到配置文件;与命令一起使用时只对本次运行生效。语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文,HTTP API 的错误响应也保持英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
 
 ## 首次设置与导出（必要步骤）
 

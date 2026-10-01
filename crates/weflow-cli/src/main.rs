@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+
+mod i18n;
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
@@ -29,13 +31,13 @@ struct Cli {
     /// Account wxid (overrides config)
     #[arg(long, global = true)]
     wxid: Option<String>,
-    /// Output language for generated text (default: follows the system: WEFLOW_LANG/LC_ALL/LC_MESSAGES/LANG/LANGUAGE, else the OS display language, else en)
+    /// Output language: en or zh. Given on its own (`weflow --lang zh`) it is saved in the config file; with a command it applies to that run only. Default: the saved language, else the system language
     #[arg(long, global = true, value_enum)]
     lang: Option<LangArg>,
-    /// Print JSON (default)
+    /// Print compact JSON (for scripts) instead of the human-readable output
     #[arg(long, global = true)]
     json: bool,
-    /// Print human-readable pretty JSON
+    /// Print indented JSON (implies --json)
     #[arg(long, global = true)]
     pretty: bool,
     /// Emit NDJSON progress events on stderr (machine-readable)
@@ -65,7 +67,7 @@ enum LangArg {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Read and write configuration (list, get, set, unset, clear, import)
+    /// Read and write configuration (path, list, get, set, unset, clear, import)
     Config(ConfigCommand),
     /// Detect, scan and test WeChat database locations
     Db(DbCommand),
@@ -121,6 +123,8 @@ struct ConfigCommand {
 
 #[derive(Subcommand, Debug)]
 enum ConfigSubcommand {
+    /// Show the path of the config file
+    Path,
     /// Show every key of the active profile
     List,
     /// Show one key (or all when omitted)
@@ -1018,13 +1022,14 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    let cli = Cli::parse();
+    let cli: Cli = i18n::parse();
     if let Some(lang) = cli.lang {
         weflow_core::locale::set(match lang {
             LangArg::En => weflow_core::locale::Lang::En,
             LangArg::Zh => weflow_core::locale::Lang::Zh,
         });
     }
+    weflow_core::output::set_json_output(cli.json || cli.pretty);
     weflow_core::output::set_progress_mode(if cli.progress {
         weflow_core::output::ProgressMode::Ndjson
     } else if cli.no_progress {
@@ -1039,11 +1044,11 @@ async fn main() -> ExitCode {
     weflow_core::output::finish_progress();
     match outcome {
         Ok(value) => {
-            print_response(&success(value), cli.pretty);
+            print_response(&success(value), &cli);
             ExitCode::SUCCESS
         }
         Err(err) => {
-            print_response(&failure(err.payload()), cli.pretty);
+            print_failure(&err, &cli);
             ExitCode::from(err.exit_code as u8)
         }
     }
@@ -1146,12 +1151,8 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                             .to_string(),
                     ));
                 }
-                eprintln!(
-                    "{}",
-                    serde_json::to_string(
-                        &json!({ "type": "auto_download_started", "status": svc.status() })
-                    )
-                    .unwrap()
+                weflow_core::output::event(
+                    json!({ "type": "auto_download_started", "status": svc.status() }),
                 );
                 let _ = tokio::signal::ctrl_c().await;
                 svc.stop();
@@ -1226,6 +1227,7 @@ fn handle_config(
     cli: &Cli,
 ) -> AppResult<Value> {
     match &command.command {
+        ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
         ConfigSubcommand::List => Ok(serde_json::to_value(config).unwrap()),
         ConfigSubcommand::Get { key } => {
             if let Some(key) = key {
@@ -2008,10 +2010,7 @@ fn insight_filters(
 }
 
 fn print_insight(r: &weflow_core::insight::InsightRecord) {
-    eprintln!(
-        "{}",
-        serde_json::to_string(&json!({ "type": "insight", "record": r.summary() })).unwrap()
-    );
+    weflow_core::output::event(json!({ "type": "insight", "record": r.summary() }));
 }
 
 async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
@@ -2171,8 +2170,17 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         let started = svc.start(config_whitelist(hub));
         if started["success"] != true {
             eprintln!(
-                "warning: image auto download not started: {}",
-                started["error"].as_str().unwrap_or("unknown error")
+                "{}{}",
+                weflow_core::locale::tr(
+                    "warning: image auto download not started: ",
+                    "警告：图片自动下载未启动："
+                ),
+                weflow_core::locale::localize(
+                    started["error"]
+                        .as_str()
+                        .unwrap_or("unknown error")
+                        .to_string()
+                )
             );
         }
         Some(svc)
@@ -2206,21 +2214,23 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         });
     }
 
-    eprintln!(
-        "{}",
-        serde_json::to_string(&json!({
-            "type": "server_started",
-            "url": format!("http://{addr}"),
-            "http": command.http,
-            "tokenConfigured": token.is_some(),
-            "messagePush": command.message_push,
-            "insight": command.insight,
-            "imageAutoDownload": command.image_auto_download
-        }))
-        .unwrap()
-    );
+    weflow_core::output::event(json!({
+        "type": "server_started",
+        "url": format!("http://{addr}"),
+        "http": command.http,
+        "tokenConfigured": token.is_some(),
+        "messagePush": command.message_push,
+        "insight": command.insight,
+        "imageAutoDownload": command.image_auto_download
+    }));
     if command.http && token.is_none() {
-        eprintln!("warning: no HTTP API token configured; every request except /health will be refused (set http_api_token or pass --api-token)");
+        eprintln!(
+            "{}",
+            weflow_core::locale::tr(
+                "warning: no HTTP API token configured; every request except /health will be refused (set http_api_token or pass --api-token)",
+                "警告：未配置 HTTP API 令牌；除 /health 外的所有请求都会被拒绝（请设置 http_api_token 或传入 --api-token）"
+            )
+        );
     }
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -2422,11 +2432,32 @@ fn parse_config_value(raw: &str) -> Value {
     serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()))
 }
 
-fn print_response<T: serde::Serialize>(response: &T, pretty: bool) {
-    if pretty {
-        println!("{}", serde_json::to_string_pretty(response).unwrap());
+fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
+    let mut value = serde_json::to_value(response).unwrap();
+    weflow_core::locale::localize_json(&mut value);
+    if cli.pretty {
+        println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    } else if cli.json {
+        println!("{}", serde_json::to_string(&value).unwrap());
     } else {
-        println!("{}", serde_json::to_string(response).unwrap());
+        // Human-readable: the payload itself, without the {success, data} envelope.
+        let data = value.get("data").cloned().unwrap_or(Value::Null);
+        print!("{}", weflow_core::render::render(&data));
+        if let Some(meta) = value.get("meta") {
+            print!("\n{}", weflow_core::render::render(meta));
+        }
+    }
+}
+
+fn print_failure(err: &AppError, cli: &Cli) {
+    if cli.json || cli.pretty {
+        print_response(&failure(err.payload()), cli);
+    } else {
+        let details = err.details.as_ref();
+        eprint!(
+            "{}",
+            weflow_core::render::render_error(&err.message, details)
+        );
     }
 }
 

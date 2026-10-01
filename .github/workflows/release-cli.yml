@@ -109,6 +109,8 @@ jobs:
       id-token: write       # sign the attestation
       attestations: write   # store the attestation
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -132,8 +134,11 @@ jobs:
           if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             FLAGS+=(--prerelease)
           fi
+          # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in.
+          sed -e "s|{{TAG}}|$GITHUB_REF_NAME|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" \
+            .github/release-notes.md > release-notes.md
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file release-notes.md \
             "${FLAGS[@]}"

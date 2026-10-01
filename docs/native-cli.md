@@ -2,22 +2,23 @@
 
 **English** | [简体中文](zh-CN/native-cli.md)
 
-A Rust command-line build of WeFlow's backend. Every command prints one JSON document on stdout
+A Rust command-line build of WeFlow's backend. By default a command prints human-readable text on stdout (aligned `key: value` lines, tables for lists) and
+errors on stderr, with the same exit codes. With `--json` (compact) or `--pretty` (indented) every command prints one JSON document on stdout
 (`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`.
 
 ## Language
 
-The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `--lang`, the environment
+The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `--lang`, `WEFLOW_LANG`, the language saved in the config file (`weflow --lang zh` on its own saves it; `weflow config unset lang` removes it), the environment
 (the first variable that is set and non-empty decides), then the operating system's display language:
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
 
 A value starting with `zh` (`zh_CN.UTF-8`, `zh-TW`, `zh`) gives Chinese; anything else, including `C` and `POSIX`, gives English.
 When none of the variables is set (usual on Windows) the OS display language decides (Windows, macOS); if it cannot be determined, English.
-`--lang en|zh` overrides all of this for a single run.
+`--lang en|zh <command>` overrides all of this for a single run.
 
-The language affects generated text: TXT/Excel export labels (`[Image]` / `[图片]`), the default official-account payment
-merchant name, and the default AI insight prompt. JSON keys, error codes and `--help` text are always English.
+The language affects `--help`, usage errors, runtime errors, progress text and generated text: TXT/Excel export labels (`[Image]` / `[图片]`), the default official-account payment
+merchant name, and the default AI insight prompt. JSON keys, error codes and the HTTP API's error responses stay English.
 
 ## Commands
 
@@ -49,7 +50,7 @@ weflow cache     clear-all
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
 
 Progress: commands that run longer than the delay (default 5 seconds; `--progress-delay <s>`, env `WEFLOW_PROGRESS_DELAY`, or `weflow config set progress_delay_seconds <s>`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
-terminal; stdout stays pure JSON). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.
+terminal; stdout is never touched). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` walks the media
 messages (an image sent twice counts twice, so `found` can exceed the unique files listed by `chat images`). `missing` counts
@@ -72,7 +73,7 @@ Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA
 (on Linux/macOS under the platform's data directory).
 
 `serve --http` exposes the desktop app's HTTP API (token required except `/health`; set `http_api_token` or `--api-token`).
-`serve --insight` runs the AI insight engine; each generated insight is printed to stderr as a JSON line.
+`serve --insight` runs the AI insight engine; each generated insight is printed to stderr (as a JSON line with `--json`).
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
 Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`); WXGF images need `ffmpeg`
 on `PATH` (or `FFMPEG_PATH`).

@@ -4,12 +4,12 @@
 
 `weflow` is a native Rust command-line build of [WeFlow](docs/weflow-readme.md)'s backend. It reads, analyzes and exports your local WeChat 4.0+ chat history from the terminal, without the Electron desktop app.
 
-- Every command prints one JSON document on stdout (`{"success": true, "data": ...}`), which makes it easy to script.
+- Output is human-readable by default (aligned `key: value` lines and tables; errors go to stderr). Add `--json` (compact) or `--pretty` (indented) for one JSON document on stdout (`{"success": true, "data": ...}`), which makes it easy to script.
 - Chat sessions, messages, contacts, Moments, group/private analytics, annual and dual reports.
 - Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, `sql`.
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, stickers.
 - Local HTTP API with token auth and SSE push (`serve --http`), message push, AI insights.
-- Follows the system language (Chinese or English); `--lang en|zh` overrides it per run.
+- Follows the system language (Chinese or English) for `--help`, usage errors, runtime errors and generated text; `--lang en|zh` overrides it per run.
 
 > [!WARNING]
 > The CLI was ported from the original TypeScript backend. Its database layer is pure Rust (it decrypts and reads WeChat's databases itself, read-only) and was verified against one real Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows; macOS/Linux WeChat data is untested ([plan](docs/plan.md#verification-still-to-do)). Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [unsupported](docs/cli-unsupported.md).
@@ -27,7 +27,7 @@ Windows x64 releases are a single `weflow.exe`. WXGF images need `ffmpeg` on `PA
 
 ## Switching between English and Chinese
 
-The language follows the system: Chinese on a Chinese system, English otherwise. Use `--lang en|zh` for a single run, or the environment:
+The language follows the system: Chinese on a Chinese system, English otherwise. `weflow --lang zh` (on its own, no command) saves the choice in the config file (`weflow config unset lang` goes back to the system language); `weflow --lang zh <command>` applies to a single run, or use the environment:
 
 ```powershell
 .\weflow.exe --lang zh chat sessions --pretty    # Chinese output for this run
@@ -38,7 +38,7 @@ $env:WEFLOW_LANG = "zh"                          # Chinese for the whole PowerSh
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-`--lang` is an option, not a command: it must accompany a subcommand (`weflow.exe --lang zh` alone reports a missing subcommand). The language only affects generated text; JSON keys, error codes and `--help` are always English. The full order of precedence is in [docs/native-cli.md](docs/native-cli.md#language).
+`weflow.exe --lang zh` on its own saves the language in the config file; with a command it applies to that run only. The language affects `--help`, usage errors, runtime errors and generated text; JSON keys and error codes stay English, and so do the HTTP API's error responses. The full order of precedence is in [docs/native-cli.md](docs/native-cli.md#language).
 
 ## First-time setup and export (required steps)
 
