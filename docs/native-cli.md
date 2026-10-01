@@ -78,4 +78,40 @@ Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA
 Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`); WXGF images need `ffmpeg`
 on `PATH` (or `FFMPEG_PATH`).
 
-Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, `4` database/native library error.
+Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, `4` database/native library error, `130` interrupted.
+
+## Architecture
+
+| Crate | Role |
+|---|---|
+| `crates/weflow-cli` | Command entry, argument parsing, output |
+| `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, HTTP API |
+| `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, WASM, platform wrappers |
+| `crates/weflow-assets` | Embedded resources, unpacking, hash check |
+| `crates/weflow-silk` | Vendored SILK decoder for voice messages |
+
+The platform helpers that cannot be rewritten (`wx_key.dll`, `img_helper.dll`, `libwx_key.dylib`, `xkey_helper_linux`, the WASM
+decoder) are embedded: each binary carries only its own platform's helpers, unpacks them into
+`WEFLOW_HOME/runtime/<version>/<target>/`, checks the manifest hash on every start (unpacking again when the version or a hash
+differs) and loads libraries only from that directory, never implicitly from the current directory.
+
+Configuration lives in `WEFLOW_HOME`, otherwise in `weflow` under the platform's configuration directory: `config.json` (TOML is
+accepted too), with caches, logs and the runtime in separate directories. `weflow config import` migrates the desktop app's
+readable settings and skips the encrypted `safe:` / `lock:` values with a hint to set them again.
+
+**Why the database layer is pure Rust.** The CLI was first meant to call the closed-source `wcdb_api` library through FFI. That
+library has an expiry check (after 2026-09-30 23:59:59 `wcdb_init` returns `-1000`) and unverified network code, so the CLI now
+decrypts WeChat 4.x databases itself (SQLCipher 4) and reads them **read-only** in pure Rust
+(`crates/weflow-native/src/{sqlcipher,native_*}.rs`). Neither the CLI nor the desktop app embeds or loads `wcdb_api`,
+`WCDB.dll`, `libwcdb_api.*` or `libWCDB.dylib` any more; they stay in the repository for the original desktop app, see
+[wcdb-api.md](wcdb-api.md). Coverage of the original backend: [cli-coverage.md](cli-coverage.md).
+
+## Tests
+
+- Unit tests in each crate: configuration and legacy config import, the embedded runtime manifest, SQLCipher (round trip, wrong
+  key, tampered page, WAL merge), image and Moments decryption, export formats.
+- End-to-end tests on synthetic encrypted accounts (`weflow_native::fixture`: SQLCipher pages, WAL, zstd, SILK) and local fake
+  HTTP servers, under `crates/weflow-core/tests/`. `cargo test --workspace` runs everything.
+- Real-data regression: one Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows
+  (about 80 commands, message exports with media, image exports, the HTTP API). What is still unverified is listed in
+  [cli-unsupported.md](cli-unsupported.md#still-to-verify).

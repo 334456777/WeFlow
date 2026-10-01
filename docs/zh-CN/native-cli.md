@@ -60,4 +60,34 @@ weflow cache     clear-all
 `image auto-download` 与 `serve --image-auto-download` 通过 `img_helper.dll` 钩住微信，仅支持 Windows x64。
 语音消息使用内置的 Skype SILK SDK 副本（`crates/weflow-silk`）解码；WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`。
 
-退出码：`0` 成功，`1` 运行时错误，`2` 参数错误，`3` 配置/密钥错误，`4` 数据库/原生库错误。
+退出码：`0` 成功，`1` 运行时错误，`2` 参数错误，`3` 配置/密钥错误，`4` 数据库/原生库错误,`130` 用户中断。
+
+## 结构
+
+| Crate | 作用 |
+|---|---|
+| `crates/weflow-cli` | 命令入口、参数解析、输出 |
+| `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、HTTP API |
+| `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、WASM、平台封装 |
+| `crates/weflow-assets` | 内嵌资源、解压、哈希校验 |
+| `crates/weflow-silk` | 内置的 SILK 解码器,用于语音消息 |
+
+无法重写的平台辅助程序(`wx_key.dll`、`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`、WASM 解码器)内嵌在程序里:
+每个二进制只内嵌本平台需要的辅助程序,解压到 `WEFLOW_HOME/runtime/<版本>/<target>/`;每次启动校验清单里的哈希(版本或哈希
+不一致时重新解压);动态库只从这个目录加载,不会隐式从当前目录加载。
+
+配置放在 `WEFLOW_HOME`,否则是平台配置目录下的 `weflow`:配置文件 `config.json`(也接受 TOML),缓存、日志、运行时分目录存放。
+`weflow config import` 迁移桌面端可读的设置,加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。
+
+**为什么数据库层是纯 Rust。** 命令行原计划通过 FFI 调用闭源的 `wcdb_api` 库。这个库带有效期检查(2026-09-30 23:59:59 之后
+`wcdb_init` 返回 `-1000`)和未经核实的网络代码,所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4),用纯 Rust **只读**
+读取(`crates/weflow-native/src/{sqlcipher,native_*}.rs`)。命令行和桌面端都不再内嵌或加载 `wcdb_api`、`WCDB.dll`、
+`libwcdb_api.*`、`libWCDB.dylib`;它们留在仓库里给原版桌面端使用,见 [wcdb-api.md](wcdb-api.md)。对原后端的覆盖率见 [cli-coverage.md](cli-coverage.md)。
+
+## 测试
+
+- 各 crate 的单元测试:配置和旧配置导入、内嵌运行时清单、SQLCipher(加解密往返、错误密钥、页被篡改、WAL 合并)、图片和朋友圈解密、导出格式。
+- 端到端测试用合成的加密账号(`weflow_native::fixture`:SQLCipher 页、WAL、zstd、SILK)和本地假 HTTP 服务器,位于
+  `crates/weflow-core/tests/`。`cargo test --workspace` 会全部运行。
+- 真实数据回归:一个 Windows 微信 4.x 账号,用 Linux 构建,以及在 Windows 上运行 `weflow.exe`(约 80 个命令、带媒体的消息导出、
+  图片导出、HTTP API)。还没验证的部分见 [cli-unsupported.md](cli-unsupported.md#尚待验证)。

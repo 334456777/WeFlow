@@ -53,7 +53,7 @@
 宿主(原版桌面端)里运行,或者需要原作者协助;这一点列在下面的讨论里。
 
 Rust 层另有自己的验证(测试套件里的合成加密账号、一个真实的 Windows 账号、不同版本之间输出逐字节比对),见
-[cli-unsupported.md](cli-unsupported.md) 第 4 节和 [plan.md](plan.md#还需要验证的部分)。
+[cli-unsupported.md](cli-unsupported.md#尚待验证)。
 
 ## 讨论
 
