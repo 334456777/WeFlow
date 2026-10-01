@@ -57,7 +57,6 @@ Rust 层另有自己的验证(测试套件里的合成加密账号、一个真�
 
 ## 讨论
 
-关于 `wcdb_api.dll` 的问题(新版本、与 Rust 层的对照、其中的联网代码、其他平台的版本)在这个 issue 里讨论:
+关于 `wcdb_api.dll` 的问题在这个 issue 里讨论:
 
-<!-- ISSUE 链接:把下一行换成 issue 的网址 -->
-- Issue:_(链接待补)_
+- Issue: [hicccc77/WeFlow#1220](https://github.com/hicccc77/WeFlow/issues/1220#issuecomment-5925015014)
