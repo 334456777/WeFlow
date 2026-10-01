@@ -688,8 +688,9 @@ mod tests {
             ".png",
             Some("a/b"),
         );
-        assert!(out.to_string_lossy().contains("/a_b/"));
-        assert!(out.to_string_lossy().ends_with(&format!("{MD5}_t.png")));
+        let out = out.to_string_lossy().replace('\\', "/");
+        assert!(out.contains("/a_b/"));
+        assert!(out.ends_with(&format!("{MD5}_t.png")));
     }
 
     #[test]

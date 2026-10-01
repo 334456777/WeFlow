@@ -382,9 +382,9 @@ mod tests {
 
     #[test]
     fn file_urls_percent_encode_like_node() {
-        assert_eq!(
-            path_to_file_url(Path::new("/a b/c#d/é.mp4")),
-            "file:///a%20b/c%23d/%C3%A9.mp4"
-        );
+        // On Windows a rooted path gets the current drive ("file:///D:/a%20b/...").
+        let url = path_to_file_url(Path::new("/a b/c#d/é.mp4"));
+        assert!(url.starts_with("file:///"), "{url}");
+        assert!(url.ends_with("/a%20b/c%23d/%C3%A9.mp4"), "{url}");
     }
 }
