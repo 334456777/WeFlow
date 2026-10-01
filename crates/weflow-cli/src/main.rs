@@ -2682,6 +2682,20 @@ fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
 /// `key db` / `key image` print the keys under the names `config set` expects, so they can be copied over.
 fn key_summary(command: &Commands, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
+    if let Commands::Config(ConfigCommand { command }) = command {
+        return match command {
+            // saving a setting succeeds silently; the config file path is not news
+            ConfigSubcommand::Set { .. }
+            | ConfigSubcommand::Unset { .. }
+            | ConfigSubcommand::Clear => Some(String::new()),
+            ConfigSubcommand::Import { .. } => {
+                let mut shown = data.clone();
+                shown.as_object_mut()?.remove("configPath");
+                Some(weflow_core::render::render(&shown))
+            }
+            _ => None,
+        };
+    }
     if let Commands::Db(DbCommand {
         command: DbSubcommand::Detect,
     }) = command

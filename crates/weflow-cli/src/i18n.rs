@@ -94,12 +94,12 @@ fn save_language_if_alone(args: &[String]) {
             Ok(path)
         });
     match result {
-        Ok(path) => {
+        Ok(_) => {
             let message = match lang {
                 Lang::Zh => "已将语言设置为中文",
                 Lang::En => "Language set to English",
             };
-            println!("{message} ({})", path.display());
+            println!("{message}");
             std::process::exit(0);
         }
         Err(err) => {
