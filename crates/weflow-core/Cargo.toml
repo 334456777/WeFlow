@@ -5,22 +5,44 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+libloading.workspace = true
 aes.workspace = true
+aes-gcm.workspace = true
 anyhow.workspace = true
+async-stream.workspace = true
+axum.workspace = true
+base64.workspace = true
+cbc.workspace = true
+chrono.workspace = true
 dirs.workspace = true
 ecb.workspace = true
+flate2.workspace = true
+futures.workspace = true
 md-5.workspace = true
+memchr.workspace = true
 mime_guess.workspace = true
+regex.workspace = true
 reqwest.workspace = true
 rust_xlsxwriter.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-stream.workspace = true
 toml.workspace = true
+sha1.workspace = true
+terminal_size.workspace = true
+rand.workspace = true
 sha2.workspace = true
 walkdir.workspace = true
 weflow-assets = { path = "../weflow-assets" }
 weflow-native = { path = "../weflow-native" }
+weflow-silk = { path = "../weflow-silk" }
 zip.workspace = true
 zstd.workspace = true
+icu_collator.workspace = true
+icu_locale_core.workspace = true
+
+[dev-dependencies]
+weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
+weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useThemeStore } from '../stores/themeStore';
 import { Newspaper, MessageSquareOff } from 'lucide-react';
 import './BizPage.scss';
+import { t } from '../i18n'
 
 export interface BizAccount {
   username: string;
@@ -91,7 +92,7 @@ export const BizAccountList: React.FC<{
   }, [accounts, searchKeyword]);
 
 
-  if (loading) return <div className="biz-loading">加载中...</div>;
+  if (loading) return <div className="biz-loading">{t('加载中...')}</div>;
 
   return (
       <div className="biz-account-list">
@@ -129,7 +130,7 @@ export const BizAccountList: React.FC<{
                             item.type === '2' ? 'type-enterprise' : 
                                 item.type === '3' ? 'type-enterprise' : 'type-unknown'
                 }`}>
-                  {item.type === '0' ? '公众号' : item.type === '1' ? '服务号' : item.type === '2' ? '企业号' : item.type === '3' ? '企业附属' :  '未知'}
+                  {item.type === '0' ? t('公众号') : item.type === '1' ? t('服务号') : item.type === '2' ? t('企业号') : item.type === '3' ? t('企业附属') :  t('未知')}
                 </div>
 
               </div>
@@ -247,7 +248,7 @@ export const BizMessageArea: React.FC<{
     return (
         <div className="biz-empty-state">
           <div className="empty-icon"><Newspaper size={40} /></div>
-          <p>请选择一个服务号查看消息</p>
+          <p>{t('请选择一个服务号查看消息')}</p>
         </div>
     );
   }
@@ -265,15 +266,15 @@ export const BizMessageArea: React.FC<{
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
-      return `昨天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      return t('昨天 {v0}:{v1}', { v0: date.getHours().toString().padStart(2, '0'), v1: date.getMinutes().toString().padStart(2, '0') });
     }
 
     const isThisYear = date.getFullYear() === now.getFullYear();
     if (isThisYear) {
-      return `${date.getMonth() + 1}月${date.getDate()}日 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      return t('{v0}月{v1}日 {v2}:{v3}', { v0: date.getMonth() + 1, v1: date.getDate(), v2: date.getHours().toString().padStart(2, '0'), v3: date.getMinutes().toString().padStart(2, '0') });
     }
     
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    return t('{v0}年{v1}月{v2}日', { v0: date.getFullYear(), v1: date.getMonth() + 1, v2: date.getDate() });
   };
 
   const defaultImage = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjE4MCIgZmlsbD0iI2Y1ZjVmNSIvPjwvc3ZnPg==';
@@ -286,15 +287,15 @@ export const BizMessageArea: React.FC<{
         <div className="message-container" onScroll={handleScroll} ref={messageListRef}>
           <div className="messages-wrapper">
             {hasMore && messages.length > 0 && (
-                <div className="biz-loading-more">{loading ? '加载中...' : '向上滚动加载更多历史消息'}</div>
+                <div className="biz-loading-more">{loading ? t('加载中...') : t('向上滚动加载更多历史消息')}</div>
             )}
             {!loading && messages.length === 0 && (
               <div className="biz-no-record-container">
                 <div className="no-record-icon">
                   <MessageSquareOff size={48} />
                 </div>
-                <h3>暂无本地记录</h3>
-                <p>该公众号在当前数据库中没有可显示的聊天历史</p>
+                <h3>{t('暂无本地记录')}</h3>
+                <p>{t('该公众号在当前数据库中没有可显示的聊天历史')}</p>
               </div>
             )}
             {messages.map((msg, index) => {
@@ -312,7 +313,7 @@ export const BizMessageArea: React.FC<{
                           <div className="pay-card">
                             <div className="pay-header">
                               {msg.merchant_icon ? <img src={msg.merchant_icon} className="pay-icon" alt=""/> : <div className="pay-icon-placeholder">¥</div>}
-                              <span>{msg.merchant_name || '微信支付'}</span>
+                              <span>{msg.merchant_name || t('微信支付')}</span>
                             </div>
                             <div className="pay-title">{msg.title}</div>
                             <div className="pay-desc">{msg.description}</div>
@@ -340,7 +341,7 @@ export const BizMessageArea: React.FC<{
                     </div>
                 );
             })}
-            {loading && offset === 0 && <div className="biz-loading-more">加载中...</div>}
+            {loading && offset === 0 && <div className="biz-loading-more">{t('加载中...')}</div>}
           </div>
         </div>
       </div>

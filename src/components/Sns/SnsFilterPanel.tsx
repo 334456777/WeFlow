@@ -2,6 +2,7 @@ import React from 'react'
 import { Search, User, X, Loader2, CheckSquare, Square, Download } from 'lucide-react'
 import { Virtuoso } from 'react-virtuoso'
 import { Avatar } from '../Avatar'
+import { t } from '../../i18n'
 
 interface Contact {
     username: string
@@ -82,12 +83,12 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
 
     const getEmptyStateText = () => {
         if (loading && contacts.length === 0) {
-            return '正在加载联系人...'
+            return t('正在加载联系人...')
         }
         if (contacts.length === 0) {
-            return '暂无好友或曾经的好友'
+            return t('暂无好友或曾经的好友')
         }
-        return '没有找到联系人'
+        return t('没有找到联系人')
     }
 
     const renderContactRow = React.useCallback((_: number, contact: Contact) => {
@@ -103,7 +104,7 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
                     type="button"
                     className={`contact-select-btn${isSelected ? ' checked' : ''}`}
                     onClick={() => onToggleContactSelected(contact)}
-                    title={isSelected ? `取消选择 ${contact.displayName}` : `选择 ${contact.displayName}`}
+                    title={isSelected ? t('取消选择 {displayName}', { displayName: contact.displayName }) : t('选择 {displayName}', { displayName: contact.displayName })}
                     aria-pressed={isSelected}
                 >
                     {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
@@ -112,7 +113,7 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
                     type="button"
                     className="contact-main-btn"
                     onClick={() => onOpenContactTimeline(contact)}
-                    title={`查看 ${contact.displayName} 的朋友圈`}
+                    title={t('查看 {displayName} 的朋友圈', { displayName: contact.displayName })}
                 >
                     <Avatar src={contact.avatarUrl} name={contact.displayName} size={28} shape="rounded" />
                     <div className="contact-meta">
@@ -120,9 +121,9 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
                     </div>
                     <div className="contact-post-count-wrap">
                         {isPostCountReady ? (
-                            <span className="contact-post-count">{Math.max(0, Math.floor(Number(contact.postCount || 0)))}条</span>
+                            <span className="contact-post-count">{t('{v0}条', { v0: Math.max(0, Math.floor(Number(contact.postCount || 0))) })}</span>
                         ) : (
-                            <span className="contact-post-count-loading" title="统计中">
+                            <span className="contact-post-count-loading" title={t('统计中')}>
                                 <Loader2 size={12} className="spinning" />
                             </span>
                         )}
@@ -135,9 +136,9 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
     return (
         <aside className="sns-filter-panel">
             <div className="filter-header">
-                <h3>筛选</h3>
+                <h3>{t('筛选')}</h3>
                 {(searchKeyword || contactSearch) && (
-                    <button className="reset-all-btn" onClick={clearFilters} title="重置所有筛选">
+                    <button className="reset-all-btn" onClick={clearFilters} title={t('重置所有筛选')}>
                         <RefreshCw size={14} />
                     </button>
                 )}
@@ -148,12 +149,12 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
                 <div className="filter-widget search-widget">
                     <div className="widget-header">
                         <Search size={14} />
-                        <span>关键词</span>
+                        <span>{t('关键词')}</span>
                     </div>
                     <div className="input-group">
                         <input
                             type="text"
-                            placeholder="搜索动态"
+                            placeholder={t('搜索动态')}
                             value={searchKeyword}
                             onChange={e => setSearchKeyword(e.target.value)}
                         />
@@ -168,7 +169,7 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
                 <div className="filter-widget contact-widget">
                     <div className="widget-header">
                         <User size={14} />
-                        <span>联系人</span>
+                        <span>{t('联系人')}</span>
                         {totalFriendsLabel && (
                             <span className="widget-header-summary">{totalFriendsLabel}</span>
                         )}
@@ -177,7 +178,7 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
                     <div className="contact-search-bar">
                         <input
                             type="text"
-                            placeholder="查找联系人"
+                            placeholder={t('查找联系人')}
                             value={contactSearch}
                             onChange={e => setContactSearch(e.target.value)}
                         />
@@ -188,24 +189,22 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
                     </div>
 
                     <div className="contact-selection-toolbar">
-                        <span className="contact-selection-summary">
-                            当前 {filteredContactUsernames.length} 人，已选 {selectedFilteredCount} 人
-                        </span>
+                        <span className="contact-selection-summary">{t('当前 {length} 人，已选 {selectedFilteredCount} 人', { length: filteredContactUsernames.length, selectedFilteredCount: selectedFilteredCount })}</span>
                         <button
                             type="button"
                             className={`contact-selection-toggle${allFilteredSelected ? ' active' : ''}`}
                             onClick={() => onToggleFilteredContacts(filteredContactUsernames, !allFilteredSelected)}
                             disabled={!hasFilteredContacts}
                         >
-                            {allFilteredSelected ? '取消全选' : '全选'}
+                            {allFilteredSelected ? t('取消全选') : t('全选')}
                         </button>
                     </div>
 
                     {contactsCountProgress && contactsCountProgress.total > 0 && (
                         <div className="contact-count-progress">
                             {contactsCountProgress.running
-                                ? `朋友圈条数统计中 ${contactsCountProgress.resolved}/${contactsCountProgress.total}`
-                                : `朋友圈条数已统计 ${contactsCountProgress.total}/${contactsCountProgress.total}`}
+                                ? t('朋友圈条数统计中 {resolved}/{total}', { resolved: contactsCountProgress.resolved, total: contactsCountProgress.total })
+                                : t('朋友圈条数已统计 {total}/{total2}', { total: contactsCountProgress.total, total2: contactsCountProgress.total })}
                         </div>
                     )}
 
@@ -226,13 +225,11 @@ export const SnsFilterPanel: React.FC<SnsFilterPanelProps> = ({
 
                     {selectedContactUsernames.length > 0 && (
                         <div className="contact-batch-bar">
-                            <span className="contact-batch-summary">已选 {selectedContactUsernames.length} 人</span>
-                            <button type="button" className="contact-batch-btn" onClick={onClearSelectedContacts}>
-                                清空
-                            </button>
+                            <span className="contact-batch-summary">{t('已选 {length} 人', { length: selectedContactUsernames.length })}</span>
+                            <button type="button" className="contact-batch-btn" onClick={onClearSelectedContacts}>{t('清空')}</button>
                             <button type="button" className="contact-batch-btn primary" onClick={onExportSelectedContacts}>
                                 <Download size={14} />
-                                <span>下载所选</span>
+                                <span>{t('下载所选')}</span>
                             </button>
                         </div>
                     )}

@@ -11,6 +11,7 @@ export const CONFIG_KEYS = {
   WXID_CONFIGS: 'wxidConfigs',
   THEME: 'theme',
   THEME_ID: 'themeId',
+  UI_LANGUAGE: 'uiLanguage',
   LAST_SESSION: 'lastSession',
   WINDOW_BOUNDS: 'windowBounds',
   CACHE_PATH: 'cachePath',
@@ -276,6 +277,10 @@ export async function setTheme(theme: 'light' | 'dark' | 'system'): Promise<void
 }
 
 // 获取主题配色
+export async function setLanguage(language: 'auto' | 'en' | 'zh-CN'): Promise<void> {
+  await config.set(CONFIG_KEYS.UI_LANGUAGE, language)
+}
+
 export async function getThemeId(): Promise<string | null> {
   const value = await config.get(CONFIG_KEYS.THEME_ID)
   return (value as string) || null

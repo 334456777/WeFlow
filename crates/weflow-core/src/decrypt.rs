@@ -2,7 +2,6 @@ use std::path::Path;
 
 use aes::cipher::{BlockDecryptMut, KeyInit};
 use anyhow::{anyhow, Result};
-use md5::{Digest, Md5};
 use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
@@ -58,87 +57,75 @@ pub fn detect_image_extension(data: &[u8]) -> &str {
     ".bin"
 }
 
-pub fn derive_image_keys(code: u64, wxid: &str) -> (u8, String) {
-    let xor_key = (code & 0xFF) as u8;
-    let cleaned_wxid = clean_wxid(wxid);
-    let data_to_hash = format!("{}{}", code, cleaned_wxid);
-    let mut hasher = Md5::new();
-    hasher.update(data_to_hash.as_bytes());
-    let digest = hasher.finalize();
-    let aes_key = format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        digest[0], digest[1], digest[2], digest[3],
-        digest[4], digest[5], digest[6], digest[7],
-        digest[8], digest[9], digest[10], digest[11],
-        digest[12], digest[13], digest[14], digest[15]
-    );
-    (xor_key, aes_key)
+/// Re-exported for compatibility; see [`crate::keys::derive_image_keys`].
+pub use crate::keys::derive_image_keys;
+
+/// Default key of V1 (`07 08 56 31 08 07`) `.dat` files.
+pub const V1_AES_KEY: [u8; 16] = *b"cfcd208495d565ef";
+
+/// Turns the configured image AES key into the 16 key bytes: the 16-character ASCII form the
+/// desktop app stores (first 16 bytes), or a 32-digit hex string.
+pub fn parse_aes_key(text: &str) -> Option<[u8; 16]> {
+    let t = text.trim();
+    if t.len() >= 32 && t.is_ascii() && t[..32].bytes().all(|b| b.is_ascii_hexdigit()) {
+        let mut arr = [0u8; 16];
+        for i in 0..16 {
+            arr[i] = u8::from_str_radix(&t[i * 2..i * 2 + 2], 16).ok()?;
+        }
+        return Some(arr);
+    }
+    if t.len() >= 16 && t.is_ascii() {
+        let mut arr = [0u8; 16];
+        arr.copy_from_slice(&t.as_bytes()[..16]);
+        return Some(arr);
+    }
+    None
 }
 
-fn clean_wxid(wxid: &str) -> String {
-    let trimmed = wxid.trim();
-    if trimmed.to_lowercase().starts_with("wxid_") {
-        if let Some(idx) = trimmed[5..].find('_') {
-            return trimmed[..5 + idx].to_string();
-        }
-    }
-    if let Some(idx) = trimmed.rfind('_') {
-        let suffix = &trimmed[idx + 1..];
-        if suffix.len() == 4 && suffix.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return trimmed[..idx].to_string();
-        }
-    }
-    trimmed.to_string()
-}
 
 pub fn decrypt_dat(data: &[u8], xor_key: u8, aes_key: Option<&[u8; 16]>) -> Result<DecryptResult> {
     let version = detect_dat_version(data);
     match version {
         0 => {
             let ext = detect_image_extension(data).to_string();
-            Ok(DecryptResult {
-                data: data.to_vec(),
-                ext,
-                is_wxgf: false,
-            })
+            if ext != ".bin" {
+                let is_wxgf = ext == ".wxgf";
+                return Ok(DecryptResult { data: data.to_vec(), ext, is_wxgf });
+            }
+            // legacy V3: the whole file is XOR-ed with a single byte
+            let xored: Vec<u8> = data.iter().map(|b| b ^ xor_key).collect();
+            let ext = detect_image_extension(&xored).to_string();
+            if ext != ".bin" {
+                let is_wxgf = ext == ".wxgf";
+                return Ok(DecryptResult { data: xored, ext, is_wxgf });
+            }
+            Ok(DecryptResult { data: data.to_vec(), ext, is_wxgf: false })
         }
-        1 => decrypt_dat_v1(data, xor_key),
+        1 => decrypt_dat_v4(data, xor_key, &V1_AES_KEY),
         2 => {
             let aes = aes_key.ok_or_else(|| anyhow!("V2 .dat requires an AES key"))?;
-            decrypt_dat_v2(data, xor_key, aes)
+            decrypt_dat_v4(data, xor_key, aes)
         }
         _ => Err(anyhow!("unknown .dat version: {version}")),
     }
 }
 
-fn decrypt_dat_v1(data: &[u8], xor_key: u8) -> Result<DecryptResult> {
-    // V1: magic bytes at [0..6], payload from [6..] is XOR'd
-    let decrypted: Vec<u8> = data[6..].iter().map(|b| b ^ xor_key).collect();
-    let ext = detect_image_extension(&decrypted).to_string();
-    let is_wxgf = ext == ".wxgf";
-    Ok(DecryptResult { data: decrypted, ext, is_wxgf })
-}
-
-fn decrypt_dat_v2(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<DecryptResult> {
+/// `[15-byte header][AES-128-ECB part (PKCS7)][raw middle][XOR-ed tail]`; header holds the
+/// plaintext size of the AES part at offset 6 and the tail size at offset 10.
+fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<DecryptResult> {
     if data.len() < 0x0f {
-        return Err(anyhow!(".dat file too small for V2"));
+        return Err(anyhow!("dat file too small"));
     }
-    let header = &data[..0x0f];
     let payload = &data[0x0f..];
-
-    let aes_size = read_i32_le(header, 6);
-    let _xor_size = read_i32_le(header, 10);
-
+    let aes_size = read_i32_le(data, 6) as i64;
+    let xor_size = read_i32_le(data, 10) as i64;
     let remainder = ((aes_size % 16) + 16) % 16;
-    let aligned_aes_size = if remainder == 0 {
-        aes_size as usize
-    } else {
-        (aes_size as usize) + (16 - remainder as usize)
-    };
-    if aligned_aes_size > payload.len() {
-        return Err(anyhow!("invalid AES size in .dat header"));
+    let aligned = aes_size + (16 - remainder);
+    if aligned < 0 || aligned as usize > payload.len() {
+        return Err(anyhow!("invalid aes size"));
     }
-
-    let aes_data = &payload[..aligned_aes_size];
+    let aligned = aligned as usize;
+    let aes_data = &payload[..aligned];
     let plain_aes = if aes_data.is_empty() {
         Vec::new()
     } else {
@@ -150,26 +137,29 @@ fn decrypt_dat_v2(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
             cipher.decrypt_block_mut(&mut block);
             decrypted.extend_from_slice(&block);
         }
-        strip_pkcs7(&decrypted, aes_size as usize)
+        strict_remove_pkcs7(decrypted)?
     };
-
-    let xor_data = &payload[aligned_aes_size..];
-    let decoded_xor: Vec<u8> = xor_data.iter().map(|b| b ^ xor_key).collect();
-
-    let mut result = Vec::with_capacity(plain_aes.len() + decoded_xor.len());
-    result.extend_from_slice(&plain_aes);
-    result.extend_from_slice(&decoded_xor);
-
-    let ext = detect_image_extension(&result).to_string();
+    let remaining = &payload[aligned..];
+    if xor_size < 0 || xor_size as usize > remaining.len() {
+        return Err(anyhow!("invalid xor size"));
+    }
+    let raw_len = remaining.len() - xor_size as usize;
+    let mut out = Vec::with_capacity(plain_aes.len() + remaining.len());
+    out.extend_from_slice(&plain_aes);
+    out.extend_from_slice(&remaining[..raw_len]);
+    out.extend(remaining[raw_len..].iter().map(|b| b ^ xor_key));
+    let ext = detect_image_extension(&out).to_string();
     let is_wxgf = ext == ".wxgf";
-    Ok(DecryptResult { data: result, ext, is_wxgf })
+    Ok(DecryptResult { data: out, ext, is_wxgf })
 }
 
-fn strip_pkcs7(data: &[u8], expected_size: usize) -> Vec<u8> {
-    if data.len() < expected_size {
-        return data.to_vec();
+fn strict_remove_pkcs7(mut data: Vec<u8>) -> Result<Vec<u8>> {
+    let pad = *data.last().ok_or_else(|| anyhow!("empty decrypted data"))? as usize;
+    if pad == 0 || pad > 16 || pad > data.len() || data[data.len() - pad..].iter().any(|b| *b as usize != pad) {
+        return Err(anyhow!("invalid pkcs7 padding"));
     }
-    data[..expected_size].to_vec()
+    data.truncate(data.len() - pad);
+    Ok(data)
 }
 
 fn read_i32_le(data: &[u8], offset: usize) -> i32 {
@@ -251,17 +241,73 @@ mod tests {
         assert_eq!(detect_image_extension(&[0x47, 0x49, 0x46, 0x38]), ".gif");
     }
 
-    #[test]
-    fn decrypts_v1_xor() {
-        let xor_key = 0xAB;
-        let original_data = vec![0xFF, 0xD8, 0xFF, 0xE0]; // JPEG header
-        let mut file = Vec::new();
-        file.extend_from_slice(&V1_MAGIC);
-        for b in &original_data {
-            file.push(b ^ xor_key);
+    /// Builds a V4-layout `.dat` the way WeChat writes it.
+    fn encrypt_v4(sig: [u8; 6], plain: &[u8], aes_len: usize, xor_len: usize, key: &[u8; 16], xor_key: u8) -> Vec<u8> {
+        use aes::cipher::{generic_array::GenericArray, BlockEncryptMut, KeyInit};
+        let aes_part = &plain[..aes_len];
+        let xor_part = &plain[plain.len() - xor_len..];
+        let raw_part = &plain[aes_len..plain.len() - xor_len];
+        let pad = 16 - aes_part.len() % 16;
+        let mut padded = aes_part.to_vec();
+        padded.extend(std::iter::repeat(pad as u8).take(pad));
+        let mut enc = ecb::Encryptor::<aes::Aes128>::new(key.into());
+        let mut cipher = Vec::new();
+        for chunk in padded.chunks(16) {
+            let mut block = GenericArray::clone_from_slice(chunk);
+            enc.encrypt_block_mut(&mut block);
+            cipher.extend_from_slice(&block);
         }
-        let result = decrypt_dat(&file, xor_key, None).unwrap();
-        assert_eq!(&result.data[..4], &original_data[..]);
+        let mut out = sig.to_vec();
+        out.extend_from_slice(&(aes_len as i32).to_le_bytes());
+        out.extend_from_slice(&(xor_len as i32).to_le_bytes());
+        out.push(0x01);
+        out.extend(cipher);
+        out.extend_from_slice(raw_part);
+        out.extend(xor_part.iter().map(|b| b ^ xor_key));
+        out
+    }
+
+    fn sample_jpeg(len: usize) -> Vec<u8> {
+        let mut v = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        v.extend((0..len - 4).map(|i| (i % 251) as u8));
+        v
+    }
+
+    #[test]
+    fn decrypts_v2_with_raw_middle_and_xor_tail() {
+        let key = *b"0123456789abcdef";
+        let plain = sample_jpeg(3000);
+        for aes_len in [1024usize, 1000, 16] {
+            let file = encrypt_v4(V2_MAGIC, &plain, aes_len, 200, &key, 0x5a);
+            let got = decrypt_dat(&file, 0x5a, Some(&key)).unwrap();
+            assert_eq!(got.data, plain, "aes_len={aes_len}");
+            assert_eq!(got.ext, ".jpg");
+        }
+        assert!(decrypt_dat(&encrypt_v4(V2_MAGIC, &plain, 1024, 0, &key, 1), 1, None).is_err(), "V2 needs a key");
+        let wrong = decrypt_dat(&encrypt_v4(V2_MAGIC, &plain, 1024, 0, &key, 1), 1, Some(b"ffffffffffffffff"));
+        assert!(wrong.is_err(), "bad key fails the strict padding check");
+    }
+
+    #[test]
+    fn decrypts_v1_with_the_default_key_and_legacy_xor() {
+        let plain = sample_jpeg(2048);
+        let file = encrypt_v4(V1_MAGIC, &plain, 1024, 64, &V1_AES_KEY, 0x11);
+        assert_eq!(decrypt_dat(&file, 0x11, None).unwrap().data, plain);
+        // no signature: already an image, or a whole-file XOR
+        assert_eq!(decrypt_dat(&plain, 0x11, None).unwrap().data, plain);
+        let xored: Vec<u8> = plain.iter().map(|b| b ^ 0x11).collect();
+        let got = decrypt_dat(&xored, 0x11, None).unwrap();
+        assert_eq!(got.data, plain);
+        assert_eq!(got.ext, ".jpg");
+    }
+
+    #[test]
+    fn aes_keys_parse_from_ascii_or_hex() {
+        assert_eq!(parse_aes_key("0123456789abcdef"), Some(*b"0123456789abcdef"));
+        assert_eq!(parse_aes_key(" 0123456789abcdefXYZ "), Some(*b"0123456789abcdef"));
+        let hex = "00112233445566778899aabbccddeeff";
+        assert_eq!(parse_aes_key(hex).unwrap()[15], 0xff);
+        assert_eq!(parse_aes_key("short"), None);
     }
 
     #[test]
@@ -271,13 +317,8 @@ mod tests {
         assert_eq!(xor1, xor2);
         assert_eq!(aes1, aes2);
         assert_eq!(xor1, (12345u64 & 0xFF) as u8);
-        assert_eq!(aes1.len(), 32);
-    }
-
-    #[test]
-    fn clean_wxid_strips_suffix() {
-        assert_eq!(clean_wxid("wxid_abc_1234"), "wxid_abc");
-        assert_eq!(clean_wxid("wxid_abc"), "wxid_abc");
+        assert_eq!(aes1.len(), 16);
+        assert!(aes1.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]

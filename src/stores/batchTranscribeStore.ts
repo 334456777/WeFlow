@@ -5,6 +5,7 @@ import {
   updateBackgroundTask
 } from '../services/backgroundTaskMonitor'
 import type { BackgroundTaskSourcePage, BackgroundTaskStatus } from '../types/backgroundTask'
+import { t } from '../i18n'
 
 export type BatchVoiceTaskType = 'transcribe' | 'decrypt'
 
@@ -91,21 +92,21 @@ export const useBatchTranscribeStore = create<BatchTranscribeState>((set, get) =
     if (previousTaskId) {
       taskProgressUpdateMeta.delete(previousTaskId)
       finishBackgroundTask(previousTaskId, 'canceled', {
-        detail: '已被新的语音批量任务替换',
-        progressText: '已替换'
+        detail: t('已被新的语音批量任务替换'),
+        progressText: t('已替换')
       })
     }
 
     const normalizedProgress = clampProgress(0, total)
     const normalizedSessionName = String(sessionName || '').trim()
-    const taskLabel = taskType === 'decrypt' ? '语音批量解密' : '语音批量转写'
+    const taskLabel = taskType === 'decrypt' ? t('语音批量解密') : t('语音批量转写')
     const title = normalizedSessionName
       ? `${taskLabel}（${normalizedSessionName}）`
       : taskLabel
     const taskId = registerBackgroundTask({
       sourcePage,
       title,
-      detail: `正在准备${taskType === 'decrypt' ? '语音解密' : '语音转写'}任务...`,
+      detail: t('正在准备{v0}任务...', { v0: taskType === 'decrypt' ? t('语音解密') : t('语音转写') }),
       progressText: `${normalizedProgress.current} / ${normalizedProgress.total}`,
       cancelable: controls?.cancelable !== false,
       resumable: controls?.resumable === true,
@@ -148,9 +149,9 @@ export const useBatchTranscribeStore = create<BatchTranscribeState>((set, get) =
       const shouldPublish = crossedBucket || intervalReached || isFinal
       shouldCommitUi = shouldPublish
       if (shouldPublish) {
-        const taskVerb = get().taskType === 'decrypt' ? '解密语音' : '转写语音'
+        const taskVerb = get().taskType === 'decrypt' ? t('解密语音') : t('转写语音')
         updateBackgroundTask(taskId, {
-          detail: `正在${taskVerb}（${normalizedProgress.current}/${normalizedProgress.total}）`,
+          detail: t('正在{taskVerb}（{current}/{total}）', { taskVerb: taskVerb, current: normalizedProgress.current, total: normalizedProgress.total }),
           progressText: `${normalizedProgress.current} / ${normalizedProgress.total}`
         })
         taskProgressUpdateMeta.set(taskId, {
@@ -190,10 +191,10 @@ export const useBatchTranscribeStore = create<BatchTranscribeState>((set, get) =
     if (taskId) {
       taskProgressUpdateMeta.delete(taskId)
       const status = options?.status || (normalizedSuccess > 0 || normalizedFail === 0 ? 'completed' : 'failed')
-      const taskLabel = taskType === 'decrypt' ? '语音批量解密' : '语音批量转写'
+      const taskLabel = taskType === 'decrypt' ? t('语音批量解密') : t('语音批量转写')
       finishBackgroundTask(taskId, status, {
-        detail: options?.detail || `${taskLabel}完成：成功 ${normalizedSuccess}，失败 ${normalizedFail}`,
-        progressText: options?.progressText || `成功 ${normalizedSuccess} / 失败 ${normalizedFail}`
+        detail: options?.detail || t('{taskLabel}完成：成功 {normalizedSuccess}，失败 {normalizedFail}', { taskLabel: taskLabel, normalizedSuccess: normalizedSuccess, normalizedFail: normalizedFail }),
+        progressText: options?.progressText || t('成功 {normalizedSuccess} / 失败 {normalizedFail}', { normalizedSuccess: normalizedSuccess, normalizedFail: normalizedFail })
       })
     }
 
@@ -215,8 +216,8 @@ export const useBatchTranscribeStore = create<BatchTranscribeState>((set, get) =
     if (taskId) {
       taskProgressUpdateMeta.delete(taskId)
       finishBackgroundTask(taskId, 'canceled', {
-        detail: '语音批量任务已重置',
-        progressText: '已停止'
+        detail: t('语音批量任务已重置'),
+        progressText: t('已停止')
       })
     }
     set({

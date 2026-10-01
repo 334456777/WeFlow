@@ -6,11 +6,13 @@ use std::process::Command;
 use anyhow::{anyhow, Context, Result};
 use libloading::Library;
 
-type InitializeHookFn = unsafe extern "C" fn(u32) -> c_int;
-type PollKeyDataFn = unsafe extern "C" fn(*mut c_char, c_int) -> c_int;
-type CleanupHookFn = unsafe extern "C" fn() -> c_int;
+// The DLL exports C++ `bool`s (see `keyService.ts`: `bool InitializeHook(uint32)` …), not `int`s.
+type InitializeHookFn = unsafe extern "C" fn(u32) -> bool;
+type PollKeyDataFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
+type CleanupHookFn = unsafe extern "C" fn() -> bool;
 type GetLastErrorMsgFn = unsafe extern "C" fn() -> *const c_char;
-type GetImageKeyFn = unsafe extern "C" fn(*mut c_char, c_int) -> c_int;
+type GetImageKeyFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
+type GetStatusMessageFn = unsafe extern "C" fn(*mut c_char, c_int, *mut c_int) -> bool;
 
 pub struct WxKey {
     _lib: Option<Library>,
@@ -19,6 +21,7 @@ pub struct WxKey {
     cleanup_hook: Option<CleanupHookFn>,
     get_last_error_msg: Option<GetLastErrorMsgFn>,
     get_image_key: Option<GetImageKeyFn>,
+    get_status_message: Option<GetStatusMessageFn>,
 }
 
 impl WxKey {
@@ -34,6 +37,7 @@ impl WxKey {
                     cleanup_hook: load_symbol::<CleanupHookFn>(&lib, b"CleanupHook\0"),
                     get_last_error_msg: load_symbol::<GetLastErrorMsgFn>(&lib, b"GetLastErrorMsg\0"),
                     get_image_key: load_symbol::<GetImageKeyFn>(&lib, b"GetImageKey\0"),
+                    get_status_message: load_symbol::<GetStatusMessageFn>(&lib, b"GetStatusMessage\0"),
                     _lib: Some(lib),
                 })
             }
@@ -44,6 +48,7 @@ impl WxKey {
                 cleanup_hook: None,
                 get_last_error_msg: None,
                 get_image_key: None,
+                get_status_message: None,
             }),
         }
     }
@@ -52,48 +57,110 @@ impl WxKey {
         self._lib.is_some()
     }
 
-    pub fn get_db_key(&self, pid: u32) -> Result<String> {
-        let init = self.initialize_hook.ok_or_else(|| anyhow!("wx_key library not loaded"))?;
-        let poll = self.poll_key_data.ok_or_else(|| anyhow!("wx_key library not loaded"))?;
-        let cleanup = self.cleanup_hook.ok_or_else(|| anyhow!("wx_key library not loaded"))?;
-
-        let rc = unsafe { init(pid) };
-        if rc != 0 {
-            if let Some(get_err) = self.get_last_error_msg {
-                let msg = unsafe { take_cstr(get_err()) };
-                return Err(anyhow!("InitializeHook failed: {msg}"));
-            }
-            return Err(anyhow!("InitializeHook failed with code {rc}"));
-        }
-
-        let mut buffer = vec![0u8; 256];
-        let rc = unsafe { poll(buffer.as_mut_ptr() as *mut c_char, buffer.len() as c_int) };
-        let key = if rc != 0 {
-            let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
-            String::from_utf8_lossy(&buffer[..len]).to_string()
-        } else {
-            String::new()
+    /// Hooks WeChat (`pid`) and waits up to `timeout` for the 64-hex-digit database key, which
+    /// WeChat only produces while it opens its databases (i.e. while the user logs in).
+    /// `on_status` receives the DLL's status messages (`level`: 0 info, 1 success, 2 error).
+    pub fn get_db_key(&self, pid: u32, timeout: std::time::Duration, on_status: &mut dyn FnMut(&str, i32)) -> std::result::Result<String, DbKeyError> {
+        let (Some(init), Some(poll), Some(cleanup)) = (self.initialize_hook, self.poll_key_data, self.cleanup_hook) else {
+            return Err(DbKeyError::Other("wx_key library not loaded".into()));
         };
-
+        let ok = unsafe { init(pid) };
+        if !ok {
+            let error = self.get_last_error_msg.map(|f| unsafe { take_cstr(f()) }).unwrap_or_default();
+            if !error.is_empty() {
+                if error.contains("0xC0000022") || error.contains("ACCESS_DENIED") || error.contains("打开目标进程失败") {
+                    return Err(DbKeyError::AccessDenied(error));
+                }
+                return Err(DbKeyError::Other(error));
+            }
+            let status = self.status_message().map(|(m, _)| m).unwrap_or_default();
+            return Err(DbKeyError::Other(if status.is_empty() { "initialization failed".into() } else { status }));
+        }
+        let start = std::time::Instant::now();
+        let mut login_hint = false;
+        let mut buf = vec![0u8; 128];
+        let mut result = None;
+        while start.elapsed() < timeout {
+            buf.iter_mut().for_each(|b| *b = 0);
+            if unsafe { poll(buf.as_mut_ptr() as *mut c_char, buf.len() as c_int) } {
+                let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+                let key = String::from_utf8_lossy(&buf[..len]).trim().to_string();
+                if key.len() == 64 {
+                    on_status("key obtained", 1);
+                    result = Some(key);
+                    break;
+                }
+            }
+            for _ in 0..5 {
+                let Some((msg, level)) = self.status_message() else { break };
+                if !msg.is_empty() {
+                    if is_login_related(&msg) {
+                        login_hint = true;
+                    }
+                    on_status(&msg, level);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(120));
+        }
         unsafe { cleanup() };
-        if key.is_empty() {
-            Err(anyhow!("failed to extract db key"))
-        } else {
-            Ok(key)
+        match result {
+            Some(k) => Ok(k),
+            None if login_hint => Err(DbKeyError::LoginRequired),
+            None => Err(DbKeyError::Timeout),
         }
     }
 
+    fn status_message(&self) -> Option<(String, i32)> {
+        let f = self.get_status_message?;
+        let mut buf = vec![0u8; 256];
+        let mut level: c_int = 0;
+        if !unsafe { f(buf.as_mut_ptr() as *mut c_char, buf.len() as c_int, &mut level) } {
+            return None;
+        }
+        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+        Some((String::from_utf8_lossy(&buf[..len]).trim().to_string(), level))
+    }
+
+    /// Raw JSON of the `kvcomm` cache scan: `{"accounts":[{"wxid":…,"keys":[{"code":…}]}]}`.
     pub fn get_image_key(&self) -> Result<String> {
         let get_image_key = self.get_image_key.ok_or_else(|| anyhow!("wx_key library not loaded"))?;
-        let mut buffer = vec![0u8; 512];
-        let rc = unsafe { get_image_key(buffer.as_mut_ptr() as *mut c_char, buffer.len() as c_int) };
-        if rc != 0 {
+        let mut buffer = vec![0u8; 8192];
+        let ok = unsafe { get_image_key(buffer.as_mut_ptr() as *mut c_char, buffer.len() as c_int) };
+        if ok {
             let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
             Ok(String::from_utf8_lossy(&buffer[..len]).to_string())
         } else {
-            Err(anyhow!("failed to extract image key"))
+            let msg = self.get_last_error_msg.map(|f| unsafe { take_cstr(f()) }).unwrap_or_default();
+            Err(anyhow!(if msg.is_empty() { "failed to read the image key cache".to_string() } else { msg }))
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum DbKeyError {
+    /// The process could not be opened (needs administrator rights / a security product interferes).
+    AccessDenied(String),
+    /// WeChat is running but has not logged in, so it never opened its databases.
+    LoginRequired,
+    Timeout,
+    Other(String),
+}
+
+impl std::fmt::Display for DbKeyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AccessDenied(d) => write!(f, "access denied: cannot open the WeChat process ({d})"),
+            Self::LoginRequired => write!(f, "WeChat is running but not logged in; log in while the command is waiting"),
+            Self::Timeout => write!(f, "timed out waiting for the key; log in to WeChat (or restart it) while the command is running"),
+            Self::Other(m) => write!(f, "{m}"),
+        }
+    }
+}
+
+/// `isLoginRelatedText`
+pub fn is_login_related(value: &str) -> bool {
+    let n: String = value.split_whitespace().collect::<String>().to_lowercase();
+    !n.is_empty() && ["登录", "扫码", "二维码", "请在手机上确认", "手机确认", "切换账号", "wechatlogin", "qrcode", "scan"].iter().any(|k| n.contains(k))
 }
 
 unsafe fn take_cstr(ptr: *const c_char) -> String {
@@ -180,5 +247,17 @@ fn find_image_scan_helper(runtime_dir: &Path) -> Result<PathBuf> {
         candidates.into_iter().find(|p| p.exists()).ok_or_else(|| anyhow!("image_scan_helper not found"))
     } else {
         Err(anyhow!("image scan helper is not available on this platform"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn login_keywords() {
+        assert!(is_login_related("请扫码登录"));
+        assert!(is_login_related("Please scan the QR code"));
+        assert!(!is_login_related("hook installed"));
     }
 }

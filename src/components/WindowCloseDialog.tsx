@@ -1,6 +1,7 @@
 import { Minimize2, Power, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import './WindowCloseDialog.scss'
+import { t } from '../i18n'
 
 interface WindowCloseDialogProps {
   open: boolean
@@ -47,18 +48,18 @@ export default function WindowCloseDialog({
           type="button"
           className="window-close-dialog-close"
           onClick={onCancel}
-          aria-label="关闭提示"
+          aria-label={t('关闭提示')}
         >
           <X size={18} />
         </button>
 
         <div className="window-close-dialog-header">
-          <span className="window-close-dialog-kicker">退出行为</span>
-          <h2 id="window-close-dialog-title">关闭 WeFlow</h2>
+          <span className="window-close-dialog-kicker">{t('退出行为')}</span>
+          <h2 id="window-close-dialog-title">{t('关闭 WeFlow')}</h2>
           <p>
             {canMinimizeToTray
-              ? '你可以保留后台进程与本地 API，或者直接完全退出应用。'
-              : '当前系统托盘不可用，本次只能完全退出应用。'}
+              ? t('你可以保留后台进程与本地 API，或者直接完全退出应用。')
+              : t('当前系统托盘不可用，本次只能完全退出应用。')}
           </p>
         </div>
 
@@ -73,8 +74,8 @@ export default function WindowCloseDialog({
                 <Minimize2 size={18} />
               </span>
               <span className="window-close-dialog-option-text">
-                <strong>最小化到系统托盘</strong>
-                <span>继续保留后台进程和本地 API，稍后可从托盘恢复。</span>
+                <strong>{t('最小化到系统托盘')}</strong>
+                <span>{t('继续保留后台进程和本地 API，稍后可从托盘恢复。')}</span>
               </span>
             </button>
           )}
@@ -88,8 +89,8 @@ export default function WindowCloseDialog({
               <Power size={18} />
             </span>
             <span className="window-close-dialog-option-text">
-              <strong>完全关闭</strong>
-              <span>结束 WeFlow 进程，并停止当前保留的本地 API。</span>
+              <strong>{t('完全关闭')}</strong>
+              <span>{t('结束 WeFlow 进程，并停止当前保留的本地 API。')}</span>
             </span>
           </button>
         </div>
@@ -101,13 +102,11 @@ export default function WindowCloseDialog({
             onChange={(event) => setRememberChoice(event.target.checked)}
           />
           <span className="window-close-dialog-checkbox" aria-hidden="true" />
-          <span className="window-close-dialog-remember-text">下次不再提示，直接按本次选择处理</span>
+          <span className="window-close-dialog-remember-text">{t('下次不再提示，直接按本次选择处理')}</span>
         </label>
 
         <div className="window-close-dialog-actions">
-          <button type="button" className="window-close-dialog-cancel" onClick={onCancel}>
-            取消
-          </button>
+          <button type="button" className="window-close-dialog-cancel" onClick={onCancel}>{t('取消')}</button>
         </div>
       </div>
     </div>

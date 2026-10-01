@@ -5,6 +5,22 @@ use serde_json::{json, Value};
 use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
 use crate::error::{AppError, AppResult};
 
+mod analytics;
+mod api;
+mod chat;
+mod cleanup;
+pub use cleanup::normalize_account_id;
+mod group;
+mod image;
+mod insight;
+pub use image::{ImagePayload, ImageResult};
+pub use insight::Trigger as InsightTrigger;
+mod reports;
+mod sns;
+mod voice;
+pub use chat::ResourceQuery;
+pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
+
 #[derive(Clone)]
 pub struct ServiceHub {
     ctx: AppContext,
@@ -14,6 +30,11 @@ pub struct ServiceHub {
     decrypt_key_override: Option<String>,
     wxid_override: Option<String>,
     pub progress_enabled: bool,
+    sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
+    group_state: std::sync::Arc<std::sync::Mutex<group::GroupState>>,
+    analytics_state: std::sync::Arc<std::sync::Mutex<analytics::AnalyticsState>>,
+    image_state: std::sync::Arc<std::sync::Mutex<image::ImageState>>,
+    insight_state: std::sync::Arc<std::sync::Mutex<insight::InsightState>>,
 }
 
 impl ServiceHub {
@@ -34,7 +55,16 @@ impl ServiceHub {
             decrypt_key_override,
             wxid_override,
             progress_enabled: false,
+            sns_state: Default::default(),
+            group_state: Default::default(),
+            analytics_state: Default::default(),
+            image_state: Default::default(),
+            insight_state: Default::default(),
         }
+    }
+
+    pub fn runtime_dir(&self) -> &Path {
+        &self.ctx.runtime_dir
     }
 
     pub fn runtime_info(&self) -> Value {
@@ -79,8 +109,7 @@ impl ServiceHub {
 
     pub fn db_test(&self) -> AppResult<Value> {
         let (account_dir, key, _) = self.connection_inputs()?;
-        let mut wcdb = unsafe { weflow_native::wcdb::Wcdb::load(&self.ctx.runtime_dir) }
-            .map_err(|err| AppError::native(err.to_string()))?;
+        let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.test_connection(&account_dir, &key)
             .map_err(|err| AppError::native(err.to_string()))?;
         Ok(json!({ "accountDir": account_dir, "connected": true }))
@@ -171,6 +200,12 @@ impl ServiceHub {
                 ),
             }
         }
+        // Per-session results are kept for partial failures, but when every session failed the command itself failed
+        // (otherwise a script reading only `success` would treat a refused operation as done).
+        if !results.is_empty() && results.iter().all(|r| r["success"] == false) {
+            let first = results[0]["error"].as_str().unwrap_or("anti-revoke failed").to_string();
+            return Err(AppError::native(first));
+        }
         Ok(json!({ "results": results }))
     }
 
@@ -178,44 +213,6 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         wcdb.contact_type_counts()
             .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn analytics_overall(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        wcdb.aggregate_stats(&session_ids, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn analytics_rankings(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        let message_counts = wcdb
-            .session_message_counts(&session_ids)
-            .map_err(|err| AppError::native(err.to_string()))?;
-        let contact_counts = wcdb
-            .contact_type_counts()
-            .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(json!({
-            "messageCounts": message_counts,
-            "contactTypeCounts": contact_counts
-        }))
-    }
-
-    pub fn analytics_time(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        wcdb.aggregate_stats(&session_ids, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn analytics_excluded(&self) -> AppResult<Value> {
-        Ok(json!({ "sessions": [] }))
-    }
-
-    pub fn group_list(&self) -> AppResult<Value> {
-        let sessions = self.sessions()?;
-        Ok(filter_group_sessions(sessions))
     }
 
     pub fn group_members(&self, chatroom_id: &str) -> AppResult<Value> {
@@ -233,53 +230,17 @@ impl ServiceHub {
         }))
     }
 
-    pub fn group_stats(&self, chatroom_id: &str, view: &str) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let stats = wcdb
-            .group_stats(chatroom_id, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(json!({ "chatroomId": chatroom_id, "view": view, "stats": stats }))
+    /// `video:getVideoInfo`
+    pub fn video_info(&self, md5: &str, include_poster: bool, format: crate::video::PosterFormat) -> AppResult<Value> {
+        let account_dir = self.account_dir_only()?;
+        Ok(crate::video::video_info(&account_dir.join("msg").join("video"), md5, include_poster, format).to_json())
     }
 
-    pub fn group_member(&self, chatroom_id: &str, username: &str) -> AppResult<Value> {
-        let members = self.group_members(chatroom_id)?;
-        let matched = members
-            .get("members")
-            .and_then(Value::as_array)
-            .and_then(|items| {
-                items
-                    .iter()
-                    .find(|item| item.to_string().contains(username))
-            })
-            .cloned()
-            .unwrap_or(Value::Null);
-        Ok(json!({
-            "chatroomId": chatroom_id,
-            "username": username,
-            "member": matched
-        }))
-    }
-
-    pub fn report_annual_years(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        wcdb.available_years(&session_ids)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn report_annual_generate(&self, year: i32) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let session_ids = self.all_session_ids(&wcdb)?;
-        let (begin, end) = year_bounds(year)?;
-        wcdb.annual_report_stats(&session_ids, begin, end)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn report_dual_generate(&self, friend: &str, year: i32) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let (begin, end) = year_bounds(year)?;
-        wcdb.dual_report_stats(friend, begin, end)
-            .map_err(|err| AppError::native(err.to_string()))
+    /// Path of the on-disk video for a message md5, if WeChat stored one.
+    pub(super) fn video_file_path(&self, md5: &str) -> Option<PathBuf> {
+        let account_dir = self.account_dir_only().ok()?;
+        let info = crate::video::video_info(&account_dir.join("msg").join("video"), md5, false, crate::video::PosterFormat::DataUrl);
+        info.video_url.map(PathBuf::from).filter(|p| p.exists())
     }
 
     pub fn footprint(&self) -> AppResult<Value> {
@@ -294,29 +255,7 @@ impl ServiceHub {
             .map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn sns_timeline(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        wcdb.sns_timeline(100, 0, None, None, 0, 0)
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn sns_users(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        wcdb.sns_usernames()
-            .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn sns_stats(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let profile = self.profile()?;
-        let export = wcdb
-            .sns_export_stats(self.wxid_override.as_deref().or(profile.wxid.as_deref()))
-            .map_err(|err| AppError::native(err.to_string()))?;
-        let annual = wcdb.sns_annual_stats(0, 0).unwrap_or(Value::Null);
-        Ok(json!({ "export": export, "annual": annual }))
-    }
-
-    pub fn sns_block_delete(&self, action: &str) -> AppResult<Value> {
+    pub(crate) fn sns_block_delete(&self, action: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let result = match action {
             "check" => wcdb.sns_block_delete_check(),
@@ -327,7 +266,7 @@ impl ServiceHub {
         result.map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn sns_delete(&self, post_id: &str) -> AppResult<Value> {
+    pub(crate) fn sns_delete(&self, post_id: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.sns_delete_post(post_id)
             .map_err(|err| AppError::native(err.to_string()))
@@ -354,14 +293,7 @@ impl ServiceHub {
 
         let profile = self.profile()?;
         let xor_key = profile.image_xor_key.map(|k| k as u8);
-        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(|k| {
-            let hex = if k.len() >= 32 { &k[..32] } else { return None };
-            let mut arr = [0u8; 16];
-            for i in 0..16 {
-                arr[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
-            }
-            Some(arr)
-        });
+        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(crate::decrypt::parse_aes_key);
 
         let version = crate::decrypt::detect_dat_version(&data);
         let (final_data, ext) = if version > 0 && xor_key.is_some() {
@@ -412,86 +344,6 @@ impl ServiceHub {
         Ok(json!({ "records": records }))
     }
 
-    pub async fn insight_test(&self) -> AppResult<Value> {
-        let profile = self.profile()?;
-        let config = crate::insight::extract_ai_config(profile)?;
-        crate::insight::test_ai_connection(&config).await
-    }
-
-    pub async fn insight_trigger(&self, session_id: &str) -> AppResult<Value> {
-        let profile = self.profile()?;
-        let config = crate::insight::extract_ai_config(profile)?;
-        let messages = self.messages(session_id, 30, 0)?;
-        let messages_text = serde_json::to_string_pretty(&messages)
-            .unwrap_or_default();
-        let display_name = self
-            .contact(session_id)
-            .ok()
-            .and_then(|v| {
-                v.get("nickname")
-                    .or_else(|| v.get("alias"))
-                    .and_then(Value::as_str)
-                    .map(String::from)
-            })
-            .unwrap_or_else(|| session_id.to_string());
-        let insight = crate::insight::generate_insight(
-            &config,
-            session_id,
-            &display_name,
-            &messages_text,
-            "manual",
-        )
-        .await?;
-        let mut store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        let record = crate::insight::InsightRecord {
-            id: format!(
-                "insight_{}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-            ),
-            created_at: crate::insight::now_millis(),
-            session_id: session_id.to_string(),
-            display_name: display_name.clone(),
-            trigger_reason: "manual".to_string(),
-            insight: insight.clone(),
-            read: false,
-        };
-        store.add(record);
-        store.save()?;
-        Ok(json!({ "sessionId": session_id, "insight": insight }))
-    }
-
-    pub fn insight_records(&self) -> AppResult<Value> {
-        let store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        Ok(json!({ "records": store.records() }))
-    }
-
-    pub fn insight_get(&self, id: &str) -> AppResult<Value> {
-        let store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        let record = store.get(id).ok_or_else(|| {
-            AppError::runtime(format!("insight record not found: {id}"))
-        })?;
-        Ok(serde_json::to_value(record).unwrap_or(Value::Null))
-    }
-
-    pub fn insight_mark_read(&self, id: &str) -> AppResult<Value> {
-        let mut store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        if !store.mark_read(id) {
-            return Err(AppError::runtime(format!("insight record not found: {id}")));
-        }
-        store.save()?;
-        Ok(json!({ "id": id, "read": true }))
-    }
-
-    pub fn insight_clear(&self) -> AppResult<Value> {
-        let mut store = crate::insight::InsightStore::load(&self.ctx.home_dir)?;
-        store.clear();
-        store.save()?;
-        Ok(json!({ "cleared": true }))
-    }
-
     pub fn insight_footprint(&self) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let profile = self.profile()?;
@@ -502,14 +354,33 @@ impl ServiceHub {
         wcdb.footprint_stats(&options).map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn key_db(&self) -> AppResult<Value> {
+    /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases,
+    /// so the command keeps polling (default 180 s, like the desktop app) while the user logs in.
+    pub fn key_db(&self, pid_override: Option<u32>, timeout_secs: u64) -> AppResult<Value> {
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
         if wxkey.is_available() {
-            let pid = find_wechat_pid().ok_or_else(|| {
-                AppError::runtime("WeChat process not found; please launch WeChat first")
-            })?;
-            let key = wxkey.get_db_key(pid).map_err(|err| AppError::native(err.to_string()))?;
+            let pid = match pid_override {
+                Some(p) => p,
+                None => find_wechat_pid().ok_or_else(|| {
+                    AppError::runtime("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid")
+                })?,
+            };
+            let show = true;
+            let mut on_status = |msg: &str, level: i32| {
+                if show {
+                    eprintln!("{}", json!({ "type": "key_status", "level": level, "message": msg }));
+                }
+            };
+            eprintln!("{}", json!({ "type": "key_waiting", "pid": pid, "timeoutSeconds": timeout_secs, "hint": "log in to WeChat (or restart it) now; the key appears while WeChat opens its databases" }));
+            let key = wxkey
+                .get_db_key(pid, std::time::Duration::from_secs(timeout_secs), &mut on_status)
+                .map_err(|err| match err {
+                    weflow_native::wxkey::DbKeyError::AccessDenied(detail) => AppError::native(format!(
+                        "permission denied: cannot open the WeChat process (pid {pid}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({detail})"
+                    )),
+                    other => AppError::native(other.to_string()),
+                })?;
             return Ok(json!({ "key": key, "method": "wx_key", "pid": pid }));
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -527,26 +398,54 @@ impl ServiceHub {
         }
     }
 
-    pub fn key_image(&self) -> AppResult<Value> {
+    /// `key:autoGetImageKey`: codes from the `kvcomm` cache, verified per candidate wxid against a
+    /// `_t.dat` template found under `user_dir` (default: the account directory).
+    pub fn key_image(&self, user_dir: Option<&str>) -> AppResult<Value> {
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
-        if wxkey.is_available() {
-            let result = wxkey.get_image_key().map_err(|err| AppError::native(err.to_string()))?;
-            let parsed: Value = serde_json::from_str(&result).unwrap_or(json!({ "raw": result }));
-            return Ok(json!({ "imageKey": parsed, "method": "wx_key" }));
+        if !wxkey.is_available() {
+            let profile = self.profile()?;
+            if let Some(xor_key) = profile.image_xor_key {
+                return Ok(json!({
+                    "xorKey": xor_key,
+                    "aesKey": profile.image_aes_key,
+                    "method": "config",
+                    "note": "from stored config; use key scan-image for live extraction"
+                }));
+            }
+            return Err(AppError::native("image key not available; configure image_xor_key or use the wx_key native library"));
         }
-        let profile = self.profile()?;
-        if let Some(xor_key) = profile.image_xor_key {
-            return Ok(json!({
-                "imageKey": { "xorKey": xor_key },
-                "method": "config",
-                "note": "from stored config; use key scan-image for live extraction"
-            }));
+        let raw = wxkey.get_image_key().map_err(|err| AppError::native(err.to_string()))?;
+        let parsed: Value = serde_json::from_str(&raw).map_err(|_| AppError::native("failed to parse the image key data"))?;
+        let accounts = parsed.get("accounts").and_then(Value::as_array).cloned().unwrap_or_default();
+        let codes: Vec<u64> = accounts.first().and_then(|a| a.get("keys")).and_then(Value::as_array).map(|k| k.iter().filter_map(|k| k.get("code").and_then(Value::as_u64)).collect()).unwrap_or_default();
+        if codes.is_empty() {
+            return Err(AppError::native("no valid key code found (the kvcomm cache is empty); open a few images in WeChat first"));
         }
-        Err(AppError::native("image key not available; configure image_xor_key or use wx_key native library"))
+        let account_dir = self.account_dir_only().ok();
+        let dir_text = user_dir.map(str::to_string).or_else(|| account_dir.as_ref().map(|d| d.to_string_lossy().to_string()));
+        let wxid = self.wxid_override.clone().or_else(|| self.profile().ok().and_then(|p| p.wxid.clone()));
+        let candidates = crate::keys::collect_wxid_candidates(dir_text.as_deref(), wxid.as_deref());
+        let template = dir_text.as_deref().map(Path::new).filter(|d| d.exists()).map(|d| crate::keys::find_template_data(d, 32));
+        if let Some((Some(cipher), _)) = &template {
+            for cand in &candidates {
+                for code in &codes {
+                    let (xor, aes) = crate::keys::derive_image_keys(*code, cand);
+                    if crate::keys::verify_derived_aes_key(&aes, cipher) {
+                        return Ok(json!({ "xorKey": xor, "aesKey": aes, "verified": true, "wxid": cand, "code": code, "method": "wx_key" }));
+                    }
+                }
+            }
+            return Err(AppError::native("the cached codes do not match this account's wxid; check --wxid / the account directory, or use `key scan-image`"));
+        }
+        let fallback_wxid = candidates.first().cloned().or_else(|| accounts.first().and_then(|a| a.get("wxid").and_then(Value::as_str).map(str::to_string))).unwrap_or_else(|| "unknown".into());
+        let (xor, aes) = crate::keys::derive_image_keys(codes[0], &fallback_wxid);
+        Ok(json!({ "xorKey": xor, "aesKey": aes, "verified": false, "wxid": fallback_wxid, "code": codes[0], "method": "wx_key" }))
     }
 
+    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     pub fn key_scan_image(&self, user_dir: &str) -> AppResult<Value> {
+        #[cfg(target_os = "macos")]
         let expanded = crate::config::expand_home(user_dir);
         #[cfg(target_os = "macos")]
         {
@@ -574,206 +473,197 @@ impl ServiceHub {
 
     // ── Messages TXT export ──────────────────────────────────────────────────
 
+    /// The simple TXT export (`<time> '<sender>'` then the text). `sender` keeps only that person's messages;
+    /// `display` picks how senders are named (default: group nickname, else remark, nickname, alias, wxid).
     pub fn export_messages_txt(
         &self,
         session_id: &str,
         start_ts: Option<i64>,
         end_ts: Option<i64>,
         out: &Path,
+        sender: Option<&str>,
+        display: Option<crate::export_msg::DisplayPref>,
     ) -> AppResult<Value> {
-        // Build nickname map: global contacts first, then group nicknames (higher priority)
-        let mut nickname_map: std::collections::HashMap<String, String> =
-            std::collections::HashMap::new();
+        use crate::export::TxtMessage;
+        use std::collections::{HashMap, HashSet};
 
-        if let Ok(contacts) = self.contacts() {
-            if let Some(items) = contacts.as_array() {
-                for c in items {
-                    let wxid = c
-                        .get("username")
-                        .or_else(|| c.get("wxid"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    let nef = |field: &str| {
-                        c.get(field).and_then(Value::as_str).filter(|s| !s.is_empty())
-                    };
-                    let name = nef("nickName")
-                        .or_else(|| nef("remark"))
-                        .or_else(|| nef("alias"))
-                        .unwrap_or(&wxid)
-                        .to_string();
-                    if !wxid.is_empty() {
-                        nickname_map.insert(wxid, name);
+        let wcdb = self.open_wcdb()?;
+        wcdb.set_low_memory(true); // one pass over the conversation
+        let (_, _, wxid) = self.connection_inputs()?;
+        let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
+        let sender = sender.map(str::trim).filter(|s| !s.is_empty());
+
+        // Only what the TXT layout prints is kept, so a 200,000-message group stays small.
+        let mut all_messages: Vec<TxtMessage> = Vec::new();
+        let mut count = 0usize; // every message in range, including kinds the layout does not print
+        fetch_message_pages(&wcdb, session_id, start_ts, end_ts, true, &mut |page| {
+            for row in &page {
+                if let Some(want) = sender {
+                    if !crate::message::is_same_wxid(&crate::message::row_sender(row, session_id, &my_wxid), want) {
+                        continue;
                     }
+                }
+                count += 1;
+                all_messages.extend(TxtMessage::from_row(row));
+            }
+        })?;
+        all_messages.sort_by_key(|m| m.create_time);
+
+        // Names: (nickname, remark, alias) from the contact table, and group nicknames.
+        type Names = (String, String, String);
+        let field = |c: &Value, keys: &[&str]| keys.iter().find_map(|k| c.get(*k).and_then(Value::as_str)).unwrap_or("").to_string();
+        let names_of = |c: &Value| -> Names { (field(c, &["nick_name", "nickName"]), field(c, &["remark"]), field(c, &["alias"])) };
+        let mut contacts: HashMap<String, Names> = HashMap::new();
+        if let Ok(Value::Array(items)) = wcdb.contacts() {
+            for c in &items {
+                let id = field(c, &["username", "userName", "wxid"]);
+                if !id.is_empty() {
+                    contacts.insert(id, names_of(c));
+                }
+            }
+        }
+        let group_nicks: HashMap<String, String> = if session_id.ends_with("@chatroom") {
+            let v = wcdb.group_nicknames(session_id).unwrap_or(Value::Null);
+            let obj = v.get("nicknames").and_then(Value::as_object).or_else(|| v.as_object());
+            obj.map(|o| o.iter().filter_map(|(k, n)| n.as_str().filter(|n| !n.is_empty()).map(|n| (k.clone(), n.to_string()))).collect()).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        // senders the contact list does not know: ask the contact table one by one
+        let missing: HashSet<&str> = all_messages.iter().map(|m| m.sender.as_str()).filter(|s| !s.is_empty() && !contacts.contains_key(*s)).collect();
+        for id in missing {
+            if let Ok(c) = wcdb.contact(id) {
+                if c.as_object().is_some_and(|o| !o.is_empty()) {
+                    contacts.insert(id.to_string(), names_of(&c));
                 }
             }
         }
 
-        if session_id.ends_with("@chatroom") {
-            if let Ok(members) = self.group_members(session_id) {
-                if let Some(obj) = members.get("nicknames").and_then(Value::as_object) {
-                    for (wxid, name) in obj {
-                        if let Some(n) = name.as_str() {
-                            if !n.is_empty() {
-                                nickname_map.insert(wxid.clone(), n.to_string());
-                            }
-                        }
-                    }
-                }
+        let first = |vals: &[&str], id: &str| vals.iter().find(|v| !v.is_empty()).map_or_else(|| id.to_string(), |v| v.to_string());
+        let mut nickname_map: HashMap<String, String> = HashMap::new();
+        for m in &all_messages {
+            if nickname_map.contains_key(&m.sender) {
+                continue;
             }
-        }
-
-        // Fetch messages with pagination (newest first, so paginate until before start_ts)
-        let mut all_messages: Vec<Value> = Vec::new();
-        let mut offset = 0i32;
-        let batch = 500i32;
-
-        loop {
-            let data = self.messages(session_id, batch, offset)?;
-            let msgs = match data.as_array() {
-                Some(a) => a,
-                None => break,
+            let id = m.sender.as_str();
+            let (nick, remark, alias) = contacts.get(id).map(|(n, r, a)| (n.as_str(), r.as_str(), a.as_str())).unwrap_or(("", "", ""));
+            let group = group_nicks.get(id).map(String::as_str).unwrap_or("");
+            let name = match display {
+                Some(pref) => pref.pick(id, nick, remark, group),
+                None => first(&[group, remark, nick, alias], id),
             };
-            if msgs.is_empty() {
-                break;
-            }
-
-            let mut reached_before_range = false;
-            for m in msgs {
-                let ts = m
-                    .get("create_time")
-                    .and_then(|v| {
-                        v.as_str()
-                            .and_then(|s| s.parse::<i64>().ok())
-                            .or_else(|| v.as_i64())
-                    })
-                    .unwrap_or(0);
-
-                let in_range = start_ts.map_or(true, |s| ts >= s)
-                    && end_ts.map_or(true, |e| ts < e);
-
-                if in_range {
-                    all_messages.push(m.clone());
-                }
-
-                if start_ts.map_or(false, |s| ts < s) {
-                    reached_before_range = true;
-                }
-            }
-
-            offset += msgs.len() as i32;
-
-            if reached_before_range || msgs.len() < batch as usize {
-                break;
-            }
+            nickname_map.insert(id.to_string(), name);
         }
 
-        // Sort ascending by create_time for chronological output
-        all_messages.sort_by_key(|m| {
-            m.get("create_time")
-                .and_then(|v| {
-                    v.as_str()
-                        .and_then(|s| s.parse::<i64>().ok())
-                        .or_else(|| v.as_i64())
-                })
-                .unwrap_or(0)
-        });
-
-        // Supplemental lookup: for any sender still not in nickname_map, query contact table directly
-        {
-            let mut missing: std::collections::HashSet<String> = std::collections::HashSet::new();
-            for m in &all_messages {
-                if let Some(wxid) = m
-                    .get("sender_user_name")
-                    .or_else(|| m.get("senderUserName"))
-                    .and_then(Value::as_str)
-                {
-                    if !wxid.is_empty() && !nickname_map.contains_key(wxid) {
-                        missing.insert(wxid.to_string());
-                    }
-                }
-            }
-            for wxid in missing {
-                if let Ok(c) = self.contact(&wxid) {
-                    let nef = |field: &str| {
-                        c.get(field).and_then(Value::as_str).filter(|s| !s.is_empty())
-                    };
-                    if let Some(name) = nef("nickName").or_else(|| nef("remark")).or_else(|| nef("alias")) {
-                        nickname_map.insert(wxid, name.to_string());
-                    }
-                }
-            }
-        }
-
-        let count = all_messages.len();
         crate::export::export_txt(&all_messages, &nickname_map, out)
             .map_err(|e| AppError::runtime(e.to_string()))?;
 
         Ok(json!({ "out": out, "count": count, "session": session_id }))
     }
 
-    // ── Media export ─────────────────────────────────────────────────────────
-
-    pub fn export_media_images(
-        &self,
-        session_filter: Option<&str>,
-        out: &Path,
-        media_type: &str,
-    ) -> AppResult<Value> {
-        let (account_dir, _, _) = self.connection_inputs()?;
-        let profile = self.profile()?;
-        let xor_key = profile.image_xor_key.map(|k| k as u8).unwrap_or(0);
-        let aes_key_bytes = profile.image_aes_key.as_deref().and_then(|k| {
-            if k.len() < 32 {
-                return None;
-            }
-            let mut arr = [0u8; 16];
-            for i in 0..16 {
-                arr[i] = u8::from_str_radix(&k[i * 2..i * 2 + 2], 16).ok()?;
-            }
-            Some(arr)
-        });
-
-        std::fs::create_dir_all(out).map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
-
-        let mut results = Vec::new();
-        let mut total_files = 0usize;
-
-        let include_images = media_type == "image" || media_type == "all";
-        let include_voice = media_type == "voice" || media_type == "all";
-
-        if include_images {
-            let entries = crate::media::scan_image_files(&account_dir);
-            let hub = self.clone();
-            let exported = crate::media::export_images(
-                &entries,
-                xor_key,
-                aes_key_bytes.as_ref(),
-                out,
-                session_filter,
-                &|current, total| hub.emit_progress("images", "exporting images", current, total),
-            )
-            .map_err(|e| AppError::runtime(e.to_string()))?;
-            total_files += exported.len();
-            results.extend(exported);
-        }
-
-        if include_voice {
-            let entries = crate::media::scan_voice_files(&account_dir);
-            let hub = self.clone();
-            let exported = crate::media::export_voices(
-                &entries,
-                out,
-                session_filter,
-                &|current, total| hub.emit_progress("voice", "exporting voice files", current, total),
-            )
-            .map_err(|e| AppError::runtime(e.to_string()))?;
-            total_files += exported.len();
-            results.extend(exported);
-        }
-
-        Ok(json!({ "exported": total_files, "out": out, "files": results }))
+    /// Export a conversation's messages in one of the desktop app's formats
+    /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
+    pub fn export_messages(&self, req: &MessageExportRequest, out: &Path) -> AppResult<Value> {
+        let (wcdb, collected) = self.export_collect(req)?;
+        self.export_write(req, out, &wcdb, collected)
     }
+
+    /// [`export_messages`](Self::export_messages) that also copies the selected media (images, voices, videos,
+    /// stickers) to `<out dir>/media/<out name>/` and points the exported messages at the copies.
+    pub async fn export_messages_with_media(&self, req: &MessageExportRequest, out: &Path, media: &crate::api::ApiMediaOptions) -> AppResult<Value> {
+        if !media.enabled {
+            return self.export_messages(req, out);
+        }
+        let (wcdb, mut collected) = self.export_collect(req)?;
+        let stats = self.attach_export_media(&wcdb, &mut collected, &req.session_id, out, media).await;
+        let mut result = self.export_write(req, out, &wcdb, collected)?;
+        result["media"] = stats;
+        Ok(result)
+    }
+
+    fn export_collect(&self, req: &MessageExportRequest) -> AppResult<(weflow_native::wcdb::Wcdb, Vec<crate::message::ExportMsg>)> {
+        use crate::message::{collect_messages, CollectOptions};
+        let (_, _, wxid) = self.connection_inputs()?;
+        let raw_my_wxid = wxid.unwrap_or_default();
+        let my_wxid = clean_account_dir_name(&raw_my_wxid);
+        let wcdb = self.open_wcdb()?;
+        // One pass over the conversation: keeping its whole database decrypted would only cost memory.
+        wcdb.set_low_memory(true);
+
+        // Raw JSON rows are several times larger than the parsed messages: turn each page into messages as it
+        // arrives instead of holding every row of the conversation.
+        let opts = CollectOptions { session_id: &req.session_id, my_wxid: &my_wxid, start: req.start, end: req.end, sender_filter: req.sender.as_deref() };
+        let mut collected: Vec<crate::message::ExportMsg> = Vec::new();
+        fetch_message_pages(&wcdb, &req.session_id, req.start, req.end, false, &mut |page| collected.extend(collect_messages(&page, &opts)))?;
+        collected.sort_by(|a, b| a.create_time.cmp(&b.create_time).then(a.local_id.cmp(&b.local_id)));
+        if collected.is_empty() {
+            return Err(AppError::runtime("no messages found for this session in the given range"));
+        }
+
+        Ok((wcdb, collected))
+    }
+
+    fn export_write(&self, req: &MessageExportRequest, out: &Path, wcdb: &weflow_native::wcdb::Wcdb, collected: Vec<crate::message::ExportMsg>) -> AppResult<Value> {
+        use crate::export_msg::*;
+        let (_, _, wxid) = self.connection_inputs()?;
+        let raw_my_wxid = wxid.unwrap_or_default();
+        let my_wxid = clean_account_dir_name(&raw_my_wxid);
+        let mut names = NameBook::new(|username: &str| {
+            wcdb.contact(username)
+                .ok()
+                .filter(|v| v.is_object() && !v.as_object().map_or(true, |o| o.is_empty()))
+                .map(|v| ContactInfo::from_value(username, &v))
+        });
+        let is_group = req.session_id.ends_with("@chatroom");
+        let (group_nicks, group_members) = if is_group {
+            let nick_value = wcdb.group_nicknames(&req.session_id).unwrap_or(Value::Null);
+            let nick_obj = nick_value.get("nicknames").and_then(Value::as_object).or_else(|| nick_value.as_object());
+            let entries: Vec<(String, String)> = nick_obj
+                .map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|n| (k.clone(), n.to_string()))).collect())
+                .unwrap_or_default();
+            let members_value = wcdb.group_members(&req.session_id).unwrap_or(Value::Null);
+            (build_trusted_group_nicknames(entries), extract_member_ids(&members_value))
+        } else {
+            (std::collections::HashMap::new(), Vec::new())
+        };
+
+        let session_display = names.display_name(&req.session_id);
+        let session_contact = names.get(&req.session_id);
+        let my_display = names.display_name(&my_wxid);
+        let mut exporter = Exporter {
+            session: SessionInfo {
+                id: req.session_id.clone(),
+                display_name: session_display,
+                nickname: session_contact.as_ref().map(|c| c.nickname.clone()).unwrap_or_default(),
+                remark: session_contact.as_ref().map(|c| c.remark.clone()).unwrap_or_default(),
+                is_group,
+            },
+            my_wxid: my_wxid.clone(),
+            raw_my_wxid,
+            my_display: if my_display == my_wxid { String::new() } else { my_display },
+            group_nicks,
+            group_members,
+            names: &mut names,
+            settings: Settings { display_pref: req.display_pref, excel_compact: req.excel_compact, ..Default::default() },
+        };
+        let format = req.format.to_ascii_lowercase();
+        let result = match format.as_str() {
+            "chatlab" => exporter.write_chatlab(&collected, out, false),
+            "chatlab-jsonl" => exporter.write_chatlab(&collected, out, true),
+            "json" => exporter.write_json(&collected, out, false),
+            "arkme-json" => exporter.write_json(&collected, out, true),
+            "excel" | "xlsx" => exporter.write_excel(&collected, out),
+            "txt" => exporter.write_txt(&collected, out),
+            "weclone" => exporter.write_weclone(&collected, out),
+            "html" => exporter.write_html(&collected, out),
+            "sql" => exporter.write_sql(&collected, out),
+            other => return Err(AppError::usage(format!("unsupported message export format: {other}; supported: {MESSAGE_EXPORT_FORMATS}"))),
+        };
+        result.map_err(|e| AppError::runtime(e.to_string()))?;
+        Ok(json!({ "out": out, "count": collected.len(), "session": req.session_id, "format": format }))
+    }
+
+    // ── Media export ─────────────────────────────────────────────────────────
 
     pub async fn emoji_download(&self, session_id: &str, out: &Path) -> AppResult<Value> {
         let messages = self.messages(session_id, 500, 0)?;
@@ -851,25 +741,26 @@ impl ServiceHub {
     }
 
     pub fn emit_progress(&self, stage: &str, message: &str, current: usize, total: usize) {
-        if self.progress_enabled {
-            crate::output::progress(stage, message, current, total);
-        }
+        crate::output::progress(stage, message, current, total);
     }
 
     fn open_wcdb(&self) -> AppResult<weflow_native::wcdb::Wcdb> {
         let (account_dir, key, wxid) = self.connection_inputs()?;
-        let mut wcdb = unsafe { weflow_native::wcdb::Wcdb::load(&self.ctx.runtime_dir) }
+        let mut wcdb = weflow_native::wcdb::Wcdb::new();
+        wcdb.open_unchecked(&account_dir, &key, wxid.as_deref())
             .map_err(|err| AppError::native(err.to_string()))?;
-        wcdb.open(&account_dir, &key, wxid.as_deref())
-            .map_err(|err| AppError::native(err.to_string()))?;
+        // Proving the key costs a slow key derivation on session.db. Once it has worked, a fingerprint of
+        // (key, session.db salt, account) is remembered, and later runs with the same key and database skip it.
+        let fingerprint = wcdb.session_salt().map(|salt| key_fingerprint(&account_dir, &key, &salt));
+        let path = self.ctx.cache_dir().join("verified-keys");
+        let known = fingerprint.as_ref().is_some_and(|fp| std::fs::read_to_string(&path).is_ok_and(|s| s.lines().any(|l| l == fp)));
+        if !known {
+            wcdb.check_key().map_err(|err| AppError::native(err.to_string()))?;
+            if let Some(fp) = fingerprint {
+                remember_fingerprint(&path, &fp);
+            }
+        }
         Ok(wcdb)
-    }
-
-    fn all_session_ids(&self, wcdb: &weflow_native::wcdb::Wcdb) -> AppResult<Vec<String>> {
-        let sessions = wcdb
-            .sessions()
-            .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(extract_session_ids(&sessions))
     }
 
     fn connection_inputs(&self) -> AppResult<(PathBuf, String, Option<String>)> {
@@ -917,8 +808,8 @@ fn default_db_candidates() -> Vec<PathBuf> {
             candidates.push(home.join("Library/Application Support/com.tencent.xinWeChat"));
             candidates.push(home.join("Library/Containers/com.tencent.WeChat/Data/Library/Application Support/com.tencent.WeChat"));
         } else if cfg!(target_os = "windows") {
-            candidates.push(home.join("Documents/WeChat Files"));
-            candidates.push(home.join("Documents/xwechat_files"));
+            candidates.push(home.join("Documents").join("WeChat Files"));
+            candidates.push(home.join("Documents").join("xwechat_files"));
         } else {
             candidates.push(home.join(".xwechat_files"));
             candidates.push(home.join("xwechat_files"));
@@ -927,7 +818,7 @@ fn default_db_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-fn extract_session_ids(value: &Value) -> Vec<String> {
+pub(crate) fn extract_session_ids(value: &Value) -> Vec<String> {
     value
         .as_array()
         .map(|items| {
@@ -960,51 +851,6 @@ fn session_id_from_value(value: &Value) -> Option<String> {
         }
     }
     None
-}
-
-fn filter_group_sessions(value: Value) -> Value {
-    let Some(items) = value.as_array() else {
-        return value;
-    };
-    Value::Array(
-        items
-            .iter()
-            .filter(|item| {
-                session_id_from_value(item)
-                    .map(|session_id| session_id.contains("@chatroom"))
-                    .unwrap_or(false)
-            })
-            .cloned()
-            .collect(),
-    )
-}
-
-fn year_bounds(year: i32) -> AppResult<(i32, i32)> {
-    if !(1970..=2100).contains(&year) {
-        return Err(AppError::usage("year must be between 1970 and 2100"));
-    }
-    let begin = unix_timestamp(year, 1, 1)?;
-    let end = unix_timestamp(year + 1, 1, 1)? - 1;
-    Ok((begin, end))
-}
-
-fn unix_timestamp(year: i32, month: u32, day: u32) -> AppResult<i32> {
-    let days = days_from_civil(year, month, day);
-    let seconds = days
-        .checked_mul(86_400)
-        .ok_or_else(|| AppError::usage("date is out of range"))?;
-    i32::try_from(seconds).map_err(|_| AppError::usage("date is out of range"))
-}
-
-fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
-    let year = year - i32::from(month <= 2);
-    let era = if year >= 0 { year } else { year - 399 } / 400;
-    let yoe = year - era * 400;
-    let month = month as i32;
-    let day = day as i32;
-    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    i64::from(era * 146_097 + doe - 719_468)
 }
 
 fn find_wechat_pid() -> Option<u32> {
@@ -1042,21 +888,15 @@ fn find_wechat_pid() -> Option<u32> {
     }
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("tasklist")
-            .arg("/FI")
-            .arg("IMAGENAME eq WeChat.exe")
-            .arg("/FO")
-            .arg("CSV")
-            .arg("/NH")
-            .output()
-            .ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            if line.contains("WeChat.exe") {
-                let parts: Vec<&str> = line.split(',').collect();
-                if parts.len() >= 2 {
-                    let pid_str = parts[1].trim().trim_matches('"');
-                    return pid_str.parse().ok();
+        for image in ["Weixin.exe", "WeChat.exe"] {
+            let Ok(output) = std::process::Command::new("tasklist").args(["/FI", &format!("IMAGENAME eq {image}"), "/FO", "CSV", "/NH"]).output() else { continue };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("INFO:")) {
+                let parts: Vec<&str> = line.split("\",\"").map(|p| p.trim_matches('"')).collect();
+                if parts.first().map_or(false, |n| n.eq_ignore_ascii_case(image)) {
+                    if let Some(pid) = parts.get(1).and_then(|p| p.parse::<u32>().ok()) {
+                        return Some(pid);
+                    }
                 }
             }
         }
@@ -1094,4 +934,162 @@ fn base64_encode(data: &[u8]) -> String {
         result.push('=');
     }
     result
+}
+
+
+pub const MESSAGE_EXPORT_FORMATS: &str = "json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql";
+
+pub struct MessageExportRequest {
+    pub session_id: String,
+    pub format: String,
+    pub start: Option<i64>,
+    pub end: Option<i64>,
+    pub sender: Option<String>,
+    pub display_pref: crate::export_msg::DisplayPref,
+    pub excel_compact: bool,
+}
+
+/// `cleanAccountDirName`: `wxid_abc_1234` -> `wxid_abc`, `name_ab12` -> `name`.
+/// One-way fingerprint of a key that decrypted an account's `session.db` (the key cannot be recovered from it).
+fn key_fingerprint(account_dir: &Path, key: &str, salt: &[u8; 16]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"weflow verified key v1\0");
+    h.update(key.trim().to_ascii_lowercase().as_bytes());
+    h.update([0]);
+    h.update(salt);
+    h.update([0]);
+    h.update(account_dir.to_string_lossy().as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Add a fingerprint to the list of verified keys (a few recent ones are kept). Failing to write only means the
+/// key is checked again next time.
+fn remember_fingerprint(path: &Path, fingerprint: &str) {
+    let mut lines: Vec<String> = std::fs::read_to_string(path).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default();
+    lines.retain(|l| l != fingerprint && l.len() == 64);
+    lines.push(fingerprint.to_string());
+    let keep = &lines[lines.len().saturating_sub(16)..];
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(path, keep.join("\n") + "\n");
+}
+
+pub fn clean_account_dir_name(dir_name: &str) -> String {
+    use crate::message::rx;
+    let trimmed = dir_name.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.to_lowercase().starts_with("wxid_") {
+        return rx(r"(?i)^(wxid_[^_]+)").captures(trimmed).map(|c| c[1].to_string()).unwrap_or_else(|| trimmed.to_string());
+    }
+    rx(r"^(.+)_([a-zA-Z0-9]{4})$").captures(trimmed).map(|c| c[1].to_string()).unwrap_or_else(|| trimmed.to_string())
+}
+
+/// Read a session's messages inside `[start, end)` (Unix seconds) with a bounded WCDB cursor,
+/// so the cost follows the range size, not how far back the range lies. Reports progress
+/// (`total` is the session's message count when the whole history is requested, else unknown).
+/// Reads a conversation page by page (oldest first); `on_page` gets the rows of each page that fall inside
+/// `[start, end)`.
+fn fetch_message_pages(wcdb: &weflow_native::wcdb::Wcdb, session_id: &str, start: Option<i64>, end: Option<i64>, lite: bool, on_page: &mut dyn FnMut(Vec<Value>)) -> AppResult<()> {
+    let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
+    let (begin, finish) = (start.map_or(0, clamp), end.map_or(0, clamp));
+    let total = if begin == 0 && finish == 0 { wcdb.message_count(session_id).unwrap_or(0).max(0) as usize } else { 0 };
+    let cursor = wcdb
+        .open_message_cursor(session_id, 2000, true, begin, finish, lite)
+        .map_err(|e| AppError::native(e.to_string()))?;
+    let mut seen = 0usize;
+    let result = (|| -> AppResult<()> {
+        loop {
+            let (page, more) = wcdb.fetch_message_batch(cursor).map_err(|e| AppError::native(e.to_string()))?;
+            let Value::Array(items) = page else { break };
+            if items.is_empty() {
+                break;
+            }
+            let kept: Vec<Value> = items
+                .into_iter()
+                .filter(|m| {
+                    let ts = crate::message::get_timestamp_seconds(m);
+                    start.map_or(true, |s| ts >= s) && end.map_or(true, |e| ts < e)
+                })
+                .collect();
+            seen += kept.len();
+            on_page(kept);
+            crate::output::progress("messages", "reading messages", seen, if total == 0 { 0 } else { total.max(seen) });
+            if !more {
+                break;
+            }
+        }
+        Ok(())
+    })();
+    let _ = wcdb.close_message_cursor(cursor);
+    result
+}
+
+fn extract_member_ids(value: &Value) -> Vec<String> {
+    let list = value
+        .as_array()
+        .cloned()
+        .or_else(|| value.get("members").and_then(Value::as_array).cloned())
+        .unwrap_or_default();
+    let mut out: Vec<String> = Vec::new();
+    for item in list {
+        let id = match &item {
+            Value::String(s) => s.clone(),
+            other => ["username", "userName", "wxid", "user_name"]
+                .iter()
+                .find_map(|k| other.get(*k).and_then(Value::as_str))
+                .unwrap_or("")
+                .to_string(),
+        };
+        if !id.is_empty() && !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    #[test]
+    fn cleans_account_dir_names() {
+        assert_eq!(clean_account_dir_name("wxid_abc123_ab12"), "wxid_abc123");
+        assert_eq!(clean_account_dir_name("someone_a1b2"), "someone");
+        assert_eq!(clean_account_dir_name("plain"), "plain");
+        assert_eq!(clean_account_dir_name(" "), "");
+    }
+
+    #[test]
+    fn member_ids_from_various_shapes() {
+        let v = json!({"members": [{"username": "a"}, {"userName": "b"}, "c", {"username": "a"}]});
+        assert_eq!(extract_member_ids(&v), vec!["a", "b", "c"]);
+        assert_eq!(extract_member_ids(&json!(["x", "y"])), vec!["x", "y"]);
+        assert!(extract_member_ids(&Value::Null).is_empty());
+    }
+}
+
+/// `normalizeTimestamp` of the WCDB wrapper: ms → s, clamped to i32.
+pub(crate) fn normalize_timestamp(input: i64) -> i32 {
+    if input <= 0 {
+        return 0;
+    }
+    let seconds = if input > 1_000_000_000_000 { input / 1000 } else { input };
+    seconds.clamp(0, i32::MAX as i64) as i32
+}
+
+/// `normalizeRange`: open end → now, end never before begin.
+pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
+    let b = normalize_timestamp(begin);
+    let mut e = normalize_timestamp(end);
+    if e <= 0 {
+        e = normalize_timestamp(chrono::Utc::now().timestamp_millis());
+    }
+    if b > 0 && e < b {
+        e = b;
+    }
+    (b, e)
 }

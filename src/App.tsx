@@ -42,6 +42,7 @@ import UpdateProgressCapsule from './components/UpdateProgressCapsule'
 import LockScreen from './components/LockScreen'
 import { GlobalSessionMonitor } from './components/GlobalSessionMonitor'
 import WindowCloseDialog from './components/WindowCloseDialog'
+import { t } from './i18n'
 
 function RouteStateRedirect({ to }: { to: string }) {
   const location = useLocation()
@@ -351,7 +352,7 @@ function App() {
       setIsDownloading(false)
       // Extract clean error message if possible
       const errorMsg = e.message || String(e)
-      setUpdateError(errorMsg.includes('暂时禁用') ? '自动更新已暂时禁用' : errorMsg)
+      setUpdateError((errorMsg.includes('暂时禁用') || errorMsg.includes('temporarily disabled')) ? t('自动更新已暂时禁用') : errorMsg)
     }
   }
 
@@ -585,35 +586,31 @@ function App() {
           <div className="agreement-modal">
             <div className="agreement-header">
               <Shield size={32} />
-              <h2>用户协议与隐私政策</h2>
+              <h2>{t('用户协议与隐私政策')}</h2>
             </div>
             <div className="agreement-content">
-              <p>欢迎使用WeFlow！在使用本软件前，请仔细阅读以下条款：</p>
+              <p>{t('欢迎使用WeFlow！在使用本软件前，请仔细阅读以下条款：')}</p>
               <div className="agreement-notice">
-                <strong>这是免费软件，如果你是付费购买的话请骂死那个骗子。</strong>
-                <span className="agreement-notice-link">
-                  官方网站：
-                  <a href="https://weflow.top" target="_blank" rel="noreferrer">
+                <strong>{t('这是免费软件，如果你是付费购买的话请骂死那个骗子。')}</strong>
+                <span className="agreement-notice-link">{t('官方网站：')}<a href="https://weflow.top" target="_blank" rel="noreferrer">
                     https://weflow.top
                   </a>
                   &nbsp;·&nbsp;
-                  <a href="https://github.com/hicccc77/WeFlow" target="_blank" rel="noreferrer">
-                    GitHub 仓库
-                  </a>
+                  <a href="https://github.com/hicccc77/WeFlow" target="_blank" rel="noreferrer">{t('GitHub 仓库')}</a>
                 </span>
               </div>
               <div className="agreement-text">
-                <h4>1. 数据安全</h4>
-                <p>本软件所有数据处理均在本地完成，不会上传任何聊天记录、个人信息到服务器。你的数据完全由你自己掌控。</p>
+                <h4>{t('1. 数据安全')}</h4>
+                <p>{t('本软件所有数据处理均在本地完成，不会上传任何聊天记录、个人信息到服务器。你的数据完全由你自己掌控。')}</p>
 
-                <h4>2. 使用须知</h4>
-                <p>本软件仅供个人学习研究使用，请勿用于任何非法用途。使用本软件解密、查看、分析的数据应为你本人所有或已获得授权。</p>
+                <h4>{t('2. 使用须知')}</h4>
+                <p>{t('本软件仅供个人学习研究使用，请勿用于任何非法用途。使用本软件解密、查看、分析的数据应为你本人所有或已获得授权。')}</p>
 
-                <h4>3. 免责声明</h4>
-                <p>因使用本软件产生的任何直接或间接损失，开发者不承担任何责任。请确保你的使用行为符合当地法律法规。</p>
+                <h4>{t('3. 免责声明')}</h4>
+                <p>{t('因使用本软件产生的任何直接或间接损失，开发者不承担任何责任。请确保你的使用行为符合当地法律法规。')}</p>
 
-                <h4>4. 隐私保护</h4>
-                <p>本软件不收集任何用户隐私数据。软件更新检测仅获取版本信息，不涉及任何个人隐私。</p>
+                <h4>{t('4. 隐私保护')}</h4>
+                <p>{t('本软件不收集任何用户隐私数据。软件更新检测仅获取版本信息，不涉及任何个人隐私。')}</p>
               </div>
             </div>
             <div className="agreement-footer">
@@ -623,11 +620,11 @@ function App() {
                   checked={agreementChecked}
                   onChange={(e) => setAgreementChecked(e.target.checked)}
                 />
-                <span>我已阅读并同意上述协议</span>
+                <span>{t('我已阅读并同意上述协议')}</span>
               </label>
               <div className="agreement-actions">
-                <button className="btn btn-secondary" onClick={handleDisagree}>不同意</button>
-                <button className="btn btn-primary" onClick={handleAgree} disabled={!agreementChecked}>同意并继续</button>
+                <button className="btn btn-secondary" onClick={handleDisagree}>{t('不同意')}</button>
+                <button className="btn btn-primary" onClick={handleAgree} disabled={!agreementChecked}>{t('同意并继续')}</button>
               </div>
             </div>
           </div>
@@ -640,30 +637,30 @@ function App() {
           <div className="agreement-modal">
             <div className="agreement-header">
               <Shield size={32} />
-              <h2>使用数据收集说明</h2>
+              <h2>{t('使用数据收集说明')}</h2>
             </div>
             <div className="agreement-content">
               <div className="agreement-text">
-                <p>为了持续改进 WeFlow 并提供更好的用户体验，我们希望收集一些匿名的使用数据。</p>
+                <p>{t('为了持续改进 WeFlow 并提供更好的用户体验，我们希望收集一些匿名的使用数据。')}</p>
 
-                <h4>我们会收集什么？</h4>
-                <p>• 功能使用情况（如哪些功能被使用、使用频率）</p>
-                <p>• 应用性能数据（如加载时间、错误日志）</p>
-                <p>• 设备基本信息（如操作系统版本、应用版本）</p>
+                <h4>{t('我们会收集什么？')}</h4>
+                <p>{t('• 功能使用情况（如哪些功能被使用、使用频率）')}</p>
+                <p>{t('• 应用性能数据（如加载时间、错误日志）')}</p>
+                <p>{t('• 设备基本信息（如操作系统版本、应用版本）')}</p>
 
-                <h4>我们不会收集什么？</h4>
-                <p>• 你的聊天记录内容</p>
-                <p>• 个人身份信息</p>
-                <p>• 联系人信息</p>
-                <p>• 任何可以识别你身份的数据</p>
-                <p>• 一切你担心会涉及隐藏的数据</p>
+                <h4>{t('我们不会收集什么？')}</h4>
+                <p>{t('• 你的聊天记录内容')}</p>
+                <p>{t('• 个人身份信息')}</p>
+                <p>{t('• 联系人信息')}</p>
+                <p>{t('• 任何可以识别你身份的数据')}</p>
+                <p>{t('• 一切你担心会涉及隐藏的数据')}</p>
 
               </div>
             </div>
             <div className="agreement-footer">
               <div className="agreement-actions">
-                <button className="btn btn-secondary" onClick={handleAnalyticsDeny}>不允许</button>
-                <button className="btn btn-primary" onClick={handleAnalyticsAllow}>允许</button>
+                <button className="btn btn-secondary" onClick={handleAnalyticsDeny}>{t('不允许')}</button>
+                <button className="btn btn-primary" onClick={handleAnalyticsAllow}>{t('允许')}</button>
               </div>
             </div>
           </div>

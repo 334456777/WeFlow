@@ -5,6 +5,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useAnalyticsStore } from '../stores/analyticsStore'
 import * as configService from '../services/config'
 import './AccountManagementPage.scss'
+import { t } from '../i18n'
 
 interface ScannedWxidOption {
   wxid: string
@@ -83,7 +84,7 @@ const removeHiddenDeletedAccountNormId = (normalized: string): void => {
   writeHiddenDeletedAccountNormIds(next)
 }
 
-const DEFAULT_ACCOUNT_DISPLAY_NAME = '微信用户'
+const DEFAULT_ACCOUNT_DISPLAY_NAME = t('微信用户')
 
 const normalizeAccountId = (value?: string | null): string => {
   const trimmed = String(value || '').trim()
@@ -112,9 +113,9 @@ const resolveAccountDisplayName = (
 }
 
 const resolveAccountAvatarText = (displayName?: string): string => {
-  if (typeof displayName !== 'string' || displayName.length === 0) return '微'
+  if (typeof displayName !== 'string' || displayName.length === 0) return t('微')
   const visible = displayName.trim()
-  return (visible && [...visible][0]) || '微'
+  return (visible && [...visible][0]) || t('微')
 }
 
 const readAccountProfilesCache = (): Record<string, AccountProfileCacheEntry> => {
@@ -253,7 +254,7 @@ function AccountManagementPage() {
       setAccounts(nextAccounts)
     } catch (error) {
       console.error('加载账号列表失败:', error)
-      setNotice({ type: 'error', text: '加载账号列表失败，请稍后重试' })
+      setNotice({ type: 'error', text: t('加载账号列表失败，请稍后重试') })
       setAccounts([])
     } finally {
       setIsLoading(false)
@@ -315,11 +316,11 @@ function AccountManagementPage() {
       await applyWxidConfig(wxid, targetConfig)
       await clearRuntimeCacheState()
       window.dispatchEvent(new CustomEvent('wxid-changed', { detail: { wxid } }))
-      setNotice({ type: 'success', text: `已切换到账号「${wxid}」` })
+      setNotice({ type: 'success', text: t('已切换到账号「{wxid}」', { wxid: wxid }) })
       await loadAccounts()
     } catch (error) {
       console.error('切换账号失败:', error)
-      setNotice({ type: 'error', text: '切换账号失败，请稍后重试' })
+      setNotice({ type: 'error', text: t('切换账号失败，请稍后重试') })
     } finally {
       setWorkingWxid('')
     }
@@ -336,7 +337,7 @@ function AccountManagementPage() {
       window.dispatchEvent(new CustomEvent('wxid-changed', { detail: { wxid: latestWxid } }))
     } catch (error) {
       console.error('打开添加账号引导失败:', error)
-      setNotice({ type: 'error', text: '打开添加账号引导失败，请稍后重试' })
+      setNotice({ type: 'error', text: t('打开添加账号引导失败，请稍后重试') })
     }
   }, [loadAccounts, workingWxid])
 
@@ -357,7 +358,7 @@ function AccountManagementPage() {
       })
 
       if (matchedKeys.length === 0) {
-        setNotice({ type: 'info', text: `账号「${targetWxid}」暂无可删除配置` })
+        setNotice({ type: 'info', text: t('账号「{targetWxid}」暂无可删除配置', { targetWxid: targetWxid }) })
         return
       }
 
@@ -402,7 +403,7 @@ function AccountManagementPage() {
           window.dispatchEvent(new CustomEvent('wxid-changed', { detail: { wxid: nextWxid } }))
           addHiddenDeletedAccountNormId(normalizedTarget)
           setDeleteUndoState(undoPayload)
-          setNotice({ type: 'success', text: `已删除「${targetWxid}」配置，并切换到「${nextWxid}」` })
+          setNotice({ type: 'success', text: t('已删除「{targetWxid}」配置，并切换到「{nextWxid}」', { targetWxid: targetWxid, nextWxid: nextWxid }) })
           await loadAccounts()
           return
         }
@@ -415,18 +416,18 @@ function AccountManagementPage() {
         window.dispatchEvent(new CustomEvent('wxid-changed', { detail: { wxid: '' } }))
         addHiddenDeletedAccountNormId(normalizedTarget)
         setDeleteUndoState(undoPayload)
-        setNotice({ type: 'info', text: `已删除「${targetWxid}」配置，当前无可用账号配置，可撤回或添加账号` })
+        setNotice({ type: 'info', text: t('已删除「{targetWxid}」配置，当前无可用账号配置，可撤回或添加账号', { targetWxid: targetWxid }) })
         await loadAccounts()
         return
       }
 
       addHiddenDeletedAccountNormId(normalizedTarget)
       setDeleteUndoState(undoPayload)
-      setNotice({ type: 'success', text: `已删除账号「${targetWxid}」配置` })
+      setNotice({ type: 'success', text: t('已删除账号「{targetWxid}」配置', { targetWxid: targetWxid }) })
       await loadAccounts()
     } catch (error) {
       console.error('删除账号配置失败:', error)
-      setNotice({ type: 'error', text: '删除账号配置失败，请稍后重试' })
+      setNotice({ type: 'error', text: t('删除账号配置失败，请稍后重试') })
     } finally {
       setWorkingWxid('')
     }
@@ -470,27 +471,27 @@ function AccountManagementPage() {
         window.dispatchEvent(new CustomEvent('wxid-changed', { detail: { wxid: deleteUndoState.previousCurrentWxid } }))
       }
 
-      setNotice({ type: 'success', text: `已撤回删除，账号「${deleteUndoState.targetWxid}」配置已恢复` })
+      setNotice({ type: 'success', text: t('已撤回删除，账号「{targetWxid}」配置已恢复', { targetWxid: deleteUndoState.targetWxid }) })
       setDeleteUndoState(null)
       await loadAccounts()
     } catch (error) {
       console.error('撤回删除失败:', error)
-      setNotice({ type: 'error', text: '撤回删除失败，请稍后重试' })
+      setNotice({ type: 'error', text: t('撤回删除失败，请稍后重试') })
     } finally {
       setWorkingWxid('')
     }
   }, [applyWxidConfig, clearRuntimeCacheState, dbPath, deleteUndoState, loadAccounts, setDbConnected, workingWxid])
 
   const currentAccountLabel = useMemo(() => {
-    if (!currentWxid) return '未设置'
+    if (!currentWxid) return t('未设置')
     return currentWxid
   }, [currentWxid])
 
   const formatTime = (value?: number): string => {
     const ts = Number(value || 0)
-    if (!ts) return '未知'
+    if (!ts) return t('未知')
     const date = new Date(ts)
-    if (Number.isNaN(date.getTime())) return '未知'
+    if (Number.isNaN(date.getTime())) return t('未知')
     const year = date.getFullYear()
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const day = String(date.getDate()).padStart(2, '0')
@@ -503,30 +504,29 @@ function AccountManagementPage() {
     <div className="account-management-page">
       <header className="account-management-header">
         <div>
-          <h2>账号管理</h2>
-          <p>统一管理切换账号、添加账号、删除账号配置。</p>
+          <h2>{t('账号管理')}</h2>
+          <p>{t('统一管理切换账号、添加账号、删除账号配置。')}</p>
         </div>
         <div className="account-management-actions">
           <button type="button" className="btn btn-secondary" onClick={() => void loadAccounts()} disabled={isLoading || Boolean(workingWxid)}>
-            <RefreshCw size={16} /> {isLoading ? '刷新中...' : '刷新'}
+            <RefreshCw size={16} /> {isLoading ? t('刷新中...') : t('刷新')}
           </button>
           <button type="button" className="btn btn-primary" onClick={handleAddAccount} disabled={Boolean(workingWxid)}>
-            <UserPlus size={16} /> 添加账号
-          </button>
+            <UserPlus size={16} />{' '}{t('添加账号')}</button>
         </div>
       </header>
 
       <section className="account-management-summary">
         <div className="summary-item">
-          <span className="summary-label">数据库目录</span>
-          <span className="summary-value">{dbPath || '未配置'}</span>
+          <span className="summary-label">{t('数据库目录')}</span>
+          <span className="summary-value">{dbPath || t('未配置')}</span>
         </div>
         <div className="summary-item">
-          <span className="summary-label">当前账号</span>
+          <span className="summary-label">{t('当前账号')}</span>
           <span className="summary-value">{currentAccountLabel}</span>
         </div>
         <div className="summary-item">
-          <span className="summary-label">账号数量</span>
+          <span className="summary-label">{t('账号数量')}</span>
           <span className="summary-value">{accounts.length}</span>
         </div>
       </section>
@@ -540,9 +540,7 @@ function AccountManagementPage() {
               className="notice-action"
               onClick={() => void handleUndoDelete()}
               disabled={Boolean(workingWxid)}
-            >
-              撤回
-            </button>
+            >{t('撤回')}</button>
           )}
         </div>
       )}
@@ -550,7 +548,7 @@ function AccountManagementPage() {
       {accounts.length === 0 ? (
         <div className="account-empty">
           <Database size={20} />
-          <span>未发现可管理账号，请先添加账号或检查数据库目录。</span>
+          <span>{t('未发现可管理账号，请先添加账号或检查数据库目录。')}</span>
         </div>
       ) : (
         <div className="account-list">
@@ -564,19 +562,17 @@ function AccountManagementPage() {
                   <h3>{account.displayName}</h3>
                   {account.isCurrent && (
                     <span className="account-badge current">
-                      <CheckCircle2 size={12} /> 当前
-                    </span>
+                      <CheckCircle2 size={12} />{' '}{t('当前')}</span>
                   )}
                   {account.hasConfig ? (
-                    <span className="account-badge ok">已保存配置</span>
+                    <span className="account-badge ok">{t('已保存配置')}</span>
                   ) : (
-                    <span className="account-badge warn">未保存配置</span>
+                    <span className="account-badge warn">{t('未保存配置')}</span>
                   )}
                 </div>
                 <div className="account-meta">wxid: {account.wxid}</div>
-                <div className="account-meta">
-                  最近数据更新时间: {formatTime(account.modifiedTime)} · 配置更新时间: {formatTime(account.configUpdatedAt)}
-                  {!account.fromScan && <span className="meta-tip">（仅配置记录）</span>}
+                <div className="account-meta">{t('最近数据更新时间: {v0} · 配置更新时间: {v1}', { v0: formatTime(account.modifiedTime), v1: formatTime(account.configUpdatedAt) })}
+                  {!account.fromScan && <span className="meta-tip">{t('（仅配置记录）')}</span>}
                 </div>
               </div>
               <div className="account-card-actions">
@@ -586,7 +582,7 @@ function AccountManagementPage() {
                   onClick={() => void handleSwitchAccount(account.wxid)}
                   disabled={Boolean(workingWxid) || account.isCurrent || !account.hasConfig || !account.fromScan}
                 >
-                  <ArrowRightLeft size={14} /> {account.isCurrent ? '当前账号' : (!account.hasConfig ? '无配置' : (account.fromScan ? '切换' : '无数据'))}
+                  <ArrowRightLeft size={14} /> {account.isCurrent ? t('当前账号') : (!account.hasConfig ? t('无配置') : (account.fromScan ? t('切换') : t('无数据')))}
                 </button>
                 <button
                   type="button"
@@ -594,17 +590,14 @@ function AccountManagementPage() {
                   onClick={() => void handleDeleteAccountConfig(account.wxid)}
                   disabled={Boolean(workingWxid) || !account.hasConfig}
                 >
-                  <Trash2 size={14} /> 删除配置
-                </button>
+                  <Trash2 size={14} />{' '}{t('删除配置')}</button>
               </div>
             </article>
           ))}
         </div>
       )}
 
-      <footer className="account-management-footer">
-        删除仅影响 WeFlow 本地配置，不会删除微信原始数据文件。
-      </footer>
+      <footer className="account-management-footer">{t('删除仅影响 WeFlow 本地配置，不会删除微信原始数据文件。')}</footer>
     </div>
   )
 }

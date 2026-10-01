@@ -11,6 +11,7 @@ import type {
   InsightRecordTriggerReason
 } from '../types/electron'
 import './InsightInboxPage.scss'
+import { t, formatLocale } from '../i18n'
 
 const INSIGHT_AVATAR_URL = './assets/insight/AI_Insight.png'
 
@@ -43,7 +44,7 @@ function parseDateInput(value: string, endOfDay = false): number | undefined {
 }
 
 function formatRecordTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('zh-CN', {
+  return new Date(timestamp).toLocaleString(formatLocale(), {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -56,39 +57,39 @@ function formatGroupDate(timestamp: number): string {
   const today = new Date()
   const yesterday = new Date()
   yesterday.setDate(today.getDate() - 1)
-  if (getStartOfDay(date) === getStartOfDay(today)) return '今天'
-  if (getStartOfDay(date) === getStartOfDay(yesterday)) return '昨天'
-  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+  if (getStartOfDay(date) === getStartOfDay(today)) return t('今天')
+  if (getStartOfDay(date) === getStartOfDay(yesterday)) return t('昨天')
+  return date.toLocaleDateString(formatLocale(), { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 function getTriggerLabel(reason: InsightRecordTriggerReason): string {
-  if (reason === 'silence') return '沉默提醒'
-  if (reason === 'test') return '测试见解'
-  return '活跃分析'
+  if (reason === 'silence') return t('沉默提醒')
+  if (reason === 'test') return t('测试见解')
+  return t('活跃分析')
 }
 
 function buildLogText(record: InsightRecord): string {
   const log = record.log
   return [
-    `时间：${new Date(record.createdAt).toLocaleString('zh-CN')}`,
-    `联系人：${record.displayName} (${record.sessionId})`,
-    `触发类型：${getTriggerLabel(record.triggerReason)}`,
-    `接口地址：${log.endpoint}`,
-    `模型：${log.model}`,
+    t('时间：{v0}', { v0: new Date(record.createdAt).toLocaleString(formatLocale()) }),
+    t('联系人：{displayName} ({sessionId})', { displayName: record.displayName, sessionId: record.sessionId }),
+    t('触发类型：{v0}', { v0: getTriggerLabel(record.triggerReason) }),
+    t('接口地址：{endpoint}', { endpoint: log.endpoint }),
+    t('模型：{model}', { model: log.model }),
     `Max Tokens：${log.maxTokens}`,
     `Temperature：${log.temperature}`,
-    `耗时：${log.durationMs}ms`,
+    t('耗时：{durationMs}ms', { durationMs: log.durationMs }),
     '',
-    '系统提示词：',
+    t('系统提示词：'),
     log.systemPrompt,
     '',
-    '用户提示词：',
+    t('用户提示词：'),
     log.userPrompt,
     '',
-    '模型输出原文：',
+    t('模型输出原文：'),
     log.rawOutput,
     '',
-    '最终见解：',
+    t('最终见解：'),
     log.finalInsight
   ].join('\n')
 }
@@ -145,7 +146,7 @@ export default function InsightInboxPage() {
     try {
       const result: InsightRecordListResult = await window.electronAPI.insight.listRecords(filters)
       if (!result.success) {
-        setError(result.error || '加载灵感信箱失败')
+        setError(result.error || t('加载灵感信箱失败'))
         return
       }
       setRecords(result.records)
@@ -156,7 +157,7 @@ export default function InsightInboxPage() {
         unreadCount: result.unreadCount
       })
     } catch (err) {
-      setError((err as Error).message || '加载灵感信箱失败')
+      setError((err as Error).message || t('加载灵感信箱失败'))
     } finally {
       setLoading(false)
     }
@@ -209,7 +210,7 @@ export default function InsightInboxPage() {
       setMessage(successText)
       window.setTimeout(() => setMessage(''), 1800)
     } catch {
-      setMessage('复制失败')
+      setMessage(t('复制失败'))
       window.setTimeout(() => setMessage(''), 1800)
     }
   }
@@ -217,7 +218,7 @@ export default function InsightInboxPage() {
   const openLog = async (recordId: string) => {
     const result = await window.electronAPI.insight.getRecord(recordId)
     if (!result.success || !result.record) {
-      setMessage(result.error || '读取请求日志失败')
+      setMessage(result.error || t('读取请求日志失败'))
       window.setTimeout(() => setMessage(''), 1800)
       return
     }
@@ -239,15 +240,15 @@ export default function InsightInboxPage() {
           <div className="insight-inbox-title-block">
             <div className="insight-inbox-title-line">
               <img src={INSIGHT_AVATAR_URL} alt="" className="insight-inbox-logo" />
-              <h2>灵感信箱</h2>
+              <h2>{t('灵感信箱')}</h2>
             </div>
             <div className="insight-inbox-stats">
-              <span>共 {stats.total} 条</span>
-              <span>今天 {stats.todayCount} 条</span>
-              <span>未读 {stats.unreadCount} 条</span>
+              <span>{t('共 {total} 条', { total: stats.total })}</span>
+              <span>{t('今天 {todayCount} 条', { todayCount: stats.todayCount })}</span>
+              <span>{t('未读 {unreadCount} 条', { unreadCount: stats.unreadCount })}</span>
             </div>
           </div>
-          <button className="insight-icon-btn" onClick={() => { void loadRecords() }} title="刷新">
+          <button className="insight-icon-btn" onClick={() => { void loadRecords() }} title={t('刷新')}>
             <RefreshCw size={18} className={loading ? 'spinning' : ''} />
           </button>
         </header>
@@ -255,8 +256,8 @@ export default function InsightInboxPage() {
         {focusedRecordId && (
           <div className="insight-focus-bar">
             <Sparkles size={15} />
-            <span>已定位通知中的见解</span>
-            <button type="button" onClick={clearFocusedRecord}>取消定位</button>
+            <span>{t('已定位通知中的见解')}</span>
+            <button type="button" onClick={clearFocusedRecord}>{t('取消定位')}</button>
           </div>
         )}
 
@@ -264,22 +265,22 @@ export default function InsightInboxPage() {
           {error && (
             <div className="insight-empty-state">
               <span>{error}</span>
-              <button onClick={() => { void loadRecords() }}>重试</button>
+              <button onClick={() => { void loadRecords() }}>{t('重试')}</button>
             </div>
           )}
 
           {!error && loading && records.length === 0 && (
             <div className="insight-empty-state">
               <RefreshCw size={18} className="spinning" />
-              <span>正在加载灵感信箱...</span>
+              <span>{t('正在加载灵感信箱...')}</span>
             </div>
           )}
 
           {!error && !loading && records.length === 0 && (
             <div className="insight-empty-state">
               <Sparkles size={36} />
-              <strong>暂无见解</strong>
-              <span>AI 见解生成后会自动保存在这里。</span>
+              <strong>{t('暂无见解')}</strong>
+              <span>{t('AI 见解生成后会自动保存在这里。')}</span>
             </div>
           )}
 
@@ -293,27 +294,27 @@ export default function InsightInboxPage() {
                   className={`insight-card ${record.read ? '' : 'unread'} ${focusedRecordId === record.id ? 'focused' : ''}`}
                 >
                   <div className="insight-card-avatar">
-                    <Avatar src={INSIGHT_AVATAR_URL} name="见解" size={44} shape="rounded" lazy={false} />
+                    <Avatar src={INSIGHT_AVATAR_URL} name={t('见解')} size={44} shape="rounded" lazy={false} />
                   </div>
                   <div className="insight-card-content">
                     <div className="insight-card-header">
                       <div className="insight-recipient">
                         <Avatar src={record.avatarUrl} name={record.displayName} size={28} shape="rounded" />
                         <div className="insight-recipient-text">
-                          <span className="insight-recipient-name">发给 {record.displayName}</span>
+                          <span className="insight-recipient-name">{t('发给 {displayName}', { displayName: record.displayName })}</span>
                           <span className="insight-session-id">{record.sessionId}</span>
                         </div>
                       </div>
                       <div className="insight-card-actions">
                         <span className={`insight-trigger-pill ${record.triggerReason}`}>{getTriggerLabel(record.triggerReason)}</span>
                         <span className="insight-time">{formatRecordTime(record.createdAt)}</span>
-                        <button className="insight-action-btn" onClick={() => openChat(record)} title="打开聊天">
+                        <button className="insight-action-btn" onClick={() => openChat(record)} title={t('打开聊天')}>
                           <MessageSquare size={14} />
                         </button>
-                        <button className="insight-action-btn" onClick={() => { void copyText(record.insight, '见解已复制') }} title="复制见解">
+                        <button className="insight-action-btn" onClick={() => { void copyText(record.insight, t('见解已复制')) }} title={t('复制见解')}>
                           <Copy size={14} />
                         </button>
-                        <button className="insight-action-btn code" onClick={() => { void openLog(record.id) }} title="查看请求日志">
+                        <button className="insight-action-btn code" onClick={() => { void openLog(record.id) }} title={t('查看请求日志')}>
                           <Code size={14} />
                         </button>
                       </div>
@@ -329,19 +330,19 @@ export default function InsightInboxPage() {
 
       <aside className="insight-filter-panel">
         <div className="insight-filter-header">
-          <h3>筛选条件</h3>
+          <h3>{t('筛选条件')}</h3>
         </div>
 
         <div className="insight-filter-widget">
           <div className="insight-widget-title">
             <Search size={14} />
-            <span>关键词搜索</span>
+            <span>{t('关键词搜索')}</span>
           </div>
           <div className="insight-input-wrap">
             <input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索见解或联系人..."
+              placeholder={t('搜索见解或联系人...')}
             />
             {keyword && <button onClick={() => setKeyword('')}><X size={14} /></button>}
           </div>
@@ -350,14 +351,14 @@ export default function InsightInboxPage() {
         <div className="insight-filter-widget">
           <div className="insight-widget-title">
             <CalendarDays size={14} />
-            <span>日期范围</span>
+            <span>{t('日期范围')}</span>
           </div>
           <div className="insight-date-tabs">
             {[
-              { value: 'all', label: '全部' },
-              { value: 'today', label: '今天' },
-              { value: 'week', label: '近 7 天' },
-              { value: 'custom', label: '自定义' }
+              { value: 'all', label: t('全部') },
+              { value: 'today', label: t('今天') },
+              { value: 'week', label: t('近 7 天') },
+              { value: 'custom', label: t('自定义') }
             ].map((option) => (
               <button
                 key={option.value}
@@ -379,14 +380,14 @@ export default function InsightInboxPage() {
         <div className="insight-filter-widget contact-filter">
           <div className="insight-widget-title">
             <MessageSquare size={14} />
-            <span>聊天对象</span>
+            <span>{t('聊天对象')}</span>
             <span className="insight-widget-count">{contacts.length}</span>
           </div>
           <div className="insight-input-wrap">
             <input
               value={contactSearch}
               onChange={(event) => setContactSearch(event.target.value)}
-              placeholder="查找联系人..."
+              placeholder={t('查找联系人...')}
             />
             {contactSearch && <button onClick={() => setContactSearch('')}><X size={14} /></button>}
           </div>
@@ -394,7 +395,7 @@ export default function InsightInboxPage() {
             className={`insight-contact-row all ${selectedSessionId ? '' : 'active'}`}
             onClick={() => setSelectedSessionId('')}
           >
-            <span>全部联系人</span>
+            <span>{t('全部联系人')}</span>
             <strong>{contacts.reduce((sum, contact) => sum + contact.count, 0)}</strong>
           </button>
           <div className="insight-contact-list">
@@ -418,14 +419,12 @@ export default function InsightInboxPage() {
           <div className="insight-log-dialog" onClick={(event) => event.stopPropagation()}>
             <div className="insight-log-header">
               <div>
-                <h3>请求日志</h3>
+                <h3>{t('请求日志')}</h3>
                 <span>{logRecord.displayName} · {formatRecordTime(logRecord.createdAt)}</span>
               </div>
               <div className="insight-log-actions">
-                <button onClick={() => { void copyText(buildLogText(logRecord), '请求日志已复制') }}>
-                  <Copy size={15} />
-                  复制
-                </button>
+                <button onClick={() => { void copyText(buildLogText(logRecord), t('请求日志已复制')) }}>
+                  <Copy size={15} />{t('复制')}</button>
                 <button className="close" onClick={() => setLogRecord(null)}>
                   <X size={18} />
                 </button>
@@ -433,7 +432,7 @@ export default function InsightInboxPage() {
             </div>
             <div className="insight-log-body">
               <section>
-                <h4>请求参数</h4>
+                <h4>{t('请求参数')}</h4>
                 <pre>{[
                   `Endpoint: ${logRecord.log.endpoint}`,
                   `Model: ${logRecord.log.model}`,
@@ -452,11 +451,11 @@ export default function InsightInboxPage() {
                 <pre>{logRecord.log.userPrompt}</pre>
               </section>
               <section>
-                <h4>模型输出</h4>
+                <h4>{t('模型输出')}</h4>
                 <pre>{logRecord.log.rawOutput}</pre>
               </section>
               <section>
-                <h4>最终见解</h4>
+                <h4>{t('最终见解')}</h4>
                 <pre>{logRecord.log.finalInsight}</pre>
               </section>
             </div>

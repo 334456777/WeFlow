@@ -10,6 +10,7 @@ import {
   getAvatarLetter
 } from './contactSnsTimeline'
 import './ContactSnsTimelineDialog.scss'
+import { t, formatLocale } from '../../i18n'
 
 const TIMELINE_PAGE_SIZE = 20
 const SNS_RANK_PAGE_SIZE = 50
@@ -54,7 +55,7 @@ const buildContactSnsRankings = (posts: SnsPost[]): { likes: ContactSnsRankItem[
     const comments = Array.isArray(post?.comments) ? post.comments : []
 
     for (const likeNameRaw of likes) {
-      const name = String(likeNameRaw || '').trim() || '未知用户'
+      const name = String(likeNameRaw || '').trim() || t('未知用户')
       const current = likeMap.get(name)
       if (current) {
         current.count += 1
@@ -65,7 +66,7 @@ const buildContactSnsRankings = (posts: SnsPost[]): { likes: ContactSnsRankItem[
     }
 
     for (const comment of comments) {
-      const name = String(comment?.nickname || '').trim() || '未知用户'
+      const name = String(comment?.nickname || '').trim() || t('未知用户')
       const current = commentMap.get(name)
       if (current) {
         current.count += 1
@@ -267,7 +268,7 @@ export function ContactSnsTimelineDialog({
         if (requestToken !== rankRequestTokenRef.current) return
 
         if (!result.success) {
-          throw new Error(result.error || '加载朋友圈排行失败')
+          throw new Error(result.error || t('加载朋友圈排行失败'))
         }
 
         const pagePosts = Array.isArray(result.timeline)
@@ -307,7 +308,7 @@ export function ContactSnsTimelineDialog({
       const message = error instanceof Error ? error.message : String(error)
       setLikeRankings([])
       setCommentRankings([])
-      setRankError(message || '加载朋友圈排行失败')
+      setRankError(message || t('加载朋友圈排行失败'))
     } finally {
       if (requestToken === rankRequestTokenRef.current) {
         rankLoadingRef.current = false
@@ -405,12 +406,12 @@ export function ContactSnsTimelineDialog({
   const timelineStatsText = useMemo(() => {
     const loadedCount = timelinePosts.length
     const loadPart = timelineStatsLoading
-      ? `已加载 ${loadedCount} / 总数统计中...`
+      ? t('已加载 {loadedCount} / 总数统计中...', { loadedCount: loadedCount })
       : timelineTotalPosts === null
-        ? `已加载 ${loadedCount} 条`
-        : `已加载 ${loadedCount} / 共 ${timelineTotalPosts} 条`
+        ? t('已加载 {loadedCount} 条', { loadedCount: loadedCount })
+        : t('已加载 {loadedCount} / 共 {timelineTotalPosts} 条', { loadedCount: loadedCount, timelineTotalPosts: timelineTotalPosts })
 
-    if (timelineLoading && loadedCount === 0) return `${loadPart} ｜ 加载中...`
+    if (timelineLoading && loadedCount === 0) return t('{loadPart} ｜ 加载中...', { loadPart: loadPart })
     if (loadedCount === 0) return loadPart
 
     const latest = timelinePosts[0]?.createTime
@@ -461,7 +462,7 @@ export function ContactSnsTimelineDialog({
         className="contact-sns-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="联系人朋友圈"
+        aria-label={t('联系人朋友圈')}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="contact-sns-dialog-header">
@@ -485,29 +486,25 @@ export function ContactSnsTimelineDialog({
                 type="button"
                 className={`contact-sns-dialog-rank-btn ${rankMode === 'likes' ? 'active' : ''}`}
                 onClick={() => toggleRankMode('likes')}
-              >
-                点赞排行
-              </button>
+              >{t('点赞排行')}</button>
               <button
                 type="button"
                 className={`contact-sns-dialog-rank-btn ${rankMode === 'comments' ? 'active' : ''}`}
                 onClick={() => toggleRankMode('comments')}
-              >
-                评论排行
-              </button>
+              >{t('评论排行')}</button>
               {rankMode && (
                 <div
                   className="contact-sns-dialog-rank-panel"
                   role="region"
-                  aria-label={rankMode === 'likes' ? '点赞排行' : '评论排行'}
+                  aria-label={rankMode === 'likes' ? t('点赞排行') : t('评论排行')}
                 >
                   {rankLoading && (
                     <div className="contact-sns-dialog-rank-loading">
                       <Loader2 size={12} className="spin" />
                       <span>
                         {rankTotalPosts !== null && rankTotalPosts > 0
-                          ? `统计中，已加载 ${rankLoadedPosts} / ${rankTotalPosts} 条`
-                          : `统计中，已加载 ${rankLoadedPosts} 条`}
+                          ? t('统计中，已加载 {rankLoadedPosts} / {rankTotalPosts} 条', { rankLoadedPosts: rankLoadedPosts, rankTotalPosts: rankTotalPosts })
+                          : t('统计中，已加载 {rankLoadedPosts} 条', { rankLoadedPosts: rankLoadedPosts })}
                       </span>
                     </div>
                   )}
@@ -515,7 +512,7 @@ export function ContactSnsTimelineDialog({
                     <div className="contact-sns-dialog-rank-empty">{rankError}</div>
                   ) : !rankLoading && activeRankings.length === 0 ? (
                     <div className="contact-sns-dialog-rank-empty">
-                      {rankMode === 'likes' ? '暂无点赞数据' : '暂无评论数据'}
+                      {rankMode === 'likes' ? t('暂无点赞数据') : t('暂无评论数据')}
                     </div>
                   ) : (
                     activeRankings.slice(0, SNS_RANK_DISPLAY_LIMIT).map((item, index) => (
@@ -523,8 +520,8 @@ export function ContactSnsTimelineDialog({
                         <span className="contact-sns-dialog-rank-index">{index + 1}</span>
                         <span className="contact-sns-dialog-rank-name" title={item.name}>{item.name}</span>
                         <span className="contact-sns-dialog-rank-count">
-                          {item.count.toLocaleString('zh-CN')}
-                          {rankMode === 'likes' ? '次' : '条'}
+                          {item.count.toLocaleString(formatLocale())}
+                          {rankMode === 'likes' ? t('次') : t('条')}
                         </span>
                       </div>
                     ))
@@ -564,11 +561,11 @@ export function ContactSnsTimelineDialog({
           )}
 
           {timelineLoading && (
-            <div className="contact-sns-dialog-status">正在加载该联系人的朋友圈...</div>
+            <div className="contact-sns-dialog-status">{t('正在加载该联系人的朋友圈...')}</div>
           )}
 
           {!timelineLoading && timelinePosts.length === 0 && (
-            <div className="contact-sns-dialog-status empty">该联系人暂无朋友圈</div>
+            <div className="contact-sns-dialog-status empty">{t('该联系人暂无朋友圈')}</div>
           )}
 
           {!timelineLoading && timelineHasMore && (
@@ -578,7 +575,7 @@ export function ContactSnsTimelineDialog({
               onClick={loadMore}
               disabled={timelineLoadingMore}
             >
-              {timelineLoadingMore ? '正在加载...' : '加载更多'}
+              {timelineLoadingMore ? t('正在加载...') : t('加载更多')}
             </button>
           )}
         </div>

@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useState, useRef } from 'react'
+import { t } from '../i18n'
 
 interface AnimatedStreamingTextProps {
     text: string
@@ -32,7 +33,7 @@ export const AnimatedStreamingText = memo(({ text, className, loading }: Animate
 
     // 处理 loading 状态的显示
     if (loading && !text) {
-        return <span className={className}>转写中<span className="dot-flashing">...</span></span>
+        return <span className={className}>{t('转写中')}<span className="dot-flashing">...</span></span>
     }
 
     return (

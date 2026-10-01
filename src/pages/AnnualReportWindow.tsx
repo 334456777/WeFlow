@@ -8,6 +8,7 @@ import {
   updateBackgroundTask
 } from '../services/backgroundTaskMonitor'
 import './AnnualReportWindow.scss'
+import { t } from '../i18n'
 
 interface TopContact {
   username: string
@@ -114,7 +115,7 @@ function AnnualReportWindow() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loadingProgress, setLoadingProgress] = useState(0)
-  const [loadingStage, setLoadingStage] = useState('正在初始化...')
+  const [loadingStage, setLoadingStage] = useState(t('正在初始化...'))
 
   const TOTAL_SCENES = 11
   const [currentScene, setCurrentScene] = useState(0)
@@ -139,9 +140,9 @@ function AnnualReportWindow() {
   const generateReport = async (year: number) => {
     const taskId = registerBackgroundTask({
       sourcePage: 'annualReport',
-      title: '年度报告生成',
-      detail: `正在生成 ${year === 0 ? '历史以来' : year + '年'} 年度报告`,
-      progressText: '初始化',
+      title: t('年度报告生成'),
+      detail: t('正在生成 {v0} 年度报告', { v0: year === 0 ? t('历史以来') : year + t('年') }),
+      progressText: t('初始化'),
       cancelable: true
     })
     setIsLoading(true)
@@ -152,7 +153,7 @@ function AnnualReportWindow() {
       setLoadingProgress(payload.progress)
       setLoadingStage(payload.status)
       updateBackgroundTask(taskId, {
-        detail: payload.status || '正在生成年度报告',
+        detail: payload.status || t('正在生成年度报告'),
         progressText: `${Math.max(0, Math.round(payload.progress || 0))}%`
       })
     })
@@ -162,17 +163,17 @@ function AnnualReportWindow() {
       removeProgressListener?.()
       if (isBackgroundTaskCancelRequested(taskId)) {
         finishBackgroundTask(taskId, 'canceled', {
-          detail: '已停止后续加载，当前报告结果未继续写入页面'
+          detail: t('已停止后续加载，当前报告结果未继续写入页面')
         })
         setIsLoading(false)
         return
       }
       setLoadingProgress(100)
-      setLoadingStage('完成')
+      setLoadingStage(t('完成'))
 
       if (result.success && result.data) {
         finishBackgroundTask(taskId, 'completed', {
-          detail: '年度报告生成完成',
+          detail: t('年度报告生成完成'),
           progressText: '100%'
         })
         setTimeout(() => {
@@ -181,9 +182,9 @@ function AnnualReportWindow() {
         }, 300)
       } else {
         finishBackgroundTask(taskId, 'failed', {
-          detail: result.error || '生成年度报告失败'
+          detail: result.error || t('生成年度报告失败')
         })
-        setError(result.error || '生成报告失败')
+        setError(result.error || t('生成报告失败'))
         setIsLoading(false)
       }
     } catch (e) {
@@ -399,7 +400,7 @@ function AnnualReportWindow() {
     navigate('/home')
   }
 
-  const formatFileYearLabel = (year: number) => (year === 0 ? '历史以来' : String(year))
+  const formatFileYearLabel = (year: number) => (year === 0 ? t('历史以来') : String(year))
 
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   const waitForNextPaint = () => new Promise<void>((resolve) => {
@@ -410,12 +411,12 @@ function AnnualReportWindow() {
   const captureSceneDataUrl = async (): Promise<string> => {
     const captureFn = window.electronAPI.annualReport.captureCurrentWindow
     if (typeof captureFn !== 'function') {
-      throw new Error('当前版本未启用原生截图接口，请重启应用后重试')
+      throw new Error(t('当前版本未启用原生截图接口，请重启应用后重试'))
     }
 
     const captureResult = await captureFn()
     if (!captureResult.success || !captureResult.dataUrl) {
-      throw new Error(captureResult.error || '原生截图失败')
+      throw new Error(captureResult.error || t('原生截图失败'))
     }
     return captureResult.dataUrl
   }
@@ -424,7 +425,7 @@ function AnnualReportWindow() {
     if (isExtracting || !reportData || !containerRef.current) return
 
     const dirResult = await window.electronAPI.dialog.openDirectory({
-      title: '选择导出文件夹',
+      title: t('选择导出文件夹'),
       properties: ['openDirectory', 'createDirectory']
     })
     if (dirResult.canceled || !dirResult.filePaths?.[0]) return
@@ -471,17 +472,17 @@ function AnnualReportWindow() {
       const yearFilePrefix = formatFileYearLabel(reportData.year)
       const exportResult = await window.electronAPI.annualReport.exportImages({
         baseDir: dirResult.filePaths[0],
-        folderName: `${yearFilePrefix}年度报告_分页面`,
+        folderName: t('{yearFilePrefix}年度报告_分页面', { yearFilePrefix: yearFilePrefix }),
         images
       })
 
       if (!exportResult.success) {
-        throw new Error(exportResult.error || '导出失败')
+        throw new Error(exportResult.error || t('导出失败'))
       }
 
       setButtonText('SAVED TO DEVICE')
     } catch (e) {
-      alert(`导出失败: ${String(e)}`)
+      alert(t('导出失败: {v0}', { v0: String(e) }))
       setButtonText('EXTRACT RECORD')
     } finally {
       root.classList.remove('exporting-scenes')
@@ -513,7 +514,7 @@ function AnnualReportWindow() {
           <span className="ring-text">{loadingProgress}%</span>
         </div>
         <p className="loading-stage">{loadingStage}</p>
-        <p className="loading-hint">进行中</p>
+        <p className="loading-hint">{t('进行中')}</p>
       </div>
     )
   }
@@ -524,12 +525,12 @@ function AnnualReportWindow() {
         <div className="top-controls">
           <button className="close-btn" onClick={handleClose}><X size={16} /></button>
         </div>
-        <p>{error ? `生成报告失败: ${error}` : '暂无数据'}</p>
+        <p>{error ? t('生成报告失败: {error}', { error: error }) : t('暂无数据')}</p>
       </div>
     )
   }
 
-  const yearTitle = reportData.year === 0 ? '历史以来' : String(reportData.year)
+  const yearTitle = reportData.year === 0 ? t('历史以来') : String(reportData.year)
   const finalYearLabel = reportData.year === 0 ? 'ALL YEARS' : String(reportData.year)
   const compactYearTitle = yearTitle.replace(/\s+/g, '')
   const isNumericYearTitle = /^\d+$/.test(compactYearTitle)
@@ -557,7 +558,7 @@ function AnnualReportWindow() {
   return (
     <div className="annual-report-window" data-scene={currentScene} style={s3LineVars} ref={containerRef}>
       <div className="top-controls">
-        <button className="close-btn" title="关闭页面" onClick={handleClose}><X size={16} /></button>
+        <button className="close-btn" title={t('关闭页面')} onClick={handleClose}><X size={16} /></button>
       </div>
 
       <div className="p0-bg-layer">
@@ -579,25 +580,25 @@ function AnnualReportWindow() {
         ))}
       </div>
 
-      <div className="swipe-hint">向下滑动以继续</div>
+      <div className="swipe-hint">{t('向下滑动以继续')}</div>
 
       {/* S0: THE ARCHIVE */}
       <div className={getSceneClass(0)} id="scene-0">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">一切的起点</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('一切的起点')}</div>
         </div>
         <div className="reveal-wrap title-year-wrap">
           <div className={`reveal-inner serif title-year ${yearTitleVariantClass} delay-1`}>{yearTitle}</div>
         </div>
         <div className="reveal-wrap desc-text p0-desc">
-          <div className="reveal-inner serif delay-2 p0-desc-inner">那些被岁月悄悄掩埋的对话<br />原来都在这里，等待一个春天。</div>
+          <div className="reveal-inner serif delay-2 p0-desc-inner">{t('那些被岁月悄悄掩埋的对话')}<br />{t('原来都在这里，等待一个春天。')}</div>
         </div>
       </div>
 
       {/* S1: VOLUME */}
       <div className={getSceneClass(1)} id="scene-1">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">消息报告</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('消息报告')}</div>
         </div>
         <div className="reveal-wrap">
           <div className="reveal-inner title-data delay-1 num-display">
@@ -605,16 +606,14 @@ function AnnualReportWindow() {
           </div>
         </div>
         <div className="reveal-wrap desc-text">
-          <div className="reveal-inner serif delay-2">
-            这一年，你说出了 <strong className="num-display" style={{ color: COLOR.accentGold }}>{reportData.totalMessages.toLocaleString()}</strong> 句话。<br />无数个日夜的碎碎念，都是为了在茫茫人海中，刻下彼此来过的痕迹。
-          </div>
+          <div className="reveal-inner serif delay-2">{t('这一年，你说出了')}{' '}<strong className="num-display" style={{ color: COLOR.accentGold }}>{reportData.totalMessages.toLocaleString()}</strong>{' '}{t('句话。')}<br />{t('无数个日夜的碎碎念，都是为了在茫茫人海中，刻下彼此来过的痕迹。')}</div>
         </div>
       </div>
 
       {/* S2: NOCTURNE */}
       <div className={getSceneClass(2)} id="scene-2">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">深夜</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('深夜')}</div>
         </div>
         <div className="reveal-wrap">
           <div className="reveal-inner serif title-time delay-1">
@@ -623,29 +622,24 @@ function AnnualReportWindow() {
         </div>
         <div className="reveal-wrap">
           <br />
-          <div className="reveal-inner serif scene0-cn-tag delay-1" style={{ fontSize: '1rem', color: 'var(--c-text-muted)', margin: '1vh 0' }}>
-            在深夜陪你聊天最多的人
-          </div>
+          <div className="reveal-inner serif scene0-cn-tag delay-1" style={{ fontSize: '1rem', color: 'var(--c-text-muted)', margin: '1vh 0' }}>{t('在深夜陪你聊天最多的人')}</div>
         </div>
         <div className="reveal-wrap desc-text">
-          <div className="reveal-inner serif delay-2">
-            梦境之外，你与{reportData.midnightKing ? reportData.midnightKing.displayName : '00:00'}共同醒着度过了许多个夜晚<br />
-            “曾有<strong className="num-display" style={{ color: COLOR.accentGold, margin: '0 10px', fontSize: '1.5rem' }}>
+          <div className="reveal-inner serif delay-2">{t('梦境之外，你与{v0}共同醒着度过了许多个夜晚', { v0: reportData.midnightKing ? reportData.midnightKing.displayName : '00:00' })}<br />{t('“曾有')}<strong className="num-display" style={{ color: COLOR.accentGold, margin: '0 10px', fontSize: '1.5rem' }}>
               <DecodeText value={(reportData.midnightKing?.count || 0).toLocaleString()} active={currentScene === 2} />
-            </strong>条消息在那些无人知晓的夜里，代替星光照亮了彼此”
-          </div>
+            </strong>{t('条消息在那些无人知晓的夜里，代替星光照亮了彼此”')}</div>
         </div>
       </div>
 
       {/* S3: GRAVITY CENTERS */}
       <div className={getSceneClass(3)} id="scene-3">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">聊天排行</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('聊天排行')}</div>
         </div>
 
         <div className="s3-layout" ref={s3LayoutRef}>
           <div className="reveal-wrap s3-subtitle-wrap">
-            <div className="reveal-inner serif delay-1 s3-subtitle">漫长的岁月里，是他们，让你的时间有了实实在在的重量。</div>
+            <div className="reveal-inner serif delay-1 s3-subtitle">{t('漫长的岁月里，是他们，让你的时间有了实实在在的重量。')}</div>
           </div>
 
           <div className="contact-list" ref={s3ListRef}>
@@ -668,7 +662,7 @@ function AnnualReportWindow() {
               <div className="reveal-wrap s3-row-wrap">
                 <div className="reveal-inner c-item delay-1">
                   <div className="c-info">
-                    <div className="serif c-name" style={{ color: COLOR.textSoft }}>暂无记录</div>
+                    <div className="serif c-name" style={{ color: COLOR.textSoft }}>{t('暂无记录')}</div>
                   </div>
                 </div>
               </div>
@@ -680,10 +674,10 @@ function AnnualReportWindow() {
       {/* S4: TIME WAVEFORM (Audio/Heartbeat timeline visual) */}
       <div className={getSceneClass(4)} id="scene-4">
         <div className="reveal-wrap en-tag" style={{ zIndex: 10 }}>
-          <div className="reveal-inner serif scene0-cn-tag">时间的长河</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('时间的长河')}</div>
         </div>
         <div className="reveal-wrap desc-text" style={{ position: 'absolute', top: '15vh', left: '50vw', transform: 'translateX(-50%)', textAlign: 'center', zIndex: 10, marginTop: 0, width: '100%' }}>
-          <div className="reveal-inner serif delay-1" style={{ color: COLOR.textMuted, fontSize: '1.2rem', letterSpacing: '0.1em' }}>十二个月的更迭，就像走过了一万个冬天<br />时间在变，但好在总有人陪在身边。</div>
+          <div className="reveal-inner serif delay-1" style={{ color: COLOR.textMuted, fontSize: '1.2rem', letterSpacing: '0.1em' }}>{t('十二个月的更迭，就像走过了一万个冬天')}<br />{t('时间在变，但好在总有人陪在身边。')}</div>
         </div>
 
         {reportData.monthlyTopFriends.length > 0 ? (
@@ -743,7 +737,7 @@ function AnnualReportWindow() {
           </div>
         ) : (
           <div className="reveal-wrap desc-text" style={{ position: 'absolute', top: '50vh', left: '50vw', transform: 'translate(-50%, -50%)' }}>
-            <div className="reveal-inner serif delay-1" style={{ color: COLOR.textSoft }}>暂无记忆声纹</div>
+            <div className="reveal-inner serif delay-1" style={{ color: COLOR.textSoft }}>{t('暂无记忆声纹')}</div>
           </div>
         )}
       </div>
@@ -751,7 +745,7 @@ function AnnualReportWindow() {
       {/* S5: MUTUAL RESONANCE (Mutual friend) */}
       <div className={getSceneClass(5)} id="scene-5">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">回应的艺术</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('回应的艺术')}</div>
         </div>
         {reportData.mutualFriend ? (
           <>
@@ -762,115 +756,102 @@ function AnnualReportWindow() {
             </div>
 
             <div className="reveal-wrap" style={{ position: 'absolute', top: '42vh', left: '15vw' }}>
-              <div className="reveal-inner serif scene0-cn-tag delay-2" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.2em' }}>发出</div>
+              <div className="reveal-inner serif scene0-cn-tag delay-2" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.2em' }}>{t('发出')}</div>
               <div className="reveal-inner num-display delay-2" style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', color: COLOR.accentGold, marginTop: '10px' }}><DecodeText value={reportData.mutualFriend.sentCount.toLocaleString()} active={currentScene === 5} /></div>
             </div>
             <div className="reveal-wrap" style={{ position: 'absolute', top: '42vh', right: '15vw', textAlign: 'right' }}>
-              <div className="reveal-inner serif scene0-cn-tag delay-2" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.2em' }}>收到</div>
+              <div className="reveal-inner serif scene0-cn-tag delay-2" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.2em' }}>{t('收到')}</div>
               <div className="reveal-inner num-display delay-2" style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', color: COLOR.accentGold, marginTop: '10px' }}><DecodeText value={reportData.mutualFriend.receivedCount.toLocaleString()} active={currentScene === 5} /></div>
             </div>
 
             <div className="reveal-wrap desc-text" style={{ position: 'absolute', bottom: '20vh' }}>
-              <div className="reveal-inner serif delay-3">
-                你们之间收发的消息高达 <strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.5rem' }}>{reportData.mutualFriend.ratio}</strong> 的平衡率
-                <br />
-                <span style={{ fontSize: '1rem', color: COLOR.textMuted, marginTop: '15px', display: 'block' }}>“你抛出的每一句话，都落在了对方的心里。<br />所谓重逢，就是我走向你的时候，你也在走向我。”</span>
+              <div className="reveal-inner serif delay-3">{t('你们之间收发的消息高达')}{' '}<strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.5rem' }}>{reportData.mutualFriend.ratio}</strong>{' '}{t('的平衡率')}<br />
+                <span style={{ fontSize: '1rem', color: COLOR.textMuted, marginTop: '15px', display: 'block' }}>{t('“你抛出的每一句话，都落在了对方的心里。')}<br />{t('所谓重逢，就是我走向你的时候，你也在走向我。”')}</span>
               </div>
             </div>
           </>
         ) : (
-          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">今年似乎独自咽下了很多话。<br />请相信，分别和孤独总会迎来终结，你终会遇到那个懂你的TA。</div></div>
+          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">{t('今年似乎独自咽下了很多话。')}<br />{t('请相信，分别和孤独总会迎来终结，你终会遇到那个懂你的TA。')}</div></div>
         )}
       </div>
 
       {/* S6: SOCIAL KINETICS */}
       <div className={getSceneClass(6)} id="scene-6">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">我的风格</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('我的风格')}</div>
         </div>
         {reportData.socialInitiative || reportData.responseSpeed ? (
           <div style={{ position: 'absolute', top: '0', left: '0', width: '100%', height: '100%' }}>
             {reportData.socialInitiative && (
               <div className="reveal-wrap" style={{ position: 'absolute', top: '28vh', left: '15vw', width: '38vw', textAlign: 'left' }}>
-                <div className="reveal-inner serif scene0-cn-tag delay-1" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.2em' }}>我的主动性</div>
+                <div className="reveal-inner serif scene0-cn-tag delay-1" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.2em' }}>{t('我的主动性')}</div>
                 <div className="reveal-inner num-display delay-2" style={{ fontSize: 'clamp(4.5rem, 8vw, 7rem)', color: COLOR.accentGold, lineHeight: '1', margin: '2vh 0' }}>
                   {reportData.socialInitiative.initiativeRate}%
                 </div>
                 <div className="reveal-inner serif delay-3" style={{ fontSize: '1.2rem', color: COLOR.textSoft, lineHeight: '1.8' }}>
-                  <div style={{ fontSize: '1.3rem', color: COLOR.textStrong, marginBottom: '0.6vh' }}>
-                    你的聊天开场大多由你发起。
-                  </div>
+                  <div style={{ fontSize: '1.3rem', color: COLOR.textStrong, marginBottom: '0.6vh' }}>{t('你的聊天开场大多由你发起。')}</div>
                   {reportData.socialInitiative.topInitiatedFriend && (reportData.socialInitiative.topInitiatedCount || 0) > 0 ? (
-                    <div style={{ marginBottom: '0.6vh' }}>
-                      其中<strong style={{ color: COLOR.accentGold }}>{reportData.socialInitiative.topInitiatedFriend}</strong>是你最常联系的人，
-                      有<strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.2rem', margin: '0 4px' }}>{(reportData.socialInitiative.topInitiatedCount || 0).toLocaleString()}</strong>次，是你先忍不住敲响了对方的门
-                    </div>
+                    <div style={{ marginBottom: '0.6vh' }}>{t('其中')}<strong style={{ color: COLOR.accentGold }}>{reportData.socialInitiative.topInitiatedFriend}</strong>{t('是你最常联系的人， 有')}<strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.2rem', margin: '0 4px' }}>{(reportData.socialInitiative.topInitiatedCount || 0).toLocaleString()}</strong>{t('次，是你先忍不住敲响了对方的门')}</div>
                   ) : (
-                    <div style={{ marginBottom: '0.6vh' }}>
-                      你主动发起了<strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.2rem', margin: '0 4px' }}>{reportData.socialInitiative.initiatedChats.toLocaleString()}</strong>次联络。
-                    </div>
+                    <div style={{ marginBottom: '0.6vh' }}>{t('你主动发起了')}<strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.2rem', margin: '0 4px' }}>{reportData.socialInitiative.initiatedChats.toLocaleString()}</strong>{t('次联络。')}</div>
                   )}
-                  <span style={{ fontSize: '0.9rem', color: COLOR.textMuted }}>想见一个人的心，总是走在时间的前面。</span>
+                  <span style={{ fontSize: '0.9rem', color: COLOR.textMuted }}>{t('想见一个人的心，总是走在时间的前面。')}</span>
                 </div>
               </div>
             )}
             {reportData.responseSpeed && (
               <div className="reveal-wrap" style={{ position: 'absolute', bottom: '22vh', right: '15vw', width: '38vw', textAlign: 'right' }}>
-                <div className="reveal-inner serif scene0-cn-tag delay-4" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.3em' }}>回应速度</div>
+                <div className="reveal-inner serif scene0-cn-tag delay-4" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.3em' }}>{t('回应速度')}</div>
                 <div className="reveal-inner num-display delay-5" style={{ fontSize: 'clamp(3.5rem, 6vw, 5rem)', color: COLOR.accentSoft, lineHeight: '1', margin: '2vh 0' }}>
                   <DecodeText value={reportData.responseSpeed.fastestTime} active={currentScene === 6} />S
                 </div>
                 <div className="reveal-inner serif delay-6" style={{ fontSize: '1.2rem', color: COLOR.textSoft, lineHeight: '1.8' }}>
-                  <strong style={{ color: COLOR.accentGold }}>{reportData.responseSpeed.fastestFriend}</strong> 回你的消息总是很快。<br />
-                  <span style={{ fontSize: '0.9rem', color: COLOR.textMuted }}>这世上最让人安心的默契，莫过于一句 "我在"。</span>
+                  <strong style={{ color: COLOR.accentGold }}>{reportData.responseSpeed.fastestFriend}</strong>{' '}{t('回你的消息总是很快。')}<br />
+                  <span style={{ fontSize: '0.9rem', color: COLOR.textMuted }}>{t('这世上最让人安心的默契，莫过于一句 "我在"。')}</span>
                 </div>
               </div>
             )}
           </div>
         ) : (
-          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">暂无数据。</div></div>
+          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">{t('暂无数据。')}</div></div>
         )}
       </div>
 
       {/* S7: THE SPARK */}
       <div className={getSceneClass(7)} id="scene-7">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">聊天火花</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('聊天火花')}</div>
         </div>
 
         {reportData.longestStreak ? (
           <div className="reveal-wrap" style={{ position: 'absolute', top: '35vh', left: '15vw', textAlign: 'left' }}>
-            <div className="reveal-inner serif scene0-cn-tag delay-1" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.3em', marginBottom: '2vh' }}>最长连续聊天</div>
+            <div className="reveal-inner serif scene0-cn-tag delay-1" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.3em', marginBottom: '2vh' }}>{t('最长连续聊天')}</div>
             <div className="reveal-inner serif delay-2" style={{ fontSize: 'clamp(3rem, 6vw, 5rem)', color: COLOR.accentGold, letterSpacing: '0.02em' }}>
               {reportData.longestStreak.friendName}
             </div>
-            <div className="reveal-inner serif delay-3" style={{ fontSize: '1.2rem', color: COLOR.textSoft, marginTop: '2vh' }}>
-              你们曾连续 <strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.8rem' }}><DecodeText value={reportData.longestStreak.days} active={currentScene === 7} /></strong> 天，聊到忘记了时间,<br />那些舍不得说再见的日夜，连成了最漫长的春天。
-            </div>
+            <div className="reveal-inner serif delay-3" style={{ fontSize: '1.2rem', color: COLOR.textSoft, marginTop: '2vh' }}>{t('你们曾连续')}{' '}<strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.8rem' }}><DecodeText value={reportData.longestStreak.days} active={currentScene === 7} /></strong>{' '}{t('天，聊到忘记了时间,')}<br />{t('那些舍不得说再见的日夜，连成了最漫长的春天。')}</div>
           </div>
         ) : null}
 
         {reportData.peakDay ? (
           <div className="reveal-wrap" style={{ position: 'absolute', bottom: '30vh', right: '15vw', textAlign: 'right' }}>
-            <div className="reveal-inner serif scene0-cn-tag delay-4" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.3em', marginBottom: '2vh' }}>最热烈的一天</div>
+            <div className="reveal-inner serif scene0-cn-tag delay-4" style={{ fontSize: '0.8rem', color: COLOR.textMuted, letterSpacing: '0.3em', marginBottom: '2vh' }}>{t('最热烈的一天')}</div>
             <div className="reveal-inner num-display delay-5" style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)', color: COLOR.accentGold, letterSpacing: '0.02em' }}>
               {reportData.peakDay.date}
             </div>
-            <div className="reveal-inner serif delay-6" style={{ fontSize: '1.2rem', color: COLOR.textSoft, marginTop: '2vh' }}>
-              “这一天，你们留下了 <strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.8rem' }}>{reportData.peakDay.messageCount}</strong> 句话。<br />好像要把积攒了很久的想念，一天全都说完。”
-            </div>
+            <div className="reveal-inner serif delay-6" style={{ fontSize: '1.2rem', color: COLOR.textSoft, marginTop: '2vh' }}>{t('“这一天，你们留下了')}{' '}<strong className="num-display" style={{ color: COLOR.accentGold, fontSize: '1.8rem' }}>{reportData.peakDay.messageCount}</strong>{' '}{t('句话。')}<br />{t('好像要把积攒了很久的想念，一天全都说完。”')}</div>
           </div>
         ) : null}
 
         {!reportData.longestStreak && !reportData.peakDay && (
-          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">没有激起过火花。</div></div>
+          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">{t('没有激起过火花。')}</div></div>
         )}
       </div>
 
       {/* S8: FADING SIGNALS */}
       <div className={getSceneClass(8)} id="scene-8">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">曾经的好友</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('曾经的好友')}</div>
         </div>
 
         {reportData.lostFriend && (
@@ -901,34 +882,22 @@ function AnnualReportWindow() {
 
             <div className="s8-fragments">
               <div className="reveal-wrap fragment f1">
-                <div className="reveal-inner delay-3">
-                  “我一直相信我们能够再次相见，<br />相信分别的日子总会迎来终结。”
-                </div>
+                <div className="reveal-inner delay-3">{t('“我一直相信我们能够再次相见，')}<br />{t('相信分别的日子总会迎来终结。”')}</div>
               </div>
 
               <div className="reveal-wrap fragment f2">
-                <div className="reveal-inner delay-4">
-                  所有的离散，或许都只是一场漫长的越冬。<br />
-                  飞鸟要越过一万座雪山，才能带来春天的第一行回信；<br />
-                  树木要褪去一万次枯叶，才能记住风的形状。
-                </div>
+                <div className="reveal-inner delay-4">{t('所有的离散，或许都只是一场漫长的越冬。')}<br />{t('飞鸟要越过一万座雪山，才能带来春天的第一行回信；')}<br />{t('树木要褪去一万次枯叶，才能记住风的形状。')}</div>
               </div>
 
               <div className="reveal-wrap fragment f3">
-                <div className="reveal-inner delay-5">
-                  哪怕要熬过几千个无法见面的黄昏，也要相信，<br />
-                  总有一次日出的晨光，是为了照亮我们重逢的归途。
-                </div>
+                <div className="reveal-inner delay-5">{t('哪怕要熬过几千个无法见面的黄昏，也要相信，')}<br />{t('总有一次日出的晨光，是为了照亮我们重逢的归途。')}</div>
               </div>
             </div>
           </div>
         ) : (
           <div className="s8-floating-layout">
             <div className="reveal-wrap s8-empty-wrap">
-              <div className="reveal-inner serif s8-empty-text delay-1">
-                缘分温柔地眷顾着你。<br />
-                这一年，所有重要的人都在，没有一次无疾而终的告别。
-              </div>
+              <div className="reveal-inner serif s8-empty-text delay-1">{t('缘分温柔地眷顾着你。')}<br />{t('这一年，所有重要的人都在，没有一次无疾而终的告别。')}</div>
             </div>
           </div>
         )}
@@ -938,7 +907,7 @@ function AnnualReportWindow() {
       {/* S9: LEXICON & ARCHIVE */}
       <div className={getSceneClass(9)} id="scene-9">
         <div className="reveal-wrap en-tag">
-          <div className="reveal-inner serif scene0-cn-tag">我的词云</div>
+          <div className="reveal-inner serif scene0-cn-tag">{t('我的词云')}</div>
         </div>
 
         {reportData.topPhrases && reportData.topPhrases.slice(0, 12).map((phrase, i) => {
@@ -977,14 +946,14 @@ function AnnualReportWindow() {
           )
         })}
         {(!reportData.topPhrases || reportData.topPhrases.length === 0) && (
-          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">词汇量太少，无法形成星云。</div></div>
+          <div className="reveal-wrap desc-text" style={{ marginTop: '25vh' }}><div className="reveal-inner serif delay-1">{t('词汇量太少，无法形成星云。')}</div></div>
         )}
       </div>
 
       {/* S10: EXTRACTION (白色反色结束页 / Data Receipt) */}
       <div className={getSceneClass(10)} id="scene-10" style={{ color: COLOR.paperInk }}>
         <div className="reveal-wrap en-tag" style={{ zIndex: 20 }}>
-          <div className="reveal-inner serif scene0-cn-tag" style={{ color: COLOR.paperMuted }}>旅程的终点</div>
+          <div className="reveal-inner serif scene0-cn-tag" style={{ color: COLOR.paperMuted }}>{t('旅程的终点')}</div>
         </div>
 
         {/* The Final Summary Receipt / Dashboard */}
@@ -1000,22 +969,20 @@ function AnnualReportWindow() {
             {/* Core Stats Row */}
             <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: '6vh', borderTop: '1px solid rgba(110, 89, 46, 0.35)', borderBottom: '1px solid rgba(110, 89, 46, 0.35)', padding: '4vh 0' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div className="serif scene0-cn-tag" style={{ fontSize: '0.75rem', color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: '1vh' }}>朋友圈发帖</div>
+                <div className="serif scene0-cn-tag" style={{ fontSize: '0.75rem', color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: '1vh' }}>{t('朋友圈发帖')}</div>
                 <div className="num-display" style={{ fontSize: '2.5rem', color: COLOR.accentMuted, fontWeight: 600 }}>{endingPostCount.toLocaleString()}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div className="serif scene0-cn-tag" style={{ fontSize: '0.75rem', color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: '1vh' }}>被动开场</div>
+                <div className="serif scene0-cn-tag" style={{ fontSize: '0.75rem', color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: '1vh' }}>{t('被动开场')}</div>
                 <div className="num-display" style={{ fontSize: '2.5rem', color: COLOR.accentMuted, fontWeight: 600 }}>{endingReceivedChats.toLocaleString()}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div className="serif scene0-cn-tag" style={{ fontSize: '0.75rem', color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: '1vh' }}>你最爱说</div>
+                <div className="serif scene0-cn-tag" style={{ fontSize: '0.75rem', color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: '1vh' }}>{t('你最爱说')}</div>
                 <div className="num-display" style={{ fontSize: '2.5rem', color: COLOR.accentMuted, fontWeight: 600 }}>“{endingTopPhrase}”</div>
               </div>
             </div>
 
-            <div className="serif" style={{ fontSize: '1.2rem', color: 'rgba(34, 28, 16, 0.82)', marginTop: '4vh', letterSpacing: '0.05em' }}>
-              “故事的最后，我们把这一切悄悄还给岁月<br />只要这些文字还在，所有的离别，就都只是一场短暂的缺席。”
-            </div>
+            <div className="serif" style={{ fontSize: '1.2rem', color: 'rgba(34, 28, 16, 0.82)', marginTop: '4vh', letterSpacing: '0.05em' }}>{t('“故事的最后，我们把这一切悄悄还给岁月')}<br />{t('只要这些文字还在，所有的离别，就都只是一场短暂的缺席。”')}</div>
           </div>
         </div>
 
@@ -1032,9 +999,7 @@ function AnnualReportWindow() {
                 textAlign: 'center',
                 fontWeight: 500
               }}
-            >
-              数据数得清一万句落笔的寒暄，却度量不出一个默契的眼神。<br />在这片由数字构建的大海里，热烈的回应未必是感情的全部轮廓。<br />真正的爱与羁绊，从来都不在跳动的屏幕里，而在无法被量化的现实。
-            </div>
+            >{t('数据数得清一万句落笔的寒暄，却度量不出一个默契的眼神。')}<br />{t('在这片由数字构建的大海里，热烈的回应未必是感情的全部轮廓。')}<br />{t('真正的爱与羁绊，从来都不在跳动的屏幕里，而在无法被量化的现实。')}</div>
           </div>
           <div className="reveal-wrap">
             <button

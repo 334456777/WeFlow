@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Download, X, CheckCircle, AlertCircle } from 'lucide-react'
 import './VoiceTranscribeDialog.scss'
+import { t } from '../i18n'
 
 interface VoiceTranscribeDialogProps {
     onClose: () => void
@@ -36,7 +37,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
 
     const handleDownload = async () => {
         if (!window.electronAPI?.whisper?.downloadModel) {
-            setDownloadError('语音转文字功能不可用')
+            setDownloadError(t('语音转文字功能不可用'))
             return
         }
 
@@ -56,7 +57,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
                     onDownloadComplete()
                 }, 1000)
             } else {
-                setDownloadError(result?.error || '下载失败')
+                setDownloadError(result?.error || t('下载失败'))
                 setIsDownloading(false)
             }
         } catch (error) {
@@ -75,7 +76,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
         <div className="voice-transcribe-dialog-overlay" onClick={handleCancel}>
             <div className="voice-transcribe-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="dialog-header">
-                    <h3>语音转文字</h3>
+                    <h3>{t('语音转文字')}</h3>
                     {!isDownloading && !isComplete && (
                         <button className="close-button" onClick={onClose}>
                             <X size={20} />
@@ -88,21 +89,19 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
                         <>
                             <div className="info-section">
                                 <AlertCircle size={48} className="info-icon" />
-                                <p className="info-text">
-                                    首次使用语音转文字功能需要下载 AI 模型
-                                </p>
+                                <p className="info-text">{t('首次使用语音转文字功能需要下载 AI 模型')}</p>
                                 <div className="model-info">
                                     <div className="model-item">
-                                        <span className="label">模型名称：</span>
+                                        <span className="label">{t('模型名称：')}</span>
                                         <span className="value">SenseVoiceSmall</span>
                                     </div>
                                     <div className="model-item">
-                                        <span className="label">文件大小：</span>
-                                        <span className="value">约 240 MB</span>
+                                        <span className="label">{t('文件大小：')}</span>
+                                        <span className="value">{t('约 240 MB')}</span>
                                     </div>
                                     <div className="model-item">
-                                        <span className="label">支持语言：</span>
-                                        <span className="value">中文、粤语、英文、日文、韩文</span>
+                                        <span className="label">{t('支持语言：')}</span>
+                                        <span className="value">{t('中文、粤语、英文、日文、韩文')}</span>
                                     </div>
                                 </div>
                             </div>
@@ -115,12 +114,10 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
                             )}
 
                             <div className="dialog-actions">
-                                <button className="btn-secondary" onClick={onClose}>
-                                    取消
-                                </button>
+                                <button className="btn-secondary" onClick={onClose}>{t('取消')}</button>
                                 <button className="btn-primary" onClick={handleDownload}>
                                     <Download size={16} />
-                                    <span>立即下载</span>
+                                    <span>{t('立即下载')}</span>
                                 </button>
                             </div>
                         </>
@@ -132,7 +129,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
                                 <Download size={48} className="downloading-icon" />
                             </div>
                             <p className="download-text">
-                                {downloadProgress < 1 ? '正在连接服务器...' : '正在下载模型...'}
+                                {downloadProgress < 1 ? t('正在连接服务器...') : t('正在下载模型...')}
                             </p>
                             <div className="progress-bar">
                                 <div
@@ -142,7 +139,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
                             </div>
                             <p className="progress-text">{downloadProgress.toFixed(1)}%</p>
                             {downloadProgress < 1 && (
-                                <p className="download-hint">首次连接可能需要较长时间，请耐心等待</p>
+                                <p className="download-hint">{t('首次连接可能需要较长时间，请耐心等待')}</p>
                             )}
                         </div>
                     )}
@@ -150,7 +147,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
                     {isComplete && (
                         <div className="complete-section">
                             <CheckCircle size={48} className="complete-icon" />
-                            <p className="complete-text">下载完成！正在转写语音...</p>
+                            <p className="complete-text">{t('下载完成！正在转写语音...')}</p>
                         </div>
                     )}
                 </div>

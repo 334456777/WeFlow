@@ -4,6 +4,7 @@ import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture,
 import { useAppStore } from '../stores/appStore'
 import * as configService from '../services/config'
 import { onExportSessionStatus, requestExportSessionStatus } from '../services/exportBridge'
+import { t, useI18n } from '../i18n'
 
 import './Sidebar.scss'
 
@@ -16,8 +17,8 @@ interface SidebarUserProfile {
 
 const SIDEBAR_USER_PROFILE_CACHE_KEY = 'sidebar_user_profile_cache_v1'
 const ACCOUNT_PROFILES_CACHE_KEY = 'account_profiles_cache_v1'
-const DEFAULT_DISPLAY_NAME = '微信用户'
-const DEFAULT_SUBTITLE = '微信账号'
+const DEFAULT_DISPLAY_NAME = t('微信用户')
+const DEFAULT_SUBTITLE = t('微信账号')
 
 interface SidebarUserProfileCache extends SidebarUserProfile {
   updatedAt: number
@@ -100,6 +101,7 @@ interface SidebarProps {
 }
 
 function Sidebar({ collapsed }: SidebarProps) {
+  const { t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
   const [authEnabled, setAuthEnabled] = useState(false)
@@ -286,9 +288,9 @@ function Sidebar({ collapsed }: SidebarProps) {
   }, [])
 
   const getAvatarLetter = (name: string): string => {
-    if (!name) return '微'
+    if (!name) return t('微')
     const visible = name.trim()
-    return (visible && [...visible][0]) || '微'
+    return (visible && [...visible][0]?.toUpperCase()) || t('微')
   }
 
   const openSettingsFromAccountMenu = () => {
@@ -318,96 +320,96 @@ function Sidebar({ collapsed }: SidebarProps) {
           <NavLink
             to="/home"
             className={`nav-item ${isActive('/home') ? 'active' : ''}`}
-            title={collapsed ? '首页' : undefined}
+            title={collapsed ? t('首页') : undefined}
           >
             <span className="nav-icon"><Home size={20} /></span>
-            <span className="nav-label">首页</span>
+            <span className="nav-label">{t('首页')}</span>
           </NavLink>
 
           {/* 聊天 */}
           <NavLink
             to="/chat"
             className={`nav-item ${isActive('/chat') ? 'active' : ''}`}
-            title={collapsed ? '聊天' : undefined}
+            title={collapsed ? t('聊天') : undefined}
           >
             <span className="nav-icon"><MessageSquare size={20} /></span>
-            <span className="nav-label">聊天</span>
+            <span className="nav-label">{t('聊天')}</span>
           </NavLink>
 
           {/* 朋友圈 */}
           <NavLink
             to="/sns"
             className={`nav-item ${isActive('/sns') ? 'active' : ''}`}
-            title={collapsed ? '朋友圈' : undefined}
+            title={collapsed ? t('朋友圈') : undefined}
           >
             <span className="nav-icon"><Aperture size={20} /></span>
-            <span className="nav-label">朋友圈</span>
+            <span className="nav-label">{t('朋友圈')}</span>
           </NavLink>
 
           <NavLink
             to="/insight-inbox"
             className={`nav-item ${isActive('/insight-inbox') ? 'active' : ''}`}
-            title={collapsed ? '灵感信箱' : undefined}
+            title={collapsed ? t('灵感信箱') : undefined}
           >
             <span className="nav-icon"><Sparkles size={20} /></span>
-            <span className="nav-label">灵感信箱</span>
+            <span className="nav-label">{t('灵感信箱')}</span>
           </NavLink>
 
           {/* 通讯录 */}
           <NavLink
             to="/contacts"
             className={`nav-item ${isActive('/contacts') ? 'active' : ''}`}
-            title={collapsed ? '通讯录' : undefined}
+            title={collapsed ? t('通讯录') : undefined}
           >
             <span className="nav-icon"><UserCircle size={20} /></span>
-            <span className="nav-label">通讯录</span>
+            <span className="nav-label">{t('通讯录')}</span>
           </NavLink>
 
           {/* 资源浏览 */}
           <NavLink
             to="/resources"
             className={`nav-item ${isActive('/resources') ? 'active' : ''}`}
-            title={collapsed ? '资源浏览' : undefined}
+            title={collapsed ? t('资源浏览') : undefined}
           >
             <span className="nav-icon"><FolderClosed size={20} /></span>
-            <span className="nav-label">资源浏览</span>
+            <span className="nav-label">{t('资源浏览')}</span>
           </NavLink>
 
           {/* 聊天分析 */}
           <NavLink
             to="/analytics"
             className={`nav-item ${isActive('/analytics') ? 'active' : ''}`}
-            title={collapsed ? '聊天分析' : undefined}
+            title={collapsed ? t('聊天分析') : undefined}
           >
             <span className="nav-icon"><BarChart3 size={20} /></span>
-            <span className="nav-label">聊天分析</span>
+            <span className="nav-label">{t('聊天分析')}</span>
           </NavLink>
 
           {/* 年度报告 */}
           <NavLink
             to="/annual-report"
             className={`nav-item ${isActive('/annual-report') ? 'active' : ''}`}
-            title={collapsed ? '年度报告' : undefined}
+            title={collapsed ? t('年度报告') : undefined}
           >
             <span className="nav-icon"><FileText size={20} /></span>
-            <span className="nav-label">年度报告</span>
+            <span className="nav-label">{t('年度报告')}</span>
           </NavLink>
 
           {/* 我的足迹 */}
           <NavLink
             to="/footprint"
             className={`nav-item ${isActive('/footprint') ? 'active' : ''}`}
-            title={collapsed ? '我的足迹' : undefined}
+            title={collapsed ? t('我的足迹') : undefined}
           >
             <span className="nav-icon"><Footprints size={20} /></span>
-            <span className="nav-label">我的足迹</span>
+            <span className="nav-label">{t('我的足迹')}</span>
           </NavLink>
 
           {/* 导出 */}
           <NavLink
             to="/export"
             className={`nav-item ${isActive('/export') ? 'active' : ''}`}
-            title={collapsed ? '导出' : undefined}
+            title={collapsed ? t('导出') : undefined}
           >
             <span className="nav-icon nav-icon-with-badge">
               <Download size={20} />
@@ -415,7 +417,7 @@ function Sidebar({ collapsed }: SidebarProps) {
                 <span className="nav-badge icon-badge">{exportTaskBadge}</span>
               )}
             </span>
-            <span className="nav-label">导出</span>
+            <span className="nav-label">{t('导出')}</span>
             {!collapsed && activeExportTaskCount > 0 && (
               <span className="nav-badge">{exportTaskBadge}</span>
             )}
@@ -424,10 +426,10 @@ function Sidebar({ collapsed }: SidebarProps) {
           <NavLink
             to="/backup"
             className={`nav-item ${isActive('/backup') ? 'active' : ''}`}
-            title={collapsed ? '数据库备份' : undefined}
+            title={collapsed ? t('数据库备份') : undefined}
           >
             <span className="nav-icon"><ArchiveRestore size={20} /></span>
-            <span className="nav-label">数据库备份</span>
+            <span className="nav-label">{t('数据库备份')}</span>
           </NavLink>
 
 
@@ -448,14 +450,14 @@ function Sidebar({ collapsed }: SidebarProps) {
                 }
               })
             }}
-            title={collapsed ? (authEnabled ? '锁定' : '未锁定') : undefined}
+            title={collapsed ? (authEnabled ? t('锁定') : t('未锁定')) : undefined}
           >
             <span className="nav-icon">{authEnabled ? <Lock size={20} /> : <LockOpen size={20} />}</span>
-            <span className="nav-label">{authEnabled ? '锁定' : '未锁定'}</span>
+            <span className="nav-label">{authEnabled ? t('锁定') : t('未锁定')}</span>
           </button>
 
           <div className="sidebar-user-card-wrap" ref={accountCardWrapRef}>
-            <div className={`sidebar-user-menu ${isAccountMenuOpen ? 'open' : ''}`} role="menu" aria-label="账号菜单">
+            <div className={`sidebar-user-menu ${isAccountMenuOpen ? 'open' : ''}`} role="menu" aria-label={t('账号菜单')}>
               <button
                 className="sidebar-user-menu-item"
                 onClick={openAccountManagement}
@@ -463,7 +465,7 @@ function Sidebar({ collapsed }: SidebarProps) {
                 role="menuitem"
               >
                 <Users size={14} />
-                <span>账号管理</span>
+                <span>{t('账号管理')}</span>
               </button>
               <button
                 className="sidebar-user-menu-item"
@@ -472,7 +474,7 @@ function Sidebar({ collapsed }: SidebarProps) {
                 role="menuitem"
               >
                 <Settings size={14} />
-                <span>设置</span>
+                <span>{t('设置')}</span>
               </button>
             </div>
             <div
@@ -492,8 +494,12 @@ function Sidebar({ collapsed }: SidebarProps) {
                 {userProfile.avatarUrl ? <img src={userProfile.avatarUrl} alt="" /> : <span>{getAvatarLetter(userProfile.displayName)}</span>}
               </div>
               <div className="user-meta">
-                <div className="user-name">{userProfile.displayName || DEFAULT_DISPLAY_NAME}</div>
-                <div className="user-wxid">{userProfile.alias || DEFAULT_SUBTITLE}</div>
+                <div className="user-name">
+                  {userProfile.displayName && userProfile.displayName !== DEFAULT_DISPLAY_NAME
+                    ? userProfile.displayName
+                    : t('微信用户')}
+                </div>
+                <div className="user-wxid">{userProfile.alias || t('微信账号')}</div>
               </div>
               {!collapsed && (
                 <span className={`user-menu-caret ${isAccountMenuOpen ? 'open' : ''}`}>

@@ -1,290 +1,96 @@
-use std::ffi::{CStr, CString};
+//! Database facade used by the service layer.
+//!
+//! Everything is served by the pure-Rust backend in [`crate::native_db`]/[`crate::native_msg`]; there is
+//! no dependency on the closed-source `wcdb_api` library. Calls that have not been ported yet return a
+//! clear "not implemented" error instead of touching anything native.
+// Pending stubs keep their historical signatures; drop this once they are all ported.
+#![allow(unused_variables)]
+
 use std::fs;
-use std::os::raw::{c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Context, Result};
-use libloading::Library;
+use anyhow::{anyhow, Result};
 use serde_json::Value;
 
-type InitProtectionFn = unsafe extern "C" fn(*const c_char) -> c_int;
-type InitFn = unsafe extern "C" fn() -> c_int;
-type ShutdownFn = unsafe extern "C" fn() -> c_int;
-type OpenAccountFn = unsafe extern "C" fn(*const c_char, *const c_char, *mut i64) -> c_int;
-type CloseAccountFn = unsafe extern "C" fn(i64) -> c_int;
-type FreeStringFn = unsafe extern "C" fn(*mut c_void);
-type SetMyWxidFn = unsafe extern "C" fn(i64, *const c_char) -> c_int;
-type OutJson0Fn = unsafe extern "C" fn(i64, *mut *mut c_void) -> c_int;
-type GetMessagesFn =
-    unsafe extern "C" fn(i64, *const c_char, c_int, c_int, *mut *mut c_void) -> c_int;
-type GetContactFn = unsafe extern "C" fn(i64, *const c_char, *mut *mut c_void) -> c_int;
-type GetContactsCompactFn = unsafe extern "C" fn(i64, *const c_char, *mut *mut c_void) -> c_int;
-type OutJson1StringFn = unsafe extern "C" fn(i64, *const c_char, *mut *mut c_void) -> c_int;
-type OutJsonStringRangeFn =
-    unsafe extern "C" fn(i64, *const c_char, c_int, c_int, *mut *mut c_void) -> c_int;
-type OutJsonRangeFn = unsafe extern "C" fn(i64, c_int, c_int, *mut *mut c_void) -> c_int;
-type OutJsonNoArgTriggerFn = unsafe extern "C" fn(i64, *mut *mut c_void) -> c_int;
-type CheckNoArgTriggerFn = unsafe extern "C" fn(i64, *mut c_int) -> c_int;
-type GroupMemberCountFn = unsafe extern "C" fn(i64, *const c_char, *mut c_int) -> c_int;
-type SearchMessagesFn = unsafe extern "C" fn(
-    i64,
-    *const c_char,
-    *const c_char,
-    c_int,
-    c_int,
-    c_int,
-    c_int,
-    *mut *mut c_void,
-) -> c_int;
-type ExecQueryFn = unsafe extern "C" fn(
-    i64,
-    *const c_char,
-    *const c_char,
-    *const c_char,
-    *mut *mut c_void,
-) -> c_int;
-type UpdateMessageFn =
-    unsafe extern "C" fn(i64, *const c_char, i64, c_int, *const c_char, *mut *mut c_void) -> c_int;
-type DeleteMessageFn =
-    unsafe extern "C" fn(i64, *const c_char, i64, c_int, *const c_char, *mut *mut c_void) -> c_int;
-type TriggerFn = unsafe extern "C" fn(i64, *const c_char, *mut *mut c_void) -> c_int;
-type CheckTriggerFn = unsafe extern "C" fn(i64, *const c_char, *mut c_int) -> c_int;
-type SnsTimelineFn = unsafe extern "C" fn(
-    i64,
-    c_int,
-    c_int,
-    *const c_char,
-    *const c_char,
-    c_int,
-    c_int,
-    *mut *mut c_void,
-) -> c_int;
+use crate::native_db::NativeAccount;
 
+/// One argument of a generic by-name call (after the implicit account).
+#[derive(Clone, Copy, Debug)]
+pub enum Arg<'a> {
+    S(&'a str),
+    I32(i32),
+    I64(i64),
+}
+
+#[derive(Default)]
 pub struct Wcdb {
-    runtime_dir: PathBuf,
-    _deps: Vec<Library>,
-    _lib: Library,
-    init: InitFn,
-    shutdown: ShutdownFn,
-    open_account: OpenAccountFn,
-    close_account: CloseAccountFn,
-    free_string: FreeStringFn,
-    set_my_wxid: Option<SetMyWxidFn>,
-    get_sessions: OutJson0Fn,
-    get_messages: GetMessagesFn,
-    get_contact: Option<GetContactFn>,
-    get_contacts_compact: Option<GetContactsCompactFn>,
-    get_contact_type_counts: Option<OutJson0Fn>,
-    get_group_member_count: Option<GroupMemberCountFn>,
-    get_group_members: Option<OutJson1StringFn>,
-    get_group_nicknames: Option<OutJson1StringFn>,
-    get_group_stats: Option<OutJsonStringRangeFn>,
-    get_aggregate_stats: Option<OutJsonStringRangeFn>,
-    get_available_years: Option<OutJson1StringFn>,
-    get_annual_report_stats: Option<OutJsonStringRangeFn>,
-    get_dual_report_stats: Option<OutJsonStringRangeFn>,
-    get_my_footprint_stats: Option<OutJson1StringFn>,
-    get_message_dates: Option<OutJson1StringFn>,
-    get_session_message_counts: Option<OutJson1StringFn>,
-    get_session_message_type_stats: Option<OutJsonStringRangeFn>,
-    get_session_message_date_counts: Option<OutJson1StringFn>,
-    get_sns_timeline: Option<SnsTimelineFn>,
-    get_sns_annual_stats: Option<OutJsonRangeFn>,
-    get_sns_usernames: Option<OutJson0Fn>,
-    get_sns_export_stats: Option<OutJson1StringFn>,
-    search_messages: Option<SearchMessagesFn>,
-    exec_query: Option<ExecQueryFn>,
-    update_message: Option<UpdateMessageFn>,
-    delete_message: Option<DeleteMessageFn>,
-    install_anti_revoke: Option<TriggerFn>,
-    uninstall_anti_revoke: Option<TriggerFn>,
-    check_anti_revoke: Option<CheckTriggerFn>,
-    install_sns_block_delete: Option<OutJsonNoArgTriggerFn>,
-    uninstall_sns_block_delete: Option<OutJsonNoArgTriggerFn>,
-    check_sns_block_delete: Option<CheckNoArgTriggerFn>,
-    delete_sns_post: Option<OutJson1StringFn>,
-    handle: Option<i64>,
-    initialized: bool,
+    native: Option<NativeAccount>,
 }
 
 impl Wcdb {
-    /// # Safety
-    ///
-    /// `runtime_dir` must point to the versioned runtime directory prepared by
-    /// `weflow-assets`. The dynamic libraries in that directory are loaded and
-    /// their C ABI is trusted to match the symbols declared in this module.
-    pub unsafe fn load(runtime_dir: impl AsRef<Path>) -> Result<Self> {
-        let runtime_dir = runtime_dir.as_ref().to_path_buf();
-        let lib_path = wcdb_api_path(&runtime_dir)?;
-        let mut deps = Vec::new();
-        for dep in wcdb_dependency_paths(&runtime_dir) {
-            if dep.exists() {
-                deps.push(Library::new(&dep).with_context(|| {
-                    format!("failed to preload WCDB dependency {}", dep.display())
-                })?);
-            }
-        }
-
-        let lib = Library::new(&lib_path)
-            .with_context(|| format!("failed to load {}", lib_path.display()))?;
-
-        if let Ok(init_protection) = symbol::<InitProtectionFn>(&lib, b"InitProtection\0") {
-            let path = cstring(runtime_dir.to_string_lossy())?;
-            let rc = init_protection(path.as_ptr());
-            if rc != 0 {
-                return Err(anyhow!("InitProtection failed with code {rc}"));
-            }
-        }
-
-        let init = symbol::<InitFn>(&lib, b"wcdb_init\0")?;
-        let shutdown = symbol::<ShutdownFn>(&lib, b"wcdb_shutdown\0")?;
-        let open_account = symbol::<OpenAccountFn>(&lib, b"wcdb_open_account\0")?;
-        let close_account = symbol::<CloseAccountFn>(&lib, b"wcdb_close_account\0")?;
-        let free_string = symbol::<FreeStringFn>(&lib, b"wcdb_free_string\0")?;
-        let get_sessions = symbol::<OutJson0Fn>(&lib, b"wcdb_get_sessions\0")?;
-        let get_messages = symbol::<GetMessagesFn>(&lib, b"wcdb_get_messages\0")?;
-
-        let set_my_wxid = optional_symbol::<SetMyWxidFn>(&lib, b"wcdb_set_my_wxid\0");
-        let get_contact = optional_symbol::<GetContactFn>(&lib, b"wcdb_get_contact\0");
-        let get_contacts_compact =
-            optional_symbol::<GetContactsCompactFn>(&lib, b"wcdb_get_contacts_compact\0");
-        let get_contact_type_counts =
-            optional_symbol::<OutJson0Fn>(&lib, b"wcdb_get_contact_type_counts\0");
-        let get_group_member_count =
-            optional_symbol::<GroupMemberCountFn>(&lib, b"wcdb_get_group_member_count\0");
-        let get_group_members =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_group_members\0");
-        let get_group_nicknames =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_group_nicknames\0");
-        let get_group_stats =
-            optional_symbol::<OutJsonStringRangeFn>(&lib, b"wcdb_get_group_stats\0");
-        let get_aggregate_stats =
-            optional_symbol::<OutJsonStringRangeFn>(&lib, b"wcdb_get_aggregate_stats\0");
-        let get_available_years =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_available_years\0");
-        let get_annual_report_stats =
-            optional_symbol::<OutJsonStringRangeFn>(&lib, b"wcdb_get_annual_report_stats\0");
-        let get_dual_report_stats =
-            optional_symbol::<OutJsonStringRangeFn>(&lib, b"wcdb_get_dual_report_stats\0");
-        let get_my_footprint_stats =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_my_footprint_stats\0");
-        let get_message_dates =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_message_dates\0");
-        let get_session_message_counts =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_session_message_counts\0");
-        let get_session_message_type_stats =
-            optional_symbol::<OutJsonStringRangeFn>(&lib, b"wcdb_get_session_message_type_stats\0");
-        let get_session_message_date_counts =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_session_message_date_counts\0");
-        let get_sns_timeline = optional_symbol::<SnsTimelineFn>(&lib, b"wcdb_get_sns_timeline\0");
-        let get_sns_annual_stats =
-            optional_symbol::<OutJsonRangeFn>(&lib, b"wcdb_get_sns_annual_stats\0");
-        let get_sns_usernames = optional_symbol::<OutJson0Fn>(&lib, b"wcdb_get_sns_usernames\0");
-        let get_sns_export_stats =
-            optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_get_sns_export_stats\0");
-        let search_messages = optional_symbol::<SearchMessagesFn>(&lib, b"wcdb_search_messages\0");
-        let exec_query = optional_symbol::<ExecQueryFn>(&lib, b"wcdb_exec_query\0");
-        let update_message = optional_symbol::<UpdateMessageFn>(&lib, b"wcdb_update_message\0");
-        let delete_message = optional_symbol::<DeleteMessageFn>(&lib, b"wcdb_delete_message\0");
-        let install_anti_revoke =
-            optional_symbol::<TriggerFn>(&lib, b"wcdb_install_message_anti_revoke_trigger\0");
-        let uninstall_anti_revoke =
-            optional_symbol::<TriggerFn>(&lib, b"wcdb_uninstall_message_anti_revoke_trigger\0");
-        let check_anti_revoke =
-            optional_symbol::<CheckTriggerFn>(&lib, b"wcdb_check_message_anti_revoke_trigger\0");
-        let install_sns_block_delete = optional_symbol::<OutJsonNoArgTriggerFn>(
-            &lib,
-            b"wcdb_install_sns_block_delete_trigger\0",
-        );
-        let uninstall_sns_block_delete = optional_symbol::<OutJsonNoArgTriggerFn>(
-            &lib,
-            b"wcdb_uninstall_sns_block_delete_trigger\0",
-        );
-        let check_sns_block_delete =
-            optional_symbol::<CheckNoArgTriggerFn>(&lib, b"wcdb_check_sns_block_delete_trigger\0");
-        let delete_sns_post = optional_symbol::<OutJson1StringFn>(&lib, b"wcdb_delete_sns_post\0");
-
-        Ok(Self {
-            runtime_dir,
-            _deps: deps,
-            _lib: lib,
-            init,
-            shutdown,
-            open_account,
-            close_account,
-            free_string,
-            set_my_wxid,
-            get_sessions,
-            get_messages,
-            get_contact,
-            get_contacts_compact,
-            get_contact_type_counts,
-            get_group_member_count,
-            get_group_members,
-            get_group_nicknames,
-            get_group_stats,
-            get_aggregate_stats,
-            get_available_years,
-            get_annual_report_stats,
-            get_dual_report_stats,
-            get_my_footprint_stats,
-            get_message_dates,
-            get_session_message_counts,
-            get_session_message_type_stats,
-            get_session_message_date_counts,
-            get_sns_timeline,
-            get_sns_annual_stats,
-            get_sns_usernames,
-            get_sns_export_stats,
-            search_messages,
-            exec_query,
-            update_message,
-            delete_message,
-            install_anti_revoke,
-            uninstall_anti_revoke,
-            check_anti_revoke,
-            install_sns_block_delete,
-            uninstall_sns_block_delete,
-            check_sns_block_delete,
-            delete_sns_post,
-            handle: None,
-            initialized: false,
-        })
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn runtime_dir(&self) -> &Path {
-        &self.runtime_dir
+    fn pending<T>(&self, name: &str) -> Result<T> {
+        if self.native.is_none() {
+            return Err(anyhow!("WCDB is not connected"));
+        }
+        // by-name calls (install/uninstall triggers, deletes, ...) that would write to WeChat's databases
+        if ["install", "uninstall", "delete", "update_message", "mark_all", "trigger"].iter().any(|w| name.contains(w)) {
+            return self.read_only(name);
+        }
+        Err(anyhow!("{name} is not implemented in the native database backend yet"))
     }
 
-    pub fn init(&mut self) -> Result<()> {
-        if self.initialized {
-            return Ok(());
-        }
-        let rc = unsafe { (self.init)() };
-        if rc != 0 {
-            return Err(anyhow!("wcdb_init failed with code {rc}"));
-        }
-        self.initialized = true;
-        Ok(())
+    /// Operations that would modify WeChat's own database files (triggers, edits, deletes, read marks).
+    fn read_only<T>(&self, name: &str) -> Result<T> {
+        Err(anyhow!("{name} is not supported: the native database backend opens WeChat's databases read-only"))
     }
 
+    fn account(&self) -> Result<&NativeAccount> {
+        self.native.as_ref().ok_or_else(|| anyhow!("WCDB is not connected"))
+    }
+
+    /// Open the account: decrypt `session.db` with the key to prove the key and path are right.
     pub fn open(&mut self, account_dir: &Path, hex_key: &str, wxid: Option<&str>) -> Result<()> {
-        self.init()?;
+        self.open_unchecked(account_dir, hex_key, wxid)?;
+        let tested = self.account()?.test_connection();
+        if tested.is_err() {
+            self.native = None; // a handle whose key does not work stays closed
+        }
+        tested
+    }
+
+    /// [`open`](Self::open) without proving the key up front: each database checks the key when it is first
+    /// read, so a command that never reads `session.db` skips its (slow) key derivation. A wrong key still fails,
+    /// at the first read, with the same "cannot decrypt ... with the configured database key" error.
+    pub fn open_unchecked(&mut self, account_dir: &Path, hex_key: &str, wxid: Option<&str>) -> Result<()> {
+        self.native = None;
         let session_db = find_session_db(&account_dir.join("db_storage"))
             .ok_or_else(|| anyhow!("session.db not found under {}", account_dir.display()))?;
-        let session_db = cstring(session_db.to_string_lossy())?;
-        let key = cstring(hex_key)?;
-        let mut handle = 0_i64;
-        let rc = unsafe { (self.open_account)(session_db.as_ptr(), key.as_ptr(), &mut handle) };
-        if rc != 0 || handle <= 0 {
-            return Err(anyhow!("wcdb_open_account failed with code {rc}"));
-        }
-        self.handle = Some(handle);
-        if let (Some(set_my_wxid), Some(wxid)) = (self.set_my_wxid, wxid) {
-            let wxid = cstring(wxid)?;
-            let _ = unsafe { set_my_wxid(handle, wxid.as_ptr()) };
-        }
+        // session.db lives in <db_storage>/session/, so its grandparent is db_storage.
+        let db_storage = session_db.parent().and_then(Path::parent).unwrap_or(account_dir);
+        // Without an explicit wxid, the account directory name (`<wxid>_<4 chars>`) identifies the owner.
+        let me = wxid
+            .map(str::to_string)
+            .or_else(|| account_dir.file_name().map(|n| n.to_string_lossy().to_string()));
+        self.native = Some(NativeAccount::new(db_storage, hex_key)?.with_my_wxid(me));
         Ok(())
+    }
+
+    /// Prove the key of an account opened with [`open_unchecked`](Self::open_unchecked) (decrypts `session.db`).
+    pub fn check_key(&self) -> Result<()> {
+        self.account()?.test_connection()
+    }
+
+    /// The key-derivation salt of `session.db` (its first 16 bytes). With the key it identifies a successful
+    /// [`check_key`](Self::check_key): a different key, or a replaced database, gives a different pair.
+    pub fn session_salt(&self) -> Option<[u8; 16]> {
+        use std::io::Read;
+        let mut salt = [0u8; 16];
+        std::fs::File::open(self.account().ok()?.session_db()).ok()?.read_exact(&mut salt).ok()?;
+        Some(salt)
     }
 
     pub fn test_connection(&mut self, account_dir: &Path, hex_key: &str) -> Result<()> {
@@ -294,556 +100,361 @@ impl Wcdb {
     }
 
     pub fn close(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            let _ = unsafe { (self.close_account)(handle) };
-        }
-        if self.initialized {
-            let _ = unsafe { (self.shutdown)() };
-            self.initialized = false;
-        }
+        self.native = None;
     }
 
+    // ── sessions and messages ──
+
     pub fn sessions(&self) -> Result<Value> {
-        let handle = self.require_handle()?;
-        self.call_json(|out| unsafe { (self.get_sessions)(handle, out) })
+        self.account()?.sessions()
     }
 
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let session_id = cstring(session_id)?;
-        self.call_json(|out| unsafe {
-            (self.get_messages)(handle, session_id.as_ptr(), limit, offset, out)
-        })
+        self.account()?.messages(session_id, limit, offset)
     }
 
-    pub fn search(
-        &self,
-        keyword: &str,
-        session_id: Option<&str>,
-        limit: i32,
-        offset: i32,
-        begin: i32,
-        end: i32,
-    ) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let search = self
-            .search_messages
-            .ok_or_else(|| anyhow!("wcdb_search_messages is not available"))?;
-        let keyword = cstring(keyword)?;
-        let session_id = cstring(session_id.unwrap_or_default())?;
-        self.call_json(|out| unsafe {
-            search(
-                handle,
-                session_id.as_ptr(),
-                keyword.as_ptr(),
-                limit,
-                offset,
-                begin,
-                end,
-                out,
-            )
-        })
-    }
-
-    pub fn contact(&self, username: &str) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let username_c = cstring(username)?;
-        if let Some(get_contact) = self.get_contact {
-            return self.call_json(|out| unsafe { get_contact(handle, username_c.as_ptr(), out) });
-        }
-        self.exec_query(
-            "contact",
-            "",
-            &format!(
-                "SELECT * FROM contact WHERE username='{}' LIMIT 1",
-                username.replace('\'', "''")
-            ),
-        )
-    }
-
-    pub fn contacts(&self) -> Result<Value> {
-        let handle = self.require_handle()?;
-        if let Some(get_contacts_compact) = self.get_contacts_compact {
-            return self
-                .call_json(|out| unsafe { get_contacts_compact(handle, std::ptr::null(), out) });
-        }
-        self.exec_query("contact", "", "SELECT * FROM contact")
-    }
-
-    pub fn contact_type_counts(&self) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = self
-            .get_contact_type_counts
-            .ok_or_else(|| anyhow!("wcdb_get_contact_type_counts is not available"))?;
-        self.call_json(|out| unsafe { func(handle, out) })
-    }
-
-    pub fn group_member_count(&self, chatroom_id: &str) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = self
-            .get_group_member_count
-            .ok_or_else(|| anyhow!("wcdb_get_group_member_count is not available"))?;
-        let chatroom_id = cstring(chatroom_id)?;
-        let mut count = 0;
-        let rc = unsafe { func(handle, chatroom_id.as_ptr(), &mut count) };
-        if rc != 0 {
-            return Err(anyhow!("group member count failed with code {rc}"));
-        }
-        Ok(serde_json::json!({ "count": count }))
-    }
-
-    pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
-        self.call_string_json(
-            self.get_group_members,
-            "wcdb_get_group_members",
-            chatroom_id,
-        )
-    }
-
-    pub fn group_nicknames(&self, chatroom_id: &str) -> Result<Value> {
-        self.call_string_json(
-            self.get_group_nicknames,
-            "wcdb_get_group_nicknames",
-            chatroom_id,
-        )
-    }
-
-    pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {
-        self.call_string_range_json(
-            self.get_group_stats,
-            "wcdb_get_group_stats",
-            chatroom_id,
-            begin,
-            end,
-        )
-    }
-
-    pub fn aggregate_stats(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
-        let session_ids = serde_json::to_string(session_ids)?;
-        self.call_string_range_json(
-            self.get_aggregate_stats,
-            "wcdb_get_aggregate_stats",
-            &session_ids,
-            begin,
-            end,
-        )
-    }
-
-    pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
-        let session_ids = serde_json::to_string(session_ids)?;
-        self.call_string_json(
-            self.get_available_years,
-            "wcdb_get_available_years",
-            &session_ids,
-        )
-    }
-
-    pub fn annual_report_stats(
-        &self,
-        session_ids: &[String],
-        begin: i32,
-        end: i32,
-    ) -> Result<Value> {
-        let session_ids = serde_json::to_string(session_ids)?;
-        self.call_string_range_json(
-            self.get_annual_report_stats,
-            "wcdb_get_annual_report_stats",
-            &session_ids,
-            begin,
-            end,
-        )
-    }
-
-    pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
-        self.call_string_range_json(
-            self.get_dual_report_stats,
-            "wcdb_get_dual_report_stats",
-            session_id,
-            begin,
-            end,
-        )
-    }
-
-    pub fn footprint_stats(&self, options: &Value) -> Result<Value> {
-        let options = serde_json::to_string(options)?;
-        self.call_string_json(
-            self.get_my_footprint_stats,
-            "wcdb_get_my_footprint_stats",
-            &options,
-        )
+    pub fn message_count(&self, session_id: &str) -> Result<i32> {
+        self.account()?.message_count(session_id)
     }
 
     pub fn message_dates(&self, session_id: &str) -> Result<Value> {
-        self.call_string_json(self.get_message_dates, "wcdb_get_message_dates", session_id)
+        self.account()?.message_dates(session_id)
     }
 
     pub fn session_message_counts(&self, session_ids: &[String]) -> Result<Value> {
-        let session_ids = serde_json::to_string(session_ids)?;
-        self.call_string_json(
-            self.get_session_message_counts,
-            "wcdb_get_session_message_counts",
-            &session_ids,
-        )
-    }
-
-    pub fn session_message_type_stats(
-        &self,
-        session_id: &str,
-        begin: i32,
-        end: i32,
-    ) -> Result<Value> {
-        self.call_string_range_json(
-            self.get_session_message_type_stats,
-            "wcdb_get_session_message_type_stats",
-            session_id,
-            begin,
-            end,
-        )
+        self.account()?.session_message_counts(session_ids)
     }
 
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
-        self.call_string_json(
-            self.get_session_message_date_counts,
-            "wcdb_get_session_message_date_counts",
-            session_id,
-        )
+        self.account()?.session_message_date_counts(session_id)
     }
 
-    pub fn sns_timeline(
-        &self,
-        limit: i32,
-        offset: i32,
-        username: Option<&str>,
-        keyword: Option<&str>,
-        start: i32,
-        end: i32,
-    ) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = self
-            .get_sns_timeline
-            .ok_or_else(|| anyhow!("wcdb_get_sns_timeline is not available"))?;
-        let username = cstring(username.unwrap_or_default())?;
-        let keyword = cstring(keyword.unwrap_or_default())?;
-        self.call_json(|out| unsafe {
-            func(
-                handle,
-                limit,
-                offset,
-                username.as_ptr(),
-                keyword.as_ptr(),
-                start,
-                end,
-                out,
-            )
-        })
+    pub fn messages_by_type(&self, session_id: &str, local_type: i64, ascending: bool, limit: i32, offset: i32) -> Result<Value> {
+        self.account()?.messages_by_type(session_id, local_type, ascending, limit, offset)
+    }
+
+    pub fn message_by_id(&self, session_id: &str, local_id: i32) -> Result<Value> {
+        self.account()?.message_by_id(session_id, local_id as i64)
+    }
+
+    pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Value> {
+        self.account()?.message_by_server_id(session_id, svrid)
+    }
+
+    pub fn open_message_cursor(&self, session_id: &str, batch_size: i32, ascending: bool, begin: i32, end: i32, lite: bool) -> Result<i64> {
+        self.account()?.open_message_cursor(session_id, batch_size, ascending, begin, end, lite)
+    }
+
+    /// A cursor over one member's messages only (see `NativeAccount::open_message_cursor_for_senders`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn open_message_cursor_for_senders(&self, session_id: &str, batch_size: i32, ascending: bool, begin: i32, end: i32, lite: bool, sender_ok: &dyn Fn(&str) -> bool, include_mine: bool) -> Result<i64> {
+        self.account()?.open_message_cursor_for_senders(session_id, batch_size, ascending, begin, end, lite, sender_ok, include_mine)
+    }
+
+    /// Returns the next batch of rows and whether more remain.
+    pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
+        self.account()?.fetch_message_batch(cursor)
+    }
+
+    pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
+        self.account()?.close_message_cursor(cursor)
+    }
+
+    /// Low-memory mode for long one-way reads such as exports (see [`NativeAccount::set_low_memory`]).
+    pub fn set_low_memory(&self, on: bool) {
+        if let Some(a) = &self.native {
+            a.set_low_memory(on);
+        }
+    }
+
+    // ── generic by-name calls (kept for callers that build their own argument lists) ──
+
+    /// Call a database function by its historical `wcdb_*` name and get JSON back.
+    pub fn invoke_json(&self, name: &str, args: &[Arg<'_>]) -> Result<Value> {
+        match (name, args) {
+            ("wcdb_get_contacts_compact", [Arg::S(payload)]) => self.account()?.contacts_compact(&crate::native_contact::usernames_from_json(payload)),
+            ("wcdb_get_aggregate_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
+                self.account()?.aggregate_stats(&crate::native_contact::usernames_from_json(ids), *b as i64, *e as i64)
+            }
+            ("wcdb_get_annual_report_stats", [Arg::S(ids), Arg::I32(b), Arg::I32(e)]) => {
+                self.account()?.annual_report_stats(&crate::native_contact::usernames_from_json(ids), *b as i64, *e as i64)
+            }
+            ("wcdb_get_message_table_time_range", [Arg::S(db), Arg::S(table)]) => self.account()?.message_table_time_range(db, table),
+            _ => self.pending(name),
+        }
+    }
+
+    /// Like [`invoke_json`](Self::invoke_json) for functions whose output is a plain string.
+    pub fn invoke_string(&self, name: &str, _args: &[Arg<'_>]) -> Result<String> {
+        self.pending(name)
+    }
+
+    /// Like [`invoke_json`](Self::invoke_json) for functions that report success by status.
+    pub fn invoke_status(&self, name: &str, _args: &[Arg<'_>]) -> Result<Value> {
+        self.pending(name)
+    }
+
+    /// Raw status code and message (some triggers report "already installed" as a positive code).
+    pub fn invoke_status_code(&self, name: &str, _args: &[Arg<'_>]) -> Result<(i32, String)> {
+        self.pending(name)
+    }
+
+    // ── not ported yet ──
+
+    pub fn search(&self, keyword: &str, session_id: Option<&str>, limit: i32, offset: i32, begin: i32, end: i32) -> Result<Value> {
+        self.account()?.search_messages(keyword, session_id, limit, offset, begin as i64, end as i64)
+    }
+
+    pub fn contact(&self, username: &str) -> Result<Value> {
+        self.account()?.contact(username)
+    }
+
+    pub fn contacts(&self) -> Result<Value> {
+        self.account()?.contacts()
+    }
+
+    pub fn contact_type_counts(&self) -> Result<Value> {
+        self.account()?.contact_type_counts()
+    }
+
+    pub fn group_member_count(&self, chatroom_id: &str) -> Result<Value> {
+        self.account()?.group_member_count(chatroom_id)
+    }
+
+    pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
+        self.account()?.group_members(chatroom_id)
+    }
+
+    pub fn group_nicknames(&self, chatroom_id: &str) -> Result<Value> {
+        self.account()?.group_nicknames(chatroom_id)
+    }
+
+    pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {
+        self.account()?.group_stats(chatroom_id, begin as i64, end as i64)
+    }
+
+    pub fn aggregate_stats(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
+        self.account()?.aggregate_stats(session_ids, begin as i64, end as i64)
+    }
+
+    pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
+        self.account()?.available_years(session_ids)
+    }
+
+    pub fn annual_report_stats(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
+        self.account()?.annual_report_stats(session_ids, begin as i64, end as i64)
+    }
+
+    pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
+        self.account()?.dual_report_stats(session_id, begin as i64, end as i64)
+    }
+
+    pub fn footprint_stats(&self, options: &Value) -> Result<Value> {
+        self.account()?.footprint_stats(options)
+    }
+
+    pub fn session_message_type_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
+        self.account()?.session_message_type_stats_batch(&[session_id.to_string()], &serde_json::json!({ "begin": begin, "end": end })).map(|v| v[session_id].clone())
+    }
+
+    pub fn sns_timeline(&self, limit: i32, offset: i32, username: Option<&str>, keyword: Option<&str>, start: i32, end: i32) -> Result<Value> {
+        self.account()?.sns_timeline(limit, offset, &username.map(crate::native_contact::usernames_from_json).unwrap_or_default(), keyword, start as i64, end as i64)
     }
 
     pub fn sns_annual_stats(&self, begin: i32, end: i32) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = self
-            .get_sns_annual_stats
-            .ok_or_else(|| anyhow!("wcdb_get_sns_annual_stats is not available"))?;
-        self.call_json(|out| unsafe { func(handle, begin, end, out) })
+        self.account()?.sns_annual_stats(begin as i64, end as i64)
     }
 
     pub fn sns_usernames(&self) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = self
-            .get_sns_usernames
-            .ok_or_else(|| anyhow!("wcdb_get_sns_usernames is not available"))?;
-        self.call_json(|out| unsafe { func(handle, out) })
+        self.account()?.sns_usernames()
     }
 
     pub fn sns_export_stats(&self, my_wxid: Option<&str>) -> Result<Value> {
-        self.call_string_json(
-            self.get_sns_export_stats,
-            "wcdb_get_sns_export_stats",
-            my_wxid.unwrap_or_default(),
-        )
+        self.account()?.sns_export_stats(my_wxid)
     }
 
     pub fn sns_block_delete_check(&self) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let check = self
-            .check_sns_block_delete
-            .ok_or_else(|| anyhow!("wcdb_check_sns_block_delete_trigger is not available"))?;
-        let mut installed = 0;
-        let rc = unsafe { check(handle, &mut installed) };
-        if rc != 0 {
-            return Err(anyhow!("sns block-delete check failed with code {rc}"));
-        }
-        Ok(serde_json::json!({ "installed": installed != 0 }))
+        self.read_only("sns_block_delete_check")
     }
 
     pub fn sns_block_delete_install(&self) -> Result<Value> {
-        let func = self
-            .install_sns_block_delete
-            .ok_or_else(|| anyhow!("wcdb_install_sns_block_delete_trigger is not available"))?;
-        self.trigger_no_arg(func)
+        self.read_only("sns_block_delete_install")
     }
 
     pub fn sns_block_delete_uninstall(&self) -> Result<Value> {
-        let func = self
-            .uninstall_sns_block_delete
-            .ok_or_else(|| anyhow!("wcdb_uninstall_sns_block_delete_trigger is not available"))?;
-        self.trigger_no_arg(func)
+        self.read_only("sns_block_delete_uninstall")
     }
 
     pub fn sns_delete_post(&self, post_id: &str) -> Result<Value> {
-        self.call_string_json_or_string(self.delete_sns_post, "wcdb_delete_sns_post", post_id)
+        self.read_only("sns_delete_post")
     }
 
     pub fn exec_query(&self, kind: &str, path: &str, sql: &str) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let exec_query = self
-            .exec_query
-            .ok_or_else(|| anyhow!("wcdb_exec_query is not available"))?;
-        let kind = cstring(kind)?;
-        let path = cstring(path)?;
-        let sql = cstring(sql)?;
-        self.call_json(|out| unsafe {
-            exec_query(handle, kind.as_ptr(), path.as_ptr(), sql.as_ptr(), out)
-        })
+        self.account()?.exec_query(kind, Some(path), sql)
     }
 
-    pub fn update_message(
-        &self,
-        session_id: &str,
-        local_id: i64,
-        create_time: i32,
-        content: &str,
-    ) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let update = self
-            .update_message
-            .ok_or_else(|| anyhow!("wcdb_update_message is not available"))?;
-        let session_id = cstring(session_id)?;
-        let content = cstring(content)?;
-        self.call_json_or_string(|out| unsafe {
-            update(
-                handle,
-                session_id.as_ptr(),
-                local_id,
-                create_time,
-                content.as_ptr(),
-                out,
-            )
-        })
+    pub fn update_message(&self, session_id: &str, local_id: i64, create_time: i32, content: &str) -> Result<Value> {
+        self.read_only("update_message")
     }
 
-    pub fn delete_message(
-        &self,
-        session_id: &str,
-        local_id: i64,
-        create_time: i32,
-        db_path_hint: Option<&str>,
-    ) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let delete = self
-            .delete_message
-            .ok_or_else(|| anyhow!("wcdb_delete_message is not available"))?;
-        let session_id = cstring(session_id)?;
-        let hint = cstring(db_path_hint.unwrap_or_default())?;
-        self.call_json_or_string(|out| unsafe {
-            delete(
-                handle,
-                session_id.as_ptr(),
-                local_id,
-                create_time,
-                hint.as_ptr(),
-                out,
-            )
-        })
+    pub fn delete_message(&self, session_id: &str, local_id: i64, create_time: i32, db_path_hint: Option<&str>) -> Result<Value> {
+        self.read_only("delete_message")
     }
 
     pub fn anti_revoke_check(&self, session_id: &str) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let check = self
-            .check_anti_revoke
-            .ok_or_else(|| anyhow!("wcdb_check_message_anti_revoke_trigger is not available"))?;
-        let session_id = cstring(session_id)?;
-        let mut installed = 0;
-        let rc = unsafe { check(handle, session_id.as_ptr(), &mut installed) };
-        if rc != 0 {
-            return Err(anyhow!("anti revoke check failed with code {rc}"));
-        }
-        Ok(serde_json::json!({ "installed": installed != 0 }))
+        self.read_only("anti_revoke_check")
     }
 
     pub fn anti_revoke_install(&self, session_id: &str) -> Result<Value> {
-        let func = self
-            .install_anti_revoke
-            .ok_or_else(|| anyhow!("wcdb_install_message_anti_revoke_trigger is not available"))?;
-        self.trigger(session_id, func)
+        self.read_only("anti_revoke_install")
     }
 
     pub fn anti_revoke_uninstall(&self, session_id: &str) -> Result<Value> {
-        let func = self.uninstall_anti_revoke.ok_or_else(|| {
-            anyhow!("wcdb_uninstall_message_anti_revoke_trigger is not available")
-        })?;
-        self.trigger(session_id, func)
+        self.read_only("anti_revoke_uninstall")
     }
 
-    fn trigger(&self, session_id: &str, func: TriggerFn) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let session_id = cstring(session_id)?;
-        self.call_json_or_string(|out| unsafe { func(handle, session_id.as_ptr(), out) })
+    pub fn scan_media_stream(&self, session_ids_json: &str, media_type: i32, begin: i32, end: i32, limit: i32, offset: i32) -> Result<(Value, bool)> {
+        self.account()?.scan_media_stream(&crate::native_contact::usernames_from_json(session_ids_json), media_type, begin as i64, end as i64, limit, offset)
     }
 
-    fn trigger_no_arg(&self, func: OutJsonNoArgTriggerFn) -> Result<Value> {
-        let handle = self.require_handle()?;
-        self.call_json_or_string(|out| unsafe { func(handle, out) })
+    pub fn mark_all_sessions_read(&self) -> Result<Value> {
+        self.read_only("mark_all_sessions_read")
     }
 
-    fn require_handle(&self) -> Result<i64> {
-        self.handle.ok_or_else(|| anyhow!("WCDB is not connected"))
+    pub fn display_names(&self, usernames_json: &str) -> Result<Value> {
+        self.account()?.display_names(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
-    fn call_string_json(
-        &self,
-        func: Option<OutJson1StringFn>,
-        name: &str,
-        value: &str,
-    ) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = func.ok_or_else(|| anyhow!("{name} is not available"))?;
-        let value = cstring(value)?;
-        self.call_json(|out| unsafe { func(handle, value.as_ptr(), out) })
+    pub fn avatar_urls(&self, usernames_json: &str) -> Result<Value> {
+        self.account()?.avatar_urls(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
-    fn call_string_json_or_string(
-        &self,
-        func: Option<OutJson1StringFn>,
-        name: &str,
-        value: &str,
-    ) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = func.ok_or_else(|| anyhow!("{name} is not available"))?;
-        let value = cstring(value)?;
-        self.call_json_or_string(|out| unsafe { func(handle, value.as_ptr(), out) })
+    pub fn group_member_counts(&self, chatroom_ids_json: &str) -> Result<Value> {
+        self.account()?.group_member_counts(&crate::native_contact::usernames_from_json(chatroom_ids_json))
     }
 
-    fn call_string_range_json(
-        &self,
-        func: Option<OutJsonStringRangeFn>,
-        name: &str,
-        value: &str,
-        begin: i32,
-        end: i32,
-    ) -> Result<Value> {
-        let handle = self.require_handle()?;
-        let func = func.ok_or_else(|| anyhow!("{name} is not available"))?;
-        let value = cstring(value)?;
-        self.call_json(|out| unsafe { func(handle, value.as_ptr(), begin, end, out) })
+    pub fn message_tables(&self, session_id: &str) -> Result<Value> {
+        self.account()?.message_tables_json(session_id)
     }
 
-    fn call_json(&self, call: impl FnOnce(*mut *mut c_void) -> c_int) -> Result<Value> {
-        let mut out: *mut c_void = std::ptr::null_mut();
-        let rc = call(&mut out);
-        if rc != 0 || out.is_null() {
-            return Err(anyhow!("WCDB call failed with code {rc}"));
-        }
-        let raw = unsafe { self.take_string(out)? };
-        let value: Value =
-            serde_json::from_str(&normalize_int64_json(&raw)).with_context(|| {
-                format!(
-                    "failed to parse WCDB JSON payload: {}",
-                    raw.chars().take(200).collect::<String>()
-                )
-            })?;
-        Ok(value)
+    pub fn message_meta(&self, db_path: &str, table: &str, limit: i32, offset: i32) -> Result<Value> {
+        self.account()?.message_meta(db_path, table, limit, offset)
     }
 
-    fn call_json_or_string(&self, call: impl FnOnce(*mut *mut c_void) -> c_int) -> Result<Value> {
-        let mut out: *mut c_void = std::ptr::null_mut();
-        let rc = call(&mut out);
-        let message = if out.is_null() {
-            String::new()
-        } else {
-            unsafe { self.take_string(out)? }
-        };
-        if rc != 0 {
-            return Err(anyhow!(if message.is_empty() {
-                format!("WCDB call failed with code {rc}")
-            } else {
-                message
-            }));
-        }
-        if message.is_empty() {
-            Ok(serde_json::json!({ "ok": true }))
-        } else {
-            serde_json::from_str(&message)
-                .or_else(|_| Ok(serde_json::json!({ "message": message })))
-        }
+    pub fn contact_status(&self, usernames_json: &str) -> Result<Value> {
+        self.account()?.contact_status(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
-    unsafe fn take_string(&self, out: *mut c_void) -> Result<String> {
-        let text = CStr::from_ptr(out as *const c_char)
-            .to_string_lossy()
-            .to_string();
-        (self.free_string)(out);
-        Ok(text)
+    pub fn contact_alias_map(&self, usernames_json: &str) -> Result<Value> {
+        self.account()?.contact_alias_map(&crate::native_contact::usernames_from_json(usernames_json))
     }
-}
 
-impl Drop for Wcdb {
-    fn drop(&mut self) {
-        self.close();
+    pub fn contact_friend_flags(&self, usernames_json: &str) -> Result<Value> {
+        self.account()?.contact_friend_flags(&crate::native_contact::usernames_from_json(usernames_json))
     }
-}
 
-unsafe fn symbol<T: Copy>(lib: &Library, name: &[u8]) -> Result<T> {
-    Ok(*lib
-        .get::<T>(name)
-        .with_context(|| format!("missing symbol {}", String::from_utf8_lossy(name)))?)
-}
+    pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> {
+        self.account()?.chat_room_ext_buffer(chatroom_id)
+    }
 
-unsafe fn optional_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
-    lib.get::<T>(name).ok().map(|sym| *sym)
-}
+    pub fn message_table_stats(&self, session_id: &str) -> Result<Value> {
+        self.account()?.message_table_stats(session_id)
+    }
 
-fn wcdb_api_path(runtime_dir: &Path) -> Result<PathBuf> {
-    let candidates = if cfg!(target_os = "macos") {
-        vec![
-            runtime_dir.join("wcdb/macos/universal/libwcdb_api.dylib"),
-            runtime_dir.join("wcdb/macos/libwcdb_api.dylib"),
-            runtime_dir.join("libwcdb_api.dylib"),
-        ]
-    } else if cfg!(target_os = "linux") {
-        vec![
-            runtime_dir.join("wcdb/linux/x64/libwcdb_api.so"),
-            runtime_dir.join("wcdb/linux/arm64/libwcdb_api.so"),
-            runtime_dir.join("wcdb/linux/libwcdb_api.so"),
-            runtime_dir.join("libwcdb_api.so"),
-        ]
-    } else {
-        vec![
-            runtime_dir.join("wcdb/win32/x64/wcdb_api.dll"),
-            runtime_dir.join("wcdb/win32/arm64/wcdb_api.dll"),
-            runtime_dir.join("wcdb_api.dll"),
-        ]
-    };
-    candidates
-        .into_iter()
-        .find(|path| path.exists())
-        .ok_or_else(|| anyhow!("wcdb_api library not found in {}", runtime_dir.display()))
-}
+    pub fn annual_report_extras(&self, session_ids_json: &str, begin: i32, end: i32, peak_begin: i32, peak_end: i32) -> Result<Value> {
+        self.account()?.annual_report_extras(&crate::native_contact::usernames_from_json(session_ids_json), begin as i64, end as i64, peak_begin as i64, peak_end as i64)
+    }
 
-fn wcdb_dependency_paths(runtime_dir: &Path) -> Vec<PathBuf> {
-    if cfg!(target_os = "macos") {
-        vec![runtime_dir.join("wcdb/macos/universal/libWCDB.dylib")]
-    } else if cfg!(target_os = "windows") {
-        vec![
-            runtime_dir.join("runtime/win32/msvcp140.dll"),
-            runtime_dir.join("runtime/win32/msvcp140_1.dll"),
-            runtime_dir.join("runtime/win32/vcruntime140.dll"),
-            runtime_dir.join("runtime/win32/vcruntime140_1.dll"),
-            runtime_dir.join("wcdb/win32/x64/SDL2.dll"),
-            runtime_dir.join("wcdb/win32/x64/WCDB.dll"),
-            runtime_dir.join("wcdb/win32/arm64/WCDB.dll"),
-        ]
-    } else {
-        Vec::new()
+    pub fn emoticon_cdn_url(&self, db_path: &str, md5: &str) -> Result<String> {
+        self.account()?.emoticon_cdn_url(md5)
+    }
+
+    pub fn emoticon_caption(&self, db_path: &str, md5: &str) -> Result<String> {
+        self.account()?.emoticon_caption(md5)
+    }
+
+    pub fn emoticon_caption_strict(&self, md5: &str) -> Result<String> {
+        self.account()?.emoticon_caption(md5)
+    }
+
+    pub fn list_message_dbs(&self) -> Result<Value> {
+        Ok(self.account()?.list_message_dbs())
+    }
+
+    pub fn list_media_dbs(&self) -> Result<Value> {
+        Ok(self.account()?.list_media_dbs())
+    }
+
+    pub fn db_status(&self) -> Result<Value> {
+        self.account()?.db_status()
+    }
+
+    pub fn voice_data(&self, session_id: &str, create_time: i32, local_id: i32, svr_id: i64, candidates_json: &str) -> Result<String> {
+        self.account()?.voice_data(create_time as i64, local_id as i64, svr_id, &crate::native_contact::usernames_from_json(candidates_json))
+    }
+
+    pub fn voice_data_batch(&self, requests_json: &str) -> Result<Value> {
+        self.account()?.voice_data_batch(&serde_json::from_str(requests_json).unwrap_or_default())
+    }
+
+    pub fn media_schema_summary(&self, db_path: &str) -> Result<Value> {
+        self.account()?.media_schema_summary(db_path)
+    }
+
+    pub fn session_message_type_stats_batch(&self, session_ids_json: &str, options_json: &str) -> Result<Value> {
+        self.account()?.session_message_type_stats_batch(&crate::native_contact::usernames_from_json(session_ids_json), &serde_json::from_str(options_json).unwrap_or_default())
+    }
+
+    pub fn session_message_date_counts_batch(&self, session_ids_json: &str) -> Result<Value> {
+        self.account()?.session_message_date_counts_batch(&crate::native_contact::usernames_from_json(session_ids_json))
+    }
+
+    pub fn head_image_buffers(&self, usernames_json: &str) -> Result<Value> {
+        self.account()?.head_image_buffers(&crate::native_contact::usernames_from_json(usernames_json))
+    }
+
+    pub fn message_table_columns(&self, db_path: &str, table: &str) -> Result<Value> {
+        self.account()?.message_table_columns(db_path, table)
+    }
+
+    pub fn list_tables(&self, kind: &str, db_path: &str) -> Result<Value> {
+        self.account()?.list_tables(kind, Some(db_path))
+    }
+
+    pub fn table_schema(&self, kind: &str, db_path: &str, table: &str) -> Result<Value> {
+        self.account()?.table_schema(kind, Some(db_path), table)
+    }
+
+    pub fn export_table_snapshot(&self, kind: &str, db_path: &str, table: &str, output_path: &str) -> Result<Value> {
+        self.account()?.export_table_snapshot(kind, Some(db_path), table, output_path)
+    }
+
+    pub fn import_table_snapshot(&self, kind: &str, db_path: &str, table: &str, input_path: &str) -> Result<Value> {
+        self.read_only("import_table_snapshot")
+    }
+
+    pub fn import_table_snapshot_with_schema(&self, kind: &str, db_path: &str, table: &str, input_path: &str, create_table_sql: &str) -> Result<Value> {
+        self.read_only("import_table_snapshot_with_schema")
+    }
+
+    pub fn message_table_time_range(&self, db_path: &str, table: &str) -> Result<Value> {
+        self.account()?.message_table_time_range(db_path, table)
+    }
+
+    pub fn resolve_image_hardlink(&self, md5: &str, account_dir: &str) -> Result<Value> {
+        self.account()?.resolve_image_hardlink(md5, Some(account_dir))
+    }
+
+    pub fn resolve_image_hardlink_batch(&self, requests_json: &str) -> Result<Value> {
+        self.account()?.resolve_image_hardlink_batch(&serde_json::from_str(requests_json).unwrap_or_default())
+    }
+
+    pub fn resolve_video_hardlink_md5(&self, md5: &str, db_path: &str) -> Result<Value> {
+        self.account()?.resolve_video_hardlink_md5(md5, Some(db_path))
+    }
+
+    pub fn resolve_video_hardlink_md5_batch(&self, requests_json: &str) -> Result<Value> {
+        self.account()?.resolve_video_hardlink_md5_batch(&serde_json::from_str(requests_json).unwrap_or_default())
     }
 }
 
@@ -873,49 +484,4 @@ fn find_session_db(root: &Path) -> Option<PathBuf> {
         }
     }
     None
-}
-
-fn cstring(value: impl AsRef<str>) -> Result<CString> {
-    CString::new(value.as_ref()).map_err(|_| anyhow!("string contains interior NUL byte"))
-}
-
-fn normalize_int64_json(raw: &str) -> String {
-    let marker = "\"server_id\":";
-    if !raw.contains(marker) {
-        return raw.to_string();
-    }
-    let mut result = String::with_capacity(raw.len() + 16);
-    let bytes = raw.as_bytes();
-    let marker_bytes = marker.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i..].starts_with(marker_bytes) {
-            result.push_str(marker);
-            i += marker.len();
-            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-                result.push(bytes[i] as char);
-                i += 1;
-            }
-            let start = i;
-            if i < bytes.len() && bytes[i] == b'-' {
-                i += 1;
-            }
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
-                i += 1;
-            }
-            let digits = &raw[start..i];
-            if digits.trim_start_matches('-').len() >= 16 {
-                result.push('"');
-                result.push_str(digits);
-                result.push('"');
-            } else {
-                result.push_str(digits);
-            }
-        } else {
-            let ch = raw[i..].chars().next().unwrap();
-            result.push(ch);
-            i += ch.len_utf8();
-        }
-    }
-    result
 }

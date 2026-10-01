@@ -5,6 +5,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
+use crate::locale::{self, Lang};
+
 pub fn export_html(
     title: &str,
     messages: &Value,
@@ -78,7 +80,10 @@ pub fn export_excel(messages: &Value, out: &Path) -> Result<()> {
     let mut workbook = rust_xlsxwriter::Workbook::new();
     let worksheet = workbook.add_worksheet();
     let header_format = rust_xlsxwriter::Format::new().set_bold();
-    let headers = ["序号", "时间", "发送者", "消息类型", "内容"];
+    let headers = match locale::current() {
+        Lang::En => ["No.", "Time", "Sender", "Message type", "Content"],
+        Lang::Zh => ["序号", "时间", "发送者", "消息类型", "内容"],
+    };
     for (col, header) in headers.iter().enumerate() {
         worksheet.write_string_with_format(0, col as u16, *header, &header_format)?;
     }
@@ -322,44 +327,33 @@ fn build_contact_map(contacts: &Value) -> std::collections::HashMap<String, Stri
 }
 
 fn message_type_label(msg_type: i64) -> &'static str {
-    match msg_type {
-        1 => "文本",
-        3 => "图片",
-        34 => "语音",
-        43 => "视频",
-        47 => "表情",
-        49 => "链接",
-        10000 => "系统",
-        _ => "其他",
+    message_type_label_in(locale::current(), msg_type)
+}
+
+fn message_type_label_in(lang: Lang, msg_type: i64) -> &'static str {
+    let (en, zh) = match msg_type {
+        1 => ("Text", "文本"),
+        3 => ("Image", "图片"),
+        34 => ("Voice", "语音"),
+        43 => ("Video", "视频"),
+        47 => ("Sticker", "表情"),
+        49 => ("Link", "链接"),
+        10000 => ("System", "系统"),
+        _ => ("Other", "其他"),
+    };
+    match lang {
+        Lang::En => en,
+        Lang::Zh => zh,
     }
 }
 
+/// `YYYY-MM-DD HH:MM:SS` in the machine's local time zone, like the desktop app.
 fn format_timestamp(ts: i64) -> String {
     if ts <= 0 {
-        return String::new();
-    }
-    let secs = ts as i64;
-    let days = secs / 86400;
-    let time_of_day = secs % 86400;
-    let year = 1970 + (days * 400 + 800) / 146097;
-    let remaining = days - ((year - 1970) * 365 + (year - 1969) / 4 - (year - 2001) / 100 + (year - 2001) / 400);
-    let (year, remaining) = if remaining < 0 {
-        (year - 1, remaining + 365 + (if (year - 1) % 4 == 0 && ((year - 1) % 100 != 0 || (year - 1) % 400 == 0) { 1 } else { 0 }))
+        String::new()
     } else {
-        (year, remaining)
-    };
-    let hours = (time_of_day / 3600) as u32;
-    let minutes = ((time_of_day % 3600) / 60) as u32;
-    let seconds = (time_of_day % 60) as u32;
-    let month_days = [31, 28 + if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { 1 } else { 0 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut day = remaining as u32 + 1;
-    let mut month = 1u32;
-    for &md in &month_days {
-        if day <= md { break; }
-        day -= md;
-        month += 1;
+        crate::message::format_timestamp(ts)
     }
-    format!("{year:04}-{month:02}-{day:02} {hours:02}:{minutes:02}:{seconds:02}")
 }
 
 fn html_escape(s: &str) -> String {
@@ -405,79 +399,77 @@ fn write_bytes(path: &Path, data: &[u8]) -> Result<()> {
 ///
 ///   content
 ///
-pub fn export_txt(
-    messages: &[Value],
-    nickname_map: &HashMap<String, String>,
-    out: &Path,
-) -> Result<()> {
-    let mut text = String::new();
+pub fn export_txt(messages: &[TxtMessage], nickname_map: &HashMap<String, String>, out: &Path) -> Result<()> {
+    use std::io::Write;
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let file = fs::File::create(out).with_context(|| format!("write {}", out.display()))?;
+    let mut w = std::io::BufWriter::new(file);
     for msg in messages {
-        let ts = msg
-            .get("create_time")
-            .and_then(|v| {
-                v.as_str()
-                    .and_then(|s| s.parse::<i64>().ok())
-                    .or_else(|| v.as_i64())
-            })
-            .unwrap_or(0);
-
-        let sender_wxid = msg
-            .get("sender_username")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-
-        let local_type: i64 = msg
-            .get("local_type")
-            .and_then(|v| {
-                v.as_str()
-                    .and_then(|s| s.parse().ok())
-                    .or_else(|| v.as_i64())
-            })
-            .unwrap_or(1);
-
-        let content: String = match local_type {
+        let content: String = match msg.local_type {
             1 => {
-                let raw = decode_wcdb_content(msg);
-                let t = extract_text_after_sender(&raw);
+                let t = extract_text_after_sender(&msg.content);
                 if t.is_empty() {
                     continue;
                 }
                 t
             }
-            3 => "[图片]".to_string(),
-            34 => "[语音]".to_string(),
-            43 => "[视频]".to_string(),
-            47 => "[表情]".to_string(),
+            3 => locale::tr("[Image]", "[图片]").to_string(),
+            34 => locale::tr("[Voice]", "[语音]").to_string(),
+            43 => locale::tr("[Video]", "[视频]").to_string(),
+            47 => locale::tr("[Sticker]", "[表情]").to_string(),
             49 => {
-                let raw = decode_wcdb_content(msg);
-                let t = extract_text_after_sender(&raw);
+                let t = extract_text_after_sender(&msg.content);
                 if t.is_empty() {
-                    "[链接/文件]".to_string()
+                    locale::tr("[Link/File]", "[链接/文件]").to_string()
                 } else {
                     t
                 }
             }
             10000 => {
-                let raw = decode_wcdb_content(msg);
-                let t = extract_text_after_sender(&raw);
+                let t = extract_text_after_sender(&msg.content);
                 if t.is_empty() {
                     continue;
                 }
-                format!("[系统: {t}]")
+                format!("[{}: {t}]", locale::tr("System", "系统"))
             }
             _ => continue,
         };
-
-        let nickname = nickname_map
-            .get(&sender_wxid)
-            .cloned()
-            .unwrap_or_else(|| sender_wxid.clone());
-
-        let dt = format_timestamp_beijing(ts);
-        text.push_str(&format!("{dt} '{nickname}'\n\n{content}\n\n"));
+        let nickname = nickname_map.get(&msg.sender).unwrap_or(&msg.sender);
+        let dt = format_timestamp(msg.create_time);
+        write!(w, "{dt} '{nickname}'\n\n{content}\n\n").with_context(|| format!("write {}", out.display()))?;
     }
-    write_file(out, &text)
+    w.flush().with_context(|| format!("write {}", out.display()))
+}
+
+/// One message of the TXT export: just what its layout prints.
+pub struct TxtMessage {
+    pub create_time: i64,
+    pub sender: String,
+    pub local_type: i64,
+    pub content: String,
+}
+
+impl TxtMessage {
+    /// From a raw message row; `None` for the kinds the TXT layout leaves out.
+    pub fn from_row(row: &Value) -> Option<Self> {
+        let int = |key: &str, default: i64| {
+            row.get(key).and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).unwrap_or(default)
+        };
+        let local_type = int("local_type", 1);
+        let content = match local_type {
+            1 | 49 | 10000 => decode_wcdb_content(row),
+            3 | 34 | 43 | 47 => String::new(),
+            _ => return None,
+        };
+        Some(Self {
+            create_time: int("create_time", 0),
+            sender: row.get("sender_username").and_then(Value::as_str).unwrap_or("").to_string(),
+            local_type,
+            content,
+        })
+    }
 }
 
 fn decode_wcdb_content(msg: &Value) -> String {
@@ -536,10 +528,6 @@ fn hex_nibble(c: u8) -> Option<u8> {
     }
 }
 
-fn format_timestamp_beijing(ts: i64) -> String {
-    format_timestamp(ts + 8 * 3600)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,8 +558,11 @@ mod tests {
 
     #[test]
     fn message_type_labels() {
-        assert_eq!(message_type_label(1), "文本");
-        assert_eq!(message_type_label(3), "图片");
-        assert_eq!(message_type_label(43), "视频");
+        assert_eq!(message_type_label_in(Lang::En, 1), "Text");
+        assert_eq!(message_type_label_in(Lang::En, 3), "Image");
+        assert_eq!(message_type_label_in(Lang::En, 999), "Other");
+        assert_eq!(message_type_label_in(Lang::Zh, 1), "文本");
+        assert_eq!(message_type_label_in(Lang::Zh, 3), "图片");
+        assert_eq!(message_type_label_in(Lang::Zh, 43), "视频");
     }
 }

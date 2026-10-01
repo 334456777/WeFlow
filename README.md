@@ -1,231 +1,91 @@
-# WeFlow
+# WeFlow Native CLI
 
-WeFlow 是一个**完全本地**的微信**实时**聊天记录查看、分析与导出工具。它可以实时获取你的微信聊天记录并将其导出，还可以根据你的聊天记录为你生成独一无二的分析报告。
+**English** | [简体中文](README.zh-CN.md)
 
----
+`weflow` is a native Rust command-line build of [WeFlow](docs/weflow-readme.md)'s backend. It reads, analyzes and exports your local WeChat 4.0+ chat history from the terminal, without the Electron desktop app.
 
-**WeFlow** is a fully local tool for viewing, analyzing, and exporting WeChat chat history in real time. It generates unique analysis reports based on your chat history.
-
-<p align="center">
-  <img src="app.jpg" alt="WeFlow 应用预览" width="90%">
-</p>
-
-<p align="center">
-  <a href="https://github.com/hicccc77/WeFlow/stargazers"><img src="https://img.shields.io/github/stars/hicccc77/WeFlow?style=flat&label=Stars&labelColor=1F2937&color=2563EB" alt="Stargazers"></a>
-  <a href="https://github.com/hicccc77/WeFlow/network/members"><img src="https://img.shields.io/github/forks/hicccc77/WeFlow?style=flat&label=Forks&labelColor=1F2937&color=7C3AED" alt="Forks"></a>
-  <a href="https://github.com/hicccc77/WeFlow/issues"><img src="https://img.shields.io/github/issues/hicccc77/WeFlow?style=flat&label=Issues&labelColor=1F2937&color=D97706" alt="Issues"></a>
-  <a href="https://github.com/hicccc77/WeFlow/releases"><img src="https://img.shields.io/github/downloads/hicccc77/WeFlow/total?style=flat&label=Downloads&labelColor=1F2937&color=059669" alt="Downloads"></a>
-  <br><br>
-  <a href="https://t.me/weflow_cc"><img src="https://img.shields.io/badge/Telegram-频道-1D9BF0?style=flat&logo=telegram&logoColor=white&labelColor=1F2937&color=1D9BF0" alt="Telegram Channel" style="height: 22px; vertical-align: middle;"></a>
-  <a href="https://www.star-history.com/hicccc77/weflow"><img src="https://api.star-history.com/badge?repo=hicccc77/WeFlow&theme=dark" alt="Star History Rank" style="height: 32px; vertical-align: middle;"></a>
-</p>
-
-> [!TIP]
-> 如果导出聊天记录后，想深入分析聊天内容可以试试 [ChatLab](https://chatlab.fun/)
-> 
-> If you want to analyze your exported chat content in depth, try [ChatLab](https://chatlab.fun/)
-
-> [!NOTE]
-> 仅支持微信 **4.0 及以上**版本，确保你的微信版本符合要求
-> 
-> Only supports WeChat **version 4.0 and above**. Please ensure your WeChat version meets the requirements.
-
-## 主要功能
-
-- 本地实时查看聊天记录
-- 朋友圈图片、视频、**实况**的预览和解密
-- 统计分析与群聊画像
-- 年度报告与可视化概览
-- 导出聊天记录为 HTML 等格式
-- HTTP API 接口（供开发者集成）
-- 查看完整能力清单：[详细功能](#详细功能清单)
-
----
-
-**Key Features**
-
-- View chat history locally in real-time
-- Preview and decrypt Moments photos, videos, and **Live Photos**
-- Statistical analysis and group chat insights
-- Annual reports and visual overviews
-- Export chat history to HTML and other formats
-- HTTP API (for developer integration)
-- View complete feature list: [Detailed Features](#详细功能清单)
-
-## 支持平台与设备
-
-| 平台 | 设备/架构 | 安装包 |
-|------|----------|--------|
-| Windows | Windows10+、x64（amd64） | `.exe` |
-| macOS | Apple Silicon（M 系列，arm64） | `.dmg` |
-| Linux | x64 设备（amd64） | `.AppImage`、`.tar.gz` |
-
----
-
-**Supported Platforms & Devices**
-
-| Platform | Device/Architecture | Package |
-|----------|---------------------|---------|
-| Windows | Windows 10+, x64 (amd64) | `.exe` |
-| macOS | Apple Silicon (M series, arm64) | `.dmg` |
-| Linux | x64 devices (amd64) | `.AppImage`, `.tar.gz` |
-
-## 快速开始
-
-若你只想使用成品版本，可前往 [Releases](https://github.com/hicccc77/WeFlow/releases) 下载并安装。
-
-> ArchLinux 用户可以选择 `yay -S weflow` 快速安装
-
----
-
-**Quick Start**
-
-If you just want to use the pre-compiled application, go to [Releases](https://github.com/hicccc77/WeFlow/releases) to download and install.
-
-> ArchLinux users can quickly install with `yay -S weflow`
-
-## 详细功能清单
-
-当前版本已支持以下能力：
-
-| 功能模块 | 说明 |
-|---------|------|
-| **聊天** | 解密聊天中的图片、视频、实况（仅支持谷歌协议拍摄的实况）；支持**修改**、删除**本地**消息；实时刷新最新消息，无需生成解密中间数据库 |
-| **消息防撤回** | 防止其他人发送的消息被撤回 |
-| **实时弹窗通知** | 新消息到达时提供桌面弹窗提醒，便于及时查看重要会话，提供黑白名单功能 |
-| **私聊分析** | 统计好友间消息数量；分析消息类型与发送比例；查看消息时段分布等 |
-| **群聊分析** | 查看群成员详细信息；分析群内发言排行、活跃时段和媒体内容 |
-| **年度报告** | 生成按年统计的年度报告，或跨年度的长期历史报告 |
-| **双人报告** | 选择指定好友，基于双方聊天记录生成专属分析报告 |
-| **消息导出** | 将微信聊天记录导出为多种格式：JSON、HTML、TXT、Excel、CSV、PGSQL、ChatLab专属格式等 |
-| **朋友圈** | 解密朋友圈图片、视频、实况；导出朋友圈内容；拦截朋友圈的删除与隐藏操作；突破时间访问限制 |
-| **联系人** | 导出微信好友、群聊、公众号信息；尝试找回曾经的好友（功能尚不完善） |
-| **HTTP API 映射** | 将本地消息能力映射为 HTTP API，便于对接外部系统、自动化脚本与二次开发 |
-
----
-
-**Detailed Feature List**
-
-The current version supports the following capabilities:
-
-| Feature Module | Description |
-|----------------|-------------|
-| **Chat** | Decrypt images, videos, and Live Photos in chats (only supports Live Photos captured with Google protocol); supports **modifying** and deleting **local** messages; real-time refresh of latest messages without generating decrypted intermediate databases |
-| **Anti-Recall** | Prevent messages sent by others from being recalled |
-| **Real-time Notifications** | Desktop popup notifications when new messages arrive, convenient for timely viewing of important conversations, with blacklist/whitelist functionality |
-| **Private Chat Analysis** | Statistics on message counts between friends; analysis of message types and sending ratios; view message time distribution, etc. |
-| **Group Chat Analysis** | View detailed group member information; analyze group activity rankings, active periods, and media content |
-| **Annual Report** | Generate annual reports by year, or long-term historical reports across years |
-| **Duo Report** | Select a specific friend and generate an exclusive analysis report based on your mutual chat history |
-| **Message Export** | Export WeChat chat history to multiple formats: JSON, HTML, TXT, Excel, CSV, PGSQL, ChatLab proprietary format, etc. |
-| **Moments** | Decrypt Moments photos, videos, and Live Photos; export Moments content; intercept deletion and hiding operations in Moments; bypass time-based access restrictions |
-| **Contacts** | Export WeChat friends, group chats, and official account information; attempt to recover deleted friends (work in progress) |
-| **HTTP API** | Map local message capabilities to HTTP API for easy integration with external systems, automation scripts, and secondary development |
-
-## HTTP API
+- Every command prints one JSON document on stdout (`{"success": true, "data": ...}`), which makes it easy to script.
+- Chat sessions, messages, contacts, Moments, group/private analytics, annual and dual reports.
+- Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, `sql`.
+- Images (`.dat` decryption), voice (SILK → WAV), video lookup, stickers.
+- Local HTTP API with token auth and SSE push (`serve --http`), message push, AI insights.
+- Follows the system language (Chinese or English); `--lang en|zh` overrides it per run.
 
 > [!WARNING]
-> 此功能目前处于早期阶段，接口可能会有变动，请等待后续更新完善。
+> The CLI was ported from the original TypeScript backend. Its database layer is pure Rust (it decrypts and reads WeChat's databases itself, read-only) and was verified against one real Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows; macOS/Linux WeChat data is untested ([plan](docs/plan.md#verification-still-to-do)). Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [unsupported](docs/cli-unsupported.md).
 
-WeFlow 提供本地 HTTP API 服务，支持通过接口查询消息数据，可用于与其他工具集成或二次开发。
+The original WeFlow project (Electron desktop app) is documented in [docs/weflow-readme.md](docs/weflow-readme.md).
 
-- **启用方式**：设置 → API 服务 → 启动服务
-- **默认端口**：5031
-- **访问地址**：`http://127.0.0.1:5031`
-- **支持格式**：原始 JSON 或 [ChatLab](https://chatlab.fun/) 标准格式
-
-完整接口文档：[点击查看](docs/HTTP-API.md)
-
----
-
-> [!WARNING]
-> This feature is currently in its early stages, and the interface may change. Stay tuned for future updates.
-
-WeFlow provides a local HTTP API service that supports querying message data through interfaces, which can be used for integration with other tools or secondary development.
-
-- **Enable Method**: Settings → API Service → Start Service
-- **Default Port**: 5031
-- **Access Address**: `http://127.0.0.1:5031`
-- **Supported Formats**: Raw JSON or [ChatLab](https://chatlab.fun/) standard format
-
-Complete API documentation: [Click to view](docs/HTTP-API.md)
-
-## 面向开发者
-
-如果你想从源码构建或为项目贡献代码，请遵循以下步骤：
+## Build
 
 ```bash
-# 1. 克隆项目到本地
-git clone https://github.com/hicccc77/WeFlow.git
-cd WeFlow
-
-# 2. 安装项目依赖
-npm install
-
-# 3. 运行应用（开发模式）
-npm run dev
+make build                                  # or: cargo build --release -p weflow-cli
+weflow --help
 ```
 
----
+Windows x64 releases are a single `weflow.exe`. WXGF images need `ffmpeg` on `PATH` (or `FFMPEG_PATH`).
 
-**For Developers**
+## Switching between English and Chinese
 
-If you want to build from source or contribute code to the project, please follow these steps:
+The language follows the system: Chinese on a Chinese system, English otherwise. Use `--lang en|zh` for a single run, or the environment:
+
+```powershell
+.\weflow.exe --lang zh chat sessions --pretty    # Chinese output for this run
+$env:WEFLOW_LANG = "zh"                          # Chinese for the whole PowerShell session
+```
 
 ```bash
-# 1. Clone the project locally
-git clone https://github.com/hicccc77/WeFlow.git
-cd WeFlow
-
-# 2. Install project dependencies
-npm install
-
-# 3. Run the application (development mode)
-npm run dev
+LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-## 致谢
+`--lang` is an option, not a command: it must accompany a subcommand (`weflow.exe --lang zh` alone reports a missing subcommand). The language only affects generated text; JSON keys, error codes and `--help` are always English. The full order of precedence is in [docs/native-cli.md](docs/native-cli.md#language).
 
-- [密语 CipherTalk](https://github.com/ILoveBingLu/miyu) 为本项目提供了基础框架
-- [WeChat-Channels-Video-File-Decryption](https://github.com/Evil0ctal/WeChat-Channels-Video-File-Decryption) 提供了视频解密相关的技术参考
+## First-time setup and export (required steps)
 
----
+Windows PowerShell example. Log in to WeChat (4.0+) and keep it running:
 
-**Acknowledgments**
+```powershell
+# 1. Find the WeChat data directory
+.\weflow.exe db detect --pretty
 
-- [CipherTalk](https://github.com/ILoveBingLu/miyu) provided the basic framework for this project
-- [WeChat-Channels-Video-File-Decryption](https://github.com/Evil0ctal/WeChat-Channels-Video-File-Decryption) provided technical references for video decryption
+# 2. Get the database key and the image keys (run PowerShell as administrator)
+#    `key db` hooks WeChat and WAITS (180 s by default): log out and log in to WeChat (or restart it)
+#    while it is waiting, the key only appears while WeChat opens its databases.
+.\weflow.exe key db --pretty
+.\weflow.exe key image --pretty
 
-## 支持我们
+# 3. Save the configuration (once)
+.\weflow.exe config set db_path "C:\Users\<you>\Documents\xwechat_files"
+.\weflow.exe config set wxid wxid_xxxxxxxx
+.\weflow.exe config set decrypt_key <database key>
+.\weflow.exe config set image_xor_key <image xor key>
+.\weflow.exe config set image_aes_key <image aes key>
 
-如果 WeFlow 确实帮到了你，可以考虑请我们喝杯咖啡：
+# 4. Required: list the sessions to confirm the connection and find the session ID to export
+.\weflow.exe chat sessions --pretty
 
-> TRC20 **Address:** `TZCtAw8CaeARWZBfvjidCnTcfnAtf6nvS6`
+# 5. Export (private chat: the other party's wxid; group: xxx@chatroom)
+.\weflow.exe export messages <session-id> --format html --out chat.html
+```
 
----
+Notes for Windows: `key db` needs an administrator terminal (otherwise it reports "permission denied"), finds `Weixin.exe` / `WeChat.exe` automatically (or use `--pid`), and `--timeout <seconds>` changes the wait. The configuration lives in `%APPDATA%\weflow\config.json`, the extracted runtime in `%APPDATA%\weflow\runtime\<version>\<target>`. WXGF images need `ffmpeg` on `PATH` (or `FFMPEG_PATH`) — set it up before exporting images.
 
-**Support Us**
+Useful export options: `--start 2025-01-01 --end 2025-12-31` (local time, inclusive), `--display-name remark|nickname|group-nickname`, `--sender wxid_xxx`, `--excel-compact`. Add `--media all` (or `image,voice,video,emoji`) to copy the media next to the export and link it from the messages; `weflow export media --help` exports media on its own.
 
-If WeFlow has truly helped you, consider buying us a coffee:
+## What the CLI does not support
 
-> TRC20 **Address:** `TZCtAw8CaeARWZBfvjidCnTcfnAtf6nvS6`
+The database layer is pure Rust and **read-only**: it never writes into WeChat's files. So commands that would modify WeChat's
+databases (`chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete`, `sns delete`) are
+refused on purpose, and some desktop-app features are missing (voice-to-text, popups and other desktop-process features).
 
-## Star History
+The detailed list is in **[docs/cli-unsupported.md](docs/cli-unsupported.md)** ([简体中文](docs/zh-CN/cli-unsupported.md)).
 
-<a href="https://www.star-history.com/#hicccc77/WeFlow&type=date&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=hicccc77/WeFlow&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=hicccc77/WeFlow&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=hicccc77/WeFlow&type=date&legend=top-left" />
-  </picture>
-</a>
+## Documentation
 
-<div align="center">
+- [Command list](docs/native-cli.md)
+- [What the CLI does not support (detailed list)](docs/cli-unsupported.md) · [Coverage of the original backend](docs/cli-coverage.md)
+- [Plan, status and verification still to do](docs/plan.md)
+- [HTTP API](docs/HTTP-API.md) · [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
+- [Original WeFlow README](docs/weflow-readme.md)
 
----
-
-**请负责任地使用本工具，遵守相关法律法规**
-
-**Please use this tool responsibly and comply with relevant laws and regulations**
-
-</div>
+Please use this tool responsibly and comply with relevant laws and regulations.

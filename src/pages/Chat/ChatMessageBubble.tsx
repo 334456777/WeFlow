@@ -2,6 +2,7 @@ import React from 'react'
 import { Check } from 'lucide-react'
 import { Avatar } from '../../components/Avatar'
 import type { ChatSession, Message } from '../../types/models'
+import { t } from '../../i18n'
 
 export interface ChatMessageBubbleProps {
   message: Message
@@ -63,7 +64,7 @@ function ChatMessageBubble({
   const bubbleClass = isSystem ? 'system' : (isSent ? 'sent' : 'received')
   const avatarName = !isSent
     ? (isGroupChat ? (resolvedSenderName || '?') : (session.displayName || session.username))
-    : '我'
+    : t('我')
 
   return (
     <>
@@ -93,7 +94,7 @@ function ChatMessageBubble({
           <div className="bubble-body">
             {isGroupChat && !isSent && (
               <div className="sender-name">
-                {resolvedSenderName || '群成员'}
+                {resolvedSenderName || t('群成员')}
               </div>
             )}
             {children}

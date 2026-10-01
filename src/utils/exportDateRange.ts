@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 export type ExportDateRangePreset =
   | 'all'
   | 'today'
@@ -34,24 +35,24 @@ export const EXPORT_DATE_RANGE_PRESETS: Array<{
   value: Exclude<ExportDateRangePreset, 'custom'>
   label: string
 }> = [
-  { value: 'all', label: '全部时间' },
-  { value: 'today', label: '今天' },
-  { value: 'yesterday', label: '昨天' },
-  { value: 'last3days', label: '最近3天' },
-  { value: 'last7days', label: '最近一周' },
-  { value: 'last30days', label: '最近30天' },
-  { value: 'last1year', label: '最近一年' }
+  { value: 'all', label: t('全部时间') },
+  { value: 'today', label: t('今天') },
+  { value: 'yesterday', label: t('昨天') },
+  { value: 'last3days', label: t('最近3天') },
+  { value: 'last7days', label: t('最近一周') },
+  { value: 'last30days', label: t('最近30天') },
+  { value: 'last1year', label: t('最近一年') }
 ]
 
 const PRESET_LABELS: Record<Exclude<ExportDateRangePreset, 'custom'>, string> = {
-  all: '全部时间',
-  today: '今天',
-  yesterday: '昨天',
-  last3days: '最近3天',
-  last7days: '最近一周',
-  last30days: '最近30天',
-  last1year: '最近一年',
-  last2years: '最近两年'
+  all: t('全部时间'),
+  today: t('今天'),
+  yesterday: t('昨天'),
+  last3days: t('最近3天'),
+  last7days: t('最近一周'),
+  last30days: t('最近30天'),
+  last1year: t('最近一年'),
+  last2years: t('最近两年')
 }
 
 const LEGACY_PRESET_MAP: Record<string, Exclude<ExportDateRangePreset, 'custom'> | 'legacy90days'> = {
@@ -68,7 +69,7 @@ const LEGACY_PRESET_MAP: Record<string, Exclude<ExportDateRangePreset, 'custom'>
   '90d': 'legacy90days'
 }
 
-export const WEEKDAY_SHORT_LABELS = ['日', '一', '二', '三', '四', '五', '六']
+export const WEEKDAY_SHORT_LABELS = [t('日'), t('一'), t('二'), t('三'), t('四'), t('五'), t('六')]
 
 export const startOfDay = (date: Date): Date => {
   const next = new Date(date)
@@ -197,7 +198,7 @@ export const buildCalendarCells = (monthStart: Date): CalendarCell[] => {
   return cells
 }
 
-export const formatCalendarMonthTitle = (date: Date): string => `${date.getFullYear()}年${date.getMonth() + 1}月`
+export const formatCalendarMonthTitle = (date: Date): string => t('{v0}年{v1}月', { v0: date.getFullYear(), v1: date.getMonth() + 1 })
 
 export const cloneExportDateRange = (range: ExportDateRange): ExportDateRange => ({
   start: new Date(range.start),
@@ -342,5 +343,5 @@ export const serializeExportDateRangeConfig = (
 export const getExportDateRangeLabel = (selection: ExportDateRangeSelection): string => {
   if (selection.useAllTime) return PRESET_LABELS.all
   if (selection.preset !== 'custom') return PRESET_LABELS[selection.preset]
-  return `${formatDateInputValue(selection.dateRange.start)} 至 ${formatDateInputValue(selection.dateRange.end)}`
+  return t('{v0} 至 {v1}', { v0: formatDateInputValue(selection.dateRange.start), v1: formatDateInputValue(selection.dateRange.end) })
 }

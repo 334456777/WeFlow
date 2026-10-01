@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Loader2, X, CheckCircle, XCircle, AlertCircle, Clock, Mic } from 'lucide-react'
 import { useBatchTranscribeStore } from '../stores/batchTranscribeStore'
 import '../styles/batchTranscribe.scss'
+import { t } from '../i18n'
 
 /**
  * 全局批量转写进度浮窗 + 结果弹窗
@@ -46,11 +47,11 @@ export const BatchTranscribeGlobal: React.FC = () => {
       const remainingSeconds = Math.ceil(remainingTimeMs / 1000)
 
       if (remainingSeconds < 60) {
-        setEta(`${remainingSeconds}秒`)
+        setEta(t('{remainingSeconds}秒', { remainingSeconds: remainingSeconds }))
       } else {
         const minutes = Math.floor(remainingSeconds / 60)
         const seconds = remainingSeconds % 60
-        setEta(`${minutes}分${seconds}秒`)
+        setEta(t('{minutes}分{seconds}秒', { minutes: minutes, seconds: seconds }))
       }
     }, 1000)
 
@@ -65,9 +66,9 @@ export const BatchTranscribeGlobal: React.FC = () => {
           <div className="batch-progress-toast-header">
             <div className="batch-progress-toast-title">
               <Loader2 size={14} className="spin" />
-              <span>{taskType === 'decrypt' ? '批量解密语音中' : '批量转写中'}{sessionName ? `（${sessionName}）` : ''}</span>
+              <span>{taskType === 'decrypt' ? t('批量解密语音中') : t('批量转写中')}{sessionName ? `（${sessionName}）` : ''}</span>
             </div>
-            <button className="batch-progress-toast-close" onClick={() => setShowToast(false)} title="最小化">
+            <button className="batch-progress-toast-close" onClick={() => setShowToast(false)} title={t('最小化')}>
               <X size={14} />
             </button>
           </div>
@@ -84,7 +85,7 @@ export const BatchTranscribeGlobal: React.FC = () => {
               {eta && (
                 <div className="progress-eta">
                   <Clock size={12} />
-                  <span>剩余 {eta}</span>
+                  <span>{t('剩余 {eta}', { eta: eta })}</span>
                 </div>
               )}
             </div>
@@ -110,34 +111,32 @@ export const BatchTranscribeGlobal: React.FC = () => {
           <div className="batch-modal-content batch-result-modal" onClick={(e) => e.stopPropagation()}>
             <div className="batch-modal-header">
               {taskType === 'decrypt' ? <Mic size={20} /> : <CheckCircle size={20} />}
-              <h3>{taskType === 'decrypt' ? '语音解密完成' : '转写完成'}</h3>
+              <h3>{taskType === 'decrypt' ? t('语音解密完成') : t('转写完成')}</h3>
             </div>
             <div className="batch-modal-body">
               <div className="result-summary">
                 <div className="result-item success">
                   <CheckCircle size={18} />
-                  <span className="label">成功:</span>
-                  <span className="value">{result.success} 条</span>
+                  <span className="label">{t('成功:')}</span>
+                  <span className="value">{t('{success} 条', { success: result.success })}</span>
                 </div>
                 {result.fail > 0 && (
                   <div className="result-item fail">
                     <XCircle size={18} />
-                    <span className="label">失败:</span>
-                    <span className="value">{result.fail} 条</span>
+                    <span className="label">{t('失败:')}</span>
+                    <span className="value">{t('{fail} 条', { fail: result.fail })}</span>
                   </div>
                 )}
               </div>
               {result.fail > 0 && (
                 <div className="result-tip">
                   <AlertCircle size={16} />
-                  <span>{taskType === 'decrypt' ? '部分语音解密失败，可能是语音未缓存或文件损坏' : '部分语音转写失败，可能是语音文件损坏或网络问题'}</span>
+                  <span>{taskType === 'decrypt' ? t('部分语音解密失败，可能是语音未缓存或文件损坏') : t('部分语音转写失败，可能是语音文件损坏或网络问题')}</span>
                 </div>
               )}
             </div>
             <div className="batch-modal-footer">
-              <button className="btn-primary" onClick={() => setShowResult(false)}>
-                确定
-              </button>
+              <button className="btn-primary" onClick={() => setShowResult(false)}>{t('确定')}</button>
             </div>
           </div>
         </div>,

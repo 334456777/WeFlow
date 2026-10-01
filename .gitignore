@@ -79,3 +79,5 @@ weflow-web-offical
 /Wedecrypt
 /scripts/syncwcdb.py
 /scripts/syncWedecrypt.py
+dist-cli/
+/temp/*

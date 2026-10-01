@@ -1,5 +1,6 @@
 import React from 'react'
 import './ReportComponents.scss'
+import { t } from '../i18n'
 
 interface ReportHeatmapProps {
     data: number[][]
@@ -9,7 +10,7 @@ const ReportHeatmap: React.FC<ReportHeatmapProps> = ({ data }) => {
     if (!data || data.length === 0) return null
 
     const maxHeat = Math.max(...data.flat())
-    const weekLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+    const weekLabels = [t('周一'), t('周二'), t('周三'), t('周四'), t('周五'), t('周六'), t('周日')]
 
     return (
         <div className="heatmap-wrapper">
@@ -37,7 +38,7 @@ const ReportHeatmap: React.FC<ReportHeatmapProps> = ({ data }) => {
                                         backgroundColor: 'var(--primary)',
                                         opacity: alpha
                                     }}
-                                    title={`${weekLabels[wi]} ${hi}:00 - ${val}条`}
+                                    title={t('{v0} {hi}:00 - {val}条', { v0: weekLabels[wi], hi: hi, val: val })}
                                 />
                             )
                         })

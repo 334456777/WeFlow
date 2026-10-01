@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, Fingerprint, Lock, ScanFace, ShieldCheck } from 'lucide-react'
 import './LockScreen.scss'
+import { t } from '../i18n'
 
 interface LockScreenProps {
     onUnlock: () => void
@@ -63,11 +64,11 @@ export default function LockScreen({ onUnlock, avatar, useHello = false }: LockS
                 handleUnlock()
             } else {
                 console.error('Hello verification failed:', result.error)
-                setError(result.error || '验证失败')
+                setError(result.error || t('验证失败'))
             }
         } catch (e: any) {
             console.error('Hello verification error:', e)
-            setError(`验证失败: ${e.message || String(e)}`)
+            setError(t('验证失败: {v0}', { v0: e.message || String(e) }))
         } finally {
             setIsVerifying(false)
         }
@@ -87,12 +88,12 @@ export default function LockScreen({ onUnlock, avatar, useHello = false }: LockS
             if (result.success) {
                 handleUnlock()
             } else {
-                setError(result.error || '密码错误')
+                setError(result.error || t('密码错误'))
                 setPassword('')
                 setIsVerifying(false)
             }
         } catch (e) {
-            setError('验证失败')
+            setError(t('验证失败'))
             setIsVerifying(false)
         }
     }
@@ -108,14 +109,14 @@ export default function LockScreen({ onUnlock, avatar, useHello = false }: LockS
                     )}
                 </div>
 
-                <h2 className="lock-title">WeFlow 已锁定</h2>
+                <h2 className="lock-title">{t('WeFlow 已锁定')}</h2>
 
                 <form className="lock-form" onSubmit={handlePasswordSubmit}>
                     <div className="input-group">
                         <input
                             ref={inputRef}
                             type="password"
-                            placeholder="输入应用密码"
+                            placeholder={t('输入应用密码')}
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         // 移除 disabled，允许用户随时输入
@@ -132,7 +133,7 @@ export default function LockScreen({ onUnlock, avatar, useHello = false }: LockS
                             onClick={verifyHello}
                         >
                             <Fingerprint size={20} />
-                            {isVerifying ? '验证中...' : '使用 Windows Hello 解锁'}
+                            {isVerifying ? t('验证中...') : t('使用 Windows Hello 解锁')}
                         </button>
                     )}
                 </form>

@@ -2,6 +2,7 @@
 members = [
   "crates/weflow-assets",
   "crates/weflow-native",
+  "crates/weflow-silk",
   "crates/weflow-core",
   "crates/weflow-cli",
 ]
@@ -14,20 +15,32 @@ license = "SEE LICENSE IN LICENSE"
 
 [workspace.dependencies]
 aes = "0.8"
+aes-gcm = "0.10"
 anyhow = "1.0.98"
 async-stream = "0.3"
+base64 = "0.22"
 axum = "0.8.4"
+cbc = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.5.40", features = ["derive", "env"] }
 dirs = "6.0.0"
 ecb = "0.1"
+flate2 = "1"
 futures = "0.3"
+icu_collator = "2.3"
+icu_locale_core = "2.3"
 libloading = "0.8.8"
 md-5 = "0.10"
+memchr = "2"
 mime_guess = "2.0.5"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-rust_xlsxwriter = "0.82"
+regex = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip", "deflate", "brotli", "stream"], default-features = false }
+rust_xlsxwriter = { version = "0.82", features = ["constant_memory"] }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
+sha1 = "0.10"
+terminal_size = "0.4"
+rand = "0.8"
+serde_json = { version = "1.0.140", features = ["preserve_order"] }
 sha2 = "0.10.9"
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "signal", "net"] }
@@ -38,3 +51,16 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 walkdir = "2.5.0"
 zip = "2"
 zstd = "0.13"
+
+# Debug builds of the crypto/SQLite code are ~30x slower than release, which makes every database
+# open take tens of seconds; keep the dependencies and the native database crate optimized.
+[profile.dev.package."*"]
+opt-level = 2
+[profile.dev.package.weflow-native]
+opt-level = 2
+
+# Release builds: whole-program optimisation makes the single-file binary ~16% smaller and a few percent faster.
+# Panics keep unwinding: the SQLite VFS and the C ABI catch them at the FFI boundary.
+[profile.release]
+lto = "thin"
+codegen-units = 1

@@ -2,6 +2,7 @@ import React from 'react'
 import { useAppStore } from '../stores/appStore'
 import { Download, X, AlertCircle, Info } from 'lucide-react'
 import './UpdateProgressCapsule.scss'
+import { t } from '../i18n'
 
 const UpdateProgressCapsule: React.FC = () => {
     const {
@@ -65,7 +66,7 @@ const UpdateProgressCapsule: React.FC = () => {
                     <AlertCircle size={14} />
                 </div>
                 <div className="info-wrapper">
-                    <span className="error-text">更新失败: {updateError}</span>
+                    <span className="error-text">{t('更新失败: {updateError}', { updateError: updateError })}</span>
                 </div>
             </>
         )
@@ -95,7 +96,7 @@ const UpdateProgressCapsule: React.FC = () => {
                     <Info size={14} />
                 </div>
                 <div className="info-wrapper">
-                    <span className="available-text">发现新版本 v{updateInfo?.version}</span>
+                    <span className="available-text">{t('发现新版本 v{version}', { version: updateInfo?.version })}</span>
                 </div>
             </>
         )

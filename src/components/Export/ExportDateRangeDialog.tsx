@@ -19,6 +19,7 @@ import {
   type ExportDateRangeSelection
 } from '../../utils/exportDateRange'
 import './ExportDateRangeDialog.scss'
+import { t } from '../../i18n'
 
 interface ExportDateRangeDialogProps {
   open: boolean
@@ -118,7 +119,7 @@ const buildDialogDraft = (
 export function ExportDateRangeDialog({
   open,
   value,
-  title = '时间范围设置',
+  title = t('时间范围设置'),
   minDate,
   maxDate,
   onClose,
@@ -367,7 +368,7 @@ export function ExportDateRangeDialog({
     return (
       <div className="export-date-range-time-dropdown" onClick={(event) => event.stopPropagation()}>
         <div className="export-date-range-time-dropdown-header">
-          <span>{boundary === 'start' ? '开始时间' : '结束时间'}</span>
+          <span>{boundary === 'start' ? t('开始时间') : t('结束时间')}</span>
           <strong>{currentTime}</strong>
         </div>
         <div className="export-date-range-time-quick-list">
@@ -384,7 +385,7 @@ export function ExportDateRangeDialog({
         </div>
         <div className="export-date-range-time-columns">
           <div className="export-date-range-time-column">
-            <span className="export-date-range-time-column-label">小时</span>
+            <span className="export-date-range-time-column-label">{t('小时')}</span>
             <div className="export-date-range-time-column-list">
               {HOUR_OPTIONS.map(option => (
                 <button
@@ -399,7 +400,7 @@ export function ExportDateRangeDialog({
             </div>
           </div>
           <div className="export-date-range-time-column">
-            <span className="export-date-range-time-column-label">分钟</span>
+            <span className="export-date-range-time-column-label">{t('分钟')}</span>
             <div className="export-date-range-time-column-list">
               {MINUTE_OPTIONS.map(option => (
                 <button
@@ -510,8 +511,8 @@ export function ExportDateRangeDialog({
 
   const isRangeModeActive = !draft.useAllTime
   const modeText = isRangeModeActive
-    ? '当前导出模式：按时间范围导出'
-    : '当前导出模式：全部时间导出，选择下方日期会切换为自定义时间范围'
+    ? t('当前导出模式：按时间范围导出')
+    : t('当前导出模式：全部时间导出，选择下方日期会切换为自定义时间范围')
 
   const isPresetActive = useCallback((preset: ExportDateRangePreset): boolean => {
     if (preset === 'all') return draft.useAllTime
@@ -545,8 +546,8 @@ export function ExportDateRangeDialog({
   }, [bounds])
 
   const hintText = draft.useAllTime
-    ? '选择开始或结束日期后，会自动切换为自定义时间范围'
-    : (activeBoundary === 'start' ? '下一次点击将设置开始日期' : '下一次点击将设置结束日期')
+    ? t('选择开始或结束日期后，会自动切换为自定义时间范围')
+    : (activeBoundary === 'start' ? t('下一次点击将设置开始日期') : t('下一次点击将设置结束日期'))
 
   if (!open) return null
 
@@ -559,7 +560,7 @@ export function ExportDateRangeDialog({
             type="button"
             className="export-date-range-dialog-close-btn"
             onClick={onClose}
-            aria-label="关闭时间范围设置"
+            aria-label={t('关闭时间范围设置')}
           >
             <X size={14} />
           </button>
@@ -592,7 +593,7 @@ export function ExportDateRangeDialog({
             className={`export-date-range-boundary-card ${activeBoundary === 'start' ? 'active' : ''}`}
             onClick={() => setActiveBoundary('start')}
           >
-            <span className="boundary-label">开始</span>
+            <span className="boundary-label">{t('开始')}</span>
             <input
               type="text"
               className={`export-date-range-date-input ${dateInputError.start ? 'invalid' : ''}`}
@@ -636,7 +637,7 @@ export function ExportDateRangeDialog({
             className={`export-date-range-boundary-card ${activeBoundary === 'end' ? 'active' : ''}`}
             onClick={() => setActiveBoundary('end')}
           >
-            <span className="boundary-label">结束</span>
+            <span className="boundary-label">{t('结束')}</span>
             <input
               type="text"
               className={`export-date-range-date-input ${dateInputError.end ? 'invalid' : ''}`}
@@ -683,14 +684,14 @@ export function ExportDateRangeDialog({
         <section className="export-date-range-calendar-panel single">
           <div className="export-date-range-calendar-panel-header">
             <div className="export-date-range-calendar-date-label">
-              <span>选择日期范围</span>
+              <span>{t('选择日期范围')}</span>
               <strong>{formatCalendarMonthTitle(draft.panelMonth)}</strong>
             </div>
             <div className="export-date-range-calendar-nav">
-              <button type="button" onClick={() => shiftPanelMonth(-1)} aria-label="上个月" disabled={!canShiftPrev}>
+              <button type="button" onClick={() => shiftPanelMonth(-1)} aria-label={t('上个月')} disabled={!canShiftPrev}>
                 <ChevronLeft size={14} />
               </button>
-              <button type="button" onClick={() => shiftPanelMonth(1)} aria-label="下个月" disabled={!canShiftNext}>
+              <button type="button" onClick={() => shiftPanelMonth(1)} aria-label={t('下个月')} disabled={!canShiftNext}>
                 <ChevronRight size={14} />
               </button>
             </div>
@@ -732,9 +733,7 @@ export function ExportDateRangeDialog({
         </div>
 
         <div className="export-date-range-dialog-actions">
-          <button type="button" className="export-date-range-dialog-btn secondary" onClick={onClose}>
-            取消
-          </button>
+          <button type="button" className="export-date-range-dialog-btn secondary" onClick={onClose}>{t('取消')}</button>
           <button
             type="button"
             className="export-date-range-dialog-btn primary"
@@ -746,9 +745,7 @@ export function ExportDateRangeDialog({
               }
               onConfirm(cloneExportDateRangeSelection(draft))
             }}
-          >
-            确认
-          </button>
+          >{t('确认')}</button>
         </div>
       </div>
     </div>,

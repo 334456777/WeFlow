@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 fn main() {
@@ -35,11 +36,14 @@ fn main() {
     generated.push_str(";\n");
     generated.push_str("pub const EMBEDDED_ASSETS: &[EmbeddedAsset] = &[\n");
     for (logical, absolute) in assets {
+        // hashed here, so starting the program never has to hash the embedded files
+        let bytes = fs::read(&absolute).unwrap_or_else(|e| panic!("read {}: {e}", absolute.display()));
+        let sha256: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
         generated.push_str("    EmbeddedAsset { logical_path: ");
         generated.push_str(&format!("{:?}", logical));
         generated.push_str(", bytes: include_bytes!(");
         generated.push_str(&format!("{:?}", absolute.display().to_string()));
-        generated.push_str(") },\n");
+        generated.push_str(&format!("), sha256: {sha256:?} }},\n"));
     }
     generated.push_str("];\n");
 
@@ -91,8 +95,9 @@ fn collect_assets(repo_root: &Path, target: &str, out: &mut Vec<(String, PathBuf
 }
 
 fn include_resource(logical: &str, target: &str) -> bool {
+    // The annual-report fonts (27 MB) are only used by the desktop renderer.
     if logical.starts_with("resources/fonts/") {
-        return true;
+        return false;
     }
     if logical == "resources/image/README.md" {
         return true;
@@ -113,14 +118,10 @@ fn include_resource(logical: &str, target: &str) -> bool {
         return false;
     }
 
-    if logical.starts_with("resources/wcdb/win32/") {
-        return is_windows && arch_match(logical, is_arm64);
-    }
-    if logical.starts_with("resources/wcdb/macos/") {
-        return is_macos;
-    }
-    if logical.starts_with("resources/wcdb/linux/") {
-        return is_linux && arch_match(logical, is_arm64);
+    // The closed-source wcdb_api libraries are no longer used (the database layer is native Rust):
+    // never embed or extract them.
+    if logical.starts_with("resources/wcdb/") {
+        return false;
     }
 
     if logical.starts_with("resources/key/win32/") {

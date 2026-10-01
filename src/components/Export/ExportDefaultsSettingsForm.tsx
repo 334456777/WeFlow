@@ -10,6 +10,7 @@ import {
   type ExportDateRangeSelection
 } from '../../utils/exportDateRange'
 import './ExportDefaultsSettingsForm.scss'
+import { t } from '../../i18n'
 
 export interface ExportDefaultsSettingsPatch {
   format?: string
@@ -29,25 +30,25 @@ interface ExportDefaultsSettingsFormProps {
 }
 
 const exportFormatOptions = [
-  { value: 'excel', label: 'Excel', desc: '电子表格，适合统计分析' },
-  { value: 'json', label: 'JSON', desc: '详细格式，包含完整消息信息' },
-  { value: 'html', label: 'HTML', desc: '网页格式，可直接浏览' },
-  { value: 'txt', label: 'TXT', desc: '纯文本，通用格式' },
-  { value: 'arkme-json', label: 'Arkme JSON', desc: '紧凑 JSON，支持 sender 去重与关系统计' },
-  { value: 'chatlab', label: 'ChatLab', desc: '标准格式，支持其他软件导入' },
-  { value: 'chatlab-jsonl', label: 'ChatLab JSONL', desc: '流式格式，适合大量消息' },
-  { value: 'weclone', label: 'WeClone CSV', desc: 'WeClone 兼容字段格式（CSV）' },
-  { value: 'sql', label: 'PostgreSQL', desc: '数据库脚本，便于导入到数据库' }
+  { value: 'excel', label: 'Excel', desc: t('电子表格，适合统计分析') },
+  { value: 'json', label: 'JSON', desc: t('详细格式，包含完整消息信息') },
+  { value: 'html', label: 'HTML', desc: t('网页格式，可直接浏览') },
+  { value: 'txt', label: 'TXT', desc: t('纯文本，通用格式') },
+  { value: 'arkme-json', label: 'Arkme JSON', desc: t('紧凑 JSON，支持 sender 去重与关系统计') },
+  { value: 'chatlab', label: 'ChatLab', desc: t('标准格式，支持其他软件导入') },
+  { value: 'chatlab-jsonl', label: 'ChatLab JSONL', desc: t('流式格式，适合大量消息') },
+  { value: 'weclone', label: 'WeClone CSV', desc: t('WeClone 兼容字段格式（CSV）') },
+  { value: 'sql', label: 'PostgreSQL', desc: t('数据库脚本，便于导入到数据库') }
 ] as const
 
 const exportExcelColumnOptions = [
-  { value: 'compact', label: '精简列', desc: '序号、时间、发送者身份、消息类型、内容' },
-  { value: 'full', label: '完整列', desc: '含发送者昵称/微信ID/备注' }
+  { value: 'compact', label: t('精简列'), desc: t('序号、时间、发送者身份、消息类型、内容') },
+  { value: 'full', label: t('完整列'), desc: t('含发送者昵称/微信ID/备注') }
 ] as const
 
 const exportFileNamingModeOptions: Array<{ value: configService.ExportFileNamingMode; label: string; desc: string }> = [
-  { value: 'classic', label: '简洁模式', desc: '示例：私聊_张三（兼容旧版）' },
-  { value: 'date-range', label: '时间范围模式', desc: '示例：私聊_张三_20250101-20250331（推荐）' }
+  { value: 'classic', label: t('简洁模式'), desc: t('示例：私聊_张三（兼容旧版）') },
+  { value: 'date-range', label: t('时间范围模式'), desc: t('示例：私聊_张三_20250101-20250331（推荐）') }
 ]
 
 const exportConcurrencyOptions = [1, 2, 3, 4, 5, 6] as const
@@ -147,11 +148,11 @@ export function ExportDefaultsSettingsForm({
     <div className={`export-defaults-settings-form ${layout === 'split' ? 'layout-split' : 'layout-stacked'}`}>
       <div className="form-group">
         <div className="form-copy">
-          <label>导出并发数</label>
-          <span className="form-hint">导出多个会话时的最大并发（1~6）</span>
+          <label>{t('导出并发数')}</label>
+          <span className="form-hint">{t('导出多个会话时的最大并发（1~6）')}</span>
         </div>
         <div className="form-control">
-          <div className="concurrency-inline-options" role="radiogroup" aria-label="导出并发数">
+          <div className="concurrency-inline-options" role="radiogroup" aria-label={t('导出并发数')}>
             {exportConcurrencyOptions.map((option) => (
               <button
                 key={option}
@@ -162,7 +163,7 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultConcurrency(option)
                   await configService.setExportDefaultConcurrency(option)
                   onDefaultsChanged?.({ concurrency: option })
-                  notify(`已将导出并发数设为 ${option}`, true)
+                  notify(t('已将导出并发数设为 {option}', { option: option }), true)
                 }}
               >
                 {option}
@@ -174,8 +175,8 @@ export function ExportDefaultsSettingsForm({
 
       <div className="form-group format-setting-group">
         <div className="form-copy">
-          <label>聊天消息默认导出格式</label>
-          <span className="form-hint">导出页面默认选中的格式</span>
+          <label>{t('聊天消息默认导出格式')}</label>
+          <span className="form-hint">{t('导出页面默认选中的格式')}</span>
         </div>
         <div className="form-control">
           <div className="format-grid">
@@ -188,7 +189,7 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultFormat(option.value)
                   await configService.setExportDefaultFormat(option.value)
                   onDefaultsChanged?.({ format: option.value })
-                  notify('已更新导出格式默认值', true)
+                  notify(t('已更新导出格式默认值'), true)
                 }}
               >
                 <span className="format-label">{option.label}</span>
@@ -201,12 +202,12 @@ export function ExportDefaultsSettingsForm({
 
       <div className="form-group">
         <div className="form-copy">
-          <label>聊天消息导出带头像</label>
-          <span className="form-hint">开启后导出的聊天消息对应的文件中会带头像信息。</span>
+          <label>{t('聊天消息导出带头像')}</label>
+          <span className="form-hint">{t('开启后导出的聊天消息对应的文件中会带头像信息。')}</span>
         </div>
         <div className="form-control">
           <div className="log-toggle-line">
-            <span className="log-status">{exportDefaultAvatars ? '已开启' : '已关闭'}</span>
+            <span className="log-status">{exportDefaultAvatars ? t('已开启') : t('已关闭')}</span>
             <label className="switch" htmlFor="shared-export-default-avatars">
               <input
                 id="shared-export-default-avatars"
@@ -218,7 +219,7 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultAvatars(enabled)
                   await configService.setExportDefaultAvatars(enabled)
                   onDefaultsChanged?.({ avatars: enabled })
-                  notify(enabled ? '已开启聊天消息导出带头像' : '已关闭聊天消息导出带头像', true)
+                  notify(enabled ? t('已开启聊天消息导出带头像') : t('已关闭聊天消息导出带头像'), true)
                 }}
               />
               <span className="switch-slider" />
@@ -229,8 +230,8 @@ export function ExportDefaultsSettingsForm({
 
       <div className="form-group">
         <div className="form-copy">
-          <label>默认导出时间范围</label>
-          <span className="form-hint">控制导出页面的默认时间选择</span>
+          <label>{t('默认导出时间范围')}</label>
+          <span className="form-hint">{t('控制导出页面的默认时间选择')}</span>
         </div>
         <div className="form-control">
           <div className="settings-time-range-field">
@@ -258,15 +259,15 @@ export function ExportDefaultsSettingsForm({
           setExportDefaultDateRange(nextSelection)
           await configService.setExportDefaultDateRange(serializeExportDateRangeConfig(nextSelection))
           onDefaultsChanged?.({ dateRange: nextSelection })
-          notify('已更新默认导出时间范围', true)
+          notify(t('已更新默认导出时间范围'), true)
           setIsExportDateRangeDialogOpen(false)
         }}
       />
 
       <div className="form-group">
         <div className="form-copy">
-          <label>导出文件命名方式</label>
-          <span className="form-hint">控制导出文件名是否包含时间范围</span>
+          <label>{t('导出文件命名方式')}</label>
+          <span className="form-hint">{t('控制导出文件名是否包含时间范围')}</span>
         </div>
         <div className="form-control">
           <div className="select-field" ref={exportFileNamingModeDropdownRef}>
@@ -293,7 +294,7 @@ export function ExportDefaultsSettingsForm({
                       setExportDefaultFileNamingMode(option.value)
                       await configService.setExportDefaultFileNamingMode(option.value)
                       onDefaultsChanged?.({ fileNamingMode: option.value })
-                      notify('已更新导出文件命名方式', true)
+                      notify(t('已更新导出文件命名方式'), true)
                       setShowExportFileNamingModeSelect(false)
                     }}
                   >
@@ -309,8 +310,8 @@ export function ExportDefaultsSettingsForm({
 
       <div className="form-group">
         <div className="form-copy">
-          <label>Excel 列显示</label>
-          <span className="form-hint">控制 Excel 导出的列字段</span>
+          <label>{t('Excel 列显示')}</label>
+          <span className="form-hint">{t('控制 Excel 导出的列字段')}</span>
         </div>
         <div className="form-control">
           <div className="select-field" ref={exportExcelColumnsDropdownRef}>
@@ -338,7 +339,7 @@ export function ExportDefaultsSettingsForm({
                       setExportDefaultExcelCompactColumns(compact)
                       await configService.setExportDefaultExcelCompactColumns(compact)
                       onDefaultsChanged?.({ excelCompactColumns: compact })
-                      notify(compact ? '已启用精简列' : '已启用完整列', true)
+                      notify(compact ? t('已启用精简列') : t('已启用完整列'), true)
                       setShowExportExcelColumnsSelect(false)
                     }}
                   >
@@ -354,8 +355,8 @@ export function ExportDefaultsSettingsForm({
 
       <div className="form-group media-setting-group">
         <div className="form-copy">
-          <label>默认导出媒体内容</label>
-          <span className="form-hint">控制图片、视频、语音、表情包、文件的默认导出开关</span>
+          <label>{t('默认导出媒体内容')}</label>
+          <span className="form-hint">{t('控制图片、视频、语音、表情包、文件的默认导出开关')}</span>
         </div>
         <div className="form-control">
           <div className="media-default-grid">
@@ -368,11 +369,9 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultMedia(next)
                   await configService.setExportDefaultMedia(next)
                   onDefaultsChanged?.({ media: next })
-                  notify(`已${e.target.checked ? '开启' : '关闭'}默认导出图片`, true)
+                  notify(e.target.checked ? t('已开启默认导出图片') : t('已关闭默认导出图片'), true)
                 }}
-              />
-              图片
-            </label>
+              />{t('图片')}</label>
             <label>
               <input
                 type="checkbox"
@@ -382,11 +381,9 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultMedia(next)
                   await configService.setExportDefaultMedia(next)
                   onDefaultsChanged?.({ media: next })
-                  notify(`已${e.target.checked ? '开启' : '关闭'}默认导出语音`, true)
+                  notify(e.target.checked ? t('已开启默认导出语音') : t('已关闭默认导出语音'), true)
                 }}
-              />
-              语音
-            </label>
+              />{t('语音')}</label>
             <label>
               <input
                 type="checkbox"
@@ -396,11 +393,9 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultMedia(next)
                   await configService.setExportDefaultMedia(next)
                   onDefaultsChanged?.({ media: next })
-                  notify(`已${e.target.checked ? '开启' : '关闭'}默认导出视频`, true)
+                  notify(e.target.checked ? t('已开启默认导出视频') : t('已关闭默认导出视频'), true)
                 }}
-              />
-              视频
-            </label>
+              />{t('视频')}</label>
             <label>
               <input
                 type="checkbox"
@@ -410,11 +405,9 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultMedia(next)
                   await configService.setExportDefaultMedia(next)
                   onDefaultsChanged?.({ media: next })
-                  notify(`已${e.target.checked ? '开启' : '关闭'}默认导出表情包`, true)
+                  notify(e.target.checked ? t('已开启默认导出表情包') : t('已关闭默认导出表情包'), true)
                 }}
-              />
-              表情包
-            </label>
+              />{t('表情包')}</label>
             <label>
               <input
                 type="checkbox"
@@ -424,23 +417,21 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultMedia(next)
                   await configService.setExportDefaultMedia(next)
                   onDefaultsChanged?.({ media: next })
-                  notify(`已${e.target.checked ? '开启' : '关闭'}默认导出文件`, true)
+                  notify(e.target.checked ? t('已开启默认导出文件') : t('已关闭默认导出文件'), true)
                 }}
-              />
-              文件
-            </label>
+              />{t('文件')}</label>
           </div>
         </div>
       </div>
 
       <div className="form-group">
         <div className="form-copy">
-          <label>默认语音转文字</label>
-          <span className="form-hint">导出时默认将语音转写为文字</span>
+          <label>{t('默认语音转文字')}</label>
+          <span className="form-hint">{t('导出时默认将语音转写为文字')}</span>
         </div>
         <div className="form-control">
           <div className="log-toggle-line">
-            <span className="log-status">{exportDefaultVoiceAsText ? '已开启' : '已关闭'}</span>
+            <span className="log-status">{exportDefaultVoiceAsText ? t('已开启') : t('已关闭')}</span>
             <label className="switch" htmlFor="shared-export-default-voice-as-text">
               <input
                 id="shared-export-default-voice-as-text"
@@ -452,7 +443,7 @@ export function ExportDefaultsSettingsForm({
                   setExportDefaultVoiceAsText(enabled)
                   await configService.setExportDefaultVoiceAsText(enabled)
                   onDefaultsChanged?.({ voiceAsText: enabled })
-                  notify(enabled ? '已开启默认语音转文字' : '已关闭默认语音转文字', true)
+                  notify(enabled ? t('已开启默认语音转文字') : t('已关闭默认语音转文字'), true)
                 }}
               />
               <span className="switch-slider" />

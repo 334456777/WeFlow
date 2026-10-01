@@ -78,6 +78,7 @@ import {
   type ExportDateRangeSelection
 } from '../utils/exportDateRange'
 import './ExportPage.scss'
+import { t, formatLocale } from '../i18n'
 
 type ConversationTab = 'private' | 'group' | 'official' | 'former_friend'
 type TaskStatus = 'queued' | 'running' | 'pause_requested' | 'paused' | 'cancel_requested' | 'success' | 'error'
@@ -236,40 +237,40 @@ const SNS_USER_POST_COUNT_BATCH_INTERVAL_MS = 120
 const SNS_RANK_PAGE_SIZE = 50
 const SNS_RANK_DISPLAY_LIMIT = 15
 const contentTypeLabels: Record<ContentType, string> = {
-  text: '聊天文本',
-  voice: '语音',
-  image: '图片',
-  video: '视频',
-  emoji: '表情包',
-  file: '文件'
+  text: t('聊天文本'),
+  voice: t('语音'),
+  image: t('图片'),
+  video: t('视频'),
+  emoji: t('表情包'),
+  file: t('文件')
 }
 const FILE_SIZE_PRESETS_MB = [0, 100, 200, 500, 1024] as const
 
 const backgroundTaskSourceLabels: Record<string, string> = {
-  export: '导出页',
-  chat: '聊天页',
-  analytics: '分析页',
-  sns: '朋友圈页',
-  groupAnalytics: '群分析页',
-  annualReport: '年度报告',
-  other: '其他页面'
+  export: t('导出页'),
+  chat: t('聊天页'),
+  analytics: t('分析页'),
+  sns: t('朋友圈页'),
+  groupAnalytics: t('群分析页'),
+  annualReport: t('年度报告'),
+  other: t('其他页面')
 }
 
 const backgroundTaskStatusLabels: Record<BackgroundTaskRecord['status'], string> = {
-  running: '运行中',
-  pause_requested: '中断中',
-  paused: '已中断',
-  cancel_requested: '停止中',
-  completed: '已完成',
-  failed: '失败',
-  canceled: '已停止'
+  running: t('运行中'),
+  pause_requested: t('中断中'),
+  paused: t('已中断'),
+  cancel_requested: t('停止中'),
+  completed: t('已完成'),
+  failed: t('失败'),
+  canceled: t('已停止')
 }
 
 const conversationTabLabels: Record<ConversationTab, string> = {
-  private: '私聊',
-  group: '群聊',
-  official: '公众号',
-  former_friend: '曾经的好友'
+  private: t('私聊'),
+  group: t('群聊'),
+  official: t('公众号'),
+  former_friend: t('曾经的好友')
 }
 
 const getContentTypeLabel = (type: ContentType): string => {
@@ -277,38 +278,38 @@ const getContentTypeLabel = (type: ContentType): string => {
 }
 
 const formatOptions: Array<{ value: TextExportFormat; label: string; desc: string }> = [
-  { value: 'chatlab', label: 'ChatLab', desc: '标准格式，支持其他软件导入' },
-  { value: 'chatlab-jsonl', label: 'ChatLab JSONL', desc: '流式格式，适合大量消息' },
-  { value: 'json', label: 'JSON', desc: '详细格式，包含完整消息信息' },
-  { value: 'arkme-json', label: 'Arkme JSON', desc: '紧凑 JSON，支持 sender 去重与关系统计' },
-  { value: 'html', label: 'HTML', desc: '网页格式，可直接浏览' },
-  { value: 'txt', label: 'TXT', desc: '纯文本，通用格式' },
-  { value: 'excel', label: 'Excel', desc: '电子表格，适合统计分析' },
-  { value: 'weclone', label: 'WeClone CSV', desc: 'WeClone 兼容字段格式（CSV）' },
-  { value: 'sql', label: 'PostgreSQL', desc: '数据库脚本，便于导入到数据库' }
+  { value: 'chatlab', label: 'ChatLab', desc: t('标准格式，支持其他软件导入') },
+  { value: 'chatlab-jsonl', label: 'ChatLab JSONL', desc: t('流式格式，适合大量消息') },
+  { value: 'json', label: 'JSON', desc: t('详细格式，包含完整消息信息') },
+  { value: 'arkme-json', label: 'Arkme JSON', desc: t('紧凑 JSON，支持 sender 去重与关系统计') },
+  { value: 'html', label: 'HTML', desc: t('网页格式，可直接浏览') },
+  { value: 'txt', label: 'TXT', desc: t('纯文本，通用格式') },
+  { value: 'excel', label: 'Excel', desc: t('电子表格，适合统计分析') },
+  { value: 'weclone', label: 'WeClone CSV', desc: t('WeClone 兼容字段格式（CSV）') },
+  { value: 'sql', label: 'PostgreSQL', desc: t('数据库脚本，便于导入到数据库') }
 ]
 
 const displayNameOptions: Array<{ value: DisplayNamePreference; label: string; desc: string }> = [
-  { value: 'group-nickname', label: '群昵称优先', desc: '仅群聊有效，私聊显示备注/昵称' },
-  { value: 'remark', label: '备注优先', desc: '有备注显示备注，否则显示昵称' },
-  { value: 'nickname', label: '微信昵称', desc: '始终显示微信昵称' }
+  { value: 'group-nickname', label: t('群昵称优先'), desc: t('仅群聊有效，私聊显示备注/昵称') },
+  { value: 'remark', label: t('备注优先'), desc: t('有备注显示备注，否则显示昵称') },
+  { value: 'nickname', label: t('微信昵称'), desc: t('始终显示微信昵称') }
 ]
 
 const writeLayoutOptions: Array<{ value: configService.ExportWriteLayout; label: string; desc: string }> = [
   {
     value: 'A',
-    label: 'A（类型分目录）',
-    desc: '聊天文本、语音、视频、表情包、图片分别创建文件夹'
+    label: t('A（类型分目录）'),
+    desc: t('聊天文本、语音、视频、表情包、图片分别创建文件夹')
   },
   {
     value: 'B',
-    label: 'B（文本根目录+媒体按会话）',
-    desc: '聊天文本在根目录；媒体按类型目录后再按会话分目录'
+    label: t('B（文本根目录+媒体按会话）'),
+    desc: t('聊天文本在根目录；媒体按类型目录后再按会话分目录')
   },
   {
     value: 'C',
-    label: 'C（按会话分目录）',
-    desc: '每个会话一个目录，目录内包含文本与媒体文件'
+    label: t('C（按会话分目录）'),
+    desc: t('每个会话一个目录，目录内包含文本与媒体文件')
   }
 ]
 
@@ -567,22 +568,22 @@ const formatDurationMs = (ms: number): string => {
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
   if (hours > 0) {
-    return `${hours}小时${minutes}分${seconds}秒`
+    return t('{hours}小时{minutes}分{seconds}秒', { hours: hours, minutes: minutes, seconds: seconds })
   }
   if (minutes > 0) {
-    return `${minutes}分${seconds}秒`
+    return t('{minutes}分{seconds}秒', { minutes: minutes, seconds: seconds })
   }
-  return `${seconds}秒`
+  return t('{seconds}秒', { seconds: seconds })
 }
 
 const getTaskStatusLabel = (task: ExportTask): string => {
-  if (task.status === 'queued') return '排队中'
-  if (task.status === 'running') return '进行中'
-  if (task.status === 'pause_requested') return '暂停中'
-  if (task.status === 'paused') return '已暂停'
-  if (task.status === 'cancel_requested') return '取消中'
-  if (task.status === 'success') return '已完成'
-  return '失败'
+  if (task.status === 'queued') return t('排队中')
+  if (task.status === 'running') return t('进行中')
+  if (task.status === 'pause_requested') return t('暂停中')
+  if (task.status === 'paused') return t('已暂停')
+  if (task.status === 'cancel_requested') return t('取消中')
+  if (task.status === 'success') return t('已完成')
+  return t('失败')
 }
 
 const resolveExportTaskCardClass = (status: TaskStatus): 'queued' | 'running' | 'paused' | 'stopped' | 'success' | 'error' => {
@@ -706,11 +707,11 @@ const formatRecentExportTime = (timestamp?: number, now = Date.now()): string =>
   const day = 24 * hour
   if (diff < hour) {
     const minutes = Math.max(1, Math.floor(diff / minute))
-    return `${minutes} 分钟前`
+    return t('{minutes} 分钟前', { minutes: minutes })
   }
   if (diff < day) {
     const hours = Math.max(1, Math.floor(diff / hour))
-    return `${hours} 小时前`
+    return t('{hours} 小时前', { hours: hours })
   }
   return formatAbsoluteDate(timestamp)
 }
@@ -817,9 +818,9 @@ const formatAutomationScheduleLabel = (schedule: ExportAutomationSchedule): stri
   const days = normalizeAutomationIntervalDays(schedule.intervalDays)
   const hours = normalizeAutomationIntervalHours(schedule.intervalHours)
   const parts: string[] = []
-  if (days > 0) parts.push(`${days} 天`)
-  if (hours > 0) parts.push(`${hours} 小时`)
-  return `每间隔 ${parts.length > 0 ? parts.join(' ') : '0 小时'} 执行一次`
+  if (days > 0) parts.push(t('{days} 天', { days: days }))
+  if (hours > 0) parts.push(t('{hours} 小时', { hours: hours }))
+  return t('每间隔 {v0} 执行一次', { v0: parts.length > 0 ? parts.join(' ') : t('0 小时') })
 }
 
 const resolveAutomationDueScheduleKey = (task: ExportAutomationTask, now: Date): string | null => {
@@ -839,8 +840,8 @@ const resolveAutomationDueScheduleKey = (task: ExportAutomationTask, now: Date):
 
 const resolveAutomationFirstTriggerSummary = (task: ExportAutomationTask): string => {
   const firstTriggerAt = normalizeAutomationFirstTriggerAt(task.schedule.firstTriggerAt)
-  if (firstTriggerAt <= 0) return '未指定（默认按创建时间+间隔）'
-  return new Date(firstTriggerAt).toLocaleString('zh-CN')
+  if (firstTriggerAt <= 0) return t('未指定（默认按创建时间+间隔）')
+  return new Date(firstTriggerAt).toLocaleString(formatLocale())
 }
 
 const buildAutomationSchedule = (
@@ -905,13 +906,13 @@ const parseDateTimeLocalValue = (value: string): number | null => {
 type AutomationRangeMode = 'all' | 'today' | 'yesterday' | 'last7days' | 'last30days' | 'last1year' | 'lastNDays' | 'custom'
 
 const AUTOMATION_RANGE_OPTIONS: Array<{ mode: AutomationRangeMode; label: string }> = [
-  { mode: 'all', label: '全部时间' },
-  { mode: 'yesterday', label: '往前1天' },
-  { mode: 'last7days', label: '往前7天' },
-  { mode: 'last30days', label: '往前30天' },
-  { mode: 'last1year', label: '往前1年' },
-  { mode: 'lastNDays', label: '往前N天' },
-  { mode: 'custom', label: '完整时间' }
+  { mode: 'all', label: t('全部时间') },
+  { mode: 'yesterday', label: t('往前1天') },
+  { mode: 'last7days', label: t('往前7天') },
+  { mode: 'last30days', label: t('往前30天') },
+  { mode: 'last1year', label: t('往前1年') },
+  { mode: 'lastNDays', label: t('往前N天') },
+  { mode: 'custom', label: t('完整时间') }
 ]
 
 const AUTOMATION_LAST_N_DAYS_MIN = 1
@@ -991,16 +992,16 @@ const formatAutomationRangeLabel = (
 ): string => {
   const resolved = selection || resolveAutomationDateRangeSelection(config, new Date())
   const mode = resolveAutomationRangeMode(config, resolved)
-  if (mode === 'all') return '每次触发导出全部历史消息'
-  if (mode === 'today') return '每次触发导出当天'
-  if (mode === 'yesterday') return '每次触发导出前1天（昨日）'
-  if (mode === 'last7days') return '每次触发导出前7天'
-  if (mode === 'last30days') return '每次触发导出前30天'
-  if (mode === 'last1year') return '每次触发导出前1年'
+  if (mode === 'all') return t('每次触发导出全部历史消息')
+  if (mode === 'today') return t('每次触发导出当天')
+  if (mode === 'yesterday') return t('每次触发导出前1天（昨日）')
+  if (mode === 'last7days') return t('每次触发导出前7天')
+  if (mode === 'last30days') return t('每次触发导出前30天')
+  if (mode === 'last1year') return t('每次触发导出前1年')
   if (mode === 'lastNDays') {
-    return `每次触发导出前 ${readAutomationLastNDays(config) || AUTOMATION_LAST_N_DAYS_DEFAULT} 天`
+    return t('每次触发导出前 {v0} 天', { v0: readAutomationLastNDays(config) || AUTOMATION_LAST_N_DAYS_DEFAULT })
   }
-  return `完整时间：${getExportDateRangeLabel(resolved)}`
+  return t('完整时间：{v0}', { v0: getExportDateRangeLabel(resolved) })
 }
 
 const formatAutomationStopCondition = (task: ExportAutomationTask): string => {
@@ -1008,13 +1009,13 @@ const formatAutomationStopCondition = (task: ExportAutomationTask): string => {
   const maxRuns = Number(task.stopCondition?.maxRuns || 0)
   const labels: string[] = []
   if (endAt > 0) {
-    labels.push(`截止到 ${new Date(endAt).toLocaleString('zh-CN')}`)
+    labels.push(t('截止到 {v0}', { v0: new Date(endAt).toLocaleString(formatLocale()) }))
   }
   if (maxRuns > 0) {
     const successCount = Math.max(0, Math.floor(Number(task.runState?.successCount || 0)))
-    labels.push(`成功 ${successCount}/${maxRuns} 次后停止`)
+    labels.push(t('成功 {successCount}/{maxRuns} 次后停止', { successCount: successCount, maxRuns: maxRuns }))
   }
-  return labels.length > 0 ? labels.join(' · ') : '无'
+  return labels.length > 0 ? labels.join(' · ') : t('无')
 }
 
 const resolveAutomationNextTriggerAt = (task: ExportAutomationTask): number | null => {
@@ -1030,30 +1031,30 @@ const formatAutomationCurrentState = (
   queueState: 'queued' | 'running' | null,
   nowMs: number
 ): string => {
-  if (!task.enabled) return '已停用'
-  if (queueState === 'running') return '执行中'
-  if (queueState === 'queued') return '排队中'
+  if (!task.enabled) return t('已停用')
+  if (queueState === 'running') return t('执行中')
+  if (queueState === 'queued') return t('排队中')
   const nextTriggerAt = resolveAutomationNextTriggerAt(task)
-  if (!nextTriggerAt) return '等待触发'
+  if (!nextTriggerAt) return t('等待触发')
   const diff = nextTriggerAt - nowMs
-  if (diff <= 0) return '即将触发'
-  return `等待触发 · 下次 ${new Date(nextTriggerAt).toLocaleString('zh-CN')}（约 ${formatDurationMs(diff)} 后）`
+  if (diff <= 0) return t('即将触发')
+  return t('等待触发 · 下次 {v0}（约 {v1} 后）', { v0: new Date(nextTriggerAt).toLocaleString(formatLocale()), v1: formatDurationMs(diff) })
 }
 
 const formatAutomationLastRunSummary = (task: ExportAutomationTask): string => {
   const status = task.runState?.lastRunStatus || 'idle'
   const label = (
-    status === 'idle' ? '尚未执行' :
-    status === 'queued' ? '已入队' :
-    status === 'running' ? '执行中' :
-    status === 'success' ? '执行成功' :
-    status === 'error' ? '执行失败' :
-    status === 'skipped' ? '已跳过' :
+    status === 'idle' ? t('尚未执行') :
+    status === 'queued' ? t('已入队') :
+    status === 'running' ? t('执行中') :
+    status === 'success' ? t('执行成功') :
+    status === 'error' ? t('执行失败') :
+    status === 'skipped' ? t('已跳过') :
     status
   )
   const parts: string[] = [label]
   if (task.runState?.lastSuccessAt) {
-    parts.push(`最近成功于 ${new Date(task.runState.lastSuccessAt).toLocaleString('zh-CN')}`)
+    parts.push(t('最近成功于 {v0}', { v0: new Date(task.runState.lastSuccessAt).toLocaleString(formatLocale()) }))
   }
   if (task.runState?.lastSkipReason) {
     parts.push(task.runState.lastSkipReason)
@@ -1161,7 +1162,7 @@ const buildSessionSnsRankings = (posts: SnsPost[]): { likes: SessionSnsRankItem[
     const comments = Array.isArray(post?.comments) ? post.comments : []
 
     for (const likeNameRaw of likes) {
-      const name = String(likeNameRaw || '').trim() || '未知用户'
+      const name = String(likeNameRaw || '').trim() || t('未知用户')
       const current = likeMap.get(name)
       if (current) {
         current.count += 1
@@ -1172,7 +1173,7 @@ const buildSessionSnsRankings = (posts: SnsPost[]): { likes: SessionSnsRankItem[
     }
 
     for (const comment of comments) {
-      const name = String(comment?.nickname || '').trim() || '未知用户'
+      const name = String(comment?.nickname || '').trim() || t('未知用户')
       const current = commentMap.get(name)
       if (current) {
         current.count += 1
@@ -1207,7 +1208,7 @@ const buildSessionMutualFriendsMetric = (
     const comments = Array.isArray(post?.comments) ? post.comments : []
 
     for (const likeNameRaw of likes) {
-      const name = String(likeNameRaw || '').trim() || '未知用户'
+      const name = String(likeNameRaw || '').trim() || t('未知用户')
       const existing = friendMap.get(name)
       if (existing) {
         existing.incomingLikeCount += 1
@@ -1230,7 +1231,7 @@ const buildSessionMutualFriendsMetric = (
     }
 
     for (const comment of comments) {
-      const name = String(comment?.nickname || '').trim() || '未知用户'
+      const name = String(comment?.nickname || '').trim() || t('未知用户')
       const existing = friendMap.get(name)
       if (existing) {
         existing.incomingCommentCount += 1
@@ -1269,15 +1270,15 @@ const buildSessionMutualFriendsMetric = (
 }
 
 const getSessionMutualFriendDirectionLabel = (direction: SessionMutualFriendDirection): string => {
-  if (direction === 'incoming') return '对方赞/评TA'
-  if (direction === 'outgoing') return 'TA赞/评对方'
-  return '双方有互动'
+  if (direction === 'incoming') return t('对方赞/评TA')
+  if (direction === 'outgoing') return t('TA赞/评对方')
+  return t('双方有互动')
 }
 
 const getSessionMutualFriendBehaviorLabel = (behavior: SessionMutualFriendBehavior): string => {
-  if (behavior === 'likes') return '赞'
-  if (behavior === 'comments') return '评'
-  return '赞/评'
+  if (behavior === 'likes') return t('赞')
+  if (behavior === 'comments') return t('评')
+  return t('赞/评')
 }
 
 const summarizeMutualFriendBehavior = (likeCount: number, commentCount: number): SessionMutualFriendBehavior => {
@@ -1291,18 +1292,18 @@ const describeSessionMutualFriendRelation = (
   targetDisplayName: string
 ): string => {
   if (item.direction === 'incoming') {
-    if (item.behavior === 'likes') return `${item.name} 给 ${targetDisplayName} 点过赞`
-    if (item.behavior === 'comments') return `${item.name} 给 ${targetDisplayName} 评论过`
-    return `${item.name} 给 ${targetDisplayName} 点过赞、评论过`
+    if (item.behavior === 'likes') return t('{name} 给 {targetDisplayName} 点过赞', { name: item.name, targetDisplayName: targetDisplayName })
+    if (item.behavior === 'comments') return t('{name} 给 {targetDisplayName} 评论过', { name: item.name, targetDisplayName: targetDisplayName })
+    return t('{name} 给 {targetDisplayName} 点过赞、评论过', { name: item.name, targetDisplayName: targetDisplayName })
   }
   if (item.direction === 'outgoing') {
-    if (item.behavior === 'likes') return `${targetDisplayName} 给 ${item.name} 点过赞`
-    if (item.behavior === 'comments') return `${targetDisplayName} 给 ${item.name} 评论过`
-    return `${targetDisplayName} 给 ${item.name} 点过赞、评论过`
+    if (item.behavior === 'likes') return t('{targetDisplayName} 给 {name} 点过赞', { targetDisplayName: targetDisplayName, name: item.name })
+    if (item.behavior === 'comments') return t('{targetDisplayName} 给 {name} 评论过', { targetDisplayName: targetDisplayName, name: item.name })
+    return t('{targetDisplayName} 给 {name} 点过赞、评论过', { targetDisplayName: targetDisplayName, name: item.name })
   }
-  if (item.behavior === 'likes') return `${targetDisplayName} 和 ${item.name} 双方都有点赞互动`
-  if (item.behavior === 'comments') return `${targetDisplayName} 和 ${item.name} 双方都有评论互动`
-  return `${targetDisplayName} 和 ${item.name} 双方都有点赞或评论互动`
+  if (item.behavior === 'likes') return t('{targetDisplayName} 和 {name} 双方都有点赞互动', { targetDisplayName: targetDisplayName, name: item.name })
+  if (item.behavior === 'comments') return t('{targetDisplayName} 和 {name} 双方都有评论互动', { targetDisplayName: targetDisplayName, name: item.name })
+  return t('{targetDisplayName} 和 {name} 双方都有点赞或评论互动', { targetDisplayName: targetDisplayName, name: item.name })
 }
 
 interface SessionExportMetric {
@@ -1708,11 +1709,11 @@ const WriteLayoutSelector = memo(function WriteLayoutSelector({
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [isOpen])
 
-  const writeLayoutLabel = writeLayoutOptions.find(option => option.value === writeLayout)?.label || 'A（类型分目录）'
+  const writeLayoutLabel = writeLayoutOptions.find(option => option.value === writeLayout)?.label || t('A（类型分目录）')
 
   return (
     <div className={`write-layout-control ${isOpen ? 'open' : ''}`} ref={containerRef}>
-      <span className="control-label">写入目录方式</span>
+      <span className="control-label">{t('写入目录方式')}</span>
       <button
         className={`layout-trigger ${isOpen ? 'active' : ''}`}
         type="button"
@@ -1722,7 +1723,7 @@ const WriteLayoutSelector = memo(function WriteLayoutSelector({
       >
         {writeLayoutLabel}
       </button>
-      <div className={`layout-dropdown ${isOpen ? 'open' : ''}`} role="listbox" aria-label="写入目录方式">
+      <div className={`layout-dropdown ${isOpen ? 'open' : ''}`} role="listbox" aria-label={t('写入目录方式')}>
         {writeLayoutOptions.map(option => (
           <button
             key={option.value}
@@ -1739,8 +1740,8 @@ const WriteLayoutSelector = memo(function WriteLayoutSelector({
         ))}
         <div className="layout-prefix-toggle">
           <div className="layout-prefix-copy">
-            <span className="layout-prefix-label">聊天文本文件和会话文件夹带前缀</span>
-            <span className="layout-prefix-desc">开启后使用群聊_、私聊_、公众号_、曾经的好友_前缀</span>
+            <span className="layout-prefix-label">{t('聊天文本文件和会话文件夹带前缀')}</span>
+            <span className="layout-prefix-desc">{t('开启后使用群聊_、私聊_、公众号_、曾经的好友_前缀')}</span>
           </div>
           <button
             type="button"
@@ -1748,7 +1749,7 @@ const WriteLayoutSelector = memo(function WriteLayoutSelector({
             onClick={async () => {
               await onSessionNameWithTypePrefixChange(!sessionNameWithTypePrefix)
             }}
-            aria-label="聊天文本文件和会话文件夹带前缀"
+            aria-label={t('聊天文本文件和会话文件夹带前缀')}
             aria-pressed={sessionNameWithTypePrefix}
           >
             <span className="layout-prefix-switch-thumb" />
@@ -1799,13 +1800,13 @@ const SectionInfoTooltip = memo(function SectionInfoTooltip({
         type="button"
         className={`section-info-trigger ${isOpen ? 'active' : ''}`}
         onClick={() => setIsOpen(prev => !prev)}
-        aria-label={`查看${label}说明`}
+        aria-label={t('查看{label}说明', { label: label })}
         aria-expanded={isOpen}
       >
         <CircleHelp size={14} />
       </button>
       {isOpen && (
-        <div className="section-info-popover" role="dialog" aria-label={`${label}说明`}>
+        <div className="section-info-popover" role="dialog" aria-label={t('{label}说明', { label: label })}>
           <h4>{heading}</h4>
           {messages.map(message => (
             <p key={message}>{message}</p>
@@ -1869,26 +1870,26 @@ const TaskCenterModal = memo(function TaskCenterModal({
         className="task-center-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="任务中心"
+        aria-label={t('任务中心')}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="task-center-modal-header">
           <div className="task-center-modal-title">
-            <h3>任务中心</h3>
-            <span>导出进行中 {taskRunningCount} · 排队 {taskQueuedCount} · 聊天后台 {chatActiveTaskCount} · 总计 {totalTaskCount}</span>
+            <h3>{t('任务中心')}</h3>
+            <span>{t('导出进行中 {taskRunningCount} · 排队 {taskQueuedCount} · 聊天后台 {chatActiveTaskCount} · 总计 {totalTaskCount}', { taskRunningCount: taskRunningCount, taskQueuedCount: taskQueuedCount, chatActiveTaskCount: chatActiveTaskCount, totalTaskCount: totalTaskCount })}</span>
           </div>
           <button
             className="close-icon-btn"
             type="button"
             onClick={onClose}
-            aria-label="关闭任务中心"
+            aria-label={t('关闭任务中心')}
           >
             <X size={16} />
           </button>
         </div>
         <div className="task-center-modal-body">
           {totalTaskCount === 0 ? (
-            <div className="task-empty">暂无任务。导出任务和聊天页批量语音/图片任务都会显示在这里。</div>
+            <div className="task-empty">{t('暂无任务。导出任务和聊天页批量语音/图片任务都会显示在这里。')}</div>
           ) : (
             <div className="task-list">
               {tasks.map(task => {
@@ -1918,13 +1919,13 @@ const TaskCenterModal = memo(function TaskCenterModal({
                 const estimatedTotalMessages = Math.max(0, Math.floor(task.progress.estimatedTotalMessages || 0))
                 const collectedMessages = Math.max(0, Math.floor(task.progress.collectedMessages || 0))
                 const messageProgressLabel = estimatedTotalMessages > 0
-                  ? `已导出 ${Math.min(exportedMessages, estimatedTotalMessages)}/${estimatedTotalMessages} 条`
-                  : `已导出 ${exportedMessages} 条`
+                  ? t('已导出 {v0}/{estimatedTotalMessages} 条', { v0: Math.min(exportedMessages, estimatedTotalMessages), estimatedTotalMessages: estimatedTotalMessages })
+                  : t('已导出 {exportedMessages} 条', { exportedMessages: exportedMessages })
                 const effectiveMessageProgressLabel = (
                   exportedMessages > 0 || estimatedTotalMessages > 0 || collectedMessages <= 0 || task.progress.phase !== 'preparing'
                 )
                   ? messageProgressLabel
-                  : `已收集 ${collectedMessages.toLocaleString()} 条`
+                  : t('已收集 {v0} 条', { v0: collectedMessages.toLocaleString() })
                 const phaseProgress = Math.max(0, Math.floor(task.progress.phaseProgress || 0))
                 const phaseTotal = Math.max(0, Math.floor(task.progress.phaseTotal || 0))
                 const mediaDoneFiles = Math.max(0, Math.floor(task.progress.mediaDoneFiles || 0))
@@ -1933,29 +1934,29 @@ const TaskCenterModal = memo(function TaskCenterModal({
                 const mediaDedupReuseFiles = Math.max(0, Math.floor(task.progress.mediaDedupReuseFiles || 0))
                 const mediaCacheTotal = mediaCacheHitFiles + mediaCacheMissFiles
                 const mediaCacheMetricLabel = mediaCacheTotal > 0
-                  ? `缓存命中 ${mediaCacheHitFiles}/${mediaCacheTotal}`
+                  ? t('缓存命中 {mediaCacheHitFiles}/{mediaCacheTotal}', { mediaCacheHitFiles: mediaCacheHitFiles, mediaCacheTotal: mediaCacheTotal })
                   : ''
                 const mediaMissMetricLabel = mediaCacheMissFiles > 0
-                  ? `缓存未命中 ${mediaCacheMissFiles}`
+                  ? t('缓存未命中 {mediaCacheMissFiles}', { mediaCacheMissFiles: mediaCacheMissFiles })
                   : ''
                 const mediaDedupMetricLabel = mediaDedupReuseFiles > 0
-                  ? `复用 ${mediaDedupReuseFiles}`
+                  ? t('复用 {mediaDedupReuseFiles}', { mediaDedupReuseFiles: mediaDedupReuseFiles })
                   : ''
                 const phaseMetricLabel = phaseTotal > 0
                   ? (
                     task.progress.phase === 'exporting-media'
-                      ? `媒体 ${Math.min(phaseProgress, phaseTotal)}/${phaseTotal}`
+                      ? t('媒体 {v0}/{phaseTotal}', { v0: Math.min(phaseProgress, phaseTotal), phaseTotal: phaseTotal })
                       : task.progress.phase === 'exporting-voice'
-                        ? `语音 ${Math.min(phaseProgress, phaseTotal)}/${phaseTotal}`
+                        ? t('语音 {v0}/{phaseTotal}', { v0: Math.min(phaseProgress, phaseTotal), phaseTotal: phaseTotal })
                         : ''
                   )
                   : ''
                 const mediaLiveMetricLabel = task.progress.phase === 'exporting-media'
-                  ? (mediaDoneFiles > 0 ? `已写入 ${mediaDoneFiles}` : '')
+                  ? (mediaDoneFiles > 0 ? t('已写入 {mediaDoneFiles}', { mediaDoneFiles: mediaDoneFiles }) : '')
                   : ''
                 const sessionProgressLabel = completedSessionTotal > 0
-                  ? `会话 ${completedSessionCount}/${completedSessionTotal}`
-                  : '会话处理中'
+                  ? t('会话 {completedSessionCount}/{completedSessionTotal}', { completedSessionCount: completedSessionCount, completedSessionTotal: completedSessionTotal })
+                  : t('会话处理中')
                 const currentSessionRatio = task.progress.phaseTotal > 0
                   ? Math.max(0, Math.min(1, task.progress.phaseProgress / task.progress.phaseTotal))
                   : null
@@ -1973,8 +1974,8 @@ const TaskCenterModal = memo(function TaskCenterModal({
                 const imageTimingLabel = imageTask
                   ? (
                     mediaDoneFiles > 0
-                      ? `图片耗时 ${formatDurationMs(imageTimingElapsedMs)} · 平均 ${imageTimingAvgMs}ms/张`
-                      : `图片耗时 ${formatDurationMs(imageTimingElapsedMs)}`
+                      ? t('图片耗时 {v0} · 平均 {imageTimingAvgMs}ms/张', { v0: formatDurationMs(imageTimingElapsedMs), imageTimingAvgMs: imageTimingAvgMs })
+                      : t('图片耗时 {v0}', { v0: formatDurationMs(imageTimingElapsedMs) })
                   )
                   : ''
                 const taskCardClass = resolveExportTaskCardClass(task.status)
@@ -1999,7 +2000,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                       <div className="task-title">{task.title}</div>
                       <div className="task-meta">
                         <span className={`task-status ${taskCardClass}`}>{getTaskStatusLabel(task)}</span>
-                        <span>{new Date(task.createdAt).toLocaleString('zh-CN')}</span>
+                        <span>{new Date(task.createdAt).toLocaleString(formatLocale())}</span>
                       </div>
                       {canShowProgress && (
                         <>
@@ -2017,7 +2018,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                             {mediaMissMetricLabel ? ` · ${mediaMissMetricLabel}` : ''}
                             {mediaDedupMetricLabel ? ` · ${mediaDedupMetricLabel}` : ''}
                             {task.status === 'running' && currentSessionRatio !== null
-                              ? `（当前会话 ${Math.round(currentSessionRatio * 100)}%）`
+                              ? t('（当前会话 {v0}%）', { v0: Math.round(currentSessionRatio * 100) })
                               : ''}
                             {task.progress.phaseLabel ? ` · ${task.progress.phaseLabel}` : ''}
                           </div>
@@ -2030,20 +2031,20 @@ const TaskCenterModal = memo(function TaskCenterModal({
                       )}
                       {canShowPerfDetail && stageTotals && (
                         <div className="task-perf-summary">
-                          <span>累计耗时 {formatDurationMs(stageTotalMs)}</span>
+                          <span>{t('累计耗时 {v0}', { v0: formatDurationMs(stageTotalMs) })}</span>
                           {task.progress.total > 0 && (
-                            <span>平均/会话 {formatDurationMs(Math.floor(stageTotalMs / Math.max(1, task.progress.total)))}</span>
+                            <span>{t('平均/会话 {v0}', { v0: formatDurationMs(Math.floor(stageTotalMs / Math.max(1, task.progress.total))) })}</span>
                           )}
                         </div>
                       )}
                       {canShowPerfDetail && isPerfExpanded && stageTotals && (
                         <div className="task-perf-panel">
-                          <div className="task-perf-title">阶段耗时分布</div>
+                          <div className="task-perf-title">{t('阶段耗时分布')}</div>
                           {[
-                            { key: 'collect' as const, label: '收集消息' },
-                            { key: 'build' as const, label: '构建消息' },
-                            { key: 'write' as const, label: '写入文件' },
-                            { key: 'other' as const, label: '其他' }
+                            { key: 'collect' as const, label: t('收集消息') },
+                            { key: 'build' as const, label: t('构建消息') },
+                            { key: 'write' as const, label: t('写入文件') },
+                            { key: 'other' as const, label: t('其他') }
                           ].map(item => {
                             const value = stageTotals[item.key]
                             const ratio = stageTotalMs > 0 ? Math.min(100, (value / stageTotalMs) * 100) : 0
@@ -2059,16 +2060,16 @@ const TaskCenterModal = memo(function TaskCenterModal({
                               </div>
                             )
                           })}
-                          <div className="task-perf-title">最慢会话 Top5</div>
+                          <div className="task-perf-title">{t('最慢会话 Top5')}</div>
                           {topSessions.length === 0 ? (
-                            <div className="task-perf-empty">暂无会话耗时数据</div>
+                            <div className="task-perf-empty">{t('暂无会话耗时数据')}</div>
                           ) : (
                             <div className="task-perf-session-list">
                               {topSessions.map((session, index) => (
                                 <div className="task-perf-session-item" key={session.sessionId}>
                                   <span className="task-perf-session-rank">
                                     {index + 1}. {session.sessionName || session.sessionId}
-                                    {!session.finishedAt ? '（进行中）' : ''}
+                                    {!session.finishedAt ? t('（进行中）') : ''}
                                   </span>
                                   <span className="task-perf-session-time">{formatDurationMs(session.liveElapsedMs)}</span>
                                 </div>
@@ -2077,7 +2078,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           )}
                         </div>
                       )}
-                      {task.status === 'error' && <div className="task-error">{task.error || '任务失败'}</div>}
+                      {task.status === 'error' && <div className="task-error">{task.error || t('任务失败')}</div>}
                     </div>
                     <div className="task-actions">
                       {canShowPerfDetail && (
@@ -2086,7 +2087,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           type="button"
                           onClick={() => onTogglePerfTask(task.id)}
                         >
-                          {isPerfExpanded ? '收起详情' : '性能详情'}
+                          {isPerfExpanded ? t('收起详情') : t('性能详情')}
                         </button>
                       )}
                       {canPause && (
@@ -2095,8 +2096,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           type="button"
                           onClick={() => onPauseExportTask(task.id)}
                         >
-                          <Pause size={14} /> 暂停
-                        </button>
+                          <Pause size={14} />{' '}{t('暂停')}</button>
                       )}
                       {canResume && (
                         <button
@@ -2104,8 +2104,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           type="button"
                           onClick={() => onResumeExportTask(task.id)}
                         >
-                          <Play size={14} /> 继续
-                        </button>
+                          <Play size={14} />{' '}{t('继续')}</button>
                       )}
                       {canCancel && (
                         <button
@@ -2114,7 +2113,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           onClick={() => onCancelExportTask(task.id)}
                           disabled={task.status === 'cancel_requested'}
                         >
-                          <Square size={14} /> {task.status === 'cancel_requested' ? '取消中' : '取消'}
+                          <Square size={14} /> {task.status === 'cancel_requested' ? t('取消中') : t('取消')}
                         </button>
                       )}
                       <button
@@ -2125,8 +2124,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           void window.electronAPI.shell.openPath(openDir)
                         }}
                       >
-                        <FolderOpen size={14} /> 目录
-                      </button>
+                        <FolderOpen size={14} />{' '}{t('目录')}</button>
                     </div>
                   </div>
                 )
@@ -2149,7 +2147,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                       <div className="task-meta">
                         <span className={`task-status ${taskCardClass}`}>{backgroundTaskStatusLabels[task.status]}</span>
                         <span>{backgroundTaskSourceLabels[task.sourcePage] || backgroundTaskSourceLabels.other}</span>
-                        <span>{new Date(task.startedAt).toLocaleString('zh-CN')}</span>
+                        <span>{new Date(task.startedAt).toLocaleString(formatLocale())}</span>
                       </div>
                       {progress.ratio !== null && (
                         <div className="task-progress-bar">
@@ -2160,7 +2158,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                         </div>
                       )}
                       <div className="task-progress-text">
-                        {task.detail || '任务进行中'}
+                        {task.detail || t('任务进行中')}
                         {task.progressText ? ` · ${task.progressText}` : ''}
                       </div>
                     </div>
@@ -2171,8 +2169,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           type="button"
                           onClick={() => onPauseBackgroundTask(task.id)}
                         >
-                          <Pause size={14} /> 中断
-                        </button>
+                          <Pause size={14} />{' '}{t('中断')}</button>
                       )}
                       {canResume && (
                         <button
@@ -2180,8 +2177,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                           type="button"
                           onClick={() => onResumeBackgroundTask(task.id)}
                         >
-                          <Play size={14} /> 继续
-                        </button>
+                          <Play size={14} />{' '}{t('继续')}</button>
                       )}
                       <button
                         className="task-action-btn danger"
@@ -2189,7 +2185,7 @@ const TaskCenterModal = memo(function TaskCenterModal({
                         onClick={() => onCancelBackgroundTask(task.id)}
                         disabled={!canCancel || task.status === 'cancel_requested'}
                       >
-                        {task.status === 'cancel_requested' ? '停止中' : '停止'}
+                        {task.status === 'cancel_requested' ? t('停止中') : t('停止')}
                       </button>
                     </div>
                   </div>
@@ -2644,7 +2640,7 @@ function ExportPage() {
             nextStage.finishedAt = now
             stageChanged = true
           }
-          const nextError = options?.error || '加载失败'
+          const nextError = options?.error || t('加载失败')
           if (nextStage.error !== nextError) {
             nextStage.error = nextError
             stageChanged = true
@@ -2699,9 +2695,9 @@ function ExportPage() {
       const elapsedMs = Date.now() - startedAt
       setContactsLoadIssue({
         kind: 'timeout',
-        title: '联系人列表加载超时',
-        message: `等待超过 ${timeoutMs}ms，联系人列表仍未返回。`,
-        reason: 'chat.getContacts 长时间未返回，可能是数据库查询繁忙或连接异常。',
+        title: t('联系人列表加载超时'),
+        message: t('等待超过 {timeoutMs}ms，联系人列表仍未返回。', { timeoutMs: timeoutMs }),
+        reason: t('chat.getContacts 长时间未返回，可能是数据库查询繁忙或连接异常。'),
         occurredAt: Date.now(),
         elapsedMs
       })
@@ -2761,10 +2757,10 @@ function ExportPage() {
       const elapsedMs = Date.now() - startedAt
       setContactsLoadIssue({
         kind: 'error',
-        title: '联系人列表加载失败',
-        message: '联系人接口返回失败，未拿到联系人列表。',
-        reason: 'chat.getContacts 返回 success=false。',
-        errorDetail: contactsResult.error || '未知错误',
+        title: t('联系人列表加载失败'),
+        message: t('联系人接口返回失败，未拿到联系人列表。'),
+        reason: t('chat.getContacts 返回 success=false。'),
+        errorDetail: contactsResult.error || t('未知错误'),
         occurredAt: Date.now(),
         elapsedMs
       })
@@ -2773,9 +2769,9 @@ function ExportPage() {
       const elapsedMs = Date.now() - startedAt
       setContactsLoadIssue({
         kind: 'error',
-        title: '联系人列表加载失败',
-        message: '联系人请求执行异常。',
-        reason: '调用 chat.getContacts 发生异常。',
+        title: t('联系人列表加载失败'),
+        message: t('联系人请求执行异常。'),
+        reason: t('调用 chat.getContacts 发生异常。'),
         errorDetail: String(error),
         occurredAt: Date.now(),
         elapsedMs
@@ -3247,7 +3243,7 @@ function ExportPage() {
 
       if (!result.success || !result.counts) {
         patchSessionLoadTraceStage(pendingSessionIds, 'snsPostCounts', 'failed', {
-          error: result.error || '朋友圈条数统计失败'
+          error: result.error || t('朋友圈条数统计失败')
         })
         setSnsUserPostCountsStatus('error')
         return
@@ -3541,7 +3537,7 @@ function ExportPage() {
         if (requestToken !== sessionSnsRankRequestTokenRef.current) return
 
         if (!result.success) {
-          throw new Error(result.error || '加载朋友圈排行失败')
+          throw new Error(result.error || t('加载朋友圈排行失败'))
         }
 
         const pagePosts = Array.isArray(result.timeline)
@@ -3582,7 +3578,7 @@ function ExportPage() {
       const message = error instanceof Error ? error.message : String(error)
       setSessionSnsLikeRankings([])
       setSessionSnsCommentRankings([])
-      setSessionSnsRankError(message || '加载朋友圈排行失败')
+      setSessionSnsRankError(message || t('加载朋友圈排行失败'))
     } finally {
       if (requestToken === sessionSnsRankRequestTokenRef.current) {
         sessionSnsRankLoadingRef.current = false
@@ -3594,12 +3590,12 @@ function ExportPage() {
   const renderSessionSnsTimelineStats = useCallback((): string => {
     const loadedCount = sessionSnsTimelinePosts.length
     const loadPart = sessionSnsTimelineStatsLoading
-      ? `已加载 ${loadedCount} / 总数统计中...`
+      ? t('已加载 {loadedCount} / 总数统计中...', { loadedCount: loadedCount })
       : sessionSnsTimelineTotalPosts === null
-        ? `已加载 ${loadedCount} 条`
-        : `已加载 ${loadedCount} / 共 ${sessionSnsTimelineTotalPosts} 条`
+        ? t('已加载 {loadedCount} 条', { loadedCount: loadedCount })
+        : t('已加载 {loadedCount} / 共 {sessionSnsTimelineTotalPosts} 条', { loadedCount: loadedCount, sessionSnsTimelineTotalPosts: sessionSnsTimelineTotalPosts })
 
-    if (sessionSnsTimelineLoading && loadedCount === 0) return `${loadPart} ｜ 加载中...`
+    if (sessionSnsTimelineLoading && loadedCount === 0) return t('{loadPart} ｜ 加载中...', { loadPart: loadPart })
     if (loadedCount === 0) return loadPart
 
     const latest = sessionSnsTimelinePosts[0]?.createTime
@@ -4068,7 +4064,7 @@ function ExportPage() {
       try {
         const timeoutPromise = new Promise<never>((_, reject) => {
           timer = window.setTimeout(() => {
-            reject(new Error(`会话多媒体统计超时(${stage}, ${timeoutMs}ms)`))
+            reject(new Error(t('会话多媒体统计超时({stage}, {timeoutMs}ms)', { stage: stage, timeoutMs: timeoutMs })))
           }, timeoutMs)
         })
         return await Promise.race([promise, timeoutPromise])
@@ -4134,7 +4130,7 @@ function ExportPage() {
           const unresolvedSessionIds = batchSessionIds.filter(sessionId => !isSessionMediaMetricReady(sessionId))
           if (unresolvedSessionIds.length > 0) {
             patchSessionLoadTraceStage(unresolvedSessionIds, 'mediaMetrics', 'failed', {
-              error: '统计结果缺失，已跳过当前批次'
+              error: t('统计结果缺失，已跳过当前批次')
             })
           }
         } catch (error) {
@@ -4192,7 +4188,7 @@ function ExportPage() {
         endTime
       )
       if (!result.success) {
-        throw new Error(result.error || '共同好友统计失败')
+        throw new Error(result.error || t('共同好友统计失败'))
       }
 
       const pagePosts = Array.isArray(result.timeline)
@@ -4374,7 +4370,7 @@ function ExportPage() {
             prioritizedSessionIds,
             'messageCount',
             'failed',
-            { error: priorityResult.error || '总消息数加载失败' }
+            { error: priorityResult.error || t('总消息数加载失败') }
           )
         }
       }
@@ -4391,7 +4387,7 @@ function ExportPage() {
             remainingSessionIds,
             'messageCount',
             'failed',
-            { error: remainingResult.error || '总消息数加载失败' }
+            { error: remainingResult.error || t('总消息数加载失败') }
           )
         }
       }
@@ -5138,7 +5134,7 @@ function ExportPage() {
             emitStatus('initializing')
             const ready = await loadBaseConfig()
             if (!ready) {
-              emitStatus('failed', '导出模块初始化失败，请重试')
+              emitStatus('failed', t('导出模块初始化失败，请重试'))
               return
             }
           }
@@ -5148,7 +5144,7 @@ function ExportPage() {
             scope: 'single',
             sessionIds: [sessionId],
             sessionNames: [displayName],
-            title: `导出会话：${displayName}`
+            title: t('导出会话：{displayName}', { displayName: displayName })
           })
           emitStatus('opened')
         } catch (error) {
@@ -5264,7 +5260,7 @@ function ExportPage() {
     setIsAutomationRangeDialogOpen(false)
     setIsAutomationCreateMode(true)
     setSelectedSessions(new Set())
-    setAutomationHint('已进入自动化任务创建：请勾选联系人，然后点击「加入任务」')
+    setAutomationHint(t('已进入自动化任务创建：请勾选联系人，然后点击「加入任务」'))
   }, [])
 
   const openEditAutomationTaskDraft = useCallback((task: ExportAutomationTask) => {
@@ -5383,25 +5379,25 @@ function ExportPage() {
     }
     const normalizedName = automationTaskDraft.name.trim()
     if (!normalizedName) {
-      window.alert('请输入任务名称')
+      window.alert(t('请输入任务名称'))
       return
     }
     if (automationTaskDraft.sessionIds.length === 0) {
-      window.alert('自动化任务至少需要一个会话')
+      window.alert(t('自动化任务至少需要一个会话'))
       return
     }
 
     const intervalDays = normalizeAutomationIntervalDays(automationTaskDraft.intervalDays)
     const intervalHours = normalizeAutomationIntervalHours(automationTaskDraft.intervalHours)
     if (intervalDays <= 0 && intervalHours <= 0) {
-      window.alert('执行间隔不能为 0，请至少设置天数或小时')
+      window.alert(t('执行间隔不能为 0，请至少设置天数或小时'))
       return
     }
     const firstTriggerAtTimestamp = automationTaskDraft.firstTriggerAtEnabled
       ? parseDateTimeLocalValue(automationTaskDraft.firstTriggerAtValue)
       : null
     if (automationTaskDraft.firstTriggerAtEnabled && !firstTriggerAtTimestamp) {
-      window.alert('请填写有效的首次触发时间')
+      window.alert(t('请填写有效的首次触发时间'))
       return
     }
     const schedule = buildAutomationSchedule(
@@ -5413,14 +5409,14 @@ function ExportPage() {
       ? parseDateTimeLocalValue(automationTaskDraft.stopAtValue)
       : null
     if (automationTaskDraft.stopAtEnabled && !stopAtTimestamp) {
-      window.alert('请填写有效的终止时间')
+      window.alert(t('请填写有效的终止时间'))
       return
     }
     const maxRuns = automationTaskDraft.maxRunsEnabled
       ? Math.max(0, Math.floor(Number(automationTaskDraft.maxRuns || 0)))
       : 0
     if (automationTaskDraft.maxRunsEnabled && maxRuns <= 0) {
-      window.alert('请填写大于 0 的最大执行次数')
+      window.alert(t('请填写大于 0 的最大执行次数'))
       return
     }
     const stopCondition = {
@@ -5465,7 +5461,7 @@ function ExportPage() {
     })
     setAutomationTaskDraft(null)
     setIsAutomationRangeDialogOpen(false)
-    setAutomationHint(automationTaskDraft.mode === 'edit' ? '自动化任务已更新' : '自动化任务已创建')
+    setAutomationHint(automationTaskDraft.mode === 'edit' ? t('自动化任务已更新') : t('自动化任务已创建'))
   }, [automationTaskDraft, updateAutomationTasks])
 
   const markSessionExported = useCallback((sessionIds: string[], timestamp: number) => {
@@ -5496,18 +5492,18 @@ function ExportPage() {
     if (payload.scope === 'content' && payload.contentType) {
       return getContentTypeLabel(payload.contentType)
     }
-    if (payload.scope === 'sns') return '朋友圈'
+    if (payload.scope === 'sns') return t('朋友圈')
 
-    const labels: string[] = ['聊天文本']
+    const labels: string[] = [t('聊天文本')]
     const opts = payload.options
     if (opts?.exportMedia) {
-      if (opts.exportImages) labels.push('图片')
-      if (opts.exportVoices) labels.push('语音')
-      if (opts.exportVideos) labels.push('视频')
-      if (opts.exportEmojis) labels.push('表情包')
-      if (opts.exportFiles) labels.push('文件')
+      if (opts.exportImages) labels.push(t('图片'))
+      if (opts.exportVoices) labels.push(t('语音'))
+      if (opts.exportVideos) labels.push(t('视频'))
+      if (opts.exportEmojis) labels.push(t('表情包'))
+      if (opts.exportFiles) labels.push(t('文件'))
     }
-    return Array.from(new Set(labels)).join('、')
+    return Array.from(new Set(labels)).join(t('、'))
   }, [])
 
   const markSessionExportRecords = useCallback((
@@ -5817,7 +5813,7 @@ function ExportPage() {
             ...task,
             status: 'error',
             finishedAt: Date.now(),
-            error: result.error || '朋友圈导出失败',
+            error: result.error || t('朋友圈导出失败'),
             performance: finalizeTaskPerformance(task, Date.now())
           }))
         } else if (result.stopped) {
@@ -5828,7 +5824,7 @@ function ExportPage() {
             status: 'paused',
             progress: {
               ...task.progress,
-              phaseLabel: '已暂停，可继续或取消',
+              phaseLabel: t('已暂停，可继续或取消'),
               current: Math.max(task.progress.current, result.postCount || 0),
               total: Math.max(task.progress.total, result.postCount || 0)
             }
@@ -5849,7 +5845,7 @@ function ExportPage() {
               ...task.progress,
               current: exportedPosts,
               total: exportedPosts,
-              phaseLabel: '完成',
+              phaseLabel: t('完成'),
               phaseProgress: 1,
               phaseTotal: 1
             },
@@ -5858,7 +5854,7 @@ function ExportPage() {
         }
       } else {
         if (!next.payload.options) {
-          throw new Error('导出参数缺失')
+          throw new Error(t('导出参数缺失'))
         }
 
         const result = await window.electronAPI.export.exportSessions(
@@ -5873,7 +5869,7 @@ function ExportPage() {
             ...task,
             status: 'error',
             finishedAt: Date.now(),
-            error: result.error || '导出失败',
+            error: result.error || t('导出失败'),
             performance: finalizeTaskPerformance(task, Date.now())
           }))
         } else if (result.stopped) {
@@ -5900,7 +5896,7 @@ function ExportPage() {
             },
             progress: {
               ...task.progress,
-              phaseLabel: '已暂停，可继续或取消'
+              phaseLabel: t('已暂停，可继续或取消')
             }
           }))
         } else {
@@ -5936,7 +5932,7 @@ function ExportPage() {
               ...task.progress,
               current: task.progress.total || next.payload.sessionIds.length,
               total: task.progress.total || next.payload.sessionIds.length,
-              phaseLabel: '完成',
+              phaseLabel: t('完成'),
               phaseProgress: 1,
               phaseTotal: 1
             },
@@ -6020,7 +6016,7 @@ function ExportPage() {
   ): { queued: boolean; reason?: string } => {
     const outputDir = String(task.outputDir || exportFolder || '').trim()
     if (!outputDir) {
-      return { queued: false, reason: '导出目录未设置' }
+      return { queued: false, reason: t('导出目录未设置') }
     }
 
     const hasConflict = tasksRef.current.some((item) => {
@@ -6034,12 +6030,12 @@ function ExportPage() {
       return item.payload.automationTaskId === task.id
     })
     if (hasConflict) {
-      return { queued: false, reason: '任务已有执行队列，本次触发已跳过' }
+      return { queued: false, reason: t('任务已有执行队列，本次触发已跳过') }
     }
 
     const exportOptions = buildAutomationExportOptions(task)
     const contentType = task.template.contentType
-    const title = `自动化导出：${task.name}`
+    const title = t('自动化导出：{name}', { name: task.name })
     enqueueExportTask(title, {
       sessionIds: task.sessionIds,
       sessionNames: task.sessionNames,
@@ -6082,7 +6078,7 @@ function ExportPage() {
       allowStaleCache: true
     })
     if (!stats.success || !stats.data) {
-      return { shouldRun: false, reason: stats.error || '会话统计失败，已跳过' }
+      return { shouldRun: false, reason: stats.error || t('会话统计失败，已跳过') }
     }
     let latestTimestamp = 0
     for (const sessionId of task.sessionIds) {
@@ -6092,11 +6088,11 @@ function ExportPage() {
       }
     }
     if (latestTimestamp <= 0) {
-      return { shouldRun: false, reason: '未检测到可用会话时间戳，已跳过' }
+      return { shouldRun: false, reason: t('未检测到可用会话时间戳，已跳过') }
     }
     const lastSuccessSeconds = Math.floor(lastSuccessAt / 1000)
     if (latestTimestamp <= lastSuccessSeconds) {
-      return { shouldRun: false, reason: '目标会话无新消息，本次已跳过' }
+      return { shouldRun: false, reason: t('目标会话无新消息，本次已跳过') }
     }
     return { shouldRun: true }
   }, [])
@@ -6129,16 +6125,16 @@ function ExportPage() {
       : undefined
     const title =
       exportDialog.scope === 'single'
-        ? `${exportDialog.sessionNames[0] || '会话'} 导出`
+        ? t('{v0} 导出', { v0: exportDialog.sessionNames[0] || t('会话') })
         : exportDialog.scope === 'multi'
-          ? `批量导出（${exportDialog.sessionIds.length} 个会话）`
+          ? t('批量导出（{length} 个会话）', { length: exportDialog.sessionIds.length })
           : exportDialog.scope === 'sns'
-            ? '朋友圈批量导出'
-            : `${contentTypeLabels[exportDialog.contentType || 'text']}批量导出`
+            ? t('朋友圈批量导出')
+            : t('{v0}批量导出', { v0: contentTypeLabels[exportDialog.contentType || 'text'] })
 
     if (isAutomationCreateIntent) {
       if (!exportOptions || exportDialog.scope === 'sns') {
-        window.alert('自动化任务仅支持会话导出')
+        window.alert(t('自动化任务仅支持会话导出'))
         return
       }
       const { dateRange: _discard, ...optionTemplate } = exportOptions
@@ -6153,8 +6149,8 @@ function ExportPage() {
       setAutomationTaskDraft({
         mode: 'create',
         name: exportDialog.sessionIds.length === 1
-          ? `${exportDialog.sessionNames[0] || '单会话'} 自动化导出`
-          : `自动化导出（${exportDialog.sessionIds.length} 个会话）`,
+          ? t('{v0} 自动化导出', { v0: exportDialog.sessionNames[0] || t('单会话') })
+          : t('自动化导出（{length} 个会话）', { length: exportDialog.sessionIds.length }),
         enabled: true,
         sessionIds: [...exportDialog.sessionIds],
         sessionNames: [...exportDialog.sessionNames],
@@ -6174,7 +6170,7 @@ function ExportPage() {
         maxRuns: 0
       })
       setIsAutomationCreateMode(false)
-      setAutomationHint('导出配置已完成，请继续设置自动化规则并保存任务')
+      setAutomationHint(t('导出配置已完成，请继续设置自动化规则并保存任务'))
       closeExportDialog()
     } else {
       enqueueExportTask(title, {
@@ -6211,7 +6207,7 @@ function ExportPage() {
       scope: 'single',
       sessionIds: [session.username],
       sessionNames: [session.displayName || session.username],
-      title: `导出会话：${session.displayName || session.username}`
+      title: t('导出会话：{v0}', { v0: session.displayName || session.username })
     })
   }, [openExportDialog])
 
@@ -6246,7 +6242,7 @@ function ExportPage() {
 
   const exitAutomationCreateMode = useCallback(() => {
     setIsAutomationCreateMode(false)
-    setAutomationHint('已退出自动化任务创建')
+    setAutomationHint(t('已退出自动化任务创建'))
   }, [])
 
   const openAutomationExportConfigDialog = useCallback(() => {
@@ -6254,7 +6250,7 @@ function ExportPage() {
     const selectedRows = sessions.filter((session) => selectedSet.has(session.username))
     const orderedRows = orderSessionsForExport(selectedRows)
     if (orderedRows.length === 0) {
-      window.alert('请先勾选至少一个可导出的会话')
+      window.alert(t('请先勾选至少一个可导出的会话'))
       return
     }
     const ids = orderedRows.map((session) => session.username)
@@ -6263,7 +6259,7 @@ function ExportPage() {
       scope: 'multi',
       sessionIds: ids,
       sessionNames: names,
-      title: `自动化任务导出配置（${ids.length} 个会话）`,
+      title: t('自动化任务导出配置（{length} 个会话）', { length: ids.length }),
       intent: 'automation-create'
     })
   }, [openExportDialog, orderSessionsForExport, selectedSessions, sessions])
@@ -6273,7 +6269,7 @@ function ExportPage() {
     const selectedRows = sessions.filter((session) => selectedSet.has(session.username))
     const orderedRows = orderSessionsForExport(selectedRows)
     if (orderedRows.length === 0) {
-      window.alert('所选会话暂无可导出的消息（总消息数为 0）')
+      window.alert(t('所选会话暂无可导出的消息（总消息数为 0）'))
       return
     }
     const ids = orderedRows.map((session) => session.username)
@@ -6283,14 +6279,14 @@ function ExportPage() {
       scope: 'multi',
       sessionIds: ids,
       sessionNames: names,
-      title: `批量导出（${ids.length} 个会话）`
+      title: t('批量导出（{length} 个会话）', { length: ids.length })
     })
   }
 
   const openContentExport = (contentType: ContentType) => {
     const orderedRows = orderSessionsForExport(sessions)
     if (orderedRows.length === 0) {
-      window.alert('当前会话列表暂无可导出的消息（总消息数为 0）')
+      window.alert(t('当前会话列表暂无可导出的消息（总消息数为 0）'))
       return
     }
     const ids = orderedRows.map((session) => session.username)
@@ -6301,7 +6297,7 @@ function ExportPage() {
       contentType,
       sessionIds: ids,
       sessionNames: names,
-      title: `${contentTypeLabels[contentType]}批量导出`
+      title: t('{v0}批量导出', { v0: contentTypeLabels[contentType] })
     })
   }
 
@@ -6309,8 +6305,8 @@ function ExportPage() {
     openExportDialog({
       scope: 'sns',
       sessionIds: [],
-      sessionNames: ['全部朋友圈动态'],
-      title: '朋友圈批量导出'
+      sessionNames: [t('全部朋友圈动态')],
+      title: t('朋友圈批量导出')
     })
   }
 
@@ -6398,7 +6394,7 @@ function ExportPage() {
             ...(current.runState || {}),
             lastRunStatus: 'error',
             lastFinishedAt: now,
-            lastError: task.error || '导出失败'
+            lastError: task.error || t('导出失败')
           }
         }))
       }
@@ -6426,7 +6422,7 @@ function ExportPage() {
               ...(current.runState || {}),
               lastRunStatus: 'skipped',
               lastSkipAt: stopAt,
-              lastSkipReason: `已达到最大执行次数（${maxRuns} 次），任务已自动停用`,
+              lastSkipReason: t('已达到最大执行次数（{maxRuns} 次），任务已自动停用', { maxRuns: maxRuns }),
               successCount: Math.max(0, Math.floor(Number(current.runState?.successCount || 0)))
             }
           }))
@@ -6444,7 +6440,7 @@ function ExportPage() {
               ...(current.runState || {}),
               lastRunStatus: 'skipped',
               lastSkipAt: stopAt,
-              lastSkipReason: '已超过终止时间，任务已自动停用'
+              lastSkipReason: t('已超过终止时间，任务已自动停用')
             }
           }))
           continue
@@ -6465,21 +6461,21 @@ function ExportPage() {
           return item.payload.automationTaskId === task.id
         })
         if (hasConflict) {
-          markAutomationTaskSkipped(task.id, '任务仍在执行中，本次触发已跳过', scheduleKey)
+          markAutomationTaskSkipped(task.id, t('任务仍在执行中，本次触发已跳过'), scheduleKey)
           continue
         }
 
         if (task.condition.type === 'new-message-since-last-success') {
           const checkResult = await resolveAutomationHasNewMessages(task)
           if (!checkResult.shouldRun) {
-            markAutomationTaskSkipped(task.id, checkResult.reason || '无新消息，本次触发已跳过', scheduleKey)
+            markAutomationTaskSkipped(task.id, checkResult.reason || t('无新消息，本次触发已跳过'), scheduleKey)
             continue
           }
         }
 
         const queued = enqueueAutomationTask(task, { scheduleKey })
         if (!queued.queued) {
-          markAutomationTaskSkipped(task.id, queued.reason || '触发失败，本次已跳过', scheduleKey)
+          markAutomationTaskSkipped(task.id, queued.reason || t('触发失败，本次已跳过'), scheduleKey)
         }
       }
     } finally {
@@ -6517,15 +6513,15 @@ function ExportPage() {
     const target = automationTasksRef.current.find((task) => task.id === taskId)
     if (!target) return
     const queued = enqueueAutomationTask(target, {
-      reason: `已手动触发「${target.name}」`,
+      reason: t('已手动触发「{name}」', { name: target.name }),
       scheduleKey: target.runState?.lastScheduleKey
     })
     if (!queued.queued) {
-      markAutomationTaskSkipped(taskId, queued.reason || '手动触发失败')
-      setAutomationHint(queued.reason || '手动触发失败')
+      markAutomationTaskSkipped(taskId, queued.reason || t('手动触发失败'))
+      setAutomationHint(queued.reason || t('手动触发失败'))
       return
     }
-    setAutomationHint(`已加入队列：${target.name}`)
+    setAutomationHint(t('已加入队列：{name}', { name: target.name }))
   }, [enqueueAutomationTask, markAutomationTaskSkipped])
 
   useEffect(() => {
@@ -6605,7 +6601,7 @@ function ExportPage() {
         ...item,
         label: contentTypeLabels[item.type],
         stats: [
-          { label: '已导出', value: exported, unit: '个对话' }
+          { label: t('已导出'), value: exported, unit: t('个对话') }
         ]
       }
     })
@@ -6613,10 +6609,10 @@ function ExportPage() {
     const snsCard = {
       type: 'sns' as ContentCardType,
       icon: Aperture,
-      label: '朋友圈',
+      label: t('朋友圈'),
       headerCount: snsStats.totalPosts,
       stats: [
-        { label: '已导出', value: snsExportedCount, unit: '条' }
+        { label: t('已导出'), value: snsExportedCount, unit: t('条') }
       ]
     }
 
@@ -6624,14 +6620,14 @@ function ExportPage() {
   }, [sessions, lastExportByContent, snsStats, lastSnsExportPostCount])
 
   const activeTabLabel = useMemo(() => {
-    if (activeTab === 'private') return '私聊'
-    if (activeTab === 'group') return '群聊'
-    return '曾经的好友'
+    if (activeTab === 'private') return t('私聊')
+    if (activeTab === 'group') return t('群聊')
+    return t('曾经的好友')
   }, [activeTab])
   const contactsHeaderMainLabel = useMemo(() => {
-    if (activeTab === 'group') return '群聊名称'
-    if (activeTab === 'private' || activeTab === 'former_friend') return '联系人'
-    return '联系人（头像/名称/微信号）'
+    if (activeTab === 'group') return t('群聊名称')
+    if (activeTab === 'private' || activeTab === 'former_friend') return t('联系人')
+    return t('联系人（头像/名称/微信号）')
   }, [activeTab])
   const shouldShowSnsColumn = useMemo(() => (
     activeTab === 'private' || activeTab === 'former_friend'
@@ -6729,7 +6725,7 @@ function ExportPage() {
 
   const formatLoadDetailTime = useCallback((value?: number): string => {
     if (!value || !Number.isFinite(value)) return '--'
-    return new Date(value).toLocaleTimeString('zh-CN', { hour12: false })
+    return new Date(value).toLocaleTimeString(formatLocale(), { hour12: false })
   }, [])
 
   const getLoadDetailStatusLabel = useCallback((
@@ -6739,16 +6735,16 @@ function ExportPage() {
     hasLoading: boolean,
     failedCount: number
   ): string => {
-    if (total <= 0) return '待加载'
+    if (total <= 0) return t('待加载')
     const terminalCount = loaded + failedCount
     if (terminalCount >= total) {
-      if (failedCount > 0) return `已完成 ${loaded}/${total}（失败 ${failedCount}）`
-      return `已完成 ${total}`
+      if (failedCount > 0) return t('已完成 {loaded}/{total}（失败 {failedCount}）', { loaded: loaded, total: total, failedCount: failedCount })
+      return t('已完成 {total}', { total: total })
     }
-    if (hasLoading) return `加载中 ${loaded}/${total}`
-    if (hasStarted && failedCount > 0) return `已完成 ${loaded}/${total}（失败 ${failedCount}）`
-    if (hasStarted) return `已完成 ${loaded}/${total}`
-    return '待加载'
+    if (hasLoading) return t('加载中 {loaded}/{total}', { loaded: loaded, total: total })
+    if (hasStarted && failedCount > 0) return t('已完成 {loaded}/{total}（失败 {failedCount}）', { loaded: loaded, total: total, failedCount: failedCount })
+    if (hasStarted) return t('已完成 {loaded}/{total}', { loaded: loaded, total: total })
+    return t('待加载')
   }, [])
 
   const summarizeLoadTraceForTab = useCallback((
@@ -6807,7 +6803,7 @@ function ExportPage() {
     return {
       total: 0,
       loaded: 0,
-      statusLabel: '不适用'
+      statusLabel: t('不适用')
     }
   }, [])
 
@@ -6835,7 +6831,7 @@ function ExportPage() {
 
   const formatLoadDetailPulseTime = useCallback((value?: number): string => {
     if (!value || !Number.isFinite(value)) return '--'
-    return new Date(value).toLocaleTimeString('zh-CN', {
+    return new Date(value).toLocaleTimeString(formatLocale(), {
       hour12: false,
       hour: '2-digit',
       minute: '2-digit',
@@ -7230,18 +7226,18 @@ function ExportPage() {
 
   const sessionDetailSnsCountLabel = useMemo(() => {
     const sessionId = String(sessionDetail?.wxid || '').trim()
-    if (!sessionId || !sessionDetailSupportsSnsTimeline) return '朋友圈：0条'
+    if (!sessionId || !sessionDetailSupportsSnsTimeline) return t('朋友圈：0条')
 
     if (snsUserPostCountsStatus === 'loading' || snsUserPostCountsStatus === 'idle') {
-      return '朋友圈：统计中...'
+      return t('朋友圈：统计中...')
     }
     if (snsUserPostCountsStatus === 'error') {
-      return '朋友圈：统计失败'
+      return t('朋友圈：统计失败')
     }
 
     const count = Number(snsUserPostCounts[sessionId] || 0)
     const normalized = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
-    return `朋友圈：${normalized}条`
+    return t('朋友圈：{normalized}条', { normalized: normalized })
   }, [sessionDetail?.wxid, sessionDetailSupportsSnsTimeline, snsUserPostCounts, snsUserPostCountsStatus])
 
   const sessionMutualFriendsDialogMetric = useMemo(() => {
@@ -7827,15 +7823,15 @@ function ExportPage() {
   const contactsDiagnosticsText = useMemo(() => {
     if (!contactsLoadIssue || !contactsLoadSession) return ''
     return [
-      `请求ID: ${contactsLoadSession.requestId}`,
-      `请求序号: 第 ${contactsLoadSession.attempt} 次`,
-      `阈值配置: ${contactsLoadSession.timeoutMs}ms`,
-      `当前状态: ${contactsLoadIssue.kind === 'timeout' ? '超时等待中' : '请求失败'}`,
-      `累计耗时: ${(contactsIssueElapsedMs / 1000).toFixed(1)}s`,
-      `发生时间: ${new Date(contactsLoadIssue.occurredAt).toLocaleString()}`,
-      '阶段: chat.getContacts',
-      `原因: ${contactsLoadIssue.reason}`,
-      `错误详情: ${contactsLoadIssue.errorDetail || '无'}`
+      t('请求ID: {requestId}', { requestId: contactsLoadSession.requestId }),
+      t('请求序号: 第 {attempt} 次', { attempt: contactsLoadSession.attempt }),
+      t('阈值配置: {timeoutMs}ms', { timeoutMs: contactsLoadSession.timeoutMs }),
+      t('当前状态: {v0}', { v0: contactsLoadIssue.kind === 'timeout' ? t('超时等待中') : t('请求失败') }),
+      t('累计耗时: {v0}s', { v0: (contactsIssueElapsedMs / 1000).toFixed(1) }),
+      t('发生时间: {v0}', { v0: new Date(contactsLoadIssue.occurredAt).toLocaleString() }),
+      t('阶段: chat.getContacts'),
+      t('原因: {reason}', { reason: contactsLoadIssue.reason }),
+      t('错误详情: {v0}', { v0: contactsLoadIssue.errorDetail || t('无') })
     ].join('\n')
   }, [contactsIssueElapsedMs, contactsLoadIssue, contactsLoadSession])
 
@@ -7843,10 +7839,10 @@ function ExportPage() {
     if (!contactsDiagnosticsText) return
     try {
       await navigator.clipboard.writeText(contactsDiagnosticsText)
-      alert('诊断信息已复制')
+      alert(t('诊断信息已复制'))
     } catch (error) {
       console.error('复制诊断信息失败:', error)
-      alert('复制失败，请手动复制诊断信息')
+      alert(t('复制失败，请手动复制诊断信息'))
     }
   }, [contactsDiagnosticsText])
   const handleCancelBackgroundTask = useCallback((taskId: string) => {
@@ -7898,19 +7894,19 @@ function ExportPage() {
     : Boolean(exportFolder) && exportDialog.sessionIds.length > 0
   const isAutomationCreateDialog = exportDialog.intent === 'automation-create'
   const scopeLabel = exportDialog.scope === 'single'
-    ? '单会话'
+    ? t('单会话')
     : exportDialog.scope === 'multi'
-      ? '多会话'
+      ? t('多会话')
       : exportDialog.scope === 'sns'
-        ? '朋友圈批量'
-        : `按内容批量（${contentTypeLabels[exportDialog.contentType || 'text']}）`
+        ? t('朋友圈批量')
+        : t('按内容批量（{v0}）', { v0: contentTypeLabels[exportDialog.contentType || 'text'] })
   const scopeCountLabel = exportDialog.scope === 'sns'
-    ? `共 ${snsStats.totalPosts} 条朋友圈动态`
-    : `共 ${exportDialog.sessionIds.length} 个会话`
+    ? t('共 {totalPosts} 条朋友圈动态', { totalPosts: snsStats.totalPosts })
+    : t('共 {length} 个会话', { length: exportDialog.sessionIds.length })
   const snsFormatOptions: Array<{ value: SnsTimelineExportFormat; label: string; desc: string }> = [
-    { value: 'html', label: 'HTML', desc: '网页格式，可直接浏览' },
-    { value: 'json', label: 'JSON', desc: '原始结构化格式（兼容旧导入）' },
-    { value: 'arkmejson', label: 'ArkmeJSON', desc: '增强结构化格式，包含互动身份字段' }
+    { value: 'html', label: 'HTML', desc: t('网页格式，可直接浏览') },
+    { value: 'json', label: 'JSON', desc: t('原始结构化格式（兼容旧导入）') },
+    { value: 'arkmejson', label: 'ArkmeJSON', desc: t('增强结构化格式，包含互动身份字段') }
   ]
   const formatCandidateOptions = exportDialog.scope === 'sns'
     ? snsFormatOptions
@@ -7921,48 +7917,48 @@ function ExportPage() {
   const useCollapsedSessionFormatSelector = isSessionScopeDialog || isContentTextDialog
   const shouldShowFormatSection = !isContentScopeDialog || isContentTextDialog
   const shouldShowMediaSection = !isContentScopeDialog
-  const avatarExportStatusLabel = options.exportAvatars ? '已开启聊天消息导出带头像' : '已关闭聊天消息导出带头像'
-  const contentTextDialogSummary = '此模式只导出聊天文本，不包含图片语音视频表情包等多媒体文件。'
+  const avatarExportStatusLabel = options.exportAvatars ? t('已开启聊天消息导出带头像') : t('已关闭聊天消息导出带头像')
+  const contentTextDialogSummary = t('此模式只导出聊天文本，不包含图片语音视频表情包等多媒体文件。')
   const activeDialogFormatLabel = exportDialog.scope === 'sns'
     ? (snsFormatOptions.find(option => option.value === snsExportFormat)?.label ?? snsExportFormat)
     : (formatOptions.find(option => option.value === options.format)?.label ?? options.format)
   const sessionMediaOptions = [
     {
       key: 'images',
-      label: '图片',
-      desc: '聊天图片与缩略图',
+      label: t('图片'),
+      desc: t('聊天图片与缩略图'),
       icon: ImageIcon,
       checked: options.exportImages,
       onToggle: (checked: boolean) => setOptions(prev => ({ ...prev, exportImages: checked }))
     },
     {
       key: 'voices',
-      label: '语音',
-      desc: '语音消息文件',
+      label: t('语音'),
+      desc: t('语音消息文件'),
       icon: Mic,
       checked: options.exportVoices,
       onToggle: (checked: boolean) => setOptions(prev => ({ ...prev, exportVoices: checked }))
     },
     {
       key: 'videos',
-      label: '视频',
-      desc: '聊天视频与封面',
+      label: t('视频'),
+      desc: t('聊天视频与封面'),
       icon: Video,
       checked: options.exportVideos,
       onToggle: (checked: boolean) => setOptions(prev => ({ ...prev, exportVideos: checked }))
     },
     {
       key: 'emojis',
-      label: '表情包',
-      desc: '静态与动态表情',
+      label: t('表情包'),
+      desc: t('静态与动态表情'),
       icon: MessageSquare,
       checked: options.exportEmojis,
       onToggle: (checked: boolean) => setOptions(prev => ({ ...prev, exportEmojis: checked }))
     },
     {
       key: 'files',
-      label: '文件',
-      desc: '文档与附件',
+      label: t('文件'),
+      desc: t('文档与附件'),
       icon: FileIcon,
       checked: options.exportFiles,
       onToggle: (checked: boolean) => setOptions(prev => ({ ...prev, exportFiles: checked }))
@@ -7971,15 +7967,15 @@ function ExportPage() {
   const snsMediaOptions = [
     {
       key: 'images',
-      label: '图片',
-      desc: '朋友圈图片',
+      label: t('图片'),
+      desc: t('朋友圈图片'),
       icon: ImageIcon,
       checked: snsExportImages,
       onToggle: (checked: boolean) => setSnsExportImages(checked)
     },
     {
       key: 'live-photos',
-      label: '实况图',
+      label: t('实况图'),
       desc: 'Live Photo',
       icon: Aperture,
       checked: snsExportLivePhotos,
@@ -7987,19 +7983,19 @@ function ExportPage() {
     },
     {
       key: 'videos',
-      label: '视频',
-      desc: '朋友圈视频',
+      label: t('视频'),
+      desc: t('朋友圈视频'),
       icon: Video,
       checked: snsExportVideos,
       onToggle: (checked: boolean) => setSnsExportVideos(checked)
     }
   ]
   const dialogMediaOptions = exportDialog.scope === 'sns' ? snsMediaOptions : sessionMediaOptions
-  const mediaSelectionSummaryLabel = `已选择 ${dialogMediaOptions.filter(option => option.checked).length}/${dialogMediaOptions.length}`
+  const mediaSelectionSummaryLabel = t('已选择 {length}/{length2}', { length: dialogMediaOptions.filter(option => option.checked).length, length2: dialogMediaOptions.length })
   const voiceAsTextStatusLabel = options.exportVoices
-    ? '已勾选导出语音：会同时导出语音文件，并在文本中追加语音转写结果。'
-    : '未勾选导出语音时，仅在文本里追加语音转写结果，不导出语音文件。'
-  const fileSizeLimitLabel = options.maxFileSizeMb <= 0 ? '不限' : `${options.maxFileSizeMb} MB`
+    ? t('已勾选导出语音：会同时导出语音文件，并在文本中追加语音转写结果。')
+    : t('未勾选导出语音时，仅在文本里追加语音转写结果，不导出语音文件。')
+  const fileSizeLimitLabel = options.maxFileSizeMb <= 0 ? t('不限') : `${options.maxFileSizeMb} MB`
   const shouldShowDisplayNameSection = !(
     exportDialog.scope === 'sns' ||
     (
@@ -8090,10 +8086,10 @@ function ExportPage() {
   }, [sessionLoadDetailRows])
   const isSessionLoadDetailActive = useMemo(() => (
     sessionLoadDetailRows.some(row => (
-      row.messageCount.statusLabel.startsWith('加载中') ||
-      row.mediaMetrics.statusLabel.startsWith('加载中') ||
-      row.snsPostCounts.statusLabel.startsWith('加载中') ||
-      row.mutualFriends.statusLabel.startsWith('加载中')
+      row.messageCount.statusLabel.startsWith(t('加载中')) ||
+      row.mediaMetrics.statusLabel.startsWith(t('加载中')) ||
+      row.snsPostCounts.statusLabel.startsWith(t('加载中')) ||
+      row.mutualFriends.statusLabel.startsWith(t('加载中'))
     ))
   ), [sessionLoadDetailRows])
   const syncContactsHorizontalScroll = useCallback((source: 'viewport' | 'bottom', scrollLeft: number) => {
@@ -8241,7 +8237,7 @@ function ExportPage() {
       status: 'pause_requested',
       progress: {
         ...current.progress,
-        phaseLabel: current.progress.phaseLabel || '暂停请求已发送'
+        phaseLabel: current.progress.phaseLabel || t('暂停请求已发送')
       }
     }))
     window.electronAPI.export.pauseTask(taskId).then(result => {
@@ -8249,7 +8245,7 @@ function ExportPage() {
       updateTask(taskId, current => ({
         ...current,
         status: current.status === 'pause_requested' ? 'running' : current.status,
-        error: result.error || '暂停请求失败'
+        error: result.error || t('暂停请求失败')
       }))
     }).catch(error => {
       updateTask(taskId, current => ({
@@ -8269,7 +8265,7 @@ function ExportPage() {
           ...current,
           status: 'error',
           finishedAt: doneAt,
-          error: result.error || '继续任务失败',
+          error: result.error || t('继续任务失败'),
           performance: finalizeTaskPerformance(current, doneAt)
         }))
         return
@@ -8281,7 +8277,7 @@ function ExportPage() {
         error: undefined,
         progress: {
           ...current.progress,
-          phaseLabel: current.status === 'pause_requested' ? '继续中' : '等待继续'
+          phaseLabel: current.status === 'pause_requested' ? t('继续中') : t('等待继续')
         }
       }))
     }).catch(error => {
@@ -8310,7 +8306,7 @@ function ExportPage() {
       status: 'cancel_requested',
       progress: {
         ...current.progress,
-        phaseLabel: '取消请求已发送，正在安全停止'
+        phaseLabel: t('取消请求已发送，正在安全停止')
       }
     }))
     window.electronAPI.export.cancelTask(taskId).then(result => {
@@ -8324,7 +8320,7 @@ function ExportPage() {
           ...current,
           status: 'error',
           finishedAt: doneAt,
-          error: result.error || '取消任务失败',
+          error: result.error || t('取消任务失败'),
           performance: finalizeTaskPerformance(current, doneAt)
         }))
       }
@@ -8347,22 +8343,22 @@ function ExportPage() {
       enabled,
       updatedAt: now
     }))
-    setAutomationHint(enabled ? '自动化任务已启用' : '自动化任务已停用')
+    setAutomationHint(enabled ? t('自动化任务已启用') : t('自动化任务已停用'))
   }, [patchAutomationTask])
 
   const deleteAutomationTask = useCallback((taskId: string) => {
     const target = automationTasksRef.current.find((task) => task.id === taskId)
     if (!target) return
-    const confirmed = window.confirm(`确认删除自动化任务「${target.name}」吗？`)
+    const confirmed = window.confirm(t('确认删除自动化任务「{name}」吗？', { name: target.name }))
     if (!confirmed) return
     updateAutomationTasks((prev) => prev.filter((task) => task.id !== taskId))
-    setAutomationHint('自动化任务已删除')
+    setAutomationHint(t('自动化任务已删除'))
   }, [updateAutomationTasks])
 
   const chooseAutomationDraftOutputDir = useCallback(async () => {
     if (!automationTaskDraft) return
     const result = await window.electronAPI.dialog.openFile({
-      title: '选择任务导出目录',
+      title: t('选择任务导出目录'),
       properties: ['openDirectory']
     })
     if (result.canceled || result.filePaths.length === 0) return
@@ -8395,7 +8391,7 @@ function ExportPage() {
       !canExport
         ? (isSessionBindingPending ? { state: 'loading' } : { state: 'na', text: '--' })
         : typeof displayedMessageCount === 'number'
-          ? { state: 'value', text: displayedMessageCount.toLocaleString('zh-CN') }
+          ? { state: 'value', text: displayedMessageCount.toLocaleString(formatLocale()) }
           : { state: 'loading' }
     const metricToDisplay = (value: unknown): { state: 'value'; text: string } | { state: 'loading' } | { state: 'na'; text: '--' } => {
       const normalized = normalizeMessageCount(value)
@@ -8403,7 +8399,7 @@ function ExportPage() {
         return isSessionBindingPending ? { state: 'loading' } : { state: 'na', text: '--' }
       }
       if (typeof normalized === 'number') {
-        return { state: 'value', text: normalized.toLocaleString('zh-CN') }
+        return { state: 'value', text: normalized.toLocaleString(formatLocale()) }
       }
       return { state: 'loading' }
     }
@@ -8439,10 +8435,10 @@ function ExportPage() {
       )
     )
     const openChatLabel = contact.type === 'friend'
-      ? '打开私聊'
+      ? t('打开私聊')
       : contact.type === 'group'
-        ? '打开群聊'
-        : '打开对话'
+        ? t('打开群聊')
+        : t('打开对话')
     const previousContact = index > 0 ? filteredContacts[index - 1] : null
     const nextContact = index < filteredContacts.length - 1 ? filteredContacts[index + 1] : null
     const previousCanExport = Boolean(previousContact && sessionRowByUsername.get(previousContact.username)?.hasSession)
@@ -8466,7 +8462,7 @@ function ExportPage() {
                 type="button"
                 disabled={!canExport}
                 onClick={() => toggleSelectSession(contact.username)}
-                title={canExport ? (checked ? '取消选择' : '选择会话') : '该联系人暂无会话记录'}
+                title={canExport ? (checked ? t('取消选择') : t('选择会话')) : t('该联系人暂无会话记录')}
               >
                 {checked ? <CheckSquare size={16} /> : <Square size={16} />}
               </button>
@@ -8488,7 +8484,7 @@ function ExportPage() {
             <div className="row-message-stats">
               <strong className={`row-message-count-value ${messageCountState.state === 'value' ? '' : 'muted'}`}>
                 {messageCountState.state === 'loading'
-                  ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label="统计加载中" />
+                  ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label={t('统计加载中')} />
                   : messageCountState.text}
               </strong>
             </div>
@@ -8496,7 +8492,7 @@ function ExportPage() {
               <button
                 type="button"
                 className="row-open-chat-link"
-                title="切换到聊天页查看该会话"
+                title={t('切换到聊天页查看该会话')}
                 onClick={() => {
                   setCurrentSession(contact.username)
                   navigate('/chat')
@@ -8509,28 +8505,28 @@ function ExportPage() {
           <div className="row-media-metric">
             <strong className="row-media-metric-value">
               {emojiMetric.state === 'loading'
-                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label="统计加载中" />
+                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label={t('统计加载中')} />
                 : emojiMetric.text}
             </strong>
           </div>
           <div className="row-media-metric">
             <strong className="row-media-metric-value">
               {voiceMetric.state === 'loading'
-                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label="统计加载中" />
+                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label={t('统计加载中')} />
                 : voiceMetric.text}
             </strong>
           </div>
           <div className="row-media-metric">
             <strong className="row-media-metric-value">
               {imageMetric.state === 'loading'
-                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label="统计加载中" />
+                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label={t('统计加载中')} />
                 : imageMetric.text}
             </strong>
           </div>
           <div className="row-media-metric">
             <strong className="row-media-metric-value">
               {videoMetric.state === 'loading'
-                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label="统计加载中" />
+                ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label={t('统计加载中')} />
                 : videoMetric.text}
             </strong>
           </div>
@@ -8540,13 +8536,13 @@ function ExportPage() {
                 <button
                   type="button"
                   className={`row-sns-metric-btn ${isSnsCountLoading ? 'loading' : ''}`}
-                  title={`查看 ${contact.displayName || contact.username} 的朋友圈`}
+                  title={t('查看 {v0} 的朋友圈', { v0: contact.displayName || contact.username })}
                   onClick={() => openContactSnsTimeline(contact)}
                 >
                   {isSnsCountLoading
-                    ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label="朋友圈统计加载中" />
+                    ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label={t('朋友圈统计加载中')} />
                     : hasSnsCount
-                      ? `${snsCount.toLocaleString('zh-CN')} 条`
+                      ? t('{v0} 条', { v0: snsCount.toLocaleString(formatLocale()) })
                       : '--'}
                 </button>
               ) : (
@@ -8560,14 +8556,14 @@ function ExportPage() {
                 <button
                   type="button"
                   className={`row-sns-metric-btn row-mutual-friends-btn ${isMutualFriendsLoading ? 'loading' : ''} ${hasMutualFriendsMetric ? 'ready' : ''}`}
-                  title={`查看 ${contact.displayName || contact.username} 的共同好友`}
+                  title={t('查看 {v0} 的共同好友', { v0: contact.displayName || contact.username })}
                   onClick={() => openSessionMutualFriendsDialog(contact)}
                   disabled={!hasMutualFriendsMetric}
                 >
                   {isMutualFriendsLoading
-                    ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label="共同好友统计加载中" />
+                    ? <Loader2 size={12} className="spin row-media-metric-icon" aria-label={t('共同好友统计加载中')} />
                     : hasMutualFriendsMetric
-                      ? mutualFriendsMetric.count.toLocaleString('zh-CN')
+                      ? mutualFriendsMetric.count.toLocaleString(formatLocale())
                       : '--'}
                 </button>
               ) : (
@@ -8591,7 +8587,7 @@ function ExportPage() {
                       })
                     }}
                   >
-                    {!canExport ? '暂无会话' : isRunning ? '导出中...' : isQueued ? '排队中' : '导出'}
+                    {!canExport ? t('暂无会话') : isRunning ? t('导出中...') : isQueued ? t('排队中') : t('导出')}
                   </button>
                   {showRecentExport && <span className="row-export-time">{recentExportTime}</span>}
                 </div>
@@ -8599,9 +8595,7 @@ function ExportPage() {
               <button
                 className={`row-detail-btn ${showSessionDetailPanel && sessionDetail?.wxid === contact.username ? 'active' : ''}`}
                 onClick={() => openSessionDetail(contact.username)}
-              >
-                详情
-              </button>
+              >{t('详情')}</button>
             </div>
           </div>
         </div>
@@ -8659,7 +8653,7 @@ function ExportPage() {
   }, [hasFilteredContacts])
   const chooseExportFolder = useCallback(async () => {
     const result = await window.electronAPI.dialog.openFile({
-      title: '选择导出目录',
+      title: t('选择导出目录'),
       properties: ['openDirectory']
     })
     if (!result.canceled && result.filePaths.length > 0) {
@@ -8717,7 +8711,7 @@ function ExportPage() {
         <div className="export-top-bar">
           <div className="global-export-controls">
             <div className="path-control">
-              <span className="control-label">导出位置</span>
+              <span className="control-label">{t('导出位置')}</span>
               <div className="path-inline-row">
                 <div className="path-value">
                   <button
@@ -8726,15 +8720,12 @@ function ExportPage() {
                     title={exportFolder}
                     onClick={() => void chooseExportFolder()}
                   >
-                    {exportFolder || '未设置'}
+                    {exportFolder || t('未设置')}
                   </button>
-                  <button className="path-change-btn" type="button" onClick={() => void chooseExportFolder()}>
-                    更换
-                  </button>
+                  <button className="path-change-btn" type="button" onClick={() => void chooseExportFolder()}>{t('更换')}</button>
                 </div>
                 <button className="secondary-btn" onClick={() => exportFolder && void window.electronAPI.shell.openPath(exportFolder)}>
-                  <ExternalLink size={14} /> 打开
-                </button>
+                  <ExternalLink size={14} />{' '}{t('打开')}</button>
               </div>
             </div>
 
@@ -8759,16 +8750,12 @@ function ExportPage() {
                   setIsAutomationCreateMode(false)
                   setIsAutomationModalOpen(true)
                 }}
-              >
-                自动化导出
-              </button>
+              >{t('自动化导出')}</button>
               <button
                 className="more-export-settings-btn"
                 type="button"
                 onClick={() => setIsExportDefaultsModalOpen(true)}
-              >
-                更多导出设置
-              </button>
+              >{t('更多导出设置')}</button>
             </div>
           </div>
 
@@ -8777,7 +8764,7 @@ function ExportPage() {
             type="button"
             onClick={() => setIsTaskCenterOpen(true)}
           >
-            <span className="task-center-card-label">任务中心</span>
+            <span className="task-center-card-label">{t('任务中心')}</span>
             {taskCenterAlertCount > 0 && (
               <span className="task-center-card-badge">{taskCenterAlertCount}</span>
             )}
@@ -8819,22 +8806,20 @@ function ExportPage() {
             className="automation-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="自动化导出任务"
+            aria-label={t('自动化导出任务')}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="automation-modal-header">
               <div>
-                <h3>自动化导出</h3>
-                <p>仅在应用运行期间生效；错过触发不会补跑。</p>
+                <h3>{t('自动化导出')}</h3>
+                <p>{t('仅在应用运行期间生效；错过触发不会补跑。')}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <button
                   type="button"
                   className="secondary-btn"
                   onClick={openCreateAutomationDraft}
-                >
-                  新建任务
-                </button>
+                >{t('新建任务')}</button>
                 <button
                   className="close-icon-btn"
                   type="button"
@@ -8843,7 +8828,7 @@ function ExportPage() {
                     setAutomationTaskDraft(null)
                     setIsAutomationRangeDialogOpen(false)
                   }}
-                  aria-label="关闭自动化导出"
+                  aria-label={t('关闭自动化导出')}
                 >
                   <X size={16} />
                 </button>
@@ -8852,9 +8837,7 @@ function ExportPage() {
 
             <div className="automation-modal-body">
               {sortedAutomationTasks.length === 0 ? (
-                <div className="automation-empty">
-                  暂无自动化任务。点击右上角「新建任务」开始配置。
-                </div>
+                <div className="automation-empty">{t('暂无自动化任务。点击右上角「新建任务」开始配置。')}</div>
               ) : (
                 <div className="automation-task-list">
                   {sortedAutomationTasks.map((task) => {
@@ -8873,19 +8856,19 @@ function ExportPage() {
                           <div className="automation-task-title-row">
                             <strong>{task.name}</strong>
                             <span className={`automation-task-status ${task.enabled ? 'enabled' : 'disabled'}`}>
-                              {task.enabled ? '已启用' : '已停用'}
+                              {task.enabled ? t('已启用') : t('已停用')}
                             </span>
-                            {queueState === 'running' && <span className="automation-task-status running">执行中</span>}
-                            {queueState === 'queued' && <span className="automation-task-status queued">排队中</span>}
+                            {queueState === 'running' && <span className="automation-task-status running">{t('执行中')}</span>}
+                            {queueState === 'queued' && <span className="automation-task-status queued">{t('排队中')}</span>}
                           </div>
                           <p>{formatAutomationScheduleLabel(task.schedule)}</p>
-                          <p>首次触发：{resolveAutomationFirstTriggerSummary(task)}</p>
-                          <p>时间范围：{formatAutomationRangeLabel(task.template.dateRangeConfig as any)}</p>
-                          <p>会话范围：{task.sessionIds.length} 个</p>
-                          <p>导出目录：{task.outputDir || `${exportFolder || '未设置'}（全局）`}</p>
-                          <p>当前状态：{formatAutomationCurrentState(task, queueState, nowTick)}</p>
-                          <p>终止条件：{formatAutomationStopCondition(task)}</p>
-                          <p>最近结果：{formatAutomationLastRunSummary(task)}</p>
+                          <p>{t('首次触发：{v0}', { v0: resolveAutomationFirstTriggerSummary(task) })}</p>
+                          <p>{t('时间范围：{v0}', { v0: formatAutomationRangeLabel(task.template.dateRangeConfig as any) })}</p>
+                          <p>{t('会话范围：{length} 个', { length: task.sessionIds.length })}</p>
+                          <p>{t('导出目录：{v0}', { v0: task.outputDir || t('{v0}（全局）', { v0: exportFolder || t('未设置') }) })}</p>
+                          <p>{t('当前状态：{v0}', { v0: formatAutomationCurrentState(task, queueState, nowTick) })}</p>
+                          <p>{t('终止条件：{v0}', { v0: formatAutomationStopCondition(task) })}</p>
+                          <p>{t('最近结果：{v0}', { v0: formatAutomationLastRunSummary(task) })}</p>
                         </div>
                         <div className="automation-task-actions">
                           <button
@@ -8893,29 +8876,23 @@ function ExportPage() {
                             className="task-action-btn"
                             onClick={() => toggleAutomationTaskEnabled(task.id, !task.enabled)}
                           >
-                            {task.enabled ? '停用' : '启用'}
+                            {task.enabled ? t('停用') : t('启用')}
                           </button>
                           <button
                             type="button"
                             className="task-action-btn"
                             onClick={() => runAutomationTaskNow(task.id)}
-                          >
-                            立即执行
-                          </button>
+                          >{t('立即执行')}</button>
                           <button
                             type="button"
                             className="task-action-btn"
                             onClick={() => openEditAutomationTaskDraft(task)}
-                          >
-                            编辑
-                          </button>
+                          >{t('编辑')}</button>
                           <button
                             type="button"
                             className="task-action-btn danger"
                             onClick={() => deleteAutomationTask(task.id)}
-                          >
-                            删除
-                          </button>
+                          >{t('删除')}</button>
                         </div>
                       </div>
                     )
@@ -8937,11 +8914,11 @@ function ExportPage() {
             className="automation-editor-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="编辑自动化任务"
+            aria-label={t('编辑自动化任务')}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="automation-editor-header">
-              <h3>{automationTaskDraft.mode === 'edit' ? '编辑自动化任务' : '创建自动化任务'}</h3>
+              <h3>{automationTaskDraft.mode === 'edit' ? t('编辑自动化任务') : t('创建自动化任务')}</h3>
               <button
                 className="close-icon-btn"
                 type="button"
@@ -8949,25 +8926,25 @@ function ExportPage() {
                   setAutomationTaskDraft(null)
                   setIsAutomationRangeDialogOpen(false)
                 }}
-                aria-label="关闭自动化任务编辑"
+                aria-label={t('关闭自动化任务编辑')}
               >
                 <X size={16} />
               </button>
             </div>
             <div className="automation-editor-body">
               <label className="automation-form-field">
-                <span>任务名称</span>
+                <span>{t('任务名称')}</span>
                 <input
                   type="text"
                   value={automationTaskDraft.name}
                   onChange={(event) => setAutomationTaskDraft((prev) => prev ? { ...prev, name: event.target.value } : prev)}
-                  placeholder="例如：工作日会话归档"
+                  placeholder={t('例如：工作日会话归档')}
                 />
               </label>
 
               <div className="automation-inline-time">
                 <label className="automation-form-field">
-                  <span>间隔天数</span>
+                  <span>{t('间隔天数')}</span>
                   <input
                     type="number"
                     min={0}
@@ -8979,7 +8956,7 @@ function ExportPage() {
                   />
                 </label>
                 <label className="automation-form-field">
-                  <span>间隔小时</span>
+                  <span>{t('间隔小时')}</span>
                   <input
                     type="number"
                     min={0}
@@ -8994,7 +8971,7 @@ function ExportPage() {
               </div>
 
               <div className="automation-form-field">
-                <span>首次触发时间（可选）</span>
+                <span>{t('首次触发时间（可选）')}</span>
                 <label className="automation-inline-check">
                   <input
                     type="checkbox"
@@ -9003,9 +8980,7 @@ function ExportPage() {
                       ...prev,
                       firstTriggerAtEnabled: event.target.checked
                     } : prev)}
-                  />
-                  指定第一次触发时间
-                </label>
+                  />{t('指定第一次触发时间')}</label>
                 {automationTaskDraft.firstTriggerAtEnabled && (
                   <div className="automation-first-trigger-picker">
                     <input
@@ -9040,7 +9015,7 @@ function ExportPage() {
               </div>
 
               <div className="automation-form-field">
-                <span>导出时间范围（按触发时间动态计算）</span>
+                <span>{t('导出时间范围（按触发时间动态计算）')}</span>
                 <div className="automation-segment-row">
                   {AUTOMATION_RANGE_OPTIONS.map((option) => {
                     const active = resolveAutomationRangeMode(automationTaskDraft.dateRangeConfig as any, automationRangeSelection) === option.mode
@@ -9058,7 +9033,7 @@ function ExportPage() {
                 </div>
                 {resolveAutomationRangeMode(automationTaskDraft.dateRangeConfig as any, automationRangeSelection) === 'lastNDays' && (
                   <label className="automation-form-field">
-                    <span>往前天数</span>
+                    <span>{t('往前天数')}</span>
                     <input
                       type="number"
                       min={AUTOMATION_LAST_N_DAYS_MIN}
@@ -9077,14 +9052,14 @@ function ExportPage() {
                       onClick={openAutomationDateRangeDialog}
                       disabled={isResolvingAutomationRangeBounds}
                     >
-                      {isResolvingAutomationRangeBounds ? '解析中...' : '编辑完整时间'}
+                      {isResolvingAutomationRangeBounds ? t('解析中...') : t('编辑完整时间')}
                     </button>
                   )}
                 </div>
               </div>
 
               <div className="automation-form-field">
-                <span>终止条件（可选）</span>
+                <span>{t('终止条件（可选）')}</span>
                 <label className="automation-inline-check">
                   <input
                     type="checkbox"
@@ -9093,9 +9068,7 @@ function ExportPage() {
                       ...prev,
                       stopAtEnabled: event.target.checked
                     } : prev)}
-                  />
-                  到指定时间后自动停止
-                </label>
+                  />{t('到指定时间后自动停止')}</label>
                 {automationTaskDraft.stopAtEnabled && (
                   <div className="automation-stopat-picker">
                     <input
@@ -9130,9 +9103,7 @@ function ExportPage() {
                       ...prev,
                       maxRunsEnabled: event.target.checked
                     } : prev)}
-                  />
-                  成功执行指定次数后自动停止
-                </label>
+                  />{t('成功执行指定次数后自动停止')}</label>
                 {automationTaskDraft.maxRunsEnabled && (
                   <input
                     type="number"
@@ -9147,7 +9118,7 @@ function ExportPage() {
               </div>
 
               <div className="automation-form-field">
-                <span>导出目录</span>
+                <span>{t('导出目录')}</span>
                 <label className="automation-inline-check">
                   <input
                     type="checkbox"
@@ -9156,15 +9127,11 @@ function ExportPage() {
                       ...prev,
                       useGlobalOutputDir: event.target.checked
                     } : prev)}
-                  />
-                  使用全局导出目录
-                </label>
+                  />{t('使用全局导出目录')}</label>
                 {!automationTaskDraft.useGlobalOutputDir && (
                   <div className="automation-path-row">
-                    <button type="button" className="task-action-btn" onClick={() => void chooseAutomationDraftOutputDir()}>
-                      选择目录
-                    </button>
-                    <span>{automationTaskDraft.outputDir || '未设置'}</span>
+                    <button type="button" className="task-action-btn" onClick={() => void chooseAutomationDraftOutputDir()}>{t('选择目录')}</button>
+                    <span>{automationTaskDraft.outputDir || t('未设置')}</span>
                   </div>
                 )}
               </div>
@@ -9174,17 +9141,11 @@ function ExportPage() {
                   type="checkbox"
                   checked={automationTaskDraft.enabled}
                   onChange={(event) => setAutomationTaskDraft((prev) => prev ? { ...prev, enabled: event.target.checked } : prev)}
-                />
-                创建后立即启用
-              </label>
+                />{t('创建后立即启用')}</label>
 
-              <div className="automation-draft-summary">
-                会话：{automationTaskDraft.sessionIds.length} 个 · 间隔：{automationTaskDraft.intervalDays} 天 {automationTaskDraft.intervalHours} 小时 · 首次：{
-                  automationTaskDraft.firstTriggerAtEnabled
-                    ? (automationTaskDraft.firstTriggerAtValue ? automationTaskDraft.firstTriggerAtValue.replace('T', ' ') : '未设置')
-                    : '默认按创建时间+间隔'
-                } · 时间：{formatAutomationRangeLabel(automationTaskDraft.dateRangeConfig as any, automationRangeSelection)} · 条件：有新消息才导出
-              </div>
+              <div className="automation-draft-summary">{t('会话：{length} 个 · 间隔：{intervalDays} 天 {intervalHours} 小时 · 首次：{v3} · 时间：{v4} · 条件：有新消息才导出', { length: automationTaskDraft.sessionIds.length, intervalDays: automationTaskDraft.intervalDays, intervalHours: automationTaskDraft.intervalHours, v3: automationTaskDraft.firstTriggerAtEnabled
+                    ? (automationTaskDraft.firstTriggerAtValue ? automationTaskDraft.firstTriggerAtValue.replace('T', ' ') : t('未设置'))
+                    : t('默认按创建时间+间隔'), v4: formatAutomationRangeLabel(automationTaskDraft.dateRangeConfig as any, automationRangeSelection) })}</div>
             </div>
             <div className="automation-editor-actions">
               <button
@@ -9194,10 +9155,8 @@ function ExportPage() {
                   setAutomationTaskDraft(null)
                   setIsAutomationRangeDialogOpen(false)
                 }}
-              >
-                取消
-              </button>
-              <button type="button" className="primary-btn" onClick={saveAutomationTaskDraft}>保存任务</button>
+              >{t('取消')}</button>
+              <button type="button" className="primary-btn" onClick={saveAutomationTaskDraft}>{t('保存任务')}</button>
             </div>
             <ExportDateRangeDialog
               open={isAutomationRangeDialogOpen}
@@ -9228,18 +9187,18 @@ function ExportPage() {
             className="export-defaults-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="更多导出设置"
+            aria-label={t('更多导出设置')}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="export-defaults-modal-header">
               <div>
-                <h3>更多导出设置</h3>
+                <h3>{t('更多导出设置')}</h3>
               </div>
               <button
                 className="close-icon-btn"
                 type="button"
                 onClick={() => setIsExportDefaultsModalOpen(false)}
-                aria-label="关闭更多导出设置"
+                aria-label={t('关闭更多导出设置')}
               >
                 <X size={16} />
               </button>
@@ -9252,9 +9211,7 @@ function ExportPage() {
                 type="button"
                 className="secondary-btn"
                 onClick={() => setIsExportDefaultsModalOpen(false)}
-              >
-                关闭
-              </button>
+              >{t('关闭')}</button>
             </div>
           </div>
         </div>,
@@ -9262,14 +9219,14 @@ function ExportPage() {
       )}
 
       <div className="export-section-title-row">
-        <h3 className="export-section-title">按类型批量导出</h3>
+        <h3 className="export-section-title">{t('按类型批量导出')}</h3>
         <SectionInfoTooltip
-          label="按类型批量导出"
-          heading="按类型批量导出说明"
+          label={t('按类型批量导出')}
+          heading={t('按类型批量导出说明')}
           messages={[
-            '按数据类型统一导出，适合横向汇总同类内容，比如集中导出图片、语音或视频。',
-            '发起前可先设置导出时间范围和格式，能减少无关数据，导出结果更聚焦。',
-            '每个类型卡片中展示到已导出会话数，统计范围会涵盖下方按会话导出。'
+            t('按数据类型统一导出，适合横向汇总同类内容，比如集中导出图片、语音或视频。'),
+            t('发起前可先设置导出时间范围和格式，能减少无关数据，导出结果更聚焦。'),
+            t('每个类型卡片中展示到已导出会话数，统计范围会涵盖下方按会话导出。')
           ]}
         />
       </div>
@@ -9288,10 +9245,9 @@ function ExportPage() {
                 {card.type === 'sns' && (
                   <div className="card-title-meta">
                     {isCardStatsLoading ? (
-                      <span className="count-loading">
-                        统计中<span className="animated-ellipsis" aria-hidden="true">...</span>
+                      <span className="count-loading">{t('统计中')}<span className="animated-ellipsis" aria-hidden="true">...</span>
                       </span>
-                    ) : `${card.headerCount.toLocaleString()} 条`}
+                    ) : t('{v0} 条', { v0: card.headerCount.toLocaleString() })}
                   </div>
                 )}
               </div>
@@ -9301,8 +9257,7 @@ function ExportPage() {
                     <span>{stat.label}</span>
                     <strong>
                       {isCardStatsLoading ? (
-                        <span className="count-loading">
-                          统计中<span className="animated-ellipsis" aria-hidden="true">...</span>
+                        <span className="count-loading">{t('统计中')}<span className="animated-ellipsis" aria-hidden="true">...</span>
                         </span>
                       ) : `${stat.value.toLocaleString()} ${stat.unit}`}
                     </strong>
@@ -9323,10 +9278,10 @@ function ExportPage() {
                 >
                   {isCardRunning ? (
                     <>
-                      <span>批量导出中</span>
+                      <span>{t('批量导出中')}</span>
                       <Loader2 size={14} className="spin" />
                     </>
-                  ) : '批量导出'}
+                  ) : t('批量导出')}
                 </button>
               )}
             </div>
@@ -9335,25 +9290,23 @@ function ExportPage() {
       </div>
 
       <div className="export-section-title-row">
-        <h3 className="export-section-title">按会话导出</h3>
+        <h3 className="export-section-title">{t('按会话导出')}</h3>
         <SectionInfoTooltip
-          label="按会话导出"
-          heading="按会话导出说明"
+          label={t('按会话导出')}
+          heading={t('按会话导出说明')}
           messages={[
-            '按会话维度导出完整上下文，适合按客户、项目或群组进行归档。',
-            '你可以先在列表中筛选目标会话，再批量导出，结果会保留每个会话的结构与时间线。'
+            t('按会话维度导出完整上下文，适合按客户、项目或群组进行归档。'),
+            t('你可以先在列表中筛选目标会话，再批量导出，结果会保留每个会话的结构与时间线。')
           ]}
         />
         {isAutomationCreateMode && (
           <div className="automation-create-mode-pill">
-            <span>自动化创建中：先勾选联系人，再点击「加入任务」</span>
+            <span>{t('自动化创建中：先勾选联系人，再点击「加入任务」')}</span>
             <button
               type="button"
               className="secondary-btn"
               onClick={exitAutomationCreateMode}
-            >
-              退出
-            </button>
+            >{t('退出')}</button>
           </div>
         )}
         <button
@@ -9366,30 +9319,30 @@ function ExportPage() {
             <span className="session-load-detail-entry-bar" />
             <span className="session-load-detail-entry-bar" />
           </span>
-          <span>数据加载详情</span>
+          <span>{t('数据加载详情')}</span>
         </button>
       </div>
       <div className="session-table-section" ref={sessionTableSectionRef}>
         <div className="session-table-layout">
           <div className="table-wrap" style={contactsTableStyle}>
             <div className="table-toolbar">
-              <div className="table-tabs" role="tablist" aria-label="会话类型">
+              <div className="table-tabs" role="tablist" aria-label={t('会话类型')}>
                 <button className={`tab-btn ${activeTab === 'private' ? 'active' : ''}`} onClick={() => setActiveTab('private')}>
                   <span className="tab-btn-content">
-                    <span>私聊</span>
-                    <span>{isTabCountComputing ? <span className="count-loading">计算中<span className="animated-ellipsis" aria-hidden="true">...</span></span> : tabCounts.private}</span>
+                    <span>{t('私聊')}</span>
+                    <span>{isTabCountComputing ? <span className="count-loading">{t('计算中')}<span className="animated-ellipsis" aria-hidden="true">...</span></span> : tabCounts.private}</span>
                   </span>
                 </button>
                 <button className={`tab-btn ${activeTab === 'group' ? 'active' : ''}`} onClick={() => setActiveTab('group')}>
                   <span className="tab-btn-content">
-                    <span>群聊</span>
-                    <span>{isTabCountComputing ? <span className="count-loading">计算中<span className="animated-ellipsis" aria-hidden="true">...</span></span> : tabCounts.group}</span>
+                    <span>{t('群聊')}</span>
+                    <span>{isTabCountComputing ? <span className="count-loading">{t('计算中')}<span className="animated-ellipsis" aria-hidden="true">...</span></span> : tabCounts.group}</span>
                   </span>
                 </button>
                 <button className={`tab-btn ${activeTab === 'former_friend' ? 'active' : ''}`} onClick={() => setActiveTab('former_friend')}>
                   <span className="tab-btn-content">
-                    <span>曾经的好友</span>
-                    <span>{isTabCountComputing ? <span className="count-loading">计算中<span className="animated-ellipsis" aria-hidden="true">...</span></span> : tabCounts.former_friend}</span>
+                    <span>{t('曾经的好友')}</span>
+                    <span>{isTabCountComputing ? <span className="count-loading">{t('计算中')}<span className="animated-ellipsis" aria-hidden="true">...</span></span> : tabCounts.former_friend}</span>
                   </span>
                 </button>
               </div>
@@ -9400,7 +9353,7 @@ function ExportPage() {
                   <input
                     value={searchKeyword}
                     onChange={(event) => setSearchKeyword(event.target.value)}
-                    placeholder={`搜索${activeTabLabel}联系人...`}
+                    placeholder={t('搜索{activeTabLabel}联系人...', { activeTabLabel: activeTabLabel })}
                   />
                   {searchKeyword && (
                     <button className="clear-search" onClick={() => setSearchKeyword('')}>
@@ -9409,9 +9362,7 @@ function ExportPage() {
                   )}
                 </div>
                 <button className="secondary-btn" onClick={() => void handleRefreshTableData()} disabled={isContactsListLoading}>
-                  <RefreshCw size={14} className={isContactsListLoading ? 'spin' : ''} />
-                  刷新
-                </button>
+                  <RefreshCw size={14} className={isContactsListLoading ? 'spin' : ''} />{t('刷新')}</button>
               </div>
             </div>
 
@@ -9425,9 +9376,7 @@ function ExportPage() {
                   <div className="session-table-sticky">
                     {contactsList.length > 0 && isContactsListLoading && (
                       <div className="table-stage-hint">
-                        <Loader2 size={14} className="spin" />
-                        联系人列表同步中…
-                      </div>
+                        <Loader2 size={14} className="spin" />{t('联系人列表同步中…')}</div>
                     )}
 
                     {hasFilteredContacts && (
@@ -9445,7 +9394,7 @@ function ExportPage() {
                               type="button"
                               onClick={toggleSelectAllVisible}
                               disabled={visibleSelectableCount === 0}
-                              title={isAllVisibleSelected ? '取消全选当前筛选联系人' : '全选当前筛选联系人'}
+                              title={isAllVisibleSelected ? t('取消全选当前筛选联系人') : t('全选当前筛选联系人')}
                             >
                               {isAllVisibleSelected ? <CheckSquare size={16} /> : <Square size={16} />}
                             </button>
@@ -9454,16 +9403,16 @@ function ExportPage() {
                             <span className="contacts-list-header-main-label">{contactsHeaderMainLabel}</span>
                           </span>
                         </span>
-                        <span className="contacts-list-header-count">总消息数</span>
-                        <span className="contacts-list-header-media">表情包</span>
-                        <span className="contacts-list-header-media">语音</span>
-                        <span className="contacts-list-header-media">图片</span>
-                        <span className="contacts-list-header-media">视频</span>
+                        <span className="contacts-list-header-count">{t('总消息数')}</span>
+                        <span className="contacts-list-header-media">{t('表情包')}</span>
+                        <span className="contacts-list-header-media">{t('语音')}</span>
+                        <span className="contacts-list-header-media">{t('图片')}</span>
+                        <span className="contacts-list-header-media">{t('视频')}</span>
                         {shouldShowSnsColumn && (
-                          <span className="contacts-list-header-media">朋友圈</span>
+                          <span className="contacts-list-header-media">{t('朋友圈')}</span>
                         )}
                         {shouldShowMutualFriendsColumn && (
-                          <span className="contacts-list-header-media">共同好友</span>
+                          <span className="contacts-list-header-media">{t('共同好友')}</span>
                         )}
                         <span className="contacts-list-header-actions">
                           {isAutomationCreateMode && (
@@ -9471,9 +9420,7 @@ function ExportPage() {
                               className="selection-clear-btn"
                               type="button"
                               onClick={exitAutomationCreateMode}
-                            >
-                              退出创建
-                            </button>
+                            >{t('退出创建')}</button>
                           )}
                           {selectedCount > 0 && (
                             <>
@@ -9481,15 +9428,13 @@ function ExportPage() {
                                 className="selection-clear-btn"
                                 type="button"
                                 onClick={clearSelection}
-                              >
-                                清空
-                              </button>
+                              >{t('清空')}</button>
                               <button
                                 className="selection-export-btn"
                                 type="button"
                                 onClick={isAutomationCreateMode ? openAutomationExportConfigDialog : openBatchExport}
                               >
-                                <span>{isAutomationCreateMode ? '加入任务' : '批量导出'}</span>
+                                <span>{isAutomationCreateMode ? t('加入任务') : t('批量导出')}</span>
                                 <span className="selection-export-count">{selectedCount}</span>
                               </button>
                             </>
@@ -9509,21 +9454,21 @@ function ExportPage() {
                         <p className="issue-message">{contactsLoadIssue.message}</p>
                         <p className="issue-reason">{contactsLoadIssue.reason}</p>
                         <ul className="issue-hints">
-                          <li>可能原因1：数据库当前仍在执行高开销查询（例如导出页后台统计）。</li>
-                          <li>可能原因2：contact.db 数据量较大，首次查询时间过长。</li>
-                          <li>可能原因3：数据库连接状态异常或 IPC 调用卡住。</li>
+                          <li>{t('可能原因1：数据库当前仍在执行高开销查询（例如导出页后台统计）。')}</li>
+                          <li>{t('可能原因2：contact.db 数据量较大，首次查询时间过长。')}</li>
+                          <li>{t('可能原因3：数据库连接状态异常或 IPC 调用卡住。')}</li>
                         </ul>
                         <div className="issue-actions">
                           <button className="issue-btn primary" onClick={() => void handleRefreshTableData()}>
                             <RefreshCw size={14} />
-                            <span>重试加载</span>
+                            <span>{t('重试加载')}</span>
                           </button>
                           <button className="issue-btn" onClick={() => setShowContactsDiagnostics(prev => !prev)}>
                             <ClipboardList size={14} />
-                            <span>{showContactsDiagnostics ? '收起诊断详情' : '查看诊断详情'}</span>
+                            <span>{showContactsDiagnostics ? t('收起诊断详情') : t('查看诊断详情')}</span>
                           </button>
                           <button className="issue-btn" onClick={copyContactsDiagnostics}>
-                            <span>复制诊断信息</span>
+                            <span>{t('复制诊断信息')}</span>
                           </button>
                         </div>
                         {showContactsDiagnostics && (
@@ -9534,11 +9479,11 @@ function ExportPage() {
                   ) : isContactsListLoading && contactsList.length === 0 ? (
                     <div className="loading-state">
                       <Loader2 size={32} className="spin" />
-                      <span>联系人加载中...</span>
+                      <span>{t('联系人加载中...')}</span>
                     </div>
                   ) : !hasFilteredContacts ? (
                     <div className="empty-state">
-                      <span>暂无联系人</span>
+                      <span>{t('暂无联系人')}</span>
                     </div>
                   ) : (
                     <div
@@ -9569,7 +9514,7 @@ function ExportPage() {
                 ref={contactsBottomScrollbarRef}
                 className="table-bottom-scrollbar"
                 onScroll={handleContactsBottomScrollbarScroll}
-                aria-label="会话列表横向滚动条"
+                aria-label={t('会话列表横向滚动条')}
               >
                 <div className="table-bottom-scrollbar-inner" style={contactsBottomScrollbarInnerStyle} />
               </div>
@@ -9585,24 +9530,22 @@ function ExportPage() {
                 className="session-load-detail-modal"
                 role="dialog"
                 aria-modal="true"
-                aria-label="数据加载详情"
+                aria-label={t('数据加载详情')}
                 onClick={(event) => event.stopPropagation()}
               >
                 <div className="session-load-detail-header">
                   <div>
-                    <h4>数据加载详情</h4>
-                    <p>
-                      更新时间：
-                      {sessionLoadDetailUpdatedAt > 0
-                        ? new Date(sessionLoadDetailUpdatedAt).toLocaleString('zh-CN')
-                        : '暂无'}
+                    <h4>{t('数据加载详情')}</h4>
+                    <p>{t('更新时间：{v0}', { v0: sessionLoadDetailUpdatedAt > 0
+                        ? new Date(sessionLoadDetailUpdatedAt).toLocaleString(formatLocale())
+                        : t('暂无') })}
                     </p>
                   </div>
                   <button
                     className="session-load-detail-close"
                     type="button"
                     onClick={() => setShowSessionLoadDetailModal(false)}
-                    aria-label="关闭"
+                    aria-label={t('关闭')}
                   >
                     <X size={16} />
                   </button>
@@ -9610,13 +9553,13 @@ function ExportPage() {
 
                 <div className="session-load-detail-body">
                   <section className="session-load-detail-block">
-                    <h5>其他页面后台任务</h5>
+                    <h5>{t('其他页面后台任务')}</h5>
                     <div className="session-load-detail-summary">
                       <div className="session-load-detail-summary-text">
                         <strong>{runningNonExportTaskCount}</strong>
-                        <span>个任务正在占用后台读取资源</span>
+                        <span>{t('个任务正在占用后台读取资源')}</span>
                         {nonExportBackgroundTasksUpdatedAt > 0 && (
-                          <em>最近更新时间 {new Date(nonExportBackgroundTasksUpdatedAt).toLocaleTimeString('zh-CN', { hour12: false })}</em>
+                          <em>{t('最近更新时间 {v0}', { v0: new Date(nonExportBackgroundTasksUpdatedAt).toLocaleTimeString(formatLocale(), { hour12: false }) })}</em>
                         )}
                       </div>
                       <button
@@ -9624,13 +9567,9 @@ function ExportPage() {
                         className="session-load-detail-stop-btn"
                         onClick={handleCancelAllNonExportTasks}
                         disabled={cancelableNonExportTaskCount === 0}
-                      >
-                        中断其他页面加载
-                      </button>
+                      >{t('中断其他页面加载')}</button>
                     </div>
-                    <p className="session-load-detail-note">
-                      停止请求会阻止其他页面继续发起后续统计或补算；当前已经发出的单次查询，会在返回后结束。
-                    </p>
+                    <p className="session-load-detail-note">{t('停止请求会阻止其他页面继续发起后续统计或补算；当前已经发出的单次查询，会在返回后结束。')}</p>
                     {nonExportBackgroundTasks.length > 0 ? (
                       <div className="session-load-detail-task-list">
                         {nonExportBackgroundTasks.map((task) => (
@@ -9645,11 +9584,11 @@ function ExportPage() {
                                   {backgroundTaskStatusLabels[task.status]}
                                 </span>
                               </div>
-                              <p>{task.detail || '暂无详细说明'}</p>
+                              <p>{task.detail || t('暂无详细说明')}</p>
                               <div className="session-load-detail-task-meta">
-                                <span>开始：{formatLoadDetailTime(task.startedAt)}</span>
-                                <span>更新：{formatLoadDetailTime(task.updatedAt)}</span>
-                                {task.progressText && <span>进度：{task.progressText}</span>}
+                                <span>{t('开始：{v0}', { v0: formatLoadDetailTime(task.startedAt) })}</span>
+                                <span>{t('更新：{v0}', { v0: formatLoadDetailTime(task.updatedAt) })}</span>
+                                {task.progressText && <span>{t('进度：{progressText}', { progressText: task.progressText })}</span>}
                               </div>
                             </div>
                             <button
@@ -9662,43 +9601,38 @@ function ExportPage() {
                                 task.status !== 'paused' &&
                                 task.status !== 'cancel_requested'
                               )}
-                            >
-                              停止
-                            </button>
+                            >{t('停止')}</button>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="session-load-detail-empty">
-                        当前没有检测到其他页面后台任务
-                      </div>
+                      <div className="session-load-detail-empty">{t('当前没有检测到其他页面后台任务')}</div>
                     )}
                   </section>
 
                   <section className="session-load-detail-block">
-                    <h5>总消息数</h5>
+                    <h5>{t('总消息数')}</h5>
                     <div className="session-load-detail-table">
                       <div className="session-load-detail-row header">
-                        <span>会话类型</span>
-                        <span>加载状态</span>
-                        <span>开始时间</span>
-                        <span>完成时间</span>
+                        <span>{t('会话类型')}</span>
+                        <span>{t('加载状态')}</span>
+                        <span>{t('开始时间')}</span>
+                        <span>{t('完成时间')}</span>
                       </div>
                       {sessionLoadDetailRows.map((row) => {
                         const pulse = sessionLoadProgressPulseMap[`messageCount:${row.tab}`]
-                        const isLoading = row.messageCount.statusLabel.startsWith('加载中')
+                        const isLoading = row.messageCount.statusLabel.startsWith(t('加载中'))
                         return (
                           <div className="session-load-detail-row" key={`message-${row.tab}`}>
                             <span>{row.label}</span>
                             <span className="session-load-detail-status-cell">
                               <span>{row.messageCount.statusLabel}</span>
                               {isLoading && (
-                                <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label="加载中" />
+                                <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label={t('加载中')} />
                               )}
                               {isLoading && pulse && pulse.delta > 0 && (
                                 <span className="session-load-detail-progress-pulse">
-                                  {formatLoadDetailPulseTime(pulse.at)} +{pulse.delta}条
-                                </span>
+                                  {t('{v0} +{delta}条', { v0: formatLoadDetailPulseTime(pulse.at), delta: pulse.delta })}</span>
                               )}
                             </span>
                             <span>{formatLoadDetailTime(row.messageCount.startedAt)}</span>
@@ -9710,29 +9644,28 @@ function ExportPage() {
                   </section>
 
                   <section className="session-load-detail-block">
-                    <h5>多媒体统计（表情包/图片/视频/语音）</h5>
+                    <h5>{t('多媒体统计（表情包/图片/视频/语音）')}</h5>
                     <div className="session-load-detail-table">
                       <div className="session-load-detail-row header">
-                        <span>会话类型</span>
-                        <span>加载状态</span>
-                        <span>开始时间</span>
-                        <span>完成时间</span>
+                        <span>{t('会话类型')}</span>
+                        <span>{t('加载状态')}</span>
+                        <span>{t('开始时间')}</span>
+                        <span>{t('完成时间')}</span>
                       </div>
                       {sessionLoadDetailRows.map((row) => {
                         const pulse = sessionLoadProgressPulseMap[`mediaMetrics:${row.tab}`]
-                        const isLoading = row.mediaMetrics.statusLabel.startsWith('加载中')
+                        const isLoading = row.mediaMetrics.statusLabel.startsWith(t('加载中'))
                         return (
                           <div className="session-load-detail-row" key={`media-${row.tab}`}>
                             <span>{row.label}</span>
                             <span className="session-load-detail-status-cell">
                               <span>{row.mediaMetrics.statusLabel}</span>
                               {isLoading && (
-                                <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label="加载中" />
+                                <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label={t('加载中')} />
                               )}
                               {isLoading && pulse && pulse.delta > 0 && (
                                 <span className="session-load-detail-progress-pulse">
-                                  {formatLoadDetailPulseTime(pulse.at)} +{pulse.delta}条
-                                </span>
+                                  {t('{v0} +{delta}条', { v0: formatLoadDetailPulseTime(pulse.at), delta: pulse.delta })}</span>
                               )}
                             </span>
                             <span>{formatLoadDetailTime(row.mediaMetrics.startedAt)}</span>
@@ -9744,31 +9677,30 @@ function ExportPage() {
                   </section>
 
                   <section className="session-load-detail-block">
-                    <h5>朋友圈条数统计</h5>
+                    <h5>{t('朋友圈条数统计')}</h5>
                     <div className="session-load-detail-table">
                       <div className="session-load-detail-row header">
-                        <span>会话类型</span>
-                        <span>加载状态</span>
-                        <span>开始时间</span>
-                        <span>完成时间</span>
+                        <span>{t('会话类型')}</span>
+                        <span>{t('加载状态')}</span>
+                        <span>{t('开始时间')}</span>
+                        <span>{t('完成时间')}</span>
                       </div>
                       {sessionLoadDetailRows
                         .filter((row) => row.tab === 'private' || row.tab === 'former_friend')
                         .map((row) => {
                         const pulse = sessionLoadProgressPulseMap[`snsPostCounts:${row.tab}`]
-                        const isLoading = row.snsPostCounts.statusLabel.startsWith('加载中')
+                        const isLoading = row.snsPostCounts.statusLabel.startsWith(t('加载中'))
                         return (
                           <div className="session-load-detail-row" key={`sns-count-${row.tab}`}>
                             <span>{row.label}</span>
                             <span className="session-load-detail-status-cell">
                               <span>{row.snsPostCounts.statusLabel}</span>
                               {isLoading && (
-                                <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label="加载中" />
+                                <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label={t('加载中')} />
                               )}
                               {isLoading && pulse && pulse.delta > 0 && (
                                 <span className="session-load-detail-progress-pulse">
-                                  {formatLoadDetailPulseTime(pulse.at)} +{pulse.delta}条
-                                </span>
+                                  {t('{v0} +{delta}条', { v0: formatLoadDetailPulseTime(pulse.at), delta: pulse.delta })}</span>
                               )}
                             </span>
                             <span>{formatLoadDetailTime(row.snsPostCounts.startedAt)}</span>
@@ -9780,31 +9712,30 @@ function ExportPage() {
                   </section>
 
                   <section className="session-load-detail-block">
-                    <h5>共同好友统计</h5>
+                    <h5>{t('共同好友统计')}</h5>
                     <div className="session-load-detail-table">
                       <div className="session-load-detail-row header">
-                        <span>会话类型</span>
-                        <span>加载状态</span>
-                        <span>开始时间</span>
-                        <span>完成时间</span>
+                        <span>{t('会话类型')}</span>
+                        <span>{t('加载状态')}</span>
+                        <span>{t('开始时间')}</span>
+                        <span>{t('完成时间')}</span>
                       </div>
                       {sessionLoadDetailRows
                         .filter((row) => row.tab === 'private' || row.tab === 'former_friend')
                         .map((row) => {
                           const pulse = sessionLoadProgressPulseMap[`mutualFriends:${row.tab}`]
-                          const isLoading = row.mutualFriends.statusLabel.startsWith('加载中')
+                          const isLoading = row.mutualFriends.statusLabel.startsWith(t('加载中'))
                           return (
                             <div className="session-load-detail-row" key={`mutual-friends-${row.tab}`}>
                               <span>{row.label}</span>
                               <span className="session-load-detail-status-cell">
                                 <span>{row.mutualFriends.statusLabel}</span>
                                 {isLoading && (
-                                  <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label="加载中" />
+                                  <Loader2 size={12} className="spin session-load-detail-status-icon" aria-label={t('加载中')} />
                                 )}
                                 {isLoading && pulse && pulse.delta > 0 && (
                                   <span className="session-load-detail-progress-pulse">
-                                    {formatLoadDetailPulseTime(pulse.at)} +{pulse.delta}个
-                                  </span>
+                                    {t('{v0} +{delta}个', { v0: formatLoadDetailPulseTime(pulse.at), delta: pulse.delta })}</span>
                                 )}
                               </span>
                               <span>{formatLoadDetailTime(row.mutualFriends.startedAt)}</span>
@@ -9829,7 +9760,7 @@ function ExportPage() {
                 className="session-mutual-friends-modal"
                 role="dialog"
                 aria-modal="true"
-                aria-label="共同好友"
+                aria-label={t('共同好友')}
                 onClick={(event) => event.stopPropagation()}
               >
                 <div className="session-mutual-friends-header">
@@ -9843,12 +9774,10 @@ function ExportPage() {
                       />
                     </div>
                     <div className="session-mutual-friends-meta">
-                      <h4>{sessionMutualFriendsDialogTarget.displayName} 的共同好友</h4>
-                      <div className="session-mutual-friends-stats">
-                        共 {sessionMutualFriendsDialogMetric.count.toLocaleString('zh-CN')} 人
-                        {sessionMutualFriendsDialogMetric.totalPosts !== null
-                          ? ` · 已统计 ${sessionMutualFriendsDialogMetric.loadedPosts.toLocaleString('zh-CN')} / ${sessionMutualFriendsDialogMetric.totalPosts.toLocaleString('zh-CN')} 条朋友圈`
-                          : ` · 已统计 ${sessionMutualFriendsDialogMetric.loadedPosts.toLocaleString('zh-CN')} 条朋友圈`}
+                      <h4>{t('{displayName} 的共同好友', { displayName: sessionMutualFriendsDialogTarget.displayName })}</h4>
+                      <div className="session-mutual-friends-stats">{t('共 {v0} 人{v1}', { v0: sessionMutualFriendsDialogMetric.count.toLocaleString(formatLocale()), v1: sessionMutualFriendsDialogMetric.totalPosts !== null
+                          ? t(' · 已统计 {v0} / {v1} 条朋友圈', { v0: sessionMutualFriendsDialogMetric.loadedPosts.toLocaleString(formatLocale()), v1: sessionMutualFriendsDialogMetric.totalPosts.toLocaleString(formatLocale()) })
+                          : t(' · 已统计 {v0} 条朋友圈', { v0: sessionMutualFriendsDialogMetric.loadedPosts.toLocaleString(formatLocale()) }) })}
                       </div>
                     </div>
                   </div>
@@ -9856,29 +9785,27 @@ function ExportPage() {
                     className="session-mutual-friends-close"
                     type="button"
                     onClick={closeSessionMutualFriendsDialog}
-                    aria-label="关闭共同好友弹窗"
+                    aria-label={t('关闭共同好友弹窗')}
                   >
                     <X size={16} />
                   </button>
                 </div>
 
-                <div className="session-mutual-friends-tip">
-                  打开桌面端微信，进入到这个人的朋友圈中，刷ta 的朋友圈，刷的越多这里的数据聚合越多
-                </div>
+                <div className="session-mutual-friends-tip">{t('打开桌面端微信，进入到这个人的朋友圈中，刷ta 的朋友圈，刷的越多这里的数据聚合越多')}</div>
 
                 <div className="session-mutual-friends-toolbar">
                   <input
                     value={sessionMutualFriendsSearch}
                     onChange={(event) => setSessionMutualFriendsSearch(event.target.value)}
-                    placeholder="搜索共同好友"
-                    aria-label="搜索共同好友"
+                    placeholder={t('搜索共同好友')}
+                    aria-label={t('搜索共同好友')}
                   />
                 </div>
 
                 <div className="session-mutual-friends-body">
                   {filteredSessionMutualFriendsDialogItems.length === 0 ? (
                     <div className="session-mutual-friends-empty">
-                      {sessionMutualFriendsSearch.trim() ? '没有匹配的共同好友' : '暂无共同好友数据'}
+                      {sessionMutualFriendsSearch.trim() ? t('没有匹配的共同好友') : t('暂无共同好友数据')}
                     </div>
                   ) : (
                     <div className="session-mutual-friends-list">
@@ -9889,7 +9816,7 @@ function ExportPage() {
                           <span className={`session-mutual-friends-source ${item.direction}`}>
                             {getSessionMutualFriendDirectionLabel(item.direction)}
                           </span>
-                          <span className="session-mutual-friends-count">{item.totalCount.toLocaleString('zh-CN')}</span>
+                          <span className="session-mutual-friends-count">{item.totalCount.toLocaleString(formatLocale())}</span>
                           <span className="session-mutual-friends-latest">{formatYmdDateFromSeconds(item.latestTime)}</span>
                           <span
                             className="session-mutual-friends-desc"
@@ -9916,7 +9843,7 @@ function ExportPage() {
                 className="export-session-detail-panel"
                 role="dialog"
                 aria-modal="true"
-                aria-label="会话详情"
+                aria-label={t('会话详情')}
                 onClick={(event) => event.stopPropagation()}
               >
               <div className="detail-header">
@@ -9930,7 +9857,7 @@ function ExportPage() {
                     />
                   </div>
                   <div className="detail-header-meta">
-                    <h4>{sessionDetail?.displayName || '会话详情'}</h4>
+                    <h4>{sessionDetail?.displayName || t('会话详情')}</h4>
                     <div className="detail-header-id">{sessionDetail?.wxid || ''}</div>
                   </div>
                 </div>
@@ -9941,42 +9868,42 @@ function ExportPage() {
               {isLoadingSessionDetail && !sessionDetail ? (
                 <div className="detail-loading">
                   <Loader2 size={20} className="spin" />
-                  <span>加载中...</span>
+                  <span>{t('加载中...')}</span>
                 </div>
               ) : sessionDetail ? (
                 <div className="detail-content">
                   <div className="detail-section">
                     <div className="detail-item">
                       <Hash size={14} />
-                      <span className="label">微信ID</span>
+                      <span className="label">{t('微信ID')}</span>
                       <span className="value">{sessionDetail.wxid}</span>
-                      <button className="copy-btn" title="复制" onClick={() => void handleCopyDetailField(sessionDetail.wxid, 'wxid')}>
+                      <button className="copy-btn" title={t('复制')} onClick={() => void handleCopyDetailField(sessionDetail.wxid, 'wxid')}>
                         {copiedDetailField === 'wxid' ? <Check size={12} /> : <Copy size={12} />}
                       </button>
                     </div>
                     {sessionDetail.remark && (
                       <div className="detail-item">
-                        <span className="label">备注</span>
+                        <span className="label">{t('备注')}</span>
                         <span className="value">{sessionDetail.remark}</span>
-                        <button className="copy-btn" title="复制" onClick={() => void handleCopyDetailField(sessionDetail.remark || '', 'remark')}>
+                        <button className="copy-btn" title={t('复制')} onClick={() => void handleCopyDetailField(sessionDetail.remark || '', 'remark')}>
                           {copiedDetailField === 'remark' ? <Check size={12} /> : <Copy size={12} />}
                         </button>
                       </div>
                     )}
                     {sessionDetail.nickName && (
                       <div className="detail-item">
-                        <span className="label">昵称</span>
+                        <span className="label">{t('昵称')}</span>
                         <span className="value">{sessionDetail.nickName}</span>
-                        <button className="copy-btn" title="复制" onClick={() => void handleCopyDetailField(sessionDetail.nickName || '', 'nickName')}>
+                        <button className="copy-btn" title={t('复制')} onClick={() => void handleCopyDetailField(sessionDetail.nickName || '', 'nickName')}>
                           {copiedDetailField === 'nickName' ? <Check size={12} /> : <Copy size={12} />}
                         </button>
                       </div>
                     )}
                     {sessionDetail.alias && (
                       <div className="detail-item">
-                        <span className="label">微信号</span>
+                        <span className="label">{t('微信号')}</span>
                         <span className="value">{sessionDetail.alias}</span>
-                        <button className="copy-btn" title="复制" onClick={() => void handleCopyDetailField(sessionDetail.alias || '', 'alias')}>
+                        <button className="copy-btn" title={t('复制')} onClick={() => void handleCopyDetailField(sessionDetail.alias || '', 'alias')}>
                           {copiedDetailField === 'alias' ? <Check size={12} /> : <Copy size={12} />}
                         </button>
                       </div>
@@ -9984,7 +9911,7 @@ function ExportPage() {
                     {sessionDetailSupportsSnsTimeline && (
                       <div className="detail-item">
                         <Aperture size={14} />
-                        <span className="label">朋友圈</span>
+                        <span className="label">{t('朋友圈')}</span>
                         <span className="value">
                           <button
                             className="detail-inline-btn detail-sns-entry-btn"
@@ -10001,10 +9928,10 @@ function ExportPage() {
                   <div className="detail-section">
                     <div className="section-title">
                       <ClipboardList size={14} />
-                      <span>导出记录（最近 20 条）</span>
+                      <span>{t('导出记录（最近 20 条）')}</span>
                     </div>
                     {currentSessionExportRecords.length === 0 ? (
-                      <div className="detail-record-empty">暂无导出记录</div>
+                      <div className="detail-record-empty">{t('暂无导出记录')}</div>
                     ) : (
                       <div className="detail-record-list">
                         {currentSessionExportRecords.map((record, index) => (
@@ -10014,15 +9941,13 @@ function ExportPage() {
                               <span className="record-content-pill" title={record.content}>{record.content}</span>
                             </div>
                             <div className="detail-record-path-row">
-                              <span className="path-label">导出目录</span>
+                              <span className="path-label">{t('导出目录')}</span>
                               <span className="path-value" title={record.outputDir}>{formatPathBrief(record.outputDir)}</span>
                               <button
                                 className="detail-inline-btn detail-record-open-btn"
                                 type="button"
                                 onClick={() => void window.electronAPI.shell.openPath(record.outputDir)}
-                              >
-                                打开
-                              </button>
+                              >{t('打开')}</button>
                             </div>
                           </div>
                         ))}
@@ -10033,107 +9958,107 @@ function ExportPage() {
                   <div className="detail-section">
                     <div className="section-title">
                       <MessageSquare size={14} />
-                      <span>消息统计</span>
+                      <span>{t('消息统计')}</span>
                     </div>
                     <div className="detail-stats-meta">
                       {isRefreshingSessionDetailStats
-                        ? '统计刷新中...'
+                        ? t('统计刷新中...')
                         : sessionDetail.statsUpdatedAt
-                          ? `${sessionDetail.statsStale ? '缓存于' : '更新于'} ${formatYmdHmDateTime(sessionDetail.statsUpdatedAt)}${sessionDetail.statsStale ? '（将后台刷新）' : ''}`
-                          : (isLoadingSessionDetailExtra ? '统计加载中...' : '暂无统计缓存')}
+                          ? t('{v0} {v1}{v2}', { v0: sessionDetail.statsStale ? t('缓存于') : t('更新于'), v1: formatYmdHmDateTime(sessionDetail.statsUpdatedAt), v2: sessionDetail.statsStale ? t('（将后台刷新）') : '' })
+                          : (isLoadingSessionDetailExtra ? t('统计加载中...') : t('暂无统计缓存'))}
                     </div>
                     <div className="detail-item">
-                      <span className="label">消息总数</span>
+                      <span className="label">{t('消息总数')}</span>
                       <span className="value highlight">
                         {Number.isFinite(sessionDetail.messageCount)
                           ? sessionDetail.messageCount.toLocaleString()
-                          : ((isLoadingSessionDetail || isLoadingSessionDetailExtra) ? '统计中...' : '—')}
+                          : ((isLoadingSessionDetail || isLoadingSessionDetailExtra) ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
-                      <span className="label">语音</span>
+                      <span className="label">{t('语音')}</span>
                       <span className="value">
                         {Number.isFinite(sessionDetail.voiceMessages)
                           ? (sessionDetail.voiceMessages as number).toLocaleString()
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
-                      <span className="label">图片</span>
+                      <span className="label">{t('图片')}</span>
                       <span className="value">
                         {Number.isFinite(sessionDetail.imageMessages)
                           ? (sessionDetail.imageMessages as number).toLocaleString()
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
-                      <span className="label">视频</span>
+                      <span className="label">{t('视频')}</span>
                       <span className="value">
                         {Number.isFinite(sessionDetail.videoMessages)
                           ? (sessionDetail.videoMessages as number).toLocaleString()
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
-                      <span className="label">表情包</span>
+                      <span className="label">{t('表情包')}</span>
                       <span className="value">
                         {Number.isFinite(sessionDetail.emojiMessages)
                           ? (sessionDetail.emojiMessages as number).toLocaleString()
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
-                      <span className="label">转账消息数</span>
+                      <span className="label">{t('转账消息数')}</span>
                       <span className="value">
                         {Number.isFinite(sessionDetail.transferMessages)
                           ? (sessionDetail.transferMessages as number).toLocaleString()
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
-                      <span className="label">红包消息数</span>
+                      <span className="label">{t('红包消息数')}</span>
                       <span className="value">
                         {Number.isFinite(sessionDetail.redPacketMessages)
                           ? (sessionDetail.redPacketMessages as number).toLocaleString()
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
-                      <span className="label">通话消息数</span>
+                      <span className="label">{t('通话消息数')}</span>
                       <span className="value">
                         {Number.isFinite(sessionDetail.callMessages)
                           ? (sessionDetail.callMessages as number).toLocaleString()
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     {sessionDetail.wxid.includes('@chatroom') ? (
                       <>
                         <div className="detail-item">
-                          <span className="label">我发的消息数</span>
+                          <span className="label">{t('我发的消息数')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.groupMyMessages)
                               ? (sessionDetail.groupMyMessages as number).toLocaleString()
-                              : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">群人数</span>
+                          <span className="label">{t('群人数')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.groupMemberCount)
                               ? (sessionDetail.groupMemberCount as number).toLocaleString()
-                              : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">群发言人数</span>
+                          <span className="label">{t('群发言人数')}</span>
                           <span className="value">
                             {Number.isFinite(sessionDetail.groupActiveSpeakers)
                               ? (sessionDetail.groupActiveSpeakers as number).toLocaleString()
-                              : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                              : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                           </span>
                         </div>
                         <div className="detail-item">
-                          <span className="label">群共同好友数</span>
+                          <span className="label">{t('群共同好友数')}</span>
                           <span className="value">
                             {sessionDetail.relationStatsLoaded
                               ? (Number.isFinite(sessionDetail.groupMutualFriends)
@@ -10145,7 +10070,7 @@ function ExportPage() {
                                   onClick={() => { void loadSessionRelationStats() }}
                                   disabled={isLoadingSessionRelationStats || isLoadingSessionDetailExtra}
                                 >
-                                  {isLoadingSessionRelationStats ? '加载中...' : '点击加载'}
+                                  {isLoadingSessionRelationStats ? t('加载中...') : t('点击加载')}
                                 </button>
                               )}
                           </span>
@@ -10153,7 +10078,7 @@ function ExportPage() {
                       </>
                     ) : (
                       <div className="detail-item">
-                        <span className="label">共同群聊数</span>
+                        <span className="label">{t('共同群聊数')}</span>
                         <span className="value">
                           {sessionDetail.relationStatsLoaded
                             ? (Number.isFinite(sessionDetail.privateMutualGroups)
@@ -10165,7 +10090,7 @@ function ExportPage() {
                                 onClick={() => { void loadSessionRelationStats() }}
                                 disabled={isLoadingSessionRelationStats || isLoadingSessionDetailExtra}
                               >
-                                {isLoadingSessionRelationStats ? '加载中...' : '点击加载'}
+                                {isLoadingSessionRelationStats ? t('加载中...') : t('点击加载')}
                               </button>
                             )}
                         </span>
@@ -10173,20 +10098,20 @@ function ExportPage() {
                     )}
                     <div className="detail-item">
                       <Calendar size={14} />
-                      <span className="label">首条消息</span>
+                      <span className="label">{t('首条消息')}</span>
                       <span className="value">
                         {sessionDetail.firstMessageTime
                           ? formatYmdDateFromSeconds(sessionDetail.firstMessageTime)
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                     <div className="detail-item">
                       <Calendar size={14} />
-                      <span className="label">最新消息</span>
+                      <span className="label">{t('最新消息')}</span>
                       <span className="value">
                         {sessionDetail.latestMessageTime
                           ? formatYmdDateFromSeconds(sessionDetail.latestMessageTime)
-                          : (isLoadingSessionDetailExtra ? '统计中...' : '—')}
+                          : (isLoadingSessionDetailExtra ? t('统计中...') : '—')}
                       </span>
                     </div>
                   </div>
@@ -10194,26 +10119,26 @@ function ExportPage() {
                   <div className="detail-section">
                     <div className="section-title">
                       <Database size={14} />
-                      <span>数据库分布</span>
+                      <span>{t('数据库分布')}</span>
                     </div>
                     {Array.isArray(sessionDetail.messageTables) && sessionDetail.messageTables.length > 0 ? (
                       <div className="table-list">
                         {sessionDetail.messageTables.map((table, index) => (
                           <div key={`${table.dbName}-${table.tableName}-${index}`} className="table-item">
                             <span className="db-name">{table.dbName}</span>
-                            <span className="table-count">{table.count.toLocaleString()} 条</span>
+                            <span className="table-count">{t('{v0} 条', { v0: table.count.toLocaleString() })}</span>
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div className="detail-table-placeholder">
-                        {isLoadingSessionDetailExtra ? '统计中...' : '暂无统计数据'}
+                        {isLoadingSessionDetailExtra ? t('统计中...') : t('暂无统计数据')}
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="detail-empty">暂无详情</div>
+                <div className="detail-empty">{t('暂无详情')}</div>
               )}
               </aside>
             </div>,
@@ -10245,7 +10170,7 @@ function ExportPage() {
             <div className="dialog-body">
               {exportDialog.scope !== 'single' && (
                 <div className="dialog-section">
-                  <h4>导出范围</h4>
+                  <h4>{t('导出范围')}</h4>
                   <div className="scope-tag-row">
                     <span className="scope-tag">{scopeLabel}</span>
                     <span className="scope-count">{scopeCountLabel}</span>
@@ -10254,7 +10179,7 @@ function ExportPage() {
                     {exportDialog.sessionNames.slice(0, 20).map(name => (
                       <span key={name} className="scope-item">{name}</span>
                     ))}
-                    {exportDialog.sessionNames.length > 20 && <span className="scope-item">... 还有 {exportDialog.sessionNames.length - 20} 个</span>}
+                    {exportDialog.sessionNames.length > 20 && <span className="scope-item">{t('... 还有 {v0} 个', { v0: exportDialog.sessionNames.length - 20 })}</span>}
                   </div>
                 </div>
               )}
@@ -10263,7 +10188,7 @@ function ExportPage() {
                 <div className="dialog-section">
                   {useCollapsedSessionFormatSelector ? (
                     <div className="section-header-action">
-                      <h4>对话文本导出格式选择</h4>
+                      <h4>{t('对话文本导出格式选择')}</h4>
                       <div className="dialog-format-select" ref={sessionFormatDropdownRef}>
                         <button
                           type="button"
@@ -10294,7 +10219,7 @@ function ExportPage() {
                       </div>
                     </div>
                   ) : (
-                    <h4>{exportDialog.scope === 'sns' ? '朋友圈导出格式选择' : '对话文本导出格式选择'}</h4>
+                    <h4>{exportDialog.scope === 'sns' ? t('朋友圈导出格式选择') : t('对话文本导出格式选择')}</h4>
                   )}
                   {!isContentScopeDialog && exportDialog.scope !== 'sns' && (
                     <div className="format-note">{avatarExportStatusLabel}</div>
@@ -10332,14 +10257,14 @@ function ExportPage() {
               {!isAutomationCreateDialog && (
                 <div className="dialog-section">
                   <div className="section-header-action">
-                    <h4>时间范围</h4>
+                    <h4>{t('时间范围')}</h4>
                     <button
                       type="button"
                       className="time-range-trigger"
                       onClick={openTimeRangeDialog}
                       disabled={isResolvingTimeRangeBounds}
                     >
-                      <span>{isResolvingTimeRangeBounds ? '正在统计可选时间...' : timeRangeSummaryLabel}</span>
+                      <span>{isResolvingTimeRangeBounds ? t('正在统计可选时间...') : timeRangeSummaryLabel}</span>
                       <span className="time-range-arrow">&gt;</span>
                     </button>
                   </div>
@@ -10349,7 +10274,7 @@ function ExportPage() {
               {shouldShowMediaSection && (
                 <div className="dialog-section">
                   <div className="section-header-action media-section-header">
-                    <h4>{exportDialog.scope === 'sns' ? '媒体文件（可多选）' : '媒体内容'}</h4>
+                    <h4>{exportDialog.scope === 'sns' ? t('媒体文件（可多选）') : t('媒体内容')}</h4>
                     <span className="media-selection-pill">{mediaSelectionSummaryLabel}</span>
                   </div>
                   <div className="media-option-grid">
@@ -10387,12 +10312,10 @@ function ExportPage() {
                       <div className="dialog-collapse-inner">
                         <div className="file-size-subsection">
                           <div className="file-size-subsection-header">
-                            <div className="file-size-heading">文件大小上限</div>
+                            <div className="file-size-heading">{t('文件大小上限')}</div>
                             <div className="file-size-current">{fileSizeLimitLabel}</div>
                           </div>
-                          <div className="file-size-note">
-                            文件导出优先使用消息中的 MD5 做校验；设置上限后，只导出不超过该值的文件。
-                          </div>
+                          <div className="file-size-note">{t('文件导出优先使用消息中的 MD5 做校验；设置上限后，只导出不超过该值的文件。')}</div>
                           <div className="file-size-preset-row">
                             {FILE_SIZE_PRESETS_MB.map(preset => (
                               <button
@@ -10401,7 +10324,7 @@ function ExportPage() {
                                 className={`file-size-preset-btn ${options.maxFileSizeMb === preset ? 'active' : ''}`}
                                 onClick={() => setOptions(prev => ({ ...prev, maxFileSizeMb: preset }))}
                               >
-                                {preset === 0 ? '不限' : `${preset}MB`}
+                                {preset === 0 ? t('不限') : `${preset}MB`}
                               </button>
                             ))}
                           </div>
@@ -10429,15 +10352,15 @@ function ExportPage() {
                 <div className="dialog-section">
                   <div className="dialog-switch-row">
                     <div className="dialog-switch-copy">
-                      <h4>语音转文字</h4>
-                      <div className="format-note">默认状态跟随更多导出设置中的语音转文字开关。</div>
+                      <h4>{t('语音转文字')}</h4>
+                      <div className="format-note">{t('默认状态跟随更多导出设置中的语音转文字开关。')}</div>
                       <div className="format-note">{voiceAsTextStatusLabel}</div>
                     </div>
                     <button
                       type="button"
                       className={`dialog-switch ${options.exportVoiceAsText ? 'on' : ''}`}
                       aria-pressed={options.exportVoiceAsText}
-                      aria-label="切换语音转文字"
+                      aria-label={t('切换语音转文字')}
                       onClick={() => setOptions(prev => ({ ...prev, exportVoiceAsText: !prev.exportVoiceAsText }))}
                     >
                       <span className="dialog-switch-thumb" />
@@ -10450,8 +10373,8 @@ function ExportPage() {
                 <div className="dialog-section">
                   {shouldShowDisplayNameSection && (
                     <>
-                      <h4>发送者名称显示</h4>
-                      <div className="display-name-options" role="radiogroup" aria-label="发送者名称显示">
+                      <h4>{t('发送者名称显示')}</h4>
+                      <div className="display-name-options" role="radiogroup" aria-label={t('发送者名称显示')}>
                         {displayNameOptions.map(option => {
                           const isActive = options.displayNamePreference === option.value
                           return (
@@ -10475,16 +10398,14 @@ function ExportPage() {
                   {options.format === 'excel' && (
                     <div className={`dialog-switch-row ${shouldShowDisplayNameSection ? 'nested-row' : ''}`} style={shouldShowDisplayNameSection ? { marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' } : {}}>
                       <div className="dialog-switch-copy">
-                        <h4>导出完整列</h4>
-                        <div className="format-note">
-                          开启后会在 Excel 表格中拆分出「发送者昵称」、「微信ID」、「备注」等列；群聊会额外包含「群昵称」列，私聊不会显示这一列。关闭则只保留紧凑的「发送者身份」。
-                        </div>
+                        <h4>{t('导出完整列')}</h4>
+                        <div className="format-note">{t('开启后会在 Excel 表格中拆分出「发送者昵称」、「微信ID」、「备注」等列；群聊会额外包含「群昵称」列，私聊不会显示这一列。关闭则只保留紧凑的「发送者身份」。')}</div>
                       </div>
                       <button
                         type="button"
                         className={`dialog-switch ${!options.excelCompactColumns ? 'on' : ''}`}
                         aria-pressed={!options.excelCompactColumns}
-                        aria-label="切换导出完整列"
+                        aria-label={t('切换导出完整列')}
                         onClick={() => setOptions(prev => ({ ...prev, excelCompactColumns: !prev.excelCompactColumns }))}
                       >
                         <span className="dialog-switch-thumb" />
@@ -10496,9 +10417,9 @@ function ExportPage() {
             </div>
 
             <div className="dialog-actions">
-              <button className="secondary-btn" onClick={closeExportDialog}>取消</button>
+              <button className="secondary-btn" onClick={closeExportDialog}>{t('取消')}</button>
               <button className="primary-btn" onClick={() => void createTask()} disabled={!canCreateTask}>
-                <Download size={14} /> {isAutomationCreateDialog ? '下一步：自动化规则' : '创建导出任务'}
+                <Download size={14} /> {isAutomationCreateDialog ? t('下一步：自动化规则') : t('创建导出任务')}
               </button>
             </div>
 
