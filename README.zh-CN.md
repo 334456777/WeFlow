@@ -12,7 +12,7 @@
 - 默认跟随系统语言(中文或英文);`--lang en|zh` 可对单次运行覆盖。
 
 > [!WARNING]
-> CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建,以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过([验证计划](docs/zh-CN/verification-plan.md))。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](docs/zh-CN/cli-coverage.md) · [未覆盖部分](docs/zh-CN/cli-gaps.md) · [不支持的功能](docs/zh-CN/cli-unsupported.md)。
+> CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建,以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过([计划](docs/zh-CN/plan.md#还需要验证的部分))。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](docs/zh-CN/cli-coverage.md) · [不支持的功能](docs/zh-CN/cli-unsupported.md)。
 
 原 WeFlow 项目（Electron 桌面端）的说明见 [docs/zh-CN/weflow-readme.md](docs/zh-CN/weflow-readme.md)。
 
@@ -38,7 +38,7 @@ $env:WEFLOW_LANG = "zh"                          # 整个 PowerShell 会话都�
 LANG=zh_CN.UTF-8 weflow export messages <session-id> --out chat.txt
 ```
 
-优先级:`--lang`,然后是 `WEFLOW_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`、`LANGUAGE` 中第一个已设置且非空的变量(以 `zh` 开头输出中文;其他取值,包括 `C`/`POSIX`,均为英文),如果这些都没设置(Windows 上很常见),则使用操作系统的显示语言(Windows、macOS),最后才是英文。`--lang` 是选项而不是命令，必须配合子命令使用，例如 `weflow.exe --lang zh chat sessions --pretty`；单独运行 `weflow.exe --lang zh` 会提示缺少子命令。语言只影响生成的文本（`[Image]` / `[图片]` 之类的导出标签、默认 AI 提示词）；JSON 键、错误码和 `--help` 始终是英文。
+`--lang` 是选项而不是命令,必须配合子命令使用(单独运行 `weflow.exe --lang zh` 会提示缺少子命令)。语言只影响生成的文本;JSON 键、错误码和 `--help` 始终是英文。完整的优先级见 [docs/zh-CN/native-cli.md](docs/zh-CN/native-cli.md#语言)。
 
 ## 首次设置与导出（必要步骤）
 
@@ -83,8 +83,8 @@ Windows 说明：`key db` 需要管理员终端（否则会提示权限不足）
 ## 文档
 
 - [命令列表](docs/zh-CN/native-cli.md)
-- [CLI 不支持的功能(详细清单)](docs/zh-CN/cli-unsupported.md) · [验证计划](docs/zh-CN/verification-plan.md)
-- [对原后端的覆盖率](docs/zh-CN/cli-coverage.md) · [CLI 未覆盖的部分](docs/zh-CN/cli-gaps.md)
+- [CLI 不支持的功能(详细清单)](docs/zh-CN/cli-unsupported.md) · [对原后端的覆盖率](docs/zh-CN/cli-coverage.md)
+- [计划、进度和还需要验证的部分](docs/zh-CN/plan.md)
 - [HTTP API](docs/zh-CN/HTTP-API.md) · [macOS 密钥排障](docs/zh-CN/MAC-KEY-FAQ.md)
 - [原 WeFlow README](docs/zh-CN/weflow-readme.md)
 

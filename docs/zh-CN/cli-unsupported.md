@@ -2,11 +2,11 @@
 
 [English](../cli-unsupported.md) | **简体中文**
 
-这份清单详细列出 `weflow` 做不到、暂时做不到、或与桌面端表现不同的地方。它是
-[cli-gaps.md](cli-gaps.md)(与原 TypeScript 后端的对比)和 [cli-coverage.md](cli-coverage.md) 的补充。
+这里列出 `weflow` 做不到、暂时没做、或与桌面端表现不同的所有地方,对照的是原 TypeScript 后端(`ca6c479`)。已经覆盖的部分及其数字见
+[cli-coverage.md](cli-coverage.md)。
 
-数据库层是纯 Rust:自己解密微信 4.x 数据库,并以**只读**方式打开(不会写微信的任何文件,也不会把明文写到磁盘)。
-第 1、2 节列出了所有数据库层不可用的函数,并有测试保证它们和代码保持一致(见[第 6 节](#6-保持清单最新))。
+数据库层是纯 Rust:自己解密微信 4.x 数据库,并以**只读**方式打开(不会写微信的任何文件,也不会把明文写到磁盘)。闭源的 `wcdb_api`
+库不再被使用、内嵌或加载。第 1、2 节列出了所有数据库层不可用的函数,并有测试保证它们和代码保持一致(见[第 6 节](#6-保持清单最新))。
 
 ## 1. 有意拒绝:任何会修改微信数据库的操作
 
@@ -31,25 +31,33 @@
 目前没有:服务层能调用的每个数据库函数,要么已实现,要么被有意拒绝(第 1 节)。如果有函数先加进 `crates/weflow-native/src/wcdb.rs`、还没移植,
 它会返回 `<函数名> is not implemented in the native database backend yet`;在移植完成前把它列在这里。
 
-## 3. 桌面端有、CLI 没有的功能
+## 3. 桌面端功能:缺失或表现不同
 
-细节和原因见 [cli-gaps.md](cli-gaps.md)。简要如下:
+| 方面 | 差异 |
+|---|---|
+| 语音转文字(`chat:getVoiceTranscript`、`whisper:downloadModel`、`whisper:getModelStatus`) | 缺失:需要 sherpa-onnx 和 Whisper 模型;不打算做。 |
+| 实时更新(消息推送、见解触发、`chat:getNewMessages`) | 桌面端响应 WCDB 监听回调;CLI 采用轮询(推送和见解约每 5 秒一次)。 |
+| 消息导出 | 9 种格式都可用;`--media` 按 CLI 自己的目录布局复制媒体(见第 5 节)。 |
+| HTTP API / `chat voice-data` 中的语音 | 仅当媒体数据库里有 SILK 数据时可用(微信必须播放过该条消息)。 |
+| WXGF 图片 | 通过外部 `ffmpeg` 转换(`PATH` 或 `FFMPEG_PATH`);桌面端自带 `ffmpeg-static`。没有 ffmpeg 时,图片会被报告为解密失败。 |
+| 图片自动下载(`image auto-download`、`serve --image-auto-download`) | 仅 Windows x64(`img_helper.dll`)。钩子只在 `weflow` 进程运行期间存在,因此从另一个进程执行 `status` 总是显示"未挂钩"。 |
+| 图片服务事件 | `image:cacheResolved`、`decryptProgress`、`updateAvailable` 以及后台"有更高质量版本"检查都不会发出;`hasUpdate` 始终为 `false`(与桌面端无界面的 worker 模式一样)。 |
+| AI 见解通知 | 没有弹窗;`serve --insight` 把每条见解以 JSON 行输出到 stderr(Telegram 推送仍可用)。 |
+| 图片密钥内存扫描 | `key scan-image` 仅 macOS 可用;Windows 请用 `key image`(kvcomm 缓存 + 模板校验)。桌面端 Windows 的内存扫描回退未移植。 |
+| 视频 | 只查找微信已存放在 `msg/video` 下的文件;没有下载或解密路径(桌面端同样没有)。 |
 
-- 语音转文字,以及 Whisper 模型的下载/状态(需要 sherpa-onnx 和 Whisper 模型)。
-- WXGF 图片需要外部 `ffmpeg`(在 `PATH` 中,或设置 `FFMPEG_PATH`)。
-- 图片自动下载钩子(`image auto-download`、`serve --image-auto-download`)只支持 Windows x64,且只在进程运行期间有效。
-- `key scan-image`(内存扫描 AES 密钥)只支持 macOS;Windows 上用 `key image`。
-- 实时更新靠轮询(消息推送和洞察约每 5 秒一次),不是 WCDB 监听回调。
-- 没有弹窗、自动更新、开机自启、应用锁、云控等桌面进程功能。
+有意不移植,因为它们只对桌面进程有意义:窗口/对话框/shell/app/auth/log 相关 IPC、自动更新、开机自启、应用锁、云控、诊断、社交 cookie 的 UI 辅助、
+消息/联系人/会话/头像缓存、导出任务暂停/恢复、仅渲染进程使用的报告截图、朋友圈缓存迁移界面。
 
 ## 4. 平台与验证范围
 
-- 原生数据库层用一个真实的 Windows 微信 4.x 账号(会话、消息、联系人、朋友圈、媒体、语音库)做过验证,用的是 **Linux 构建**;交叉编译出的
-  Windows `weflow.exe` 也在 Windows 上对同一个账号运行过(约 80 个命令、带媒体的消息导出、图片导出)。其他 Windows 版本没有试过。
+- 原生数据库层(会话、消息、联系人、朋友圈、媒体、语音库)用一个真实的 Windows 微信 4.x 账号做过验证,用的是 **Linux 构建**;交叉编译出的
+  Windows `weflow.exe`(`x86_64-pc-windows-gnu`)也在 Windows 上对同一个账号运行过(约 80 个命令、带媒体的消息导出、图片导出)。其他 Windows 版本没有试过。
 - macOS 和 Linux 的微信数据库文件格式相同,但没有测试过。
-- 密钥提取辅助程序(`key db`、`key image`)需要微信正在运行,无法离线测试。
-- 尚待验证的项目(macOS/Linux 真实账号、Windows 图片自动下载钩子、AI 洞察对接真实服务商、备份与桌面端的兼容性)见 [verification-plan.md](verification-plan.md)。
+- HTTP 服务、图片 `.dat` 解密、AI 和朋友圈下载另外用合成的加密夹具和本地假 HTTP 服务器测试过;真实的朋友圈服务器和 AI 服务商没有试过。
+- 密钥提取辅助程序(`key db`、`key image`)和 Windows 图片钩子需要微信正在运行,无法离线测试。
 - 只用了一个账号的数据验证;特殊的数据库(特别大的分片、旧版本表结构)可能暴露遗漏。
+- 尚待验证的项目(macOS/Linux 真实账号、Windows 图片自动下载钩子、AI 见解对接真实服务商、备份与桌面端的兼容性)见 [plan.md](plan.md#还需要验证的部分)。
 
 ## 5. 可能出乎意料的行为
 

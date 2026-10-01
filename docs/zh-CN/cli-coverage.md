@@ -4,7 +4,7 @@
 
 基线：原作者最后一次提交 `ca6c479`（2026-05-15）时的 TypeScript/Electron 后端。`crates/` 下的所有内容都是之后添加的。
 
-**方法与说明。** 当某个 CLI 命令或 HTTP 路由复现了某个通道的行为时，该通道记为*已覆盖*；TypeScript 代码是逐函数移植的（相同公式、JSON 结果中相同的键顺序、相同的回退逻辑）。数据库层是原生 Rust，已**用一个真实的 Windows 微信 4.x 账号验证**（使用 Linux 构建）；其余部分（HTTP 服务、图片/`.dat` 解密、AI、朋友圈下载）通过单元测试、针对合成加密数据库的端到端测试以及本地假 HTTP 服务器验证。交叉编译出的 Windows `weflow.exe` 已在 Windows 上对同一个账号运行过（约 80 个命令、带媒体的导出）；macOS 和 Linux 账号没有试过。合成数据无法暴露的差异依然可能存在。下面的 IPC 分类是手工完成的，欢迎提出异议。
+**方法。** 当某个 CLI 命令或 HTTP 路由复现了某个通道的行为时，该通道记为*已覆盖*；TypeScript 代码是逐函数移植的（相同公式、JSON 结果中相同的键顺序、相同的回退逻辑）。用真实数据验证到什么程度，见 [cli-unsupported.md](cli-unsupported.md#4-平台与验证范围) 第 4 节。下面的 IPC 分类是手工完成的，欢迎提出异议。
 
 ## 汇总
 
@@ -39,16 +39,9 @@
 
 **缺失（13 个）：** 上面的 10 个写操作通道（有意拒绝：原生数据库层以只读方式打开微信数据库）、`chat:getVoiceTranscript`、`whisper:downloadModel`、`whisper:getModelStatus`（语音转写需要 sherpa-onnx；不打算做）。
 
-**部分（4 个）：**
+**部分（4 个）：** `chat:getNewMessages`（采用轮询，而不是响应 WCDB 监听回调），以及 `image:startAutoDownload` / `stopAutoDownload` / `getAutoDownloadStatus`（仅 Windows x64，且只在 `weflow` 进程运行期间有效）。
 
-- `chat:getNewMessages`、消息推送和见解触发采用轮询，而不是响应 WCDB 监听回调。
-- `image:startAutoDownload` / `stopAutoDownload` / `getAutoDownloadStatus`：仅 Windows x64；钩子只在 `weflow` 进程运行期间存在，因此从另一个进程执行 `status` 看不到它。
-
-另有不同之处，但不改变通道的分类：WXGF → JPEG 需要 `PATH` 中有 `ffmpeg` 可执行文件（桌面端自带 `ffmpeg-static`）；消息导出用 `export messages --media …` 把媒体复制到 `media/<输出文件名>/`，目录布局与桌面端不同。
-
-UI 事件（`image:cacheResolved`、`image:decryptProgress`、`image:updateAvailable`、通知弹窗）在命令行中没有对应物；与桌面端无界面的 worker 模式一样，图片服务不发出这些事件，也从不报告 `hasUpdate`。
-
-未移植，因为它们只对桌面进程有意义：消息/联系人/会话/头像缓存、云控、导出任务暂停/恢复。
+这些的细节，以及不改变通道分类的差异（WXGF 需要 `ffmpeg`、导出的媒体目录布局、图片服务事件、仅桌面端的功能），见 [cli-unsupported.md](cli-unsupported.md) 第 3 节。
 
 ## 安全说明
 
