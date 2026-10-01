@@ -9,7 +9,7 @@
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
 - 本地 HTTP API（token 鉴权、SSE 推送，`serve --http`）、消息推送、AI 见解。
-- 默认跟随系统语言(中文或英文);`--lang en|zh` 可对单次运行覆盖。
+- `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`--lang en|zh` 可对单次运行覆盖。
 
 > [!WARNING]
 > CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库),已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建,以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过([计划](plan.md#还需要验证的部分))。可能有粗糙之处,欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](cli-coverage.md) · [不支持的功能](cli-unsupported.md)。

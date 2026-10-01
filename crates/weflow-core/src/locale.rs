@@ -121,6 +121,76 @@ pub fn tr(en: &'static str, zh: &'static str) -> &'static str {
     }
 }
 
+/// Translate `text` with a catalog of `(english template, chinese template)` pairs.
+///
+/// A `{}` in the English template matches any text (the pieces are captured in order); the Chinese template
+/// refers to them with `{}` (next capture) or `{0}`, `{1}`, ... (by position). Returns `None` when no template
+/// matches, so callers keep the original text.
+pub fn translate_with(catalog: &[(&str, &str)], text: &str) -> Option<String> {
+    for (en, zh) in catalog {
+        if let Some(captures) = match_template(en, text) {
+            return Some(fill_template(zh, &captures));
+        }
+    }
+    None
+}
+
+fn match_template<'a>(template: &str, text: &'a str) -> Option<Vec<&'a str>> {
+    let parts: Vec<&str> = template.split("{}").collect();
+    if parts.len() == 1 {
+        return (template == text).then(Vec::new);
+    }
+    let rest = text.strip_prefix(parts[0])?;
+    let last = parts[parts.len() - 1];
+    let mut rest = rest.strip_suffix(last)?;
+    let mut captures = Vec::new();
+    let middle = &parts[1..parts.len() - 1];
+    for literal in middle {
+        let at = rest.find(literal)?;
+        captures.push(&rest[..at]);
+        rest = &rest[at + literal.len()..];
+    }
+    captures.push(rest);
+    Some(captures)
+}
+
+fn fill_template(template: &str, captures: &[&str]) -> String {
+    let mut out = String::with_capacity(template.len() + 16);
+    let mut next = 0;
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        let Some(len) = rest[start..].find('}') else {
+            break;
+        };
+        let name = &rest[start + 1..start + len];
+        let index = if name.is_empty() {
+            let i = next;
+            next += 1;
+            Some(i)
+        } else {
+            name.parse::<usize>().ok()
+        };
+        match index.and_then(|i| captures.get(i)) {
+            Some(value) => {
+                out.push_str(&rest[..start]);
+                out.push_str(value);
+            }
+            None => out.push_str(&rest[..start + len + 1]),
+        }
+        rest = &rest[start + len + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Localise a runtime message (errors) for the active language; English text passes through unchanged.
+pub fn localize(message: String) -> String {
+    if current() == Lang::En {
+        return message;
+    }
+    crate::messages_zh::translate(&message).unwrap_or(message)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,6 +202,31 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         Lang::detect_with(|key| map.get(key).cloned(), || system.map(str::to_string))
+    }
+
+    #[test]
+    fn templates_capture_and_reorder() {
+        let cat = [
+            ("failed to write {}: {}", "写入 {} 失败：{}"),
+            (
+                "--start ({}) is after --end ({})",
+                "--end（{1}）早于 --start（{0}）",
+            ),
+            ("message not found", "未找到该消息"),
+        ];
+        assert_eq!(
+            translate_with(&cat, "failed to write a/b.txt: disk: full").as_deref(),
+            Some("写入 a/b.txt 失败：disk: full")
+        );
+        assert_eq!(
+            translate_with(&cat, "--start (2) is after --end (1)").as_deref(),
+            Some("--end（1）早于 --start（2）")
+        );
+        assert_eq!(
+            translate_with(&cat, "message not found").as_deref(),
+            Some("未找到该消息")
+        );
+        assert_eq!(translate_with(&cat, "something else"), None);
     }
 
     #[test]

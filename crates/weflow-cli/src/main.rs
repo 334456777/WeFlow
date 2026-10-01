@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+
+mod i18n;
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
@@ -1018,7 +1020,7 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    let cli = Cli::parse();
+    let cli: Cli = i18n::parse();
     if let Some(lang) = cli.lang {
         weflow_core::locale::set(match lang {
             LangArg::En => weflow_core::locale::Lang::En,

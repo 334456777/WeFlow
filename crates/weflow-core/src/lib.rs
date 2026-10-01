@@ -18,6 +18,7 @@ pub mod keys;
 pub mod locale;
 pub mod media;
 pub mod message;
+pub mod messages_zh;
 pub mod output;
 pub mod push;
 pub mod services;

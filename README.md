@@ -9,7 +9,7 @@
 - Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, `sql`.
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, stickers.
 - Local HTTP API with token auth and SSE push (`serve --http`), message push, AI insights.
-- Follows the system language (Chinese or English); `--lang en|zh` overrides it per run.
+- Follows the system language (Chinese or English) for `--help`, usage errors, runtime errors and generated text; `--lang en|zh` overrides it per run.
 
 > [!WARNING]
 > The CLI was ported from the original TypeScript backend. Its database layer is pure Rust (it decrypts and reads WeChat's databases itself, read-only) and was verified against one real Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows; macOS/Linux WeChat data is untested ([plan](docs/plan.md#verification-still-to-do)). Expect rough edges and report what you find. What is covered and what is not: [coverage](docs/cli-coverage.md) · [unsupported](docs/cli-unsupported.md).
