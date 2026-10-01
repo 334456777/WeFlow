@@ -11,7 +11,7 @@
 | 指标 | 已覆盖 | 总数 | 占比 |
 |---|---|---|---|
 | 后端 IPC 通道（`electron/main.ts`；共 172 个，排除 76 个纯 UI 通道）— 完整 | 79 | 96 | **82%** |
-| 同上，完整 + 部分 | 83 | 96 | **86%** |
+| 同上，完整 + [部分](https://github.com/334456777/WeFlow/blob/main/docs/zh-CN/cli-coverage.md#%E4%BB%8D%E7%84%B6%E7%BC%BA%E5%A4%B1%E6%88%96%E4%BB%85%E9%83%A8%E5%88%86%E8%A6%86%E7%9B%96%E7%9A%84%E9%80%9A%E9%81%93) | 83 | 96 | **86%** |
 | CLI 调用的数据库函数（原生 Rust；44 个原生实现，10 个因只读被拒绝） | 54 | 54 | **100%** |
 | 聊天消息导出格式（chatlab、chatlab-jsonl、json、arkme-json、html、txt、excel、weclone、sql） | 9 | 9 | **100%** |
 | HTTP API 路由（`httpService.ts`，路径一致，token 鉴权，SSE 推送） | 19 | 19 | **100%** |
