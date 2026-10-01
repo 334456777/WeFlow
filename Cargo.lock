@@ -2644,6 +2644,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weflow-wcdb-ffi"
+version = "4.3.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "weflow-native",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "winapi-util"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -263,15 +263,16 @@ impl NativeAccount {
         Ok(rows.into_iter().next())
     }
 
-    /// Members of a group: `{ "members": [{ username, nickName, remark, alias, isOwner? }] }`.
+    /// Members of a group as the desktop app expects them: `[{ username, nickName, remark, alias, avatarUrl?, isOwner? }]`.
     pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
         let Some(room) = self.room(chatroom_id)? else {
-            return Ok(json!({ "members": [] }));
+            return Ok(json!([]));
         };
         let owner = text(&room, "owner");
         let rows = self.query(
             &self.contact_db(),
-            "select n.username as username, c.nick_name as nick_name, c.remark as remark, c.alias as alias \
+            "select n.username as username, c.nick_name as nick_name, c.remark as remark, c.alias as alias, \
+             coalesce(nullif(c.big_head_url, ''), c.small_head_url) as avatar \
              from chatroom_member m join name2id n on n.rowid = m.member_id \
              left join contact c on c.id = m.member_id where m.room_id = ?1 order by m.rowid",
             &[&int(&room, "id")],
@@ -281,13 +282,17 @@ impl NativeAccount {
             .map(|r| {
                 let u = text(&r, "username");
                 let mut o = json!({ "username": u, "nickName": text(&r, "nick_name"), "remark": text(&r, "remark"), "alias": text(&r, "alias") });
+                let avatar = text(&r, "avatar");
+                if !avatar.is_empty() {
+                    o["avatarUrl"] = json!(avatar);
+                }
                 if !owner.is_empty() && u == owner {
                     o["isOwner"] = json!(true);
                 }
                 o
             })
             .collect();
-        Ok(json!({ "members": members }))
+        Ok(Value::Array(members))
     }
 
     pub fn group_member_count(&self, chatroom_id: &str) -> Result<Value> {
@@ -442,7 +447,7 @@ mod tests {
     fn group_membership_owner_and_nicknames() {
         let (acct, _d) = account("group");
         let m = acct.group_members("room1@chatroom").unwrap();
-        let members = m["members"].as_array().unwrap();
+        let members = m.as_array().unwrap();
         let names: Vec<&str> = members.iter().map(|x| x["username"].as_str().unwrap()).collect();
         assert_eq!(names, ["wxid_me", "wxid_bob", "wxid_eve"]);
         assert_eq!(members[1]["isOwner"], true);
@@ -452,7 +457,7 @@ mod tests {
         assert_eq!(acct.group_member_counts(&ids(&["room1@chatroom", "x@chatroom"])).unwrap(), json!({"room1@chatroom": 3, "x@chatroom": 0}));
         assert_eq!(acct.group_nicknames("room1@chatroom").unwrap(), json!({"wxid_bob": "Bobby-in-room", "wxid_eve": "Eve!"}));
         assert!(!acct.chat_room_ext_buffer("room1@chatroom").unwrap()["ext_buffer"].as_str().unwrap().is_empty());
-        assert_eq!(acct.group_members("x@chatroom").unwrap(), json!({"members": []}));
+        assert_eq!(acct.group_members("x@chatroom").unwrap(), json!([]));
         assert_eq!(acct.group_nicknames("x@chatroom").unwrap(), json!({}));
         assert_eq!(acct.chat_room_ext_buffer("x@chatroom").unwrap(), json!({}));
     }

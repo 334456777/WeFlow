@@ -1,0 +1,21 @@
+[package]
+name = "weflow-wcdb-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C ABI of the native database layer, a drop-in replacement for wcdb_api for the desktop app"
+
+[lib]
+name = "weflow_wcdb"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+weflow-native = { path = "../weflow-native" }
+
+[dev-dependencies]
+weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_Security", "Win32_System_IO"] }
