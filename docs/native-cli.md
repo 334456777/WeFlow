@@ -64,6 +64,9 @@ stickers, Moments, analytics) and signs the account out of the profile (`db_path
 removed); `--exports-dir` also removes the entries named after the account in that folder. `cache clear-all` clears every cache.
 Neither touches WeChat's files.
 
+`db detect` prints the WeChat data directories that exist as `db_path: <path>`, and `db wxid [root]` prints the wxid of the
+account(s) in that directory as `wxid: <wxid>` (the folder name without its `_ab12` suffix); both names are the ones `config set` takes.
+
 `key db` (Windows) hooks WeChat through `wx_key.dll`. WeChat only produces the key while it opens its databases, so the command
 asks you to quit WeChat completely (when it is running) and open it again, checks once a second for the process (the
 whole procedure gives up after `--timeout`, default 180 s, and shows the seconds left), hooks the new process and asks you to
