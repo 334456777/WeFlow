@@ -81,3 +81,6 @@ weflow-web-offical
 /scripts/syncWedecrypt.py
 dist-cli/
 /temp/*
+
+# Rust database layer for the desktop app (npm run native-db:build)
+resources/native-db/

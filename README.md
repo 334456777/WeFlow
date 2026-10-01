@@ -85,6 +85,7 @@ The detailed list is in **[docs/cli-unsupported.md](docs/cli-unsupported.md)** (
 - [Command list](docs/native-cli.md)
 - [What the CLI does not support (detailed list)](docs/cli-unsupported.md) · [Coverage of the original backend](docs/cli-coverage.md)
 - [Plan, status and verification still to do](docs/plan.md)
+- [`wcdb_api.dll`: not needed by the CLI or the new desktop app; old and new builds](docs/wcdb-api.md)
 - [HTTP API](docs/HTTP-API.md) · [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
 - [Original WeFlow README](docs/weflow-readme.md)
 

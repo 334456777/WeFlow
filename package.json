@@ -18,10 +18,11 @@
     "dev": "node scripts/prepare-electron-runtime.cjs && vite",
     "typecheck": "tsc --noEmit",
     "i18n:check": "node scripts/i18n-check.cjs",
-    "build": "tsc && vite build && electron-builder",
+    "build": "node scripts/build-native-db.cjs && tsc && vite build && electron-builder",
     "preview": "vite preview",
     "electron:dev": "node scripts/prepare-electron-runtime.cjs && vite --mode electron",
     "electron:build": "npm run build",
+    "native-db:build": "node scripts/build-native-db.cjs",
     "cli:build": "cargo build --release -p weflow-cli",
     "cli:test": "cargo test --workspace",
     "cli:check": "cargo check --workspace"
@@ -167,7 +168,11 @@
     "extraResources": [
       {
         "from": "resources/",
-        "to": "resources/"
+        "to": "resources/",
+        "filter": [
+          "**/*",
+          "!wcdb/**"
+        ]
       },
       {
         "from": "public/icon.ico",

@@ -85,6 +85,7 @@ Windows 说明：`key db` 需要管理员终端（否则会提示权限不足）
 - [命令列表](docs/zh-CN/native-cli.md)
 - [CLI 不支持的功能(详细清单)](docs/zh-CN/cli-unsupported.md) · [对原后端的覆盖率](docs/zh-CN/cli-coverage.md)
 - [计划、进度和还需要验证的部分](docs/zh-CN/plan.md)
+- [`wcdb_api.dll` 说明:CLI 和新桌面端不依赖它;新旧版本](docs/zh-CN/wcdb-api.md)
 - [HTTP API](docs/zh-CN/HTTP-API.md) · [macOS 密钥排障](docs/zh-CN/MAC-KEY-FAQ.md)
 - [原 WeFlow README](docs/zh-CN/weflow-readme.md)
 

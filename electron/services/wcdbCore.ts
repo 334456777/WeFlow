@@ -298,15 +298,17 @@ export class WcdbCore {
 
   /**
    * 获取库文件路径（跨平台）
+   *
+   * 数据库层是本仓库的 Rust 原生实现（crates/weflow-wcdb-ffi，产物 weflow_wcdb），以只读方式直接读取微信数据库；
+   * 不再加载闭源的 wcdb_api。用 `npm run native-db:build` 生成库文件到 resources/native-db/<平台>/<架构>/。
    */
   private getDllPath(): string {
     const isMac = process.platform === 'darwin'
     const isLinux = process.platform === 'linux'
     const isArm64 = process.arch === 'arm64'
-    const libName = isMac ? 'libwcdb_api.dylib' : isLinux ? 'libwcdb_api.so' : 'wcdb_api.dll'
-    const legacySubDir = isMac ? 'macos' : isLinux ? 'linux' : (isArm64 ? 'arm64' : '')
+    const libName = isMac ? 'libweflow_wcdb.dylib' : isLinux ? 'libweflow_wcdb.so' : 'weflow_wcdb.dll'
     const platformDir = isMac ? 'macos' : (isLinux ? 'linux' : 'win32')
-    const archDir = isMac ? 'universal' : (isArm64 ? 'arm64' : 'x64')
+    const archDir = isArm64 ? 'arm64' : 'x64'
 
     const envDllPath = process.env.WCDB_DLL_PATH
     if (envDllPath && envDllPath.length > 0) {
@@ -324,13 +326,9 @@ export class WcdbCore {
       join(process.cwd(), 'resources')
     ].filter(Boolean) as string[]
 
-    const normalizedArch = process.arch === 'arm64' ? 'arm64' : 'x64'
     const relativeCandidates = [
-      join('wcdb', platformDir, archDir, libName),
-      join('wcdb', platformDir, normalizedArch, libName),
-      join('wcdb', platformDir, 'x64', libName),
-      join('wcdb', platformDir, 'universal', libName),
-      join('wcdb', platformDir, libName)
+      join('native-db', platformDir, archDir, libName),
+      join('native-db', platformDir, libName)
     ]
 
     const candidates: string[] = []
@@ -338,10 +336,9 @@ export class WcdbCore {
       for (const relativePath of relativeCandidates) {
         candidates.push(join(root, relativePath))
       }
-      // 兼容旧目录：resources/macos/libwcdb_api.dylib 或 resources/wcdb_api.dll
-      candidates.push(join(root, legacySubDir, libName))
-      candidates.push(join(root, libName))
     }
+    // 开发环境：直接使用 cargo 的构建产物
+    candidates.push(join(process.cwd(), 'target', 'release', libName))
 
     for (const path of candidates) {
       if (existsSync(path)) return path
@@ -359,6 +356,11 @@ export class WcdbCore {
       '-2301': '动态库加载失败，请检查安装是否完整',
       '-2302': 'WCDB 初始化异常，请重试',
       '-2303': 'WCDB 未能成功初始化',
+      '-1': '读取数据库失败，详情见日志（例如密钥不正确或文件无法读取）',
+      '-2': '数据库句柄无效，请重新连接',
+      '-3': '参数无效',
+      '-4': '原生数据库层以只读方式打开微信数据库，不支持修改',
+      '-99': '数据库层内部错误，请重试',
     }
     const msg = messages[String(code) as unknown as keyof typeof messages]
     return msg ? `${msg} (错误码: ${code})` : `操作失败，错误码: ${code}`
@@ -688,45 +690,6 @@ export class WcdbCore {
       }
 
       const dllDir = dirname(dllPath)
-      const isMac = process.platform === 'darwin'
-      const isLinux = process.platform === 'linux'
-
-      // 预加载依赖库
-      if (isMac) {
-        const wcdbCorePath = join(dllDir, 'libWCDB.dylib')
-        if (existsSync(wcdbCorePath)) {
-          try {
-            this.koffi.load(wcdbCorePath)
-            this.writeLog('预加载 libWCDB.dylib 成功')
-          } catch (e) {
-            console.warn('预加载 libWCDB.dylib 失败(可能不是致命的):', e)
-            this.writeLog(`预加载 libWCDB.dylib 失败: ${String(e)}`)
-          }
-        }
-      } else if (isLinux) {
-        // 如果有libWCDB.so的话， 没有就算了
-      } else {
-        const wcdbCorePath = join(dllDir, 'WCDB.dll')
-        if (existsSync(wcdbCorePath)) {
-          try {
-            this.koffi.load(wcdbCorePath)
-            this.writeLog('预加载 WCDB.dll 成功')
-          } catch (e) {
-            console.warn('预加载 WCDB.dll 失败(可能不是致命的):', e)
-            this.writeLog(`预加载 WCDB.dll 失败: ${String(e)}`)
-          }
-        }
-        const sdl2Path = join(dllDir, 'SDL2.dll')
-        if (existsSync(sdl2Path)) {
-          try {
-            this.koffi.load(sdl2Path)
-            this.writeLog('预加载 SDL2.dll 成功')
-          } catch (e) {
-            console.warn('预加载 SDL2.dll 失败(可能不是致命的):', e)
-            this.writeLog(`预加载 SDL2.dll 失败: ${String(e)}`)
-          }
-        }
-      }
 
       this.writeLog(`[bootstrap] koffi.load begin path=${dllPath}`, true)
       this.lib = this.koffi.load(dllPath)
