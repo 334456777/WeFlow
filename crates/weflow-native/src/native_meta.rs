@@ -82,10 +82,11 @@ impl NativeAccount {
         let db = self.resolve_db_path(kind, path)?;
         let schema = self.table_schema(kind, path, table)?["schema"].clone();
         let columns = self.columns_of(&db, table)?;
-        let file = std::fs::File::create(&out).with_context(|| format!("cannot create {}", out.display()))?;
-        let mut w = std::io::BufWriter::new(file);
-        writeln!(w, "{}", json!({ "table": table, "schema": schema, "columns": columns }))?;
         let rows = self.with_db(&db, |conn| {
+            // (re)created here: a snapshot that goes stale mid-way makes `with_db` run this again from the start
+            let file = std::fs::File::create(&out).with_context(|| format!("cannot create {}", out.display()))?;
+            let mut w = std::io::BufWriter::new(file);
+            writeln!(w, "{}", json!({ "table": table, "schema": schema, "columns": columns }))?;
             let mut stmt = conn.prepare(&format!("select * from \"{table}\""))?;
             let mut cursor = stmt.query([])?;
             let mut n = 0u64;

@@ -878,21 +878,7 @@ pub fn parse_message_key_source(key: &str) -> Option<(String, String)> {
 }
 
 fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() + 0 + 1 && i + 2 <= b.len() - 1 {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
+    String::from_utf8(crate::message::percent_decode_bytes(s)).unwrap_or_else(|_| s.to_string())
 }
 
 /// SSE fan-out with a replay buffer (`broadcastMessagePush` of the HTTP service):

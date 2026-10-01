@@ -110,6 +110,11 @@ impl ServiceHub {
             for root in &roots {
                 remove_matched_entries(root, &ids, &mut removed, &mut warnings);
             }
+            // fingerprints of keys that worked (the profile's key goes with the account settings)
+            let verified = self.ctx.cache_dir().join("verified-keys");
+            if verified.exists() {
+                remove_path(&verified, &mut removed, &mut warnings);
+            }
         }
         for dir in export_dirs {
             remove_matched_entries(dir, &ids, &mut removed, &mut warnings);

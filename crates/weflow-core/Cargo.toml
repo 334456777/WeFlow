@@ -19,6 +19,7 @@ ecb.workspace = true
 flate2.workspace = true
 futures.workspace = true
 md-5.workspace = true
+memchr.workspace = true
 mime_guess.workspace = true
 regex.workspace = true
 reqwest.workspace = true

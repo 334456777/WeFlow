@@ -54,6 +54,19 @@ impl Wcdb {
 
     /// Open the account: decrypt `session.db` with the key to prove the key and path are right.
     pub fn open(&mut self, account_dir: &Path, hex_key: &str, wxid: Option<&str>) -> Result<()> {
+        self.open_unchecked(account_dir, hex_key, wxid)?;
+        let tested = self.account()?.test_connection();
+        if tested.is_err() {
+            self.native = None; // a handle whose key does not work stays closed
+        }
+        tested
+    }
+
+    /// [`open`](Self::open) without proving the key up front: each database checks the key when it is first
+    /// read, so a command that never reads `session.db` skips its (slow) key derivation. A wrong key still fails,
+    /// at the first read, with the same "cannot decrypt ... with the configured database key" error.
+    pub fn open_unchecked(&mut self, account_dir: &Path, hex_key: &str, wxid: Option<&str>) -> Result<()> {
+        self.native = None;
         let session_db = find_session_db(&account_dir.join("db_storage"))
             .ok_or_else(|| anyhow!("session.db not found under {}", account_dir.display()))?;
         // session.db lives in <db_storage>/session/, so its grandparent is db_storage.
@@ -62,10 +75,22 @@ impl Wcdb {
         let me = wxid
             .map(str::to_string)
             .or_else(|| account_dir.file_name().map(|n| n.to_string_lossy().to_string()));
-        let account = NativeAccount::new(db_storage, hex_key)?.with_my_wxid(me);
-        account.test_connection()?;
-        self.native = Some(account);
+        self.native = Some(NativeAccount::new(db_storage, hex_key)?.with_my_wxid(me));
         Ok(())
+    }
+
+    /// Prove the key of an account opened with [`open_unchecked`](Self::open_unchecked) (decrypts `session.db`).
+    pub fn check_key(&self) -> Result<()> {
+        self.account()?.test_connection()
+    }
+
+    /// The key-derivation salt of `session.db` (its first 16 bytes). With the key it identifies a successful
+    /// [`check_key`](Self::check_key): a different key, or a replaced database, gives a different pair.
+    pub fn session_salt(&self) -> Option<[u8; 16]> {
+        use std::io::Read;
+        let mut salt = [0u8; 16];
+        std::fs::File::open(self.account().ok()?.session_db()).ok()?.read_exact(&mut salt).ok()?;
+        Some(salt)
     }
 
     pub fn test_connection(&mut self, account_dir: &Path, hex_key: &str) -> Result<()> {
@@ -133,6 +158,13 @@ impl Wcdb {
 
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
         self.account()?.close_message_cursor(cursor)
+    }
+
+    /// Low-memory mode for long one-way reads such as exports (see [`NativeAccount::set_low_memory`]).
+    pub fn set_low_memory(&self, on: bool) {
+        if let Some(a) = &self.native {
+            a.set_low_memory(on);
+        }
     }
 
     // ── generic by-name calls (kept for callers that build their own argument lists) ──

@@ -91,7 +91,9 @@ impl NativeAccount {
     pub fn message_tables(&self, session_id: &str) -> Result<Vec<MsgTable>> {
         let table = table_name_for(session_id);
         let mut out = Vec::new();
-        for db in self.message_dbs() {
+        let dbs = self.message_dbs();
+        self.prefetch(&dbs);
+        for db in dbs {
             let hit = self.with_db(&db, |c| {
                 Ok(c.query_row("select 1 from sqlite_master where type='table' and name=?1", [&table], |_| Ok(())).is_ok())
             })?;
@@ -136,8 +138,15 @@ impl NativeAccount {
         let want = if limit == 0 { -1 } else { (offset + limit) as i64 };
         let mut rows: Vec<Value> = Vec::new();
         for t in self.message_tables(session_id)? {
-            let sql = Self::select_sql(&t, "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1");
-            for mut r in self.query(&t.db, &sql, &[&want])? {
+            let order = "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1";
+            // Asked as is, SQLite sorts the whole table (it walks the sender index for the join). The `want`-th
+            // newest sort_seq, read from the sort_seq index, bounds the same rows to a range that index serves.
+            let floor = if want > 0 { self.sort_seq_floor(&t, want)? } else { None };
+            let page = match floor {
+                Some(floor) => self.query(&t.db, &Self::select_sql(&t, &format!("where m.sort_seq >= ?2 {order}")), &[&want, &floor])?,
+                None => self.query(&t.db, &Self::select_sql(&t, order), &[&want])?,
+            };
+            for mut r in page {
                 self.finish_row(&mut r, &t, false);
                 rows.push(r);
             }
@@ -145,6 +154,14 @@ impl NativeAccount {
         rows.sort_by(Self::cmp_desc);
         let it = rows.into_iter().skip(offset);
         Ok(Value::Array(if limit == 0 { it.collect() } else { it.take(limit).collect() }))
+    }
+
+    /// The `n`-th largest `sort_seq` of a table: every one of its `n` newest rows has a `sort_seq` at least this big.
+    /// `None` when the table has fewer rows, or that row has no `sort_seq` (then only a full sort is exact).
+    fn sort_seq_floor(&self, t: &MsgTable, n: i64) -> Result<Option<i64>> {
+        let sql = format!("select sort_seq from \"{}\" order by sort_seq desc limit 1 offset ?1", t.table);
+        let rows = self.query(&t.db, &sql, &[&(n - 1)])?;
+        Ok(rows.first().and_then(|r| r["sort_seq"].as_i64()))
     }
 
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
@@ -272,10 +289,12 @@ impl NativeAccount {
                 "select sort_seq, create_time, local_id from \"{}\" where create_time >= ?1 and (?2 = 0 or create_time <= ?2){who}",
                 t.table
             );
-            for r in self.query(&t.db, &sql, &[&begin, &end])? {
+            let base = keys.len();
+            let cell = std::cell::RefCell::new(&mut keys);
+            self.query_each(&t.db, &sql, &[&begin, &end], || cell.borrow_mut().truncate(base), |r| {
                 let (seq, create, local) = row_key(&r);
-                keys.push((seq, create, local, idx));
-            }
+                cell.borrow_mut().push((seq, create, local, idx));
+            })?;
         }
         keys.sort();
         if !ascending {
@@ -394,6 +413,50 @@ mod tests {
         assert_eq!(texts(&acct.messages("wxid_bob", 3, 0).unwrap()), ["voice", "fourth", "third"]);
         assert_eq!(texts(&acct.messages("wxid_bob", 10, 3).unwrap()), ["img", "hello"]);
         assert_eq!(acct.messages("wxid_bob", 10, 5).unwrap(), json!([]));
+    }
+
+    #[test]
+    fn newest_pages_are_exact_when_sort_seq_ties_cross_the_page_boundary() {
+        let dir = std::env::temp_dir().join(format!("weflow-msg-{}-ties", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("message")).unwrap();
+        let table = table_name_for("wxid_bob");
+        // 60 rows: sort_seq takes only 6 distinct values (10 rows each), some rows have none; create_time varies
+        let plain = plain_db_with(move |c: &Connection| {
+            c.execute_batch("create table Name2Id(user_name text primary key, is_session integer)").unwrap();
+            c.execute_batch(&format!(
+                "create table \"{table}\"(local_id integer primary key autoincrement, local_type integer, sort_seq integer, \
+                 real_sender_id integer, create_time integer, message_content)"
+            ))
+            .unwrap();
+            c.execute_batch(&format!("create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq)")).unwrap();
+            for i in 0..60i64 {
+                let seq: Option<i64> = if i % 13 == 0 { None } else { Some((i % 6) * 1000) };
+                c.execute(
+                    &format!("insert into \"{table}\"(local_id, local_type, sort_seq, real_sender_id, create_time, message_content) values (?1, 1, ?2, 1, ?3, ?4)"),
+                    params![i + 1, seq, T0 + (i * 7) % 11, format!("m{i}")],
+                )
+                .unwrap();
+            }
+        });
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        std::fs::write(dir.join("message/message_0.db"), encrypt_db(&plain, &cipher)).unwrap();
+        let acct = NativeAccount::new(&dir, &hex(&KEY)).unwrap();
+        // what the plain "sort everything, take the first rows" query gives
+        let t = acct.message_tables("wxid_bob").unwrap().remove(0);
+        let reference = |limit: i32, offset: i32| -> Vec<String> {
+            let want = (offset + limit) as i64;
+            let sql = NativeAccount::select_sql(&t, "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1");
+            let mut rows = acct.query(&t.db, &sql, &[&want]).unwrap();
+            rows.sort_by(NativeAccount::cmp_desc);
+            texts(&Value::Array(rows.into_iter().skip(offset as usize).take(limit as usize).collect()))
+        };
+        assert_eq!(acct.messages("wxid_bob", 0, 0).unwrap().as_array().unwrap().len(), 60);
+        for (limit, offset) in [(1, 0), (5, 0), (10, 0), (7, 3), (10, 10), (25, 30), (40, 15), (50, 5), (100, 0)] {
+            let page = texts(&acct.messages("wxid_bob", limit, offset).unwrap());
+            assert_eq!(page, reference(limit, offset), "limit {limit} offset {offset}");
+            assert_eq!(page.len(), (limit as usize).min(60 - (offset as usize).min(60)));
+        }
     }
 
     #[test]

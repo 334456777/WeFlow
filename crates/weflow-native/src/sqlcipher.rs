@@ -46,7 +46,10 @@ pub fn parse_key(hex_key: &str) -> Result<[u8; 32]> {
 /// Keys derived for one database file (each file has its own salt).
 pub struct PageCipher {
     enc_key: [u8; 32],
+    #[cfg_attr(not(any(test, feature = "test-fixtures")), allow(dead_code))]
     mac_key: [u8; 32],
+    /// HMAC already keyed with `mac_key`: cloning it per page skips re-hashing the key pads.
+    mac: HmacSha512,
 }
 
 impl PageCipher {
@@ -56,7 +59,8 @@ impl PageCipher {
         let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
         let mut mac_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(&enc_key, &mac_salt, 2, &mut mac_key);
-        Self { enc_key, mac_key }
+        let mac = <HmacSha512 as Mac>::new_from_slice(&mac_key).expect("hmac accepts any key length");
+        Self { enc_key, mac_key, mac }
     }
 
     /// Verify and decrypt one encrypted page into `out` (`PAGE_SIZE` bytes).
@@ -74,7 +78,7 @@ impl PageCipher {
         let iv = &page[body_end..body_end + IV_LEN];
         let stored_mac = &page[body_end + IV_LEN..];
 
-        let mut mac = <HmacSha512 as Mac>::new_from_slice(&self.mac_key).expect("hmac accepts any key length");
+        let mut mac = self.mac.clone();
         mac.update(&page[start..body_end + IV_LEN]);
         mac.update(&pgno.to_le_bytes());
         mac.verify_slice(stored_mac)
@@ -134,12 +138,40 @@ fn wal_checksum(data: &[u8], big_endian: bool, mut s0: u32, mut s1: u32) -> (u32
     (s0, s1)
 }
 
-/// Parse a WAL and return the frames of its last valid *committed* prefix, plus the database
-/// size in pages after the last commit. Returns `None` when the WAL holds nothing usable.
-fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
-    const WAL_HEADER: usize = 32;
-    const FRAME_HEADER: usize = 24;
-    if wal.len() < WAL_HEADER {
+/// What a WAL holds: its salt (when the header is valid), how many frames its committed prefix has (what SQLite's
+/// wal-index calls `mxFrame`), and the newest committed frame of each page.
+pub struct WalOverlay {
+    pub salt: Option<[u8; 8]>,
+    pub frames: u32,
+    /// Database size in pages after the last commit (`None` when nothing is committed).
+    pub db_pages: Option<u32>,
+    /// Page number -> byte offset of that page's newest committed copy in the WAL.
+    pub pages: HashMap<u32, usize>,
+}
+
+/// Parse a WAL (see [`WalOverlay`]). A missing or invalid WAL gives an empty overlay.
+pub fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
+    let salt = wal.and_then(wal_salt);
+    let mut overlay = WalOverlay { salt, frames: 0, db_pages: None, pages: HashMap::new() };
+    if let Some((frames, db_pages)) = wal.and_then(committed_wal_frames) {
+        overlay.frames = frames.len() as u32;
+        overlay.db_pages = Some(db_pages);
+        for f in frames {
+            overlay.pages.insert(f.pgno, f.data_offset); // later frames override earlier ones
+        }
+    }
+    overlay
+}
+
+/// The salt of a WAL whose header is valid.
+fn wal_salt(wal: &[u8]) -> Option<[u8; 8]> {
+    wal_header(wal)?;
+    wal[16..24].try_into().ok()
+}
+
+/// Validate a WAL header: (big-endian checksums?, header checksum words).
+fn wal_header(wal: &[u8]) -> Option<(bool, u32, u32)> {
+    if wal.len() < 32 {
         return None;
     }
     let magic = be32(&wal[0..4]);
@@ -154,6 +186,15 @@ fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
     if h0 != be32(&wal[24..28]) || h1 != be32(&wal[28..32]) {
         return None;
     }
+    Some((big_endian, h0, h1))
+}
+
+/// Parse a WAL and return the frames of its last valid *committed* prefix, plus the database
+/// size in pages after the last commit. Returns `None` when the WAL holds nothing usable.
+fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
+    const WAL_HEADER: usize = 32;
+    const FRAME_HEADER: usize = 24;
+    let (big_endian, h0, h1) = wal_header(wal)?;
     let salt = (&wal[16..20], &wal[20..24]);
     let (mut s0, mut s1) = (h0, h1);
 
@@ -192,78 +233,46 @@ fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
     }
 }
 
-/// What a decryption will produce: sizes, and the committed WAL frames that override main-file pages.
-pub struct Plan {
-    main_pages: u32,
-    wal_frames: Option<(Vec<WalFrame>, u32)>,
-    /// Pages of the plain image (main file, or the size after the last committed WAL transaction).
-    pub total_pages: u32,
-}
-
-impl Plan {
-    /// Size in bytes of the plain image.
-    pub fn plain_len(&self) -> usize {
-        self.total_pages as usize * PAGE_SIZE
+/// Pages of the database a reader sees: the size after the last committed WAL transaction, else the main file's.
+pub fn total_pages(main_len: u64, overlay: &WalOverlay) -> u32 {
+    match overlay.db_pages {
+        Some(n) => n.max(1),
+        None => (main_len / PAGE_SIZE as u64) as u32,
     }
 }
 
-/// Work out the plain image size for a main file of `main_len` bytes and its WAL (when present).
-pub fn plan(main_len: u64, wal: Option<&[u8]>) -> Plan {
-    let main_pages = (main_len / PAGE_SIZE as u64) as u32;
-    let wal_frames = wal.and_then(committed_wal_frames);
-    let total_pages = match &wal_frames {
-        Some((_, n)) => (*n).max(1),
-        None => main_pages,
-    };
-    Plan { main_pages, wal_frames, total_pages }
-}
-
-/// Decrypt the main file (read sequentially from `reader`, one page at a time) and apply the WAL, writing the
-/// plain image straight into `out` (`plan.plain_len()` bytes). No whole-file buffer is needed.
-///
-/// The image is patched to rollback-journal mode so it opens as a stand-alone snapshot.
-pub fn decrypt_into(out: &mut [u8], mut reader: impl std::io::Read, plan: &Plan, wal: Option<&[u8]>, cipher: &PageCipher) -> Result<()> {
-    assert_eq!(out.len(), plan.plain_len(), "output buffer must match the plan");
-    out.fill(0);
-    let mut page = vec![0u8; PAGE_SIZE];
-    for pgno in 1..=plan.main_pages {
-        reader.read_exact(&mut page)?;
-        if pgno <= plan.total_pages {
-            let dst = &mut out[(pgno as usize - 1) * PAGE_SIZE..pgno as usize * PAGE_SIZE];
-            cipher.decrypt_page(pgno, &page, dst)?;
-        }
-    }
-    if let (Some((frames, _)), Some(wal)) = (&plan.wal_frames, wal) {
-        // Later frames override earlier ones, so let the last write for each page win.
-        let mut last: HashMap<u32, usize> = HashMap::new();
-        for f in frames {
-            last.insert(f.pgno, f.data_offset);
-        }
-        for (pgno, off) in last {
-            if pgno > plan.total_pages {
-                continue;
-            }
-            let dst = &mut out[(pgno as usize - 1) * PAGE_SIZE..pgno as usize * PAGE_SIZE];
-            cipher.decrypt_page(pgno, &wal[off..off + PAGE_SIZE], dst)?;
-        }
-    }
-
-    // Page 1 header: rewrite the page count and downgrade WAL mode (bytes 18/19) to legacy so the
-    // in-memory snapshot needs no -wal file.
-    out[28..32].copy_from_slice(&plan.total_pages.to_be_bytes());
-    let change_counter: [u8; 4] = out[24..28].try_into().expect("4 bytes");
-    out[92..96].copy_from_slice(&change_counter); // version-valid-for: makes the header page count authoritative
-    out[18] = 1;
-    out[19] = 1;
-    Ok(())
+/// Patch a decrypted page 1 so the database opens as a stand-alone file: the header page count becomes
+/// authoritative and WAL mode (bytes 18/19) is downgraded to legacy, so no `-wal` file is looked for.
+pub fn patch_header(page1: &mut [u8], total_pages: u32) {
+    page1[28..32].copy_from_slice(&total_pages.to_be_bytes());
+    let change_counter: [u8; 4] = page1[24..28].try_into().expect("4 bytes");
+    page1[92..96].copy_from_slice(&change_counter); // version-valid-for
+    page1[18] = 1;
+    page1[19] = 1;
 }
 
 /// Decrypt a whole database held in memory (plus its WAL, when given) into a plain SQLite image.
+/// The reference the on-demand reader ([`crate::cipher_vfs`]) is tested against.
+#[cfg(any(test, feature = "test-fixtures"))]
 pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> Result<Vec<u8>> {
-    let plan = plan(db.len() as u64, wal);
-    let mut plain = vec![0u8; plan.plain_len()];
-    decrypt_into(&mut plain, std::io::Cursor::new(db), &plan, wal, cipher)?;
-    Ok(plain)
+    let overlay = wal_overlay(wal);
+    let total = total_pages(db.len() as u64, &overlay);
+    let main_pages = (db.len() / PAGE_SIZE) as u32;
+    let mut out = vec![0u8; total as usize * PAGE_SIZE];
+    for pgno in 1..=main_pages.min(total) {
+        let i = (pgno as usize - 1) * PAGE_SIZE;
+        cipher.decrypt_page(pgno, &db[i..i + PAGE_SIZE], &mut out[i..i + PAGE_SIZE])?;
+    }
+    if let Some(wal) = wal {
+        for (&pgno, &off) in &overlay.pages {
+            if pgno <= total {
+                let i = (pgno as usize - 1) * PAGE_SIZE;
+                cipher.decrypt_page(pgno, &wal[off..off + PAGE_SIZE], &mut out[i..i + PAGE_SIZE])?;
+            }
+        }
+    }
+    patch_header(&mut out[..PAGE_SIZE], total);
+    Ok(out)
 }
 
 #[cfg(any(test, feature = "test-fixtures"))]

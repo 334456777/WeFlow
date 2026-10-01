@@ -399,41 +399,17 @@ fn write_bytes(path: &Path, data: &[u8]) -> Result<()> {
 ///
 ///   content
 ///
-pub fn export_txt(
-    messages: &[Value],
-    nickname_map: &HashMap<String, String>,
-    out: &Path,
-) -> Result<()> {
-    let mut text = String::new();
+pub fn export_txt(messages: &[TxtMessage], nickname_map: &HashMap<String, String>, out: &Path) -> Result<()> {
+    use std::io::Write;
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let file = fs::File::create(out).with_context(|| format!("write {}", out.display()))?;
+    let mut w = std::io::BufWriter::new(file);
     for msg in messages {
-        let ts = msg
-            .get("create_time")
-            .and_then(|v| {
-                v.as_str()
-                    .and_then(|s| s.parse::<i64>().ok())
-                    .or_else(|| v.as_i64())
-            })
-            .unwrap_or(0);
-
-        let sender_wxid = msg
-            .get("sender_username")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-
-        let local_type: i64 = msg
-            .get("local_type")
-            .and_then(|v| {
-                v.as_str()
-                    .and_then(|s| s.parse().ok())
-                    .or_else(|| v.as_i64())
-            })
-            .unwrap_or(1);
-
-        let content: String = match local_type {
+        let content: String = match msg.local_type {
             1 => {
-                let raw = decode_wcdb_content(msg);
-                let t = extract_text_after_sender(&raw);
+                let t = extract_text_after_sender(&msg.content);
                 if t.is_empty() {
                     continue;
                 }
@@ -444,8 +420,7 @@ pub fn export_txt(
             43 => locale::tr("[Video]", "[视频]").to_string(),
             47 => locale::tr("[Sticker]", "[表情]").to_string(),
             49 => {
-                let raw = decode_wcdb_content(msg);
-                let t = extract_text_after_sender(&raw);
+                let t = extract_text_after_sender(&msg.content);
                 if t.is_empty() {
                     locale::tr("[Link/File]", "[链接/文件]").to_string()
                 } else {
@@ -453,8 +428,7 @@ pub fn export_txt(
                 }
             }
             10000 => {
-                let raw = decode_wcdb_content(msg);
-                let t = extract_text_after_sender(&raw);
+                let t = extract_text_after_sender(&msg.content);
                 if t.is_empty() {
                     continue;
                 }
@@ -462,16 +436,40 @@ pub fn export_txt(
             }
             _ => continue,
         };
-
-        let nickname = nickname_map
-            .get(&sender_wxid)
-            .cloned()
-            .unwrap_or_else(|| sender_wxid.clone());
-
-        let dt = format_timestamp(ts);
-        text.push_str(&format!("{dt} '{nickname}'\n\n{content}\n\n"));
+        let nickname = nickname_map.get(&msg.sender).unwrap_or(&msg.sender);
+        let dt = format_timestamp(msg.create_time);
+        write!(w, "{dt} '{nickname}'\n\n{content}\n\n").with_context(|| format!("write {}", out.display()))?;
     }
-    write_file(out, &text)
+    w.flush().with_context(|| format!("write {}", out.display()))
+}
+
+/// One message of the TXT export: just what its layout prints.
+pub struct TxtMessage {
+    pub create_time: i64,
+    pub sender: String,
+    pub local_type: i64,
+    pub content: String,
+}
+
+impl TxtMessage {
+    /// From a raw message row; `None` for the kinds the TXT layout leaves out.
+    pub fn from_row(row: &Value) -> Option<Self> {
+        let int = |key: &str, default: i64| {
+            row.get(key).and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).unwrap_or(default)
+        };
+        let local_type = int("local_type", 1);
+        let content = match local_type {
+            1 | 49 | 10000 => decode_wcdb_content(row),
+            3 | 34 | 43 | 47 => String::new(),
+            _ => return None,
+        };
+        Some(Self {
+            create_time: int("create_time", 0),
+            sender: row.get("sender_username").and_then(Value::as_str).unwrap_or("").to_string(),
+            local_type,
+            content,
+        })
+    }
 }
 
 fn decode_wcdb_content(msg: &Value) -> String {

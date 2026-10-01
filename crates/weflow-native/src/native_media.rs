@@ -40,6 +40,81 @@ fn sort_key(row: &Value) -> (i64, i64, i64) {
     (match int(row, "sort_seq") { 0 => create * 1000, s => s }, create, int(row, "local_id"))
 }
 
+/// The first `k` rows in "newest first, then in the order found" order (what a stable newest-first sort of every
+/// row would put first), without holding the others.
+struct Newest {
+    k: usize,
+    found: usize,
+    heap: std::collections::BinaryHeap<Ranked>,
+}
+
+struct Ranked {
+    key: (i64, i64, i64),
+    seq: usize,
+    row: Value,
+}
+
+impl Ranked {
+    /// Ordered so the heap's top is the row that would come last.
+    fn rank(&self, other: &Self) -> std::cmp::Ordering {
+        other.key.cmp(&self.key).then(self.seq.cmp(&other.seq))
+    }
+}
+
+impl PartialEq for Ranked {
+    fn eq(&self, other: &Self) -> bool {
+        self.rank(other).is_eq()
+    }
+}
+impl Eq for Ranked {}
+impl PartialOrd for Ranked {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Ranked {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.rank(other)
+    }
+}
+
+impl Newest {
+    fn new(k: usize) -> Self {
+        Self { k, found: 0, heap: Default::default() }
+    }
+
+    fn push(&mut self, row: Value) {
+        let seq = self.found;
+        self.found += 1;
+        if self.k == 0 {
+            return;
+        }
+        self.heap.push(Ranked { key: sort_key(&row), seq, row });
+        if self.heap.len() > self.k {
+            self.heap.pop();
+        }
+    }
+
+    /// Add the rows another `Newest` kept, as if they had been pushed here in the order they were found (after
+    /// everything pushed so far). Rows it dropped could not have made the cut here either.
+    fn absorb(&mut self, other: Newest) {
+        let base = self.found;
+        self.found += other.found;
+        for mut r in other.heap.into_vec() {
+            r.seq += base;
+            self.heap.push(r);
+            if self.heap.len() > self.k {
+                self.heap.pop();
+            }
+        }
+    }
+
+    /// The kept rows, first one first.
+    fn into_rows(self) -> Vec<Value> {
+        self.heap.into_sorted_vec().into_iter().map(|r| r.row).collect()
+    }
+}
+
 impl NativeAccount {
     /// Newest-first messages whose text contains `keyword` (case-insensitive), from one session or all.
     /// Each row is a message row plus `_session_id`. Compressed contents are decoded before matching.
@@ -55,7 +130,8 @@ impl NativeAccount {
         let like = format!("%{}%", needle.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
         let kinds = SEARCHABLE.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
         let range = range_sql(begin, end);
-        let mut hits: Vec<Value> = Vec::new();
+        let (offset, limit) = (offset.max(0) as usize, if limit > 0 { limit as usize } else { 50 });
+        let mut hits = Newest::new(offset + limit);
         for sid in &sessions {
             for t in self.message_tables(sid)? {
                 // plain text is pre-filtered in SQL; blobs (zstd) can only be matched after decoding
@@ -64,20 +140,25 @@ impl NativeAccount {
                      where m.local_type in ({kinds}){range} and (typeof(m.message_content) = 'blob' or m.message_content like ?1 escape '\\')",
                     table = t.table
                 );
-                for mut r in self.query(&t.db, &sql, &[&like])? {
-                    if !text(&r, "message_content").to_lowercase().contains(&needle) {
-                        continue;
-                    }
-                    self.finish_row(&mut r, &t, false);
-                    r["_session_id"] = json!(sid);
-                    hits.push(r);
-                }
+                // rows are matched as they are read: a short keyword can match most of a big conversation
+                let table_hits = std::cell::RefCell::new(Newest::new(offset + limit));
+                self.query_each(
+                    &t.db,
+                    &sql,
+                    &[&like],
+                    || *table_hits.borrow_mut() = Newest::new(offset + limit),
+                    |mut r| {
+                        if text(&r, "message_content").to_lowercase().contains(&needle) {
+                            self.finish_row(&mut r, &t, false);
+                            r["_session_id"] = json!(sid);
+                            table_hits.borrow_mut().push(r);
+                        }
+                    },
+                )?;
+                hits.absorb(table_hits.into_inner());
             }
         }
-        hits.sort_by(|a, b| sort_key(b).cmp(&sort_key(a)));
-        let it = hits.into_iter().skip(offset.max(0) as usize);
-        let limit = if limit > 0 { limit as usize } else { 50 };
-        Ok(Value::Array(it.take(limit).collect()))
+        Ok(Value::Array(hits.into_rows().into_iter().skip(offset).take(limit).collect()))
     }
 
     /// Image/video messages across sessions, newest first; returns the page and whether more remain.
@@ -89,7 +170,10 @@ impl NativeAccount {
         };
         let kinds = kinds.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
         let range = range_sql(begin, end);
-        let mut rows: Vec<Value> = Vec::new();
+        let offset = offset.max(0) as usize;
+        // `limit <= 0` asks for everything after `offset`
+        let k = if limit > 0 { offset + limit as usize } else { usize::MAX };
+        let mut rows = Newest::new(k);
         for sid in session_ids {
             for t in self.message_tables(sid)? {
                 let sql = format!(
@@ -97,18 +181,19 @@ impl NativeAccount {
                      where m.local_type in ({kinds}){range}",
                     t.table
                 );
-                for mut r in self.query(&t.db, &sql, &[])? {
+                let table_rows = std::cell::RefCell::new(Newest::new(k));
+                self.query_each(&t.db, &sql, &[], || *table_rows.borrow_mut() = Newest::new(k), |mut r| {
                     self.finish_row(&mut r, &t, false);
                     r["session_id"] = json!(sid);
-                    rows.push(r);
-                }
+                    table_rows.borrow_mut().push(r);
+                })?;
+                rows.absorb(table_rows.into_inner());
             }
         }
-        rows.sort_by(|a, b| sort_key(b).cmp(&sort_key(a)));
-        let rest: Vec<Value> = rows.into_iter().skip(offset.max(0) as usize).collect();
-        let limit = if limit > 0 { limit as usize } else { rest.len() };
-        let more = rest.len() > limit;
-        Ok((Value::Array(rest.into_iter().take(limit).collect()), more))
+        let found = rows.found;
+        let page: Vec<Value> = rows.into_rows().into_iter().skip(offset).collect();
+        let more = limit > 0 && found > offset + limit as usize;
+        Ok((Value::Array(page), more))
     }
 
     // ── voice ──
@@ -252,6 +337,38 @@ mod tests {
 
     fn contents(v: &Value) -> Vec<String> {
         v.as_array().unwrap().iter().map(|r| r["message_content"].as_str().unwrap().trim().to_string()).collect()
+    }
+
+    #[test]
+    fn newest_keeps_what_a_stable_newest_first_sort_puts_first() {
+        // small key ranges so ties (and the "order found" tie-break) are common; a fixed LCG keeps it reproducible
+        let mut x: u64 = 42;
+        let mut next = |m: u64| {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((x >> 33) % m) as i64
+        };
+        for round in 0..200 {
+            let rows: Vec<Value> = (0..next(60) as usize)
+                .map(|i| json!({ "sort_seq": next(4) * 1000, "create_time": next(3), "local_id": next(3), "i": i }))
+                .collect();
+            let mut sorted = rows.clone();
+            sorted.sort_by(|a, b| sort_key(b).cmp(&sort_key(a)));
+            for k in [0usize, 1, 3, 10, 100] {
+                let mut top = Newest::new(k);
+                rows.iter().cloned().for_each(|r| top.push(r));
+                assert_eq!(top.found, rows.len());
+                assert_eq!(top.into_rows(), sorted.iter().take(k).cloned().collect::<Vec<_>>(), "round {round} k {k}");
+                // the same rows found table by table, each table ranked on its own first
+                let mut merged = Newest::new(k);
+                for chunk in rows.chunks(7) {
+                    let mut local = Newest::new(k);
+                    chunk.iter().cloned().for_each(|r| local.push(r));
+                    merged.absorb(local);
+                }
+                assert_eq!(merged.found, rows.len());
+                assert_eq!(merged.into_rows(), sorted.iter().take(k).cloned().collect::<Vec<_>>(), "merged, round {round} k {k}");
+            }
+        }
     }
 
     #[test]

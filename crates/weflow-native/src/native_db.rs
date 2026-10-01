@@ -1,9 +1,9 @@
 //! Native (pure Rust + bundled SQLite) replacement for the closed `wcdb_api` library.
 //!
-//! An account is a `db_storage` directory plus the raw database key. Each database file is
-//! decrypted (see [`crate::sqlcipher`]) into an in-memory read-only SQLite snapshot the first time
-//! it is used, and re-snapshotted whenever the file or its `-wal` changes on disk, so long-running
-//! commands (`serve`, message push) keep seeing new messages. Nothing plaintext is written to disk.
+//! An account is a `db_storage` directory plus the raw database key. Each database file is opened as a
+//! read-only SQLite snapshot that decrypts pages on demand (see [`crate::cipher_vfs`]), and is reopened
+//! whenever the file or its `-wal` changes on disk, so long-running commands (`serve`, message push) keep
+//! seeing new messages. Nothing plaintext is written to disk.
 
 use std::collections::HashMap;
 use std::fs;
@@ -12,15 +12,26 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 use anyhow::{anyhow, Context, Result};
-use rusqlite::serialize::OwnedData;
 use rusqlite::types::ValueRef;
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
-use crate::sqlcipher::{self, PageCipher};
+use crate::cipher_vfs::{self, CipherFile};
+use crate::sqlcipher;
 
-/// Total decrypted bytes kept in memory before older snapshots are dropped.
-const CACHE_BUDGET: usize = 1536 * 1024 * 1024;
+/// SQLite page cache per snapshot (KiB). It only holds pages a query has read, so it stays small for small
+/// queries; queries that walk a whole message database keep every page decrypted once, as long as the soft limit
+/// below allows.
+const PAGE_CACHE_KIB: i64 = 1024 * 1024;
+/// Page cache while the account handle is in low-memory mode ([`NativeAccount::set_low_memory`]): for long
+/// one-way reads such as exports, where keeping a whole message database decrypted saves little time.
+const LOW_MEMORY_CACHE_KIB: i64 = 16 * 1024;
+/// Soft limit of SQLite's heap across all snapshots: above it page caches recycle their oldest pages.
+const HEAP_SOFT_LIMIT: i64 = 1024 * 1024 * 1024;
+/// Snapshots kept open (least recently used ones are closed first).
+const MAX_SNAPSHOTS: usize = 32;
+/// How often a query is run again on a fresh snapshot when WeChat changed the file under it.
+const STALE_RETRIES: usize = 4;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct FileStamp {
@@ -30,12 +41,17 @@ struct FileStamp {
     wal_mtime: Option<SystemTime>,
 }
 
+/// A snapshot's connection and the page cache size it is set to.
+struct Conn {
+    conn: Connection,
+    cache_kib: i64,
+}
+
 struct Snapshot {
-    conn: Arc<Mutex<Connection>>,
-    cipher: Arc<PageCipher>,
+    conn: Arc<Mutex<Conn>>,
+    file: Arc<CipherFile>,
     key: [u8; 32],
     stamp: FileStamp,
-    bytes: usize,
     last_used: u64,
 }
 
@@ -55,6 +71,15 @@ pub fn same_identity(a: &str, b: &str) -> bool {
     a == b || suffixed(&a, &b) || suffixed(&b, &a)
 }
 
+/// Process-wide SQLite settings for the snapshots.
+fn configure_sqlite() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    // SAFETY: plain configuration call, valid at any time.
+    ONCE.call_once(|| unsafe {
+        rusqlite::ffi::sqlite3_soft_heap_limit64(HEAP_SOFT_LIMIT);
+    });
+}
+
 /// Decrypted snapshots are shared by every account handle in the process: the service layer opens a
 /// fresh handle per call, and re-decrypting a large message database each time would dominate the run.
 static SHARED_CACHE: OnceLock<Arc<Mutex<Cache>>> = OnceLock::new();
@@ -71,6 +96,7 @@ pub struct NativeAccount {
     /// used to tell which messages were sent by the user.
     my_wxid: Option<String>,
     pub(crate) cursors: Mutex<crate::native_msg::Cursors>,
+    low_memory: std::sync::atomic::AtomicBool,
 }
 
 fn wal_path(db: &Path) -> PathBuf {
@@ -137,7 +163,20 @@ impl NativeAccount {
         if !db_storage.is_dir() {
             return Err(anyhow!("db_storage not found: {}", db_storage.display()));
         }
-        Ok(Self { db_storage, raw_key: sqlcipher::parse_key(hex_key)?, cache: shared_cache(), my_wxid: None, cursors: Mutex::default() })
+        Ok(Self {
+            db_storage,
+            raw_key: sqlcipher::parse_key(hex_key)?,
+            cache: shared_cache(),
+            my_wxid: None,
+            cursors: Mutex::default(),
+            low_memory: Default::default(),
+        })
+    }
+
+    /// Low-memory mode for long one-way reads (exports): the snapshots this handle uses keep a small page cache,
+    /// so a pass over a whole message database does not keep all of it decrypted in memory.
+    pub fn set_low_memory(&self, on: bool) {
+        self.low_memory.store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Set the account owner's wxid (see [`NativeAccount::is_me`]).
@@ -161,12 +200,19 @@ impl NativeAccount {
         self.db_storage.parent().map(Path::to_path_buf).unwrap_or_else(|| self.db_storage.clone())
     }
 
-    /// (number of decrypted snapshots held, their total size in bytes, the budget in bytes).
+    /// (number of open snapshots, bytes of decrypted pages they cache, the soft limit in bytes).
     pub fn cache_stats(&self) -> (usize, usize, usize) {
-        match self.cache.lock() {
-            Ok(c) => (c.entries.len(), c.entries.values().map(|s| s.bytes).sum(), CACHE_BUDGET),
-            Err(_) => (0, 0, CACHE_BUDGET),
+        let Ok(c) = self.cache.lock() else { return (0, 0, HEAP_SOFT_LIMIT as usize) };
+        let mut used = 0usize;
+        for s in c.entries.values() {
+            if let Ok(c) = s.conn.lock() {
+                let (mut cur, mut hi) = (0, 0);
+                // SAFETY: a valid connection handle and two out-parameters.
+                unsafe { rusqlite::ffi::sqlite3_db_status(c.conn.handle(), rusqlite::ffi::SQLITE_DBSTATUS_CACHE_USED, &mut cur, &mut hi, 0) };
+                used += cur.max(0) as usize;
+            }
         }
+        (c.entries.len(), used, HEAP_SOFT_LIMIT as usize)
     }
 
     /// Absolute path of a database given relative to `db_storage` (`session/session.db`).
@@ -175,122 +221,127 @@ impl NativeAccount {
     }
 
     /// Open (or refresh) the snapshot of `path` and run `f` on it.
-    pub fn with_db<T>(&self, path: &Path, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
-        let conn = self.snapshot(path)?;
-        let guard = conn.lock().map_err(|_| anyhow!("database snapshot lock poisoned"))?;
-        f(&guard)
+    ///
+    /// When WeChat changes the file under the snapshot while `f` reads it, `f` fails, and it is run again on a fresh
+    /// snapshot; so `f` must be safe to repeat (a pure query, or one that starts its output over).
+    pub fn with_db<T>(&self, path: &Path, mut f: impl FnMut(&Connection) -> Result<T>) -> Result<T> {
+        let mut attempt = 0;
+        let cache_kib = if self.low_memory.load(std::sync::atomic::Ordering::Relaxed) { LOW_MEMORY_CACHE_KIB } else { PAGE_CACHE_KIB };
+        loop {
+            let (conn, file) = self.snapshot(path)?;
+            let result = {
+                let mut guard = conn.lock().map_err(|_| anyhow!("database snapshot lock poisoned"))?;
+                if guard.cache_kib != cache_kib {
+                    guard.conn.pragma_update(None, "cache_size", -cache_kib)?;
+                    guard.cache_kib = cache_kib;
+                }
+                f(&guard.conn)
+            };
+            match result {
+                Err(e) if file.is_stale() => {
+                    self.forget(path, &file);
+                    attempt += 1;
+                    if attempt >= STALE_RETRIES {
+                        let why = file.read_error().unwrap_or_else(|| e.to_string());
+                        return Err(e.context(format!("{} kept changing while it was being read ({why})", path.display())));
+                    }
+                }
+                other => return other,
+            }
+        }
     }
 
-    fn snapshot(&self, path: &Path) -> Result<Arc<Mutex<Connection>>> {
+    /// Drop the cached snapshot of `path` if it is still `file`.
+    fn forget(&self, path: &Path, file: &Arc<CipherFile>) {
+        if let Ok(mut cache) = self.cache.lock() {
+            if cache.entries.get(path).is_some_and(|s| Arc::ptr_eq(&s.file, file)) {
+                cache.entries.remove(path);
+            }
+        }
+    }
+
+    /// Open the snapshots of `paths` that are not open yet, several at once: each new file costs a slow key
+    /// derivation, so a command that needs every message shard waits for one instead of all of them in a row.
+    /// Errors are left for the real call to report.
+    pub fn prefetch(&self, paths: &[PathBuf]) {
+        let missing: Vec<&PathBuf> = {
+            let Ok(cache) = self.cache.lock() else { return };
+            paths.iter().filter(|p| !cache.entries.get(p.as_path()).is_some_and(|s| s.key == self.raw_key)).collect()
+        };
+        if missing.len() < 2 {
+            return;
+        }
+        std::thread::scope(|s| {
+            for p in missing {
+                s.spawn(move || {
+                    let _ = self.snapshot(p);
+                });
+            }
+        });
+    }
+
+    fn snapshot(&self, path: &Path) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
         let stamp = stamp_of(path)?;
+        let known_cipher = {
+            let mut cache = self.cache.lock().map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
+            cache.tick += 1;
+            let tick = cache.tick;
+            match cache.entries.get_mut(path) {
+                Some(entry) if entry.key == self.raw_key => {
+                    if entry.stamp == stamp && !entry.file.is_stale() {
+                        entry.last_used = tick;
+                        return Ok((entry.conn.clone(), entry.file.clone()));
+                    }
+                    Some(entry.file.cipher()) // same file => same salt => reuse the slow KDF result
+                }
+                _ => None,
+            }
+        };
+
+        // Opened without holding the cache lock, so other files can be opened meanwhile. `stamp` was taken
+        // before opening: a change that lands meanwhile makes the next call reopen.
+        let file = Arc::new(CipherFile::open(path, &self.raw_key, known_cipher)?);
+        let conn = cipher_vfs::open_connection(file.clone())?;
+        configure_sqlite();
+        let conn = Arc::new(Mutex::new(Conn { conn, cache_kib: 0 })); // sized by `with_db`
         let mut cache = self.cache.lock().map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
         cache.tick += 1;
         let tick = cache.tick;
-        let mut known_cipher = None;
-        if let Some(entry) = cache.entries.get_mut(path) {
-            if entry.key == self.raw_key {
-                if entry.stamp == stamp {
-                    entry.last_used = tick;
-                    return Ok(entry.conn.clone());
-                }
-                known_cipher = Some(entry.cipher.clone()); // same file => same salt => reuse the slow KDF result
-            }
-        }
-
-        // `stamp` was taken before reading: a change that lands while we read makes the next call reload.
-        let (data, bytes, cipher) = self.load_plain(path, known_cipher)?;
-        let mut conn = Connection::open_in_memory()?;
-        conn.deserialize(rusqlite::MAIN_DB, data, true)
-            .with_context(|| format!("failed to open decrypted snapshot of {}", path.display()))?;
-        let conn = Arc::new(Mutex::new(conn));
-        cache.entries.insert(
-            path.to_path_buf(),
-            Snapshot { conn: conn.clone(), cipher, key: self.raw_key, stamp, bytes, last_used: tick },
-        );
-        Self::evict(&mut cache, path);
-        Ok(conn)
-    }
-
-    /// Read db + wal consistently (retry if the WAL was reset by a checkpoint in between) and decrypt the
-    /// main file page by page straight into a buffer owned by SQLite, so a large database is held once.
-    fn load_plain(&self, path: &Path, cipher: Option<Arc<PageCipher>>) -> Result<(OwnedData, usize, Arc<PageCipher>)> {
-        use std::io::{BufReader, Read, Seek, SeekFrom};
-        let wal_file = wal_path(path);
-        let mut last_err = None;
-        for _ in 0..4 {
-            let wal_before = fs::read(&wal_file).ok();
-            let mut file = fs::File::open(path).with_context(|| format!("cannot read {}", path.display()))?;
-            let len = file.metadata()?.len();
-            let mut first = vec![0u8; sqlcipher::PAGE_SIZE];
-            file.read_exact(&mut first).with_context(|| format!("{} is smaller than one page", path.display()))?;
-            let cipher = match &cipher {
-                Some(c) => c.clone(),
-                None => Arc::new(sqlcipher::verify_key(&first, &self.raw_key).with_context(|| {
-                    format!("cannot decrypt {} with the configured database key", path.display())
-                })?),
-            };
-            let plan = sqlcipher::plan(len, wal_before.as_deref());
-            let bytes = plan.plain_len();
-            // SAFETY: `sqlite3_malloc64` memory is what `OwnedData` (and SQLITE_DESERIALIZE_FREEONCLOSE) expects;
-            // the slice covers exactly the allocation and is dropped before the buffer is handed over.
-            let ptr = std::ptr::NonNull::new(unsafe { rusqlite::ffi::sqlite3_malloc64(bytes as u64) }.cast::<u8>())
-                .ok_or_else(|| anyhow!("out of memory reading {}", path.display()))?;
-            let data = unsafe { OwnedData::from_raw_nonnull(ptr, bytes) };
-            file.seek(SeekFrom::Start(0))?;
-            // SAFETY: see above; `data` owns `bytes` bytes and is not aliased while this slice lives.
-            let out = unsafe { std::slice::from_raw_parts_mut(ptr.as_ptr(), bytes) };
-            let decrypted = sqlcipher::decrypt_into(out, BufReader::with_capacity(1 << 20, &mut file), &plan, wal_before.as_deref(), &cipher);
-            let wal_after = fs::read(&wal_file).ok();
-            let stable = match (&wal_before, &wal_after) {
-                (Some(a), Some(b)) => a.len() >= 32 && b.len() >= 32 && a[..32] == b[..32],
-                (None, None) => true,
-                _ => false,
-            };
-            match decrypted {
-                Ok(()) if stable => return Ok((data, bytes, cipher)),
-                Ok(()) => last_err = Some(anyhow!("{} kept changing while it was being read", path.display())),
-                Err(e) => last_err = Some(e), // a page changed mid-read: try again (`data` is freed on drop)
-            }
-        }
-        Err(last_err.unwrap_or_else(|| anyhow!("{} kept changing while it was being read", path.display())))
-    }
-
-    fn evict(cache: &mut Cache, keep: &Path) {
-        loop {
-            let total: usize = cache.entries.values().map(|s| s.bytes).sum();
-            if total <= CACHE_BUDGET {
-                return;
-            }
-            let victim = cache
-                .entries
-                .iter()
-                .filter(|(p, _)| p.as_path() != keep)
-                .min_by_key(|(_, s)| s.last_used)
-                .map(|(p, _)| p.clone());
+        cache.entries.insert(path.to_path_buf(), Snapshot { conn: conn.clone(), file: file.clone(), key: self.raw_key, stamp, last_used: tick });
+        while cache.entries.len() > MAX_SNAPSHOTS {
+            let victim = cache.entries.iter().filter(|(p, _)| p.as_path() != path).min_by_key(|(_, s)| s.last_used).map(|(p, _)| p.clone());
             match victim {
-                Some(p) => {
-                    cache.entries.remove(&p);
-                }
-                None => return,
-            }
+                Some(p) => cache.entries.remove(&p),
+                None => break,
+            };
         }
+        Ok((conn, file))
     }
 
     /// Run a read-only query on `path` and return every row as a JSON object.
     pub fn query(&self, path: &Path, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<Value>> {
+        let out = std::cell::RefCell::new(Vec::new());
+        self.query_each(path, sql, params, || out.borrow_mut().clear(), |row| out.borrow_mut().push(row))?;
+        Ok(out.into_inner())
+    }
+
+    /// Like [`query`](Self::query), but hands each row to `each` as it is read instead of collecting them.
+    /// `start` runs before the first row, and again if the snapshot went stale and the rows are read once more
+    /// from the beginning (see [`with_db`](Self::with_db)): it must reset whatever `each` accumulated.
+    pub fn query_each(&self, path: &Path, sql: &str, params: &[&dyn rusqlite::ToSql], mut start: impl FnMut(), mut each: impl FnMut(Value)) -> Result<()> {
         self.with_db(path, |conn| {
+            start();
             let mut stmt = conn.prepare(sql).with_context(|| format!("bad query: {sql}"))?;
             let names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
             let mut rows = stmt.query(params)?;
-            let mut out = Vec::new();
             while let Some(row) = rows.next()? {
-                let mut obj = Map::new();
+                let mut obj = Map::with_capacity(names.len());
                 for (i, name) in names.iter().enumerate() {
                     obj.insert(name.clone(), value_to_json(name, row.get_ref(i)?));
                 }
-                out.push(Value::Object(obj));
+                each(Value::Object(obj));
             }
-            Ok(out)
+            Ok(())
         })
     }
 

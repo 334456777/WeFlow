@@ -4,11 +4,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
 pub struct EmbeddedAsset {
     pub logical_path: &'static str,
     pub bytes: &'static [u8],
+    /// Lowercase hex SHA-256 of `bytes`, computed at build time.
+    pub sha256: &'static str,
 }
 
 include!(concat!(env!("OUT_DIR"), "/assets_generated.rs"));
@@ -45,12 +46,11 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
     for asset in EMBEDDED_ASSETS {
         let relative = asset_relative_path(asset.logical_path);
         let target_path = runtime_dir.join(relative);
-        let sha = sha256_hex(asset.bytes);
-        let mut needs_write = true;
-        if let Ok(existing) = fs::read(&target_path) {
-            needs_write = sha256_hex(&existing) != sha;
-        }
-        if needs_write {
+        // An extracted file is reused only when it is byte for byte the embedded one (cheaper than hashing it,
+        // and stricter); a missing, truncated or modified file is written again.
+        let up_to_date = fs::metadata(&target_path).is_ok_and(|m| m.len() == asset.bytes.len() as u64)
+            && fs::read(&target_path).is_ok_and(|existing| existing == asset.bytes);
+        if !up_to_date {
             if let Some(parent) = target_path.parent() {
                 fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -77,7 +77,7 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
         entries.push(AssetManifestEntry {
             path: relative.to_string(),
             size: asset.bytes.len(),
-            sha256: sha,
+            sha256: asset.sha256.to_string(),
         });
     }
 
@@ -88,11 +88,10 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
         entries,
     };
     let manifest_path = runtime_dir.join("manifest.json");
-    fs::write(
-        &manifest_path,
-        serde_json::to_vec_pretty(&manifest).context("serialize runtime manifest")?,
-    )
-    .with_context(|| format!("failed to write {}", manifest_path.display()))?;
+    let json = serde_json::to_vec_pretty(&manifest).context("serialize runtime manifest")?;
+    if fs::read(&manifest_path).ok().as_deref() != Some(&json[..]) {
+        fs::write(&manifest_path, &json).with_context(|| format!("failed to write {}", manifest_path.display()))?;
+    }
 
     Ok(runtime_dir)
 }
@@ -107,7 +106,7 @@ pub fn manifest() -> RuntimeManifest {
             .map(|asset| AssetManifestEntry {
                 path: asset_relative_path(asset.logical_path).to_string(),
                 size: asset.bytes.len(),
-                sha256: sha256_hex(asset.bytes),
+                sha256: asset.sha256.to_string(),
             })
             .collect(),
     }
@@ -118,17 +117,6 @@ fn asset_relative_path(logical_path: &str) -> &str {
         .strip_prefix("resources/")
         .or_else(|| logical_path.strip_prefix("electron/assets/"))
         .unwrap_or(logical_path)
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    let mut out = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
 }
 
 #[cfg(unix)]
@@ -163,5 +151,36 @@ mod tests {
             .entries
             .iter()
             .any(|entry| entry.path.ends_with("wasm/wasm_video_decode.wasm")));
+    }
+
+    #[test]
+    fn build_time_hashes_match_the_embedded_bytes() {
+        use sha2::{Digest, Sha256};
+        for asset in EMBEDDED_ASSETS {
+            let hex: String = Sha256::digest(asset.bytes).iter().map(|b| format!("{b:02x}")).collect();
+            assert_eq!(asset.sha256, hex, "{}", asset.logical_path);
+        }
+    }
+
+    #[test]
+    fn extraction_reuses_identical_files_and_repairs_changed_ones() {
+        let home = std::env::temp_dir().join(format!("weflow-assets-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        let dir = ensure_runtime(&home, "test").unwrap();
+        let asset = &EMBEDDED_ASSETS[0];
+        let path = dir.join(asset_relative_path(asset.logical_path));
+        assert_eq!(fs::read(&path).unwrap(), asset.bytes);
+        let manifest_time = fs::metadata(dir.join("manifest.json")).unwrap().modified().unwrap();
+        // a damaged file (same size) is written again; an unchanged manifest is left alone
+        let mut damaged = asset.bytes.to_vec();
+        if let Some(b) = damaged.first_mut() {
+            *b ^= 0xff;
+        }
+        fs::write(&path, &damaged).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        ensure_runtime(&home, "test").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), asset.bytes);
+        assert_eq!(fs::metadata(dir.join("manifest.json")).unwrap().modified().unwrap(), manifest_time);
+        let _ = fs::remove_dir_all(&home);
     }
 }

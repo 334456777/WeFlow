@@ -113,6 +113,52 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
 }
 
 #[test]
+fn plain_txt_names_senders_and_honours_sender_and_display_name() {
+    let (hub, root, _f) = common::custom_hub("plaintxt", |f| {
+        f.session_db(&[session("room1@chatroom")]);
+        f.contact_db(
+            &[
+                ContactSpec::new("wxid_me", 1, "Me"),
+                ContactSpec { remark: "Bobby", ..ContactSpec::new("wxid_bob", 1, "Bob") },
+                ContactSpec::new("wxid_quiet", 3, "Quiet"),
+                ContactSpec::new("room1@chatroom", 2, "Room"),
+            ],
+            &[RoomSpec { username: "room1@chatroom", owner: "wxid_bob", members: &[("wxid_me", ""), ("wxid_bob", "Bob in room"), ("wxid_quiet", "")] }],
+        );
+        f.message_shard(
+            0,
+            &[(
+                "room1@chatroom",
+                vec![
+                    MsgSpec::text(1, "wxid_bob", T0, "wxid_bob:\nfirst"),
+                    MsgSpec::text(2, "wxid_quiet", T0 + 60, "wxid_quiet:\nsecond"),
+                    MsgSpec::text(3, "wxid_me", T0 + 120, "third"),
+                ],
+            )],
+        );
+    });
+    let read = |name: &str| std::fs::read_to_string(root.join(name)).unwrap();
+    let headers = |text: &str| -> Vec<String> {
+        text.lines().filter_map(|l| l.split_once(" '").map(|(_, n)| n.trim_end_matches('\'').to_string())).collect()
+    };
+
+    // default naming: group nickname, then remark, then nickname (no remark: the nickname, not the wxid)
+    let r = hub.export_messages_txt("room1@chatroom", None, None, &root.join("all.txt"), None, None).unwrap();
+    assert_eq!(r["count"], 3);
+    assert_eq!(headers(&read("all.txt")), ["Bob in room", "Quiet", "Me"]);
+    assert!(read("all.txt").contains("\n\nsecond\n\n"), "the sender prefix is stripped");
+
+    // --sender keeps one person's messages
+    let r = hub.export_messages_txt("room1@chatroom", None, None, &root.join("quiet.txt"), Some("wxid_quiet"), None).unwrap();
+    assert_eq!(r["count"], 1);
+    assert_eq!(headers(&read("quiet.txt")), ["Quiet"]);
+
+    // --display-name remark
+    hub.export_messages_txt("room1@chatroom", None, None, &root.join("remark.txt"), None, Some(DisplayPref::Remark)).unwrap();
+    assert_eq!(headers(&read("remark.txt")), ["Bobby", "Quiet", "Me"]);
+}
+
+#[test]
 fn empty_range_is_an_error_and_bad_format_is_usage_error() {
     let (hub, root) = common::mock_hub("errors");
     let mut req = request("wxid_bob", "txt");

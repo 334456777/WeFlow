@@ -101,10 +101,13 @@ impl NativeAccount {
                 w = local("%w"),
                 table = t.table
             );
-            for r in self.query(&t.db, &sql, &[])? {
+            // turned into `Msg` as they are read (the JSON rows would be several times larger)
+            let base = rows.len();
+            let cell = std::cell::RefCell::new(&mut rows);
+            self.query_each(&t.db, &sql, &[], || cell.borrow_mut().truncate(base), |r| {
                 let time = int(&r, "t");
                 let seq = match int(&r, "s") { 0 => time * 1000, s => s };
-                rows.push((
+                cell.borrow_mut().push((
                     (seq, time, int(&r, "l")),
                     Msg {
                         time,
@@ -118,7 +121,7 @@ impl NativeAccount {
                         content: text(&r, "c"),
                     },
                 ));
-            }
+            })?;
         }
         rows.sort_by_key(|a| a.0);
         Ok(rows.into_iter().map(|(_, m)| m).collect())
@@ -404,16 +407,18 @@ impl NativeAccount {
                      where m.local_type = {TEXT}{range} and (typeof(m.source) = 'blob' or m.source like '%atuserlist%')",
                     t.table
                 );
-                for r in self.query(&t.db, &sql, &[])? {
+                // matched while reading: compressed sources can only be checked after decoding, which is most rows
+                let found = std::cell::RefCell::new(Vec::new());
+                self.query_each(&t.db, &sql, &[], || found.borrow_mut().clear(), |r| {
                     let content = text(&r, "message_content");
-                    if !(content.contains('@') || content.contains('\u{ff20}')) || !self.mentions_me(&text(&r, "source")) {
-                        continue;
+                    if (content.contains('@') || content.contains('\u{ff20}')) && self.mentions_me(&text(&r, "source")) {
+                        found.borrow_mut().push(json!({
+                            "session_id": sid, "local_id": int(&r, "local_id"), "create_time": int(&r, "create_time"),
+                            "sender_username": text(&r, "sender_username"), "message_content": content, "source": text(&r, "source")
+                        }));
                     }
-                    mentions.push(json!({
-                        "session_id": sid, "local_id": int(&r, "local_id"), "create_time": int(&r, "create_time"),
-                        "sender_username": text(&r, "sender_username"), "message_content": content, "source": text(&r, "source")
-                    }));
-                }
+                })?;
+                mentions.extend(found.into_inner());
             }
         }
         mentions.sort_by(|a, b| int(b, "create_time").cmp(&int(a, "create_time")).then(int(b, "local_id").cmp(&int(a, "local_id"))));

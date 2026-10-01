@@ -473,108 +473,88 @@ impl ServiceHub {
 
     // ── Messages TXT export ──────────────────────────────────────────────────
 
+    /// The simple TXT export (`<time> '<sender>'` then the text). `sender` keeps only that person's messages;
+    /// `display` picks how senders are named (default: group nickname, else remark, nickname, alias, wxid).
     pub fn export_messages_txt(
         &self,
         session_id: &str,
         start_ts: Option<i64>,
         end_ts: Option<i64>,
         out: &Path,
+        sender: Option<&str>,
+        display: Option<crate::export_msg::DisplayPref>,
     ) -> AppResult<Value> {
-        // Build nickname map: global contacts first, then group nicknames (higher priority)
-        let mut nickname_map: std::collections::HashMap<String, String> =
-            std::collections::HashMap::new();
-
-        if let Ok(contacts) = self.contacts() {
-            if let Some(items) = contacts.as_array() {
-                for c in items {
-                    let wxid = c
-                        .get("username")
-                        .or_else(|| c.get("wxid"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    let nef = |field: &str| {
-                        c.get(field).and_then(Value::as_str).filter(|s| !s.is_empty())
-                    };
-                    let name = nef("nickName")
-                        .or_else(|| nef("remark"))
-                        .or_else(|| nef("alias"))
-                        .unwrap_or(&wxid)
-                        .to_string();
-                    if !wxid.is_empty() {
-                        nickname_map.insert(wxid, name);
-                    }
-                }
-            }
-        }
-
-        if session_id.ends_with("@chatroom") {
-            if let Ok(members) = self.group_members(session_id) {
-                if let Some(obj) = members.get("nicknames").and_then(Value::as_object) {
-                    for (wxid, name) in obj {
-                        if let Some(n) = name.as_str() {
-                            if !n.is_empty() {
-                                nickname_map.insert(wxid.clone(), n.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        use crate::export::TxtMessage;
+        use std::collections::{HashMap, HashSet};
 
         let wcdb = self.open_wcdb()?;
-        // The TXT layout reads five columns: keep just those, so a 200,000-message group stays small.
-        let mut all_messages: Vec<Value> = Vec::new();
+        wcdb.set_low_memory(true); // one pass over the conversation
+        let (_, _, wxid) = self.connection_inputs()?;
+        let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
+        let sender = sender.map(str::trim).filter(|s| !s.is_empty());
+
+        // Only what the TXT layout prints is kept, so a 200,000-message group stays small.
+        let mut all_messages: Vec<TxtMessage> = Vec::new();
+        let mut count = 0usize; // every message in range, including kinds the layout does not print
         fetch_message_pages(&wcdb, session_id, start_ts, end_ts, true, &mut |page| {
-            all_messages.extend(page.into_iter().map(|mut row| {
-                let mut small = serde_json::Map::new();
-                for key in ["create_time", "sender_username", "sender_user_name", "senderUserName", "local_type", "message_content", "WCDB_CT_message_content"] {
-                    if let Some(v) = row.get_mut(key) {
-                        small.insert(key.to_string(), v.take());
+            for row in &page {
+                if let Some(want) = sender {
+                    if !crate::message::is_same_wxid(&crate::message::row_sender(row, session_id, &my_wxid), want) {
+                        continue;
                     }
                 }
-                Value::Object(small)
-            }));
+                count += 1;
+                all_messages.extend(TxtMessage::from_row(row));
+            }
         })?;
+        all_messages.sort_by_key(|m| m.create_time);
 
-        // Sort ascending by create_time for chronological output
-        all_messages.sort_by_key(|m| {
-            m.get("create_time")
-                .and_then(|v| {
-                    v.as_str()
-                        .and_then(|s| s.parse::<i64>().ok())
-                        .or_else(|| v.as_i64())
-                })
-                .unwrap_or(0)
-        });
-
-        // Supplemental lookup: for any sender still not in nickname_map, query contact table directly
-        {
-            let mut missing: std::collections::HashSet<String> = std::collections::HashSet::new();
-            for m in &all_messages {
-                if let Some(wxid) = m
-                    .get("sender_user_name")
-                    .or_else(|| m.get("senderUserName"))
-                    .and_then(Value::as_str)
-                {
-                    if !wxid.is_empty() && !nickname_map.contains_key(wxid) {
-                        missing.insert(wxid.to_string());
-                    }
+        // Names: (nickname, remark, alias) from the contact table, and group nicknames.
+        type Names = (String, String, String);
+        let field = |c: &Value, keys: &[&str]| keys.iter().find_map(|k| c.get(*k).and_then(Value::as_str)).unwrap_or("").to_string();
+        let names_of = |c: &Value| -> Names { (field(c, &["nick_name", "nickName"]), field(c, &["remark"]), field(c, &["alias"])) };
+        let mut contacts: HashMap<String, Names> = HashMap::new();
+        if let Ok(Value::Array(items)) = wcdb.contacts() {
+            for c in &items {
+                let id = field(c, &["username", "userName", "wxid"]);
+                if !id.is_empty() {
+                    contacts.insert(id, names_of(c));
                 }
             }
-            for wxid in missing {
-                if let Ok(c) = self.contact(&wxid) {
-                    let nef = |field: &str| {
-                        c.get(field).and_then(Value::as_str).filter(|s| !s.is_empty())
-                    };
-                    if let Some(name) = nef("nickName").or_else(|| nef("remark")).or_else(|| nef("alias")) {
-                        nickname_map.insert(wxid, name.to_string());
-                    }
+        }
+        let group_nicks: HashMap<String, String> = if session_id.ends_with("@chatroom") {
+            let v = wcdb.group_nicknames(session_id).unwrap_or(Value::Null);
+            let obj = v.get("nicknames").and_then(Value::as_object).or_else(|| v.as_object());
+            obj.map(|o| o.iter().filter_map(|(k, n)| n.as_str().filter(|n| !n.is_empty()).map(|n| (k.clone(), n.to_string()))).collect()).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        // senders the contact list does not know: ask the contact table one by one
+        let missing: HashSet<&str> = all_messages.iter().map(|m| m.sender.as_str()).filter(|s| !s.is_empty() && !contacts.contains_key(*s)).collect();
+        for id in missing {
+            if let Ok(c) = wcdb.contact(id) {
+                if c.as_object().is_some_and(|o| !o.is_empty()) {
+                    contacts.insert(id.to_string(), names_of(&c));
                 }
             }
         }
 
-        let count = all_messages.len();
+        let first = |vals: &[&str], id: &str| vals.iter().find(|v| !v.is_empty()).map_or_else(|| id.to_string(), |v| v.to_string());
+        let mut nickname_map: HashMap<String, String> = HashMap::new();
+        for m in &all_messages {
+            if nickname_map.contains_key(&m.sender) {
+                continue;
+            }
+            let id = m.sender.as_str();
+            let (nick, remark, alias) = contacts.get(id).map(|(n, r, a)| (n.as_str(), r.as_str(), a.as_str())).unwrap_or(("", "", ""));
+            let group = group_nicks.get(id).map(String::as_str).unwrap_or("");
+            let name = match display {
+                Some(pref) => pref.pick(id, nick, remark, group),
+                None => first(&[group, remark, nick, alias], id),
+            };
+            nickname_map.insert(id.to_string(), name);
+        }
+
         crate::export::export_txt(&all_messages, &nickname_map, out)
             .map_err(|e| AppError::runtime(e.to_string()))?;
 
@@ -607,6 +587,8 @@ impl ServiceHub {
         let raw_my_wxid = wxid.unwrap_or_default();
         let my_wxid = clean_account_dir_name(&raw_my_wxid);
         let wcdb = self.open_wcdb()?;
+        // One pass over the conversation: keeping its whole database decrypted would only cost memory.
+        wcdb.set_low_memory(true);
 
         // Raw JSON rows are several times larger than the parsed messages: turn each page into messages as it
         // arrives instead of holding every row of the conversation.
@@ -765,8 +747,19 @@ impl ServiceHub {
     fn open_wcdb(&self) -> AppResult<weflow_native::wcdb::Wcdb> {
         let (account_dir, key, wxid) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
-        wcdb.open(&account_dir, &key, wxid.as_deref())
+        wcdb.open_unchecked(&account_dir, &key, wxid.as_deref())
             .map_err(|err| AppError::native(err.to_string()))?;
+        // Proving the key costs a slow key derivation on session.db. Once it has worked, a fingerprint of
+        // (key, session.db salt, account) is remembered, and later runs with the same key and database skip it.
+        let fingerprint = wcdb.session_salt().map(|salt| key_fingerprint(&account_dir, &key, &salt));
+        let path = self.ctx.cache_dir().join("verified-keys");
+        let known = fingerprint.as_ref().is_some_and(|fp| std::fs::read_to_string(&path).is_ok_and(|s| s.lines().any(|l| l == fp)));
+        if !known {
+            wcdb.check_key().map_err(|err| AppError::native(err.to_string()))?;
+            if let Some(fp) = fingerprint {
+                remember_fingerprint(&path, &fp);
+            }
+        }
         Ok(wcdb)
     }
 
@@ -957,6 +950,32 @@ pub struct MessageExportRequest {
 }
 
 /// `cleanAccountDirName`: `wxid_abc_1234` -> `wxid_abc`, `name_ab12` -> `name`.
+/// One-way fingerprint of a key that decrypted an account's `session.db` (the key cannot be recovered from it).
+fn key_fingerprint(account_dir: &Path, key: &str, salt: &[u8; 16]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"weflow verified key v1\0");
+    h.update(key.trim().to_ascii_lowercase().as_bytes());
+    h.update([0]);
+    h.update(salt);
+    h.update([0]);
+    h.update(account_dir.to_string_lossy().as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Add a fingerprint to the list of verified keys (a few recent ones are kept). Failing to write only means the
+/// key is checked again next time.
+fn remember_fingerprint(path: &Path, fingerprint: &str) {
+    let mut lines: Vec<String> = std::fs::read_to_string(path).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default();
+    lines.retain(|l| l != fingerprint && l.len() == 64);
+    lines.push(fingerprint.to_string());
+    let keep = &lines[lines.len().saturating_sub(16)..];
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(path, keep.join("\n") + "\n");
+}
+
 pub fn clean_account_dir_name(dir_name: &str) -> String {
     use crate::message::rx;
     let trimmed = dir_name.trim();

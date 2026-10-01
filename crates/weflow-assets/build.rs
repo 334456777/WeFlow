@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 fn main() {
@@ -35,11 +36,14 @@ fn main() {
     generated.push_str(";\n");
     generated.push_str("pub const EMBEDDED_ASSETS: &[EmbeddedAsset] = &[\n");
     for (logical, absolute) in assets {
+        // hashed here, so starting the program never has to hash the embedded files
+        let bytes = fs::read(&absolute).unwrap_or_else(|e| panic!("read {}: {e}", absolute.display()));
+        let sha256: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
         generated.push_str("    EmbeddedAsset { logical_path: ");
         generated.push_str(&format!("{:?}", logical));
         generated.push_str(", bytes: include_bytes!(");
         generated.push_str(&format!("{:?}", absolute.display().to_string()));
-        generated.push_str(") },\n");
+        generated.push_str(&format!("), sha256: {sha256:?} }},\n"));
     }
     generated.push_str("];\n");
 

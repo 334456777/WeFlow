@@ -737,21 +737,7 @@ struct EmojiInfo {
 }
 
 fn percent_decode_lossy(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() + 0 && i + 2 <= bytes.len() - 1 + 0 {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
+    String::from_utf8(crate::message::percent_decode_bytes(s)).unwrap_or_else(|_| s.to_string())
 }
 
 fn parse_emoji_info(content: &str) -> EmojiInfo {

@@ -69,12 +69,17 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
 
 ## 5. Behaviour you may not expect
 
-- **Snapshots**: each database is decrypted into memory the first time a command touches it (several hundred MB for a large message
-  shard; the cache is capped at about 1.5 GB). A long-running `serve` picks up new messages when a file or its `-wal` changes.
+- **Snapshots**: databases are decrypted page by page as queries read them, and SQLite keeps the pages it has read (a command
+  that walks a whole message database can hold all of it, a few hundred MB; together the caches give memory back above about
+  1 GB). A long-running `serve` picks up new messages when a file or its `-wal` changes. If WeChat writes a checkpoint past the
+  snapshot while a query reads it, the query runs again on a fresh snapshot.
 - **Memory of big exports**: `export messages` turns the conversation into export records page by page and writes the file from
-  them. For a 200,000-message group the peak is about 0.6 GB (`txt`, `weclone`, `sql`, `excel`, `chatlab`) to 0.8 GB (`json`,
-  `arkme-json`, `html`); about 200 MB of that is the decrypted message database. Export a date range (`--start/--end`) if memory
-  is tight; the cost follows the range, not its age.
+  them, reading the database with a small page cache. For a 200,000-message group the peak is about 0.1 GB (`txt`), 0.4–0.5 GB
+  (`excel`, `weclone`, `sql`, `chatlab`) and 0.6 GB (`json`, `arkme-json`, `html`). Export a date range (`--start/--end`) if
+  memory is tight; the cost follows the range, not its age.
+- **Key check**: the first command with a key proves it on `session.db` and remembers a one-way fingerprint of it (key,
+  database salt and account; the key cannot be recovered from it) in the cache folder, so later commands skip that slow step.
+  `chat clear-account-data --cache` deletes the fingerprints; `db test` always checks the key.
 - **Time zones**: the `--start/--end` dates of the exports, the times written into them, `chat dates`, `chat date-counts` and the per-day
   statistics all use the machine's local time zone (like the desktop app). The same database read on a machine in another zone
   puts a late-night message on a different day.

@@ -50,6 +50,12 @@ fn a_wrong_key_is_reported_as_a_native_error() {
     );
     let err = bad.db_test().unwrap_err();
     assert_eq!(err.code, "native_error");
+    // ordinary commands check the key on the first database they read: same error, same exit code
+    for err in [bad.contacts().unwrap_err(), bad.messages("wxid_bob", 10, 0).unwrap_err(), bad.sessions().unwrap_err()] {
+        assert_eq!(err.code, "native_error");
+        assert_eq!(err.exit_code, 4);
+        assert!(err.message.contains("cannot decrypt"), "{}", err.message);
+    }
     drop(hub);
 }
 

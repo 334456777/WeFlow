@@ -1,3 +1,4 @@
+pub mod cipher_vfs;
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod fixture;
 pub mod native_contact;
