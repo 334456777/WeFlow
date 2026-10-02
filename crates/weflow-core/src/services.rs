@@ -862,6 +862,7 @@ impl ServiceHub {
                 "no messages found for this session in the given range",
             ));
         }
+        attach_emoji_captions(&wcdb, &mut collected);
 
         Ok((wcdb, collected))
     }
@@ -1437,6 +1438,30 @@ pub struct MessageExportRequest {
     pub sender: Option<String>,
     pub display_pref: crate::export_msg::DisplayPref,
     pub excel_compact: bool,
+}
+
+/// 查表情描述（用户自己的表情文字，否则商店表情的中文描述），写进 `emoji_caption`，
+/// 导出时显示为 `[表情：描述]`。同一个 md5 只查一次。
+fn attach_emoji_captions(
+    wcdb: &weflow_native::wcdb::Wcdb,
+    messages: &mut [crate::message::ExportMsg],
+) {
+    use std::collections::HashMap;
+    let mut cache: HashMap<String, Option<String>> = HashMap::new();
+    for m in messages.iter_mut() {
+        let md5 = match m.local_type {
+            47 => m.emoji_md5.clone(),
+            _ => crate::message::appmsg_emoticon_md5(&m.content),
+        };
+        let Some(md5) = md5 else { continue };
+        let caption = cache.entry(md5.clone()).or_insert_with(|| {
+            wcdb.emoticon_caption_strict(&md5)
+                .ok()
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty())
+        });
+        m.emoji_caption = caption.clone();
+    }
 }
 
 /// `cleanAccountDirName`: `wxid_abc_1234` -> `wxid_abc`, `name_ab12` -> `name`.

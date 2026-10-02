@@ -1030,8 +1030,21 @@ pub fn percent_decode_bytes(s: &str) -> Vec<u8> {
     out
 }
 
-pub fn format_emoji_semantic_text(_caption: Option<&str>) -> String {
-    "[表情]".into()
+pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
+    match caption.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => format!("[表情：{c}]"),
+        None => "[表情]".into(),
+    }
+}
+
+/// 以 appmsg type 8 发送的表情的 md5（`<emoticonmd5>`），用来查表情描述。
+pub fn appmsg_emoticon_md5(content: &str) -> Option<String> {
+    let normalized = normalize_app_message_content(content);
+    if extract_app_message_type(&normalized) != "8" {
+        return None;
+    }
+    let md5 = extract_xml_value(&normalized, "emoticonmd5").to_ascii_lowercase();
+    (md5.len() == 32 && md5.chars().all(|c| c.is_ascii_hexdigit())).then_some(md5)
 }
 
 // ─────────────────────────── image / video / file ───────────────────────────
@@ -2054,18 +2067,54 @@ fn extract_amount_from_text(text: &str) -> Option<String> {
         .map(|c| rx(r"\s+").replace_all(&c[1], "").to_string())
 }
 
-/// appmsg type 24 是微信「笔记」，标题通常为空，正文摘要在 `<des>` 里。
+/// 解码 `&#x0A;` / `&#32;` 这类数字实体（笔记正文里的换行、空格就是这样存的）。
+fn decode_numeric_entities(text: &str) -> String {
+    rx(r"&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));")
+        .replace_all(text, |c: &regex::Captures| {
+            let code = match (c.get(1), c.get(2)) {
+                (Some(h), _) => u32::from_str_radix(h.as_str(), 16).ok(),
+                (_, Some(d)) => d.as_str().parse::<u32>().ok(),
+                _ => None,
+            };
+            code.and_then(char::from_u32)
+                .map(String::from)
+                .unwrap_or_else(|| c[0].to_string())
+        })
+        .into_owned()
+}
+
+/// appmsg type 24 是微信「笔记」。`<des>` 只有被截断的预览，完整正文在 `<recorditem>` 里
+/// 每个 `datatype="1"` 的 `<datadesc>`（文本段），`datatype="2"` 是图片。
 fn note_text(normalized: &str, title: &str) -> String {
-    let body = if title.is_empty() {
-        extract_xml_value(normalized, "des")
-    } else {
+    let mut parts: Vec<String> = Vec::new();
+    for c in rx(r#"(?is)<dataitem\b[^>]*\bdatatype\s*=\s*["']?(\d+)["']?[^>]*>(.*?)</dataitem>"#)
+        .captures_iter(normalized)
+    {
+        match &c[1] {
+            "1" => {
+                let t = extract_xml_value(&c[2], "datadesc");
+                let t = decode_html_entities(&decode_numeric_entities(&t));
+                if !t.trim().is_empty() {
+                    parts.push(t.trim().to_string());
+                }
+            }
+            "2" => parts.push("[图片]".into()),
+            _ => {}
+        }
+    }
+    let body = if !parts.is_empty() {
+        parts.join("\n")
+    } else if !title.is_empty() {
         title.to_string()
+    } else {
+        decode_numeric_entities(&extract_xml_value(normalized, "des"))
+            .trim()
+            .to_string()
     };
-    let body = body.trim();
     if body.is_empty() {
         "[笔记]".into()
     } else {
-        format!("[笔记] {body}")
+        format!("[笔记]\n{body}")
     }
 }
 
@@ -3105,6 +3154,39 @@ mod tests {
         assert_eq!(strip_sender_prefix("1:3-1:6"), "1:3-1:6");
         assert_eq!(strip_sender_prefix("4:1"), "4:1");
         assert_eq!(strip_sender_prefix("10:1 abc"), "10:1 abc");
+    }
+
+    #[test]
+    fn wechat_note_exports_the_full_text() {
+        let xml = "<msg><appmsg><title /><des>预览被截断…</des><type>24</type><recorditem><![CDATA[<recordinfo><desc>预览</desc><datalist count=\"3\"><dataitem datatype=\"8\" dataid=\"a\"><fileext>.htm</fileext></dataitem><dataitem datatype=\"1\" dataid=\"b\"><datadesc>第一段&#x0A;第&#x20;二行</datadesc></dataitem><dataitem datatype=\"2\" dataid=\"c\"></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>";
+        let t = parse_message_content(xml, 103_079_215_153, None, None, None).unwrap();
+        assert_eq!(t, "[笔记]\n第一段\n第 二行\n[图片]");
+        // 没有 recorditem 时退回 <des>
+        let t = parse_message_content(
+            "<msg><appmsg><title /><des>只有预览</des><type>24</type></appmsg></msg>",
+            103_079_215_153,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(t, "[笔记]\n只有预览");
+    }
+
+    #[test]
+    fn emoji_text_carries_the_caption() {
+        assert_eq!(format_emoji_semantic_text(None), "[表情]");
+        assert_eq!(format_emoji_semantic_text(Some("  ")), "[表情]");
+        assert_eq!(format_emoji_semantic_text(Some("打call")), "[表情：打call]");
+        let xml = "<msg><appmsg><title /><type>8</type><appattach><emoticonmd5>35A036EDED53A8D41C043215C66FFDA3</emoticonmd5></appattach></appmsg></msg>";
+        assert_eq!(
+            appmsg_emoticon_md5(xml).as_deref(),
+            Some("35a036eded53a8d41c043215c66ffda3")
+        );
+        assert_eq!(
+            appmsg_emoticon_md5("<msg><appmsg><type>5</type></appmsg></msg>"),
+            None
+        );
     }
 
     #[test]

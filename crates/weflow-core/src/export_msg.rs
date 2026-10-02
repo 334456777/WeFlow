@@ -523,6 +523,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 }
             }
         }
+        // 表情有描述时写成 [表情：描述]（type 8 的表情走的是 appmsg，解析结果里没有描述）
+        if let (Some("[表情]"), Some(c)) = (content.as_deref(), msg.emoji_caption.as_deref()) {
+            content = Some(format_emoji_semantic_text(Some(c)));
+        }
         // 内容为空的媒体消息（库里没存 XML）仍然给出占位符
         let text = content.unwrap_or_else(|| match msg.local_type {
             34 => "[语音消息]".into(),
