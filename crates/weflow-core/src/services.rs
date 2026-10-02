@@ -1296,21 +1296,19 @@ fn attach_emoji_captions(
     wcdb: &weflow_native::wcdb::Wcdb,
     messages: &mut [crate::message::ExportMsg],
 ) {
-    use std::collections::HashMap;
-    let mut cache: HashMap<String, Option<String>> = HashMap::new();
+    let mut captions: Option<std::collections::HashMap<String, String>> = None;
     for m in messages.iter_mut() {
         let md5 = match m.local_type {
             47 => m.emoji_md5.clone(),
             _ => crate::message::appmsg_emoticon_md5(&m.content),
         };
         let Some(md5) = md5 else { continue };
-        let caption = cache.entry(md5.clone()).or_insert_with(|| {
-            wcdb.emoticon_caption_strict(&md5)
-                .ok()
-                .map(|c| c.trim().to_string())
-                .filter(|c| !c.is_empty())
-        });
-        m.emoji_caption = caption.clone();
+        // loaded on the first sticker only, in one go (not one query per md5)
+        let table = captions.get_or_insert_with(|| wcdb.emoticon_captions().unwrap_or_default());
+        m.emoji_caption = table
+            .get(&md5.to_lowercase())
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty());
     }
 }
 
