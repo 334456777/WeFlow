@@ -4,7 +4,7 @@
 
 A Rust command-line build of WeFlow's backend. By default a command prints human-readable text on stdout (aligned `key: value` lines, tables for lists) and
 errors on stderr, with the same exit codes. With `--json` every command prints one JSON document on stdout
-(`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`.
+(`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`. Both options go after the command (`weflow config path --json`); in front of it they are refused.
 
 ## Language
 

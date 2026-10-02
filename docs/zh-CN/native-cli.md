@@ -2,7 +2,7 @@
 
 [English](../native-cli.md) | **简体中文**
 
-WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json` 时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。
+WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json` 时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。这两个选项都写在命令后面（`weflow config path --json`），写在命令前面会报错。
 
 ## 语言
 

@@ -2,7 +2,7 @@
 //! resolves to Chinese (see `weflow_core::locale`).
 
 use clap::builder::StyledStr;
-use clap::{Arg, ArgAction, Command, CommandFactory, Error, FromArgMatches};
+use clap::{Arg, ArgAction, ArgMatches, Command, CommandFactory, Error, FromArgMatches};
 use weflow_core::locale::{self, translate_with, Lang};
 
 include!("help_zh.rs");
@@ -267,22 +267,79 @@ fn inline_notes(line: &str) -> String {
 pub fn parse<T: CommandFactory + FromArgMatches>() -> T {
     let args: Vec<String> = std::env::args().collect();
     prescan_lang();
-    if locale::current() == Lang::En {
-        return T::parse_from_clap();
+    let mut cmd = build_command::<T>();
+    if locale::current() == Lang::Zh {
+        cmd = localize_command(cmd);
     }
-    let cmd = localize_command(build_command::<T>());
-    match cmd
+    let parsed = cmd
         .try_get_matches_from(&args)
-        .and_then(|m| T::from_arg_matches(&m))
-    {
+        .and_then(|m| match misplaced_flag(&args, &m) {
+            Some(err) => Err(err),
+            None => T::from_arg_matches(&m),
+        });
+    match parsed {
         Ok(value) => value,
         Err(err) => exit_with(err),
     }
 }
 
+/// `--json` and `--progress` belong after the command (`weflow config path --json`); in front of it they are
+/// refused although clap would accept a global option anywhere.
+fn misplaced_flag(args: &[String], matches: &ArgMatches) -> Option<Error> {
+    let mut chain = Vec::new();
+    let mut current = matches;
+    while let Some((name, sub)) = current.subcommand() {
+        chain.push(name.to_string());
+        current = sub;
+    }
+    if chain.is_empty() {
+        return None;
+    }
+    let (mut next, mut last) = (0, 0);
+    for (i, arg) in args.iter().enumerate().skip(1) {
+        if arg == "--" {
+            break;
+        }
+        if next < chain.len() && *arg == chain[next] {
+            last = i;
+            next += 1;
+        }
+    }
+    if next < chain.len() {
+        return None;
+    }
+    let flag = args[1..last]
+        .iter()
+        .find(|a| matches!(a.as_str(), "--json" | "--progress"))?;
+    Some(Error::raw(
+        clap::error::ErrorKind::UnknownArgument,
+        format!("unexpected argument '{flag}' found\n"),
+    ))
+}
+
+/// In every usage line the options come last (`weflow config set <KEY> <VALUE> [OPTIONS]`).
+fn options_last(text: &str) -> String {
+    text.split('\n')
+        .map(|line| {
+            if line.trim_start().starts_with("Usage:") && line.contains(" [OPTIONS]") {
+                format!(
+                    "{} [OPTIONS]",
+                    line.replacen(" [OPTIONS]", "", 1).trim_end()
+                )
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn exit_with(err: Error) -> ! {
     use clap::error::ErrorKind;
-    let text = localize_rendered(&err.to_string());
+    let mut text = options_last(&err.to_string());
+    if locale::current() == Lang::Zh {
+        text = localize_rendered(&text);
+    }
     match err.kind() {
         ErrorKind::DisplayHelp
         | ErrorKind::DisplayVersion
@@ -299,23 +356,49 @@ fn exit_with(err: Error) -> ! {
     std::process::exit(err.exit_code());
 }
 
-trait ParseFromClap: Sized {
-    fn parse_from_clap() -> Self;
-}
-
-impl<T: CommandFactory + FromArgMatches> ParseFromClap for T {
-    fn parse_from_clap() -> Self {
-        let mut matches = build_command::<T>().get_matches();
-        match T::from_arg_matches_mut(&mut matches) {
-            Ok(value) => value,
-            Err(err) => err.format(&mut build_command::<T>()).exit(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn misplaced(args: &[&str]) -> bool {
+        let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+        let m = build_command::<crate::Cli>()
+            .try_get_matches_from(&args)
+            .unwrap();
+        misplaced_flag(&args, &m).is_some()
+    }
+
+    #[test]
+    fn json_and_progress_go_after_the_command() {
+        assert!(!misplaced(&["weflow", "config", "path", "--json"]));
+        assert!(!misplaced(&["weflow", "config", "path"]));
+        assert!(!misplaced(&[
+            "weflow",
+            "chat",
+            "sessions",
+            "--progress",
+            "--json"
+        ]));
+        assert!(misplaced(&["weflow", "--json", "config", "path"]));
+        assert!(misplaced(&["weflow", "config", "--json", "path"]));
+        assert!(misplaced(&["weflow", "--progress", "chat", "sessions"]));
+    }
+
+    #[test]
+    fn options_come_last_in_usage_lines() {
+        assert_eq!(
+            options_last("Usage: weflow config set [OPTIONS] <KEY> <VALUE>\n\nOptions:"),
+            "Usage: weflow config set <KEY> <VALUE> [OPTIONS]\n\nOptions:"
+        );
+        assert_eq!(
+            options_last("Usage: weflow export messages [OPTIONS] --out <OUT> <SESSION_ID>"),
+            "Usage: weflow export messages --out <OUT> <SESSION_ID> [OPTIONS]"
+        );
+        assert_eq!(
+            options_last("Usage: weflow config set <KEY> <VALUE>"),
+            "Usage: weflow config set <KEY> <VALUE>"
+        );
+    }
 
     /// Every English help text in the command tree must have a Chinese translation.
     #[test]
