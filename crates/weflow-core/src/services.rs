@@ -597,7 +597,7 @@ impl ServiceHub {
                     }
                 }
             }
-            return Err(AppError::native("the cached codes do not match this account's wxid; check --wxid / the account directory, or use `key scan-image`"));
+            return Err(AppError::native("the cached codes do not match this account's wxid; check the configured wxid / the account directory, or use `key scan-image`"));
         }
         let fallback_wxid = candidates
             .first()
@@ -973,18 +973,12 @@ impl ServiceHub {
             .db_path_override
             .clone()
             .or_else(|| profile.db_path.clone())
-            .ok_or_else(|| {
-                AppError::config("missing db_path; pass --db-path or run config set db_path")
-            })?;
+            .ok_or_else(|| AppError::config("missing db_path; run config set db_path"))?;
         let key = self
             .decrypt_key_override
             .clone()
             .or_else(|| profile.decrypt_key.clone())
-            .ok_or_else(|| {
-                AppError::config(
-                    "missing decrypt_key; pass --decrypt-key or run config set decrypt_key",
-                )
-            })?;
+            .ok_or_else(|| AppError::config("missing decrypt_key; run config set decrypt_key"))?;
         let wxid = self.wxid_override.clone().or_else(|| profile.wxid.clone());
         let account_dir = match &wxid {
             Some(wxid) => resolve_account_dir(&db_path, wxid),

@@ -20,6 +20,7 @@ pub struct AppContext {
 impl AppContext {
     pub fn new(config_override: Option<PathBuf>, version: impl Into<String>) -> AppResult<Self> {
         let version = version.into();
+        let config_override = config_override.or_else(saved_config_path);
         let home_dir = if let Some(config_path) = &config_override {
             config_path.parent().map(Path::to_path_buf).ok_or_else(|| {
                 AppError::config("config override must include a parent directory")
@@ -54,7 +55,7 @@ impl AppContext {
 #[serde(default)]
 pub struct ConfigStore {
     pub current_profile: String,
-    /// Output language chosen with `weflow --lang en|zh` (`None` = follow the system).
+    /// Output language chosen with `weflow lang en|zh` (`None` = follow the system).
     pub lang: Option<String>,
     pub profiles: BTreeMap<String, ProfileConfig>,
     pub extra: BTreeMap<String, Value>,
@@ -431,9 +432,50 @@ pub fn old_electron_config_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-/// Where the config file lives when `--config` is not given.
+/// Where the config file lives: the path chosen with `config set config_path`, else `config.json` in the home folder.
 pub fn default_config_path() -> Option<PathBuf> {
-    default_home_dir().ok().map(|dir| dir.join("config.json"))
+    saved_config_path().or_else(|| default_home_dir().ok().map(|dir| dir.join("config.json")))
+}
+
+/// Pointer file in the home folder that remembers the config path chosen with `config set config_path`.
+fn config_pointer_file() -> Option<PathBuf> {
+    default_home_dir().ok().map(|dir| dir.join("config_path"))
+}
+
+/// The config path chosen with `config set config_path` (`None` = the default location).
+pub fn saved_config_path() -> Option<PathBuf> {
+    let text = fs::read_to_string(config_pointer_file()?).ok()?;
+    let text = text.trim();
+    (!text.is_empty()).then(|| PathBuf::from(text))
+}
+
+/// Go back to the default config file location.
+pub fn clear_saved_config_path() -> AppResult<()> {
+    let pointer = config_pointer_file()
+        .ok_or_else(|| AppError::config("failed to locate platform config directory"))?;
+    set_saved_config_path(&pointer.with_file_name("config.json"))
+}
+
+/// Remember `path` as the config file for later runs; the default location clears the setting.
+pub fn set_saved_config_path(path: &Path) -> AppResult<()> {
+    let pointer = config_pointer_file()
+        .ok_or_else(|| AppError::config("failed to locate platform config directory"))?;
+    let default_path = pointer.with_file_name("config.json");
+    if path == default_path {
+        return match fs::remove_file(&pointer) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(AppError::config(
+                format!("failed to update {}: {err}", pointer.display()),
+            )),
+            _ => Ok(()),
+        };
+    }
+    if let Some(parent) = pointer.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            AppError::config(format!("failed to create {}: {err}", parent.display()))
+        })?;
+    }
+    fs::write(&pointer, path.to_string_lossy().as_bytes())
+        .map_err(|err| AppError::config(format!("failed to write {}: {err}", pointer.display())))
 }
 
 fn default_home_dir() -> AppResult<PathBuf> {

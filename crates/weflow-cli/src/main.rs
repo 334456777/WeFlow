@@ -16,45 +16,12 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Parser, Debug)]
 #[command(name = "weflow", version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEFLOW_BUILD_INFO"), ")"), about = "Native CLI for WeFlow")]
 struct Cli {
-    /// Path to the config file
-    #[arg(long, global = true)]
-    config: Option<PathBuf>,
-    /// Config profile name
-    #[arg(long, global = true)]
-    profile: Option<String>,
-    /// WeChat data directory (overrides config)
-    #[arg(long, global = true)]
-    db_path: Option<String>,
-    /// Database decrypt key in hex (overrides config)
-    #[arg(long, global = true)]
-    decrypt_key: Option<String>,
-    /// Account wxid (overrides config)
-    #[arg(long, global = true)]
-    wxid: Option<String>,
-    /// Output language: en or zh. Given on its own (`weflow --lang zh`) it is saved in the config file; with a command it applies to that run only. Default: the saved language, else the system language
-    #[arg(long, global = true, value_enum)]
-    lang: Option<LangArg>,
-    /// Print compact JSON (for scripts) instead of the human-readable output
+    /// Print JSON (for scripts) instead of the human-readable output
     #[arg(long, global = true)]
     json: bool,
-    /// Print indented JSON (implies --json)
-    #[arg(long, global = true)]
-    pretty: bool,
     /// Emit NDJSON progress events on stderr (machine-readable)
     #[arg(long, global = true)]
     progress: bool,
-    /// Never show the automatic progress bar
-    #[arg(long, global = true)]
-    no_progress: bool,
-    /// Seconds a command must run before the automatic progress bar appears (default 5; 0 = always).
-    /// Also settable with WEFLOW_PROGRESS_DELAY or `config set progress_delay_seconds <n>`
-    #[arg(
-        long,
-        global = true,
-        value_name = "SECONDS",
-        env = "WEFLOW_PROGRESS_DELAY"
-    )]
-    progress_delay: Option<u64>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -67,7 +34,7 @@ enum LangArg {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Read and write configuration (path, list, get, set, unset, clear, import)
+    /// Read and write configuration
     Config(ConfigCommand),
     /// Detect, scan and test WeChat database locations
     Db(DbCommand),
@@ -101,6 +68,12 @@ enum Commands {
     Backup(BackupCommand),
     /// Clear WeFlow's caches
     Cache(CacheCommand),
+    /// Save the output language
+    Lang {
+        /// Output language
+        #[arg(value_enum)]
+        lang: LangArg,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -132,11 +105,11 @@ enum ConfigSubcommand {
         /// Key name (default: show every key)
         key: Option<String>,
     },
-    /// Set a key. Main keys: db_path, wxid, decrypt_key, image_xor_key, image_aes_key, cache_path,
-    /// http_api_token, http_api_host, http_api_port, ai_model_api_base_url, ai_model_api_key,
-    /// ai_model_api_model, ai_model_api_max_tokens, ai_insight_enabled, progress_delay_seconds (desktop names such as dbPath also work)
+    /// Set a key
     Set {
-        /// Key name, see the list above or `config list`
+        #[arg(
+            help = "Key name; `<profile>.<key>` (for example `work.wxid`) sets a key of another profile\n  db_path                  WeChat data directory (`db detect` finds it)\n  wxid                     Account wxid (`db wxid` prints it)\n  decrypt_key              Database key in hex (`key db` prints it)\n  image_xor_key            Image XOR key, a number (`key image` prints it)\n  image_aes_key            Image AES key (`key image` prints it)\n  cache_path               Folder for cached images, voices, stickers and Moments (default: `cache` next to the config file)\n  http_api_token           Access token of the HTTP API (`serve`)\n  http_api_host            Listen address of `serve` (default 127.0.0.1)\n  http_api_port            Listen port of `serve` (default 5031)\n  ai_model_api_base_url    Base URL of the AI model API used by `insight`\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  log_enabled              true or false; kept for the desktop app, the CLI does not read it\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears (default 5; 0 = always)\nSettings of the config file itself (stored in that file, not in a profile; each config file has its own):\n  lang                     Output language, en or zh (the same as `weflow lang`)\n  current_profile          Active profile name, created when it does not exist (default: default)\nWhich config file is used (kept next to the default location, not in any config file):\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
+        )]
         key: String,
         /// Value to store
         value: String,
@@ -1248,23 +1221,12 @@ async fn main() -> ExitCode {
         .init();
 
     let cli: Cli = i18n::parse();
-    if let Some(lang) = cli.lang {
-        weflow_core::locale::set(match lang {
-            LangArg::En => weflow_core::locale::Lang::En,
-            LangArg::Zh => weflow_core::locale::Lang::Zh,
-        });
-    }
-    weflow_core::output::set_json_output(cli.json || cli.pretty);
+    weflow_core::output::set_json_output(cli.json);
     weflow_core::output::set_progress_mode(if cli.progress {
         weflow_core::output::ProgressMode::Ndjson
-    } else if cli.no_progress {
-        weflow_core::output::ProgressMode::Off
     } else {
         weflow_core::output::ProgressMode::Auto
     });
-    if let Some(d) = cli.progress_delay {
-        weflow_core::output::set_progress_delay(d);
-    }
     let outcome = run(&cli).await;
     weflow_core::output::finish_progress();
     match outcome {
@@ -1280,22 +1242,25 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: &Cli) -> AppResult<Value> {
-    let ctx = AppContext::new(cli.config.clone(), VERSION)?;
+    let ctx = AppContext::new(None, VERSION)?;
     let mut config =
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
 
-    if cli.progress_delay.is_none() {
-        let v = config.get_key(cli.profile.as_deref(), "progress_delay_seconds");
-        let delay = v
-            .as_u64()
-            .or_else(|| v.as_str().and_then(weflow_core::output::parse_delay));
-        if let Some(d) = delay {
-            weflow_core::output::set_progress_delay(d);
-        }
-    }
+    apply_progress_settings(&config, cli);
 
     match &cli.command {
-        Commands::Config(command) => return handle_config(command, &ctx, &mut config, cli),
+        Commands::Config(command) => return handle_config(command, &ctx, &mut config),
+        Commands::Lang { lang } => {
+            let code = match lang {
+                LangArg::En => "en",
+                LangArg::Zh => "zh",
+            };
+            config.lang = Some(code.to_string());
+            config
+                .save(&ctx.config_path)
+                .map_err(|err| AppError::config(err.to_string()))?;
+            return Ok(json!({ "lang": code }));
+        }
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
         Commands::Chat(ChatCommand {
             command:
@@ -1308,14 +1273,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
             if !*yes {
                 return Err(AppError::usage("this removes files; add --yes to confirm"));
             }
-            let hub = ServiceHub::new(
-                ctx.clone(),
-                config.clone(),
-                cli.profile.clone(),
-                cli.db_path.clone(),
-                cli.decrypt_key.clone(),
-                cli.wxid.clone(),
-            );
+            let hub = ServiceHub::new(ctx.clone(), config.clone(), None, None, None, None);
             let result = hub.clear_current_account_data(*cache, exports_dir)?;
             if *cache {
                 // like the desktop app: the account is signed out of this profile
@@ -1326,7 +1284,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                     "image_xor_key",
                     "image_aes_key",
                 ] {
-                    config.unset_key(cli.profile.as_deref(), key);
+                    config.unset_key(None, key);
                 }
                 config
                     .save(&ctx.config_path)
@@ -1337,14 +1295,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         _ => {}
     }
 
-    let hub = ServiceHub::new(
-        ctx,
-        config,
-        cli.profile.clone(),
-        cli.db_path.clone(),
-        cli.decrypt_key.clone(),
-        cli.wxid.clone(),
-    );
+    let hub = ServiceHub::new(ctx, config, None, None, None, None);
 
     match &cli.command {
         Commands::Db(command) => handle_db(command, &hub),
@@ -1441,7 +1392,32 @@ async fn run(cli: &Cli) -> AppResult<Value> {
             }
             Ok(r)
         }
-        Commands::Runtime(_) | Commands::Config(_) => unreachable!(),
+        Commands::Runtime(_) | Commands::Config(_) | Commands::Lang { .. } => unreachable!(),
+    }
+}
+
+/// Progress bar settings from the config (`no_progress`, `progress_delay_seconds`) and `WEFLOW_PROGRESS_DELAY`;
+/// `--progress` keeps NDJSON events whatever the config says.
+fn apply_progress_settings(config: &ConfigStore, cli: &Cli) {
+    if !cli.progress {
+        let off = config.get_key(None, "no_progress");
+        if off
+            .as_bool()
+            .unwrap_or_else(|| off.as_str() == Some("true"))
+        {
+            weflow_core::output::set_progress_mode(weflow_core::output::ProgressMode::Off);
+        }
+    }
+    let from_env = std::env::var("WEFLOW_PROGRESS_DELAY")
+        .ok()
+        .and_then(|v| weflow_core::output::parse_delay(&v));
+    let v = config.get_key(None, "progress_delay_seconds");
+    let delay = from_env.or_else(|| {
+        v.as_u64()
+            .or_else(|| v.as_str().and_then(weflow_core::output::parse_delay))
+    });
+    if let Some(d) = delay {
+        weflow_core::output::set_progress_delay(d);
     }
 }
 
@@ -1449,19 +1425,33 @@ fn handle_config(
     command: &ConfigCommand,
     ctx: &AppContext,
     config: &mut ConfigStore,
-    cli: &Cli,
 ) -> AppResult<Value> {
     match &command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
         ConfigSubcommand::List => Ok(serde_json::to_value(config).unwrap()),
         ConfigSubcommand::Get { key } => {
+            if matches!(key.as_deref(), Some("config_path" | "configPath")) {
+                return Ok(json!(ctx.config_path.to_string_lossy()));
+            }
             if let Some(key) = key {
-                Ok(config.get_key(cli.profile.as_deref(), key))
+                Ok(config.get_key(None, key))
             } else {
-                Ok(serde_json::to_value(config.profile(cli.profile.as_deref())).unwrap())
+                Ok(serde_json::to_value(config.profile(None)).unwrap())
             }
         }
         ConfigSubcommand::Set { key, value } => {
+            if matches!(key.as_str(), "config_path" | "configPath") {
+                let path = std::path::absolute(value)
+                    .map_err(|err| AppError::usage(format!("invalid path {value}: {err}")))?;
+                if path.is_dir() {
+                    return Err(AppError::usage(format!(
+                        "{} is a folder; give the config file path",
+                        path.display()
+                    )));
+                }
+                weflow_core::config::set_saved_config_path(&path)?;
+                return Ok(json!({ "configPath": path }));
+            }
             if matches!(
                 key.as_str(),
                 "progress_delay_seconds" | "progressDelaySeconds"
@@ -1472,14 +1462,18 @@ fn handle_config(
                 )));
             }
             let value = parse_config_value(value);
-            config.set_key(cli.profile.as_deref(), key, value)?;
+            config.set_key(None, key, value)?;
             config
                 .save(&ctx.config_path)
                 .map_err(|err| AppError::config(err.to_string()))?;
             Ok(json!({ "configPath": ctx.config_path }))
         }
         ConfigSubcommand::Unset { key } => {
-            config.unset_key(cli.profile.as_deref(), key);
+            if matches!(key.as_str(), "config_path" | "configPath") {
+                weflow_core::config::clear_saved_config_path()?;
+                return Ok(json!({ "configPath": weflow_core::config::default_config_path() }));
+            }
+            config.unset_key(None, key);
             config
                 .save(&ctx.config_path)
                 .map_err(|err| AppError::config(err.to_string()))?;
@@ -1502,7 +1496,7 @@ fn handle_config(
                 AppError::config("old Electron config not found; pass an explicit path")
             })?;
             let skipped = config
-                .import_electron_config(&path, cli.profile.as_deref())
+                .import_electron_config(&path, None)
                 .map_err(|err| AppError::config(err.to_string()))?;
             config
                 .save(&ctx.config_path)
@@ -2650,9 +2644,7 @@ fn parse_config_value(raw: &str) -> Value {
 fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
     let mut value = serde_json::to_value(response).unwrap();
     weflow_core::locale::localize_json(&mut value);
-    if cli.pretty {
-        println!("{}", serde_json::to_string_pretty(&value).unwrap());
-    } else if cli.json {
+    if cli.json {
         println!("{}", serde_json::to_string(&value).unwrap());
     } else {
         // Human-readable: the payload itself, without the {success, data} envelope.
@@ -2756,7 +2748,7 @@ fn key_summary(command: &Commands, data: &Value) -> Option<String> {
 }
 
 fn print_failure(err: &AppError, cli: &Cli) {
-    if cli.json || cli.pretty {
+    if cli.json {
         print_response(&failure(err.payload()), cli);
     } else {
         let details = err.details.as_ref();
