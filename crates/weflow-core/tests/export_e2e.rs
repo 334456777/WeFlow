@@ -165,9 +165,17 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
     assert_eq!(hello["senderID"], bob["senderID"]);
 }
 
+fn txt_request(sender: Option<&str>, display_pref: DisplayPref) -> MessageExportRequest {
+    MessageExportRequest {
+        sender: sender.map(str::to_string),
+        display_pref,
+        ..request("room1@chatroom", "txt")
+    }
+}
+
 #[test]
-fn plain_txt_names_senders_and_honours_sender_and_display_name() {
-    let (hub, root, _f) = common::custom_hub("plaintxt", |f| {
+fn txt_names_senders_and_honours_sender_and_display_name() {
+    let (hub, root, _f) = common::custom_hub("txt", |f| {
         f.session_db(&[session("room1@chatroom")]);
         f.contact_db(
             &[
@@ -213,44 +221,32 @@ fn plain_txt_names_senders_and_honours_sender_and_display_name() {
 
     // default naming: group nickname, then remark, then nickname (no remark: the nickname, not the wxid)
     let r = hub
-        .export_messages_txt(
-            "room1@chatroom",
-            None,
-            None,
+        .export_messages(
+            &txt_request(None, DisplayPref::GroupNickname),
             &root.join("all.txt"),
-            None,
-            None,
         )
         .unwrap();
     assert_eq!(r["count"], 3);
     assert_eq!(headers(&read("all.txt")), ["Bob in room", "Quiet", "Me"]);
     assert!(
-        read("all.txt").contains("\n\nsecond\n\n"),
+        read("all.txt").contains("'\nsecond\n\n"),
         "the sender prefix is stripped"
     );
 
     // --sender keeps one person's messages
     let r = hub
-        .export_messages_txt(
-            "room1@chatroom",
-            None,
-            None,
+        .export_messages(
+            &txt_request(Some("wxid_quiet"), DisplayPref::GroupNickname),
             &root.join("quiet.txt"),
-            Some("wxid_quiet"),
-            None,
         )
         .unwrap();
     assert_eq!(r["count"], 1);
     assert_eq!(headers(&read("quiet.txt")), ["Quiet"]);
 
     // --display-name remark
-    hub.export_messages_txt(
-        "room1@chatroom",
-        None,
-        None,
+    hub.export_messages(
+        &txt_request(None, DisplayPref::Remark),
         &root.join("remark.txt"),
-        None,
-        Some(DisplayPref::Remark),
     )
     .unwrap();
     assert_eq!(headers(&read("remark.txt")), ["Bobby", "Quiet", "Me"]);

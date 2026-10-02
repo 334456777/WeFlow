@@ -602,8 +602,7 @@ enum ExportSubcommand {
         /// Only export messages sent by this wxid
         #[arg(long)]
         sender: Option<String>,
-        /// How senders are named: group-nickname, remark or nickname (default: remark; plain txt: group nickname,
-        /// then remark, nickname, alias)
+        /// How senders are named: group-nickname, remark or nickname (default: remark)
         #[arg(long)]
         display_name: Option<String>,
         /// Excel: compact columns (time, sender, type, content)
@@ -1805,17 +1804,6 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                     AppError::usage("--display-name must be group-nickname, remark or nickname")
                 })
             };
-            if fmt == "txt" && !media_opts.enabled {
-                let display = display_name.as_deref().map(parse_display).transpose()?;
-                return hub.export_messages_txt(
-                    session_id,
-                    start_ts,
-                    end_ts,
-                    out,
-                    sender.as_deref(),
-                    display,
-                );
-            }
             let ext = match fmt.as_str() {
                 "txt" => "txt",
                 "json" | "arkme-json" => "json",
@@ -1827,7 +1815,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 "sql" => "sql",
                 other => {
                     return Err(AppError::usage(format!(
-                        "unsupported message export format: {other}; supported: txt, {}",
+                        "unsupported message export format: {other}; supported: {}",
                         weflow_core::services::MESSAGE_EXPORT_FORMATS
                     )))
                 }
@@ -1847,7 +1835,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             let request = weflow_core::services::MessageExportRequest {
                 session_id: session_id.clone(),
                 format: fmt,
-                // the desktop formats take the end as inclusive seconds, TXT as exclusive
+                // the end is inclusive seconds
                 start: start_ts,
                 end: end_ts.map(|e| e - 1),
                 sender: sender.clone(),
