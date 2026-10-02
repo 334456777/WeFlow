@@ -47,7 +47,7 @@ weflow cache     clear-all
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` 按媒体消息遍历（同一张图发两次算两条，所以 `found` 可能大于 `chat images` 列出的唯一文件数）。`missing` 统计文件不在磁盘上（微信里没下载过）或无法解析的消息，按类型分列在 `missingByKind`。`thumbOnly` 统计只导出了缩略图的图片（每条图片记录也带 `isThumb`）；在微信里点开原图后再导出即可得到高清图。`export media` 始终优先使用高清原图（等同 `image decrypt --force`）。表情可能需要联网；语音导出要逐条解码，几百条语音的全量导出需要数分钟。
 
-`export messages` 只从数据库读取所选日期范围（耗时与范围大小相关，与日期早晚无关），并显示进度条；`--start/--end` 是本机本地时区的日期。`--media image,voice,video,emoji`（或 `all`）把媒体复制到输出文件旁边的 `media/<输出文件名>/`，并让消息指向这些副本（适用于 `json`、`arkme-json`、`txt`、`excel`、`weclone`、`html`；`chatlab` 仅图片；`sql` 不支持）。消息边构建边写出，20 万条消息的群约需 0.4 GB（`txt`）到 0.6 GB（`json`、`html`）内存。`--sender` 在所有格式中都只保留该人的消息；所有格式默认依次用群昵称、备注、昵称、微信号称呼发送者（`--display-name group-nickname`）；`--display-name remark` 跳过群昵称，`--display-name nickname` 只用昵称。
+`export messages` 只从数据库读取所选日期范围（耗时与范围大小相关，与日期早晚无关），并显示进度条；`--start/--end` 是本机本地时区的日期。`--media image,voice,video,emoji`（或 `all`）把媒体复制到输出文件旁边的 `media/<输出文件名>/`，并让消息指向这些副本（适用于 `json`、`arkme-json`、`txt`、`excel`、`weclone`、`html`；`chatlab` 仅图片；`sql` 不支持）。`txt`、`sql`、`weclone` 边读边写（其他格式以及带 `--media` 的导出要先读完整个会话再写），20 万条消息的群约需 0.1 GB（`txt`、`sql`、`weclone`）到 0.6 GB（`json`、`html`）内存。`--sender` 在所有格式中都只保留该人的消息；所有格式默认依次用群昵称、备注、昵称、微信号称呼发送者（`--display-name group-nickname`）；`--display-name remark` 跳过群昵称，`--display-name nickname` 只用昵称。
 
 `chat clear-account-data --cache [--exports-dir <目录>] --yes` 删除 WeFlow 为当前账号保存的缓存（图片、语音、表情、朋友圈、统计），并把该账号从配置档案中移除（删除 `db_path`、`wxid`、`decrypt_key` 和图片密钥）；`--exports-dir` 还会删除该目录下以账号命名的条目。`cache clear-all` 清除所有缓存。两者都不会动微信自己的文件。
 

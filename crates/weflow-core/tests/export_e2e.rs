@@ -250,6 +250,49 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
     )
     .unwrap();
     assert_eq!(headers(&read("remark.txt")), ["Bobby", "Quiet", "Me"]);
+
+    // SQL and WeClone are written as the messages are read, too: header first, then one entry per message
+    let sql_req = |sender: Option<&str>| MessageExportRequest {
+        format: "sql".into(),
+        ..txt_request(sender, DisplayPref::GroupNickname)
+    };
+    let r = hub
+        .export_messages(&sql_req(None), &root.join("all.sql"))
+        .unwrap();
+    assert_eq!(
+        (r["count"].as_i64(), r["format"].as_str()),
+        (Some(3), Some("sql"))
+    );
+    let sql = read("all.sql");
+    assert!(sql.starts_with("CREATE TABLE IF NOT EXISTS \"messages\""));
+    assert_eq!(sql.matches("INSERT INTO \"messages\"").count(), 3);
+    assert!(sql.contains("'second'"));
+    let r = hub
+        .export_messages(&sql_req(Some("wxid_quiet")), &root.join("quiet.sql"))
+        .unwrap();
+    assert_eq!(r["count"], 1);
+    assert_eq!(read("quiet.sql").matches("INSERT INTO").count(), 1);
+
+    let weclone = MessageExportRequest {
+        format: "weclone".into(),
+        ..txt_request(None, DisplayPref::GroupNickname)
+    };
+    hub.export_messages(&weclone, &root.join("all.csv"))
+        .unwrap();
+    let csv = read("all.csv");
+    assert!(csv.starts_with("\u{feff}id,MsgSvrID,type_name,"));
+    let rows: Vec<&str> = csv.lines().skip(1).collect();
+    assert_eq!(rows.len(), 3, "{csv}");
+    assert!(
+        rows[0].starts_with("1,") && rows[2].starts_with("3,"),
+        "{csv}"
+    );
+
+    // an empty range writes no file at all
+    let mut empty = sql_req(None);
+    empty.start = Some(1_900_000_000);
+    assert!(hub.export_messages(&empty, &root.join("none.sql")).is_err());
+    assert!(!root.join("none.sql").exists());
 }
 
 #[test]

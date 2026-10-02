@@ -648,6 +648,11 @@ impl ServiceHub {
     /// Export a conversation's messages in one of the desktop app's formats
     /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
     pub fn export_messages(&self, req: &MessageExportRequest, out: &Path) -> AppResult<Value> {
+        // Formats that are a plain list of entries are written as the messages are read; the others need the
+        // whole conversation first (member lists, totals, sheets)
+        if let Some(format) = crate::export_msg::StreamFormat::parse(&req.format) {
+            return self.export_streaming(req, out, format);
+        }
         let (wcdb, collected) = self.export_collect(req)?;
         self.export_write(req, out, &wcdb, collected)
     }
@@ -676,16 +681,12 @@ impl ServiceHub {
         &self,
         req: &MessageExportRequest,
     ) -> AppResult<(weflow_native::wcdb::Wcdb, Vec<crate::message::ExportMsg>)> {
-        use crate::message::{collect_messages, CollectOptions};
+        use crate::message::CollectOptions;
         let (_, _, wxid) = self.connection_inputs()?;
-        let raw_my_wxid = wxid.unwrap_or_default();
-        let my_wxid = clean_account_dir_name(&raw_my_wxid);
+        let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         let wcdb = self.open_wcdb()?;
         // One pass over the conversation: keeping its whole database decrypted would only cost memory.
         wcdb.set_low_memory(true);
-
-        // Raw JSON rows are several times larger than the parsed messages: turn each page into messages as it
-        // arrives instead of holding every row of the conversation.
         let opts = CollectOptions {
             session_id: &req.session_id,
             my_wxid: &my_wxid,
@@ -694,32 +695,9 @@ impl ServiceHub {
             sender_filter: req.sender.as_deref(),
         };
         let mut collected: Vec<crate::message::ExportMsg> = Vec::new();
-        // Reading and decrypting pages and turning them into messages are different bottlenecks (I/O + SQLite vs.
-        // CPU), so they run side by side: one thread reads pages, this one parses them; the sticker caption table
-        // loads on a third meanwhile. The small channel bounds how many raw pages wait in memory.
-        let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<Value>>(4);
-        let captions = std::thread::scope(|scope| {
-            let reader = scope.spawn(|| {
-                let tx = tx; // dropped when the read ends, which ends the loop below
-                fetch_message_pages(
-                    &wcdb,
-                    &req.session_id,
-                    req.start,
-                    req.end,
-                    false,
-                    &mut |page| {
-                        let _ = tx.send(page);
-                    },
-                )
-            });
-            let captions = scope.spawn(|| wcdb.emoticon_captions().unwrap_or_default());
-            for page in rx {
-                collected.extend(collect_messages(&page, &opts));
-            }
-            reader
-                .join()
-                .map_err(|_| AppError::runtime("message reader thread panicked"))??;
-            Ok::<_, AppError>(captions.join().unwrap_or_default())
+        read_export_messages(&wcdb, req, &opts, 4, |msgs| {
+            collected.extend(msgs);
+            Ok(())
         })?;
         collected.sort_by(|a, b| {
             a.create_time
@@ -731,9 +709,69 @@ impl ServiceHub {
                 "no messages found for this session in the given range",
             ));
         }
-        attach_emoji_captions(&captions, &mut collected);
-
         Ok((wcdb, collected))
+    }
+
+    /// Export (TXT, SQL, WeClone) that writes each message as soon as it is read, so memory stays flat whatever the
+    /// size of the conversation (the other formats hold every message until the end).
+    fn export_streaming(
+        &self,
+        req: &MessageExportRequest,
+        out: &Path,
+        format: crate::export_msg::StreamFormat,
+    ) -> AppResult<Value> {
+        use crate::message::CollectOptions;
+        use std::io::Write;
+        let (_, _, wxid) = self.connection_inputs()?;
+        let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
+        let wcdb = self.open_wcdb()?;
+        wcdb.set_low_memory(true);
+        let opts = CollectOptions {
+            session_id: &req.session_id,
+            my_wxid: &my_wxid,
+            start: req.start,
+            end: req.end,
+            sender_filter: req.sender.as_deref(),
+        };
+        let mut count = 0usize;
+        let mut rows = 0usize;
+        // created with the first message, so an empty range leaves no file behind
+        let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
+        let io_err = |e: std::io::Error| AppError::runtime(format!("write {}: {e}", out.display()));
+        self.with_exporter(&req.session_id, req.display_pref, false, &wcdb, |ex| {
+            read_export_messages(&wcdb, req, &opts, 1, |msgs| {
+                for msg in &msgs {
+                    if writer.is_none() {
+                        if let Some(parent) = out.parent() {
+                            std::fs::create_dir_all(parent).map_err(io_err)?;
+                        }
+                        let mut w =
+                            std::io::BufWriter::new(std::fs::File::create(out).map_err(io_err)?);
+                        w.write_all(crate::export_msg::Exporter::stream_header(format).as_bytes())
+                            .map_err(io_err)?;
+                        writer = Some(w);
+                    }
+                    if let (Some(w), Some(entry)) =
+                        (writer.as_mut(), ex.stream_entry(format, msg, &mut rows))
+                    {
+                        w.write_all(entry.as_bytes()).map_err(io_err)?;
+                    }
+                    count += 1;
+                }
+                Ok(())
+            })
+        })??;
+        match writer {
+            Some(mut w) => w.flush().map_err(io_err)?,
+            None => {
+                return Err(AppError::runtime(
+                    "no messages found for this session in the given range",
+                ))
+            }
+        }
+        Ok(
+            json!({ "out": out, "count": count, "session": req.session_id, "format": req.format.to_ascii_lowercase() }),
+        )
     }
 
     /// 按会话建好 [`Exporter`](crate::export_msg::Exporter)（联系人名、群昵称、自己的账号），再交给 `f` 使用。
@@ -1307,6 +1345,73 @@ pub struct MessageExportRequest {
     pub sender: Option<String>,
     pub display_pref: crate::export_msg::DisplayPref,
     pub excel_compact: bool,
+}
+
+/// Reads a conversation's messages page by page and hands each parsed page (messages of one page, oldest first,
+/// sticker captions attached) to `on_page`.
+///
+/// Reading and decrypting pages and turning them into messages are different bottlenecks (I/O + SQLite vs. CPU), so
+/// they run side by side: one thread reads, the caller's thread parses and consumes; the sticker caption table loads
+/// on a third meanwhile. `buffered` bounds how many raw pages wait in memory (raw rows are several times larger
+/// than the parsed messages).
+fn read_export_messages(
+    wcdb: &weflow_native::wcdb::Wcdb,
+    req: &MessageExportRequest,
+    opts: &crate::message::CollectOptions<'_>,
+    buffered: usize,
+    mut on_page: impl FnMut(Vec<crate::message::ExportMsg>) -> AppResult<()>,
+) -> AppResult<()> {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<Value>>(buffered);
+    std::thread::scope(|scope| {
+        let reader = scope.spawn(|| {
+            let tx = tx; // dropped when the read ends, which ends the loop below
+            fetch_message_pages(
+                wcdb,
+                &req.session_id,
+                req.start,
+                req.end,
+                false,
+                &mut |page| {
+                    let _ = tx.send(page);
+                },
+            )
+        });
+        let captions = scope.spawn(|| wcdb.emoticon_captions().unwrap_or_default());
+        let mut table: Option<std::collections::HashMap<String, String>> = None;
+        let mut captions = Some(captions);
+        let mut failed: Option<AppError> = None;
+        for page in rx {
+            if failed.is_some() {
+                continue; // keep draining so the reader can finish
+            }
+            let mut msgs = crate::message::collect_messages(&page, opts);
+            drop(page);
+            if msgs.iter().any(is_sticker) {
+                let table = table.get_or_insert_with(|| {
+                    captions
+                        .take()
+                        .and_then(|h| h.join().ok())
+                        .unwrap_or_default()
+                });
+                attach_emoji_captions(table, &mut msgs);
+            }
+            if let Err(e) = on_page(msgs) {
+                failed = Some(e);
+            }
+        }
+        reader
+            .join()
+            .map_err(|_| AppError::runtime("message reader thread panicked"))??;
+        match failed {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    })
+}
+
+/// A sticker: a plain emoji message, or an appmsg of type 8 (a sticker sent as an attachment).
+fn is_sticker(m: &crate::message::ExportMsg) -> bool {
+    m.local_type == 47 || crate::message::appmsg_emoticon_md5(&m.content).is_some()
 }
 
 /// 查表情描述（用户自己的表情文字，否则商店表情的中文描述），写进 `emoji_caption`，

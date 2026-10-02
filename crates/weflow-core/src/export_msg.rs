@@ -106,6 +106,25 @@ impl<'a> NameBook<'a> {
     }
 }
 
+/// Formats whose file is a list of independent entries, so it can be written while the messages are read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamFormat {
+    Txt,
+    Sql,
+    Weclone,
+}
+
+impl StreamFormat {
+    pub fn parse(format: &str) -> Option<Self> {
+        match format.to_ascii_lowercase().as_str() {
+            "txt" => Some(Self::Txt),
+            "sql" => Some(Self::Sql),
+            "weclone" => Some(Self::Weclone),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisplayPref {
     GroupNickname,
@@ -1229,17 +1248,52 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── TXT ───────────────────────────────────
 
+    /// What a streamed export starts the file with (nothing for TXT).
+    pub fn stream_header(format: StreamFormat) -> &'static str {
+        match format {
+            StreamFormat::Txt => "",
+            StreamFormat::Sql => Self::SQL_HEADER,
+            StreamFormat::Weclone => Self::WECLONE_HEADER,
+        }
+    }
+
+    /// One message of a streamed export, or `None` when the format leaves it out (WeClone drops quote replies).
+    /// `rows` counts the entries written so far (WeClone numbers its rows).
+    pub fn stream_entry(
+        &mut self,
+        format: StreamFormat,
+        msg: &ExportMsg,
+        rows: &mut usize,
+    ) -> Option<String> {
+        match format {
+            StreamFormat::Txt => Some(self.txt_entry(msg)),
+            StreamFormat::Sql => Some(self.sql_insert(msg)),
+            StreamFormat::Weclone => {
+                if is_quoted_reply_message(msg.local_type, &msg.content) {
+                    return None;
+                }
+                *rows += 1;
+                Some(self.weclone_row(msg, *rows))
+            }
+        }
+    }
+
+    /// One message of the TXT export: `<time> '<sender>'`, the text, a blank line.
+    pub fn txt_entry(&mut self, msg: &ExportMsg) -> String {
+        let (content, _) = self.plain_row_content(msg);
+        let sender = self.sender_fields(msg);
+        format!(
+            "{} '{}'\n{}\n\n",
+            format_timestamp(msg.create_time),
+            sender.role,
+            content
+        )
+    }
+
     pub fn render_txt(&mut self, msgs: &[ExportMsg]) -> String {
         let mut out = String::new();
         for msg in msgs {
-            let (content, _) = self.plain_row_content(msg);
-            let sender = self.sender_fields(msg);
-            out.push_str(&format!(
-                "{} '{}'\n{}\n\n",
-                format_timestamp(msg.create_time),
-                sender.role,
-                content
-            ));
+            out.push_str(&self.txt_entry(msg));
         }
         out
     }
@@ -1251,89 +1305,94 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ───────────────────────────────── WeClone CSV ─────────────────────────────────
 
-    pub fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
-        let mut out =
-            String::from("\u{feff}id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n");
+    const WECLONE_HEADER: &'static str =
+        "\u{feff}id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n";
+
+    /// One WeClone CSV row (with its line ending); `id` is the row number, starting at 1.
+    fn weclone_row(&mut self, msg: &ExportMsg, id: usize) -> String {
         let my = self.my_wxid.clone();
-        let rows: Vec<&ExportMsg> = msgs
-            .iter()
-            .filter(|m| !is_quoted_reply_message(m.local_type, &m.content))
-            .collect();
-        for (i, msg) in rows.iter().enumerate() {
-            let type_name = weclone_type_name(msg.local_type, &msg.content);
-            let sender_wxid = if msg.is_send {
+        let type_name = weclone_type_name(msg.local_type, &msg.content);
+        let sender_wxid = if msg.is_send {
+            my.clone()
+        } else if self.session.is_group && !msg.sender_username.is_empty() {
+            msg.sender_username.clone()
+        } else {
+            self.session.id.clone()
+        };
+        let mut talker = if self.my_display.is_empty() {
+            chrome("我", "Me").to_string()
+        } else {
+            self.my_display.clone()
+        };
+        if self.session.is_group {
+            let raw = self.raw_my_wxid.clone();
+            let my_display = if self.my_display.is_empty() {
                 my.clone()
-            } else if self.session.is_group && !msg.sender_username.is_empty() {
-                msg.sender_username.clone()
-            } else {
-                self.session.id.clone()
-            };
-            let mut talker = if self.my_display.is_empty() {
-                chrome("我", "Me").to_string()
             } else {
                 self.my_display.clone()
             };
-            if self.session.is_group {
-                let raw = self.raw_my_wxid.clone();
-                let my_display = if self.my_display.is_empty() {
-                    my.clone()
-                } else {
-                    self.my_display.clone()
-                };
-                let p = if msg.is_send {
-                    self.resolve_profile(&my, &my_display, &[raw.as_str(), my.as_str()])
-                } else {
-                    self.resolve_profile(&sender_wxid, &sender_wxid, &[])
-                };
-                talker = p.display_name;
-            } else if !msg.is_send {
-                let contact = self.names.get(&sender_wxid);
-                let nickname = contact
-                    .as_ref()
-                    .map(|c| c.nickname.clone())
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| sender_wxid.clone());
-                let remark = contact
-                    .as_ref()
-                    .map(|c| c.remark.clone())
-                    .unwrap_or_default();
-                talker = self
-                    .settings
-                    .display_pref
-                    .pick(&sender_wxid, &nickname, &remark, "");
-            }
-            let text = self.message_text(msg);
-            let src = match type_name {
-                "image" => msg.image_dat_name.clone().unwrap_or_default(),
-                "sticker" => msg.emoji_cdn_url.clone().unwrap_or_default(),
-                "file" => {
-                    let f = extract_xml_value(&msg.content, "filename");
-                    if f.is_empty() {
-                        extract_xml_value(&msg.content, "title")
-                    } else {
-                        f
-                    }
-                }
-                _ => String::new(),
+            let p = if msg.is_send {
+                self.resolve_profile(&my, &my_display, &[raw.as_str(), my.as_str()])
+            } else {
+                self.resolve_profile(&sender_wxid, &sender_wxid, &[])
             };
-            let src = msg
-                .media
+            talker = p.display_name;
+        } else if !msg.is_send {
+            let contact = self.names.get(&sender_wxid);
+            let nickname = contact
                 .as_ref()
-                .map(|m| m.relative_path.clone())
-                .unwrap_or(src);
-            let cells = [
-                (i + 1).to_string(),
-                msg.platform_message_id().unwrap_or_default(),
-                type_name.to_string(),
-                if msg.is_send { "1".into() } else { "0".into() },
-                talker,
-                text,
-                src,
-                format_iso_timestamp(msg.create_time),
-            ];
-            let line: Vec<String> = cells.iter().map(|c| csv_cell(c)).collect();
-            out.push_str(&line.join(","));
-            out.push_str("\r\n");
+                .map(|c| c.nickname.clone())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| sender_wxid.clone());
+            let remark = contact
+                .as_ref()
+                .map(|c| c.remark.clone())
+                .unwrap_or_default();
+            talker = self
+                .settings
+                .display_pref
+                .pick(&sender_wxid, &nickname, &remark, "");
+        }
+        let text = self.message_text(msg);
+        let src = match type_name {
+            "image" => msg.image_dat_name.clone().unwrap_or_default(),
+            "sticker" => msg.emoji_cdn_url.clone().unwrap_or_default(),
+            "file" => {
+                let f = extract_xml_value(&msg.content, "filename");
+                if f.is_empty() {
+                    extract_xml_value(&msg.content, "title")
+                } else {
+                    f
+                }
+            }
+            _ => String::new(),
+        };
+        let src = msg
+            .media
+            .as_ref()
+            .map(|m| m.relative_path.clone())
+            .unwrap_or(src);
+        let cells = [
+            id.to_string(),
+            msg.platform_message_id().unwrap_or_default(),
+            type_name.to_string(),
+            if msg.is_send { "1".into() } else { "0".into() },
+            talker,
+            text,
+            src,
+            format_iso_timestamp(msg.create_time),
+        ];
+        let line: Vec<String> = cells.iter().map(|c| csv_cell(c)).collect();
+        format!("{}\r\n", line.join(","))
+    }
+
+    pub fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
+        let mut out = String::from(Self::WECLONE_HEADER);
+        let rows = msgs
+            .iter()
+            .filter(|m| !is_quoted_reply_message(m.local_type, &m.content));
+        for (i, msg) in rows.enumerate() {
+            out.push_str(&self.weclone_row(msg, i + 1));
         }
         out
     }
@@ -1688,25 +1747,28 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── SQL ───────────────────────────────────
 
+    const SQL_HEADER: &'static str = "CREATE TABLE IF NOT EXISTS \"messages\" (\n\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\tsession_id TEXT,\n\tlocal_id INTEGER,\n\tserver_id TEXT,\n\tcreate_time INTEGER,\n\tsender TEXT,\n\tis_send INTEGER,\n\tlocal_type INTEGER,\n\ttype_name TEXT,\n\tcontent TEXT\n);\n\n";
+
+    fn sql_insert(&mut self, msg: &ExportMsg) -> String {
+        let (content, _) = self.plain_row_content(msg);
+        format!(
+            "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');\n",
+            sql_escape(&self.session.id),
+            msg.local_id,
+            msg.platform_message_id().map(|s| format!("'{s}'")).unwrap_or_else(|| "NULL".into()),
+            msg.create_time,
+            sql_escape(&msg.sender_username),
+            if msg.is_send { 1 } else { 0 },
+            msg.local_type,
+            sql_escape(message_type_name(msg.local_type, Some(&msg.content))),
+            sql_escape(&content),
+        )
+    }
+
     pub fn render_sql(&mut self, msgs: &[ExportMsg]) -> String {
-        let mut sql = String::new();
-        sql.push_str(
-            "CREATE TABLE IF NOT EXISTS \"messages\" (\n\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\tsession_id TEXT,\n\tlocal_id INTEGER,\n\tserver_id TEXT,\n\tcreate_time INTEGER,\n\tsender TEXT,\n\tis_send INTEGER,\n\tlocal_type INTEGER,\n\ttype_name TEXT,\n\tcontent TEXT\n);\n\n",
-        );
+        let mut sql = String::from(Self::SQL_HEADER);
         for msg in msgs {
-            let (content, _) = self.plain_row_content(msg);
-            sql.push_str(&format!(
-                "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');\n",
-                sql_escape(&self.session.id),
-                msg.local_id,
-                msg.platform_message_id().map(|s| format!("'{s}'")).unwrap_or_else(|| "NULL".into()),
-                msg.create_time,
-                sql_escape(&msg.sender_username),
-                if msg.is_send { 1 } else { 0 },
-                msg.local_type,
-                sql_escape(message_type_name(msg.local_type, Some(&msg.content))),
-                sql_escape(&content),
-            ));
+            sql.push_str(&self.sql_insert(msg));
         }
         sql
     }
