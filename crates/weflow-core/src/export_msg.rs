@@ -107,6 +107,79 @@ impl<'a> NameBook<'a> {
 }
 
 /// Formats whose file is a list of independent entries, so it can be written while the messages are read.
+/// The senders of an export, in order of first appearance, and how many messages each sent (by lower-case id):
+/// what the member lists need, collected message by message.
+#[derive(Default)]
+struct SenderTally {
+    order: Vec<String>,
+    seen: HashSet<String>,
+    counts: HashMap<String, i64>,
+}
+
+impl SenderTally {
+    fn add(&mut self, sender: &str) {
+        if !sender.is_empty() && self.seen.insert(sender.to_string()) {
+            self.order.push(sender.to_string());
+        }
+        *self.counts.entry(sender.to_lowercase()).or_insert(0) += 1;
+    }
+}
+
+/// Entries of an export that are written to a file next to the output while the messages are read, then copied
+/// into the output between a header and a footer that need the totals. Removed when dropped.
+struct Spool {
+    path: std::path::PathBuf,
+    writer: Option<std::io::BufWriter<std::fs::File>>,
+    entries: usize,
+}
+
+impl Spool {
+    fn create(out: &Path) -> Result<Self> {
+        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut name = out.as_os_str().to_os_string();
+        name.push(".part");
+        let path = std::path::PathBuf::from(name);
+        let file = std::fs::File::create(&path)?;
+        Ok(Self {
+            path,
+            writer: Some(std::io::BufWriter::with_capacity(1 << 20, file)),
+            entries: 0,
+        })
+    }
+
+    /// Appends one entry, preceded by `separator` unless it is the first.
+    fn push(&mut self, separator: &str, entry: &str) -> Result<()> {
+        use std::io::Write;
+        if let Some(w) = self.writer.as_mut() {
+            if self.entries > 0 {
+                w.write_all(separator.as_bytes())?;
+            }
+            w.write_all(entry.as_bytes())?;
+        }
+        self.entries += 1;
+        Ok(())
+    }
+
+    /// Copies everything written so far to `out`.
+    fn copy_to(&mut self, out: &mut impl std::io::Write) -> Result<()> {
+        use std::io::Write;
+        if let Some(mut w) = self.writer.take() {
+            w.flush()?;
+        }
+        std::io::copy(&mut std::fs::File::open(&self.path)?, out)?;
+        Ok(())
+    }
+}
+
+impl Drop for Spool {
+    fn drop(&mut self) {
+        self.writer = None;
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StreamFormat {
     Txt,
@@ -635,136 +708,118 @@ impl<'a, 'n> Exporter<'a, 'n> {
         json!({ "chatlab": chatlab, "meta": meta, "members": members, "messages": out_msgs })
     }
 
-    /// Header, meta and (resolved) members of a ChatLab export; every message object goes to `sink` in order.
-    fn chatlab_parts(
+    /// The ChatLab object of one message. `member_name` is the sender's name in the member list; the names of the
+    /// people in a forwarded chat history go to `record_names` (they become members too).
+    fn chatlab_message(
         &mut self,
-        msgs: &[ExportMsg],
-        sink: &mut dyn FnMut(Map<String, Value>),
-    ) -> (Value, Value, Vec<Value>) {
+        msg: &ExportMsg,
+        member_name: &str,
+        record_names: &mut Vec<String>,
+    ) -> Map<String, Value> {
         let is_group = self.session.is_group;
-        let mut members: Vec<Map<String, Value>> = Vec::new();
-        let mut member_index: HashMap<String, usize> = HashMap::new();
-        for id in self.sessions_members(msgs) {
-            let account_name = self.contact_display(&id);
-            let mut m = Map::new();
-            m.insert("platformId".into(), json!(id));
-            m.insert("accountName".into(), json!(account_name));
-            member_index.insert(id, members.len());
-            members.push(m);
-        }
-        for msg in msgs {
-            let member_name = members
-                .get(
-                    *member_index
-                        .get(&msg.sender_username)
-                        .unwrap_or(&usize::MAX),
-                )
-                .and_then(|m| m.get("accountName").and_then(Value::as_str))
-                .map(str::to_string)
-                .unwrap_or_else(|| msg.sender_username.clone());
-            let group_nickname = if is_group {
-                resolve_group_nickname(&self.group_nicks, &[msg.sender_username.as_str()])
-            } else {
-                String::new()
-            };
-            let profile = if is_group {
-                self.sender_profile_for(msg)
-            } else {
-                Profile {
-                    wxid: msg.sender_username.clone(),
-                    nickname: member_name.clone(),
-                    display_name: member_name.clone(),
-                    group_nickname: group_nickname.clone(),
-                    ..Default::default()
-                }
-            };
-            let mut content = Some(self.message_text_with(msg, Some(LinkStyle::Markdown), false));
-            if let Some(media) = msg.media.as_ref().filter(|_| msg.local_type == 3) {
-                content = Some(media.relative_path.clone());
+        let group_nickname = if is_group {
+            resolve_group_nickname(&self.group_nicks, &[msg.sender_username.as_str()])
+        } else {
+            String::new()
+        };
+        let profile = if is_group {
+            self.sender_profile_for(msg)
+        } else {
+            Profile {
+                wxid: msg.sender_username.clone(),
+                nickname: member_name.to_string(),
+                display_name: member_name.to_string(),
+                group_nickname: group_nickname.clone(),
+                ..Default::default()
             }
-            let mut m = Map::new();
-            m.insert("sender".into(), json!(msg.sender_username));
-            m.insert(
-                "accountName".into(),
-                json!(if profile.display_name.is_empty() {
-                    member_name.clone()
+        };
+        let mut content = Some(self.message_text_with(msg, Some(LinkStyle::Markdown), false));
+        if let Some(media) = msg.media.as_ref().filter(|_| msg.local_type == 3) {
+            content = Some(media.relative_path.clone());
+        }
+        let mut m = Map::new();
+        m.insert("sender".into(), json!(msg.sender_username));
+        m.insert(
+            "accountName".into(),
+            json!(if profile.display_name.is_empty() {
+                member_name.to_string()
+            } else {
+                profile.display_name.clone()
+            }),
+        );
+        let gn = if !profile.group_nickname.is_empty() {
+            profile.group_nickname.clone()
+        } else {
+            group_nickname
+        };
+        if !gn.is_empty() {
+            m.insert("groupNickname".into(), json!(gn));
+        }
+        m.insert("timestamp".into(), json!(msg.create_time));
+        m.insert(
+            "type".into(),
+            json!(convert_message_type(msg.local_type, &msg.content)),
+        );
+        m.insert(
+            "content".into(),
+            content.map(Value::String).unwrap_or(Value::Null),
+        );
+        if let Some(id) = msg.platform_message_id() {
+            m.insert("platformMessageId".into(), json!(id));
+        }
+        if let Some(r) = extract_reply_to_message_id(&msg.content) {
+            m.insert("replyToMessageId".into(), json!(r));
+        }
+        if let Some(records) = msg.chat_record_list.as_ref().filter(|l| !l.is_empty()) {
+            let mut chat_records: Vec<Value> = Vec::new();
+            for rec in records {
+                let ts = parse_record_time(&rec.sourcetime).unwrap_or(msg.create_time);
+                let (rtype, rcontent) = match rec.datatype {
+                    1 => (
+                        0,
+                        rec.datadesc
+                            .clone()
+                            .or(rec.datatitle.clone())
+                            .unwrap_or_default(),
+                    ),
+                    3 => (1, "[图片]".to_string()),
+                    8 | 49 => (
+                        4,
+                        rec.datatitle
+                            .as_ref()
+                            .map(|t| format!("[文件] {t}"))
+                            .unwrap_or_else(|| "[文件]".into()),
+                    ),
+                    34 => (2, "[语音消息]".to_string()),
+                    43 => (3, "[视频]".to_string()),
+                    47 => (5, "[表情]".to_string()),
+                    _ => (
+                        0,
+                        rec.datadesc
+                            .clone()
+                            .or(rec.datatitle.clone())
+                            .unwrap_or_else(|| "[消息]".into()),
+                    ),
+                };
+                let who = if rec.sourcename.is_empty() {
+                    "unknown".to_string()
                 } else {
-                    profile.display_name.clone()
-                }),
-            );
-            let gn = if !profile.group_nickname.is_empty() {
-                profile.group_nickname.clone()
-            } else {
-                group_nickname
-            };
-            if !gn.is_empty() {
-                m.insert("groupNickname".into(), json!(gn));
-            }
-            m.insert("timestamp".into(), json!(msg.create_time));
-            m.insert(
-                "type".into(),
-                json!(convert_message_type(msg.local_type, &msg.content)),
-            );
-            m.insert(
-                "content".into(),
-                content.map(Value::String).unwrap_or(Value::Null),
-            );
-            if let Some(id) = msg.platform_message_id() {
-                m.insert("platformMessageId".into(), json!(id));
-            }
-            if let Some(r) = extract_reply_to_message_id(&msg.content) {
-                m.insert("replyToMessageId".into(), json!(r));
-            }
-            if let Some(records) = msg.chat_record_list.as_ref().filter(|l| !l.is_empty()) {
-                let mut chat_records: Vec<Value> = Vec::new();
-                for rec in records {
-                    let ts = parse_record_time(&rec.sourcetime).unwrap_or(msg.create_time);
-                    let (rtype, rcontent) = match rec.datatype {
-                        1 => (
-                            0,
-                            rec.datadesc
-                                .clone()
-                                .or(rec.datatitle.clone())
-                                .unwrap_or_default(),
-                        ),
-                        3 => (1, "[图片]".to_string()),
-                        8 | 49 => (
-                            4,
-                            rec.datatitle
-                                .as_ref()
-                                .map(|t| format!("[文件] {t}"))
-                                .unwrap_or_else(|| "[文件]".into()),
-                        ),
-                        34 => (2, "[语音消息]".to_string()),
-                        43 => (3, "[视频]".to_string()),
-                        47 => (5, "[表情]".to_string()),
-                        _ => (
-                            0,
-                            rec.datadesc
-                                .clone()
-                                .or(rec.datatitle.clone())
-                                .unwrap_or_else(|| "[消息]".into()),
-                        ),
-                    };
-                    let who = if rec.sourcename.is_empty() {
-                        "unknown".to_string()
-                    } else {
-                        rec.sourcename.clone()
-                    };
-                    chat_records.push(json!({ "sender": who, "accountName": who, "timestamp": ts, "type": rtype, "content": rcontent }));
-                    if !rec.sourcename.is_empty() && !member_index.contains_key(&rec.sourcename) {
-                        let mut nm = Map::new();
-                        nm.insert("platformId".into(), json!(rec.sourcename));
-                        nm.insert("accountName".into(), json!(rec.sourcename));
-                        member_index.insert(rec.sourcename.clone(), members.len());
-                        members.push(nm);
-                    }
+                    rec.sourcename.clone()
+                };
+                chat_records.push(json!({ "sender": who, "accountName": who, "timestamp": ts, "type": rtype, "content": rcontent }));
+                if !rec.sourcename.is_empty() {
+                    record_names.push(rec.sourcename.clone());
                 }
-                m.insert("chatRecords".into(), Value::Array(chat_records));
             }
-            sink(m);
+            m.insert("chatRecords".into(), Value::Array(chat_records));
         }
+        m
+    }
+
+    /// The member list with the names resolved like the desktop app does for groups.
+    fn chatlab_finish_members(&mut self, members: Vec<Map<String, Value>>) -> Vec<Value> {
         // enrich members with resolved names like the desktop app does for groups
+        let is_group = self.session.is_group;
         let mut final_members: Vec<Value> = Vec::new();
         for mut m in members {
             let id = m
@@ -800,27 +855,144 @@ impl<'a, 'n> Exporter<'a, 'n> {
             }
             final_members.push(Value::Object(m));
         }
+        final_members
+    }
+
+    /// Header, meta and (resolved) members of a ChatLab export; every message object goes to `sink` in order.
+    fn chatlab_parts(
+        &mut self,
+        msgs: &[ExportMsg],
+        sink: &mut dyn FnMut(Map<String, Value>),
+    ) -> (Value, Value, Vec<Value>) {
+        let mut members: Vec<Map<String, Value>> = Vec::new();
+        let mut member_index: HashMap<String, usize> = HashMap::new();
+        for id in self.sessions_members(msgs) {
+            let account_name = self.contact_display(&id);
+            let mut m = Map::new();
+            m.insert("platformId".into(), json!(id));
+            m.insert("accountName".into(), json!(account_name));
+            member_index.insert(id, members.len());
+            members.push(m);
+        }
+        for msg in msgs {
+            let member_name = members
+                .get(
+                    *member_index
+                        .get(&msg.sender_username)
+                        .unwrap_or(&usize::MAX),
+                )
+                .and_then(|m| m.get("accountName").and_then(Value::as_str))
+                .map(str::to_string)
+                .unwrap_or_else(|| msg.sender_username.clone());
+            let mut record_names: Vec<String> = Vec::new();
+            let m = self.chatlab_message(msg, &member_name, &mut record_names);
+            for name in record_names {
+                if !member_index.contains_key(&name) {
+                    let mut nm = Map::new();
+                    nm.insert("platformId".into(), json!(name));
+                    nm.insert("accountName".into(), json!(name));
+                    member_index.insert(name, members.len());
+                    members.push(nm);
+                }
+            }
+            sink(m);
+        }
+        let final_members = self.chatlab_finish_members(members);
         let (chatlab, meta) = self.chatlab_meta();
         (chatlab, meta, final_members)
     }
 
     pub fn write_chatlab(&mut self, msgs: &[ExportMsg], out: &Path, jsonl: bool) -> Result<()> {
+        self.stream_chatlab(msgs, out, jsonl, true)?;
+        Ok(())
+    }
+
+    /// ChatLab (json or jsonl) written from a stream of messages (oldest first): every message goes to a spool
+    /// file as it is read; the member list, which comes first in the file and needs every sender, is written at
+    /// the end. With no messages nothing is written unless `write_if_empty`.
+    fn stream_chatlab<I>(
+        &mut self,
+        msgs: I,
+        out: &Path,
+        jsonl: bool,
+        write_if_empty: bool,
+    ) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
+        use std::borrow::Borrow;
         use std::io::Write;
-        // Messages are serialized as they are built and only their text is kept; members are known afterwards.
-        let mut lines: Vec<String> = Vec::with_capacity(msgs.len());
-        let (chatlab, meta, members) = self.chatlab_parts(msgs, &mut |m| {
-            lines.push(if jsonl {
+        let mut spool = Spool::create(out)?;
+        let mut tally = SenderTally::default();
+        let mut names: HashMap<String, String> = HashMap::new();
+        let mut record_order: Vec<String> = Vec::new();
+        let mut record_seen: HashSet<String> = HashSet::new();
+        let mut count = 0usize;
+        for item in msgs {
+            let msg: &ExportMsg = item.borrow();
+            tally.add(&msg.sender_username);
+            let member_name = if msg.sender_username.is_empty() {
+                String::new()
+            } else if let Some(n) = names.get(&msg.sender_username) {
+                n.clone()
+            } else {
+                let n = self.contact_display(&msg.sender_username);
+                names.insert(msg.sender_username.clone(), n.clone());
+                n
+            };
+            let mut record_names: Vec<String> = Vec::new();
+            let m = self.chatlab_message(msg, &member_name, &mut record_names);
+            for name in record_names {
+                if record_seen.insert(name.clone()) {
+                    record_order.push(name);
+                }
+            }
+            if jsonl {
                 let mut obj = Map::new();
                 obj.insert("_type".into(), json!("message"));
                 obj.extend(m);
-                serde_json::to_string(&Value::Object(obj)).unwrap_or_default()
+                spool.push(
+                    "\n",
+                    &serde_json::to_string(&Value::Object(obj)).unwrap_or_default(),
+                )?;
             } else {
-                pretty_indented(&Value::Object(m), 4)
-            });
-        });
-        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
+                spool.push(",\n    ", &pretty_indented(&Value::Object(m), 4))?;
+            }
+            count += 1;
         }
+        if count == 0 && !write_if_empty {
+            return Ok(0);
+        }
+        // members: the senders in order of appearance, then the rest of the group, then the people who only
+        // appear inside forwarded chat histories
+        let mut ids = tally.order;
+        let mut known: HashSet<String> = ids.iter().cloned().collect();
+        if self.session.is_group {
+            for g in self.group_members.clone() {
+                if !g.is_empty() && known.insert(g.clone()) {
+                    ids.push(g);
+                }
+            }
+        }
+        let mut members: Vec<Map<String, Value>> = Vec::new();
+        for id in ids {
+            let account_name = self.contact_display(&id);
+            let mut m = Map::new();
+            m.insert("platformId".into(), json!(id));
+            m.insert("accountName".into(), json!(account_name));
+            members.push(m);
+        }
+        for name in record_order {
+            if known.insert(name.clone()) {
+                let mut nm = Map::new();
+                nm.insert("platformId".into(), json!(name));
+                nm.insert("accountName".into(), json!(name));
+                members.push(nm);
+            }
+        }
+        let members = self.chatlab_finish_members(members);
+        let (chatlab, meta) = self.chatlab_meta();
         let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
         if jsonl {
             write!(
@@ -838,9 +1010,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 }
                 write!(w, "\n{}", serde_json::to_string(&Value::Object(obj))?)?;
             }
-            for line in &lines {
+            if count > 0 {
                 w.write_all(b"\n")?;
-                w.write_all(line.as_bytes())?;
+                spool.copy_to(&mut w)?;
             }
         } else {
             write!(
@@ -850,22 +1022,17 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 pretty_indented(&meta, 2),
                 pretty_indented(&Value::Array(members), 2)
             )?;
-            if lines.is_empty() {
+            if count == 0 {
                 w.write_all(b"[]")?;
             } else {
                 w.write_all(b"[\n    ")?;
-                for (i, line) in lines.iter().enumerate() {
-                    if i > 0 {
-                        w.write_all(b",\n    ")?;
-                    }
-                    w.write_all(line.as_bytes())?;
-                }
+                spool.copy_to(&mut w)?;
                 w.write_all(b"\n  ]")?;
             }
             w.write_all(b"\n}")?;
         }
         w.flush()?;
-        Ok(())
+        Ok(count)
     }
 
     // ─────────────────────────── detailed JSON / arkme-json ───────────────────────────
@@ -881,6 +1048,145 @@ impl<'a, 'n> Exporter<'a, 'n> {
         Value::Object(h)
     }
 
+    /// The detailed-JSON object of one message; `index` is the number of messages before it. Records the sender's
+    /// profile (the first one seen wins) and returns it with the object.
+    fn json_message(
+        &mut self,
+        msg: &ExportMsg,
+        arkme: bool,
+        index: usize,
+        profiles: &mut HashMap<String, Profile>,
+    ) -> (Map<String, Value>, Profile) {
+        let source = rx(r"(?i)<msgsource>[\s\S]*?</msgsource>")
+            .find(&msg.content)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        let mut content = Some(self.message_text(msg));
+        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
+            content = Some(m.relative_path.clone());
+        }
+        let sender = msg.sender_username.clone();
+        let nickname = self
+            .names
+            .get(&sender)
+            .map(|c| c.nickname)
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.names.display_name(&sender));
+        let remark = self
+            .names
+            .get(&sender)
+            .map(|c| c.remark)
+            .unwrap_or_default();
+        let group_nick = resolve_group_nickname(&self.group_nicks, &[sender.as_str()]);
+        let display = self
+            .settings
+            .display_pref
+            .pick(&sender, &nickname, &remark, &group_nick);
+        profiles.entry(sender.clone()).or_insert_with(|| Profile {
+            wxid: sender.clone(),
+            nickname: nickname.clone(),
+            remark: remark.clone(),
+            group_nickname: group_nick.clone(),
+            display_name: display.clone(),
+            ..Default::default()
+        });
+
+        let mut o = Map::new();
+        o.insert("localId".into(), json!(index + 1));
+        o.insert("createTime".into(), json!(msg.create_time));
+        o.insert(
+            "formattedTime".into(),
+            json!(format_timestamp(msg.create_time)),
+        );
+        o.insert(
+            "type".into(),
+            json!(message_type_name(msg.local_type, Some(&msg.content))),
+        );
+        o.insert("localType".into(), json!(msg.local_type));
+        o.insert(
+            "content".into(),
+            content.clone().map(Value::String).unwrap_or(Value::Null),
+        );
+        o.insert("isSend".into(), json!(if msg.is_send { 1 } else { 0 }));
+        o.insert("senderUsername".into(), json!(sender));
+        o.insert("senderDisplayName".into(), json!(display));
+        o.insert("source".into(), json!(source));
+        o.insert("senderAvatarKey".into(), json!(sender));
+        if msg.local_type == 47 {
+            if let Some(v) = &msg.emoji_md5 {
+                o.insert("emojiMd5".into(), json!(v));
+            }
+            if let Some(v) = &msg.emoji_cdn_url {
+                o.insert("emojiCdnUrl".into(), json!(v));
+            }
+            if let Some(v) = &msg.emoji_caption {
+                o.insert("emojiCaption".into(), json!(v));
+            }
+        }
+        // Additive (not in the desktop export): media identifiers so exports can be matched with files on disk.
+        if msg.local_type == 3 {
+            if let Some(v) = &msg.image_md5 {
+                o.insert("imageMd5".into(), json!(v));
+            }
+            if let Some(v) = &msg.image_dat_name {
+                o.insert("imageDatName".into(), json!(v));
+            }
+        }
+        if msg.local_type == 43 {
+            if let Some(v) = &msg.video_md5 {
+                o.insert("videoMd5".into(), json!(v));
+            }
+        }
+        if let Some(id) = msg.platform_message_id() {
+            o.insert("platformMessageId".into(), json!(id));
+        }
+        if let Some(r) = extract_reply_to_message_id(&msg.content) {
+            o.insert("replyToMessageId".into(), json!(r));
+        }
+        if let Some(meta) = extract_arkme_app_message_meta(&msg.content, msg.local_type) {
+            let kind = meta.get("appMsgKind").and_then(Value::as_str).unwrap_or("");
+            if arkme || kind == "quote" || kind == "link" {
+                for (k, v) in meta {
+                    o.insert(k, v);
+                }
+            }
+        }
+        if let Some(q) = &quoted {
+            if let Some(s) = &q.quoted_sender {
+                if !s.is_empty() {
+                    o.insert("quotedSender".into(), json!(s));
+                }
+            }
+            if !q.quoted_preview.is_empty() {
+                o.insert("quotedContent".into(), json!(q.quoted_preview));
+            }
+        }
+        if arkme {
+            if let Some(meta) = extract_arkme_contact_card_meta(&msg.content, msg.local_type) {
+                for (k, v) in meta {
+                    o.insert(k, v);
+                }
+            }
+        }
+        if msg.local_type == 48 {
+            if let Some(v) = msg.location_lat {
+                o.insert("locationLat".into(), json!(v));
+            }
+            if let Some(v) = msg.location_lng {
+                o.insert("locationLng".into(), json!(v));
+            }
+            if let Some(v) = &msg.location_poiname {
+                o.insert("locationPoiname".into(), json!(v));
+            }
+            if let Some(v) = &msg.location_label {
+                o.insert("locationLabel".into(), json!(v));
+            }
+        }
+        let profile = profiles[&msg.sender_username].clone();
+        (o, profile)
+    }
+
     /// Builds the detailed-JSON object of every message in order and hands each to `sink`, so a caller can write
     /// it out and drop it instead of holding the whole conversation as JSON values. Returns the sender profiles.
     fn json_messages(
@@ -889,137 +1195,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         arkme: bool,
         sink: &mut dyn FnMut(Map<String, Value>, &Profile),
     ) -> HashMap<String, Profile> {
-        let mut count = 0usize;
         let mut profiles: HashMap<String, Profile> = HashMap::new();
-        for msg in msgs {
-            let source = rx(r"(?i)<msgsource>[\s\S]*?</msgsource>")
-                .find(&msg.content)
-                .map(|m| m.as_str().to_string())
-                .unwrap_or_default();
-            let mut content = Some(self.message_text(msg));
-            let quoted = self.quoted_with_names(msg.local_type, &msg.content);
-            if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
-                content = Some(m.relative_path.clone());
-            }
-            let sender = msg.sender_username.clone();
-            let nickname = self
-                .names
-                .get(&sender)
-                .map(|c| c.nickname)
-                .filter(|n| !n.is_empty())
-                .unwrap_or_else(|| self.names.display_name(&sender));
-            let remark = self
-                .names
-                .get(&sender)
-                .map(|c| c.remark)
-                .unwrap_or_default();
-            let group_nick = resolve_group_nickname(&self.group_nicks, &[sender.as_str()]);
-            let display = self
-                .settings
-                .display_pref
-                .pick(&sender, &nickname, &remark, &group_nick);
-            profiles.entry(sender.clone()).or_insert_with(|| Profile {
-                wxid: sender.clone(),
-                nickname: nickname.clone(),
-                remark: remark.clone(),
-                group_nickname: group_nick.clone(),
-                display_name: display.clone(),
-                ..Default::default()
-            });
-
-            let mut o = Map::new();
-            o.insert("localId".into(), json!(count + 1));
-            o.insert("createTime".into(), json!(msg.create_time));
-            o.insert(
-                "formattedTime".into(),
-                json!(format_timestamp(msg.create_time)),
-            );
-            o.insert(
-                "type".into(),
-                json!(message_type_name(msg.local_type, Some(&msg.content))),
-            );
-            o.insert("localType".into(), json!(msg.local_type));
-            o.insert(
-                "content".into(),
-                content.clone().map(Value::String).unwrap_or(Value::Null),
-            );
-            o.insert("isSend".into(), json!(if msg.is_send { 1 } else { 0 }));
-            o.insert("senderUsername".into(), json!(sender));
-            o.insert("senderDisplayName".into(), json!(display));
-            o.insert("source".into(), json!(source));
-            o.insert("senderAvatarKey".into(), json!(sender));
-            if msg.local_type == 47 {
-                if let Some(v) = &msg.emoji_md5 {
-                    o.insert("emojiMd5".into(), json!(v));
-                }
-                if let Some(v) = &msg.emoji_cdn_url {
-                    o.insert("emojiCdnUrl".into(), json!(v));
-                }
-                if let Some(v) = &msg.emoji_caption {
-                    o.insert("emojiCaption".into(), json!(v));
-                }
-            }
-            // Additive (not in the desktop export): media identifiers so exports can be matched with files on disk.
-            if msg.local_type == 3 {
-                if let Some(v) = &msg.image_md5 {
-                    o.insert("imageMd5".into(), json!(v));
-                }
-                if let Some(v) = &msg.image_dat_name {
-                    o.insert("imageDatName".into(), json!(v));
-                }
-            }
-            if msg.local_type == 43 {
-                if let Some(v) = &msg.video_md5 {
-                    o.insert("videoMd5".into(), json!(v));
-                }
-            }
-            if let Some(id) = msg.platform_message_id() {
-                o.insert("platformMessageId".into(), json!(id));
-            }
-            if let Some(r) = extract_reply_to_message_id(&msg.content) {
-                o.insert("replyToMessageId".into(), json!(r));
-            }
-            if let Some(meta) = extract_arkme_app_message_meta(&msg.content, msg.local_type) {
-                let kind = meta.get("appMsgKind").and_then(Value::as_str).unwrap_or("");
-                if arkme || kind == "quote" || kind == "link" {
-                    for (k, v) in meta {
-                        o.insert(k, v);
-                    }
-                }
-            }
-            if let Some(q) = &quoted {
-                if let Some(s) = &q.quoted_sender {
-                    if !s.is_empty() {
-                        o.insert("quotedSender".into(), json!(s));
-                    }
-                }
-                if !q.quoted_preview.is_empty() {
-                    o.insert("quotedContent".into(), json!(q.quoted_preview));
-                }
-            }
-            if arkme {
-                if let Some(meta) = extract_arkme_contact_card_meta(&msg.content, msg.local_type) {
-                    for (k, v) in meta {
-                        o.insert(k, v);
-                    }
-                }
-            }
-            if msg.local_type == 48 {
-                if let Some(v) = msg.location_lat {
-                    o.insert("locationLat".into(), json!(v));
-                }
-                if let Some(v) = msg.location_lng {
-                    o.insert("locationLng".into(), json!(v));
-                }
-                if let Some(v) = &msg.location_poiname {
-                    o.insert("locationPoiname".into(), json!(v));
-                }
-                if let Some(v) = &msg.location_label {
-                    o.insert("locationLabel".into(), json!(v));
-                }
-            }
-            count += 1;
-            sink(o, &profiles[&msg.sender_username]);
+        for (count, msg) in msgs.iter().enumerate() {
+            let (o, profile) = self.json_message(msg, arkme, count, &mut profiles);
+            sink(o, &profile);
         }
         profiles
     }
@@ -1098,24 +1277,26 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     /// `groupMembers` of the arkme export: every sender plus the group's member list, busiest first.
     fn ark_group_members(&mut self, msgs: &[ExportMsg]) -> Value {
+        let mut tally = SenderTally::default();
+        for m in msgs {
+            tally.add(&m.sender_username);
+        }
+        self.ark_group_members_of(tally)
+    }
+
+    /// [`ark_group_members`](Self::ark_group_members) from a tally of the senders (see [`SenderTally`]).
+    fn ark_group_members_of(&mut self, tally: SenderTally) -> Value {
+        let SenderTally { order, counts, .. } = tally;
         let ids: Vec<String> = {
-            let mut v: Vec<String> = Vec::new();
-            for m in msgs {
-                if !m.sender_username.is_empty() && !v.contains(&m.sender_username) {
-                    v.push(m.sender_username.clone());
-                }
-            }
+            let mut v = order;
+            let mut seen: HashSet<String> = v.iter().cloned().collect();
             for g in &self.group_members {
-                if !g.is_empty() && !v.contains(g) {
+                if !g.is_empty() && seen.insert(g.clone()) {
                     v.push(g.clone());
                 }
             }
             v
         };
-        let mut counts: HashMap<String, i64> = HashMap::new();
-        for m in msgs {
-            *counts.entry(m.sender_username.to_lowercase()).or_insert(0) += 1;
-        }
         let mut members: Vec<Map<String, Value>> = Vec::new();
         for id in ids {
             let contact = self.names.get(&id);
@@ -1178,21 +1359,39 @@ impl<'a, 'n> Exporter<'a, 'n> {
             .windows(2)
             .all(|w| w[0].create_time <= w[1].create_time)
         {
-            return self.write_json_streaming(msgs, out, arkme);
+            self.stream_json(msgs, out, arkme, true)?;
+            return Ok(());
         }
         let v = self.build_json(msgs, arkme);
         write_bytes(out, serde_json::to_string_pretty(&v)?.as_bytes())
     }
 
-    fn write_json_streaming(&mut self, msgs: &[ExportMsg], out: &Path, arkme: bool) -> Result<()> {
+    /// Detailed JSON / arkme-json written from a stream of messages (oldest first). Each message is serialized as
+    /// soon as it is read and put in a spool file; the header (which has the totals) and the member list (which has
+    /// the senders) are written around it at the end. With no messages nothing is written unless `write_if_empty`.
+    fn stream_json<I>(
+        &mut self,
+        msgs: I,
+        out: &Path,
+        arkme: bool,
+        write_if_empty: bool,
+    ) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
+        use std::borrow::Borrow;
         use std::io::Write;
         let is_group = self.session.is_group;
-        let session =
-            Value::Object(self.json_session(msgs.len(), msgs.iter().map(|m| m.create_time).max()));
-        // Each message is serialized as soon as it is built; only the text is kept until the file is written.
-        let mut lines: Vec<String> = Vec::with_capacity(msgs.len());
+        let mut spool = Spool::create(out)?;
         let mut ark = ArkCompact::default();
-        self.json_messages(msgs, arkme, &mut |message, profile| {
+        let mut profiles: HashMap<String, Profile> = HashMap::new();
+        let mut tally = SenderTally::default();
+        let mut last_ts: Option<i64> = None;
+        let mut count = 0usize;
+        for item in msgs {
+            let msg: &ExportMsg = item.borrow();
+            let (message, profile) = self.json_message(msg, arkme, count, &mut profiles);
             let value = if arkme {
                 let sender = message
                     .get("senderUsername")
@@ -1204,11 +1403,17 @@ impl<'a, 'n> Exporter<'a, 'n> {
             } else {
                 Value::Object(message)
             };
-            lines.push(pretty_indented(&value, 4));
-        });
-        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
+            spool.push(",\n    ", &pretty_indented(&value, 4))?;
+            last_ts = last_ts.max(Some(msg.create_time));
+            if arkme && is_group {
+                tally.add(&msg.sender_username);
+            }
+            count += 1;
         }
+        if count == 0 && !write_if_empty {
+            return Ok(0);
+        }
+        let session = Value::Object(self.json_session(count, last_ts));
         let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
         write!(
             w,
@@ -1224,29 +1429,80 @@ impl<'a, 'n> Exporter<'a, 'n> {
             )?;
         }
         w.write_all(b",\n  \"messages\": ")?;
-        if lines.is_empty() {
+        if count == 0 {
             w.write_all(b"[]")?;
         } else {
             w.write_all(b"[\n    ")?;
-            for (i, line) in lines.iter().enumerate() {
-                if i > 0 {
-                    w.write_all(b",\n    ")?;
-                }
-                w.write_all(line.as_bytes())?;
-            }
+            spool.copy_to(&mut w)?;
             w.write_all(b"\n  ]")?;
         }
-        drop(lines);
         if arkme && is_group {
-            let members = self.ark_group_members(msgs);
+            let members = self.ark_group_members_of(tally);
             write!(w, ",\n  \"groupMembers\": {}", pretty_indented(&members, 2))?;
         }
         w.write_all(b"\n}")?;
         w.flush()?;
-        Ok(())
+        Ok(count)
     }
 
     // ─────────────────────────────────── TXT ───────────────────────────────────
+
+    /// Writes an export from a stream of messages (oldest first) without holding them all: the file is built as the
+    /// messages arrive. Returns how many messages were read; with none, no file is written.
+    pub fn write_streamed(
+        &mut self,
+        format: &str,
+        out: &Path,
+        msgs: &mut dyn Iterator<Item = ExportMsg>,
+    ) -> Result<usize> {
+        if let Some(format) = StreamFormat::parse(format) {
+            return self.write_entries(format, out, msgs);
+        }
+        match format {
+            "json" => return self.stream_json(msgs, out, false, false),
+            "arkme-json" => return self.stream_json(msgs, out, true, false),
+            "html" => return self.stream_html(msgs, out, false),
+            "excel" | "xlsx" => return self.stream_excel(msgs, out),
+            "chatlab" => return self.stream_chatlab(msgs, out, false, false),
+            "chatlab-jsonl" => return self.stream_chatlab(msgs, out, true, false),
+            _ => {}
+        }
+        anyhow::bail!("unsupported streamed export format: {format}")
+    }
+
+    /// TXT / SQL / WeClone: a header, then one independent entry per message.
+    fn write_entries(
+        &mut self,
+        format: StreamFormat,
+        out: &Path,
+        msgs: &mut dyn Iterator<Item = ExportMsg>,
+    ) -> Result<usize> {
+        use std::io::Write;
+        let mut count = 0usize;
+        let mut rows = 0usize;
+        // created with the first message, so an empty range leaves no file behind
+        let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
+        for msg in msgs {
+            if writer.is_none() {
+                if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+                w.write_all(Self::stream_header(format).as_bytes())?;
+                writer = Some(w);
+            }
+            if let (Some(w), Some(entry)) =
+                (writer.as_mut(), self.stream_entry(format, &msg, &mut rows))
+            {
+                w.write_all(entry.as_bytes())?;
+            }
+            count += 1;
+        }
+        if let Some(mut w) = writer {
+            w.flush()?;
+        }
+        Ok(count)
+    }
 
     /// What a streamed export starts the file with (nothing for TXT).
     pub fn stream_header(format: StreamFormat) -> &'static str {
@@ -1404,12 +1660,45 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── Excel ───────────────────────────────────
 
+    /// A sheet with more rows than this is written in constant-memory mode (no hyperlinks, rows go to disk).
+    const EXCEL_BIG: usize = 20000;
+
     pub fn write_excel(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
+        self.write_excel_rows(msgs, msgs.len() > Self::EXCEL_BIG, out)?;
+        Ok(())
+    }
+
+    /// Excel written from a stream of messages (oldest first). Whether the sheet is "big" depends on the total, so
+    /// the first `EXCEL_BIG + 1` messages are held back: if the stream ends before that, the small sheet is written
+    /// as usual; otherwise the constant-memory sheet takes them and then the rest as they arrive.
+    fn stream_excel(
+        &mut self,
+        msgs: &mut dyn Iterator<Item = ExportMsg>,
+        out: &Path,
+    ) -> Result<usize> {
+        let head: Vec<ExportMsg> = (&mut *msgs).take(Self::EXCEL_BIG + 1).collect();
+        if head.is_empty() {
+            return Ok(0);
+        }
+        if head.len() <= Self::EXCEL_BIG {
+            self.write_excel(&head, out)?;
+            return Ok(head.len());
+        }
+        self.write_excel_rows(head.into_iter().chain(msgs), true, out)
+    }
+
+    /// Writes the sheet; `big` picks the constant-memory mode (rows must then be written in order, as they are).
+    /// Returns the number of messages.
+    fn write_excel_rows<I>(&mut self, msgs: I, big: bool, out: &Path) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
         use rust_xlsxwriter::{Color, Format, FormatAlign, Url, Workbook};
+        use std::borrow::Borrow;
         let is_group = self.session.is_group;
         let compact = self.settings.excel_compact;
         let include_group_col = !compact && is_group;
-        let big = msgs.len() > 20000;
         let mut workbook = Workbook::new();
         let ws = if big {
             workbook.add_worksheet_with_constant_memory()
@@ -1503,7 +1792,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         }
 
         let content_col = (headers.len() - 1) as u16;
-        for (i, msg) in msgs.iter().enumerate() {
+        let mut count = 0usize;
+        for (i, item) in msgs.into_iter().enumerate() {
+            let msg: &ExportMsg = item.borrow();
+            count += 1;
             let row = (i + 4) as u32;
             let (content, has_quote) = self.plain_row_content(msg);
             let s = self.sender_fields(msg);
@@ -1561,7 +1853,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         workbook
             .save(out)
             .with_context(|| format!("failed to write {}", out.display()))?;
-        Ok(())
+        Ok(count)
     }
 
     // ─────────────────────────────────── HTML ───────────────────────────────────
@@ -1574,138 +1866,136 @@ impl<'a, 'n> Exporter<'a, 'n> {
         self.message_text_with(msg, None, false)
     }
 
-    pub fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
-        let session = self.session.clone();
-        let is_group = session.is_group;
-        let rows: Vec<&ExportMsg> = msgs.iter().collect();
-        let total = rows.len();
-        let mut data: Vec<String> = Vec::with_capacity(total);
-        for (i, msg) in rows.iter().enumerate() {
-            let sender_name = if is_group {
-                self.sender_profile_for(msg).display_name
-            } else if msg.is_send {
-                if self.my_display.is_empty() {
-                    chrome("我", "Me").to_string()
-                } else {
-                    self.my_display.clone()
-                }
-            } else if session.display_name.is_empty() {
-                session.id.clone()
+    /// The `window.WEFLOW_DATA` item of one message (a JSON object, `index` is the number of messages before it).
+    fn html_item(&mut self, msg: &ExportMsg, index: usize) -> String {
+        let is_group = self.session.is_group;
+        let sender_name = if is_group {
+            self.sender_profile_for(msg).display_name
+        } else if msg.is_send {
+            if self.my_display.is_empty() {
+                chrome("我", "Me").to_string()
             } else {
-                session.display_name.clone()
-            };
-            let avatar_html = format!(
-                "<span>{}</span>",
-                html_escape(&avatar_fallback(&sender_name))
-            );
-            let time_text = format_timestamp(msg.create_time);
-            let quoted = self.quoted_with_names(msg.local_type, &msg.content);
-            let mut text = match &quoted {
-                Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
-                _ => self.html_message_text(msg),
-            };
-            if let Some(q) = &quoted {
-                if q.reply_text.is_empty() {
-                    text = self.html_message_text(msg);
-                }
+                self.my_display.clone()
             }
-            if is_transfer_export_content(&text) && !msg.content.is_empty() {
-                if let Some(desc) = self.transfer_desc(&msg.content) {
-                    text = append_transfer_desc(&text, &desc);
-                }
+        } else if self.session.display_name.is_empty() {
+            self.session.id.clone()
+        } else {
+            self.session.display_name.clone()
+        };
+        let avatar_html = format!(
+            "<span>{}</span>",
+            html_escape(&avatar_fallback(&sender_name))
+        );
+        let time_text = format_timestamp(msg.create_time);
+        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        let mut text = match &quoted {
+            Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
+            _ => self.html_message_text(msg),
+        };
+        if let Some(q) = &quoted {
+            if q.reply_text.is_empty() {
+                text = self.html_message_text(msg);
             }
-            let link_card = if quoted.is_some() {
-                None
-            } else {
-                extract_html_link_card(&msg.content, msg.local_type)
-            };
-            let multiline = |s: &str| {
-                html_escape(s)
-                    .replace("\r\n", "<br />")
-                    .replace('\n', "<br />")
-            };
-            let text_html = if let Some(q) = &quoted {
-                let sender = q
-                    .quoted_sender
-                    .as_ref()
-                    .filter(|s| !s.is_empty())
-                    .map(|s| format!("<div class=\"quoted-sender\">{}</div>", html_escape(s)))
-                    .unwrap_or_default();
-                let preview = format!(
-                    "<div class=\"quoted-text\">{}</div>",
-                    multiline(&q.quoted_preview)
-                );
-                let reply = if text.is_empty() {
-                    String::new()
-                } else {
-                    format!("<div class=\"message-text\">{}</div>", multiline(&text))
-                };
-                format!("<div class=\"quoted-message\">{sender}{preview}</div>{reply}")
-            } else if let Some(card) = &link_card {
-                format!(
-                    "<div class=\"message-text\"><a class=\"message-link-card\" href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">{}</a></div>",
-                    html_attr_escape(&card.url),
-                    multiline(&card.title)
-                )
-            } else if !text.is_empty() {
-                format!("<div class=\"message-text\">{}</div>", multiline(&text))
-            } else {
-                String::new()
-            };
-            let sender_html = if is_group {
-                format!(
-                    "<div class=\"sender-name\">{}</div>",
-                    html_escape(&sender_name)
-                )
-            } else {
-                String::new()
-            };
-            let (media_html, text_html) = match &msg.media {
-                Some(m) => {
-                    let path = html_attr_escape(&encode_uri(&m.relative_path));
-                    let html = match m.kind {
-                        "image" | "emoji" => format!("<img class=\"message-media {} previewable\" src=\"{path}\" data-full=\"{path}\" alt=\"{}\" />", m.kind, m.kind),
-                        "voice" => format!("<audio class=\"message-media audio\" controls src=\"{path}\"></audio>"),
-                        _ => format!("<video class=\"message-media video\" controls preload=\"metadata\" src=\"{path}\"></video>"),
-                    };
-                    // an image message has no caption of its own
-                    (
-                        html,
-                        if msg.local_type == 3 {
-                            String::new()
-                        } else {
-                            text_html
-                        },
-                    )
-                }
-                None => (String::new(), text_html),
-            };
-            let body = format!(
-                "<div class=\"message-time\">{}</div>{}<div class=\"message-content\">{}{}</div>",
-                html_escape(&time_text),
-                sender_html,
-                media_html,
-                text_html
-            );
-            let mut item = Map::new();
-            item.insert("i".into(), json!(i + 1));
-            item.insert("t".into(), json!(msg.create_time));
-            item.insert("s".into(), json!(if msg.is_send { 1 } else { 0 }));
-            item.insert("a".into(), json!(avatar_html));
-            item.insert("b".into(), json!(body));
-            if let Some(p) = msg.platform_message_id() {
-                item.insert("p".into(), json!(p));
-            }
-            if let Some(r) = extract_reply_to_message_id(&msg.content) {
-                item.insert("r".into(), json!(r));
-            }
-            data.push(
-                serde_json::to_string(&Value::Object(item))
-                    .unwrap_or_default()
-                    .replace("</", "<\\/"),
-            );
         }
-        let title = html_escape(&session.display_name);
+        if is_transfer_export_content(&text) && !msg.content.is_empty() {
+            if let Some(desc) = self.transfer_desc(&msg.content) {
+                text = append_transfer_desc(&text, &desc);
+            }
+        }
+        let link_card = if quoted.is_some() {
+            None
+        } else {
+            extract_html_link_card(&msg.content, msg.local_type)
+        };
+        let multiline = |s: &str| {
+            html_escape(s)
+                .replace("\r\n", "<br />")
+                .replace('\n', "<br />")
+        };
+        let text_html = if let Some(q) = &quoted {
+            let sender = q
+                .quoted_sender
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| format!("<div class=\"quoted-sender\">{}</div>", html_escape(s)))
+                .unwrap_or_default();
+            let preview = format!(
+                "<div class=\"quoted-text\">{}</div>",
+                multiline(&q.quoted_preview)
+            );
+            let reply = if text.is_empty() {
+                String::new()
+            } else {
+                format!("<div class=\"message-text\">{}</div>", multiline(&text))
+            };
+            format!("<div class=\"quoted-message\">{sender}{preview}</div>{reply}")
+        } else if let Some(card) = &link_card {
+            format!(
+                "<div class=\"message-text\"><a class=\"message-link-card\" href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">{}</a></div>",
+                html_attr_escape(&card.url),
+                multiline(&card.title)
+            )
+        } else if !text.is_empty() {
+            format!("<div class=\"message-text\">{}</div>", multiline(&text))
+        } else {
+            String::new()
+        };
+        let sender_html = if is_group {
+            format!(
+                "<div class=\"sender-name\">{}</div>",
+                html_escape(&sender_name)
+            )
+        } else {
+            String::new()
+        };
+        let (media_html, text_html) = match &msg.media {
+            Some(m) => {
+                let path = html_attr_escape(&encode_uri(&m.relative_path));
+                let html = match m.kind {
+                    "image" | "emoji" => format!("<img class=\"message-media {} previewable\" src=\"{path}\" data-full=\"{path}\" alt=\"{}\" />", m.kind, m.kind),
+                    "voice" => format!("<audio class=\"message-media audio\" controls src=\"{path}\"></audio>"),
+                    _ => format!("<video class=\"message-media video\" controls preload=\"metadata\" src=\"{path}\"></video>"),
+                };
+                // an image message has no caption of its own
+                (
+                    html,
+                    if msg.local_type == 3 {
+                        String::new()
+                    } else {
+                        text_html
+                    },
+                )
+            }
+            None => (String::new(), text_html),
+        };
+        let body = format!(
+            "<div class=\"message-time\">{}</div>{}<div class=\"message-content\">{}{}</div>",
+            html_escape(&time_text),
+            sender_html,
+            media_html,
+            text_html
+        );
+        let mut item = Map::new();
+        item.insert("i".into(), json!(index + 1));
+        item.insert("t".into(), json!(msg.create_time));
+        item.insert("s".into(), json!(if msg.is_send { 1 } else { 0 }));
+        item.insert("a".into(), json!(avatar_html));
+        item.insert("b".into(), json!(body));
+        if let Some(p) = msg.platform_message_id() {
+            item.insert("p".into(), json!(p));
+        }
+        if let Some(r) = extract_reply_to_message_id(&msg.content) {
+            item.insert("r".into(), json!(r));
+        }
+        serde_json::to_string(&Value::Object(item))
+            .unwrap_or_default()
+            .replace("</", "<\\/")
+    }
+
+    /// The whole page around the data: `data_marker` stands where the items go.
+    fn html_document(&self, total: usize, data_marker: &str) -> String {
+        let is_group = self.session.is_group;
+        let title = html_escape(&self.session.display_name);
         let lang = match locale::current() {
             locale::Lang::Zh => "zh-CN",
             locale::Lang::En => "en",
@@ -1735,14 +2025,56 @@ impl<'a, 'n> Exporter<'a, 'n> {
             jump = chrome("跳转", "Go"),
             count = count_label(total),
             preview = chrome("预览", "Preview"),
-            data = data.join(",\n"),
+            data = data_marker,
             scroll_js = scroll_js,
         )
     }
 
+    pub fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
+        let data: Vec<String> = msgs
+            .iter()
+            .enumerate()
+            .map(|(i, msg)| self.html_item(msg, i))
+            .collect();
+        self.html_document(msgs.len(), &data.join(",\n"))
+    }
+
+    /// HTML written from a stream of messages (oldest first): the items go to a spool file as they are read, the
+    /// page around them (which shows the total) is written at the end. With no messages nothing is written unless
+    /// `write_if_empty`.
+    fn stream_html<I>(&mut self, msgs: I, out: &Path, write_if_empty: bool) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
+        use std::borrow::Borrow;
+        use std::io::Write;
+        let mut spool = Spool::create(out)?;
+        let mut count = 0usize;
+        for item in msgs {
+            let html = self.html_item(item.borrow(), count);
+            spool.push(",\n", &html)?;
+            count += 1;
+        }
+        if count == 0 && !write_if_empty {
+            return Ok(0);
+        }
+        const MARKER: &str = "\u{0}WEFLOW_DATA\u{0}";
+        let page = self.html_document(count, MARKER);
+        let (head, tail) = page
+            .split_once(MARKER)
+            .context("the page template has no data placeholder")?;
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+        w.write_all(head.as_bytes())?;
+        spool.copy_to(&mut w)?;
+        w.write_all(tail.as_bytes())?;
+        w.flush()?;
+        Ok(count)
+    }
+
     pub fn write_html(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
-        let html = self.render_html(msgs);
-        write_bytes(out, html.as_bytes())
+        self.stream_html(msgs, out, true)?;
+        Ok(())
     }
 
     // ─────────────────────────────────── SQL ───────────────────────────────────
@@ -2584,6 +2916,64 @@ mod tests {
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS \"messages\""));
         assert_eq!(sql.matches("INSERT INTO").count(), 5);
         assert!(sql.contains("hello \"world\", ok"));
+    }
+
+    /// Streaming: every format can be written from an iterator; Excel switches to the constant-memory sheet
+    /// only once there are more than `EXCEL_BIG` messages.
+    #[test]
+    fn streamed_exports_cover_every_format_and_both_excel_sizes() {
+        let dir = std::env::temp_dir().join(format!("weflow-stream-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for format in [
+            "txt",
+            "sql",
+            "weclone",
+            "json",
+            "arkme-json",
+            "chatlab",
+            "chatlab-jsonl",
+            "html",
+            "excel",
+        ] {
+            let out = dir.join(format!("{format}.out"));
+            let n = with_exporter(true, |ex, msgs| {
+                ex.write_streamed(format, &out, &mut msgs.iter().cloned())
+                    .unwrap()
+            });
+            assert_eq!(n, 5, "{format}");
+            assert!(std::fs::metadata(&out).unwrap().len() > 0, "{format}");
+            let none = dir.join(format!("{format}.none"));
+            let n = with_exporter(true, |ex, _| {
+                ex.write_streamed(format, &none, &mut std::iter::empty())
+                    .unwrap()
+            });
+            assert_eq!(n, 0, "{format}");
+            assert!(
+                !none.exists(),
+                "{format}: nothing is written for no messages"
+            );
+        }
+        // one message more than the small sheet takes: the constant-memory sheet gets all of them
+        let big = dir.join("big.xlsx");
+        let n = with_exporter(false, |ex, msgs| {
+            let template = msgs[1].clone();
+            let mut many = (0..=Exporter::EXCEL_BIG).map(|i| {
+                let mut m = template.clone();
+                m.local_id = i as i64;
+                m.create_time = 1_700_000_000 + i as i64;
+                m
+            });
+            ex.write_streamed("excel", &big, &mut many).unwrap()
+        });
+        assert_eq!(n, Exporter::EXCEL_BIG + 1);
+        assert!(std::fs::metadata(&big).unwrap().len() > 0);
+        let leftovers = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))
+            .count();
+        assert_eq!(leftovers, 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

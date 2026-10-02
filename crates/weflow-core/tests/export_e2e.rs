@@ -293,6 +293,43 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
     empty.start = Some(1_900_000_000);
     assert!(hub.export_messages(&empty, &root.join("none.sql")).is_err());
     assert!(!root.join("none.sql").exists());
+
+    // every format is written while the messages are read: all of them produce a file, and no spool file stays
+    for format in weflow_core::services::MESSAGE_EXPORT_FORMATS.split(',') {
+        let format = format.trim();
+        let out = root.join(format!("all-{format}.out"));
+        let req = MessageExportRequest {
+            format: format.into(),
+            ..txt_request(None, DisplayPref::GroupNickname)
+        };
+        let r = hub.export_messages(&req, &out).unwrap();
+        assert_eq!(r["count"], 3, "{format}");
+        assert!(std::fs::metadata(&out).unwrap().len() > 0, "{format}");
+        let mut none = req;
+        none.start = Some(1_900_000_000);
+        let empty = root.join(format!("none-{format}.out"));
+        assert!(hub.export_messages(&none, &empty).is_err(), "{format}");
+        assert!(!empty.exists(), "{format}: an empty range writes no file");
+    }
+    let leftovers: Vec<_> = std::fs::read_dir(&root)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "spool files left behind: {leftovers:?}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&read("all-json.out")).expect("streamed JSON is valid");
+    assert_eq!(json["session"]["messageCount"], 3);
+    assert_eq!(json["messages"].as_array().unwrap().len(), 3);
+    let chatlab: serde_json::Value =
+        serde_json::from_str(&read("all-chatlab.out")).expect("streamed ChatLab is valid");
+    assert_eq!(chatlab["messages"].as_array().unwrap().len(), 3);
+    assert!(
+        read("all-html.out").contains("3 条消息") || read("all-html.out").contains("3 messages")
+    );
 }
 
 #[test]
