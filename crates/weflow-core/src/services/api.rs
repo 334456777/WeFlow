@@ -1674,6 +1674,8 @@ impl ServiceHub {
         let safe = api::sanitize_file_name(session_id, "session");
         let total = todo.len();
         let mut results: Vec<Option<ApiExportedMedia>> = (0..total).map(|_| None).collect();
+        // one counter for both passes, so the progress never steps back
+        let finished = std::sync::atomic::AtomicUsize::new(0);
         {
             let local: Vec<usize> = (0..total)
                 .filter(|k| msgs[todo[*k]].local_type != 47)
@@ -1683,7 +1685,6 @@ impl ServiceHub {
                 .clamp(1, 8)
                 .min(local.len().max(1));
             let next = std::sync::atomic::AtomicUsize::new(0);
-            let finished = std::sync::atomic::AtomicUsize::new(0);
             let found = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
             let shared: &[crate::message::ExportMsg] = msgs;
             std::thread::scope(|scope| {
@@ -1721,7 +1722,8 @@ impl ServiceHub {
                         opts,
                     )
                     .await;
-                self.emit_progress("export", "copying media", k + 1, total);
+                let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                self.emit_progress("export", "copying media", done, total);
             }
         }
         let mut exported = 0usize;
