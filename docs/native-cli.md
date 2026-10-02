@@ -6,6 +6,9 @@ A Rust command-line build of WeFlow's backend. By default a command prints human
 errors on stderr, with the same exit codes. With `--json` every command prints one JSON document on stdout
 (`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`. Both options go after the command (`weflow config path --json`); in front of it they are refused.
 
+Help: `-h` / `--help` shows the help of any command, and a command that needs arguments or a subcommand shows its help when it is run without any (`weflow config`, `weflow config set`, `weflow lang`);
+with only some of the arguments it reports which are missing. Usage lines list `[OPTIONS]` last (`weflow config set <KEY> <VALUE> [OPTIONS]`).
+
 ## Language
 
 The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `WEFLOW_LANG`, the language saved in the config file (`weflow lang zh` saves it; `weflow config unset lang` removes it), the environment
