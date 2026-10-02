@@ -96,7 +96,7 @@ decrypt_key: <数据库密钥>
 
 Windows 说明：`key db` 需要管理员终端（否则会提示无法打开微信进程），会查找 `Weixin.exe` / `WeChat.exe`。`key image` 会用已保存的 `db_path` 和 `wxid`，拿你账号下的图片来校验密钥；没有配置或没有图片时，会提示“未验证”。配置文件在 `%APPDATA%\weflow\config.json`，解压出的运行时在 `%APPDATA%\weflow\runtime\<版本>\<target>`。WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`，导出图片前请先准备好。
 
-常用导出选项：`--start 2025-01-01 --end 2025-12-31`（本机本地时间，含首尾）、`--display-name remark|nickname|group-nickname`、`--sender wxid_xxx`、`--excel-compact`。加 `--media all`（或 `image,voice,video,emoji`）会把媒体复制到导出文件旁边并在消息里链接到它们；`weflow export media --help` 可单独导出媒体。
+常用导出选项：`--start 2025-01-01 --end 2025-12-31`（本机本地时间，含首尾）、`--display-name group-nickname|remark|nickname`（默认 `group-nickname`：群昵称、备注、昵称、微信号依次取第一个非空的）、`--sender wxid_xxx`、`--excel-compact`。加 `--media all`（或 `image,voice,video,emoji`）会把媒体复制到导出文件旁边并在消息里链接到它们；`weflow export media --help` 可单独导出媒体。
 
 ## CLI 不支持的功能
 

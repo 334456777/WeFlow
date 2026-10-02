@@ -106,6 +106,98 @@ impl<'a> NameBook<'a> {
     }
 }
 
+/// Formats whose file is a list of independent entries, so it can be written while the messages are read.
+/// The senders of an export, in order of first appearance, and how many messages each sent (by lower-case id):
+/// what the member lists need, collected message by message.
+#[derive(Default)]
+struct SenderTally {
+    order: Vec<String>,
+    seen: HashSet<String>,
+    counts: HashMap<String, i64>,
+}
+
+impl SenderTally {
+    fn add(&mut self, sender: &str) {
+        if !sender.is_empty() && self.seen.insert(sender.to_string()) {
+            self.order.push(sender.to_string());
+        }
+        *self.counts.entry(sender.to_lowercase()).or_insert(0) += 1;
+    }
+}
+
+/// Entries of an export that are written to a file next to the output while the messages are read, then copied
+/// into the output between a header and a footer that need the totals. Removed when dropped.
+struct Spool {
+    path: std::path::PathBuf,
+    writer: Option<std::io::BufWriter<std::fs::File>>,
+    entries: usize,
+}
+
+impl Spool {
+    fn create(out: &Path) -> Result<Self> {
+        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut name = out.as_os_str().to_os_string();
+        name.push(".part");
+        let path = std::path::PathBuf::from(name);
+        let file = std::fs::File::create(&path)?;
+        Ok(Self {
+            path,
+            writer: Some(std::io::BufWriter::with_capacity(1 << 20, file)),
+            entries: 0,
+        })
+    }
+
+    /// Appends one entry, preceded by `separator` unless it is the first.
+    fn push(&mut self, separator: &str, entry: &str) -> Result<()> {
+        use std::io::Write;
+        if let Some(w) = self.writer.as_mut() {
+            if self.entries > 0 {
+                w.write_all(separator.as_bytes())?;
+            }
+            w.write_all(entry.as_bytes())?;
+        }
+        self.entries += 1;
+        Ok(())
+    }
+
+    /// Copies everything written so far to `out`.
+    fn copy_to(&mut self, out: &mut impl std::io::Write) -> Result<()> {
+        use std::io::Write;
+        if let Some(mut w) = self.writer.take() {
+            w.flush()?;
+        }
+        std::io::copy(&mut std::fs::File::open(&self.path)?, out)?;
+        Ok(())
+    }
+}
+
+impl Drop for Spool {
+    fn drop(&mut self) {
+        self.writer = None;
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamFormat {
+    Txt,
+    Sql,
+    Weclone,
+}
+
+impl StreamFormat {
+    pub fn parse(format: &str) -> Option<Self> {
+        match format.to_ascii_lowercase().as_str() {
+            "txt" => Some(Self::Txt),
+            "sql" => Some(Self::Sql),
+            "weclone" => Some(Self::Weclone),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisplayPref {
     GroupNickname,
@@ -439,7 +531,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         Some(format!("{payer_name} 转账给 {receiver_name}"))
     }
 
-    fn quoted_with_names(&mut self, content: &str) -> Option<QuotedDisplay> {
+    fn quoted_with_names(&mut self, local_type: i64, content: &str) -> Option<QuotedDisplay> {
+        if !is_text_quote_message(local_type, content) {
+            return None;
+        }
         let base = extract_quoted_reply_display(content)?;
         if base
             .quoted_sender
@@ -480,37 +575,92 @@ impl<'a, 'n> Exporter<'a, 'n> {
         })
     }
 
+    /// 一条消息的展示文本，detailed JSON 与简易 txt 共用，保证两种格式写法一致：
+    /// 引用消息带引用人名字，链接带 URL，转账带「谁转给谁」，系统消息统一用 `[系统: …]` 包裹，
+    /// 表情 `[表情]`、语音 `[语音消息]`、图片 `[图片]`（不含媒体文件路径）。
+    pub fn message_text(&mut self, msg: &ExportMsg) -> String {
+        self.message_text_with(msg, Some(LinkStyle::AppendUrl), true)
+    }
+
+    /// [`message_text`](Self::message_text) 的可调版本：`link` 为链接卡片的写法（`None` 保持解析出的
+    /// `[链接] 标题`，用于 HTML 这类另有链接卡片的格式），`wrap_system` 控制系统消息是否包成 `[系统: …]`
+    /// （ChatLab 有独立的 system 类型、HTML 有专门的样式，不再包一层）。
+    pub fn message_text_with(
+        &mut self,
+        msg: &ExportMsg,
+        link: Option<LinkStyle>,
+        wrap_system: bool,
+    ) -> String {
+        if let Some(text) = plain_message_text(msg) {
+            return text;
+        }
+        self.message_text_generic(msg, link, wrap_system)
+    }
+
+    /// 完整流程（不走快速路径）。
+    fn message_text_generic(
+        &mut self,
+        msg: &ExportMsg,
+        link: Option<LinkStyle>,
+        wrap_system: bool,
+    ) -> String {
+        let my = self.my_wxid.clone();
+        let mut content = if msg.local_type == 3 {
+            Some("[图片]".to_string())
+        } else {
+            parse_message_content(
+                &msg.content,
+                msg.local_type,
+                Some(&my),
+                Some(&msg.sender_username),
+                msg.emoji_caption.as_deref(),
+            )
+        };
+        if is_readable_system_message(msg.local_type, &msg.content) {
+            let t = extract_readable_system_message_text(&msg.content);
+            if !t.is_empty() {
+                content = Some(t);
+            }
+        }
+        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        if let Some(q) = &quoted {
+            content = Some(build_quoted_reply_text(q));
+        }
+        if let (None, Some(style), true) = (&quoted, link, msg.local_type != 3) {
+            if let Some(l) = format_link_card_export_text(&msg.content, msg.local_type, style) {
+                content = Some(l);
+            }
+        }
+        if let Some(c) = content.clone() {
+            if is_transfer_export_content(&c) && !msg.content.is_empty() {
+                if let Some(desc) = self.transfer_desc(&msg.content) {
+                    content = Some(append_transfer_desc(&c, &desc));
+                }
+            }
+        }
+        // 表情有描述时写成 [表情：描述]（type 8 的表情走的是 appmsg，解析结果里没有描述）
+        if let (Some("[表情]"), Some(c)) = (content.as_deref(), msg.emoji_caption.as_deref()) {
+            content = Some(format_emoji_semantic_text(Some(c)));
+        }
+        // 内容为空的媒体消息（库里没存 XML）仍然给出占位符
+        let text = content.unwrap_or_else(|| match msg.local_type {
+            34 => "[语音消息]".into(),
+            43 => "[视频]".into(),
+            _ => String::new(),
+        });
+        if wrap_system && matches!(msg.local_type, 10000 | 266_287_972_401) && !text.is_empty() {
+            return format!("[{}: {text}]", chrome("系统", "System"));
+        }
+        text
+    }
+
     /// Text for TXT / Excel rows (formatPlainExportContent + transfer + quote + link).
     pub fn plain_row_content(&mut self, msg: &ExportMsg) -> (String, bool) {
         if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
             return (m.relative_path.clone(), false);
         }
-        let my = self.my_wxid.clone();
-        let mut content = format_plain_export_content(
-            &msg.content,
-            msg.local_type,
-            &PlainOpts::default(),
-            None,
-            Some(&my),
-            Some(&msg.sender_username),
-            msg.is_send,
-            msg.emoji_caption.as_deref(),
-        );
-        if is_transfer_export_content(&content) && !msg.content.is_empty() {
-            if let Some(desc) = self.transfer_desc(&msg.content) {
-                content = append_transfer_desc(&content, &desc);
-            }
-        }
-        let quoted = self.quoted_with_names(&msg.content);
-        let has_quote = quoted.is_some();
-        if let Some(q) = quoted {
-            content = build_quoted_reply_text(&q);
-        } else if let Some(link) =
-            format_link_card_export_text(&msg.content, msg.local_type, LinkStyle::AppendUrl)
-        {
-            content = link;
-        }
-        (content, has_quote)
+        let has_quote = is_text_quote_message(msg.local_type, &msg.content);
+        (self.message_text(msg), has_quote)
     }
 
     fn sessions_members(&mut self, msgs: &[ExportMsg]) -> Vec<String> {
@@ -558,161 +708,118 @@ impl<'a, 'n> Exporter<'a, 'n> {
         json!({ "chatlab": chatlab, "meta": meta, "members": members, "messages": out_msgs })
     }
 
-    /// Header, meta and (resolved) members of a ChatLab export; every message object goes to `sink` in order.
-    fn chatlab_parts(
+    /// The ChatLab object of one message. `member_name` is the sender's name in the member list; the names of the
+    /// people in a forwarded chat history go to `record_names` (they become members too).
+    fn chatlab_message(
         &mut self,
-        msgs: &[ExportMsg],
-        sink: &mut dyn FnMut(Map<String, Value>),
-    ) -> (Value, Value, Vec<Value>) {
+        msg: &ExportMsg,
+        member_name: &str,
+        record_names: &mut Vec<String>,
+    ) -> Map<String, Value> {
         let is_group = self.session.is_group;
-        let mut members: Vec<Map<String, Value>> = Vec::new();
-        let mut member_index: HashMap<String, usize> = HashMap::new();
-        for id in self.sessions_members(msgs) {
-            let account_name = self.contact_display(&id);
-            let mut m = Map::new();
-            m.insert("platformId".into(), json!(id));
-            m.insert("accountName".into(), json!(account_name));
-            member_index.insert(id, members.len());
-            members.push(m);
+        let group_nickname = if is_group {
+            resolve_group_nickname(&self.group_nicks, &[msg.sender_username.as_str()])
+        } else {
+            String::new()
+        };
+        let profile = if is_group {
+            self.sender_profile_for(msg)
+        } else {
+            Profile {
+                wxid: msg.sender_username.clone(),
+                nickname: member_name.to_string(),
+                display_name: member_name.to_string(),
+                group_nickname: group_nickname.clone(),
+                ..Default::default()
+            }
+        };
+        let mut content = Some(self.message_text_with(msg, Some(LinkStyle::Markdown), false));
+        if let Some(media) = msg.media.as_ref().filter(|_| msg.local_type == 3) {
+            content = Some(media.relative_path.clone());
         }
-        for msg in msgs {
-            let member_name = members
-                .get(
-                    *member_index
-                        .get(&msg.sender_username)
-                        .unwrap_or(&usize::MAX),
-                )
-                .and_then(|m| m.get("accountName").and_then(Value::as_str))
-                .map(str::to_string)
-                .unwrap_or_else(|| msg.sender_username.clone());
-            let group_nickname = if is_group {
-                resolve_group_nickname(&self.group_nicks, &[msg.sender_username.as_str()])
+        let mut m = Map::new();
+        m.insert("sender".into(), json!(msg.sender_username));
+        m.insert(
+            "accountName".into(),
+            json!(if profile.display_name.is_empty() {
+                member_name.to_string()
             } else {
-                String::new()
-            };
-            let profile = if is_group {
-                self.sender_profile_for(msg)
-            } else {
-                Profile {
-                    wxid: msg.sender_username.clone(),
-                    nickname: member_name.clone(),
-                    display_name: member_name.clone(),
-                    group_nickname: group_nickname.clone(),
-                    ..Default::default()
-                }
-            };
-            let my = self.my_wxid.clone();
-            let mut content = parse_message_content(
-                &msg.content,
-                msg.local_type,
-                Some(&my),
-                Some(&msg.sender_username),
-                msg.emoji_caption.as_deref(),
-            );
-            if is_readable_system_message(msg.local_type, &msg.content) {
-                let t = extract_readable_system_message_text(&msg.content);
-                if !t.is_empty() {
-                    content = Some(t);
-                }
-            }
-            if let Some(c) = content.clone() {
-                if is_transfer_export_content(&c) && !msg.content.is_empty() {
-                    if let Some(desc) = self.transfer_desc(&msg.content) {
-                        content = Some(append_transfer_desc(&c, &desc));
-                    }
-                }
-            }
-            if let Some(link) =
-                format_link_card_export_text(&msg.content, msg.local_type, LinkStyle::Markdown)
-            {
-                content = Some(link);
-            }
-            if let Some(media) = msg.media.as_ref().filter(|_| msg.local_type == 3) {
-                content = Some(media.relative_path.clone());
-            }
-            let mut m = Map::new();
-            m.insert("sender".into(), json!(msg.sender_username));
-            m.insert(
-                "accountName".into(),
-                json!(if profile.display_name.is_empty() {
-                    member_name.clone()
+                profile.display_name.clone()
+            }),
+        );
+        let gn = if !profile.group_nickname.is_empty() {
+            profile.group_nickname.clone()
+        } else {
+            group_nickname
+        };
+        if !gn.is_empty() {
+            m.insert("groupNickname".into(), json!(gn));
+        }
+        m.insert("timestamp".into(), json!(msg.create_time));
+        m.insert(
+            "type".into(),
+            json!(convert_message_type(msg.local_type, &msg.content)),
+        );
+        m.insert(
+            "content".into(),
+            content.map(Value::String).unwrap_or(Value::Null),
+        );
+        if let Some(id) = msg.platform_message_id() {
+            m.insert("platformMessageId".into(), json!(id));
+        }
+        if let Some(r) = extract_reply_to_message_id(&msg.content) {
+            m.insert("replyToMessageId".into(), json!(r));
+        }
+        if let Some(records) = msg.chat_record_list.as_ref().filter(|l| !l.is_empty()) {
+            let mut chat_records: Vec<Value> = Vec::new();
+            for rec in records {
+                let ts = parse_record_time(&rec.sourcetime).unwrap_or(msg.create_time);
+                let (rtype, rcontent) = match rec.datatype {
+                    1 => (
+                        0,
+                        rec.datadesc
+                            .clone()
+                            .or(rec.datatitle.clone())
+                            .unwrap_or_default(),
+                    ),
+                    3 => (1, "[图片]".to_string()),
+                    8 | 49 => (
+                        4,
+                        rec.datatitle
+                            .as_ref()
+                            .map(|t| format!("[文件] {t}"))
+                            .unwrap_or_else(|| "[文件]".into()),
+                    ),
+                    34 => (2, "[语音消息]".to_string()),
+                    43 => (3, "[视频]".to_string()),
+                    47 => (5, "[表情]".to_string()),
+                    _ => (
+                        0,
+                        rec.datadesc
+                            .clone()
+                            .or(rec.datatitle.clone())
+                            .unwrap_or_else(|| "[消息]".into()),
+                    ),
+                };
+                let who = if rec.sourcename.is_empty() {
+                    "unknown".to_string()
                 } else {
-                    profile.display_name.clone()
-                }),
-            );
-            let gn = if !profile.group_nickname.is_empty() {
-                profile.group_nickname.clone()
-            } else {
-                group_nickname
-            };
-            if !gn.is_empty() {
-                m.insert("groupNickname".into(), json!(gn));
-            }
-            m.insert("timestamp".into(), json!(msg.create_time));
-            m.insert(
-                "type".into(),
-                json!(convert_message_type(msg.local_type, &msg.content)),
-            );
-            m.insert(
-                "content".into(),
-                content.map(Value::String).unwrap_or(Value::Null),
-            );
-            if let Some(id) = msg.platform_message_id() {
-                m.insert("platformMessageId".into(), json!(id));
-            }
-            if let Some(r) = extract_reply_to_message_id(&msg.content) {
-                m.insert("replyToMessageId".into(), json!(r));
-            }
-            if let Some(records) = msg.chat_record_list.as_ref().filter(|l| !l.is_empty()) {
-                let mut chat_records: Vec<Value> = Vec::new();
-                for rec in records {
-                    let ts = parse_record_time(&rec.sourcetime).unwrap_or(msg.create_time);
-                    let (rtype, rcontent) = match rec.datatype {
-                        1 => (
-                            0,
-                            rec.datadesc
-                                .clone()
-                                .or(rec.datatitle.clone())
-                                .unwrap_or_default(),
-                        ),
-                        3 => (1, "[图片]".to_string()),
-                        8 | 49 => (
-                            4,
-                            rec.datatitle
-                                .as_ref()
-                                .map(|t| format!("[文件] {t}"))
-                                .unwrap_or_else(|| "[文件]".into()),
-                        ),
-                        34 => (2, "[语音消息]".to_string()),
-                        43 => (3, "[视频]".to_string()),
-                        47 => (5, "[表情包]".to_string()),
-                        _ => (
-                            0,
-                            rec.datadesc
-                                .clone()
-                                .or(rec.datatitle.clone())
-                                .unwrap_or_else(|| "[消息]".into()),
-                        ),
-                    };
-                    let who = if rec.sourcename.is_empty() {
-                        "unknown".to_string()
-                    } else {
-                        rec.sourcename.clone()
-                    };
-                    chat_records.push(json!({ "sender": who, "accountName": who, "timestamp": ts, "type": rtype, "content": rcontent }));
-                    if !rec.sourcename.is_empty() && !member_index.contains_key(&rec.sourcename) {
-                        let mut nm = Map::new();
-                        nm.insert("platformId".into(), json!(rec.sourcename));
-                        nm.insert("accountName".into(), json!(rec.sourcename));
-                        member_index.insert(rec.sourcename.clone(), members.len());
-                        members.push(nm);
-                    }
+                    rec.sourcename.clone()
+                };
+                chat_records.push(json!({ "sender": who, "accountName": who, "timestamp": ts, "type": rtype, "content": rcontent }));
+                if !rec.sourcename.is_empty() {
+                    record_names.push(rec.sourcename.clone());
                 }
-                m.insert("chatRecords".into(), Value::Array(chat_records));
             }
-            sink(m);
+            m.insert("chatRecords".into(), Value::Array(chat_records));
         }
+        m
+    }
+
+    /// The member list with the names resolved like the desktop app does for groups.
+    fn chatlab_finish_members(&mut self, members: Vec<Map<String, Value>>) -> Vec<Value> {
         // enrich members with resolved names like the desktop app does for groups
+        let is_group = self.session.is_group;
         let mut final_members: Vec<Value> = Vec::new();
         for mut m in members {
             let id = m
@@ -748,27 +855,144 @@ impl<'a, 'n> Exporter<'a, 'n> {
             }
             final_members.push(Value::Object(m));
         }
+        final_members
+    }
+
+    /// Header, meta and (resolved) members of a ChatLab export; every message object goes to `sink` in order.
+    fn chatlab_parts(
+        &mut self,
+        msgs: &[ExportMsg],
+        sink: &mut dyn FnMut(Map<String, Value>),
+    ) -> (Value, Value, Vec<Value>) {
+        let mut members: Vec<Map<String, Value>> = Vec::new();
+        let mut member_index: HashMap<String, usize> = HashMap::new();
+        for id in self.sessions_members(msgs) {
+            let account_name = self.contact_display(&id);
+            let mut m = Map::new();
+            m.insert("platformId".into(), json!(id));
+            m.insert("accountName".into(), json!(account_name));
+            member_index.insert(id, members.len());
+            members.push(m);
+        }
+        for msg in msgs {
+            let member_name = members
+                .get(
+                    *member_index
+                        .get(&msg.sender_username)
+                        .unwrap_or(&usize::MAX),
+                )
+                .and_then(|m| m.get("accountName").and_then(Value::as_str))
+                .map(str::to_string)
+                .unwrap_or_else(|| msg.sender_username.clone());
+            let mut record_names: Vec<String> = Vec::new();
+            let m = self.chatlab_message(msg, &member_name, &mut record_names);
+            for name in record_names {
+                if !member_index.contains_key(&name) {
+                    let mut nm = Map::new();
+                    nm.insert("platformId".into(), json!(name));
+                    nm.insert("accountName".into(), json!(name));
+                    member_index.insert(name, members.len());
+                    members.push(nm);
+                }
+            }
+            sink(m);
+        }
+        let final_members = self.chatlab_finish_members(members);
         let (chatlab, meta) = self.chatlab_meta();
         (chatlab, meta, final_members)
     }
 
     pub fn write_chatlab(&mut self, msgs: &[ExportMsg], out: &Path, jsonl: bool) -> Result<()> {
+        self.stream_chatlab(msgs, out, jsonl, true)?;
+        Ok(())
+    }
+
+    /// ChatLab (json or jsonl) written from a stream of messages (oldest first): every message goes to a spool
+    /// file as it is read; the member list, which comes first in the file and needs every sender, is written at
+    /// the end. With no messages nothing is written unless `write_if_empty`.
+    fn stream_chatlab<I>(
+        &mut self,
+        msgs: I,
+        out: &Path,
+        jsonl: bool,
+        write_if_empty: bool,
+    ) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
+        use std::borrow::Borrow;
         use std::io::Write;
-        // Messages are serialized as they are built and only their text is kept; members are known afterwards.
-        let mut lines: Vec<String> = Vec::with_capacity(msgs.len());
-        let (chatlab, meta, members) = self.chatlab_parts(msgs, &mut |m| {
-            lines.push(if jsonl {
+        let mut spool = Spool::create(out)?;
+        let mut tally = SenderTally::default();
+        let mut names: HashMap<String, String> = HashMap::new();
+        let mut record_order: Vec<String> = Vec::new();
+        let mut record_seen: HashSet<String> = HashSet::new();
+        let mut count = 0usize;
+        for item in msgs {
+            let msg: &ExportMsg = item.borrow();
+            tally.add(&msg.sender_username);
+            let member_name = if msg.sender_username.is_empty() {
+                String::new()
+            } else if let Some(n) = names.get(&msg.sender_username) {
+                n.clone()
+            } else {
+                let n = self.contact_display(&msg.sender_username);
+                names.insert(msg.sender_username.clone(), n.clone());
+                n
+            };
+            let mut record_names: Vec<String> = Vec::new();
+            let m = self.chatlab_message(msg, &member_name, &mut record_names);
+            for name in record_names {
+                if record_seen.insert(name.clone()) {
+                    record_order.push(name);
+                }
+            }
+            if jsonl {
                 let mut obj = Map::new();
                 obj.insert("_type".into(), json!("message"));
                 obj.extend(m);
-                serde_json::to_string(&Value::Object(obj)).unwrap_or_default()
+                spool.push(
+                    "\n",
+                    &serde_json::to_string(&Value::Object(obj)).unwrap_or_default(),
+                )?;
             } else {
-                pretty_indented(&Value::Object(m), 4)
-            });
-        });
-        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
+                spool.push(",\n    ", &pretty_indented(&Value::Object(m), 4))?;
+            }
+            count += 1;
         }
+        if count == 0 && !write_if_empty {
+            return Ok(0);
+        }
+        // members: the senders in order of appearance, then the rest of the group, then the people who only
+        // appear inside forwarded chat histories
+        let mut ids = tally.order;
+        let mut known: HashSet<String> = ids.iter().cloned().collect();
+        if self.session.is_group {
+            for g in self.group_members.clone() {
+                if !g.is_empty() && known.insert(g.clone()) {
+                    ids.push(g);
+                }
+            }
+        }
+        let mut members: Vec<Map<String, Value>> = Vec::new();
+        for id in ids {
+            let account_name = self.contact_display(&id);
+            let mut m = Map::new();
+            m.insert("platformId".into(), json!(id));
+            m.insert("accountName".into(), json!(account_name));
+            members.push(m);
+        }
+        for name in record_order {
+            if known.insert(name.clone()) {
+                let mut nm = Map::new();
+                nm.insert("platformId".into(), json!(name));
+                nm.insert("accountName".into(), json!(name));
+                members.push(nm);
+            }
+        }
+        let members = self.chatlab_finish_members(members);
+        let (chatlab, meta) = self.chatlab_meta();
         let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
         if jsonl {
             write!(
@@ -786,9 +1010,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 }
                 write!(w, "\n{}", serde_json::to_string(&Value::Object(obj))?)?;
             }
-            for line in &lines {
+            if count > 0 {
                 w.write_all(b"\n")?;
-                w.write_all(line.as_bytes())?;
+                spool.copy_to(&mut w)?;
             }
         } else {
             write!(
@@ -798,22 +1022,17 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 pretty_indented(&meta, 2),
                 pretty_indented(&Value::Array(members), 2)
             )?;
-            if lines.is_empty() {
+            if count == 0 {
                 w.write_all(b"[]")?;
             } else {
                 w.write_all(b"[\n    ")?;
-                for (i, line) in lines.iter().enumerate() {
-                    if i > 0 {
-                        w.write_all(b",\n    ")?;
-                    }
-                    w.write_all(line.as_bytes())?;
-                }
+                spool.copy_to(&mut w)?;
                 w.write_all(b"\n  ]")?;
             }
             w.write_all(b"\n}")?;
         }
         w.flush()?;
-        Ok(())
+        Ok(count)
     }
 
     // ─────────────────────────── detailed JSON / arkme-json ───────────────────────────
@@ -829,6 +1048,145 @@ impl<'a, 'n> Exporter<'a, 'n> {
         Value::Object(h)
     }
 
+    /// The detailed-JSON object of one message; `index` is the number of messages before it. Records the sender's
+    /// profile (the first one seen wins) and returns it with the object.
+    fn json_message(
+        &mut self,
+        msg: &ExportMsg,
+        arkme: bool,
+        index: usize,
+        profiles: &mut HashMap<String, Profile>,
+    ) -> (Map<String, Value>, Profile) {
+        let source = rx(r"(?i)<msgsource>[\s\S]*?</msgsource>")
+            .find(&msg.content)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        let mut content = Some(self.message_text(msg));
+        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
+            content = Some(m.relative_path.clone());
+        }
+        let sender = msg.sender_username.clone();
+        let nickname = self
+            .names
+            .get(&sender)
+            .map(|c| c.nickname)
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.names.display_name(&sender));
+        let remark = self
+            .names
+            .get(&sender)
+            .map(|c| c.remark)
+            .unwrap_or_default();
+        let group_nick = resolve_group_nickname(&self.group_nicks, &[sender.as_str()]);
+        let display = self
+            .settings
+            .display_pref
+            .pick(&sender, &nickname, &remark, &group_nick);
+        profiles.entry(sender.clone()).or_insert_with(|| Profile {
+            wxid: sender.clone(),
+            nickname: nickname.clone(),
+            remark: remark.clone(),
+            group_nickname: group_nick.clone(),
+            display_name: display.clone(),
+            ..Default::default()
+        });
+
+        let mut o = Map::new();
+        o.insert("localId".into(), json!(index + 1));
+        o.insert("createTime".into(), json!(msg.create_time));
+        o.insert(
+            "formattedTime".into(),
+            json!(format_timestamp(msg.create_time)),
+        );
+        o.insert(
+            "type".into(),
+            json!(message_type_name(msg.local_type, Some(&msg.content))),
+        );
+        o.insert("localType".into(), json!(msg.local_type));
+        o.insert(
+            "content".into(),
+            content.clone().map(Value::String).unwrap_or(Value::Null),
+        );
+        o.insert("isSend".into(), json!(if msg.is_send { 1 } else { 0 }));
+        o.insert("senderUsername".into(), json!(sender));
+        o.insert("senderDisplayName".into(), json!(display));
+        o.insert("source".into(), json!(source));
+        o.insert("senderAvatarKey".into(), json!(sender));
+        if msg.local_type == 47 {
+            if let Some(v) = &msg.emoji_md5 {
+                o.insert("emojiMd5".into(), json!(v));
+            }
+            if let Some(v) = &msg.emoji_cdn_url {
+                o.insert("emojiCdnUrl".into(), json!(v));
+            }
+            if let Some(v) = &msg.emoji_caption {
+                o.insert("emojiCaption".into(), json!(v));
+            }
+        }
+        // Additive (not in the desktop export): media identifiers so exports can be matched with files on disk.
+        if msg.local_type == 3 {
+            if let Some(v) = &msg.image_md5 {
+                o.insert("imageMd5".into(), json!(v));
+            }
+            if let Some(v) = &msg.image_dat_name {
+                o.insert("imageDatName".into(), json!(v));
+            }
+        }
+        if msg.local_type == 43 {
+            if let Some(v) = &msg.video_md5 {
+                o.insert("videoMd5".into(), json!(v));
+            }
+        }
+        if let Some(id) = msg.platform_message_id() {
+            o.insert("platformMessageId".into(), json!(id));
+        }
+        if let Some(r) = extract_reply_to_message_id(&msg.content) {
+            o.insert("replyToMessageId".into(), json!(r));
+        }
+        if let Some(meta) = extract_arkme_app_message_meta(&msg.content, msg.local_type) {
+            let kind = meta.get("appMsgKind").and_then(Value::as_str).unwrap_or("");
+            if arkme || kind == "quote" || kind == "link" {
+                for (k, v) in meta {
+                    o.insert(k, v);
+                }
+            }
+        }
+        if let Some(q) = &quoted {
+            if let Some(s) = &q.quoted_sender {
+                if !s.is_empty() {
+                    o.insert("quotedSender".into(), json!(s));
+                }
+            }
+            if !q.quoted_preview.is_empty() {
+                o.insert("quotedContent".into(), json!(q.quoted_preview));
+            }
+        }
+        if arkme {
+            if let Some(meta) = extract_arkme_contact_card_meta(&msg.content, msg.local_type) {
+                for (k, v) in meta {
+                    o.insert(k, v);
+                }
+            }
+        }
+        if msg.local_type == 48 {
+            if let Some(v) = msg.location_lat {
+                o.insert("locationLat".into(), json!(v));
+            }
+            if let Some(v) = msg.location_lng {
+                o.insert("locationLng".into(), json!(v));
+            }
+            if let Some(v) = &msg.location_poiname {
+                o.insert("locationPoiname".into(), json!(v));
+            }
+            if let Some(v) = &msg.location_label {
+                o.insert("locationLabel".into(), json!(v));
+            }
+        }
+        let profile = profiles[&msg.sender_username].clone();
+        (o, profile)
+    }
+
     /// Builds the detailed-JSON object of every message in order and hands each to `sink`, so a caller can write
     /// it out and drop it instead of holding the whole conversation as JSON values. Returns the sender profiles.
     fn json_messages(
@@ -837,167 +1195,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         arkme: bool,
         sink: &mut dyn FnMut(Map<String, Value>, &Profile),
     ) -> HashMap<String, Profile> {
-        let my = self.my_wxid.clone();
-        let mut count = 0usize;
         let mut profiles: HashMap<String, Profile> = HashMap::new();
-        for msg in msgs {
-            let source = rx(r"(?i)<msgsource>[\s\S]*?</msgsource>")
-                .find(&msg.content)
-                .map(|m| m.as_str().to_string())
-                .unwrap_or_default();
-            let mut content = parse_message_content(
-                &msg.content,
-                msg.local_type,
-                Some(&my),
-                Some(&msg.sender_username),
-                msg.emoji_caption.as_deref(),
-            );
-            if is_readable_system_message(msg.local_type, &msg.content) {
-                let t = extract_readable_system_message_text(&msg.content);
-                if !t.is_empty() {
-                    content = Some(t);
-                }
-            }
-            let quoted = self.quoted_with_names(&msg.content);
-            if let Some(q) = &quoted {
-                content = Some(build_quoted_reply_text(q));
-            }
-            if quoted.is_none() {
-                if let Some(l) =
-                    format_link_card_export_text(&msg.content, msg.local_type, LinkStyle::AppendUrl)
-                {
-                    content = Some(l);
-                }
-            }
-            if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
-                content = Some(m.relative_path.clone());
-            }
-            if let Some(c) = content.clone() {
-                if is_transfer_export_content(&c) && !msg.content.is_empty() {
-                    if let Some(desc) = self.transfer_desc(&msg.content) {
-                        content = Some(append_transfer_desc(&c, &desc));
-                    }
-                }
-            }
-            let sender = msg.sender_username.clone();
-            let nickname = self
-                .names
-                .get(&sender)
-                .map(|c| c.nickname)
-                .filter(|n| !n.is_empty())
-                .unwrap_or_else(|| self.names.display_name(&sender));
-            let remark = self
-                .names
-                .get(&sender)
-                .map(|c| c.remark)
-                .unwrap_or_default();
-            let group_nick = resolve_group_nickname(&self.group_nicks, &[sender.as_str()]);
-            let display = self
-                .settings
-                .display_pref
-                .pick(&sender, &nickname, &remark, &group_nick);
-            profiles.entry(sender.clone()).or_insert_with(|| Profile {
-                wxid: sender.clone(),
-                nickname: nickname.clone(),
-                remark: remark.clone(),
-                group_nickname: group_nick.clone(),
-                display_name: display.clone(),
-                ..Default::default()
-            });
-
-            let mut o = Map::new();
-            o.insert("localId".into(), json!(count + 1));
-            o.insert("createTime".into(), json!(msg.create_time));
-            o.insert(
-                "formattedTime".into(),
-                json!(format_timestamp(msg.create_time)),
-            );
-            o.insert(
-                "type".into(),
-                json!(message_type_name(msg.local_type, Some(&msg.content))),
-            );
-            o.insert("localType".into(), json!(msg.local_type));
-            o.insert(
-                "content".into(),
-                content.clone().map(Value::String).unwrap_or(Value::Null),
-            );
-            o.insert("isSend".into(), json!(if msg.is_send { 1 } else { 0 }));
-            o.insert("senderUsername".into(), json!(sender));
-            o.insert("senderDisplayName".into(), json!(display));
-            o.insert("source".into(), json!(source));
-            o.insert("senderAvatarKey".into(), json!(sender));
-            if msg.local_type == 47 {
-                if let Some(v) = &msg.emoji_md5 {
-                    o.insert("emojiMd5".into(), json!(v));
-                }
-                if let Some(v) = &msg.emoji_cdn_url {
-                    o.insert("emojiCdnUrl".into(), json!(v));
-                }
-                if let Some(v) = &msg.emoji_caption {
-                    o.insert("emojiCaption".into(), json!(v));
-                }
-            }
-            // Additive (not in the desktop export): media identifiers so exports can be matched with files on disk.
-            if msg.local_type == 3 {
-                if let Some(v) = &msg.image_md5 {
-                    o.insert("imageMd5".into(), json!(v));
-                }
-                if let Some(v) = &msg.image_dat_name {
-                    o.insert("imageDatName".into(), json!(v));
-                }
-            }
-            if msg.local_type == 43 {
-                if let Some(v) = &msg.video_md5 {
-                    o.insert("videoMd5".into(), json!(v));
-                }
-            }
-            if let Some(id) = msg.platform_message_id() {
-                o.insert("platformMessageId".into(), json!(id));
-            }
-            if let Some(r) = extract_reply_to_message_id(&msg.content) {
-                o.insert("replyToMessageId".into(), json!(r));
-            }
-            if let Some(meta) = extract_arkme_app_message_meta(&msg.content, msg.local_type) {
-                let kind = meta.get("appMsgKind").and_then(Value::as_str).unwrap_or("");
-                if arkme || kind == "quote" || kind == "link" {
-                    for (k, v) in meta {
-                        o.insert(k, v);
-                    }
-                }
-            }
-            if let Some(q) = &quoted {
-                if let Some(s) = &q.quoted_sender {
-                    if !s.is_empty() {
-                        o.insert("quotedSender".into(), json!(s));
-                    }
-                }
-                if !q.quoted_preview.is_empty() {
-                    o.insert("quotedContent".into(), json!(q.quoted_preview));
-                }
-            }
-            if arkme {
-                if let Some(meta) = extract_arkme_contact_card_meta(&msg.content, msg.local_type) {
-                    for (k, v) in meta {
-                        o.insert(k, v);
-                    }
-                }
-            }
-            if msg.local_type == 48 {
-                if let Some(v) = msg.location_lat {
-                    o.insert("locationLat".into(), json!(v));
-                }
-                if let Some(v) = msg.location_lng {
-                    o.insert("locationLng".into(), json!(v));
-                }
-                if let Some(v) = &msg.location_poiname {
-                    o.insert("locationPoiname".into(), json!(v));
-                }
-                if let Some(v) = &msg.location_label {
-                    o.insert("locationLabel".into(), json!(v));
-                }
-            }
-            count += 1;
-            sink(o, &profiles[&msg.sender_username]);
+        for (count, msg) in msgs.iter().enumerate() {
+            let (o, profile) = self.json_message(msg, arkme, count, &mut profiles);
+            sink(o, &profile);
         }
         profiles
     }
@@ -1076,24 +1277,26 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     /// `groupMembers` of the arkme export: every sender plus the group's member list, busiest first.
     fn ark_group_members(&mut self, msgs: &[ExportMsg]) -> Value {
+        let mut tally = SenderTally::default();
+        for m in msgs {
+            tally.add(&m.sender_username);
+        }
+        self.ark_group_members_of(tally)
+    }
+
+    /// [`ark_group_members`](Self::ark_group_members) from a tally of the senders (see [`SenderTally`]).
+    fn ark_group_members_of(&mut self, tally: SenderTally) -> Value {
+        let SenderTally { order, counts, .. } = tally;
         let ids: Vec<String> = {
-            let mut v: Vec<String> = Vec::new();
-            for m in msgs {
-                if !m.sender_username.is_empty() && !v.contains(&m.sender_username) {
-                    v.push(m.sender_username.clone());
-                }
-            }
+            let mut v = order;
+            let mut seen: HashSet<String> = v.iter().cloned().collect();
             for g in &self.group_members {
-                if !g.is_empty() && !v.contains(g) {
+                if !g.is_empty() && seen.insert(g.clone()) {
                     v.push(g.clone());
                 }
             }
             v
         };
-        let mut counts: HashMap<String, i64> = HashMap::new();
-        for m in msgs {
-            *counts.entry(m.sender_username.to_lowercase()).or_insert(0) += 1;
-        }
         let mut members: Vec<Map<String, Value>> = Vec::new();
         for id in ids {
             let contact = self.names.get(&id);
@@ -1156,21 +1359,39 @@ impl<'a, 'n> Exporter<'a, 'n> {
             .windows(2)
             .all(|w| w[0].create_time <= w[1].create_time)
         {
-            return self.write_json_streaming(msgs, out, arkme);
+            self.stream_json(msgs, out, arkme, true)?;
+            return Ok(());
         }
         let v = self.build_json(msgs, arkme);
         write_bytes(out, serde_json::to_string_pretty(&v)?.as_bytes())
     }
 
-    fn write_json_streaming(&mut self, msgs: &[ExportMsg], out: &Path, arkme: bool) -> Result<()> {
+    /// Detailed JSON / arkme-json written from a stream of messages (oldest first). Each message is serialized as
+    /// soon as it is read and put in a spool file; the header (which has the totals) and the member list (which has
+    /// the senders) are written around it at the end. With no messages nothing is written unless `write_if_empty`.
+    fn stream_json<I>(
+        &mut self,
+        msgs: I,
+        out: &Path,
+        arkme: bool,
+        write_if_empty: bool,
+    ) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
+        use std::borrow::Borrow;
         use std::io::Write;
         let is_group = self.session.is_group;
-        let session =
-            Value::Object(self.json_session(msgs.len(), msgs.iter().map(|m| m.create_time).max()));
-        // Each message is serialized as soon as it is built; only the text is kept until the file is written.
-        let mut lines: Vec<String> = Vec::with_capacity(msgs.len());
+        let mut spool = Spool::create(out)?;
         let mut ark = ArkCompact::default();
-        self.json_messages(msgs, arkme, &mut |message, profile| {
+        let mut profiles: HashMap<String, Profile> = HashMap::new();
+        let mut tally = SenderTally::default();
+        let mut last_ts: Option<i64> = None;
+        let mut count = 0usize;
+        for item in msgs {
+            let msg: &ExportMsg = item.borrow();
+            let (message, profile) = self.json_message(msg, arkme, count, &mut profiles);
             let value = if arkme {
                 let sender = message
                     .get("senderUsername")
@@ -1182,11 +1403,17 @@ impl<'a, 'n> Exporter<'a, 'n> {
             } else {
                 Value::Object(message)
             };
-            lines.push(pretty_indented(&value, 4));
-        });
-        if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
+            spool.push(",\n    ", &pretty_indented(&value, 4))?;
+            last_ts = last_ts.max(Some(msg.create_time));
+            if arkme && is_group {
+                tally.add(&msg.sender_username);
+            }
+            count += 1;
         }
+        if count == 0 && !write_if_empty {
+            return Ok(0);
+        }
+        let session = Value::Object(self.json_session(count, last_ts));
         let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
         write!(
             w,
@@ -1202,41 +1429,127 @@ impl<'a, 'n> Exporter<'a, 'n> {
             )?;
         }
         w.write_all(b",\n  \"messages\": ")?;
-        if lines.is_empty() {
+        if count == 0 {
             w.write_all(b"[]")?;
         } else {
             w.write_all(b"[\n    ")?;
-            for (i, line) in lines.iter().enumerate() {
-                if i > 0 {
-                    w.write_all(b",\n    ")?;
-                }
-                w.write_all(line.as_bytes())?;
-            }
+            spool.copy_to(&mut w)?;
             w.write_all(b"\n  ]")?;
         }
-        drop(lines);
         if arkme && is_group {
-            let members = self.ark_group_members(msgs);
+            let members = self.ark_group_members_of(tally);
             write!(w, ",\n  \"groupMembers\": {}", pretty_indented(&members, 2))?;
         }
         w.write_all(b"\n}")?;
         w.flush()?;
-        Ok(())
+        Ok(count)
     }
 
     // ─────────────────────────────────── TXT ───────────────────────────────────
 
+    /// Writes an export from a stream of messages (oldest first) without holding them all: the file is built as the
+    /// messages arrive. Returns how many messages were read; with none, no file is written.
+    pub fn write_streamed(
+        &mut self,
+        format: &str,
+        out: &Path,
+        msgs: &mut dyn Iterator<Item = ExportMsg>,
+    ) -> Result<usize> {
+        if let Some(format) = StreamFormat::parse(format) {
+            return self.write_entries(format, out, msgs);
+        }
+        match format {
+            "json" => return self.stream_json(msgs, out, false, false),
+            "arkme-json" => return self.stream_json(msgs, out, true, false),
+            "html" => return self.stream_html(msgs, out, false),
+            "excel" | "xlsx" => return self.stream_excel(msgs, out),
+            "chatlab" => return self.stream_chatlab(msgs, out, false, false),
+            "chatlab-jsonl" => return self.stream_chatlab(msgs, out, true, false),
+            _ => {}
+        }
+        anyhow::bail!("unsupported streamed export format: {format}")
+    }
+
+    /// TXT / SQL / WeClone: a header, then one independent entry per message.
+    fn write_entries(
+        &mut self,
+        format: StreamFormat,
+        out: &Path,
+        msgs: &mut dyn Iterator<Item = ExportMsg>,
+    ) -> Result<usize> {
+        use std::io::Write;
+        let mut count = 0usize;
+        let mut rows = 0usize;
+        // created with the first message, so an empty range leaves no file behind
+        let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
+        for msg in msgs {
+            if writer.is_none() {
+                if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+                w.write_all(Self::stream_header(format).as_bytes())?;
+                writer = Some(w);
+            }
+            if let (Some(w), Some(entry)) =
+                (writer.as_mut(), self.stream_entry(format, &msg, &mut rows))
+            {
+                w.write_all(entry.as_bytes())?;
+            }
+            count += 1;
+        }
+        if let Some(mut w) = writer {
+            w.flush()?;
+        }
+        Ok(count)
+    }
+
+    /// What a streamed export starts the file with (nothing for TXT).
+    pub fn stream_header(format: StreamFormat) -> &'static str {
+        match format {
+            StreamFormat::Txt => "",
+            StreamFormat::Sql => Self::SQL_HEADER,
+            StreamFormat::Weclone => Self::WECLONE_HEADER,
+        }
+    }
+
+    /// One message of a streamed export, or `None` when the format leaves it out (WeClone drops quote replies).
+    /// `rows` counts the entries written so far (WeClone numbers its rows).
+    pub fn stream_entry(
+        &mut self,
+        format: StreamFormat,
+        msg: &ExportMsg,
+        rows: &mut usize,
+    ) -> Option<String> {
+        match format {
+            StreamFormat::Txt => Some(self.txt_entry(msg)),
+            StreamFormat::Sql => Some(self.sql_insert(msg)),
+            StreamFormat::Weclone => {
+                if is_quoted_reply_message(msg.local_type, &msg.content) {
+                    return None;
+                }
+                *rows += 1;
+                Some(self.weclone_row(msg, *rows))
+            }
+        }
+    }
+
+    /// One message of the TXT export: `<time> '<sender>'`, the text, a blank line.
+    pub fn txt_entry(&mut self, msg: &ExportMsg) -> String {
+        let (content, _) = self.plain_row_content(msg);
+        let sender = self.sender_fields(msg);
+        format!(
+            "{} '{}'\n{}\n\n",
+            format_timestamp(msg.create_time),
+            sender.role,
+            content
+        )
+    }
+
     pub fn render_txt(&mut self, msgs: &[ExportMsg]) -> String {
         let mut out = String::new();
         for msg in msgs {
-            let (content, _) = self.plain_row_content(msg);
-            let sender = self.sender_fields(msg);
-            out.push_str(&format!(
-                "{} '{}'\n{}\n\n",
-                format_timestamp(msg.create_time),
-                sender.role,
-                content
-            ));
+            out.push_str(&self.txt_entry(msg));
         }
         out
     }
@@ -1248,96 +1561,94 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ───────────────────────────────── WeClone CSV ─────────────────────────────────
 
-    pub fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
-        let mut out =
-            String::from("\u{feff}id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n");
+    const WECLONE_HEADER: &'static str =
+        "\u{feff}id,MsgSvrID,type_name,is_sender,talker,msg,src,CreateTime\r\n";
+
+    /// One WeClone CSV row (with its line ending); `id` is the row number, starting at 1.
+    fn weclone_row(&mut self, msg: &ExportMsg, id: usize) -> String {
         let my = self.my_wxid.clone();
-        let rows: Vec<&ExportMsg> = msgs
-            .iter()
-            .filter(|m| !is_quoted_reply_message(m.local_type, &m.content))
-            .collect();
-        for (i, msg) in rows.iter().enumerate() {
-            let type_name = weclone_type_name(msg.local_type, &msg.content);
-            let sender_wxid = if msg.is_send {
+        let type_name = weclone_type_name(msg.local_type, &msg.content);
+        let sender_wxid = if msg.is_send {
+            my.clone()
+        } else if self.session.is_group && !msg.sender_username.is_empty() {
+            msg.sender_username.clone()
+        } else {
+            self.session.id.clone()
+        };
+        let mut talker = if self.my_display.is_empty() {
+            chrome("我", "Me").to_string()
+        } else {
+            self.my_display.clone()
+        };
+        if self.session.is_group {
+            let raw = self.raw_my_wxid.clone();
+            let my_display = if self.my_display.is_empty() {
                 my.clone()
-            } else if self.session.is_group && !msg.sender_username.is_empty() {
-                msg.sender_username.clone()
-            } else {
-                self.session.id.clone()
-            };
-            let mut talker = if self.my_display.is_empty() {
-                chrome("我", "Me").to_string()
             } else {
                 self.my_display.clone()
             };
-            if self.session.is_group {
-                let raw = self.raw_my_wxid.clone();
-                let my_display = if self.my_display.is_empty() {
-                    my.clone()
-                } else {
-                    self.my_display.clone()
-                };
-                let p = if msg.is_send {
-                    self.resolve_profile(&my, &my_display, &[raw.as_str(), my.as_str()])
-                } else {
-                    self.resolve_profile(&sender_wxid, &sender_wxid, &[])
-                };
-                talker = p.display_name;
-            } else if !msg.is_send {
-                let contact = self.names.get(&sender_wxid);
-                let nickname = contact
-                    .as_ref()
-                    .map(|c| c.nickname.clone())
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| sender_wxid.clone());
-                let remark = contact
-                    .as_ref()
-                    .map(|c| c.remark.clone())
-                    .unwrap_or_default();
-                talker = self
-                    .settings
-                    .display_pref
-                    .pick(&sender_wxid, &nickname, &remark, "");
-            }
-            let text = parse_message_content(
-                &msg.content,
-                msg.local_type,
-                Some(&my),
-                Some(&msg.sender_username),
-                msg.emoji_caption.as_deref(),
-            )
-            .unwrap_or_default();
-            let src = match type_name {
-                "image" => msg.image_dat_name.clone().unwrap_or_default(),
-                "sticker" => msg.emoji_cdn_url.clone().unwrap_or_default(),
-                "file" => {
-                    let f = extract_xml_value(&msg.content, "filename");
-                    if f.is_empty() {
-                        extract_xml_value(&msg.content, "title")
-                    } else {
-                        f
-                    }
-                }
-                _ => String::new(),
+            let p = if msg.is_send {
+                self.resolve_profile(&my, &my_display, &[raw.as_str(), my.as_str()])
+            } else {
+                self.resolve_profile(&sender_wxid, &sender_wxid, &[])
             };
-            let src = msg
-                .media
+            talker = p.display_name;
+        } else if !msg.is_send {
+            let contact = self.names.get(&sender_wxid);
+            let nickname = contact
                 .as_ref()
-                .map(|m| m.relative_path.clone())
-                .unwrap_or(src);
-            let cells = [
-                (i + 1).to_string(),
-                msg.platform_message_id().unwrap_or_default(),
-                type_name.to_string(),
-                if msg.is_send { "1".into() } else { "0".into() },
-                talker,
-                text,
-                src,
-                format_iso_timestamp(msg.create_time),
-            ];
-            let line: Vec<String> = cells.iter().map(|c| csv_cell(c)).collect();
-            out.push_str(&line.join(","));
-            out.push_str("\r\n");
+                .map(|c| c.nickname.clone())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| sender_wxid.clone());
+            let remark = contact
+                .as_ref()
+                .map(|c| c.remark.clone())
+                .unwrap_or_default();
+            talker = self
+                .settings
+                .display_pref
+                .pick(&sender_wxid, &nickname, &remark, "");
+        }
+        let text = self.message_text(msg);
+        let src = match type_name {
+            "image" => msg.image_dat_name.clone().unwrap_or_default(),
+            "sticker" => msg.emoji_cdn_url.clone().unwrap_or_default(),
+            "file" => {
+                let f = extract_xml_value(&msg.content, "filename");
+                if f.is_empty() {
+                    extract_xml_value(&msg.content, "title")
+                } else {
+                    f
+                }
+            }
+            _ => String::new(),
+        };
+        let src = msg
+            .media
+            .as_ref()
+            .map(|m| m.relative_path.clone())
+            .unwrap_or(src);
+        let cells = [
+            id.to_string(),
+            msg.platform_message_id().unwrap_or_default(),
+            type_name.to_string(),
+            if msg.is_send { "1".into() } else { "0".into() },
+            talker,
+            text,
+            src,
+            format_iso_timestamp(msg.create_time),
+        ];
+        let line: Vec<String> = cells.iter().map(|c| csv_cell(c)).collect();
+        format!("{}\r\n", line.join(","))
+    }
+
+    pub fn render_weclone(&mut self, msgs: &[ExportMsg]) -> String {
+        let mut out = String::from(Self::WECLONE_HEADER);
+        let rows = msgs
+            .iter()
+            .filter(|m| !is_quoted_reply_message(m.local_type, &m.content));
+        for (i, msg) in rows.enumerate() {
+            out.push_str(&self.weclone_row(msg, i + 1));
         }
         out
     }
@@ -1349,12 +1660,45 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── Excel ───────────────────────────────────
 
+    /// A sheet with more rows than this is written in constant-memory mode (no hyperlinks, rows go to disk).
+    const EXCEL_BIG: usize = 20000;
+
     pub fn write_excel(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
+        self.write_excel_rows(msgs, msgs.len() > Self::EXCEL_BIG, out)?;
+        Ok(())
+    }
+
+    /// Excel written from a stream of messages (oldest first). Whether the sheet is "big" depends on the total, so
+    /// the first `EXCEL_BIG + 1` messages are held back: if the stream ends before that, the small sheet is written
+    /// as usual; otherwise the constant-memory sheet takes them and then the rest as they arrive.
+    fn stream_excel(
+        &mut self,
+        msgs: &mut dyn Iterator<Item = ExportMsg>,
+        out: &Path,
+    ) -> Result<usize> {
+        let head: Vec<ExportMsg> = (&mut *msgs).take(Self::EXCEL_BIG + 1).collect();
+        if head.is_empty() {
+            return Ok(0);
+        }
+        if head.len() <= Self::EXCEL_BIG {
+            self.write_excel(&head, out)?;
+            return Ok(head.len());
+        }
+        self.write_excel_rows(head.into_iter().chain(msgs), true, out)
+    }
+
+    /// Writes the sheet; `big` picks the constant-memory mode (rows must then be written in order, as they are).
+    /// Returns the number of messages.
+    fn write_excel_rows<I>(&mut self, msgs: I, big: bool, out: &Path) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
         use rust_xlsxwriter::{Color, Format, FormatAlign, Url, Workbook};
+        use std::borrow::Borrow;
         let is_group = self.session.is_group;
         let compact = self.settings.excel_compact;
         let include_group_col = !compact && is_group;
-        let big = msgs.len() > 20000;
         let mut workbook = Workbook::new();
         let ws = if big {
             workbook.add_worksheet_with_constant_memory()
@@ -1448,7 +1792,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
         }
 
         let content_col = (headers.len() - 1) as u16;
-        for (i, msg) in msgs.iter().enumerate() {
+        let mut count = 0usize;
+        for (i, item) in msgs.into_iter().enumerate() {
+            let msg: &ExportMsg = item.borrow();
+            count += 1;
             let row = (i + 4) as u32;
             let (content, has_quote) = self.plain_row_content(msg);
             let s = self.sender_fields(msg);
@@ -1506,144 +1853,149 @@ impl<'a, 'n> Exporter<'a, 'n> {
         workbook
             .save(out)
             .with_context(|| format!("failed to write {}", out.display()))?;
-        Ok(())
+        Ok(count)
     }
 
     // ─────────────────────────────────── HTML ───────────────────────────────────
 
-    pub fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
-        let session = self.session.clone();
-        let is_group = session.is_group;
-        let my = self.my_wxid.clone();
-        let rows: Vec<&ExportMsg> = msgs.iter().collect();
-        let total = rows.len();
-        let mut data: Vec<String> = Vec::with_capacity(total);
-        for (i, msg) in rows.iter().enumerate() {
-            let sender_name = if is_group {
-                self.sender_profile_for(msg).display_name
-            } else if msg.is_send {
-                if self.my_display.is_empty() {
-                    chrome("我", "Me").to_string()
-                } else {
-                    self.my_display.clone()
-                }
-            } else if session.display_name.is_empty() {
-                session.id.clone()
-            } else {
-                session.display_name.clone()
-            };
-            let avatar_html = format!(
-                "<span>{}</span>",
-                html_escape(&avatar_fallback(&sender_name))
-            );
-            let time_text = format_timestamp(msg.create_time);
-            let quoted = self.quoted_with_names(&msg.content);
-            let mut text = match &quoted {
-                Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
-                _ => html_message_text(msg, &my),
-            };
-            if let Some(q) = &quoted {
-                if q.reply_text.is_empty() {
-                    text = html_message_text(msg, &my);
-                }
-            }
-            if is_transfer_export_content(&text) && !msg.content.is_empty() {
-                if let Some(desc) = self.transfer_desc(&msg.content) {
-                    text = append_transfer_desc(&text, &desc);
-                }
-            }
-            let link_card = if quoted.is_some() {
-                None
-            } else {
-                extract_html_link_card(&msg.content, msg.local_type)
-            };
-            let multiline = |s: &str| {
-                html_escape(s)
-                    .replace("\r\n", "<br />")
-                    .replace('\n', "<br />")
-            };
-            let text_html = if let Some(q) = &quoted {
-                let sender = q
-                    .quoted_sender
-                    .as_ref()
-                    .filter(|s| !s.is_empty())
-                    .map(|s| format!("<div class=\"quoted-sender\">{}</div>", html_escape(s)))
-                    .unwrap_or_default();
-                let preview = format!(
-                    "<div class=\"quoted-text\">{}</div>",
-                    multiline(&q.quoted_preview)
-                );
-                let reply = if text.is_empty() {
-                    String::new()
-                } else {
-                    format!("<div class=\"message-text\">{}</div>", multiline(&text))
-                };
-                format!("<div class=\"quoted-message\">{sender}{preview}</div>{reply}")
-            } else if let Some(card) = &link_card {
-                format!(
-                    "<div class=\"message-text\"><a class=\"message-link-card\" href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">{}</a></div>",
-                    html_attr_escape(&card.url),
-                    multiline(&card.title)
-                )
-            } else if !text.is_empty() {
-                format!("<div class=\"message-text\">{}</div>", multiline(&text))
-            } else {
-                String::new()
-            };
-            let sender_html = if is_group {
-                format!(
-                    "<div class=\"sender-name\">{}</div>",
-                    html_escape(&sender_name)
-                )
-            } else {
-                String::new()
-            };
-            let (media_html, text_html) = match &msg.media {
-                Some(m) => {
-                    let path = html_attr_escape(&encode_uri(&m.relative_path));
-                    let html = match m.kind {
-                        "image" | "emoji" => format!("<img class=\"message-media {} previewable\" src=\"{path}\" data-full=\"{path}\" alt=\"{}\" />", m.kind, m.kind),
-                        "voice" => format!("<audio class=\"message-media audio\" controls src=\"{path}\"></audio>"),
-                        _ => format!("<video class=\"message-media video\" controls preload=\"metadata\" src=\"{path}\"></video>"),
-                    };
-                    // an image message has no caption of its own
-                    (
-                        html,
-                        if msg.local_type == 3 {
-                            String::new()
-                        } else {
-                            text_html
-                        },
-                    )
-                }
-                None => (String::new(), text_html),
-            };
-            let body = format!(
-                "<div class=\"message-time\">{}</div>{}<div class=\"message-content\">{}{}</div>",
-                html_escape(&time_text),
-                sender_html,
-                media_html,
-                text_html
-            );
-            let mut item = Map::new();
-            item.insert("i".into(), json!(i + 1));
-            item.insert("t".into(), json!(msg.create_time));
-            item.insert("s".into(), json!(if msg.is_send { 1 } else { 0 }));
-            item.insert("a".into(), json!(avatar_html));
-            item.insert("b".into(), json!(body));
-            if let Some(p) = msg.platform_message_id() {
-                item.insert("p".into(), json!(p));
-            }
-            if let Some(r) = extract_reply_to_message_id(&msg.content) {
-                item.insert("r".into(), json!(r));
-            }
-            data.push(
-                serde_json::to_string(&Value::Object(item))
-                    .unwrap_or_default()
-                    .replace("</", "<\\/"),
-            );
+    /// HTML 气泡里的文本：与其他格式同一套写法，但链接卡片、系统消息样式由 HTML 自己渲染，不再改写。
+    fn html_message_text(&mut self, msg: &ExportMsg) -> String {
+        if msg.content.is_empty() && msg.local_type != 47 {
+            return String::new();
         }
-        let title = html_escape(&session.display_name);
+        self.message_text_with(msg, None, false)
+    }
+
+    /// The `window.WEFLOW_DATA` item of one message (a JSON object, `index` is the number of messages before it).
+    fn html_item(&mut self, msg: &ExportMsg, index: usize) -> String {
+        let is_group = self.session.is_group;
+        let sender_name = if is_group {
+            self.sender_profile_for(msg).display_name
+        } else if msg.is_send {
+            if self.my_display.is_empty() {
+                chrome("我", "Me").to_string()
+            } else {
+                self.my_display.clone()
+            }
+        } else if self.session.display_name.is_empty() {
+            self.session.id.clone()
+        } else {
+            self.session.display_name.clone()
+        };
+        let avatar_html = format!(
+            "<span>{}</span>",
+            html_escape(&avatar_fallback(&sender_name))
+        );
+        let time_text = format_timestamp(msg.create_time);
+        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        let mut text = match &quoted {
+            Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
+            _ => self.html_message_text(msg),
+        };
+        if let Some(q) = &quoted {
+            if q.reply_text.is_empty() {
+                text = self.html_message_text(msg);
+            }
+        }
+        if is_transfer_export_content(&text) && !msg.content.is_empty() {
+            if let Some(desc) = self.transfer_desc(&msg.content) {
+                text = append_transfer_desc(&text, &desc);
+            }
+        }
+        let link_card = if quoted.is_some() {
+            None
+        } else {
+            extract_html_link_card(&msg.content, msg.local_type)
+        };
+        let multiline = |s: &str| {
+            html_escape(s)
+                .replace("\r\n", "<br />")
+                .replace('\n', "<br />")
+        };
+        let text_html = if let Some(q) = &quoted {
+            let sender = q
+                .quoted_sender
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| format!("<div class=\"quoted-sender\">{}</div>", html_escape(s)))
+                .unwrap_or_default();
+            let preview = format!(
+                "<div class=\"quoted-text\">{}</div>",
+                multiline(&q.quoted_preview)
+            );
+            let reply = if text.is_empty() {
+                String::new()
+            } else {
+                format!("<div class=\"message-text\">{}</div>", multiline(&text))
+            };
+            format!("<div class=\"quoted-message\">{sender}{preview}</div>{reply}")
+        } else if let Some(card) = &link_card {
+            format!(
+                "<div class=\"message-text\"><a class=\"message-link-card\" href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">{}</a></div>",
+                html_attr_escape(&card.url),
+                multiline(&card.title)
+            )
+        } else if !text.is_empty() {
+            format!("<div class=\"message-text\">{}</div>", multiline(&text))
+        } else {
+            String::new()
+        };
+        let sender_html = if is_group {
+            format!(
+                "<div class=\"sender-name\">{}</div>",
+                html_escape(&sender_name)
+            )
+        } else {
+            String::new()
+        };
+        let (media_html, text_html) = match &msg.media {
+            Some(m) => {
+                let path = html_attr_escape(&encode_uri(&m.relative_path));
+                let html = match m.kind {
+                    "image" | "emoji" => format!("<img class=\"message-media {} previewable\" src=\"{path}\" data-full=\"{path}\" alt=\"{}\" />", m.kind, m.kind),
+                    "voice" => format!("<audio class=\"message-media audio\" controls src=\"{path}\"></audio>"),
+                    _ => format!("<video class=\"message-media video\" controls preload=\"metadata\" src=\"{path}\"></video>"),
+                };
+                // an image message has no caption of its own
+                (
+                    html,
+                    if msg.local_type == 3 {
+                        String::new()
+                    } else {
+                        text_html
+                    },
+                )
+            }
+            None => (String::new(), text_html),
+        };
+        let body = format!(
+            "<div class=\"message-time\">{}</div>{}<div class=\"message-content\">{}{}</div>",
+            html_escape(&time_text),
+            sender_html,
+            media_html,
+            text_html
+        );
+        let mut item = Map::new();
+        item.insert("i".into(), json!(index + 1));
+        item.insert("t".into(), json!(msg.create_time));
+        item.insert("s".into(), json!(if msg.is_send { 1 } else { 0 }));
+        item.insert("a".into(), json!(avatar_html));
+        item.insert("b".into(), json!(body));
+        if let Some(p) = msg.platform_message_id() {
+            item.insert("p".into(), json!(p));
+        }
+        if let Some(r) = extract_reply_to_message_id(&msg.content) {
+            item.insert("r".into(), json!(r));
+        }
+        serde_json::to_string(&Value::Object(item))
+            .unwrap_or_default()
+            .replace("</", "<\\/")
+    }
+
+    /// The whole page around the data: `data_marker` stands where the items go.
+    fn html_document(&self, total: usize, data_marker: &str) -> String {
+        let is_group = self.session.is_group;
+        let title = html_escape(&self.session.display_name);
         let lang = match locale::current() {
             locale::Lang::Zh => "zh-CN",
             locale::Lang::En => "en",
@@ -1673,37 +2025,82 @@ impl<'a, 'n> Exporter<'a, 'n> {
             jump = chrome("跳转", "Go"),
             count = count_label(total),
             preview = chrome("预览", "Preview"),
-            data = data.join(",\n"),
+            data = data_marker,
             scroll_js = scroll_js,
         )
     }
 
+    pub fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
+        let data: Vec<String> = msgs
+            .iter()
+            .enumerate()
+            .map(|(i, msg)| self.html_item(msg, i))
+            .collect();
+        self.html_document(msgs.len(), &data.join(",\n"))
+    }
+
+    /// HTML written from a stream of messages (oldest first): the items go to a spool file as they are read, the
+    /// page around them (which shows the total) is written at the end. With no messages nothing is written unless
+    /// `write_if_empty`.
+    fn stream_html<I>(&mut self, msgs: I, out: &Path, write_if_empty: bool) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
+        use std::borrow::Borrow;
+        use std::io::Write;
+        let mut spool = Spool::create(out)?;
+        let mut count = 0usize;
+        for item in msgs {
+            let html = self.html_item(item.borrow(), count);
+            spool.push(",\n", &html)?;
+            count += 1;
+        }
+        if count == 0 && !write_if_empty {
+            return Ok(0);
+        }
+        const MARKER: &str = "\u{0}WEFLOW_DATA\u{0}";
+        let page = self.html_document(count, MARKER);
+        let (head, tail) = page
+            .split_once(MARKER)
+            .context("the page template has no data placeholder")?;
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+        w.write_all(head.as_bytes())?;
+        spool.copy_to(&mut w)?;
+        w.write_all(tail.as_bytes())?;
+        w.flush()?;
+        Ok(count)
+    }
+
     pub fn write_html(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
-        let html = self.render_html(msgs);
-        write_bytes(out, html.as_bytes())
+        self.stream_html(msgs, out, true)?;
+        Ok(())
     }
 
     // ─────────────────────────────────── SQL ───────────────────────────────────
 
+    const SQL_HEADER: &'static str = "CREATE TABLE IF NOT EXISTS \"messages\" (\n\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\tsession_id TEXT,\n\tlocal_id INTEGER,\n\tserver_id TEXT,\n\tcreate_time INTEGER,\n\tsender TEXT,\n\tis_send INTEGER,\n\tlocal_type INTEGER,\n\ttype_name TEXT,\n\tcontent TEXT\n);\n\n";
+
+    fn sql_insert(&mut self, msg: &ExportMsg) -> String {
+        let (content, _) = self.plain_row_content(msg);
+        format!(
+            "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');\n",
+            sql_escape(&self.session.id),
+            msg.local_id,
+            msg.platform_message_id().map(|s| format!("'{s}'")).unwrap_or_else(|| "NULL".into()),
+            msg.create_time,
+            sql_escape(&msg.sender_username),
+            if msg.is_send { 1 } else { 0 },
+            msg.local_type,
+            sql_escape(message_type_name(msg.local_type, Some(&msg.content))),
+            sql_escape(&content),
+        )
+    }
+
     pub fn render_sql(&mut self, msgs: &[ExportMsg]) -> String {
-        let mut sql = String::new();
-        sql.push_str(
-            "CREATE TABLE IF NOT EXISTS \"messages\" (\n\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\tsession_id TEXT,\n\tlocal_id INTEGER,\n\tserver_id TEXT,\n\tcreate_time INTEGER,\n\tsender TEXT,\n\tis_send INTEGER,\n\tlocal_type INTEGER,\n\ttype_name TEXT,\n\tcontent TEXT\n);\n\n",
-        );
+        let mut sql = String::from(Self::SQL_HEADER);
         for msg in msgs {
-            let (content, _) = self.plain_row_content(msg);
-            sql.push_str(&format!(
-                "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');\n",
-                sql_escape(&self.session.id),
-                msg.local_id,
-                msg.platform_message_id().map(|s| format!("'{s}'")).unwrap_or_else(|| "NULL".into()),
-                msg.create_time,
-                sql_escape(&msg.sender_username),
-                if msg.is_send { 1 } else { 0 },
-                msg.local_type,
-                sql_escape(message_type_name(msg.local_type, Some(&msg.content))),
-                sql_escape(&content),
-            ));
+            sql.push_str(&self.sql_insert(msg));
         }
         sql
     }
@@ -1881,40 +2278,27 @@ fn avatar_fallback(name: &str) -> String {
         .unwrap_or_else(|| "?".into())
 }
 
-fn html_message_text(msg: &ExportMsg, my: &str) -> String {
-    if msg.content.is_empty() && msg.local_type == 47 {
-        return format_emoji_semantic_text(msg.emoji_caption.as_deref());
+/// 文本、图片、语音、视频、表情这几种最常见的消息（约占 9 成）不含 XML，不需要引用 / 链接 / 转账 / 系统消息的
+/// 解析（每一步都要把内容规范化、跑正则），直接给出结果；内容里带 appmsg / sysmsg / refermsg 的仍走完整流程。
+/// 结果与完整流程一致（有测试对照）。
+fn plain_message_text(msg: &ExportMsg) -> Option<String> {
+    if !matches!(msg.local_type, 1 | 3 | 34 | 43 | 47) {
+        return None;
     }
-    if msg.content.is_empty() {
-        return String::new();
+    let c = msg.content.as_str();
+    if ["appmsg", "sysmsg", "refermsg"]
+        .iter()
+        .any(|k| c.contains(k))
+    {
+        return None;
     }
-    let readable = extract_readable_system_message_text(&msg.content);
-    if !readable.is_empty() && is_readable_system_message(msg.local_type, &msg.content) {
-        return readable;
-    }
-    if msg.local_type == 1 {
-        return strip_sender_prefix(&msg.content);
-    }
-    if msg.local_type == 34 {
-        return parse_message_content(
-            &msg.content,
-            msg.local_type,
-            Some(my),
-            Some(&msg.sender_username),
-            msg.emoji_caption.as_deref(),
-        )
-        .unwrap_or_default();
-    }
-    format_plain_export_content(
-        &msg.content,
-        msg.local_type,
-        &PlainOpts::default(),
-        None,
-        Some(my),
-        Some(&msg.sender_username),
-        msg.is_send,
-        msg.emoji_caption.as_deref(),
-    )
+    Some(match msg.local_type {
+        1 => strip_sender_prefix(c),
+        3 => "[图片]".into(),
+        34 => "[语音消息]".into(),
+        43 => "[视频]".into(),
+        _ => format_emoji_semantic_text(msg.emoji_caption.as_deref()),
+    })
 }
 
 pub fn html_escape(value: &str) -> String {
@@ -2116,6 +2500,213 @@ mod tests {
             },
         };
         f(&mut ex, &msgs)
+    }
+
+    /// detailed JSON 与简易 txt 共用 `message_text`：各类消息的写法在两种格式里一致。
+    #[test]
+    fn message_text_is_uniform_across_message_kinds() {
+        let quote_inner = "&lt;msg&gt;&lt;img md5=\"x\"&gt;&lt;extcommoninfo&gt;&lt;refermsg&gt;&lt;svrid&gt;9&lt;/svrid&gt;&lt;/refermsg&gt;&lt;/extcommoninfo&gt;&lt;/msg&gt;";
+        let rows = vec![
+            json!({"local_id": "1", "create_time": "1700000000", "local_type": "47", "message_content": "wxid_bob:<msg><emoji md5=\"a\"/></msg>", "sender_username": "wxid_bob"}),
+            json!({"local_id": "2", "create_time": "1700000001", "local_type": "34", "message_content": "", "sender_username": "wxid_bob"}),
+            json!({"local_id": "3", "create_time": "1700000002", "local_type": "10000", "message_content": "\"Bob\" 撤回了一条消息"}),
+            // 图片里夹带 <refermsg>：不是文字引用，仍然是 [图片]
+            json!({"local_id": "4", "create_time": "1700000003", "local_type": "3", "message_content": "wxid_bob:\n<msg><img md5=\"x\"/><extcommoninfo><refermsg><svrid>9</svrid></refermsg></extcommoninfo></msg>", "sender_username": "wxid_bob"}),
+            // appmsg type 8：以附件形式发送的表情
+            json!({"local_id": "5", "create_time": "1700000004", "local_type": "34359738417", "message_content": "wxid_bob:\n<msg><appmsg><title /><type>8</type></appmsg></msg>", "sender_username": "wxid_bob"}),
+            // 引用一条「带引用的图片」：被引用内容是（转义后的）XML，且里面还嵌着一层 <refermsg>
+            json!({"local_id": "6", "create_time": "1700000005", "local_type": "244813135921", "message_content": format!("wxid_bob:\n<msg><appmsg><title>好看</title><type>57</type><refermsg><type>3</type><content>wxid_me:\n{quote_inner}</content><displayname>Me Nick</displayname><svrid>1</svrid></refermsg></appmsg></msg>"), "sender_username": "wxid_bob"}),
+            // 正文里的 "4:1" 不是发送者前缀
+            json!({"local_id": "7", "create_time": "1700000006", "local_type": "1", "message_content": "4:1", "sender_username": "wxid_bob"}),
+        ];
+        let msgs = collect_messages(
+            &rows,
+            &CollectOptions {
+                session_id: "room@chatroom",
+                my_wxid: "wxid_me",
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        );
+        let mut names = NameBook::from_map(HashMap::new());
+        let mut ex = Exporter {
+            session: SessionInfo {
+                id: "room@chatroom".into(),
+                display_name: "Room".into(),
+                nickname: "Room".into(),
+                remark: String::new(),
+                is_group: true,
+            },
+            my_wxid: "wxid_me".into(),
+            raw_my_wxid: "wxid_me".into(),
+            my_display: "Me Nick".into(),
+            group_nicks: HashMap::new(),
+            group_members: Vec::new(),
+            names: &mut names,
+            settings: Settings::default(),
+        };
+        let t: Vec<String> = msgs.iter().map(|m| ex.message_text(m)).collect();
+        assert_eq!(t[0], "[表情]");
+        assert_eq!(t[1], "[语音消息]");
+        assert!(
+            t[2] == "[系统: \"Bob\" 撤回了一条消息]" || t[2] == "[System: \"Bob\" 撤回了一条消息]",
+            "{}",
+            t[2]
+        );
+        assert_eq!(t[3], "[图片]");
+        assert_eq!(t[4], "[表情]");
+        assert_eq!(t[5], "好看[引用 Me Nick：[图片]]");
+        assert_eq!(t[6], "4:1");
+    }
+
+    /// 各格式共用同一套文本：SQL / Excel 行 / 导出器 txt 与 JSON 一致；ChatLab 链接用 Markdown、
+    /// 系统消息不再包裹；WeClone 丢弃引用消息。
+    #[test]
+    fn formats_share_message_text() {
+        let rows = vec![
+            json!({"local_id": "1", "create_time": "1700000000", "local_type": "10000", "message_content": "\"Bob\" 撤回了一条消息"}),
+            json!({"local_id": "2", "create_time": "1700000001", "local_type": "34", "message_content": "", "sender_username": "wxid_bob"}),
+            json!({"local_id": "3", "create_time": "1700000002", "local_type": "49", "message_content": "wxid_bob:\n<msg><appmsg><title>Doc</title><type>5</type><url>https://example.com/x</url></appmsg></msg>", "sender_username": "wxid_bob"}),
+            json!({"local_id": "4", "create_time": "1700000003", "local_type": "103079215153", "message_content": "wxid_bob:\n<msg><appmsg><title /><des>预览</des><type>24</type><recorditem><![CDATA[<recordinfo><datalist><dataitem datatype=\"1\"><datadesc>笔记&#x0A;全文</datadesc></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>", "sender_username": "wxid_bob"}),
+            json!({"local_id": "5", "create_time": "1700000004", "local_type": "244813135921", "message_content": "wxid_bob:\n<msg><appmsg><title>好的</title><type>57</type><refermsg><type>1</type><displayname>Me</displayname><content>hello</content><svrid>1</svrid></refermsg></appmsg></msg>", "sender_username": "wxid_bob"}),
+        ];
+        let mut msgs = collect_messages(
+            &rows,
+            &CollectOptions {
+                session_id: "wxid_bob",
+                my_wxid: "wxid_me",
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        );
+        msgs.push({
+            let mut m = msgs[1].clone();
+            m.local_type = 47;
+            m.emoji_caption = Some("打call".into());
+            m
+        });
+        let mut names = NameBook::from_map(HashMap::new());
+        let mut ex = Exporter {
+            session: SessionInfo {
+                id: "wxid_bob".into(),
+                display_name: "Bob".into(),
+                nickname: "Bob".into(),
+                remark: String::new(),
+                is_group: false,
+            },
+            my_wxid: "wxid_me".into(),
+            raw_my_wxid: "wxid_me".into(),
+            my_display: "Me".into(),
+            group_nicks: HashMap::new(),
+            group_members: Vec::new(),
+            names: &mut names,
+            settings: Settings::default(),
+        };
+        let sys = |t: &str| format!("[{}: {t}]", chrome("系统", "System"));
+        // 导出器 txt / SQL（plain_row_content）与 JSON（message_text）一致
+        for m in &msgs {
+            assert_eq!(ex.plain_row_content(m).0, ex.message_text(m));
+        }
+        let sql = ex.render_sql(&msgs);
+        for want in [
+            sys("\"Bob\" 撤回了一条消息"),
+            "[语音消息]".into(),
+            "[链接] Doc".into(),
+            "https://example.com/x".into(),
+            "[笔记]\n笔记\n全文".into(),
+            "好的[引用 Me：hello]".into(),
+            "[表情：打call]".into(),
+        ] {
+            assert!(
+                sql.contains(&want.replace('\'', "''")),
+                "sql: {want}\n{sql}"
+            );
+        }
+        // ChatLab：链接 Markdown，系统消息不包裹
+        let chatlab = ex.build_chatlab(&msgs).to_string();
+        assert!(
+            chatlab.contains("[Doc](https://example.com/x)"),
+            "{chatlab}"
+        );
+        assert!(chatlab.contains("\\\"Bob\\\" 撤回了一条消息"), "{chatlab}");
+        assert!(!chatlab.contains(&sys("\"Bob\"")), "{chatlab}");
+        // WeClone：引用消息不进训练数据，其余同样的写法
+        let weclone = ex.render_weclone(&msgs);
+        assert!(!weclone.contains("好的"), "{weclone}");
+        assert!(weclone.contains("[语音消息]"), "{weclone}");
+    }
+
+    /// 常见消息类型的快速路径与完整流程结果一致。
+    #[test]
+    fn plain_message_text_matches_the_full_path() {
+        let samples: Vec<(i64, &str, Option<&str>)> = vec![
+            (1, "hello", None),
+            (1, "wxid_bob:\nhi", None),
+            (1, "1:3-1:6", None),
+            (1, "", None),
+            (1, "  带空格  ", None),
+            (1, "[转账] 看起来像转账的文字", None),
+            (1, "<凡人修仙传>看了100多集", None),
+            (3, "wxid_bob:\n<msg><img md5=\"x\"/></msg>", None),
+            (3, "", None),
+            (34, "wxid_bob:\n<msg><voicemsg length=\"1\"/></msg>", None),
+            (34, "", None),
+            (
+                43,
+                "wxid_bob:\n<msg><videomsg playlength=\"3\"/></msg>",
+                None,
+            ),
+            (43, "", None),
+            (47, "wxid_bob:\n<msg><emoji md5=\"a\"/></msg>", None),
+            (47, "", None),
+            (
+                47,
+                "wxid_bob:\n<msg><emoji md5=\"a\"/></msg>",
+                Some("打call"),
+            ),
+        ];
+        let mut names = NameBook::from_map(HashMap::new());
+        let mut ex = Exporter {
+            session: SessionInfo {
+                id: "room@chatroom".into(),
+                display_name: "Room".into(),
+                nickname: "Room".into(),
+                remark: String::new(),
+                is_group: true,
+            },
+            my_wxid: "wxid_me".into(),
+            raw_my_wxid: "wxid_me".into(),
+            my_display: "Me".into(),
+            group_nicks: HashMap::new(),
+            group_members: Vec::new(),
+            names: &mut names,
+            settings: Settings::default(),
+        };
+        for (ty, content, caption) in samples {
+            let msg = ExportMsg {
+                local_type: ty,
+                content: content.into(),
+                sender_username: "wxid_bob".into(),
+                emoji_caption: caption.map(str::to_string),
+                ..Default::default()
+            };
+            let fast = plain_message_text(&msg)
+                .unwrap_or_else(|| panic!("no fast path: {ty} {content:?}"));
+            // 完整流程：内容里夹一个 appmsg 字样会关掉快速路径，所以改走 message_text_generic
+            let full = ex.message_text_generic(&msg, Some(LinkStyle::AppendUrl), true);
+            assert_eq!(fast, full, "type {ty}, content {content:?}");
+        }
+        // 含 appmsg / sysmsg / refermsg 的内容不走快速路径
+        for k in ["appmsg", "sysmsg", "refermsg"] {
+            let msg = ExportMsg {
+                local_type: 1,
+                content: format!("<{k}>"),
+                ..Default::default()
+            };
+            assert!(plain_message_text(&msg).is_none(), "{k}");
+        }
     }
 
     #[test]
@@ -2325,6 +2916,64 @@ mod tests {
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS \"messages\""));
         assert_eq!(sql.matches("INSERT INTO").count(), 5);
         assert!(sql.contains("hello \"world\", ok"));
+    }
+
+    /// Streaming: every format can be written from an iterator; Excel switches to the constant-memory sheet
+    /// only once there are more than `EXCEL_BIG` messages.
+    #[test]
+    fn streamed_exports_cover_every_format_and_both_excel_sizes() {
+        let dir = std::env::temp_dir().join(format!("weflow-stream-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for format in [
+            "txt",
+            "sql",
+            "weclone",
+            "json",
+            "arkme-json",
+            "chatlab",
+            "chatlab-jsonl",
+            "html",
+            "excel",
+        ] {
+            let out = dir.join(format!("{format}.out"));
+            let n = with_exporter(true, |ex, msgs| {
+                ex.write_streamed(format, &out, &mut msgs.iter().cloned())
+                    .unwrap()
+            });
+            assert_eq!(n, 5, "{format}");
+            assert!(std::fs::metadata(&out).unwrap().len() > 0, "{format}");
+            let none = dir.join(format!("{format}.none"));
+            let n = with_exporter(true, |ex, _| {
+                ex.write_streamed(format, &none, &mut std::iter::empty())
+                    .unwrap()
+            });
+            assert_eq!(n, 0, "{format}");
+            assert!(
+                !none.exists(),
+                "{format}: nothing is written for no messages"
+            );
+        }
+        // one message more than the small sheet takes: the constant-memory sheet gets all of them
+        let big = dir.join("big.xlsx");
+        let n = with_exporter(false, |ex, msgs| {
+            let template = msgs[1].clone();
+            let mut many = (0..=Exporter::EXCEL_BIG).map(|i| {
+                let mut m = template.clone();
+                m.local_id = i as i64;
+                m.create_time = 1_700_000_000 + i as i64;
+                m
+            });
+            ex.write_streamed("excel", &big, &mut many).unwrap()
+        });
+        assert_eq!(n, Exporter::EXCEL_BIG + 1);
+        assert!(std::fs::metadata(&big).unwrap().len() > 0);
+        let leftovers = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))
+            .count();
+        assert_eq!(leftovers, 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

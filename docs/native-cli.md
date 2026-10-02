@@ -57,7 +57,25 @@ messages (an image sent twice counts twice, so `found` can exceed the unique fil
 messages whose file is not on disk (never downloaded in WeChat) or could not be resolved, per kind in `missingByKind`.
 `thumbOnly` counts exported images that are only the thumbnail (each image entry also has `isThumb`); open the original in WeChat and export again to get the HD file. `export media` always prefers the HD original (like `image decrypt --force`). Stickers may need network access; voice export decodes every message, so a full export of hundreds of voices takes minutes.
 
-`export messages` reads only the requested date range from the database (cost follows the range size, not its age) and shows a progress bar; `--start/--end` are dates in the machine's local time zone. `--media image,voice,video,emoji` (or `all`) copies the media into `media/<output name>/` beside the output file and points the messages at the copies (for `json`, `arkme-json`, `txt`, `excel`, `weclone`, `html`; `chatlab` for images; not `sql`). The messages are written as they are built, so a 200,000-message group needs about 0.1 GB (`txt`) to 0.6 GB (`json`, `html`). `--sender` keeps one person's messages in every format; plain `txt` names senders by group nickname, then remark, nickname, alias, unless `--display-name` says otherwise.
+`export messages` reads only the requested date range from the database (cost follows the range size, not its age) and shows a progress bar; `--start/--end` are dates in the machine's local time zone. `--media image,voice,video,emoji` (or `all`) copies the media into `media/<output name>/` beside the output file and points the messages at the copies (for `json`, `arkme-json`, `txt`, `excel`, `weclone`, `html`; `chatlab` for images; not `sql`). Every format is written while the messages are read (`json`, `chatlab`, `html` and `excel` put the messages in a temporary `<output>.part` file next to the output first, because their header needs the totals; an export with `--media` reads the whole conversation first), so a 200,000-message group needs about 0.1 GB (`excel` about 0.2 GB). `--sender` keeps one person's messages in every format; in every format senders are named by group nickname, then remark, nickname, wxid (`--display-name group-nickname`, the default); `--display-name remark` skips the group nickname and `--display-name nickname` uses the nickname only.
+
+Message text in `export messages`: every format writes the same text for a message, so the formats can be compared line by line.
+
+| Message | Text |
+|---|---|
+| text | the text, with the `wxid:` line WeChat prepends in groups removed (a body such as `4:1` is kept) |
+| image / voice / video | `[图片]` / `[语音消息]` / `[视频]` (a media file path when `--media` copied the file) |
+| sticker | `[表情]`, or `[表情：<caption>]` when the sticker library has a caption for it (your own caption first, else the store caption) |
+| system message | `[系统: <text>]` |
+| link card | `[链接] <title>` and the URL on the next line |
+| transfer | the amount with who paid whom: `[转账] (A 转账给 B) ¥66.00` |
+| reply to a message | `<reply>[引用 <name>：<quoted text>]`; a quoted file, note, link or another reply shows as a short label or its title, never as XML |
+| forwarded chat history | `[转发的聊天记录]` followed by the messages |
+| WeChat note | `[笔记]` and the full note text (images as `[图片]`) |
+
+Some formats keep their own rules: `chatlab` writes links as `[title](URL)` and leaves system messages unwrapped (it has a `type` field for them), `html` draws link cards and system messages itself, and `weclone` leaves out replies. `txt` is `<time> '<sender>'` on one line and the text under it; names follow `--display-name`. `arkme-json` copies WeChat's own fields (`source`, `appMsgDesc`, ...) unchanged.
+
+Every format is written while the messages are read, in time order (a conversation that comes back out of order would be written in the order read). A format whose header needs totals first writes its messages to `<output>.part` and joins them when the read ends; the file is removed afterwards, also on failure, and an empty range writes no file.
 
 `chat clear-account-data --cache [--exports-dir <dir>] --yes` removes WeFlow's caches of the current account (images, voices,
 stickers, Moments, analytics) and signs the account out of the profile (`db_path`, `wxid`, `decrypt_key` and the image keys are

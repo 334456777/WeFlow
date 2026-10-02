@@ -557,6 +557,11 @@ impl Wcdb {
         self.account()?.emoticon_caption(md5)
     }
 
+    /// Every sticker caption, keyed by lower-case md5 (see `NativeAccount::emoticon_captions`).
+    pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
+        self.account()?.emoticon_captions()
+    }
+
     pub fn list_message_dbs(&self) -> Result<Value> {
         Ok(self.account()?.list_message_dbs())
     }

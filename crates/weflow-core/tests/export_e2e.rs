@@ -144,7 +144,12 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
     assert!(members.iter().any(|m| m["wxid"] == "wxid_quiet"));
     let msgs = v["messages"].as_array().unwrap();
     let system = msgs.iter().find(|m| m["localType"] == 10000).unwrap();
-    assert_eq!(system["content"], "Bob joined");
+    assert!(
+        ["[System: Bob joined]", "[系统: Bob joined]"]
+            .contains(&system["content"].as_str().unwrap()),
+        "system messages are wrapped: {}",
+        system["content"]
+    );
     // arkme-json lists each sender once and refers to it by `senderID`
     let senders = v["senders"].as_array().unwrap();
     let bob = senders.iter().find(|s| s["wxid"] == "wxid_bob").unwrap();
@@ -160,9 +165,17 @@ fn group_export_uses_group_nicknames_members_and_system_messages() {
     assert_eq!(hello["senderID"], bob["senderID"]);
 }
 
+fn txt_request(sender: Option<&str>, display_pref: DisplayPref) -> MessageExportRequest {
+    MessageExportRequest {
+        sender: sender.map(str::to_string),
+        display_pref,
+        ..request("room1@chatroom", "txt")
+    }
+}
+
 #[test]
-fn plain_txt_names_senders_and_honours_sender_and_display_name() {
-    let (hub, root, _f) = common::custom_hub("plaintxt", |f| {
+fn txt_names_senders_and_honours_sender_and_display_name() {
+    let (hub, root, _f) = common::custom_hub("txt", |f| {
         f.session_db(&[session("room1@chatroom")]);
         f.contact_db(
             &[
@@ -208,47 +221,115 @@ fn plain_txt_names_senders_and_honours_sender_and_display_name() {
 
     // default naming: group nickname, then remark, then nickname (no remark: the nickname, not the wxid)
     let r = hub
-        .export_messages_txt(
-            "room1@chatroom",
-            None,
-            None,
+        .export_messages(
+            &txt_request(None, DisplayPref::GroupNickname),
             &root.join("all.txt"),
-            None,
-            None,
         )
         .unwrap();
     assert_eq!(r["count"], 3);
     assert_eq!(headers(&read("all.txt")), ["Bob in room", "Quiet", "Me"]);
     assert!(
-        read("all.txt").contains("\n\nsecond\n\n"),
+        read("all.txt").contains("'\nsecond\n\n"),
         "the sender prefix is stripped"
     );
 
     // --sender keeps one person's messages
     let r = hub
-        .export_messages_txt(
-            "room1@chatroom",
-            None,
-            None,
+        .export_messages(
+            &txt_request(Some("wxid_quiet"), DisplayPref::GroupNickname),
             &root.join("quiet.txt"),
-            Some("wxid_quiet"),
-            None,
         )
         .unwrap();
     assert_eq!(r["count"], 1);
     assert_eq!(headers(&read("quiet.txt")), ["Quiet"]);
 
     // --display-name remark
-    hub.export_messages_txt(
-        "room1@chatroom",
-        None,
-        None,
+    hub.export_messages(
+        &txt_request(None, DisplayPref::Remark),
         &root.join("remark.txt"),
-        None,
-        Some(DisplayPref::Remark),
     )
     .unwrap();
     assert_eq!(headers(&read("remark.txt")), ["Bobby", "Quiet", "Me"]);
+
+    // SQL and WeClone are written as the messages are read, too: header first, then one entry per message
+    let sql_req = |sender: Option<&str>| MessageExportRequest {
+        format: "sql".into(),
+        ..txt_request(sender, DisplayPref::GroupNickname)
+    };
+    let r = hub
+        .export_messages(&sql_req(None), &root.join("all.sql"))
+        .unwrap();
+    assert_eq!(
+        (r["count"].as_i64(), r["format"].as_str()),
+        (Some(3), Some("sql"))
+    );
+    let sql = read("all.sql");
+    assert!(sql.starts_with("CREATE TABLE IF NOT EXISTS \"messages\""));
+    assert_eq!(sql.matches("INSERT INTO \"messages\"").count(), 3);
+    assert!(sql.contains("'second'"));
+    let r = hub
+        .export_messages(&sql_req(Some("wxid_quiet")), &root.join("quiet.sql"))
+        .unwrap();
+    assert_eq!(r["count"], 1);
+    assert_eq!(read("quiet.sql").matches("INSERT INTO").count(), 1);
+
+    let weclone = MessageExportRequest {
+        format: "weclone".into(),
+        ..txt_request(None, DisplayPref::GroupNickname)
+    };
+    hub.export_messages(&weclone, &root.join("all.csv"))
+        .unwrap();
+    let csv = read("all.csv");
+    assert!(csv.starts_with("\u{feff}id,MsgSvrID,type_name,"));
+    let rows: Vec<&str> = csv.lines().skip(1).collect();
+    assert_eq!(rows.len(), 3, "{csv}");
+    assert!(
+        rows[0].starts_with("1,") && rows[2].starts_with("3,"),
+        "{csv}"
+    );
+
+    // an empty range writes no file at all
+    let mut empty = sql_req(None);
+    empty.start = Some(1_900_000_000);
+    assert!(hub.export_messages(&empty, &root.join("none.sql")).is_err());
+    assert!(!root.join("none.sql").exists());
+
+    // every format is written while the messages are read: all of them produce a file, and no spool file stays
+    for format in weflow_core::services::MESSAGE_EXPORT_FORMATS.split(',') {
+        let format = format.trim();
+        let out = root.join(format!("all-{format}.out"));
+        let req = MessageExportRequest {
+            format: format.into(),
+            ..txt_request(None, DisplayPref::GroupNickname)
+        };
+        let r = hub.export_messages(&req, &out).unwrap();
+        assert_eq!(r["count"], 3, "{format}");
+        assert!(std::fs::metadata(&out).unwrap().len() > 0, "{format}");
+        let mut none = req;
+        none.start = Some(1_900_000_000);
+        let empty = root.join(format!("none-{format}.out"));
+        assert!(hub.export_messages(&none, &empty).is_err(), "{format}");
+        assert!(!empty.exists(), "{format}: an empty range writes no file");
+    }
+    let leftovers: Vec<_> = std::fs::read_dir(&root)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "spool files left behind: {leftovers:?}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&read("all-json.out")).expect("streamed JSON is valid");
+    assert_eq!(json["session"]["messageCount"], 3);
+    assert_eq!(json["messages"].as_array().unwrap().len(), 3);
+    let chatlab: serde_json::Value =
+        serde_json::from_str(&read("all-chatlab.out")).expect("streamed ChatLab is valid");
+    assert_eq!(chatlab["messages"].as_array().unwrap().len(), 3);
+    assert!(
+        read("all-html.out").contains("3 条消息") || read("all-html.out").contains("3 messages")
+    );
 }
 
 #[test]

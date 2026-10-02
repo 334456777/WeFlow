@@ -412,6 +412,29 @@ impl NativeAccount {
             .unwrap_or_default())
     }
 
+    /// Every sticker caption at once, keyed by lower-case md5 — the same answer as calling
+    /// [`emoticon_caption`](Self::emoticon_caption) for each md5, but in two table scans instead of two per sticker
+    /// (the `lower(md5) = lower(?)` lookup cannot use an index, so exporting a group full of stickers was slow).
+    pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
+        let mut out = std::collections::HashMap::new();
+        // same precedence as `emoticon_caption`: the user's own caption, else the first store caption (Chinese first)
+        let own = self.query(
+            &self.emoticon_db(),
+            "select md5, caption from kNonStoreEmoticonTable where caption <> ''",
+            &[],
+        )?;
+        for r in &own {
+            out.entry(text(r, "md5").to_lowercase())
+                .or_insert_with(|| text(r, "caption"));
+        }
+        let store = self.query(&self.emoticon_db(), "select md5_, caption_ from kStoreEmoticonCaptionsTable where caption_ <> '' order by (language_ like 'zh%') desc", &[])?;
+        for r in &store {
+            out.entry(text(r, "md5_").to_lowercase())
+                .or_insert_with(|| text(r, "caption_"));
+        }
+        Ok(out)
+    }
+
     // ── small diagnostics ──
 
     /// `["<path to message_N.db>", ...]`.
@@ -713,6 +736,18 @@ mod tests {
                 .unwrap(),
             ""
         );
+        let all = a.emoticon_captions().unwrap();
+        for md5 in [
+            "AABBCCDDEEFF00112233445566778899",
+            "deadbeefdeadbeefdeadbeefdeadbeef",
+            "ffffffffffffffffffffffffffffffff",
+        ] {
+            assert_eq!(
+                all.get(&md5.to_lowercase()).cloned().unwrap_or_default(),
+                a.emoticon_caption(md5).unwrap(),
+                "{md5}"
+            );
+        }
     }
 
     #[test]

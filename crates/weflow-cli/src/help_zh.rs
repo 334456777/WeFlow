@@ -69,7 +69,7 @@ const HELP: &[(&str, &str)] = &[
     ("Hook WeChat and wait for the database key (Windows: keep the command running and log in to WeChat)", "挂钩微信并等待数据库密钥（Windows：保持命令运行，并登录微信）"),
     ("Hour / weekday / month distribution", "按小时 / 星期 / 月份的分布"),
     ("How long to wait for the key, in seconds", "等待密钥的时长（秒）"),
-    ("How senders are named: group-nickname, remark or nickname (default: remark; plain txt: group nickname, then remark, nickname, alias)", "发送者的命名方式：group-nickname、remark 或 nickname（默认：remark；纯 txt 依次为群昵称、备注、昵称、别名）"),
+    ("How senders are named: group-nickname, remark or nickname (default: group-nickname, i.e. group nickname, then remark, nickname, wxid)", "发送者的命名方式：group-nickname、remark 或 nickname（默认：group-nickname，即依次取群昵称、备注、昵称、微信号）"),
     ("Import settings from the desktop app's config.json", "从桌面应用的 config.json 导入设置"),
     ("Include per-member message counts", "包含每位成员的消息数"),
     ("Key name, see the list above or `config list`", "键名，见上方列表或 `config list`"),
