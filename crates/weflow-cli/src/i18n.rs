@@ -2,28 +2,10 @@
 //! resolves to Chinese (see `weflow_core::locale`).
 
 use clap::builder::StyledStr;
-use clap::{Command, CommandFactory, Error, FromArgMatches};
+use clap::{Arg, ArgAction, Command, CommandFactory, Error, FromArgMatches};
 use weflow_core::locale::{self, translate_with, Lang};
 
 include!("help_zh.rs");
-
-/// The value of a global option given as `--name value` or `--name=value`.
-fn option_value(args: &[String], name: &str) -> Option<String> {
-    let eq = format!("{name}=");
-    let mut it = args.iter().skip(1);
-    while let Some(arg) = it.next() {
-        if arg == "--" {
-            break;
-        }
-        if let Some(v) = arg.strip_prefix(&eq) {
-            return Some(v.to_string());
-        }
-        if arg == name {
-            return it.next().cloned();
-        }
-    }
-    None
-}
 
 fn parse_lang(value: &str) -> Option<Lang> {
     match value {
@@ -33,82 +15,17 @@ fn parse_lang(value: &str) -> Option<Lang> {
     }
 }
 
-/// Settle the output language before clap runs (help is printed during parsing). Precedence: `--lang`,
-/// `WEFLOW_LANG`, the language saved in the config file, then the system.
-fn prescan_lang(args: &[String]) {
-    if let Some(lang) = option_value(args, "--lang").as_deref().and_then(parse_lang) {
-        locale::set(lang);
-        return;
-    }
+/// Settle the output language before clap runs (help is printed during parsing). Precedence: `WEFLOW_LANG`,
+/// the language saved in the config file (`weflow lang`), then the system.
+fn prescan_lang() {
     if std::env::var("WEFLOW_LANG").is_ok_and(|v| !v.trim().is_empty()) {
         return;
     }
-    let path = option_value(args, "--config")
-        .map(std::path::PathBuf::from)
-        .or_else(weflow_core::config::default_config_path);
-    let saved = path
+    let saved = weflow_core::config::default_config_path()
         .and_then(|p| weflow_core::config::ConfigStore::load(&p).ok())
         .and_then(|c| c.lang);
     if let Some(lang) = saved.as_deref().and_then(parse_lang) {
         locale::set(lang);
-    }
-}
-
-/// `weflow --lang zh` on its own (no command) saves the language in the config file.
-fn save_language_if_alone(args: &[String]) {
-    // `--config <path>` may accompany it; anything else (a command, other options) means a normal run.
-    let mut rest: Vec<&str> = Vec::new();
-    let mut it = args.iter().skip(1);
-    while let Some(arg) = it.next() {
-        if arg == "--config" {
-            it.next();
-        } else if !arg.starts_with("--config=") {
-            rest.push(arg);
-        }
-    }
-    let alone = match rest.as_slice() {
-        [flag, _] => *flag == "--lang",
-        [one] => one.starts_with("--lang="),
-        _ => false,
-    };
-    if !alone {
-        return;
-    }
-    let Some(value) = option_value(args, "--lang") else {
-        return;
-    };
-    let Some(lang) = parse_lang(&value) else {
-        return;
-    };
-    let path = option_value(args, "--config")
-        .map(std::path::PathBuf::from)
-        .or_else(weflow_core::config::default_config_path);
-    let result = path
-        .clone()
-        .ok_or_else(|| "failed to locate platform config directory".to_string())
-        .and_then(|path| {
-            let mut config =
-                weflow_core::config::ConfigStore::load(&path).map_err(|e| e.to_string())?;
-            config.lang = Some(value.clone());
-            config.save(&path).map_err(|e| e.to_string())?;
-            Ok(path)
-        });
-    match result {
-        Ok(_) => {
-            let message = match lang {
-                Lang::Zh => "已将语言设置为中文",
-                Lang::En => "Language set to English",
-            };
-            println!("{message}");
-            std::process::exit(0);
-        }
-        Err(err) => {
-            eprint!(
-                "{}",
-                weflow_core::render::render_error(&weflow_core::locale::localize(err), None)
-            );
-            std::process::exit(3);
-        }
     }
 }
 
@@ -119,6 +36,40 @@ fn tr_str(text: &str) -> Option<String> {
 fn translate_styled(text: Option<&StyledStr>) -> Option<StyledStr> {
     text.and_then(|t| tr_str(&t.to_string()))
         .map(StyledStr::from)
+}
+
+/// The command tree with `-h` / `--help` and `-V` / `-v` / `--version` kept working but left out of the
+/// option lists.
+pub fn build_command<T: CommandFactory>() -> Command {
+    fn hide_flags(cmd: Command, root: bool) -> Command {
+        let names: Vec<_> = cmd
+            .get_subcommands()
+            .filter(|c| c.get_name() != "help")
+            .map(|c| c.get_name().to_string())
+            .collect();
+        let mut cmd = cmd.disable_help_flag(true).disable_version_flag(true).arg(
+            Arg::new("help")
+                .short('h')
+                .long("help")
+                .action(ArgAction::Help)
+                .hide(true),
+        );
+        if root {
+            cmd = cmd.arg(
+                Arg::new("version")
+                    .short('V')
+                    .short_alias('v')
+                    .long("version")
+                    .action(ArgAction::Version)
+                    .hide(true),
+            );
+        }
+        for name in names {
+            cmd = cmd.mut_subcommand(name, |sub| hide_flags(sub, false));
+        }
+        cmd
+    }
+    hide_flags(T::command(), true)
 }
 
 /// Replace the help text of a command tree with its Chinese translation.
@@ -287,6 +238,8 @@ fn inline_notes(line: &str) -> String {
         ),
         ("Print help", "打印帮助"),
         ("Print version", "打印版本"),
+        ("[OPTIONS]", "[选项]"),
+        ("<COMMAND>", "<命令>"),
         ("invalid digit found in string", "包含无效的数字字符"),
         (
             "cannot parse integer from empty string",
@@ -308,12 +261,11 @@ fn inline_notes(line: &str) -> String {
 /// Parse the command line; help and parse errors are printed in the active language.
 pub fn parse<T: CommandFactory + FromArgMatches>() -> T {
     let args: Vec<String> = std::env::args().collect();
-    save_language_if_alone(&args);
-    prescan_lang(&args);
+    prescan_lang();
     if locale::current() == Lang::En {
         return T::parse_from_clap();
     }
-    let cmd = localize_command(T::command());
+    let cmd = localize_command(build_command::<T>());
     match cmd
         .try_get_matches_from(&args)
         .and_then(|m| T::from_arg_matches(&m))
@@ -348,10 +300,10 @@ trait ParseFromClap: Sized {
 
 impl<T: CommandFactory + FromArgMatches> ParseFromClap for T {
     fn parse_from_clap() -> Self {
-        let mut matches = T::command().get_matches();
+        let mut matches = build_command::<T>().get_matches();
         match T::from_arg_matches_mut(&mut matches) {
             Ok(value) => value,
-            Err(err) => err.format(&mut T::command()).exit(),
+            Err(err) => err.format(&mut build_command::<T>()).exit(),
         }
     }
 }
@@ -386,7 +338,7 @@ mod tests {
             }
         }
         let mut missing = Vec::new();
-        walk(&crate::Cli::command(), &mut missing);
+        walk(&build_command::<crate::Cli>(), &mut missing);
         missing.sort();
         missing.dedup();
         assert!(
@@ -426,7 +378,7 @@ mod tests {
             }
         }
         let mut missing = Vec::new();
-        walk(&crate::Cli::command(), "", &mut missing);
+        walk(&build_command::<crate::Cli>(), "", &mut missing);
         assert!(
             missing.is_empty(),
             "no help text for:\n{}",

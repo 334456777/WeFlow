@@ -1,4 +1,4 @@
-//! Human-readable rendering of command results (the default output; `--json` / `--pretty` print JSON instead).
+//! Human-readable rendering of command results (the default output; `--json` prints JSON instead).
 //!
 //! Objects become aligned `key: value` lines, arrays of flat objects become tables, anything else is indented.
 

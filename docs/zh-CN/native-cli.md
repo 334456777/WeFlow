@@ -2,11 +2,11 @@
 
 [English](../native-cli.md) | **简体中文**
 
-WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json`（紧凑）或 `--pretty`（缩进）时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。
+WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json` 时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。
 
 ## 语言
 
-语言跟随系统(中文系统输出中文,否则输出英文)。优先级依次为:`--lang`、`WEFLOW_LANG`、配置文件中保存的语言(单独运行 `weflow --lang zh` 会保存;`weflow config unset lang` 可删除)、环境变量（第一个已设置且非空的变量决定结果）、操作系统显示语言：
+语言跟随系统(中文系统输出中文,否则输出英文)。优先级依次为:`WEFLOW_LANG`、配置文件中保存的语言(运行 `weflow lang zh` 会保存;`weflow config unset lang` 可删除)、环境变量（第一个已设置且非空的变量决定结果）、操作系统显示语言：
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
 
@@ -17,7 +17,8 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ## 命令
 
 ```
-weflow config    list | get | set | unset | clear | import
+weflow config    path | list | get | set | unset | clear | import
+weflow lang      en | zh
 weflow db        detect | scan <root> | wxid | test | open
 weflow key       db | image | scan-image <user-dir>
 weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
@@ -43,7 +44,7 @@ weflow cache     clear-all
 
 数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库,因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`。
 
-进度：运行超过延迟时间（默认 5 秒；可用 `--progress-delay <秒>`、环境变量 `WEFLOW_PROGRESS_DELAY` 或 `weflow config set progress_delay_seconds <秒>` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 不受影响）。`--no-progress` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
+进度：运行超过延迟时间（默认 5 秒；可用 `weflow config set progress_delay_seconds <秒>` 或环境变量 `WEFLOW_PROGRESS_DELAY` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 不受影响）。`weflow config set no_progress true` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` 按媒体消息遍历（同一张图发两次算两条，所以 `found` 可能大于 `chat images` 列出的唯一文件数）。`missing` 统计文件不在磁盘上（微信里没下载过）或无法解析的消息，按类型分列在 `missingByKind`。`thumbOnly` 统计只导出了缩略图的图片（每条图片记录也带 `isThumb`）；在微信里点开原图后再导出即可得到高清图。`export media` 始终优先使用高清原图（等同 `image decrypt --force`）。表情可能需要联网；语音导出要逐条解码，几百条语音的全量导出需要数分钟。
 
@@ -99,6 +100,8 @@ weflow cache     clear-all
 
 配置放在 `WEFLOW_HOME`,否则是平台配置目录下的 `weflow`:配置文件 `config.json`(也接受 TOML),缓存、日志、运行时分目录存放。
 `weflow config import` 迁移桌面端可读的设置,加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。
+
+连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `weflow config set` 设置，没有命令行覆盖选项。`weflow config set --help` 会解释每个键。`weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`weflow config unset config_path` 或传入默认路径即恢复），`weflow config path` 显示当前使用的路径。`weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
 
 **为什么数据库层是纯 Rust。** 命令行原计划通过 FFI 调用闭源的 `wcdb_api` 库。这个库带有效期检查(2026-09-30 23:59:59 之后
 `wcdb_init` 返回 `-1000`)和未经核实的网络代码,所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4),用纯 Rust **只读**

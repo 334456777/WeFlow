@@ -52,7 +52,7 @@ pub fn failure(error: ErrorPayload) -> CliResponse<Value> {
 
 static JSON_OUTPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// `--json` / `--pretty`: print JSON (results on stdout, events on stderr) instead of text for people.
+/// `--json`: print JSON (results on stdout, events on stderr) instead of text for people.
 pub fn set_json_output(on: bool) {
     JSON_OUTPUT.store(on, std::sync::atomic::Ordering::Relaxed);
 }

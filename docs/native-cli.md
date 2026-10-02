@@ -3,19 +3,19 @@
 **English** | [简体中文](zh-CN/native-cli.md)
 
 A Rust command-line build of WeFlow's backend. By default a command prints human-readable text on stdout (aligned `key: value` lines, tables for lists) and
-errors on stderr, with the same exit codes. With `--json` (compact) or `--pretty` (indented) every command prints one JSON document on stdout
+errors on stderr, with the same exit codes. With `--json` every command prints one JSON document on stdout
 (`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`.
 
 ## Language
 
-The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `--lang`, `WEFLOW_LANG`, the language saved in the config file (`weflow --lang zh` on its own saves it; `weflow config unset lang` removes it), the environment
+The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `WEFLOW_LANG`, the language saved in the config file (`weflow lang zh` saves it; `weflow config unset lang` removes it), the environment
 (the first variable that is set and non-empty decides), then the operating system's display language:
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
 
 A value starting with `zh` (`zh_CN.UTF-8`, `zh-TW`, `zh`) gives Chinese; anything else, including `C` and `POSIX`, gives English.
 When none of the variables is set (usual on Windows) the OS display language decides (Windows, macOS); if it cannot be determined, English.
-`--lang en|zh <command>` overrides all of this for a single run.
+`WEFLOW_LANG=en|zh` overrides the saved language for a single run or shell session.
 
 The language affects `--help`, usage errors, runtime errors, progress text and generated text: TXT/Excel export labels (`[Image]` / `[图片]`), the default official-account payment
 merchant name, and the default AI insight prompt. JSON keys, error codes and the HTTP API's error responses stay English.
@@ -23,7 +23,8 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ## Commands
 
 ```
-weflow config    list | get | set | unset | clear | import
+weflow config    path | list | get | set | unset | clear | import
+weflow lang      en | zh
 weflow db        detect | scan <root> | wxid | test | open
 weflow key       db | image | scan-image <user-dir>
 weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
@@ -49,8 +50,8 @@ weflow cache     clear-all
 
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
 
-Progress: commands that run longer than the delay (default 5 seconds; `--progress-delay <s>`, env `WEFLOW_PROGRESS_DELAY`, or `weflow config set progress_delay_seconds <s>`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
-terminal; stdout is never touched). `--no-progress` turns it off, `--progress` prints machine-readable NDJSON events instead.
+Progress: commands that run longer than the delay (default 5 seconds; `weflow config set progress_delay_seconds <s>` or env `WEFLOW_PROGRESS_DELAY`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
+terminal; stdout is never touched). `weflow config set no_progress true` turns it off, `--progress` prints machine-readable NDJSON events instead.
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` walks the media
 messages (an image sent twice counts twice, so `found` can exceed the unique files listed by `chat images`). `missing` counts
@@ -122,6 +123,11 @@ The vendor WASM decoder (`WxIsaac64`) is not among them: it is ported to pure Ru
 Configuration lives in `WEFLOW_HOME`, otherwise in `weflow` under the platform's configuration directory: `config.json` (TOML is
 accepted too), with caches, logs and the runtime in separate directories. `weflow config import` migrates the desktop app's
 readable settings and skips the encrypted `safe:` / `lock:` values with a hint to set them again.
+
+The connection settings (`db_path`, `wxid`, `decrypt_key`) are only read from the config file, set them with `weflow config set`; there are no command-line
+overrides. `weflow config set --help` explains every key. `weflow config set config_path <file>` makes later runs use another config file (it is remembered in
+`config_path` next to the default location; `weflow config unset config_path` or the default path switches back), `weflow config path` shows the one in use.
+`weflow config set current_profile <name>` switches the active profile (created when it does not exist). `-h` / `--help` and `-V` / `-v` / `--version` work everywhere but are left out of the option lists.
 
 **Why the database layer is pure Rust.** The CLI was first meant to call the closed-source `wcdb_api` library through FFI. That
 library has an expiry check (after 2026-09-30 23:59:59 `wcdb_init` returns `-1000`) and unverified network code, so the CLI now
