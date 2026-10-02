@@ -1338,7 +1338,16 @@ fn read_export_stream<R>(
                 req.start,
                 req.end,
                 false,
-                &mut |page| {
+                &mut |mut page| {
+                    // drop other senders' rows here, before they are copied to the parser
+                    if let Some(f) = opts.sender_filter.map(str::trim).filter(|f| !f.is_empty()) {
+                        page.retain(|row| {
+                            crate::message::is_same_wxid(
+                                &crate::message::row_sender(row, opts.session_id, opts.my_wxid),
+                                f,
+                            )
+                        });
+                    }
                     let _ = tx.send(page);
                 },
             )
@@ -1474,7 +1483,7 @@ pub fn clean_account_dir_name(dir_name: &str) -> String {
 
 /// Read a session's messages inside `[start, end)` (Unix seconds) with a bounded WCDB cursor,
 /// so the cost follows the range size, not how far back the range lies. Reports progress
-/// (`total` is the session's message count when the whole history is requested, else unknown).
+/// (`total` is the session's message count, an upper bound when a range is requested).
 /// Reads a conversation page by page (oldest first); `on_page` gets the rows of each page that fall inside
 /// `[start, end)`.
 fn fetch_message_pages(
@@ -1487,15 +1496,13 @@ fn fetch_message_pages(
 ) -> AppResult<()> {
     let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
     let (begin, finish) = (start.map_or(0, clamp), end.map_or(0, clamp));
-    let total = if begin == 0 && finish == 0 {
-        wcdb.message_count(session_id).unwrap_or(0).max(0) as usize
-    } else {
-        0
-    };
+    // the session's message count is an upper bound for a range, which still gives a percentage
+    let total = wcdb.message_count(session_id).unwrap_or(0).max(0) as usize;
     let cursor = wcdb
         .open_message_cursor(session_id, 2000, true, begin, finish, lite)
         .map_err(|e| AppError::native(e.to_string()))?;
     let mut seen = 0usize;
+    let mut scanned = 0usize;
     let result = (|| -> AppResult<()> {
         loop {
             let (page, more) = wcdb
@@ -1505,6 +1512,7 @@ fn fetch_message_pages(
             if items.is_empty() {
                 break;
             }
+            scanned += items.len();
             let kept: Vec<Value> = items
                 .into_iter()
                 .filter(|m| {
@@ -1517,8 +1525,8 @@ fn fetch_message_pages(
             crate::output::progress(
                 "messages",
                 "reading messages",
-                seen,
-                if total == 0 { 0 } else { total.max(seen) },
+                scanned,
+                if total == 0 { 0 } else { total.max(scanned) },
             );
             if !more {
                 break;
