@@ -487,6 +487,18 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// 引用消息带引用人名字，链接带 URL，转账带「谁转给谁」，系统消息统一用 `[系统: …]` 包裹，
     /// 表情 `[表情]`、语音 `[语音消息]`、图片 `[图片]`（不含媒体文件路径）。
     pub fn message_text(&mut self, msg: &ExportMsg) -> String {
+        self.message_text_with(msg, Some(LinkStyle::AppendUrl), true)
+    }
+
+    /// [`message_text`](Self::message_text) 的可调版本：`link` 为链接卡片的写法（`None` 保持解析出的
+    /// `[链接] 标题`，用于 HTML 这类另有链接卡片的格式），`wrap_system` 控制系统消息是否包成 `[系统: …]`
+    /// （ChatLab 有独立的 system 类型、HTML 有专门的样式，不再包一层）。
+    pub fn message_text_with(
+        &mut self,
+        msg: &ExportMsg,
+        link: Option<LinkStyle>,
+        wrap_system: bool,
+    ) -> String {
         let my = self.my_wxid.clone();
         let mut content = if msg.local_type == 3 {
             Some("[图片]".to_string())
@@ -509,10 +521,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
         if let Some(q) = &quoted {
             content = Some(build_quoted_reply_text(q));
         }
-        if quoted.is_none() && msg.local_type != 3 {
-            if let Some(l) =
-                format_link_card_export_text(&msg.content, msg.local_type, LinkStyle::AppendUrl)
-            {
+        if let (None, Some(style), true) = (&quoted, link, msg.local_type != 3) {
+            if let Some(l) = format_link_card_export_text(&msg.content, msg.local_type, style) {
                 content = Some(l);
             }
         }
@@ -533,7 +543,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             43 => "[视频]".into(),
             _ => String::new(),
         });
-        if matches!(msg.local_type, 10000 | 266_287_972_401) && !text.is_empty() {
+        if wrap_system && matches!(msg.local_type, 10000 | 266_287_972_401) && !text.is_empty() {
             return format!("[{}: {text}]", chrome("系统", "System"));
         }
         text
@@ -544,32 +554,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
         if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
             return (m.relative_path.clone(), false);
         }
-        let my = self.my_wxid.clone();
-        let mut content = format_plain_export_content(
-            &msg.content,
-            msg.local_type,
-            &PlainOpts::default(),
-            None,
-            Some(&my),
-            Some(&msg.sender_username),
-            msg.is_send,
-            msg.emoji_caption.as_deref(),
-        );
-        if is_transfer_export_content(&content) && !msg.content.is_empty() {
-            if let Some(desc) = self.transfer_desc(&msg.content) {
-                content = append_transfer_desc(&content, &desc);
-            }
-        }
-        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
-        let has_quote = quoted.is_some();
-        if let Some(q) = quoted {
-            content = build_quoted_reply_text(&q);
-        } else if let Some(link) =
-            format_link_card_export_text(&msg.content, msg.local_type, LinkStyle::AppendUrl)
-        {
-            content = link;
-        }
-        (content, has_quote)
+        let has_quote = is_text_quote_message(msg.local_type, &msg.content);
+        (self.message_text(msg), has_quote)
     }
 
     fn sessions_members(&mut self, msgs: &[ExportMsg]) -> Vec<String> {
@@ -660,32 +646,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
                     ..Default::default()
                 }
             };
-            let my = self.my_wxid.clone();
-            let mut content = parse_message_content(
-                &msg.content,
-                msg.local_type,
-                Some(&my),
-                Some(&msg.sender_username),
-                msg.emoji_caption.as_deref(),
-            );
-            if is_readable_system_message(msg.local_type, &msg.content) {
-                let t = extract_readable_system_message_text(&msg.content);
-                if !t.is_empty() {
-                    content = Some(t);
-                }
-            }
-            if let Some(c) = content.clone() {
-                if is_transfer_export_content(&c) && !msg.content.is_empty() {
-                    if let Some(desc) = self.transfer_desc(&msg.content) {
-                        content = Some(append_transfer_desc(&c, &desc));
-                    }
-                }
-            }
-            if let Some(link) =
-                format_link_card_export_text(&msg.content, msg.local_type, LinkStyle::Markdown)
-            {
-                content = Some(link);
-            }
+            let mut content = Some(self.message_text_with(msg, Some(LinkStyle::Markdown), false));
             if let Some(media) = msg.media.as_ref().filter(|_| msg.local_type == 3) {
                 content = Some(media.relative_path.clone());
             }
@@ -1328,14 +1289,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
                     .display_pref
                     .pick(&sender_wxid, &nickname, &remark, "");
             }
-            let text = parse_message_content(
-                &msg.content,
-                msg.local_type,
-                Some(&my),
-                Some(&msg.sender_username),
-                msg.emoji_caption.as_deref(),
-            )
-            .unwrap_or_default();
+            let text = self.message_text(msg);
             let src = match type_name {
                 "image" => msg.image_dat_name.clone().unwrap_or_default(),
                 "sticker" => msg.emoji_cdn_url.clone().unwrap_or_default(),
@@ -1540,10 +1494,17 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     // ─────────────────────────────────── HTML ───────────────────────────────────
 
+    /// HTML 气泡里的文本：与其他格式同一套写法，但链接卡片、系统消息样式由 HTML 自己渲染，不再改写。
+    fn html_message_text(&mut self, msg: &ExportMsg) -> String {
+        if msg.content.is_empty() && msg.local_type != 47 {
+            return String::new();
+        }
+        self.message_text_with(msg, None, false)
+    }
+
     pub fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
         let session = self.session.clone();
         let is_group = session.is_group;
-        let my = self.my_wxid.clone();
         let rows: Vec<&ExportMsg> = msgs.iter().collect();
         let total = rows.len();
         let mut data: Vec<String> = Vec::with_capacity(total);
@@ -1569,11 +1530,11 @@ impl<'a, 'n> Exporter<'a, 'n> {
             let quoted = self.quoted_with_names(msg.local_type, &msg.content);
             let mut text = match &quoted {
                 Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
-                _ => html_message_text(msg, &my),
+                _ => self.html_message_text(msg),
             };
             if let Some(q) = &quoted {
                 if q.reply_text.is_empty() {
-                    text = html_message_text(msg, &my);
+                    text = self.html_message_text(msg);
                 }
             }
             if is_transfer_export_content(&text) && !msg.content.is_empty() {
@@ -1910,42 +1871,6 @@ fn avatar_fallback(name: &str) -> String {
         .unwrap_or_else(|| "?".into())
 }
 
-fn html_message_text(msg: &ExportMsg, my: &str) -> String {
-    if msg.content.is_empty() && msg.local_type == 47 {
-        return format_emoji_semantic_text(msg.emoji_caption.as_deref());
-    }
-    if msg.content.is_empty() {
-        return String::new();
-    }
-    let readable = extract_readable_system_message_text(&msg.content);
-    if !readable.is_empty() && is_readable_system_message(msg.local_type, &msg.content) {
-        return readable;
-    }
-    if msg.local_type == 1 {
-        return strip_sender_prefix(&msg.content);
-    }
-    if msg.local_type == 34 {
-        return parse_message_content(
-            &msg.content,
-            msg.local_type,
-            Some(my),
-            Some(&msg.sender_username),
-            msg.emoji_caption.as_deref(),
-        )
-        .unwrap_or_default();
-    }
-    format_plain_export_content(
-        &msg.content,
-        msg.local_type,
-        &PlainOpts::default(),
-        None,
-        Some(my),
-        Some(&msg.sender_username),
-        msg.is_send,
-        msg.emoji_caption.as_deref(),
-    )
-}
-
 pub fn html_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for c in value.chars() {
@@ -2203,6 +2128,84 @@ mod tests {
         assert_eq!(t[4], "[表情]");
         assert_eq!(t[5], "好看[引用 Me Nick：[图片]]");
         assert_eq!(t[6], "4:1");
+    }
+
+    /// 各格式共用同一套文本：SQL / Excel 行 / 导出器 txt 与 JSON 一致；ChatLab 链接用 Markdown、
+    /// 系统消息不再包裹；WeClone 丢弃引用消息。
+    #[test]
+    fn formats_share_message_text() {
+        let rows = vec![
+            json!({"local_id": "1", "create_time": "1700000000", "local_type": "10000", "message_content": "\"Bob\" 撤回了一条消息"}),
+            json!({"local_id": "2", "create_time": "1700000001", "local_type": "34", "message_content": "", "sender_username": "wxid_bob"}),
+            json!({"local_id": "3", "create_time": "1700000002", "local_type": "49", "message_content": "wxid_bob:\n<msg><appmsg><title>Doc</title><type>5</type><url>https://example.com/x</url></appmsg></msg>", "sender_username": "wxid_bob"}),
+            json!({"local_id": "4", "create_time": "1700000003", "local_type": "103079215153", "message_content": "wxid_bob:\n<msg><appmsg><title /><des>预览</des><type>24</type><recorditem><![CDATA[<recordinfo><datalist><dataitem datatype=\"1\"><datadesc>笔记&#x0A;全文</datadesc></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>", "sender_username": "wxid_bob"}),
+            json!({"local_id": "5", "create_time": "1700000004", "local_type": "244813135921", "message_content": "wxid_bob:\n<msg><appmsg><title>好的</title><type>57</type><refermsg><type>1</type><displayname>Me</displayname><content>hello</content><svrid>1</svrid></refermsg></appmsg></msg>", "sender_username": "wxid_bob"}),
+        ];
+        let mut msgs = collect_messages(
+            &rows,
+            &CollectOptions {
+                session_id: "wxid_bob",
+                my_wxid: "wxid_me",
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        );
+        msgs.push({
+            let mut m = msgs[1].clone();
+            m.local_type = 47;
+            m.emoji_caption = Some("打call".into());
+            m
+        });
+        let mut names = NameBook::from_map(HashMap::new());
+        let mut ex = Exporter {
+            session: SessionInfo {
+                id: "wxid_bob".into(),
+                display_name: "Bob".into(),
+                nickname: "Bob".into(),
+                remark: String::new(),
+                is_group: false,
+            },
+            my_wxid: "wxid_me".into(),
+            raw_my_wxid: "wxid_me".into(),
+            my_display: "Me".into(),
+            group_nicks: HashMap::new(),
+            group_members: Vec::new(),
+            names: &mut names,
+            settings: Settings::default(),
+        };
+        let sys = |t: &str| format!("[{}: {t}]", chrome("系统", "System"));
+        // 导出器 txt / SQL（plain_row_content）与 JSON（message_text）一致
+        for m in &msgs {
+            assert_eq!(ex.plain_row_content(m).0, ex.message_text(m));
+        }
+        let sql = ex.render_sql(&msgs);
+        for want in [
+            sys("\"Bob\" 撤回了一条消息"),
+            "[语音消息]".into(),
+            "[链接] Doc".into(),
+            "https://example.com/x".into(),
+            "[笔记]\n笔记\n全文".into(),
+            "好的[引用 Me：hello]".into(),
+            "[表情：打call]".into(),
+        ] {
+            assert!(
+                sql.contains(&want.replace('\'', "''")),
+                "sql: {want}\n{sql}"
+            );
+        }
+        // ChatLab：链接 Markdown，系统消息不包裹
+        let chatlab = ex.build_chatlab(&msgs).to_string();
+        assert!(
+            chatlab.contains("[Doc](https://example.com/x)"),
+            "{chatlab}"
+        );
+        assert!(chatlab.contains("\\\"Bob\\\" 撤回了一条消息"), "{chatlab}");
+        assert!(!chatlab.contains(&sys("\"Bob\"")), "{chatlab}");
+        // WeClone：引用消息不进训练数据，其余同样的写法
+        let weclone = ex.render_weclone(&msgs);
+        assert!(!weclone.contains("好的"), "{weclone}");
+        assert!(weclone.contains("[语音消息]"), "{weclone}");
     }
 
     #[test]
