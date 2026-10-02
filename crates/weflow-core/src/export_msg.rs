@@ -499,6 +499,19 @@ impl<'a, 'n> Exporter<'a, 'n> {
         link: Option<LinkStyle>,
         wrap_system: bool,
     ) -> String {
+        if let Some(text) = plain_message_text(msg) {
+            return text;
+        }
+        self.message_text_generic(msg, link, wrap_system)
+    }
+
+    /// 完整流程（不走快速路径）。
+    fn message_text_generic(
+        &mut self,
+        msg: &ExportMsg,
+        link: Option<LinkStyle>,
+        wrap_system: bool,
+    ) -> String {
         let my = self.my_wxid.clone();
         let mut content = if msg.local_type == 3 {
             Some("[图片]".to_string())
@@ -1871,6 +1884,29 @@ fn avatar_fallback(name: &str) -> String {
         .unwrap_or_else(|| "?".into())
 }
 
+/// 文本、图片、语音、视频、表情这几种最常见的消息（约占 9 成）不含 XML，不需要引用 / 链接 / 转账 / 系统消息的
+/// 解析（每一步都要把内容规范化、跑正则），直接给出结果；内容里带 appmsg / sysmsg / refermsg 的仍走完整流程。
+/// 结果与完整流程一致（有测试对照）。
+fn plain_message_text(msg: &ExportMsg) -> Option<String> {
+    if !matches!(msg.local_type, 1 | 3 | 34 | 43 | 47) {
+        return None;
+    }
+    let c = msg.content.as_str();
+    if ["appmsg", "sysmsg", "refermsg"]
+        .iter()
+        .any(|k| c.contains(k))
+    {
+        return None;
+    }
+    Some(match msg.local_type {
+        1 => strip_sender_prefix(c),
+        3 => "[图片]".into(),
+        34 => "[语音消息]".into(),
+        43 => "[视频]".into(),
+        _ => format_emoji_semantic_text(msg.emoji_caption.as_deref()),
+    })
+}
+
 pub fn html_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for c in value.chars() {
@@ -2206,6 +2242,77 @@ mod tests {
         let weclone = ex.render_weclone(&msgs);
         assert!(!weclone.contains("好的"), "{weclone}");
         assert!(weclone.contains("[语音消息]"), "{weclone}");
+    }
+
+    /// 常见消息类型的快速路径与完整流程结果一致。
+    #[test]
+    fn plain_message_text_matches_the_full_path() {
+        let samples: Vec<(i64, &str, Option<&str>)> = vec![
+            (1, "hello", None),
+            (1, "wxid_bob:\nhi", None),
+            (1, "1:3-1:6", None),
+            (1, "", None),
+            (1, "  带空格  ", None),
+            (1, "[转账] 看起来像转账的文字", None),
+            (1, "<凡人修仙传>看了100多集", None),
+            (3, "wxid_bob:\n<msg><img md5=\"x\"/></msg>", None),
+            (3, "", None),
+            (34, "wxid_bob:\n<msg><voicemsg length=\"1\"/></msg>", None),
+            (34, "", None),
+            (
+                43,
+                "wxid_bob:\n<msg><videomsg playlength=\"3\"/></msg>",
+                None,
+            ),
+            (43, "", None),
+            (47, "wxid_bob:\n<msg><emoji md5=\"a\"/></msg>", None),
+            (47, "", None),
+            (
+                47,
+                "wxid_bob:\n<msg><emoji md5=\"a\"/></msg>",
+                Some("打call"),
+            ),
+        ];
+        let mut names = NameBook::from_map(HashMap::new());
+        let mut ex = Exporter {
+            session: SessionInfo {
+                id: "room@chatroom".into(),
+                display_name: "Room".into(),
+                nickname: "Room".into(),
+                remark: String::new(),
+                is_group: true,
+            },
+            my_wxid: "wxid_me".into(),
+            raw_my_wxid: "wxid_me".into(),
+            my_display: "Me".into(),
+            group_nicks: HashMap::new(),
+            group_members: Vec::new(),
+            names: &mut names,
+            settings: Settings::default(),
+        };
+        for (ty, content, caption) in samples {
+            let msg = ExportMsg {
+                local_type: ty,
+                content: content.into(),
+                sender_username: "wxid_bob".into(),
+                emoji_caption: caption.map(str::to_string),
+                ..Default::default()
+            };
+            let fast = plain_message_text(&msg)
+                .unwrap_or_else(|| panic!("no fast path: {ty} {content:?}"));
+            // 完整流程：内容里夹一个 appmsg 字样会关掉快速路径，所以改走 message_text_generic
+            let full = ex.message_text_generic(&msg, Some(LinkStyle::AppendUrl), true);
+            assert_eq!(fast, full, "type {ty}, content {content:?}");
+        }
+        // 含 appmsg / sysmsg / refermsg 的内容不走快速路径
+        for k in ["appmsg", "sysmsg", "refermsg"] {
+            let msg = ExportMsg {
+                local_type: 1,
+                content: format!("<{k}>"),
+                ..Default::default()
+            };
+            assert!(plain_message_text(&msg).is_none(), "{k}");
+        }
     }
 
     #[test]

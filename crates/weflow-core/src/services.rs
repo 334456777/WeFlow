@@ -694,14 +694,33 @@ impl ServiceHub {
             sender_filter: req.sender.as_deref(),
         };
         let mut collected: Vec<crate::message::ExportMsg> = Vec::new();
-        fetch_message_pages(
-            &wcdb,
-            &req.session_id,
-            req.start,
-            req.end,
-            false,
-            &mut |page| collected.extend(collect_messages(&page, &opts)),
-        )?;
+        // Reading and decrypting pages and turning them into messages are different bottlenecks (I/O + SQLite vs.
+        // CPU), so they run side by side: one thread reads pages, this one parses them; the sticker caption table
+        // loads on a third meanwhile. The small channel bounds how many raw pages wait in memory.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<Value>>(4);
+        let captions = std::thread::scope(|scope| {
+            let reader = scope.spawn(|| {
+                let tx = tx; // dropped when the read ends, which ends the loop below
+                fetch_message_pages(
+                    &wcdb,
+                    &req.session_id,
+                    req.start,
+                    req.end,
+                    false,
+                    &mut |page| {
+                        let _ = tx.send(page);
+                    },
+                )
+            });
+            let captions = scope.spawn(|| wcdb.emoticon_captions().unwrap_or_default());
+            for page in rx {
+                collected.extend(collect_messages(&page, &opts));
+            }
+            reader
+                .join()
+                .map_err(|_| AppError::runtime("message reader thread panicked"))??;
+            Ok::<_, AppError>(captions.join().unwrap_or_default())
+        })?;
         collected.sort_by(|a, b| {
             a.create_time
                 .cmp(&b.create_time)
@@ -712,7 +731,7 @@ impl ServiceHub {
                 "no messages found for this session in the given range",
             ));
         }
-        attach_emoji_captions(&wcdb, &mut collected);
+        attach_emoji_captions(&captions, &mut collected);
 
         Ok((wcdb, collected))
     }
@@ -1291,20 +1310,17 @@ pub struct MessageExportRequest {
 }
 
 /// 查表情描述（用户自己的表情文字，否则商店表情的中文描述），写进 `emoji_caption`，
-/// 导出时显示为 `[表情：描述]`。同一个 md5 只查一次。
+/// 导出时显示为 `[表情：描述]`。描述表（md5 → 描述）整张一次读出，见 `emoticon_captions`。
 fn attach_emoji_captions(
-    wcdb: &weflow_native::wcdb::Wcdb,
+    table: &std::collections::HashMap<String, String>,
     messages: &mut [crate::message::ExportMsg],
 ) {
-    let mut captions: Option<std::collections::HashMap<String, String>> = None;
     for m in messages.iter_mut() {
         let md5 = match m.local_type {
             47 => m.emoji_md5.clone(),
             _ => crate::message::appmsg_emoticon_md5(&m.content),
         };
         let Some(md5) = md5 else { continue };
-        // loaded on the first sticker only, in one go (not one query per md5)
-        let table = captions.get_or_insert_with(|| wcdb.emoticon_captions().unwrap_or_default());
         m.emoji_caption = table
             .get(&md5.to_lowercase())
             .map(|c| c.trim().to_string())
