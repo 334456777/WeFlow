@@ -102,7 +102,7 @@ your account; without them (or without images) it prints a "not verified" note. 
 `%APPDATA%\weflow\config.json`, the extracted runtime in `%APPDATA%\weflow\runtime\<version>\<target>`. WXGF images need
 `ffmpeg` on `PATH` (or `FFMPEG_PATH`) — set it up before exporting images.
 
-Useful export options: `--start 2025-01-01 --end 2025-12-31` (local time, inclusive), `--display-name remark|nickname|group-nickname`, `--sender wxid_xxx`, `--excel-compact`. Add `--media all` (or `image,voice,video,emoji`) to copy the media next to the export and link it from the messages; `weflow export media --help` exports media on its own.
+Useful export options: `--start 2025-01-01 --end 2025-12-31` (local time, inclusive), `--display-name group-nickname|remark|nickname` (default `group-nickname`: group nickname, then remark, nickname, wxid), `--sender wxid_xxx`, `--excel-compact`. Add `--media all` (or `image,voice,video,emoji`) to copy the media next to the export and link it from the messages; `weflow export media --help` exports media on its own.
 
 ## What the CLI does not support
 

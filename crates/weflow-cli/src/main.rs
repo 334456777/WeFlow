@@ -602,7 +602,7 @@ enum ExportSubcommand {
         /// Only export messages sent by this wxid
         #[arg(long)]
         sender: Option<String>,
-        /// How senders are named: group-nickname, remark or nickname (default: remark)
+        /// How senders are named: group-nickname, remark or nickname (default: group-nickname, i.e. group nickname, then remark, nickname, wxid)
         #[arg(long)]
         display_name: Option<String>,
         /// Excel: compact columns (time, sender, type, content)
@@ -1820,7 +1820,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                     )))
                 }
             };
-            let display_pref = parse_display(display_name.as_deref().unwrap_or("remark"))?;
+            let display_pref = parse_display(display_name.as_deref().unwrap_or("group-nickname"))?;
             let safe_name: String = session_id
                 .chars()
                 .map(|c| {
