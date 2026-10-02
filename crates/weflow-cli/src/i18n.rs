@@ -39,7 +39,8 @@ fn translate_styled(text: Option<&StyledStr>) -> Option<StyledStr> {
 }
 
 /// The command tree with `-h` / `--help` and `-V` / `-v` / `--version` kept working but left out of the
-/// option lists.
+/// option lists. A command with required arguments shows its help when it is given none at all (like a
+/// command that needs a subcommand).
 pub fn build_command<T: CommandFactory>() -> Command {
     fn hide_flags(cmd: Command, root: bool) -> Command {
         let names: Vec<_> = cmd
@@ -47,6 +48,10 @@ pub fn build_command<T: CommandFactory>() -> Command {
             .filter(|c| c.get_name() != "help")
             .map(|c| c.get_name().to_string())
             .collect();
+        let mut cmd = cmd;
+        if cmd.get_arguments().any(|a| a.is_required_set()) {
+            cmd = cmd.arg_required_else_help(true);
+        }
         let mut cmd = cmd.disable_help_flag(true).disable_version_flag(true).arg(
             Arg::new("help")
                 .short('h')
