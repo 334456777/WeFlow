@@ -743,10 +743,9 @@ pub fn parse_quote_message(content: &str) -> (Option<String>, Option<String>) {
         "47" => "[动画表情]".into(),
         "49" => {
             let inner = parse_type49_message(&decode_html(&refer_content));
-            if inner.xml_type.as_deref() == Some("57") && inner.link_title.is_some() {
-                inner.link_title.unwrap()
-            } else {
-                "[链接]".into()
+            match (inner.xml_type.as_deref(), inner.link_title) {
+                (Some("57"), Some(title)) => title,
+                _ => "[链接]".into(),
             }
         }
         "42" => "[名片]".into(),
@@ -836,7 +835,7 @@ fn packed_bytes(row: &Value) -> Option<Vec<u8>> {
         return None;
     }
     let compact: String = s.split_whitespace().collect();
-    if compact.len() % 2 == 0 && compact.chars().all(|c| c.is_ascii_hexdigit()) {
+    if compact.len().is_multiple_of(2) && compact.chars().all(|c| c.is_ascii_hexdigit()) {
         let bytes: Option<Vec<u8>> = (0..compact.len() / 2)
             .map(|i| u8::from_str_radix(&compact[i * 2..i * 2 + 2], 16).ok())
             .collect();

@@ -355,14 +355,16 @@ impl ServiceHub {
             .and_then(crate::decrypt::parse_aes_key);
 
         let version = crate::decrypt::detect_dat_version(&data);
-        let (final_data, ext) = if version > 0 && xor_key.is_some() {
-            let result =
-                crate::decrypt::decrypt_dat(&data, xor_key.unwrap(), aes_key_bytes.as_ref())
+        let (final_data, ext) = match xor_key {
+            Some(xor_key) if version > 0 => {
+                let result = crate::decrypt::decrypt_dat(&data, xor_key, aes_key_bytes.as_ref())
                     .map_err(|err| AppError::runtime(err.to_string()))?;
-            (result.data, result.ext)
-        } else {
-            let ext = crate::decrypt::detect_image_extension(&data).to_string();
-            (data, ext)
+                (result.data, result.ext)
+            }
+            _ => {
+                let ext = crate::decrypt::detect_image_extension(&data).to_string();
+                (data, ext)
+            }
         };
 
         if let Some(out_path) = out {
@@ -429,7 +431,7 @@ impl ServiceHub {
             let result = weflow_native::wxkey::run_key_helper(&self.ctx.runtime_dir, &["--db-key"])
                 .map_err(|err| AppError::native(err.to_string()))?;
             let key = result.trim().to_string();
-            return Ok(json!({ "decrypt_key": key, "method": "key_helper" }));
+            Ok(json!({ "decrypt_key": key, "method": "key_helper" }))
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
@@ -762,12 +764,12 @@ impl ServiceHub {
         let mut names = NameBook::new(|username: &str| {
             wcdb.contact(username)
                 .ok()
-                .filter(|v| v.is_object() && !v.as_object().map_or(true, |o| o.is_empty()))
+                .filter(|v| v.is_object() && !v.as_object().is_none_or(|o| o.is_empty()))
                 .map(|v| ContactInfo::from_value(username, &v))
         });
         let is_group = session_id.ends_with("@chatroom");
         let (group_nicks, group_members) = if is_group {
-            let nick_value = wcdb.group_nicknames(&session_id).unwrap_or(Value::Null);
+            let nick_value = wcdb.group_nicknames(session_id).unwrap_or(Value::Null);
             let nick_obj = nick_value
                 .get("nicknames")
                 .and_then(Value::as_object)
@@ -779,7 +781,7 @@ impl ServiceHub {
                         .collect()
                 })
                 .unwrap_or_default();
-            let members_value = wcdb.group_members(&session_id).unwrap_or(Value::Null);
+            let members_value = wcdb.group_members(session_id).unwrap_or(Value::Null);
             (
                 build_trusted_group_nicknames(entries),
                 extract_member_ids(&members_value),
@@ -788,8 +790,8 @@ impl ServiceHub {
             (std::collections::HashMap::new(), Vec::new())
         };
 
-        let session_display = names.display_name(&session_id);
-        let session_contact = names.get(&session_id);
+        let session_display = names.display_name(session_id);
+        let session_contact = names.get(session_id);
         let my_display = names.display_name(&my_wxid);
         let mut exporter = Exporter {
             session: SessionInfo {
@@ -1274,7 +1276,7 @@ fn wechat_pids() -> Vec<u32> {
 
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
     let mut i = 0;
     while i + 3 <= data.len() {
         let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8) | (data[i + 2] as u32);
@@ -1517,7 +1519,7 @@ fn fetch_message_pages(
                 .into_iter()
                 .filter(|m| {
                     let ts = crate::message::get_timestamp_seconds(m);
-                    start.map_or(true, |s| ts >= s) && end.map_or(true, |e| ts < e)
+                    start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts < e)
                 })
                 .collect();
             seen += kept.len();
@@ -1559,6 +1561,32 @@ fn extract_member_ids(value: &Value) -> Vec<String> {
         }
     }
     out
+}
+
+/// `normalizeTimestamp` of the WCDB wrapper: ms → s, clamped to i32.
+pub(crate) fn normalize_timestamp(input: i64) -> i32 {
+    if input <= 0 {
+        return 0;
+    }
+    let seconds = if input > 1_000_000_000_000 {
+        input / 1000
+    } else {
+        input
+    };
+    seconds.clamp(0, i32::MAX as i64) as i32
+}
+
+/// `normalizeRange`: open end → now, end never before begin.
+pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
+    let b = normalize_timestamp(begin);
+    let mut e = normalize_timestamp(end);
+    if e <= 0 {
+        e = normalize_timestamp(chrono::Utc::now().timestamp_millis());
+    }
+    if b > 0 && e < b {
+        e = b;
+    }
+    (b, e)
 }
 
 #[cfg(test)]
@@ -1664,30 +1692,4 @@ mod export_tests {
         assert_eq!(extract_member_ids(&json!(["x", "y"])), vec!["x", "y"]);
         assert!(extract_member_ids(&Value::Null).is_empty());
     }
-}
-
-/// `normalizeTimestamp` of the WCDB wrapper: ms → s, clamped to i32.
-pub(crate) fn normalize_timestamp(input: i64) -> i32 {
-    if input <= 0 {
-        return 0;
-    }
-    let seconds = if input > 1_000_000_000_000 {
-        input / 1000
-    } else {
-        input
-    };
-    seconds.clamp(0, i32::MAX as i64) as i32
-}
-
-/// `normalizeRange`: open end → now, end never before begin.
-pub(crate) fn normalize_range(begin: i64, end: i64) -> (i32, i32) {
-    let b = normalize_timestamp(begin);
-    let mut e = normalize_timestamp(end);
-    if e <= 0 {
-        e = normalize_timestamp(chrono::Utc::now().timestamp_millis());
-    }
-    if b > 0 && e < b {
-        e = b;
-    }
-    (b, e)
 }

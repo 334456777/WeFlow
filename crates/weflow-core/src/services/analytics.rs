@@ -283,7 +283,7 @@ impl ServiceHub {
                         .or_else(|| row.get("is_send"))
                         .or_else(|| row.get("isSend"))
                         .filter(|v| !v.is_null());
-                    let mut is_send = raw.map_or(false, |v| {
+                    let mut is_send = raw.is_some_and(|v| {
                         v.as_str()
                             .map_or(v.as_i64() == Some(1) || v.as_bool() == Some(true), |s| {
                                 s == "1"
@@ -599,7 +599,7 @@ impl ServiceHub {
                 (num(&stat["total"]), Value::Object(o))
             })
             .collect();
-        rankings.sort_by(|a, b| b.0.cmp(&a.0));
+        rankings.sort_by_key(|a| std::cmp::Reverse(a.0));
         rankings.truncate(limit);
         Ok(rankings.into_iter().map(|r| r.1).collect())
     }

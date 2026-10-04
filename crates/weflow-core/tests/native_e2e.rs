@@ -696,7 +696,7 @@ fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
         "nothing selected"
     );
     let r = hub
-        .clear_current_account_data(true, &[exports.clone()])
+        .clear_current_account_data(true, std::slice::from_ref(&exports))
         .unwrap();
     assert_eq!(
         (r["success"].clone(), r["profileReset"].clone()),

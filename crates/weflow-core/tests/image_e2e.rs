@@ -19,7 +19,7 @@ fn encrypt_v2(plain: &[u8], key: &[u8; 16], xor: u8) -> Vec<u8> {
     let xor_len = 100;
     let mut padded = plain[..aes_len].to_vec();
     let pad = 16 - padded.len() % 16;
-    padded.extend(std::iter::repeat(pad as u8).take(pad));
+    padded.extend(std::iter::repeat_n(pad as u8, pad));
     let mut enc = ecb::Encryptor::<aes::Aes128>::new(key.into());
     let mut out = vec![0x07, 0x08, 0x56, 0x32, 0x08, 0x07];
     out.extend_from_slice(&(aes_len as i32).to_le_bytes());

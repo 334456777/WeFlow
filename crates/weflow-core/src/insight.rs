@@ -178,7 +178,7 @@ impl RecordStore {
             .scoped(scope)
             .map(|r| (r.created_at, r.id.clone()))
             .collect();
-        mine.sort_by(|a, b| b.0.cmp(&a.0));
+        mine.sort_by_key(|a| std::cmp::Reverse(a.0));
         let keep: std::collections::HashSet<String> = mine
             .into_iter()
             .take(MAX_RECORDS_PER_SCOPE)
@@ -205,7 +205,7 @@ impl RecordStore {
                 )),
             }
         }
-        contacts.sort_by(|a, b| b.3.cmp(&a.3));
+        contacts.sort_by_key(|a| std::cmp::Reverse(a.3));
         let keyword = f.keyword.trim().to_lowercase();
         let offset = f.offset.unwrap_or(0).max(0) as usize;
         let limit = f.limit.filter(|l| *l != 0).unwrap_or(100).clamp(1, 200) as usize;
@@ -222,7 +222,7 @@ impl RecordStore {
                             .contains(&keyword))
             })
             .collect();
-        filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        filtered.sort_by_key(|a| std::cmp::Reverse(a.created_at));
         json!({
             "success": true,
             "records": filtered.iter().skip(offset).take(limit).map(|r| r.summary()).collect::<Vec<_>>(),

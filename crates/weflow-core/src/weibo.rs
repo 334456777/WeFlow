@@ -268,7 +268,7 @@ async fn fetch_detail(id: &str, cookie: &str) -> Result<Value, String> {
         USER_AGENT,
     )
     .await?;
-    if v.get("id").map_or(true, |x| x.is_null()) && v.get("idstr").map_or(true, |x| x.is_null()) {
+    if v.get("id").is_none_or(|x| x.is_null()) && v.get("idstr").is_none_or(|x| x.is_null()) {
         return Err("failed to load the Weibo post".into());
     }
     Ok(v)

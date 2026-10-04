@@ -284,7 +284,7 @@ impl PushEngine {
             .hub
             .config_value("messagePushFilterList")
             .as_array()
-            .map_or(false, |l| {
+            .is_some_and(|l| {
                 l.iter()
                     .any(|i| i.as_str().map(str::trim) == Some(session_id))
             });
@@ -392,8 +392,8 @@ impl PushEngine {
                 .get(&s.username)
                 .or_else(|| self.baseline.get(&s.username))
                 .copied();
-            let decreased = prev.map_or(false, |p| s.unread_count < p.unread_count);
-            let changed = prev.map_or(false, |p| s.unread_count != p.unread_count);
+            let decreased = prev.is_some_and(|p| s.unread_count < p.unread_count);
+            let changed = prev.is_some_and(|p| s.unread_count != p.unread_count);
             let scan_revokes = decreased || (changed && is_revoke_session_summary(s));
             let result = self.push_session_messages(s, prev.as_ref(), scan_revokes, &mut out);
             self.update_inspected_baseline(s, previous.get(&s.username), &result);
@@ -457,7 +457,7 @@ impl PushEngine {
 
     fn is_fresh(map: &mut HashMap<String, Instant>, key: &str) -> bool {
         prune(map);
-        map.get(key).map_or(false, |t| t.elapsed() < RECENT_TTL)
+        map.get(key).is_some_and(|t| t.elapsed() < RECENT_TTL)
     }
 
     fn bump_baseline(&mut self, session_id: &str, m: &ChatMessage) {
@@ -733,7 +733,7 @@ impl PushEngine {
                 !db.is_empty() && !table.is_empty() && (since <= 0 || *last >= since)
             })
             .collect();
-        v.sort_by(|a, b| b.2.cmp(&a.2));
+        v.sort_by_key(|a| std::cmp::Reverse(a.2));
         v
     }
 
@@ -886,9 +886,7 @@ impl PushEngine {
                     continue;
                 }
             }
-            if best.map_or(true, |b| {
-                compare_position(m, b) == std::cmp::Ordering::Greater
-            }) {
+            if best.is_none_or(|b| compare_position(m, b) == std::cmp::Ordering::Greater) {
                 best = Some(m);
             }
         }
@@ -973,7 +971,7 @@ impl PushEngine {
             }
         }
         let nicks = self.hub.group_nicknames_pub(chatroom_id);
-        let trusted = crate::export_msg::build_trusted_group_nicknames(nicks.into_iter());
+        let trusted = crate::export_msg::build_trusted_group_nicknames(nicks);
         self.group_nicknames
             .insert(chatroom_id.to_string(), (trusted.clone(), Instant::now()));
         trusted
@@ -1298,7 +1296,7 @@ impl PushBroker {
         while inner
             .buffer
             .front()
-            .map_or(false, |(_, _, at)| now.duration_since(*at) > RECENT_TTL)
+            .is_some_and(|(_, _, at)| now.duration_since(*at) > RECENT_TTL)
         {
             inner.buffer.pop_front();
         }

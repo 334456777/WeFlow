@@ -696,6 +696,23 @@ unsafe extern "C" fn io_device_characteristics(_: *mut ffi::sqlite3_file) -> c_i
     ffi::SQLITE_IOCAP_IMMUTABLE
 }
 
+/// WAL checksum helpers for the tests (same algorithm as SQLite's, big-endian words).
+#[cfg(test)]
+fn sqlcipher_checksum(data: &[u8]) -> (u32, u32) {
+    sqlcipher_checksum_from(data, (0, 0))
+}
+
+#[cfg(test)]
+fn sqlcipher_checksum_from(data: &[u8], (mut s0, mut s1): (u32, u32)) -> (u32, u32) {
+    for c in data.as_chunks::<8>().0 {
+        let a = u32::from_be_bytes(c[0..4].try_into().unwrap());
+        let b = u32::from_be_bytes(c[4..8].try_into().unwrap());
+        s0 = s0.wrapping_add(a).wrapping_add(s1);
+        s1 = s1.wrapping_add(b).wrapping_add(s0);
+    }
+    (s0, s1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -980,21 +997,4 @@ mod tests {
             "snapshots are read-only"
         );
     }
-}
-
-/// WAL checksum helpers for the tests (same algorithm as SQLite's, big-endian words).
-#[cfg(test)]
-fn sqlcipher_checksum(data: &[u8]) -> (u32, u32) {
-    sqlcipher_checksum_from(data, (0, 0))
-}
-
-#[cfg(test)]
-fn sqlcipher_checksum_from(data: &[u8], (mut s0, mut s1): (u32, u32)) -> (u32, u32) {
-    for c in data.chunks_exact(8) {
-        let a = u32::from_be_bytes(c[0..4].try_into().unwrap());
-        let b = u32::from_be_bytes(c[4..8].try_into().unwrap());
-        s0 = s0.wrapping_add(a).wrapping_add(s1);
-        s1 = s1.wrapping_add(b).wrapping_add(s0);
-    }
-    (s0, s1)
 }

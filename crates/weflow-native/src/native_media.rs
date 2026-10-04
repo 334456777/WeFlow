@@ -508,7 +508,7 @@ mod tests {
                 .map(|i| json!({ "sort_seq": next(4) * 1000, "create_time": next(3), "local_id": next(3), "i": i }))
                 .collect();
             let mut sorted = rows.clone();
-            sorted.sort_by(|a, b| sort_key(b).cmp(&sort_key(a)));
+            sorted.sort_by_key(|a| std::cmp::Reverse(sort_key(a)));
             for k in [0usize, 1, 3, 10, 100] {
                 let mut top = Newest::new(k);
                 rows.iter().cloned().for_each(|r| top.push(r));
@@ -598,13 +598,13 @@ mod tests {
         );
         assert_eq!(
             contents(
-                &a.search_messages("e", Some("wxid_bob"), 50, 0, (T0 + 3 * DAY) as i64, 0)
+                &a.search_messages("e", Some("wxid_bob"), 50, 0, T0 + 3 * DAY, 0)
                     .unwrap()
             ),
             ["see you", "later, compressed"]
         );
         assert_eq!(
-            a.search_messages("e", Some("wxid_bob"), 50, 0, 0, T0 as i64 - 1)
+            a.search_messages("e", Some("wxid_bob"), 50, 0, 0, T0 - 1)
                 .unwrap(),
             json!([])
         );

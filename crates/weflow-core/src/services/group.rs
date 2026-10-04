@@ -601,7 +601,7 @@ impl ServiceHub {
                 || lw.contains("@chatroom")
                 || lw.starts_with("gh_")
                 || FRIEND_EXCLUDE.contains(&lw.as_str()))
-                && contact.as_ref().map_or(false, |c| c.local_type == 1);
+                && contact.as_ref().is_some_and(|c| c.local_type == 1);
             let is_owner = owner.as_deref() == Some(wxid.as_str());
             let count = lookup_candidates
                 .iter()
@@ -724,7 +724,7 @@ impl ServiceHub {
                 (Value::Object(o), count)
             })
             .collect();
-        groups.sort_by(|a, b| b.1.cmp(&a.1));
+        groups.sort_by_key(|a| std::cmp::Reverse(a.1));
         Ok(groups.into_iter().map(|g| g.0).collect())
     }
 
@@ -892,7 +892,7 @@ impl ServiceHub {
                 )
             })
             .collect();
-        rankings.sort_by(|a, b| b.1.cmp(&a.1));
+        rankings.sort_by_key(|a| std::cmp::Reverse(a.1));
         rankings.truncate(limit);
         let names_in: Vec<String> = rankings.iter().map(|r| r.0.clone()).collect();
         let (names, avatars) = self.names_and_avatars(&wcdb, &names_in);
@@ -982,7 +982,7 @@ impl ServiceHub {
         if others > 0 {
             media.push((-1, "其他".into(), others));
         }
-        media.sort_by(|a, b| b.2.cmp(&a.2));
+        media.sort_by_key(|a| std::cmp::Reverse(a.2));
         let total: i64 = media.iter().map(|m| m.2).sum();
         Ok(
             json!({ "typeCounts": media.iter().map(|(t, n, c)| json!({ "type": t, "name": n, "count": c })).collect::<Vec<_>>(), "total": total }),
@@ -1131,7 +1131,7 @@ impl ServiceHub {
                         .iter()
                         .filter_map(|k| row.get(*k))
                         .find(|v| !v.is_null());
-                    let is_send = is_send_raw.map_or(false, |v| {
+                    let is_send = is_send_raw.is_some_and(|v| {
                         crate::api::js_parse_int(
                             &v.as_str()
                                 .map(str::to_string)
@@ -1226,7 +1226,7 @@ impl ServiceHub {
             |counts: &HashMap<String, i64>, order: &[String], n: usize| -> Vec<(String, i64)> {
                 let mut v: Vec<(String, i64)> =
                     order.iter().map(|k| (k.clone(), counts[k])).collect();
-                v.sort_by(|a, b| b.1.cmp(&a.1)); // stable: ties keep first-seen order like JS Map + sort
+                v.sort_by_key(|a| std::cmp::Reverse(a.1)); // stable: ties keep first-seen order like JS Map + sort
                 v.truncate(n);
                 v
             };
@@ -1594,8 +1594,8 @@ impl ServiceHub {
                 let row = (5 + i) as u32;
                 ws.write_number_with_format(row, 0, (i + 1) as f64, &wrap)
                     .map_err(x)?;
-                for c in 1..5 {
-                    ws.write_with_format(row, c as u16, r[c].as_str(), &wrap)
+                for (c, cell) in r.iter().enumerate().take(5).skip(1) {
+                    ws.write_with_format(row, c as u16, cell.as_str(), &wrap)
                         .map_err(x)?;
                 }
             }
@@ -1786,8 +1786,8 @@ impl ServiceHub {
                 ws.set_column_width(col as u16, *w).map_err(x)?;
             }
             for (i, r) in rows.iter().enumerate() {
-                for c in 0..5 {
-                    ws.write_with_format((4 + i) as u32, c as u16, r[c].as_str(), &wrap)
+                for (c, cell) in r.iter().enumerate().take(5) {
+                    ws.write_with_format((4 + i) as u32, c as u16, cell.as_str(), &wrap)
                         .map_err(x)?;
                 }
             }

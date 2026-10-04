@@ -61,7 +61,7 @@ fn collect_t_dat(dir: &Path, out: &mut Vec<PathBuf>, max: usize) {
             collect_t_dat(&p, out, max);
         } else if t.is_file()
             && p.file_name()
-                .map_or(false, |n| n.to_string_lossy().ends_with("_t.dat"))
+                .is_some_and(|n| n.to_string_lossy().ends_with("_t.dat"))
         {
             out.push(p);
         }

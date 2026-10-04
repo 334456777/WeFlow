@@ -17,7 +17,7 @@ fn decode_voice_blob(raw: &str) -> Option<Vec<u8>> {
     if trimmed.is_empty() {
         return None;
     }
-    if trimmed.len() % 2 == 0 && trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if trimmed.len().is_multiple_of(2) && trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
         let bytes: Option<Vec<u8>> = (0..trimmed.len())
             .step_by(2)
             .map(|i| u8::from_str_radix(&trimmed[i..i + 2], 16).ok())
@@ -156,13 +156,13 @@ impl ServiceHub {
         let mut create_time = create_time.filter(|t| *t != 0);
         let mut sender: Option<String> = sender.filter(|s| !s.is_empty()).map(str::to_string);
         let mut server = server_id.map(normalize_unsigned_token).unwrap_or_default();
-        let strong = create_time.map_or(false, |t| t > 0) && !server.is_empty();
+        let strong = create_time.is_some_and(|t| t > 0) && !server.is_empty();
         if !strong {
             if let Ok(row) = wcdb.message_by_id(
                 session_id,
                 local_id.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
             ) {
-                if row.as_object().map_or(false, |o| !o.is_empty()) {
+                if row.as_object().is_some_and(|o| !o.is_empty()) {
                     let my = self.my_wxid_cleaned();
                     if let Some(m) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
                         .into_iter()
@@ -262,7 +262,7 @@ impl ServiceHub {
             if !seen.insert(key.clone()) {
                 continue;
             }
-            if std::fs::metadata(dir.join(format!("{key}.wav"))).map_or(false, |m| m.len() > 0) {
+            if std::fs::metadata(dir.join(format!("{key}.wav"))).is_ok_and(|m| m.len() > 0) {
                 continue;
             }
             let sender = item

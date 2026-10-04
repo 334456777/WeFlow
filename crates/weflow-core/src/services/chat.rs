@@ -142,7 +142,7 @@ impl ServiceHub {
     }
 
     fn lookup_result(&self, row: Value, session_id: &str) -> AppResult<Value> {
-        if row.is_null() || row.as_object().map_or(true, |o| o.is_empty()) {
+        if row.is_null() || row.as_object().is_none_or(|o| o.is_empty()) {
             return Err(AppError::runtime("message not found"));
         }
         let my = self.my_wxid_cleaned();
@@ -254,7 +254,7 @@ impl ServiceHub {
         let contact = wcdb
             .contact(id)
             .ok()
-            .filter(|v| v.as_object().map_or(false, |o| !o.is_empty()));
+            .filter(|v| v.as_object().is_some_and(|o| !o.is_empty()));
         let field = |keys: &[&str]| {
             contact
                 .as_ref()
@@ -328,7 +328,7 @@ impl ServiceHub {
                 "min_create_time",
                 "minCreateTime",
             ]);
-            if f > 0 && first.map_or(true, |x| f < x) {
+            if f > 0 && first.is_none_or(|x| f < x) {
                 first = Some(f);
             }
             let l = pick(&[
@@ -339,7 +339,7 @@ impl ServiceHub {
                 "max_create_time",
                 "maxCreateTime",
             ]);
-            if l > 0 && last.map_or(true, |x| l > x) {
+            if l > 0 && last.is_none_or(|x| l > x) {
                 last = Some(l);
             }
         }
@@ -705,7 +705,7 @@ impl ServiceHub {
                 session_rows.push((name, num(s, "sort_timestamp").max(num(s, "sortTimestamp"))));
             }
         }
-        session_rows.sort_by(|a, b| b.1.cmp(&a.1));
+        session_rows.sort_by_key(|a| std::cmp::Reverse(a.1));
         let requested = q.session_id.clone().unwrap_or_default();
         let targets: Vec<String> = if requested.trim().is_empty() {
             session_rows.iter().map(|s| s.0.clone()).collect()
@@ -823,7 +823,7 @@ impl ServiceHub {
             .filter(|m| m.local_type == 3 && (m.image_md5.is_some() || m.image_dat_name.is_some()))
             .map(|m| (m.create_time, json!({ "imageMd5": m.image_md5, "imageDatName": m.image_dat_name, "createTime": if m.create_time > 0 { json!(m.create_time) } else { Value::Null } })))
             .collect();
-        images.sort_by(|a, b| b.0.cmp(&a.0));
+        images.sort_by_key(|a| std::cmp::Reverse(a.0));
         let mut seen = HashSet::new();
         let images: Vec<Value> = images
             .into_iter()
@@ -851,7 +851,7 @@ impl ServiceHub {
             rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
             session_id,
         );
-        msgs.sort_by(|a, b| b.create_time.cmp(&a.create_time));
+        msgs.sort_by_key(|a| std::cmp::Reverse(a.create_time));
         let mut seen = HashSet::new();
         let list: Vec<Value> = msgs
             .into_iter()
@@ -977,7 +977,7 @@ impl ServiceHub {
             match wcdb
                 .contact(username)
                 .ok()
-                .filter(|v| v.as_object().map_or(false, |o| !o.is_empty()))
+                .filter(|v| v.as_object().is_some_and(|o| !o.is_empty()))
             {
                 Some(c) => ["remark", "nickName", "nick_name", "alias"]
                     .iter()

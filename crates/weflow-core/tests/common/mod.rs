@@ -2,7 +2,7 @@
 //! (`weflow_native::fixture`). There is no mock database library any more.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::services::ServiceHub;
@@ -47,7 +47,7 @@ pub fn custom_hub_with(
 }
 
 fn hub_for(
-    root: &PathBuf,
+    root: &Path,
     fixture: &Fixture,
     tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
 ) -> ServiceHub {

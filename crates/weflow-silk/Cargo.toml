@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "SILK v3 voice decoder (vendored Skype SILK SDK 1.0.9), the codec behind WeChat voice messages"
 
+[lints]
+workspace = true
+
 [dependencies]
 
 [build-dependencies]

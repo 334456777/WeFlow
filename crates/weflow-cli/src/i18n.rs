@@ -270,9 +270,7 @@ pub fn parse<T: CommandFactory + FromArgMatches>() -> T {
     if locale::current() == Lang::Zh {
         cmd = localize_command(cmd);
     }
-    let parsed = cmd
-        .try_get_matches()
-        .and_then(|m| T::from_arg_matches(&m));
+    let parsed = cmd.try_get_matches().and_then(|m| T::from_arg_matches(&m));
     match parsed {
         Ok(value) => value,
         Err(err) => exit_with(err),

@@ -275,7 +275,7 @@ mod tests {
         let raw_part = &plain[aes_len..plain.len() - xor_len];
         let pad = 16 - aes_part.len() % 16;
         let mut padded = aes_part.to_vec();
-        padded.extend(std::iter::repeat(pad as u8).take(pad));
+        padded.extend(std::iter::repeat_n(pad as u8, pad));
         let mut enc = ecb::Encryptor::<aes::Aes128>::new(key.into());
         let mut cipher = Vec::new();
         for chunk in padded.chunks(16) {

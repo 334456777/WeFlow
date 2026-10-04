@@ -107,7 +107,7 @@ fn verify_token(cfg: &HttpConfig, headers: &HeaderMap, params: &Params) -> bool 
     }
     params
         .get("access_token")
-        .map_or(false, |t| safe_equal(t.trim(), expected))
+        .is_some_and(|t| safe_equal(t.trim(), expected))
 }
 
 fn query_params(uri: &axum::http::Uri) -> Params {

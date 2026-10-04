@@ -12,7 +12,7 @@ fn run(cmd: &str, args: &[&str]) -> Option<String> {
 fn main() {
     let commit = run("git", &["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".into());
     let dirty = run("git", &["status", "--porcelain", "--untracked-files=no"])
-        .map_or(false, |s| !s.is_empty());
+        .is_some_and(|s| !s.is_empty());
     let stamp = run("date", &["-u", "+%Y-%m-%d %H:%MZ"]).unwrap_or_else(|| "unknown".into());
     println!(
         "cargo:rustc-env=WEFLOW_BUILD_INFO={commit}{} {stamp}",

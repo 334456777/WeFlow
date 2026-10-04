@@ -468,7 +468,7 @@ impl ServiceHub {
         for s in sessions.iter_mut().filter(|s| {
             s["username"]
                 .as_str()
-                .map_or(false, |u| u.trim().starts_with("gh_"))
+                .is_some_and(|u| u.trim().starts_with("gh_"))
         }) {
             let name = s["username"].as_str().unwrap_or("").to_string();
             let (mut total, mut latest_snapshot) = (0i64, 0i64);
@@ -772,7 +772,7 @@ impl ServiceHub {
                     .contains(&k)
                     || s["displayName"]
                         .as_str()
-                        .map_or(false, |d| !d.is_empty() && d.to_lowercase().contains(&k))
+                        .is_some_and(|d| !d.is_empty() && d.to_lowercase().contains(&k))
             });
         }
         filtered.truncate(limit);
@@ -835,9 +835,9 @@ impl ServiceHub {
                 ["username", "nickname", "remark", "displayName"]
                     .iter()
                     .any(|k| {
-                        c.get(*k).and_then(Value::as_str).map_or(false, |v| {
-                            !v.is_empty() && v.to_lowercase().contains(&keyword)
-                        })
+                        c.get(*k)
+                            .and_then(Value::as_str)
+                            .is_some_and(|v| !v.is_empty() && v.to_lowercase().contains(&keyword))
                     })
             });
         }
@@ -975,7 +975,7 @@ impl ServiceHub {
             .filter(|(_, m)| {
                 m.sender_username
                     .as_deref()
-                    .map_or(true, |s| s.trim().is_empty())
+                    .is_none_or(|s| s.trim().is_empty())
             })
             .map(|(i, _)| i)
             .collect();
@@ -1073,15 +1073,15 @@ impl ServiceHub {
         for m in messages {
             let info =
                 api::resolve_chatlab_sender_info(m, talker, &my, is_group, &names, &group_nicks);
-            if !members.contains_key(&info.sender) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = members.entry(info.sender) {
                 let mut o = Map::new();
-                o.insert("platformId".into(), json!(info.sender));
+                o.insert("platformId".into(), json!(slot.key()));
                 o.insert("accountName".into(), json!(info.account_name));
                 if let Some(g) = info.group_nickname {
                     o.insert("groupNickname".into(), json!(g));
                 }
-                member_order.push(info.sender.clone());
-                members.insert(info.sender, o);
+                member_order.push(slot.key().clone());
+                slot.insert(o);
             }
         }
         // avatars
@@ -1917,7 +1917,7 @@ fn truthy(v: &Value) -> bool {
         Value::Null => false,
         Value::Bool(b) => *b,
         Value::String(s) => !s.is_empty(),
-        Value::Number(n) => n.as_f64().map_or(true, |f| f != 0.0),
+        Value::Number(n) => n.as_f64() != Some(0.0),
         _ => true,
     }
 }
@@ -1945,7 +1945,7 @@ impl ServiceHub {
                 is_group
                     || m.sender_username
                         .as_deref()
-                        .map_or(true, |s| s.is_empty() || s == session_id)
+                        .is_none_or(|s| s.is_empty() || s == session_id)
                     || m.is_send == Some(1)
             })
             .cloned()
@@ -2031,8 +2031,8 @@ impl ServiceHub {
                 let msgs = chat_msg::map_rows(&rows.as_array().cloned().unwrap_or_default(), &my);
                 let mut seen: HashSet<(i64, i64)> = HashSet::new();
                 for m in msgs {
-                    let in_range = start.map_or(true, |s| m.create_time >= s)
-                        && end.map_or(true, |e| m.create_time < e);
+                    let in_range = start.is_none_or(|s| m.create_time >= s)
+                        && end.is_none_or(|e| m.create_time < e);
                     if m.local_type == *code && in_range && seen.insert((m.local_id, m.create_time))
                     {
                         work.push((sid.clone(), kind, m));

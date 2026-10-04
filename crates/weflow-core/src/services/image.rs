@@ -930,7 +930,7 @@ impl ServiceHub {
                 local_id.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
             )
             .map_err(|e| AppError::native(e.to_string()))?;
-        if row.as_object().map_or(true, |o| o.is_empty()) {
+        if row.as_object().is_none_or(|o| o.is_empty()) {
             return Err(AppError::runtime("message not found"));
         }
         let my = self.my_wxid_cleaned();

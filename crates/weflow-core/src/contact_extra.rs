@@ -78,7 +78,7 @@ fn extra_buffer_bytes(row: &Value) -> Option<Vec<u8>> {
     let text = value_text(field(row, &["extra_buffer", "extraBuffer"])?);
     let compact: String = text.split_whitespace().collect();
     if compact.len() < 2
-        || compact.len() % 2 != 0
+        || !compact.len().is_multiple_of(2)
         || !compact.chars().all(|c| c.is_ascii_hexdigit())
     {
         return None;
