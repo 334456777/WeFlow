@@ -1,5 +1,6 @@
 //! Keeps the Markdown docs self-consistent: relative links and `#anchors` resolve, every English doc has a
-//! zh-CN twin (and the reverse), and every crate is listed in the architecture tables of `native-cli.md`.
+//! zh-CN twin (and the reverse), every crate is listed in the architecture tables of `native-cli.md`, and commas
+//! next to Chinese characters are full-width (`，`). The commas are only reported, never rewritten.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -35,7 +36,8 @@ fn rel(path: &Path) -> String {
         .join("/")
 }
 
-/// Text with fenced code blocks and inline code removed, so examples such as `[title](URL)` are not links.
+/// Text with fenced code blocks blanked and inline code replaced by a placeholder, so examples such as
+/// `[title](URL)` are not links. Line numbers are preserved.
 fn strip_code(text: &str) -> String {
     let inline = Regex::new(r"`[^`\n]*`").unwrap();
     let mut out = String::new();
@@ -43,12 +45,10 @@ fn strip_code(text: &str) -> String {
     for line in text.lines() {
         if line.trim_start().starts_with("```") {
             fenced = !fenced;
-            continue;
+        } else if !fenced {
+            out.push_str(&inline.replace_all(line, "\u{1}"));
         }
-        if !fenced {
-            out.push_str(&inline.replace_all(line, ""));
-            out.push('\n');
-        }
+        out.push('\n');
     }
     out
 }
@@ -180,4 +180,29 @@ fn every_crate_is_in_the_architecture_tables() {
             "{doc} architecture table lacks: {missing:?}"
         );
     }
+}
+
+/// An ASCII comma next to a Han character, optionally with closing/opening brackets, emphasis marks or spaces in
+/// between (`(可选绑定), 也`).
+#[test]
+fn commas_next_to_chinese_are_full_width() {
+    let han = r"[\u{4e00}-\u{9fff}]";
+    let after_han = Regex::new(&format!(r"{han}[)\]」”’*_ ]*,")).unwrap();
+    let before_han = Regex::new(&format!(r",[(\[「“‘*_ ]*{han}")).unwrap();
+    let mut files = doc_files();
+    files.push(root().join("CLAUDE.md"));
+    let mut problems = Vec::new();
+    for file in files {
+        let text = std::fs::read_to_string(&file).unwrap();
+        for (i, line) in strip_code(&text).lines().enumerate() {
+            for m in after_han.find_iter(line).chain(before_han.find_iter(line)) {
+                problems.push(format!("{}:{}: \"{}\"", rel(&file), i + 1, m.as_str()));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "use the full-width comma ， next to Chinese text (not fixed automatically):\n{}",
+        problems.join("\n")
+    );
 }

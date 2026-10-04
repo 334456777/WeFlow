@@ -35,7 +35,7 @@
 
 - **新增导出**:`wcdb_add_custom_emoticon`、`wcdb_update_custom_emoticon`、`wcdb_delete_custom_emoticon`、
   `wcdb_get_db_status`、`wcdb_probe_fts_schema`、`wcdb_purge_memory`。其中仓库的 `wcdbCore.ts` 只用到
-  `wcdb_get_db_status`(可选绑定),`weflow_wcdb` 也实现了它。
+  `wcdb_get_db_status`(可选绑定)，`weflow_wcdb` 也实现了它。
 - **去掉的导出**:`wcdb_open_message_cursor_lite`、`wcdb_open_message_cursor_lite_with_key`。原版 `wcdbCore.ts`
   把前者作为可选绑定，缺少时会改用 `wcdb_open_message_cursor`，所以原版桌面端仍能工作，只是游标返回完整行而不是精简行。
   `weflow_wcdb` 仍然导出它。
