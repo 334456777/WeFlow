@@ -24,7 +24,7 @@
 
 ### 其他
 - `docs/`：英文文档，`docs/zh-CN/` 为对应中文版；`docs/weflow-tech-docs/` 为微信数据库/密钥/媒体格式的技术资料
-- `.github/workflows/` 下的 `release-cli.yml`（打 tag 时构建发布）和 `docs-check.yml`（PR 与 main 上运行 `make docs-check`）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
+- `.github/workflows/` 下的 `release-cli.yml`（打 tag 时构建发布）和 `ci.yml`（PR 与 main 上运行 `make ci`：rustfmt、clippy、docs-check、全部测试）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
 
 
 ## 约定
