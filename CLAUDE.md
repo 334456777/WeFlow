@@ -34,6 +34,7 @@
 - 修改 `docs/` 下的文档时，必须同步更新 `docs/zh-CN/` 中的对应版本（反之亦然），新增文档也要两种语言都提供；`docs/weflow-tech-docs/` 和 `docs/es-ES/` 不受此限
 - 提交信息格式使用Conventional Commits 规范，默认英语提交
 - 创建 Pull Request 时，PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
+- 中文附近的逗号要用中文逗号
 
 ## 注意事项
 - 默认用中文回复，代码注释用英文
