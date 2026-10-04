@@ -23,3 +23,7 @@ zstd.workspace = true
 [features]
 # Expose the synthetic-account builder (src/fixture.rs) to other crates' tests.
 test-fixtures = []
+
+[[example]]
+name = "refresh_probe"
+required-features = ["test-fixtures"]
