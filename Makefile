@@ -94,7 +94,7 @@ help:
 	@printf "$(BOLD)环境$(RESET)\n"
 	@printf "  $(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具\n"
 	@printf "  $(CYAN)make env$(RESET)             显示当前环境信息\n"
-	@printf "  $(CYAN)make ci$(RESET)              与 GitHub Actions 的 CI 一致 (fmt-check+lint+docs-check+test)\n"
+	@printf "  $(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+test；文档检查另跑 make docs-check)\n"
 	@printf "\n"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -320,7 +320,7 @@ cross-all: cross-macos cross-linux cross-windows
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: ci env
 
-ci: fmt-check lint docs-check test
+ci: fmt-check lint test
 	@printf "$(GREEN)$(BOLD)✓ CI 全流程通过$(RESET)\n"
 
 env:
