@@ -147,4 +147,4 @@ decrypts WeChat 4.x databases itself (SQLCipher 4) and reads them **read-only** 
   HTTP servers, under `crates/weflow-core/tests/`. `cargo test --workspace` runs everything.
 - Real-data regression: one Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows
   (about 80 commands, message exports with media, image exports, the HTTP API). What is still unverified is listed in
-  [cli-unsupported.md](cli-unsupported.md#still-to-verify).
+  [cli-unsupported.md](cli-unsupported.md#4-platform-and-verification-limits).

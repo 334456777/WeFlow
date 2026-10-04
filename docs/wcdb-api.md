@@ -57,7 +57,7 @@ not be made. We did not try to get around that check. Comparing the two needs th
 original desktop app) or the author's help; this is an open question below.
 
 The Rust layer is verified on its own (synthetic encrypted accounts in the test suite, a real Windows account, outputs
-compared byte for byte between versions): see section 4 of [cli-unsupported.md](cli-unsupported.md#still-to-verify).
+compared byte for byte between versions): see section 4 of [cli-unsupported.md](cli-unsupported.md#4-platform-and-verification-limits).
 
 ## Discussion
 

@@ -116,4 +116,4 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 - 端到端测试用合成的加密账号(`weflow_native::fixture`:SQLCipher 页、WAL、zstd、SILK)和本地假 HTTP 服务器，位于
   `crates/weflow-core/tests/`。`cargo test --workspace` 会全部运行。
 - 真实数据回归:一个 Windows 微信 4.x 账号，用 Linux 构建，以及在 Windows 上运行 `weflow.exe`(约 80 个命令、带媒体的消息导出、
-  图片导出、HTTP API)。还没验证的部分见 [cli-unsupported.md](cli-unsupported.md#尚待验证)。
+  图片导出、HTTP API)。还没验证的部分见 [cli-unsupported.md](cli-unsupported.md#4-平台与验证范围)。

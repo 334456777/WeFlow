@@ -36,4 +36,4 @@ For cross-compilation—for example, building the Windows library on Linux—run
 - On Windows, Node's `koffi` loaded `weflow_wcdb.dll` and tested a real account: opening, sessions, messages, a cursor over 200,000 messages, contacts, avatars, annual reports, refusal of write operations, and connection to the monitor pipe.
 - The desktop app's own packaged `wcdbCore.ts` was run under Node with the Linux library against a real account. About 60 calls (sessions, messages, counts, cursors, contacts, groups, analytics, reports, Moments, search, media streams, hardlinks, table browsing, and monitoring) all succeeded; write operations were refused as expected.
 - `tsc -p tsconfig.node.json` has no new errors.
-- **Not yet done:** Running the packaged desktop UI on Windows, macOS, and Linux (see item 4 under [Still to verify](cli-unsupported.md#still-to-verify)).
+- **Not yet done:** Running the packaged desktop UI on Windows, macOS, and Linux.

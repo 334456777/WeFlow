@@ -12,7 +12,7 @@
 - `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `./weflow lang en|zh` saves your choice.
 
 > [!WARNING]
-> The CLI was ported from the original TypeScript backend. The database layer is pure Rust (it decrypts WeChat databases itself and reads them read-only) and has been verified against one real Windows WeChat 4.x account (with a Linux build, and with `weflow.exe` running on Windows). WeChat data from macOS/Linux has not been tested yet ([still to verify](docs/cli-unsupported.md#still-to-verify)). Expect some rough edges; feedback is welcome. What is and isn't covered: [coverage](docs/cli-coverage.md) · [unsupported features](docs/cli-unsupported.md).
+> The CLI was ported from the original TypeScript backend. The database layer is pure Rust (it decrypts WeChat databases itself and reads them read-only) and has been verified against one real Windows WeChat 4.x account (with a Linux build, and with `weflow.exe` running on Windows). WeChat data from macOS/Linux has not been tested yet (verification limits: [section 4](docs/cli-unsupported.md#4-platform-and-verification-limits)). Expect some rough edges; feedback is welcome. What is and isn't covered: [coverage](docs/cli-coverage.md) · [unsupported features](docs/cli-unsupported.md).
 
 For the original WeFlow project (the Electron desktop app), see [docs/weflow-readme.md](docs/weflow-readme.md).
 
