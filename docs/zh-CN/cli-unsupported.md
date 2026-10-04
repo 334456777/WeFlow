@@ -55,18 +55,6 @@
 - 密钥提取辅助程序(`key db`、`key image`)和 Windows 图片钩子需要微信正在运行，无法离线测试。
 - 只用了一个账号的数据验证;特殊的数据库(特别大的分片、旧版本表结构)可能暴露遗漏。
 
-### 尚待验证
-
-这里记录还没有用真实数据验证过的部分，以及打算怎么验证。每完成一项，就在这里记下结果。
-
-| # | 项目 | 状态 | 验证方法 | 完成标准 |
-|---|---|---|---|---|
-| 1 | **macOS 和 Linux 真实账号** | 计划中 | 在各平台上:`key db`(或对应平台的密钥辅助程序)、`db detect`/`db test`，然后跑回归脚本(会话、消息、联系人、朋友圈、报告、每种导出格式加 `--media`、`export media`、HTTP API)，并与桌面端对比数量。 | 两个平台的回归都通过、没有意外失败;差异要么修复，要么写进 cli-unsupported.md。 |
-| 2a | **Windows 图片自动下载钩子**(`image auto-download start`、`serve --image-auto-download`) | 计划中 | 在运行着微信的 Windows x64 上:启动钩子，打开含有从未下载过图片的聊天，确认文件出现在 `msg/attach/…/Img` 下，之后 `export media` 能找到它们;停止钩子，确认微信工作正常。 | 钩子运行期间图片会被下载，停止后不再有动作，微信不受影响。 |
-| 2b | **AI 见解对接真实服务商**(`insight test`、`insight trigger`、`serve --insight`、足迹总结) | 计划中 | 为一个 OpenAI 兼容的服务商配置 `ai_model_api_base_url`、`ai_model_api_key`、`ai_model_api_model`;运行 `insight test`、手动触发和足迹总结;检查请求(`/chat/completions`，没有多余的 `/v1`)、解析出的回答和保存的记录;可选验证 Telegram 推送。 | 所有见解命令在一个真实服务商上端到端可用;服务商返回的错误能清楚地报出来。 |
-| 3 | **备份与桌面端是否兼容** | 计划中 | 分别用桌面端和 `./weflow backup create` 生成备份;用 `./weflow backup inspect` 查看两者;用另一个工具把各自的备份恢复到空目录，比较文件列表和哈希;用 `db test` 和桌面端打开恢复出的账号。 | 两个方向恢复出的文件一致，或者差异有记录并说明原因。 |
-| 4 | **桌面端在 Rust 层上运行，包括界面**([desktop-rust-layer.md](desktop-rust-layer.md)) | 计划中 | 在 Windows、macOS、Linux 上用 `npm run build` 构建;打开账号，浏览聊天、联系人、群、朋友圈，运行各个报告和导出，观察新消息能否到达(监听管道)，尝试编辑/删除(应出现只读错误)。 | 三个平台上只读功能都可用;差异要么修复，要么写进 [desktop-rust-layer.md](desktop-rust-layer.md)。 |
-
 ## 5. 可能出乎意料的行为
 
 - **快照**: 查询读到哪些页才解密哪些页，SQLite 会把读过的页留在缓存里(遍历整个消息库的命令可能留下整个库，几百 MB;
