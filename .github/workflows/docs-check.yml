@@ -1,0 +1,47 @@
+name: Docs check
+
+# Runs `make docs-check` on pull requests and on pushes to main when docs, crates or the checks themselves change:
+# cli-unsupported.md matches the code, links and anchors resolve, docs/ and docs/zh-CN/ are paired,
+# every crate is in the architecture tables, and commas next to Chinese text are full-width.
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "docs/**"
+      - "crates/**"
+      - "Makefile"
+      - ".github/workflows/docs-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "docs/**"
+      - "crates/**"
+      - "Makefile"
+      - ".github/workflows/docs-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  docs-check:
+    name: make docs-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check docs
+        run: make docs-check
