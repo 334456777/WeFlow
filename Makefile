@@ -75,7 +75,7 @@ help:
 	@printf "  $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)\n"
 	@printf "  $(CYAN)make test$(RESET)            运行全部单元测试\n"
 	@printf "  $(CYAN)make check$(RESET)           cargo check（只检查，不编译）\n"
-	@printf "  $(CYAN)make docs-check$(RESET)      检查 docs/cli-unsupported.md 是否与代码一致\n"
+	@printf "  $(CYAN)make docs-check$(RESET)      检查文档：cli-unsupported.md 与代码一致、链接和锚点有效、中英文成对、crate 表完整\n"
 	@printf "  $(CYAN)make fmt$(RESET)             格式化代码\n"
 	@printf "  $(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化\n"
 	@printf "  $(CYAN)make lint$(RESET)            Clippy 静态分析\n"
@@ -177,8 +177,8 @@ test: check-rust
 
 # docs/cli-unsupported.md must list every database function that answers "not implemented" / "not supported"
 docs-check: check-rust
-	@printf "$(BOLD)▶ CLI 不支持清单 (docs/cli-unsupported.md) 与代码一致$(RESET)\n"
-	cargo test -p weflow-native --test unsupported_docs
+	@printf "$(BOLD)▶ 文档检查（不支持清单与代码一致、链接锚点、中英文成对、crate 表）$(RESET)\n"
+	cargo test -p weflow-native --test unsupported_docs --test docs_consistency
 
 check: check-rust
 	@printf "$(BOLD)▶ cargo check --workspace$(RESET)\n"
