@@ -1186,7 +1186,7 @@ fn report_wait(event: WaitEvent) {
         WaitEvent::AskOpen { was_running } => phase(
             json!({ "type": "key_phase", "phase": "open_wechat", "wasRunning": was_running }),
             match (was_running, zh) {
-                (true, true) => "微信已退出。请重新打开微信。".to_string(),
+                (true, true) => "微信已退出，请重新打开微信。".to_string(),
                 (true, false) => "WeChat has quit. Open it again.".to_string(),
                 (false, true) => "未检测到微信，请打开微信。".to_string(),
                 (false, false) => "WeChat is not running. Open it.".to_string(),
