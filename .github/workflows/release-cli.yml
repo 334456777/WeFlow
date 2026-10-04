@@ -48,11 +48,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Rust
+      - name: Install Rust (version from rust-toolchain.toml)
         shell: bash
         run: |
-          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
-          rustup default stable
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add ${{ matrix.target }}
+          rustc --version
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -63,7 +64,6 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          rustup component add rustfmt
           cargo fmt --all -- --check
           cargo test --workspace
 
