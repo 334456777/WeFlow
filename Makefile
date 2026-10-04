@@ -60,6 +60,12 @@ TARGET_MACOS_ARM  := aarch64-apple-darwin
 TARGET_LINUX_X64  := x86_64-unknown-linux-gnu
 TARGET_WIN_X64    := x86_64-pc-windows-gnu
 TARGET_WIN_X64_MS := x86_64-pc-windows-msvc
+# cross-windows builds the GNU target on macOS/Linux (MinGW) and the MSVC target on Windows itself
+ifeq ($(PLATFORM),windows)
+  WIN_TARGET := $(TARGET_WIN_X64_MS)
+else
+  WIN_TARGET := $(TARGET_WIN_X64)
+endif
 
 .DEFAULT_GOAL := help
 
@@ -197,6 +203,7 @@ fmt-check: check-rust
 
 lint: check-rust
 	@printf "$(BOLD)▶ cargo clippy$(RESET)\n"
+	@cargo clippy --version >/dev/null 2>&1 || rustup component add clippy
 	cargo clippy --workspace --all-targets -- -D warnings
 
 clean:
@@ -235,6 +242,9 @@ endif
 .PHONY: _ensure-target-macos _ensure-target-linux _ensure-target-windows
 
 _ensure-target-macos:
+ifneq ($(PLATFORM),macos)
+	@printf "$(RED)✗ 交叉编译 macOS 需要 macOS 的 SDK，请在 macOS 上运行 make cross-macos$(RESET)\n"; exit 1
+endif
 	@rustup target list --installed | grep -q "$(TARGET_MACOS_ARM)" || { \
 		printf "$(YELLOW)⚠ 安装编译目标 $(TARGET_MACOS_ARM)...$(RESET)\n"; \
 		rustup target add $(TARGET_MACOS_ARM); \
@@ -261,9 +271,9 @@ ifeq ($(PLATFORM),linux)
 endif
 
 _ensure-target-windows:
-	@rustup target list --installed | grep -q "$(TARGET_WIN_X64)" || { \
-		printf "$(YELLOW)⚠ 安装编译目标 $(TARGET_WIN_X64)...$(RESET)\n"; \
-		rustup target add $(TARGET_WIN_X64); \
+	@rustup target list --installed | grep -q "$(WIN_TARGET)" || { \
+		printf "$(YELLOW)⚠ 安装编译目标 $(WIN_TARGET)...$(RESET)\n"; \
+		rustup target add $(WIN_TARGET); \
 	}
 ifeq ($(PLATFORM),macos)
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || { \
@@ -307,8 +317,7 @@ else ifeq ($(PLATFORM),linux)
 else
 	cargo build --release -p weflow-cli --target $(TARGET_WIN_X64_MS)
 endif
-	@cp target/$(TARGET_WIN_X64)/release/weflow.exe weflow-windows-x64.exe 2>/dev/null || \
-	 cp target/$(TARGET_WIN_X64_MS)/release/weflow.exe weflow-windows-x64.exe
+	@cp target/$(WIN_TARGET)/release/weflow.exe weflow-windows-x64.exe
 	@printf "$(GREEN)✓ → weflow-windows-x64.exe ($$(ls -lh weflow-windows-x64.exe | awk '{print $$5}'))$(RESET)\n"
 
 cross-all: cross-macos cross-linux cross-windows
