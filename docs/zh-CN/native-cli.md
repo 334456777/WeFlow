@@ -2,13 +2,13 @@
 
 [English](../native-cli.md) | **简体中文**
 
-WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json` 时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。这两个选项都写在命令后面（`weflow config path --json`），写在命令前面会报错。
+WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json` 时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。
 
-帮助：`-h` / `--help` 显示任意命令的帮助；需要参数或子命令的命令在完全不带参数时也会显示帮助（`weflow config`、`weflow config set`、`weflow lang`）；只缺一部分参数时会提示缺少哪些。用法行里 `[选项]` 放在最后（`weflow config set <KEY> <VALUE> [选项]`）。
+帮助：`-h` / `--help` 显示任意命令的帮助；需要参数或子命令的命令在完全不带参数时也会显示帮助（`./weflow config`、`./weflow config set`、`./weflow lang`）；只缺一部分参数时会提示缺少哪些。用法行里 `[选项]` 放在最后（`./weflow config set <KEY> <VALUE> [选项]`）。
 
 ## 语言
 
-语言跟随系统(中文系统输出中文,否则输出英文)。优先级依次为:`WEFLOW_LANG`、配置文件中保存的语言(运行 `weflow lang zh` 会保存;`weflow config unset lang` 可删除)、环境变量（第一个已设置且非空的变量决定结果）、操作系统显示语言：
+语言跟随系统(中文系统输出中文，否则输出英文)。优先级依次为:`WEFLOW_LANG`、配置文件中保存的语言(运行 `./weflow lang zh` 会保存;`./weflow config unset lang` 可删除)、环境变量（第一个已设置且非空的变量决定结果）、操作系统显示语言：
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
 
@@ -19,34 +19,34 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ## 命令
 
 ```
-weflow config    path | list | get | set | unset | clear | import
-weflow lang      en | zh
-weflow db        detect | scan <root> | wxid | test | open
-weflow key       db | image | scan-image <user-dir>
-weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
+./weflow config    path | list | get | set | unset | clear | import
+./weflow lang      en | zh
+./weflow db        detect | scan <root> | wxid | test | open
+./weflow key       db | image | scan-image <user-dir>
+./weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
                  voice | voice-data | voice-cache | voice-preload | image-data | emoji | clear-account-data
-weflow export    sessions | contacts | footprint | media | messages   （messages 支持：chatlab、chatlab-jsonl、json、
+./weflow export    sessions | contacts | footprint | media | messages   （messages 支持：chatlab、chatlab-jsonl、json、
                  arkme-json、html、txt、excel、weclone、sql）
-weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
-weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
-weflow report    annual years|generate | dual generate
-weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | debug-resource
+./weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
+./weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
+./weflow report    annual years|generate | dual generate
+./weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | debug-resource
                  block-delete | delete
-weflow biz       accounts | messages | pay-records
-weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
-weflow video     info | parse-md5
-weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-download start|status
-weflow backup    create | inspect | restore
-weflow serve     --http --message-push --insight --image-auto-download
-weflow runtime   info | manifest
-weflow cache     clear-all
+./weflow biz       accounts | messages | pay-records
+./weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
+./weflow video     info | parse-md5
+./weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-download start|status
+./weflow backup    create | inspect | restore
+./weflow serve     --http --message-push --insight --image-auto-download
+./weflow runtime   info | manifest
+./weflow cache     clear-all
 ```
 
-数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库,因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`。
+数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库，因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`。
 
-进度：运行超过延迟时间（默认 5 秒；可用 `weflow config set progress_delay_seconds <秒>` 或环境变量 `WEFLOW_PROGRESS_DELAY` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 不受影响）。`weflow config set no_progress true` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
+进度：运行超过延迟时间（默认 5 秒；可用 `./weflow config set progress_delay_seconds <秒>` 或环境变量 `WEFLOW_PROGRESS_DELAY` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 不受影响）。`./weflow config set no_progress true` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` 按媒体消息遍历（同一张图发两次算两条，所以 `found` 可能大于 `chat images` 列出的唯一文件数）。`missing` 统计文件不在磁盘上（微信里没下载过）或无法解析的消息，按类型分列在 `missingByKind`。`thumbOnly` 统计只导出了缩略图的图片（每条图片记录也带 `isThumb`）；在微信里点开原图后再导出即可得到高清图。`export media` 始终优先使用高清原图（等同 `image decrypt --force`）。表情可能需要联网；语音导出要逐条解码，几百条语音的全量导出需要数分钟。
 
@@ -83,7 +83,7 @@ weflow cache     clear-all
 `image auto-download` 与 `serve --image-auto-download` 通过 `img_helper.dll` 钩住微信，仅支持 Windows x64。
 语音消息使用内置的 Skype SILK SDK 副本（`crates/weflow-silk`）解码；WXGF 图片需要 `PATH`（或 `FFMPEG_PATH`）中有 `ffmpeg`。
 
-退出码：`0` 成功，`1` 运行时错误，`2` 参数错误，`3` 配置/密钥错误，`4` 数据库/原生库错误,`130` 用户中断。
+退出码：`0` 成功，`1` 运行时错误，`2` 参数错误，`3` 配置/密钥错误，`4` 数据库/原生库错误，`130` 用户中断。
 
 ## 结构
 
@@ -93,27 +93,27 @@ weflow cache     clear-all
 | `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、HTTP API |
 | `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、ISAAC-64 密钥流(移植自厂商 WASM)、平台封装 |
 | `crates/weflow-assets` | 内嵌资源、解压、哈希校验 |
-| `crates/weflow-silk` | 内置的 SILK 解码器,用于语音消息 |
+| `crates/weflow-silk` | 内置的 SILK 解码器，用于语音消息 |
 
 无法重写的平台辅助程序(`wx_key.dll`、`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`)内嵌在程序里:
-每个二进制只内嵌本平台需要的辅助程序,解压到 `WEFLOW_HOME/runtime/<版本>/<target>/`;每次启动校验清单里的哈希(版本或哈希
-不一致时重新解压);动态库只从这个目录加载,不会隐式从当前目录加载。
-厂商的 WASM 解码器(`WxIsaac64`)不在其中:它已用纯 Rust 移植在 `weflow-core/src/isaac64.rs`,并用从原模块抓取的测试向量验证过。
+每个二进制只内嵌本平台需要的辅助程序，解压到 `WEFLOW_HOME/runtime/<版本>/<target>/`;每次启动校验清单里的哈希(版本或哈希
+不一致时重新解压);动态库只从这个目录加载，不会隐式从当前目录加载。
+厂商的 WASM 解码器(`WxIsaac64`)不在其中:它已用纯 Rust 移植在 `weflow-core/src/isaac64.rs`，并用从原模块抓取的测试向量验证过。
 
-配置放在 `WEFLOW_HOME`,否则是平台配置目录下的 `weflow`:配置文件 `config.json`(也接受 TOML),缓存、日志、运行时分目录存放。
-`weflow config import` 迁移桌面端可读的设置,加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。
+配置放在 `WEFLOW_HOME`，否则是平台配置目录下的 `./weflow`:配置文件 `config.json`(也接受 TOML)，缓存、日志、运行时分目录存放。
+`./weflow config import` 迁移桌面端可读的设置，加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。
 
-连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `weflow config set` 设置，没有命令行覆盖选项。`weflow config set --help` 会解释每个键。`weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`weflow config unset config_path` 或传入默认路径即恢复），`weflow config path` 显示当前使用的路径。`weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
+连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `./weflow config set` 设置，没有命令行覆盖选项。`./weflow config set --help` 会解释每个键。`./weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`./weflow config unset config_path` 或传入默认路径即恢复），`./weflow config path` 显示当前使用的路径。`./weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
 
 **为什么数据库层是纯 Rust。** 命令行原计划通过 FFI 调用闭源的 `wcdb_api` 库。这个库带有效期检查(2026-09-30 23:59:59 之后
-`wcdb_init` 返回 `-1000`)和未经核实的网络代码,所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4),用纯 Rust **只读**
+`wcdb_init` 返回 `-1000`)和未经核实的网络代码，所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4)，用纯 Rust **只读**
 读取(`crates/weflow-native/src/{sqlcipher,native_*}.rs`)。命令行和桌面端都不再内嵌或加载 `wcdb_api`、`WCDB.dll`、
-`libwcdb_api.*`、`libWCDB.dylib`;它们留在仓库里给原版桌面端使用,见 [wcdb-api.md](wcdb-api.md)。对原后端的覆盖率见 [cli-coverage.md](cli-coverage.md)。
+`libwcdb_api.*`、`libWCDB.dylib`;它们留在仓库里给原版桌面端使用，见 [wcdb-api.md](wcdb-api.md)。对原后端的覆盖率见 [cli-coverage.md](cli-coverage.md)。
 
 ## 测试
 
 - 各 crate 的单元测试:配置和旧配置导入、内嵌运行时清单、SQLCipher(加解密往返、错误密钥、页被篡改、WAL 合并)、图片和朋友圈解密、导出格式。
-- 端到端测试用合成的加密账号(`weflow_native::fixture`:SQLCipher 页、WAL、zstd、SILK)和本地假 HTTP 服务器,位于
+- 端到端测试用合成的加密账号(`weflow_native::fixture`:SQLCipher 页、WAL、zstd、SILK)和本地假 HTTP 服务器，位于
   `crates/weflow-core/tests/`。`cargo test --workspace` 会全部运行。
-- 真实数据回归:一个 Windows 微信 4.x 账号,用 Linux 构建,以及在 Windows 上运行 `weflow.exe`(约 80 个命令、带媒体的消息导出、
+- 真实数据回归:一个 Windows 微信 4.x 账号，用 Linux 构建，以及在 Windows 上运行 `weflow.exe`(约 80 个命令、带媒体的消息导出、
   图片导出、HTTP API)。还没验证的部分见 [cli-unsupported.md](cli-unsupported.md#尚待验证)。

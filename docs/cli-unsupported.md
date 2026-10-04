@@ -2,17 +2,12 @@
 
 **English** | [简体中文](zh-CN/cli-unsupported.md)
 
-Everything `weflow` cannot do, does not do yet, or does differently from the desktop app, compared with the original TypeScript
-backend (`ca6c479`). What *is* covered, with numbers, is in [cli-coverage.md](cli-coverage.md).
+Everything `./weflow` cannot do, does not do yet, or does differently from the desktop app, compared with the original TypeScript
+backend ([ca6c479](https://github.com/334456777/WeFlow/tree/ca6c479496d4c7f00ccf234d567b1c51c79fe170)). What *is* covered, with numbers, is in [cli-coverage.md](cli-coverage.md).
 
-The database layer is pure Rust: it decrypts WeChat 4.x databases itself and opens them **read-only** (nothing is written to
-WeChat's files, nothing plaintext is written to disk). The closed-source `wcdb_api` library is no longer used, embedded or loaded.
-Sections 1 and 2 list every database-level function that does not work; a test keeps them in sync with the code (see
-[section 6](#6-keeping-this-list-current)).
+## 1. Unimplemented placeholders
 
-## 1. Refused by design: anything that would modify WeChat's databases
-
-These commands exist for compatibility but always fail, with the message
+These commands are retained for compatibility, but because the native database layer opens WeChat's databases read-only, they always fail with the message
 `<function> is not supported: the native database backend opens WeChat's databases read-only`.
 
 | CLI command | Native function | What it did in the desktop app |
@@ -26,7 +21,7 @@ These commands exist for compatibility but always fail, with the message
 | (no command) | `import_table_snapshot`, `import_table_snapshot_with_schema` | Restore a table dump into a database (the dump side works and writes only outside `db_storage`) |
 
 Why: writing into a database that the running WeChat client also has open can corrupt it, and the SQLCipher files would have to be
-re-encrypted page by page. If you need one of these, it has to be designed separately (WeChat closed, backup first).
+re-encrypted page by page. If you need one of these, it has to be designed separately.
 
 ## 2. Not implemented in the native database layer
 
@@ -38,12 +33,12 @@ A function that is added to `crates/weflow-native/src/wcdb.rs` before it is port
 
 | Area | Difference |
 |---|---|
-| Voice-to-text (`chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus`) | Missing: needs sherpa-onnx and Whisper models; not planned. |
+| Voice-to-text (`chat:getVoiceTranscript`, `whisper:downloadModel`, `whisper:getModelStatus`) | Missing: needs sherpa-onnx and Whisper models; ~~not planned~~. |
 | Live updates (message push, insight triggers, `chat:getNewMessages`) | The desktop app reacts to WCDB monitor callbacks; the CLI polls (push and insights about every 5 s). |
 | Message export | All 9 formats work; `--media` copies media into the CLI's own folder layout (section 5). |
 | Voice in the HTTP API / `chat voice-data` | Works only if the media database holds the SILK data (WeChat must have played the message once). |
 | WXGF images | Converted through an external `ffmpeg` (`PATH` or `FFMPEG_PATH`); the desktop app bundles `ffmpeg-static`. Without it the image is reported as a failed decrypt. |
-| Image auto-download (`image auto-download`, `serve --image-auto-download`) | Windows x64 only (`img_helper.dll`). The hook lives only while the `weflow` process runs, so `status` from another process always says "not hooked". |
+| Image auto-download (`image auto-download`, `serve --image-auto-download`) | Windows x64 only (`img_helper.dll`). The hook lives only while the `./weflow` process runs, so `status` from another process always says "not hooked". |
 | Image service events | `image:cacheResolved`, `decryptProgress`, `updateAvailable` and the background "better quality available" check are not emitted; `hasUpdate` is always `false` (like the desktop app's headless worker mode). |
 | AI insight notifications | No popup window; `serve --insight` prints each insight as a JSON line on stderr (Telegram push still works). |
 | Image key memory scan | `key scan-image` works on macOS only; on Windows use `key image` (kvcomm cache + template verification). The desktop app's Windows memory-scan fallback is not ported. |
@@ -74,7 +69,7 @@ What has not been tried against real data yet, and how it will be checked. When 
 | 1 | **macOS and Linux with real accounts** | Planned | On each platform: `key db` (or the platform key helper), `db detect`/`db test`, then the regression sweep (sessions, messages, contacts, Moments, reports, every export format with `--media`, `export media`, HTTP API). Compare counts with the desktop app. | The sweep passes on both platforms with no unexpected failures; differences are fixed or listed in cli-unsupported.md. |
 | 2a | **Windows image auto-download hook** (`image auto-download start`, `serve --image-auto-download`) | Planned | With WeChat running on Windows x64: start the hook, open chats with images that were never downloaded, check that the files appear under `msg/attach/…/Img` and that `export media` then finds them; stop the hook and confirm WeChat keeps working. | Images are downloaded while the hook runs, nothing happens after it stops, WeChat is unaffected. |
 | 2b | **AI insight against a real provider** (`insight test`, `insight trigger`, `serve --insight`, footprint summary) | Planned | Configure `ai_model_api_base_url`, `ai_model_api_key`, `ai_model_api_model` for an OpenAI-compatible provider; run `insight test`, a manual trigger and a footprint summary; check the request (`/chat/completions`, no extra `/v1`), the parsed answer and the stored records; optionally Telegram delivery. | All insight commands work end to end with one real provider; errors from the provider are reported clearly. |
-| 3 | **Backup compatibility with the desktop app** | Planned | Create a backup with the desktop app and with `weflow backup create`; `weflow backup inspect` both; restore each with the other tool into an empty folder and compare file lists and hashes; open the restored account with `db test` and the desktop app. | Both directions restore the same files, or the differences are documented with a reason. |
+| 3 | **Backup compatibility with the desktop app** | Planned | Create a backup with the desktop app and with `./weflow backup create`; `./weflow backup inspect` both; restore each with the other tool into an empty folder and compare file lists and hashes; open the restored account with `db test` and the desktop app. | Both directions restore the same files, or the differences are documented with a reason. |
 | 4 | **Desktop app on the Rust layer, with its UI** ([desktop-rust-layer.md](desktop-rust-layer.md)) | Planned | Build with `npm run build` on Windows, macOS and Linux; open an account, browse chats, contacts, groups, Moments, run each report and export, watch new messages arrive (monitor pipe), try an edit/delete (expect the read-only error). | The app works for the read-only features on all three platforms; differences are fixed or documented in [desktop-rust-layer.md](desktop-rust-layer.md). |
 
 ## 5. Behaviour you may not expect
@@ -113,7 +108,7 @@ What has not been tried against real data yet, and how it will be checked. When 
 - **Moments annual statistics** count your own posts, the friends who liked them most, and the friends whose posts you liked most.
 - Write operations (section 1) are refused, but read-only commands never change WeChat's data.
 
-## 6. Keeping this list current
+## 6. Keeping this list current (for LLMs)
 
 `cargo test -p weflow-native --test unsupported_docs` fails when a database function that returns *not implemented* or *not supported*
 is missing from sections 1-2 of this file or of [zh-CN/cli-unsupported.md](zh-CN/cli-unsupported.md). When you port a function, remove its

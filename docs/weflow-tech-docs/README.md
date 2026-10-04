@@ -1,6 +1,6 @@
 # 微信相关技术研究笔记(备份)
 
-来源: https://doc.weflow.top/ (SPA,正文内嵌在 JS 包中,2026-10-01 抽取)
+来源: https://doc.weflow.top/ (SPA，正文内嵌在 JS 包中，2026-10-01 抽取)
 用途: 用 Rust 原生实现替换 wcdb_api.dll 时的参考。
 
 - [一切的起点](00-introduction.md)

@@ -2,33 +2,30 @@
 
 [English](../cli-unsupported.md) | **简体中文**
 
-这里列出 `weflow` 做不到、暂时没做、或与桌面端表现不同的所有地方,对照的是原 TypeScript 后端(`ca6c479`)。已经覆盖的部分及其数字见
+这里列出 `./weflow` 做不到、暂时没做、或与桌面端表现不同的所有地方，对照的是原 TypeScript 后端[ca6c479](https://github.com/334456777/WeFlow/tree/ca6c479496d4c7f00ccf234d567b1c51c79fe170)。已经覆盖的部分及其数字见
 [cli-coverage.md](cli-coverage.md)。
 
-数据库层是纯 Rust:自己解密微信 4.x 数据库,并以**只读**方式打开(不会写微信的任何文件,也不会把明文写到磁盘)。闭源的 `wcdb_api`
-库不再被使用、内嵌或加载。第 1、2 节列出了所有数据库层不可用的函数,并有测试保证它们和代码保持一致(见[第 6 节](#6-保持清单最新))。
+## 1. 占位符未实现
 
-## 1. 有意拒绝:任何会修改微信数据库的操作
-
-这些命令为兼容而保留,但一律失败,报错信息是
+这些命令为兼容而保留，但由于原生数据库层以只读方式打开微信数据库，因此一律报错，报错信息是
 `<函数名> is not supported: the native database backend opens WeChat's databases read-only`。
 
 | CLI 命令 | 原生函数 | 桌面端里的作用 |
 |---|---|---|
 | `chat update-message` | `update_message` | 修改已存消息的文本 |
 | `chat delete-message` | `delete_message` | 删除已存消息 |
-| `chat anti-revoke check` / `install` / `uninstall` | `anti_revoke_check`、`anti_revoke_install`、`anti_revoke_uninstall` | 查询 / 安装 / 移除保留撤回消息的数据库触发器(`check` 本身只读,但与另两个一起被拒绝) |
+| `chat anti-revoke check` / `install` / `uninstall` | `anti_revoke_check`、`anti_revoke_install`、`anti_revoke_uninstall` | 查询 / 安装 / 移除保留撤回消息的数据库触发器(`check` 本身只读，但与另两个一起被拒绝) |
 | `chat mark-read` | `mark_all_sessions_read` | 清除所有会话的未读数 |
 | `sns block-delete`(check / install / uninstall) | `sns_block_delete_check`、`sns_block_delete_install`、`sns_block_delete_uninstall` | 保留好友已删除朋友圈的触发器 |
 | `sns delete` | `sns_delete_post` | 从本地数据库删除一条朋友圈 |
-| (无命令) | `import_table_snapshot`、`import_table_snapshot_with_schema` | 把表快照恢复进数据库(导出一侧可用,且只写到 `db_storage` 之外) |
+| (无命令) | `import_table_snapshot`、`import_table_snapshot_with_schema` | 把表快照恢复进数据库(导出一侧可用，且只写到 `db_storage` 之外) |
 
-原因:正在运行的微信同时打开着这些数据库,往里写可能损坏它们,而且 SQLCipher 文件还得逐页重新加密。
-如果确实需要其中某项,需要单独设计(先关闭微信、先备份)。
+原因: 正在运行的微信同时打开着这些数据库，往里写可能损坏它们，而且 SQLCipher 文件还得逐页重新加密。
+如果确实需要其中某项，需要单独设计。
 
 ## 2. 原生数据库层尚未实现
 
-目前没有:服务层能调用的每个数据库函数,要么已实现,要么被有意拒绝(第 1 节)。如果有函数先加进 `crates/weflow-native/src/wcdb.rs`、还没移植,
+目前没有:服务层能调用的每个数据库函数，要么已实现，要么被有意拒绝(第 1 节)。如果有函数先加进 `crates/weflow-native/src/wcdb.rs`、还没移植，
 它会返回 `<函数名> is not implemented in the native database backend yet`;在移植完成前把它列在这里。
 
 ## 3. 桌面端功能:缺失或表现不同
@@ -39,64 +36,64 @@
 | 实时更新(消息推送、见解触发、`chat:getNewMessages`) | 桌面端响应 WCDB 监听回调;CLI 采用轮询(推送和见解约每 5 秒一次)。 |
 | 消息导出 | 9 种格式都可用;`--media` 按 CLI 自己的目录布局复制媒体(见第 5 节)。 |
 | HTTP API / `chat voice-data` 中的语音 | 仅当媒体数据库里有 SILK 数据时可用(微信必须播放过该条消息)。 |
-| WXGF 图片 | 通过外部 `ffmpeg` 转换(`PATH` 或 `FFMPEG_PATH`);桌面端自带 `ffmpeg-static`。没有 ffmpeg 时,图片会被报告为解密失败。 |
-| 图片自动下载(`image auto-download`、`serve --image-auto-download`) | 仅 Windows x64(`img_helper.dll`)。钩子只在 `weflow` 进程运行期间存在,因此从另一个进程执行 `status` 总是显示"未挂钩"。 |
+| WXGF 图片 | 通过外部 `ffmpeg` 转换(`PATH` 或 `FFMPEG_PATH`);桌面端自带 `ffmpeg-static`。没有 ffmpeg 时，图片会被报告为解密失败。 |
+| 图片自动下载(`image auto-download`、`serve --image-auto-download`) | 仅 Windows x64(`img_helper.dll`)。钩子只在 `./weflow` 进程运行期间存在，因此从另一个进程执行 `status` 总是显示"未挂钩"。 |
 | 图片服务事件 | `image:cacheResolved`、`decryptProgress`、`updateAvailable` 以及后台"有更高质量版本"检查都不会发出;`hasUpdate` 始终为 `false`(与桌面端无界面的 worker 模式一样)。 |
 | AI 见解通知 | 没有弹窗;`serve --insight` 把每条见解以 JSON 行输出到 stderr(Telegram 推送仍可用)。 |
 | 图片密钥内存扫描 | `key scan-image` 仅 macOS 可用;Windows 请用 `key image`(kvcomm 缓存 + 模板校验)。桌面端 Windows 的内存扫描回退未移植。 |
 | 视频 | 只查找微信已存放在 `msg/video` 下的文件;没有下载或解密路径(桌面端同样没有)。 |
 
-有意不移植,因为它们只对桌面进程有意义:窗口/对话框/shell/app/auth/log 相关 IPC、自动更新、开机自启、应用锁、云控、诊断、社交 cookie 的 UI 辅助、
+有意不移植，因为它们只对桌面进程有意义:窗口/对话框/shell/app/auth/log 相关 IPC、自动更新、开机自启、应用锁、云控、诊断、社交 cookie 的 UI 辅助、
 消息/联系人/会话/头像缓存、导出任务暂停/恢复、仅渲染进程使用的报告截图、朋友圈缓存迁移界面。
 
 ## 4. 平台与验证范围
 
-- 原生数据库层(会话、消息、联系人、朋友圈、媒体、语音库)用一个真实的 Windows 微信 4.x 账号做过验证,用的是 **Linux 构建**;交叉编译出的
+- 原生数据库层(会话、消息、联系人、朋友圈、媒体、语音库)用一个真实的 Windows 微信 4.x 账号做过验证，用的是 **Linux 构建**;交叉编译出的
   Windows `weflow.exe`(`x86_64-pc-windows-gnu`)也在 Windows 上对同一个账号运行过(约 80 个命令、带媒体的消息导出、图片导出)。其他 Windows 版本没有试过。
-- macOS 和 Linux 的微信数据库文件格式相同,但没有测试过。
+- macOS 和 Linux 的微信数据库文件格式相同，但没有测试过。
 - HTTP 服务、图片 `.dat` 解密、AI 和朋友圈下载另外用合成的加密夹具和本地假 HTTP 服务器测试过;真实的朋友圈服务器和 AI 服务商没有试过。
-- 密钥提取辅助程序(`key db`、`key image`)和 Windows 图片钩子需要微信正在运行,无法离线测试。
+- 密钥提取辅助程序(`key db`、`key image`)和 Windows 图片钩子需要微信正在运行，无法离线测试。
 - 只用了一个账号的数据验证;特殊的数据库(特别大的分片、旧版本表结构)可能暴露遗漏。
 
 ### 尚待验证
 
-这里记录还没有用真实数据验证过的部分,以及打算怎么验证。每完成一项,就在这里记下结果。
+这里记录还没有用真实数据验证过的部分，以及打算怎么验证。每完成一项，就在这里记下结果。
 
 | # | 项目 | 状态 | 验证方法 | 完成标准 |
 |---|---|---|---|---|
-| 1 | **macOS 和 Linux 真实账号** | 计划中 | 在各平台上:`key db`(或对应平台的密钥辅助程序)、`db detect`/`db test`,然后跑回归脚本(会话、消息、联系人、朋友圈、报告、每种导出格式加 `--media`、`export media`、HTTP API),并与桌面端对比数量。 | 两个平台的回归都通过、没有意外失败;差异要么修复,要么写进 cli-unsupported.md。 |
-| 2a | **Windows 图片自动下载钩子**(`image auto-download start`、`serve --image-auto-download`) | 计划中 | 在运行着微信的 Windows x64 上:启动钩子,打开含有从未下载过图片的聊天,确认文件出现在 `msg/attach/…/Img` 下,之后 `export media` 能找到它们;停止钩子,确认微信工作正常。 | 钩子运行期间图片会被下载,停止后不再有动作,微信不受影响。 |
-| 2b | **AI 见解对接真实服务商**(`insight test`、`insight trigger`、`serve --insight`、足迹总结) | 计划中 | 为一个 OpenAI 兼容的服务商配置 `ai_model_api_base_url`、`ai_model_api_key`、`ai_model_api_model`;运行 `insight test`、手动触发和足迹总结;检查请求(`/chat/completions`,没有多余的 `/v1`)、解析出的回答和保存的记录;可选验证 Telegram 推送。 | 所有见解命令在一个真实服务商上端到端可用;服务商返回的错误能清楚地报出来。 |
-| 3 | **备份与桌面端是否兼容** | 计划中 | 分别用桌面端和 `weflow backup create` 生成备份;用 `weflow backup inspect` 查看两者;用另一个工具把各自的备份恢复到空目录,比较文件列表和哈希;用 `db test` 和桌面端打开恢复出的账号。 | 两个方向恢复出的文件一致,或者差异有记录并说明原因。 |
-| 4 | **桌面端在 Rust 层上运行,包括界面**([desktop-rust-layer.md](desktop-rust-layer.md)) | 计划中 | 在 Windows、macOS、Linux 上用 `npm run build` 构建;打开账号,浏览聊天、联系人、群、朋友圈,运行各个报告和导出,观察新消息能否到达(监听管道),尝试编辑/删除(应出现只读错误)。 | 三个平台上只读功能都可用;差异要么修复,要么写进 [desktop-rust-layer.md](desktop-rust-layer.md)。 |
+| 1 | **macOS 和 Linux 真实账号** | 计划中 | 在各平台上:`key db`(或对应平台的密钥辅助程序)、`db detect`/`db test`，然后跑回归脚本(会话、消息、联系人、朋友圈、报告、每种导出格式加 `--media`、`export media`、HTTP API)，并与桌面端对比数量。 | 两个平台的回归都通过、没有意外失败;差异要么修复，要么写进 cli-unsupported.md。 |
+| 2a | **Windows 图片自动下载钩子**(`image auto-download start`、`serve --image-auto-download`) | 计划中 | 在运行着微信的 Windows x64 上:启动钩子，打开含有从未下载过图片的聊天，确认文件出现在 `msg/attach/…/Img` 下，之后 `export media` 能找到它们;停止钩子，确认微信工作正常。 | 钩子运行期间图片会被下载，停止后不再有动作，微信不受影响。 |
+| 2b | **AI 见解对接真实服务商**(`insight test`、`insight trigger`、`serve --insight`、足迹总结) | 计划中 | 为一个 OpenAI 兼容的服务商配置 `ai_model_api_base_url`、`ai_model_api_key`、`ai_model_api_model`;运行 `insight test`、手动触发和足迹总结;检查请求(`/chat/completions`，没有多余的 `/v1`)、解析出的回答和保存的记录;可选验证 Telegram 推送。 | 所有见解命令在一个真实服务商上端到端可用;服务商返回的错误能清楚地报出来。 |
+| 3 | **备份与桌面端是否兼容** | 计划中 | 分别用桌面端和 `./weflow backup create` 生成备份;用 `./weflow backup inspect` 查看两者;用另一个工具把各自的备份恢复到空目录，比较文件列表和哈希;用 `db test` 和桌面端打开恢复出的账号。 | 两个方向恢复出的文件一致，或者差异有记录并说明原因。 |
+| 4 | **桌面端在 Rust 层上运行，包括界面**([desktop-rust-layer.md](desktop-rust-layer.md)) | 计划中 | 在 Windows、macOS、Linux 上用 `npm run build` 构建;打开账号，浏览聊天、联系人、群、朋友圈，运行各个报告和导出，观察新消息能否到达(监听管道)，尝试编辑/删除(应出现只读错误)。 | 三个平台上只读功能都可用;差异要么修复，要么写进 [desktop-rust-layer.md](desktop-rust-layer.md)。 |
 
 ## 5. 可能出乎意料的行为
 
-- **快照**:查询读到哪些页才解密哪些页,SQLite 会把读过的页留在缓存里(遍历整个消息库的命令可能留下整个库,几百 MB;
-  各缓存合计超过约 1 GB 时会释放内存)。长时间运行的 `serve` 会在文件或其 `-wal` 变化时读到新消息。查询读取期间,如果微信
-  做了超出快照范围的检查点,这次查询会在新快照上重新执行。
-- **大会话导出的内存**:`export messages` 按页把会话转成导出记录,再据此写文件,读库时只用很小的页缓存。20 万条消息的群,
+- **快照**: 查询读到哪些页才解密哪些页，SQLite 会把读过的页留在缓存里(遍历整个消息库的命令可能留下整个库，几百 MB;
+  各缓存合计超过约 1 GB 时会释放内存)。长时间运行的 `serve` 会在文件或其 `-wal` 变化时读到新消息。查询读取期间，如果微信
+  做了超出快照范围的检查点，这次查询会在新快照上重新执行。
+- **大会话导出的内存**: `export messages` 按页把会话转成导出记录，再据此写文件，读库时只用很小的页缓存。20 万条消息的群，
   峰值约 0.1 GB(`txt`)、0.4~0.5 GB(`excel`、`weclone`、`sql`、`chatlab`)、0.6 GB(`json`、`arkme-json`、`html`)。
-  内存紧张时请导出日期范围(`--start/--end`),耗时只与范围大小有关,和日期远近无关。
-- **密钥校验**:第一次用某个密钥运行命令时,会在 `session.db` 上验证它,并在缓存目录里记下一个单向指纹(由密钥、数据库盐值和
-  账号算出,无法反推出密钥),之后的命令就跳过这一步较慢的校验。`chat clear-account-data --cache` 会删除这些指纹;
+  内存紧张时请导出日期范围(`--start/--end`)，耗时只与范围大小有关，和日期远近无关。
+- **密钥校验**: 第一次用某个密钥运行命令时，会在 `session.db` 上验证它，并在缓存目录里记下一个单向指纹(由密钥、数据库盐值和
+  账号算出，无法反推出密钥)，之后的命令就跳过这一步较慢的校验。`chat clear-account-data --cache` 会删除这些指纹;
   `db test` 总是重新校验密钥。
-- **时区**:导出的 `--start/--end` 日期、写进导出文件的时间、`chat dates`、`chat date-counts` 和按日统计都使用本机本地时区(与桌面端一致)。同一份数据库在另一个时区的机器上读取,深夜的消息会归到不同的日子。
-- **导出里的媒体**:`export messages --media image,voice,video,emoji`(或 `all`)把文件复制到输出文件旁边的 `media/<输出文件名>/{images,voices,videos,emojis}`,并让消息指向它们。
+- **时区**: 导出的 `--start/--end` 日期、写进导出文件的时间、`chat dates`、`chat date-counts` 和按日统计都使用本机本地时区(与桌面端一致)。同一份数据库在另一个时区的机器上读取，深夜的消息会归到不同的日子。
+- **导出里的媒体**: `export messages --media image,voice,video,emoji`(或 `all`)把文件复制到输出文件旁边的 `media/<输出文件名>/{images,voices,videos,emojis}`，并让消息指向它们。
   哪些格式有位置放媒体:`json`/`arkme-json`、`txt`、`excel`、`weclone`(内容或 `src` 变成相对路径)、`chatlab`(仅图片)、`html`(`<img>`、`<audio>`、`<video>`);`sql` 没有。磁盘上找不到的文件保留占位文字。
   表情需要联网;桌面端用自己的目录布局。
-- **中文名称排序**(联系人列表、群成员)遵循 ICU/CLDR 拼音排序,与 `Intl.Collator('zh-CN')` 一致:数字在前,然后是按拼音排列的汉字,最后是拉丁字母。
-- **群聊文本**:导出的群消息保留发送者前缀后面的换行(`wxid_xxx:` 被去掉,换行还在),与桌面端导出一致。
-- **搜索**覆盖文本、链接/文件、引用回复消息;关键字按字面匹配(不区分大小写),压缩消息会先解码再匹配。图片、语音、表情不参与搜索。
-- **折叠 / 免打扰**状态由联系人标志位推断(折叠:第 28 位;免打扰:第 9 位或群通知标志),依据微信的惯例;没有用真实的折叠会话验证过。
-- **足迹**把 `@所有人`(`notify@all`)算作 @ 了你;判定为 @ 需要文本里有 `@`,且消息 `atuserlist` 里有你的 id(或 `notify@all`)。
+- **中文名称排序**(联系人列表、群成员)遵循 ICU/CLDR 拼音排序，与 `Intl.Collator('zh-CN')` 一致:数字在前，然后是按拼音排列的汉字，最后是拉丁字母。
+- **群聊文本**: 导出的群消息保留发送者前缀后面的换行(`wxid_xxx:` 被去掉，换行还在)，与桌面端导出一致。
+- **搜索**覆盖文本、链接/文件、引用回复消息;关键字按字面匹配(不区分大小写)，压缩消息会先解码再匹配。图片、语音、表情不参与搜索。
+- **折叠 / 免打扰**状态由联系人标志位推断(折叠:第 28 位;免打扰:第 9 位或群通知标志)，依据微信的惯例;没有用真实的折叠会话验证过。
+- **足迹**把 `@所有人`(`notify@all`)算作 @ 了你;判定为 @ 需要文本里有 `@`，且消息 `atuserlist` 里有你的 id(或 `notify@all`)。
   私聊静默超过 1 小时就切成新的一段。
 - **双人报告**的常用语是 2~20 个字、不含链接和标记、至少出现 2 次的完全相同文本;响应时间只统计你在同一轮聊天内的回复
   (间隔超过 1 小时算新一轮)。
 - **朋友圈年度统计**统计你自己的帖子、给你点赞最多的好友、以及你点赞最多的好友的帖子。
-- 写操作(第 1 节)会被拒绝,只读命令绝不会改动微信数据。
+- 写操作(第 1 节)会被拒绝，只读命令绝不会改动微信数据。
 
-## 6. 保持清单最新
+## 6. 保持清单最新（面向LLM）
 
-当有返回 *not implemented* 或 *not supported* 的数据库函数没有出现在本文件或 [../cli-unsupported.md](../cli-unsupported.md) 的第 1~2 节里时,
-`cargo test -p weflow-native --test unsupported_docs` 会失败。移植一个函数时,在同一次改动里删掉它的那一行;新增限制时,补一行。
+当有返回 *not implemented* 或 *not supported* 的数据库函数没有出现在本文件或 [../cli-unsupported.md](../cli-unsupported.md) 的第 1~2 节里时，
+`cargo test -p weflow-native --test unsupported_docs` 会失败。移植一个函数时，在同一次改动里删掉它的那一行;新增限制时，补一行。

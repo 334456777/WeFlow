@@ -6,12 +6,12 @@ A Rust command-line build of WeFlow's backend. By default a command prints human
 errors on stderr, with the same exit codes. With `--json` every command prints one JSON document on stdout
 (`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`.
 
-Help: `-h` / `--help` shows the help of any command, and a command that needs arguments or a subcommand shows its help when it is run without any (`weflow config`, `weflow config set`, `weflow lang`);
-with only some of the arguments it reports which are missing. Usage lines list `[OPTIONS]` last (`weflow config set <KEY> <VALUE> [OPTIONS]`).
+Help: `-h` / `--help` shows the help of any command, and a command that needs arguments or a subcommand shows its help when it is run without any (`./weflow config`, `./weflow config set`, `./weflow lang`);
+with only some of the arguments it reports which are missing. Usage lines list `[OPTIONS]` last (`./weflow config set <KEY> <VALUE> [OPTIONS]`).
 
 ## Language
 
-The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `WEFLOW_LANG`, the language saved in the config file (`weflow lang zh` saves it; `weflow config unset lang` removes it), the environment
+The language follows the system (Chinese on a Chinese system, English otherwise). In order of precedence: `WEFLOW_LANG`, the language saved in the config file (`./weflow lang zh` saves it; `./weflow config unset lang` removes it), the environment
 (the first variable that is set and non-empty decides), then the operating system's display language:
 
 `WEFLOW_LANG` → `LC_ALL` → `LC_MESSAGES` → `LANG` → `LANGUAGE`
@@ -26,35 +26,35 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ## Commands
 
 ```
-weflow config    path | list | get | set | unset | clear | import
-weflow lang      en | zh
-weflow db        detect | scan <root> | wxid | test | open
-weflow key       db | image | scan-image <user-dir>
-weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
+./weflow config    path | list | get | set | unset | clear | import
+./weflow lang      en | zh
+./weflow db        detect | scan <root> | wxid | test | open
+./weflow key       db | image | scan-image <user-dir>
+./weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
                  voice | voice-data | voice-cache | voice-preload | image-data | emoji | clear-account-data
-weflow export    sessions | contacts | footprint | media | messages   (messages: chatlab, chatlab-jsonl, json,
+./weflow export    sessions | contacts | footprint | media | messages   (messages: chatlab, chatlab-jsonl, json,
                  arkme-json, html, txt, excel, weclone, sql)
-weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
-weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
-weflow report    annual years|generate | dual generate
-weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | debug-resource
+./weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
+./weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
+./weflow report    annual years|generate | dual generate
+./weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | debug-resource
                  block-delete | delete
-weflow biz       accounts | messages | pay-records
-weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
-weflow video     info | parse-md5
-weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-download start|status
-weflow backup    create | inspect | restore
-weflow serve     --http --message-push --insight --image-auto-download
-weflow runtime   info | manifest
-weflow cache     clear-all
+./weflow biz       accounts | messages | pay-records
+./weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
+./weflow video     info | parse-md5
+./weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-download start|status
+./weflow backup    create | inspect | restore
+./weflow serve     --http --message-push --insight --image-auto-download
+./weflow runtime   info | manifest
+./weflow cache     clear-all
 ```
 
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
 
-Progress: commands that run longer than the delay (default 5 seconds; `weflow config set progress_delay_seconds <s>` or env `WEFLOW_PROGRESS_DELAY`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
-terminal; stdout is never touched). `weflow config set no_progress true` turns it off, `--progress` prints machine-readable NDJSON events instead.
+Progress: commands that run longer than the delay (default 5 seconds; `./weflow config set progress_delay_seconds <s>` or env `WEFLOW_PROGRESS_DELAY`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
+terminal; stdout is never touched). `./weflow config set no_progress true` turns it off, `--progress` prints machine-readable NDJSON events instead.
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` walks the media
 messages (an image sent twice counts twice, so `found` can exceed the unique files listed by `chat images`). `missing` counts
@@ -123,14 +123,14 @@ The platform helpers that cannot be rewritten (`wx_key.dll`, `img_helper.dll`, `
 differs) and loads libraries only from that directory, never implicitly from the current directory.
 The vendor WASM decoder (`WxIsaac64`) is not among them: it is ported to pure Rust in `weflow-core/src/isaac64.rs` and verified against vectors captured from the original module.
 
-Configuration lives in `WEFLOW_HOME`, otherwise in `weflow` under the platform's configuration directory: `config.json` (TOML is
-accepted too), with caches, logs and the runtime in separate directories. `weflow config import` migrates the desktop app's
+Configuration lives in `WEFLOW_HOME`, otherwise in `./weflow` under the platform's configuration directory: `config.json` (TOML is
+accepted too), with caches, logs and the runtime in separate directories. `./weflow config import` migrates the desktop app's
 readable settings and skips the encrypted `safe:` / `lock:` values with a hint to set them again.
 
-The connection settings (`db_path`, `wxid`, `decrypt_key`) are only read from the config file, set them with `weflow config set`; there are no command-line
-overrides. `weflow config set --help` explains every key. `weflow config set config_path <file>` makes later runs use another config file (it is remembered in
-`config_path` next to the default location; `weflow config unset config_path` or the default path switches back), `weflow config path` shows the one in use.
-`weflow config set current_profile <name>` switches the active profile (created when it does not exist). `-h` / `--help` and `-V` / `-v` / `--version` work everywhere but are left out of the option lists.
+The connection settings (`db_path`, `wxid`, `decrypt_key`) are only read from the config file, set them with `./weflow config set`; there are no command-line
+overrides. `./weflow config set --help` explains every key. `./weflow config set config_path <file>` makes later runs use another config file (it is remembered in
+`config_path` next to the default location; `./weflow config unset config_path` or the default path switches back), `./weflow config path` shows the one in use.
+`./weflow config set current_profile <name>` switches the active profile (created when it does not exist). `-h` / `--help` and `-V` / `-v` / `--version` work everywhere but are left out of the option lists.
 
 **Why the database layer is pure Rust.** The CLI was first meant to call the closed-source `wcdb_api` library through FFI. That
 library has an expiry check (after 2026-09-30 23:59:59 `wcdb_init` returns `-1000`) and unverified network code, so the CLI now

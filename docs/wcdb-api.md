@@ -4,7 +4,7 @@
 
 ## In short
 
-- The **native Rust CLI** (`weflow`) and this repository's **desktop app**, which runs on the Rust layer (see
+- The **native Rust CLI** (`./weflow`) and this repository's **desktop app**, which runs on the Rust layer (see
   [desktop-rust-layer.md](desktop-rust-layer.md)), do **not** load, embed or ship `wcdb_api.dll` (nor `libwcdb_api.so`,
   `libwcdb_api.dylib`, `WCDB.dll`, `SDL2.dll`, `libWCDB.dylib`). They read WeChat's databases with the repository's own
   pure-Rust, read-only layer (`crates/weflow-native`); the desktop app reaches it through `weflow_wcdb`
@@ -27,7 +27,7 @@ Where the libraries are used:
 
 | | Loads `wcdb_api` | Packages `resources/wcdb/` |
 |---|---|---|
-| Native Rust CLI (`weflow`) | No | No (`crates/weflow-assets/build.rs` never embeds `resources/wcdb/`) |
+| Native Rust CLI (`./weflow`) | No | No (`crates/weflow-assets/build.rs` never embeds `resources/wcdb/`) |
 | Desktop app in this repository (Rust layer) | No (`wcdbCore.ts` loads `weflow_wcdb`) | No (`package.json` leaves out `wcdb/**`) |
 | Original desktop app (upstream WeFlow, and this repository before the move to the Rust layer) | Yes | Yes |
 
