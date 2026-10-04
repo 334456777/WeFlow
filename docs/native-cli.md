@@ -115,6 +115,7 @@ Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, 
 | `crates/weflow-cli` | Command entry, argument parsing, output |
 | `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, HTTP API |
 | `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, ISAAC-64 keystream (ported from the vendor WASM), platform wrappers |
+| `crates/weflow-wcdb-ffi` | C-ABI shared library `weflow_wcdb` that exports `weflow-native` with the same interface as `wcdb_api`; loaded by the desktop app (see [desktop-rust-layer.md](desktop-rust-layer.md)) |
 | `crates/weflow-assets` | Embedded resources, unpacking, hash check |
 | `crates/weflow-silk` | Vendored SILK decoder for voice messages |
 

@@ -6,7 +6,7 @@ The desktop app (Electron) originally read WeChat databases through the closed-s
 
 ## Architecture
 
-- `crates/weflow-wcdb-ffi` exports 88 of the 92 functions declared by `electron/services/wcdbCore.ts` (`wcdb_open_account`, `wcdb_get_sessions`, `wcdb_open_message_cursor`, and so on), with the same parameters, status codes, and JSON results. Strings are still returned through `_Out_ void**` parameters and freed with `wcdb_free_string`.
+- `crates/weflow-wcdb-ffi` exports 91 of the 92 functions declared by `electron/services/wcdbCore.ts` (`wcdb_open_account`, `wcdb_get_sessions`, `wcdb_open_message_cursor`, and so on), with the same parameters, status codes, and JSON results. The one it does not export is `VerifyUser` (see the table below). Strings are still returned through `_Out_ void**` parameters and freed with `wcdb_free_string`.
 - The only change in `wcdbCore.ts` is where it looks for the library: `resources/native-db/<platform>/<arch>/weflow_wcdb.dll` (`libweflow_wcdb.so` or `libweflow_wcdb.dylib`). During development it also checks `target/release/`, and `WCDB_DLL_PATH` can specify another path. It no longer preloads `WCDB.dll`, `SDL2.dll`, or `libWCDB.dylib`.
 - Packages include `resources/native-db/` instead of `resources/wcdb/`. Those libraries (the newer `wcdb_api.dll` and the expired older build) remain in the repository for the original desktop app; see [wcdb-api.md](wcdb-api.md).
 - Change notifications: `wcdb_start_monitor_pipe` opens a named pipe on Windows or a Unix socket and sends one JSON line (`session_change`, `message_change`, or `contact_change`) whenever a database changes, detected by checking files once per second. The desktop app's existing pipe client receives these notifications unchanged.
