@@ -145,7 +145,13 @@ fn value_to_json(column: &str, v: ValueRef<'_>) -> Value {
 }
 
 pub fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|x| format!("{x:02x}")).collect()
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(DIGITS[(b >> 4) as usize] as char);
+        out.push(DIGITS[(b & 0xf) as usize] as char);
+    }
+    out
 }
 
 /// Text form of a BLOB: inflate zstd frames, then UTF-8 if valid, otherwise lowercase hex.
@@ -460,5 +466,17 @@ impl NativeAccount {
             &[],
         )?;
         Ok(Value::Array(rows))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn hex_is_lowercase_two_digits_per_byte() {
+        assert_eq!(super::hex(&[]), "");
+        assert_eq!(super::hex(&[0x00, 0x0f, 0xa5, 0xff]), "000fa5ff");
+        let all: Vec<u8> = (0..=255).collect();
+        let expected: String = all.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(super::hex(&all), expected);
     }
 }
