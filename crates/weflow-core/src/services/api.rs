@@ -771,7 +771,7 @@ impl ServiceHub {
             .unwrap_or_default();
         let sessions = self
             .chat_sessions_list()
-            .map_err(|e| ApiError::new(500, e.message))?;
+            .map_err(|e| ApiError::new(500, e.into_message()))?;
         let mut filtered: Vec<Value> = sessions;
         if !keyword.is_empty() {
             let k = keyword.to_lowercase();
@@ -839,7 +839,7 @@ impl ServiceHub {
             api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
         let contacts = self
             .chat_contacts_list()
-            .map_err(|e| ApiError::new(500, e.message))?;
+            .map_err(|e| ApiError::new(500, e.into_message()))?;
         let mut filtered = contacts;
         if !keyword.is_empty() {
             filtered.retain(|c| {
@@ -872,7 +872,7 @@ impl ServiceHub {
         }
         let (entries, from_cache, updated_at) = self
             .group_members_panel(&chatroom_id, force, include_counts)
-            .map_err(|e| ApiError::new(500, e.message))?;
+            .map_err(|e| ApiError::new(500, e.into_message()))?;
         let members: Vec<Value> = entries
             .iter()
             .map(|m| {
@@ -1339,7 +1339,7 @@ impl ServiceHub {
         let end = api::parse_time_param(params.get("end").map(String::as_str), true);
         let wcdb = self
             .open_wcdb()
-            .map_err(|e| ApiError::new(500, e.message))?;
+            .map_err(|e| ApiError::new(500, e.into_message()))?;
         let my = self.wmy();
         let (mut messages, has_more);
         if !keyword.is_empty() {
@@ -1470,7 +1470,7 @@ impl ServiceHub {
             .unwrap_or(0);
         let wcdb = self
             .open_wcdb()
-            .map_err(|e| ApiError::new(500, e.message))?;
+            .map_err(|e| ApiError::new(500, e.into_message()))?;
         let (rows, has_more) = self.fetch_rows_batch(
             &wcdb,
             session_id,
