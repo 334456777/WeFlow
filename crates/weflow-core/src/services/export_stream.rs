@@ -122,7 +122,9 @@ fn read_pages<T: Send, R>(
     let cursor = wcdb
         .open_message_cursor(&req.session_id, PAGE_SIZE, true, begin, finish, false)
         .map_err(|e| AppError::native(e.to_string()))?;
-    let result = read_cursor(wcdb, cursor, req, opts, max_workers, with_finisher, f);
+    let cpus = std::thread::available_parallelism().map_or(2, |n| n.get());
+    let workers = (cpus, max_workers);
+    let result = read_cursor(wcdb, cursor, req, opts, workers, with_finisher, f);
     let _ = wcdb.close_message_cursor(cursor);
     result
 }
@@ -149,12 +151,13 @@ fn worker_counts(
     }
 }
 
+/// Reads the open `cursor` with workers counted from `(CPUs, most workers)` (see [`worker_counts`]).
 fn read_cursor<T: Send, R>(
     wcdb: &Wcdb,
     cursor: i64,
     req: &MessageExportRequest,
     opts: &CollectOptions<'_>,
-    max_workers: usize,
+    (cpus, max_workers): (usize, usize),
     with_finisher: &WithFinisher<'_, T>,
     f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
 ) -> AppResult<R> {
@@ -166,7 +169,7 @@ fn read_cursor<T: Send, R>(
     let (initial, workers) = worker_counts(
         pages,
         std::env::var(WORKERS_ENV).ok().as_deref(),
-        std::thread::available_parallelism().map_or(2, |n| n.get()),
+        cpus,
         max_workers,
     );
     // connections open only when a worker reads, so sleeping workers cost none
@@ -197,7 +200,11 @@ fn read_cursor<T: Send, R>(
             .collect();
         drop(tx);
         let mut stream = PageStream::new(rx, &gate, pages, total);
+        // a consumer that panics must stop the workers too: the scope waits for them before the panic goes on, and a
+        // worker that was never woken would wait forever
+        let consumer = HaltOnPanic(&gate);
         let result = f(&mut stream);
+        drop(consumer);
         gate.halt(); // the consumer is done (or gave up): workers stop at their next page
         let PageStream {
             rx, error, stats, ..
@@ -670,6 +677,83 @@ mod tests {
         assert_eq!(worker_counts(1, None, 16, most), (1, 1));
         // the override is for measurements: it still fixes the count
         assert_eq!(worker_counts(100, Some("4"), 16, most), (4, 4));
+    }
+
+    #[test]
+    fn a_consumer_that_panics_stops_the_sleeping_workers() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, SessionSpec, T0};
+
+        let root =
+            std::env::temp_dir().join(format!("weflow-consumer-panic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let fixture = Fixture::new(&root, "wxid_me_ab12");
+        fixture.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0 + 20_000,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        fixture.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        // ten cursor pages: room for eight workers, of which only the first two read
+        let msgs: Vec<MsgSpec> = (1..=20_000)
+            .map(|i| MsgSpec::text(i, "wxid_bob", T0 + i, "hi"))
+            .collect();
+        fixture.message_shard(0, &[("wxid_bob", msgs)]);
+        let account = fixture.db_storage().parent().unwrap().to_path_buf();
+        let key = fixture.key_hex();
+
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut wcdb = Wcdb::new();
+            wcdb.open(&account, &key, Some("wxid_me_ab12")).unwrap();
+            let req = MessageExportRequest {
+                session_id: "wxid_bob".into(),
+                format: "txt".into(),
+                start: None,
+                end: None,
+                sender: None,
+                display_pref: crate::export_msg::DisplayPref::Remark,
+                excel_compact: false,
+            };
+            let opts = CollectOptions {
+                session_id: "wxid_bob",
+                my_wxid: "wxid_me",
+                start: None,
+                end: None,
+                sender_filter: None,
+            };
+            let cursor = wcdb
+                .open_message_cursor("wxid_bob", PAGE_SIZE, true, 0, 0, false)
+                .unwrap();
+            let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
+            // 16 CPUs: two workers read, six sleep until the consumer would need them. The consumer is slower than
+            // the two, so none of the others is woken, and it fails only after the last page (like a writer whose
+            // final save fails): by then the two have finished, and no failed send stops the sleeping ones.
+            let panicked = catch_unwind(AssertUnwindSafe(|| {
+                read_cursor(
+                    &wcdb,
+                    cursor,
+                    &req,
+                    &opts,
+                    (16, MAX_WORKERS),
+                    as_is,
+                    |pages| {
+                        for _ in pages {
+                            std::thread::sleep(Duration::from_millis(100));
+                        }
+                        panic!("the consumer failed after the last page");
+                    },
+                )
+            }))
+            .is_err();
+            let _ = done.send(panicked);
+        });
+        // before the fix the export waited forever for the sleeping workers
+        let panicked = finished.recv_timeout(Duration::from_secs(60));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(panicked, Ok(true), "the export hung or swallowed the panic");
     }
 
     #[test]

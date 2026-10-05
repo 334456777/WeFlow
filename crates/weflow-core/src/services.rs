@@ -730,12 +730,7 @@ impl ServiceHub {
             sender_filter: req.sender.as_deref(),
         };
         let format = req.format.to_ascii_lowercase();
-        let stamp = |p: &Path| {
-            std::fs::metadata(p)
-                .ok()
-                .map(|m| (m.len(), m.modified().ok()))
-        };
-        let before = stamp(out);
+        let before = file_stamp(out);
         let render_ahead =
             crate::export_msg::EntryFormat::parse(&format).filter(|f| f.renders_ahead());
         let read = match render_ahead {
@@ -775,10 +770,10 @@ impl ServiceHub {
                 )
             }),
         };
-        if read.is_err() && stamp(out) != before {
-            // the reading failed after the file was written from the messages read so far: do not leave a
-            // truncated export that looks complete
-            let _ = std::fs::remove_file(out);
+        if !matches!(read, Ok(Ok(Ok(_)))) {
+            // the reading or the writing (a full disk) failed after the file was written from the messages read so
+            // far: do not leave a truncated export that looks complete
+            remove_if_written(out, before);
         }
         let count = read??.map_err(|e| AppError::runtime(e.to_string()))?;
         if count == 0 {
@@ -883,7 +878,8 @@ impl ServiceHub {
     ) -> AppResult<Value> {
         let format = req.format.to_ascii_lowercase();
         let runtime = |e: anyhow::Error| AppError::runtime(e.to_string());
-        self.with_exporter(
+        let before = file_stamp(out);
+        let written = self.with_exporter(
             &req.session_id,
             req.display_pref,
             req.excel_compact,
@@ -906,7 +902,12 @@ impl ServiceHub {
                     "unsupported message export format: {other}; supported: {MESSAGE_EXPORT_FORMATS}"
                 ))),
             },
-        )??;
+        );
+        if !matches!(written, Ok(Ok(_))) {
+            // a write that failed part-way (a full disk) leaves no truncated export behind
+            remove_if_written(out, before);
+        }
+        written??;
         Ok(
             json!({ "out": out, "count": collected.len(), "session": req.session_id, "format": format }),
         )
@@ -1391,6 +1392,23 @@ impl ExporterParts {
             names,
             settings: self.settings.clone(),
         }
+    }
+}
+
+/// What tells whether an export wrote to `path`: its size and modification time, `None` when it does not exist.
+type FileStamp = Option<(u64, Option<std::time::SystemTime>)>;
+
+fn file_stamp(path: &Path) -> FileStamp {
+    std::fs::metadata(path)
+        .ok()
+        .map(|m| (m.len(), m.modified().ok()))
+}
+
+/// Removes `out` after a failed export if the export wrote to it (compared with `before`, its stamp from before the
+/// export), so a truncated file is not taken for a complete export.
+fn remove_if_written(out: &Path, before: FileStamp) {
+    if file_stamp(out) != before {
+        let _ = std::fs::remove_file(out);
     }
 }
 

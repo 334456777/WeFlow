@@ -1969,9 +1969,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 ws.write_string(row, content_col, clipped)?;
             }
         }
-        workbook
-            .save(out)
-            .with_context(|| format!("failed to write {}", out.display()))?;
+        // Built in memory, then written: rust_xlsxwriter panics (an unwrap) when writing a constant-memory sheet to
+        // the file fails, for instance on a full disk, while writing to memory cannot fail.
+        let bytes = workbook
+            .save_to_buffer()
+            .with_context(|| format!("failed to build {}", out.display()))?;
+        write_bytes(out, &bytes)?;
         Ok(count)
     }
 
@@ -2468,7 +2471,8 @@ fn write_bytes(out: &Path, bytes: &[u8]) -> Result<()> {
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
     }
-    fs::write(out, bytes).with_context(|| format!("failed to write {}", out.display()))
+    // the cause goes into the message itself: only the outermost context reaches the user
+    fs::write(out, bytes).map_err(|e| anyhow::anyhow!("failed to write {}: {e}", out.display()))
 }
 
 /// Client-side script of the exported HTML page (chunked renderer, search, jump).
