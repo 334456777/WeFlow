@@ -399,8 +399,8 @@ impl<'a> MessageStream<'a> {
 
     /// Wakes one more worker when the consumer waited for more than a tenth of its time since the last check.
     /// (The wait for the first page is how long a page takes, not a sign of too few workers.)
-    fn adapt(&mut self, waited: Duration) {
-        let now = Instant::now();
+    /// `now` is when the page was taken.
+    fn adapt(&mut self, waited: Duration, now: Instant) {
         if let Some(last) = self.last_take.replace(now) {
             self.window.0 += 1;
             self.window.1 += now - last;
@@ -416,7 +416,7 @@ impl<'a> MessageStream<'a> {
     }
 
     fn take(&mut self, page: ParsedPage, waited: Duration) {
-        self.adapt(waited);
+        self.adapt(waited, Instant::now());
         self.next_page += 1;
         self.gate.set_taken(self.next_page);
         self.scanned += page.scanned;
@@ -518,17 +518,17 @@ mod tests {
         let gate = Gate::new(1, 4);
         let (_tx, rx) = channel();
         let mut stream = MessageStream::new(rx, &gate, 100, 0);
+        // the clock is passed in: a sleeping test would depend on how the runner schedules it
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
         // busy: 10 ms between pages, nothing waited
-        stream.adapt(Duration::ZERO);
-        for _ in 0..4 {
-            std::thread::sleep(Duration::from_millis(10));
-            stream.adapt(Duration::ZERO);
+        for k in 0..5 {
+            stream.adapt(Duration::ZERO, at(k * 10));
         }
         assert_eq!(gate.active(), 1);
         // starved: half of the time between pages went to waiting
-        for _ in 0..2 {
-            std::thread::sleep(Duration::from_millis(10));
-            stream.adapt(Duration::from_millis(5));
+        for k in 5..7 {
+            stream.adapt(Duration::from_millis(5), at(k * 10));
         }
         assert_eq!(gate.active(), 2);
     }
