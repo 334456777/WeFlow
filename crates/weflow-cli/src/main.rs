@@ -11,6 +11,11 @@ use weflow_core::error::{AppError, AppResult};
 use weflow_core::output::{failure, success};
 use weflow_core::services::ServiceHub;
 
+/// Exports read rows on one thread and free them on another; with the system allocator (glibc in particular) that
+/// hand-over costs more than the parsing it runs next to. See issue #14.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser, Debug)]
