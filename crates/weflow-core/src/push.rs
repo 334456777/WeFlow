@@ -1044,17 +1044,17 @@ impl PushEngine {
         Some(url)
     }
 
-    fn payload(
-        &self,
-        event: &str,
-        session_id: &str,
-        raw_id: String,
-        avatar: Option<String>,
-        group_name: Option<String>,
-        source_name: String,
-        content: Option<String>,
-        timestamp: i64,
-    ) -> Value {
+    fn payload(&self, p: PushPayload<'_>) -> Value {
+        let PushPayload {
+            event,
+            session_id,
+            raw_id,
+            avatar,
+            group_name,
+            source_name,
+            content,
+            timestamp,
+        } = p;
         let mut o = Map::new();
         o.insert("event".into(), json!(event));
         o.insert("sessionId".into(), json!(session_id));
@@ -1096,16 +1096,16 @@ impl PushEngine {
                     .clone()
                     .or_else(|| info.and_then(|i| i.0)),
             );
-            return Some(self.payload(
-                "message.new",
-                &session_id,
+            return Some(self.payload(PushPayload {
+                event: "message.new",
+                session_id: &session_id,
                 raw_id,
                 avatar,
-                Some(group_name),
-                source,
+                group_name: Some(group_name),
+                source_name: source,
                 content,
-                m.create_time,
-            ));
+                timestamp: m.create_time,
+            }));
         }
         let info = self.hub.chat_contact_avatar(&session_id);
         let avatar = self.normalize_avatar(
@@ -1119,16 +1119,16 @@ impl PushEngine {
             .or_else(|| info.map(|i| i.1))
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| session_id.clone());
-        Some(self.payload(
-            "message.new",
-            &session_id,
+        Some(self.payload(PushPayload {
+            event: "message.new",
+            session_id: &session_id,
             raw_id,
             avatar,
-            None,
-            source,
+            group_name: None,
+            source_name: source,
             content,
-            m.create_time,
-        ))
+            timestamp: m.create_time,
+        }))
     }
 
     fn build_revoke_payload(
@@ -1204,16 +1204,16 @@ impl PushEngine {
                     .clone()
                     .or_else(|| info.and_then(|i| i.0)),
             );
-            return Some(self.payload(
-                "message.revoke",
-                &session_id,
+            return Some(self.payload(PushPayload {
+                event: "message.revoke",
+                session_id: &session_id,
                 raw_id,
                 avatar,
-                Some(group_name),
-                source,
-                Some(content),
-                m.create_time,
-            ));
+                group_name: Some(group_name),
+                source_name: source,
+                content: Some(content),
+                timestamp: m.create_time,
+            }));
         }
         let info = self.hub.chat_contact_avatar(&session_id);
         let avatar = self.normalize_avatar(
@@ -1227,17 +1227,29 @@ impl PushEngine {
             .or_else(|| info.map(|i| i.1))
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| session_id.clone());
-        Some(self.payload(
-            "message.revoke",
-            &session_id,
+        Some(self.payload(PushPayload {
+            event: "message.revoke",
+            session_id: &session_id,
             raw_id,
             avatar,
-            None,
-            source,
-            Some(content),
-            m.create_time,
-        ))
+            group_name: None,
+            source_name: source,
+            content: Some(content),
+            timestamp: m.create_time,
+        }))
     }
+}
+
+/// The fields of a push notification, in the shape [`PushEngine::payload`] turns into JSON.
+struct PushPayload<'a> {
+    event: &'a str,
+    session_id: &'a str,
+    raw_id: String,
+    avatar: Option<String>,
+    group_name: Option<String>,
+    source_name: String,
+    content: Option<String>,
+    timestamp: i64,
 }
 
 /// `parseMessageKeySource`: (db path, table) out of a `db:table:localId` key.

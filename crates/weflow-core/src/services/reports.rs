@@ -1648,10 +1648,8 @@ impl ServiceHub {
                 }
                 let _ = wcdb.close_message_cursor(cursor);
             }
-            let (mut my_top, mut fr_top): (
-                Option<&(bool, String, Option<String>, i64)>,
-                Option<&(bool, String, Option<String>, i64)>,
-            ) = (None, None);
+            type TallyRow = (bool, String, Option<String>, i64);
+            let (mut my_top, mut fr_top): (Option<&TallyRow>, Option<&TallyRow>) = (None, None);
             for t in &tally {
                 if t.0 {
                     if my_top.is_none_or(|m| t.3 > m.3) {

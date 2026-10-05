@@ -1175,7 +1175,6 @@ fn db_base_name(path: &str) -> String {
 }
 
 /// `buildMessageKey`
-#[allow(clippy::too_many_arguments)]
 pub fn build_message_key(
     local_id: i64,
     server_id: i64,

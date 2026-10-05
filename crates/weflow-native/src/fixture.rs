@@ -268,7 +268,9 @@ impl Fixture {
     }
 
     pub fn media_db(&self, n: u32, voices: &[VoiceSpec]) {
-        let rows: Vec<(i64, i64, i64, i64, Vec<u8>, &'static str)> = {
+        /// (chat id, create time, local id, server id, data, chat name)
+        type VoiceRow = (i64, i64, i64, i64, Vec<u8>, &'static str);
+        let rows: Vec<VoiceRow> = {
             let mut names: Vec<&str> = Vec::new();
             voices
                 .iter()
@@ -452,13 +454,15 @@ impl Fixture {
             .collect();
         let ids: std::collections::HashMap<&str, i64> =
             contacts.iter().map(|(id, c)| (c.username, *id)).collect();
-        let rooms: Vec<(
+        /// (room row id, username, owner, members as (username, nickname), member row ids)
+        type RoomRow = (
             i64,
             &'static str,
             &'static str,
             &'static [(&'static str, &'static str)],
             Vec<i64>,
-        )> = rooms
+        );
+        let rooms: Vec<RoomRow> = rooms
             .iter()
             .map(|r| {
                 let rid = *ids

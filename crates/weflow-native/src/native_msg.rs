@@ -32,6 +32,9 @@ pub struct MsgTable {
 /// Sort key of a message: (sort_seq, create_time, local_id, shard index).
 type Key = (i64, i64, i64, usize);
 
+/// Sender filter of a cursor: (does this username match, also keep the account owner's own messages).
+pub type SenderFilter<'a> = (&'a dyn Fn(&str) -> bool, bool);
+
 pub struct MessageCursor {
     tables: Vec<MsgTable>,
     keys: Vec<Key>,
@@ -346,46 +349,33 @@ impl NativeAccount {
         end: i32,
         lite: bool,
     ) -> Result<i64> {
-        self.open_cursor(session_id, batch, ascending, begin, end, lite, None)
+        self.open_cursor(session_id, batch, ascending, (begin, end), lite, None)
     }
 
-    /// Like [`open_message_cursor`](Self::open_message_cursor), but only over messages whose sender `sender_ok`
-    /// accepts (plus the account owner's own messages when `include_mine`). Messages whose sender cannot be
-    /// resolved from `Name2Id` are always kept, so callers that look at the text prefix still see them.
-    /// This lets a per-member scan of a huge group read only that member's rows.
-    #[allow(clippy::too_many_arguments)]
+    /// Like [`open_message_cursor`](Self::open_message_cursor) over `range` = `(begin, end)`, but only over messages
+    /// whose sender `senders.0` accepts (plus the account owner's own messages when `senders.1` is true). Messages
+    /// whose sender cannot be resolved from `Name2Id` are always kept, so callers that look at the text prefix still
+    /// see them. This lets a per-member scan of a huge group read only that member's rows.
     pub fn open_message_cursor_for_senders(
         &self,
         session_id: &str,
         batch: i32,
         ascending: bool,
-        begin: i32,
-        end: i32,
+        range: (i32, i32),
         lite: bool,
-        sender_ok: &dyn Fn(&str) -> bool,
-        include_mine: bool,
+        senders: SenderFilter<'_>,
     ) -> Result<i64> {
-        self.open_cursor(
-            session_id,
-            batch,
-            ascending,
-            begin,
-            end,
-            lite,
-            Some((sender_ok, include_mine)),
-        )
+        self.open_cursor(session_id, batch, ascending, range, lite, Some(senders))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn open_cursor(
         &self,
         session_id: &str,
         batch: i32,
         ascending: bool,
-        begin: i32,
-        end: i32,
+        (begin, end): (i32, i32),
         lite: bool,
-        senders: Option<(&dyn Fn(&str) -> bool, bool)>,
+        senders: Option<SenderFilter<'_>>,
     ) -> Result<i64> {
         let tables = self.message_tables(session_id)?;
         let (begin, end) = (begin.max(0) as i64, end.max(0) as i64);
@@ -819,7 +809,7 @@ mod tests {
         let acct = acct.with_my_wxid(Some("wxid_me".into()));
         let read = |ok: &dyn Fn(&str) -> bool, mine: bool| -> Vec<String> {
             let c = acct
-                .open_message_cursor_for_senders("wxid_bob", 100, true, 0, 0, true, ok, mine)
+                .open_message_cursor_for_senders("wxid_bob", 100, true, (0, 0), true, (ok, mine))
                 .unwrap();
             let (rows, _) = acct.fetch_message_batch(c).unwrap();
             acct.close_message_cursor(c).unwrap();

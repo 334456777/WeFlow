@@ -1052,8 +1052,7 @@ impl ServiceHub {
         member: &str,
         batch: i32,
         ascending: bool,
-        start: i64,
-        end: i64,
+        (start, end): (i64, i64),
     ) -> AppResult<i64> {
         let norm = |v: i64| {
             if v <= 0 {
@@ -1071,22 +1070,18 @@ impl ServiceHub {
             chatroom_id,
             batch,
             ascending,
-            b,
-            e,
+            (b, e),
             true,
-            &ok,
-            mine,
+            (&ok, mine),
         ) {
             Ok(c) if c != 0 => Ok(c),
             _ => self.wrap_native(wcdb.open_message_cursor_for_senders(
                 chatroom_id,
                 batch,
                 ascending,
-                b,
-                e,
+                (b, e),
                 false,
-                &ok,
-                mine,
+                (&ok, mine),
             )),
         }
     }
@@ -1103,7 +1098,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let (chatroom_id, member) = (chatroom_id.trim(), member.trim());
         let my_wxid = self.my_wxid_cleaned();
-        let cursor = self.member_cursor(&wcdb, chatroom_id, member, 10000, true, start, end)?;
+        let cursor = self.member_cursor(&wcdb, chatroom_id, member, 10000, true, (start, end))?;
 
         let mut match_cache: HashMap<String, bool> = HashMap::new();
         let mut total = 0i64;
@@ -1261,7 +1256,7 @@ impl ServiceHub {
         end: i64,
     ) -> AppResult<Vec<chat_msg::ChatMessage>> {
         let my_wxid = self.my_wxid_cleaned();
-        let cursor = self.member_cursor(wcdb, chatroom_id, member, 800, true, start, end)?;
+        let cursor = self.member_cursor(wcdb, chatroom_id, member, 800, true, (start, end))?;
         let mut out = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
         let matches = |s: &str, cache: &mut HashMap<String, bool>| -> bool {
@@ -1331,8 +1326,7 @@ impl ServiceHub {
             member,
             batch_size,
             false,
-            start.max(0),
-            end.max(0),
+            (start.max(0), end.max(0)),
         )?;
         let mut matched: Vec<chat_msg::ChatMessage> = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();

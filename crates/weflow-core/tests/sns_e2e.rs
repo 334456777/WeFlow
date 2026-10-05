@@ -8,8 +8,11 @@ use serde_json::{json, Value};
 use weflow_core::isaac64;
 use weflow_core::services::{SnsExportOptions, SnsProxyResult};
 
+/// (path, extra headers, body)
+type Route = (&'static str, Vec<(&'static str, &'static str)>, Vec<u8>);
+
 /// Tiny HTTP server: path → (extra headers, body). Runs until the process exits.
-fn serve(routes: Vec<(&'static str, Vec<(&'static str, &'static str)>, Vec<u8>)>) -> String {
+fn serve(routes: Vec<Route>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let routes = Arc::new(routes);

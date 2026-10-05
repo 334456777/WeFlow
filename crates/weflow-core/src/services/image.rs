@@ -203,6 +203,16 @@ fn cache_keys(p: &ImagePayload) -> Vec<String> {
     keys
 }
 
+/// How far `resolve_dat_path` may relax its search for a payload's `.dat` file.
+struct DatSearch {
+    /// Accept a thumbnail (`_t`) when no HD file exists.
+    allow_thumbnail: bool,
+    /// Ignore previously resolved paths and look on disk again.
+    skip_resolved_cache: bool,
+    /// Also look for a base derived from the normalized `.dat` name (or the md5), see `lookup_bases`.
+    allow_dat_name_fallback: bool,
+}
+
 /// `collectHardlinkLookupMd5s` + the dat-name scan fallback of `collectLookupBasesForScan`.
 fn lookup_bases(
     md5: Option<&str>,
@@ -462,18 +472,23 @@ impl ServiceHub {
             .or_else(|| sel(&candidates, &is_t))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn resolve_dat_path(
         &self,
         account_dir: &Path,
-        md5: Option<&str>,
-        dat_name: Option<&str>,
-        session_id: Option<&str>,
-        create_time: Option<i64>,
-        allow_thumbnail: bool,
-        skip_resolved_cache: bool,
-        allow_dat_name_fallback: bool,
+        p: &ImagePayload,
+        search: DatSearch,
     ) -> Option<String> {
+        let DatSearch {
+            allow_thumbnail,
+            skip_resolved_cache,
+            allow_dat_name_fallback,
+        } = search;
+        let (md5, dat_name, session_id, create_time) = (
+            p.image_md5.as_deref(),
+            p.image_dat_name.as_deref(),
+            p.session_id.as_deref(),
+            p.create_time,
+        );
         let bases = lookup_bases(md5, dat_name, allow_dat_name_fallback);
         if bases.is_empty() {
             return None;
@@ -576,13 +591,12 @@ impl ServiceHub {
         let account_dir = self.account_dir_only().ok()?;
         let hd_dat = self.resolve_dat_path(
             &account_dir,
-            p.image_md5.as_deref(),
-            p.image_dat_name.as_deref(),
-            p.session_id.as_deref(),
-            p.create_time,
-            false,
-            true,
-            false,
+            p,
+            DatSearch {
+                allow_thumbnail: false,
+                skip_resolved_cache: true,
+                allow_dat_name_fallback: false,
+            },
         )?;
         let remove_old = |keep: &str| {
             if cached != keep && Path::new(cached).exists() && !img::is_hd_path(cached) {
@@ -661,13 +675,12 @@ impl ServiceHub {
         if let Ok(account_dir) = self.account_dir_only() {
             if let Some(dat) = self.resolve_dat_path(
                 &account_dir,
-                p.image_md5.as_deref(),
-                p.image_dat_name.as_deref(),
-                p.session_id.as_deref(),
-                p.create_time,
-                true,
-                false,
-                p.allow_cache_index != Some(false),
+                p,
+                DatSearch {
+                    allow_thumbnail: true,
+                    skip_resolved_cache: false,
+                    allow_dat_name_fallback: p.allow_cache_index != Some(false),
+                },
             ) {
                 if let Some(existing) =
                     self.find_cached_output(&dat, p.session_id.as_deref(), false)
@@ -752,25 +765,23 @@ impl ServiceHub {
         let dat = if p.force {
             match self.resolve_dat_path(
                 &account_dir,
-                p.image_md5.as_deref(),
-                p.image_dat_name.as_deref(),
-                p.session_id.as_deref(),
-                p.create_time,
-                false,
-                false,
-                allow_fallback,
+                p,
+                DatSearch {
+                    allow_thumbnail: false,
+                    skip_resolved_cache: false,
+                    allow_dat_name_fallback: allow_fallback,
+                },
             ) {
                 Some(d) => Some(d),
                 None => {
                     let d = self.resolve_dat_path(
                         &account_dir,
-                        p.image_md5.as_deref(),
-                        p.image_dat_name.as_deref(),
-                        p.session_id.as_deref(),
-                        p.create_time,
-                        true,
-                        false,
-                        allow_fallback,
+                        p,
+                        DatSearch {
+                            allow_thumbnail: true,
+                            skip_resolved_cache: false,
+                            allow_dat_name_fallback: allow_fallback,
+                        },
                     );
                     fallback_to_thumbnail = d.is_some();
                     d
@@ -779,13 +790,12 @@ impl ServiceHub {
         } else {
             self.resolve_dat_path(
                 &account_dir,
-                p.image_md5.as_deref(),
-                p.image_dat_name.as_deref(),
-                p.session_id.as_deref(),
-                p.create_time,
-                true,
-                false,
-                allow_fallback,
+                p,
+                DatSearch {
+                    allow_thumbnail: true,
+                    skip_resolved_cache: false,
+                    allow_dat_name_fallback: allow_fallback,
+                },
             )
         };
         let Some(dat) = dat else {

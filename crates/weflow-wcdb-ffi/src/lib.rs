@@ -501,16 +501,19 @@ pub unsafe extern "C" fn wcdb_get_group_member_count(
 /// # Safety
 /// See [`wcdb_open_message_cursor`].
 unsafe fn open_cursor(
-    name: &str,
     handle: i64,
     session_id: *const c_char,
     batch: i32,
     ascending: i32,
-    begin: i32,
-    end: i32,
+    (begin, end): (i32, i32),
     lite: bool,
     out: *mut i64,
 ) -> i32 {
+    let name = if lite {
+        "wcdb_open_message_cursor_lite"
+    } else {
+        "wcdb_open_message_cursor"
+    };
     let sid = text(session_id);
     run(name, handle, std::ptr::null_mut(), |db| {
         put_value(
@@ -534,13 +537,11 @@ pub unsafe extern "C" fn wcdb_open_message_cursor(
     out_cursor: *mut i64,
 ) -> i32 {
     open_cursor(
-        "wcdb_open_message_cursor",
         handle,
         session_id,
         batch_size,
         ascending,
-        begin,
-        end,
+        (begin, end),
         false,
         out_cursor,
     )
@@ -559,13 +560,11 @@ pub unsafe extern "C" fn wcdb_open_message_cursor_lite(
     out_cursor: *mut i64,
 ) -> i32 {
     open_cursor(
-        "wcdb_open_message_cursor_lite",
         handle,
         session_id,
         batch_size,
         ascending,
-        begin,
-        end,
+        (begin, end),
         true,
         out_cursor,
     )

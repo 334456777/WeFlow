@@ -190,27 +190,17 @@ impl Wcdb {
     }
 
     /// A cursor over one member's messages only (see `NativeAccount::open_message_cursor_for_senders`).
-    #[allow(clippy::too_many_arguments)]
     pub fn open_message_cursor_for_senders(
         &self,
         session_id: &str,
         batch_size: i32,
         ascending: bool,
-        begin: i32,
-        end: i32,
+        range: (i32, i32),
         lite: bool,
-        sender_ok: &dyn Fn(&str) -> bool,
-        include_mine: bool,
+        senders: crate::native_msg::SenderFilter<'_>,
     ) -> Result<i64> {
         self.account()?.open_message_cursor_for_senders(
-            session_id,
-            batch_size,
-            ascending,
-            begin,
-            end,
-            lite,
-            sender_ok,
-            include_mine,
+            session_id, batch_size, ascending, range, lite, senders,
         )
     }
 
