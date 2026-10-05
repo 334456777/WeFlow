@@ -455,9 +455,9 @@ fn moments_users_and_export_stats() {
 fn operations_that_modify_wechat_databases_are_refused_clearly() {
     let (hub, _root) = common::mock_hub("n-readonly");
     for err in [
-        hub.sns_block_delete_install().unwrap_err().message,
-        hub.sns_delete_post("1001").unwrap_err().message,
-        hub.chat_mark_all_read().unwrap_err().message,
+        hub.sns_block_delete_install().unwrap_err().into_message(),
+        hub.sns_delete_post("1001").unwrap_err().into_message(),
+        hub.chat_mark_all_read().unwrap_err().into_message(),
     ] {
         assert!(err.contains("read-only"), "{err}");
     }

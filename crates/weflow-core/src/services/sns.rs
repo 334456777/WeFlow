@@ -439,7 +439,7 @@ impl ServiceHub {
                         mine = m;
                     }
                 }
-                Err(e) => fallback_error = Some(e.message),
+                Err(e) => fallback_error = Some(e.into_message()),
             }
         }
         let normalized = export_stats_value(

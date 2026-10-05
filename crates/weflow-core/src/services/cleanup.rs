@@ -83,7 +83,7 @@ impl ServiceHub {
     pub fn cache_clear_all(&self) -> Value {
         let mut errors: Vec<String> = Vec::new();
         if let Err(e) = self.analytics_clear_cache() {
-            errors.push(e.message);
+            errors.push(e.into_message());
         }
         let image = self.image_clear_cache();
         if image["success"] != true {
@@ -126,7 +126,7 @@ impl ServiceHub {
 
         if clear_cache {
             if let Err(e) = self.analytics_clear_cache() {
-                warnings.push(e.message);
+                warnings.push(e.into_message());
             }
             let image = self.image_clear_cache();
             if image["success"] != true {

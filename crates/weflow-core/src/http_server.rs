@@ -228,7 +228,7 @@ async fn route(
             }
             match blocking(move || {
                 hub.sns_usernames_list()
-                    .map_err(|e| ApiError::new(500, e.message))
+                    .map_err(|e| ApiError::new(500, e.into_message()))
             })
             .await
             {
@@ -243,7 +243,7 @@ async fn route(
             let fast = api::parse_bool_param(&params, &["fast"], false);
             match blocking(move || {
                 hub.sns_export_stats(fast)
-                    .map_err(|e| ApiError::new(500, e.message))
+                    .map_err(|e| ApiError::new(500, e.into_message()))
             })
             .await
             {
@@ -270,7 +270,7 @@ async fn route(
             trigger_reply(
                 blocking(move || {
                     hub.sns_block_delete_status()
-                        .map_err(|e| ApiError::new(500, e.message))
+                        .map_err(|e| ApiError::new(500, e.into_message()))
                 })
                 .await,
             )
@@ -282,7 +282,7 @@ async fn route(
             trigger_reply(
                 blocking(move || {
                     hub.sns_block_delete_install()
-                        .map_err(|e| ApiError::new(500, e.message))
+                        .map_err(|e| ApiError::new(500, e.into_message()))
                 })
                 .await,
             )
@@ -294,7 +294,7 @@ async fn route(
             trigger_reply(
                 blocking(move || {
                     hub.sns_block_delete_uninstall()
-                        .map_err(|e| ApiError::new(500, e.message))
+                        .map_err(|e| ApiError::new(500, e.into_message()))
                 })
                 .await,
             )
@@ -320,7 +320,7 @@ async fn route(
                 blocking(move || {
                     hub.sns_delete_post(&post_id)
                         .map(|_| json!({ "success": true }))
-                        .map_err(|e| ApiError::new(500, e.message))
+                        .map_err(|e| ApiError::new(500, e.into_message()))
                 })
                 .await,
             )
@@ -378,7 +378,7 @@ async fn sns_timeline(hub: &Arc<ServiceHub>, params: &Params, base_url: &str) ->
     let hub2 = hub.clone();
     let timeline = match blocking(move || {
         hub2.sns_timeline_query(&q)
-            .map_err(|e| ApiError::new(500, e.message))
+            .map_err(|e| ApiError::new(500, e.into_message()))
     })
     .await
     {
