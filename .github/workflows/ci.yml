@@ -3,7 +3,8 @@ name: CI
 # Code changes run `make ci` (rustfmt, clippy with warnings as errors, the whole test suite) on Linux and macOS,
 # plus `make docs-check`, because the docs are checked against the code (cli-unsupported.md, the crate tables).
 # Documentation-only changes run docs-check.yml instead. Windows is not tested because the suite assumes Unix
-# paths (release-cli.yml only builds there).
+# paths: it builds the CLI for the release targets (MSVC, x64 and arm64) and runs it once, since some code (the
+# allocator setup, the platform helpers) only compiles there.
 on:
   pull_request:
     paths:
@@ -54,6 +55,43 @@ jobs:
 
       - name: make ci
         run: make ci
+
+  windows:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add ${{ matrix.target }}
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        shell: bash
+        run: cargo build --release -p weflow-cli --target ${{ matrix.target }}
+
+      - name: Run once
+        shell: bash
+        env:
+          WEFLOW_HOME: ${{ runner.temp }}/weflow-home
+        run: |
+          ./target/${{ matrix.target }}/release/weflow.exe --version
+          ./target/${{ matrix.target }}/release/weflow.exe config path
 
   docs-check:
     name: make docs-check
