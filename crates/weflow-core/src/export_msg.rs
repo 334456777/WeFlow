@@ -180,23 +180,48 @@ impl Drop for Spool {
     }
 }
 
+/// Formats whose entries do not depend on each other, so a page of them can be rendered on another thread ahead of
+/// the writer: [`Exporter::render_entries`] renders, [`Exporter::write_rendered`] writes them in order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StreamFormat {
+pub enum EntryFormat {
     Txt,
     Sql,
-    Weclone,
+    Chatlab,
+    ChatlabJsonl,
 }
 
-impl StreamFormat {
+impl EntryFormat {
+    /// Whether rendering is slow enough to be worth doing on the reading threads. A ChatLab entry builds a JSON
+    /// object and prints it, which keeps the writer behind the readers; TXT and SQL entries are cheap enough that
+    /// the writer keeps up, and rendering them elsewhere only holds more text in flight (measured in issue #14).
+    pub fn renders_ahead(self) -> bool {
+        matches!(self, Self::Chatlab | Self::ChatlabJsonl)
+    }
+
     pub fn parse(format: &str) -> Option<Self> {
         match format.to_ascii_lowercase().as_str() {
             "txt" => Some(Self::Txt),
             "sql" => Some(Self::Sql),
-            "weclone" => Some(Self::Weclone),
+            "chatlab" => Some(Self::Chatlab),
+            "chatlab-jsonl" => Some(Self::ChatlabJsonl),
             _ => None,
         }
     }
 }
+
+/// A page of messages rendered ahead of writing (see [`Exporter::render_entries`]).
+#[derive(Debug, Default)]
+pub struct RenderedEntries {
+    /// One entry per message, in order.
+    pub texts: Vec<String>,
+    /// ChatLab: the sender of each message (the member list follows their first appearance).
+    pub senders: Vec<String>,
+    /// ChatLab: the people named inside forwarded chat histories, in order (they become members too).
+    pub record_names: Vec<String>,
+}
+
+/// Messages rendered at a time when an export is rendered and written on one thread.
+const RENDER_CHUNK: usize = 2000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisplayPref {
@@ -917,45 +942,173 @@ impl<'a, 'n> Exporter<'a, 'n> {
         I: IntoIterator,
         I::Item: std::borrow::Borrow<ExportMsg>,
     {
-        use std::borrow::Borrow;
+        let format = if jsonl {
+            EntryFormat::ChatlabJsonl
+        } else {
+            EntryFormat::Chatlab
+        };
+        self.render_and_write(format, out, msgs, write_if_empty)
+    }
+
+    /// Renders `msgs` a chunk at a time on this thread and writes them (see [`write_rendered`](Self::write_rendered)).
+    fn render_and_write<I>(
+        &mut self,
+        format: EntryFormat,
+        out: &Path,
+        msgs: I,
+        write_if_empty: bool,
+    ) -> Result<usize>
+    where
+        I: IntoIterator,
+        I::Item: std::borrow::Borrow<ExportMsg>,
+    {
+        let mut msgs = msgs.into_iter();
+        self.write_rendered(
+            format,
+            out,
+            &mut |ex: &mut Self| {
+                let chunk: Vec<I::Item> = msgs.by_ref().take(RENDER_CHUNK).collect();
+                (!chunk.is_empty()).then(|| ex.render_entries(format, &chunk))
+            },
+            write_if_empty,
+        )
+    }
+
+    /// The entries of `msgs` in `format`, without writing them: what a worker thread prepares for
+    /// [`write_rendered`](Self::write_rendered).
+    pub fn render_entries<M: std::borrow::Borrow<ExportMsg>>(
+        &mut self,
+        format: EntryFormat,
+        msgs: &[M],
+    ) -> RenderedEntries {
+        let mut out = RenderedEntries {
+            texts: Vec::with_capacity(msgs.len()),
+            ..Default::default()
+        };
+        for msg in msgs.iter().map(std::borrow::Borrow::borrow) {
+            let text = match format {
+                EntryFormat::Txt => self.txt_entry(msg),
+                EntryFormat::Sql => self.sql_insert(msg),
+                EntryFormat::Chatlab | EntryFormat::ChatlabJsonl => {
+                    out.senders.push(msg.sender_username.clone());
+                    let member_name = if msg.sender_username.is_empty() {
+                        String::new()
+                    } else {
+                        self.contact_display(&msg.sender_username)
+                    };
+                    let m = self.chatlab_message(msg, &member_name, &mut out.record_names);
+                    if format == EntryFormat::ChatlabJsonl {
+                        let mut obj = Map::new();
+                        obj.insert("_type".into(), json!("message"));
+                        obj.extend(m);
+                        serde_json::to_string(&Value::Object(obj)).unwrap_or_default()
+                    } else {
+                        pretty_indented(&Value::Object(m), 4)
+                    }
+                }
+            };
+            out.texts.push(text);
+        }
+        out
+    }
+
+    /// Writes the pages `next` returns (in order, until `None`) as one export; `next` gets this exporter, so it can
+    /// render the page itself or hand over one rendered elsewhere. Returns the number of entries; with none, no file
+    /// is written unless `write_if_empty`.
+    pub fn write_rendered(
+        &mut self,
+        format: EntryFormat,
+        out: &Path,
+        next: &mut dyn FnMut(&mut Self) -> Option<RenderedEntries>,
+        write_if_empty: bool,
+    ) -> Result<usize> {
+        match format {
+            EntryFormat::Txt | EntryFormat::Sql => {
+                self.write_rendered_entries(format, out, next, write_if_empty)
+            }
+            EntryFormat::Chatlab | EntryFormat::ChatlabJsonl => self.write_rendered_chatlab(
+                out,
+                format == EntryFormat::ChatlabJsonl,
+                next,
+                write_if_empty,
+            ),
+        }
+    }
+
+    /// TXT / SQL: a header, then the entries.
+    fn write_rendered_entries(
+        &mut self,
+        format: EntryFormat,
+        out: &Path,
+        next: &mut dyn FnMut(&mut Self) -> Option<RenderedEntries>,
+        write_if_empty: bool,
+    ) -> Result<usize> {
+        use std::io::Write;
+        let header = if format == EntryFormat::Sql {
+            Self::SQL_HEADER
+        } else {
+            ""
+        };
+        let open = || -> Result<std::io::BufWriter<std::fs::File>> {
+            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
+            w.write_all(header.as_bytes())?;
+            Ok(w)
+        };
+        let mut count = 0usize;
+        // created with the first entry, so an empty range leaves no file behind
+        let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
+        while let Some(page) = next(self) {
+            for text in &page.texts {
+                if writer.is_none() {
+                    writer = Some(open()?);
+                }
+                if let Some(w) = writer.as_mut() {
+                    w.write_all(text.as_bytes())?;
+                }
+                count += 1;
+            }
+        }
+        if writer.is_none() && write_if_empty {
+            writer = Some(open()?);
+        }
+        if let Some(mut w) = writer {
+            w.flush()?;
+        }
+        Ok(count)
+    }
+
+    /// ChatLab: the entries go to a spool file; the member list, which comes first in the file and needs every
+    /// sender, is written at the end.
+    fn write_rendered_chatlab(
+        &mut self,
+        out: &Path,
+        jsonl: bool,
+        next: &mut dyn FnMut(&mut Self) -> Option<RenderedEntries>,
+        write_if_empty: bool,
+    ) -> Result<usize> {
         use std::io::Write;
         let mut spool = Spool::create(out)?;
         let mut tally = SenderTally::default();
-        let mut names: HashMap<String, String> = HashMap::new();
         let mut record_order: Vec<String> = Vec::new();
         let mut record_seen: HashSet<String> = HashSet::new();
         let mut count = 0usize;
-        for item in msgs {
-            let msg: &ExportMsg = item.borrow();
-            tally.add(&msg.sender_username);
-            let member_name = if msg.sender_username.is_empty() {
-                String::new()
-            } else if let Some(n) = names.get(&msg.sender_username) {
-                n.clone()
-            } else {
-                let n = self.contact_display(&msg.sender_username);
-                names.insert(msg.sender_username.clone(), n.clone());
-                n
-            };
-            let mut record_names: Vec<String> = Vec::new();
-            let m = self.chatlab_message(msg, &member_name, &mut record_names);
-            for name in record_names {
+        let separator = if jsonl { "\n" } else { ",\n    " };
+        while let Some(page) = next(self) {
+            for sender in &page.senders {
+                tally.add(sender);
+            }
+            for name in page.record_names {
                 if record_seen.insert(name.clone()) {
                     record_order.push(name);
                 }
             }
-            if jsonl {
-                let mut obj = Map::new();
-                obj.insert("_type".into(), json!("message"));
-                obj.extend(m);
-                spool.push(
-                    "\n",
-                    &serde_json::to_string(&Value::Object(obj)).unwrap_or_default(),
-                )?;
-            } else {
-                spool.push(",\n    ", &pretty_indented(&Value::Object(m), 4))?;
+            for text in &page.texts {
+                spool.push(separator, text)?;
+                count += 1;
             }
-            count += 1;
         }
         if count == 0 && !write_if_empty {
             return Ok(0);
@@ -1451,25 +1604,23 @@ impl<'a, 'n> Exporter<'a, 'n> {
         out: &Path,
         msgs: &mut dyn Iterator<Item = ExportMsg>,
     ) -> Result<usize> {
-        if let Some(format) = StreamFormat::parse(format) {
-            return self.write_entries(format, out, msgs);
+        if let Some(format) = EntryFormat::parse(format) {
+            return self.render_and_write(format, out, msgs, false);
         }
         match format {
+            "weclone" => return self.stream_weclone(out, msgs),
             "json" => return self.stream_json(msgs, out, false, false),
             "arkme-json" => return self.stream_json(msgs, out, true, false),
             "html" => return self.stream_html(msgs, out, false),
             "excel" | "xlsx" => return self.stream_excel(msgs, out),
-            "chatlab" => return self.stream_chatlab(msgs, out, false, false),
-            "chatlab-jsonl" => return self.stream_chatlab(msgs, out, true, false),
             _ => {}
         }
         anyhow::bail!("unsupported streamed export format: {format}")
     }
 
-    /// TXT / SQL / WeClone: a header, then one independent entry per message.
-    fn write_entries(
+    /// WeClone: a header, then one row per message (quote replies left out), numbered as written.
+    fn stream_weclone(
         &mut self,
-        format: StreamFormat,
         out: &Path,
         msgs: &mut dyn Iterator<Item = ExportMsg>,
     ) -> Result<usize> {
@@ -1484,13 +1635,15 @@ impl<'a, 'n> Exporter<'a, 'n> {
                     std::fs::create_dir_all(parent)?;
                 }
                 let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
-                w.write_all(Self::stream_header(format).as_bytes())?;
+                w.write_all(Self::WECLONE_HEADER.as_bytes())?;
                 writer = Some(w);
             }
-            if let (Some(w), Some(entry)) =
-                (writer.as_mut(), self.stream_entry(format, &msg, &mut rows))
-            {
-                w.write_all(entry.as_bytes())?;
+            if !is_quoted_reply_message(msg.local_type, &msg.content) {
+                rows += 1;
+                let row = self.weclone_row(&msg, rows);
+                if let Some(w) = writer.as_mut() {
+                    w.write_all(row.as_bytes())?;
+                }
             }
             count += 1;
         }
@@ -1498,36 +1651,6 @@ impl<'a, 'n> Exporter<'a, 'n> {
             w.flush()?;
         }
         Ok(count)
-    }
-
-    /// What a streamed export starts the file with (nothing for TXT).
-    pub fn stream_header(format: StreamFormat) -> &'static str {
-        match format {
-            StreamFormat::Txt => "",
-            StreamFormat::Sql => Self::SQL_HEADER,
-            StreamFormat::Weclone => Self::WECLONE_HEADER,
-        }
-    }
-
-    /// One message of a streamed export, or `None` when the format leaves it out (WeClone drops quote replies).
-    /// `rows` counts the entries written so far (WeClone numbers its rows).
-    pub fn stream_entry(
-        &mut self,
-        format: StreamFormat,
-        msg: &ExportMsg,
-        rows: &mut usize,
-    ) -> Option<String> {
-        match format {
-            StreamFormat::Txt => Some(self.txt_entry(msg)),
-            StreamFormat::Sql => Some(self.sql_insert(msg)),
-            StreamFormat::Weclone => {
-                if is_quoted_reply_message(msg.local_type, &msg.content) {
-                    return None;
-                }
-                *rows += 1;
-                Some(self.weclone_row(msg, *rows))
-            }
-        }
     }
 
     /// One message of the TXT export: `<time> '<sender>'`, the text, a blank line.
@@ -2797,6 +2920,92 @@ mod tests {
             }
         }
         lines.join("\n")
+    }
+
+    /// Pages rendered by separate exporters (as the reading threads of an export do, each with its own name cache)
+    /// and written in order give the file one exporter writes alone, including the ChatLab members that only appear
+    /// inside forwarded chat histories.
+    #[test]
+    fn entries_rendered_in_pages_by_other_exporters_write_the_same_file() {
+        use crate::message::ForwardRecord;
+        let dir = std::env::temp_dir().join(format!("weflow-rendered-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let with_records = |msgs: &[ExportMsg]| {
+            let mut all = msgs.to_vec();
+            for (i, people) in [&["Alice", "Carol"][..], &["Dave"], &["Alice", ""]]
+                .iter()
+                .enumerate()
+            {
+                all.push(ExportMsg {
+                    local_id: 9000 + i as i64,
+                    create_time: 1_700_000_900 + i as i64,
+                    local_type: 49,
+                    sender_username: if i == 1 { "wxid_me" } else { "wxid_bob" }.into(),
+                    chat_record_list: Some(
+                        people
+                            .iter()
+                            .map(|who| ForwardRecord {
+                                datatype: 1,
+                                sourcename: who.to_string(),
+                                sourcetime: "2023-11-14 22:20:00".into(),
+                                datadesc: Some(format!("from {who}")),
+                                ..Default::default()
+                            })
+                            .collect(),
+                    ),
+                    ..Default::default()
+                });
+            }
+            all
+        };
+        for group in [false, true] {
+            for (name, format) in [
+                ("txt", EntryFormat::Txt),
+                ("sql", EntryFormat::Sql),
+                ("chatlab", EntryFormat::Chatlab),
+                ("chatlab-jsonl", EntryFormat::ChatlabJsonl),
+            ] {
+                let alone = dir.join(format!("{group}-alone.{name}"));
+                let paged = dir.join(format!("{group}-paged.{name}"));
+                let written = with_exporter(group, |ex, msgs| {
+                    ex.write_streamed(name, &alone, &mut with_records(msgs).into_iter())
+                        .unwrap()
+                });
+                // uneven pages, each rendered by an exporter of its own
+                let all = with_exporter(group, |_, msgs| with_records(msgs));
+                let mut pages: Vec<RenderedEntries> = Vec::new();
+                let mut rest = &all[..];
+                for size in [1, 3, 2].iter().cycle() {
+                    if rest.is_empty() {
+                        break;
+                    }
+                    let (page, tail) = rest.split_at((*size).min(rest.len()));
+                    pages.push(with_exporter(group, |ex, _| {
+                        ex.render_entries(format, page)
+                    }));
+                    rest = tail;
+                }
+                let mut pages = pages.into_iter();
+                let count = with_exporter(group, |ex, _| {
+                    ex.write_rendered(format, &paged, &mut |_| pages.next(), false)
+                        .unwrap()
+                });
+                assert_eq!(count, written, "{name}, group={group}");
+                assert_eq!(
+                    std::fs::read(&paged).unwrap(),
+                    std::fs::read(&alone).unwrap(),
+                    "{name}, group={group}"
+                );
+            }
+        }
+        let lab = std::fs::read_to_string(dir.join("true-alone.chatlab")).unwrap();
+        for who in ["Alice", "Carol", "Dave"] {
+            assert!(
+                lab.contains(&format!("\"platformId\": \"{who}\"")),
+                "{who} is a member"
+            );
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
