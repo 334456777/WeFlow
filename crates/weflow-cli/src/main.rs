@@ -16,6 +16,30 @@ use weflow_core::services::ServiceHub;
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+/// On Windows mimalloc commits memory from the system as it goes, and an export made it commit fresh pages over and
+/// over: on a 200,000-message group about 400,000 extra page faults and 1.2 s of kernel time, enough to make the SQL
+/// export slower than with the system allocator. An arena reserved and committed up front, which mimalloc uses
+/// before it asks the system again, removes that; 128 MiB did as well as 1 GiB. See issue #45.
+#[cfg(windows)]
+const RESERVED_ARENA: usize = 128 << 20;
+
+#[cfg(windows)]
+fn reserve_allocator_arena() {
+    extern "C" {
+        // mimalloc's own function, linked in with the `mimalloc` crate
+        fn mi_reserve_os_memory(
+            size: usize,
+            commit: bool,
+            allow_large: bool,
+        ) -> std::os::raw::c_int;
+    }
+    // MIMALLOC_RESERVE_OS_MEMORY makes mimalloc reserve its own arena at startup (with the same call)
+    if std::env::var_os("MIMALLOC_RESERVE_OS_MEMORY").is_none() {
+        // a failure leaves mimalloc taking memory as it goes, as without the reservation
+        unsafe { mi_reserve_os_memory(RESERVED_ARENA, true, true) };
+    }
+}
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser, Debug)]
@@ -1220,6 +1244,8 @@ enum BackupSubcommand {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    #[cfg(windows)]
+    reserve_allocator_arena();
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .with_writer(std::io::stderr)
