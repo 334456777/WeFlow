@@ -9,6 +9,7 @@ mod analytics;
 mod api;
 mod chat;
 mod cleanup;
+mod export_stream;
 pub use cleanup::normalize_account_id;
 mod group;
 mod image;
@@ -700,7 +701,7 @@ impl ServiceHub {
             sender_filter: req.sender.as_deref(),
         };
         let mut collected: Vec<crate::message::ExportMsg> = Vec::new();
-        read_export_stream(&wcdb, req, &opts, 4, |stream| collected.extend(stream))?;
+        export_stream::read_export_stream(&wcdb, req, &opts, |stream| collected.extend(stream))?;
         collected.sort_by(|a, b| {
             a.create_time
                 .cmp(&b.create_time)
@@ -730,7 +731,13 @@ impl ServiceHub {
             sender_filter: req.sender.as_deref(),
         };
         let format = req.format.to_ascii_lowercase();
-        let count = read_export_stream(&wcdb, req, &opts, 1, |stream| {
+        let stamp = |p: &Path| {
+            std::fs::metadata(p)
+                .ok()
+                .map(|m| (m.len(), m.modified().ok()))
+        };
+        let before = stamp(out);
+        let read = export_stream::read_export_stream(&wcdb, req, &opts, |stream| {
             self.with_exporter(
                 &req.session_id,
                 req.display_pref,
@@ -738,8 +745,13 @@ impl ServiceHub {
                 &wcdb,
                 |ex| ex.write_streamed(&format, out, stream),
             )
-        })??
-        .map_err(|e| AppError::runtime(e.to_string()))?;
+        });
+        if read.is_err() && stamp(out) != before {
+            // the reading failed after the file was written from the messages read so far: do not leave a
+            // truncated export that looks complete
+            let _ = std::fs::remove_file(out);
+        }
+        let count = read??.map_err(|e| AppError::runtime(e.to_string()))?;
         if count == 0 {
             return Err(AppError::runtime(
                 "no messages found for this session in the given range",
@@ -1315,103 +1327,6 @@ pub struct MessageExportRequest {
     pub excel_compact: bool,
 }
 
-/// Runs `f` on the conversation's messages (oldest first), read and parsed while `f` consumes them.
-///
-/// Reading and decrypting pages, turning them into messages and consuming them (formatting, writing) are different
-/// bottlenecks (I/O + SQLite, CPU, CPU + I/O), so each runs on its own thread: this one runs `f`; the sticker
-/// caption table loads on one more. `buffered` bounds how many raw pages wait in memory (raw rows are several times
-/// larger than the parsed messages).
-fn read_export_stream<R>(
-    wcdb: &weflow_native::wcdb::Wcdb,
-    req: &MessageExportRequest,
-    opts: &crate::message::CollectOptions<'_>,
-    buffered: usize,
-    f: impl FnOnce(&mut dyn Iterator<Item = crate::message::ExportMsg>) -> R,
-) -> AppResult<R> {
-    use crate::message::ExportMsg;
-    let (raw_tx, raw_rx) = std::sync::mpsc::sync_channel::<Vec<Value>>(buffered);
-    let (msg_tx, msg_rx) = std::sync::mpsc::sync_channel::<Vec<ExportMsg>>(2);
-    std::thread::scope(|scope| {
-        let reader = scope.spawn(|| {
-            let tx = raw_tx; // dropped when the read ends, which ends the parser's loop
-            fetch_message_pages(
-                wcdb,
-                &req.session_id,
-                req.start,
-                req.end,
-                false,
-                &mut |mut page| {
-                    // drop other senders' rows here, before they are copied to the parser
-                    if let Some(f) = opts.sender_filter.map(str::trim).filter(|f| !f.is_empty()) {
-                        page.retain(|row| {
-                            crate::message::is_same_wxid(
-                                &crate::message::row_sender(row, opts.session_id, opts.my_wxid),
-                                f,
-                            )
-                        });
-                    }
-                    let _ = tx.send(page);
-                },
-            )
-        });
-        let captions = scope.spawn(|| wcdb.emoticon_captions().unwrap_or_default());
-        let parser = scope.spawn(move || {
-            let mut table: Option<std::collections::HashMap<String, String>> = None;
-            let mut captions = Some(captions);
-            let mut open = true;
-            for page in raw_rx {
-                if !open {
-                    continue; // the consumer is gone: drain, so the reader can finish
-                }
-                let mut msgs = crate::message::collect_messages(&page, opts);
-                drop(page);
-                if msgs.iter().any(is_sticker) {
-                    let table = table.get_or_insert_with(|| {
-                        captions
-                            .take()
-                            .and_then(|h| h.join().ok())
-                            .unwrap_or_default()
-                    });
-                    attach_emoji_captions(table, &mut msgs);
-                }
-                open = msg_tx.send(msgs).is_ok();
-            }
-        });
-        let mut stream = MessageStream {
-            rx: msg_rx,
-            current: Vec::new().into_iter(),
-        };
-        let result = f(&mut stream);
-        drop(stream); // closes the channel: a parser still sending stops
-        reader
-            .join()
-            .map_err(|_| AppError::runtime("message reader thread panicked"))??;
-        parser
-            .join()
-            .map_err(|_| AppError::runtime("message parser thread panicked"))?;
-        Ok(result)
-    })
-}
-
-/// The parsed pages from [`read_export_stream`] as one message iterator.
-struct MessageStream {
-    rx: std::sync::mpsc::Receiver<Vec<crate::message::ExportMsg>>,
-    current: std::vec::IntoIter<crate::message::ExportMsg>,
-}
-
-impl Iterator for MessageStream {
-    type Item = crate::message::ExportMsg;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if let Some(m) = self.current.next() {
-                return Some(m);
-            }
-            self.current = self.rx.recv().ok()?.into_iter();
-        }
-    }
-}
-
 /// A sticker: a plain emoji message, or an appmsg of type 8 (a sticker sent as an attachment).
 fn is_sticker(m: &crate::message::ExportMsg) -> bool {
     m.local_type == 47 || crate::message::appmsg_emoticon_md5(&m.content).is_some()
@@ -1481,63 +1396,6 @@ pub fn clean_account_dir_name(dir_name: &str) -> String {
         .captures(trimmed)
         .map(|c| c[1].to_string())
         .unwrap_or_else(|| trimmed.to_string())
-}
-
-/// Read a session's messages inside `[start, end)` (Unix seconds) with a bounded WCDB cursor,
-/// so the cost follows the range size, not how far back the range lies. Reports progress
-/// (`total` is the session's message count, an upper bound when a range is requested).
-/// Reads a conversation page by page (oldest first); `on_page` gets the rows of each page that fall inside
-/// `[start, end)`.
-fn fetch_message_pages(
-    wcdb: &weflow_native::wcdb::Wcdb,
-    session_id: &str,
-    start: Option<i64>,
-    end: Option<i64>,
-    lite: bool,
-    on_page: &mut dyn FnMut(Vec<Value>),
-) -> AppResult<()> {
-    let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
-    let (begin, finish) = (start.map_or(0, clamp), end.map_or(0, clamp));
-    // the session's message count is an upper bound for a range, which still gives a percentage
-    let total = wcdb.message_count(session_id).unwrap_or(0).max(0) as usize;
-    let cursor = wcdb
-        .open_message_cursor(session_id, 2000, true, begin, finish, lite)
-        .map_err(|e| AppError::native(e.to_string()))?;
-    let mut seen = 0usize;
-    let mut scanned = 0usize;
-    let result = (|| -> AppResult<()> {
-        loop {
-            let (page, more) = wcdb
-                .fetch_message_batch(cursor)
-                .map_err(|e| AppError::native(e.to_string()))?;
-            let Value::Array(items) = page else { break };
-            if items.is_empty() {
-                break;
-            }
-            scanned += items.len();
-            let kept: Vec<Value> = items
-                .into_iter()
-                .filter(|m| {
-                    let ts = crate::message::get_timestamp_seconds(m);
-                    start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts < e)
-                })
-                .collect();
-            seen += kept.len();
-            on_page(kept);
-            crate::output::progress(
-                "messages",
-                "reading messages",
-                scanned,
-                if total == 0 { 0 } else { total.max(scanned) },
-            );
-            if !more {
-                break;
-            }
-        }
-        Ok(())
-    })();
-    let _ = wcdb.close_message_cursor(cursor);
-    result
 }
 
 fn extract_member_ids(value: &Value) -> Vec<String> {
