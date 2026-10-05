@@ -33,6 +33,7 @@ icu_locale_core = "2.3"
 libloading = "0.8.8"
 md-5 = "0.10"
 memchr = "2"
+mimalloc = { version = "0.1", default-features = false }
 mime_guess = "2.0.5"
 regex = "1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip", "deflate", "brotli", "stream"], default-features = false }
