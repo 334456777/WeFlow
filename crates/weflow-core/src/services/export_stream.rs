@@ -11,8 +11,11 @@
 //! How many workers help depends on the export: a format that is slow to write (ChatLab, JSON) keeps up with two,
 //! a light one (TXT) needs more. So the export starts with [`INITIAL_WORKERS`] and wakes one more whenever the
 //! consumer spent more than a tenth of its time waiting for pages, up to one per CPU but one (the consumer's), at
-//! most [`MAX_WORKERS`]. Every worker that reads costs memory (its database connection keeps a page cache, its
-//! pages wait for the consumer), so workers that are not needed stay asleep and never open a connection.
+//! most [`MAX_WORKERS`]. It stops waking workers once one more did not make the workers deliver pages clearly
+//! faster (see `MessageStream::adapt`): a consumer that only collects (an export with media) waits whatever the
+//! workers do, yet past some point more of them only share the same CPUs and database. Every worker that reads
+//! costs memory (its database connection keeps a page cache, its pages wait for the consumer), so workers that are
+//! not needed stay asleep and never open a connection.
 //!
 //! Workers run at most [`PAGES_AHEAD_PER_WORKER`] pages per working worker ahead of the consumer, so memory stays
 //! bounded however slow the consumer or one early page is. A failed page, a panicking worker or a consumer that
@@ -40,8 +43,8 @@ const PAGES_AHEAD_PER_WORKER: usize = 2;
 const INITIAL_WORKERS: usize = 2;
 /// Most workers the export wakes on its own.
 const MAX_WORKERS: usize = 8;
-/// Pages the consumer takes before it judges whether it waited too long.
-const PAGES_PER_CHECK: usize = 2;
+/// Pages the consumer takes before it judges whether it waited too long (or what the last woken worker brought).
+const PAGES_PER_CHECK: usize = 3;
 /// Fixes the worker count (a number of threads, at least 1) instead of adapting it, for measurements.
 pub const WORKERS_ENV: &str = "WEFLOW_EXPORT_WORKERS";
 
@@ -224,6 +227,7 @@ fn work(index: usize, gate: &Gate, source: &PageSource<'_>, pages: usize, tx: Se
         }
         let parsed = source.read(page);
         let failed = parsed.is_err();
+        gate.delivered.fetch_add(1, Ordering::Relaxed);
         if tx.send((page, parsed)).is_err() || failed {
             gate.halt();
             break;
@@ -241,6 +245,9 @@ struct Gate {
     halted: AtomicBool,
     /// Workers allowed to read (the others sleep).
     active: AtomicUsize,
+    /// Pages the workers delivered since the consumer last looked (in any order, when they were sent): how fast they
+    /// read, unlike the pages the consumer takes, which wait for the earliest one and come out of the read-ahead.
+    delivered: AtomicUsize,
     /// Workers there are.
     workers: usize,
 }
@@ -254,6 +261,7 @@ impl Gate {
             moved: Condvar::new(),
             halted: AtomicBool::new(false),
             active: AtomicUsize::new(initial.clamp(1, workers)),
+            delivered: AtomicUsize::new(0),
             workers,
         }
     }
@@ -377,6 +385,24 @@ struct MessageStream<'a> {
     /// When the consumer took the previous page, and since the last check: pages taken, time, time waited.
     last_take: Option<Instant>,
     window: (usize, Duration, Duration),
+    growth: Growth,
+}
+
+/// Whether the export still wakes workers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Growth {
+    /// The first check: the workers started together and read ahead, so pages come faster than they will. Only
+    /// measured, then `Open`.
+    Warming,
+    /// Wakes one more worker when the consumer waits.
+    Open,
+    /// A worker was just woken; the next check, one page per working worker, lets it start (open its connection,
+    /// warm its page cache) and is not judged. `before` is the time per delivered page before it was woken.
+    Starting { before: Duration },
+    /// The check after that, two pages per working worker, shows what the new worker brought.
+    Judging { before: Duration },
+    /// The last woken worker did not pay off: no more.
+    Stopped,
 }
 
 impl<'a> MessageStream<'a> {
@@ -394,24 +420,69 @@ impl<'a> MessageStream<'a> {
             stats: Stats::default(),
             last_take: None,
             window: Default::default(),
+            growth: Growth::Warming,
         }
     }
 
-    /// Wakes one more worker when the consumer waited for more than a tenth of its time since the last check.
-    /// (The wait for the first page is how long a page takes, not a sign of too few workers.)
-    /// `now` is when the page was taken.
+    /// Wakes one more worker when the consumer waited for more than a tenth of its time since the last check, until
+    /// a woken worker stops paying off: going from n - 1 to n workers can cut the time per delivered page by at most
+    /// 1/n; when it fell by less than half of that, more readers do not read faster (the CPUs or the database are
+    /// busy) and would only cost memory. (The wait for the first page is how long a page takes,
+    /// not a sign of too few workers.) `now` is when the page was taken.
     fn adapt(&mut self, waited: Duration, now: Instant) {
-        if let Some(last) = self.last_take.replace(now) {
-            self.window.0 += 1;
-            self.window.1 += now - last;
-            self.window.2 += waited;
+        match self.last_take.replace(now) {
+            Some(last) => {
+                self.window.0 += 1;
+                self.window.1 += now - last;
+                self.window.2 += waited;
+            }
+            // the clock starts with the first page: what was delivered before it does not count
+            None => {
+                self.gate.delivered.store(0, Ordering::Relaxed);
+            }
         }
         let (pages, time, wait) = self.window;
-        if pages >= PAGES_PER_CHECK {
-            if wait * 10 > time {
-                self.gate.grow();
+        let check_after = match self.growth {
+            Growth::Starting { .. } => self.gate.active(),
+            Growth::Judging { .. } => 2 * self.gate.active(),
+            _ => PAGES_PER_CHECK,
+        };
+        if pages < check_after.max(PAGES_PER_CHECK) {
+            return;
+        }
+        let delivered = self.gate.delivered.swap(0, Ordering::Relaxed);
+        let per_page = time / delivered.max(1) as u32;
+        tracing::trace!(
+            target: "weflow::export",
+            workers = self.gate.active(),
+            taken = pages,
+            delivered,
+            window_us = time.as_micros() as u64,
+            waited_us = wait.as_micros() as u64,
+            per_page_us = per_page.as_micros() as u64,
+            growth = ?self.growth,
+            "worker check"
+        );
+        self.window = Default::default();
+        self.growth = match self.growth {
+            Growth::Warming => {
+                self.growth = Growth::Open;
+                return;
             }
-            self.window = Default::default();
+            Growth::Starting { before } => Growth::Judging { before },
+            Growth::Judging { before } => {
+                let gain = before.saturating_sub(per_page);
+                let possible = before / self.gate.active().max(1) as u32;
+                if gain * 2 < possible {
+                    Growth::Stopped
+                } else {
+                    Growth::Open
+                }
+            }
+            other => other,
+        };
+        if self.growth == Growth::Open && wait * 10 > time && self.gate.grow() {
+            self.growth = Growth::Starting { before: per_page };
         }
     }
 
@@ -513,24 +584,56 @@ mod tests {
         assert_eq!(gate.active(), 3);
     }
 
+    /// Takes `pages` pages `every` apart (each delivered just in time), each after waiting `waited`. The clock is passed in: a sleeping test
+    /// would depend on how the runner schedules it.
+    fn feed(
+        stream: &mut MessageStream<'_>,
+        clock: &mut Instant,
+        pages: usize,
+        every: u64,
+        waited: u64,
+    ) {
+        for _ in 0..pages {
+            *clock += Duration::from_millis(every);
+            stream.gate.delivered.fetch_add(1, Ordering::Relaxed);
+            stream.adapt(Duration::from_millis(waited), *clock);
+        }
+    }
+
     #[test]
     fn a_waiting_consumer_wakes_more_workers_a_busy_one_does_not() {
         let gate = Gate::new(1, 4);
         let (_tx, rx) = channel();
         let mut stream = MessageStream::new(rx, &gate, 100, 0);
-        // the clock is passed in: a sleeping test would depend on how the runner schedules it
-        let start = Instant::now();
-        let at = |ms: u64| start + Duration::from_millis(ms);
-        // busy: 10 ms between pages, nothing waited
-        for k in 0..5 {
-            stream.adapt(Duration::ZERO, at(k * 10));
-        }
+        let mut clock = Instant::now();
+        // busy: 10 ms per page, nothing waited (one page more: the first only starts the clock)
+        feed(&mut stream, &mut clock, 1 + 2 * PAGES_PER_CHECK, 10, 0);
         assert_eq!(gate.active(), 1);
-        // starved: half of the time between pages went to waiting
-        for k in 5..7 {
-            stream.adapt(Duration::from_millis(5), at(k * 10));
-        }
+        // starved: half of the time went to waiting
+        feed(&mut stream, &mut clock, PAGES_PER_CHECK, 10, 5);
         assert_eq!(gate.active(), 2);
+    }
+
+    #[test]
+    fn workers_stop_growing_once_one_more_does_not_pay_off() {
+        let gate = Gate::new(1, 8);
+        let (_tx, rx) = channel();
+        let mut stream = MessageStream::new(rx, &gate, 1000, 0);
+        let mut clock = Instant::now();
+        feed(&mut stream, &mut clock, 1 + 2 * PAGES_PER_CHECK, 12, 6);
+        assert_eq!(gate.active(), 2);
+        // the new worker starts (one page per worker, at least a check's worth: not judged), then pages come in half
+        // the time over two pages per worker: as good as it gets, so grow again
+        feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(2), 12, 6);
+        feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(2 * 2), 6, 3);
+        assert_eq!(gate.active(), 3);
+        // the third worker leaves 6 ms per page as it was (it could have cut a third): it is the last
+        feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(3), 6, 3);
+        feed(&mut stream, &mut clock, PAGES_PER_CHECK.max(2 * 3), 6, 3);
+        assert_eq!(stream.growth, Growth::Stopped);
+        // however long the consumer waits from now on
+        feed(&mut stream, &mut clock, 10 * PAGES_PER_CHECK, 6, 5);
+        assert_eq!(gate.active(), 3);
     }
 
     #[test]

@@ -71,12 +71,14 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   (`excel`, `weclone`, `sql`, `chatlab`) and 0.6 GB (`json`, `arkme-json`, `html`). Export a date range (`--start/--end`) if
   memory is tight; the cost follows the range, not its age.
 - **Threads of big exports**: several threads read and parse the pages while the file is written. An export starts with two
-  and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages; a format that is quick to
-  write (`txt`) ends up with more threads than a slow one (`chatlab`). Every reading thread keeps its own page cache and a
-  few pages in flight, so memory grows with them: on a synthetic 200,000-message group a `txt` export went from about 0.1 GB
-  to 0.15 GB, `chatlab` from 0.1 GB to 0.11 GB. The peaks above were measured with one reading thread. `WEFLOW_EXPORT_WORKERS=1`
-  reads with one thread again; any other number fixes the thread count. `RUST_LOG=weflow::export=debug` logs the threads used
-  and the time spent reading, parsing and waiting.
+  and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages, and stops adding once
+  one more thread no longer reads clearly faster (by at least half of what it could add). A format that is quick to write
+  (`txt`) ends up with more threads than a slow one (`chatlab`). Every reading thread keeps its own page cache and a few pages
+  in flight, so memory grows with them: on a synthetic 200,000-message group a `txt` export went from about 0.1 GB to
+  0.13 GB, `chatlab` from 0.1 GB to 0.11 GB. The peaks above were measured with one reading thread.
+  `WEFLOW_EXPORT_WORKERS=1` reads with one thread again; any other number fixes the thread count.
+  `RUST_LOG=weflow::export=debug` logs the threads used and the time spent reading, parsing and waiting
+  (`=trace` also logs each decision to add a thread).
 - **Key check**: the first command with a key proves it on `session.db` and remembers a one-way fingerprint of it (key,
   database salt and account; the key cannot be recovered from it) in the cache folder, so later commands skip that slow step.
   `chat clear-account-data --cache` deletes the fingerprints; `db test` always checks the key.
