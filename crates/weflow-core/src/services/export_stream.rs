@@ -13,9 +13,10 @@
 //! consumer spent more than a tenth of its time waiting for pages, up to one per CPU but one (the consumer's), at
 //! most [`MAX_WORKERS`]. It stops waking workers once one more did not make the workers deliver pages clearly
 //! faster (see `PageStream::adapt`): a consumer that only collects (an export with media) waits whatever the
-//! workers do, yet past some point more of them only share the same CPUs and database. Every worker that reads
-//! costs memory (its database connection keeps a page cache, its pages wait for the consumer), so workers that are
-//! not needed stay asleep and never open a connection.
+//! workers do, yet past some point more of them only share the same CPUs and database. Such a consumer gets at most
+//! [`COLLECT_MAX_WORKERS`] (see [`collect_export_messages`]). Every worker that reads costs memory (its database
+//! connection keeps a page cache, its pages wait for the consumer), so workers that are not needed stay asleep and
+//! never open a connection.
 //!
 //! A worker can also finish its page for the consumer: an export whose entries do not depend on each other has the
 //! workers render them too (see [`read_export_pages`]), so the consumer only writes.
@@ -46,6 +47,10 @@ const PAGES_AHEAD_PER_WORKER: usize = 2;
 const INITIAL_WORKERS: usize = 2;
 /// Most workers the export wakes on its own.
 const MAX_WORKERS: usize = 8;
+/// Most workers for a consumer that only collects the messages (an export with media, which copies the media and
+/// writes the file only once everything is read). On a real 200,000-message group, two workers collected as fast as
+/// the seven the growth check woke, with about 100 MiB less memory.
+const COLLECT_MAX_WORKERS: usize = 2;
 /// Pages the consumer takes before it judges whether it waited too long (or what the last woken worker brought).
 const PAGES_PER_CHECK: usize = 3;
 /// Fixes the worker count (a number of threads, at least 1) instead of adapting it, for measurements.
@@ -64,8 +69,32 @@ pub(super) fn read_export_stream<R>(
     opts: &CollectOptions<'_>,
     f: impl FnOnce(&mut dyn Iterator<Item = ExportMsg>) -> R,
 ) -> AppResult<R> {
+    read_stream(wcdb, req, opts, MAX_WORKERS, f)
+}
+
+/// The conversation's messages (oldest first) for a consumer that only collects them: at most
+/// [`COLLECT_MAX_WORKERS`] workers read, since more would not make the collecting faster.
+pub(super) fn collect_export_messages(
+    wcdb: &Wcdb,
+    req: &MessageExportRequest,
+    opts: &CollectOptions<'_>,
+) -> AppResult<Vec<ExportMsg>> {
+    read_stream(wcdb, req, opts, COLLECT_MAX_WORKERS, |stream| {
+        stream.collect()
+    })
+}
+
+fn read_stream<R>(
+    wcdb: &Wcdb,
+    req: &MessageExportRequest,
+    opts: &CollectOptions<'_>,
+    max_workers: usize,
+    f: impl FnOnce(&mut dyn Iterator<Item = ExportMsg>) -> R,
+) -> AppResult<R> {
     let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
-    read_export_pages(wcdb, req, opts, as_is, |pages| f(&mut pages.flatten()))
+    read_pages(wcdb, req, opts, max_workers, as_is, |pages| {
+        f(&mut pages.flatten())
+    })
 }
 
 /// Runs `f` on the conversation's pages (oldest first), each read, parsed and finished by `with_finisher` on a
@@ -77,20 +106,36 @@ pub(super) fn read_export_pages<T: Send, R>(
     with_finisher: &WithFinisher<'_, T>,
     f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
 ) -> AppResult<R> {
+    read_pages(wcdb, req, opts, MAX_WORKERS, with_finisher, f)
+}
+
+fn read_pages<T: Send, R>(
+    wcdb: &Wcdb,
+    req: &MessageExportRequest,
+    opts: &CollectOptions<'_>,
+    max_workers: usize,
+    with_finisher: &WithFinisher<'_, T>,
+    f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
+) -> AppResult<R> {
     let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
     let (begin, finish) = (req.start.map_or(0, clamp), req.end.map_or(0, clamp));
     let cursor = wcdb
         .open_message_cursor(&req.session_id, PAGE_SIZE, true, begin, finish, false)
         .map_err(|e| AppError::native(e.to_string()))?;
-    let result = read_cursor(wcdb, cursor, req, opts, with_finisher, f);
+    let result = read_cursor(wcdb, cursor, req, opts, max_workers, with_finisher, f);
     let _ = wcdb.close_message_cursor(cursor);
     result
 }
 
 /// (workers reading from the start, most workers) for `pages` pages: both [`WORKERS_ENV`] when it is set; else
-/// [`INITIAL_WORKERS`] growing to one per CPU but one (the consumer formats and writes), at most [`MAX_WORKERS`].
+/// [`INITIAL_WORKERS`] growing to one per CPU but one (the consumer formats and writes), at most `max_workers`.
 /// Never more than there are pages.
-fn worker_counts(pages: usize, configured: Option<&str>, cpus: usize) -> (usize, usize) {
+fn worker_counts(
+    pages: usize,
+    configured: Option<&str>,
+    cpus: usize,
+    max_workers: usize,
+) -> (usize, usize) {
     let fit = |n: usize| n.min(pages).max(1);
     match configured
         .and_then(|v| v.trim().parse::<usize>().ok())
@@ -98,7 +143,7 @@ fn worker_counts(pages: usize, configured: Option<&str>, cpus: usize) -> (usize,
     {
         Some(n) => (fit(n), fit(n)),
         None => {
-            let most = fit(cpus.saturating_sub(1).clamp(1, MAX_WORKERS));
+            let most = fit(cpus.saturating_sub(1).clamp(1, max_workers.max(1)));
             (INITIAL_WORKERS.min(most), most)
         }
     }
@@ -109,6 +154,7 @@ fn read_cursor<T: Send, R>(
     cursor: i64,
     req: &MessageExportRequest,
     opts: &CollectOptions<'_>,
+    max_workers: usize,
     with_finisher: &WithFinisher<'_, T>,
     f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
 ) -> AppResult<R> {
@@ -121,6 +167,7 @@ fn read_cursor<T: Send, R>(
         pages,
         std::env::var(WORKERS_ENV).ok().as_deref(),
         std::thread::available_parallelism().map_or(2, |n| n.get()),
+        max_workers,
     );
     // connections open only when a worker reads, so sleeping workers cost none
     wcdb.set_read_connections(workers);
@@ -597,18 +644,32 @@ mod tests {
     #[test]
     fn worker_counts_follow_cpus_pages_and_the_override() {
         // start with two, grow to one per CPU but the consumer's, capped, never more than the pages
-        assert_eq!(worker_counts(100, None, 16), (INITIAL_WORKERS, MAX_WORKERS));
-        assert_eq!(worker_counts(100, None, 4), (2, 3));
-        assert_eq!(worker_counts(100, None, 2), (1, 1));
-        assert_eq!(worker_counts(100, None, 1), (1, 1));
-        assert_eq!(worker_counts(2, None, 16), (2, 2));
-        assert_eq!(worker_counts(1, None, 16), (1, 1));
-        assert_eq!(worker_counts(0, None, 16), (1, 1));
+        let most = MAX_WORKERS;
+        assert_eq!(
+            worker_counts(100, None, 16, most),
+            (INITIAL_WORKERS, MAX_WORKERS)
+        );
+        assert_eq!(worker_counts(100, None, 4, most), (2, 3));
+        assert_eq!(worker_counts(100, None, 2, most), (1, 1));
+        assert_eq!(worker_counts(100, None, 1, most), (1, 1));
+        assert_eq!(worker_counts(2, None, 16, most), (2, 2));
+        assert_eq!(worker_counts(1, None, 16, most), (1, 1));
+        assert_eq!(worker_counts(0, None, 16, most), (1, 1));
         // the override fixes the count, above the CPU count but not above the page count; nonsense is ignored
-        assert_eq!(worker_counts(100, Some(" 12 "), 4), (12, 12));
-        assert_eq!(worker_counts(3, Some("12"), 4), (3, 3));
-        assert_eq!(worker_counts(100, Some("0"), 4), (2, 3));
-        assert_eq!(worker_counts(100, Some("many"), 4), (2, 3));
+        assert_eq!(worker_counts(100, Some(" 12 "), 4, most), (12, 12));
+        assert_eq!(worker_counts(3, Some("12"), 4, most), (3, 3));
+        assert_eq!(worker_counts(100, Some("0"), 4, most), (2, 3));
+        assert_eq!(worker_counts(100, Some("many"), 4, most), (2, 3));
+    }
+
+    #[test]
+    fn a_collecting_consumer_gets_fewer_workers_unless_overridden() {
+        let most = COLLECT_MAX_WORKERS;
+        assert_eq!(worker_counts(100, None, 16, most), (2, 2));
+        assert_eq!(worker_counts(100, None, 2, most), (1, 1));
+        assert_eq!(worker_counts(1, None, 16, most), (1, 1));
+        // the override is for measurements: it still fixes the count
+        assert_eq!(worker_counts(100, Some("4"), 16, most), (4, 4));
     }
 
     #[test]
