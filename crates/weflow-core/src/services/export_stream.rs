@@ -12,10 +12,13 @@
 //! a light one (TXT) needs more. So the export starts with [`INITIAL_WORKERS`] and wakes one more whenever the
 //! consumer spent more than a tenth of its time waiting for pages, up to one per CPU but one (the consumer's), at
 //! most [`MAX_WORKERS`]. It stops waking workers once one more did not make the workers deliver pages clearly
-//! faster (see `MessageStream::adapt`): a consumer that only collects (an export with media) waits whatever the
+//! faster (see `PageStream::adapt`): a consumer that only collects (an export with media) waits whatever the
 //! workers do, yet past some point more of them only share the same CPUs and database. Every worker that reads
 //! costs memory (its database connection keeps a page cache, its pages wait for the consumer), so workers that are
 //! not needed stay asleep and never open a connection.
+//!
+//! A worker can also finish its page for the consumer: an export whose entries do not depend on each other has the
+//! workers render them too (see [`read_export_pages`]), so the consumer only writes.
 //!
 //! Workers run at most [`PAGES_AHEAD_PER_WORKER`] pages per working worker ahead of the consumer, so memory stays
 //! bounded however slow the consumer or one early page is. A failed page, a panicking worker or a consumer that
@@ -48,6 +51,12 @@ const PAGES_PER_CHECK: usize = 3;
 /// Fixes the worker count (a number of threads, at least 1) instead of adapting it, for measurements.
 pub const WORKERS_ENV: &str = "WEFLOW_EXPORT_WORKERS";
 
+/// What a worker turns each parsed page into for the consumer.
+pub(super) type Finish<'f, T> = dyn FnMut(Vec<ExportMsg>) -> T + 'f;
+/// Runs the given body with a new [`Finish`]: called once by each worker that reads, on its own thread, so the
+/// finisher may hold what cannot be shared (an exporter with its own name cache).
+pub(super) type WithFinisher<'s, T> = dyn Fn(&mut dyn FnMut(&mut Finish<'_, T>)) + Sync + 's;
+
 /// Runs `f` on the conversation's messages (oldest first), read and parsed while `f` consumes them.
 pub(super) fn read_export_stream<R>(
     wcdb: &Wcdb,
@@ -55,12 +64,25 @@ pub(super) fn read_export_stream<R>(
     opts: &CollectOptions<'_>,
     f: impl FnOnce(&mut dyn Iterator<Item = ExportMsg>) -> R,
 ) -> AppResult<R> {
+    let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
+    read_export_pages(wcdb, req, opts, as_is, |pages| f(&mut pages.flatten()))
+}
+
+/// Runs `f` on the conversation's pages (oldest first), each read, parsed and finished by `with_finisher` on a
+/// worker thread while `f` consumes the earlier ones.
+pub(super) fn read_export_pages<T: Send, R>(
+    wcdb: &Wcdb,
+    req: &MessageExportRequest,
+    opts: &CollectOptions<'_>,
+    with_finisher: &WithFinisher<'_, T>,
+    f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
+) -> AppResult<R> {
     let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
     let (begin, finish) = (req.start.map_or(0, clamp), req.end.map_or(0, clamp));
     let cursor = wcdb
         .open_message_cursor(&req.session_id, PAGE_SIZE, true, begin, finish, false)
         .map_err(|e| AppError::native(e.to_string()))?;
-    let result = read_cursor(wcdb, cursor, req, opts, f);
+    let result = read_cursor(wcdb, cursor, req, opts, with_finisher, f);
     let _ = wcdb.close_message_cursor(cursor);
     result
 }
@@ -82,12 +104,13 @@ fn worker_counts(pages: usize, configured: Option<&str>, cpus: usize) -> (usize,
     }
 }
 
-fn read_cursor<R>(
+fn read_cursor<T: Send, R>(
     wcdb: &Wcdb,
     cursor: i64,
     req: &MessageExportRequest,
     opts: &CollectOptions<'_>,
-    f: impl FnOnce(&mut dyn Iterator<Item = ExportMsg>) -> R,
+    with_finisher: &WithFinisher<'_, T>,
+    f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
 ) -> AppResult<R> {
     let started = Instant::now();
     let (total, batch) = wcdb
@@ -122,14 +145,14 @@ fn read_cursor<R>(
             .map(|index| {
                 let tx = tx.clone();
                 let (gate, source) = (&gate, &page_source);
-                scope.spawn(move || work(index, gate, source, pages, tx))
+                scope.spawn(move || work(index, gate, source, with_finisher, pages, tx))
             })
             .collect();
         drop(tx);
-        let mut stream = MessageStream::new(rx, &gate, pages, total);
+        let mut stream = PageStream::new(rx, &gate, pages, total);
         let result = f(&mut stream);
         gate.halt(); // the consumer is done (or gave up): workers stop at their next page
-        let MessageStream {
+        let PageStream {
             rx, error, stats, ..
         } = stream;
         drop(rx); // a worker still reading fails its send and stops
@@ -164,7 +187,16 @@ struct ParsedPage {
     parse: Duration,
 }
 
-type PageResult = (usize, AppResult<ParsedPage>);
+/// A page as the consumer gets it: finished on the worker.
+struct Page<T> {
+    scanned: usize,
+    payload: T,
+    fetch: Duration,
+    parse: Duration,
+    finish: Duration,
+}
+
+type PageResult<T> = (usize, AppResult<Page<T>>);
 
 impl PageSource<'_> {
     fn read(&self, page: usize) -> AppResult<ParsedPage> {
@@ -213,26 +245,45 @@ impl PageSource<'_> {
     }
 }
 
-/// Worker number `index`: once the export needs it, reads the next unclaimed page until there is none left or the
-/// export stops.
-fn work(index: usize, gate: &Gate, source: &PageSource<'_>, pages: usize, tx: Sender<PageResult>) {
+/// Worker number `index`: once the export needs it, reads, parses and finishes the next unclaimed page until there
+/// is none left or the export stops.
+fn work<T>(
+    index: usize,
+    gate: &Gate,
+    source: &PageSource<'_>,
+    with_finisher: &WithFinisher<'_, T>,
+    pages: usize,
+    tx: Sender<PageResult<T>>,
+) {
     let _halt = HaltOnPanic(gate);
     if !gate.wait_until_needed(index) {
         return;
     }
-    while !gate.halted() {
-        let page = gate.next.fetch_add(1, Ordering::Relaxed);
-        if page >= pages || !gate.wait_for_room(page) {
-            break;
+    with_finisher(&mut |finish| {
+        while !gate.halted() {
+            let page = gate.next.fetch_add(1, Ordering::Relaxed);
+            if page >= pages || !gate.wait_for_room(page) {
+                break;
+            }
+            let done = source.read(page).map(|p| {
+                let t = Instant::now();
+                let payload = finish(p.msgs);
+                Page {
+                    scanned: p.scanned,
+                    payload,
+                    fetch: p.fetch,
+                    parse: p.parse,
+                    finish: t.elapsed(),
+                }
+            });
+            let failed = done.is_err();
+            gate.delivered.fetch_add(1, Ordering::Relaxed);
+            if tx.send((page, done)).is_err() || failed {
+                gate.halt();
+                break;
+            }
         }
-        let parsed = source.read(page);
-        let failed = parsed.is_err();
-        gate.delivered.fetch_add(1, Ordering::Relaxed);
-        if tx.send((page, parsed)).is_err() || failed {
-            gate.halt();
-            break;
-        }
-    }
+    });
 }
 
 /// Coordination between the workers and the consumer.
@@ -348,6 +399,8 @@ impl Drop for HaltOnPanic<'_> {
 struct Stats {
     fetch: Duration,
     parse: Duration,
+    /// Rendering on the workers (exports whose entries they render).
+    finish: Duration,
     /// Time the consumer waited for the next page (the rest of its time went to formatting and writing).
     starved: Duration,
 }
@@ -363,21 +416,21 @@ impl Stats {
             elapsed_ms = elapsed.as_millis() as u64,
             fetch_ms = self.fetch.as_millis() as u64,
             parse_ms = self.parse.as_millis() as u64,
+            render_ms = self.finish.as_millis() as u64,
             consumer_waiting_ms = self.starved.as_millis() as u64,
             "message export read"
         );
     }
 }
 
-/// The parsed pages as one message iterator, in page order. It ends early when a page failed (see `error`).
-struct MessageStream<'a> {
-    rx: Receiver<PageResult>,
+/// The finished pages, in page order. It ends early when a page failed (see `error`).
+struct PageStream<'a, T> {
+    rx: Receiver<PageResult<T>>,
     gate: &'a Gate,
     pages: usize,
     next_page: usize,
     /// Pages that arrived before the ones they follow.
-    pending: BTreeMap<usize, ParsedPage>,
-    current: std::vec::IntoIter<ExportMsg>,
+    pending: BTreeMap<usize, Page<T>>,
     error: Option<AppError>,
     total: usize,
     scanned: usize,
@@ -405,15 +458,14 @@ enum Growth {
     Stopped,
 }
 
-impl<'a> MessageStream<'a> {
-    fn new(rx: Receiver<PageResult>, gate: &'a Gate, pages: usize, total: usize) -> Self {
+impl<'a, T> PageStream<'a, T> {
+    fn new(rx: Receiver<PageResult<T>>, gate: &'a Gate, pages: usize, total: usize) -> Self {
         Self {
             rx,
             gate,
             pages,
             next_page: 0,
             pending: BTreeMap::new(),
-            current: Vec::new().into_iter(),
             error: None,
             total,
             scanned: 0,
@@ -486,60 +538,55 @@ impl<'a> MessageStream<'a> {
         }
     }
 
-    fn take(&mut self, page: ParsedPage, waited: Duration) {
+    fn take(&mut self, page: Page<T>, waited: Duration) -> T {
         self.adapt(waited, Instant::now());
         self.next_page += 1;
         self.gate.set_taken(self.next_page);
         self.scanned += page.scanned;
         self.stats.fetch += page.fetch;
         self.stats.parse += page.parse;
+        self.stats.finish += page.finish;
         crate::output::progress(
             "messages",
             "reading messages",
             self.scanned,
             self.total.max(self.scanned),
         );
-        self.current = page.msgs.into_iter();
+        page.payload
     }
 }
 
-impl Iterator for MessageStream<'_> {
-    type Item = ExportMsg;
+impl<T> Iterator for PageStream<'_, T> {
+    type Item = T;
 
-    fn next(&mut self) -> Option<ExportMsg> {
-        loop {
-            if let Some(m) = self.current.next() {
-                return Some(m);
-            }
-            if self.error.is_some() || self.next_page >= self.pages {
-                return None;
-            }
-            let mut waited = Duration::ZERO;
-            while !self.pending.contains_key(&self.next_page) {
-                let since = Instant::now();
-                let received = self.rx.recv();
-                waited += since.elapsed();
-                match received {
-                    Ok((i, Ok(page))) => {
-                        self.pending.insert(i, page);
-                    }
-                    Ok((_, Err(e))) => {
-                        self.error = Some(e);
-                        return None;
-                    }
-                    Err(_) => {
-                        self.error = Some(AppError::runtime(
-                            "the message readers stopped before the end of the conversation",
-                        ));
-                        return None;
-                    }
+    fn next(&mut self) -> Option<T> {
+        if self.error.is_some() || self.next_page >= self.pages {
+            return None;
+        }
+        let mut waited = Duration::ZERO;
+        while !self.pending.contains_key(&self.next_page) {
+            let since = Instant::now();
+            let received = self.rx.recv();
+            waited += since.elapsed();
+            match received {
+                Ok((i, Ok(page))) => {
+                    self.pending.insert(i, page);
+                }
+                Ok((_, Err(e))) => {
+                    self.error = Some(e);
+                    return None;
+                }
+                Err(_) => {
+                    self.error = Some(AppError::runtime(
+                        "the message readers stopped before the end of the conversation",
+                    ));
+                    return None;
                 }
             }
-            self.stats.starved += waited;
-            if let Some(page) = self.pending.remove(&self.next_page) {
-                self.take(page, waited);
-            }
         }
+        self.stats.starved += waited;
+        let page = self.pending.remove(&self.next_page)?;
+        Some(self.take(page, waited))
     }
 }
 
@@ -587,7 +634,7 @@ mod tests {
     /// Takes `pages` pages `every` apart (each delivered just in time), each after waiting `waited`. The clock is passed in: a sleeping test
     /// would depend on how the runner schedules it.
     fn feed(
-        stream: &mut MessageStream<'_>,
+        stream: &mut PageStream<'_, Vec<ExportMsg>>,
         clock: &mut Instant,
         pages: usize,
         every: u64,
@@ -604,7 +651,7 @@ mod tests {
     fn a_waiting_consumer_wakes_more_workers_a_busy_one_does_not() {
         let gate = Gate::new(1, 4);
         let (_tx, rx) = channel();
-        let mut stream = MessageStream::new(rx, &gate, 100, 0);
+        let mut stream = PageStream::new(rx, &gate, 100, 0);
         let mut clock = Instant::now();
         // busy: 10 ms per page, nothing waited (one page more: the first only starts the clock)
         feed(&mut stream, &mut clock, 1 + 2 * PAGES_PER_CHECK, 10, 0);
@@ -618,7 +665,7 @@ mod tests {
     fn workers_stop_growing_once_one_more_does_not_pay_off() {
         let gate = Gate::new(1, 8);
         let (_tx, rx) = channel();
-        let mut stream = MessageStream::new(rx, &gate, 1000, 0);
+        let mut stream = PageStream::new(rx, &gate, 1000, 0);
         let mut clock = Instant::now();
         feed(&mut stream, &mut clock, 1 + 2 * PAGES_PER_CHECK, 12, 6);
         assert_eq!(gate.active(), 2);
@@ -658,10 +705,10 @@ mod tests {
         });
     }
 
-    fn page(scanned: usize, ids: &[i64]) -> ParsedPage {
-        ParsedPage {
+    fn page(scanned: usize, ids: &[i64]) -> Page<Vec<ExportMsg>> {
+        Page {
             scanned,
-            msgs: ids
+            payload: ids
                 .iter()
                 .map(|&local_id| ExportMsg {
                     local_id,
@@ -670,6 +717,7 @@ mod tests {
                 .collect(),
             fetch: Duration::ZERO,
             parse: Duration::ZERO,
+            finish: Duration::ZERO,
         }
     }
 
@@ -681,8 +729,8 @@ mod tests {
             tx.send((i, Ok(page(ids.len(), ids)))).unwrap();
         }
         drop(tx);
-        let mut stream = MessageStream::new(rx, &gate, 4, 5);
-        let ids: Vec<i64> = stream.by_ref().map(|m| m.local_id).collect();
+        let mut stream = PageStream::new(rx, &gate, 4, 5);
+        let ids: Vec<i64> = stream.by_ref().flatten().map(|m| m.local_id).collect();
         assert_eq!(ids, [1, 2, 3, 4, 5]);
         assert!(stream.error.is_none());
         assert_eq!(*gate.taken.lock().unwrap(), 4);
@@ -696,8 +744,8 @@ mod tests {
         tx.send((1, Err(AppError::native("synthetic read failure"))))
             .unwrap();
         tx.send((2, Ok(page(1, &[3])))).unwrap();
-        let mut stream = MessageStream::new(rx, &gate, 3, 3);
-        let ids: Vec<i64> = stream.by_ref().map(|m| m.local_id).collect();
+        let mut stream = PageStream::new(rx, &gate, 3, 3);
+        let ids: Vec<i64> = stream.by_ref().flatten().map(|m| m.local_id).collect();
         assert_eq!(ids, [1]);
         assert!(stream.error.is_some());
 
@@ -705,8 +753,8 @@ mod tests {
         let (tx, rx) = channel();
         tx.send((1, Ok(page(1, &[2])))).unwrap();
         drop(tx);
-        let mut stream = MessageStream::new(rx, &gate, 2, 2);
-        assert_eq!(stream.by_ref().count(), 0);
+        let mut stream = PageStream::new(rx, &gate, 2, 2);
+        assert_eq!(stream.by_ref().flatten().count(), 0);
         assert!(stream.error.is_some());
     }
 }

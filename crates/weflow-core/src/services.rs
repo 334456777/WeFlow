@@ -737,15 +737,45 @@ impl ServiceHub {
                 .map(|m| (m.len(), m.modified().ok()))
         };
         let before = stamp(out);
-        let read = export_stream::read_export_stream(&wcdb, req, &opts, |stream| {
-            self.with_exporter(
-                &req.session_id,
-                req.display_pref,
-                req.excel_compact,
-                &wcdb,
-                |ex| ex.write_streamed(&format, out, stream),
-            )
-        });
+        let render_ahead =
+            crate::export_msg::EntryFormat::parse(&format).filter(|f| f.renders_ahead());
+        let read = match render_ahead {
+            // entries that do not depend on each other and are slow to render: the reading workers render them
+            // too, this thread only writes them in order
+            Some(entries) => {
+                let parts = self.exporter_parts(
+                    &req.session_id,
+                    req.display_pref,
+                    req.excel_compact,
+                    &wcdb,
+                )?;
+                let render: &export_stream::WithFinisher<'_, crate::export_msg::RenderedEntries> =
+                    &|body| {
+                        let mut names = name_book(&wcdb);
+                        let mut exporter = parts.exporter(&mut names);
+                        body(&mut |msgs| exporter.render_entries(entries, &msgs));
+                    };
+                export_stream::read_export_pages(&wcdb, req, &opts, render, |pages| {
+                    let mut names = name_book(&wcdb);
+                    let result = parts.exporter(&mut names).write_rendered(
+                        entries,
+                        out,
+                        &mut |_| pages.next(),
+                        false,
+                    );
+                    Ok(result)
+                })
+            }
+            None => export_stream::read_export_stream(&wcdb, req, &opts, |stream| {
+                self.with_exporter(
+                    &req.session_id,
+                    req.display_pref,
+                    req.excel_compact,
+                    &wcdb,
+                    |ex| ex.write_streamed(&format, out, stream),
+                )
+            }),
+        };
         if read.is_err() && stamp(out) != before {
             // the reading failed after the file was written from the messages read so far: do not leave a
             // truncated export that looks complete
@@ -769,16 +799,25 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         f: impl FnOnce(&mut crate::export_msg::Exporter<'_, '_>) -> R,
     ) -> AppResult<R> {
+        let parts = self.exporter_parts(session_id, display_pref, excel_compact, wcdb)?;
+        let mut names = name_book(wcdb);
+        Ok(f(&mut parts.exporter(&mut names)))
+    }
+
+    /// What every [`Exporter`](crate::export_msg::Exporter) of one export of `session_id` shares: read once, then
+    /// each thread that renders builds its own exporter from it (see [`ExporterParts::exporter`]).
+    fn exporter_parts(
+        &self,
+        session_id: &str,
+        display_pref: crate::export_msg::DisplayPref,
+        excel_compact: bool,
+        wcdb: &weflow_native::wcdb::Wcdb,
+    ) -> AppResult<ExporterParts> {
         use crate::export_msg::*;
         let (_, _, wxid) = self.connection_inputs()?;
         let raw_my_wxid = wxid.unwrap_or_default();
         let my_wxid = clean_account_dir_name(&raw_my_wxid);
-        let mut names = NameBook::new(|username: &str| {
-            wcdb.contact(username)
-                .ok()
-                .filter(|v| v.is_object() && !v.as_object().is_none_or(|o| o.is_empty()))
-                .map(|v| ContactInfo::from_value(username, &v))
-        });
+        let mut names = name_book(wcdb);
         let is_group = session_id.ends_with("@chatroom");
         let (group_nicks, group_members) = if is_group {
             let nick_value = wcdb.group_nicknames(session_id).unwrap_or(Value::Null);
@@ -805,7 +844,7 @@ impl ServiceHub {
         let session_display = names.display_name(session_id);
         let session_contact = names.get(session_id);
         let my_display = names.display_name(&my_wxid);
-        let mut exporter = Exporter {
+        Ok(ExporterParts {
             session: SessionInfo {
                 id: session_id.to_string(),
                 display_name: session_display,
@@ -828,14 +867,12 @@ impl ServiceHub {
             },
             group_nicks,
             group_members,
-            names: &mut names,
             settings: Settings {
                 display_pref,
                 excel_compact,
                 ..Default::default()
             },
-        };
-        Ok(f(&mut exporter))
+        })
     }
 
     fn export_write(
@@ -1325,6 +1362,48 @@ pub struct MessageExportRequest {
     pub sender: Option<String>,
     pub display_pref: crate::export_msg::DisplayPref,
     pub excel_compact: bool,
+}
+
+/// The parts of an [`Exporter`](crate::export_msg::Exporter) that do not change during an export (all but its name
+/// cache), so threads that render the same export each build one.
+struct ExporterParts {
+    session: crate::export_msg::SessionInfo,
+    my_wxid: String,
+    raw_my_wxid: String,
+    my_display: String,
+    group_nicks: std::collections::HashMap<String, String>,
+    group_members: Vec<String>,
+    /// Holds the export time: every exporter of one export reports the same.
+    settings: crate::export_msg::Settings,
+}
+
+impl ExporterParts {
+    fn exporter<'a, 'n>(
+        &self,
+        names: &'a mut crate::export_msg::NameBook<'n>,
+    ) -> crate::export_msg::Exporter<'a, 'n> {
+        crate::export_msg::Exporter {
+            session: self.session.clone(),
+            my_wxid: self.my_wxid.clone(),
+            raw_my_wxid: self.raw_my_wxid.clone(),
+            my_display: self.my_display.clone(),
+            group_nicks: self.group_nicks.clone(),
+            group_members: self.group_members.clone(),
+            names,
+            settings: self.settings.clone(),
+        }
+    }
+}
+
+/// Contact names looked up in `wcdb` as an export needs them (cached).
+fn name_book(wcdb: &weflow_native::wcdb::Wcdb) -> crate::export_msg::NameBook<'_> {
+    use crate::export_msg::{ContactInfo, NameBook};
+    NameBook::new(move |username: &str| {
+        wcdb.contact(username)
+            .ok()
+            .filter(|v| v.is_object() && !v.as_object().is_none_or(|o| o.is_empty()))
+            .map(|v| ContactInfo::from_value(username, &v))
+    })
 }
 
 /// A sticker: a plain emoji message, or an appmsg of type 8 (a sticker sent as an attachment).
