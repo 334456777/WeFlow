@@ -48,7 +48,8 @@ struct Conn {
 }
 
 struct Snapshot {
-    conn: Arc<Mutex<Conn>>,
+    /// Connections over `file`; one unless a handle asks for more (see [`NativeAccount::set_read_connections`]).
+    conns: Vec<Arc<Mutex<Conn>>>,
     file: Arc<CipherFile>,
     key: [u8; 32],
     stamp: FileStamp,
@@ -103,6 +104,8 @@ pub struct NativeAccount {
     my_wxid: Option<String>,
     pub(crate) cursors: Mutex<crate::native_msg::Cursors>,
     low_memory: std::sync::atomic::AtomicBool,
+    /// Most connections a snapshot gets for this handle's queries (see [`NativeAccount::set_read_connections`]).
+    read_connections: std::sync::atomic::AtomicUsize,
 }
 
 fn wal_path(db: &Path) -> PathBuf {
@@ -145,7 +148,13 @@ fn value_to_json(column: &str, v: ValueRef<'_>) -> Value {
 }
 
 pub fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|x| format!("{x:02x}")).collect()
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(DIGITS[(b >> 4) as usize] as char);
+        out.push(DIGITS[(b & 0xf) as usize] as char);
+    }
+    out
 }
 
 /// Text form of a BLOB: inflate zstd frames, then UTF-8 if valid, otherwise lowercase hex.
@@ -182,6 +191,7 @@ impl NativeAccount {
             my_wxid: None,
             cursors: Mutex::default(),
             low_memory: Default::default(),
+            read_connections: std::sync::atomic::AtomicUsize::new(1),
         })
     }
 
@@ -190,6 +200,15 @@ impl NativeAccount {
     pub fn set_low_memory(&self, on: bool) {
         self.low_memory
             .store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// How many connections a database snapshot may open for this handle's queries (at least one). Queries on one
+    /// connection run one at a time; with more, threads that read the same database (a parallel export) run side by
+    /// side. Every connection keeps its own page cache, so memory grows with the count. Extra connections stay with
+    /// the snapshot for later queries.
+    pub fn set_read_connections(&self, n: usize) {
+        self.read_connections
+            .store(n.max(1), std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Set the account owner's wxid (see [`NativeAccount::is_me`]).
@@ -224,8 +243,8 @@ impl NativeAccount {
             return (0, 0, HEAP_SOFT_LIMIT as usize);
         };
         let mut used = 0usize;
-        for s in c.entries.values() {
-            if let Ok(c) = s.conn.lock() {
+        for conn in c.entries.values().flat_map(|s| &s.conns) {
+            if let Ok(c) = conn.lock() {
                 let (mut cur, mut hi) = (0, 0);
                 // SAFETY: a valid connection handle and two out-parameters.
                 unsafe {
@@ -241,6 +260,17 @@ impl NativeAccount {
             }
         }
         (c.entries.len(), used, HEAP_SOFT_LIMIT as usize)
+    }
+
+    /// Connections the snapshot of `path` holds (0 when it is not open).
+    #[cfg(test)]
+    pub(crate) fn snapshot_connections(&self, path: &Path) -> usize {
+        self.cache
+            .lock()
+            .unwrap()
+            .entries
+            .get(path)
+            .map_or(0, |s| s.conns.len())
     }
 
     /// Absolute path of a database given relative to `db_storage` (`session/session.db`).
@@ -346,7 +376,23 @@ impl NativeAccount {
                 Some(entry) if entry.key == self.raw_key => {
                     if entry.stamp == stamp && !entry.file.is_stale() {
                         entry.last_used = tick;
-                        return Ok((entry.conn.clone(), entry.file.clone()));
+                        let file = entry.file.clone();
+                        // a connection nobody else holds; else a new one while the limit allows; else the least busy
+                        if let Some(free) = entry.conns.iter().find(|c| Arc::strong_count(c) == 1) {
+                            return Ok((free.clone(), file));
+                        }
+                        let limit = self
+                            .read_connections
+                            .load(std::sync::atomic::Ordering::Relaxed);
+                        if entry.conns.len() >= limit {
+                            if let Some(least) =
+                                entry.conns.iter().min_by_key(|c| Arc::strong_count(c))
+                            {
+                                return Ok((least.clone(), file));
+                            }
+                        }
+                        drop(cache);
+                        return self.add_connection(path, file, limit);
                     }
                     Some(entry.file.cipher()) // same file => same salt => reuse the slow KDF result
                 }
@@ -369,7 +415,7 @@ impl NativeAccount {
         cache.entries.insert(
             path.to_path_buf(),
             Snapshot {
-                conn: conn.clone(),
+                conns: vec![conn.clone()],
                 file: file.clone(),
                 key: self.raw_key,
                 stamp,
@@ -387,6 +433,31 @@ impl NativeAccount {
                 Some(p) => cache.entries.remove(&p),
                 None => break,
             };
+        }
+        Ok((conn, file))
+    }
+
+    /// One more connection over the snapshot `file` of `path` (no key derivation: the file is already open), kept
+    /// with the snapshot while it has fewer than `limit`.
+    fn add_connection(
+        &self,
+        path: &Path,
+        file: Arc<CipherFile>,
+        limit: usize,
+    ) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
+        let conn = cipher_vfs::open_connection(file.clone())?;
+        let conn = Arc::new(Mutex::new(Conn { conn, cache_kib: 0 })); // sized by `with_db`
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| anyhow!("snapshot cache lock poisoned"))?;
+        // the snapshot may have been replaced meanwhile: then this connection only serves the query that asked
+        if let Some(entry) = cache
+            .entries
+            .get_mut(path)
+            .filter(|e| Arc::ptr_eq(&e.file, &file) && e.conns.len() < limit)
+        {
+            entry.conns.push(conn.clone());
         }
         Ok((conn, file))
     }
@@ -460,5 +531,17 @@ impl NativeAccount {
             &[],
         )?;
         Ok(Value::Array(rows))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn hex_is_lowercase_two_digits_per_byte() {
+        assert_eq!(super::hex(&[]), "");
+        assert_eq!(super::hex(&[0x00, 0x0f, 0xa5, 0xff]), "000fa5ff");
+        let all: Vec<u8> = (0..=255).collect();
+        let expected: String = all.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(super::hex(&all), expected);
     }
 }

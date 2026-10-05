@@ -2609,6 +2609,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml",
+ "tracing",
  "walkdir",
  "weflow-assets",
  "weflow-native",

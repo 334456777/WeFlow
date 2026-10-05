@@ -209,6 +209,16 @@ impl Wcdb {
         self.account()?.fetch_message_batch(cursor)
     }
 
+    /// (messages, batch size) of a cursor (see [`NativeAccount::message_cursor_len`]).
+    pub fn message_cursor_len(&self, cursor: i64) -> Result<(usize, usize)> {
+        self.account()?.message_cursor_len(cursor)
+    }
+
+    /// Batch number `page` of a cursor, without moving it (see [`NativeAccount::fetch_message_page`]).
+    pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Value> {
+        self.account()?.fetch_message_page(cursor, page)
+    }
+
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
         self.account()?.close_message_cursor(cursor)
     }
@@ -217,6 +227,13 @@ impl Wcdb {
     pub fn set_low_memory(&self, on: bool) {
         if let Some(a) = &self.native {
             a.set_low_memory(on);
+        }
+    }
+
+    /// Connections a database may open for this handle's queries (see [`NativeAccount::set_read_connections`]).
+    pub fn set_read_connections(&self, n: usize) {
+        if let Some(a) = &self.native {
+            a.set_read_connections(n);
         }
     }
 

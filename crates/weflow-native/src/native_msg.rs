@@ -458,8 +458,46 @@ impl NativeAccount {
             c.pos = end;
             (c.tables.clone(), chunk, c.lite, c.pos < c.keys.len())
         };
+        Ok((self.rows_for_keys(&tables, &chunk, lite)?, more))
+    }
+
+    /// (messages, batch size) of a cursor: the batches are the messages in cursor order, `batch size` at a time.
+    pub fn message_cursor_len(&self, cursor: i64) -> Result<(usize, usize)> {
+        let cursors = self
+            .cursors
+            .lock()
+            .map_err(|_| anyhow!("cursor lock poisoned"))?;
+        let c = cursors
+            .open
+            .get(&cursor)
+            .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
+        Ok((c.keys.len(), c.batch))
+    }
+
+    /// Batch number `page` of a cursor (the rows [`fetch_message_batch`](Self::fetch_message_batch) returns on its
+    /// `page + 1`-th call), without moving the cursor: threads can read different batches of one cursor at once.
+    /// Past the end it is an empty array.
+    pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Value> {
+        let (tables, chunk, lite) = {
+            let cursors = self
+                .cursors
+                .lock()
+                .map_err(|_| anyhow!("cursor lock poisoned"))?;
+            let c = cursors
+                .open
+                .get(&cursor)
+                .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
+            let start = page.saturating_mul(c.batch).min(c.keys.len());
+            let end = start.saturating_add(c.batch).min(c.keys.len());
+            (c.tables.clone(), c.keys[start..end].to_vec(), c.lite)
+        };
+        self.rows_for_keys(&tables, &chunk, lite)
+    }
+
+    /// The rows of `keys`, in that order.
+    fn rows_for_keys(&self, tables: &[MsgTable], keys: &[Key], lite: bool) -> Result<Value> {
         let mut by_shard: HashMap<usize, Vec<i64>> = HashMap::new();
-        for (_, _, local, idx) in &chunk {
+        for (_, _, local, idx) in keys {
             by_shard.entry(*idx).or_default().push(*local);
         }
         let mut fetched: HashMap<(usize, i64), Value> = HashMap::new();
@@ -472,11 +510,11 @@ impl NativeAccount {
                 fetched.insert((idx, int(&r, "local_id")), r);
             }
         }
-        let rows = chunk
+        let rows = keys
             .iter()
             .filter_map(|(_, _, local, idx)| fetched.remove(&(*idx, *local)))
             .collect();
-        Ok((Value::Array(rows), more))
+        Ok(Value::Array(rows))
     }
 
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
@@ -785,6 +823,57 @@ mod tests {
         assert_eq!(all, ["hello", "img", "third", "fourth", "voice"]);
         acct.close_message_cursor(c).unwrap();
         assert!(acct.fetch_message_batch(c).is_err());
+    }
+
+    #[test]
+    fn pages_by_number_match_the_batches_and_leave_the_cursor_alone() {
+        let (acct, _dir) = account("cursor-pages");
+        let c = acct
+            .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
+            .unwrap();
+        assert_eq!(acct.message_cursor_len(c).unwrap(), (5, 2));
+        // out of order, repeated and past the end
+        let page = |i| texts(&acct.fetch_message_page(c, i).unwrap());
+        assert_eq!(page(2), ["voice"]);
+        assert_eq!(page(0), ["hello", "img"]);
+        assert_eq!(page(1), ["third", "fourth"]);
+        assert_eq!(page(1), ["third", "fourth"]);
+        assert!(page(3).is_empty());
+        // the sequential reads still start at the beginning
+        let (rows, more) = acct.fetch_message_batch(c).unwrap();
+        assert_eq!(
+            (texts(&rows), more),
+            (vec!["hello".to_string(), "img".into()], true)
+        );
+        acct.close_message_cursor(c).unwrap();
+        assert!(acct.fetch_message_page(c, 0).is_err());
+        assert!(acct.message_cursor_len(c).is_err());
+    }
+
+    #[test]
+    fn parallel_page_reads_open_at_most_the_allowed_connections() {
+        let (acct, dir) = account("cursor-parallel");
+        acct.set_read_connections(3);
+        let c = acct
+            .open_message_cursor("wxid_bob", 1, true, 0, 0, false)
+            .unwrap();
+        let expected: Vec<Vec<String>> = (0..5)
+            .map(|i| texts(&acct.fetch_message_page(c, i).unwrap()))
+            .collect();
+        std::thread::scope(|s| {
+            for _ in 0..8 {
+                s.spawn(|| {
+                    for round in 0..20 {
+                        let i = round % 5;
+                        assert_eq!(texts(&acct.fetch_message_page(c, i).unwrap()), expected[i]);
+                    }
+                });
+            }
+        });
+        for shard in ["message/message_0.db", "message/message_1.db"] {
+            let n = acct.snapshot_connections(&dir.join(shard));
+            assert!((1..=3).contains(&n), "{shard}: {n} connections");
+        }
     }
 
     #[test]
