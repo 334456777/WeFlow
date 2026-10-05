@@ -1251,10 +1251,10 @@ pub fn extract_file_app_message_meta(content: &str) -> Option<FileMeta> {
     })
 }
 
-pub fn extract_location_meta(
-    content: &str,
-    local_type: i64,
-) -> Option<(Option<f64>, Option<f64>, Option<String>, Option<String>)> {
+/// (latitude, longitude, label, poi name) of a location message.
+pub type LocationMeta = (Option<f64>, Option<f64>, Option<String>, Option<String>);
+
+pub fn extract_location_meta(content: &str, local_type: i64) -> Option<LocationMeta> {
     if content.is_empty() || local_type != 48 {
         return None;
     }
@@ -1829,16 +1829,8 @@ fn format_quoted_reference_preview(content: &str, refer_type: &str) -> String {
             _ => "[链接]".into(),
         };
     }
-    let out = format_plain_export_content(
-        content,
-        ty,
-        &PlainOpts::default(),
-        None,
-        None,
-        None,
-        false,
-        None,
-    );
+    let out =
+        format_plain_export_content(content, ty, &PlainOpts::default(), None, None, None, None);
     if out.is_empty() {
         "[消息]".into()
     } else {
@@ -2285,7 +2277,6 @@ pub fn format_plain_export_content(
     voice_transcript: Option<&str>,
     my_wxid: Option<&str>,
     sender_wxid: Option<&str>,
-    _is_send: bool,
     emoji_caption: Option<&str>,
 ) -> String {
     let readable = extract_readable_system_message_text(content);
@@ -3257,26 +3248,26 @@ mod tests {
     fn plain_content_per_type() {
         let opts = PlainOpts::default();
         assert_eq!(
-            format_plain_export_content("wxid_a:hi", 1, &opts, None, None, None, false, None),
+            format_plain_export_content("wxid_a:hi", 1, &opts, None, None, None, None),
             "hi"
         );
         assert_eq!(
-            format_plain_export_content("", 3, &opts, None, None, None, false, None),
+            format_plain_export_content("", 3, &opts, None, None, None, None),
             "[图片]"
         );
         assert_eq!(
-            format_plain_export_content("x", 34, &opts, None, None, None, false, None),
+            format_plain_export_content("x", 34, &opts, None, None, None, None),
             "[其他消息]"
         );
         let v = "<msg><videomsg playlength=\"12\"/><playlength>12</playlength></msg>";
         assert_eq!(
-            format_plain_export_content(v, 43, &opts, None, None, None, false, None),
+            format_plain_export_content(v, 43, &opts, None, None, None, None),
             "[视频]12s"
         );
         let loc =
             "<msg><location x=\"31.2\" y=\"121.4\" poiname=\"Tower\" label=\"Road 1\"/></msg>";
         assert_eq!(
-            format_plain_export_content(loc, 48, &opts, None, None, None, false, None),
+            format_plain_export_content(loc, 48, &opts, None, None, None, None),
             "[位置] Tower Road 1 (31.2,121.4)"
         );
     }

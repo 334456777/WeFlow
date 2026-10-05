@@ -110,6 +110,16 @@ fn start_of_today_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// What a new insight record says and about whom; [`RecordStore::add`] fills in the id, time and read flag.
+pub struct NewRecord<'a> {
+    pub scope: &'a str,
+    pub session_id: &'a str,
+    pub display_name: &'a str,
+    pub avatar_url: Option<String>,
+    pub trigger_reason: &'a str,
+    pub insight: &'a str,
+}
+
 impl RecordStore {
     pub fn load(dir: &Path) -> Self {
         let path = dir.join(RECORDS_FILE);
@@ -150,17 +160,15 @@ impl RecordStore {
             .filter(move |r| r.account_scope == scope)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn add(
-        &mut self,
-        scope: &str,
-        session_id: &str,
-        display_name: &str,
-        avatar_url: Option<String>,
-        trigger_reason: &str,
-        insight: &str,
-        log: InsightRecordLog,
-    ) -> InsightRecord {
+    pub fn add(&mut self, new: NewRecord<'_>, log: InsightRecordLog) -> InsightRecord {
+        let NewRecord {
+            scope,
+            session_id,
+            display_name,
+            avatar_url,
+            trigger_reason,
+            insight,
+        } = new;
         let record = InsightRecord {
             id: uuid_v4(),
             account_scope: scope.into(),
@@ -699,30 +707,36 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut s = RecordStore::load(&dir);
         let a = s.add(
-            "wxid:me",
-            "wxid_a",
-            "Alice",
-            None,
-            "activity",
-            "be nice",
+            NewRecord {
+                scope: "wxid:me",
+                session_id: "wxid_a",
+                display_name: "Alice",
+                avatar_url: None,
+                trigger_reason: "activity",
+                insight: "be nice",
+            },
             InsightRecordLog::default(),
         );
         s.add(
-            "wxid:me",
-            "wxid_b",
-            "Bob",
-            Some("http://a".into()),
-            "silence",
-            "call him",
+            NewRecord {
+                scope: "wxid:me",
+                session_id: "wxid_b",
+                display_name: "Bob",
+                avatar_url: Some("http://a".into()),
+                trigger_reason: "silence",
+                insight: "call him",
+            },
             InsightRecordLog::default(),
         );
         s.add(
-            "wxid:other",
-            "wxid_a",
-            "Alice",
-            None,
-            "test",
-            "hidden",
+            NewRecord {
+                scope: "wxid:other",
+                session_id: "wxid_a",
+                display_name: "Alice",
+                avatar_url: None,
+                trigger_reason: "test",
+                insight: "hidden",
+            },
             InsightRecordLog::default(),
         );
         let list = s.list("wxid:me", &RecordFilters::default());

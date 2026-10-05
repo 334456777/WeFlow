@@ -13,6 +13,17 @@ use crate::message::{row_field, row_int, rx};
 const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =
     ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 
+/// Paging and time window of a message query for `fetch_rows_batch`; `start`/`end` are the raw request values
+/// (seconds or milliseconds, 0 for no bound).
+struct RowsQuery {
+    offset: usize,
+    limit: usize,
+    start: i64,
+    end: i64,
+    ascending: bool,
+    lite: bool,
+}
+
 fn js_int(v: Option<&Value>) -> Option<i64> {
     match v? {
         Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
@@ -904,13 +915,16 @@ impl ServiceHub {
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         talker: &str,
-        offset: usize,
-        limit: usize,
-        start: i64,
-        end: i64,
-        ascending: bool,
-        lite: bool,
+        query: RowsQuery,
     ) -> Result<(Vec<Value>, bool), ApiError> {
+        let RowsQuery {
+            offset,
+            limit,
+            start,
+            end,
+            ascending,
+            lite,
+        } = query;
         let batch_size = limit.clamp(500, 2000) as i32;
         let norm = |t: i64| -> i32 {
             (if t > 10_000_000_000 { t / 1000 } else { t }).clamp(0, i32::MAX as i64) as i32
@@ -1374,12 +1388,14 @@ impl ServiceHub {
             let (rows, more) = self.fetch_rows_batch(
                 &wcdb,
                 &talker,
-                offset,
-                limit,
-                start,
-                end,
-                false,
-                !media_opts.enabled,
+                RowsQuery {
+                    offset,
+                    limit,
+                    start,
+                    end,
+                    ascending: false,
+                    lite: !media_opts.enabled,
+                },
             )?;
             messages = if media_opts.enabled {
                 chat_msg::map_rows(&rows, &my)
@@ -1455,8 +1471,18 @@ impl ServiceHub {
         let wcdb = self
             .open_wcdb()
             .map_err(|e| ApiError::new(500, e.message))?;
-        let (rows, has_more) =
-            self.fetch_rows_batch(&wcdb, session_id, offset, limit, start, end, true, true)?;
+        let (rows, has_more) = self.fetch_rows_batch(
+            &wcdb,
+            session_id,
+            RowsQuery {
+                offset,
+                limit,
+                start,
+                end,
+                ascending: true,
+                lite: true,
+            },
+        )?;
         let mut messages = chat_msg::map_rows_lite(&rows, &self.wmy());
         self.backfill_senders(&wcdb, session_id, &mut messages);
         let (names, _) = self.names_and_avatars_pub(&wcdb, &[session_id.to_string()]);

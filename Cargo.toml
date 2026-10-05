@@ -14,13 +14,10 @@ version = "4.3.0"
 edition = "2021"
 license = "SEE LICENSE IN LICENSE"
 
-# Clippy runs with -D warnings in `make lint` and CI. These three are design-level and would need API rewrites:
-# result_large_err (error types carry context by value), too_many_arguments and type_complexity (ported call
-# signatures that mirror the original backend).
+# Clippy runs with -D warnings in `make lint` and CI. result_large_err stays allowed: AppError is over 128 bytes, and
+# boxing it (about 50 changed lines) made `Result<(), AppError>` 8 bytes but showed no measurable speed-up.
 [workspace.lints.clippy]
 result_large_err = "allow"
-too_many_arguments = "allow"
-type_complexity = "allow"
 
 [workspace.dependencies]
 aes = "0.8"

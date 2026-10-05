@@ -788,12 +788,14 @@ impl ServiceHub {
     ) -> ins::InsightRecord {
         let mut store = self.record_store();
         store.add(
-            &self.insight_scope(),
-            session_id,
-            name,
-            avatar,
-            reason,
-            insight,
+            ins::NewRecord {
+                scope: &self.insight_scope(),
+                session_id,
+                display_name: name,
+                avatar_url: avatar,
+                trigger_reason: reason,
+                insight,
+            },
             log,
         )
     }
