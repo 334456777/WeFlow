@@ -1,16 +1,19 @@
 //! Export pipeline probe on a synthetic encrypted account; no WeChat data is opened.
 //!
 //! usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N]
-//!                              [--mode all|full|stages|read] [--no-low-memory]
+//!                              [--mode all|full|stages|read] [--no-low-memory] [--connections N]
 //!
 //! `<work dir>/data` is wiped and rebuilt: one group with N messages (default 200000) spread evenly over the
 //! shards (default 2), cycling through text, zstd-compressed link and quote appmsgs, images, stickers and system
 //! messages from 50 senders. Outputs go to `<work dir>/out`. Modes:
-//! - `full`: the real `export_messages` pipeline (reader, parser and writer threads), `--runs` times;
+//! - `full`: the real `export_messages` pipeline (worker threads read and parse pages, the caller writes; set
+//!   `WEFLOW_EXPORT_WORKERS` to fix the worker count, `RUST_LOG=weflow::export=debug` to see the stages), `--runs`
+//!   times;
 //! - `stages`: each stage alone on one thread (cursor key scan, batch fetch, parse, write), then the parser on
 //!   2/4/all threads over the same pages;
 //! - `read`: the conversation's range split into 1/2/4/8 parts, each read by its own cursor and thread, which
-//!   shows how far reads of one database file run in parallel.
+//!   shows how far reads of one database file run in parallel. A database gets one connection unless
+//!   `--connections N` allows more (exports use one per worker).
 //!
 //! Process CPU time (user/sys) is printed on Linux only. To compare allocators without rebuilding, run the same
 //! command with `LD_PRELOAD=<path to libjemalloc.so.2>`.
@@ -41,12 +44,14 @@ struct Args {
     runs: usize,
     mode: String,
     low_memory: bool,
+    /// Connections a database may open for the `read` mode's threads.
+    connections: usize,
 }
 
 fn parse_args() -> anyhow::Result<(std::path::PathBuf, Args)> {
     let mut it = std::env::args().skip(1);
     let dir = it.next().ok_or_else(|| {
-        anyhow::anyhow!("usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N] [--mode all|full|stages|read] [--no-low-memory]")
+        anyhow::anyhow!("usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N] [--mode all|full|stages|read] [--no-low-memory] [--connections N]")
     })?;
     let mut args = Args {
         messages: 200_000,
@@ -55,6 +60,7 @@ fn parse_args() -> anyhow::Result<(std::path::PathBuf, Args)> {
         runs: 3,
         mode: "all".into(),
         low_memory: true,
+        connections: 1,
     };
     while let Some(flag) = it.next() {
         let mut value = || {
@@ -68,6 +74,7 @@ fn parse_args() -> anyhow::Result<(std::path::PathBuf, Args)> {
             "--runs" => args.runs = value()?.parse()?,
             "--mode" => args.mode = value()?,
             "--no-low-memory" => args.low_memory = false,
+            "--connections" => args.connections = value()?.parse()?,
             other => anyhow::bail!("unknown option {other}"),
         }
     }
@@ -405,6 +412,7 @@ fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
 }
 
 fn parallel_read(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
+    wcdb.set_read_connections(args.connections);
     let span = args.messages * STEP;
     // opens every shard's snapshot (and, with --no-low-memory, fills the page caches), so the rows below compare
     // the same warm state
