@@ -700,8 +700,7 @@ impl ServiceHub {
             end: req.end,
             sender_filter: req.sender.as_deref(),
         };
-        let mut collected: Vec<crate::message::ExportMsg> = Vec::new();
-        export_stream::read_export_stream(&wcdb, req, &opts, |stream| collected.extend(stream))?;
+        let mut collected = export_stream::collect_export_messages(&wcdb, req, &opts)?;
         collected.sort_by(|a, b| {
             a.create_time
                 .cmp(&b.create_time)
