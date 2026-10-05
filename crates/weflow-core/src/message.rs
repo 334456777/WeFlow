@@ -354,6 +354,10 @@ pub fn row_int(row: &Value, keys: &[&str], fallback: i64) -> i64 {
     };
     for key in keys {
         if let Some(v) = obj.get(*key) {
+            // integer columns (nearly every row): same result as the text parse below, without its two allocations
+            if let Some(n) = v.as_i64() {
+                return n;
+            }
             let text = match v {
                 Value::Null => continue,
                 Value::String(s) if s.is_empty() => continue,
@@ -3102,6 +3106,23 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn row_int_reads_numbers_and_numeric_text_alike() {
+        let row = serde_json::json!({
+            "a": 42, "b": -7, "c": "  123abc", "d": null, "e": "", "f": 1.9, "g": u64::MAX, "h": "+5"
+        });
+        assert_eq!(row_int(&row, &["a"], 0), 42);
+        assert_eq!(row_int(&row, &["b"], 0), -7);
+        assert_eq!(row_int(&row, &["c"], 0), 123);
+        // null and empty text fall through to the next key
+        assert_eq!(row_int(&row, &["d", "e", "a"], 0), 42);
+        assert_eq!(row_int(&row, &["f"], 0), 1);
+        // out of range for i64: skipped like any unparsable value
+        assert_eq!(row_int(&row, &["g", "b"], 0), -7);
+        assert_eq!(row_int(&row, &["h"], 0), 5);
+        assert_eq!(row_int(&row, &["missing"], 9), 9);
+    }
 
     #[test]
     fn local_midnights_round_trip_through_the_local_formatter() {
