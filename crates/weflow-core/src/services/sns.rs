@@ -158,7 +158,7 @@ impl ServiceHub {
             .iter()
             .filter(|u| {
                 book.get(*u)
-                    .map_or(true, |c| c.display_name.is_none() && c.avatar_url.is_none())
+                    .is_none_or(|c| c.display_name.is_none() && c.avatar_url.is_none())
             })
             .collect();
         if !missing.is_empty() {
@@ -423,7 +423,7 @@ impl ServiceHub {
             .lock()
             .unwrap()
             .last_timeline_fallback
-            .map_or(true, |t| t.elapsed() >= TIMELINE_FALLBACK_COOLDOWN);
+            .is_none_or(|t| t.elapsed() >= TIMELINE_FALLBACK_COOLDOWN);
         if allow_fallback && (total <= 0 || friends <= 0) && cooled_down {
             fallback_attempted = true;
             match self.export_stats_from_timeline(&wcdb, my_wxid.as_deref()) {
@@ -452,7 +452,7 @@ impl ServiceHub {
             },
         );
         let has_data = total > 0 || friends > 0;
-        let cache_has_data = cached.as_ref().map_or(false, |(v, _)| {
+        let cache_has_data = cached.as_ref().is_some_and(|(v, _)| {
             v["totalPosts"].as_i64().unwrap_or(0) > 0 || v["totalFriends"].as_i64().unwrap_or(0) > 0
         });
         if !has_data && cache_has_data {
@@ -713,7 +713,7 @@ impl ServiceHub {
             let mut st = self.sns_state.lock().unwrap();
             if let Some((data_url, at)) = st.image_cache.get(&cache_key).cloned() {
                 let valid = at.elapsed() <= IMAGE_CACHE_TTL
-                    && data_url.split(',').nth(1).map_or(false, |b64| {
+                    && data_url.split(',').nth(1).is_some_and(|b64| {
                         let bytes = sns::lenient_base64(b64);
                         sns::detect_image_mime(&bytes, "").starts_with("image/")
                     });
@@ -1129,7 +1129,7 @@ impl ServiceHub {
                         return (user, Some(format!("media/{file_name}")));
                     }
                     let saved = match self.sns_fetch_media(&avatar, None).await {
-                        Ok(f) => f.data.map_or(false, |d| std::fs::write(&path, d).is_ok()),
+                        Ok(f) => f.data.is_some_and(|d| std::fs::write(&path, d).is_ok()),
                         Err(_) => false,
                     };
                     (user, saved.then(|| format!("media/{file_name}")))
@@ -1343,7 +1343,7 @@ impl ServiceHub {
             .collect();
         let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         let non_empty_arr = |v: Option<&Value>| {
-            v.filter(|e| e.as_array().map_or(false, |a| !a.is_empty()))
+            v.filter(|e| e.as_array().is_some_and(|a| !a.is_empty()))
                 .cloned()
         };
 
@@ -1401,7 +1401,7 @@ impl ServiceHub {
             for c in &post_comments {
                 if c.get("id")
                     .and_then(Value::as_str)
-                    .map_or(false, |i| !i.is_empty() && mapped.contains(i))
+                    .is_some_and(|i| !i.is_empty() && mapped.contains(i))
                 {
                     continue;
                 }
@@ -1628,7 +1628,7 @@ fn truthy_json(v: &Value) -> bool {
         Value::Null => false,
         Value::Bool(b) => *b,
         Value::String(s) => !s.is_empty(),
-        Value::Number(n) => n.as_f64().map_or(true, |f| f != 0.0),
+        Value::Number(n) => n.as_f64() != Some(0.0),
         _ => true,
     }
 }

@@ -381,7 +381,7 @@ impl NativeAccount {
 }
 
 fn decode_hex(s: &str) -> Vec<u8> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Vec::new();
     }
     (0..s.len() / 2)

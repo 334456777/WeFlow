@@ -10,7 +10,7 @@ fn main() -> anyhow::Result<()> {
     println!(
         "temp directory exists: {}; equals TMP: {}",
         temp.is_dir(),
-        std::env::var_os("TMP").is_some_and(|v| temp == std::path::PathBuf::from(v))
+        std::env::var_os("TMP").is_some_and(|v| temp == v)
     );
     let marker = temp.join(format!("weflow-xlsx-probe-{}.tmp", std::process::id()));
     let ordinary = std::fs::write(&marker, b"synthetic");

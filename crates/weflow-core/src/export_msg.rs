@@ -536,11 +536,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             return None;
         }
         let base = extract_quoted_reply_display(content)?;
-        if base
-            .quoted_sender
-            .as_deref()
-            .map_or(false, |s| !s.is_empty())
-        {
+        if base.quoted_sender.as_deref().is_some_and(|s| !s.is_empty()) {
             return Some(base);
         }
         let Some(user) = quoted_sender_username(content) else {
@@ -887,11 +883,11 @@ impl<'a, 'n> Exporter<'a, 'n> {
             let mut record_names: Vec<String> = Vec::new();
             let m = self.chatlab_message(msg, &member_name, &mut record_names);
             for name in record_names {
-                if !member_index.contains_key(&name) {
+                if let std::collections::hash_map::Entry::Vacant(slot) = member_index.entry(name) {
                     let mut nm = Map::new();
-                    nm.insert("platformId".into(), json!(name));
-                    nm.insert("accountName".into(), json!(name));
-                    member_index.insert(name, members.len());
+                    nm.insert("platformId".into(), json!(slot.key()));
+                    nm.insert("accountName".into(), json!(slot.key()));
+                    slot.insert(members.len());
                     members.push(nm);
                 }
             }

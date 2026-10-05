@@ -172,7 +172,7 @@ fn emoji_download_decrypts_with_aes_key() {
     let key = [3u8; 16];
     let nonce = [5u8; 12];
     let mut gif = b"GIF89a".to_vec();
-    gif.extend(std::iter::repeat(9u8).take(64));
+    gif.extend(std::iter::repeat_n(9u8, 64));
     let sealed = Aes128Gcm::new_from_slice(&key)
         .unwrap()
         .encrypt(Nonce::from_slice(&nonce), gif.as_slice())

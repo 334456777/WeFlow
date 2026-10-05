@@ -72,7 +72,7 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
         return Err(SilkError::Sdk(code));
     }
     // u64 backing store keeps the state 8-byte aligned
-    let mut state = vec![0u64; (size as usize + 7) / 8];
+    let mut state = vec![0u64; (size as usize).div_ceil(8)];
     let state_ptr = state.as_mut_ptr() as *mut c_void;
     let code = unsafe { SKP_Silk_SDK_InitDecoder(state_ptr) };
     if code != 0 {
@@ -175,7 +175,7 @@ pub mod testenc {
     pub fn encode_tone(rate: i32) -> Vec<u8> {
         let mut size = 0;
         assert_eq!(unsafe { SKP_Silk_SDK_Get_Encoder_Size(&mut size) }, 0);
-        let mut state = vec![0u64; (size as usize + 7) / 8];
+        let mut state = vec![0u64; (size as usize).div_ceil(8)];
         let sp = state.as_mut_ptr() as *mut c_void;
         let mut ctl = EncControl {
             api_sample_rate: 0,
@@ -274,7 +274,9 @@ mod tests {
             let silk = encode_tone(rate);
             let pcm = decode(&silk, rate).unwrap();
             let samples: Vec<i16> = pcm
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|b| i16::from_le_bytes([b[0], b[1]]))
                 .collect();
             assert!(

@@ -42,9 +42,9 @@ impl Isaac64 {
         ];
         for pass in 0..2 {
             for i in (0..SIZE).step_by(8) {
-                for j in 0..8 {
+                for (j, vj) in v.iter_mut().enumerate() {
                     let add = if pass == 0 { s.rs[i + j] } else { s.mm[i + j] };
-                    v[j] = v[j].wrapping_add(add);
+                    *vj = vj.wrapping_add(add);
                 }
                 mix(&mut v);
                 s.mm[i..i + 8].copy_from_slice(&v);

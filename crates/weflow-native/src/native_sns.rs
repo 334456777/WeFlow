@@ -240,7 +240,7 @@ impl NativeAccount {
             .filter(|(t, _, p)| {
                 (start <= 0 || *t >= start)
                     && (end <= 0 || *t <= end)
-                    && needle.as_ref().map_or(true, |n| {
+                    && needle.as_ref().is_none_or(|n| {
                         p["contentDesc"]
                             .as_str()
                             .unwrap_or("")
@@ -468,7 +468,7 @@ mod fixture_tests {
         );
         assert_eq!(
             descs(
-                &a.sns_timeline(0, 0, &[], None, (T0 + DAY) as i64, (T0 + 2 * DAY) as i64)
+                &a.sns_timeline(0, 0, &[], None, T0 + DAY, T0 + 2 * DAY)
                     .unwrap()
             ),
             ["carol video", "second post"]
@@ -517,7 +517,7 @@ mod fixture_tests {
             v["topLiked"],
             json!([{"username": "wxid_bob", "count": 1}, {"username": "wxid_carol", "count": 1}])
         );
-        let narrow = a.sns_annual_stats((T0 + DAY) as i64, 0).unwrap();
+        let narrow = a.sns_annual_stats(T0 + DAY, 0).unwrap();
         assert_eq!(narrow["totalPosts"], 1);
         assert_eq!(
             narrow["topLikers"],

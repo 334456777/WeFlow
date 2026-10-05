@@ -60,6 +60,22 @@ TARGET_MACOS_ARM  := aarch64-apple-darwin
 TARGET_LINUX_X64  := x86_64-unknown-linux-gnu
 TARGET_WIN_X64    := x86_64-pc-windows-gnu
 TARGET_WIN_X64_MS := x86_64-pc-windows-msvc
+# cross-windows builds the GNU target on macOS/Linux (MinGW) and the MSVC target on Windows itself
+ifeq ($(PLATFORM),windows)
+  WIN_TARGET := $(TARGET_WIN_X64_MS)
+else
+  WIN_TARGET := $(TARGET_WIN_X64)
+endif
+# cross-linux needs a cross linker (and C compiler for the vendored C code) unless the host already is x86_64 Linux:
+# without CARGO_TARGET_*_LINKER rustc links with the host's `cc`, which fails for another architecture.
+CROSS_LINUX_ENV :=
+ifeq ($(PLATFORM),macos)
+  CROSS_LINUX_ENV := CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+else ifeq ($(PLATFORM),linux)
+  ifeq ($(filter x86_64 amd64,$(shell uname -m)),)
+    CROSS_LINUX_ENV := CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+  endif
+endif
 
 .DEFAULT_GOAL := help
 
@@ -75,7 +91,7 @@ help:
 	@printf "  $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)\n"
 	@printf "  $(CYAN)make test$(RESET)            运行全部单元测试\n"
 	@printf "  $(CYAN)make check$(RESET)           cargo check（只检查，不编译）\n"
-	@printf "  $(CYAN)make docs-check$(RESET)      检查 docs/cli-unsupported.md 是否与代码一致\n"
+	@printf "  $(CYAN)make docs-check$(RESET)      检查文档：cli-unsupported.md 与代码一致、链接和锚点有效、中英文成对、crate 表完整、汉字旁为中文逗号\n"
 	@printf "  $(CYAN)make fmt$(RESET)             格式化代码\n"
 	@printf "  $(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化\n"
 	@printf "  $(CYAN)make lint$(RESET)            Clippy 静态分析\n"
@@ -94,7 +110,7 @@ help:
 	@printf "$(BOLD)环境$(RESET)\n"
 	@printf "  $(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具\n"
 	@printf "  $(CYAN)make env$(RESET)             显示当前环境信息\n"
-	@printf "  $(CYAN)make ci$(RESET)              本地模拟 CI 流程 (check+fmt-check+docs-check+test+release)\n"
+	@printf "  $(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+test；文档检查另跑 make docs-check)\n"
 	@printf "\n"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -177,8 +193,8 @@ test: check-rust
 
 # docs/cli-unsupported.md must list every database function that answers "not implemented" / "not supported"
 docs-check: check-rust
-	@printf "$(BOLD)▶ CLI 不支持清单 (docs/cli-unsupported.md) 与代码一致$(RESET)\n"
-	cargo test -p weflow-native --test unsupported_docs
+	@printf "$(BOLD)▶ 文档检查（不支持清单与代码一致、链接锚点、中英文成对、crate 表、汉字旁的逗号）$(RESET)\n"
+	cargo test -p weflow-native --test unsupported_docs --test docs_consistency
 
 check: check-rust
 	@printf "$(BOLD)▶ cargo check --workspace$(RESET)\n"
@@ -197,6 +213,7 @@ fmt-check: check-rust
 
 lint: check-rust
 	@printf "$(BOLD)▶ cargo clippy$(RESET)\n"
+	@cargo clippy --version >/dev/null 2>&1 || rustup component add clippy
 	cargo clippy --workspace --all-targets -- -D warnings
 
 clean:
@@ -235,6 +252,9 @@ endif
 .PHONY: _ensure-target-macos _ensure-target-linux _ensure-target-windows
 
 _ensure-target-macos:
+ifneq ($(PLATFORM),macos)
+	@printf "$(RED)✗ 交叉编译 macOS 需要 macOS 的 SDK，请在 macOS 上运行 make cross-macos$(RESET)\n"; exit 1
+endif
 	@rustup target list --installed | grep -q "$(TARGET_MACOS_ARM)" || { \
 		printf "$(YELLOW)⚠ 安装编译目标 $(TARGET_MACOS_ARM)...$(RESET)\n"; \
 		rustup target add $(TARGET_MACOS_ARM); \
@@ -254,16 +274,20 @@ ifeq ($(PLATFORM),macos)
 	}
 endif
 ifeq ($(PLATFORM),linux)
+ifneq ($(CROSS_LINUX_ENV),)
 	@command -v x86_64-linux-gnu-gcc >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ 安装 gcc multilib...$(RESET)\n"; \
-		$(GIT_INSTALL:-y git=-y gcc-multilib) 2>/dev/null || sudo apt-get install -y gcc-multilib || true; \
+		command -v apt-get >/dev/null 2>&1 || { \
+			printf "$(RED)✗ 需要 x86_64-linux-gnu-gcc 交叉编译器，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
+		printf "$(YELLOW)⚠ 安装 gcc-x86-64-linux-gnu...$(RESET)\n"; \
+		sudo apt-get install -y gcc-x86-64-linux-gnu || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
 	}
+endif
 endif
 
 _ensure-target-windows:
-	@rustup target list --installed | grep -q "$(TARGET_WIN_X64)" || { \
-		printf "$(YELLOW)⚠ 安装编译目标 $(TARGET_WIN_X64)...$(RESET)\n"; \
-		rustup target add $(TARGET_WIN_X64); \
+	@rustup target list --installed | grep -q "$(WIN_TARGET)" || { \
+		printf "$(YELLOW)⚠ 安装编译目标 $(WIN_TARGET)...$(RESET)\n"; \
+		rustup target add $(WIN_TARGET); \
 	}
 ifeq ($(PLATFORM),macos)
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || { \
@@ -274,8 +298,10 @@ ifeq ($(PLATFORM),macos)
 endif
 ifeq ($(PLATFORM),linux)
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || { \
+		command -v apt-get >/dev/null 2>&1 || { \
+			printf "$(RED)✗ 需要 x86_64-w64-mingw32-gcc (mingw-w64)，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
 		printf "$(YELLOW)⚠ 安装 mingw-w64...$(RESET)\n"; \
-		$(GIT_INSTALL:-y git=-y mingw-w64) 2>/dev/null || sudo apt-get install -y mingw-w64 || true; \
+		sudo apt-get install -y mingw-w64 || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
 	}
 endif
 
@@ -287,12 +313,7 @@ cross-macos: check-rust _ensure-target-macos
 
 cross-linux: check-rust _ensure-target-linux
 	@printf "$(BOLD)▶ 编译 Linux x64$(RESET)\n"
-ifeq ($(PLATFORM),macos)
-	CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
-	  cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
-else
-	cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
-endif
+	$(CROSS_LINUX_ENV) cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
 	@cp target/$(TARGET_LINUX_X64)/release/weflow weflow-linux-x64
 	@printf "$(GREEN)✓ → weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
 
@@ -307,8 +328,7 @@ else ifeq ($(PLATFORM),linux)
 else
 	cargo build --release -p weflow-cli --target $(TARGET_WIN_X64_MS)
 endif
-	@cp target/$(TARGET_WIN_X64)/release/weflow.exe weflow-windows-x64.exe 2>/dev/null || \
-	 cp target/$(TARGET_WIN_X64_MS)/release/weflow.exe weflow-windows-x64.exe
+	@cp target/$(WIN_TARGET)/release/weflow.exe weflow-windows-x64.exe
 	@printf "$(GREEN)✓ → weflow-windows-x64.exe ($$(ls -lh weflow-windows-x64.exe | awk '{print $$5}'))$(RESET)\n"
 
 cross-all: cross-macos cross-linux cross-windows
@@ -320,7 +340,7 @@ cross-all: cross-macos cross-linux cross-windows
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: ci env
 
-ci: check check-tools fmt-check docs-check test release
+ci: fmt-check lint test
 	@printf "$(GREEN)$(BOLD)✓ CI 全流程通过$(RESET)\n"
 
 env:

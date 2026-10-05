@@ -1,0 +1,47 @@
+name: Docs check
+
+# Documentation changes only run `make docs-check`: cli-unsupported.md matches the code, links and anchors resolve,
+# docs/ and docs/zh-CN/ are paired, every crate is in the architecture tables, and commas next to Chinese text
+# are full-width. Code changes are covered by ci.yml, which runs this check as well.
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "docs/**"
+      - ".github/workflows/docs-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "docs/**"
+      - ".github/workflows/docs-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  docs-check:
+    name: make docs-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (version from rust-toolchain.toml)
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: make docs-check
+        run: make docs-check

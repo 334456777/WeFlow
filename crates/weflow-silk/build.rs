@@ -7,7 +7,7 @@ fn main() {
         .expect("vendored SILK sources")
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |e| e == "c"))
+        .filter(|p| p.extension().is_some_and(|e| e == "c"))
         .collect();
     files.sort();
     let mut build = cc::Build::new();

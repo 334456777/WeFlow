@@ -1,0 +1,7 @@
+# Pins the Rust version for local builds and CI (rustup reads this file), so a new stable release cannot make
+# clippy or rustfmt fail on code that passed yesterday. To upgrade: change the channel, run `make ci`, fix what it
+# reports, and commit both together.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

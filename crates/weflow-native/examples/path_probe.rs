@@ -18,7 +18,6 @@ fn main() {
     }
     println!(
         "tempdir equals TMP: {}",
-        std::env::var_os("TMP")
-            .is_some_and(|s| std::env::temp_dir() == std::path::PathBuf::from(s))
+        std::env::var_os("TMP").is_some_and(|s| std::env::temp_dir() == s)
     );
 }

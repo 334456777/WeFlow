@@ -617,13 +617,12 @@ mod tests {
             .unwrap();
         assert_eq!(rows[0]["n"], 3);
         let shard = a.message_dbs()[0].to_string_lossy().to_string();
-        assert_eq!(
+        assert!(
             a.exec_query("message", Some(&shard), "select count(*) as n from Name2Id")
                 .unwrap()[0]["n"]
                 .as_i64()
                 .unwrap()
-                > 0,
-            true
+                > 0
         );
         assert!(
             a.exec_query("message", None, "select 1 as x").is_ok(),

@@ -452,7 +452,7 @@ pub fn wxgf_hevc_candidates(buf: &[u8]) -> Vec<(String, Vec<u8>)> {
         }
         groups.push((gi, merge_nalus(group)));
     }
-    groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    groups.sort_by_key(|a| std::cmp::Reverse(a.1.len()));
     for (gi, data) in groups {
         add(format!("group_{gi}"), data);
     }
@@ -541,7 +541,7 @@ pub fn convert_hevc_to_jpg(hevc: &[u8]) -> Option<Vec<u8>> {
                     }
                 }
             };
-            if status.map_or(false, |s| s.success()) {
+            if status.is_some_and(|s| s.success()) {
                 if let Ok(buf) = std::fs::read(&output) {
                     if !buf.is_empty() && !is_likely_corrupted_jpeg(&buf) {
                         result = Some(buf);

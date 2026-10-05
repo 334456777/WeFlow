@@ -321,7 +321,7 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             if !done
                 && st
                     .last_draw
-                    .map_or(false, |t| now.duration_since(t).as_millis() < 200)
+                    .is_some_and(|t| now.duration_since(t).as_millis() < 200)
             {
                 return;
             }
@@ -346,9 +346,9 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
             let mut out = String::with_capacity(line.len() + pad + 2);
             out.push('\r');
             out.push_str(&line);
-            out.extend(std::iter::repeat(' ').take(pad));
+            out.extend(std::iter::repeat_n(' ', pad));
             if pad > 0 {
-                out.extend(std::iter::repeat('\u{8}').take(pad));
+                out.extend(std::iter::repeat_n('\u{8}', pad));
             }
             let mut err = std::io::stderr().lock();
             let _ = err.write_all(out.as_bytes());

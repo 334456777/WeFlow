@@ -132,7 +132,7 @@ fn be32(b: &[u8]) -> u32 {
 }
 
 fn wal_checksum(data: &[u8], big_endian: bool, mut s0: u32, mut s1: u32) -> (u32, u32) {
-    for chunk in data.chunks_exact(8) {
+    for chunk in data.as_chunks::<8>().0 {
         let (a, b) = if big_endian {
             (be32(&chunk[0..4]), be32(&chunk[4..8]))
         } else {

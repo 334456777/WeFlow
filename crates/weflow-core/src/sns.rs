@@ -293,7 +293,7 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
                 .unwrap_or_default();
             let encrypt_url = enc.map(|u| u.trim().replace("&amp;", "&"));
             let aes_key = aes.map(|a| a.trim().to_string());
-            if !url.is_empty() || encrypt_url.as_deref().map_or(false, |u| !u.is_empty()) {
+            if !url.is_empty() || encrypt_url.as_deref().is_some_and(|u| !u.is_empty()) {
                 let mut o = Map::new();
                 o.insert("url".into(), json!(url));
                 o.insert(
@@ -352,7 +352,7 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
         })
         .collect();
     for c in items.iter_mut() {
-        if c.ref_nickname.as_deref().map_or(true, str::is_empty) && !c.ref_comment_id.is_empty() {
+        if c.ref_nickname.as_deref().is_none_or(str::is_empty) && !c.ref_comment_id.is_empty() {
             if let Some(ru) = c.ref_username.as_deref().filter(|u| !u.is_empty()) {
                 c.ref_nickname = user_map.get(ru).cloned();
             }
@@ -874,7 +874,7 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
     let has_emojis_in_dll = dll_comments.iter().any(|c| {
         c.get("emojis")
             .and_then(Value::as_array)
-            .map_or(false, |e| !e.is_empty())
+            .is_some_and(|e| !e.is_empty())
     });
     let final_comments = if !dll_comments.is_empty() && (has_emojis_in_dll || raw_xml.is_empty()) {
         fix_comment_refs(&dll_comments)
@@ -1313,7 +1313,7 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
     type CbcDec = cbc::Decryptor<aes::Aes128>;
     type EcbDec = ecb::Decryptor<aes::Aes128>;
     for key in keys.iter().filter(|k| k.len() == 16) {
-        if n >= 16 && n % 16 == 0 {
+        if n >= 16 && n.is_multiple_of(16) {
             let mut buf = enc.to_vec();
             if let Ok(dec) = CbcDec::new_from_slices(key, key) {
                 if let Ok(plain) = dec.decrypt_padded_mut::<Pkcs7>(&mut buf) {
@@ -1330,7 +1330,7 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
         }
         if n > 32 {
             let mut buf = enc[16..].to_vec();
-            if buf.len() % 16 == 0 {
+            if buf.len().is_multiple_of(16) {
                 if let Ok(dec) = CbcDec::new_from_slices(key, &enc[..16]) {
                     if let Ok(plain) = dec.decrypt_padded_mut::<Pkcs7>(&mut buf) {
                         if is_valid_image_buffer(plain) {
@@ -1340,15 +1340,13 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
                 }
             }
         }
-        if n % 16 == 0 {
+        if n.is_multiple_of(16) {
             let mut buf = enc.to_vec();
-            if let Ok(plain) =
+            if let Ok(Ok(plain)) =
                 EcbDec::new_from_slice(key).map(|d| d.decrypt_padded_mut::<Pkcs7>(&mut buf))
             {
-                if let Ok(plain) = plain {
-                    if is_valid_image_buffer(plain) {
-                        return Some(plain.to_vec());
-                    }
+                if is_valid_image_buffer(plain) {
+                    return Some(plain.to_vec());
                 }
             }
         }
@@ -1479,7 +1477,7 @@ mod tests {
         let plain: Vec<u8> = b"GIF89a"
             .iter()
             .copied()
-            .chain(std::iter::repeat(1u8).take(40))
+            .chain(std::iter::repeat_n(1u8, 40))
             .collect();
         let cipher = Aes128Gcm::new_from_slice(&key)
             .unwrap()

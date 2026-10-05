@@ -423,15 +423,15 @@ pub fn get_timestamp_seconds(row: &Value) -> i64 {
 // ──────────────────────────── content decoding ────────────────────────────
 
 fn looks_like_hex(s: &str) -> bool {
-    s.len() % 2 == 0 && !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit())
+    s.len().is_multiple_of(2) && !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn looks_like_base64(s: &str) -> bool {
-    s.len() % 4 == 0 && rx(r"^[A-Za-z0-9+/=]+$").is_match(s)
+    s.len().is_multiple_of(4) && rx(r"^[A-Za-z0-9+/=]+$").is_match(s)
 }
 
 fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     let mut out = Vec::with_capacity(s.len() / 2);
@@ -866,7 +866,7 @@ pub fn convert_message_type(local_type: i64, content: &str) -> i64 {
     // XML, and treating that as "app message" turned every one of them into a LINK in the ChatLab export
     // (the TypeScript exporter has the same check).
     let looks_app = local_type == 49 || normalized.contains("<appmsg");
-    if looks_app || xml_type.map_or(false, |t| t != 0) {
+    if looks_app || xml_type.is_some_and(|t| t != 0) {
         let sub = xml_type.unwrap_or(0);
         match sub {
             6 => return 4,
@@ -876,7 +876,7 @@ pub fn convert_message_type(local_type: i64, content: &str) -> i64 {
             2000 => return 99,
             5 | 49 => return 7,
             _ => {
-                if xml_type.map_or(false, |t| t != 0) || looks_app {
+                if xml_type.is_some_and(|t| t != 0) || looks_app {
                     return 7;
                 }
             }
@@ -944,10 +944,10 @@ pub fn weclone_type_name(local_type: i64, content: &str) -> &'static str {
         _ => {}
     }
     let normalized = normalize_app_message_content(content);
-    if local_type == 49 || normalized.contains("<appmsg") || normalized.contains("<msg>") {
-        if extract_app_message_type(&normalized) == "6" {
-            return "file";
-        }
+    if (local_type == 49 || normalized.contains("<appmsg") || normalized.contains("<msg>"))
+        && extract_app_message_type(&normalized) == "6"
+    {
+        return "file";
     }
     "text"
 }
@@ -3358,7 +3358,7 @@ mod tests {
             normalize_timestamp_seconds(1_700_000_000_000.0),
             1_700_000_000
         );
-        assert_eq!(normalize_row_timestamp(&json!("20240102030405")) > 0, true);
+        assert!(normalize_row_timestamp(&json!("20240102030405")) > 0);
         assert_eq!(normalize_unsigned_token("00012"), "12");
         assert_eq!(normalize_unsigned_token("abc"), "0");
         assert_eq!(

@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 build = "build.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true

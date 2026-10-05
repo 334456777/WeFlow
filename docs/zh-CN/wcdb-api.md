@@ -35,7 +35,7 @@
 
 - **新增导出**:`wcdb_add_custom_emoticon`、`wcdb_update_custom_emoticon`、`wcdb_delete_custom_emoticon`、
   `wcdb_get_db_status`、`wcdb_probe_fts_schema`、`wcdb_purge_memory`。其中仓库的 `wcdbCore.ts` 只用到
-  `wcdb_get_db_status`(可选绑定),`weflow_wcdb` 也实现了它。
+  `wcdb_get_db_status`(可选绑定)，`weflow_wcdb` 也实现了它。
 - **去掉的导出**:`wcdb_open_message_cursor_lite`、`wcdb_open_message_cursor_lite_with_key`。原版 `wcdbCore.ts`
   把前者作为可选绑定，缺少时会改用 `wcdb_open_message_cursor`，所以原版桌面端仍能工作，只是游标返回完整行而不是精简行。
   `weflow_wcdb` 仍然导出它。
@@ -53,7 +53,7 @@
 宿主(原版桌面端)里运行，或者需要原作者协助;这一点列在下面的讨论里。
 
 Rust 层另有自己的验证(测试套件里的合成加密账号、一个真实的 Windows 账号、不同版本之间输出逐字节比对)，见
-[cli-unsupported.md](cli-unsupported.md#尚待验证)。
+[cli-unsupported.md](cli-unsupported.md#4-平台与验证范围)。
 
 ## 讨论
 

@@ -14,7 +14,7 @@ const CONVERSATION_GAP: i64 = 3600;
 fn num(v: &Value) -> i64 {
     v.as_i64()
         .or_else(|| v.as_f64().map(|f| f as i64))
-        .or_else(|| v.as_str().and_then(|s| crate::api::js_parse_int(s)))
+        .or_else(|| v.as_str().and_then(crate::api::js_parse_int))
         .unwrap_or(0)
 }
 
@@ -201,7 +201,7 @@ fn coerce_bool(v: Option<&Value>) -> Option<bool> {
     match v? {
         Value::Null => None,
         Value::Bool(b) => Some(*b),
-        Value::Number(n) => Some(n.as_f64().map_or(true, |f| f != 0.0)),
+        Value::Number(n) => Some(n.as_f64() != Some(0.0)),
         Value::String(s) => {
             let n = s.trim().to_lowercase();
             if n.is_empty() {
@@ -605,8 +605,8 @@ impl ServiceHub {
             {
                 for (w, row) in hm.iter().enumerate() {
                     if let Some(row) = row.as_array() {
-                        for h in 0..24 {
-                            heatmap[w][h] = row.get(h).map(num).unwrap_or(0);
+                        for (h, cell) in heatmap[w].iter_mut().enumerate() {
+                            *cell = row.get(h).map(num).unwrap_or(0);
                         }
                     }
                 }
@@ -774,7 +774,7 @@ impl ServiceHub {
                             .earliest()
                             .unwrap_or(dt);
                         if last_day != Some(idx) {
-                            if last_day.map_or(false, |l| idx - l == 1) {
+                            if last_day.is_some_and(|l| idx - l == 1) {
                                 cur_streak += 1;
                             } else {
                                 cur_streak = 1;
@@ -852,7 +852,7 @@ impl ServiceHub {
                             .from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap())
                             .earliest()
                             .unwrap_or(dt);
-                        if last_day.map_or(false, |l| idx - l == 1) {
+                        if last_day.is_some_and(|l| idx - l == 1) {
                             cur_streak += 1;
                         } else {
                             cur_streak = 1;
@@ -950,7 +950,7 @@ impl ServiceHub {
         if is_all
             && sns_stats
                 .as_ref()
-                .map_or(true, |s| num(&s["totalPosts"]) <= 0)
+                .is_none_or(|s| num(&s["totalPosts"]) <= 0)
         {
             let id = if cleaned.is_empty() {
                 raw_wxid.clone()
@@ -1009,7 +1009,7 @@ impl ServiceHub {
         };
 
         let mut core: Vec<(String, i64, i64)> = contact_stats.clone();
-        core.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)));
+        core.sort_by_key(|a| std::cmp::Reverse(a.1 + a.2));
         let core_friends: Vec<Value> = core
             .iter()
             .take(3)
@@ -1198,7 +1198,7 @@ impl ServiceHub {
                     .map(|k| (k.clone(), phrase_count[k]))
                     .filter(|(_, c)| *c >= 2)
                     .collect();
-                v.sort_by(|a, b| b.1.cmp(&a.1));
+                v.sort_by_key(|a| std::cmp::Reverse(a.1));
                 v.truncate(32);
                 v.into_iter()
                     .map(|(p, c)| json!({ "phrase": p, "count": c }))
@@ -1654,10 +1654,10 @@ impl ServiceHub {
             ) = (None, None);
             for t in &tally {
                 if t.0 {
-                    if my_top.map_or(true, |m| t.3 > m.3) {
+                    if my_top.is_none_or(|m| t.3 > m.3) {
                         my_top = Some(t);
                     }
-                } else if fr_top.map_or(true, |m| t.3 > m.3) {
+                } else if fr_top.is_none_or(|m| t.3 > m.3) {
                     fr_top = Some(t);
                 }
             }
@@ -1766,7 +1766,7 @@ impl ServiceHub {
                     v.push((phrase.clone(), c));
                 }
             }
-            v.sort_by(|a, b| b.1.cmp(&a.1));
+            v.sort_by_key(|a| std::cmp::Reverse(a.1));
             v.truncate(20);
             v.into_iter()
                 .map(|(p, c)| json!({ "phrase": p, "count": c }))

@@ -6,7 +6,7 @@ use weflow_native::native_db::NativeAccount;
 fn main() -> anyhow::Result<()> {
     let mut a = std::env::args().skip(1);
     let (dir, keyf, sid) = (a.next().unwrap(), a.next().unwrap(), a.next().unwrap());
-    let lite = a.next().map_or(true, |v| v != "0");
+    let lite = a.next().is_none_or(|v| v != "0");
     let my_wxid = a.next();
     let acct = NativeAccount::new(
         format!("{dir}/db_storage"),

@@ -64,6 +64,8 @@ impl Lang {
 }
 
 /// The operating system's display language as a locale string (`zh-CN`, `en-US`, ...), if it can be determined.
+// The `return`s stay: each platform block is compiled alone, but only the last one is a tail expression.
+#[allow(clippy::needless_return)]
 pub fn system_locale() -> Option<String> {
     #[cfg(windows)]
     {
