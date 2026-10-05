@@ -66,6 +66,16 @@ ifeq ($(PLATFORM),windows)
 else
   WIN_TARGET := $(TARGET_WIN_X64)
 endif
+# cross-linux needs a cross linker (and C compiler for the vendored C code) unless the host already is x86_64 Linux:
+# without CARGO_TARGET_*_LINKER rustc links with the host's `cc`, which fails for another architecture.
+CROSS_LINUX_ENV :=
+ifeq ($(PLATFORM),macos)
+  CROSS_LINUX_ENV := CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+else ifeq ($(PLATFORM),linux)
+  ifeq ($(filter x86_64 amd64,$(shell uname -m)),)
+    CROSS_LINUX_ENV := CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+  endif
+endif
 
 .DEFAULT_GOAL := help
 
@@ -264,10 +274,14 @@ ifeq ($(PLATFORM),macos)
 	}
 endif
 ifeq ($(PLATFORM),linux)
+ifneq ($(CROSS_LINUX_ENV),)
 	@command -v x86_64-linux-gnu-gcc >/dev/null 2>&1 || { \
-		printf "$(YELLOW)⚠ 安装 gcc multilib...$(RESET)\n"; \
-		$(GIT_INSTALL:-y git=-y gcc-multilib) 2>/dev/null || sudo apt-get install -y gcc-multilib || true; \
+		command -v apt-get >/dev/null 2>&1 || { \
+			printf "$(RED)✗ 需要 x86_64-linux-gnu-gcc 交叉编译器，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
+		printf "$(YELLOW)⚠ 安装 gcc-x86-64-linux-gnu...$(RESET)\n"; \
+		sudo apt-get install -y gcc-x86-64-linux-gnu || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
 	}
+endif
 endif
 
 _ensure-target-windows:
@@ -284,8 +298,10 @@ ifeq ($(PLATFORM),macos)
 endif
 ifeq ($(PLATFORM),linux)
 	@command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || { \
+		command -v apt-get >/dev/null 2>&1 || { \
+			printf "$(RED)✗ 需要 x86_64-w64-mingw32-gcc (mingw-w64)，请用发行版的包管理器安装$(RESET)\n"; exit 1; }; \
 		printf "$(YELLOW)⚠ 安装 mingw-w64...$(RESET)\n"; \
-		$(GIT_INSTALL:-y git=-y mingw-w64) 2>/dev/null || sudo apt-get install -y mingw-w64 || true; \
+		sudo apt-get install -y mingw-w64 || { printf "$(RED)  安装失败$(RESET)\n"; exit 1; }; \
 	}
 endif
 
@@ -297,12 +313,7 @@ cross-macos: check-rust _ensure-target-macos
 
 cross-linux: check-rust _ensure-target-linux
 	@printf "$(BOLD)▶ 编译 Linux x64$(RESET)\n"
-ifeq ($(PLATFORM),macos)
-	CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
-	  cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
-else
-	cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
-endif
+	$(CROSS_LINUX_ENV) cargo build --release -p weflow-cli --target $(TARGET_LINUX_X64)
 	@cp target/$(TARGET_LINUX_X64)/release/weflow weflow-linux-x64
 	@printf "$(GREEN)✓ → weflow-linux-x64 ($$(ls -lh weflow-linux-x64 | awk '{print $$5}'))$(RESET)\n"
 
