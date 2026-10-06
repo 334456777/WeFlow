@@ -116,6 +116,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("aggregating…", "正在汇总…"),
     ("copying media", "正在复制媒体"),
     ("downloading ffmpeg", "正在下载 ffmpeg"),
+    ("the ffmpeg download address must start with http:// or https://: {}", "ffmpeg 下载地址必须以 http:// 或 https:// 开头：{}"),
     ("SHA-256 of {} does not match: expected {}, got {}", "{} 的 SHA-256 不匹配：应为 {}，实际为 {}"),
     ("download of {} failed: {}", "下载 {} 失败：{}"),
     ("cannot unpack {}: {}", "无法解压 {}：{}"),
