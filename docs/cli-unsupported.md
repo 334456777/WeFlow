@@ -71,8 +71,8 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   threads an export picks on its own (16 logical CPUs), the peak is about 0.2 GB (`json`, `arkme-json`), 0.2–0.3 GB (`txt`,
   `sql`, `html`, `excel`) and 0.25–0.4 GB (`chatlab`, `chatlab-jsonl`, `weclone`); the upper end is the resident set on Linux,
   the lower one the working set on Windows. An export with media (`--media`) reads the whole conversation into memory before
-  it copies the media and writes the file: about 0.5 GB on Windows for the same group with images, voices and videos. Export
-  a date range (`--start/--end`) if memory is tight; the cost follows the range, not its age.
+  it copies the media and writes the file: about 0.5 GB on Windows for the same group with images, voices and videos, and
+  about 0.8 GB the first time, while its WXGF images are decoded into the image cache (several at once). Export a date range (`--start/--end`) if memory is tight; the cost follows the range, not its age.
 - **Threads of big exports**: several threads read and parse the pages while the file is written. An export starts with two
   and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages, and stops adding once
   one more thread no longer reads clearly faster (by at least half of what it could add). `chatlab` and `chatlab-jsonl`
