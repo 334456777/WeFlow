@@ -41,7 +41,6 @@
 - 通过 GitHub Issue 创建的 Pull request 要在背景里提到原 Issue
 - Pull request 创建时及时添加 Lables；关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 Issues；PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
 - 修改 `docs/` 下的文档时，必须同步更新 `docs/zh-CN/` 中的对应版本（反之亦然），新增文档也要两种语言都提供；`docs/weflow-tech-docs/` 和 `docs/es-ES/` 不受此限
-- 中文附近的逗号要用中文逗号
 
 ## 注意事项
-- 默认用中文回复，代码注释用英文
+- 默认用中文回复，代码注释用英文，中文附近的逗号要用中文逗号
