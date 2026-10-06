@@ -246,16 +246,21 @@ pub async fn install_build(
     };
     std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
     let partial = dir.join(format!("{}.download", executable_name()));
-    std::fs::write(&partial, &binary).map_err(|e| io(&partial, e))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| io(&partial, e))?;
-    }
-    if let Err(e) = std::fs::rename(&partial, &target) {
+    // the old copy stays until the new one is complete; a half-written one is not left behind
+    let placed = std::fs::write(&partial, &binary)
+        .and_then(|()| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))?;
+            }
+            Ok(())
+        })
+        .map_err(|e| io(&partial, e))
+        .and_then(|()| std::fs::rename(&partial, &target).map_err(|e| io(&target, e)));
+    if let Err(e) = placed {
         let _ = std::fs::remove_file(&partial);
-        return Err(io(&target, e));
+        return Err(e);
     }
     std::fs::write(&license, &license_text).map_err(|e| io(&license, e))?;
     Ok(json!({ "path": target, "release": RELEASE_TAG, "downloaded": true, "source": gz_url }))
@@ -294,11 +299,31 @@ pub async fn install(home: &Path, base_url: Option<&str>, force: bool) -> AppRes
         .unwrap_or_default()
         .to_string();
     out["version"] = json!(first_line);
+    let removed = remove_other_releases(home);
+    if !removed.is_empty() {
+        out["removedReleases"] = json!(removed);
+    }
     // which one WXGF images will use: an ffmpeg on PATH or in FFMPEG_PATH comes first
     *FOUND.lock().unwrap() = None;
     let (used, source) = locate();
     out["used"] = json!({ "path": used, "source": source });
     Ok(out)
+}
+
+/// Removes the folders of other releases under `<home>/ffmpeg/` (left by an install of an earlier pinned release);
+/// returns their names. A folder in use (an ffmpeg still running from it) stays.
+fn remove_other_releases(home: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(home.join("ffmpeg")) else {
+        return Vec::new();
+    };
+    let mut removed: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()) && e.file_name() != RELEASE_TAG)
+        .filter(|e| std::fs::remove_dir_all(e.path()).is_ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    removed.sort();
+    removed
 }
 
 /// `weflow ffmpeg path`: the ffmpeg WXGF images use and where it was found.
@@ -488,6 +513,51 @@ mod tests {
         ] {
             assert!(check_base_url(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn other_releases_are_removed_and_files_are_kept() {
+        let home = temp("releases");
+        for dir in ["b6.0", RELEASE_TAG, "b7.0"] {
+            std::fs::create_dir_all(home.join("ffmpeg").join(dir)).unwrap();
+            std::fs::write(home.join("ffmpeg").join(dir).join("ffmpeg"), b"x").unwrap();
+        }
+        std::fs::write(home.join("ffmpeg").join("notes.txt"), b"mine").unwrap();
+        assert_eq!(remove_other_releases(&home), vec!["b6.0", "b7.0"]);
+        assert!(
+            install_dir(&home).join("ffmpeg").exists(),
+            "the current release stays"
+        );
+        assert!(
+            home.join("ffmpeg").join("notes.txt").exists(),
+            "files are not touched"
+        );
+        assert!(remove_other_releases(&temp("no-releases")).is_empty());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_leaves_the_old_copy_and_no_partial_file() {
+        let binary = b"pretend ffmpeg".repeat(100);
+        let r = release(&binary);
+        let (base, _) = serve(files(&r, r.gz.clone()));
+        let dir = temp("partial");
+        std::fs::create_dir_all(&dir).unwrap();
+        // the executable's name is taken by a folder: the rename fails
+        std::fs::create_dir_all(dir.join(executable_name()).join("inside")).unwrap();
+        let err = install_build(&dir, &base, build(&r), true, &|_, _| {})
+            .await
+            .unwrap_err();
+        assert!(err.message.contains("failed to write"), "{}", err.message);
+        assert!(
+            dir.join(executable_name()).join("inside").exists(),
+            "what was there stays"
+        );
+        assert!(
+            !dir.join(format!("{}.download", executable_name())).exists(),
+            "no partial file is left"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
