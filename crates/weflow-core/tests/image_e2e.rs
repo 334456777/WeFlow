@@ -192,6 +192,58 @@ fn falls_back_to_the_thumbnail_and_promotes_it_when_hd_appears() {
 }
 
 #[test]
+fn the_cache_sees_files_changed_by_another_process() {
+    let (hub, root, _account, img_dir) = setup("img-cache-names");
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let other = "fedcba9876543210fedcba9876543210";
+    let (mine, theirs) = (jpeg(3000, 6), jpeg(3000, 7));
+    std::fs::write(
+        img_dir.join(format!("{MD5}_h.dat")),
+        encrypt_v2(&mine, &key, 0x5a),
+    )
+    .unwrap();
+    std::fs::write(
+        img_dir.join(format!("{other}_h.dat")),
+        encrypt_v2(&jpeg(3000, 8), &key, 0x5a),
+    )
+    .unwrap();
+    let payload = |md5: &str| ImagePayload {
+        session_id: Some("wxid_bob".into()),
+        image_md5: Some(md5.into()),
+        create_time: Some(1_700_000_000),
+        prefer_file_path: true,
+        ..Default::default()
+    };
+    let path = std::path::PathBuf::from(hub.image_decrypt(&payload(MD5)).local_path.unwrap());
+    assert_eq!(std::fs::read(&path).unwrap(), mine);
+    let cache_dir = path.parent().unwrap();
+
+    // another process caches the second image: the folder's time changes and its names are read again
+    std::fs::write(cache_dir.join(format!("{other}_hd.jpg")), &theirs).unwrap();
+    std::fs::File::open(cache_dir)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+        .unwrap();
+    let found = hub.image_resolve_cache(&payload(other));
+    assert!(found.success, "{:?}", found.error);
+    assert_eq!(
+        std::fs::read(found.local_path.unwrap()).unwrap(),
+        theirs,
+        "the file of the other process is used, not decrypted again"
+    );
+
+    // and removes the first one: it is decrypted again
+    std::fs::remove_file(&path).unwrap();
+    let again = hub.image_decrypt(&ImagePayload {
+        force: true,
+        ..payload(MD5)
+    });
+    assert!(again.success, "{:?}", again.error);
+    assert_eq!(std::fs::read(&path).unwrap(), mine);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn reports_missing_files_keys_and_bad_keys() {
     let (hub, root, _account, img_dir) = setup("img-errors");
     let p = ImagePayload {
