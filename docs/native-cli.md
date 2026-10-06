@@ -111,7 +111,8 @@ eugeneware/ffmpeg-static, GPL-3.0, with its license file), checks its SHA-256 an
 config file; it never runs on its own. `ffmpeg set baseurl <url>` makes it download from a mirror of those releases instead of
 GitHub (for example `https://registry.npmmirror.com/-/binary/ffmpeg-static`; it is kept in the config file, `ffmpeg unset
 baseurl` goes back to GitHub), and the files are checked the same way. The Windows build is x64 (Windows on Arm runs it
-emulated).
+emulated). Check with `ffmpeg path` before the first export with images (see the [README](../README.md#check-ffmpeg)): a WXGF
+image that finds no ffmpeg fails with `failure_kind` `ffmpeg_missing`, and an export counts these images in `ffmpegMissing`.
 
 Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, `4` database/native library error, `130` interrupted.
 
