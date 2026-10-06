@@ -627,14 +627,18 @@ mod tests {
             "HD rendition wins"
         );
         let expected = f.account_dir.join("msg/attach/d41d8cd98f00b204e9800998ecf8427e/2023-11/Img/0123456789abcdef0123456789abcdef_h.dat");
-        assert_eq!(r["full_path"], expected.to_string_lossy().as_ref());
+        // compared as paths: the account directory has the system's separators, the rest of the name has `/`
+        assert_eq!(
+            std::path::Path::new(r["full_path"].as_str().unwrap()),
+            expected
+        );
         let elsewhere = a
             .resolve_image_hardlink("aabbccddeeff00112233445566778899", Some("/data/acct"))
             .unwrap();
-        assert!(elsewhere["full_path"]
-            .as_str()
-            .unwrap()
-            .starts_with("/data/acct/msg/attach/"));
+        assert!(
+            std::path::Path::new(elsewhere["full_path"].as_str().unwrap())
+                .starts_with("/data/acct/msg/attach")
+        );
         assert!(a
             .resolve_image_hardlink("00000000000000000000000000000000", None)
             .is_err());
@@ -666,11 +670,9 @@ mod tests {
             .unwrap();
         assert_eq!(r["resolved_md5"], "ffeeddccbbaa99887766554433221100");
         assert_eq!(
-            r["full_path"],
+            std::path::Path::new(r["full_path"].as_str().unwrap()),
             f.account_dir
                 .join("msg/video/2023-11/ffeeddccbbaa99887766554433221100.mp4")
-                .to_string_lossy()
-                .as_ref()
         );
         assert!(a
             .resolve_video_hardlink_md5("deadbeefdeadbeefdeadbeefdeadbeef", None)

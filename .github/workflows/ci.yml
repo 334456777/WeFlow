@@ -85,6 +85,10 @@ jobs:
         shell: bash
         run: cargo build --release -p weflow-cli --target ${{ matrix.target }}
 
+      - name: Test
+        shell: bash
+        run: cargo test --workspace --release --target ${{ matrix.target }}
+
       - name: Run once
         shell: bash
         env:

@@ -1260,10 +1260,27 @@ mod tests {
     /// Sets the folder's modification time an hour back, as for a month folder nothing writes to any more.
     fn age(dir: &Path) {
         let past = SystemTime::now() - Duration::from_secs(3600);
-        std::fs::File::open(dir)
-            .unwrap()
-            .set_modified(past)
-            .unwrap();
+        open_dir_to_set_times(dir).set_modified(past).unwrap();
+    }
+
+    /// A folder opened so that its times can be set. Windows opens a folder only with backup semantics, and setting
+    /// times needs the write-attributes right rather than write access.
+    fn open_dir_to_set_times(dir: &Path) -> std::fs::File {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            std::fs::File::options()
+                .access_mode(FILE_WRITE_ATTRIBUTES)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(dir)
+                .unwrap()
+        }
+        #[cfg(not(windows))]
+        {
+            std::fs::File::open(dir).unwrap()
+        }
     }
 
     #[test]

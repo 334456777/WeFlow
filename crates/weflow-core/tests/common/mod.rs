@@ -51,6 +51,8 @@ fn hub_for(
     fixture: &Fixture,
     tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
 ) -> ServiceHub {
+    // the tests compare English texts: they must not depend on the language of the machine they run on
+    weflow_core::locale::set(weflow_core::locale::Lang::En);
     let ctx = AppContext {
         home_dir: root.join("home"),
         config_path: root.join("home/config.json"),

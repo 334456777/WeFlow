@@ -112,7 +112,8 @@ pub fn set(lang: Lang) {
 }
 
 pub fn current() -> Lang {
-    *CURRENT.get_or_init(Lang::detect)
+    // the unit tests compare English texts: they must not depend on the language of the machine they run on
+    *CURRENT.get_or_init(|| if cfg!(test) { Lang::En } else { Lang::detect() })
 }
 
 /// Pick the string for the active language.
