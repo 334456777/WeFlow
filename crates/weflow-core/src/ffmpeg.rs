@@ -94,6 +94,18 @@ pub fn build_for(os: &str, arch: &str) -> Option<Build<'static>> {
     BUILDS.iter().copied().find(|b| b.asset == asset)
 }
 
+/// The mirror address `ffmpeg set baseurl` stores: `http://` or `https://`, without a trailing `/`.
+pub fn check_base_url(url: &str) -> AppResult<String> {
+    let url = url.trim().trim_end_matches('/');
+    if (url.starts_with("http://") || url.starts_with("https://")) && url.len() > "https://".len() {
+        Ok(url.to_string())
+    } else {
+        Err(AppError::usage(format!(
+            "the ffmpeg download address must start with http:// or https://: {url}"
+        )))
+    }
+}
+
 fn executable_name() -> &'static str {
     if cfg!(windows) {
         "ffmpeg.exe"
@@ -455,6 +467,27 @@ mod tests {
             .unwrap_err();
         assert!(err.message.contains("404"), "{}", err.message);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_base_url_must_be_http_and_loses_its_trailing_slash() {
+        assert_eq!(
+            check_base_url(" https://registry.npmmirror.com/-/binary/ffmpeg-static/ ").unwrap(),
+            "https://registry.npmmirror.com/-/binary/ffmpeg-static"
+        );
+        assert_eq!(
+            check_base_url("http://127.0.0.1:8080").unwrap(),
+            "http://127.0.0.1:8080"
+        );
+        for bad in [
+            "",
+            "ftp://host/x",
+            "mirror.example.com",
+            "https://",
+            "file:///tmp",
+        ] {
+            assert!(check_base_url(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

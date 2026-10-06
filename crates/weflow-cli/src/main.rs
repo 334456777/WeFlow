@@ -120,12 +120,34 @@ enum FfmpegSubcommand {
         /// Download it again even when the installed copy is intact
         #[arg(long)]
         force: bool,
-        /// Download from a mirror of the ffmpeg-static releases instead of GitHub, for example https://registry.npmmirror.com/-/binary/ffmpeg-static (the files are checked either way)
-        #[arg(long)]
-        base_url: Option<String>,
     },
     /// Show the ffmpeg that WXGF images use and where it was found (FFMPEG_PATH, PATH, installed or missing)
     Path,
+    /// Change a setting of the ffmpeg download
+    Set {
+        #[command(subcommand)]
+        setting: FfmpegSetting,
+    },
+    /// Go back to the default of a setting of the ffmpeg download
+    Unset {
+        #[command(subcommand)]
+        setting: FfmpegUnsetting,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum FfmpegSetting {
+    /// Download from a mirror of the ffmpeg-static releases instead of GitHub, for example https://registry.npmmirror.com/-/binary/ffmpeg-static (the files are checked either way)
+    Baseurl {
+        /// Address the release folder `b6.1.1` is found under (http:// or https://)
+        url: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum FfmpegUnsetting {
+    /// Download from GitHub again
+    Baseurl,
 }
 
 #[derive(Args, Debug)]
@@ -1317,7 +1339,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
             return Ok(json!({ "lang": code }));
         }
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
-        Commands::Ffmpeg(command) => return handle_ffmpeg(command, &ctx).await,
+        Commands::Ffmpeg(command) => return handle_ffmpeg(command, &ctx, &mut config).await,
         Commands::Chat(ChatCommand {
             command:
                 ChatSubcommand::ClearAccountData {
@@ -1567,12 +1589,44 @@ fn handle_config(
     }
 }
 
-async fn handle_ffmpeg(command: &FfmpegCommand, ctx: &AppContext) -> AppResult<Value> {
+async fn handle_ffmpeg(
+    command: &FfmpegCommand,
+    ctx: &AppContext,
+    config: &mut ConfigStore,
+) -> AppResult<Value> {
+    let save = |config: &ConfigStore| {
+        config
+            .save(&ctx.config_path)
+            .map_err(|err| AppError::config(err.to_string()))
+    };
     match &command.command {
-        FfmpegSubcommand::Install { force, base_url } => {
-            weflow_core::ffmpeg::install(&ctx.home_dir, base_url.as_deref(), *force).await
+        FfmpegSubcommand::Install { force } => {
+            weflow_core::ffmpeg::install(&ctx.home_dir, config.ffmpeg_base_url.as_deref(), *force)
+                .await
         }
-        FfmpegSubcommand::Path => Ok(weflow_core::ffmpeg::status()),
+        FfmpegSubcommand::Path => {
+            let mut found = weflow_core::ffmpeg::status();
+            found["baseUrl"] = json!(config
+                .ffmpeg_base_url
+                .as_deref()
+                .unwrap_or(weflow_core::ffmpeg::DEFAULT_BASE_URL));
+            Ok(found)
+        }
+        FfmpegSubcommand::Set {
+            setting: FfmpegSetting::Baseurl { url },
+        } => {
+            let url = weflow_core::ffmpeg::check_base_url(url)?;
+            config.ffmpeg_base_url = Some(url.clone());
+            save(config)?;
+            Ok(json!({ "baseUrl": url }))
+        }
+        FfmpegSubcommand::Unset {
+            setting: FfmpegUnsetting::Baseurl,
+        } => {
+            config.ffmpeg_base_url = None;
+            save(config)?;
+            Ok(json!({ "baseUrl": weflow_core::ffmpeg::DEFAULT_BASE_URL }))
+        }
     }
 }
 

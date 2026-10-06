@@ -57,6 +57,8 @@ pub struct ConfigStore {
     pub current_profile: String,
     /// Output language chosen with `weflow lang en|zh` (`None` = follow the system).
     pub lang: Option<String>,
+    /// Mirror of the ffmpeg-static releases `weflow ffmpeg install` downloads from (`None` = GitHub).
+    pub ffmpeg_base_url: Option<String>,
     pub profiles: BTreeMap<String, ProfileConfig>,
     pub extra: BTreeMap<String, Value>,
 }
@@ -89,6 +91,7 @@ impl Default for ConfigStore {
         Self {
             current_profile: "default".to_string(),
             lang: None,
+            ffmpeg_base_url: None,
             profiles,
             extra: BTreeMap::new(),
         }
