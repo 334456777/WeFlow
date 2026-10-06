@@ -10,7 +10,7 @@
 老样子，从内存数据中将 AES 密钥扒拉出来，然后就遇到了 WXAM 图片数据。  
 经过不少时间的分析和处理，chatlog 目前已经能够初步解析 WXAM 图片了，写篇博客记录一下。
 
-相关代码：<https://github.com/sjzar/chatlog/blob/a16b689/pkg/util/dat2img/wxgf.go>
+相关代码：[wxgf.go](docs/sarv.blog/posts/wxam/wxgf.go)
 
 ### 相关资料
 
