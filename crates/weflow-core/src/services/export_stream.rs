@@ -774,8 +774,8 @@ mod tests {
             last_msg_type: 1,
         }]);
         fixture.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
-        // twenty cursor pages, and a database larger than an export's page cache
-        let text = |i: i64| format!("message {i} {}", "x".repeat(600));
+        // twenty cursor pages, and a database well over an export's page cache
+        let text = |i: i64| format!("message {i} {}", "x".repeat(1000));
         let msgs: Vec<MsgSpec> = (1..=40_000)
             .map(|i| MsgSpec::text(i, "wxid_bob", T0 + i, &text(i)))
             .collect();
@@ -803,47 +803,51 @@ mod tests {
             end: None,
             sender_filter: None,
         };
-        let cursor = wcdb
-            .open_message_cursor("wxid_bob", PAGE_SIZE, true, 0, 0, false)
-            .unwrap();
         let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
-        let read = read_cursor(
-            &wcdb,
-            cursor,
-            &req,
-            &opts,
-            (16, MAX_WORKERS),
-            as_is,
-            |pages| {
+        let mut changes = 0u64;
+        // two workers and a consumer that only collects: the workers are the bottleneck, so they are mostly in the
+        // middle of a query when WeChat writes. A query that starts after a change opens a fresh snapshot; one that is
+        // reading when it changes fails and is run again. On a busy single CPU a change can find no query running:
+        // then the export is checked again, up to five times
+        for _ in 0..5 {
+            let cursor = wcdb
+                .open_message_cursor("wxid_bob", PAGE_SIZE, true, 0, 0, false)
+                .unwrap();
+            let before = wcdb.stale_reruns();
+            let got = read_cursor(&wcdb, cursor, &req, &opts, (16, 2), as_is, |pages| {
                 let mut got: Vec<(i64, String)> = Vec::new();
                 for (n, page) in pages.enumerate() {
-                    if n == 1 {
-                        // WeChat writes into the database while the other workers read ahead: the main file's time
-                        // changes, so pages read from it from now on may be newer than the snapshot
+                    if n % 3 == 0 && n < 15 {
+                        changes += 1;
                         std::fs::File::options()
                             .write(true)
                             .open(&shard)
                             .unwrap()
-                            .set_modified(std::time::SystemTime::now() + Duration::from_secs(3600))
+                            .set_modified(
+                                std::time::SystemTime::now() + Duration::from_secs(3600 + changes),
+                            )
                             .unwrap();
                     }
                     got.extend(page.into_iter().map(|m| (m.local_id, m.content)));
-                    std::thread::sleep(Duration::from_millis(5));
                 }
                 got
-            },
-        );
+            })
+            .unwrap();
+            let _ = wcdb.close_message_cursor(cursor);
+            assert_eq!(got.len(), 40_000, "every message once");
+            assert!(
+                got.iter()
+                    .zip(1..)
+                    .all(|((id, content), i)| *id == i && *content == text(i)),
+                "in order and unchanged"
+            );
+            if wcdb.stale_reruns() > before {
+                break;
+            }
+        }
         let reruns = wcdb.stale_reruns();
         let _ = std::fs::remove_dir_all(&root);
-        let got = read.unwrap();
-        assert!(reruns > 0, "no page was read after the change");
-        assert_eq!(got.len(), 40_000, "every message once");
-        assert!(
-            got.iter()
-                .zip(1..)
-                .all(|((id, content), i)| *id == i && *content == text(i)),
-            "in order and unchanged"
-        );
+        assert!(reruns > 0, "no query was reading when the database changed");
     }
 
     #[test]
