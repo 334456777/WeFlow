@@ -32,6 +32,29 @@ cp target/release/weflow .
 
 The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English, and so do HTTP API error responses. For the full precedence order, see [docs/native-cli.md](docs/native-cli.md#language).
 
+## Check ffmpeg
+
+Some WeChat images (the WXGF format) are converted with ffmpeg. Check whether one is found before the setup below:
+
+```powershell
+./weflow ffmpeg path
+```
+
+> stdout: `source: PATH` (or `FFMPEG_PATH` / `installed`); `source: missing` means no ffmpeg was found
+
+If it says `missing`, install the build the desktop app bundles (it is checked against its SHA-256), then check again:
+
+```powershell
+./weflow ffmpeg install
+./weflow ffmpeg path
+```
+
+> stdout: `source: installed`
+
+If GitHub is slow or unreachable, download from a mirror instead: run
+`./weflow ffmpeg set baseurl https://registry.npmmirror.com/-/binary/ffmpeg-static` before `ffmpeg install`. Without ffmpeg,
+WXGF images are not exported, and the export says how many (`ffmpegMissing`).
+
 ## First-time setup and export (required steps)
 
 **Run PowerShell as administrator.** WeChat 4.0 or later is supported, and you must have logged in to a WeChat account at least once, sent messages, and opened images.

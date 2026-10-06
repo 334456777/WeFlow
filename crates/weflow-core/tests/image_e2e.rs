@@ -495,6 +495,109 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
 }
 
 #[tokio::test]
+async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
+    // an ffmpeg that cannot be started, whatever is on this machine
+    std::env::set_var(
+        "FFMPEG_PATH",
+        std::env::temp_dir()
+            .join("weflow-no-such-dir")
+            .join("ffmpeg"),
+    );
+    let md5 = "aabbccddeeff00112233445566778899";
+    let wxgf = {
+        let mut blob = b"wxgf".to_vec();
+        blob.extend([0x11u8; 1300]);
+        blob
+    };
+    let put = |img_dir: &std::path::Path| {
+        std::fs::write(
+            img_dir.join(format!("{md5}_h.dat")),
+            encrypt_v2(&wxgf, KEY.as_bytes().try_into().unwrap(), 0x5a),
+        )
+        .unwrap();
+    };
+
+    let (hub, root, img_dir) = export_world("img-wxgf-missing");
+    put(&img_dir);
+    let p = ImagePayload {
+        session_id: Some("wxid_bob".into()),
+        image_md5: Some(md5.into()),
+        create_time: Some(1_700_000_000),
+        prefer_file_path: true,
+        ..Default::default()
+    };
+    let r = hub.image_decrypt(&p);
+    assert!(!r.success);
+    assert_eq!(r.failure_kind, Some("ffmpeg_missing"));
+    let error = r.error.unwrap();
+    assert!(
+        error.contains("needs ffmpeg") && error.contains("FFMPEG_PATH"),
+        "{error}"
+    );
+    assert!(
+        !hub.image_resolve_cache(&p).success,
+        "nothing was cached from the unconverted file"
+    );
+
+    // an export: one image skipped for lack of ffmpeg, said once; the other image has no file at all
+    let r = hub
+        .export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        (r["exported"].as_i64(), r["missing"].as_i64()),
+        (Some(0), Some(2)),
+        "{r}"
+    );
+    assert_eq!(r["ffmpegMissing"], 1, "{r}");
+    assert!(
+        r["hint"]
+            .as_str()
+            .unwrap()
+            .contains("weflow ffmpeg install"),
+        "{r}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+
+    let (hub, root, img_dir) = export_world("img-wxgf-missing-msgs");
+    put(&img_dir);
+    let opts = weflow_core::api::ApiMediaOptions {
+        enabled: true,
+        images: true,
+        ..Default::default()
+    };
+    let dir = root.join("exp");
+    std::fs::create_dir_all(&dir).unwrap();
+    let r = hub
+        .export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
+        .await
+        .unwrap();
+    assert_eq!(r["media"]["ffmpegMissing"], 1, "{r}");
+    assert!(r["media"]["hint"]
+        .as_str()
+        .unwrap()
+        .contains("weflow ffmpeg install"));
+
+    // an export that needs no conversion has nothing to say
+    let (hub, root2, img_dir) = export_world("img-wxgf-none");
+    std::fs::write(
+        img_dir.join(format!("{md5}_h.dat")),
+        encrypt_v2(&jpeg(3000, 7), KEY.as_bytes().try_into().unwrap(), 0x5a),
+    )
+    .unwrap();
+    let r = hub
+        .export_media(Some("wxid_bob"), &root2.join("media"), "image", None, None)
+        .await
+        .unwrap();
+    assert!(
+        r.get("ffmpegMissing").is_none() && r.get("hint").is_none(),
+        "{r}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+    let _ = std::fs::remove_dir_all(root2);
+}
+
+#[tokio::test]
 async fn export_media_reports_thumbnail_only_images() {
     let (hub, root, img_dir) = export_world("img-export-thumb");
     let md5 = "aabbccddeeff00112233445566778899";

@@ -32,6 +32,25 @@ cp target/release/weflow .
 
 语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文，HTTP API 的错误响应也保持英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
 
+## 检查 ffmpeg
+
+部分微信图片（WXGF 格式）需要用 ffmpeg 转换。进行下面的设置之前，先检查能否找到 ffmpeg：
+
+```powershell
+./weflow ffmpeg path
+```
+> stdout: `source: PATH`（或 `FFMPEG_PATH` / `installed`）；`source: missing` 表示没有找到 ffmpeg
+
+如果显示 `missing`，安装桌面端自带的同一版本（会校验 SHA-256），再检查一次：
+
+```powershell
+./weflow ffmpeg install
+./weflow ffmpeg path
+```
+> stdout: `source: installed`
+
+GitHub 下载慢或无法访问时，可以先运行 `./weflow ffmpeg set baseurl https://registry.npmmirror.com/-/binary/ffmpeg-static` 改从镜像下载，再运行 `ffmpeg install`。没有 ffmpeg 时，WXGF 图片不会被导出，导出结果会说明有多少张（`ffmpegMissing`）。
+
 ## 首次设置与导出（必要步骤）
 
 请**以管理员身份运行 PowerShell**，微信上至少登录过一次微信账号，发送过消息，打开过图片，支持微信 4.0 及以上版本。
