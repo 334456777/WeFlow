@@ -1677,6 +1677,7 @@ impl ServiceHub {
         );
         let session_dir = out_dir.join("media").join(&name);
         let prefix = format!("media/{name}");
+        self.start_counting_missing_ffmpeg();
         let wanted = |t: i64| match t {
             3 => opts.images,
             34 => opts.voices,
@@ -1772,7 +1773,18 @@ impl ServiceHub {
             });
             exported += 1;
         }
-        json!({ "requested": total, "exported": exported, "missing": total - exported, "dir": session_dir })
+        let mut result = json!({ "requested": total, "exported": exported, "missing": total - exported, "dir": session_dir });
+        self.add_ffmpeg_missing(&mut result);
+        result
+    }
+
+    /// Tells a result that images were skipped for lack of ffmpeg: how many, and what to do (once per export).
+    fn add_ffmpeg_missing(&self, result: &mut Value) {
+        let n = self.images_missing_ffmpeg();
+        if n > 0 {
+            result["ffmpegMissing"] = json!(n);
+            result["hint"] = json!(super::image::ffmpeg_missing_hint(n));
+        }
     }
 
     /// Images, voices and videos: everything that needs no network, so it can run on several threads (with the
@@ -2076,6 +2088,7 @@ impl ServiceHub {
         }
         std::fs::create_dir_all(out)
             .map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
+        self.start_counting_missing_ffmpeg();
         let wcdb = self.open_wcdb()?;
         let sessions: Vec<String> = match session {
             Some(s) => vec![s.to_string()],
@@ -2202,9 +2215,9 @@ impl ServiceHub {
             }
         }
         let missing: usize = missing_by_kind.values().sum();
-        Ok(
-            json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files }),
-        )
+        let mut result = json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files });
+        self.add_ffmpeg_missing(&mut result);
+        Ok(result)
     }
 }
 

@@ -24,6 +24,9 @@ pub struct ImageState {
     dir_listings: HashMap<PathBuf, Arc<DirListing>>,
     /// Names in the folders of the decrypted-image cache (see [`ServiceHub::possibly_cached`]).
     cache_dirs: HashMap<PathBuf, CacheDirNames>,
+    /// Images that could not be converted since [`ServiceHub::start_counting_missing_ffmpeg`] because ffmpeg was
+    /// not found (their cache keys), for the summary of an export.
+    ffmpeg_missing: HashSet<String>,
 }
 
 /// Directory listings (and cache folders' names) kept at most; past that the cache starts over.
@@ -215,6 +218,25 @@ impl ImageResult {
         }
         Value::Object(o)
     }
+}
+
+/// What a WXGF image that cannot be converted for lack of ffmpeg says, and how to fix it.
+fn ffmpeg_missing_message() -> String {
+    let (path, source) = crate::ffmpeg::locate();
+    if source == "FFMPEG_PATH" {
+        format!(
+            "WXGF image needs ffmpeg: FFMPEG_PATH ({}) cannot be started",
+            path.display()
+        )
+    } else {
+        "WXGF image needs ffmpeg: not found on PATH or installed; run `weflow ffmpeg install` or set FFMPEG_PATH"
+            .to_string()
+    }
+}
+
+/// The summary line of an export that skipped `n` WXGF images for lack of ffmpeg.
+pub(super) fn ffmpeg_missing_hint(n: usize) -> String {
+    format!("{n} WXGF images were not exported because ffmpeg was not found; run `weflow ffmpeg install` or set FFMPEG_PATH, then export again")
 }
 
 fn file_size(p: &str) -> u64 {
@@ -1094,7 +1116,21 @@ impl ServiceHub {
                     )
                 }
             };
-        let (data, _still_wxgf) = img::unwrap_wxgf(decrypted.data);
+        let (data, wxgf_failure) = img::unwrap_wxgf(decrypted.data);
+        if wxgf_failure == Some(img::HevcError::FfmpegMissing) {
+            self.image_state
+                .lock()
+                .unwrap()
+                .ffmpeg_missing
+                .insert(cache_key.to_string());
+            return ImageResult {
+                success: false,
+                error: Some(ffmpeg_missing_message()),
+                failure_kind: Some("ffmpeg_missing"),
+                is_thumb: Some(img::is_thumbnail_path(&dat)),
+                ..Default::default()
+            };
+        }
         let Some(ext) = img::detect_image_extension(&data) else {
             return ImageResult {
                 success: false,
@@ -1215,6 +1251,16 @@ impl ServiceHub {
                 )
             })?;
         std::fs::read(&path).map_err(|e| AppError::runtime(format!("failed to read {path}: {e}")))
+    }
+
+    /// Starts counting the images that cannot be converted for lack of ffmpeg (an export's summary).
+    pub(super) fn start_counting_missing_ffmpeg(&self) {
+        self.image_state.lock().unwrap().ffmpeg_missing.clear();
+    }
+
+    /// Images (not messages) that could not be converted for lack of ffmpeg since the count was started.
+    pub(super) fn images_missing_ffmpeg(&self) -> usize {
+        self.image_state.lock().unwrap().ffmpeg_missing.len()
     }
 
     /// `image:clearCache`: empties the decrypted-image cache (keeps the folder layout).

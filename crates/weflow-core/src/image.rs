@@ -572,20 +572,25 @@ fn convert_hevc_with(ffmpeg: &Path, hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
     result
 }
 
-/// `unwrapWxgf`: returns the image bytes and whether the data is still an undecoded WXGF blob.
-pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, bool) {
+/// `unwrapWxgf`: returns the image bytes and, when the data is still an undecoded WXGF blob, why it could not be
+/// converted (`None`: it is an image, or was not WXGF).
+pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<HevcError>) {
     if !is_wxgf(&buf) {
-        return (buf, false);
+        return (buf, None);
     }
     if let Some(inner) = wxgf_embedded_image(&buf) {
-        return (inner.to_vec(), false);
+        return (inner.to_vec(), None);
     }
     let candidates = wxgf_hevc_candidates(&buf);
+    let mut failure = HevcError::Undecodable;
     for (_, data) in &candidates {
         match convert_hevc_to_jpg(data) {
-            Ok(jpg) => return (jpg, false),
+            Ok(jpg) => return (jpg, None),
             // the other candidates would not start it either
-            Err(HevcError::FfmpegMissing) => break,
+            Err(HevcError::FfmpegMissing) => {
+                failure = HevcError::FfmpegMissing;
+                break;
+            }
             Err(HevcError::Undecodable) => {}
         }
     }
@@ -593,7 +598,7 @@ pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, bool) {
         .first()
         .map(|(_, d)| d.clone())
         .unwrap_or_else(|| buf[4..].to_vec());
-    (fallback, true)
+    (fallback, Some(failure))
 }
 
 #[cfg(test)]
@@ -765,12 +770,12 @@ mod tests {
         blob.extend([1u8; 20]);
         blob.extend([0xff, 0xd8, 0xff, 0xe0, 9, 9, 9, 9, 9, 9, 9, 9]);
         blob.extend([7u8; 32]);
-        let (out, still) = unwrap_wxgf(blob);
-        assert!(!still);
+        let (out, failure) = unwrap_wxgf(blob);
+        assert_eq!(failure, None);
         assert_eq!(&out[..3], &[0xff, 0xd8, 0xff]);
-        let (plain, flag) = unwrap_wxgf(vec![1, 2, 3]);
+        let (plain, failure) = unwrap_wxgf(vec![1, 2, 3]);
         assert_eq!(plain, vec![1, 2, 3]);
-        assert!(!flag);
+        assert_eq!(failure, None);
     }
 
     #[test]
