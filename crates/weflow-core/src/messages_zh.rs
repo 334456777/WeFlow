@@ -65,6 +65,8 @@ const CATALOG: &[(&str, &str)] = &[
     ("the cached codes do not match this account's wxid; check the configured wxid / the account directory, or use `key scan-image`", "缓存的密钥码与该账号的 wxid 不匹配；请检查已配置的 wxid / 账号目录，或使用 `key scan-image`"),
     ("image key scanning requires platform-specific native library", "扫描图片密钥需要对应平台的原生库"),
     ("no messages found for this session in the given range", "指定范围内未找到该会话的消息"),
+    ("no messages from {} in this session in the given range (--sender takes the bare wxid, as `chat contacts` lists it)", "指定范围内该会话没有 {} 发送的消息（--sender 只接受裸 wxid，即 `chat contacts` 列出的形式）"),
+    ("--sender takes the bare wxid: use {}, not the account folder name {}", "--sender 只接受裸 wxid：请使用 {}，而不是账号文件夹名 {}"),
     ("{} is not yet ported to the native Rust CLI", "{} 尚未移植到原生 Rust CLI"),
     ("no message sessions found", "未找到消息会话"),
     ("session table error: {}", "会话表错误：{}"),

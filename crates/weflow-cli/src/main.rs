@@ -646,7 +646,7 @@ enum ExportSubcommand {
         /// txt (default), json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql
         #[arg(long, default_value = "txt")]
         format: String,
-        /// Only export messages sent by this wxid
+        /// Only export messages sent by this person: their bare wxid, as `chat contacts` lists it (not an account folder name with a `_xxxx` suffix)
         #[arg(long)]
         sender: Option<String>,
         /// How senders are named: group-nickname, remark or nickname (default: group-nickname, i.e. group nickname, then remark, nickname, wxid)
