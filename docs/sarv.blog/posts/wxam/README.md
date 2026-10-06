@@ -10,8 +10,8 @@
 老样子，从内存数据中将 AES 密钥扒拉出来，然后就遇到了 WXAM 图片数据。  
 经过不少时间的分析和处理，chatlog 目前已经能够初步解析 WXAM 图片了，写篇博客记录一下。
 
-相关代码：[wxgf.go](wxgf.go)
-
+相关代码：[wxgf.go](wxgf.go)（[原文](https://github.com/sjzar/chatlog/blob/a16b689/pkg/util/dat2img/wxgf.go
+)）
 ### 相关资料
 
 由于是内部格式，网上能找到的资料少的可怜，唯一的官方信息是18 年腾讯工程团队发布的文章：[如何节省 1TB 图片带宽？解密极致图像压缩-腾讯云开发者社区-腾讯云](https://cloud.tencent.com/developer/article/1028362)  
