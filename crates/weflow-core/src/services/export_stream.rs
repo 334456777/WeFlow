@@ -162,6 +162,7 @@ fn read_cursor<T: Send, R>(
     f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
 ) -> AppResult<R> {
     let started = Instant::now();
+    let stale_before = wcdb.stale_reruns();
     let (total, batch) = wcdb
         .message_cursor_len(cursor)
         .map_err(|e| AppError::native(e.to_string()))?;
@@ -217,7 +218,8 @@ fn read_cursor<T: Send, R>(
         if let Some(e) = error {
             return Err(e);
         }
-        stats.log(gate.active(), pages, total, started.elapsed());
+        let stale_reruns = wcdb.stale_reruns().saturating_sub(stale_before);
+        stats.log(gate.active(), pages, total, stale_reruns, started.elapsed());
         Ok(result)
     })
 }
@@ -461,12 +463,14 @@ struct Stats {
 
 impl Stats {
     /// Logged with `RUST_LOG=weflow::export=debug`.
-    fn log(&self, workers: usize, pages: usize, total: usize, elapsed: Duration) {
+    fn log(&self, workers: usize, pages: usize, total: usize, stale: usize, elapsed: Duration) {
         tracing::debug!(
             target: "weflow::export",
             workers,
             pages,
             messages = total,
+            // page reads run again because WeChat changed the database meanwhile
+            stale_reruns = stale,
             elapsed_ms = elapsed.as_millis() as u64,
             fetch_ms = self.fetch.as_millis() as u64,
             parse_ms = self.parse.as_millis() as u64,
@@ -754,6 +758,96 @@ mod tests {
         let panicked = finished.recv_timeout(Duration::from_secs(60));
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(panicked, Ok(true), "the export hung or swallowed the panic");
+    }
+
+    #[test]
+    fn pages_read_after_wechat_changed_the_database_are_read_again() {
+        use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, SessionSpec, T0};
+
+        let root = std::env::temp_dir().join(format!("weflow-stale-export-{}", std::process::id()));
+        let fixture = Fixture::new(&root, "wxid_me_ab12");
+        fixture.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0 + 40_000,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        fixture.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        // twenty cursor pages, and a database well over an export's page cache
+        let text = |i: i64| format!("message {i} {}", "x".repeat(1000));
+        let msgs: Vec<MsgSpec> = (1..=40_000)
+            .map(|i| MsgSpec::text(i, "wxid_bob", T0 + i, &text(i)))
+            .collect();
+        fixture.message_shard(0, &[("wxid_bob", msgs)]);
+        let shard = fixture.db_storage().join("message/message_0.db");
+
+        let mut wcdb = Wcdb::new();
+        let account = fixture.db_storage().parent().unwrap().to_path_buf();
+        wcdb.open(&account, &fixture.key_hex(), Some("wxid_me_ab12"))
+            .unwrap();
+        wcdb.set_low_memory(true); // as the exports do
+        let req = MessageExportRequest {
+            session_id: "wxid_bob".into(),
+            format: "txt".into(),
+            start: None,
+            end: None,
+            sender: None,
+            display_pref: crate::export_msg::DisplayPref::Remark,
+            excel_compact: false,
+        };
+        let opts = CollectOptions {
+            session_id: "wxid_bob",
+            my_wxid: "wxid_me",
+            start: None,
+            end: None,
+            sender_filter: None,
+        };
+        let as_is: &WithFinisher<'_, Vec<ExportMsg>> = &|body| body(&mut |msgs| msgs);
+        let mut changes = 0u64;
+        // two workers and a consumer that only collects: the workers are the bottleneck, so they are mostly in the
+        // middle of a query when WeChat writes. A query that starts after a change opens a fresh snapshot; one that is
+        // reading when it changes fails and is run again. On a busy single CPU a change can find no query running:
+        // then the export is checked again, up to five times
+        for _ in 0..5 {
+            let cursor = wcdb
+                .open_message_cursor("wxid_bob", PAGE_SIZE, true, 0, 0, false)
+                .unwrap();
+            let before = wcdb.stale_reruns();
+            let got = read_cursor(&wcdb, cursor, &req, &opts, (16, 2), as_is, |pages| {
+                let mut got: Vec<(i64, String)> = Vec::new();
+                for (n, page) in pages.enumerate() {
+                    if n % 3 == 0 && n < 15 {
+                        changes += 1;
+                        std::fs::File::options()
+                            .write(true)
+                            .open(&shard)
+                            .unwrap()
+                            .set_modified(
+                                std::time::SystemTime::now() + Duration::from_secs(3600 + changes),
+                            )
+                            .unwrap();
+                    }
+                    got.extend(page.into_iter().map(|m| (m.local_id, m.content)));
+                }
+                got
+            })
+            .unwrap();
+            let _ = wcdb.close_message_cursor(cursor);
+            assert_eq!(got.len(), 40_000, "every message once");
+            assert!(
+                got.iter()
+                    .zip(1..)
+                    .all(|((id, content), i)| *id == i && *content == text(i)),
+                "in order and unchanged"
+            );
+            if wcdb.stale_reruns() > before {
+                break;
+            }
+        }
+        let reruns = wcdb.stale_reruns();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(reruns > 0, "no query was reading when the database changed");
     }
 
     #[test]

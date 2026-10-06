@@ -237,6 +237,11 @@ impl Wcdb {
         }
     }
 
+    /// Queries run again on a fresh snapshot so far (see [`NativeAccount::stale_reruns`]).
+    pub fn stale_reruns(&self) -> usize {
+        self.native.as_ref().map_or(0, NativeAccount::stale_reruns)
+    }
+
     // ── generic by-name calls (kept for callers that build their own argument lists) ──
 
     /// Call a database function by its historical `wcdb_*` name and get JSON back.
