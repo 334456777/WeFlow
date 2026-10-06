@@ -8,6 +8,8 @@
 //! `hasUpdate` is always `false`.
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use base64::Engine;
 use serde_json::{json, Map, Value};
@@ -18,6 +20,84 @@ use crate::image::{self as img};
 #[derive(Default)]
 pub struct ImageState {
     resolved: HashMap<String, String>,
+    /// Listings of the `Img` folders searched for `.dat` files (see [`ServiceHub::dir_listing`]).
+    dir_listings: HashMap<PathBuf, Arc<DirListing>>,
+}
+
+/// Directory listings kept at most; past that the cache starts over.
+const MAX_DIR_LISTINGS: usize = 1024;
+/// A listing taken this soon after the folder's last change is not reused: a file added in the same tick of a coarse
+/// timestamp would leave the modification time as it was.
+const LISTING_SETTLE: Duration = Duration::from_secs(2);
+
+/// One folder's entries. An image is searched for in its month's folder, which can hold thousands of files, and an
+/// export with media searches for every image: reading the folder each time made that quadratic (issue #49).
+pub(super) struct DirListing {
+    modified: Option<SystemTime>,
+    listed_at: SystemTime,
+    /// File names in the order the system listed them.
+    files: Vec<String>,
+    /// (trimmed lower-case name, index into `files`), sorted, to find the names starting with a prefix.
+    keys: Vec<(String, usize)>,
+    /// Subfolder names, in listing order.
+    dirs: Vec<String>,
+}
+
+impl DirListing {
+    fn read(dir: &Path) -> Option<Self> {
+        let modified = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
+        let listed_at = SystemTime::now();
+        let (mut files, mut dirs) = (Vec::new(), Vec::new());
+        for entry in std::fs::read_dir(dir).ok()?.filter_map(Result::ok) {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let name = entry.file_name().to_string_lossy().to_string();
+            if kind.is_file() {
+                files.push(name);
+            } else if kind.is_dir() {
+                dirs.push(name);
+            }
+        }
+        let mut keys: Vec<(String, usize)> = files
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (name.trim().to_lowercase(), i))
+            .collect();
+        keys.sort_unstable();
+        Some(Self {
+            modified,
+            listed_at,
+            files,
+            keys,
+            dirs,
+        })
+    }
+
+    /// Whether `dir` still has these entries: not modified since it was listed, and listed well after its change.
+    fn current(&self, dir: &Path) -> bool {
+        let Some(modified) = self.modified else {
+            return false;
+        };
+        let now = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
+        now == Some(modified)
+            && self
+                .listed_at
+                .duration_since(modified)
+                .is_ok_and(|settled| settled >= LISTING_SETTLE)
+    }
+
+    /// Files whose trimmed lower-case name starts with `prefix`, in listing order.
+    fn files_starting_with(&self, prefix: &str) -> Vec<&str> {
+        let start = self.keys.partition_point(|(key, _)| key.as_str() < prefix);
+        let mut found: Vec<usize> = self.keys[start..]
+            .iter()
+            .take_while(|(key, _)| key.starts_with(prefix))
+            .map(|(_, i)| *i)
+            .collect();
+        found.sort_unstable();
+        found.into_iter().map(|i| self.files[i].as_str()).collect()
+    }
 }
 
 #[derive(Default, Clone, Debug)]
@@ -392,17 +472,14 @@ impl ServiceHub {
                 break;
             }
             budget -= 1;
-            let Ok(rd) = std::fs::read_dir(&dir) else {
+            let Some(listing) = self.dir_listing(&dir) else {
                 continue;
             };
-            let entries: Vec<_> = rd.filter_map(Result::ok).collect();
-            for e in &entries {
-                if !e.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                    continue;
-                }
-                let name = e.file_name().to_string_lossy().to_string();
-                if img::is_hardlink_candidate_name(&name, base_md5) {
-                    let full = dir.join(&name);
+            // every candidate name, lower-cased, starts with `base_md5` (`normalize_dat_base` only drops suffixes),
+            // so only those names are checked
+            for name in listing.files_starting_with(base_md5) {
+                if img::is_hardlink_candidate_name(name, base_md5) {
+                    let full = dir.join(name);
                     if full.exists() {
                         let s = full.to_string_lossy().to_string();
                         if !out.contains(&s) {
@@ -414,18 +491,41 @@ impl ServiceHub {
             if depth >= 1 {
                 continue;
             }
-            for e in &entries {
-                if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    continue;
-                }
-                let name = e.file_name().to_string_lossy().to_string();
+            for name in &listing.dirs {
                 if name.is_empty() || name.starts_with('.') {
                     continue;
                 }
-                stack.push((dir.join(&name), depth + 1));
+                stack.push((dir.join(name), depth + 1));
             }
         }
         out
+    }
+
+    /// The entries of `dir`, read again only when it changed since it was last read.
+    fn dir_listing(&self, dir: &Path) -> Option<Arc<DirListing>> {
+        let cached = self
+            .image_state
+            .lock()
+            .unwrap()
+            .dir_listings
+            .get(dir)
+            .cloned();
+        if let Some(listing) = cached.filter(|l| l.current(dir)) {
+            return Some(listing);
+        }
+        // read without holding the lock: the export's media threads search side by side
+        let Some(listing) = DirListing::read(dir).map(Arc::new) else {
+            self.image_state.lock().unwrap().dir_listings.remove(dir);
+            return None;
+        };
+        let mut state = self.image_state.lock().unwrap();
+        if state.dir_listings.len() >= MAX_DIR_LISTINGS {
+            state.dir_listings.clear();
+        }
+        state
+            .dir_listings
+            .insert(dir.to_path_buf(), listing.clone());
+        Some(listing)
     }
 
     /// `selectBestDatPathByBase`: HD variant in an Img folder, else `<md5>.dat`, else a `_t` thumbnail.
@@ -1009,6 +1109,75 @@ impl ServiceHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn listing_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("weflow-listing-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        dir
+    }
+
+    /// Sets the folder's modification time an hour back, as for a month folder nothing writes to any more.
+    fn age(dir: &Path) {
+        let past = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(dir)
+            .unwrap()
+            .set_modified(past)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_listing_finds_the_names_with_a_prefix_in_listing_order() {
+        let md5 = "0123456789abcdef0123456789abcdef";
+        let dir = listing_dir("prefix");
+        for name in [
+            format!("{md5}_h.dat"),
+            format!("{}.dat", md5.to_uppercase()),
+            format!("{md5}_t.dat"),
+            "ffffffffffffffffffffffffffffffff.dat".to_string(),
+            format!("x{md5}.dat"),
+        ] {
+            std::fs::write(dir.join(name), b"").unwrap();
+        }
+        let listing = DirListing::read(&dir).unwrap();
+        let found = listing.files_starting_with(md5);
+        let in_listing_order: Vec<&str> = listing
+            .files
+            .iter()
+            .map(String::as_str)
+            .filter(|n| found.contains(n))
+            .collect();
+        assert_eq!(found, in_listing_order);
+        let mut sorted = found.clone();
+        sorted.sort_unstable();
+        let mut expected = vec![
+            format!("{md5}_h.dat"),
+            format!("{}.dat", md5.to_uppercase()),
+            format!("{md5}_t.dat"),
+        ];
+        expected.sort_unstable();
+        assert_eq!(sorted, expected);
+        assert_eq!(listing.dirs, vec!["sub".to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_listing_is_reused_until_the_folder_changes() {
+        let dir = listing_dir("current");
+        std::fs::write(dir.join("a.dat"), b"").unwrap();
+        // just changed: a file added in the same timestamp tick would not show, so it is read again
+        let fresh = DirListing::read(&dir).unwrap();
+        assert!(!fresh.current(&dir));
+        age(&dir);
+        let settled = DirListing::read(&dir).unwrap();
+        assert!(settled.current(&dir));
+        std::fs::write(dir.join("b.dat"), b"").unwrap();
+        assert!(
+            !settled.current(&dir),
+            "a new file changes the folder's time"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn lookup_bases_expand_dat_names() {
