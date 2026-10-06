@@ -620,6 +620,25 @@ impl NativeAccount {
         if exact.is_empty() {
             return Ok(());
         }
+        // The rows are read from a snapshot that may be newer than the cursor: rows WeChat added since stay out, and a
+        // row it deleted keeps its key (no page finds it), as when the keys are read at open. So only an order the
+        // index got wrong changes the pages.
+        for (idx, table) in &mut exact {
+            let listed: HashMap<i64, Key> = c
+                .keys
+                .iter()
+                .filter(|k| k.3 == *idx)
+                .map(|k| (k.2, *k))
+                .collect();
+            table.retain(|k| listed.contains_key(&k.2));
+            let found: HashSet<i64> = table.iter().map(|k| k.2).collect();
+            table.extend(
+                listed
+                    .iter()
+                    .filter(|(local, _)| !found.contains(local))
+                    .map(|(_, k)| *k),
+            );
+        }
         let mut keys: Vec<Key> = c
             .keys
             .iter()
@@ -992,6 +1011,58 @@ mod tests {
         assert!(err.to_string().contains(KEYS_CHANGED), "{err}");
         let again = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
         assert_eq!(page_ids(&acct, again).unwrap(), vec![2, 1, 3]);
+    }
+
+    #[test]
+    fn rows_written_after_the_cursor_opened_do_not_change_its_pages() {
+        use crate::fixture::{Fixture, MsgSpec, SessionSpec, T0};
+        let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
+        let root = std::env::temp_dir().join(format!("weflow-keys-{}-newer", std::process::id()));
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        // message 2 is off the rule (the table is read again at the first page), in the order of the index
+        let off = |extra: Vec<MsgSpec>| {
+            let mut msgs = vec![
+                text(1, T0),
+                text(2, T0 + 1).with_sort_seq((T0 + 50) * 1000),
+                text(3, T0 + 60),
+            ];
+            msgs.extend(extra);
+            msgs
+        };
+        f.message_shard(0, &[("wxid_bob", off(vec![]))]);
+        let acct = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let id = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        // WeChat writes two messages, one between the listed ones, before the first page is read
+        f.message_shard(
+            0,
+            &[("wxid_bob", off(vec![text(4, T0 + 30), text(5, T0 + 90)]))],
+        );
+        let shard = f.db_storage().join("message/message_0.db");
+        std::fs::File::options()
+            .write(true)
+            .open(&shard)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(3600))
+            .unwrap();
+        assert_eq!(
+            page_ids(&acct, id).unwrap(),
+            vec![1, 2, 3],
+            "the pages are the ones the cursor listed"
+        );
+        assert_eq!(
+            cursor_state(&acct, id).1,
+            vec![false],
+            "the table was read again"
+        );
+        let again = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        assert_eq!(page_ids(&acct, again).unwrap(), vec![1, 4, 2, 3, 5]);
     }
 
     #[test]

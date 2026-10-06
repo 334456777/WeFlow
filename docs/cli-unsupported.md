@@ -65,7 +65,8 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
 - **Snapshots**: databases are decrypted page by page as queries read them, and SQLite keeps the pages it has read (a command
   that walks a whole message database can hold all of it, a few hundred MB; together the caches give memory back above about
   1 GB). A long-running `serve` picks up new messages when a file or its `-wal` changes. If WeChat writes a checkpoint past the
-  snapshot while a query reads it, the query runs again on a fresh snapshot.
+  snapshot while a query reads it, the query runs again on a fresh snapshot. `export messages` lists the messages it exports
+  when it starts: messages WeChat writes while it runs are left for the next export.
 - **Memory of big exports**: `export messages` turns the conversation into export records page by page and writes the file from
   them, reading the database with a small page cache per reading thread. For a 200,000-message group of a real account, with the
   threads an export picks on its own (16 logical CPUs), the peak is about 0.2 GB (`json`, `arkme-json`), 0.2–0.3 GB (`txt`,
