@@ -189,6 +189,18 @@ impl Wcdb {
             .open_message_cursor(session_id, batch_size, ascending, begin, end, lite)
     }
 
+    /// The cursor of an export (see [`NativeAccount::open_export_cursor`]).
+    pub fn open_export_cursor(
+        &self,
+        session_id: &str,
+        batch_size: i32,
+        begin: i32,
+        end: i32,
+    ) -> Result<i64> {
+        self.account()?
+            .open_export_cursor(session_id, batch_size, begin, end)
+    }
+
     /// A cursor over one member's messages only (see `NativeAccount::open_message_cursor_for_senders`).
     pub fn open_message_cursor_for_senders(
         &self,

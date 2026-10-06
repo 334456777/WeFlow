@@ -74,6 +74,8 @@ pub struct MsgSpec {
     pub compressed: bool,
     /// The message `source` column (msgsource XML), e.g. an `<atuserlist>`.
     pub source: String,
+    /// `sort_seq` when it is not WeChat's usual `create_time * 1000`.
+    pub sort_seq: Option<i64>,
 }
 
 impl MsgSpec {
@@ -87,7 +89,12 @@ impl MsgSpec {
             content: content.to_string(),
             compressed: false,
             source: String::new(),
+            sort_seq: None,
         }
+    }
+    pub fn with_sort_seq(mut self, sort_seq: i64) -> Self {
+        self.sort_seq = Some(sort_seq);
+        self
     }
     pub fn with_source(mut self, source: &str) -> Self {
         self.source = source.to_string();
@@ -552,7 +559,8 @@ impl Fixture {
                         "create table \"{table}\"(local_id integer primary key autoincrement, server_id integer, local_type integer, sort_seq integer, \
                          real_sender_id integer, create_time integer, status integer, upload_status integer, download_status integer, server_seq integer, \
                          origin_source integer, source text, message_content, compress_content, packed_info_data blob, \
-                         WCDB_CT_message_content integer default null, WCDB_CT_source integer default null)"
+                         WCDB_CT_message_content integer default null, WCDB_CT_source integer default null); \
+                         create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq)"
                     ))
                     .unwrap();
                     for m in msgs {
@@ -564,7 +572,7 @@ impl Fixture {
                                 "insert into \"{table}\"(local_id, server_id, local_type, sort_seq, real_sender_id, create_time, status, message_content, source) \
                                  values (?1,?2,?3,?4,?5,?6,2,?7,?8)"
                             ),
-                            params![m.local_id, m.server_id, m.local_type, m.create_time * 1000, sender, m.create_time, content, m.source],
+                            params![m.local_id, m.server_id, m.local_type, m.sort_seq.unwrap_or(m.create_time * 1000), sender, m.create_time, content, m.source],
                         )
                         .unwrap();
                     }

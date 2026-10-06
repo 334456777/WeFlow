@@ -343,3 +343,67 @@ fn empty_range_is_an_error_and_bad_format_is_usage_error() {
         .unwrap_err();
     assert_eq!(err.exit_code, 2);
 }
+
+#[tokio::test]
+async fn an_export_whose_keys_break_the_sort_seq_rule_starts_over_in_the_right_order() {
+    // the same sort_seq for two messages, but message 2 was sent first: keys taken from the sort_seq index list them
+    // 1, 2, the rows 2, 1; the export finds out on its first page and starts over
+    let seq = (T0 + 1) * 1000;
+    let (hub, root, _) = common::custom_hub("keys-rule", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![
+                    MsgSpec::text(1, "wxid_bob", T0 + 9, "later").with_sort_seq(seq),
+                    MsgSpec::text(2, "wxid_bob", T0 + 1, "first").with_sort_seq(seq),
+                    MsgSpec::text(3, "wxid_bob", T0 + 20, "last"),
+                ],
+            )],
+        );
+    });
+    let texts = |path: &std::path::Path| -> Vec<String> {
+        let doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        doc["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["content"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let out = root.join("stream.json");
+    hub.export_messages(&request("wxid_bob", "chatlab"), &out)
+        .unwrap();
+    assert_eq!(texts(&out), ["first", "later", "last"]);
+
+    // an export with media reads the messages first: the same, on a hub that has not met this table yet
+    let (hub, root2, _) = common::custom_hub("keys-rule-media", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        f.contact_db(&[ContactSpec::new("wxid_bob", 1, "Bob")], &[]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![
+                    MsgSpec::text(1, "wxid_bob", T0 + 9, "later").with_sort_seq(seq),
+                    MsgSpec::text(2, "wxid_bob", T0 + 1, "first").with_sort_seq(seq),
+                    MsgSpec::text(3, "wxid_bob", T0 + 20, "last"),
+                ],
+            )],
+        );
+    });
+    let media = weflow_core::api::ApiMediaOptions {
+        enabled: true,
+        images: true,
+        ..Default::default()
+    };
+    let out = root2.join("collected.json");
+    hub.export_messages_with_media(&request("wxid_bob", "chatlab"), &out, &media)
+        .await
+        .unwrap();
+    assert_eq!(texts(&out), ["first", "later", "last"]);
+    let _ = std::fs::remove_dir_all(root);
+    let _ = std::fs::remove_dir_all(root2);
+}
