@@ -34,7 +34,7 @@ cp target/release/weflow .
 
 ## 检查 ffmpeg
 
-部分微信图片（WXGF 格式）需要用 ffmpeg 转换。进行下面的设置之前，先检查能否找到 ffmpeg：
+WeFlow 自己解码微信的 WXGF 图片。只有内置解码器读不了的 WXGF 图片（10-bit、4:2:2 或 4:4:4 的画面；一个约有 1800 张 WXGF 图片的真实账号里一张也没有）才会用到 ffmpeg，所以这一步是可选的。如果想事先准备好，先检查能否找到 ffmpeg：
 
 ```powershell
 ./weflow ffmpeg path
@@ -49,7 +49,7 @@ cp target/release/weflow .
 ```
 > stdout: `source: installed`
 
-GitHub 下载慢或无法访问时，可以先运行 `./weflow ffmpeg set baseurl https://registry.npmmirror.com/-/binary/ffmpeg-static` 改从镜像下载，再运行 `ffmpeg install`。没有 ffmpeg 时，WXGF 图片不会被导出，导出结果会说明有多少张（`ffmpegMissing`）。
+GitHub 下载慢或无法访问时，可以先运行 `./weflow ffmpeg set baseurl https://registry.npmmirror.com/-/binary/ffmpeg-static` 改从镜像下载，再运行 `ffmpeg install`。没有 ffmpeg 时，这类图片不会被导出，导出结果会说明有多少张（`ffmpegMissing`）。
 
 ## 首次设置与导出（必要步骤）
 

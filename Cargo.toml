@@ -28,6 +28,9 @@ dirs = "6.0.0"
 ecb = "0.1"
 flate2 = "1"
 futures = "0.3"
+# HEVC still-picture decoder for WXGF images (pure Rust, no unsafe); the thread pool feature is not needed
+heic-rs = { version = "0.1", default-features = false, features = ["std"] }
+jpeg-encoder = "0.6"
 icu_collator = "2.3"
 icu_locale_core = "2.3"
 libloading = "0.8.8"

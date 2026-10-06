@@ -37,7 +37,7 @@ A function that is added to `crates/weflow-native/src/wcdb.rs` before it is port
 | Live updates (message push, insight triggers, `chat:getNewMessages`) | The desktop app reacts to WCDB monitor callbacks; the CLI polls (push and insights about every 5 s). |
 | Message export | All 9 formats work; `--media` copies media into the CLI's own folder layout (section 5). |
 | Voice in the HTTP API / `chat voice-data` | Works only if the media database holds the SILK data (WeChat must have played the message once). |
-| WXGF images | Converted through an external `ffmpeg` (`FFMPEG_PATH`, `PATH`, or the copy `ffmpeg install` downloads: the same `ffmpeg-static` build the desktop app bundles, checked against its SHA-256). The CLI does not ship it and never downloads it on its own. Without it the image fails with `failure_kind` `ffmpeg_missing` and a message that points to `weflow ffmpeg install`; an export with media counts these images once in `ffmpegMissing` and says so in a `hint` (a `FFMPEG_PATH` that cannot be started is reported as such). |
+| WXGF images | Decoded by the CLI itself (the desktop app converts them with its bundled ffmpeg), into a JPEG that is about a quarter larger than ffmpeg's for the same fidelity. A picture its decoder cannot read (10-bit, 4:2:2 or 4:4:4; none of about 1,800 on a real account) goes through an external `ffmpeg` (`FFMPEG_PATH`, `PATH`, or the copy `ffmpeg install` downloads: the same `ffmpeg-static` build the desktop app bundles, checked against its SHA-256). The CLI does not ship it and never downloads it on its own. Without it such an image fails with `failure_kind` `ffmpeg_missing` and a message that points to `weflow ffmpeg install`; an export with media counts these images once in `ffmpegMissing` and says so in a `hint` (a `FFMPEG_PATH` that cannot be started is reported as such). |
 | Image auto-download (`image auto-download`, `serve --image-auto-download`) | Windows x64 only (`img_helper.dll`). The hook lives only while the `./weflow` process runs, so `status` from another process always says "not hooked". |
 | Image service events | `image:cacheResolved`, `decryptProgress`, `updateAvailable` and the background "better quality available" check are not emitted; `hasUpdate` is always `false` (like the desktop app's headless worker mode). |
 | AI insight notifications | No popup window; `serve --insight` prints each insight as a JSON line on stderr (Telegram push still works). |
@@ -71,8 +71,8 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   threads an export picks on its own (16 logical CPUs), the peak is about 0.2 GB (`json`, `arkme-json`), 0.2–0.3 GB (`txt`,
   `sql`, `html`, `excel`) and 0.25–0.4 GB (`chatlab`, `chatlab-jsonl`, `weclone`); the upper end is the resident set on Linux,
   the lower one the working set on Windows. An export with media (`--media`) reads the whole conversation into memory before
-  it copies the media and writes the file: about 0.5 GB on Windows for the same group with images, voices and videos. Export
-  a date range (`--start/--end`) if memory is tight; the cost follows the range, not its age.
+  it copies the media and writes the file: about 0.5 GB on Windows for the same group with images, voices and videos, and
+  about 0.8 GB the first time, while its WXGF images are decoded into the image cache (several at once). Export a date range (`--start/--end`) if memory is tight; the cost follows the range, not its age.
 - **Threads of big exports**: several threads read and parse the pages while the file is written. An export starts with two
   and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages, and stops adding once
   one more thread no longer reads clearly faster (by at least half of what it could add). `chatlab` and `chatlab-jsonl`

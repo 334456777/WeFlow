@@ -36,7 +36,7 @@
 | 实时更新(消息推送、见解触发、`chat:getNewMessages`) | 桌面端响应 WCDB 监听回调;CLI 采用轮询(推送和见解约每 5 秒一次)。 |
 | 消息导出 | 9 种格式都可用;`--media` 按 CLI 自己的目录布局复制媒体(见第 5 节)。 |
 | HTTP API / `chat voice-data` 中的语音 | 仅当媒体数据库里有 SILK 数据时可用(微信必须播放过该条消息)。 |
-| WXGF 图片 | 通过外部 `ffmpeg` 转换(`FFMPEG_PATH`、`PATH`，或 `ffmpeg install` 下载的副本：与桌面端自带的 `ffmpeg-static` 是同一构建，并校验 SHA-256)。CLI 不附带 ffmpeg，也不会自行下载。没有 ffmpeg 时，图片会失败，`failure_kind` 为 `ffmpeg_missing`，错误信息指向 `weflow ffmpeg install`；带媒体的导出会把这类图片只计一次，记在 `ffmpegMissing` 里，并在 `hint` 中说明(`FFMPEG_PATH` 指向的程序无法启动时也会如实报告)。 |
+| WXGF 图片 | 由 CLI 自己解码(桌面端用自带的 ffmpeg 转换)，写成的 JPEG 在画质相当时比 ffmpeg 的大约四分之一。内置解码器读不了的画面(10-bit、4:2:2 或 4:4:4;真实账号约 1800 张里一张也没有)才通过外部 `ffmpeg` 转换(`FFMPEG_PATH`、`PATH`，或 `ffmpeg install` 下载的副本：与桌面端自带的 `ffmpeg-static` 是同一构建，并校验 SHA-256)。CLI 不附带 ffmpeg，也不会自行下载。没有 ffmpeg 时，这类图片会失败，`failure_kind` 为 `ffmpeg_missing`，错误信息指向 `weflow ffmpeg install`；带媒体的导出会把这类图片只计一次，记在 `ffmpegMissing` 里，并在 `hint` 中说明(`FFMPEG_PATH` 指向的程序无法启动时也会如实报告)。 |
 | 图片自动下载(`image auto-download`、`serve --image-auto-download`) | 仅 Windows x64(`img_helper.dll`)。钩子只在 `./weflow` 进程运行期间存在，因此从另一个进程执行 `status` 总是显示"未挂钩"。 |
 | 图片服务事件 | `image:cacheResolved`、`decryptProgress`、`updateAvailable` 以及后台"有更高质量版本"检查都不会发出;`hasUpdate` 始终为 `false`(与桌面端无界面的 worker 模式一样)。 |
 | AI 见解通知 | 没有弹窗;`serve --insight` 把每条见解以 JSON 行输出到 stderr(Telegram 推送仍可用)。 |
@@ -64,7 +64,7 @@
   里 20 万条消息的群，按导出自己选的线程数(16 个逻辑处理器)，峰值约 0.2 GB(`json`、`arkme-json`)、0.2~0.3 GB(`txt`、`sql`、
   `html`、`excel`)、0.25~0.4 GB(`chatlab`、`chatlab-jsonl`、`weclone`);区间上限是 Linux 上的常驻内存，下限是 Windows 上的
   working set。带媒体的导出(`--media`)会先把整个会话读进内存，再复制媒体、最后写文件：同一个群带图片、语音和视频时，
-  Windows 上约 0.5 GB。内存紧张时请导出日期范围(`--start/--end`)，耗时只与范围大小有关，和日期远近无关。
+  Windows 上约 0.5 GB;第一次导出时要把其中的 WXGF 图片解码进图片缓存(同时解码好几张)，约 0.8 GB。内存紧张时请导出日期范围(`--start/--end`)，耗时只与范围大小有关，和日期远近无关。
 - **大会话导出的线程**: 写文件的同时，有多个线程读取并解析各页。导出从两个线程开始，写文件经常要等新页时就增加一个，
   最多为 CPU 数减一(不超过 8 个);新增的线程如果没让读取明显变快(提速不到它理论上能带来的一半)，就不再增加。`chatlab` 和
   `chatlab-jsonl` 的条目也在读取线程上渲染，所以这两种格式用的线程最多(16 个逻辑处理器上 5~7 个);`weclone` 约 5 个，
