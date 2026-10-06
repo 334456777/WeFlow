@@ -31,7 +31,7 @@
 ## 约定
 - 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public）
 - 严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等重要信息上传到公开的GitHub仓库或写入 CLAUDE.md
-- GitHub Issues会有人类和其他大语言模型（LLM）参与讨论，以下情况记录到本仓库的GitHub Issues中: 被列为计划内的工作，需要多轮确认的bug，不符合当前工作的主题但是需要解决的bug，可以稍后解决的bug，被要求将不会被开展的工作，需要多轮和长时间研究思考的精益求精的要求，工作中遇到的反常/不太对劲的地方，新功能或请求，对文档的改进或补充，一些在修改代码后会经常出现的问题和需要更多信息的问题；同时在遇到上述情况时也可以查询Issues寻找解决方法。
+- GitHub Issues会有人类和其他大语言模型（LLM）参与讨论，以下情况记录到本仓库的 GitHub Issues 并及时添加 Lables 和 Relationships : 被列为计划内的工作，需要多轮确认的bug，不符合当前工作的主题但是需要解决的bug，可以稍后解决的bug，被要求将不会被开展的工作，需要多轮和长时间研究思考的精益求精的要求，工作中遇到的反常/不太对劲的地方，新功能或请求，对文档的改进或补充，一些在修改代码后会经常出现的问题和需要更多信息的问题；同时在遇到上述情况时也可以查询Issues寻找解决方法。
 - 通过 GitHub Issue 创建的 Pull request 要在背景里提到原 Issue
 - Pull request 关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联Issues
 - 修改 `docs/` 下的文档时，必须同步更新 `docs/zh-CN/` 中的对应版本（反之亦然），新增文档也要两种语言都提供；`docs/weflow-tech-docs/` 和 `docs/es-ES/` 不受此限
