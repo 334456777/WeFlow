@@ -34,6 +34,7 @@
 - GitHub Issues会有人类和其他大语言模型（LLM）参与讨论，以下情况记录到本仓库的 GitHub Issues 并及时添加 Lables 和 Relationships : 被列为计划内的工作，需要多轮确认的bug，不符合当前工作的主题但是需要解决的bug，可以稍后解决的bug，被要求将不会被开展的工作，需要多轮和长时间研究思考的精益求精的要求，工作中遇到的反常/不太对劲的地方，新功能或请求，对文档的改进或补充，一些在修改代码后会经常出现的问题和需要更多信息的问题；同时在遇到上述情况时也可以查询Issues寻找解决方法。
 - 通过 GitHub Issue 创建的 Pull request 要在背景里提到原 Issue
 - Pull request 关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联Issues
+- GitHub Issues 根据 Lables 分类，筛选和表达状态，根据 Relationships 梳理 Issue 依赖关系（Issue dependencies）
 - 修改 `docs/` 下的文档时，必须同步更新 `docs/zh-CN/` 中的对应版本（反之亦然），新增文档也要两种语言都提供；`docs/weflow-tech-docs/` 和 `docs/es-ES/` 不受此限
 - 提交信息格式使用Conventional Commits 规范，默认英语提交
 - 创建 Pull Request 时，PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
