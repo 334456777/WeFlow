@@ -393,9 +393,10 @@ impl ServiceHub {
         self.image_state.lock().unwrap().resolved.remove(key);
     }
 
-    /// `isUsableImageCacheFile`: a recognised extension, present, and not a zeroed-out JPEG.
+    /// `isUsableImageCacheFile`: a recognised extension, present, not empty and not a zeroed-out JPEG.
     fn usable_image_cache_file(&self, path: &str) -> bool {
-        if !img::is_image_file(path) || !Path::new(path).exists() {
+        // an empty file is never an image (an older cache may hold one left half written)
+        if !img::is_image_file(path) || std::fs::metadata(path).map_or(true, |m| m.len() == 0) {
             return false;
         }
         let ext = Path::new(path)
@@ -976,7 +977,8 @@ impl ServiceHub {
                 return ImageResult::fail(e.to_string(), "not_found");
             }
         }
-        if let Err(e) = std::fs::write(&output, &data) {
+        // renamed into place: an export's other media threads may read this cache file as soon as it exists
+        if let Err(e) = write_atomically(&output, &data) {
             return ImageResult::fail(e.to_string(), "not_found");
         }
         let out = output.to_string_lossy().to_string();

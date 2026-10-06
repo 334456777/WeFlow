@@ -1637,17 +1637,20 @@ impl ServiceHub {
                     .unwrap_or(""),
                 &format!("emoji_{}", msg.local_id),
             );
-            return put_media(
+            let to = MediaTarget {
                 session_dir,
                 safe_talker,
-                "emoji",
-                "emojis",
+                written: None,
+            };
+            return put_media(
+                &to,
+                ("emoji", "emojis"),
                 format!("{base}{ext}"),
-                None,
-                Some(&path),
+                MediaSource::Copy(&path),
+                false,
             );
         }
-        self.export_local_media(msg, talker, safe_talker, session_dir, opts)
+        self.export_local_media(msg, talker, safe_talker, session_dir, opts, None)
     }
 
     /// Copies the media of `msgs` into `<out dir>/media/<out name>/{images,voices,videos,emojis}` and records each
@@ -1712,6 +1715,7 @@ impl ServiceHub {
                 .min(local.len().max(1));
             let next = std::sync::atomic::AtomicUsize::new(0);
             let found = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
+            let written = ExportedFiles::default();
             let shared: &[crate::message::ExportMsg] = msgs;
             std::thread::scope(|scope| {
                 for _ in 0..workers {
@@ -1724,6 +1728,7 @@ impl ServiceHub {
                             &safe,
                             &session_dir,
                             opts,
+                            Some(&written),
                         );
                         found.lock().unwrap().push((k, r));
                         let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
@@ -1770,7 +1775,8 @@ impl ServiceHub {
         json!({ "requested": total, "exported": exported, "missing": total - exported, "dir": session_dir })
     }
 
-    /// Images, voices and videos: everything that needs no network, so it can run on several threads.
+    /// Images, voices and videos: everything that needs no network, so it can run on several threads (with the
+    /// files they write in `written`, see [`ExportedFiles`]).
     fn export_local_media(
         &self,
         msg: &ChatMessage,
@@ -1778,21 +1784,19 @@ impl ServiceHub {
         safe_talker: &str,
         session_dir: &Path,
         opts: &ApiMediaOptions,
+        written: Option<&ExportedFiles>,
     ) -> Option<ApiExportedMedia> {
+        let to = MediaTarget {
+            session_dir,
+            safe_talker,
+            written,
+        };
         let put = |kind: &'static str,
                    sub: &str,
                    file_name: String,
-                   bytes: Option<&[u8]>,
-                   copy_from: Option<&Path>| {
-            put_media(
-                session_dir,
-                safe_talker,
-                kind,
-                sub,
-                file_name,
-                bytes,
-                copy_from,
-            )
+                   source: MediaSource<'_>,
+                   thumbnail: bool| {
+            put_media(&to, (kind, sub), file_name, source, thumbnail)
         };
         if msg.local_type == 3 && opts.images {
             let payload = crate::services::ImagePayload {
@@ -1837,8 +1841,8 @@ impl ServiceHub {
                 "image",
                 "images",
                 format!("{base}{ext}"),
-                Some(&bytes),
-                None,
+                MediaSource::Bytes(&bytes),
+                thumbnail,
             )
             .map(|mut m| {
                 m.thumbnail = thumbnail;
@@ -1865,8 +1869,8 @@ impl ServiceHub {
                 "voice",
                 "voices",
                 format!("voice_{}.wav", msg.local_id),
-                Some(&wav),
-                None,
+                MediaSource::Bytes(&wav),
+                false,
             );
         }
         if msg.local_type == 43 && opts.videos {
@@ -1882,34 +1886,87 @@ impl ServiceHub {
                 "video",
                 "videos",
                 format!("{base}{ext}"),
-                None,
-                Some(&video),
+                MediaSource::Copy(&video),
+                false,
             );
         }
         None
     }
 }
 
-/// Write (or copy) one exported file below `<session_dir>/<sub>` unless it is already there.
+/// What an exported file holds, best last: a full rendition before a thumbnail, then the larger file.
+type MediaRank = (bool, u64);
+
+/// The files one media export writes, with the rank of what each holds. Messages that share an image share its
+/// file, and the media threads export them side by side: whichever gets there first, the HD rendition replaces a
+/// thumbnail, so the export does not depend on the threads' order (issue #52).
+#[derive(Default)]
+pub(super) struct ExportedFiles(std::sync::Mutex<HashMap<PathBuf, MediaRank>>);
+
+/// Where the media of one conversation go.
+struct MediaTarget<'a> {
+    session_dir: &'a Path,
+    safe_talker: &'a str,
+    /// The files of the export this belongs to, when it exports several messages at once.
+    written: Option<&'a ExportedFiles>,
+}
+
+/// What an exported media file is made from.
+enum MediaSource<'a> {
+    Bytes(&'a [u8]),
+    Copy(&'a Path),
+}
+
+/// Write (or copy) one exported file below `<session_dir>/<sub>`. A file already there is kept, unless this export
+/// wrote it (`written`) from a lesser rendition: then a full rendition (not a `thumbnail`), or a larger one of the
+/// same kind, replaces it.
 fn put_media(
-    session_dir: &Path,
-    safe_talker: &str,
-    kind: &'static str,
-    sub: &str,
+    to: &MediaTarget<'_>,
+    (kind, sub): (&'static str, &str),
     file_name: String,
-    bytes: Option<&[u8]>,
-    copy_from: Option<&Path>,
+    source: MediaSource<'_>,
+    thumbnail: bool,
 ) -> Option<ApiExportedMedia> {
+    let (session_dir, safe_talker) = (to.session_dir, to.safe_talker);
     let dir = session_dir.join(sub);
     std::fs::create_dir_all(&dir).ok()?;
     let full = dir.join(&file_name);
-    if !full.exists() {
-        match (bytes, copy_from) {
-            (Some(b), _) => std::fs::write(&full, b).ok()?,
-            (None, Some(src)) => {
-                std::fs::copy(src, &full).ok()?;
+    let size = match source {
+        MediaSource::Bytes([]) => return None,
+        MediaSource::Bytes(b) => b.len() as u64,
+        MediaSource::Copy(src) => std::fs::metadata(src).ok()?.len(),
+    };
+    // renamed into place: the file is whole as soon as another thread sees it
+    let write = || match source {
+        MediaSource::Bytes(b) => write_atomically(&full, b),
+        MediaSource::Copy(src) => copy_atomically(src, &full),
+    };
+    match to.written {
+        None => {
+            if !full.exists() {
+                write().ok()?;
             }
-            _ => return None,
+        }
+        Some(written) => {
+            let rank = (!thumbnail, size);
+            // decided and written under the lock, so a better rendition is never overwritten by a worse one
+            let mut files = written
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let keep = match files.get(&full) {
+                Some(have) => *have >= rank,
+                // left by an earlier export into the same folder: kept, as before
+                None if full.exists() => {
+                    files.insert(full.clone(), (true, u64::MAX));
+                    true
+                }
+                None => false,
+            };
+            if !keep {
+                write().ok()?;
+                files.insert(full.clone(), rank);
+            }
         }
     }
     Some(ApiExportedMedia {
@@ -2085,6 +2142,7 @@ impl ServiceHub {
             let next = std::sync::atomic::AtomicUsize::new(0);
             let finished = std::sync::atomic::AtomicUsize::new(0);
             let results = std::sync::Mutex::new(Vec::<(usize, Option<ApiExportedMedia>)>::new());
+            let written = ExportedFiles::default();
             std::thread::scope(|scope| {
                 for _ in 0..workers {
                     scope.spawn(|| loop {
@@ -2092,7 +2150,9 @@ impl ServiceHub {
                         let Some(&i) = local.get(k) else { break };
                         let (sid, _, msg) = &work[i];
                         let safe = api::sanitize_file_name(sid, "session");
-                        let r = self.export_local_media(msg, sid, &safe, &out.join(&safe), &opts);
+                        let dir = out.join(&safe);
+                        let r =
+                            self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&written));
                         results.lock().unwrap().push((i, r));
                         let n = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         self.emit_progress(
@@ -2145,5 +2205,86 @@ impl ServiceHub {
         Ok(
             json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files }),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn media_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("weflow-media-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn put(to: &MediaTarget<'_>, bytes: &[u8], thumbnail: bool) -> Option<ApiExportedMedia> {
+        put_media(
+            to,
+            ("image", "images"),
+            "a.jpg".into(),
+            MediaSource::Bytes(bytes),
+            thumbnail,
+        )
+    }
+
+    #[test]
+    fn a_shared_image_file_ends_up_with_the_best_rendition_in_any_order() {
+        for (tag, order) in [
+            (
+                "thumb-first",
+                [(&b"thumb"[..], true), (&b"full image"[..], false)],
+            ),
+            (
+                "full-first",
+                [(&b"full image"[..], false), (&b"thumb"[..], true)],
+            ),
+        ] {
+            let dir = media_dir(tag);
+            let written = ExportedFiles::default();
+            let to = MediaTarget {
+                session_dir: &dir,
+                safe_talker: "s",
+                written: Some(&written),
+            };
+            for (bytes, thumbnail) in order {
+                assert!(put(&to, bytes, thumbnail).is_some());
+            }
+            assert_eq!(
+                std::fs::read(dir.join("images").join("a.jpg")).unwrap(),
+                b"full image",
+                "{tag}"
+            );
+            // of two full renditions the larger stays
+            assert!(put(&to, b"full", false).is_some());
+            assert!(put(&to, b"a larger full image", false).is_some());
+            assert_eq!(
+                std::fs::read(dir.join("images").join("a.jpg")).unwrap(),
+                b"a larger full image"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn a_file_from_an_earlier_export_is_kept_and_empty_data_is_not_written() {
+        let dir = media_dir("earlier");
+        std::fs::create_dir_all(dir.join("images")).unwrap();
+        std::fs::write(dir.join("images").join("a.jpg"), b"earlier").unwrap();
+        let written = ExportedFiles::default();
+        let to = MediaTarget {
+            session_dir: &dir,
+            safe_talker: "s",
+            written: Some(&written),
+        };
+        assert!(put(&to, b"a newer, larger image", false).is_some());
+        assert_eq!(
+            std::fs::read(dir.join("images").join("a.jpg")).unwrap(),
+            b"earlier"
+        );
+        assert!(put(&to, b"", false).is_none());
+        let names: Vec<_> = std::fs::read_dir(dir.join("images")).unwrap().collect();
+        assert_eq!(names.len(), 1, "no temporary file is left behind");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
