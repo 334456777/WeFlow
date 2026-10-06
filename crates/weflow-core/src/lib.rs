@@ -9,6 +9,7 @@ pub mod decrypt;
 pub mod error;
 pub mod export;
 pub mod export_msg;
+pub mod ffmpeg;
 pub mod http_server;
 pub mod image;
 pub mod image_download;
