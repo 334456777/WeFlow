@@ -29,7 +29,7 @@
 
 
 ## 约定
-- 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public）
+- 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public）GitHub Project「WeFlow」是公开 Project
 - 提交信息格式使用 Conventional Commits 规范，默认英语提交
 - 严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等重要信息上传到公开的 GitHub 仓库或写入 CLAUDE.md
 - GitHub Issues 根据 Lables 分类，筛选和表达状态，根据 Relationships 梳理 Issue 依赖关系（Issue dependencies）创建 Issue 时及时添加 Lables 和 Relationships
