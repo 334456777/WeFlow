@@ -41,21 +41,21 @@ cp target/release/weflow .
 ./weflow db detect
 ./weflow config set db_path "C:\Users\<你>\Documents\xwechat_files"
 ```
-> stdout: db_path: C:\Users\<你>\Documents\xwechat_files
+> stdout: `db_path: C:\Users\<你>\Documents\xwechat_files`
 
 2. 设置你的 wxid
 ```powershell
 ./weflow db wxid
 ./weflow config set wxid wxid_xxxxxxxx
 ```
-> stdout: wxid: wxid_xxxxxxxx
+> stdout: `wxid: wxid_xxxxxxxx`
 
 3. 设置数据库密钥
 ```powershell
 ./weflow key db
 ./weflow config set decrypt_key <数据库密钥>
 ```
-> stdout: decrypt_key: <数据库密钥>
+> stdout: `decrypt_key: <数据库密钥>`
 
 4. 设置图片密钥
 ```powershell
@@ -63,8 +63,8 @@ cp target/release/weflow .
 ./weflow config set image_xor_key <图片xor密钥>
 ./weflow config set image_aes_key <图片aes密钥>
 ```
-> stdout: image_xor_key: <图片xor密钥> <br>
-> stdout: image_aes_key: <图片aes密钥>
+> stdout: `image_xor_key: <图片xor密钥>` <br>
+> stdout: `image_aes_key: <图片aes密钥>`
 
 `./weflow config list` 查看已保存的配置，`./weflow config path` 查看配置文件的位置。
 

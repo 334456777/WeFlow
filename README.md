@@ -43,7 +43,7 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 ./weflow config set db_path "C:\Users\<you>\Documents\xwechat_files"
 ```
 
-> stdout: db_path: C:\Users\<you>\Documents\xwechat_files
+> stdout: `db_path: C:\Users\<you>\Documents\xwechat_files`
 
 2. Set your wxid
 
@@ -52,7 +52,7 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 ./weflow config set wxid wxid_xxxxxxxx
 ```
 
-> stdout: wxid: wxid_xxxxxxxx
+> stdout: `wxid: wxid_xxxxxxxx`
 
 3. Set the database key
 
@@ -61,7 +61,7 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 ./weflow config set decrypt_key <database-key>
 ```
 
-> stdout: decrypt_key: <database-key>
+> stdout: `decrypt_key: <database-key>`
 
 4. Set the image keys
 
@@ -71,8 +71,8 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 ./weflow config set image_aes_key <image-aes-key>
 ```
 
-> stdout: image_xor_key: <image-xor-key> <br>
-> stdout: image_aes_key: <image-aes-key>
+> stdout: `image_xor_key: <image-xor-key>` <br>
+> stdout: `image_aes_key: <image-aes-key>`
 
 `./weflow config list` shows the saved configuration, and `./weflow config path` shows where the configuration file lives.
 
