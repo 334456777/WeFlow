@@ -593,8 +593,37 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         r.get("ffmpegMissing").is_none() && r.get("hint").is_none(),
         "{r}"
     );
+
+    // a WXGF picture the built-in decoder reads needs no ffmpeg
+    let (hub, root3, img_dir) = export_world("img-wxgf-builtin");
+    let mut blob = b"wxgf".to_vec();
+    blob.extend([0x24u8, 0x01, 0x00, 0x46, 0x00, 0x2e]); // a header, before the HEVC stream
+    blob.extend(include_bytes!("../testdata/wxgf/full_range.hevc"));
+    std::fs::write(
+        img_dir.join(format!("{md5}_h.dat")),
+        encrypt_v2(&blob, KEY.as_bytes().try_into().unwrap(), 0x5a),
+    )
+    .unwrap();
+    let r = hub.image_decrypt(&p);
+    assert!(r.success, "{:?}", r.error);
+    let jpg = std::fs::read(r.local_path.unwrap()).unwrap();
+    let mut decoder = jpeg_decoder::Decoder::new(&jpg[..]);
+    decoder.read_info().unwrap();
+    let info = decoder.info().unwrap();
+    assert_eq!((info.width, info.height), (70, 46));
+    let r = hub
+        .export_media(Some("wxid_bob"), &root3.join("media"), "image", None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        (r["exported"].as_i64(), r["missing"].as_i64()),
+        (Some(1), Some(1)),
+        "{r}"
+    );
+    assert!(r.get("ffmpegMissing").is_none(), "{r}");
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(root2);
+    let _ = std::fs::remove_dir_all(root3);
 }
 
 #[tokio::test]

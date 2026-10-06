@@ -34,7 +34,9 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 
 ## Check ffmpeg
 
-Some WeChat images (the WXGF format) are converted with ffmpeg. Check whether one is found before the setup below:
+WeFlow decodes WeChat's WXGF images itself. ffmpeg is only used for a WXGF image its decoder cannot read (10-bit, 4:2:2
+or 4:4:4 pictures; a real account with about 1,800 WXGF images had none), so this step is optional. To have one ready,
+check whether one is found:
 
 ```powershell
 ./weflow ffmpeg path
@@ -53,7 +55,7 @@ If it says `missing`, install the build the desktop app bundles (it is checked a
 
 If GitHub is slow or unreachable, download from a mirror instead: run
 `./weflow ffmpeg set baseurl https://registry.npmmirror.com/-/binary/ffmpeg-static` before `ffmpeg install`. Without ffmpeg,
-WXGF images are not exported, and the export says how many (`ffmpegMissing`).
+such images are not exported, and the export says how many (`ffmpegMissing`).
 
 ## First-time setup and export (required steps)
 

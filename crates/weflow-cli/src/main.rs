@@ -97,7 +97,7 @@ enum Commands {
     Backup(BackupCommand),
     /// Clear WeFlow's caches
     Cache(CacheCommand),
-    /// Install and locate the ffmpeg that converts WXGF images
+    /// Install and locate the ffmpeg for the few WXGF images the built-in decoder cannot read
     Ffmpeg(FfmpegCommand),
     /// Save the output language
     Lang {
@@ -121,7 +121,7 @@ enum FfmpegSubcommand {
         #[arg(long)]
         force: bool,
     },
-    /// Show the ffmpeg that WXGF images use and where it was found (FFMPEG_PATH, PATH, installed or missing)
+    /// Show the ffmpeg those WXGF images use and where it was found (FFMPEG_PATH, PATH, installed or missing)
     Path,
     /// Change a setting of the ffmpeg download
     Set {

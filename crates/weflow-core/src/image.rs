@@ -573,7 +573,8 @@ fn convert_hevc_with(ffmpeg: &Path, hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
 }
 
 /// `unwrapWxgf`: returns the image bytes and, when the data is still an undecoded WXGF blob, why it could not be
-/// converted (`None`: it is an image, or was not WXGF).
+/// converted (`None`: it is an image, or was not WXGF). The built-in decoder ([`crate::hevc`]) tries the candidates
+/// first; ffmpeg only gets the streams it cannot decode.
 pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<HevcError>) {
     if !is_wxgf(&buf) {
         return (buf, None);
@@ -582,6 +583,12 @@ pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<HevcError>) {
         return (inner.to_vec(), None);
     }
     let candidates = wxgf_hevc_candidates(&buf);
+    if let Some(jpg) = candidates
+        .iter()
+        .find_map(|(_, data)| crate::hevc::to_jpeg(data))
+    {
+        return (jpg, None);
+    }
     let mut failure = HevcError::Undecodable;
     for (_, data) in &candidates {
         match convert_hevc_to_jpg(data) {

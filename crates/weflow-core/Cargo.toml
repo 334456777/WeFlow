@@ -18,6 +18,8 @@ dirs.workspace = true
 ecb.workspace = true
 flate2.workspace = true
 futures.workspace = true
+heic-rs.workspace = true
+jpeg-encoder.workspace = true
 md-5.workspace = true
 memchr.workspace = true
 mime_guess.workspace = true
@@ -45,5 +47,6 @@ icu_collator.workspace = true
 icu_locale_core.workspace = true
 
 [dev-dependencies]
+jpeg-decoder = "0.3"
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
