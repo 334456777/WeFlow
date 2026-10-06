@@ -106,6 +106,8 @@ pub struct NativeAccount {
     low_memory: std::sync::atomic::AtomicBool,
     /// Most connections a snapshot gets for this handle's queries (see [`NativeAccount::set_read_connections`]).
     read_connections: std::sync::atomic::AtomicUsize,
+    /// Queries run again because their snapshot went stale (see [`NativeAccount::stale_reruns`]).
+    stale_reruns: std::sync::atomic::AtomicUsize,
 }
 
 fn wal_path(db: &Path) -> PathBuf {
@@ -192,6 +194,7 @@ impl NativeAccount {
             cursors: Mutex::default(),
             low_memory: Default::default(),
             read_connections: std::sync::atomic::AtomicUsize::new(1),
+            stale_reruns: Default::default(),
         })
     }
 
@@ -209,6 +212,12 @@ impl NativeAccount {
     pub fn set_read_connections(&self, n: usize) {
         self.read_connections
             .store(n.max(1), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// How many of this handle's queries were run again on a fresh snapshot because WeChat changed the file while
+    /// they read it (see [`with_db`](Self::with_db)).
+    pub fn stale_reruns(&self) -> usize {
+        self.stale_reruns.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Set the account owner's wxid (see [`NativeAccount::is_me`]).
@@ -308,6 +317,8 @@ impl NativeAccount {
             match result {
                 Err(e) if file.is_stale() => {
                     self.forget(path, &file);
+                    self.stale_reruns
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     attempt += 1;
                     if attempt >= STALE_RETRIES {
                         let why = file.read_error().unwrap_or_else(|| e.to_string());
