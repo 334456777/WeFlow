@@ -35,6 +35,24 @@ fn encrypt_v2(plain: &[u8], key: &[u8; 16], xor: u8) -> Vec<u8> {
     out
 }
 
+/// A folder opened so that its times can be set (Windows opens a folder only with backup semantics, and setting times
+/// needs the write-attributes right).
+fn open_dir_to_set_times(dir: &std::path::Path) -> std::fs::File {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        std::fs::File::options()
+            .access_mode(0x0100)
+            .custom_flags(0x0200_0000)
+            .open(dir)
+            .unwrap()
+    }
+    #[cfg(not(windows))]
+    {
+        std::fs::File::open(dir).unwrap()
+    }
+}
+
 fn md5_hex(s: &str) -> String {
     Md5::digest(s.as_bytes())
         .iter()
@@ -98,7 +116,10 @@ fn decrypts_the_hd_variant_and_caches_it() {
     assert!(r.success, "{:?}", r.error);
     let path = r.local_path.unwrap();
     assert!(path.ends_with(&format!("{MD5}_hd.jpg")), "{path}");
-    assert!(path.contains("Images/wxid_bob/"), "{path}");
+    assert!(
+        path.replace('\\', "/").contains("Images/wxid_bob/"),
+        "{path}"
+    );
     assert_eq!(
         std::fs::read(&path).unwrap(),
         hd,
@@ -220,8 +241,7 @@ fn the_cache_sees_files_changed_by_another_process() {
 
     // another process caches the second image: the folder's time changes and its names are read again
     std::fs::write(cache_dir.join(format!("{other}_hd.jpg")), &theirs).unwrap();
-    std::fs::File::open(cache_dir)
-        .unwrap()
+    open_dir_to_set_times(cache_dir)
         .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
         .unwrap();
     let found = hub.image_resolve_cache(&payload(other));
