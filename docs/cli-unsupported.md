@@ -76,13 +76,14 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
 - **Threads of big exports**: several threads read and parse the pages while the file is written. An export starts with two
   and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages, and stops adding once
   one more thread no longer reads clearly faster (by at least half of what it could add). `chatlab` and `chatlab-jsonl`
-  entries are also rendered on the reading threads, so these exports use the most threads (5–7 on 16 logical CPUs);
-  `weclone` reaches about 5, `txt`, `sql`, `html` and `excel` about 3, and `json` / `arkme-json` stay at 2 (writing is the
-  bottleneck). An export with media reads with at most 2 threads, since it only collects the messages. Every reading thread
-  keeps its own page cache and a few pages in flight, about 20–60 MiB each, and the peaks above include them.
-  `WEFLOW_EXPORT_WORKERS=1` reads with one thread (about 0.1 GB, but slower); any other number fixes the thread count.
+  entries are also rendered on the reading threads, so these exports and `weclone` use the most threads (5–7 on 16 logical
+  CPUs); `txt`, `sql`, `html` and `excel` reach about 3, and `json` / `arkme-json` stay at 2 (writing is the bottleneck).
+  An export with media reads with at most 2 threads, since it only collects the messages. Every reading thread keeps its
+  own page cache and a few pages in flight, about 20–60 MiB each, and the peaks above include them.
+  `WEFLOW_EXPORT_WORKERS=1` reads with one thread (about 0.13 GB, but slower); any other number fixes the thread count.
   `RUST_LOG=weflow::export=debug` logs the threads used and the time spent reading, parsing (and rendering) and waiting
-  (`=trace` also logs each decision to add a thread).
+  (`=trace` also logs each decision to add a thread). With nothing cached (the first export after a restart) the same
+  exports took 2–25% longer from an NVMe SSD, and the extra threads saved as much time as with a warm cache.
 - **Memory on Windows at startup**: the CLI reserves and commits 128 MiB for its allocator when it starts, which saves exports
   hundreds of thousands of page faults. It counts against the commit limit (private bytes) of even a short command, not against
   physical memory (working set). `MIMALLOC_RESERVE_OS_MEMORY` sets another size.
