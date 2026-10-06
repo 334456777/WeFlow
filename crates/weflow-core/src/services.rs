@@ -660,7 +660,7 @@ impl ServiceHub {
                 "unsupported message export format: {format}; supported: {MESSAGE_EXPORT_FORMATS}"
             )));
         }
-        self.export_streaming(req, out)
+        again_if_keys_changed(|| self.export_streaming(req, out))
     }
 
     /// [`export_messages`](Self::export_messages) that also copies the selected media (images, voices, videos,
@@ -674,7 +674,7 @@ impl ServiceHub {
         if !media.enabled {
             return self.export_messages(req, out);
         }
-        let (wcdb, mut collected) = self.export_collect(req)?;
+        let (wcdb, mut collected) = again_if_keys_changed(|| self.export_collect(req))?;
         let stats = self
             .attach_export_media(&wcdb, &mut collected, &req.session_id, out, media)
             .await;
@@ -1439,6 +1439,16 @@ fn copy_atomically(from: &Path, path: &Path) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&tmp);
     }
     copied
+}
+
+/// Runs an export once more when the order of its messages changed while it was read: the second run reads the keys
+/// of the tables that broke the `sort_seq` rule from their rows (see `NativeAccount::open_export_cursor`). An export
+/// that failed removes what it wrote, so starting over is safe.
+fn again_if_keys_changed<T>(mut export: impl FnMut() -> AppResult<T>) -> AppResult<T> {
+    match export() {
+        Err(e) if e.message.contains(weflow_native::native_msg::KEYS_CHANGED) => export(),
+        done => done,
+    }
 }
 
 /// `--sender` takes the bare wxid: it is the one identifier every message has, unique and fixed. The account folder

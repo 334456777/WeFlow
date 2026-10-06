@@ -120,7 +120,7 @@ fn read_pages<T: Send, R>(
     let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
     let (begin, finish) = (req.start.map_or(0, clamp), req.end.map_or(0, clamp));
     let cursor = wcdb
-        .open_message_cursor(&req.session_id, PAGE_SIZE, true, begin, finish, false)
+        .open_export_cursor(&req.session_id, PAGE_SIZE, begin, finish)
         .map_err(|e| AppError::native(e.to_string()))?;
     let cpus = std::thread::available_parallelism().map_or(2, |n| n.get());
     let workers = (cpus, max_workers);

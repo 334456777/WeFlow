@@ -4,8 +4,9 @@
 //! what the service layer expects from a raw message row.
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 
 use anyhow::{anyhow, Result};
 use md5::{Digest, Md5};
@@ -35,12 +36,42 @@ type Key = (i64, i64, i64, usize);
 /// Sender filter of a cursor: (does this username match, also keep the account owner's own messages).
 pub type SenderFilter<'a> = (&'a dyn Fn(&str) -> bool, bool);
 
+/// What a page read of an export cursor fails with when its keys had to be read again and the pages are no longer
+/// the same (see [`NativeAccount::open_export_cursor`]): the export has to start over.
+pub const KEYS_CHANGED: &str =
+    "the order of the messages changed while they were read; the export has to start over";
+
+/// Tables whose `create_time` turned out not to be `sort_seq / 1000`: export cursors read their keys from the table.
+static EXACT_KEY_TABLES: LazyLock<Mutex<HashSet<(PathBuf, String)>>> =
+    LazyLock::new(Mutex::default);
+
+/// Which messages a cursor lists, and how it reads their keys.
+enum CursorKeys<'a> {
+    /// Every message, keys read from the rows.
+    All,
+    /// The messages of some senders (see [`NativeAccount::open_message_cursor_for_senders`]).
+    Senders(SenderFilter<'a>),
+    /// Every message, keys from the `sort_seq` index (see [`NativeAccount::open_export_cursor`]).
+    Export,
+}
+
+fn exact_key_table(t: &MsgTable) -> bool {
+    EXACT_KEY_TABLES
+        .lock()
+        .is_ok_and(|set| set.contains(&(t.db.clone(), t.table.clone())))
+}
+
 pub struct MessageCursor {
     tables: Vec<MsgTable>,
     keys: Vec<Key>,
     pos: usize,
     batch: usize,
     lite: bool,
+    /// Per table: whether its keys came from the `sort_seq` index ([`NativeAccount::open_export_cursor`]) and are
+    /// still to be checked against the rows.
+    derived: Vec<bool>,
+    range: (i64, i64),
+    ascending: bool,
 }
 
 #[derive(Default)]
@@ -349,7 +380,37 @@ impl NativeAccount {
         end: i32,
         lite: bool,
     ) -> Result<i64> {
-        self.open_cursor(session_id, batch, ascending, (begin, end), lite, None)
+        self.open_cursor(
+            session_id,
+            batch,
+            ascending,
+            (begin, end),
+            lite,
+            CursorKeys::All,
+        )
+    }
+
+    /// The cursor of an export: oldest first, full rows, like [`open_message_cursor`](Self::open_message_cursor).
+    /// Collecting its keys reads only the `sort_seq` index instead of every row of the table, taking `create_time`
+    /// as `sort_seq / 1000`, which is how WeChat makes `sort_seq` (`create_time` in milliseconds plus a counter). The
+    /// pages check that against the rows they read: when a table does not follow it, the keys are read from the table
+    /// as before, the table is remembered for the next exports, and when that changes the pages,
+    /// [`KEYS_CHANGED`] tells the export to start over (issue #39).
+    pub fn open_export_cursor(
+        &self,
+        session_id: &str,
+        batch: i32,
+        begin: i32,
+        end: i32,
+    ) -> Result<i64> {
+        self.open_cursor(
+            session_id,
+            batch,
+            true,
+            (begin, end),
+            false,
+            CursorKeys::Export,
+        )
     }
 
     /// Like [`open_message_cursor`](Self::open_message_cursor) over `range` = `(begin, end)`, but only over messages
@@ -365,7 +426,14 @@ impl NativeAccount {
         lite: bool,
         senders: SenderFilter<'_>,
     ) -> Result<i64> {
-        self.open_cursor(session_id, batch, ascending, range, lite, Some(senders))
+        self.open_cursor(
+            session_id,
+            batch,
+            ascending,
+            range,
+            lite,
+            CursorKeys::Senders(senders),
+        )
     }
 
     fn open_cursor(
@@ -375,12 +443,24 @@ impl NativeAccount {
         ascending: bool,
         (begin, end): (i32, i32),
         lite: bool,
-        senders: Option<SenderFilter<'_>>,
+        listed: CursorKeys<'_>,
     ) -> Result<i64> {
+        let (senders, derive) = match listed {
+            CursorKeys::All => (None, false),
+            CursorKeys::Senders(s) => (Some(s), false),
+            CursorKeys::Export => (None, true),
+        };
         let tables = self.message_tables(session_id)?;
         let (begin, end) = (begin.max(0) as i64, end.max(0) as i64);
         let mut keys: Vec<Key> = Vec::new();
+        let mut derived: Vec<bool> = Vec::with_capacity(tables.len());
         for (idx, t) in tables.iter().enumerate() {
+            if derive && !exact_key_table(t) {
+                keys.extend(self.index_keys(t, idx, (begin, end))?);
+                derived.push(true);
+                continue;
+            }
+            derived.push(false);
             let who = match senders {
                 None => String::new(),
                 Some((ok, include_mine)) => {
@@ -402,22 +482,7 @@ impl NativeAccount {
                     format!(" and ({known}real_sender_id is null or real_sender_id not in (select rowid from Name2Id))")
                 }
             };
-            let sql = format!(
-                "select sort_seq, create_time, local_id from \"{}\" where create_time >= ?1 and (?2 = 0 or create_time <= ?2){who}",
-                t.table
-            );
-            let base = keys.len();
-            let cell = std::cell::RefCell::new(&mut keys);
-            self.query_each(
-                &t.db,
-                &sql,
-                &[&begin, &end],
-                || cell.borrow_mut().truncate(base),
-                |r| {
-                    let (seq, create, local) = row_key(&r);
-                    cell.borrow_mut().push((seq, create, local, idx));
-                },
-            )?;
+            keys.extend(self.table_keys(t, idx, (begin, end), &who)?);
         }
         keys.sort();
         if !ascending {
@@ -437,14 +502,154 @@ impl NativeAccount {
                 pos: 0,
                 batch: batch.max(1) as usize,
                 lite,
+                derived,
+                range: (begin, end),
+                ascending,
             },
         );
         Ok(id)
     }
 
+    /// The keys of `t` in `create_time` range `(begin, end)` read from its rows (`where` clause extra: `who`).
+    fn table_keys(
+        &self,
+        t: &MsgTable,
+        idx: usize,
+        (begin, end): (i64, i64),
+        who: &str,
+    ) -> Result<Vec<Key>> {
+        let sql = format!(
+            "select sort_seq, create_time, local_id from \"{}\" where create_time >= ?1 and (?2 = 0 or create_time <= ?2){who}",
+            t.table
+        );
+        self.collect_keys(t, idx, &sql, &[&begin, &end])
+    }
+
+    /// The keys of `t` in `create_time` range `(begin, end)` from the `sort_seq` index alone (`local_id` is the rowid,
+    /// so the index covers the query): `create_time` is taken as `sort_seq / 1000` and the range is turned into a
+    /// `sort_seq` range. Rows whose `sort_seq` says nothing about the time (0, negative or none) are read from the
+    /// table, as [`row_key`] does.
+    fn index_keys(&self, t: &MsgTable, idx: usize, (begin, end): (i64, i64)) -> Result<Vec<Key>> {
+        let lo = begin.saturating_mul(1000);
+        let hi = if end == 0 {
+            0
+        } else {
+            end.saturating_mul(1000).saturating_add(999)
+        };
+        let sql = format!(
+            "select sort_seq, local_id from \"{}\" where sort_seq > 0 and sort_seq >= ?1 and (?2 = 0 or sort_seq <= ?2)",
+            t.table
+        );
+        let mut keys = Vec::new();
+        let cell = std::cell::RefCell::new(&mut keys);
+        self.query_each(
+            &t.db,
+            &sql,
+            &[&lo, &hi],
+            || cell.borrow_mut().clear(),
+            |r| {
+                let seq = int(&r, "sort_seq");
+                cell.borrow_mut()
+                    .push((seq, seq / 1000, int(&r, "local_id"), idx));
+            },
+        )?;
+        let rest = format!(
+            "select sort_seq, create_time, local_id from \"{}\" where (sort_seq is null or sort_seq <= 0) and create_time >= ?1 and (?2 = 0 or create_time <= ?2)",
+            t.table
+        );
+        keys.extend(self.collect_keys(t, idx, &rest, &[&begin, &end])?);
+        Ok(keys)
+    }
+
+    fn collect_keys(
+        &self,
+        t: &MsgTable,
+        idx: usize,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<Vec<Key>> {
+        let mut keys = Vec::new();
+        let cell = std::cell::RefCell::new(&mut keys);
+        self.query_each(
+            &t.db,
+            sql,
+            params,
+            || cell.borrow_mut().clear(),
+            |r| {
+                let (seq, create, local) = row_key(&r);
+                cell.borrow_mut().push((seq, create, local, idx));
+            },
+        )?;
+        Ok(keys)
+    }
+
+    /// The rows of a page showed that the keys the tables `fix` (indexes) took from the `sort_seq` index are not the
+    /// real ones: reads the keys of those tables from their rows and remembers the tables; the other tables keep
+    /// theirs and are still checked. Fails with [`KEYS_CHANGED`] when that changes the pages.
+    fn rekey(&self, cursor: i64, fix: &[usize]) -> Result<()> {
+        let (tables, range, ascending) = {
+            let cursors = self
+                .cursors
+                .lock()
+                .map_err(|_| anyhow!("cursor lock poisoned"))?;
+            let c = cursors
+                .open
+                .get(&cursor)
+                .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
+            (c.tables.clone(), c.range, c.ascending)
+        };
+        if let Ok(mut set) = EXACT_KEY_TABLES.lock() {
+            for &idx in fix {
+                set.insert((tables[idx].db.clone(), tables[idx].table.clone()));
+            }
+        }
+        let mut exact: Vec<(usize, Vec<Key>)> = Vec::with_capacity(fix.len());
+        for &idx in fix {
+            exact.push((idx, self.table_keys(&tables[idx], idx, range, "")?));
+        }
+        let mut cursors = self
+            .cursors
+            .lock()
+            .map_err(|_| anyhow!("cursor lock poisoned"))?;
+        let c = cursors
+            .open
+            .get_mut(&cursor)
+            .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
+        // another page may have fixed some of them meanwhile
+        exact.retain(|(idx, _)| c.derived[*idx]);
+        if exact.is_empty() {
+            return Ok(());
+        }
+        let mut keys: Vec<Key> = c
+            .keys
+            .iter()
+            .filter(|k| !exact.iter().any(|(idx, _)| *idx == k.3))
+            .copied()
+            .collect();
+        for (idx, table) in exact {
+            keys.extend(table);
+            c.derived[idx] = false;
+        }
+        keys.sort();
+        if !ascending {
+            keys.reverse();
+        }
+        let same_pages = c.keys.len() == keys.len()
+            && c.keys
+                .iter()
+                .zip(&keys)
+                .all(|(a, b)| (a.2, a.3) == (b.2, b.3));
+        c.keys = keys;
+        if same_pages {
+            Ok(())
+        } else {
+            Err(anyhow!(KEYS_CHANGED))
+        }
+    }
+
     /// Next batch of rows and whether more remain.
     pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
-        let (tables, chunk, lite, more) = {
+        let (tables, chunk, lite, more, derived) = {
             let mut cursors = self
                 .cursors
                 .lock()
@@ -456,9 +661,19 @@ impl NativeAccount {
             let end = (c.pos + c.batch).min(c.keys.len());
             let chunk = c.keys[c.pos..end].to_vec();
             c.pos = end;
-            (c.tables.clone(), chunk, c.lite, c.pos < c.keys.len())
+            (
+                c.tables.clone(),
+                chunk,
+                c.lite,
+                c.pos < c.keys.len(),
+                c.derived.clone(),
+            )
         };
-        Ok((self.rows_for_keys(&tables, &chunk, lite)?, more))
+        let (rows, mismatched) = self.rows_for_keys(&tables, &chunk, lite, &derived)?;
+        if !mismatched.is_empty() {
+            self.rekey(cursor, &mismatched)?;
+        }
+        Ok((rows, more))
     }
 
     /// (messages, batch size) of a cursor: the batches are the messages in cursor order, `batch size` at a time.
@@ -478,7 +693,7 @@ impl NativeAccount {
     /// `page + 1`-th call), without moving the cursor: threads can read different batches of one cursor at once.
     /// Past the end it is an empty array.
     pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Value> {
-        let (tables, chunk, lite) = {
+        let (tables, chunk, lite, derived) = {
             let cursors = self
                 .cursors
                 .lock()
@@ -489,13 +704,35 @@ impl NativeAccount {
                 .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
             let start = page.saturating_mul(c.batch).min(c.keys.len());
             let end = start.saturating_add(c.batch).min(c.keys.len());
-            (c.tables.clone(), c.keys[start..end].to_vec(), c.lite)
+            (
+                c.tables.clone(),
+                c.keys[start..end].to_vec(),
+                c.lite,
+                c.derived.clone(),
+            )
         };
-        self.rows_for_keys(&tables, &chunk, lite)
+        let (rows, mismatched) = self.rows_for_keys(&tables, &chunk, lite, &derived)?;
+        if !mismatched.is_empty() {
+            self.rekey(cursor, &mismatched)?;
+        }
+        Ok(rows)
     }
 
-    /// The rows of `keys`, in that order.
-    fn rows_for_keys(&self, tables: &[MsgTable], keys: &[Key], lite: bool) -> Result<Value> {
+    /// The rows of `keys`, in that order, and the tables whose keys came from the `sort_seq` index (`derived`) and
+    /// have a row with another key than the one it was listed under.
+    fn rows_for_keys(
+        &self,
+        tables: &[MsgTable],
+        keys: &[Key],
+        lite: bool,
+        derived: &[bool],
+    ) -> Result<(Value, Vec<usize>)> {
+        let listed: HashMap<(usize, i64), (i64, i64)> = keys
+            .iter()
+            .filter(|k| derived.get(k.3).copied().unwrap_or(false))
+            .map(|&(seq, create, local, idx)| ((idx, local), (seq, create)))
+            .collect();
+        let mut mismatched: Vec<usize> = Vec::new();
         let mut by_shard: HashMap<usize, Vec<i64>> = HashMap::new();
         for (_, _, local, idx) in keys {
             by_shard.entry(*idx).or_default().push(*local);
@@ -506,15 +743,23 @@ impl NativeAccount {
             let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
             let sql = Self::select_sql(t, &format!("where m.local_id in ({list})"));
             for mut r in self.query(&t.db, &sql, &[])? {
+                let (seq, create, local) = row_key(&r);
+                if listed
+                    .get(&(idx, local))
+                    .is_some_and(|k| *k != (seq, create))
+                    && !mismatched.contains(&idx)
+                {
+                    mismatched.push(idx);
+                }
                 self.finish_row(&mut r, t, lite);
-                fetched.insert((idx, int(&r, "local_id")), r);
+                fetched.insert((idx, local), r);
             }
         }
         let rows = keys
             .iter()
             .filter_map(|(_, _, local, idx)| fetched.remove(&(*idx, *local)))
             .collect();
-        Ok(Value::Array(rows))
+        Ok((Value::Array(rows), mismatched))
     }
 
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
@@ -601,6 +846,152 @@ mod tests {
             .iter()
             .map(|r| r["message_content"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    /// An account with `shards` of `wxid_bob`'s messages, each in its own directory.
+    fn export_world(tag: &str, shards: &[Vec<crate::fixture::MsgSpec>]) -> NativeAccount {
+        use crate::fixture::{Fixture, SessionSpec, T0};
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root =
+            std::env::temp_dir().join(format!("weflow-keys-{}-{tag}-{n}", std::process::id()));
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        for (i, msgs) in shards.iter().enumerate() {
+            f.message_shard(i as u32, &[("wxid_bob", msgs.clone())]);
+        }
+        NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap()
+    }
+
+    fn cursor_state(acct: &NativeAccount, id: i64) -> (Vec<Key>, Vec<bool>) {
+        let cursors = acct.cursors.lock().unwrap();
+        let c = &cursors.open[&id];
+        (c.keys.clone(), c.derived.clone())
+    }
+
+    fn page_ids(acct: &NativeAccount, id: i64) -> Result<Vec<i64>> {
+        let mut ids = Vec::new();
+        for page in 0.. {
+            let rows = acct.fetch_message_page(id, page)?;
+            let rows = rows.as_array().unwrap();
+            if rows.is_empty() {
+                return Ok(ids);
+            }
+            ids.extend(rows.iter().map(|r| int(r, "local_id")));
+        }
+        unreachable!()
+    }
+
+    #[test]
+    fn export_cursor_keys_from_the_index_are_the_keys_of_the_rows() {
+        use crate::fixture::{MsgSpec, T0};
+        let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
+        // WeChat's rule (`sort_seq` = `create_time` in ms + a counter), ties in `sort_seq`, a row without `sort_seq`,
+        // two shards with overlapping local ids
+        let acct = export_world(
+            "rule",
+            &[
+                vec![
+                    text(1, T0).with_sort_seq(T0 * 1000 + 3),
+                    text(2, T0 + 2),
+                    text(3, T0 + 2),
+                    text(4, T0 + 4).with_sort_seq(0),
+                    text(5, T0 + 6).with_sort_seq((T0 + 6) * 1000 + 999),
+                ],
+                vec![text(1, T0 + 1), text(2, T0 + 5), text(3, T0 + 7)],
+            ],
+        );
+        for (begin, end) in [
+            (0, 0),
+            (T0 + 2, T0 + 5),
+            (T0 + 4, 0),
+            (0, T0 + 6),
+            (T0 + 6, T0 + 6),
+        ] {
+            let (b, e) = (begin as i32, end as i32);
+            let exact = acct
+                .open_message_cursor("wxid_bob", 2, true, b, e, false)
+                .unwrap();
+            let fast = acct.open_export_cursor("wxid_bob", 2, b, e).unwrap();
+            let (exact_keys, _) = cursor_state(&acct, exact);
+            let (fast_keys, derived) = cursor_state(&acct, fast);
+            assert_eq!(fast_keys, exact_keys, "range {begin}..{end}");
+            assert_eq!(derived, vec![true, true]);
+            assert_eq!(
+                page_ids(&acct, fast).unwrap(),
+                page_ids(&acct, exact).unwrap()
+            );
+            assert_eq!(
+                cursor_state(&acct, fast).1,
+                vec![true, true],
+                "the rows agreed with the keys"
+            );
+        }
+    }
+
+    #[test]
+    fn a_table_off_the_rule_is_read_again_and_remembered() {
+        use crate::fixture::{MsgSpec, T0};
+        let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
+        // message 2's sort_seq says T0 + 50 but it was sent at T0 + 1: the order stays the same. The second shard
+        // follows the rule
+        let acct = export_world(
+            "off",
+            &[
+                vec![
+                    text(1, T0),
+                    text(2, T0 + 1).with_sort_seq((T0 + 50) * 1000),
+                    text(3, T0 + 60),
+                ],
+                vec![text(11, T0 + 70), text(12, T0 + 80)],
+            ],
+        );
+        let id = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        assert_eq!(
+            page_ids(&acct, id).unwrap(),
+            vec![1, 2, 3, 11, 12],
+            "the pages did not change"
+        );
+        let (keys, derived) = cursor_state(&acct, id);
+        assert_eq!(
+            derived,
+            vec![false, true],
+            "only the table off the rule was read again"
+        );
+        assert_eq!(keys[1], ((T0 + 50) * 1000, T0 + 1, 2, 0));
+        let again = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        assert_eq!(
+            cursor_state(&acct, again).1,
+            vec![false, true],
+            "the table is remembered"
+        );
+    }
+
+    #[test]
+    fn a_table_off_the_rule_that_changes_the_pages_tells_the_export_to_start_over() {
+        use crate::fixture::{MsgSpec, T0};
+        let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
+        // the same sort_seq, but message 2 was sent first: the rows order them 2, 1 and the index 1, 2
+        let seq = (T0 + 1) * 1000;
+        let acct = export_world(
+            "pages",
+            &[vec![
+                text(1, T0 + 9).with_sort_seq(seq),
+                text(2, T0 + 1).with_sort_seq(seq),
+                text(3, T0 + 20),
+            ]],
+        );
+        let id = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        let err = page_ids(&acct, id).unwrap_err();
+        assert!(err.to_string().contains(KEYS_CHANGED), "{err}");
+        let again = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        assert_eq!(page_ids(&acct, again).unwrap(), vec![2, 1, 3]);
     }
 
     #[test]
