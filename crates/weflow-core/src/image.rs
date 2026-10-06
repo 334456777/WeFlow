@@ -489,11 +489,36 @@ fn ffmpeg_binary() -> String {
         .unwrap_or_else(|| "ffmpeg".into())
 }
 
-/// `convertHevcToJpg`: nine ffmpeg attempts (hevc / h265 / autodetect × frame 0, 1, 5).
-pub fn convert_hevc_to_jpg(hevc: &[u8]) -> Option<Vec<u8>> {
+/// Why [`convert_hevc_to_jpg`] gave no image.
+#[derive(Debug, PartialEq, Eq)]
+pub enum HevcError {
+    /// ffmpeg could not be started (not on `PATH` or `FFMPEG_PATH`).
+    FfmpegMissing,
+    /// ffmpeg ran, but no attempt gave a usable image.
+    Undecodable,
+}
+
+/// The ffmpeg attempts of `convertHevcToJpg`: raw HEVC, then autodetected, each with frame 0, 1 and 5. The desktop
+/// app also tries `-f h265`, which no ffmpeg knows: it always fails at once, so it is left out. On a real account
+/// every one of about 1800 WXGF images converted at the first attempt; the others only matter for odd streams.
+const HEVC_ATTEMPTS: [(Option<&str>, Option<u32>); 6] = [
+    (Some("hevc"), None),
+    (Some("hevc"), Some(1)),
+    (Some("hevc"), Some(5)),
+    (None, None),
+    (None, Some(1)),
+    (None, Some(5)),
+];
+
+/// `convertHevcToJpg`: tries [`HEVC_ATTEMPTS`] in order.
+pub fn convert_hevc_to_jpg(hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
+    convert_hevc_with(&ffmpeg_binary(), hevc)
+}
+
+fn convert_hevc_with(ffmpeg: &str, hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
     use std::process::{Command, Stdio};
     let dir = std::env::temp_dir().join("weflow_hevc");
-    std::fs::create_dir_all(&dir).ok()?;
+    std::fs::create_dir_all(&dir).map_err(|_| HevcError::Undecodable)?;
     let uid = format!(
         "{}_{}",
         std::process::id(),
@@ -504,49 +529,47 @@ pub fn convert_hevc_to_jpg(hevc: &[u8]) -> Option<Vec<u8>> {
     );
     let input = dir.join(format!("hevc_{uid}.hevc"));
     let output = dir.join(format!("hevc_{uid}.jpg"));
-    std::fs::write(&input, hevc).ok()?;
-    let ffmpeg = ffmpeg_binary();
-    let mut result = None;
-    'attempts: for fmt in [Some("hevc"), Some("h265"), None] {
-        for frame in [None, Some(1), Some(5)] {
-            let _ = std::fs::remove_file(&output);
-            let mut cmd = Command::new(&ffmpeg);
-            cmd.args(["-hide_banner", "-loglevel", "error", "-y"]);
-            if let Some(f) = fmt {
-                cmd.args(["-f", f]);
-            }
-            cmd.arg("-i").arg(&input);
-            if let Some(n) = frame {
-                cmd.args(["-vf", &format!("select=eq(n\\,{n})")]);
-            }
-            cmd.args(["-vframes", "1", "-q:v", "2", "-f", "image2"])
-                .arg(&output)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-            let Ok(mut child) = cmd.spawn() else {
-                break 'attempts;
-            };
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-            let status = loop {
-                match child.try_wait() {
-                    Ok(Some(s)) => break Some(s),
-                    Ok(None) if std::time::Instant::now() < deadline => {
-                        std::thread::sleep(std::time::Duration::from_millis(2))
-                    }
-                    _ => {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        break None;
-                    }
+    std::fs::write(&input, hevc).map_err(|_| HevcError::Undecodable)?;
+    let mut result = Err(HevcError::Undecodable);
+    for (fmt, frame) in HEVC_ATTEMPTS {
+        let _ = std::fs::remove_file(&output);
+        let mut cmd = Command::new(ffmpeg);
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y"]);
+        if let Some(f) = fmt {
+            cmd.args(["-f", f]);
+        }
+        cmd.arg("-i").arg(&input);
+        if let Some(n) = frame {
+            cmd.args(["-vf", &format!("select=eq(n\\,{n})")]);
+        }
+        cmd.args(["-vframes", "1", "-q:v", "2", "-f", "image2"])
+            .arg(&output)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let Ok(mut child) = cmd.spawn() else {
+            result = Err(HevcError::FfmpegMissing);
+            break;
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(s)) => break Some(s),
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(2))
                 }
-            };
-            if status.is_some_and(|s| s.success()) {
-                if let Ok(buf) = std::fs::read(&output) {
-                    if !buf.is_empty() && !is_likely_corrupted_jpeg(&buf) {
-                        result = Some(buf);
-                        break 'attempts;
-                    }
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+            }
+        };
+        if status.is_some_and(|s| s.success()) {
+            if let Ok(buf) = std::fs::read(&output) {
+                if !buf.is_empty() && !is_likely_corrupted_jpeg(&buf) {
+                    result = Ok(buf);
+                    break;
                 }
             }
         }
@@ -566,8 +589,11 @@ pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, bool) {
     }
     let candidates = wxgf_hevc_candidates(&buf);
     for (_, data) in &candidates {
-        if let Some(jpg) = convert_hevc_to_jpg(data).filter(|j| !j.is_empty()) {
-            return (jpg, false);
+        match convert_hevc_to_jpg(data) {
+            Ok(jpg) => return (jpg, false),
+            // the other candidates would not start it either
+            Err(HevcError::FfmpegMissing) => break,
+            Err(HevcError::Undecodable) => {}
         }
     }
     let fallback = candidates
@@ -752,6 +778,21 @@ mod tests {
         let (plain, flag) = unwrap_wxgf(vec![1, 2, 3]);
         assert_eq!(plain, vec![1, 2, 3]);
         assert!(!flag);
+    }
+
+    #[test]
+    fn a_missing_ffmpeg_is_told_apart_from_a_failed_conversion() {
+        let missing = std::env::temp_dir()
+            .join("weflow-no-such-dir")
+            .join("ffmpeg");
+        assert_eq!(
+            convert_hevc_with(&missing.to_string_lossy(), &[0u8; 200]),
+            Err(HevcError::FfmpegMissing)
+        );
+        assert!(
+            HEVC_ATTEMPTS.iter().all(|(fmt, _)| *fmt != Some("h265")),
+            "ffmpeg has no h265 demuxer"
+        );
     }
 
     #[test]
