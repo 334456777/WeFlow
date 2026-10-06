@@ -104,4 +104,27 @@ async fn sender_prefilter_preserves_revoker_identity_across_shards_and_paths() {
             assert_eq!(actual["messages"], Value::Array(expected.clone()));
         }
     }
+
+    // `--sender` takes the bare wxid (#46): the owner's account folder name is refused with the bare form to use,
+    // and a sender with no messages is told what `--sender` takes; both export paths alike
+    for collect in [false, true] {
+        let out = root.join(format!("refused-{collect}.json"));
+        for sender in ["wxid_me_ab12", "wxid_nobody"] {
+            req.sender = Some(sender.into());
+            let err = if collect {
+                hub.export_messages_with_media(&req, &out, &media).await
+            } else {
+                hub.export_messages(&req, &out)
+            }
+            .unwrap_err();
+            assert!(err.message.contains("bare wxid"), "{}", err.message);
+            if sender == "wxid_me_ab12" {
+                assert_eq!(err.exit_code, 2, "a usage error");
+                assert!(err.message.contains("use wxid_me,"), "{}", err.message);
+            } else {
+                assert!(err.message.contains("wxid_nobody"), "{}", err.message);
+            }
+            assert!(!out.exists());
+        }
+    }
 }

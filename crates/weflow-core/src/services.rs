@@ -690,6 +690,7 @@ impl ServiceHub {
         use crate::message::CollectOptions;
         let (_, _, wxid) = self.connection_inputs()?;
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
+        check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
         // One pass over the conversation: keeping its whole database decrypted would only cost memory.
         wcdb.set_low_memory(true);
@@ -707,9 +708,7 @@ impl ServiceHub {
                 .then(a.local_id.cmp(&b.local_id))
         });
         if collected.is_empty() {
-            return Err(AppError::runtime(
-                "no messages found for this session in the given range",
-            ));
+            return Err(no_messages(req));
         }
         Ok((wcdb, collected))
     }
@@ -720,6 +719,7 @@ impl ServiceHub {
         use crate::message::CollectOptions;
         let (_, _, wxid) = self.connection_inputs()?;
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
+        check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
         wcdb.set_low_memory(true);
         let opts = CollectOptions {
@@ -777,9 +777,7 @@ impl ServiceHub {
         }
         let count = read??.map_err(|e| AppError::runtime(e.to_string()))?;
         if count == 0 {
-            return Err(AppError::runtime(
-                "no messages found for this session in the given range",
-            ));
+            return Err(no_messages(req));
         }
         Ok(json!({ "out": out, "count": count, "session": req.session_id, "format": format }))
     }
@@ -1441,6 +1439,31 @@ fn copy_atomically(from: &Path, path: &Path) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&tmp);
     }
     copied
+}
+
+/// `--sender` takes the bare wxid: it is the one identifier every message has, unique and fixed. The account folder
+/// name (the owner's wxid with a `_xxxx` suffix) would match too, by the identity rule, so it is refused with the
+/// bare form to use instead.
+fn check_sender(sender: Option<&str>, my_wxid: &str) -> AppResult<()> {
+    let Some(sender) = sender.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(());
+    };
+    if sender.len() > my_wxid.len() && crate::message::is_same_wxid(sender, my_wxid) {
+        return Err(AppError::usage(format!(
+            "--sender takes the bare wxid: use {my_wxid}, not the account folder name {sender}"
+        )));
+    }
+    Ok(())
+}
+
+/// The error of an export that found nothing; with `--sender`, a reminder of what it takes.
+fn no_messages(req: &MessageExportRequest) -> AppError {
+    match req.sender.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(sender) => AppError::runtime(format!(
+            "no messages from {sender} in this session in the given range (--sender takes the bare wxid, as `chat contacts` lists it)"
+        )),
+        None => AppError::runtime("no messages found for this session in the given range"),
+    }
 }
 
 /// Contact names looked up in `wcdb` as an export needs them (cached).

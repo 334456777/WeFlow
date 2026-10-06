@@ -107,7 +107,7 @@ const HELP: &[(&str, &str)] = &[
     ("Native CLI for WeFlow", "WeFlow 原生命令行工具"),
     ("Official accounts and WeChat Pay records", "公众号与微信支付记录"),
     ("One member's statistics (types, hours, common phrases and emoji)", "某位成员的统计（类型、时段、常用语和表情）"),
-    ("Only export messages sent by this wxid", "仅导出该 wxid 发送的消息"),
+    ("Only export messages sent by this person: their bare wxid, as `chat contacts` lists it (not an account folder name with a `_xxxx` suffix)", "仅导出这个人发送的消息：填裸 wxid，即 `chat contacts` 列出的形式（不能是带 `_xxxx` 后缀的账号文件夹名）"),
     ("Only media of this conversation id (default: all conversations)", "仅该会话 ID 的媒体（默认：所有会话）"),
     ("Only messages from this date, local time, inclusive (YYYY-MM-DD)", "仅该日期起的消息，本地时间，含当天（YYYY-MM-DD）"),
     ("Only messages up to this date, local time, inclusive (YYYY-MM-DD)", "仅截至该日期的消息，本地时间，含当天（YYYY-MM-DD）"),

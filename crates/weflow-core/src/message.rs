@@ -1943,28 +1943,11 @@ pub fn quoted_sender_username(content: &str) -> Option<String> {
 
 // ─────────────────────────────── transfers ───────────────────────────────
 
-fn candidate_ids(values: &[&str]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for v in values {
-        let t = v.trim();
-        if !t.is_empty() && !out.iter().any(|o| o == t) {
-            out.push(t.to_string());
-        }
-    }
-    out
-}
-
+/// Whether two identifiers are the same person, by the database layer's rule
+/// ([`weflow_native::native_db::same_identity`]): case-insensitive, and a bare wxid matches its account folder name
+/// (`wxid_abc` and `wxid_abc_1a2b`), so the export and the database agree on who sent what.
 pub fn is_same_wxid(lhs: &str, rhs: &str) -> bool {
-    let left: Vec<String> = candidate_ids(&[lhs])
-        .into_iter()
-        .map(|s| s.to_lowercase())
-        .collect();
-    if left.is_empty() {
-        return false;
-    }
-    candidate_ids(&[rhs])
-        .iter()
-        .any(|r| left.contains(&r.to_lowercase()))
+    weflow_native::native_db::same_identity(lhs, rhs)
 }
 
 pub fn get_transfer_prefix(
