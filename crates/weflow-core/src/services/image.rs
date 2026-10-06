@@ -22,9 +22,11 @@ pub struct ImageState {
     resolved: HashMap<String, String>,
     /// Listings of the `Img` folders searched for `.dat` files (see [`ServiceHub::dir_listing`]).
     dir_listings: HashMap<PathBuf, Arc<DirListing>>,
+    /// Names in the folders of the decrypted-image cache (see [`ServiceHub::possibly_cached`]).
+    cache_dirs: HashMap<PathBuf, CacheDirNames>,
 }
 
-/// Directory listings kept at most; past that the cache starts over.
+/// Directory listings (and cache folders' names) kept at most; past that the cache starts over.
 const MAX_DIR_LISTINGS: usize = 1024;
 /// A listing taken this soon after the folder's last change is not reused: a file added in the same tick of a coarse
 /// timestamp would leave the modification time as it was.
@@ -98,6 +100,35 @@ impl DirListing {
         found.sort_unstable();
         found.into_iter().map(|i| self.files[i].as_str()).collect()
     }
+}
+
+/// The lower-case names in a folder of the decrypted-image cache. Looking an image up tries up to 125 file names in
+/// three folders, and an export with media looks every image up twice while it fills those folders: checking each
+/// name took one metadata call apiece (issue #16). The names are read once, the files this process writes are added,
+/// and the folder is read again when its modification time shows a change made otherwise. A name that is no longer
+/// on disk only costs the check of that one path; a missing name costs a decrypt that was not needed.
+struct CacheDirNames {
+    modified: SystemTime,
+    names: HashSet<String>,
+}
+
+/// What [`ServiceHub::index_cache_dir`] found.
+#[derive(Clone, Copy, PartialEq)]
+enum CacheDir {
+    /// No such folder: none of its paths exist.
+    Missing,
+    /// Its names are in `ImageState::cache_dirs`.
+    Indexed,
+    /// It could not be listed: any of its paths may exist.
+    Unlisted,
+}
+
+fn modified_time(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+fn lower_file_name(path: &Path) -> Option<String> {
+    path.file_name().map(|n| n.to_string_lossy().to_lowercase())
 }
 
 #[derive(Default, Clone, Debug)]
@@ -650,11 +681,113 @@ impl ServiceHub {
         prefer_hd: bool,
     ) -> Option<String> {
         let root = self.image_cache_root();
-        img::cache_output_candidates(&root, dat_path, session_id, prefer_hd)
+        self.possibly_cached(img::cache_output_candidates(
+            &root, dat_path, session_id, prefer_hd,
+        ))
+        .into_iter()
+        .filter(|c| c.exists())
+        .map(|c| c.to_string_lossy().to_string())
+        .find(|c| self.usable_image_cache_file(c))
+    }
+
+    /// The `candidates` whose folder lists their name, in order: those that may exist. Costs one metadata call per
+    /// folder instead of one per path; the paths returned still have to be checked.
+    fn possibly_cached(&self, candidates: Vec<PathBuf>) -> Vec<PathBuf> {
+        let mut dirs: HashMap<&Path, CacheDir> = HashMap::new();
+        for dir in candidates.iter().filter_map(|c| c.parent()) {
+            if !dirs.contains_key(dir) {
+                dirs.insert(dir, self.index_cache_dir(dir));
+            }
+        }
+        let state = self.image_state.lock().unwrap();
+        let listed = |c: &PathBuf| {
+            let Some(dir) = c.parent() else {
+                return true;
+            };
+            match dirs.get(dir) {
+                Some(CacheDir::Missing) => false,
+                // an index dropped since (over `MAX_DIR_LISTINGS`) proves nothing
+                Some(CacheDir::Indexed) => match (state.cache_dirs.get(dir), lower_file_name(c)) {
+                    (Some(index), Some(name)) => index.names.contains(&name),
+                    _ => true,
+                },
+                _ => true,
+            }
+        };
+        let kept: Vec<bool> = candidates.iter().map(listed).collect();
+        drop(state);
+        candidates
             .into_iter()
-            .filter(|c| c.exists())
-            .map(|c| c.to_string_lossy().to_string())
-            .find(|c| self.usable_image_cache_file(c))
+            .zip(kept)
+            .filter_map(|(c, keep)| keep.then_some(c))
+            .collect()
+    }
+
+    /// Brings the names of the cache folder `dir` up to date.
+    fn index_cache_dir(&self, dir: &Path) -> CacheDir {
+        let Some(modified) = modified_time(dir) else {
+            self.image_state.lock().unwrap().cache_dirs.remove(dir);
+            return CacheDir::Missing;
+        };
+        {
+            let state = self.image_state.lock().unwrap();
+            let recorded = state.cache_dirs.get(dir).map(|index| index.modified);
+            // a file this process renamed into the folder in between is recorded under the lock (`write_cache_file`)
+            if recorded.is_some() && (recorded == Some(modified) || recorded == modified_time(dir))
+            {
+                return CacheDir::Indexed;
+            }
+        }
+        // read without holding the lock. The time was taken first: a file written meanwhile changes it again, so the
+        // next lookup reads the folder anew
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return CacheDir::Unlisted;
+        };
+        let names: Vec<String> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().to_lowercase())
+            .collect();
+        let mut state = self.image_state.lock().unwrap();
+        if state.cache_dirs.len() >= MAX_DIR_LISTINGS && !state.cache_dirs.contains_key(dir) {
+            state.cache_dirs.clear();
+        }
+        let index = state
+            .cache_dirs
+            .entry(dir.to_path_buf())
+            .or_insert_with(|| CacheDirNames {
+                modified,
+                names: HashSet::new(),
+            });
+        // added to the names already known, so a file another thread noted in between is not dropped
+        index.names.extend(names);
+        index.modified = modified;
+        CacheDir::Indexed
+    }
+
+    /// Writes a decrypted image into the cache like [`write_atomically`], and adds it to its folder's names. The
+    /// temporary file is written in `<cache>/Images/.partial`, and the rename is recorded under the lock: otherwise
+    /// the other media threads would see the folder change while it is written and read all its names again.
+    fn write_cache_file(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        let (Some(dir), Some(name)) = (path.parent(), lower_file_name(path)) else {
+            return write_atomically(path, bytes);
+        };
+        let partial = self.image_cache_root().join(".partial");
+        std::fs::create_dir_all(&partial)?;
+        let tmp = temporary_sibling(&partial.join(&name));
+        let written = std::fs::write(&tmp, bytes).and_then(|()| {
+            let mut state = self.image_state.lock().unwrap();
+            std::fs::rename(&tmp, path)?;
+            let modified = modified_time(dir);
+            if let (Some(index), Some(modified)) = (state.cache_dirs.get_mut(dir), modified) {
+                index.names.insert(name);
+                index.modified = modified;
+            }
+            Ok(())
+        });
+        if written.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        written
     }
 
     fn remove_duplicate_cache_candidates(
@@ -670,9 +803,10 @@ impl ServiceHub {
             &root, dat_path, session_id, true,
         ));
         let mut seen = HashSet::new();
-        for c in all {
+        all.retain(|c| seen.insert(c.clone()));
+        for c in self.possibly_cached(all) {
             let s = c.to_string_lossy().to_string();
-            if s == keep || !seen.insert(s.clone()) || !c.exists() || !img::is_image_file(&s) {
+            if s == keep || !c.exists() || !img::is_image_file(&s) {
                 continue;
             }
             let _ = std::fs::remove_file(&c);
@@ -978,7 +1112,7 @@ impl ServiceHub {
             }
         }
         // renamed into place: an export's other media threads may read this cache file as soon as it exists
-        if let Err(e) = write_atomically(&output, &data) {
+        if let Err(e) = self.write_cache_file(&output, &data) {
             return ImageResult::fail(e.to_string(), "not_found");
         }
         let out = output.to_string_lossy().to_string();
@@ -1085,7 +1219,11 @@ impl ServiceHub {
 
     /// `image:clearCache`: empties the decrypted-image cache (keeps the folder layout).
     pub fn image_clear_cache(&self) -> Value {
-        self.image_state.lock().unwrap().resolved.clear();
+        {
+            let mut state = self.image_state.lock().unwrap();
+            state.resolved.clear();
+            state.cache_dirs.clear();
+        }
         let root = self.cache_base().join("Images");
         if !root.exists() {
             return json!({ "success": true });
