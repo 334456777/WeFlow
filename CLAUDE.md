@@ -39,7 +39,7 @@
   - 新建 Issue 或 PR 后立即加入看板并设置 Status 与 `Priority`（`P0` 紧急，立即处理；`P1` 高；`P2` 普通；`P3` 低，可随时搁置）；PR 打开时设为 `In Review`，合并或关闭后与其关联的 Issue 一起设为 `Done`
   - 用 `gh project item-add` 加入条目，用 `gh project item-edit` 改字段；重写 Status 选项会清空所有条目的状态，改选项后必须重新设置
 - 通过 GitHub Issue 创建的 Pull request 要在背景里提到原 Issue
-- Pull request 创建时及时添加 Lables；关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 Issues；PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
+- Pull request 创建前先创建 Issue 并关联到对应PR，创建时及时添加 Lables；PR关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 Issues；PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
 - 修改 `docs/` 下的文档时，必须同步更新 `docs/zh-CN/` 中的对应版本（反之亦然），新增文档也要两种语言都提供；`docs/weflow-tech-docs/` 和 `docs/es-ES/` 不受此限
 
 ## 注意事项
