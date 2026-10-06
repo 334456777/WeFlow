@@ -371,6 +371,109 @@ async fn export_media_copies_images_of_a_conversation() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// The same image (md5) shown by two messages: the older one, from a month whose folder has no file, and the newer
+/// one, whose month has it. The threads of an export reach them in either order.
+fn shared_image_world(
+    tag: &str,
+) -> (
+    weflow_core::services::ServiceHub,
+    std::path::PathBuf,
+    Vec<u8>,
+) {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, DAY, T0};
+    let md5 = "aabbccddeeff00112233445566778899";
+    let (hub, root, fixture) = common::custom_hub_with(
+        tag,
+        |f| {
+            f.session_db(&[SessionSpec {
+                username: "wxid_bob",
+                summary: "",
+                last_timestamp: T0,
+                unread: 0,
+                last_msg_type: 3,
+            }]);
+            let image = |id: i64, at: i64| {
+                MsgSpec::text(
+                    id,
+                    "wxid_bob",
+                    at,
+                    &format!("<msg><img md5=\"{md5}\"/></msg>"),
+                )
+                .of_type(3)
+            };
+            f.message_shard(
+                0,
+                &[("wxid_bob", vec![image(1, T0 - 40 * DAY), image(2, T0)])],
+            );
+        },
+        |p| {
+            p.image_xor_key = Some(0x5a);
+            p.image_aes_key = Some(KEY.into());
+        },
+    );
+    let month = weflow_core::image::year_month_from_create_time(Some(1_700_000_000));
+    let img_dir = fixture
+        .account_dir
+        .join("msg/attach")
+        .join(md5_hex("wxid_bob"))
+        .join(&month)
+        .join("Img");
+    std::fs::create_dir_all(&img_dir).unwrap();
+    let plain = jpeg(3000, 11);
+    std::fs::write(
+        img_dir.join(format!("{md5}_h.dat")),
+        encrypt_v2(&plain, KEY.as_bytes().try_into().unwrap(), 0x5a),
+    )
+    .unwrap();
+    (hub, root, plain)
+}
+
+#[tokio::test]
+async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order() {
+    // the order the two messages are looked at in is up to the threads: run it a few times
+    for round in 0..5 {
+        let (hub, root, plain) = shared_image_world(&format!("img-shared-{round}"));
+        let r = hub
+            .export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            (r["exported"].as_i64(), r["missing"].as_i64()),
+            (Some(2), Some(0)),
+            "round {round}: {r}"
+        );
+        let files = r["files"].as_array().unwrap();
+        assert_eq!(files[0]["path"], files[1]["path"], "one file for both");
+        assert_eq!(
+            std::fs::read(files[0]["path"].as_str().unwrap()).unwrap(),
+            plain
+        );
+        let _ = std::fs::remove_dir_all(root);
+
+        let (hub, root, _) = shared_image_world(&format!("img-shared-msgs-{round}"));
+        let opts = weflow_core::api::ApiMediaOptions {
+            enabled: true,
+            images: true,
+            ..Default::default()
+        };
+        let dir = root.join("exp");
+        std::fs::create_dir_all(&dir).unwrap();
+        let r = hub
+            .export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                r["media"]["exported"].as_i64(),
+                r["media"]["missing"].as_i64()
+            ),
+            (Some(2), Some(0)),
+            "round {round}: {r}"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
 #[tokio::test]
 async fn export_media_reports_thumbnail_only_images() {
     let (hub, root, img_dir) = export_world("img-export-thumb");

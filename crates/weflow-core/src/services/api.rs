@@ -1739,6 +1739,21 @@ impl ServiceHub {
             for (k, r) in found.into_inner().unwrap() {
                 results[k] = r;
             }
+            // An image whose own file is not on disk is still exported when another message shows the same image
+            // (same md5) and that one was found first: its result is remembered (`image_state`). Which message came
+            // first depends on the threads, so look again now that all of them are done.
+            for &k in &local {
+                if results[k].is_none() && shared[todo[k]].local_type == 3 {
+                    results[k] = self.export_local_media(
+                        &chat_msg(&shared[todo[k]]),
+                        session_id,
+                        &safe,
+                        &session_dir,
+                        opts,
+                        Some(&written),
+                    );
+                }
+            }
         }
         for k in 0..total {
             let m = &msgs[todo[k]];
@@ -2166,6 +2181,16 @@ impl ServiceHub {
             });
             for (i, r) in results.into_inner().unwrap() {
                 done[i] = Some(r);
+            }
+            // see `attach_export_media`: an image found through another message's result, whatever the thread order
+            for &i in &local {
+                if matches!(done[i], Some(None)) && work[i].2.local_type == 3 {
+                    let (sid, _, msg) = &work[i];
+                    let safe = api::sanitize_file_name(sid, "session");
+                    let dir = out.join(&safe);
+                    done[i] =
+                        Some(self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&written)));
+                }
             }
         }
         for (n, (sid, kind, msg)) in work.iter().enumerate() {
