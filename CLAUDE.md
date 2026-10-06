@@ -24,7 +24,7 @@
 - `scripts/`：构建脚本（`build-native-db.cjs` 编译 FFI 库并复制到 `resources/native-db/`，`i18n-check.cjs` 等）；`scripts/research/` 为调研探针
 
 ### 其他
-- `docs/`：英文文档，`docs/zh-CN/` 为对应中文版；`docs/` 下还有其他微信数据库/密钥/媒体格式/踩坑记录的技术资料
+- `docs/`：英文文档，`docs/zh-CN/` 为对应中文版；`docs/` 下还有微信数据库/密钥/媒体格式/踩坑记录的技术资料
 - `.github/workflows/` 下的 `release-cli.yml`（打 tag 时构建发布）和 `ci.yml`（代码变动时运行 `make ci`：rustfmt、clippy、全部测试，外加 `make docs-check`）和 `docs-check.yml`（仅文档变动时运行 `make docs-check`）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
 
 
