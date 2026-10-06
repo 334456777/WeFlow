@@ -92,10 +92,6 @@ help:
 	@printf "  $(CYAN)make test$(RESET)            运行全部单元测试\n"
 	@printf "  $(CYAN)make check$(RESET)           cargo check（只检查，不编译）\n"
 	@printf "  $(CYAN)make docs-check$(RESET)      检查指定 Markdown 文档的一致性\n"
-	@printf "                             范围：README.md、docs/ 与 docs/zh-CN/ 直属 .md 文件；不递归子目录\n"
-	@printf "                             项目：不支持函数清单及 README 入口、相对链接与 Markdown 锚点、中英文文件名配对、crate 架构表、汉字旁的中文逗号\n"
-	@printf "                             逗号检查另含 CLAUDE.md；链接与逗号检查跳过代码块和行内代码\n"
-	@printf "                             不检查 .go 等代码文件内容、外部网址可用性或翻译质量；不自动修改文档\n"
 	@printf "  $(CYAN)make fmt$(RESET)             格式化代码\n"
 	@printf "  $(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化\n"
 	@printf "  $(CYAN)make lint$(RESET)            Clippy 静态分析\n"
@@ -195,15 +191,8 @@ test: check-rust
 	@printf "$(BOLD)▶ cargo test --workspace$(RESET)\n"
 	cargo test --workspace
 
-# Runs unsupported_docs and docs_consistency; checks are defined in crates/weflow-native/tests/.
-# Scans README.md and direct .md children of docs/ and docs/zh-CN/, without recursion.
-# Also scans src/wcdb.rs for pending/read_only stubs and crates/ for architecture table coverage.
-# CLAUDE.md is included only in the comma check; fenced/inline code is skipped for links and commas.
-# Does not validate code file contents, external URLs or translation quality, or rewrite documents.
 docs-check: check-rust
-	@printf "$(BOLD)▶ Markdown 文档一致性检查（不支持清单及 README 入口、相对链接与锚点、中英文文件名配对、crate 架构表、中文逗号）$(RESET)\n"
-	@printf "  范围：README.md、docs/ 与 docs/zh-CN/ 直属 .md 文件（不递归）；逗号检查另含 CLAUDE.md\n"
-	@printf "  链接与逗号检查跳过代码块和行内代码；不检查 .go 等代码文件内容、外部网址可用性或翻译质量；不自动修改文档\n"
+	@printf "$(BOLD)▶ 检查指定 Markdown 文档的一致性$(RESET)\n"
 	cargo test -p weflow-native --test unsupported_docs --test docs_consistency
 
 check: check-rust
