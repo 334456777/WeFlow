@@ -124,6 +124,9 @@ This project (hereinafter “the Project”) was created as a technical research
     <td><img src="docs/images/HDD.JPG" alt="HDD" width="150"></td>
     <td><img src="docs/images/MONITOR.JPG" alt="MONITOR" width="150"></td>
   </tr>
+</table>
+
+<table>
   <tr>
     <td><img src="docs/images/MB.JPG" alt="MB" width="150"></td>
     <td><img src="docs/images/GPU.JPG" alt="GPU" width="150"></td>
