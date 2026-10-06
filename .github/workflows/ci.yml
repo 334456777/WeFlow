@@ -57,7 +57,7 @@ jobs:
         run: make ci
 
   windows:
-    name: build (${{ matrix.target }})
+    name: build and test (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
