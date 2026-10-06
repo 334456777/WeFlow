@@ -482,17 +482,10 @@ pub fn is_wxgf(buf: &[u8]) -> bool {
     buf.len() >= 20 && &buf[0..4] == b"wxgf"
 }
 
-fn ffmpeg_binary() -> String {
-    std::env::var("FFMPEG_PATH")
-        .ok()
-        .filter(|p| !p.trim().is_empty())
-        .unwrap_or_else(|| "ffmpeg".into())
-}
-
 /// Why [`convert_hevc_to_jpg`] gave no image.
 #[derive(Debug, PartialEq, Eq)]
 pub enum HevcError {
-    /// ffmpeg could not be started (not on `PATH` or `FFMPEG_PATH`).
+    /// ffmpeg could not be started (see [`crate::ffmpeg::locate`]).
     FfmpegMissing,
     /// ffmpeg ran, but no attempt gave a usable image.
     Undecodable,
@@ -512,10 +505,10 @@ const HEVC_ATTEMPTS: [(Option<&str>, Option<u32>); 6] = [
 
 /// `convertHevcToJpg`: tries [`HEVC_ATTEMPTS`] in order.
 pub fn convert_hevc_to_jpg(hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
-    convert_hevc_with(&ffmpeg_binary(), hevc)
+    convert_hevc_with(&crate::ffmpeg::locate().0, hevc)
 }
 
-fn convert_hevc_with(ffmpeg: &str, hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
+fn convert_hevc_with(ffmpeg: &Path, hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
     use std::process::{Command, Stdio};
     let dir = std::env::temp_dir().join("weflow_hevc");
     std::fs::create_dir_all(&dir).map_err(|_| HevcError::Undecodable)?;
@@ -786,7 +779,7 @@ mod tests {
             .join("weflow-no-such-dir")
             .join("ffmpeg");
         assert_eq!(
-            convert_hevc_with(&missing.to_string_lossy(), &[0u8; 200]),
+            convert_hevc_with(&missing, &[0u8; 200]),
             Err(HevcError::FfmpegMissing)
         );
         assert!(

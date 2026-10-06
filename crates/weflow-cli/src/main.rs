@@ -97,12 +97,35 @@ enum Commands {
     Backup(BackupCommand),
     /// Clear WeFlow's caches
     Cache(CacheCommand),
+    /// Install and locate the ffmpeg that converts WXGF images
+    Ffmpeg(FfmpegCommand),
     /// Save the output language
     Lang {
         /// Output language
         #[arg(value_enum)]
         lang: LangArg,
     },
+}
+
+#[derive(Args, Debug)]
+struct FfmpegCommand {
+    #[command(subcommand)]
+    command: FfmpegSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum FfmpegSubcommand {
+    /// Download the ffmpeg build the desktop app bundles (ffmpeg-static b6.1.1), check its SHA-256 and unpack it into WeFlow's folder; used when FFMPEG_PATH is unset and no ffmpeg is on PATH
+    Install {
+        /// Download it again even when the installed copy is intact
+        #[arg(long)]
+        force: bool,
+        /// Download from a mirror of the ffmpeg-static releases instead of GitHub, for example https://registry.npmmirror.com/-/binary/ffmpeg-static (the files are checked either way)
+        #[arg(long)]
+        base_url: Option<String>,
+    },
+    /// Show the ffmpeg that WXGF images use and where it was found (FFMPEG_PATH, PATH, installed or missing)
+    Path,
 }
 
 #[derive(Args, Debug)]
@@ -1278,6 +1301,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
 
     apply_progress_settings(&config, cli);
+    weflow_core::ffmpeg::set_home(&ctx.home_dir);
 
     match &cli.command {
         Commands::Config(command) => return handle_config(command, &ctx, &mut config),
@@ -1293,6 +1317,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
             return Ok(json!({ "lang": code }));
         }
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
+        Commands::Ffmpeg(command) => return handle_ffmpeg(command, &ctx).await,
         Commands::Chat(ChatCommand {
             command:
                 ChatSubcommand::ClearAccountData {
@@ -1423,7 +1448,10 @@ async fn run(cli: &Cli) -> AppResult<Value> {
             }
             Ok(r)
         }
-        Commands::Runtime(_) | Commands::Config(_) | Commands::Lang { .. } => unreachable!(),
+        Commands::Runtime(_)
+        | Commands::Ffmpeg(_)
+        | Commands::Config(_)
+        | Commands::Lang { .. } => unreachable!(),
     }
 }
 
@@ -1536,6 +1564,15 @@ fn handle_config(
                 json!({ "importedFrom": path, "configPath": ctx.config_path, "skippedEncryptedKeys": skipped }),
             )
         }
+    }
+}
+
+async fn handle_ffmpeg(command: &FfmpegCommand, ctx: &AppContext) -> AppResult<Value> {
+    match &command.command {
+        FfmpegSubcommand::Install { force, base_url } => {
+            weflow_core::ffmpeg::install(&ctx.home_dir, base_url.as_deref(), *force).await
+        }
+        FfmpegSubcommand::Path => Ok(weflow_core::ffmpeg::status()),
     }
 }
 

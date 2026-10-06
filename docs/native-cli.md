@@ -49,6 +49,7 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ./weflow serve     --http --message-push --insight --image-auto-download
 ./weflow runtime   info | manifest
 ./weflow cache     clear-all
+./weflow ffmpeg    install | path
 ```
 
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
@@ -103,8 +104,13 @@ Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA
 `serve --http` exposes the desktop app's HTTP API (token required except `/health`; set `http_api_token` or `--api-token`).
 `serve --insight` runs the AI insight engine; each generated insight is printed to stderr (as a JSON line with `--json`).
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
-Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`); WXGF images need `ffmpeg`
-on `PATH` (or `FFMPEG_PATH`).
+Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`); WXGF images need `ffmpeg`:
+`FFMPEG_PATH`, else `ffmpeg` on `PATH`, else the copy `ffmpeg install` put in WeFlow's folder (`ffmpeg path` shows which one is
+used). `ffmpeg install` downloads the build the desktop app bundles (npm `ffmpeg-static` 5.3.0, release `b6.1.1` of
+eugeneware/ffmpeg-static, GPL-3.0, with its license file), checks its SHA-256 and unpacks it to `ffmpeg/b6.1.1/` beside the
+config file; it never runs on its own. `--base-url` downloads from a mirror of those releases instead of GitHub (for example
+`https://registry.npmmirror.com/-/binary/ffmpeg-static`), and the files are checked the same way. The Windows build is x64
+(Windows on Arm runs it emulated).
 
 Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, `4` database/native library error, `130` interrupted.
 
