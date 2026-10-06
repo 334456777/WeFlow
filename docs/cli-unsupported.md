@@ -67,18 +67,25 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   1 GB). A long-running `serve` picks up new messages when a file or its `-wal` changes. If WeChat writes a checkpoint past the
   snapshot while a query reads it, the query runs again on a fresh snapshot.
 - **Memory of big exports**: `export messages` turns the conversation into export records page by page and writes the file from
-  them, reading the database with a small page cache. For a 200,000-message group the peak is about 0.1 GB (`txt`), 0.4–0.5 GB
-  (`excel`, `weclone`, `sql`, `chatlab`) and 0.6 GB (`json`, `arkme-json`, `html`). Export a date range (`--start/--end`) if
-  memory is tight; the cost follows the range, not its age.
+  them, reading the database with a small page cache per reading thread. For a 200,000-message group of a real account, with the
+  threads an export picks on its own (16 logical CPUs), the peak is about 0.2 GB (`json`, `arkme-json`), 0.2–0.3 GB (`txt`,
+  `sql`, `html`, `excel`) and 0.25–0.4 GB (`chatlab`, `chatlab-jsonl`, `weclone`); the upper end is the resident set on Linux,
+  the lower one the working set on Windows. An export with media (`--media`) reads the whole conversation into memory before
+  it copies the media and writes the file: about 0.5 GB on Windows for the same group with images, voices and videos. Export
+  a date range (`--start/--end`) if memory is tight; the cost follows the range, not its age.
 - **Threads of big exports**: several threads read and parse the pages while the file is written. An export starts with two
   and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages, and stops adding once
-  one more thread no longer reads clearly faster (by at least half of what it could add). A format that is quick to write
-  (`txt`) ends up with more threads than a slow one (`chatlab`). Every reading thread keeps its own page cache and a few pages
-  in flight, so memory grows with them: on a synthetic 200,000-message group a `txt` export went from about 0.1 GB to
-  0.13 GB, `chatlab` from 0.1 GB to 0.11 GB. The peaks above were measured with one reading thread.
-  `WEFLOW_EXPORT_WORKERS=1` reads with one thread again; any other number fixes the thread count.
-  `RUST_LOG=weflow::export=debug` logs the threads used and the time spent reading, parsing and waiting
+  one more thread no longer reads clearly faster (by at least half of what it could add). `chatlab` and `chatlab-jsonl`
+  entries are also rendered on the reading threads, so these exports use the most threads (5–7 on 16 logical CPUs);
+  `weclone` reaches about 5, `txt`, `sql`, `html` and `excel` about 3, and `json` / `arkme-json` stay at 2 (writing is the
+  bottleneck). An export with media reads with at most 2 threads, since it only collects the messages. Every reading thread
+  keeps its own page cache and a few pages in flight, about 20–60 MiB each, and the peaks above include them.
+  `WEFLOW_EXPORT_WORKERS=1` reads with one thread (about 0.1 GB, but slower); any other number fixes the thread count.
+  `RUST_LOG=weflow::export=debug` logs the threads used and the time spent reading, parsing (and rendering) and waiting
   (`=trace` also logs each decision to add a thread).
+- **Memory on Windows at startup**: the CLI reserves and commits 128 MiB for its allocator when it starts, which saves exports
+  hundreds of thousands of page faults. It counts against the commit limit (private bytes) of even a short command, not against
+  physical memory (working set). `MIMALLOC_RESERVE_OS_MEMORY` sets another size.
 - **Key check**: the first command with a key proves it on `session.db` and remembers a one-way fingerprint of it (key,
   database salt and account; the key cannot be recovered from it) in the cache folder, so later commands skip that slow step.
   `chat clear-account-data --cache` deletes the fingerprints; `db test` always checks the key.
