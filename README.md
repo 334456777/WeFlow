@@ -2,7 +2,7 @@
 
 **English** | [简体中文](docs/zh-CN/README.md)
 
-`./weflow` is a native Rust command-line build of the [WeFlow](docs/weflow-readme.md) backend. No Electron desktop app is needed: it reads, analyzes, and exports local WeChat 4.0+ chat history directly from the terminal.
+`weflow` is a native Rust command-line build of the [WeFlow](docs/weflow-readme.md) backend. No Electron desktop app is needed: it reads, analyzes, and exports local WeChat 4.0+ chat history directly from the terminal.
 
 - Human-readable text by default (aligned `key: value` fields and tables; errors go to stderr). Add `--json` to print a single JSON document on stdout (`{"success": true, "data": ...}`) for scripting.
 - Sessions, messages, contacts, and Moments; private and group chat analytics; annual reports and dual reports.
