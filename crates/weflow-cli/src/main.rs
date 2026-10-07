@@ -40,10 +40,10 @@ fn reserve_allocator_arena() {
     }
 }
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("WEFLOW_VERSION");
 
 #[derive(Parser, Debug)]
-#[command(name = "weflow", version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEFLOW_BUILD_INFO"), ")"), about = "Native CLI for WeFlow")]
+#[command(name = "weflow", version = concat!(env!("WEFLOW_VERSION"), " (", env!("WEFLOW_BUILD_INFO"), ")"), about = "Native CLI for WeFlow")]
 struct Cli {
     /// Print JSON (for scripts) instead of the human-readable output
     #[arg(long, global = true)]
