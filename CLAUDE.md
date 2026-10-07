@@ -3,6 +3,7 @@
 ## 命令
  - `make help` 查看构建指南
  - `rust-toolchain.toml` 固定了 Rust 版本（本地与 CI 共用）；升级时改 channel，跑 `make ci` 修掉新增的 clippy 警告，一起提交
+ - 提交 Tag 触发 releases 发布前对齐 `weflow --version` 版本号
 
 ## 结构
 仓库由两部分组成：Rust workspace（CLI + 纯 Rust 只读数据库层）和 Electron 桌面端。两者共用 `weflow-native` 读取微信数据库。
