@@ -1,4 +1,4 @@
-# WeFlow Native CLI
+# WeFlow CLI
 
 **English** | [简体中文](docs/zh-CN/README.md)
 
