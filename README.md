@@ -124,7 +124,7 @@ The 180-second automatic exit can be adjusted with `./weflow key db --timeout <s
 
 The WeFlow Rust CLI ~~, since my skills aren't up to it,~~ opens databases **read-only** and never modifies WeChat databases ~~— I'm not taking the blame for that~~. Commands that would modify a database (`chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete`, and `sns delete`) are designed as placeholders. Some desktop-app features are also missing (desktop-process features such as voice-to-text and popups).
 
-See **[docs/cli-unsupported.md](docs/cli-unsupported.md)** for the detailed list ([简体中文](docs/zh-CN/cli-unsupported.md)).
+See [docs/cli-unsupported.md](docs/cli-unsupported.md)for the detailed list
 
 ## Documentation
 
