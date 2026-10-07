@@ -128,18 +128,18 @@ WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不�
 
 <table>
   <tr>
-    <td><img src="docs/images/SSD.JPG" alt="SSD" width="150"></td>
-    <td><img src="docs/images/PMM.JPG" alt="PMM" width="150"></td>
-    <td><img src="docs/images/HDD.JPG" alt="HDD" width="150"></td>
-    <td><img src="docs/images/MONITOR.JPG" alt="MONITOR" width="150"></td>
+    <td><img src="../images/SSD.JPG" alt="SSD" width="150"></td>
+    <td><img src="../images/PMM.JPG" alt="PMM" width="150"></td>
+    <td><img src="../images/HDD.JPG" alt="HDD" width="150"></td>
+    <td><img src="../images/MONITOR.JPG" alt="MONITOR" width="150"></td>
   </tr>
 </table>
 
 <table>
   <tr>
-    <td><img src="docs/images/MB.JPG" alt="MB" width="150"></td>
-    <td><img src="docs/images/GPU.JPG" alt="GPU" width="150"></td>
-    <td><img src="docs/images/RAM.JPG" alt="RAM" width="150"></td>
+    <td><img src="../images/MB.JPG" alt="MB" width="150"></td>
+    <td><img src="../images/GPU.JPG" alt="GPU" width="150"></td>
+    <td><img src="../images/RAM.JPG" alt="RAM" width="150"></td>
   </tr>
 </table>
 
