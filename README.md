@@ -34,7 +34,7 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 
 ## Check ffmpeg
 
-WeFlow decodes WeChat's WXGF images itself. ffmpeg is only used for a WXGF image its decoder cannot read (10-bit, 4:2:2
+WeFlow CLI decodes WeChat's WXGF images itself. ffmpeg is only used for a WXGF image its decoder cannot read (10-bit, 4:2:2
 or 4:4:4 pictures; a real account with about 1,800 WXGF images had none), so this step is optional. To have one ready,
 check whether one is found:
 
