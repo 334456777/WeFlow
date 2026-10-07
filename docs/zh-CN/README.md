@@ -109,7 +109,7 @@ WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不�
 `chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)设计为占位符，另有一些桌面端功能缺失
 (语音转文字、弹窗等桌面进程功能)。
 
-详细清单见 **[docs/zh-CN/cli-unsupported.md](cli-unsupported.md)**([English](../cli-unsupported.md))。
+详细清单见 [docs/zh-CN/cli-unsupported.md](cli-unsupported.md)
 
 ## 文档
 
