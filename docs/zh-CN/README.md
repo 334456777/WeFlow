@@ -1,4 +1,4 @@
-# WeFlow 原生命令行
+# WeFlow 命令行
 
 [English](../../README.md) | **简体中文**
 
