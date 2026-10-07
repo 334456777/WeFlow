@@ -34,7 +34,7 @@ cp target/release/weflow .
 
 ## 检查 ffmpeg
 
-WeFlow 自己解码微信的 WXGF 图片。只有内置解码器读不了的 WXGF 图片（10-bit、4:2:2 或 4:4:4 的画面；一个约有 1800 张 WXGF 图片的真实账号里一张也没有）才会用到 ffmpeg，所以这一步是可选的。如果想事先准备好，先检查能否找到 ffmpeg：
+WeFlow CLI 自己解码微信的 WXGF 图片。只有内置解码器读不了的 WXGF 图片（10-bit、4:2:2 或 4:4:4 的画面；一个约有 1800 张 WXGF 图片的真实账号里一张也没有）才会用到 ffmpeg，所以这一步是可选的。如果想事先准备好，先检查能否找到 ffmpeg：
 
 ```powershell
 ./weflow ffmpeg path
