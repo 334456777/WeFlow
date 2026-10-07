@@ -530,8 +530,10 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
     assert!(!r.success);
     assert_eq!(r.failure_kind, Some("ffmpeg_missing"));
     let error = r.error.unwrap();
+    let sent = weflow_core::message::format_timestamp(1_700_000_000);
     assert!(
-        error.contains("needs ffmpeg") && error.contains("FFMPEG_PATH"),
+        error.starts_with(&format!("WXGF image sent {sent} needs ffmpeg"))
+            && error.contains("FFMPEG_PATH"),
         "{error}"
     );
     assert!(
@@ -549,12 +551,15 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         (Some(0), Some(2)),
         "{r}"
     );
+    // which image, so that it can be found in WeChat: the date of its message
+    let t0 = weflow_native::fixture::T0;
+    let sent = weflow_core::message::format_timestamp(t0);
+    let listed = serde_json::json!([{ "session": "wxid_bob", "createTime": t0, "time": sent }]);
     assert_eq!(r["ffmpegMissing"], 1, "{r}");
+    assert_eq!(r["ffmpegMissingImages"], listed, "{r}");
+    let hint = r["hint"].as_str().unwrap();
     assert!(
-        r["hint"]
-            .as_str()
-            .unwrap()
-            .contains("weflow ffmpeg install"),
+        hint.contains(&format!("(sent {sent})")) && hint.contains("weflow ffmpeg install"),
         "{r}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -573,10 +578,11 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         .await
         .unwrap();
     assert_eq!(r["media"]["ffmpegMissing"], 1, "{r}");
+    assert_eq!(r["media"]["ffmpegMissingImages"], listed, "{r}");
     assert!(r["media"]["hint"]
         .as_str()
         .unwrap()
-        .contains("weflow ffmpeg install"));
+        .contains(&format!("(sent {sent}); run `weflow ffmpeg install`")));
 
     // an export that needs no conversion has nothing to say
     let (hub, root2, img_dir) = export_world("img-wxgf-none");
@@ -590,7 +596,9 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         .await
         .unwrap();
     assert!(
-        r.get("ffmpegMissing").is_none() && r.get("hint").is_none(),
+        r.get("ffmpegMissing").is_none()
+            && r.get("ffmpegMissingImages").is_none()
+            && r.get("hint").is_none(),
         "{r}"
     );
 

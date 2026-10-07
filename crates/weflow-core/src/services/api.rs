@@ -1793,12 +1793,14 @@ impl ServiceHub {
         result
     }
 
-    /// Tells a result that images were skipped for lack of ffmpeg: how many, and what to do (once per export).
+    /// Tells a result that images were skipped for lack of ffmpeg: how many, the conversation and date of each, and
+    /// what to do (once per export).
     fn add_ffmpeg_missing(&self, result: &mut Value) {
-        let n = self.images_missing_ffmpeg();
-        if n > 0 {
-            result["ffmpegMissing"] = json!(n);
-            result["hint"] = json!(super::image::ffmpeg_missing_hint(n));
+        let images = self.images_missing_ffmpeg();
+        if !images.is_empty() {
+            result["ffmpegMissing"] = json!(images.len());
+            result["ffmpegMissingImages"] = images.iter().map(|i| i.to_json()).collect();
+            result["hint"] = json!(super::image::ffmpeg_missing_hint(&images));
         }
     }
 
