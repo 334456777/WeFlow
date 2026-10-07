@@ -98,9 +98,10 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
     Ok(runtime_dir)
 }
 
-pub fn manifest() -> RuntimeManifest {
+/// `version` is the program version, which the CLI takes from the git tag (see weflow-cli/build.rs).
+pub fn manifest(version: &str) -> RuntimeManifest {
     RuntimeManifest {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: version.to_string(),
         target: target_triple().to_string(),
         commit: BUILD_COMMIT.to_string(),
         entries: EMBEDDED_ASSETS
@@ -146,7 +147,8 @@ mod tests {
 
     #[test]
     fn embedded_manifest_is_not_empty() {
-        let manifest = manifest();
+        let manifest = manifest("1.2.3");
+        assert_eq!(manifest.version, "1.2.3");
         assert!(!manifest.entries.is_empty());
         assert!(!manifest.target.is_empty());
         assert!(manifest
