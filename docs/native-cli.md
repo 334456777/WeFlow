@@ -114,7 +114,8 @@ one only once it is complete and checked, and the folders of other releases unde
 GitHub (for example `https://registry.npmmirror.com/-/binary/ffmpeg-static`; it is kept in the config file, `ffmpeg unset
 baseurl` goes back to GitHub), and the files are checked the same way. The Windows build is x64 (Windows on Arm runs it
 emulated). `ffmpeg path` shows whether one is found (see the [README](../README.md#check-ffmpeg)): a WXGF image that needs
-ffmpeg and finds none fails with `failure_kind` `ffmpeg_missing`, and an export counts these images in `ffmpegMissing`.
+ffmpeg and finds none fails with `failure_kind` `ffmpeg_missing` and an error that names the time its message was sent, and
+an export counts these images in `ffmpegMissing` and lists each one's conversation and time in `ffmpegMissingImages`.
 
 Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, `4` database/native library error, `130` interrupted.
 

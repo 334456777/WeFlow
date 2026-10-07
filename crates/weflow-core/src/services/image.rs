@@ -25,9 +25,42 @@ pub struct ImageState {
     /// Names in the folders of the decrypted-image cache (see [`ServiceHub::possibly_cached`]).
     cache_dirs: HashMap<PathBuf, CacheDirNames>,
     /// Images that could not be converted since [`ServiceHub::start_counting_missing_ffmpeg`] because ffmpeg was
-    /// not found (their cache keys), for the summary of an export.
-    ffmpeg_missing: HashSet<String>,
+    /// not found (by cache key), for the summary of an export.
+    ffmpeg_missing: HashMap<String, MissingImage>,
 }
+
+/// A WXGF image that was not converted for lack of ffmpeg: the conversation and time of the message that shows it
+/// (the earliest, when several messages show the same image), so that it can be found in WeChat.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct MissingImage {
+    pub session: Option<String>,
+    pub create_time: Option<i64>,
+}
+
+impl MissingImage {
+    /// The message time in the local time zone, like the times of an export; `?` when the message has none.
+    fn time(&self) -> String {
+        self.create_time
+            .map(crate::message::format_timestamp)
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| "?".into())
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut o = Map::new();
+        if let Some(s) = &self.session {
+            o.insert("session".into(), json!(s));
+        }
+        if let Some(t) = self.create_time {
+            o.insert("createTime".into(), json!(t));
+        }
+        o.insert("time".into(), json!(self.time()));
+        Value::Object(o)
+    }
+}
+
+/// Dates the hint of an export lists before it refers to `ffmpegMissingImages` for the rest.
+const HINT_DATES: usize = 10;
 
 /// Directory listings (and cache folders' names) kept at most; past that the cache starts over.
 const MAX_DIR_LISTINGS: usize = 1024;
@@ -220,23 +253,42 @@ impl ImageResult {
     }
 }
 
-/// What a WXGF image that cannot be converted for lack of ffmpeg says, and how to fix it.
-fn ffmpeg_missing_message() -> String {
+/// What a WXGF image that cannot be converted for lack of ffmpeg says (with the time of its message, when known),
+/// and how to fix it.
+fn ffmpeg_missing_message(image: &MissingImage) -> String {
+    let what = match image.create_time {
+        Some(_) => format!("WXGF image sent {}", image.time()),
+        None => "WXGF image".to_string(),
+    };
     let (path, source) = crate::ffmpeg::locate();
     if source == "FFMPEG_PATH" {
         format!(
-            "WXGF image needs ffmpeg: FFMPEG_PATH ({}) cannot be started",
+            "{what} needs ffmpeg: FFMPEG_PATH ({}) cannot be started",
             path.display()
         )
     } else {
-        "WXGF image needs ffmpeg: not found on PATH or installed; run `weflow ffmpeg install` or set FFMPEG_PATH"
-            .to_string()
+        format!("{what} needs ffmpeg: not found on PATH or installed; run `weflow ffmpeg install` or set FFMPEG_PATH")
     }
 }
 
-/// The summary line of an export that skipped `n` WXGF images for lack of ffmpeg.
-pub(super) fn ffmpeg_missing_hint(n: usize) -> String {
-    format!("{n} WXGF images were not exported because ffmpeg was not found; run `weflow ffmpeg install` or set FFMPEG_PATH, then export again")
+/// The summary line of an export that skipped these WXGF images for lack of ffmpeg, with the dates of the first
+/// [`HINT_DATES`] (all of them are in `ffmpegMissingImages`).
+pub(super) fn ffmpeg_missing_hint(images: &[MissingImage]) -> String {
+    let n = images.len();
+    let dates: Vec<String> = images
+        .iter()
+        .take(HINT_DATES)
+        .map(MissingImage::time)
+        .collect();
+    let dates = dates.join(", ");
+    if n > HINT_DATES {
+        format!(
+            "{n} WXGF images were not exported because ffmpeg was not found (sent {dates} and {} more, all listed in ffmpegMissingImages); run `weflow ffmpeg install` or set FFMPEG_PATH, then export again",
+            n - HINT_DATES
+        )
+    } else {
+        format!("{n} WXGF images were not exported because ffmpeg was not found (sent {dates}); run `weflow ffmpeg install` or set FFMPEG_PATH, then export again")
+    }
 }
 
 fn file_size(p: &str) -> u64 {
@@ -1118,14 +1170,27 @@ impl ServiceHub {
             };
         let (data, wxgf_failure) = img::unwrap_wxgf(decrypted.data);
         if wxgf_failure == Some(img::HevcError::FfmpegMissing) {
+            let image = MissingImage {
+                session: p.session_id.clone(),
+                create_time: p.create_time,
+            };
             self.image_state
                 .lock()
                 .unwrap()
                 .ffmpeg_missing
-                .insert(cache_key.to_string());
+                .entry(cache_key.to_string())
+                .and_modify(|seen| {
+                    if image
+                        .create_time
+                        .is_some_and(|t| seen.create_time.is_none_or(|s| t < s))
+                    {
+                        *seen = image.clone();
+                    }
+                })
+                .or_insert_with(|| image.clone());
             return ImageResult {
                 success: false,
-                error: Some(ffmpeg_missing_message()),
+                error: Some(ffmpeg_missing_message(&image)),
                 failure_kind: Some("ffmpeg_missing"),
                 is_thumb: Some(img::is_thumbnail_path(&dat)),
                 ..Default::default()
@@ -1258,9 +1323,25 @@ impl ServiceHub {
         self.image_state.lock().unwrap().ffmpeg_missing.clear();
     }
 
-    /// Images (not messages) that could not be converted for lack of ffmpeg since the count was started.
-    pub(super) fn images_missing_ffmpeg(&self) -> usize {
-        self.image_state.lock().unwrap().ffmpeg_missing.len()
+    /// Images (not messages) that could not be converted for lack of ffmpeg since the count was started, oldest
+    /// first (images without a time last).
+    pub(super) fn images_missing_ffmpeg(&self) -> Vec<MissingImage> {
+        let mut images: Vec<MissingImage> = self
+            .image_state
+            .lock()
+            .unwrap()
+            .ffmpeg_missing
+            .values()
+            .cloned()
+            .collect();
+        images.sort_by(|a, b| {
+            (a.create_time.is_none(), a.create_time, &a.session).cmp(&(
+                b.create_time.is_none(),
+                b.create_time,
+                &b.session,
+            ))
+        });
+        images
     }
 
     /// `image:clearCache`: empties the decrypted-image cache (keeps the folder layout).
@@ -1295,6 +1376,33 @@ impl ServiceHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hint_lists_the_first_dates_and_refers_to_the_list_for_the_rest() {
+        let image = |t: Option<i64>| MissingImage {
+            session: Some("s".into()),
+            create_time: t,
+        };
+        let date = crate::message::format_timestamp(1_700_000_000);
+        let hint = ffmpeg_missing_hint(&[image(Some(1_700_000_000)), image(None)]);
+        assert!(
+            hint.starts_with(&format!(
+                "2 WXGF images were not exported because ffmpeg was not found (sent {date}, ?);"
+            )),
+            "{hint}"
+        );
+        let many: Vec<MissingImage> = (0..12).map(|i| image(Some(1_700_000_000 + i))).collect();
+        let hint = ffmpeg_missing_hint(&many);
+        assert_eq!(hint.matches(&date[..10]).count(), HINT_DATES, "{hint}");
+        assert!(
+            hint.contains(" and 2 more, all listed in ffmpegMissingImages);"),
+            "{hint}"
+        );
+        assert_eq!(
+            image(Some(1_700_000_000)).to_json(),
+            json!({ "session": "s", "createTime": 1_700_000_000, "time": date })
+        );
+    }
 
     fn listing_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("weflow-listing-{tag}-{}", std::process::id()));
