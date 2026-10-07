@@ -1,24 +1,73 @@
 name: Release
 
-# Push a tag such as v0.0.1 to build the `weflow` CLI for Windows, Linux and macOS, test it and publish a GitHub
-# Release. The jobs run in order: build (release binaries for every target), test (the test suite, plus every
-# packaged binary run once and checked against the tag), release (only after every build and test passed).
-# v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1, v1.2.3-rc1, ...) is a pre-release.
+# Build the `weflow` CLI for Windows, Linux and macOS, test it and publish a GitHub Release. Two ways to start it:
+# - push a tag such as v0.0.1;
+# - run it by hand (Actions → Release → Run workflow) with a tag: an existing tag is released as is, a new one is
+#   created on the latest commit of the branch picked in "Use workflow from" when the release is published.
+# The jobs run in order: prepare (resolve the tag to a commit), build (release binaries for every target), test (the
+# test suite, plus every packaged binary run once and checked against the tag), release (only after every build and
+# test passed). v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1, v1.2.3-rc1, ...) is a
+# pre-release.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v2.1.2 (created on the selected branch if it does not exist)"
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  prepare:
+    name: Resolve the tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: tag
+        name: Resolve the tag
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a release tag such as v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+          # An existing tag keeps its commit; for an annotated tag that is the `<tag>^{}` line, not the tag object.
+          REFS="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+          SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1)"
+          [ -n "$SHA" ] || SHA="$(head -1 <<< "$REFS" | cut -f1)"
+          if [ -n "$SHA" ]; then
+            echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
+          else
+            SHA="$GITHUB_SHA"
+            echo "Releasing $TAG at $SHA ($GITHUB_REF_NAME); the tag is created when the release is published" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.target }}
+    needs: prepare
     runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +98,13 @@ jobs:
             ext: ""
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      # build.rs takes the version from `git describe`; a manual run may release a tag that does not exist yet.
+      - name: Tag the checkout
+        shell: bash
+        run: git tag -f "$TAG"
 
       - name: Install Rust (version from rust-toolchain.toml)
         shell: bash
@@ -68,7 +124,6 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
           DIR="weflow-${TAG}-${{ matrix.name }}"
           mkdir "$DIR"
           cp "target/${{ matrix.target }}/release/weflow${{ matrix.ext }}" "$DIR/"
@@ -96,8 +151,10 @@ jobs:
 
   test:
     name: Test ${{ matrix.target }}
-    needs: build
+    needs: [prepare, build]
     runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -135,28 +192,30 @@ jobs:
             suite: true
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/download-artifact@v8
         with:
           name: weflow-${{ matrix.name }}
           path: dist
 
-      # build.rs takes the version from the tag and falls back to Cargo.toml, so a mismatch means the tag was
-      # pushed without aligning the version first.
+      # build.rs takes the version from the tag and falls back to Cargo.toml, so a mismatch means the release was
+      # started without aligning the version first.
       - name: Run the packaged binary
         shell: bash
         working-directory: dist
         env:
           WEFLOW_HOME: ${{ runner.temp }}/weflow-home
         run: |
-          DIR="weflow-${GITHUB_REF_NAME}-${{ matrix.name }}"
+          DIR="weflow-${TAG}-${{ matrix.name }}"
           if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
           if [ "${{ runner.os }}" = "Windows" ]; then 7z x -y "$DIR.zip" > /dev/null; else tar -xzf "$DIR.tar.gz"; fi
           BIN="$DIR/weflow${{ matrix.ext }}"
           OUT="$("$BIN" --version)"
           echo "$OUT"
-          if [[ "$OUT" != "weflow ${GITHUB_REF_NAME#v} ("* ]]; then
-            echo "::error::weflow --version does not match the tag $GITHUB_REF_NAME"
+          if [[ "$OUT" != "weflow ${TAG#v} ("* ]]; then
+            echo "::error::weflow --version does not match the tag $TAG"
             exit 1
           fi
           "$BIN" config path
@@ -186,14 +245,19 @@ jobs:
 
   release:
     name: Publish release
-    needs: [build, test]
+    needs: [prepare, build, test]
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      SHA: ${{ needs.prepare.outputs.sha }}
     permissions:
       contents: write
       id-token: write       # sign the attestation
       attestations: write   # store the attestation
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -215,14 +279,16 @@ jobs:
           ls -l dist
           # Stable only when the tag is plain vX.Y.Z; anything with letters is a pre-release.
           FLAGS=()
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             FLAGS+=(--prerelease)
           fi
           # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in.
-          sed -e "s|{{TAG}}|$GITHUB_REF_NAME|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" \
+          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" \
             .github/release-notes.md > release-notes.md
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          # --target only matters for a new tag: GitHub creates it on that commit.
+          gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
+            --title "$TAG" \
+            --target "$SHA" \
             --notes-file release-notes.md \
             "${FLAGS[@]}"
