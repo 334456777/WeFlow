@@ -263,7 +263,10 @@ mod tests {
         bytes[0x190..0x194].copy_from_slice(&0x100u32.to_le_bytes());
         bytes[0x194..0x198].copy_from_slice(&0x1000u32.to_le_bytes());
         bytes[0x1ac..0x1b0].copy_from_slice(&0x60000020u32.to_le_bytes());
-        assert_eq!(pe_layout(&bytes, 0x4000).unwrap().text.rva, 0x1000);
+        let layout = pe_layout(&bytes, 0x4000).unwrap();
+        assert_eq!(layout.text.rva, 0x1000);
+        assert_eq!(layout.exceptions.rva, 0x3000);
+        assert_eq!(layout.exceptions.size, 12);
         assert!(pe_layout(&bytes[..0x1af], 0x4000).is_err());
         bytes[0x194..0x198].copy_from_slice(&0x4000u32.to_le_bytes());
         assert!(pe_layout(&bytes, 0x4000).is_err());
