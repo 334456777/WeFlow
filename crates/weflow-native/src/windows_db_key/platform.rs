@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock, Weak};
@@ -12,10 +12,9 @@ use windows_sys::Win32::System::Console::*;
 use windows_sys::Win32::System::Diagnostics::Debug::*;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
 use windows_sys::Win32::System::LibraryLoader::*;
-use windows_sys::Win32::System::Memory::*;
 use windows_sys::Win32::System::Threading::*;
 
-use super::{matches, signature, Signature};
+use super::locator::{self, Section};
 
 struct Handle(HANDLE);
 impl Drop for Handle {
@@ -94,10 +93,17 @@ fn remote_ntdll_symbol(pid: u32, name: &[u8]) -> Result<usize> {
     Ok(module(pid, "ntdll.dll")?.modBaseAddr as usize + offset)
 }
 
-fn locate(pid: u32) -> Result<(usize, String)> {
+/// Read-only inspection of the candidate and client version, without debugger attachment.
+pub struct KeyLocation {
+    pub address: usize,
+    pub module_offset: usize,
+    pub version: String,
+}
+
+fn locate(pid: u32) -> Result<KeyLocation> {
     let module = module(pid, "Weixin.dll")?;
     let version = file_version(&module.szExePath)?;
-    let sig = signature(version).context("unsupported WeChat version (requires WeChat 4.x x64)")?;
+    let signature = locator::signature(version)?;
     let process =
         Handle(unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid) });
     if process.0.is_null() {
@@ -113,64 +119,43 @@ fn locate(pid: u32) -> Result<(usize, String)> {
         bail!("unsupported WeChat architecture (requires x64)");
     }
     let base = module.modBaseAddr as usize;
-    let end = base
-        .checked_add(module.modBaseSize as usize)
+    let image_size = module.modBaseSize as usize;
+    base.checked_add(image_size)
         .context("invalid module size")?;
-    let mut candidates = Vec::new();
-    let mut address = base;
-    while address < end {
-        let mut region = MEMORY_BASIC_INFORMATION::default();
-        if unsafe {
-            VirtualQueryEx(
-                process.0,
-                address as *const c_void,
-                &mut region,
-                std::mem::size_of_val(&region),
-            )
-        } == 0
-        {
-            return Err(win_error("VirtualQueryEx"));
-        }
-        let next = (region.BaseAddress as usize)
-            .checked_add(region.RegionSize)
-            .context("invalid memory region")?
-            .min(end);
-        if next <= address {
-            bail!("non-progressing memory region");
-        }
-        if region.State == MEM_COMMIT
-            && region.Protect
-                & (PAGE_EXECUTE
-                    | PAGE_EXECUTE_READ
-                    | PAGE_EXECUTE_READWRITE
-                    | PAGE_EXECUTE_WRITECOPY)
-                != 0
-            && region.Protect & PAGE_GUARD == 0
-        {
-            scan_region(process.0, address, next, sig, &mut candidates)?;
-        }
-        address = next;
-    }
-    candidates.sort_unstable();
-    candidates.dedup();
-    if candidates.len() != 1 {
-        bail!(
-            "WeChat signature matched {} candidates; expected exactly one",
-            candidates.len()
-        );
-    }
-    let target = candidates[0]
-        .checked_sub(sig.back)
-        .filter(|p| *p >= base)
-        .context("signature offset outside module")?;
-    Ok((
-        target,
-        version
+    let mut headers = vec![0; image_size.min(64 * 1024)];
+    read(process.0, base, &mut headers)?;
+    let layout = locator::pe_layout(&headers, image_size)?;
+    let mut matches = BTreeSet::new();
+    scan_section(
+        process.0,
+        base,
+        layout.text,
+        signature.bytes.len(),
+        |bytes, rva, owned| {
+            matches.extend(
+                locator::matches(bytes, signature)
+                    .map(|offset| rva + offset)
+                    .filter(|point| owned.contains(point)),
+            );
+        },
+    )?;
+    let mut exceptions = vec![0; layout.exceptions.size];
+    read(process.0, base + layout.exceptions.rva, &mut exceptions)?;
+    let functions = locator::function_ranges(&exceptions, layout.text)?;
+    let offset = locator::capture_point(
+        &matches.into_iter().collect::<Vec<_>>(),
+        signature,
+        &functions,
+    )?;
+    Ok(KeyLocation {
+        address: base + offset,
+        module_offset: offset,
+        version: version
             .iter()
             .map(u16::to_string)
             .collect::<Vec<_>>()
             .join("."),
-    ))
+    })
 }
 
 fn file_version(path: &[u16]) -> Result<[u16; 4]> {
@@ -211,21 +196,26 @@ fn file_version(path: &[u16]) -> Result<[u16; 4]> {
     ])
 }
 
-fn scan_region(
+fn scan_section(
     process: HANDLE,
-    start: usize,
-    end: usize,
-    sig: Signature,
-    out: &mut Vec<usize>,
+    base: usize,
+    section: Section,
+    overlap: usize,
+    mut visit: impl FnMut(&[u8], usize, std::ops::Range<usize>),
 ) -> Result<()> {
     const CHUNK: usize = 1024 * 1024;
-    let mut address = start;
-    while address < end {
-        let size = (end - address).min(CHUNK + sig.bytes.len() - 1);
-        let mut bytes = vec![0; size];
-        read(process, address, &mut bytes)?;
-        out.extend(matches(&bytes, sig).map(|offset| address + offset));
-        address = address.saturating_add(CHUNK);
+    let mut buffer = vec![0; CHUNK + overlap + 7];
+    for offset in (0..section.size).step_by(CHUNK) {
+        // Preserve the preceding RCX instruction and matches split across a chunk.
+        let start = offset.saturating_sub(7);
+        let end = (offset + CHUNK + overlap - 1).min(section.size);
+        let bytes = &mut buffer[..end - start];
+        read(process, base + section.rva + start, bytes)?;
+        visit(
+            bytes,
+            section.rva + start,
+            section.rva + offset..section.rva + (offset + CHUNK).min(section.size),
+        );
     }
     Ok(())
 }
@@ -234,6 +224,16 @@ fn scan_region(
 struct Output {
     key: Option<String>,
     error: Option<String>,
+    diagnostics: CaptureDiagnostics,
+}
+
+/// Counts only; never stores or exposes register values, pointers or key material.
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct CaptureDiagnostics {
+    pub breakpoint_hits: u64,
+    pub invalid_arguments: u64,
+    pub unreadable_arguments: u64,
+    pub unreadable_keys: u64,
 }
 
 fn interrupts() -> &'static Mutex<Vec<Weak<AtomicBool>>> {
@@ -290,8 +290,15 @@ pub struct Hook {
 
 impl Hook {
     pub fn start(pid: u32) -> Result<Self> {
-        let (target, version) = locate(pid)?;
-        Self::start_at(pid, target, version)
+        let location = Self::inspect(pid)?;
+        Self::start_at(pid, location.address, location.version)
+    }
+
+    pub fn inspect(pid: u32) -> Result<KeyLocation> {
+        if pid == 0 || pid == std::process::id() {
+            bail!("cannot inspect the current process or PID zero");
+        }
+        locate(pid)
     }
 
     fn start_at(pid: u32, target: usize, version: String) -> Result<Self> {
@@ -345,6 +352,14 @@ impl Hook {
             bail!("{error}");
         }
         Ok(output.key.take())
+    }
+
+    pub fn diagnostics(&self) -> CaptureDiagnostics {
+        self.output
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .diagnostics
+            .clone()
     }
 
     pub fn cleanup(&mut self) -> Result<()> {
@@ -581,7 +596,7 @@ impl Debugger {
                                     && ctx.Dr6 & (1 << thread.slot) != 0
                                 {
                                     self.pending_disposition = DBG_CONTINUE;
-                                    captured = self.read_key(ctx.Rdx as usize);
+                                    captured = self.read_key(ctx.Rdx as usize, output);
                                     ctx.Dr6 &= !(1 << thread.slot);
                                     // RF skips this instruction's execution breakpoint once. All
                                     // integer/SIMD registers, stack and flags remain otherwise intact.
@@ -625,17 +640,27 @@ impl Debugger {
         Ok(())
     }
 
-    fn read_key(&self, structure: usize) -> Option<String> {
+    fn read_key(&self, structure: usize, output: &Mutex<Output>) -> Option<String> {
+        let mut state = output.lock().unwrap_or_else(|e| e.into_inner());
+        state.diagnostics.breakpoint_hits += 1;
         let process = self.process.as_ref()?.0;
         let mut fields = [0; 24];
-        read(process, structure, &mut fields).ok()?;
+        if read(process, structure, &mut fields).is_err() {
+            state.diagnostics.unreadable_arguments += 1;
+            return None;
+        }
         let address = u64::from_le_bytes(fields[8..16].try_into().ok()?) as usize;
         let size = u64::from_le_bytes(fields[16..24].try_into().ok()?);
         if size != 32 || address == 0 {
+            state.diagnostics.invalid_arguments += 1;
             return None;
         }
         let mut key = [0; 32];
-        read(process, address, &mut key).ok()?;
+        if read(process, address, &mut key).is_err() {
+            state.diagnostics.unreadable_keys += 1;
+            key.fill(0);
+            return None;
+        }
         let hex = key.iter().map(|b| format!("{b:02x}")).collect();
         key.fill(0);
         Some(hex)

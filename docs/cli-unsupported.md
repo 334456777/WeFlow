@@ -57,7 +57,7 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
 - macOS and Linux WeChat databases use the same file format but have not been tested.
 - The HTTP server, image `.dat` decryption, AI and Moments downloads were also checked against synthetic encrypted fixtures and
   local fake HTTP servers; Moments servers and AI providers have not been tried for real.
-- The native key extraction helpers (`key db`) and the Windows image hook need a running WeChat and cannot be tested offline. `key image` (Windows only) is tested with synthetic files without helpers and was verified on one real Windows account.
+- Database-key extraction (`key db`) and the Windows image hook need a running WeChat for client acceptance. The Rust Windows x64 database-key implementation was verified through both CLI and DLL on WeChat 4.1.13.65, including `db test` and cleanup; other client versions and the remaining platform helpers still need real-client verification. `key image` (Windows only) is tested with synthetic files without helpers and was verified on one real Windows account.
 - Only one account's data was used; unusual databases (very large shards, old schema versions) may expose gaps.
 
 ## 5. Behaviour you may not expect

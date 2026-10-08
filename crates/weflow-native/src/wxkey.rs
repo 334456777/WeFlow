@@ -245,6 +245,14 @@ impl WxKey {
             }
             hook.cleanup()
                 .map_err(|e| DbKeyError::Other(e.to_string()))?;
+            let diagnostics = hook.diagnostics();
+            on_status(
+                &format!(
+                    "Capture diagnostics: {}",
+                    serde_json::to_string(&diagnostics).unwrap_or_default()
+                ),
+                2,
+            );
             Err(DbKeyError::Timeout)
         }
         #[cfg(not(target_arch = "x86_64"))]

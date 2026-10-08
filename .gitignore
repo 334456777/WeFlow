@@ -81,6 +81,7 @@ weflow-web-offical
 dist-cli/
 /temp/*
 /wx_key.cs
+/wx_key.dll.c
 
 # Rust database layer for the desktop app (npm run native-db:build)
 resources/native-db/
