@@ -80,9 +80,11 @@ jobs:
           rustup target add ${{ matrix.target }}
           rustc --version
 
+      # rust-cache does not save again after an exact hit, so the key changes whenever the cached profiles do;
+      # `release-dev` holds the dependencies of both the release build and the dev-profile tests.
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}-release-dev
 
       - name: Build
         shell: bash
