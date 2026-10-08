@@ -2676,6 +2676,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "windows-sys 0.61.2",
  "zstd",
 ]
 
@@ -2697,6 +2698,17 @@ dependencies = [
  "weflow-core",
  "weflow-native",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "weflow-wxkey"
+version = "2.1.1"
+dependencies = [
+ "anyhow",
+ "libloading",
+ "serde_json",
+ "weflow-core",
+ "weflow-native",
 ]
 
 [[package]]

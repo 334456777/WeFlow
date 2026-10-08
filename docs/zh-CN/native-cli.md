@@ -138,10 +138,13 @@ AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及�
 | `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、HTTP API |
 | `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、ISAAC-64 密钥流(移植自厂商 WASM)、平台封装 |
 | `crates/weflow-wcdb-ffi` | 把 `weflow-native` 导出为与 `wcdb_api` 接口兼容的 C ABI 动态库 `weflow_wcdb`，供桌面端加载(见 [desktop-rust-layer.md](desktop-rust-layer.md)) |
+| `crates/weflow-wxkey` | Windows x64 `wx_key.dll` 兼容接口，与 Rust 数据库密钥捕获共用实现 |
 | `crates/weflow-assets` | 内嵌资源、解压、哈希校验 |
 | `crates/weflow-silk` | 内置的 SILK 解码器，用于语音消息 |
 
-无法重写的平台辅助程序(`wx_key.dll`、`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`)内嵌在程序里:
+Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获数据库密钥。成功、超时和 Ctrl+C 都会恢复调试寄存器并解除调试连接；不再加载厂商 DLL，也没有方法选择选项。桌面端从同一代码构建兼容的 Rust `wx_key.dll`。版本限制与验证见 [Windows 数据库密钥](windows-db-key.md)。
+
+其余平台辅助程序(`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`)内嵌在程序里:
 每个二进制只内嵌本平台需要的辅助程序，解压到 `WEFLOW_HOME/runtime/<版本>/<target>/`;每次启动校验清单里的哈希(版本或哈希
 不一致时重新解压);动态库只从这个目录加载，不会隐式从当前目录加载。
 厂商的 WASM 解码器(`WxIsaac64`)不在其中:它已用纯 Rust 移植在 `weflow-core/src/isaac64.rs`，并用从原模块抓取的测试向量验证过。

@@ -1,18 +1,27 @@
+#[cfg(not(windows))]
 use std::ffi::CStr;
+#[cfg(not(windows))]
 use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
+#[cfg(not(windows))]
 use libloading::Library;
 
 // The DLL exports C++ `bool`s (see `keyService.ts`: `bool InitializeHook(uint32)` …), not `int`s.
+#[cfg(not(windows))]
 type InitializeHookFn = unsafe extern "C" fn(u32) -> bool;
+#[cfg(not(windows))]
 type PollKeyDataFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
+#[cfg(not(windows))]
 type CleanupHookFn = unsafe extern "C" fn() -> bool;
+#[cfg(not(windows))]
 type GetLastErrorMsgFn = unsafe extern "C" fn() -> *const c_char;
+#[cfg(not(windows))]
 type GetStatusMessageFn = unsafe extern "C" fn(*mut c_char, c_int, *mut c_int) -> bool;
 
+#[cfg(not(windows))]
 pub struct WxKey {
     _lib: Option<Library>,
     initialize_hook: Option<InitializeHookFn>,
@@ -22,6 +31,7 @@ pub struct WxKey {
     get_status_message: Option<GetStatusMessageFn>,
 }
 
+#[cfg(not(windows))]
 impl WxKey {
     pub fn load(runtime_dir: &Path) -> Result<Self> {
         let lib_path = find_wx_key_library(runtime_dir);
@@ -169,6 +179,92 @@ impl WxKey {
     }
 }
 
+#[cfg(windows)]
+pub struct WxKey;
+
+#[cfg(windows)]
+impl WxKey {
+    pub fn load(_runtime_dir: &Path) -> Result<Self> {
+        Ok(Self)
+    }
+    pub fn is_available(&self) -> bool {
+        cfg!(target_arch = "x86_64")
+    }
+    pub fn get_db_key(
+        &self,
+        pid: u32,
+        timeout: std::time::Duration,
+        on_status: &mut dyn FnMut(&str, i32),
+    ) -> std::result::Result<String, DbKeyError> {
+        self.get_db_key_with_tick(pid, timeout, on_status, &mut |_| {})
+    }
+    pub fn get_db_key_with_tick(
+        &self,
+        pid: u32,
+        timeout: std::time::Duration,
+        on_status: &mut dyn FnMut(&str, i32),
+        on_tick: &mut dyn FnMut(u64),
+    ) -> std::result::Result<String, DbKeyError> {
+        #[cfg(target_arch = "x86_64")]
+        {
+            let start = std::time::Instant::now();
+            let mut hook = crate::windows_db_key::Hook::start(pid).map_err(|error| {
+                let error = error.to_string();
+                if error == "interrupted by user" {
+                    DbKeyError::Interrupted
+                } else if error.contains("ACCESS_DENIED") {
+                    DbKeyError::AccessDenied(error)
+                } else if error.contains("is not loaded yet") || error.contains("os error 24") {
+                    DbKeyError::NotReady(error)
+                } else {
+                    DbKeyError::Other(error)
+                }
+            })?;
+            on_status(&format!("WeChat version {}", hook.version), 0);
+            on_status("Hook installed; log in to WeChat now", 1);
+            let mut last_tick = u64::MAX;
+            while start.elapsed() < timeout {
+                let left = timeout.saturating_sub(start.elapsed()).as_secs();
+                if left != last_tick {
+                    last_tick = left;
+                    on_tick(left);
+                }
+                if let Some(key) = hook.poll().map_err(|e| {
+                    if e.to_string() == "interrupted by user" {
+                        DbKeyError::Interrupted
+                    } else {
+                        DbKeyError::Other(e.to_string())
+                    }
+                })? {
+                    hook.cleanup()
+                        .map_err(|e| DbKeyError::Other(e.to_string()))?;
+                    on_status("key obtained", 1);
+                    return Ok(key);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            hook.cleanup()
+                .map_err(|e| DbKeyError::Other(e.to_string()))?;
+            let diagnostics = hook.diagnostics();
+            on_status(
+                &format!(
+                    "Capture diagnostics: {}",
+                    serde_json::to_string(&diagnostics).unwrap_or_default()
+                ),
+                2,
+            );
+            Err(DbKeyError::Timeout)
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let _ = (pid, timeout, on_status, on_tick);
+            Err(DbKeyError::Other(
+                "Windows database-key extraction requires x64".into(),
+            ))
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum DbKeyError {
     /// The process could not be opened (needs administrator rights / a security product interferes).
@@ -176,6 +272,9 @@ pub enum DbKeyError {
     /// WeChat is running but has not logged in, so it never opened its databases.
     LoginRequired,
     Timeout,
+    Interrupted,
+    /// WeChat has just started and its modules are not ready for inspection.
+    NotReady(String),
     Other(String),
 }
 
@@ -185,6 +284,8 @@ impl std::fmt::Display for DbKeyError {
             Self::AccessDenied(d) => write!(f, "access denied: cannot open the WeChat process ({d})"),
             Self::LoginRequired => write!(f, "WeChat is running but not logged in; log in while the command is waiting"),
             Self::Timeout => write!(f, "timed out waiting for the key; log in to WeChat (or restart it) while the command is running"),
+            Self::Interrupted => write!(f, "interrupted by user"),
+            Self::NotReady(m) => write!(f, "{m}"),
             Self::Other(m) => write!(f, "{m}"),
         }
     }
@@ -209,6 +310,7 @@ pub fn is_login_related(value: &str) -> bool {
         .any(|k| n.contains(k))
 }
 
+#[cfg(not(windows))]
 unsafe fn take_cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
         return String::new();
@@ -216,22 +318,19 @@ unsafe fn take_cstr(ptr: *const c_char) -> String {
     CStr::from_ptr(ptr).to_string_lossy().to_string()
 }
 
+#[cfg(not(windows))]
 unsafe fn symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
     lib.get::<T>(name).ok().map(|sym| *sym)
 }
 
+#[cfg(not(windows))]
 fn load_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
     unsafe { symbol::<T>(lib, name) }
 }
 
+#[cfg(not(windows))]
 fn find_wx_key_library(runtime_dir: &Path) -> Option<PathBuf> {
-    if cfg!(target_os = "windows") {
-        let candidates = [
-            runtime_dir.join("key/win32/x64/wx_key.dll"),
-            runtime_dir.join("key/win32/arm64/wx_key.dll"),
-        ];
-        candidates.into_iter().find(|p| p.exists())
-    } else if cfg!(target_os = "macos") {
+    if cfg!(target_os = "macos") {
         let candidates = [runtime_dir.join("key/macos/universal/libwx_key.dylib")];
         candidates.into_iter().find(|p| p.exists())
     } else {

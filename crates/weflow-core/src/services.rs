@@ -422,6 +422,11 @@ impl ServiceHub {
     /// asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for the
     /// user to click "Enter WeChat".
     pub fn key_db(&self, pid_override: Option<u32>, timeout_secs: u64) -> AppResult<Value> {
+        if cfg!(windows) && !cfg!(target_arch = "x86_64") {
+            return Err(AppError::native(
+                "Windows database-key extraction requires x64",
+            ));
+        }
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
         if wxkey.is_available() {
@@ -476,14 +481,19 @@ impl ServiceHub {
                 AppError::runtime("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid")
             })?,
         };
-        phase(
-            json!({ "type": "key_phase", "phase": "login", "pid": pid }),
-            if crate::locale::current() == crate::locale::Lang::Zh {
-                format!("检测到微信（pid {pid}）请在登录窗口点击「进入微信」。")
-            } else {
-                format!("WeChat found (pid {pid}). Click \"Enter WeChat\" in the login window.")
-            },
-        );
+        let login_phase = || {
+            phase(
+                json!({ "type": "key_phase", "phase": "login", "pid": pid }),
+                if crate::locale::current() == crate::locale::Lang::Zh {
+                    format!("检测到微信（pid {pid}）请在登录窗口点击「进入微信」。")
+                } else {
+                    format!("WeChat found (pid {pid}). Click \"Enter WeChat\" in the login window.")
+                },
+            )
+        };
+        if !cfg!(windows) {
+            login_phase();
+        }
 
         let key = loop {
             if remaining() == 0 {
@@ -492,6 +502,9 @@ impl ServiceHub {
             }
             // wx_key's own progress messages are noise; only its errors are shown
             let mut on_status = |msg: &str, level: i32| {
+                if cfg!(windows) && msg == "Hook installed; log in to WeChat now" {
+                    login_phase();
+                }
                 if level == 2 {
                     end_status_line();
                     crate::output::event(
@@ -517,8 +530,15 @@ impl ServiceHub {
                     end_status_line();
                     return Err(timeout_error());
                 }
+                Err(DbKeyError::Interrupted) => {
+                    end_status_line();
+                    return Err(AppError::new("user_interrupt", "interrupted by user", 130));
+                }
                 // the process may not be ready to be hooked right after it started: try again
-                Err(DbKeyError::Other(_)) if remaining() > 0 => {
+                Err(DbKeyError::NotReady(_)) if remaining() > 0 => {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+                Err(DbKeyError::Other(_)) if !cfg!(windows) && remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 Err(other) => {

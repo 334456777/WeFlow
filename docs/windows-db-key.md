@@ -1,0 +1,19 @@
+# Windows database-key capture
+
+[简体中文](zh-CN/windows-db-key.md)
+
+Windows x64 `key db` uses Rust in `weflow-native/src/windows_db_key/`. The key argument layout (RDX points to a structure with a pointer at +8 and a byte count at +16) was checked against [ycccccccy/wx_key](https://github.com/ycccccccy/wx_key), under its [MIT license](../crates/weflow-native/src/windows_db_key/LICENSE), and the maintainer's disassembly of the original helper.
+
+The locator selects one signature from the original binary's three version ranges: before 4.1.4, 4.1.4–4.1.6.14, and after 4.1.6.14. The newest range reuses the older bytes with a different capture offset. It scans only the loaded `.text` section, requires exactly one match and checks the capture point and signature against the [AMD64 exception directory](https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64). Header and range checks precede remote reads; scans use 1 MiB chunks with overlap. There is one locator and no fallback method.
+
+Capture attaches with the documented [Windows debugging API](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-debugactiveprocess), using a free hardware breakpoint slot on existing and newly created threads. It preserves other slots, forwards unrelated exceptions, reads exactly 32 key bytes, restores its registers and [detaches](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-debugactiveprocessstop) before publishing a key. It does not allocate executable memory or patch the client's instructions. Timeout, explicit cleanup, Ctrl+C and process exit are handled by the same worker.
+
+Only x64 WeChat 4.x is supported. The binary's `4.1.6.14` signature boundary differs from the earlier source backup and is covered by regression tests. Its common Cipher locator fails its 256-byte alignment condition on 4.1.13.65, so that strategy is not used here. Future releases still need client verification of the signature and argument layout. Windows ARM64 builds do not load an x64 DLL as a substitute.
+
+The CLI links the capture code directly. `weflow-wxkey` exports the original C++ bool ABI (`InitializeHook`, `PollKeyData`, `CleanupHook`, `GetStatusMessage`, `GetLastErrorMsg`, `GetImageKey`) for desktop callers. `GetImageKey` returns candidate codes through #95's Rust parser; callers must verify them against the selected account. `npm run native-db:build` builds the database library and, on Windows x64, the Rust key DLL into `resources/native-key/win32/x64/`. The DLL must be cleaned up before unloading. There is no vendor-library fallback or environment variable for switching implementations.
+
+An existing debugger, an exhausted hardware-breakpoint set or insufficient process permissions causes an explicit error. Builds are unsigned; no certificate is supplied by the repository. Security software may restrict debugger attachment: inspect its recorded decision and permit only a build you trust; this implementation does not change antivirus settings or use indirect syscalls to bypass monitoring.
+
+Automated tests use a separate synthetic x64 process: main/new threads, invalid key arguments, function return values, cancellation, repeated attach, process exit, and debugger/register restoration. Real-client acceptance still requires recording the client version and architecture, capturing during login, checking the result with `db test`, and checking that WeChat remains usable after cleanup. No real account IDs, keys, paths or chat data belong in public test artifacts.
+
+Verified on Windows x64 WeChat 4.1.13.65: both the CLI and the Rust DLL captured the same key during separate logins; `db test` passed, a changed key was rejected, the debugger detached, and all 168 observed threads had no enabled breakpoint remaining. This covers one account and one client version.

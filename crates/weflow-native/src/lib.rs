@@ -11,4 +11,6 @@ pub mod native_sns;
 pub mod native_stats;
 pub mod sqlcipher;
 pub mod wcdb;
+#[cfg(any(test, all(windows, target_arch = "x86_64")))]
+pub mod windows_db_key;
 pub mod wxkey;

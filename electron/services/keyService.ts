@@ -61,30 +61,11 @@ export class KeyService {
 
   private getDllPath(): string {
     const isPackaged = typeof app !== 'undefined' && app ? app.isPackaged : process.env.NODE_ENV === 'production'
-    const archDir = process.arch === 'arm64' ? 'arm64' : 'x64'
-    const candidates: string[] = []
-
-    if (process.env.WX_KEY_DLL_PATH) {
-      candidates.push(process.env.WX_KEY_DLL_PATH)
-    }
-
-    if (isPackaged) {
-      candidates.push(join(process.resourcesPath, 'resources', 'key', 'win32', archDir, 'wx_key.dll'))
-      candidates.push(join(process.resourcesPath, 'resources', 'key', 'win32', 'x64', 'wx_key.dll'))
-      candidates.push(join(process.resourcesPath, 'resources', 'key', 'win32', 'wx_key.dll'))
-      candidates.push(join(process.resourcesPath, 'resources', 'wx_key.dll'))
-      candidates.push(join(process.resourcesPath, 'wx_key.dll'))
-    } else {
-      const cwd = process.cwd()
-      candidates.push(join(cwd, 'resources', 'key', 'win32', archDir, 'wx_key.dll'))
-      candidates.push(join(cwd, 'resources', 'key', 'win32', 'x64', 'wx_key.dll'))
-      candidates.push(join(cwd, 'resources', 'key', 'win32', 'wx_key.dll'))
-      candidates.push(join(cwd, 'resources', 'wx_key.dll'))
-      candidates.push(join(app.getAppPath(), 'resources', 'key', 'win32', archDir, 'wx_key.dll'))
-      candidates.push(join(app.getAppPath(), 'resources', 'key', 'win32', 'x64', 'wx_key.dll'))
-      candidates.push(join(app.getAppPath(), 'resources', 'key', 'win32', 'wx_key.dll'))
-      candidates.push(join(app.getAppPath(), 'resources', 'wx_key.dll'))
-    }
+    if (process.arch !== 'x64') throw new Error('数据库取钥仅支持 Windows x64')
+    const candidates = isPackaged
+      ? [join(process.resourcesPath, 'resources', 'native-key', 'win32', 'x64', 'wx_key.dll')]
+      : [join(process.cwd(), 'resources', 'native-key', 'win32', 'x64', 'wx_key.dll'),
+         join(app.getAppPath(), 'resources', 'native-key', 'win32', 'x64', 'wx_key.dll')]
 
     for (const path of candidates) {
       if (existsSync(path)) return path
@@ -105,8 +86,6 @@ export class KeyService {
         mkdirSync(tempDir, { recursive: true })
       }
       const localPath = join(tempDir, 'wx_key.dll')
-      if (existsSync(localPath)) return localPath
-
       copyFileSync(originalPath, localPath)
       return localPath
     } catch (e) {
@@ -138,6 +117,8 @@ export class KeyService {
       this.getStatusMessage = this.lib.func('bool GetStatusMessage(_Out_ char *msgBuffer, int bufferSize, _Out_ int *outLevel)')
       this.cleanupHook = this.lib.func('bool CleanupHook()')
       this.getLastErrorMsg = this.lib.func('const char* GetLastErrorMsg()')
+
+      app.once('before-quit', () => this.cleanupHook?.())
 
       this.initialized = true
       return true
@@ -671,6 +652,7 @@ export class KeyService {
               loginRequiredDetected = true
             }
             onStatus?.(msg, level)
+            if (level === 2) return { success: false, error: msg, logs }
           }
         }
         await new Promise((resolve) => setTimeout(resolve, 120))

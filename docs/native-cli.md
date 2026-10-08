@@ -177,10 +177,13 @@ Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, 
 | `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, HTTP API |
 | `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, ISAAC-64 keystream (ported from the vendor WASM), platform wrappers |
 | `crates/weflow-wcdb-ffi` | C-ABI shared library `weflow_wcdb` that exports `weflow-native` with the same interface as `wcdb_api`; loaded by the desktop app (see [desktop-rust-layer.md](desktop-rust-layer.md)) |
+| `crates/weflow-wxkey` | Windows x64 `wx_key.dll` compatibility ABI, built from the Rust database-key capture code |
 | `crates/weflow-assets` | Embedded resources, unpacking, hash check |
 | `crates/weflow-silk` | Vendored SILK decoder for voice messages |
 
-The platform helpers that cannot be rewritten (`wx_key.dll`, `img_helper.dll`, `libwx_key.dylib`, `xkey_helper_linux`) are embedded: each binary carries only its own platform's helpers, unpacks them into
+Windows x64 `key db` captures the database key directly in Rust, using a hardware execution breakpoint during login. It restores debug registers and detaches on success, timeout and Ctrl+C; there is no vendor DLL or method selector. The desktop app builds the compatible Rust `wx_key.dll` from the same code. See [Windows database keys](windows-db-key.md) for version limits and verification.
+
+The remaining platform helpers (`img_helper.dll`, `libwx_key.dylib`, `xkey_helper_linux`) are embedded: each binary carries only its own platform's helpers, unpacks them into
 `WEFLOW_HOME/runtime/<version>/<target>/`, checks the manifest hash on every start (unpacking again when the version or a hash
 differs) and loads libraries only from that directory, never implicitly from the current directory.
 The vendor WASM decoder (`WxIsaac64`) is not among them: it is ported to pure Rust in `weflow-core/src/isaac64.rs` and verified against vectors captured from the original module.

@@ -14,6 +14,7 @@
 - `weflow-core`：业务层。`services/` 下按功能划分（chat、group、analytics、sns、image、voice、insight、reports、cleanup、api），外加导出（`export*`）、HTTP API（`http_server`）、消息推送（`push`）、配置（`config`）、图片/视频/语音解密等
 - `weflow-cli`：命令行入口（clap），生成二进制 `weflow`；`help_zh.rs`/`i18n.rs` 为中文帮助与本地化
 - `weflow-wcdb-ffi`：把 `weflow-native` 导出为与 `wcdb_api` 兼容的 C ABI 动态库（`weflow_wcdb`），供桌面端加载，详见 `docs/desktop-rust-layer.md`
+- `weflow-wxkey`：Windows x64 的 Rust 数据库取钥兼容 DLL；CLI 直接调用 `weflow-native/windows_db_key`，桌面端从同一实现构建 `wx_key.dll`，不加载旧厂商 DLL。按客户端版本选择唯一特征与偏移，再验证 PE 函数范围，不提供备用定位方法
 - `weflow-silk`：内置 Skype SILK SDK 的语音解码器（`vendor/` 为第三方 C 源码，勿改）
 - `weflow-assets`：构建期把静态资源嵌入二进制
 - 测试：`crates/weflow-core/tests/*_e2e.rs` 为端到端测试（共享 `tests/common`，用 `weflow-native` 的 `test-fixtures` 合成加密账号）；各 crate 的 `examples/*_probe.rs` 是调研用探针
