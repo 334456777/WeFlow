@@ -11,7 +11,7 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Docs covered by the checks. `weflow-tech-docs/` and `es-ES/` are outside the bilingual rule in CLAUDE.md.
+/// Docs covered by the checks. `es-ES/` is outside the bilingual rule in CLAUDE.md.
 fn doc_files() -> Vec<PathBuf> {
     let root = root();
     let mut files = vec![root.join("README.md")];
