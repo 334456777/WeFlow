@@ -313,6 +313,9 @@ enum KeySubcommand {
         /// How long to wait for the key, in seconds
         #[arg(long, default_value_t = 180)]
         timeout: u64,
+        /// Explicit Rust helper executable for Linux x86-64 (native helper remains the default)
+        #[arg(long)]
+        rust_helper: Option<PathBuf>,
     },
     /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template)
     Image {
@@ -2181,7 +2184,14 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
 
 fn handle_key(command: &KeyCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        KeySubcommand::Db { pid, timeout } => hub.key_db(*pid, *timeout),
+        KeySubcommand::Db {
+            pid,
+            timeout,
+            rust_helper,
+        } => match rust_helper {
+            Some(helper) => hub.key_db_rust_helper(helper, *pid, *timeout),
+            None => hub.key_db(*pid, *timeout),
+        },
         KeySubcommand::Image { user_dir } => hub.key_image(user_dir.as_deref()),
         KeySubcommand::ScanImage { user_dir } => hub.key_scan_image(user_dir),
     }

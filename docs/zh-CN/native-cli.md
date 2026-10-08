@@ -112,6 +112,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 | `crates/weflow-wcdb-ffi` | 把 `weflow-native` 导出为与 `wcdb_api` 接口兼容的 C ABI 动态库 `weflow_wcdb`，供桌面端加载(见 [desktop-rust-layer.md](desktop-rust-layer.md)) |
 | `crates/weflow-assets` | 内嵌资源、解压、哈希校验 |
 | `crates/weflow-silk` | 内置的 SILK 解码器，用于语音消息 |
+| `crates/weflow-key-helper` | 显式选择的 Rust Linux x86-64 数据库取钥 helper；ELF 定位与 ptrace 捕获 |
 
 无法重写的平台辅助程序(`wx_key.dll`、`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`)内嵌在程序里:
 每个二进制只内嵌本平台需要的辅助程序，解压到 `WEFLOW_HOME/runtime/<版本>/<target>/`;每次启动校验清单里的哈希(版本或哈希

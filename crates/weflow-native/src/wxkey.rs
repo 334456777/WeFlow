@@ -269,7 +269,12 @@ fn find_wx_key_library(runtime_dir: &Path) -> Option<PathBuf> {
 
 pub fn run_key_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
     let helper = find_key_helper(runtime_dir)?;
-    let output = Command::new(&helper)
+    run_key_helper_at(&helper, args)
+}
+
+/// Run an explicitly selected helper without a shell. The legacy helper remains installed.
+pub fn run_key_helper_at(helper: &Path, args: &[&str]) -> Result<String> {
+    let output = Command::new(helper)
         .args(args)
         .output()
         .with_context(|| format!("failed to run {}", helper.display()))?;
@@ -278,6 +283,33 @@ pub fn run_key_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
         return Err(anyhow!("{} failed: {stderr}", helper.display()));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// A successful process exit is not sufficient: older helpers may emit failure JSON with exit 0.
+pub fn parse_db_key_output(output: &str) -> Result<String> {
+    let output = output.trim();
+    let key = if output.starts_with('{') {
+        let value: serde_json::Value =
+            serde_json::from_str(output).context("invalid key helper JSON")?;
+        if value["success"] != true {
+            return Err(anyhow!(
+                "key helper reported failure: {}",
+                value["result"].as_str().unwrap_or("unknown error")
+            ));
+        }
+        value["key"]
+            .as_str()
+            .context("key helper JSON is missing the key")?
+            .to_string()
+    } else {
+        output.to_string()
+    };
+    if key.len() != 64 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(anyhow!(
+            "key helper did not return a 64-digit hexadecimal database key"
+        ));
+    }
+    Ok(key.to_ascii_lowercase())
 }
 
 pub fn run_image_scan_helper(runtime_dir: &Path, args: &[&str]) -> Result<String> {
@@ -340,5 +372,25 @@ mod tests {
         assert!(is_login_related("请扫码登录"));
         assert!(is_login_related("Please scan the QR code"));
         assert!(!is_login_related("hook installed"));
+    }
+
+    #[test]
+    fn rejects_successful_process_exits_containing_failure_or_invalid_keys() {
+        for text in [
+            "",
+            "not a key",
+            r#"{"success":false,"result":"ERROR:UNKNOWN_MODE"}"#,
+            r#"{"success":true}"#,
+            &"z".repeat(64),
+        ] {
+            assert!(parse_db_key_output(text).is_err());
+        }
+        let key = "AB".repeat(32);
+        assert_eq!(parse_db_key_output(&key).unwrap(), "ab".repeat(32));
+        assert_eq!(
+            parse_db_key_output(&serde_json::json!({"success":true,"key":key}).to_string())
+                .unwrap(),
+            "ab".repeat(32)
+        );
     }
 }

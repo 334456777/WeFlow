@@ -1,5 +1,6 @@
 // Chinese help text: (English doc comment, Chinese). Keep in sync with the doc comments in main.rs; a test fails on gaps.
 const HELP: &[(&str, &str)] = &[
+    ("Explicit Rust helper executable for Linux x86-64 (native helper remains the default)", "显式指定 Linux x86-64 Rust helper 可执行文件（默认仍用原生 helper）"),
     ("Show the wxid of the account(s) in the WeChat data directory (the value for `config set wxid`)", "显示微信数据目录中账号的 wxid（即 `config set wxid` 要填的值）"),
     ("WeChat data directory (default: `db_path` from the config, else the usual locations)", "微信数据目录（默认：配置中的 `db_path`，否则在常用位置查找）"),
     ("Show the path of the config file", "显示配置文件路径"),

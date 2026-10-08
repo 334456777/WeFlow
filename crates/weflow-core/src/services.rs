@@ -431,7 +431,8 @@ impl ServiceHub {
         {
             let result = weflow_native::wxkey::run_key_helper(&self.ctx.runtime_dir, &["--db-key"])
                 .map_err(|err| AppError::native(err.to_string()))?;
-            let key = result.trim().to_string();
+            let key = weflow_native::wxkey::parse_db_key_output(&result)
+                .map_err(|err| AppError::native(err.to_string()))?;
             Ok(json!({ "decrypt_key": key, "method": "key_helper" }))
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -440,6 +441,35 @@ impl ServiceHub {
                 "wx_key library not found; key extraction requires the platform-specific native library"
             ))
         }
+    }
+
+    /// Explicit opt-in to the Rust Linux helper; native extraction remains the default.
+    pub fn key_db_rust_helper(
+        &self,
+        helper: &Path,
+        pid: Option<u32>,
+        timeout_secs: u64,
+    ) -> AppResult<Value> {
+        if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            return Err(AppError::usage(
+                "the Rust database-key helper currently supports Linux x86-64 only",
+            ));
+        }
+        let mut args = vec![
+            "--db-key".to_string(),
+            "--timeout".to_string(),
+            timeout_secs.to_string(),
+        ];
+        if let Some(pid) = pid {
+            args.extend(["--pid".to_string(), pid.to_string()]);
+        }
+        let args: Vec<_> = args.iter().map(String::as_str).collect();
+        let helper = crate::config::expand_home(&helper.to_string_lossy());
+        let raw = weflow_native::wxkey::run_key_helper_at(&helper, &args)
+            .map_err(|err| AppError::native(err.to_string()))?;
+        let key = weflow_native::wxkey::parse_db_key_output(&raw)
+            .map_err(|err| AppError::native(err.to_string()))?;
+        Ok(json!({"decrypt_key": key, "method": "rust_key_helper", "pid": pid}))
     }
 
     /// Hooks WeChat and waits for the database key; shared by Windows and macOS.

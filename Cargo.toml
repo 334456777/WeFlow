@@ -6,6 +6,7 @@ members = [
   "crates/weflow-core",
   "crates/weflow-cli",
   "crates/weflow-wcdb-ffi",
+  "crates/weflow-key-helper",
 ]
 resolver = "2"
 

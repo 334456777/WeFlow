@@ -145,6 +145,7 @@ Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, 
 | `crates/weflow-wcdb-ffi` | C-ABI shared library `weflow_wcdb` that exports `weflow-native` with the same interface as `wcdb_api`; loaded by the desktop app (see [desktop-rust-layer.md](desktop-rust-layer.md)) |
 | `crates/weflow-assets` | Embedded resources, unpacking, hash check |
 | `crates/weflow-silk` | Vendored SILK decoder for voice messages |
+| `crates/weflow-key-helper` | Opt-in Rust Linux x86-64 database-key helper; ELF locator and ptrace capture |
 
 The platform helpers that cannot be rewritten (`wx_key.dll`, `img_helper.dll`, `libwx_key.dylib`, `xkey_helper_linux`) are embedded: each binary carries only its own platform's helpers, unpacks them into
 `WEFLOW_HOME/runtime/<version>/<target>/`, checks the manifest hash on every start (unpacking again when the version or a hash

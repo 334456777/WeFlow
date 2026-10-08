@@ -2660,6 +2660,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "weflow-key-helper"
+version = "2.1.1"
+dependencies = [
+ "anyhow",
+ "libc",
+]
+
+[[package]]
 name = "weflow-native"
 version = "2.1.1"
 dependencies = [
