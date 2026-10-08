@@ -26,7 +26,7 @@
 
 ### 其他
 - `docs/`：英文文档，`docs/zh-CN/` 为对应中文版；`docs/` 下还有微信数据库/密钥/媒体格式/踩坑记录的技术资料
-- `.github/workflows/` 下的 `release.yml`（推送 tag 或在 Actions 页面手动运行并填写 tag 时触发，tag 不存在时在所选分支的最新提交上创建；依次 build → test → release：构建 6 个平台的发布版，在每个平台上跑测试并核对包里 `weflow --version` 与 tag 一致，全部通过才发布；正式版 tag 与根 `Cargo.toml` 的版本号不一致时只给出警告，不拦截）和 `ci.yml`（代码变动时只测三个主流平台：Linux、macOS 运行 `make ci`（rustfmt、clippy、全部测试），外加 `make docs-check`；Windows x64 构建发布版、跑测试并运行一次）和 `docs-check.yml`（仅文档变动时运行 `make docs-check`）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
+- `.github/workflows/` 下的 `release.yml`（推送 tag 或在 Actions 页面手动运行并填写 tag 时触发，tag 不存在时在所选分支的最新提交上创建；依次 build → test → release：构建 6 个平台的发布版，在每个平台上跑测试并核对包里 `weflow --version` 与 tag 一致，全部通过才发布；正式版 tag 与根 `Cargo.toml` 的版本号不一致时只给出警告，不拦截；发布说明来自 `.github/release-notes.md`，开头的「更新日志」由 `.github/scripts/release-changelog.sh` 生成：手动运行时填写的 notes，加上与上一个版本相比关闭的 issue（按标签分组，不含文档类）、没有关联 issue 的 PR、新登记的 issue）和 `ci.yml`（代码变动时只测三个主流平台：Linux、macOS 运行 `make ci`（rustfmt、clippy、全部测试），外加 `make docs-check`；Windows x64 构建发布版、跑测试并运行一次）和 `docs-check.yml`（仅文档变动时运行 `make docs-check`）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
 
 
 ## 约定

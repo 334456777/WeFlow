@@ -18,6 +18,10 @@ on:
         description: "Tag to release, e.g. v2.1.2 (created on the selected branch if it does not exist)"
         required: true
         type: string
+      notes:
+        description: "Optional text shown above the generated changelog (更新日志)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -255,10 +259,13 @@ jobs:
       contents: write
       id-token: write       # sign the attestation
       attestations: write   # store the attestation
+      issues: read          # the changelog lists issues
+      pull-requests: read   # and pull requests
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0    # the changelog reads the history since the previous release
 
       # The binaries take their version from the tag; Cargo.toml's version only shows in builds without git (the
       # "Source code" archives), so a stale one is a warning, not a reason to stop the release.
@@ -280,6 +287,20 @@ jobs:
           else
             echo "Cargo.toml matches the tag ($CARGO_VERSION)"
           fi
+
+      # The 更新日志 section: the optional `notes` input, then what .github/scripts/release-changelog.sh lists
+      # since the previous release (closed issues by label, pull requests without an issue, new open issues).
+      - name: Write the changelog
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          {
+            if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
+            bash .github/scripts/release-changelog.sh "$TAG" "$SHA"
+          } > "$RUNNER_TEMP/changelog.md"
+          cat "$RUNNER_TEMP/changelog.md"
 
       - uses: actions/download-artifact@v8
         with:
@@ -304,9 +325,11 @@ jobs:
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             FLAGS+=(--prerelease)
           fi
-          # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in.
-          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" \
-            .github/release-notes.md > release-notes.md
+          # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in, and the
+          # {{CHANGELOG}} line is replaced with the changelog written above.
+          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" .github/release-notes.md |
+            awk -v f="$RUNNER_TEMP/changelog.md" '$0 == "{{CHANGELOG}}" { while ((getline l < f) > 0) print l; next } { print }' \
+            > release-notes.md
           # --target only matters for a new tag: GitHub creates it on that commit.
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
