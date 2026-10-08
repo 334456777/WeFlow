@@ -422,6 +422,11 @@ impl ServiceHub {
     /// asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for the
     /// user to click "Enter WeChat".
     pub fn key_db(&self, pid_override: Option<u32>, timeout_secs: u64) -> AppResult<Value> {
+        if cfg!(windows) && !cfg!(target_arch = "x86_64") {
+            return Err(AppError::native(
+                "Windows database-key extraction requires x64",
+            ));
+        }
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
         if wxkey.is_available() {
@@ -530,7 +535,10 @@ impl ServiceHub {
                     return Err(AppError::new("user_interrupt", "interrupted by user", 130));
                 }
                 // the process may not be ready to be hooked right after it started: try again
-                Err(DbKeyError::Other(_)) if remaining() > 0 => {
+                Err(DbKeyError::NotReady(_)) if remaining() > 0 => {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+                Err(DbKeyError::Other(_)) if !cfg!(windows) && remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 Err(other) => {

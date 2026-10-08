@@ -214,6 +214,8 @@ impl WxKey {
                     DbKeyError::Interrupted
                 } else if error.contains("ACCESS_DENIED") {
                     DbKeyError::AccessDenied(error)
+                } else if error.contains("is not loaded yet") || error.contains("os error 24") {
+                    DbKeyError::NotReady(error)
                 } else {
                     DbKeyError::Other(error)
                 }
@@ -263,6 +265,8 @@ pub enum DbKeyError {
     LoginRequired,
     Timeout,
     Interrupted,
+    /// WeChat has just started and its modules are not ready for inspection.
+    NotReady(String),
     Other(String),
 }
 
@@ -273,6 +277,7 @@ impl std::fmt::Display for DbKeyError {
             Self::LoginRequired => write!(f, "WeChat is running but not logged in; log in while the command is waiting"),
             Self::Timeout => write!(f, "timed out waiting for the key; log in to WeChat (or restart it) while the command is running"),
             Self::Interrupted => write!(f, "interrupted by user"),
+            Self::NotReady(m) => write!(f, "{m}"),
             Self::Other(m) => write!(f, "{m}"),
         }
     }

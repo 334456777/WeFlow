@@ -11,6 +11,7 @@ use windows_sys::Win32::Storage::FileSystem::*;
 use windows_sys::Win32::System::Console::*;
 use windows_sys::Win32::System::Diagnostics::Debug::*;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
+use windows_sys::Win32::System::LibraryLoader::*;
 use windows_sys::Win32::System::Memory::*;
 use windows_sys::Win32::System::Threading::*;
 
@@ -55,7 +56,7 @@ fn read(process: HANDLE, address: usize, bytes: &mut [u8]) -> Result<()> {
     Ok(())
 }
 
-fn locate(pid: u32) -> Result<(usize, String)> {
+fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
     let snapshot =
         Handle(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid) });
     if snapshot.0 == INVALID_HANDLE_VALUE {
@@ -73,13 +74,28 @@ fn locate(pid: u32) -> Result<(usize, String)> {
             .iter()
             .position(|b| *b == 0)
             .unwrap_or(entry.szModule.len());
-        if String::from_utf16_lossy(&entry.szModule[..length]).eq_ignore_ascii_case("Weixin.dll") {
+        if String::from_utf16_lossy(&entry.szModule[..length]).eq_ignore_ascii_case(name) {
             found = Some(entry);
             break;
         }
         available = unsafe { Module32NextW(snapshot.0, &mut entry) } != 0;
     }
-    let module = found.context("Weixin.dll is not loaded yet")?;
+    found.with_context(|| format!("{name} is not loaded yet"))
+}
+
+fn remote_ntdll_symbol(pid: u32, name: &[u8]) -> Result<usize> {
+    let local_name: Vec<_> = "ntdll.dll".encode_utf16().chain(Some(0)).collect();
+    let local = unsafe { GetModuleHandleW(local_name.as_ptr()) };
+    let symbol =
+        unsafe { GetProcAddress(local, name.as_ptr()) }.context("ntdll debug symbol missing")?;
+    let offset = (symbol as *const () as usize)
+        .checked_sub(local as usize)
+        .context("invalid ntdll symbol")?;
+    Ok(module(pid, "ntdll.dll")?.modBaseAddr as usize + offset)
+}
+
+fn locate(pid: u32) -> Result<(usize, String)> {
+    let module = module(pid, "Weixin.dll")?;
     let version = file_version(&module.szExePath)?;
     let sig = signature(version).context("unsupported WeChat version (requires WeChat 4.x x64)")?;
     let process =
@@ -455,10 +471,14 @@ struct Debugger {
     attached: bool,
     pending: Option<DEBUG_EVENT>,
     pending_disposition: i32,
+    system_breakpoint: usize,
+    system_breakin: usize,
 }
 
 impl Debugger {
     fn attach(pid: u32, target: usize) -> Result<Self> {
+        let system_breakpoint = remote_ntdll_symbol(pid, b"DbgBreakPoint\0")?;
+        let system_breakin = remote_ntdll_symbol(pid, b"DbgUiRemoteBreakin\0")?;
         if unsafe { DebugActiveProcess(pid) } == 0 {
             return Err(win_error("DebugActiveProcess"));
         }
@@ -470,6 +490,8 @@ impl Debugger {
             attached: true,
             pending: None,
             pending_disposition: DBG_CONTINUE,
+            system_breakpoint,
+            system_breakin,
         };
         if unsafe { DebugSetProcessKillOnExit(0) } == 0 {
             return Err(win_error("DebugSetProcessKillOnExit"));
@@ -515,11 +537,7 @@ impl Debugger {
                         if !info.hFile.is_null() {
                             CloseHandle(info.hFile);
                         }
-                        let process = Handle(OpenProcess(
-                            PROCESS_VM_READ | PROCESS_QUERY_INFORMATION,
-                            0,
-                            self.pid,
-                        ));
+                        let process = Handle(OpenProcess(PROCESS_ALL_ACCESS, 0, self.pid));
                         if process.0.is_null() {
                             return Err(win_error("OpenProcess"));
                         }
@@ -527,7 +545,14 @@ impl Debugger {
                         self.watch(event.dwThreadId, info.hThread)?;
                     }
                     CREATE_THREAD_DEBUG_EVENT => {
-                        self.watch(event.dwThreadId, event.u.CreateThread.hThread)?
+                        let info = event.u.CreateThread;
+                        // Windows' transient debugger break-in thread cannot execute the
+                        // WeChat key function, and may already be terminating on cleanup.
+                        if info.lpStartAddress.map(|f| f as *const () as usize)
+                            != Some(self.system_breakin)
+                        {
+                            self.watch(event.dwThreadId, info.hThread)?;
+                        }
                     }
                     EXIT_THREAD_DEBUG_EVENT => {
                         self.threads.remove(&event.dwThreadId);
@@ -541,7 +566,10 @@ impl Debugger {
                     EXCEPTION_DEBUG_EVENT => {
                         let exception = event.u.Exception.ExceptionRecord;
                         disposition = DBG_EXCEPTION_NOT_HANDLED;
-                        if exception.ExceptionCode == EXCEPTION_BREAKPOINT && !initialized {
+                        if exception.ExceptionCode == EXCEPTION_BREAKPOINT
+                            && !initialized
+                            && exception.ExceptionAddress as usize == self.system_breakpoint
+                        {
                             self.pending_disposition = DBG_CONTINUE;
                             initialized = true;
                             disposition = DBG_CONTINUE;
@@ -628,27 +656,22 @@ impl Debugger {
         if !self.attached {
             return Ok(());
         }
-        // With a pending debug event all threads are already suspended by Windows.
-        // Otherwise suspend each owned thread while restoring its slot; retain suspend
-        // counts, including when another application has already suspended that thread.
-        let stopped = self.pending.is_some();
+        // Always restore under a debug event, with every thread stopped by Windows.
+        // Individual SuspendThread calls race with thread termination, as observed in CI.
+        if self.pending.is_none() {
+            self.pause_for_cleanup()?;
+        }
+        if !self.attached {
+            return Ok(());
+        }
         let mut error = None;
         for thread in self.threads.values() {
-            let suspended = !stopped && unsafe { SuspendThread(thread.handle.0) } != u32::MAX;
-            if stopped || suspended {
-                if let Err(e) = thread.restore() {
-                    error.get_or_insert(e);
-                }
-                if suspended && unsafe { ResumeThread(thread.handle.0) } == u32::MAX {
-                    error.get_or_insert_with(|| win_error("ResumeThread"));
-                }
-            } else {
-                // A terminated thread no longer owns a live register context.
+            if let Err(e) = thread.restore() {
                 let mut exit = 0;
                 if unsafe { GetExitCodeThread(thread.handle.0, &mut exit) } == 0
                     || exit == STILL_ACTIVE as u32
                 {
-                    error.get_or_insert_with(|| win_error("SuspendThread"));
+                    error.get_or_insert(e);
                 }
             }
         }
@@ -665,6 +688,75 @@ impl Debugger {
             Some(e) => Err(e),
             None => Ok(()),
         }
+    }
+
+    fn pause_for_cleanup(&mut self) -> Result<()> {
+        let process = self
+            .process
+            .as_ref()
+            .context("debugger has no process handle")?
+            .0;
+        if unsafe { DebugBreakProcess(process) } == 0 {
+            return Err(win_error("DebugBreakProcess"));
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            let mut event = DEBUG_EVENT::default();
+            if unsafe { WaitForDebugEvent(&mut event, 50) } == 0 {
+                if unsafe { GetLastError() } == ERROR_SEM_TIMEOUT {
+                    continue;
+                }
+                return Err(win_error("WaitForDebugEvent during cleanup"));
+            }
+            self.pending = Some(event);
+            self.pending_disposition = DBG_CONTINUE;
+            unsafe {
+                match event.dwDebugEventCode {
+                    EXIT_THREAD_DEBUG_EVENT => {
+                        self.threads.remove(&event.dwThreadId);
+                    }
+                    LOAD_DLL_DEBUG_EVENT => {
+                        let file = event.u.LoadDll.hFile;
+                        if !file.is_null() {
+                            CloseHandle(file);
+                        }
+                    }
+                    EXCEPTION_DEBUG_EVENT => {
+                        let record = event.u.Exception.ExceptionRecord;
+                        if record.ExceptionCode == EXCEPTION_BREAKPOINT
+                            && record.ExceptionAddress as usize == self.system_breakpoint
+                        {
+                            return Ok(());
+                        }
+                        self.pending_disposition = DBG_EXCEPTION_NOT_HANDLED;
+                        if record.ExceptionCode == EXCEPTION_SINGLE_STEP {
+                            if let Some(thread) = self.threads.get(&event.dwThreadId) {
+                                let mut ctx = context(thread.handle.0)?;
+                                if ctx.Rip as usize == self.target
+                                    && ctx.Dr6 & (1 << thread.slot) != 0
+                                {
+                                    ctx.Dr6 &= !(1 << thread.slot);
+                                    ctx.EFlags |= 1 << 16;
+                                    ctx.ContextFlags =
+                                        CONTEXT_CONTROL_AMD64 | CONTEXT_DEBUG_REGISTERS_AMD64;
+                                    set_context(thread.handle.0, &ctx)?;
+                                    self.pending_disposition = DBG_CONTINUE;
+                                }
+                            }
+                        }
+                    }
+                    EXIT_PROCESS_DEBUG_EVENT => {
+                        self.threads.clear();
+                        self.continue_event(DBG_CONTINUE)?;
+                        self.attached = false;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+            self.continue_event(self.pending_disposition)?;
+        }
+        bail!("timed out pausing the debugger for cleanup")
     }
 }
 
@@ -692,6 +784,15 @@ mod tests {
         std::hint::black_box(first + key.size as usize)
     }
 
+    unsafe extern "system" fn unrelated_exception(info: *mut EXCEPTION_POINTERS) -> i32 {
+        if (*(*info).ExceptionRecord).ExceptionCode as u32 == 0xe0123456 {
+            println!("FORWARDED");
+            EXCEPTION_CONTINUE_EXECUTION
+        } else {
+            EXCEPTION_CONTINUE_SEARCH
+        }
+    }
+
     // A real independent x64 target, with generated keys only. Invoked by the tests
     // below via the Rust test harness, never by the normal suite itself.
     #[test]
@@ -708,6 +809,12 @@ mod tests {
             }
             if command == "call" || command == "new-thread" {
                 let call = || {
+                    unsafe {
+                        let handler = AddVectoredExceptionHandler(1, Some(unrelated_exception));
+                        assert!(!handler.is_null());
+                        RaiseException(0xe0123456, 0, 0, std::ptr::null());
+                        assert_ne!(RemoveVectoredExceptionHandler(handler), 0);
+                    }
                     let key = [0x37; 32];
                     // Wrong sizes and unreadable pointers must be skipped without changing
                     // the target function's return value or losing subsequent key calls.
@@ -789,7 +896,7 @@ mod tests {
             writeln!(self.child.stdin.as_mut().unwrap(), "{command}").unwrap();
         }
 
-        fn assert_detached(&mut self) {
+        fn assert_detached_with(&mut self, addresses: [u64; 4], control: u64) {
             let process =
                 Handle(unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, 0, self.child.id()) });
             assert!(!process.0.is_null());
@@ -805,8 +912,33 @@ mod tests {
             assert_ne!(unsafe { SuspendThread(thread.0) }, u32::MAX);
             let ctx = context(thread.0).unwrap();
             assert_ne!(unsafe { ResumeThread(thread.0) }, u32::MAX);
-            assert_eq!(ctx.Dr7 & 0xff, 0, "no breakpoint remains enabled");
-            assert_eq!([ctx.Dr0, ctx.Dr1, ctx.Dr2, ctx.Dr3], [0; 4]);
+            assert_eq!(
+                ctx.Dr7 & 0xff,
+                control,
+                "only the original breakpoint slots remain enabled"
+            );
+            assert_eq!([ctx.Dr0, ctx.Dr1, ctx.Dr2, ctx.Dr3], addresses);
+        }
+
+        fn assert_detached(&mut self) {
+            self.assert_detached_with([0; 4], 0);
+        }
+
+        fn set_debug_registers(&mut self, addresses: [u64; 4], control: u64) {
+            let thread = Handle(unsafe {
+                OpenThread(
+                    THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME,
+                    0,
+                    self.tid,
+                )
+            });
+            assert_ne!(unsafe { SuspendThread(thread.0) }, u32::MAX);
+            let mut ctx = context(thread.0).unwrap();
+            [ctx.Dr0, ctx.Dr1, ctx.Dr2, ctx.Dr3] = addresses;
+            ctx.Dr7 = control;
+            ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS_AMD64;
+            set_context(thread.0, &ctx).unwrap();
+            assert_ne!(unsafe { ResumeThread(thread.0) }, u32::MAX);
         }
     }
 
@@ -841,6 +973,9 @@ mod tests {
             target.assert_detached();
             let mut line = String::new();
             target.stdout.read_line(&mut line).unwrap();
+            assert_eq!(line.trim(), "FORWARDED");
+            line.clear();
+            target.stdout.read_line(&mut line).unwrap();
             assert_eq!(line.trim(), "CALLED");
         }
     }
@@ -874,6 +1009,26 @@ mod tests {
             .to_string()
             .contains("interrupted"));
         target.assert_detached();
+    }
+
+    #[test]
+    fn preserves_other_slots_and_refuses_exhausted_registers() {
+        let mut target = Target::spawn();
+        let original = [0, 0, 0x3000, 0];
+        target.set_debug_registers(original, 0x10);
+        let mut hook =
+            Hook::start_at(target.child.id(), target.address, "synthetic".into()).unwrap();
+        hook.cleanup().unwrap();
+        target.assert_detached_with(original, 0x10);
+        let occupied = [0x1000, 0x2000, 0x3000, 0x4000];
+        target.set_debug_registers(occupied, 0x55);
+        let error = Hook::start_at(target.child.id(), target.address, "synthetic".into())
+            .err()
+            .unwrap();
+        assert!(error
+            .to_string()
+            .contains("no free hardware breakpoint slot"));
+        target.assert_detached_with(occupied, 0x55);
     }
 
     #[test]
