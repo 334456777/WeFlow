@@ -128,6 +128,7 @@ jobs:
           mkdir "$DIR"
           cp "target/${{ matrix.target }}/release/weflow${{ matrix.ext }}" "$DIR/"
           cp README.md LICENSE "$DIR/"
+          cp docs/zh-CN/README.md "$DIR/README.zh-CN.md"
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "$DIR.zip" "$DIR" > /dev/null
             echo "ASSET=$DIR.zip" >> "$GITHUB_ENV"
@@ -205,6 +206,9 @@ jobs:
           DIR="weflow-${TAG}-${{ matrix.name }}"
           if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
           if [ "${{ runner.os }}" = "Windows" ]; then 7z x -y "$DIR.zip" > /dev/null; else tar -xzf "$DIR.tar.gz"; fi
+          for f in "weflow${{ matrix.ext }}" README.md README.zh-CN.md LICENSE; do
+            [ -f "$DIR/$f" ] || { echo "::error::$f is missing from the package"; exit 1; }
+          done
           BIN="$DIR/weflow${{ matrix.ext }}"
           OUT="$("$BIN" --version)"
           echo "$OUT"
@@ -229,6 +233,12 @@ jobs:
         if: matrix.name == 'linux-x64'
         shell: bash
         run: cargo fmt --all -- --check
+
+      # The same lint as `make lint` in ci.yml, on the two platforms ci.yml runs it on.
+      - name: Clippy
+        if: matrix.name == 'linux-x64' || matrix.name == 'macos-arm64'
+        shell: bash
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test suite
         shell: bash
