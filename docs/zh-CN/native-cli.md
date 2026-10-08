@@ -93,15 +93,15 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 `key db`（Windows）通过 `wx_key.dll` 挂钩微信。微信只在打开数据库时才会产生密钥，所以命令会先请你完全退出微信（如果它正在运行）再重新打开，每秒检查一次微信进程（整个过程超过 `--timeout`，默认 180 秒，就会自动退出，并显示剩余秒数），然后挂钩新启动的微信，并请你在登录窗口点击「进入微信」。结果以 `decrypt_key: <密钥>` 输出，名字与 `config set` 一致。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`；用 `--pid` 指定时直接挂钩该进程，不再等待重启。`key image` 从 `kvcomm` 缓存推导图片密钥，用账号目录下的 `_t.dat` 模板校验，并输出 `image_xor_key` 和 `image_aes_key`。
 
-显式选择不依赖 DLL 的文件采集路径（#89 的 Windows 切口）：
+Windows 上 `key image` 默认使用不依赖 DLL 的文件采集（#89 的 Windows 切口）；`--method native` 可选用原生辅助程序路径：
 
 ```powershell
-./weflow --json key image --method rust --kvcomm-dir "$env:APPDATA\Tencent\xwechat\net\kvcomm" --kvcomm-dir "$env:APPDATA\Tencent\xwechat\net_1\kvcomm"
+./weflow --json key image --kvcomm-dir "$env:APPDATA\Tencent\xwechat\net\kvcomm" --kvcomm-dir "$env:APPDATA\Tencent\xwechat\net_1\kvcomm"
 ```
 
-目录需按本机实际情况传入，不自动发现。`--user-dir <账号目录>` 可覆盖已配置的样本目录。
+Windows 上省略 `--kvcomm-dir` 时使用已存在的 `%APPDATA%\Tencent\xwechat\net*\kvcomm` 目录；Linux 和 macOS 默认仍是 `--method native`，`--method rust` 需用 `--kvcomm-dir` 显式指定目录。`--user-dir <账号目录>` 可覆盖已配置的样本目录。
 仅使用配置的 wxid 与该目录名，清洗后去重，不搜索兄弟账号。Rust 路径不读取预存图片密钥，
-不调用 `GetImageKey`；默认 `--method native` 保留原生路径供对照，数据库取钥和图片下载 hook 不变。
+不调用 `GetImageKey`；`--method native` 保留原生路径供对照，数据库取钥和图片下载 hook 不变。
 
 仅解析 `key_` 文件名中的下划线分隔 ASCII 十进制字段，范围为 `1..=4294967295`，可去掉末尾
 `.statistic`。这些都是宽松候选，无关数字段必须经过样本验证；code 和派生 AES/XOR 组合分别去重。

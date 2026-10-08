@@ -1,7 +1,7 @@
 // Chinese help text: (English doc comment, Chinese). Keep in sync with the doc comments in main.rs; a test fails on gaps.
 const HELP: &[(&str, &str)] = &[
-    ("Acquisition method: native helper (default), or Rust file collection without a DLL", "取钥方式：原生辅助程序（默认）或不依赖 DLL 的 Rust 文件采集"),
-    ("Explicit kvcomm directories (repeat for net, net_1, etc.; required for --method rust)", "显式指定 kvcomm 目录（可重复传入 net、net_1 等目录；--method rust 必需）"),
+    ("Acquisition method: Rust file collection (default on Windows), or the native helper (default elsewhere)", "取钥方式：Rust 文件采集（Windows 默认）或原生辅助程序（其他平台默认）"),
+    ("kvcomm directories for the Rust method (repeat for net, net_1, etc.; default on Windows: the existing xwechat net*/kvcomm directories)", "Rust 方式使用的 kvcomm 目录（可重复传入 net、net_1 等目录；Windows 默认使用已存在的 xwechat net*/kvcomm 目录）"),
     ("Maximum filesystem entries scanned for templates in the selected account (default: 10000)", "在选定账号中查找模板时扫描的文件系统条目上限（默认：10000）"),
     ("Show the wxid of the account(s) in the WeChat data directory (the value for `config set wxid`)", "显示微信数据目录中账号的 wxid（即 `config set wxid` 要填的值）"),
     ("WeChat data directory (default: `db_path` from the config, else the usual locations)", "微信数据目录（默认：配置中的 `db_path`，否则在常用位置查找）"),

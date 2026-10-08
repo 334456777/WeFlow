@@ -319,10 +319,10 @@ enum KeySubcommand {
         /// Account directory to search for templates (default: the configured account directory)
         #[arg(long)]
         user_dir: Option<String>,
-        /// Acquisition method: native helper (default), or Rust file collection without a DLL
-        #[arg(long, value_parser = ["native", "rust"], default_value = "native")]
-        method: String,
-        /// Explicit kvcomm directories (repeat for net, net_1, etc.; required for --method rust)
+        /// Acquisition method: Rust file collection (default on Windows), or the native helper (default elsewhere)
+        #[arg(long, value_parser = ["native", "rust"])]
+        method: Option<String>,
+        /// kvcomm directories for the Rust method (repeat for net, net_1, etc.; default on Windows: the existing xwechat net*/kvcomm directories)
         #[arg(long, action = clap::ArgAction::Append)]
         kvcomm_dir: Vec<PathBuf>,
         /// Maximum filesystem entries scanned for templates in the selected account (default: 10000)
@@ -2197,11 +2197,18 @@ fn handle_key(command: &KeyCommand, hub: &ServiceHub) -> AppResult<Value> {
             kvcomm_dir,
             scan_budget,
         } => {
-            if method == "rust" {
-                let directories: Vec<_> = kvcomm_dir
+            let rust = match method.as_deref() {
+                Some(m) => m == "rust",
+                None => cfg!(windows),
+            };
+            if rust {
+                let mut directories: Vec<_> = kvcomm_dir
                     .iter()
                     .map(|p| weflow_core::config::expand_home(&p.to_string_lossy()))
                     .collect();
+                if directories.is_empty() {
+                    directories = weflow_core::image_keys::default_kvcomm_dirs();
+                }
                 hub.key_image_rust(
                     user_dir.as_deref(),
                     &directories,
@@ -3263,7 +3270,7 @@ mod tests {
         else {
             panic!("image command")
         };
-        assert_eq!(method, "native");
+        assert_eq!(method, None);
         assert!(kvcomm_dir.is_empty());
         assert_eq!(scan_budget, None);
         let Commands::Key(KeyCommand {
@@ -3289,7 +3296,7 @@ mod tests {
         else {
             panic!("image command")
         };
-        assert_eq!(method, "rust");
+        assert_eq!(method.as_deref(), Some("rust"));
         assert_eq!(
             kvcomm_dir,
             [PathBuf::from("net/kvcomm"), PathBuf::from("net_1/kvcomm")]

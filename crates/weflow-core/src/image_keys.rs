@@ -170,7 +170,7 @@ pub fn acquire_image_keys(
 ) -> AppResult<Value> {
     if directories.is_empty() || budget == 0 {
         return Err(AppError::usage(
-            "Rust image-key acquisition needs kvcomm directories and a nonzero scan budget",
+            "Rust image-key acquisition needs kvcomm directories (none found; pass --kvcomm-dir) and a nonzero scan budget",
         ));
     }
     let collection = collect_codes(directories);
@@ -252,4 +252,27 @@ pub fn acquire_image_keys(
         "verification": if verified { "jpeg_decode_and_xor_tail" } else { "aes_header_only" },
         "sources": sources, "collection": collection_diagnostics, "scan": diagnostics,
     }))
+}
+
+/// Windows: the existing `%APPDATA%\Tencent\xwechat\net*\kvcomm` directories (`net`, `net_1`, ...).
+/// Other platforms have no known location, so callers must pass directories explicitly.
+pub fn default_kvcomm_dirs() -> Vec<PathBuf> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    let Some(appdata) = std::env::var_os("APPDATA") else {
+        return Vec::new();
+    };
+    let base = Path::new(&appdata).join("Tencent").join("xwechat");
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<_> = entries
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("net"))
+        .map(|e| e.path().join("kvcomm"))
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    dirs
 }

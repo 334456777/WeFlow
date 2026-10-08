@@ -4,7 +4,7 @@
 use crate::locale::translate_with;
 
 const CATALOG: &[(&str, &str)] = &[
-    ("Rust image-key acquisition needs kvcomm directories and a nonzero scan budget", "Rust 图片取钥需要指定 kvcomm 目录和非零扫描预算"),
+    ("Rust image-key acquisition needs kvcomm directories (none found; pass --kvcomm-dir) and a nonzero scan budget", "Rust 图片取钥需要 kvcomm 目录（未找到，请用 --kvcomm-dir 指定）和非零扫描预算"),
     ("--kvcomm-dir and --scan-budget require --method rust", "--kvcomm-dir 和 --scan-budget 需配合 --method rust 使用"),
     ("No kvcomm directory could be read", "所有 kvcomm 目录均无法读取"),
     ("No candidate code found in the kvcomm filenames", "kvcomm 文件名中未找到候选 code"),
