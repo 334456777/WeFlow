@@ -77,7 +77,7 @@
 - **Windows 上启动时的内存**: CLI 启动时会为分配器预留并提交 128 MiB，这样导出时能少几十万次缺页。即使是很短的命令，这部分也
   计入提交量(专用字节)，但不占物理内存(working set)。可以用 `MIMALLOC_RESERVE_OS_MEMORY` 改成别的大小。
 - **密钥校验**: 第一次用某个密钥运行命令时，会在 `session.db` 上验证它，并在缓存目录里记下一个单向指纹(由密钥、数据库盐值和
-  账号算出，无法反推出密钥)，之后的命令就跳过这一步较慢的校验。`chat clear-account-data --cache` 会删除这些指纹;
+  账号算出，无法反推出密钥)，之后的命令就跳过这一步较慢的校验。`cache clear --keys`（以及 `cache clear-account`）会删除这些指纹;
   `db test` 总是重新校验密钥。
 - **时区**: 导出的 `--start/--end` 日期、写进导出文件的时间、`chat dates`、`chat date-counts` 和按日统计都使用本机本地时区(与桌面端一致)。同一份数据库在另一个时区的机器上读取，深夜的消息会归到不同的日子。
 - **导出里的媒体**: `export messages --media image,voice,video,emoji`(或 `all`)把文件复制到输出文件旁边的 `media/<输出文件名>/{images,voices,videos,emojis}`，并让消息指向它们。

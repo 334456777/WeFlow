@@ -33,10 +33,10 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ./weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
-                 voice | voice-data | voice-cache | voice-preload | image-data | emoji | clear-account-data
+                 voice | voice-data | voice-cache | voice-preload | image-data | emoji
 ./weflow export    sessions | contacts | footprint | media | messages   (messages: chatlab, chatlab-jsonl, json,
                  arkme-json, html, txt, excel, weclone, sql)
-./weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
+./weflow analytics overall | rankings | time | excluded | exclude-candidates
 ./weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
 ./weflow report    annual years|generate | dual generate
 ./weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | debug-resource
@@ -44,11 +44,11 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ./weflow biz       accounts | messages | pay-records
 ./weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
 ./weflow video     info | parse-md5
-./weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-download start|status
+./weflow image     decrypt | resolve-cache | resolve-batch | auto-download start|status
 ./weflow backup    create | inspect | restore
 ./weflow serve     --http --message-push --insight --image-auto-download
 ./weflow runtime   info | manifest
-./weflow cache     clear-all
+./weflow cache     list | clear | clear-account
 ./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
 ```
 
@@ -82,10 +82,26 @@ Some formats keep their own rules: `chatlab` writes links as `[title](URL)` and 
 
 Every format is written while the messages are read, in time order (a conversation that comes back out of order would be written in the order read). A format whose header needs totals first writes its messages to `<output>.part` and joins them when the read ends; the file is removed afterwards, also on failure, and an empty range writes no file.
 
-`chat clear-account-data --cache [--exports-dir <dir>] --yes` removes WeFlow's caches of the current account (images, voices,
-stickers, Moments, analytics) and signs the account out of the profile (`db_path`, `wxid`, `decrypt_key` and the image keys are
-removed); `--exports-dir` also removes the entries named after the account in that folder. `cache clear-all` clears every cache.
-Neither touches WeChat's files.
+All cache cleanup is under `weflow cache`:
+
+| Command | What it does |
+|---|---|
+| `cache list` | Each part of the cache with the option that clears it, its size and its path |
+| `cache clear --images` | Decrypted images |
+| `cache clear --voices` | Decoded voice messages |
+| `cache clear --emojis` | Stickers |
+| `cache clear --sns` | Images and videos of Moments |
+| `cache clear --analytics` | The analytics aggregate |
+| `cache clear --api` | Media exported (`api-media`) and avatars pushed (`push-avatar-files`) by the HTTP API |
+| `cache clear --keys` | Fingerprints of keys that worked; the next command checks the key again |
+| `cache clear --runtime` | Runtimes unpacked by other WeFlow versions under `runtime/`; the running version's stays |
+| `cache clear --all` | All of the above |
+| `cache clear-account [--exports-dir <dir>]` | The current account's cached images, voices, stickers, Moments, analytics and key fingerprints; then signs the account out of the profile (`db_path`, `wxid`, `decrypt_key` and the image keys are removed). `--exports-dir` (repeatable) also removes the entries named after the account in that folder |
+
+Options of `cache clear` combine (`cache clear --images --voices`). Before removing anything, `cache clear` and
+`cache clear-account` list the paths with their sizes and ask `[y/N]`: only `y` or `yes` goes ahead, and Enter or any other
+answer cancels. `-y`/`--yes` skips the question; without a terminal (a pipe or a script) it is required. Nothing in WeChat's
+own folders is touched.
 
 `db detect` prints the WeChat data directories that exist as `db_path: <path>`, and `db wxid` prints the wxid of the
 account(s) it finds as `wxid: <wxid>` (the folder name without its `_ab12` suffix; add a data directory as an optional argument to read a specific one); both names are the ones `config set` takes.

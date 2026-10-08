@@ -21,3 +21,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 weflow-core = { path = "../weflow-core" }
 weflow-assets = { path = "../weflow-assets" }
+
+# turns on ANSI colours in the Windows console (`cache list` prints its header in green)
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console"] }

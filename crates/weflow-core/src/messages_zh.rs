@@ -6,8 +6,9 @@ use crate::locale::translate_with;
 const CATALOG: &[(&str, &str)] = &[
     // CLI
     ("this removes files; add --yes to confirm", "此操作会删除文件；请加上 --yes 确认"),
+    ("choose what to clear: {} (`weflow cache list` shows each part)", "请选择要清理的部分：{}（`weflow cache list` 可查看各部分）"),
+    ("failed to read the answer: {}", "读取输入失败：{}"),
     ("auto download failed to start", "自动下载启动失败"),
-    ("clearing the caches failed", "清理缓存失败"),
     ("payloads_json must be a JSON array: {}", "payloads_json 必须是 JSON 数组：{}"),
     ("invalid value '{}' for {}; use a whole number of seconds (0 or more)", "{1} 的值 '{0}' 无效；请使用整数秒数（0 或更大）"),
     ("old Electron config not found; pass an explicit path", "未找到旧版 Electron 配置；请显式指定路径"),
@@ -47,7 +48,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("no account or database path configured", "未配置账号或数据库路径"),
     ("account directory not found", "未找到账号目录"),
     ("no current account (wxid) configured, nothing to clear", "未配置当前账号（wxid），没有可清理的内容"),
-    ("choose at least one thing to clear: --cache and/or --exports-dir <dir>", "请至少选择一项要清理的内容：--cache 和/或 --exports-dir <目录>"),
+    ("nothing chosen to clear: neither the caches nor an export folder", "没有选择要清理的内容：既没有缓存，也没有导出文件夹"),
     // services
     ("failed to create HTTP client: {}", "创建 HTTP 客户端失败：{}"),
     ("failed to download image: {}", "下载图片失败：{}"),

@@ -90,7 +90,7 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   physical memory (working set). `MIMALLOC_RESERVE_OS_MEMORY` sets another size.
 - **Key check**: the first command with a key proves it on `session.db` and remembers a one-way fingerprint of it (key,
   database salt and account; the key cannot be recovered from it) in the cache folder, so later commands skip that slow step.
-  `chat clear-account-data --cache` deletes the fingerprints; `db test` always checks the key.
+  `cache clear --keys` (and `cache clear-account`) deletes the fingerprints; `db test` always checks the key.
 - **Time zones**: the `--start/--end` dates of the exports, the times written into them, `chat dates`, `chat date-counts` and the per-day
   statistics all use the machine's local time zone (like the desktop app). The same database read on a machine in another zone
   puts a late-night message on a different day.
