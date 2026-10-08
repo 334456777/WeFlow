@@ -247,15 +247,16 @@ pub async fn install_build(
     std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
     let partial = dir.join(format!("{}.download", executable_name()));
     // the old copy stays until the new one is complete; a half-written one is not left behind
-    let placed = std::fs::write(&partial, &binary)
-        .and_then(|()| {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))?;
-            }
-            Ok(())
-        })
+    let write_partial = || -> std::io::Result<()> {
+        std::fs::write(&partial, &binary)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))?;
+        }
+        Ok(())
+    };
+    let placed = write_partial()
         .map_err(|e| io(&partial, e))
         .and_then(|()| std::fs::rename(&partial, &target).map_err(|e| io(&target, e)));
     if let Err(e) = placed {
