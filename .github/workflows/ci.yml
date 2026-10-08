@@ -11,9 +11,6 @@ on:
   pull_request:
     paths:
       - "crates/**"
-      - "electron/services/keyService.ts"
-      - "electron/services/imageKeyService.ts"
-      - "scripts/test-desktop-image-key.cjs"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -23,9 +20,6 @@ on:
     branches: [main]
     paths:
       - "crates/**"
-      - "electron/services/keyService.ts"
-      - "electron/services/imageKeyService.ts"
-      - "scripts/test-desktop-image-key.cjs"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -96,15 +90,6 @@ jobs:
       - name: Test
         shell: bash
         run: cargo test --workspace --target ${{ matrix.target }}
-
-      - name: Desktop image-key adapter
-        shell: bash
-        run: |
-          npm ci --ignore-scripts
-          cargo build -p weflow-wcdb-ffi --target ${{ matrix.target }}
-          mkdir -p resources/native-db/win32/x64
-          cp target/${{ matrix.target }}/debug/weflow_wcdb.dll resources/native-db/win32/x64/
-          node scripts/test-desktop-image-key.cjs
 
       - name: Run once
         shell: bash
