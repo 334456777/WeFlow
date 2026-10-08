@@ -34,6 +34,60 @@ pub const STATUS_READ_ONLY: i32 = -4;
 /// A Rust panic was caught at the boundary.
 pub const STATUS_PANIC: i32 = -99;
 
+/// Acquire image keys using #95's Rust cache parser and selected-account verification.
+/// No database handle, stored image keys or wx_key.dll is involved.
+/// `directories_json` may be null to discover the default Windows kvcomm directories.
+/// # Safety
+/// Text arguments are null or NUL-terminated UTF-8; `out` points to writable pointer
+/// storage. The caller releases the returned string using `wcdb_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn weflow_get_image_keys(
+    account_dir: *const c_char,
+    wxid: *const c_char,
+    directories_json: *const c_char,
+    out: *mut *mut c_void,
+) -> i32 {
+    if out.is_null() {
+        return STATUS_BAD_ARGUMENT;
+    }
+    *out = std::ptr::null_mut();
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<Value> {
+        let account = text(account_dir);
+        if account.trim().is_empty() {
+            return Err(anyhow!(
+                "Select an account directory before acquiring image keys"
+            ));
+        }
+        let identity = text(wxid);
+        let dirs: Vec<PathBuf> = if directories_json.is_null() {
+            weflow_core::image_keys::default_kvcomm_dirs()
+        } else {
+            serde_json::from_str(&text(directories_json))?
+        };
+        weflow_core::image_keys::acquire_image_keys(
+            &dirs,
+            Path::new(&account),
+            (!identity.trim().is_empty()).then_some(identity.as_str()),
+            weflow_core::image_keys::DEFAULT_SCAN_BUDGET,
+        )
+        .map_err(|error| anyhow!(error.into_message()))
+    }));
+    match result {
+        Ok(Ok(value)) => {
+            put(out, &value.to_string());
+            STATUS_OK
+        }
+        Ok(Err(error)) => {
+            put(out, &error.to_string());
+            STATUS_FAILED
+        }
+        Err(_) => {
+            put(out, "Rust image-key acquisition panicked");
+            STATUS_PANIC
+        }
+    }
+}
+
 struct Account {
     dir: PathBuf,
     key: String,

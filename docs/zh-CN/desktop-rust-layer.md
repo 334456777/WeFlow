@@ -18,6 +18,8 @@ npm run native-db:build          # cargo build -p weflow-wcdb-ffi，并复制到
 npm run build                    # 先执行 native-db:build，再执行 tsc、vite 和 electron-builder
 ```
 
+Windows 自动图片取钥也通过 `weflow_get_image_keys` 使用此 Rust 库。复用 CLI 的 kvcomm 采集，并在选定账号的样本上验真；不再从 `wx_key.dll` 加载 `GetImageKey`，不扫描其他账号身份，也不选取未验证的兜底结果。`verified` 表示完整 JPEG 解码与 XOR 尾段验证均通过；仅通过 AES 首块验证的结果仍标为未完整验证。不需要数据库连接或已存图片密钥。Windows 数据库取钥继续使用其独立辅助程序。
+
 交叉编译，例如在 Linux 上编译 Windows 库:`node scripts/build-native-db.cjs --target x86_64-pc-windows-gnu`(需要 MinGW 工具链)。
 
 ## 与旧库的差别

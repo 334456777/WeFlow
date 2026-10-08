@@ -18,6 +18,8 @@ npm run native-db:build          # cargo build -p weflow-wcdb-ffi, then copy int
 npm run build                    # native-db:build, then tsc, vite, and electron-builder
 ```
 
+On Windows, automatic image-key acquisition also uses this Rust library through `weflow_get_image_keys`. It reuses the CLI's kvcomm collection and verifies against samples of the selected account, without loading `GetImageKey` from `wx_key.dll`, scanning sibling account identities or choosing an unverified fallback. `verified` means both full JPEG decoding and XOR-tail verification passed; AES-header-only results remain unverified. No database connection or saved image keys are needed. Existing Windows database-key acquisition still uses its own helper.
+
 For cross-compilation—for example, building the Windows library on Linux—run `node scripts/build-native-db.cjs --target x86_64-pc-windows-gnu` (requires the MinGW toolchain).
 
 ## Differences from the old library
