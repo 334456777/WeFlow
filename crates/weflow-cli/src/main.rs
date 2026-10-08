@@ -319,6 +319,15 @@ enum KeySubcommand {
         /// Account directory to search for templates (default: the configured account directory)
         #[arg(long)]
         user_dir: Option<String>,
+        /// Acquisition method: native helper (default), or Rust file collection without a DLL
+        #[arg(long, value_parser = ["native", "rust"], default_value = "native")]
+        method: String,
+        /// Explicit kvcomm directories (repeat for net, net_1, etc.; required for --method rust)
+        #[arg(long, action = clap::ArgAction::Append)]
+        kvcomm_dir: Vec<PathBuf>,
+        /// Maximum filesystem entries scanned for templates in the selected account (default: 10000)
+        #[arg(long)]
+        scan_budget: Option<usize>,
     },
     /// Scan WeChat's memory for the image AES key (macOS)
     ScanImage {
@@ -2182,7 +2191,30 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
 fn handle_key(command: &KeyCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
         KeySubcommand::Db { pid, timeout } => hub.key_db(*pid, *timeout),
-        KeySubcommand::Image { user_dir } => hub.key_image(user_dir.as_deref()),
+        KeySubcommand::Image {
+            user_dir,
+            method,
+            kvcomm_dir,
+            scan_budget,
+        } => {
+            if method == "rust" {
+                let directories: Vec<_> = kvcomm_dir
+                    .iter()
+                    .map(|p| weflow_core::config::expand_home(&p.to_string_lossy()))
+                    .collect();
+                hub.key_image_rust(
+                    user_dir.as_deref(),
+                    &directories,
+                    scan_budget.unwrap_or(weflow_core::image_keys::DEFAULT_SCAN_BUDGET),
+                )
+            } else if !kvcomm_dir.is_empty() || scan_budget.is_some() {
+                Err(AppError::usage(
+                    "--kvcomm-dir and --scan-budget require --method rust",
+                ))
+            } else {
+                hub.key_image(user_dir.as_deref())
+            }
+        }
         KeySubcommand::ScanImage { user_dir } => hub.key_scan_image(user_dir),
     }
 }
@@ -3175,9 +3207,22 @@ fn key_summary(command: &Commands, data: &Value) -> Option<String> {
                     .map_or_else(|| xor.to_string(), |n| n.to_string())
             );
             if data["verified"] == false {
+                if data["method"] == "rust_kvcomm" {
+                    text.push_str(tr(
+                        "(AES header verified; XOR and the complete pair are not verified)\n",
+                        "（AES 首块已验证；XOR 与整组密钥尚未验证）\n",
+                    ));
+                } else {
+                    text.push_str(tr(
+                        "(not verified: no .dat template was found, the keys may be wrong)\n",
+                        "（未验证：没有找到 .dat 模板，密钥可能不正确）\n",
+                    ));
+                }
+            }
+            if data["scan"]["truncated"] == true || data["scan"]["templates_truncated"] == true {
                 text.push_str(tr(
-                    "(not verified: no .dat template was found, the keys may be wrong)\n",
-                    "（未验证：没有找到 .dat 模板，密钥可能不正确）\n",
+                    "(template search was truncated; see --json scan diagnostics)\n",
+                    "（模板扫描或保留数量已截断；详见 --json 的 scan 诊断）\n",
                 ));
             }
             Some(text)
@@ -3201,6 +3246,74 @@ fn print_failure(err: &AppError, cli: &Cli) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_key_rust_arguments_and_native_default() {
+        let parse =
+            |args: &[&str]| Cli::try_parse_from(["weflow", "key", "image"].iter().chain(args));
+        let Commands::Key(KeyCommand {
+            command:
+                KeySubcommand::Image {
+                    method,
+                    kvcomm_dir,
+                    scan_budget,
+                    ..
+                },
+        }) = parse(&[]).unwrap().command
+        else {
+            panic!("image command")
+        };
+        assert_eq!(method, "native");
+        assert!(kvcomm_dir.is_empty());
+        assert_eq!(scan_budget, None);
+        let Commands::Key(KeyCommand {
+            command:
+                KeySubcommand::Image {
+                    method,
+                    kvcomm_dir,
+                    scan_budget,
+                    ..
+                },
+        }) = parse(&[
+            "--method",
+            "rust",
+            "--kvcomm-dir",
+            "net/kvcomm",
+            "--kvcomm-dir",
+            "net_1/kvcomm",
+            "--scan-budget",
+            "10",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("image command")
+        };
+        assert_eq!(method, "rust");
+        assert_eq!(
+            kvcomm_dir,
+            [PathBuf::from("net/kvcomm"), PathBuf::from("net_1/kvcomm")]
+        );
+        assert_eq!(scan_budget, Some(10));
+        assert!(parse(&["--method", "invalid"]).is_err());
+    }
+
+    #[test]
+    fn partial_image_key_summary_does_not_claim_missing_templates() {
+        let command = Cli::try_parse_from(["weflow", "key", "image", "--method", "rust"])
+            .unwrap()
+            .command;
+        let summary = key_summary(
+            &command,
+            &json!({
+                "image_xor_key": 123, "image_aes_key": "0123456789abcdef",
+                "method": "rust_kvcomm", "verified": false, "scan": {"truncated": true},
+            }),
+        )
+        .unwrap();
+        assert!(summary.contains("XOR") && summary.contains("--json"));
+        assert!(!summary.contains("no .dat template"));
+    }
 
     #[test]
     fn only_y_or_yes_confirms() {

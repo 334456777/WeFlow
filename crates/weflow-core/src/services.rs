@@ -531,6 +531,29 @@ impl ServiceHub {
         Ok(json!({ "decrypt_key": key, "method": "wx_key", "pid": pid }))
     }
 
+    /// Explicit Rust file-based acquisition, independent of native helpers and stored image keys.
+    pub fn key_image_rust(
+        &self,
+        user_dir: Option<&str>,
+        kvcomm_dirs: &[PathBuf],
+        scan_budget: usize,
+    ) -> AppResult<Value> {
+        if kvcomm_dirs.is_empty() || scan_budget == 0 {
+            return Err(AppError::usage(
+                "Rust image-key acquisition needs kvcomm directories and a nonzero scan budget",
+            ));
+        }
+        let account = match user_dir {
+            Some(dir) => crate::config::expand_home(dir),
+            None => self.account_dir_only()?,
+        };
+        let wxid = self
+            .wxid_override
+            .as_deref()
+            .or_else(|| self.profile().ok().and_then(|p| p.wxid.as_deref()));
+        crate::image_keys::acquire_image_keys(kvcomm_dirs, &account, wxid, scan_budget)
+    }
+
     /// `key:autoGetImageKey`: codes from the `kvcomm` cache, verified per candidate wxid against a
     /// `_t.dat` template found under `user_dir` (default: the account directory).
     pub fn key_image(&self, user_dir: Option<&str>) -> AppResult<Value> {

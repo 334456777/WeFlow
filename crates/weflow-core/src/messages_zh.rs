@@ -4,6 +4,13 @@
 use crate::locale::translate_with;
 
 const CATALOG: &[(&str, &str)] = &[
+    ("Rust image-key acquisition needs kvcomm directories and a nonzero scan budget", "Rust 图片取钥需要指定 kvcomm 目录和非零扫描预算"),
+    ("--kvcomm-dir and --scan-budget require --method rust", "--kvcomm-dir 和 --scan-budget 需配合 --method rust 使用"),
+    ("No kvcomm directory could be read", "所有 kvcomm 目录均无法读取"),
+    ("No candidate code found in the kvcomm filenames", "kvcomm 文件名中未找到候选 code"),
+    ("No valid V2 thumbnail found in the selected account", "选定账号中未找到有效 V2 缩略图模板"),
+    ("The cached codes do not match the selected account's V2 samples", "缓存 code 与选定账号的 V2 样本不匹配"),
+    ("Multiple distinct image-key pairs match the selected account; no pair was chosen", "多个不同图片密钥组合匹配选定账号，未选择任何组合"),
     // CLI
     ("this removes files; add --yes to confirm", "此操作会删除文件；请加上 --yes 确认"),
     ("choose what to clear: {} (`weflow cache list` shows each part)", "请选择要清理的部分：{}（`weflow cache list` 可查看各部分）"),

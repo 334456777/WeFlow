@@ -14,6 +14,7 @@ pub mod hevc;
 pub mod http_server;
 pub mod image;
 pub mod image_download;
+pub mod image_keys;
 pub mod insight;
 pub mod isaac64;
 pub mod keys;
