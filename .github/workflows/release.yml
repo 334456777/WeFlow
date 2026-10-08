@@ -55,7 +55,7 @@ jobs:
           fi
           # An existing tag keeps its commit; for an annotated tag that is the `<tag>^{}` line, not the tag object.
           REFS="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
-          SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1)"
+          SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1 || true)"
           [ -n "$SHA" ] || SHA="$(head -1 <<< "$REFS" | cut -f1)"
           if [ -n "$SHA" ]; then
             echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
