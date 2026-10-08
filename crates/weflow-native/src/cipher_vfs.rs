@@ -312,6 +312,14 @@ impl CipherFile {
         self.stale.load(Ordering::Relaxed)
     }
 
+    /// Whether the files moved since this snapshot was opened, judged more strictly than a read is: also when the
+    /// main file's size or time changed under a wal-index that still looks right. Only for after an error that no
+    /// read reported (a schema made of half-written pages decrypts fine and only SQLite finds it malformed), where a
+    /// needless rerun is cheap; on every read it would rerun whenever WeChat checkpoints frames we already hold.
+    pub fn changed_since_open(&self) -> bool {
+        !self.guard.consistent(&self.file) || main_stamp(&self.file) != self.guard.stamp_at_open
+    }
+
     /// The first read error, for reporting when retries do not help.
     pub fn read_error(&self) -> Option<String> {
         self.error.lock().ok().and_then(|e| e.clone())
@@ -825,6 +833,29 @@ mod tests {
         wal
     }
 
+    /// A WAL holding one committed transaction that rewrites page 1 of `plain` only (one frame).
+    fn wal_page_1(cipher: &PageCipher, plain: &[u8], salt: (u32, u32)) -> Vec<u8> {
+        let mut wal = wal_header(salt);
+        let first_page = encrypt_page(cipher, 1, &plain[..PAGE_SIZE], [7; 16]);
+        let sum = (
+            u32::from_be_bytes(wal[24..28].try_into().unwrap()),
+            u32::from_be_bytes(wal[28..32].try_into().unwrap()),
+        );
+        let pages = (plain.len() / PAGE_SIZE) as u32;
+        let mut fh = Vec::new();
+        fh.extend(1u32.to_be_bytes());
+        fh.extend(pages.to_be_bytes());
+        fh.extend(salt.0.to_be_bytes());
+        fh.extend(salt.1.to_be_bytes());
+        let s = super::sqlcipher_checksum_from(&fh[..8], sum);
+        let s = super::sqlcipher_checksum_from(&first_page, s);
+        fh.extend(s.0.to_be_bytes());
+        fh.extend(s.1.to_be_bytes());
+        wal.extend(fh);
+        wal.extend(first_page);
+        wal
+    }
+
     /// A wal-index header (both copies) plus checkpoint info.
     fn shm(salt: (u32, u32), backfilled: u32, attempted: u32) -> Vec<u8> {
         let mut b = vec![0u8; 32768];
@@ -872,24 +903,7 @@ mod tests {
         let plain = big("a");
         fs::write(&path, encrypt_db(&plain, &cipher)).unwrap();
         // our WAL: salt (1,2), one committed transaction rewriting page 1 only (frames = 1)
-        let mut wal = wal_header((1, 2));
-        let first_page = encrypt_page(&cipher, 1, &plain[..PAGE_SIZE], [7; 16]);
-        let sum = (
-            u32::from_be_bytes(wal[24..28].try_into().unwrap()),
-            u32::from_be_bytes(wal[28..32].try_into().unwrap()),
-        );
-        let pages = (plain.len() / PAGE_SIZE) as u32;
-        let mut fh = Vec::new();
-        fh.extend(1u32.to_be_bytes());
-        fh.extend(pages.to_be_bytes());
-        fh.extend(1u32.to_be_bytes());
-        fh.extend(2u32.to_be_bytes());
-        let s = super::sqlcipher_checksum_from(&fh[..8], sum);
-        let s = super::sqlcipher_checksum_from(&first_page, s);
-        fh.extend(s.0.to_be_bytes());
-        fh.extend(s.1.to_be_bytes());
-        wal.extend(fh);
-        wal.extend(first_page);
+        let wal = wal_page_1(&cipher, &plain, (1, 2));
         fs::write(sibling(&path, "-wal"), &wal).unwrap();
         fs::write(sibling(&path, "-shm"), shm((1, 2), 1, 1)).unwrap();
 
@@ -917,6 +931,27 @@ mod tests {
             .query_row("select count(v) from t", [], |r| r.get::<_, i64>(0))
             .is_err());
         assert!(cf.is_stale());
+    }
+
+    #[test]
+    fn a_main_file_rewritten_under_a_matching_index_is_noticed_after_an_error() {
+        // a read cannot tell: the wal-index still describes our WAL and no checkpoint passed our frame
+        let dir = temp_dir("rewritten");
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        let path = dir.join("a.db");
+        let plain = big("e");
+        let mut enc = encrypt_db(&plain, &cipher);
+        fs::write(&path, &enc).unwrap();
+        fs::write(sibling(&path, "-wal"), wal_page_1(&cipher, &plain, (1, 2))).unwrap();
+        fs::write(sibling(&path, "-shm"), shm((1, 2), 0, 0)).unwrap();
+        let (cf, conn) = open(&path);
+        assert!(!cf.changed_since_open());
+        enc.extend(vec![0u8; PAGE_SIZE]);
+        fs::write(&path, &enc).unwrap();
+        assert_eq!(rows(&conn).len(), 2000);
+        assert!(!cf.is_stale());
+        // but when SQLite finds the pages it read malformed, the caller can tell the file moved and start over
+        assert!(cf.changed_since_open());
     }
 
     #[test]
