@@ -44,6 +44,7 @@ target
 
 # OS
 Thumbs.db
+desktop.ini
 
 # Electron dev cache
 .electron/
