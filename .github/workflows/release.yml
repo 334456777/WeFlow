@@ -1,0 +1,339 @@
+name: Release
+
+# Build the `weflow` CLI for Windows, Linux and macOS, test it and publish a GitHub Release. Two ways to start it:
+# - push a tag such as v0.0.1;
+# - run it by hand (Actions → Release → Run workflow) with a tag: an existing tag is released as is, a new one is
+#   created on the latest commit of the branch picked in "Use workflow from" when the release is published.
+# The jobs run in order: prepare (resolve the tag to a commit), build (release binaries for every target), test (on
+# every target: the test suite, and the packaged binary run once and checked against the tag), release (only after
+# every build and test passed). v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1,
+# v1.2.3-rc1, ...) is a pre-release.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v2.1.2 (created on the selected branch if it does not exist)"
+        required: true
+        type: string
+      notes:
+        description: "Optional text shown above the generated changelog (更新日志)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Resolve the tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: tag
+        name: Resolve the tag
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a release tag such as v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+          # An existing tag keeps its commit; for an annotated tag that is the `<tag>^{}` line, not the tag object.
+          REFS="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+          SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1)"
+          [ -n "$SHA" ] || SHA="$(head -1 <<< "$REFS" | cut -f1)"
+          if [ -n "$SHA" ]; then
+            echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
+          else
+            SHA="$GITHUB_SHA"
+            echo "Releasing $TAG at $SHA ($GITHUB_REF_NAME); the tag is created when the release is published" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+            ext: .exe
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            name: windows-arm64
+            ext: .exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+            ext: ""
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            ext: ""
+          - os: macos-15
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            ext: ""
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            name: macos-x64
+            ext: ""
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      # build.rs takes the version from `git describe`; a manual run may release a tag that does not exist yet.
+      - name: Tag the checkout
+        shell: bash
+        run: git tag -f "$TAG"
+
+      - name: Install Rust (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add ${{ matrix.target }}
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        shell: bash
+        run: cargo build --release -p weflow-cli --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          DIR="weflow-${TAG}-${{ matrix.name }}"
+          mkdir "$DIR"
+          cp "target/${{ matrix.target }}/release/weflow${{ matrix.ext }}" "$DIR/"
+          cp README.md LICENSE "$DIR/"
+          cp docs/zh-CN/README.md "$DIR/README.zh-CN.md"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$DIR.zip" "$DIR" > /dev/null
+            echo "ASSET=$DIR.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "$DIR.tar.gz" "$DIR"
+            echo "ASSET=$DIR.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Checksum
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null; then sha256sum "$ASSET" > "$ASSET.sha256"; else shasum -a 256 "$ASSET" > "$ASSET.sha256"; fi
+          cat "$ASSET.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: weflow-${{ matrix.name }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+
+  test:
+    name: Test ${{ matrix.target }}
+    needs: [prepare, build]
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every release target, while ci.yml only tests the three main platforms.
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+            ext: .exe
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            name: windows-arm64
+            ext: .exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+            ext: ""
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            ext: ""
+          - os: macos-15
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            ext: ""
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            name: macos-x64
+            ext: ""
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: weflow-${{ matrix.name }}
+          path: dist
+
+      # build.rs takes the version from the tag and falls back to Cargo.toml, so a mismatch means the release was
+      # started without aligning the version first.
+      - name: Run the packaged binary
+        shell: bash
+        working-directory: dist
+        env:
+          WEFLOW_HOME: ${{ runner.temp }}/weflow-home
+        run: |
+          DIR="weflow-${TAG}-${{ matrix.name }}"
+          if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
+          if [ "${{ runner.os }}" = "Windows" ]; then 7z x -y "$DIR.zip" > /dev/null; else tar -xzf "$DIR.tar.gz"; fi
+          for f in "weflow${{ matrix.ext }}" README.md README.zh-CN.md LICENSE; do
+            [ -f "$DIR/$f" ] || { echo "::error::$f is missing from the package"; exit 1; }
+          done
+          BIN="$DIR/weflow${{ matrix.ext }}"
+          OUT="$("$BIN" --version)"
+          echo "$OUT"
+          if [[ "$OUT" != "weflow ${TAG#v} ("* ]]; then
+            echo "::error::weflow --version does not match the tag $TAG"
+            exit 1
+          fi
+          "$BIN" config path
+
+      - name: Install Rust (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add ${{ matrix.target }}
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}-test
+
+      - name: Check formatting
+        if: matrix.name == 'linux-x64'
+        shell: bash
+        run: cargo fmt --all -- --check
+
+      # The same lint as `make lint` in ci.yml, on the two platforms ci.yml runs it on.
+      - name: Clippy
+        if: matrix.name == 'linux-x64' || matrix.name == 'macos-arm64'
+        shell: bash
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test suite
+        shell: bash
+        run: cargo test --workspace --target ${{ matrix.target }}
+
+  release:
+    name: Publish release
+    needs: [prepare, build, test]
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      SHA: ${{ needs.prepare.outputs.sha }}
+    permissions:
+      contents: write
+      id-token: write       # sign the attestation
+      attestations: write   # store the attestation
+      issues: read          # the changelog lists issues
+      pull-requests: read   # and pull requests
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0    # the changelog reads the history since the previous release
+
+      # The binaries take their version from the tag; Cargo.toml's version only shows in builds without git (the
+      # "Source code" archives), so a stale one is a warning, not a reason to stop the release.
+      - name: Compare Cargo.toml with the tag
+        shell: bash
+        run: |
+          # Only stable releases (plain vX.Y.Z, the same rule as below); pre-releases are expected to differ.
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$TAG is a pre-release, not compared"
+            exit 0
+          fi
+          CARGO_VERSION="$(awk '/^\[workspace\.package\]/ { f = 1; next } /^\[/ { f = 0 }
+            f && /^version *=/ { gsub(/^[^"]*"|".*$/, ""); print; exit }' Cargo.toml)"
+          if [ "$CARGO_VERSION" != "${TAG#v}" ]; then
+            MSG="Cargo.toml says $CARGO_VERSION but the tag is $TAG; source archives built without git will report $CARGO_VERSION"
+            echo "::warning::$MSG"
+            echo "> [!WARNING]" >> "$GITHUB_STEP_SUMMARY"
+            echo "> $MSG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Cargo.toml matches the tag ($CARGO_VERSION)"
+          fi
+
+      # The 更新日志 section: the optional `notes` input, then what .github/scripts/release-changelog.sh lists
+      # since the previous release (closed issues by label, pull requests without an issue, new open issues).
+      - name: Write the changelog
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          {
+            if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
+            bash .github/scripts/release-changelog.sh "$TAG" "$SHA"
+          } > "$RUNNER_TEMP/changelog.md"
+          cat "$RUNNER_TEMP/changelog.md"
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+
+      - name: Create the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l dist
+          # Stable only when the tag is plain vX.Y.Z; anything with letters is a pre-release.
+          FLAGS=()
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            FLAGS+=(--prerelease)
+          fi
+          # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in, and the
+          # {{CHANGELOG}} line is replaced with the changelog written above.
+          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" .github/release-notes.md |
+            awk -v f="$RUNNER_TEMP/changelog.md" '$0 == "{{CHANGELOG}}" { while ((getline l < f) > 0) print l; next } { print }' \
+            > release-notes.md
+          # --target only matters for a new tag: GitHub creates it on that commit.
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --target "$SHA" \
+            --notes-file release-notes.md \
+            "${FLAGS[@]}"

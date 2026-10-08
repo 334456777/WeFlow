@@ -1,3 +1,7 @@
+## 更新日志
+
+{{CHANGELOG}}
+
 ## 下载
 
 不知道选哪个？先看你的系统，再往下看对应的说明。**绝大多数 Windows 电脑选 x64 就对了。**
@@ -34,6 +38,6 @@
 
 ### 下载后怎么用
 
-每个压缩包里有 `weflow` 程序、`README.md` 和 `LICENSE`。下载后解压（tar.gz文件用`tar -zxvf <文件名.tar.gz>`）就能使用里面的 `weflow`。
+每个压缩包里有 `weflow` 程序、`README.md`（英文说明）、`README.zh-CN.md`（中文说明）和 `LICENSE`。下载后解压（tar.gz文件用`tar -zxvf <文件名.tar.gz>`）就能使用里面的 `weflow`。
 
 > 没见过？不会用？把文件扔给蓝色大肥鱼，她会解释。

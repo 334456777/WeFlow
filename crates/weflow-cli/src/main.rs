@@ -1639,7 +1639,9 @@ fn handle_runtime(command: &RuntimeCommand, ctx: &AppContext) -> AppResult<Value
             "version": ctx.version,
             "target": weflow_assets::target_triple()
         })),
-        RuntimeSubcommand::Manifest => Ok(serde_json::to_value(weflow_assets::manifest()).unwrap()),
+        RuntimeSubcommand::Manifest => {
+            Ok(serde_json::to_value(weflow_assets::manifest(&ctx.version)).unwrap())
+        }
     }
 }
 

@@ -2,9 +2,11 @@ name: CI
 
 # Code changes run `make ci` (rustfmt, clippy with warnings as errors, the whole test suite) on Linux and macOS,
 # plus `make docs-check`, because the docs are checked against the code (cli-unsupported.md, the crate tables).
-# Documentation-only changes run docs-check.yml instead. Windows is not tested because the suite assumes Unix
-# paths: it builds the CLI for the release targets (MSVC, x64 and arm64) and runs it once, since some code (the
-# allocator setup, the platform helpers) only compiles there.
+# Documentation-only changes run docs-check.yml instead. Windows x64 (MSVC, a release target) builds the CLI,
+# runs the test suite and runs the CLI once, since some code (the allocator setup, the platform helpers) only
+# compiles there; Windows arm64 is left to release.yml, so CI covers the three main platforms. The tests use the
+# dev profile like Linux and macOS: the release profile (thin LTO, one codegen unit) took ~13 minutes to compile
+# the ~20 test binaries and ~1 minute to run them.
 on:
   pull_request:
     paths:
@@ -65,8 +67,6 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: windows-11-arm
-            target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v7
 
@@ -77,9 +77,11 @@ jobs:
           rustup target add ${{ matrix.target }}
           rustc --version
 
+      # rust-cache does not save again after an exact hit, so the key changes whenever the cached profiles do;
+      # `release-dev` holds the dependencies of both the release build and the dev-profile tests.
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}-release-dev
 
       - name: Build
         shell: bash
@@ -87,7 +89,7 @@ jobs:
 
       - name: Test
         shell: bash
-        run: cargo test --workspace --release --target ${{ matrix.target }}
+        run: cargo test --workspace --target ${{ matrix.target }}
 
       - name: Run once
         shell: bash

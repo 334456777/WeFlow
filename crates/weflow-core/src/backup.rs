@@ -39,6 +39,7 @@ pub fn create_backup(
     account_dir: &Path,
     options: &BackupOptions,
     weflow_home: Option<&Path>,
+    weflow_version: &str,
     out_path: &Path,
     progress_cb: &dyn Fn(usize, usize),
 ) -> Result<BackupManifest> {
@@ -103,7 +104,7 @@ pub fn create_backup(
         version: "1".to_string(),
         created_at,
         wxid,
-        weflow_version: env!("CARGO_PKG_VERSION").to_string(),
+        weflow_version: weflow_version.to_string(),
         entries,
     };
 
@@ -244,7 +245,8 @@ mod tests {
         let archive = out_dir.join("backup.zip");
 
         let options = BackupOptions::default();
-        let manifest = create_backup(&account_dir, &options, None, &archive, &|_, _| {}).unwrap();
+        let manifest =
+            create_backup(&account_dir, &options, None, "1.2.3", &archive, &|_, _| {}).unwrap();
 
         assert_eq!(manifest.entries.len(), 1);
         assert!(manifest.entries[0].path.ends_with("session.db"));
@@ -254,6 +256,7 @@ mod tests {
         );
 
         let inspected = inspect_backup(&archive).unwrap();
+        assert_eq!(inspected.weflow_version, "1.2.3");
         assert_eq!(inspected.entries.len(), manifest.entries.len());
         assert_eq!(inspected.entries[0].sha256, manifest.entries[0].sha256);
 
@@ -275,6 +278,7 @@ mod tests {
             &account_dir,
             &BackupOptions::default(),
             None,
+            "1.2.3",
             &archive,
             &|_, _| {},
         )

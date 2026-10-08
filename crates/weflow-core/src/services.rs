@@ -75,7 +75,7 @@ impl ServiceHub {
             "runtimeDir": self.ctx.runtime_dir,
             "version": self.ctx.version,
             "target": weflow_assets::target_triple(),
-            "assetCount": weflow_assets::manifest().entries.len()
+            "assetCount": weflow_assets::manifest(&self.ctx.version).entries.len()
         })
     }
 
@@ -955,6 +955,7 @@ impl ServiceHub {
             &account_dir,
             &options,
             Some(&self.ctx.home_dir),
+            &self.ctx.version,
             out,
             &|current, total| hub.emit_progress("backup", "creating backup", current, total),
         )
