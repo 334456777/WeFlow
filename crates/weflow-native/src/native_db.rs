@@ -308,14 +308,18 @@ impl NativeAccount {
                 let mut guard = conn
                     .lock()
                     .map_err(|_| anyhow!("database snapshot lock poisoned"))?;
-                if guard.cache_kib != cache_kib {
-                    guard.conn.pragma_update(None, "cache_size", -cache_kib)?;
-                    guard.cache_kib = cache_kib;
-                }
-                f(&guard.conn)
+                // Inside the closure: the pragma reads the schema, so it can hit a stale snapshot like `f` does.
+                let mut run = || {
+                    if guard.cache_kib != cache_kib {
+                        guard.conn.pragma_update(None, "cache_size", -cache_kib)?;
+                        guard.cache_kib = cache_kib;
+                    }
+                    f(&guard.conn)
+                };
+                run()
             };
             match result {
-                Err(e) if file.is_stale() => {
+                Err(e) if file.is_stale() || file.changed_since_open() => {
                     self.forget(path, &file);
                     self.stale_reruns
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
