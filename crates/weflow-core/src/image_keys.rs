@@ -247,7 +247,7 @@ pub fn acquire_image_keys(
     }
     let ((xor, aes), (verified, sources)) = matches.into_iter().next().unwrap();
     Ok(json!({
-        "image_xor_key": xor, "image_aes_key": aes, "method": "rust_kvcomm",
+        "image_xor_key": xor, "image_aes_key": aes,
         "verified": verified, "aes_verified": true, "xor_verified": verified,
         "verification": if verified { "jpeg_decode_and_xor_tail" } else { "aes_header_only" },
         "sources": sources, "collection": collection_diagnostics, "scan": diagnostics,

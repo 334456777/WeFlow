@@ -40,7 +40,7 @@
 | 图片自动下载(`image auto-download`、`serve --image-auto-download`) | 仅 Windows x64(`img_helper.dll`)。钩子只在 `./weflow` 进程运行期间存在，因此从另一个进程执行 `status` 总是显示"未挂钩"。 |
 | 图片服务事件 | `image:cacheResolved`、`decryptProgress`、`updateAvailable` 以及后台"有更高质量版本"检查都不会发出;`hasUpdate` 始终为 `false`(与桌面端无界面的 worker 模式一样)。 |
 | AI 见解通知 | 没有弹窗;`serve --insight` 把每条见解以 JSON 行输出到 stderr(Telegram 推送仍可用)。 |
-| 图片密钥内存扫描 | `key scan-image` 仅 macOS 可用;Windows 请用 `key image`(kvcomm 缓存 + 模板校验)。桌面端 Windows 的内存扫描回退未移植。 |
+| Linux 和 macOS 的图片密钥 | `key image` 仅 Windows 可用(kvcomm 缓存 + 模板校验)；Linux 和 macOS 提示尚不支持。`key scan-image`(内存扫描)仅 macOS 可用。桌面端 Windows 的内存扫描回退未移植。 |
 | 视频 | 只查找微信已存放在 `msg/video` 下的文件;没有下载或解密路径(桌面端同样没有)。 |
 
 有意不移植，因为它们只对桌面进程有意义:窗口/对话框/shell/app/auth/log 相关 IPC、自动更新、开机自启、应用锁、云控、诊断、社交 cookie 的 UI 辅助、
@@ -52,7 +52,7 @@
   Windows `weflow.exe`(`x86_64-pc-windows-gnu`)也在 Windows 上对同一个账号运行过(约 80 个命令、带媒体的消息导出、图片导出)。其他 Windows 版本没有试过。
 - macOS 和 Linux 的微信数据库文件格式相同，但没有测试过。
 - HTTP 服务、图片 `.dat` 解密、AI 和朋友圈下载另外用合成的加密夹具和本地假 HTTP 服务器测试过;真实的朋友圈服务器和 AI 服务商没有试过。
-- 原生密钥提取辅助程序(`key db`、`key image --method native`)和 Windows 图片钩子需要微信正在运行，无法离线测试。Rust 的 `key image` 路径（Windows 默认；其他平台用 `--method rust --kvcomm-dir <目录>`）已用合成文件离线测试，不依赖辅助程序；无预存密钥的 Windows 真实客户端验收仍待完成。
+- 原生密钥提取辅助程序(`key db`)和 Windows 图片钩子需要微信正在运行，无法离线测试。`key image`（仅 Windows）已用合成文件离线测试，不依赖辅助程序，并已在 Windows 真实客户端上验证过一个账号。
 - 只用了一个账号的数据验证;特殊的数据库(特别大的分片、旧版本表结构)可能暴露遗漏。
 
 ## 5. 可能出乎意料的行为

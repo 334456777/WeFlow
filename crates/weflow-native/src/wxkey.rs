@@ -11,7 +11,6 @@ type InitializeHookFn = unsafe extern "C" fn(u32) -> bool;
 type PollKeyDataFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
 type CleanupHookFn = unsafe extern "C" fn() -> bool;
 type GetLastErrorMsgFn = unsafe extern "C" fn() -> *const c_char;
-type GetImageKeyFn = unsafe extern "C" fn(*mut c_char, c_int) -> bool;
 type GetStatusMessageFn = unsafe extern "C" fn(*mut c_char, c_int, *mut c_int) -> bool;
 
 pub struct WxKey {
@@ -20,7 +19,6 @@ pub struct WxKey {
     poll_key_data: Option<PollKeyDataFn>,
     cleanup_hook: Option<CleanupHookFn>,
     get_last_error_msg: Option<GetLastErrorMsgFn>,
-    get_image_key: Option<GetImageKeyFn>,
     get_status_message: Option<GetStatusMessageFn>,
 }
 
@@ -39,7 +37,6 @@ impl WxKey {
                         &lib,
                         b"GetLastErrorMsg\0",
                     ),
-                    get_image_key: load_symbol::<GetImageKeyFn>(&lib, b"GetImageKey\0"),
                     get_status_message: load_symbol::<GetStatusMessageFn>(
                         &lib,
                         b"GetStatusMessage\0",
@@ -53,7 +50,6 @@ impl WxKey {
                 poll_key_data: None,
                 cleanup_hook: None,
                 get_last_error_msg: None,
-                get_image_key: None,
                 get_status_message: None,
             }),
         }
@@ -170,30 +166,6 @@ impl WxKey {
             String::from_utf8_lossy(&buf[..len]).trim().to_string(),
             level,
         ))
-    }
-
-    /// Raw JSON of the `kvcomm` cache scan: `{"accounts":[{"wxid":…,"keys":[{"code":…}]}]}`.
-    pub fn get_image_key(&self) -> Result<String> {
-        let get_image_key = self
-            .get_image_key
-            .ok_or_else(|| anyhow!("wx_key library not loaded"))?;
-        let mut buffer = vec![0u8; 8192];
-        let ok =
-            unsafe { get_image_key(buffer.as_mut_ptr() as *mut c_char, buffer.len() as c_int) };
-        if ok {
-            let len = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
-            Ok(String::from_utf8_lossy(&buffer[..len]).to_string())
-        } else {
-            let msg = self
-                .get_last_error_msg
-                .map(|f| unsafe { take_cstr(f()) })
-                .unwrap_or_default();
-            Err(anyhow!(if msg.is_empty() {
-                "failed to read the image key cache".to_string()
-            } else {
-                msg
-            }))
-        }
     }
 }
 

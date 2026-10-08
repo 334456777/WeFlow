@@ -114,19 +114,18 @@ administrator terminal, looks for `Weixin.exe` then `WeChat.exe`, and with `--pi
 waiting for a restart. `key image` derives the image keys from the `kvcomm` cache, verifies them against a `_t.dat` template
 under the account directory, and prints `image_xor_key` and `image_aes_key`.
 
-On Windows `key image` uses file-based acquisition without a DLL by default (the Windows entry point of #89);
-`--method native` selects the helper path:
+`key image` (Windows only; Linux and macOS report that it is not supported yet) reads the `kvcomm` cache files directly, without
+any DLL or process access (the Windows entry point of #89):
 
 ```powershell
-./weflow --json key image --kvcomm-dir "$env:APPDATA\Tencent\xwechat\net\kvcomm" --kvcomm-dir "$env:APPDATA\Tencent\xwechat\net_1\kvcomm"
+./weflow --json key image
 ```
 
-When `--kvcomm-dir` is omitted on Windows, the existing `%APPDATA%\Tencent\xwechat\net*\kvcomm` directories are used.
-On Linux and macOS the default stays `--method native`, and `--method rust` needs explicit `--kvcomm-dir` directories.
+Without `--kvcomm-dir` it uses the existing `%APPDATA%\Tencent\xwechat\net*\kvcomm` directories (`net`, `net_1`, ...);
+pass `--kvcomm-dir` (repeatable) to use other directories.
 `--user-dir <account directory>` overrides the configured sample directory. Only the configured wxid and
 that directory's name are considered, normalized and deduplicated; sibling accounts are not searched.
-The Rust path ignores stored image keys and never calls `GetImageKey`. `--method native`
-retains the existing helper path for comparison; database key extraction and the image download hook are unchanged.
+Stored image keys are ignored and nothing is written to the configuration.
 
 `key_` filenames yield ASCII decimal underscore-delimited tokens in `1..=4294967295` (an optional
 `.statistic` suffix is removed). These are **loose candidates**: unrelated numeric fields must pass sample

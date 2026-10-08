@@ -156,7 +156,7 @@ fn service_acquires_and_decodes_without_native_helpers_or_saved_image_keys() {
         "wxid_me",
         64,
     );
-    let result = hub.key_image_rust(None, &dirs, 1000).unwrap();
+    let result = hub.key_image(None, &dirs, 1000).unwrap();
     let (xor, aes) = derive_image_keys(123, "wxid_me");
     assert_eq!(result["image_aes_key"], aes);
     assert_eq!(result["image_xor_key"], xor);
@@ -164,7 +164,6 @@ fn service_acquires_and_decodes_without_native_helpers_or_saved_image_keys() {
     assert_eq!(result["aes_verified"], true);
     assert_eq!(result["xor_verified"], true);
     assert_eq!(result["verified"], true);
-    assert_eq!(result["method"], "rust_kvcomm");
     let encoded = fs::read(account.join("msg/attach/current_t.dat")).unwrap();
     let key = weflow_core::decrypt::parse_aes_key(&aes).unwrap();
     let decoded = weflow_core::decrypt::decrypt_dat(&encoded, xor, Some(&key)).unwrap();
