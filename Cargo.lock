@@ -2690,8 +2690,11 @@ dependencies = [
 name = "weflow-wcdb-ffi"
 version = "2.1.1"
 dependencies = [
+ "aes",
  "anyhow",
+ "jpeg-encoder",
  "serde_json",
+ "weflow-core",
  "weflow-native",
  "windows-sys 0.61.2",
 ]
