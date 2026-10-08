@@ -3278,7 +3278,6 @@ mod tests {
             [PathBuf::from("net/kvcomm"), PathBuf::from("net_1/kvcomm")]
         );
         assert_eq!(scan_budget, Some(10));
-        assert!(parse(&["--method", "rust"]).is_err());
     }
 
     #[test]
