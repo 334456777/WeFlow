@@ -105,7 +105,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 仅解析 `key_` 文件名中的下划线分隔 ASCII 十进制字段，范围为 `1..=4294967295`，可去掉末尾
 `.statistic`。这些都是宽松候选，无关数字段必须经过样本验证；code 和派生 AES/XOR 组合分别去重。
-`sources` 保留文件来源并标记 `loose_decimal_tokens`。多个组合匹配时返回 `image_key_ambiguous`，不选第一项。
+`sources` 保留文件来源并标记 `loose_decimal_tokens`。多个组合匹配时返回 `image_key_ambiguous`，不选第一项；若其中恰有一个已整组验证，则返回该组合。
 
 `--scan-budget` 默认为 10,000 个文件系统条目（包括目录），按确定顺序扫描，不跟随符号链接。
 扫描预算内保留最近修改的 32 个结构有效的 V2 `_t.dat`。JSON 的 `scan` 报告 `entries_scanned`、

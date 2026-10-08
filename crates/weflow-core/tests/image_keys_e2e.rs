@@ -111,12 +111,13 @@ fn templates_select_newest_valid_after_scanning_and_report_truncation() {
     }
     fs::write(root.join("bad_t.dat"), [7, 8, 0x56, 0x32, 8, 7]).unwrap();
     fs::write(root.join("other_t.dat"), b"not a V2 image").unwrap();
+    fs::write(root.join("tiny_t.dat"), [7, 8]).unwrap();
     let scan = scan_templates(&root, 100, 2);
     assert!(!scan.truncated);
     assert!(scan.templates_truncated);
     assert_eq!(scan.valid_templates, 40);
     assert_eq!(scan.damaged_templates, 1);
-    assert_eq!(scan.invalid_format, 1);
+    assert_eq!(scan.invalid_format, 2);
     assert_eq!(scan.templates[0].path.file_name().unwrap(), "039_t.dat");
     assert_eq!(scan.templates[1].path.file_name().unwrap(), "038_t.dat");
     let limited = scan_templates(&root, 4, 32);
@@ -245,5 +246,34 @@ fn acquisition_errors_are_distinct_and_multiple_pairs_are_ambiguous() {
         .unwrap()
         .to_string()
         .contains("image_aes_key"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fully_verified_pair_outranks_an_aes_header_only_match() {
+    let root = common::temp_dir("image-verified-preferred");
+    let dir = root.join("kvcomm");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("key_123_456"), []).unwrap();
+    let account = root.join("wxid_me_suffix");
+    sample(&account, "full_t.dat", 123, "wxid_me", 64);
+    sample(&account, "header_only_t.dat", 456, "wxid_me", 0);
+    let result = acquire_image_keys(&[dir], &account, Some("wxid_me"), 100).unwrap();
+    let (xor, aes) = derive_image_keys(123, "wxid_me");
+    assert_eq!(result["image_aes_key"], aes);
+    assert_eq!(result["image_xor_key"], xor);
+    assert_eq!(result["verified"], true);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn templates_are_found_through_a_symlinked_account_root() {
+    let root = common::temp_dir("image-symlink-root");
+    let real = root.join("real");
+    sample(&real, "a_t.dat", 123, "wxid_me", 64);
+    let link = root.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    assert_eq!(scan_templates(&link, 100, 32).valid_templates, 1);
     fs::remove_dir_all(root).unwrap();
 }

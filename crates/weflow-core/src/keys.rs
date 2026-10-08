@@ -72,7 +72,7 @@ pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateS
     let mut scan = TemplateScan::default();
     let mut walk = walkdir::WalkDir::new(user_dir)
         .follow_links(false)
-        .follow_root_links(false)
+        .follow_root_links(true)
         .sort_by_file_name()
         .into_iter();
     for _ in 0..budget {
@@ -95,10 +95,12 @@ pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateS
             let mut f = std::fs::File::open(entry.path())?;
             let metadata = f.metadata()?;
             let mut header = [0u8; 31];
-            f.read_exact(&mut header[..6])?;
-            if header[..6] != V2_MAGIC {
+            let mut magic = Vec::with_capacity(6);
+            (&mut f).take(6).read_to_end(&mut magic)?;
+            if magic != V2_MAGIC {
                 return Ok(None);
             }
+            header[..6].copy_from_slice(&magic);
             f.read_exact(&mut header[6..])?;
             let aes_len = i32::from_le_bytes(header[6..10].try_into().unwrap());
             let xor_len = i32::from_le_bytes(header[10..14].try_into().unwrap());

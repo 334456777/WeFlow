@@ -129,7 +129,7 @@ retains the existing helper path for comparison; database key extraction and the
 `key_` filenames yield ASCII decimal underscore-delimited tokens in `1..=4294967295` (an optional
 `.statistic` suffix is removed). These are **loose candidates**: unrelated numeric fields must pass sample
 verification. Codes and derived pairs are deduplicated; `sources` retains filenames marked
-`loose_decimal_tokens`. Multiple matching pairs produce `image_key_ambiguous`, rather than selecting the first.
+`loose_decimal_tokens`. Multiple matching pairs produce `image_key_ambiguous`, rather than selecting the first; if exactly one of them is fully verified, that one is returned.
 
 `--scan-budget` defaults to 10,000 filesystem entries, including directories. Traversal is deterministic and
 does not follow symlinks; the newest 32 structurally valid V2 `_t.dat` files within that budget are retained.

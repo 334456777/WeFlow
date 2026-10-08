@@ -234,6 +234,10 @@ pub fn acquire_image_keys(
             Some(diagnostics),
         ));
     }
+    // A pair that also passed full JPEG verification outranks AES-header-only coincidences.
+    if matches.len() > 1 && matches.values().filter(|m| m.0).count() == 1 {
+        matches.retain(|_, m| m.0);
+    }
     if matches.len() != 1 {
         return Err(fail(
             "image_key_ambiguous",

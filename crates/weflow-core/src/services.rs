@@ -538,11 +538,6 @@ impl ServiceHub {
         kvcomm_dirs: &[PathBuf],
         scan_budget: usize,
     ) -> AppResult<Value> {
-        if kvcomm_dirs.is_empty() || scan_budget == 0 {
-            return Err(AppError::usage(
-                "Rust image-key acquisition needs kvcomm directories and a nonzero scan budget",
-            ));
-        }
         let account = match user_dir {
             Some(dir) => crate::config::expand_home(dir),
             None => self.account_dir_only()?,
