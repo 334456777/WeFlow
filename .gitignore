@@ -82,3 +82,11 @@ dist-cli/
 
 # Rust database layer for the desktop app (npm run native-db:build)
 resources/native-db/
+
+# docs: only top-level files, es-ES and zh-CN are kept; other folders are third-party/reference material
+/docs/images/
+/docs/sarv.blog/
+/docs/sjzar/
+/docs/weflow-tech-docs/
+/docs/ycccccccy/
+/docs/YeJe-cpu/
