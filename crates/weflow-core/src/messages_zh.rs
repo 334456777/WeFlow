@@ -4,6 +4,14 @@
 use crate::locale::translate_with;
 
 const CATALOG: &[(&str, &str)] = &[
+    ("Rust image-key acquisition needs kvcomm directories (none found; pass --kvcomm-dir) and a nonzero scan budget", "Rust 图片取钥需要 kvcomm 目录（未找到，请用 --kvcomm-dir 指定）和非零扫描预算"),
+    ("`key image` is not supported on this platform yet", "`key image` 暂不支持此平台"),
+    ("`key scan-image` is only available on macOS", "`key scan-image` 仅支持 macOS"),
+    ("No kvcomm directory could be read", "所有 kvcomm 目录均无法读取"),
+    ("No candidate code found in the kvcomm filenames", "kvcomm 文件名中未找到候选 code"),
+    ("No valid V2 thumbnail found in the selected account", "选定账号中未找到有效 V2 缩略图模板"),
+    ("The cached codes do not match the selected account's V2 samples", "缓存 code 与选定账号的 V2 样本不匹配"),
+    ("Multiple distinct image-key pairs match the selected account; no pair was chosen", "多个不同图片密钥组合匹配选定账号，未选择任何组合"),
     // CLI
     ("this removes files; add --yes to confirm", "此操作会删除文件；请加上 --yes 确认"),
     ("choose what to clear: {} (`weflow cache list` shows each part)", "请选择要清理的部分：{}（`weflow cache list` 可查看各部分）"),
@@ -60,11 +68,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("WeChat process not found (looked for Weixin.exe and WeChat.exe); start WeChat first or pass --pid", "未找到微信进程（已查找 Weixin.exe 和 WeChat.exe）；请先启动微信或传入 --pid"),
     ("permission denied: cannot open the WeChat process (pid {}). Run the terminal as administrator, close security software that blocks it, and make sure WeChat itself is not running as administrator. ({})", "无法打开微信进程（pid {0}）。请以管理员身份运行终端，关闭可能拦截的安全软件，并确认微信本身没有以管理员身份运行。（{1}）"),
     ("wx_key library not found; key extraction requires the platform-specific native library", "未找到 wx_key 库；提取密钥需要对应平台的原生库"),
-    ("image key not available; configure image_xor_key or use the wx_key native library", "图片密钥不可用；请配置 image_xor_key 或使用 wx_key 原生库"),
-    ("failed to parse the image key data", "解析图片密钥数据失败"),
-    ("no valid key code found (the kvcomm cache is empty); open a few images in WeChat first", "未找到有效的密钥码（kvcomm 缓存为空）；请先在微信中打开几张图片"),
-    ("the cached codes do not match this account's wxid; check the configured wxid / the account directory, or use `key scan-image`", "缓存的密钥码与该账号的 wxid 不匹配；请检查已配置的 wxid / 账号目录，或使用 `key scan-image`"),
-    ("image key scanning requires platform-specific native library", "扫描图片密钥需要对应平台的原生库"),
     ("no messages found for this session in the given range", "指定范围内未找到该会话的消息"),
     ("no messages from {} in this session in the given range (--sender takes the bare wxid, as `chat contacts` lists it)", "指定范围内该会话没有 {} 发送的消息（--sender 只接受裸 wxid，即 `chat contacts` 列出的形式）"),
     ("--sender takes the bare wxid: use {}, not the account folder name {}", "--sender 只接受裸 wxid：请使用 {}，而不是账号文件夹名 {}"),
@@ -140,7 +143,6 @@ const CATALOG: &[(&str, &str)] = &[
     ("waiting for WeChat to start", "正在等待微信启动"),
     ("core component initialization failed", "核心组件初始化失败"),
     ("hook failed", "挂钩失败"),
-    ("from stored config; use key scan-image for live extraction", "来自已保存的配置；如需实时提取请使用 key scan-image"),
     ("missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "missing = 文件不在磁盘上（微信中未下载）或无法解析的媒体消息；表情需要联网。thumbOnly = 导出的图片只有缩略图（请先在微信中打开原图，再重新导出以获得高清图）"),
     ("missing image identifier", "缺少图片标识"),
     ("cached image not found", "未找到缓存的图片"),

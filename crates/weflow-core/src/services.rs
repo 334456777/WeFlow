@@ -531,90 +531,22 @@ impl ServiceHub {
         Ok(json!({ "decrypt_key": key, "method": "wx_key", "pid": pid }))
     }
 
-    /// `key:autoGetImageKey`: codes from the `kvcomm` cache, verified per candidate wxid against a
-    /// `_t.dat` template found under `user_dir` (default: the account directory).
-    pub fn key_image(&self, user_dir: Option<&str>) -> AppResult<Value> {
-        let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
-            .map_err(|err| AppError::native(err.to_string()))?;
-        if !wxkey.is_available() {
-            let profile = self.profile()?;
-            if let Some(xor_key) = profile.image_xor_key {
-                return Ok(json!({
-                    "image_xor_key": xor_key,
-                    "image_aes_key": profile.image_aes_key,
-                    "method": "config",
-                    "note": "from stored config; use key scan-image for live extraction"
-                }));
-            }
-            return Err(AppError::native(
-                "image key not available; configure image_xor_key or use the wx_key native library",
-            ));
-        }
-        let raw = wxkey
-            .get_image_key()
-            .map_err(|err| AppError::native(err.to_string()))?;
-        let parsed: Value = serde_json::from_str(&raw)
-            .map_err(|_| AppError::native("failed to parse the image key data"))?;
-        let accounts = parsed
-            .get("accounts")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let codes: Vec<u64> = accounts
-            .first()
-            .and_then(|a| a.get("keys"))
-            .and_then(Value::as_array)
-            .map(|k| {
-                k.iter()
-                    .filter_map(|k| k.get("code").and_then(Value::as_u64))
-                    .collect()
-            })
-            .unwrap_or_default();
-        if codes.is_empty() {
-            return Err(AppError::native("no valid key code found (the kvcomm cache is empty); open a few images in WeChat first"));
-        }
-        let account_dir = self.account_dir_only().ok();
-        let dir_text = user_dir.map(str::to_string).or_else(|| {
-            account_dir
-                .as_ref()
-                .map(|d| d.to_string_lossy().to_string())
-        });
+    /// Image keys from the `kvcomm` cache, verified against samples of the account; independent of stored image keys.
+    pub fn key_image(
+        &self,
+        user_dir: Option<&str>,
+        kvcomm_dirs: &[PathBuf],
+        scan_budget: usize,
+    ) -> AppResult<Value> {
+        let account = match user_dir {
+            Some(dir) => crate::config::expand_home(dir),
+            None => self.account_dir_only()?,
+        };
         let wxid = self
             .wxid_override
-            .clone()
-            .or_else(|| self.profile().ok().and_then(|p| p.wxid.clone()));
-        let candidates = crate::keys::collect_wxid_candidates(dir_text.as_deref(), wxid.as_deref());
-        let template = dir_text
             .as_deref()
-            .map(Path::new)
-            .filter(|d| d.exists())
-            .map(|d| crate::keys::find_template_data(d, 32));
-        if let Some((Some(cipher), _)) = &template {
-            for cand in &candidates {
-                for code in &codes {
-                    let (xor, aes) = crate::keys::derive_image_keys(*code, cand);
-                    if crate::keys::verify_derived_aes_key(&aes, cipher) {
-                        return Ok(
-                            json!({ "image_xor_key": xor, "image_aes_key": aes, "verified": true, "wxid": cand, "code": code, "method": "wx_key" }),
-                        );
-                    }
-                }
-            }
-            return Err(AppError::native("the cached codes do not match this account's wxid; check the configured wxid / the account directory, or use `key scan-image`"));
-        }
-        let fallback_wxid = candidates
-            .first()
-            .cloned()
-            .or_else(|| {
-                accounts
-                    .first()
-                    .and_then(|a| a.get("wxid").and_then(Value::as_str).map(str::to_string))
-            })
-            .unwrap_or_else(|| "unknown".into());
-        let (xor, aes) = crate::keys::derive_image_keys(codes[0], &fallback_wxid);
-        Ok(
-            json!({ "image_xor_key": xor, "image_aes_key": aes, "verified": false, "wxid": fallback_wxid, "code": codes[0], "method": "wx_key" }),
-        )
+            .or_else(|| self.profile().ok().and_then(|p| p.wxid.as_deref()));
+        crate::image_keys::acquire_image_keys(kvcomm_dirs, &account, wxid, scan_budget)
     }
 
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
@@ -633,18 +565,9 @@ impl ServiceHub {
         }
         #[cfg(not(target_os = "macos"))]
         {
-            let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
-                .map_err(|err| AppError::native(err.to_string()))?;
-            if wxkey.is_available() {
-                let result = wxkey
-                    .get_image_key()
-                    .map_err(|err| AppError::native(err.to_string()))?;
-                Ok(json!({ "result": result, "method": "wx_key" }))
-            } else {
-                Err(AppError::native(
-                    "image key scanning requires platform-specific native library",
-                ))
-            }
+            Err(AppError::native(
+                "`key scan-image` is only available on macOS",
+            ))
         }
     }
 

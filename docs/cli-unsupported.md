@@ -41,7 +41,7 @@ A function that is added to `crates/weflow-native/src/wcdb.rs` before it is port
 | Image auto-download (`image auto-download`, `serve --image-auto-download`) | Windows x64 only (`img_helper.dll`). The hook lives only while the `./weflow` process runs, so `status` from another process always says "not hooked". |
 | Image service events | `image:cacheResolved`, `decryptProgress`, `updateAvailable` and the background "better quality available" check are not emitted; `hasUpdate` is always `false` (like the desktop app's headless worker mode). |
 | AI insight notifications | No popup window; `serve --insight` prints each insight as a JSON line on stderr (Telegram push still works). |
-| Image key memory scan | `key scan-image` works on macOS only; on Windows use `key image` (kvcomm cache + template verification). The desktop app's Windows memory-scan fallback is not ported. |
+| Image keys on Linux and macOS | `key image` is Windows only (kvcomm cache + template verification); Linux and macOS report that it is not supported yet. `key scan-image` (memory scan) works on macOS only. The desktop app's Windows memory-scan fallback is not ported. |
 | Video | Looks up the file WeChat already stored under `msg/video`; there is no download or decrypt path (the desktop app has none either). |
 
 Deliberately not ported because they only make sense in the desktop process: window/dialog/shell/app/auth/log IPC, auto update,
@@ -57,7 +57,7 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
 - macOS and Linux WeChat databases use the same file format but have not been tested.
 - The HTTP server, image `.dat` decryption, AI and Moments downloads were also checked against synthetic encrypted fixtures and
   local fake HTTP servers; Moments servers and AI providers have not been tried for real.
-- The key extraction helpers (`key db`, `key image`) and the Windows image hook need a running WeChat and cannot be tested offline.
+- The native key extraction helpers (`key db`) and the Windows image hook need a running WeChat and cannot be tested offline. `key image` (Windows only) is tested with synthetic files without helpers and was verified on one real Windows account.
 - Only one account's data was used; unusual databases (very large shards, old schema versions) may expose gaps.
 
 ## 5. Behaviour you may not expect

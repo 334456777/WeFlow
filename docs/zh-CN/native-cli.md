@@ -93,6 +93,34 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 `key db`（Windows）通过 `wx_key.dll` 挂钩微信。微信只在打开数据库时才会产生密钥，所以命令会先请你完全退出微信（如果它正在运行）再重新打开，每秒检查一次微信进程（整个过程超过 `--timeout`，默认 180 秒，就会自动退出，并显示剩余秒数），然后挂钩新启动的微信，并请你在登录窗口点击「进入微信」。结果以 `decrypt_key: <密钥>` 输出，名字与 `config set` 一致。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`；用 `--pid` 指定时直接挂钩该进程，不再等待重启。`key image` 从 `kvcomm` 缓存推导图片密钥，用账号目录下的 `_t.dat` 模板校验，并输出 `image_xor_key` 和 `image_aes_key`。
 
+`key image`（仅 Windows；Linux 和 macOS 提示尚不支持）直接读取 `kvcomm` 缓存文件，不依赖任何 DLL，也不访问微信进程（#89 的 Windows 切口）：
+
+```powershell
+./weflow --json key image
+```
+
+省略 `--kvcomm-dir` 时使用已存在的 `%APPDATA%\Tencent\xwechat\net*\kvcomm` 目录（`net`、`net_1` 等）；
+可重复传入 `--kvcomm-dir` 指定其他目录。`--user-dir <账号目录>` 可覆盖已配置的样本目录。
+仅使用配置的 wxid 与该目录名，清洗后去重，不搜索兄弟账号。不读取预存图片密钥，也不写入配置。
+
+仅解析 `key_` 文件名中的下划线分隔 ASCII 十进制字段，范围为 `1..=4294967295`，可去掉末尾
+`.statistic`。这些都是宽松候选，无关数字段必须经过样本验证；code 和派生 AES/XOR 组合分别去重。
+`sources` 保留文件来源并标记 `loose_decimal_tokens`。多个组合匹配时返回 `image_key_ambiguous`，不选第一项；若其中恰有一个已整组验证，则返回该组合。
+
+`--scan-budget` 默认为 10,000 个文件系统条目（包括目录），按确定顺序扫描，不跟随符号链接。
+扫描预算内保留最近修改的 32 个结构有效的 V2 `_t.dat`。JSON 的 `scan` 报告 `entries_scanned`、
+`valid_templates`、`invalid_format`、`damaged_templates`、`read_errors`、`truncated`（扫描预算截断）和
+`templates_truncated`（保留数量截断）；扫描截断时不保证找到全目录最新样本。
+`collection.errors` 保留部分目录/条目的读取失败。错误码分别为 `image_key_directory_unreadable`、
+`image_key_no_candidates`、`image_key_no_template`、`image_key_verification_failed` 和 `image_key_ambiguous`，
+并附带采集/扫描诊断。
+
+`aes_verified` 只表示 AES 首块命中图片头；只有匹配的 JPEG 样本完整解密、解码成功，且 JPEG 结束标记
+位于 XOR 尾段，才将 `xor_verified` 和整组 `verified` 设为 true。否则返回唯一 AES 匹配组合，标记
+`verification: aes_header_only`、XOR 和整组验证为 false，不应视为整组密钥已可用。
+完整样本读取上限为 16 MiB，JPEG 解码像素缓冲上限为 64 MiB。非 JPEG 或无 XOR 尾段的样本目前只提供
+AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及无预存密钥的 Windows 真机解码，仍需分别人工验收。
+
 路径：配置 `%APPDATA%\weflow\config.json`，解压出的运行时 `%APPDATA%\weflow\runtime\<版本>\<target>`（Linux/macOS 位于各平台的数据目录）。
 
 `serve --http` 提供桌面端的 HTTP API（除 `/health` 外都需要 token；设置 `http_api_token` 或使用 `--api-token`）。

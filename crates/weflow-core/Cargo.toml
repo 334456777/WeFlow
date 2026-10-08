@@ -45,8 +45,8 @@ zip.workspace = true
 zstd.workspace = true
 icu_collator.workspace = true
 icu_locale_core.workspace = true
+jpeg-decoder = { version = "0.3", default-features = false }
 
 [dev-dependencies]
-jpeg-decoder = { version = "0.3", default-features = false }
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }

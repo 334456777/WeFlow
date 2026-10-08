@@ -1,5 +1,7 @@
 // Chinese help text: (English doc comment, Chinese). Keep in sync with the doc comments in main.rs; a test fails on gaps.
 const HELP: &[(&str, &str)] = &[
+    ("kvcomm directories (repeat for net, net_1, etc.; default on Windows: the existing xwechat net*/kvcomm directories)", "kvcomm 目录（可重复传入 net、net_1 等目录；Windows 默认使用已存在的 xwechat net*/kvcomm 目录）"),
+    ("Maximum filesystem entries scanned for templates in the selected account (default: 10000)", "在选定账号中查找模板时扫描的文件系统条目上限（默认：10000）"),
     ("Show the wxid of the account(s) in the WeChat data directory (the value for `config set wxid`)", "显示微信数据目录中账号的 wxid（即 `config set wxid` 要填的值）"),
     ("WeChat data directory (default: `db_path` from the config, else the usual locations)", "微信数据目录（默认：配置中的 `db_path`，否则在常用位置查找）"),
     ("Show the path of the config file", "显示配置文件路径"),

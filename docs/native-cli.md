@@ -114,6 +114,40 @@ administrator terminal, looks for `Weixin.exe` then `WeChat.exe`, and with `--pi
 waiting for a restart. `key image` derives the image keys from the `kvcomm` cache, verifies them against a `_t.dat` template
 under the account directory, and prints `image_xor_key` and `image_aes_key`.
 
+`key image` (Windows only; Linux and macOS report that it is not supported yet) reads the `kvcomm` cache files directly, without
+any DLL or process access (the Windows entry point of #89):
+
+```powershell
+./weflow --json key image
+```
+
+Without `--kvcomm-dir` it uses the existing `%APPDATA%\Tencent\xwechat\net*\kvcomm` directories (`net`, `net_1`, ...);
+pass `--kvcomm-dir` (repeatable) to use other directories.
+`--user-dir <account directory>` overrides the configured sample directory. Only the configured wxid and
+that directory's name are considered, normalized and deduplicated; sibling accounts are not searched.
+Stored image keys are ignored and nothing is written to the configuration.
+
+`key_` filenames yield ASCII decimal underscore-delimited tokens in `1..=4294967295` (an optional
+`.statistic` suffix is removed). These are **loose candidates**: unrelated numeric fields must pass sample
+verification. Codes and derived pairs are deduplicated; `sources` retains filenames marked
+`loose_decimal_tokens`. Multiple matching pairs produce `image_key_ambiguous`, rather than selecting the first; if exactly one of them is fully verified, that one is returned.
+
+`--scan-budget` defaults to 10,000 filesystem entries, including directories. Traversal is deterministic and
+does not follow symlinks; the newest 32 structurally valid V2 `_t.dat` files within that budget are retained.
+JSON `scan` reports `entries_scanned`, `valid_templates`, `invalid_format`, `damaged_templates`, `read_errors`,
+`truncated` (traversal budget), and `templates_truncated` (retention limit). It does not claim globally newest
+samples when traversal is truncated. `collection.errors` preserves partial directory/entry read failures.
+Failures distinguish `image_key_directory_unreadable`, `image_key_no_candidates`, `image_key_no_template`,
+`image_key_verification_failed`, and `image_key_ambiguous`, with collection/scan diagnostics.
+
+`aes_verified` means an AES first block matched an image header. `xor_verified` and the overall `verified`
+become true only when a matching JPEG sample fully decrypts and decodes, and its JPEG EOI is in the XOR
+tail. Otherwise the unique AES-matching pair is returned as `verification: aes_header_only`, with XOR
+and pair verification false; do not treat it as a verified pair. Full sample reads are limited to 16 MiB and
+JPEG decoding to a 64 MiB pixel buffer. Non-JPEG samples or samples without an XOR tail currently provide
+only AES evidence. No configuration is written. Linux/macOS directory discovery and real accounts, and a
+fresh-key Windows real-client decode, remain separate manual validation requirements.
+
 Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA%\weflow\runtime\<version>\<target>`
 (on Linux/macOS under the platform's data directory).
 

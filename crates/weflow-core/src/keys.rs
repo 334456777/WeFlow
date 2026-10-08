@@ -44,68 +44,134 @@ pub fn verify_derived_aes_key(aes_key: &str, ciphertext: &[u8]) -> bool {
         || d[..3] == [0x47, 0x49, 0x46]
 }
 
-fn collect_t_dat(dir: &Path, out: &mut Vec<PathBuf>, max: usize) {
-    if out.len() >= max {
-        return;
-    }
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for e in rd.filter_map(Result::ok) {
-        if out.len() >= max {
-            break;
-        }
-        let p = e.path();
-        let Ok(t) = e.file_type() else { continue };
-        if t.is_dir() {
-            collect_t_dat(&p, out, max);
-        } else if t.is_file()
-            && p.file_name()
-                .is_some_and(|n| n.to_string_lossy().ends_with("_t.dat"))
-        {
-            out.push(p);
-        }
-    }
+/// Bounded template search: examine at most `budget` entries, then select the newest
+/// structurally valid V2 thumbnails in that search, rather than stopping at `limit` files.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct TemplateScan {
+    #[serde(skip)]
+    pub templates: Vec<ImageTemplate>,
+    pub entries_scanned: usize,
+    pub valid_templates: usize,
+    pub invalid_format: usize,
+    pub damaged_templates: usize,
+    pub read_errors: usize,
+    pub truncated: bool,
+    pub templates_truncated: bool,
 }
 
-/// `_findTemplateData`: ciphertext block of the first V2 `_t.dat` (newest first) and the XOR key
-/// derived from the most common tail bytes (`x ^ 0xFF == y ^ 0xD9`).
-pub fn find_template_data(user_dir: &Path, limit: usize) -> (Option<[u8; 16]>, Option<u8>) {
-    let mut files = Vec::new();
-    collect_t_dat(user_dir, &mut files, limit);
-    files.sort_by(|a, b| {
-        let m = |p: &PathBuf| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-        m(b).cmp(&m(a))
-    });
-    let mut cipher: Option<[u8; 16]> = None;
-    let mut tails: Vec<((u8, u8), usize)> = Vec::new();
-    for f in files.iter().take(32) {
-        let Ok(data) = std::fs::read(f) else { continue };
-        if data.len() < 8 || data[..6] != V2_MAGIC {
+#[derive(Debug)]
+pub struct ImageTemplate {
+    pub path: PathBuf,
+    pub cipher: [u8; 16],
+    pub tail_xor: Option<u8>,
+    pub modified: Option<std::time::SystemTime>,
+}
+
+pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateScan {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut scan = TemplateScan::default();
+    let mut walk = walkdir::WalkDir::new(user_dir)
+        .follow_links(false)
+        .follow_root_links(true)
+        .sort_by_file_name()
+        .into_iter();
+    for _ in 0..budget {
+        let Some(entry) = walk.next() else {
+            return finish_scan(scan, limit);
+        };
+        scan.entries_scanned += 1;
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => {
+                scan.read_errors += 1;
+                continue;
+            }
+        };
+        if !entry.file_type().is_file() || !entry.file_name().to_string_lossy().ends_with("_t.dat")
+        {
             continue;
         }
-        let key = (data[data.len() - 2], data[data.len() - 1]);
-        match tails.iter_mut().find(|t| t.0 == key) {
-            Some(t) => t.1 += 1,
-            None => tails.push((key, 1)),
-        }
-        if cipher.is_none() && data.len() >= 0x1f {
-            let mut c = [0u8; 16];
-            c.copy_from_slice(&data[0xf..0x1f]);
-            cipher = Some(c);
-        }
-    }
-    let mut xor = None;
-    let mut max = 0;
-    for ((x, y), count) in tails {
-        if count > max {
-            max = count;
-            let k = x ^ 0xff;
-            if k == (y ^ 0xd9) {
-                xor = Some(k);
+        let read = || -> std::io::Result<Option<ImageTemplate>> {
+            let mut f = std::fs::File::open(entry.path())?;
+            let metadata = f.metadata()?;
+            let mut header = [0u8; 31];
+            let mut magic = Vec::with_capacity(6);
+            (&mut f).take(6).read_to_end(&mut magic)?;
+            if magic != V2_MAGIC {
+                return Ok(None);
             }
+            header[..6].copy_from_slice(&magic);
+            f.read_exact(&mut header[6..])?;
+            let aes_len = i32::from_le_bytes(header[6..10].try_into().unwrap());
+            let xor_len = i32::from_le_bytes(header[10..14].try_into().unwrap());
+            let aligned = (i64::from(aes_len) / 16 + 1) * 16;
+            if aes_len < 16 || xor_len < 0 || metadata.len() < 15 + aligned as u64 + xor_len as u64
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "invalid V2 lengths",
+                ));
+            }
+            let tail_xor = if xor_len >= 2 {
+                f.seek(SeekFrom::End(-2))?;
+                let mut tail = [0; 2];
+                f.read_exact(&mut tail)?;
+                let k = tail[0] ^ 0xff;
+                (k == tail[1] ^ 0xd9).then_some(k)
+            } else {
+                None
+            };
+            Ok(Some(ImageTemplate {
+                path: entry.path().into(),
+                cipher: header[15..31].try_into().unwrap(),
+                tail_xor,
+                modified: metadata.modified().ok(),
+            }))
+        };
+        match read() {
+            Ok(Some(t)) => {
+                scan.valid_templates += 1;
+                scan.templates.push(t);
+            }
+            Ok(None) => scan.invalid_format += 1,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::UnexpectedEof | std::io::ErrorKind::InvalidData
+                ) =>
+            {
+                scan.damaged_templates += 1
+            }
+            Err(_) => scan.read_errors += 1,
         }
     }
+    scan.truncated = walk.next().is_some();
+    finish_scan(scan, limit)
+}
+
+fn finish_scan(mut scan: TemplateScan, limit: usize) -> TemplateScan {
+    scan.templates.sort_by(|a, b| {
+        b.modified
+            .cmp(&a.modified)
+            .then_with(|| a.path.cmp(&b.path))
+    });
+    scan.templates_truncated = scan.templates.len() > limit;
+    scan.templates.truncate(limit);
+    scan
+}
+
+/// Legacy helper interface, with explicit traversal budget and newest-valid selection.
+/// New callers should use `scan_templates` to retain diagnostics and truncation information.
+pub fn find_template_data(user_dir: &Path, limit: usize) -> (Option<[u8; 16]>, Option<u8>) {
+    let scan = scan_templates(user_dir, 10_000, limit.min(32));
+    let cipher = scan.templates.first().map(|t| t.cipher);
+    let mut tails = std::collections::BTreeMap::<u8, usize>::new();
+    for t in &scan.templates {
+        if let Some(k) = t.tail_xor {
+            *tails.entry(k).or_default() += 1;
+        }
+    }
+    let xor = tails.into_iter().max_by_key(|(_, n)| *n).map(|(k, _)| k);
     (cipher, xor)
 }
 
@@ -197,9 +263,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("a/b")).unwrap();
         let mut data = V2_MAGIC.to_vec();
-        data.extend_from_slice(&[0; 9]);
+        data.extend_from_slice(&16i32.to_le_bytes());
+        data.extend_from_slice(&2i32.to_le_bytes());
+        data.push(1);
         data.extend((0u8..16).collect::<Vec<_>>());
-        data.extend_from_slice(&[0x40, 0x40 ^ 0xff ^ 0xd9 ^ 0xff ^ 0xff]);
+        data.extend_from_slice(&[0; 16]);
+        data.extend_from_slice(&[0, 0]);
         // tail (x, y) with x ^ 0xFF == y ^ 0xD9
         let x = 0xa5u8;
         let y = (x ^ 0xff) ^ 0xd9;
