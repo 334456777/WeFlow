@@ -82,36 +82,43 @@ endif
 # ─────────────────────────────────────────────────────────────────────────────
 # 帮助
 # ─────────────────────────────────────────────────────────────────────────────
+define HELP_TEXT
+$(BOLD)WeFlow CLI v$(VERSION) — $(PLATFORM)$(RESET)
+
+$(BOLD)基础命令$(RESET)
+  $(CYAN)make build$(RESET)          当前平台 debug 构建
+  $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)
+  $(CYAN)make test$(RESET)            运行全部单元测试
+  $(CYAN)make check$(RESET)           cargo check（只检查，不编译）
+  $(CYAN)make docs-check$(RESET)      检查指定 Markdown 文档的一致性
+  $(CYAN)make fmt$(RESET)             格式化代码
+  $(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化
+  $(CYAN)make lint$(RESET)            Clippy 静态分析
+  $(CYAN)make clean$(RESET)           清理 target/
+
+$(BOLD)安装$(RESET)
+  $(CYAN)make install$(RESET)         将 release binary 安装到 $(HELP_INSTALL_DIR)
+  $(CYAN)make uninstall$(RESET)        从 $(HELP_INSTALL_DIR) 删除 weflow
+
+$(BOLD)跨平台编译$(RESET)
+  $(CYAN)make cross-macos$(RESET)     → weflow-macos-arm64     ($(TARGET_MACOS_ARM))
+  $(CYAN)make cross-linux$(RESET)     → weflow-linux-x64       ($(TARGET_LINUX_X64))
+  $(CYAN)make cross-windows$(RESET)   → weflow-windows-x64.exe ($(TARGET_WIN_X64))
+  $(CYAN)make cross-all$(RESET)       构建所有跨平台目标
+
+$(BOLD)环境$(RESET)
+  $(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具
+  $(CYAN)make env$(RESET)             显示当前环境信息
+  $(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+test；文档检查另跑 make docs-check)
+
+endef
+export HELP_TEXT
+# Backslashes in Windows paths would be read as printf escapes (e.g. \U), so use forward slashes.
+HELP_INSTALL_DIR := $(subst \,/,$(INSTALL_DIR))
+
 .PHONY: help
 help:
-	@printf "$(BOLD)WeFlow CLI v$(VERSION) — $(PLATFORM)$(RESET)\n"
-	@printf "\n"
-	@printf "$(BOLD)基础命令$(RESET)\n"
-	@printf "  $(CYAN)make build$(RESET)          当前平台 debug 构建\n"
-	@printf "  $(CYAN)make release$(RESET)         当前平台 release 构建 → $(BIN)\n"
-	@printf "  $(CYAN)make test$(RESET)            运行全部单元测试\n"
-	@printf "  $(CYAN)make check$(RESET)           cargo check（只检查，不编译）\n"
-	@printf "  $(CYAN)make docs-check$(RESET)      检查指定 Markdown 文档的一致性\n"
-	@printf "  $(CYAN)make fmt$(RESET)             格式化代码\n"
-	@printf "  $(CYAN)make fmt-check$(RESET)       检查代码是否已按 rustfmt 格式化\n"
-	@printf "  $(CYAN)make lint$(RESET)            Clippy 静态分析\n"
-	@printf "  $(CYAN)make clean$(RESET)           清理 target/\n"
-	@printf "\n"
-	@printf "$(BOLD)安装$(RESET)\n"
-	@printf "  $(CYAN)make install$(RESET)         将 release binary 安装到 $(INSTALL_DIR)\n"
-	@printf "  $(CYAN)make uninstall$(RESET)        从 $(INSTALL_DIR) 删除 weflow\n"
-	@printf "\n"
-	@printf "$(BOLD)跨平台编译$(RESET)\n"
-	@printf "  $(CYAN)make cross-macos$(RESET)     → weflow-macos-arm64     ($(TARGET_MACOS_ARM))\n"
-	@printf "  $(CYAN)make cross-linux$(RESET)     → weflow-linux-x64       ($(TARGET_LINUX_X64))\n"
-	@printf "  $(CYAN)make cross-windows$(RESET)   → weflow-windows-x64.exe ($(TARGET_WIN_X64))\n"
-	@printf "  $(CYAN)make cross-all$(RESET)       构建所有跨平台目标\n"
-	@printf "\n"
-	@printf "$(BOLD)环境$(RESET)\n"
-	@printf "  $(CYAN)make check-tools$(RESET)     检查并自动安装所有必要工具\n"
-	@printf "  $(CYAN)make env$(RESET)             显示当前环境信息\n"
-	@printf "  $(CYAN)make ci$(RESET)              代码 CI，与 GitHub Actions 一致 (fmt-check+lint+test；文档检查另跑 make docs-check)\n"
-	@printf "\n"
+	@printf '%b' "$$HELP_TEXT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 工具检查与自动安装
