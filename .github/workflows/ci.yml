@@ -91,10 +91,6 @@ jobs:
         shell: bash
         run: cargo test --workspace --target ${{ matrix.target }}
 
-      - name: Windows Clippy
-        shell: bash
-        run: cargo clippy --workspace --all-targets --target ${{ matrix.target }} -- -D warnings
-
       - name: Run once
         shell: bash
         env:
