@@ -1,0 +1,19 @@
+[package]
+name = "weflow-wxkey"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rust Windows x64 wx_key ABI for the desktop app"
+
+[lib]
+name = "wx_key"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+weflow-native = { path = "../weflow-native" }
+weflow-core = { path = "../weflow-core" }
+
+[dev-dependencies]
+libloading.workspace = true

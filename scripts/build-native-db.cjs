@@ -19,6 +19,7 @@ const libName = platform === 'win32' ? 'weflow_wcdb.dll' : platform === 'darwin'
 const platformDir = platform === 'darwin' ? 'macos' : platform === 'win32' ? 'win32' : 'linux'
 
 const args = ['build', '--release', '-p', 'weflow-wcdb-ffi']
+if (platform === 'win32' && arch === 'x64') args.push('-p', 'weflow-wxkey')
 if (argTarget) args.push('--target', argTarget)
 console.log(`[native-db] cargo ${args.join(' ')}`)
 execFileSync('cargo', args, { cwd: root, stdio: 'inherit' })
@@ -32,3 +33,10 @@ const destDir = path.join(root, 'resources', 'native-db', platformDir, arch)
 fs.mkdirSync(destDir, { recursive: true })
 fs.copyFileSync(built, path.join(destDir, libName))
 console.log(`[native-db] ${path.relative(root, path.join(destDir, libName))}`)
+
+if (platform === 'win32' && arch === 'x64') {
+  const keyDir = path.join(root, 'resources', 'native-key', 'win32', 'x64')
+  fs.mkdirSync(keyDir, { recursive: true })
+  fs.copyFileSync(path.join(root, 'target', ...(argTarget ? [argTarget] : []), 'release', 'wx_key.dll'), path.join(keyDir, 'wx_key.dll'))
+  console.log('[native-key] resources/native-key/win32/x64/wx_key.dll')
+}

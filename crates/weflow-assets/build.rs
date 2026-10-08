@@ -135,7 +135,8 @@ fn include_resource(logical: &str, target: &str) -> bool {
     }
 
     if logical.starts_with("resources/key/win32/") {
-        return is_windows && arch_match(logical, is_arm64);
+        // Windows database-key capture is linked into the CLI. Never embed a vendor DLL.
+        return false;
     }
     if logical.starts_with("resources/key/macos/") {
         return is_macos && !logical.contains("/source/");

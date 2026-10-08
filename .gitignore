@@ -80,9 +80,11 @@ weflow-web-offical
 /scripts/syncWedecrypt.py
 dist-cli/
 /temp/*
+/wx_key.cs
 
 # Rust database layer for the desktop app (npm run native-db:build)
 resources/native-db/
+resources/native-key/
 
 # docs: only top-level files, es-ES and zh-CN are kept; other folders are third-party/reference material
 /docs/sarv.blog/
