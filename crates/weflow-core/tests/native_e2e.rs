@@ -695,13 +695,15 @@ fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
         hub.clear_current_account_data(false, &[]).is_err(),
         "nothing selected"
     );
+    // what `cache clear-account` shows before asking is what goes
+    let shown = hub
+        .account_data_paths(true, std::slice::from_ref(&exports))
+        .unwrap();
     let r = hub
         .clear_current_account_data(true, std::slice::from_ref(&exports))
         .unwrap();
-    assert_eq!(
-        (r["success"].clone(), r["profileReset"].clone()),
-        (json!(true), json!(true))
-    );
+    assert_eq!(r["profileReset"], true);
+    assert_eq!(r["removedPaths"], json!(shown), "{r}");
     assert!(mine.iter().all(|p| !p.exists()), "{r}");
     assert!(!mine_export.exists());
     assert!(
@@ -717,11 +719,61 @@ fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
 }
 
 #[test]
-fn clearing_all_caches_empties_the_image_cache() {
-    let (hub, _root) = common::mock_hub("n-clear-all");
-    let cached = hub.image_cache_root().join("wxid_bob/2023-11/x.jpg");
-    std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
-    std::fs::write(&cached, b"jpg").unwrap();
-    assert_eq!(hub.cache_clear_all()["success"], true);
-    assert!(!cached.exists());
+fn cache_parts_clear_on_their_own_and_all_together() {
+    use weflow_core::services::CachePart;
+    let (hub, _root) = common::mock_hub("n-cache-parts");
+    let base = hub.image_cache_root().parent().unwrap().to_path_buf();
+    let put = |p: std::path::PathBuf| {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, b"jpg").unwrap();
+        p
+    };
+    let image = put(base.join("Images/wxid_bob/2023-11/x.jpg"));
+    let rest = [
+        put(base.join("Voices/v.wav")),
+        put(base.join("Emojis/e.gif")),
+        put(base.join("sns_cache/m.jpg")),
+        put(base.join("analytics_cache.json")),
+        put(base.join("api-media/s/x.jpg")),
+        put(base.join("push-avatar-files/a.png")),
+        put(hub.cache_part_paths(CachePart::Keys)[0].clone()),
+    ];
+    // the mock hub runs as version `test`: its runtime stays, other versions' go
+    let current = put(hub.runtime_root().join("test/t/manifest.json"));
+    let older = put(hub.runtime_root().join("2.0.0/t/manifest.json"));
+
+    let list = hub.cache_list();
+    let entry = |name: &str| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["part"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(list.as_array().unwrap().len(), CachePart::ALL.len());
+    assert_eq!(
+        (
+            entry("images")["bytes"].clone(),
+            entry("images")["files"].clone()
+        ),
+        (json!(3), json!(1))
+    );
+    assert_eq!(entry("api")["files"], 2);
+    assert_eq!(
+        entry("runtime")["paths"],
+        json!([hub.runtime_root().join("2.0.0")])
+    );
+
+    let r = hub.cache_clear(&[CachePart::Images]);
+    assert_eq!(r["freedBytes"], 3, "{r}");
+    assert!(!image.exists());
+    assert!(rest.iter().all(|p| p.exists()) && older.exists());
+
+    let r = hub.cache_clear(&CachePart::ALL);
+    assert!(r.get("warnings").is_none(), "{r}");
+    assert_eq!(r["freedBytes"], 3 * (rest.len() + 1), "{r}");
+    assert!(rest.iter().all(|p| !p.exists()), "{r}");
+    assert!(!older.exists());
+    assert!(current.exists());
 }

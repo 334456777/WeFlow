@@ -1344,13 +1344,16 @@ impl ServiceHub {
         images
     }
 
+    /// Forgets what is known about the decrypted-image cache, for when its files are removed.
+    pub(super) fn image_forget_cached(&self) {
+        let mut state = self.image_state.lock().unwrap();
+        state.resolved.clear();
+        state.cache_dirs.clear();
+    }
+
     /// `image:clearCache`: empties the decrypted-image cache (keeps the folder layout).
     pub fn image_clear_cache(&self) -> Value {
-        {
-            let mut state = self.image_state.lock().unwrap();
-            state.resolved.clear();
-            state.cache_dirs.clear();
-        }
+        self.image_forget_cached();
         let root = self.cache_base().join("Images");
         if !root.exists() {
             return json!({ "success": true });

@@ -2609,6 +2609,7 @@ dependencies = [
  "tracing-subscriber",
  "weflow-assets",
  "weflow-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

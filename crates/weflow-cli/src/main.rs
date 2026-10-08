@@ -9,7 +9,7 @@ use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::output::{failure, success};
-use weflow_core::services::ServiceHub;
+use weflow_core::services::{CachePart, ServiceHub};
 
 /// Exports read rows on one thread and free them on another; with the system allocator (glibc in particular) that
 /// hand-over costs more than the parsing it runs next to. See issue #14.
@@ -158,8 +158,77 @@ struct CacheCommand {
 
 #[derive(Subcommand, Debug)]
 enum CacheSubcommand {
-    /// Clear every cache: analytics, decrypted images, and the in-memory Moments / group caches
-    ClearAll,
+    /// Show each part of the cache: the option of `cache clear` that removes it, its size and where it is
+    List,
+    /// Remove the chosen parts of the cache; shows what goes and asks [y/N] first
+    Clear(CacheClearArgs),
+    /// Remove WeFlow's data of the current account and take the account out of this profile: its cached images,
+    /// voices, stickers, Moments, analytics and key fingerprints, then db_path, wxid, decrypt_key and the image keys
+    /// of the profile. Shows what goes and asks [y/N] first. WeChat's own files are never touched.
+    ClearAccount {
+        /// Folder of exports; files and folders named after the account are removed too (repeatable)
+        #[arg(long = "exports-dir")]
+        exports_dir: Vec<PathBuf>,
+        /// Do not ask before removing
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+}
+
+#[derive(Args, Debug)]
+struct CacheClearArgs {
+    /// Decrypted images
+    #[arg(long)]
+    images: bool,
+    /// Decoded voice messages
+    #[arg(long)]
+    voices: bool,
+    /// Stickers
+    #[arg(long)]
+    emojis: bool,
+    /// Images and videos of Moments
+    #[arg(long)]
+    sns: bool,
+    /// Analytics aggregate
+    #[arg(long)]
+    analytics: bool,
+    /// Media exported and avatars pushed by the HTTP API
+    #[arg(long)]
+    api: bool,
+    /// Fingerprints of keys that worked (the next command checks the key again)
+    #[arg(long)]
+    keys: bool,
+    /// Runtimes unpacked by other WeFlow versions (the running version's stays)
+    #[arg(long)]
+    runtime: bool,
+    /// Every part above
+    #[arg(long)]
+    all: bool,
+    /// Do not ask before removing
+    #[arg(short = 'y', long)]
+    yes: bool,
+}
+
+impl CacheClearArgs {
+    fn parts(&self) -> Vec<CachePart> {
+        // in the order of `CachePart::ALL`
+        let chosen = [
+            self.images,
+            self.voices,
+            self.emojis,
+            self.sns,
+            self.analytics,
+            self.api,
+            self.keys,
+            self.runtime,
+        ];
+        CachePart::ALL
+            .into_iter()
+            .zip(chosen)
+            .filter(|&(_, on)| on || self.all)
+            .map(|(part, _)| part)
+            .collect()
+    }
 }
 
 #[derive(Args, Debug)]
@@ -266,20 +335,6 @@ struct ChatCommand {
 
 #[derive(Subcommand, Debug)]
 enum ChatSubcommand {
-    /// Remove WeFlow's data of the current account: its caches (and the account settings of this profile) with
-    /// --cache, and entries named after the account in the given export folders. WeChat's own files are never touched.
-    ClearAccountData {
-        /// Remove the cached images, voices, stickers, Moments and analytics of the account, then reset db_path,
-        /// wxid, decrypt_key and the image keys of the profile
-        #[arg(long)]
-        cache: bool,
-        /// Folder of exports; files and folders named after the account are removed (repeatable)
-        #[arg(long = "exports-dir")]
-        exports_dir: Vec<PathBuf>,
-        /// Confirm the removal
-        #[arg(long)]
-        yes: bool,
-    },
     /// List conversations, newest first
     Sessions {
         /// Maximum number of sessions (0 = all)
@@ -698,8 +753,6 @@ enum AnalyticsSubcommand {
     },
     /// Private chats that can be excluded from analytics
     ExcludeCandidates,
-    /// Drop the cached aggregate
-    ClearCache,
 }
 
 #[derive(Args, Debug)]
@@ -1092,8 +1145,6 @@ enum ImageSubcommand {
         /// JSON array of image payloads
         payloads_json: String,
     },
-    /// Delete every decrypted image from the cache
-    ClearCache,
     /// Windows only: make WeChat download original-size images (img_helper.dll hook)
     AutoDownload {
         #[command(subcommand)]
@@ -1340,36 +1391,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         }
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
         Commands::Ffmpeg(command) => return handle_ffmpeg(command, &ctx, &mut config).await,
-        Commands::Chat(ChatCommand {
-            command:
-                ChatSubcommand::ClearAccountData {
-                    cache,
-                    exports_dir,
-                    yes,
-                },
-        }) => {
-            if !*yes {
-                return Err(AppError::usage("this removes files; add --yes to confirm"));
-            }
-            let hub = ServiceHub::new(ctx.clone(), config.clone(), None, None, None, None);
-            let result = hub.clear_current_account_data(*cache, exports_dir)?;
-            if *cache {
-                // like the desktop app: the account is signed out of this profile
-                for key in [
-                    "db_path",
-                    "wxid",
-                    "decrypt_key",
-                    "image_xor_key",
-                    "image_aes_key",
-                ] {
-                    config.unset_key(None, key);
-                }
-                config
-                    .save(&ctx.config_path)
-                    .map_err(|err| AppError::config(err.to_string()))?;
-            }
-            return Ok(result);
-        }
+        Commands::Cache(command) => return handle_cache(command, &ctx, &mut config),
         _ => {}
     }
 
@@ -1434,7 +1456,6 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                     .collect();
                 hub.image_resolve_cache_batch(&payloads)
             }
-            ImageSubcommand::ClearCache => hub.image_clear_cache(),
         }),
         Commands::Video(command) => match &command.command {
             VideoSubcommand::Info {
@@ -1456,24 +1477,320 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         },
         Commands::Serve(command) => handle_serve(command, &hub).await,
         Commands::Backup(command) => handle_backup(command, &hub),
-        Commands::Cache(CacheCommand {
-            command: CacheSubcommand::ClearAll,
-        }) => {
-            let r = hub.cache_clear_all();
-            if r["success"] != true {
-                return Err(AppError::runtime(
-                    r["error"]
-                        .as_str()
-                        .unwrap_or("clearing the caches failed")
-                        .to_string(),
-                ));
-            }
-            Ok(r)
-        }
         Commands::Runtime(_)
         | Commands::Ffmpeg(_)
+        | Commands::Cache(_)
         | Commands::Config(_)
         | Commands::Lang { .. } => unreachable!(),
+    }
+}
+
+/// `weflow cache …`; `clear-account` also changes the profile, so this runs before the shared hub is built.
+fn handle_cache(
+    command: &CacheCommand,
+    ctx: &AppContext,
+    config: &mut ConfigStore,
+) -> AppResult<Value> {
+    use weflow_core::locale::tr;
+    use weflow_core::services::disk_usage;
+
+    let hub = ServiceHub::new(ctx.clone(), config.clone(), None, None, None, None);
+    match &command.command {
+        CacheSubcommand::List => Ok(hub.cache_list()),
+        CacheSubcommand::Clear(args) => {
+            let parts = args.parts();
+            if parts.is_empty() {
+                let options: Vec<String> = CachePart::ALL
+                    .iter()
+                    .map(|p| format!("--{}", p.name()))
+                    .chain(["--all".to_string()])
+                    .collect();
+                return Err(AppError::usage(format!(
+                    "choose what to clear: {} (`weflow cache list` shows each part)",
+                    options.join(", ")
+                )));
+            }
+            let targets: Vec<RemovalTarget> = parts
+                .iter()
+                .flat_map(|&part| {
+                    hub.cache_part_paths(part)
+                        .into_iter()
+                        .filter(|p| p.exists())
+                        .map(move |path| RemovalTarget {
+                            label: cache_part_label(part),
+                            bytes: disk_usage(&path).0,
+                            path,
+                        })
+                })
+                .collect();
+            if targets.is_empty() {
+                return Ok(json!({ "removedPaths": [], "freedBytes": 0 }));
+            }
+            if !confirm_removal(tr("About to remove:", "将要清理："), &targets, args.yes)? {
+                return Ok(json!({ "cancelled": true }));
+            }
+            Ok(hub.cache_clear(&parts))
+        }
+        CacheSubcommand::ClearAccount { exports_dir, yes } => {
+            let targets: Vec<RemovalTarget> = hub
+                .account_data_paths(true, exports_dir)?
+                .into_iter()
+                .map(|path| RemovalTarget {
+                    label: "",
+                    bytes: disk_usage(&path).0,
+                    path,
+                })
+                .collect();
+            let heading = tr(
+                "About to remove these files and take the account out of the profile (db_path, wxid, decrypt_key and the image keys):",
+                "将要删除以下文件，并把当前账号移出配置档案（db_path、wxid、decrypt_key 和图片密钥）：",
+            );
+            if !confirm_removal(heading, &targets, *yes)? {
+                return Ok(json!({ "cancelled": true }));
+            }
+            let result = hub.clear_current_account_data(true, exports_dir)?;
+            // like the desktop app: the account is signed out of this profile
+            for key in [
+                "db_path",
+                "wxid",
+                "decrypt_key",
+                "image_xor_key",
+                "image_aes_key",
+            ] {
+                config.unset_key(None, key);
+            }
+            config
+                .save(&ctx.config_path)
+                .map_err(|err| AppError::config(err.to_string()))?;
+            Ok(result)
+        }
+    }
+}
+
+/// A file or folder `cache clear` / `cache clear-account` is about to remove.
+struct RemovalTarget {
+    label: &'static str,
+    bytes: u64,
+    path: PathBuf,
+}
+
+fn cache_part_label(part: CachePart) -> &'static str {
+    use weflow_core::locale::tr;
+    match part {
+        CachePart::Images => tr("images", "图片"),
+        CachePart::Voices => tr("voices", "语音"),
+        CachePart::Emojis => tr("stickers", "表情"),
+        CachePart::Sns => tr("Moments", "朋友圈"),
+        CachePart::Analytics => tr("analytics", "统计"),
+        CachePart::Api => tr("HTTP API", "API 导出"),
+        CachePart::Keys => tr("key fingerprints", "密钥指纹"),
+        CachePart::Runtime => tr("older runtimes", "旧运行时"),
+    }
+}
+
+/// Lists `targets` on stderr under `heading` and asks [y/N]; only `y` or `yes` goes ahead, anything else (Enter
+/// included) is a no. `yes` skips the question; without a terminal to ask on, it is required.
+fn confirm_removal(heading: &str, targets: &[RemovalTarget], yes: bool) -> AppResult<bool> {
+    use std::io::{IsTerminal, Write};
+    use weflow_core::locale::tr;
+
+    if yes {
+        return Ok(true);
+    }
+    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+        return Err(AppError::usage("this removes files; add --yes to confirm"));
+    }
+    let mut text = format!("{heading}\n");
+    if targets.is_empty() {
+        text.push_str(&format!("  {}\n", tr("(no files)", "（没有文件）")));
+    }
+    let rows: Vec<Vec<String>> = targets
+        .iter()
+        .map(|t| {
+            vec![
+                t.label.to_string(),
+                format_bytes(t.bytes),
+                t.path.display().to_string(),
+            ]
+        })
+        .collect();
+    for line in align_columns(&rows) {
+        text.push_str(&format!("  {line}\n"));
+    }
+    text.push_str(tr("Remove them? [y/N] ", "确认清理？[y/N] "));
+    let mut err = std::io::stderr();
+    let _ = err.write_all(text.as_bytes());
+    let _ = err.flush();
+    let mut answer = String::new();
+    std::io::stdin()
+        .read_line(&mut answer)
+        .map_err(|e| AppError::runtime(format!("failed to read the answer: {e}")))?;
+    Ok(is_yes(&answer))
+}
+
+fn is_yes(answer: &str) -> bool {
+    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+/// `1536` → `1.5 KB`: binary units, one decimal below 10.
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else if value < 10.0 {
+        format!("{value:.1} {}", UNITS[unit])
+    } else {
+        format!("{value:.0} {}", UNITS[unit])
+    }
+}
+
+/// Pads the cells of `rows` into columns two spaces apart (CJK counts double); empty columns are left out.
+fn align_columns(rows: &[Vec<String>]) -> Vec<String> {
+    use weflow_core::render::display_width;
+    let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let widths: Vec<usize> = (0..columns)
+        .map(|i| {
+            rows.iter()
+                .map(|r| r.get(i).map_or(0, |c| display_width(c)))
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    rows.iter()
+        .map(|row| {
+            row.iter()
+                .zip(&widths)
+                .filter(|&(_, &w)| w > 0)
+                .map(|(cell, &w)| format!("{cell}{}", " ".repeat(w - display_width(cell))))
+                .collect::<Vec<_>>()
+                .join("  ")
+                .trim_end()
+                .to_string()
+        })
+        .collect()
+}
+
+/// `text` in green on a terminal; plain when stdout is not one or NO_COLOR is set (https://no-color.org).
+fn green(text: &str) -> String {
+    use std::io::IsTerminal;
+    let color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
+        && std::io::stdout().is_terminal()
+        && enable_ansi();
+    if color {
+        format!("\x1b[32m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+/// The Windows console shows ANSI colours only once asked to.
+#[cfg(windows)]
+fn enable_ansi() -> bool {
+    use windows_sys::Win32::System::Console::{
+        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+        STD_OUTPUT_HANDLE,
+    };
+    // SAFETY: console calls on this process's own stdout handle; `mode` outlives the call that writes it
+    unsafe {
+        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        let mut mode = 0;
+        GetConsoleMode(handle, &mut mode) != 0
+            && (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0
+                || SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0)
+    }
+}
+
+#[cfg(not(windows))]
+fn enable_ansi() -> bool {
+    true
+}
+
+/// `cache list` as a table under a green header; `cache clear` / `clear-account`: what was removed.
+fn cache_summary(command: &CacheSubcommand, data: &Value) -> Option<String> {
+    use weflow_core::locale::tr;
+    match command {
+        CacheSubcommand::List => {
+            let header = [
+                tr("Part", "部分"),
+                tr("Option", "选项"),
+                tr("Size", "大小"),
+                tr("Path", "路径"),
+            ];
+            let mut rows: Vec<Vec<String>> = vec![header.iter().map(|h| h.to_string()).collect()];
+            for (part, item) in CachePart::ALL.iter().zip(data.as_array()?) {
+                let paths: Vec<&str> = item["paths"]
+                    .as_array()?
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect();
+                rows.push(vec![
+                    cache_part_label(*part).to_string(),
+                    format!("--{}", part.name()),
+                    format_bytes(item["bytes"].as_u64().unwrap_or(0)),
+                    if paths.is_empty() {
+                        tr("(none)", "（无）").to_string()
+                    } else {
+                        paths.join(", ")
+                    },
+                ]);
+            }
+            let mut lines = align_columns(&rows).into_iter();
+            let mut out = format!("{}\n", green(&lines.next()?));
+            lines.for_each(|l| out.push_str(&format!("{l}\n")));
+            Some(out)
+        }
+        CacheSubcommand::Clear(_) | CacheSubcommand::ClearAccount { .. } => {
+            if data["cancelled"] == true {
+                return Some(format!(
+                    "{}\n",
+                    tr(
+                        "Cancelled; nothing was removed.",
+                        "已取消，没有删除任何文件。"
+                    )
+                ));
+            }
+            let removed: Vec<&str> = data["removedPaths"]
+                .as_array()?
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            let mut out = String::new();
+            if removed.is_empty() {
+                out.push_str(tr("Nothing to remove.\n", "没有需要清理的文件。\n"));
+            } else {
+                out.push_str(tr("Removed:\n", "已清理：\n"));
+                removed
+                    .iter()
+                    .for_each(|p| out.push_str(&format!("  {p}\n")));
+            }
+            if let Some(freed) = data["freedBytes"].as_u64().filter(|&b| b > 0) {
+                out.push_str(&format!(
+                    "{}{}\n",
+                    tr("Freed ", "共释放 "),
+                    format_bytes(freed)
+                ));
+            }
+            if data["profileReset"] == true {
+                out.push_str(tr(
+                    "The account was taken out of the profile.\n",
+                    "已把当前账号移出配置档案。\n",
+                ));
+            }
+            for warning in data["warnings"].as_array().into_iter().flatten() {
+                out.push_str(&format!(
+                    "{}{}\n",
+                    tr("warning: ", "警告："),
+                    warning.as_str().unwrap_or_default()
+                ));
+            }
+            Some(out)
+        }
     }
 }
 
@@ -1656,7 +1973,6 @@ fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
 
 async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        ChatSubcommand::ClearAccountData { .. } => unreachable!("handled in run()"),
         ChatSubcommand::Sessions { limit } => {
             let mut sessions = hub.chat_sessions_list()?;
             if *limit > 0 {
@@ -2100,10 +2416,6 @@ fn handle_analytics(command: &AnalyticsCommand, hub: &ServiceHub) -> AppResult<V
             None => Ok(json!(hub.analytics_excluded_usernames()?)),
         },
         AnalyticsSubcommand::ExcludeCandidates => Ok(json!(hub.analytics_exclude_candidates()?)),
-        AnalyticsSubcommand::ClearCache => {
-            hub.analytics_clear_cache()?;
-            Ok(json!({ "cleared": true }))
-        }
     }
 }
 
@@ -2786,6 +3098,9 @@ fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
 /// `key db` / `key image` print the keys under the names `config set` expects, so they can be copied over.
 fn key_summary(command: &Commands, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
+    if let Commands::Cache(CacheCommand { command }) = command {
+        return cache_summary(command, data);
+    }
     if let Commands::Config(ConfigCommand { command }) = command {
         return match command {
             // saving a setting succeeds silently; the config file path is not news
@@ -2886,6 +3201,56 @@ fn print_failure(err: &AppError, cli: &Cli) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_y_or_yes_confirms() {
+        for answer in ["y\n", "Y\n", "yes\r\n", " YES "] {
+            assert!(is_yes(answer), "{answer:?}");
+        }
+        for answer in ["\n", "", "n\n", "N", "no", "ye", "yy", "是"] {
+            assert!(!is_yes(answer), "{answer:?}");
+        }
+    }
+
+    #[test]
+    fn sizes_are_readable() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(85 << 20), "85 MB");
+        assert_eq!(format_bytes((12 << 30) / 10), "1.2 GB");
+    }
+
+    #[test]
+    fn cache_clear_options_pick_their_parts() {
+        let parse = |args: &[&str]| {
+            let cli = Cli::try_parse_from(["weflow", "cache", "clear"].iter().chain(args)).unwrap();
+            match cli.command {
+                Commands::Cache(CacheCommand {
+                    command: CacheSubcommand::Clear(args),
+                }) => args.parts(),
+                other => panic!("{other:?}"),
+            }
+        };
+        assert!(parse(&[]).is_empty());
+        assert_eq!(
+            parse(&["--voices", "--images", "-y"]),
+            [CachePart::Images, CachePart::Voices]
+        );
+        assert_eq!(parse(&["--keys"]), [CachePart::Keys]);
+        assert_eq!(parse(&["--runtime"]), [CachePart::Runtime]);
+        assert_eq!(parse(&["--all"]), CachePart::ALL);
+        assert_eq!(parse(&["--all", "--images"]), CachePart::ALL);
+    }
+
+    #[test]
+    fn columns_line_up_and_skip_empty_ones() {
+        let rows = vec![
+            vec!["".to_string(), "图片".to_string(), "1 KB".to_string()],
+            vec!["".to_string(), "keys".to_string(), "20 MB".to_string()],
+        ];
+        assert_eq!(align_columns(&rows), ["图片  1 KB", "keys  20 MB"]);
+    }
 
     #[test]
     fn dates_are_validated() {

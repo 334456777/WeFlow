@@ -26,10 +26,10 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ./weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
-                 voice | voice-data | voice-cache | voice-preload | image-data | emoji | clear-account-data
+                 voice | voice-data | voice-cache | voice-preload | image-data | emoji
 ./weflow export    sessions | contacts | footprint | media | messages   （messages 支持：chatlab、chatlab-jsonl、json、
                  arkme-json、html、txt、excel、weclone、sql）
-./weflow analytics overall | rankings | time | excluded | exclude-candidates | clear-cache
+./weflow analytics overall | rankings | time | excluded | exclude-candidates
 ./weflow group     list | members | ranking | hours | media | member | member-messages | export-member-messages | export-members
 ./weflow report    annual years|generate | dual generate
 ./weflow sns       timeline | users | stats | post-counts | export | media | download-emoji | download-image | debug-resource
@@ -37,11 +37,11 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ./weflow biz       accounts | messages | pay-records
 ./weflow insight   test | trigger | records | get | mark-read | clear | today-stats | scan | footprint | footprint-summary
 ./weflow video     info | parse-md5
-./weflow image     decrypt | resolve-cache | resolve-batch | clear-cache | auto-download start|status
+./weflow image     decrypt | resolve-cache | resolve-batch | auto-download start|status
 ./weflow backup    create | inspect | restore
 ./weflow serve     --http --message-push --insight --image-auto-download
 ./weflow runtime   info | manifest
-./weflow cache     clear-all
+./weflow cache     list | clear | clear-account
 ./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
 ```
 
@@ -71,7 +71,23 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 所有格式都按时间顺序边读边写（如果某个会话读出来的顺序不是时间顺序，会按读取顺序写出）。文件头需要总数的格式，会先把消息写到 `<输出>.part`，读完再拼接；结束后（失败时也一样）删除该文件，范围内没有消息时不写文件。
 
-`chat clear-account-data --cache [--exports-dir <目录>] --yes` 删除 WeFlow 为当前账号保存的缓存（图片、语音、表情、朋友圈、统计），并把该账号从配置档案中移除（删除 `db_path`、`wxid`、`decrypt_key` 和图片密钥）；`--exports-dir` 还会删除该目录下以账号命名的条目。`cache clear-all` 清除所有缓存。两者都不会动微信自己的文件。
+清理缓存的命令都在 `weflow cache` 下：
+
+| 命令 | 作用 |
+|---|---|
+| `cache list` | 列出缓存的各个部分：清理它所用的选项、大小和路径 |
+| `cache clear --images` | 已解密的图片 |
+| `cache clear --voices` | 已解码的语音 |
+| `cache clear --emojis` | 表情 |
+| `cache clear --sns` | 朋友圈的图片和视频 |
+| `cache clear --analytics` | 统计汇总 |
+| `cache clear --api` | HTTP API 导出的媒体（`api-media`）和推送的头像（`push-avatar-files`） |
+| `cache clear --keys` | 校验通过的密钥指纹；下一条命令会重新校验密钥 |
+| `cache clear --runtime` | 其他 WeFlow 版本在 `runtime/` 下释放的运行时；保留当前版本 |
+| `cache clear --all` | 以上全部 |
+| `cache clear-account [--exports-dir <目录>]` | 删除当前账号缓存的图片、语音、表情、朋友圈、统计和密钥指纹，并把该账号移出配置档案（删除 `db_path`、`wxid`、`decrypt_key` 和图片密钥）；`--exports-dir`（可重复）还会删除该目录下以账号命名的条目 |
+
+`cache clear` 的选项可以组合（`cache clear --images --voices`）。`cache clear` 和 `cache clear-account` 删除前会列出路径和大小，并询问 `[y/N]`：只有输入 `y` 或 `yes` 才会执行，直接回车或其他输入都会取消。`-y`/`--yes` 跳过询问；没有终端时（管道、脚本）必须加上它。不会动微信自己的文件。
 
 `db detect` 以 `db_path: <路径>` 输出存在的微信数据目录，`db wxid` 以 `wxid: <wxid>` 输出检测到的账号的 wxid（文件夹名去掉 `_ab12` 后缀；也可附带数据目录作为可选参数来指定目录）；这两个名字都是 `config set` 要填的名字。
 

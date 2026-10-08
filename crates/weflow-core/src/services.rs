@@ -10,7 +10,7 @@ mod api;
 mod chat;
 mod cleanup;
 mod export_stream;
-pub use cleanup::normalize_account_id;
+pub use cleanup::{disk_usage, normalize_account_id, CachePart};
 mod group;
 mod image;
 mod insight;
