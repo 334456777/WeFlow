@@ -250,6 +250,27 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
+      # The binaries take their version from the tag; Cargo.toml's version only shows in builds without git (the
+      # "Source code" archives), so a stale one is a warning, not a reason to stop the release.
+      - name: Compare Cargo.toml with the tag
+        shell: bash
+        run: |
+          # Only stable releases (plain vX.Y.Z, the same rule as below); pre-releases are expected to differ.
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$TAG is a pre-release, not compared"
+            exit 0
+          fi
+          CARGO_VERSION="$(awk '/^\[workspace\.package\]/ { f = 1; next } /^\[/ { f = 0 }
+            f && /^version *=/ { gsub(/^[^"]*"|".*$/, ""); print; exit }' Cargo.toml)"
+          if [ "$CARGO_VERSION" != "${TAG#v}" ]; then
+            MSG="Cargo.toml says $CARGO_VERSION but the tag is $TAG; source archives built without git will report $CARGO_VERSION"
+            echo "::warning::$MSG"
+            echo "> [!WARNING]" >> "$GITHUB_STEP_SUMMARY"
+            echo "> $MSG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Cargo.toml matches the tag ($CARGO_VERSION)"
+          fi
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
