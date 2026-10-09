@@ -300,6 +300,32 @@ fn exit_with(err: Error) -> ! {
     if locale::current() == Lang::Zh {
         text = localize_rendered(&text);
     }
+    let is_help = matches!(
+        err.kind(),
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+    );
+    if !is_help && json_requested() {
+        let message = if err.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand {
+            locale::tr(
+                "a subcommand or argument is missing; see --help",
+                "缺少子命令或参数；请查看 --help",
+            )
+            .to_string()
+        } else {
+            parse_error_message(&text)
+        };
+        let mut failure = weflow_core::error::AppError::usage(message);
+        if let Some(usage) = text
+            .lines()
+            .map(str::trim)
+            .find(|line| line.starts_with("Usage:") || line.starts_with("用法："))
+        {
+            failure.details = Some(serde_json::json!({ "usage": usage }));
+        }
+        let response = weflow_core::output::failure(failure.payload());
+        println!("{}", serde_json::to_string(&response).unwrap());
+        std::process::exit(err.exit_code());
+    }
     match err.kind() {
         ErrorKind::DisplayHelp
         | ErrorKind::DisplayVersion
@@ -314,6 +340,30 @@ fn exit_with(err: Error) -> ! {
         _ => eprint!("{text}"),
     }
     std::process::exit(err.exit_code());
+}
+
+/// `--json` anywhere before a `--` separator: parse errors then go to stdout as a JSON error, like every other error.
+fn json_requested() -> bool {
+    json_flag_in(std::env::args_os().skip(1))
+}
+
+fn json_flag_in(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
+    args.into_iter()
+        .take_while(|arg| arg != "--")
+        .any(|arg| arg == "--json")
+}
+
+/// The first line of clap's rendered error, without its `error: ` prefix.
+fn parse_error_message(text: &str) -> String {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default();
+    line.strip_prefix("error: ")
+        .or_else(|| line.strip_prefix("错误："))
+        .unwrap_or(line)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -333,6 +383,32 @@ mod tests {
         assert_eq!(
             options_last("Usage: weflow config set <KEY> <VALUE>"),
             "Usage: weflow config set <KEY> <VALUE>"
+        );
+    }
+
+    #[test]
+    fn json_flag_is_found_before_the_separator_only() {
+        let args = |list: &[&str]| {
+            list.iter()
+                .map(std::ffi::OsString::from)
+                .collect::<Vec<_>>()
+        };
+        assert!(json_flag_in(args(&[
+            "chat", "sessions", "--bogus", "--json"
+        ])));
+        assert!(!json_flag_in(args(&["chat", "sessions", "--bogus"])));
+        assert!(!json_flag_in(args(&["config", "set", "k", "--", "--json"])));
+    }
+
+    #[test]
+    fn parse_error_message_is_the_first_line_without_prefix() {
+        assert_eq!(
+            parse_error_message("error: unexpected argument '--bogus' found\n\nUsage: weflow chat"),
+            "unexpected argument '--bogus' found"
+        );
+        assert_eq!(
+            parse_error_message("错误：发现意外的参数 '--bogus'\n\n用法：weflow chat"),
+            "发现意外的参数 '--bogus'"
         );
     }
 

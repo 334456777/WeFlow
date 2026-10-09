@@ -5,6 +5,11 @@
 A Rust command-line build of WeFlow's backend. By default a command prints human-readable text on stdout (aligned `key: value` lines, tables for lists) and
 errors on stderr, with the same exit codes. With `--json` every command prints one JSON document on stdout
 (`{"success": true, "data": ...}` or `{"success": false, "error": {...}}`); progress goes to stderr with `--progress`.
+Argument errors follow the same rule: with `--json` (before any `--`) a mistyped option or a missing subcommand prints
+`{"success": false, "error": {"code": "invalid_arguments", "message": ..., "details": {"usage": ...}}}` on stdout and exits with `2`.
+A command whose operation fails (an image that cannot be found, `insight test` without an API key, ...) is an error too:
+`success` is `false` with a non-zero exit code, and fields such as `failureKind` are kept in `error.details`; `success: true` always means it worked.
+The HTTP API keeps its own response shapes.
 
 Help: `-h` / `--help` shows the help of any command, and a command that needs arguments or a subcommand shows its help when it is run without any (`./weflow config`, `./weflow config set`, `./weflow lang`);
 with only some of the arguments it reports which are missing. Usage lines list `[OPTIONS]` last (`./weflow config set <KEY> <VALUE> [OPTIONS]`).
