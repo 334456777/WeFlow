@@ -41,7 +41,7 @@ WeFlow CLI 自己解码微信的 WXGF 图片。只有内置解码器读不了的
 ```
 > stdout: `source: PATH`（或 `FFMPEG_PATH` / `installed`）；`source: missing` 表示没有找到 ffmpeg
 
-如果显示 `missing`，安装桌面端自带的同一版本（会校验 SHA-256），再检查一次：
+如果显示 `missing`，安装，再检查一次：
 
 ```powershell
 ./weflow ffmpeg install
