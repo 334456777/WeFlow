@@ -32,7 +32,7 @@ cp target/release/weflow .
 
 The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English, and so do HTTP API error responses. For the full precedence order, see [docs/native-cli.md](docs/native-cli.md#language).
 
-## Check ffmpeg
+## Check ffmpeg (optional step)
 
 WeFlow CLI decodes WeChat's WXGF images itself. ffmpeg is only used for a WXGF image its decoder cannot read (for example 10-bit, 4:2:2
 or 4:4:4 pictures), so this step is optional. To have one ready,
