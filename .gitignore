@@ -50,7 +50,8 @@ desktop.ini
 .electron/
 .cache/
 
-
+# cli
+weflow.exe
 
 # 忽略 Visual Studio 临时文件夹
 .vs/
@@ -75,3 +76,4 @@ resources/native-key/
 # docs: only top-level files, es-ES and zh-CN are kept; other folders are third-party/reference material
 /docs/weflow-tech-docs/
 /docs/ycccccccy/
+weflow.exe
