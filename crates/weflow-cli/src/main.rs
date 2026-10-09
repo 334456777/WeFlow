@@ -1360,7 +1360,12 @@ async fn main() -> ExitCode {
     } else {
         weflow_core::output::ProgressMode::Auto
     });
-    let outcome = run(&cli).await;
+    let outcome = run(&cli)
+        .await
+        .and_then(|value| match reported_failure(&value) {
+            Some(err) => Err(err),
+            None => Ok(value),
+        });
     weflow_core::output::finish_progress();
     match outcome {
         Ok(value) => {
@@ -3214,6 +3219,31 @@ fn key_summary(command: &Commands, data: &Value) -> Option<String> {
     }
 }
 
+/// Some services report a failure in their result (`{"success": false, "error" | "message": …}`), the shape the
+/// HTTP API and the desktop app expect. For the CLI that is a failed command: an error envelope and a non-zero exit
+/// code, with the other fields (such as `failureKind`) kept as details.
+fn reported_failure(value: &Value) -> Option<AppError> {
+    let fields = value.as_object()?;
+    if fields.get("success") != Some(&Value::Bool(false)) {
+        return None;
+    }
+    let message = ["error", "message"]
+        .iter()
+        .find_map(|key| fields.get(*key).and_then(Value::as_str))
+        .filter(|text| !text.is_empty())
+        .unwrap_or("the operation failed");
+    let mut err = AppError::runtime(message);
+    let details: serde_json::Map<String, Value> = fields
+        .iter()
+        .filter(|(key, _)| !matches!(key.as_str(), "success" | "error" | "message"))
+        .map(|(key, v)| (key.clone(), v.clone()))
+        .collect();
+    if !details.is_empty() {
+        err.details = Some(Value::Object(details));
+    }
+    Some(err)
+}
+
 fn print_failure(err: &AppError, cli: &Cli) {
     if cli.json {
         print_response(&failure(err.payload()), cli);
@@ -3229,6 +3259,38 @@ fn print_failure(err: &AppError, cli: &Cli) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reported_failures_become_errors() {
+        let err = reported_failure(
+            &json!({ "success": false, "error": "not found", "failureKind": "not_found" }),
+        )
+        .unwrap();
+        assert_eq!((err.code.as_str(), err.exit_code), ("runtime_error", 1));
+        assert_eq!(err.message, "not found");
+        assert_eq!(err.details, Some(json!({ "failureKind": "not_found" })));
+
+        let err = reported_failure(&json!({ "success": false, "message": "no key" })).unwrap();
+        assert_eq!(
+            (err.message.as_str(), err.details.is_none()),
+            ("no key", true)
+        );
+        assert_eq!(
+            reported_failure(&json!({ "success": false }))
+                .unwrap()
+                .message,
+            weflow_core::locale::localize("the operation failed".to_string())
+        );
+
+        for ok in [
+            json!({ "success": true, "path": "x" }),
+            json!({ "out": "x" }),
+            json!([{ "success": false }]),
+            json!({ "results": [{ "success": false }] }),
+        ] {
+            assert!(reported_failure(&ok).is_none(), "{ok}");
+        }
+    }
 
     #[test]
     fn image_key_arguments() {
