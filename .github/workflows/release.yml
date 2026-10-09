@@ -8,6 +8,9 @@ name: Release
 # every target: the test suite, and the packaged binary run once and checked against the tag), release (only after
 # every build and test passed). v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1,
 # v1.2.3-rc1, ...) is a pre-release.
+# An older commit can be released again by hand: the release text and changelog script come from the branch the
+# workflow runs from, a commit from before tag-derived versions gets the tag's version stamped into Cargo.toml, and
+# skip_tests leaves out the test suite that such a commit may no longer pass on the current runners.
 on:
   push:
     tags:
@@ -22,6 +25,11 @@ on:
         description: "Optional text shown above the generated changelog (更新日志)"
         required: false
         type: string
+      skip_tests:
+        description: "Only check the packaged binary; skip rustfmt, clippy and the test suite (re-releasing an older commit)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -109,6 +117,21 @@ jobs:
       - name: Tag the checkout
         shell: bash
         run: git tag -f "$TAG"
+
+      # Commits from before tag-derived versions print Cargo.toml's version, so give it the tag's version. Marking
+      # the two files unchanged keeps the build info (from `git status`) from reading "-dirty".
+      - name: Stamp the version into an older commit
+        shell: bash
+        run: |
+          if grep -q describe crates/weflow-cli/build.rs; then
+            echo "build.rs takes the version from the tag"
+            exit 0
+          fi
+          awk -v v="${TAG#v}" '/^\[/ { f = ($0 == "[workspace.package]") }
+            f && /^version *=/ { print "version = \"" v "\""; next } { print }' Cargo.toml > Cargo.toml.new
+          mv Cargo.toml.new Cargo.toml
+          git update-index --assume-unchanged Cargo.toml Cargo.lock
+          grep -A1 '^\[workspace\.package\]' Cargo.toml
 
       - name: Install Rust (version from rust-toolchain.toml)
         shell: bash
@@ -206,6 +229,7 @@ jobs:
         working-directory: dist
         env:
           WEFLOW_HOME: ${{ runner.temp }}/weflow-home
+          SKIP_TESTS: ${{ inputs.skip_tests }}
         run: |
           DIR="weflow-${TAG}-${{ matrix.name }}"
           if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
@@ -220,9 +244,11 @@ jobs:
             echo "::error::weflow --version does not match the tag $TAG"
             exit 1
           fi
-          "$BIN" config path
+          # The first releases had no `config path`.
+          if [ "$SKIP_TESTS" = true ]; then "$BIN" --help > /dev/null; else "$BIN" config path; fi
 
       - name: Install Rust (version from rust-toolchain.toml)
+        if: ${{ !inputs.skip_tests }}
         shell: bash
         run: |
           rustup show active-toolchain || rustup toolchain install
@@ -230,21 +256,23 @@ jobs:
           rustc --version
 
       - uses: Swatinem/rust-cache@v2
+        if: ${{ !inputs.skip_tests }}
         with:
           key: ${{ matrix.target }}-test
 
       - name: Check formatting
-        if: matrix.name == 'linux-x64'
+        if: ${{ !inputs.skip_tests && matrix.name == 'linux-x64' }}
         shell: bash
         run: cargo fmt --all -- --check
 
       # The same lint as `make lint` in ci.yml, on the two platforms ci.yml runs it on.
       - name: Clippy
-        if: matrix.name == 'linux-x64' || matrix.name == 'macos-arm64'
+        if: ${{ !inputs.skip_tests && (matrix.name == 'linux-x64' || matrix.name == 'macos-arm64') }}
         shell: bash
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test suite
+        if: ${{ !inputs.skip_tests }}
         shell: bash
         run: cargo test --workspace --target ${{ matrix.target }}
 
@@ -288,6 +316,14 @@ jobs:
             echo "Cargo.toml matches the tag ($CARGO_VERSION)"
           fi
 
+      # The workflow's own commit (the tag itself when a tag push started it) has the current release text and
+      # changelog script; an older commit being released again may predate them.
+      - name: Take the release tooling from the workflow's commit
+        shell: bash
+        run: |
+          git show "$GITHUB_SHA:.github/release-notes.md" > "$RUNNER_TEMP/release-notes.md"
+          git show "$GITHUB_SHA:.github/scripts/release-changelog.sh" > "$RUNNER_TEMP/release-changelog.sh"
+
       # The 更新日志 section: the optional `notes` input, then what .github/scripts/release-changelog.sh lists
       # since the previous release (closed issues by label, pull requests without an issue, new open issues).
       - name: Write the changelog
@@ -298,7 +334,7 @@ jobs:
         run: |
           {
             if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
-            bash .github/scripts/release-changelog.sh "$TAG" "$SHA"
+            bash "$RUNNER_TEMP/release-changelog.sh" "$TAG" "$SHA"
           } > "$RUNNER_TEMP/changelog.md"
           cat "$RUNNER_TEMP/changelog.md"
 
@@ -327,7 +363,7 @@ jobs:
           fi
           # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in, and the
           # {{CHANGELOG}} line is replaced with the changelog written above.
-          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" .github/release-notes.md |
+          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" "$RUNNER_TEMP/release-notes.md" |
             awk -v f="$RUNNER_TEMP/changelog.md" '$0 == "{{CHANGELOG}}" { while ((getline l < f) > 0) print l; next } { print }' \
             > release-notes.md
           # --target only matters for a new tag: GitHub creates it on that commit.
