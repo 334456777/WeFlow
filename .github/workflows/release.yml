@@ -3,7 +3,9 @@ name: Release
 # Build the `weflow` CLI for Windows, Linux and macOS, test it and publish a GitHub Release. Two ways to start it:
 # - push a tag such as v0.0.1;
 # - run it by hand (Actions → Release → Run workflow) with a tag: an existing tag is released as is, a new one is
-#   created on the latest commit of the branch picked in "Use workflow from" when the release is published.
+#   created as an annotated tag on the latest commit of the branch picked in "Use workflow from" just before the
+#   release is published.
+# Releases use annotated tags only (git tag -a); a lightweight tag is refused.
 # The jobs run in order: prepare (resolve the tag to a commit), build (release binaries for every target), test (on
 # every target: the test suite, and the packaged binary run once and checked against the tag), release (only after
 # every build and test passed). v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1,
@@ -15,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release, e.g. v2.1.2 (created on the selected branch if it does not exist)"
+        description: "Tag to release, e.g. v2.1.2 (created as an annotated tag on the selected branch if it does not exist)"
         required: true
         type: string
       notes:
@@ -40,6 +42,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       sha: ${{ steps.tag.outputs.sha }}
+      new: ${{ steps.tag.outputs.new }}
     steps:
       - uses: actions/checkout@v7
 
@@ -53,18 +56,25 @@ jobs:
             echo "::error::'$TAG' is not a release tag such as v1.2.3 or v1.2.3-beta.1"
             exit 1
           fi
-          # An existing tag keeps its commit; for an annotated tag that is the `<tag>^{}` line, not the tag object.
+          # Releases use annotated tags only. An existing one keeps its commit, the `<tag>^{}` line (the line without
+          # it is the tag object); a lightweight tag has no such line and is refused.
           REFS="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
-          SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1 || true)"
-          [ -n "$SHA" ] || SHA="$(head -1 <<< "$REFS" | cut -f1)"
-          if [ -n "$SHA" ]; then
-            echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
-          else
+          if [ -z "$REFS" ]; then
+            NEW=true
             SHA="$GITHUB_SHA"
-            echo "Releasing $TAG at $SHA ($GITHUB_REF_NAME); the tag is created when the release is published" >> "$GITHUB_STEP_SUMMARY"
+            echo "Releasing $TAG at $SHA ($GITHUB_REF_NAME); the annotated tag is created before the release is published" >> "$GITHUB_STEP_SUMMARY"
+          else
+            NEW=false
+            SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1 || true)"
+            if [ -z "$SHA" ]; then
+              echo "::error::$TAG is a lightweight tag; releases use annotated tags (git tag -a $TAG -m \"WeFlow $TAG\" <commit>)"
+              exit 1
+            fi
+            echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.target }}
@@ -314,6 +324,22 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
 
+      # A manual run with a new tag: create it as an annotated tag by github-actions[bot] (its user id and noreply
+      # address). A push with GITHUB_TOKEN does not start another run. On a re-run the tag may already be there from
+      # the earlier attempt.
+      - name: Create the annotated tag
+        if: needs.prepare.outputs.new == 'true'
+        shell: bash
+        run: |
+          if [ -n "$(git ls-remote origin "refs/tags/$TAG")" ]; then
+            echo "$TAG already exists"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "WeFlow $TAG" "$SHA"
+          git push origin "refs/tags/$TAG"
+
       - name: Create the release
         shell: bash
         env:
@@ -330,10 +356,10 @@ jobs:
           sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" .github/release-notes.md |
             awk -v f="$RUNNER_TEMP/changelog.md" '$0 == "{{CHANGELOG}}" { while ((getline l < f) > 0) print l; next } { print }' \
             > release-notes.md
-          # --target only matters for a new tag: GitHub creates it on that commit.
+          # The tag exists by now (pushed, or created above); --verify-tag keeps GitHub from making a lightweight one.
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
-            --target "$SHA" \
+            --verify-tag \
             --notes-file release-notes.md \
             "${FLAGS[@]}"
