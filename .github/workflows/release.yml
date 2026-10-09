@@ -147,7 +147,12 @@ jobs:
             7z a "$DIR.zip" "$DIR" > /dev/null
             echo "ASSET=$DIR.zip" >> "$GITHUB_ENV"
           else
-            tar -czf "$DIR.tar.gz" "$DIR"
+            # Owner 0:0 instead of the runner's account, so extracting as root does not restore an unrelated UID.
+            if [ "${{ runner.os }}" = "macOS" ]; then
+              tar --uid 0 --gid 0 --numeric-owner -czf "$DIR.tar.gz" "$DIR"
+            else
+              tar --owner=0 --group=0 --numeric-owner -czf "$DIR.tar.gz" "$DIR"
+            fi
             echo "ASSET=$DIR.tar.gz" >> "$GITHUB_ENV"
           fi
 
