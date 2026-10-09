@@ -10,7 +10,9 @@ name: Release
 # v1.2.3-rc1, ...) is a pre-release.
 # An older commit can be released again by hand: the release text and changelog script come from the branch the
 # workflow runs from, a commit from before tag-derived versions gets the tag's version stamped into Cargo.toml, and
-# skip_tests leaves out the test suite that such a commit may no longer pass on the current runners.
+# skip_tests leaves out the test suite that such a commit may no longer pass on the current runners. GITHUB_TOKEN
+# cannot create the release on such a commit, so turn publish off and create it with `gh release create` and the
+# run's artifacts (the packages and release-notes.md).
 on:
   push:
     tags:
@@ -30,6 +32,11 @@ on:
         required: false
         type: boolean
         default: false
+      publish:
+        description: "Create the release; off: stop after the attestation and keep the release text as an artifact"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -350,7 +357,26 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
 
+      # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in, and the
+      # {{CHANGELOG}} line is replaced with the changelog written above.
+      - name: Write the release text
+        shell: bash
+        run: |
+          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" "$RUNNER_TEMP/release-notes.md" |
+            awk -v f="$RUNNER_TEMP/changelog.md" '$0 == "{{CHANGELOG}}" { while ((getline l < f) > 0) print l; next } { print }' \
+            > release-notes.md
+
+      # GITHUB_TOKEN gets a 403 creating a release on a commit whose workflow files differ from the default branch
+      # (it cannot have the workflows permission), so an older commit is published by hand with these files.
+      - name: Keep the release text for publishing by hand
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+
       - name: Create the release
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -361,11 +387,6 @@ jobs:
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             FLAGS+=(--prerelease)
           fi
-          # The release text comes from .github/release-notes.md; {{TAG}} and {{REPO}} are filled in, and the
-          # {{CHANGELOG}} line is replaced with the changelog written above.
-          sed -e "s|{{TAG}}|$TAG|g" -e "s|{{REPO}}|$GITHUB_REPOSITORY|g" "$RUNNER_TEMP/release-notes.md" |
-            awk -v f="$RUNNER_TEMP/changelog.md" '$0 == "{{CHANGELOG}}" { while ((getline l < f) > 0) print l; next } { print }' \
-            > release-notes.md
           # --target only matters for a new tag: GitHub creates it on that commit.
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
