@@ -44,13 +44,21 @@ check whether one is found:
 
 > stdout: `source: PATH` (or `FFMPEG_PATH` / `installed`); `source: missing` means no ffmpeg was found
 
-If it says `missing`, install, then check again:
+If it says `missing`, install:
 
 ```powershell
 ./weflow ffmpeg install
 ```
 
 > stdout: `source: installed`
+
+then check again:
+
+```powershell
+./weflow ffmpeg path
+```
+
+> stdout: `source: PATH`
 
 If GitHub is slow or unreachable, download from a mirror instead: run
 `./weflow ffmpeg set baseurl https://registry.npmmirror.com/-/binary/ffmpeg-static` before `./weflow ffmpeg install`. Without ffmpeg,
