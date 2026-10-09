@@ -1389,10 +1389,10 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 LangArg::En => "en",
                 LangArg::Zh => "zh",
             };
-            config.lang = Some(code.to_string());
-            config
-                .save(&ctx.config_path)
-                .map_err(|err| AppError::config(err.to_string()))?;
+            ConfigStore::update(&ctx.config_path, |config| {
+                config.lang = Some(code.to_string());
+                Ok(())
+            })?;
             return Ok(json!({ "lang": code }));
         }
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
@@ -1556,18 +1556,18 @@ fn handle_cache(
             }
             let result = hub.clear_current_account_data(true, exports_dir)?;
             // like the desktop app: the account is signed out of this profile
-            for key in [
-                "db_path",
-                "wxid",
-                "decrypt_key",
-                "image_xor_key",
-                "image_aes_key",
-            ] {
-                config.unset_key(None, key);
-            }
-            config
-                .save(&ctx.config_path)
-                .map_err(|err| AppError::config(err.to_string()))?;
+            ConfigStore::update(&ctx.config_path, |config| {
+                for key in [
+                    "db_path",
+                    "wxid",
+                    "decrypt_key",
+                    "image_xor_key",
+                    "image_aes_key",
+                ] {
+                    config.unset_key(None, key);
+                }
+                Ok(())
+            })?;
             Ok(result)
         }
     }
@@ -1866,10 +1866,7 @@ fn handle_config(
                 )));
             }
             let value = parse_config_value(value);
-            config.set_key(None, key, value)?;
-            config
-                .save(&ctx.config_path)
-                .map_err(|err| AppError::config(err.to_string()))?;
+            ConfigStore::update(&ctx.config_path, |config| config.set_key(None, key, value))?;
             Ok(json!({ "configPath": ctx.config_path }))
         }
         ConfigSubcommand::Unset { key } => {
@@ -1877,17 +1874,17 @@ fn handle_config(
                 weflow_core::config::clear_saved_config_path()?;
                 return Ok(json!({ "configPath": weflow_core::config::default_config_path() }));
             }
-            config.unset_key(None, key);
-            config
-                .save(&ctx.config_path)
-                .map_err(|err| AppError::config(err.to_string()))?;
+            ConfigStore::update(&ctx.config_path, |config| {
+                config.unset_key(None, key);
+                Ok(())
+            })?;
             Ok(json!({ "configPath": ctx.config_path }))
         }
         ConfigSubcommand::Clear => {
-            *config = ConfigStore::default();
-            config
-                .save(&ctx.config_path)
-                .map_err(|err| AppError::config(err.to_string()))?;
+            ConfigStore::update(&ctx.config_path, |config| {
+                *config = ConfigStore::default();
+                Ok(())
+            })?;
             Ok(json!({ "configPath": ctx.config_path }))
         }
         ConfigSubcommand::Import { path } => {
@@ -1899,12 +1896,11 @@ fn handle_config(
             let path = path.ok_or_else(|| {
                 AppError::config("old Electron config not found; pass an explicit path")
             })?;
-            let skipped = config
-                .import_electron_config(&path, None)
-                .map_err(|err| AppError::config(err.to_string()))?;
-            config
-                .save(&ctx.config_path)
-                .map_err(|err| AppError::config(err.to_string()))?;
+            let skipped = ConfigStore::update(&ctx.config_path, |config| {
+                config
+                    .import_electron_config(&path, None)
+                    .map_err(|err| AppError::config(err.to_string()))
+            })?;
             Ok(
                 json!({ "importedFrom": path, "configPath": ctx.config_path, "skippedEncryptedKeys": skipped }),
             )
@@ -1917,11 +1913,6 @@ async fn handle_ffmpeg(
     ctx: &AppContext,
     config: &mut ConfigStore,
 ) -> AppResult<Value> {
-    let save = |config: &ConfigStore| {
-        config
-            .save(&ctx.config_path)
-            .map_err(|err| AppError::config(err.to_string()))
-    };
     match &command.command {
         FfmpegSubcommand::Install { force } => {
             weflow_core::ffmpeg::install(&ctx.home_dir, config.ffmpeg_base_url.as_deref(), *force)
@@ -1939,15 +1930,19 @@ async fn handle_ffmpeg(
             setting: FfmpegSetting::Baseurl { url },
         } => {
             let url = weflow_core::ffmpeg::check_base_url(url)?;
-            config.ffmpeg_base_url = Some(url.clone());
-            save(config)?;
+            ConfigStore::update(&ctx.config_path, |config| {
+                config.ffmpeg_base_url = Some(url.clone());
+                Ok(())
+            })?;
             Ok(json!({ "baseUrl": url }))
         }
         FfmpegSubcommand::Unset {
             setting: FfmpegUnsetting::Baseurl,
         } => {
-            config.ffmpeg_base_url = None;
-            save(config)?;
+            ConfigStore::update(&ctx.config_path, |config| {
+                config.ffmpeg_base_url = None;
+                Ok(())
+            })?;
             Ok(json!({ "baseUrl": weflow_core::ffmpeg::DEFAULT_BASE_URL }))
         }
     }
