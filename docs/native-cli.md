@@ -163,7 +163,7 @@ config file; it never runs on its own. An intact copy is not downloaded again (`
 one only once it is complete and checked, and the folders of other releases under `ffmpeg/` are removed. `ffmpeg set baseurl <url>` makes it download from a mirror of those releases instead of
 GitHub (for example `https://registry.npmmirror.com/-/binary/ffmpeg-static`; it is kept in the config file, `ffmpeg unset
 baseurl` goes back to GitHub), and the files are checked the same way. The Windows build is x64 (Windows on Arm runs it
-emulated). `ffmpeg path` shows whether one is found (see the [README](../README.md#check-ffmpeg)): a WXGF image that needs
+emulated). `ffmpeg path` shows whether one is found (see the [README](../README.md#check-ffmpeg-optional-step)): a WXGF image that needs
 ffmpeg and finds none fails with `failure_kind` `ffmpeg_missing` and an error that names the time its message was sent, and
 an export counts these images in `ffmpegMissing` and lists each one's conversation and time in `ffmpegMissingImages`.
 
