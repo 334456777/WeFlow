@@ -38,6 +38,10 @@ pub fn parse_key(hex_key: &str) -> Result<[u8; 32]> {
             hex_key.len()
         );
     }
+    // Checked before slicing: a multi-byte character would put a slice boundary inside it and panic.
+    if !hex_key.bytes().all(|b| b.is_ascii_hexdigit()) {
+        bail!("database key contains a non-hex character");
+    }
     let mut out = [0u8; 32];
     for (i, byte) in out.iter_mut().enumerate() {
         *byte = u8::from_str_radix(&hex_key[i * 2..i * 2 + 2], 16)
@@ -410,6 +414,22 @@ mod tests {
             rows_of(decrypt_database(&enc, None, &derived).unwrap()),
             ["alpha", "beta"]
         );
+    }
+
+    #[test]
+    fn parse_key_rejects_non_ascii_without_panicking() {
+        // 64 bytes in UTF-8, so the length check passes and only the character check can catch them
+        for key in [
+            format!("a中{}", "a".repeat(60)),
+            format!("中{}", "a".repeat(61)),
+            format!("🙂{}", "a".repeat(60)),
+        ] {
+            assert_eq!(key.len(), 64);
+            let err = parse_key(&key).unwrap_err().to_string();
+            assert!(err.contains("non-hex"), "{err}");
+        }
+        assert!(parse_key(&"g".repeat(64)).is_err());
+        assert_eq!(parse_key(&"0A".repeat(32)).unwrap(), [0x0a; 32]);
     }
 
     #[test]
