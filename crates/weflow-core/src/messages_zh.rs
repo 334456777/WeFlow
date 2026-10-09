@@ -43,6 +43,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("CSV export expects an array; use --format json for nested data", "CSV 导出需要数组数据；嵌套数据请使用 --format json"),
     // config
     ("invalid value '{}' for lang; use en or zh", "lang 的值 '{}' 无效；请使用 en 或 zh"),
+    ("invalid value {} for {}; use a whole number from {} to {}", "{1} 的值 {0} 无效；请使用 {2} 到 {3} 之间的整数"),
     ("config override must include a parent directory", "配置文件路径必须包含上级目录"),
     ("failed to prepare runtime assets: {}", "准备运行时资源失败：{}"),
     ("failed to locate platform config directory", "无法定位系统配置目录"),

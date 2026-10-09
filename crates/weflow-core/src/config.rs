@@ -177,14 +177,16 @@ impl ConfigStore {
             "decrypt_key" | "decryptKey" => target.decrypt_key = Some(as_string(value)?),
             "wxid" | "myWxid" => target.wxid = Some(as_string(value)?),
             "image_xor_key" | "imageXorKey" => {
-                target.image_xor_key = Some(as_i64(value)?);
+                target.image_xor_key = Some(as_int_in(value, &key, 0, u8::MAX.into())?);
             }
             "image_aes_key" | "imageAesKey" => target.image_aes_key = Some(as_string(value)?),
             "cache_path" | "cachePath" => target.cache_path = Some(as_string(value)?),
             "log_enabled" | "logEnabled" => target.log_enabled = as_bool(value)?,
             "http_api_token" | "httpApiToken" => target.http_api_token = Some(as_string(value)?),
             "http_api_host" | "httpApiHost" => target.http_api_host = Some(as_string(value)?),
-            "http_api_port" | "httpApiPort" => target.http_api_port = Some(as_i64(value)? as u16),
+            "http_api_port" | "httpApiPort" => {
+                target.http_api_port = Some(as_int_in(value, &key, 1, u16::MAX.into())? as u16)
+            }
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => {
                 target.ai_model_api_base_url = Some(as_string(value)?)
             }
@@ -195,7 +197,8 @@ impl ConfigStore {
                 target.ai_model_api_model = Some(as_string(value)?)
             }
             "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => {
-                target.ai_model_api_max_tokens = Some(as_i64(value)? as u32)
+                target.ai_model_api_max_tokens =
+                    Some(as_int_in(value, &key, 1, u32::MAX.into())? as u32)
             }
             "ai_insight_enabled" | "aiInsightEnabled" => {
                 target.ai_insight_enabled = Some(as_bool(value)?)
@@ -578,6 +581,17 @@ fn as_i64(value: Value) -> AppResult<i64> {
     }
 }
 
+/// An integer in `min..=max`; anything outside is refused rather than wrapped by a later `as` cast.
+fn as_int_in(value: Value, key: &str, min: i64, max: i64) -> AppResult<i64> {
+    let n = as_i64(value)?;
+    if !(min..=max).contains(&n) {
+        return Err(AppError::usage(format!(
+            "invalid value {n} for {key}; use a whole number from {min} to {max}"
+        )));
+    }
+    Ok(n)
+}
+
 fn as_bool(value: Value) -> AppResult<bool> {
     match value {
         Value::Bool(b) => Ok(b),
@@ -662,6 +676,40 @@ mod tests {
             store.get_key(None, "custom"),
             Value::String("custom_value".to_string())
         );
+    }
+
+    #[test]
+    fn numeric_keys_refuse_out_of_range_values() {
+        let mut store = ConfigStore::default();
+        for (key, bad) in [
+            ("http_api_port", json!(65536)),
+            ("http_api_port", json!(0)),
+            ("http_api_port", json!("-1")),
+            ("ai_model_api_max_tokens", json!(4294967296_i64)),
+            ("ai_model_api_max_tokens", json!(-1)),
+            ("image_xor_key", json!(256)),
+            ("image_xor_key", json!("-1")),
+        ] {
+            let err = store.set_key(None, key, bad.clone()).unwrap_err();
+            assert!(
+                err.to_string().contains("use a whole number from"),
+                "{key}={bad}: {err}"
+            );
+            assert_eq!(
+                store.get_key(None, key),
+                Value::Null,
+                "{key}={bad} was saved"
+            );
+        }
+        for (key, good) in [
+            ("http_api_port", 65535),
+            ("ai_model_api_max_tokens", 4294967295_i64),
+            ("image_xor_key", 0),
+            ("image_xor_key", 255),
+        ] {
+            store.set_key(None, key, json!(good.to_string())).unwrap();
+            assert_eq!(store.get_key(None, key), json!(good));
+        }
     }
 
     fn temp_dir(prefix: &str) -> PathBuf {
