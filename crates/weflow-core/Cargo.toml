@@ -47,6 +47,10 @@ icu_collator.workspace = true
 icu_locale_core.workspace = true
 jpeg-decoder = { version = "0.3", default-features = false }
 
+# lists running processes (WeChat's pids) without starting `tasklist`
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
+
 [dev-dependencies]
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
