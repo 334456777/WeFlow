@@ -48,7 +48,6 @@ If it says `missing`, install, then check again:
 
 ```powershell
 ./weflow ffmpeg install
-./weflow ffmpeg path
 ```
 
 > stdout: `source: installed`
