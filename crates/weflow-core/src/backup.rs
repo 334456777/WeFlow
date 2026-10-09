@@ -474,10 +474,13 @@ mod tests {
             "a\\..\\..\\outside.txt",
         ] {
             let archive = hand_made_archive(&dir, &[(name, b"x")], &[(name, b"x")]);
-            let err = restore_err(&archive, &target);
-            // a backslash is an ordinary file-name character on Unix, so that name is only unsafe on Windows
+            // a backslash is an ordinary file-name character on Unix: there the name is one file inside the target
             if cfg!(windows) || !name.contains('\\') {
+                let err = restore_err(&archive, &target);
                 assert!(err.contains("unsafe path"), "{name}: {err}");
+            } else {
+                restore_backup(&archive, &target, &|_, _| {}).unwrap();
+                assert!(target.join(name).is_file());
             }
             assert!(!outside.exists(), "{name} escaped the target folder");
         }
