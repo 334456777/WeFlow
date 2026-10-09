@@ -3287,8 +3287,9 @@ mod tests {
             }),
         )
         .unwrap();
-        assert!(summary.contains("XOR") && summary.contains("--json"));
+        assert!(summary.contains("XOR"));
         assert!(!summary.contains("no .dat template"));
+        assert!(!summary.contains("--json"));
     }
 
     #[test]
