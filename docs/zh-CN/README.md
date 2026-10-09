@@ -48,7 +48,7 @@ WeFlow CLI 自己解码微信的 WXGF 图片。只有内置解码器读不了的
 ```
 > stdout: `source: installed`
 
-再检查一次
+再检查一次：
 
 ```powershell
 ./weflow ffmpeg path
