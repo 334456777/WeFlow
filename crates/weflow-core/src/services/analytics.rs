@@ -97,10 +97,11 @@ impl ServiceHub {
 
     /// Persists one key of the active profile to the config file.
     pub fn set_config_value(&self, key: &str, value: Value) -> AppResult<()> {
-        let mut cfg = self.fresh_config();
-        cfg.set_key(Some(&self.profile_name), key, value)?;
-        cfg.save(&self.ctx.config_path)
-            .map_err(|e| AppError::config(e.to_string()))
+        crate::config::ConfigStore::update_or(
+            &self.ctx.config_path,
+            || self.config.clone(),
+            |cfg| cfg.set_key(Some(&self.profile_name), key, value),
+        )
     }
 
     fn excluded_list(&self) -> Vec<String> {

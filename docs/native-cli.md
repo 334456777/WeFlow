@@ -194,7 +194,8 @@ differs) and loads libraries only from that directory, never implicitly from the
 The vendor WASM decoder (`WxIsaac64`) is not among them: it is ported to pure Rust in `weflow-core/src/isaac64.rs` and verified against vectors captured from the original module.
 
 Configuration lives in `WEFLOW_HOME`, otherwise in `./weflow` under the platform's configuration directory: `config.json` (TOML is
-accepted too), with caches, logs and the runtime in separate directories. `./weflow config import` migrates the desktop app's
+accepted too), with caches, logs and the runtime in separate directories. Changes are written under a lock on `config.json.lock`
+and through a temporary file, so several `weflow` processes can change the config at once without losing each other's changes. `./weflow config import` migrates the desktop app's
 readable settings and skips the encrypted `safe:` / `lock:` values with a hint to set them again.
 
 The connection settings (`db_path`, `wxid`, `decrypt_key`) are only read from the config file, set them with `./weflow config set`; there are no command-line

@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -111,13 +113,56 @@ impl ConfigStore {
         Ok(parsed)
     }
 
+    /// Write the config through a temporary file and a rename, so a reader never sees a half-written file.
+    /// Use [`ConfigStore::update`] to change the saved config: `save` alone overwrites what other processes wrote.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create {}", parent.display()))?;
         }
-        fs::write(path, serde_json::to_vec_pretty(self)?)
-            .with_context(|| format!("failed to write {}", path.display()))
+        static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
+        let tmp = path.with_file_name(format!(
+            "{}.{}-{}.tmp",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            std::process::id(),
+            NEXT_TMP.fetch_add(1, Ordering::Relaxed)
+        ));
+        let written = (|| -> Result<()> {
+            let mut file = fs::File::create(&tmp)?;
+            file.write_all(&serde_json::to_vec_pretty(self)?)?;
+            file.sync_all()?;
+            drop(file);
+            rename_replacing(&tmp, path)
+        })();
+        if written.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        written.with_context(|| format!("failed to write {}", path.display()))
+    }
+
+    /// Read the saved config, change it with `change` and save it, holding a lock on `<config>.lock` meanwhile, so
+    /// that concurrent `weflow` processes cannot overwrite each other's changes. A missing file starts from the
+    /// default config.
+    pub fn update<R>(path: &Path, change: impl FnOnce(&mut Self) -> AppResult<R>) -> AppResult<R> {
+        Self::update_or(path, Self::default, change)
+    }
+
+    /// [`ConfigStore::update`], starting from `missing()` when the config file does not exist yet.
+    pub fn update_or<R>(
+        path: &Path,
+        missing: impl FnOnce() -> Self,
+        change: impl FnOnce(&mut Self) -> AppResult<R>,
+    ) -> AppResult<R> {
+        let config_err = |err: anyhow::Error| AppError::config(err.to_string());
+        let _lock = lock_config(path).map_err(config_err)?;
+        let mut config = if path.exists() {
+            Self::load(path).map_err(config_err)?
+        } else {
+            missing()
+        };
+        let result = change(&mut config)?;
+        config.save(path).map_err(config_err)?;
+        Ok(result)
     }
 
     pub fn profile(&self, name: Option<&str>) -> Option<&ProfileConfig> {
@@ -443,6 +488,47 @@ pub fn default_config_path() -> Option<PathBuf> {
     saved_config_path().or_else(|| default_home_dir().ok().map(|dir| dir.join("config.json")))
 }
 
+/// Exclusive lock on `<config>.lock`, released when the returned file is dropped.
+fn lock_config(path: &Path) -> Result<fs::File> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let lock_path = path.with_file_name(format!(
+        "{}.lock",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    ));
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .with_context(|| format!("failed to open {}", lock_path.display()))?;
+    file.lock()
+        .with_context(|| format!("failed to lock {}", lock_path.display()))?;
+    Ok(file)
+}
+
+/// `fs::rename` over an existing file. On Windows the replace can fail for a moment while another process (a reader,
+/// an antivirus scan) has the old file open, so it is retried briefly there.
+fn rename_replacing(from: &Path, to: &Path) -> Result<()> {
+    let mut attempts = 0;
+    loop {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(err)
+                if cfg!(windows)
+                    && err.kind() == std::io::ErrorKind::PermissionDenied
+                    && attempts < 20 =>
+            {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+}
+
 /// Pointer file in the home folder that remembers the config path chosen with `config set config_path`.
 fn config_pointer_file() -> Option<PathBuf> {
     default_home_dir().ok().map(|dir| dir.join("config_path"))
@@ -676,6 +762,53 @@ mod tests {
             store.get_key(None, "custom"),
             Value::String("custom_value".to_string())
         );
+    }
+
+    #[test]
+    fn concurrent_updates_keep_every_key() {
+        let dir = temp_dir("weflow-config-concurrent");
+        let path = dir.join("config.json");
+        std::thread::scope(|s| {
+            for i in 0..32 {
+                let path = &path;
+                s.spawn(move || {
+                    ConfigStore::update(path, |c| c.set_key(None, &format!("k{i}"), json!(i)))
+                        .unwrap()
+                });
+            }
+        });
+        let saved = ConfigStore::load(&path).unwrap();
+        for i in 0..32 {
+            assert_eq!(
+                saved.get_key(None, &format!("k{i}")),
+                json!(i),
+                "k{i} was lost"
+            );
+        }
+        let names: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            names
+                .iter()
+                .all(|n| n == "config.json" || n == "config.json.lock"),
+            "{names:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_update_leaves_the_file_unchanged() {
+        let dir = temp_dir("weflow-config-failed-update");
+        let path = dir.join("config.json");
+        ConfigStore::update(&path, |c| c.set_key(None, "wxid", json!("wxid_a"))).unwrap();
+        let before = fs::read(&path).unwrap();
+        assert!(
+            ConfigStore::update(&path, |c| c.set_key(None, "http_api_port", json!(0))).is_err()
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
