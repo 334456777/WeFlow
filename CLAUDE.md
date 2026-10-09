@@ -33,7 +33,7 @@
 ## 约定
 - 此 git 仓库所连接的远程 GitHub 仓库是公开仓库（public），GitHub Project「WeFlow」是公开 Project
 - 提交信息使用 Conventional Commits 规范，默认使用英语；Pull Request 分支名称使用 Conventional Commits 风格的 `<type>/<scope>-<description>` 格式。
-- 版本与 tag 规范：版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀；发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag。
+- 版本与 tag 规范：版本号遵循语义化版本控制（SemVer）`vMAJOR.MINOR.PATCH`，预发布版本用 `-rc.1` 后缀；tag 一律用附注 tag，不用轻量 tag（`git tag -a vX.Y.Z -m "WeFlow vX.Y.Z" <commit>`，用 `git cat-file -t vX.Y.Z` 检查，应输出 `tag`）；发布前先查看现有 tag 和上次发布以来的提交，判断该升哪一位并告诉我理由，我确认后再打 tag。
 - 严禁将微信聊天记录，微信wxid，隐私信息，本地路径，密钥，API Key 等等重要信息上传到公开的 GitHub 仓库或写入 CLAUDE.md
 - GitHub Issues 根据 Lables 分类，筛选和表达状态，根据 Relationships 梳理 Issue 依赖关系（Issue dependencies），创建 Issue 时及时添加 Lables 和 Relationships （如果有对应的 Development 则添加对应 Development）
 - GitHub Issues 会有人类和其他大语言模型（LLM）参与讨论，以下情况记录到本仓库的 GitHub Issues: 被列为计划内的工作，需要多轮确认的bug，不符合当前工作的主题但是需要解决的bug，可以稍后解决的bug，被要求将不会被开展的工作，需要多轮和长时间研究思考的精益求精的要求，工作中遇到的反常/不太对劲的地方，新功能或请求，对文档的改进或补充，一些在修改代码后会经常出现的问题和需要更多信息的问题以及任何你想提出的issues；同时在遇到上述情况时也可以查询Issues寻找解决方法或继续跟踪评论issues
