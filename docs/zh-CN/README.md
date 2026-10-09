@@ -75,7 +75,7 @@ GitHub 下载慢或无法访问时，可以先运行 `./weflow ffmpeg set baseur
 ```
 > stdout: `wxid: wxid_xxxxxxxx`
 
-3. 设置数据库密钥
+3. 设置数据库密钥（详细见下文）
 ```powershell
 ./weflow key db
 ./weflow config set decrypt_key <数据库密钥>
