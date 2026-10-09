@@ -32,7 +32,7 @@ cp target/release/weflow .
 
 语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文，HTTP API 的错误响应也保持英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
 
-## 检查 ffmpeg
+## 检查 ffmpeg（可选步骤）
 
 WeFlow CLI 自己解码微信的 WXGF 图片。只有内置解码器读不了的 WXGF 图片（比如 10-bit、4:2:2 或 4:4:4 的画面）才会用到 ffmpeg，所以这一步是可选的。如果想事先准备好，先检查能否找到 ffmpeg：
 
