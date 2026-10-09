@@ -87,7 +87,7 @@ such images are not exported, and the export says how many (`ffmpegMissing`) and
 
 > stdout: `wxid: wxid_xxxxxxxx`
 
-3. Set the database key
+3. Set the database key (see details below)
 
 ```powershell
 ./weflow key db
