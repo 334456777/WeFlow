@@ -100,17 +100,26 @@ pub fn filter_official_contacts(contacts: &Value, sessions: &Value) -> Vec<Value
                 .or_else(|| c.get("contactType"))
                 .and_then(Value::as_i64)
                 .unwrap_or(0);
-            contact_type == 3 || contact_type == 99
+            // Raw contact rows from the native layer carry no `type`; like the desktop app, an official account
+            // is recognised by its `gh_` user name.
+            contact_type == 3 || contact_type == 99 || contact_username(c).starts_with("gh_")
         })
         .map(|c| {
-            let username = c
-                .get("username")
-                .or_else(|| c.get("userName"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
+            let username = contact_username(c);
             let last_time = session_map
                 .get(username)
-                .and_then(|s| s.get("lastTime").or_else(|| s.get("createTime")))
+                .and_then(|s| {
+                    [
+                        "last_timestamp",
+                        "sort_timestamp",
+                        "lastTimestamp",
+                        "sortTimestamp",
+                        "lastTime",
+                        "createTime",
+                    ]
+                    .iter()
+                    .find_map(|key| s.get(*key))
+                })
                 .cloned()
                 .unwrap_or(Value::Null);
             let mut contact = c.clone();
@@ -120,6 +129,27 @@ pub fn filter_official_contacts(contacts: &Value, sessions: &Value) -> Vec<Value
             contact
         })
         .collect()
+}
+
+fn contact_username(contact: &Value) -> &str {
+    contact
+        .get("username")
+        .or_else(|| contact.get("userName"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+/// The XML of a message: `content` / `rawContent` from already mapped messages, otherwise the native row's
+/// `message_content` (or `compress_content`), decoded.
+fn message_xml(msg: &Value) -> String {
+    match msg
+        .get("content")
+        .or_else(|| msg.get("rawContent"))
+        .and_then(Value::as_str)
+    {
+        Some(text) if !text.is_empty() => text.to_string(),
+        _ => crate::message::decode_message_content(msg),
+    }
 }
 
 fn build_session_map(sessions: &Value) -> std::collections::HashMap<String, Value> {
@@ -149,14 +179,11 @@ pub fn parse_biz_messages(messages: &Value) -> Vec<Value> {
     };
     let mut result = Vec::new();
     for msg in items {
-        let content = msg
-            .get("content")
-            .or_else(|| msg.get("rawContent"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
+        let content = message_xml(msg);
         if content.is_empty() {
             continue;
         }
+        let content = content.as_str();
         let title = extract_xml_value(content, "title");
         let des = extract_xml_value(content, "des");
         let url = extract_xml_value(content, "url");
@@ -186,12 +213,7 @@ pub fn parse_pay_records(messages: &Value) -> Vec<Value> {
     items
         .iter()
         .filter_map(|msg| {
-            let content = msg
-                .get("content")
-                .or_else(|| msg.get("rawContent"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let record = parse_pay_xml(content)?;
+            let record = parse_pay_xml(&message_xml(msg))?;
             let mut rec = record;
             if let Some(obj) = rec.as_object_mut() {
                 obj.insert(
@@ -262,6 +284,49 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0]["username"], "gh_abc");
         assert_eq!(result[0]["lastTime"], 1700000000);
+    }
+
+    #[test]
+    fn reads_native_message_rows() {
+        // the shape `chat messages` returns: message_content, not content / rawContent
+        let pay = json!([{
+            "local_id": 7, "create_time": 1700000000, "local_type": 49,
+            "message_content": "<msg><appmsg><title>Paid</title><des>¥1.00</des><display_name>Shop</display_name><pub_time>1700000000</pub_time></appmsg></msg>"
+        }]);
+        let records = parse_pay_records(&pay);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["title"], "Paid");
+        assert_eq!(records[0]["localId"], 7);
+        assert_eq!(records[0]["createTime"], 1700000000);
+
+        let news = json!([{
+            "local_id": 8, "create_time": 1700000001,
+            "message_content": "<msg><appmsg><title>Daily</title><des>Digest</des><url>http://n</url><content_list><item><title>A1</title><url>http://a1</url></item></content_list></appmsg></msg>"
+        }]);
+        let parsed = parse_biz_messages(&news);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0]["title"], "Daily");
+        assert_eq!(parsed[0]["description"], "Digest");
+        assert_eq!(parsed[0]["contentList"][0]["title"], "A1");
+    }
+
+    #[test]
+    fn recognises_official_accounts_in_native_contact_rows() {
+        // native rows have no `type`; session rows carry `last_timestamp`
+        let contacts = json!([
+            {"username": "gh_abc", "local_type": 1, "nick_name": "Official"},
+            {"username": "gh_def", "local_type": 1, "nick_name": "Other"},
+            {"username": "wxid_friend", "local_type": 1, "nick_name": "Friend"}
+        ]);
+        let sessions = json!([
+            {"username": "gh_abc", "last_timestamp": 1700000000, "sort_timestamp": 1},
+            {"username": "gh_def", "lastTimestamp": 1700000001}
+        ]);
+        let result = filter_official_contacts(&contacts, &sessions);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0]["username"], "gh_abc");
+        assert_eq!(result[0]["lastTime"], 1700000000);
+        assert_eq!(result[1]["lastTime"], 1700000001);
     }
 
     #[test]
