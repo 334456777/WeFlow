@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -56,20 +57,36 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
                 fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create {}", parent.display()))?;
             }
-            let tmp = target_path.with_extension("tmp-weflow");
+            // Several processes can start on a fresh home at once: each writes its own temporary file, and losing
+            // the race to another process that already put the same bytes in place is fine.
+            static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
+            let tmp = target_path.with_file_name(format!(
+                "{}.{}-{}.tmp-weflow",
+                target_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy(),
+                std::process::id(),
+                NEXT_TMP.fetch_add(1, Ordering::Relaxed)
+            ));
             {
                 let mut file = fs::File::create(&tmp)
                     .with_context(|| format!("failed to create {}", tmp.display()))?;
                 file.write_all(asset.bytes)
                     .with_context(|| format!("failed to write {}", tmp.display()))?;
             }
-            fs::rename(&tmp, &target_path).with_context(|| {
-                format!(
-                    "failed to move {} to {}",
-                    tmp.display(),
-                    target_path.display()
-                )
-            })?;
+            if let Err(err) = fs::rename(&tmp, &target_path) {
+                let _ = fs::remove_file(&tmp);
+                if !fs::read(&target_path).is_ok_and(|existing| existing == asset.bytes) {
+                    return Err(err).with_context(|| {
+                        format!(
+                            "failed to move {} to {}",
+                            tmp.display(),
+                            target_path.display()
+                        )
+                    });
+                }
+            }
         }
 
         #[cfg(unix)]
@@ -198,5 +215,43 @@ mod tests {
             manifest_time
         );
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn concurrent_extraction_on_a_fresh_home_succeeds() {
+        let home = std::env::temp_dir().join(format!("weflow-assets-race-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        std::thread::scope(|s| {
+            let workers: Vec<_> = (0..16)
+                .map(|_| s.spawn(|| ensure_runtime(&home, "test")))
+                .collect();
+            for worker in workers {
+                worker.join().unwrap().unwrap();
+            }
+        });
+        let dir = home.join("runtime").join("test").join(target_triple());
+        for asset in EMBEDDED_ASSETS {
+            let path = dir.join(asset_relative_path(asset.logical_path));
+            assert_eq!(fs::read(&path).unwrap(), asset.bytes, "{}", path.display());
+        }
+        let leftovers = walk(&dir)
+            .into_iter()
+            .filter(|p| p.to_string_lossy().ends_with(".tmp-weflow"))
+            .count();
+        assert_eq!(leftovers, 0);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    fn walk(dir: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                out.extend(walk(&path));
+            } else {
+                out.push(path);
+            }
+        }
+        out
     }
 }
