@@ -1235,29 +1235,7 @@ fn wait_for_fresh_wechat(
 fn wechat_pids() -> Vec<u32> {
     #[cfg(target_os = "windows")]
     {
-        let mut pids = Vec::new();
-        for image in ["Weixin.exe", "WeChat.exe"] {
-            let Ok(output) = std::process::Command::new("tasklist")
-                .args(["/FI", &format!("IMAGENAME eq {image}"), "/FO", "CSV", "/NH"])
-                .output()
-            else {
-                continue;
-            };
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty() && !l.starts_with("INFO:"))
-            {
-                let parts: Vec<&str> = line.split("\",\"").map(|p| p.trim_matches('"')).collect();
-                if parts.first().is_some_and(|n| n.eq_ignore_ascii_case(image)) {
-                    if let Some(pid) = parts.get(1).and_then(|p| p.parse::<u32>().ok()) {
-                        pids.push(pid);
-                    }
-                }
-            }
-        }
-        pids
+        crate::process::pids_by_image(&["Weixin.exe", "WeChat.exe"])
     }
     #[cfg(not(target_os = "windows"))]
     {

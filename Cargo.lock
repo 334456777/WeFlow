@@ -2655,6 +2655,7 @@ dependencies = [
  "weflow-assets",
  "weflow-native",
  "weflow-silk",
+ "windows-sys 0.61.2",
  "zip",
  "zstd",
 ]
