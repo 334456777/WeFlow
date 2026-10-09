@@ -44,7 +44,7 @@ check whether one is found:
 
 > stdout: `source: PATH` (or `FFMPEG_PATH` / `installed`); `source: missing` means no ffmpeg was found
 
-If it says `missing`, install the build the desktop app bundles (it is checked against its SHA-256), then check again:
+If it says `missing`, install, then check again:
 
 ```powershell
 ./weflow ffmpeg install
