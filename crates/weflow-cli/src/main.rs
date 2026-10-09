@@ -3208,12 +3208,6 @@ fn key_summary(command: &Commands, data: &Value) -> Option<String> {
                     "（AES 首块已验证；XOR 与整组密钥尚未验证）\n",
                 ));
             }
-            if data["scan"]["truncated"] == true || data["scan"]["templates_truncated"] == true {
-                text.push_str(tr(
-                    "(template search was truncated; see --json scan diagnostics)\n",
-                    "（模板扫描或保留数量已截断；详见 --json 的 scan 诊断）\n",
-                ));
-            }
             Some(text)
         }
         KeySubcommand::ScanImage { .. } => None,
