@@ -2584,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-assets"
-version = "2.1.1"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -2595,7 +2595,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-cli"
-version = "2.1.1"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -2614,7 +2614,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-core"
-version = "2.1.1"
+version = "1.1.1"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -2661,7 +2661,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-native"
-version = "2.1.1"
+version = "1.1.1"
 dependencies = [
  "aes",
  "anyhow",
@@ -2682,14 +2682,14 @@ dependencies = [
 
 [[package]]
 name = "weflow-silk"
-version = "2.1.1"
+version = "1.1.1"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "weflow-wcdb-ffi"
-version = "2.1.1"
+version = "1.1.1"
 dependencies = [
  "aes",
  "anyhow",
@@ -2702,7 +2702,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-wxkey"
-version = "2.1.1"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "libloading",
