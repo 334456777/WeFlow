@@ -69,19 +69,22 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   when it starts: messages WeChat writes while it runs are left for the next export.
 - **Memory of big exports**: `export messages` turns the conversation into export records page by page and writes the file from
   them, reading the database with a small page cache per reading thread. For a 200,000-message group of a real account, with the
-  threads an export picks on its own (16 logical CPUs), the peak is about 0.2 GB (`json`, `arkme-json`), 0.2–0.3 GB (`txt`,
-  `sql`, `html`, `excel`) and 0.25–0.4 GB (`chatlab`, `chatlab-jsonl`, `weclone`); the upper end is the resident set on Linux,
-  the lower one the working set on Windows. An export with media (`--media`) reads the whole conversation into memory before
-  it copies the media and writes the file: about 0.5 GB on Windows for the same group with images, voices and videos, and
-  about 0.8 GB the first time, while its WXGF images are decoded into the image cache (several at once). Export a date range (`--start/--end`) if memory is tight; the cost follows the range, not its age.
+  threads an export picks on its own (16 logical CPUs), the peak is about 0.15–0.2 GB (`json`, `arkme-json`), 0.2–0.3 GB
+  (`txt`, `sql`, `html`, `excel`) and 0.3–0.45 GB (`chatlab`, `chatlab-jsonl`, `weclone`); the upper end is the resident set on
+  Linux, the lower one the working set on Windows. An export with media (`--media`) reads the whole conversation into memory
+  before it copies the media and writes the file: about 0.6 GB on Windows for the same group with images, voices and videos,
+  and about 1 GB the first time, while its WXGF images are decoded into the image cache (several at once). Export a date range
+  (`--start/--end`) if memory is tight: memory follows the range, but preparing it still reads the whole conversation (about
+  0.5 s for this group).
 - **Threads of big exports**: several threads read and parse the pages while the file is written. An export starts with two
   and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages, and stops adding once
   one more thread no longer reads clearly faster (by at least half of what it could add). `chatlab` and `chatlab-jsonl`
-  entries are also rendered on the reading threads, so these exports and `weclone` use the most threads (5–7 on 16 logical
+  entries are also rendered on the reading threads, so these exports and `weclone` use the most threads (5–8 on 16 logical
   CPUs); `txt`, `sql`, `html` and `excel` reach about 3, and `json` / `arkme-json` stay at 2 (writing is the bottleneck).
   An export with media reads with at most 2 threads, since it only collects the messages. Every reading thread keeps its
   own page cache and a few pages in flight, about 20–60 MiB each, and the peaks above include them.
-  `WEFLOW_EXPORT_WORKERS=1` reads with one thread (about 0.13 GB, but slower); any other number fixes the thread count.
+  `WEFLOW_EXPORT_WORKERS=1` reads with one thread (0.11–0.16 GB, but up to about three times slower); any other number fixes
+  the thread count.
   `RUST_LOG=weflow::export=debug` logs the threads used and the time spent reading, parsing (and rendering) and waiting
   (`=trace` also logs each decision to add a thread). With nothing cached (the first export after a restart) the same
   exports took 2–25% longer from an NVMe SSD, and the extra threads saved as much time as with a warm cache.
