@@ -391,11 +391,12 @@ impl NativeAccount {
     }
 
     /// The cursor of an export: oldest first, full rows, like [`open_message_cursor`](Self::open_message_cursor).
-    /// Collecting its keys reads only the `sort_seq` index instead of every row of the table, taking `create_time`
+    /// Without time bounds, collecting its keys reads only the `sort_seq` index instead of every row of the table, taking `create_time`
     /// as `sort_seq / 1000`, which is how WeChat makes `sort_seq` (`create_time` in milliseconds plus a counter). The
     /// pages check that against the rows they read: when a table does not follow it, the keys are read from the table
     /// as before, the table is remembered for the next exports, and when that changes the pages,
-    /// [`KEYS_CHANGED`] tells the export to start over (issue #39).
+    /// [`KEYS_CHANGED`] tells the export to start over (issue #39). Bounded cursors read exact `create_time` keys:
+    /// index-derived bounds could exclude an in-range row entirely, so no fetched page could detect its wrong key.
     pub fn open_export_cursor(
         &self,
         session_id: &str,
@@ -455,7 +456,7 @@ impl NativeAccount {
         let mut keys: Vec<Key> = Vec::new();
         let mut derived: Vec<bool> = Vec::with_capacity(tables.len());
         for (idx, t) in tables.iter().enumerate() {
-            if derive && !exact_key_table(t) {
+            if derive && begin == 0 && end == 0 && !exact_key_table(t) {
                 keys.extend(self.index_keys(t, idx, (begin, end))?);
                 derived.push(true);
                 continue;
@@ -982,6 +983,24 @@ mod tests {
     }
 
     #[test]
+    fn bounded_export_keeps_messages_whose_sort_seq_time_is_outside_the_range() {
+        use crate::fixture::{MsgSpec, T0};
+        let acct = export_world(
+            "range-excludes-derived-key",
+            &[vec![
+                MsgSpec::text(1, "wxid_bob", T0 + 100, "inside").with_sort_seq(T0 * 1000),
+                MsgSpec::text(2, "wxid_bob", T0 + 200, "outside"),
+            ]],
+        );
+        let cursor = acct
+            .open_export_cursor("wxid_bob", 2, (T0 + 100) as i32, (T0 + 100) as i32)
+            .unwrap();
+        assert_eq!(acct.message_cursor_len(cursor).unwrap().0, 1,
+            "the real timestamp is inside the range even though the index-derived timestamp is outside");
+        assert_eq!(page_ids(&acct, cursor).unwrap(), vec![1]);
+    }
+
+    #[test]
     fn export_cursor_keys_from_the_index_are_the_keys_of_the_rows() {
         use crate::fixture::{MsgSpec, T0};
         let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
@@ -1015,14 +1034,15 @@ mod tests {
             let (exact_keys, _) = cursor_state(&acct, exact);
             let (fast_keys, derived) = cursor_state(&acct, fast);
             assert_eq!(fast_keys, exact_keys, "range {begin}..{end}");
-            assert_eq!(derived, vec![true, true]);
+            let expected_derived = vec![begin == 0 && end == 0; 2];
+            assert_eq!(derived, expected_derived);
             assert_eq!(
                 page_ids(&acct, fast).unwrap(),
                 page_ids(&acct, exact).unwrap()
             );
             assert_eq!(
                 cursor_state(&acct, fast).1,
-                vec![true, true],
+                expected_derived,
                 "the rows agreed with the keys"
             );
         }
