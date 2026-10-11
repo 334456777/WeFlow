@@ -80,10 +80,10 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   and adds one, up to one per CPU but one (at most 8), while writing the file keeps waiting for pages, and stops adding once
   one more thread no longer reads clearly faster (by at least half of what it could add). `chatlab` and `chatlab-jsonl`
   entries are also rendered on the reading threads, so these exports and `weclone` use the most threads (5–8 on 16 logical
-  CPUs); `txt`, `sql`, `html` and `excel` reach 3–4, and `json` / `arkme-json` stay at 2 (writing is the bottleneck).
+  CPUs); `txt`, `sql`, `html` and `excel` reach about 3, and `json` / `arkme-json` stay at 2 (writing is the bottleneck).
   An export with media reads with at most 2 threads, since it only collects the messages. Every reading thread keeps its
   own page cache and a few pages in flight, about 20–60 MiB each, and the peaks above include them.
-  `WEFLOW_EXPORT_WORKERS=1` reads with one thread (0.11–0.15 GB, but up to about three times slower); any other number fixes
+  `WEFLOW_EXPORT_WORKERS=1` reads with one thread (0.11–0.16 GB, but up to about three times slower); any other number fixes
   the thread count.
   `RUST_LOG=weflow::export=debug` logs the threads used and the time spent reading, parsing (and rendering) and waiting
   (`=trace` also logs each decision to add a thread). With nothing cached (the first export after a restart) the same
