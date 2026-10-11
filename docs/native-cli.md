@@ -219,3 +219,11 @@ decrypts WeChat 4.x databases itself (SQLCipher 4) and reads them **read-only** 
 - Real-data regression: one Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows
   (about 80 commands, message exports with media, image exports, the HTTP API). What is still unverified is listed in
   [cli-unsupported.md](cli-unsupported.md#4-platform-and-verification-limits).
+
+For repeatable cursor measurements, run `cargo run --release -p weflow-core --example export_pipeline_probe -- <work-dir> --mode keys --messages 200000 --shards 2 --runs 5`
+with a disposable work directory: the probe replaces `<work-dir>/data` with synthetic encrypted databases. It warms the snapshots,
+then reports each run's key preparation, first internal batch and batch fetch times for exact, index-derived and sender-filtered
+cursors. Fetch times exclude the row-count and ordered SHA-256 checks; exact and index-derived rows must agree, and the filtered
+rows must match the corresponding subset. Reuse the same work directory when comparing builds, because row digests include shard
+paths. These are warm-snapshot measurements, not cold-disk timings or the time at which the final export file becomes readable.
+Cursor keys still take memory proportional to the number of selected messages.

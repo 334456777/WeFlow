@@ -1,7 +1,7 @@
 //! Export pipeline probe on a synthetic encrypted account; no WeChat data is opened.
 //!
 //! usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N]
-//!                              [--mode all|full|stages|read] [--no-low-memory] [--connections N]
+//!                              [--mode all|full|stages|read|keys] [--no-low-memory] [--connections N]
 //!
 //! `<work dir>/data` is wiped and rebuilt: one group with N messages (default 200000) spread evenly over the
 //! shards (default 2), cycling through text, zstd-compressed link and quote appmsgs, images, stickers and system
@@ -14,6 +14,9 @@
 //! - `read`: the conversation's range split into 1/2/4/8 parts, each read by its own cursor and thread, which
 //!   shows how far reads of one database file run in parallel. A database gets one connection unless
 //!   `--connections N` allows more (exports use one per worker).
+//! - `keys`: warm-snapshot cursor preparation and first internal batch for exact, index-derived and sender-filtered
+//!   cursors. Fetch times exclude validation; row counts and ordered SHA-256 digests must agree across runs and
+//!   cursor types. These are internal batch timings, not final-file availability or cold-disk measurements.
 //!
 //! Process CPU time (user/sys) is printed on Linux only. To compare allocators without rebuilding, run the same
 //! command with `LD_PRELOAD=<path to libjemalloc.so.2>`.
@@ -21,6 +24,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::export_msg::{
     ContactInfo, DisplayPref, Exporter, NameBook, SessionInfo, Settings,
@@ -51,7 +55,7 @@ struct Args {
 fn parse_args() -> anyhow::Result<(std::path::PathBuf, Args)> {
     let mut it = std::env::args().skip(1);
     let dir = it.next().ok_or_else(|| {
-        anyhow::anyhow!("usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N] [--mode all|full|stages|read] [--no-low-memory] [--connections N]")
+        anyhow::anyhow!("usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N] [--mode all|full|stages|read|keys] [--no-low-memory] [--connections N]")
     })?;
     let mut args = Args {
         messages: 200_000,
@@ -328,6 +332,95 @@ fn full(root: &Path, fixture: &Fixture, args: &Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn keys(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
+    // Open the encrypted snapshots and read every row before measuring; key derivation is excluded.
+    anyhow::ensure!(count_rows(wcdb, 0, 0)? == args.messages as usize);
+    let mut reference = None;
+    let mut sender_reference = None;
+    for kind in ["exact", "export", "sender"] {
+        for run in 1..=args.runs {
+            let started = Instant::now();
+            let cursor = match kind {
+                "export" => wcdb.open_export_cursor(ROOM, BATCH, 0, 0)?,
+                "sender" => wcdb.open_message_cursor_for_senders(
+                    ROOM,
+                    BATCH,
+                    true,
+                    (0, 0),
+                    false,
+                    (&|n| n == "wxid_m0", false),
+                )?,
+                _ => wcdb.open_message_cursor(ROOM, BATCH, true, 0, 0, false)?,
+            };
+            let key_time = started.elapsed();
+            let mut fetch_time = std::time::Duration::ZERO;
+            let mut first_batch = None;
+            let mut count = 0usize;
+            let mut digest = Sha256::new();
+            let mut sender_digest = Sha256::new();
+            let mut sender_count = 0usize;
+            let result = (|| -> anyhow::Result<()> {
+                loop {
+                    let t = Instant::now();
+                    let (page, more) = wcdb.fetch_message_batch(cursor)?;
+                    fetch_time += t.elapsed();
+                    first_batch.get_or_insert_with(|| started.elapsed());
+                    let rows = page
+                        .as_array()
+                        .ok_or_else(|| anyhow::anyhow!("expected rows"))?;
+                    count += rows.len();
+                    // Validation deliberately stays outside the fetch timer. Hash complete rows in cursor order,
+                    // including their content, sender and shard: fewer or differently ordered rows cannot look faster.
+                    for row in rows {
+                        let bytes = serde_json::to_vec(row)?;
+                        digest.update(&bytes);
+                        let name = row["sender_username"].as_str().unwrap_or("");
+                        if name.is_empty() || name == "wxid_m0" {
+                            sender_count += 1;
+                            sender_digest.update(&bytes);
+                        }
+                    }
+                    if !more {
+                        break;
+                    }
+                }
+                Ok(())
+            })();
+            wcdb.close_message_cursor(cursor)?;
+            result?;
+            let checksum = format!("{:x}", digest.finalize());
+            let actual = (count, checksum.clone());
+            let expected = if kind == "sender" {
+                &mut sender_reference
+            } else {
+                &mut reference
+            };
+            anyhow::ensure!(
+                actual == *expected.get_or_insert_with(|| actual.clone()),
+                "{kind} rows changed"
+            );
+            if kind == "exact" {
+                anyhow::ensure!(count == args.messages as usize);
+                let selected = (sender_count, format!("{:x}", sender_digest.finalize()));
+                anyhow::ensure!(
+                    selected == *sender_reference.get_or_insert_with(|| selected.clone()),
+                    "sender reference changed"
+                );
+            }
+            println!(
+                "{}",
+                serde_json::json!({
+                    "cursor": kind, "run": run, "rows": count, "sha256": checksum,
+                    "keys_ms": key_time.as_secs_f64() * 1000.0,
+                    "first_internal_batch_ms": first_batch.unwrap_or(key_time).as_secs_f64() * 1000.0,
+                    "fetch_ms": fetch_time.as_secs_f64() * 1000.0,
+                })
+            );
+        }
+    }
+    Ok(())
+}
+
 fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
     let opts = CollectOptions {
         session_id: ROOM,
@@ -447,11 +540,14 @@ fn main() -> anyhow::Result<()> {
     if matches!(args.mode.as_str(), "all" | "full") {
         full(&root, &fixture, &args)?;
     }
-    if matches!(args.mode.as_str(), "all" | "stages" | "read") {
+    if matches!(args.mode.as_str(), "all" | "stages" | "read" | "keys") {
         let mut wcdb = Wcdb::new();
         wcdb.open_unchecked(&fixture.account_dir, &fixture.key_hex(), Some(OWNER))?;
         // exports run in low-memory mode (16 MiB page cache per database)
         wcdb.set_low_memory(args.low_memory);
+        if args.mode == "keys" {
+            return keys(&wcdb, &args);
+        }
         if args.mode != "read" {
             stages(&root, &wcdb, &args)?;
         }

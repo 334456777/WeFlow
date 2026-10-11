@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use md5::{Digest, Md5};
 use serde_json::{json, Map, Value};
 
@@ -522,7 +522,7 @@ impl NativeAccount {
             "select sort_seq, create_time, local_id from \"{}\" where create_time >= ?1 and (?2 = 0 or create_time <= ?2){who}",
             t.table
         );
-        self.collect_keys(t, idx, &sql, &[&begin, &end])
+        self.collect_keys(t, idx, &sql, &[&begin, &end], false)
     }
 
     /// The keys of `t` in `create_time` range `(begin, end)` from the `sort_seq` index alone (`local_id` is the rowid,
@@ -540,24 +540,12 @@ impl NativeAccount {
             "select sort_seq, local_id from \"{}\" where sort_seq > 0 and sort_seq >= ?1 and (?2 = 0 or sort_seq <= ?2)",
             t.table
         );
-        let mut keys = Vec::new();
-        let cell = std::cell::RefCell::new(&mut keys);
-        self.query_each(
-            &t.db,
-            &sql,
-            &[&lo, &hi],
-            || cell.borrow_mut().clear(),
-            |r| {
-                let seq = int(&r, "sort_seq");
-                cell.borrow_mut()
-                    .push((seq, seq / 1000, int(&r, "local_id"), idx));
-            },
-        )?;
+        let mut keys = self.collect_keys(t, idx, &sql, &[&lo, &hi], true)?;
         let rest = format!(
             "select sort_seq, create_time, local_id from \"{}\" where (sort_seq is null or sort_seq <= 0) and create_time >= ?1 and (?2 = 0 or create_time <= ?2)",
             t.table
         );
-        keys.extend(self.collect_keys(t, idx, &rest, &[&begin, &end])?);
+        keys.extend(self.collect_keys(t, idx, &rest, &[&begin, &end], false)?);
         Ok(keys)
     }
 
@@ -567,20 +555,36 @@ impl NativeAccount {
         idx: usize,
         sql: &str,
         params: &[&dyn rusqlite::ToSql],
+        from_index: bool,
     ) -> Result<Vec<Key>> {
-        let mut keys = Vec::new();
-        let cell = std::cell::RefCell::new(&mut keys);
-        self.query_each(
-            &t.db,
-            sql,
-            params,
-            || cell.borrow_mut().clear(),
-            |r| {
-                let (seq, create, local) = row_key(&r);
-                cell.borrow_mut().push((seq, create, local, idx));
-            },
-        )?;
-        Ok(keys)
+        self.with_db(&t.db, |conn| {
+            // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
+            let mut keys = Vec::new();
+            let mut stmt = conn
+                .prepare(sql)
+                .with_context(|| format!("bad query: {sql}"))?;
+            let mut rows = stmt.query(params)?;
+            while let Some(row) = rows.next()? {
+                // Match int()/row_key(): only SQLite integers count; nulls and other storage types become zero.
+                // Read the cells directly instead of allocating a JSON object and column names for every key.
+                let integer = |column: usize| -> rusqlite::Result<i64> {
+                    Ok(match row.get_ref(column)? {
+                        rusqlite::types::ValueRef::Integer(i) => i,
+                        _ => 0,
+                    })
+                };
+                let seq = integer(0)?;
+                let key = if from_index {
+                    (seq, seq / 1000, integer(1)?, idx)
+                } else {
+                    let create = integer(1)?;
+                    let seq = if seq == 0 { create * 1000 } else { seq };
+                    (seq, create, integer(2)?, idx)
+                };
+                keys.push(key);
+            }
+            Ok(keys)
+        })
     }
 
     /// The rows of a page showed that the keys the tables `fix` (indexes) took from the `sort_seq` index are not the
@@ -905,6 +909,76 @@ mod tests {
             ids.extend(rows.iter().map(|r| int(r, "local_id")));
         }
         unreachable!()
+    }
+
+    #[test]
+    fn cursor_keys_preserve_null_and_non_integer_fallbacks() {
+        let root = std::env::temp_dir().join(format!("weflow-key-types-{}", std::process::id()));
+        let fixture = crate::fixture::Fixture::new(&root, "wxid_synthetic_ab12");
+        let table = table_name_for("wxid_bob");
+        let plain = plain_db_with(|conn| {
+            // No affinity on sort_seq: exercise all SQLite storage classes, including an integral REAL.
+            conn.execute_batch(&format!(
+                "create table Name2Id(user_name text);
+                 insert into Name2Id values ('wxid_bob');
+                 create table \"{table}\"(local_id integer primary key, sort_seq, create_time integer,
+                     real_sender_id integer, message_content text);
+                 create index key_types_sort on \"{table}\"(sort_seq);
+                 insert into \"{table}\" values
+                     (1, {seq}, {T0}, 1, 'integer'),
+                     (2, null, {T0}+1, 1, 'null'),
+                     (3, 0, {T0}+2, 1, 'zero'),
+                     (4, -1, {T0}+3, 1, 'negative'),
+                     (5, {seq}.0, {T0}+4, 1, 'real'),
+                     (6, 'invalid', {T0}+5, 1, 'text'),
+                     (7, x'31', {T0}+6, 1, 'blob');",
+                seq = T0 * 1000 + 9,
+            ))
+            .unwrap();
+        });
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        std::fs::write(
+            fixture.db_storage().join("message/message_0.db"),
+            encrypt_db(&plain, &cipher),
+        )
+        .unwrap();
+        let acct = NativeAccount::new(fixture.db_storage(), &fixture.key_hex()).unwrap();
+        let exact = acct
+            .open_message_cursor("wxid_bob", 2, true, 0, 0, false)
+            .unwrap();
+        assert_eq!(
+            cursor_state(&acct, exact).0,
+            vec![
+                (-1, T0 + 3, 4, 0),
+                (T0 * 1000 + 9, T0, 1, 0),
+                ((T0 + 1) * 1000, T0 + 1, 2, 0),
+                ((T0 + 2) * 1000, T0 + 2, 3, 0),
+                ((T0 + 4) * 1000, T0 + 4, 5, 0),
+                ((T0 + 5) * 1000, T0 + 5, 6, 0),
+                ((T0 + 6) * 1000, T0 + 6, 7, 0),
+            ]
+        );
+        let fast = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        assert_eq!(
+            cursor_state(&acct, fast).0,
+            vec![
+                (-1, T0 + 3, 4, 0),
+                (0, 0, 5, 0),
+                (0, 0, 6, 0),
+                (0, 0, 7, 0),
+                (T0 * 1000 + 9, T0, 1, 0),
+                ((T0 + 1) * 1000, T0 + 1, 2, 0),
+                ((T0 + 2) * 1000, T0 + 2, 3, 0),
+            ]
+        );
+        assert!(acct
+            .fetch_message_page(fast, 0)
+            .unwrap_err()
+            .to_string()
+            .contains(KEYS_CHANGED));
+        let again = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        assert_eq!(cursor_state(&acct, again).0, cursor_state(&acct, exact).0);
+        assert_eq!(page_ids(&acct, again).unwrap(), vec![4, 1, 2, 3, 5, 6, 7]);
     }
 
     #[test]
