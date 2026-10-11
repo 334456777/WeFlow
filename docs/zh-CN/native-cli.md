@@ -51,7 +51,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` 按媒体消息遍历（同一张图发两次算两条，所以 `found` 可能大于 `chat images` 列出的唯一文件数）。`missing` 统计文件不在磁盘上（微信里没下载过）或无法解析的消息，按类型分列在 `missingByKind`。`thumbOnly` 统计只导出了缩略图的图片（每条图片记录也带 `isThumb`）；在微信里点开原图后再导出即可得到高清图。`export media` 始终优先使用高清原图（等同 `image decrypt --force`）。表情可能需要联网；语音导出要逐条解码，几百条语音的全量导出需要数分钟。
 
-`export messages` 只从数据库读取所选日期范围（耗时与范围大小相关，与日期早晚无关），并显示进度条；`--start/--end` 是本机本地时区的日期。`--media image,voice,video,emoji`（或 `all`）把媒体复制到输出文件旁边的 `media/<输出文件名>/`，并让消息指向这些副本（适用于 `json`、`arkme-json`、`txt`、`excel`、`weclone`、`html`；`chatlab` 仅图片；`sql` 不支持）。所有格式都边读边写（`json`、`chatlab`、`html`、`excel` 的文件头要用到总数，所以会先把消息写到输出文件旁的临时文件 `<输出文件>.part`；带 `--media` 的导出要先读完整个会话），20 万条消息的群约需 0.1 GB（`excel` 约 0.2 GB）内存。`--sender` 在所有格式中都只保留该人的消息（只接受裸 wxid，即 `chat contacts` 列出的形式，因为只有 wxid 一定存在、唯一且固定；传入带 `_xxxx` 后缀的账号文件夹名会报错并给出应使用的裸 wxid，没有匹配到消息时报错里也会说明 `--sender` 要填什么）；所有格式默认依次用群昵称、备注、昵称、微信号称呼发送者（`--display-name group-nickname`）；`--display-name remark` 跳过群昵称，`--display-name nickname` 只用昵称。
+`export messages` 按数据库中的真实消息时间筛选，并显示进度条；`--start/--end` 是本机本地时区的日期。指定 `--start` 或 `--end` 时从消息行读取时间建键，因为异常的 `sort_seq` 会让更快的纯索引建键漏掉范围内的消息；因此在大会话中导出很短的范围，建键耗时也与整个会话相当。`--media image,voice,video,emoji`（或 `all`）把媒体复制到输出文件旁边的 `media/<输出文件名>/`，并让消息指向这些副本（适用于 `json`、`arkme-json`、`txt`、`excel`、`weclone`、`html`；`chatlab` 仅图片；`sql` 不支持）。所有格式都边读边写（`json`、`chatlab`、`html`、`excel` 的文件头要用到总数，所以会先把消息写到输出文件旁的临时文件 `<输出文件>.part`；带 `--media` 的导出要先读完整个会话），20 万条消息的群约需 0.1 GB（`excel` 约 0.2 GB）内存。`--sender` 在所有格式中都只保留该人的消息（只接受裸 wxid，即 `chat contacts` 列出的形式，因为只有 wxid 一定存在、唯一且固定；传入带 `_xxxx` 后缀的账号文件夹名会报错并给出应使用的裸 wxid，没有匹配到消息时报错里也会说明 `--sender` 要填什么）；所有格式默认依次用群昵称、备注、昵称、微信号称呼发送者（`--display-name group-nickname`）；`--display-name remark` 跳过群昵称，`--display-name nickname` 只用昵称。
 
 `export messages` 的消息文本：所有格式对同一条消息写同样的文本，所以各格式之间可以逐条对照。
 
@@ -171,3 +171,7 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 请使用可丢弃的工作目录：探针会将 `<工作目录>/data` 替换为合成的加密数据库。它先预热快照，再逐次报告精确键、索引推导键和发送者筛选游标的建键耗时、首批内部结果时间和取批耗时。
 取批计时不包含消息数和按游标顺序计算的 SHA-256 校验；精确键与索引推导键返回的消息必须一致，筛选结果必须等于对应子集。跨构建对比时应使用同一个工作目录，因为摘要包含分片路径。
 这些是热快照测量，不代表冷磁盘耗时或最终导出文件可读取的时间。游标键占用的内存仍与所选消息数成正比。
+
+本地账号回归可运行 `cargo run -p weflow-core --example real_account_probe -- <隔离配置.json> <私有清单.json> --compare-bounded`。
+探针只读配置账号的数据库，并对异常时间键附近的范围比较索引游标与精确游标。跨构建对比时，应使用稳定的本地数据库副本，并隔离配置和缓存目录。
+清单、导出和详细日志含会话标识、日期、消息或本地路径，应保存在本地；探针的汇总输出仅用于本地报告，公开账号衍生统计需要账号所有者授权。
