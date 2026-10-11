@@ -166,3 +166,8 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
   `crates/weflow-core/tests/`。`cargo test --workspace` 会全部运行。
 - 真实数据回归:一个 Windows 微信 4.x 账号，用 Linux 构建，以及在 Windows 上运行 `weflow.exe`(约 80 个命令、带媒体的消息导出、
   图片导出、HTTP API)。还没验证的部分见 [cli-unsupported.md](cli-unsupported.md#4-平台与验证范围)。
+
+要重复测量游标性能，可运行 `cargo run --release -p weflow-core --example export_pipeline_probe -- <工作目录> --mode keys --messages 200000 --shards 2 --runs 5`。
+请使用可丢弃的工作目录：探针会将 `<工作目录>/data` 替换为合成的加密数据库。它先预热快照，再逐次报告精确键、索引推导键和发送者筛选游标的建键耗时、首批内部结果时间和取批耗时。
+取批计时不包含消息数和按游标顺序计算的 SHA-256 校验；精确键与索引推导键返回的消息必须一致，筛选结果必须等于对应子集。跨构建对比时应使用同一个工作目录，因为摘要包含分片路径。
+这些是热快照测量，不代表冷磁盘耗时或最终导出文件可读取的时间。游标键占用的内存仍与所选消息数成正比。
