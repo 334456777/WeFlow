@@ -86,12 +86,12 @@ fn session_list_is_filtered_sorted_and_carries_unread_counts() {
 #[test]
 fn single_messages_are_normalised_across_shards_and_compression() {
     let (hub, _root) = common::mock_hub("n-single");
-    let m = hub.chat_message_by_id("wxid_bob", 5).unwrap();
+    let m = hub.chat_message_by_id("wxid_bob", 5, None).unwrap();
     assert_eq!(m["message"]["text"], "see you");
     assert_eq!(m["message"]["isSend"], 0);
     assert_eq!(m["message"]["senderUsername"], "wxid_bob");
 
-    let mine = hub.chat_message_by_id("wxid_bob", 2).unwrap();
+    let mine = hub.chat_message_by_id("wxid_bob", 2, None).unwrap();
     assert_eq!(mine["message"]["isSend"], 1);
     assert_eq!(mine["message"]["senderUsername"], "wxid_me");
 
@@ -99,9 +99,83 @@ fn single_messages_are_normalised_across_shards_and_compression() {
     let compressed = hub.chat_message_by_server_id("wxid_bob", "1004").unwrap();
     assert_eq!(compressed["message"]["text"], "later, compressed");
     assert!(
-        hub.chat_message_by_id("wxid_bob", 99).is_err(),
+        hub.chat_message_by_id("wxid_bob", 99, None).is_err(),
         "unknown ids are an error"
     );
+}
+
+#[test]
+fn a_local_id_shared_by_two_message_databases_is_told_apart() {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, DAY, T0};
+    // local id 1 is an image in shard 0 and a text in shard 1 (issue #144)
+    let (hub, _root, _f) = common::custom_hub("n-local-id", |f| {
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0 + DAY,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![
+                    MsgSpec::text(
+                        1,
+                        "wxid_bob",
+                        T0,
+                        "<msg><img md5=\"aabbccddeeff00112233445566778899\"/></msg>",
+                    )
+                    .of_type(3),
+                    MsgSpec::text(2, "wxid_bob", T0 + 60, "only here"),
+                ],
+            )],
+        );
+        f.message_shard(
+            1,
+            &[(
+                "wxid_bob",
+                vec![MsgSpec::text(1, "wxid_me", T0 + DAY, "newer text")],
+            )],
+        );
+    });
+
+    // without a create time the lookup does not guess
+    let err = hub
+        .chat_message_by_id("wxid_bob", 1, None)
+        .unwrap_err()
+        .payload();
+    assert_eq!(err.code, "invalid_arguments", "{}", err.message);
+    let candidates = err.details.unwrap()["candidates"].clone();
+    assert_eq!(
+        candidates
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["createTime"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        [T0 + DAY, T0]
+    );
+    // the create time picks one
+    let image = hub.chat_message_by_id("wxid_bob", 1, Some(T0)).unwrap();
+    assert_eq!(image["message"]["localType"], 3);
+    let text = hub
+        .chat_message_by_id("wxid_bob", 1, Some(T0 + DAY))
+        .unwrap();
+    assert_eq!(text["message"]["text"], "newer text");
+    assert!(hub.chat_message_by_id("wxid_bob", 1, Some(T0 + 5)).is_err());
+    // an id held by one database needs nothing more
+    let only = hub.chat_message_by_id("wxid_bob", 2, None).unwrap();
+    assert_eq!(only["message"]["text"], "only here");
+
+    // the image of message 1 is the image, not the newer text: it gets as far as looking for the file
+    let err = hub
+        .image_data_for_message("wxid_bob", "1", None)
+        .unwrap_err()
+        .payload();
+    assert!(!err.message.contains("md5"), "{}", err.message);
+    assert_ne!(err.code, "invalid_arguments", "{}", err.message);
 }
 
 #[test]

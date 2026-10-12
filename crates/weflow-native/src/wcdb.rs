@@ -179,6 +179,17 @@ impl Wcdb {
         self.account()?.message_by_id(session_id, local_id as i64)
     }
 
+    /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
+    pub fn messages_by_local_id(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: Option<i64>,
+    ) -> Result<Vec<Value>> {
+        self.account()?
+            .messages_by_local_id(session_id, local_id, create_time)
+    }
+
     pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Value> {
         self.account()?.message_by_server_id(session_id, svrid)
     }

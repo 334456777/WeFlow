@@ -18,6 +18,52 @@ fn native(e: anyhow::Error) -> AppError {
     AppError::from_native(e)
 }
 
+/// The message a `local_id` names, `None` when there is none. The id is only unique within one message database,
+/// so when several databases hold it, `create_time` (seconds) and then `local_type` (the kind of message the caller
+/// wants, e.g. 3 for an image) pick one; if that still leaves more than one, the error lists them.
+pub(crate) fn message_by_local_id(
+    wcdb: &weflow_native::wcdb::Wcdb,
+    session_id: &str,
+    local_id: i64,
+    create_time: Option<i64>,
+    local_type: Option<i64>,
+) -> AppResult<Option<Value>> {
+    let create_time = create_time.filter(|t| *t > 0);
+    let mut rows = wcdb
+        .messages_by_local_id(session_id, local_id, create_time)
+        .map_err(native)?;
+    if rows.len() > 1 {
+        if let Some(want) = local_type {
+            let of_type: Vec<Value> = rows
+                .iter()
+                .filter(|r| crate::message::row_int(r, &["local_type"], -1) & 0xFFFF_FFFF == want)
+                .cloned()
+                .collect();
+            if !of_type.is_empty() {
+                rows = of_type;
+            }
+        }
+    }
+    if rows.len() > 1 {
+        let candidates: Vec<Value> = rows
+            .iter()
+            .map(|r| {
+                json!({
+                    "createTime": crate::message::row_int(r, &["create_time"], 0),
+                    "localType": crate::message::row_int(r, &["local_type"], 0),
+                    "dbName": r.get("db_name").cloned().unwrap_or(Value::Null),
+                })
+            })
+            .collect();
+        return Err(AppError::usage(format!(
+            "local id {local_id} names {} messages in different message databases; pick one with --create-time (see details.candidates)",
+            rows.len()
+        ))
+        .with_details(json!({ "candidates": candidates })));
+    }
+    Ok(rows.pop())
+}
+
 fn uniq(ids: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for id in ids {
@@ -127,10 +173,15 @@ impl ServiceHub {
 
     // ── single messages ──
 
-    pub fn chat_message_by_id(&self, session_id: &str, local_id: i32) -> AppResult<Value> {
+    pub fn chat_message_by_id(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: Option<i64>,
+    ) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
-        let row = wcdb.message_by_id(session_id, local_id).map_err(native)?;
-        self.lookup_result(row, session_id)
+        let row = message_by_local_id(&wcdb, session_id, local_id, create_time, None)?;
+        self.lookup_result(row.unwrap_or_default(), session_id)
     }
 
     pub fn chat_message_by_server_id(&self, session_id: &str, server_id: &str) -> AppResult<Value> {

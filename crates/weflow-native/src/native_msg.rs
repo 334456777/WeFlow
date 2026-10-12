@@ -343,9 +343,41 @@ impl NativeAccount {
         }))
     }
 
-    /// One message by `local_id`; `{}` when absent. If several shards hold the id, the newest shard wins.
+    /// One message by `local_id`; `{}` when absent. If several shards hold the id, the newest shard wins (the
+    /// `wcdb_api` behaviour); [`messages_by_local_id`](Self::messages_by_local_id) returns every match.
     pub fn message_by_id(&self, session_id: &str, local_id: i64) -> Result<Value> {
         self.find_one(session_id, "m.local_id = ?1", &local_id)
+    }
+
+    /// Every message of a session with this `local_id`, newest shard first: the id is only unique within one
+    /// `message_N.db`, so different messages in different shards can share it. `create_time` (seconds) keeps only
+    /// the one sent then.
+    pub fn messages_by_local_id(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: Option<i64>,
+    ) -> Result<Vec<Value>> {
+        let mut out = Vec::new();
+        for t in self.message_tables(session_id)?.into_iter().rev() {
+            let rows = match create_time {
+                Some(ct) => self.query(
+                    &t.db,
+                    &Self::select_sql(&t, "where m.local_id = ?1 and m.create_time = ?2 limit 1"),
+                    &[&local_id, &ct],
+                )?,
+                None => self.query(
+                    &t.db,
+                    &Self::select_sql(&t, "where m.local_id = ?1 limit 1"),
+                    &[&local_id],
+                )?,
+            };
+            for mut r in rows {
+                self.finish_row(&mut r, &t, false);
+                out.push(r);
+            }
+        }
+        Ok(out)
     }
 
     /// One message by server id (a decimal string, may exceed 2^53); `{}` when absent.

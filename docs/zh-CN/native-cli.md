@@ -47,6 +47,8 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库，因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。这类拒绝的错误码为 `unsupported`（退出码 `4`）。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`，错误码为 `native_error`。
 
+消息 ID：消息的本地 ID（`local_id` / `localId`）只在单个 `message_N.db` 内唯一，分布在多个消息库里的会话可能有本地 ID 相同的不同消息。接受本地 ID 的命令（`chat message --local-id`、`chat image-data`、`chat voice-data`）也接受 `--create-time`（秒，即消息的 `create_time`）来区分它们；`chat image-data` 和 `chat voice-data` 还会优先选择对应类型的消息。本地 ID 仍然对应多条消息时，`chat message` 和 `chat image-data` 不会任选一条，而是返回 `invalid_arguments`，并在 `details.candidates` 中列出候选（`createTime`、`localType`、`dbName`）（`chat voice-data` 此时需要传入 `--create-time`）。服务器 ID（`chat message --server-id`）是唯一的。
+
 进度：运行超过延迟时间（默认 5 秒；可用 `./weflow config set progress_delay_seconds <秒>` 或环境变量 `WEFLOW_PROGRESS_DELAY` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 不受影响）。`./weflow config set no_progress true` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
 
 `export media --type image|voice|video|emoji|all [--session <id>] [--start YYYY-MM-DD --end YYYY-MM-DD]` 按媒体消息遍历（同一张图发两次算两条，所以 `found` 可能大于 `chat images` 列出的唯一文件数）。`missing` 统计文件不在磁盘上（微信里没下载过）或无法解析的消息，按类型分列在 `missingByKind`。`thumbOnly` 统计只导出了缩略图的图片（每条图片记录也带 `isThumb`）；在微信里点开原图后再导出即可得到高清图。`export media` 始终优先使用高清原图（等同 `image decrypt --force`）。表情可能需要联网；语音导出要逐条解码，几百条语音的全量导出需要数分钟。

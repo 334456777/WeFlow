@@ -419,10 +419,13 @@ enum ChatSubcommand {
         session_id: String,
         /// Local message id
         #[arg(long)]
-        local_id: Option<i32>,
+        local_id: Option<i64>,
         /// Server message id
         #[arg(long)]
         server_id: Option<String>,
+        /// Create time (seconds) of the message, with --local-id: tells apart messages of different message databases that share the local id
+        #[arg(long, requires = "local_id")]
+        create_time: Option<i64>,
     },
     /// Dates that have messages in a session (YYYY-MM-DD)
     Dates {
@@ -575,6 +578,9 @@ enum ChatSubcommand {
         session_id: String,
         /// Local message id
         msg_id: String,
+        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        #[arg(long)]
+        create_time: Option<i64>,
         /// Output file
         #[arg(long)]
         out: PathBuf,
@@ -2034,8 +2040,9 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             session_id,
             local_id,
             server_id,
+            create_time,
         } => match (local_id, server_id) {
-            (Some(id), None) => hub.chat_message_by_id(session_id, *id),
+            (Some(id), None) => hub.chat_message_by_id(session_id, *id, *create_time),
             (None, Some(svr)) => hub.chat_message_by_server_id(session_id, svr),
             _ => Err(AppError::usage(
                 "pass exactly one of --local-id or --server-id",
@@ -2162,9 +2169,10 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         ChatSubcommand::ImageData {
             session_id,
             msg_id,
+            create_time,
             out,
         } => {
-            let bytes = hub.image_data_for_message(session_id, msg_id)?;
+            let bytes = hub.image_data_for_message(session_id, msg_id, *create_time)?;
             if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     AppError::runtime(format!("failed to create {}: {e}", parent.display()))
