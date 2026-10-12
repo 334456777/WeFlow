@@ -117,7 +117,8 @@ fn human_event(event: &Value) -> String {
         "server_started" => {
             let mut services = Vec::new();
             for (key, en, zh) in [
-                ("http", "HTTP API", "HTTP API"),
+                ("api", "HTTP API", "HTTP API"),
+                ("desktop", "desktop HTTP API", "桌面端 HTTP API"),
                 ("messagePush", "message push", "消息推送"),
                 ("insight", "insight", "洞察"),
                 ("imageAutoDownload", "image auto download", "图片自动下载"),
@@ -126,13 +127,24 @@ fn human_event(event: &Value) -> String {
                     services.push(tr(en, zh));
                 }
             }
-            format!(
+            let mut out = format!(
                 "{} {}\n{} {}\n",
                 tr("server started:", "服务已启动："),
                 text("url"),
                 tr("running:", "运行中："),
                 services.join(", ")
-            )
+            );
+            if let Some(token) = event["generatedToken"].as_str() {
+                out.push_str(&format!(
+                    "{} {token}\n{}\n",
+                    tr("access token:", "访问令牌："),
+                    tr(
+                        "(made up for this run; set http_api_token or pass --api-token to keep one)",
+                        "（本次启动临时生成；设置 http_api_token 或传入 --api-token 可固定）"
+                    )
+                ));
+            }
+            out
         }
         _ => render(event),
     }

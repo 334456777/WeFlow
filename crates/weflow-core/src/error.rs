@@ -67,6 +67,25 @@ impl AppError {
         Self::new("native_error", message, 4)
     }
 
+    /// Refused by design (the database is opened read-only) or not ported yet; same exit code as
+    /// [`native`](Self::native), but the HTTP API answers it with 501.
+    pub fn unsupported(message: impl Into<String>) -> Self {
+        Self::new("unsupported", message, 4)
+    }
+
+    /// A database-layer error: [`unsupported`](Self::unsupported) for the calls the native backend refuses,
+    /// [`native`](Self::native) for everything else.
+    pub fn from_native(err: anyhow::Error) -> Self {
+        if err
+            .downcast_ref::<weflow_native::wcdb::Unsupported>()
+            .is_some()
+        {
+            Self::unsupported(err.to_string())
+        } else {
+            Self::native(err.to_string())
+        }
+    }
+
     pub fn with_details(mut self, details: Value) -> Self {
         self.details = Some(details);
         self
@@ -107,6 +126,7 @@ mod tests {
             (AppError::usage("boom 2"), "invalid_arguments", 2),
             (AppError::config("boom 3"), "config_error", 3),
             (AppError::native("boom 4"), "native_error", 4),
+            (AppError::unsupported("boom 4b"), "unsupported", 4),
             (AppError::new("custom", "boom 5", 9), "custom", 9),
         ] {
             assert_eq!(err.code, code);
@@ -154,6 +174,16 @@ mod tests {
         let err: AppError = anyhow::anyhow!("boom 11").into();
         assert_eq!((err.code.as_str(), err.exit_code), ("runtime_error", 1));
         assert_eq!(err.message, "boom 11");
+    }
+
+    #[test]
+    fn native_errors_keep_refusals_apart() {
+        let refused: anyhow::Error =
+            weflow_native::wcdb::Unsupported("delete_message is not supported".into()).into();
+        let err = AppError::from_native(refused.context("while deleting"));
+        assert_eq!((err.code.as_str(), err.exit_code), ("unsupported", 4));
+        let err = AppError::from_native(anyhow::anyhow!("disk I/O error"));
+        assert_eq!((err.code.as_str(), err.exit_code), ("native_error", 4));
     }
 
     #[test]

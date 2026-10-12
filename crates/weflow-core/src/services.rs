@@ -201,7 +201,7 @@ impl ServiceHub {
     ) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.update_message(session_id, local_id, create_time, content)
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(AppError::from_native)
     }
 
     pub fn delete_message(
@@ -213,12 +213,13 @@ impl ServiceHub {
     ) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.delete_message(session_id, local_id, create_time, db_path_hint)
-            .map_err(|err| AppError::native(err.to_string()))
+            .map_err(AppError::from_native)
     }
 
     pub fn anti_revoke(&self, action: &str, sessions: &[String]) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let mut results = Vec::new();
+        let mut first_error = None;
         for session_id in sessions {
             let result = match action {
                 "check" => wcdb.anti_revoke_check(session_id),
@@ -230,19 +231,20 @@ impl ServiceHub {
                 Ok(data) => {
                     results.push(json!({ "sessionId": session_id, "success": true, "data": data }))
                 }
-                Err(err) => results.push(
-                    json!({ "sessionId": session_id, "success": false, "error": err.to_string() }),
-                ),
+                Err(err) => {
+                    results.push(
+                        json!({ "sessionId": session_id, "success": false, "error": err.to_string() }),
+                    );
+                    first_error.get_or_insert(err);
+                }
             }
         }
         // Per-session results are kept for partial failures, but when every session failed the command itself failed
         // (otherwise a script reading only `success` would treat a refused operation as done).
         if !results.is_empty() && results.iter().all(|r| r["success"] == false) {
-            let first = results[0]["error"]
-                .as_str()
-                .unwrap_or("anti-revoke failed")
-                .to_string();
-            return Err(AppError::native(first));
+            return Err(AppError::from_native(
+                first_error.unwrap_or_else(|| anyhow::anyhow!("anti-revoke failed")),
+            ));
         }
         Ok(json!({ "results": results }))
     }
@@ -317,13 +319,12 @@ impl ServiceHub {
             "uninstall" => wcdb.sns_block_delete_uninstall(),
             _ => Err(anyhow::anyhow!("unknown sns block-delete action")),
         };
-        result.map_err(|err| AppError::native(err.to_string()))
+        result.map_err(AppError::from_native)
     }
 
     pub(crate) fn sns_delete(&self, post_id: &str) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
-        wcdb.sns_delete_post(post_id)
-            .map_err(|err| AppError::native(err.to_string()))
+        wcdb.sns_delete_post(post_id).map_err(AppError::from_native)
     }
 
     pub async fn sns_download_image(&self, url: &str, out: Option<&Path>) -> AppResult<Value> {

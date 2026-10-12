@@ -6,7 +6,9 @@ WeFlow provides a local HTTP API (GET and POST are supported) so that external s
 
 ## Enabling
 
-Enable `API Service` on the application's settings page.
+Enable `API Service` on the application's settings page, or run `weflow serve --desktop` (`--message-push` adds active push).
+
+`weflow serve` without `--desktop` starts a different API instead, which offers every CLI command over HTTP: see [serve-api.md](serve-api.md).
 
 - Default listen address: `127.0.0.1`
 - Default port: `5031`

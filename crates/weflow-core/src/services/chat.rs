@@ -15,7 +15,7 @@ const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmai
 const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
 
 fn native(e: anyhow::Error) -> AppError {
-    AppError::native(e.to_string())
+    AppError::from_native(e)
 }
 
 fn uniq(ids: &[String]) -> Vec<String> {

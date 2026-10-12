@@ -73,8 +73,8 @@ fn md5_hex(data: &[u8]) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn err_native(e: impl ToString) -> AppError {
-    AppError::native(e.to_string())
+fn err_native(e: anyhow::Error) -> AppError {
+    AppError::from_native(e)
 }
 
 fn truthy_key(key: Option<&str>) -> Option<&str> {

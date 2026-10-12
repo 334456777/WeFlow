@@ -51,13 +51,13 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ./weflow video     info | parse-md5
 ./weflow image     decrypt | resolve-cache | resolve-batch | auto-download start|status
 ./weflow backup    create | inspect | restore
-./weflow serve     --http --message-push --insight --image-auto-download
+./weflow serve     [--desktop [--message-push]] --insight --image-auto-download
 ./weflow runtime   info | manifest
 ./weflow cache     list | clear | clear-account
 ./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
 ```
 
-The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file).
+The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Such a refusal has the error code `unsupported` (exit code `4`). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file), with the error code `native_error`.
 
 Progress: commands that run longer than the delay (default 5 seconds; `./weflow config set progress_delay_seconds <s>` or env `WEFLOW_PROGRESS_DELAY`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
 terminal; stdout is never touched). `./weflow config set no_progress true` turns it off, `--progress` prints machine-readable NDJSON events instead.
@@ -156,7 +156,7 @@ fresh-key Windows real-client decode, remain separate manual validation requirem
 Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA%\weflow\runtime\<version>\<target>`
 (on Linux/macOS under the platform's data directory).
 
-`serve --http` exposes the desktop app's HTTP API (token required except `/health`; set `http_api_token` or `--api-token`).
+`serve` offers every command over HTTP on `127.0.0.1:57108` ([serve-api.md](serve-api.md)). `serve --desktop` (formerly `--http`) exposes the desktop app's HTTP API instead ([HTTP-API.md](HTTP-API.md); token required except `/health`; set `http_api_token` or `--api-token`).
 `serve --insight` runs the AI insight engine; each generated insight is printed to stderr (as a JSON line with `--json`).
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
 Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`). WXGF images (an HEVC picture in

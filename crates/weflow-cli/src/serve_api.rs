@@ -1,0 +1,1136 @@
+//! The HTTP API of `weflow serve` (issue #131): every CLI command over HTTP.
+//!
+//! The path is the command path (`GET /config/list` is `weflow config list`), query or JSON-body keys are the
+//! command's long option names, and the HTTP method says what kind of side effect the command has (see
+//! [`METHODS`]). Each request runs the command in a child `weflow` process, so the answer is exactly what the
+//! terminal gets: by default the `--json` document as it is, with the HTTP status taken from its error code and
+//! the exit code.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use axum::body::{to_bytes, Body};
+use axum::extract::{Request, State};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
+use axum::response::Response;
+use axum::Router;
+use clap::{ArgAction, Command, CommandFactory};
+use serde_json::{json, Value};
+
+pub const DEFAULT_PORT: u16 = 57108;
+
+const MAX_BODY: usize = 1 << 20;
+
+/// Commands that are not reachable over HTTP.
+const HIDDEN: &[&str] = &["serve"];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Verb {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+}
+
+impl Verb {
+    fn method(self) -> Method {
+        match self {
+            Get => Method::GET,
+            Post => Method::POST,
+            Put => Method::PUT,
+            Patch => Method::PATCH,
+            Delete => Method::DELETE,
+        }
+    }
+}
+
+use Verb::*;
+
+/// How the HTTP method of a command is chosen.
+#[derive(Clone, Copy, Debug)]
+enum Rule {
+    Fixed(Verb),
+    /// `with` when the argument is given, `without` otherwise (`analytics excluded --set`).
+    Arg {
+        arg: &'static str,
+        without: Verb,
+        with: Verb,
+    },
+    /// Chosen by the value of an argument (`sns block-delete <action>`).
+    Value {
+        arg: &'static str,
+        values: &'static [(&'static str, Verb)],
+    },
+}
+
+/// The HTTP method of every command: `GET` reads (it may fill caches that can be rebuilt), `POST` runs a task or
+/// writes files, `PUT` changes a setting, `DELETE` removes one. Commands that would write WeChat's databases keep
+/// the method their action implies and are refused by the command itself (`unsupported`, HTTP 501).
+/// `tests::every_command_has_a_method` keeps this table in step with the command tree.
+const METHODS: &[(&str, Rule)] = &[
+    ("config path", Rule::Fixed(Get)),
+    ("config list", Rule::Fixed(Get)),
+    ("config get", Rule::Fixed(Get)),
+    ("config set", Rule::Fixed(Put)),
+    ("config unset", Rule::Fixed(Delete)),
+    ("config clear", Rule::Fixed(Delete)),
+    ("config import", Rule::Fixed(Post)),
+    ("db detect", Rule::Fixed(Get)),
+    ("db scan", Rule::Fixed(Get)),
+    ("db test", Rule::Fixed(Get)),
+    ("db open", Rule::Fixed(Get)),
+    ("db wxid", Rule::Fixed(Get)),
+    ("key db", Rule::Fixed(Post)),
+    ("key image", Rule::Fixed(Post)),
+    ("key scan-image", Rule::Fixed(Post)),
+    ("chat sessions", Rule::Fixed(Get)),
+    ("chat messages", Rule::Fixed(Get)),
+    ("chat latest", Rule::Fixed(Get)),
+    ("chat search", Rule::Fixed(Get)),
+    ("chat contacts", Rule::Fixed(Get)),
+    ("chat contact", Rule::Fixed(Get)),
+    ("chat update-message", Rule::Fixed(Patch)),
+    ("chat delete-message", Rule::Fixed(Delete)),
+    ("chat anti-revoke sessions", Rule::Fixed(Get)),
+    ("chat anti-revoke check", Rule::Fixed(Get)),
+    ("chat anti-revoke install", Rule::Fixed(Put)),
+    ("chat anti-revoke uninstall", Rule::Fixed(Delete)),
+    ("chat message", Rule::Fixed(Get)),
+    ("chat dates", Rule::Fixed(Get)),
+    ("chat date-counts", Rule::Fixed(Get)),
+    ("chat counts", Rule::Fixed(Get)),
+    ("chat statuses", Rule::Fixed(Get)),
+    ("chat detail", Rule::Fixed(Get)),
+    ("chat mark-read", Rule::Fixed(Post)),
+    ("chat tab-counts", Rule::Fixed(Get)),
+    ("chat export-stats", Rule::Fixed(Get)),
+    (
+        "chat group-hint",
+        Rule::Arg {
+            arg: "set",
+            without: Get,
+            with: Put,
+        },
+    ),
+    ("chat resources", Rule::Fixed(Get)),
+    ("chat images", Rule::Fixed(Get)),
+    ("chat voice-messages", Rule::Fixed(Get)),
+    ("chat media-stream", Rule::Fixed(Get)),
+    ("chat transfer-names", Rule::Fixed(Get)),
+    ("chat voice", Rule::Fixed(Post)),
+    ("chat voice-data", Rule::Fixed(Post)),
+    ("chat image-data", Rule::Fixed(Post)),
+    ("chat voice-cache", Rule::Fixed(Get)),
+    ("chat voice-preload", Rule::Fixed(Post)),
+    ("chat emoji", Rule::Fixed(Post)),
+    ("export sessions", Rule::Fixed(Post)),
+    ("export contacts", Rule::Fixed(Post)),
+    ("export footprint", Rule::Fixed(Post)),
+    ("export media", Rule::Fixed(Post)),
+    ("export messages", Rule::Fixed(Post)),
+    ("analytics overall", Rule::Fixed(Get)),
+    ("analytics rankings", Rule::Fixed(Get)),
+    ("analytics time", Rule::Fixed(Get)),
+    (
+        "analytics excluded",
+        Rule::Arg {
+            arg: "set",
+            without: Get,
+            with: Put,
+        },
+    ),
+    ("analytics exclude-candidates", Rule::Fixed(Get)),
+    ("group list", Rule::Fixed(Get)),
+    ("group members", Rule::Fixed(Get)),
+    ("group ranking", Rule::Fixed(Get)),
+    ("group hours", Rule::Fixed(Get)),
+    ("group media", Rule::Fixed(Get)),
+    ("group member", Rule::Fixed(Get)),
+    ("group member-messages", Rule::Fixed(Get)),
+    ("group export-member-messages", Rule::Fixed(Post)),
+    ("group export-members", Rule::Fixed(Post)),
+    ("report annual years", Rule::Fixed(Get)),
+    ("report annual generate", Rule::Fixed(Post)),
+    ("report dual generate", Rule::Fixed(Post)),
+    ("sns timeline", Rule::Fixed(Get)),
+    ("sns users", Rule::Fixed(Get)),
+    ("sns debug-resource", Rule::Fixed(Get)),
+    ("sns stats", Rule::Fixed(Get)),
+    ("sns post-counts", Rule::Fixed(Get)),
+    ("sns export", Rule::Fixed(Post)),
+    ("sns media", Rule::Fixed(Post)),
+    ("sns download-emoji", Rule::Fixed(Post)),
+    ("sns download-image", Rule::Fixed(Post)),
+    (
+        "sns block-delete",
+        Rule::Value {
+            arg: "action",
+            values: &[("check", Get), ("install", Put), ("uninstall", Delete)],
+        },
+    ),
+    ("sns delete", Rule::Fixed(Delete)),
+    ("biz accounts", Rule::Fixed(Get)),
+    ("biz messages", Rule::Fixed(Get)),
+    ("biz pay-records", Rule::Fixed(Get)),
+    ("image decrypt", Rule::Fixed(Post)),
+    ("image resolve-cache", Rule::Fixed(Get)),
+    ("image resolve-batch", Rule::Fixed(Post)),
+    ("image auto-download start", Rule::Fixed(Post)),
+    ("image auto-download status", Rule::Fixed(Get)),
+    ("video info", Rule::Fixed(Get)),
+    ("video parse-md5", Rule::Fixed(Get)),
+    ("insight test", Rule::Fixed(Post)),
+    ("insight trigger", Rule::Fixed(Post)),
+    ("insight records", Rule::Fixed(Get)),
+    ("insight get", Rule::Fixed(Get)),
+    ("insight mark-read", Rule::Fixed(Put)),
+    ("insight clear", Rule::Fixed(Delete)),
+    ("insight today-stats", Rule::Fixed(Get)),
+    ("insight scan", Rule::Fixed(Post)),
+    ("insight footprint", Rule::Fixed(Get)),
+    ("insight footprint-summary", Rule::Fixed(Post)),
+    ("runtime info", Rule::Fixed(Get)),
+    ("runtime manifest", Rule::Fixed(Get)),
+    ("backup create", Rule::Fixed(Post)),
+    ("backup inspect", Rule::Fixed(Get)),
+    ("backup restore", Rule::Fixed(Post)),
+    ("cache list", Rule::Fixed(Get)),
+    ("cache clear", Rule::Fixed(Delete)),
+    ("cache clear-account", Rule::Fixed(Delete)),
+    ("ffmpeg install", Rule::Fixed(Post)),
+    ("ffmpeg path", Rule::Fixed(Get)),
+    ("ffmpeg set baseurl", Rule::Fixed(Put)),
+    ("ffmpeg unset baseurl", Rule::Fixed(Delete)),
+    ("lang", Rule::Fixed(Put)),
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    /// `--force`: given as `true` / `false`.
+    Flag,
+    /// One value.
+    Single,
+    /// Any number of values (repeated query keys or a JSON array).
+    Multi,
+    /// Like `Multi`, but may also be given with no value at all (`analytics excluded --set`).
+    MultiOrBare,
+}
+
+#[derive(Clone, Debug)]
+struct Param {
+    /// The long option name, or the argument id in kebab case for positional arguments.
+    name: String,
+    kind: Kind,
+    /// Position of a positional argument.
+    index: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+struct Endpoint {
+    path: Vec<String>,
+    rule: Rule,
+    params: Vec<Param>,
+}
+
+/// Every leaf command of the CLI with its method rule and parameters.
+struct Endpoints(BTreeMap<String, Endpoint>);
+
+impl Endpoints {
+    fn new() -> Self {
+        let mut cmd = super::Cli::command();
+        cmd.build();
+        let mut out = BTreeMap::new();
+        collect(&cmd, &mut Vec::new(), &mut out);
+        Self(out)
+    }
+
+    fn get(&self, path: &[String]) -> Option<&Endpoint> {
+        self.0.get(&path.join(" "))
+    }
+}
+
+fn collect(cmd: &Command, path: &mut Vec<String>, out: &mut BTreeMap<String, Endpoint>) {
+    let subs: Vec<&Command> = cmd
+        .get_subcommands()
+        .filter(|c| c.get_name() != "help")
+        .collect();
+    if subs.is_empty() {
+        let key = path.join(" ");
+        if HIDDEN.contains(&key.as_str()) {
+            return;
+        }
+        // a command missing from METHODS is left out here and reported by the tests
+        let Some(rule) = METHODS.iter().find(|(p, _)| *p == key).map(|(_, r)| *r) else {
+            return;
+        };
+        out.insert(
+            key,
+            Endpoint {
+                path: path.clone(),
+                rule,
+                params: params_of(cmd),
+            },
+        );
+        return;
+    }
+    for sub in subs {
+        path.push(sub.get_name().to_string());
+        collect(sub, path, out);
+        path.pop();
+    }
+}
+
+fn params_of(cmd: &Command) -> Vec<Param> {
+    cmd.get_arguments()
+        .filter(|a| {
+            let id = a.get_id().as_str();
+            !a.is_global_set() && !a.is_hide_set() && id != "help" && id != "version"
+        })
+        .map(|a| {
+            let name = a
+                .get_long()
+                .map(str::to_string)
+                .unwrap_or_else(|| a.get_id().as_str().replace('_', "-"));
+            let kind = match a.get_action() {
+                ArgAction::SetTrue | ArgAction::SetFalse | ArgAction::Count => Kind::Flag,
+                _ => {
+                    let range = a
+                        .get_num_args()
+                        .unwrap_or(clap::builder::ValueRange::SINGLE);
+                    if range.min_values() == 0 && range.takes_values() {
+                        Kind::MultiOrBare
+                    } else if range.max_values() > 1 || matches!(a.get_action(), ArgAction::Append)
+                    {
+                        Kind::Multi
+                    } else {
+                        Kind::Single
+                    }
+                }
+            };
+            Param {
+                name,
+                kind,
+                index: a.get_index(),
+            }
+        })
+        .collect()
+}
+
+/// Request parameters by name: query strings, overridden by the keys of a JSON body.
+type Params = BTreeMap<String, Vec<Value>>;
+
+fn text_of(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+fn flag_value(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(b) => Some(*b),
+        Value::Number(n) => n.as_i64().map(|n| n != 0),
+        Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "" | "true" | "1" | "yes" => Some(true),
+            "false" | "0" | "no" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The parameter a request key names: the long option name, with `_` accepted for `-`.
+fn find_param<'a>(endpoint: &'a Endpoint, key: &str) -> Option<&'a Param> {
+    let key = key.replace('_', "-");
+    endpoint.params.iter().find(|p| p.name == key)
+}
+
+impl Endpoint {
+    fn command_name(&self) -> String {
+        self.path.join(" ")
+    }
+
+    /// The verb a request with these parameters must use, or `None` when it cannot be told yet (the command
+    /// then reports the missing argument itself).
+    fn verb(&self, params: &Params) -> Option<Verb> {
+        match self.rule {
+            Rule::Fixed(v) => Some(v),
+            Rule::Arg { arg, without, with } => {
+                let given = params.iter().any(|(k, values)| {
+                    find_param(self, k).is_some_and(|p| p.name == arg)
+                        && !values.iter().all(|v| v == &Value::Bool(false))
+                });
+                Some(if given { with } else { without })
+            }
+            Rule::Value { arg, values } => {
+                let given = params
+                    .iter()
+                    .find(|(k, _)| find_param(self, k).is_some_and(|p| p.name == arg))
+                    .and_then(|(_, v)| v.first())
+                    .map(text_of)?;
+                values
+                    .iter()
+                    .find(|(name, _)| *name == given)
+                    .map(|(_, v)| *v)
+            }
+        }
+    }
+
+    fn verbs(&self) -> Vec<Verb> {
+        match self.rule {
+            Rule::Fixed(v) => vec![v],
+            Rule::Arg { without, with, .. } => vec![without, with],
+            Rule::Value { values, .. } => {
+                let mut out: Vec<Verb> = Vec::new();
+                for (_, v) in values {
+                    if !out.contains(v) {
+                        out.push(*v);
+                    }
+                }
+                out
+            }
+        }
+    }
+
+    /// The command line (after `weflow` and the global options) for these parameters. Options are written as
+    /// `--name=value` and positional arguments after `--`, so values starting with `-` stay values. The command
+    /// itself checks the result, exactly as on a terminal.
+    fn argv(&self, params: &Params) -> Result<Vec<String>, String> {
+        let mut options = Vec::new();
+        let mut positionals: Vec<(usize, Vec<String>)> = Vec::new();
+        for (key, values) in params {
+            let Some(param) = find_param(self, key) else {
+                let known: Vec<&str> = self.params.iter().map(|p| p.name.as_str()).collect();
+                return Err(if known.is_empty() {
+                    format!(
+                        "unknown parameter `{key}`: `{}` takes no parameters",
+                        self.command_name()
+                    )
+                } else {
+                    format!(
+                        "unknown parameter `{key}` for `{}`; expected one of: {}",
+                        self.command_name(),
+                        known.join(", ")
+                    )
+                });
+            };
+            let texts = || -> Vec<String> {
+                values
+                    .iter()
+                    .flat_map(|v| match v {
+                        Value::Array(items) if param.kind != Kind::Single => {
+                            items.iter().map(text_of).collect()
+                        }
+                        other => vec![text_of(other)],
+                    })
+                    .collect()
+            };
+            if let Some(index) = param.index {
+                positionals.push((index, texts()));
+                continue;
+            }
+            match param.kind {
+                Kind::Flag => {
+                    for v in values {
+                        match flag_value(v) {
+                            Some(true) => options.push(format!("--{}", param.name)),
+                            Some(false) => {}
+                            None => {
+                                return Err(format!(
+                                    "parameter `{}` is a switch: pass true or false",
+                                    param.name
+                                ))
+                            }
+                        }
+                    }
+                }
+                Kind::MultiOrBare if texts().iter().all(String::is_empty) => {
+                    options.push(format!("--{}", param.name));
+                }
+                _ => {
+                    for text in texts() {
+                        options.push(format!("--{}={text}", param.name));
+                    }
+                }
+            }
+        }
+        let mut argv = self.path.clone();
+        argv.extend(options);
+        if !positionals.is_empty() {
+            positionals.sort_by_key(|(index, _)| *index);
+            argv.push("--".into());
+            argv.extend(positionals.into_iter().flat_map(|(_, v)| v));
+        }
+        Ok(argv)
+    }
+}
+
+pub struct ApiConfig {
+    /// The `weflow` executable the commands run in.
+    pub exe: PathBuf,
+    pub token: String,
+}
+
+struct AppState {
+    cfg: ApiConfig,
+    endpoints: Endpoints,
+}
+
+pub fn router(cfg: ApiConfig) -> Router {
+    Router::new()
+        .fallback(dispatch)
+        .with_state(Arc::new(AppState {
+            cfg,
+            endpoints: Endpoints::new(),
+        }))
+}
+
+/// Serves the API on an already-bound listener until the future is dropped.
+pub async fn serve(cfg: ApiConfig, listener: tokio::net::TcpListener) -> std::io::Result<()> {
+    axum::serve(listener, router(cfg)).await
+}
+
+fn json_body(status: StatusCode, body: impl Into<Body>) -> Response {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .body(body.into())
+        .unwrap()
+}
+
+/// An error answered by the server itself, in the shape of a failed `--json` command.
+fn error_response(status: StatusCode, code: &str, message: &str) -> Response {
+    let body = json!({ "success": false, "error": { "code": code, "message": message } });
+    let mut resp = json_body(status, body.to_string());
+    resp.headers_mut().insert(
+        "x-weflow-error-code",
+        HeaderValue::from_str(code).unwrap_or(HeaderValue::from_static("error")),
+    );
+    resp
+}
+
+fn method_not_allowed(allowed: &[Verb]) -> Response {
+    let allow = allowed
+        .iter()
+        .map(|v| v.method().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut resp = error_response(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "method_not_allowed",
+        &format!("method not allowed; use {allow}"),
+    );
+    resp.headers_mut()
+        .insert(header::ALLOW, HeaderValue::from_str(&allow).unwrap());
+    resp
+}
+
+fn safe_equal(a: &str, b: &str) -> bool {
+    let (x, y) = (a.as_bytes(), b.as_bytes());
+    x.len() == y.len() && x.iter().zip(y).fold(0u8, |acc, (p, q)| acc | (p ^ q)) == 0
+}
+
+fn authorized(token: &str, headers: &HeaderMap, query: &[(String, String)]) -> bool {
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| {
+            v.get(..7)
+                .filter(|p| p.eq_ignore_ascii_case("bearer "))
+                .map(|_| v[7..].trim())
+        });
+    bearer.is_some_and(|t| safe_equal(t, token))
+        || query
+            .iter()
+            .any(|(k, v)| k == "access_token" && safe_equal(v.trim(), token))
+}
+
+fn url_decode(s: &str) -> String {
+    String::from_utf8_lossy(&weflow_core::message::percent_decode_bytes(
+        &s.replace('+', " "),
+    ))
+    .into_owned()
+}
+
+fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
+    query
+        .unwrap_or("")
+        .split('&')
+        .filter(|p| !p.is_empty())
+        .map(|pair| {
+            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+            (url_decode(k), url_decode(v))
+        })
+        .collect()
+}
+
+/// Allows pages served from this machine (the WebUI's dev server, for one) to call the API.
+fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let host = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"));
+    let local = host.is_some_and(|h| {
+        let name = match h.rsplit_once(':') {
+            Some((name, port)) if !name.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => {
+                name
+            }
+            _ => h,
+        };
+        matches!(name, "localhost" | "127.0.0.1" | "[::1]")
+    });
+    let h = resp.headers_mut();
+    if local {
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_str(origin).unwrap(),
+        );
+        h.insert(header::VARY, HeaderValue::from_static("Origin"));
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_static("Content-Type, Authorization, Accept-Language"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_EXPOSE_HEADERS,
+            HeaderValue::from_static("X-WeFlow-Exit-Code, X-WeFlow-Error-Code"),
+        );
+    }
+    resp
+}
+
+async fn dispatch(State(st): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    let resp = if req.method() == Method::OPTIONS {
+        Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body(Body::empty())
+            .unwrap()
+    } else {
+        route(&st, req).await
+    };
+    cors(&headers, resp)
+}
+
+/// What a request asks for besides the command (`?std=`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Std {
+    /// The `--json` document.
+    Json,
+    /// The equivalent command line, without running it.
+    In,
+    /// The human-readable stdout.
+    Out,
+    /// The human-readable run's stderr.
+    Err,
+}
+
+async fn route(st: &AppState, req: Request) -> Response {
+    let (parts, body) = req.into_parts();
+    let path = parts.uri.path();
+    if path == "/health" {
+        return json_body(StatusCode::OK, json!({ "status": "ok" }).to_string());
+    }
+    let query = query_pairs(parts.uri.query());
+    if !authorized(&st.cfg.token, &parts.headers, &query) {
+        return error_response(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "invalid or missing access token",
+        );
+    }
+    let segments: Vec<String> = path
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .map(url_decode)
+        .collect();
+    let Some(endpoint) = st.endpoints.get(&segments) else {
+        return error_response(StatusCode::NOT_FOUND, "not_found", "no such command");
+    };
+
+    let mut params = Params::new();
+    for (k, v) in query {
+        params.entry(k).or_default().push(Value::String(v));
+    }
+    if parts.method != Method::GET && parts.method != Method::HEAD {
+        let bytes = match to_bytes(body, MAX_BODY).await {
+            Ok(b) => b,
+            Err(_) => {
+                return error_response(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "invalid_arguments",
+                    "request body too large",
+                )
+            }
+        };
+        if !bytes.iter().all(u8::is_ascii_whitespace) {
+            match serde_json::from_slice::<Value>(&bytes) {
+                Ok(Value::Object(map)) => {
+                    for (k, v) in map {
+                        if v.is_null() {
+                            params.remove(&k);
+                        } else {
+                            params.insert(k, vec![v]);
+                        }
+                    }
+                }
+                _ => {
+                    return error_response(
+                        StatusCode::BAD_REQUEST,
+                        "invalid_arguments",
+                        "the request body must be a JSON object",
+                    )
+                }
+            }
+        }
+    }
+    params.remove("access_token");
+    let std = match params.remove("std").and_then(|v| v.into_iter().next()) {
+        None => Std::Json,
+        Some(v) => match text_of(&v).as_str() {
+            "in" => Std::In,
+            "out" => Std::Out,
+            "err" => Std::Err,
+            other => {
+                return error_response(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_arguments",
+                    &format!("unknown std value `{other}`; expected in, out or err"),
+                )
+            }
+        },
+    };
+
+    match endpoint.verb(&params) {
+        Some(verb) if verb.method() != parts.method => return method_not_allowed(&[verb]),
+        None if !endpoint.verbs().iter().any(|v| v.method() == parts.method) => {
+            return method_not_allowed(&endpoint.verbs())
+        }
+        _ => {}
+    }
+    let argv = match endpoint.argv(&params) {
+        Ok(a) => a,
+        Err(message) => {
+            return error_response(StatusCode::BAD_REQUEST, "invalid_arguments", &message)
+        }
+    };
+    let mut full = vec!["--json".to_string()];
+    full.extend(argv.iter().cloned());
+    if std == Std::In {
+        let shown: Vec<String> = std::iter::once("weflow".to_string()).chain(full).collect();
+        return json_body(
+            StatusCode::OK,
+            json!({ "argv": shown, "stdin": Value::Null }).to_string(),
+        );
+    }
+    let lang = request_lang(&parts.headers);
+    let args = if std == Std::Json { &full } else { &argv };
+    let output = match run(&st.cfg.exe, args, lang).await {
+        Ok(o) => o,
+        Err(err) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "runtime_error",
+                &format!("failed to run weflow: {err}"),
+            )
+        }
+    };
+    // killed by a signal: no exit code
+    let exit = output.status.code().unwrap_or(-1);
+    let mut resp = match std {
+        Std::Json => match serde_json::from_slice::<Value>(&output.stdout) {
+            Ok(doc) => {
+                let code = doc["error"]["code"].as_str().unwrap_or("").to_string();
+                let mut resp = json_body(status_for(&doc, exit), output.stdout);
+                if !code.is_empty() {
+                    if let Ok(v) = HeaderValue::from_str(&code) {
+                        resp.headers_mut().insert("x-weflow-error-code", v);
+                    }
+                }
+                resp
+            }
+            Err(_) => {
+                let body = json!({
+                    "success": false,
+                    "error": {
+                        "code": "runtime_error",
+                        "message": "the command did not print a JSON document",
+                        "details": {
+                            "exitCode": exit,
+                            "stderr": String::from_utf8_lossy(&output.stderr),
+                        }
+                    }
+                });
+                json_body(StatusCode::INTERNAL_SERVER_ERROR, body.to_string())
+            }
+        },
+        Std::Out | Std::Err => {
+            let (key, bytes) = if std == Std::Out {
+                ("stdout", &output.stdout)
+            } else {
+                ("stderr", &output.stderr)
+            };
+            let body = json!({ "exitCode": exit, key: String::from_utf8_lossy(bytes) });
+            json_body(status_for_exit(exit), body.to_string())
+        }
+        Std::In => unreachable!(),
+    };
+    resp.headers_mut().insert(
+        "x-weflow-exit-code",
+        HeaderValue::from_str(&exit.to_string()).unwrap(),
+    );
+    resp
+}
+
+/// `zh` or `en` from `Accept-Language`; `None` leaves the command to its usual language detection.
+fn request_lang(headers: &HeaderMap) -> Option<&'static str> {
+    let value = headers.get(header::ACCEPT_LANGUAGE)?.to_str().ok()?.trim();
+    let first = value.split([',', ';']).next()?.trim();
+    if first.is_empty() || first == "*" {
+        return None;
+    }
+    Some(if first.to_ascii_lowercase().starts_with("zh") {
+        "zh"
+    } else {
+        "en"
+    })
+}
+
+async fn run(
+    exe: &std::path::Path,
+    args: &[String],
+    lang: Option<&str>,
+) -> std::io::Result<std::process::Output> {
+    let mut cmd = tokio::process::Command::new(exe);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        // the command is killed if the request is dropped before it ends
+        .kill_on_drop(true);
+    if let Some(lang) = lang {
+        cmd.env("WEFLOW_LANG", lang);
+    }
+    cmd.output().await
+}
+
+/// The HTTP status of a `--json` document: by its error code first, then by the exit code.
+fn status_for(doc: &Value, exit: i32) -> StatusCode {
+    if exit == 0 && doc["success"] == Value::Bool(true) {
+        return StatusCode::OK;
+    }
+    let error = &doc["error"];
+    match error["code"].as_str().unwrap_or("") {
+        "invalid_arguments" => StatusCode::BAD_REQUEST,
+        "config_error" => StatusCode::CONFLICT,
+        "unsupported" => StatusCode::NOT_IMPLEMENTED,
+        "native_error" => StatusCode::INTERNAL_SERVER_ERROR,
+        "runtime_error" if error["details"]["failureKind"] == "not_found" => StatusCode::NOT_FOUND,
+        "runtime_error" => StatusCode::INTERNAL_SERVER_ERROR,
+        _ => status_for_exit(exit),
+    }
+}
+
+fn status_for_exit(exit: i32) -> StatusCode {
+    match exit {
+        0 => StatusCode::OK,
+        2 => StatusCode::BAD_REQUEST,
+        3 => StatusCode::CONFLICT,
+        // the client closed the request (nginx's 499)
+        130 => StatusCode::from_u16(499).unwrap(),
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+/// A random access token for a run without a configured one.
+pub fn generate_token() -> String {
+    let bytes: [u8; 16] = rand::random();
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Query / body keys the server reads itself; no command argument may use them.
+    const RESERVED_PARAMS: &[&str] = &["std", "access_token"];
+
+    /// First path segments that are not commands (the WebUI, later endpoints).
+    const RESERVED_PATHS: &[&str] = &["api", "assets", "health", "jobs", "openapi.json", "ui"];
+
+    fn leaves(cmd: &Command, path: &mut Vec<String>, out: &mut Vec<String>) {
+        let subs: Vec<&Command> = cmd
+            .get_subcommands()
+            .filter(|c| c.get_name() != "help")
+            .collect();
+        if subs.is_empty() {
+            out.push(path.join(" "));
+        }
+        for sub in subs {
+            path.push(sub.get_name().to_string());
+            leaves(sub, path, out);
+            path.pop();
+        }
+    }
+
+    fn all_leaves() -> Vec<String> {
+        let mut cmd = super::super::Cli::command();
+        cmd.build();
+        let mut out = Vec::new();
+        leaves(&cmd, &mut Vec::new(), &mut out);
+        out
+    }
+
+    #[test]
+    fn every_command_has_a_method() {
+        let leaves = all_leaves();
+        let missing: Vec<&String> = leaves
+            .iter()
+            .filter(|l| !HIDDEN.contains(&l.as_str()) && !METHODS.iter().any(|(p, _)| p == l))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "commands without an HTTP method: {missing:?}"
+        );
+        let stale: Vec<&str> = METHODS
+            .iter()
+            .map(|(p, _)| *p)
+            .filter(|p| !leaves.iter().any(|l| l == p))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "METHODS lists unknown commands: {stale:?}"
+        );
+        let mut seen = std::collections::HashSet::new();
+        for (p, _) in METHODS {
+            assert!(seen.insert(*p), "{p} is listed twice");
+        }
+    }
+
+    #[test]
+    fn rules_name_real_arguments() {
+        let endpoints = Endpoints::new();
+        for (path, rule) in METHODS {
+            let arg = match rule {
+                Rule::Fixed(_) => continue,
+                Rule::Arg { arg, .. } | Rule::Value { arg, .. } => arg,
+            };
+            let ep = endpoints.0.get(*path).unwrap();
+            assert!(
+                ep.params.iter().any(|p| p.name == *arg),
+                "{path} has no argument {arg}"
+            );
+        }
+    }
+
+    #[test]
+    fn reserved_names_stay_free() {
+        let mut cmd = super::super::Cli::command();
+        cmd.build();
+        for sub in cmd.get_subcommands() {
+            assert!(
+                !RESERVED_PATHS.contains(&sub.get_name()),
+                "command `{}` takes a reserved path",
+                sub.get_name()
+            );
+        }
+        for ep in Endpoints::new().0.values() {
+            for p in &ep.params {
+                assert!(
+                    !RESERVED_PARAMS.contains(&p.name.as_str())
+                        && !RESERVED_PARAMS.contains(&p.name.replace('-', "_").as_str()),
+                    "{} uses the reserved parameter {}",
+                    ep.command_name(),
+                    p.name
+                );
+            }
+        }
+    }
+
+    fn params(pairs: &[(&str, Value)]) -> Params {
+        let mut out = Params::new();
+        for (k, v) in pairs {
+            out.entry(k.to_string()).or_default().push(v.clone());
+        }
+        out
+    }
+
+    fn argv(path: &str, pairs: &[(&str, Value)]) -> Result<Vec<String>, String> {
+        let endpoints = Endpoints::new();
+        endpoints.0.get(path).unwrap().argv(&params(pairs))
+    }
+
+    #[test]
+    fn builds_the_command_line() {
+        assert_eq!(argv("config list", &[]).unwrap(), ["config", "list"]);
+        assert_eq!(
+            argv(
+                "chat latest",
+                &[("session-id", json!("-a b")), ("limit", json!(5))]
+            )
+            .unwrap(),
+            ["chat", "latest", "--limit=5", "--", "-a b"]
+        );
+        // snake case is accepted for kebab case
+        assert_eq!(
+            argv("chat latest", &[("session_id", json!("x"))]).unwrap(),
+            ["chat", "latest", "--", "x"]
+        );
+        // repeated positional values, from repeated keys or an array
+        assert_eq!(
+            argv(
+                "chat counts",
+                &[("sessions", json!("a")), ("sessions", json!("b"))]
+            )
+            .unwrap(),
+            ["chat", "counts", "--", "a", "b"]
+        );
+        assert_eq!(
+            argv("chat counts", &[("sessions", json!(["a", "微信"]))]).unwrap(),
+            ["chat", "counts", "--", "a", "微信"]
+        );
+        // switches
+        assert_eq!(
+            argv(
+                "chat detail",
+                &[
+                    ("session-id", json!("s")),
+                    ("fast", json!(true)),
+                    ("extra", json!("false"))
+                ]
+            )
+            .unwrap(),
+            ["chat", "detail", "--fast", "--", "s"]
+        );
+        assert!(argv("chat detail", &[("fast", json!("maybe"))]).is_err());
+        // an option that takes any number of values, none included
+        assert_eq!(
+            argv("analytics excluded", &[("set", json!(""))]).unwrap(),
+            ["analytics", "excluded", "--set"]
+        );
+        assert_eq!(
+            argv("analytics excluded", &[("set", json!(["a", "b"]))]).unwrap(),
+            ["analytics", "excluded", "--set=a", "--set=b"]
+        );
+        // a JSON value for a single-valued argument is passed as JSON text
+        assert_eq!(
+            argv(
+                "chat voice-preload",
+                &[
+                    ("session-id", json!("s")),
+                    ("messages-json", json!([{"localId": 1}]))
+                ]
+            )
+            .unwrap(),
+            ["chat", "voice-preload", "--", "s", r#"[{"localId":1}]"#]
+        );
+        let err = argv("config list", &[("bogus", json!(1))]).unwrap_err();
+        assert!(err.contains("bogus"), "{err}");
+    }
+
+    #[test]
+    fn methods_follow_the_arguments() {
+        let endpoints = Endpoints::new();
+        let ep = |p: &str| endpoints.0.get(p).unwrap();
+        assert_eq!(ep("config list").verb(&Params::new()), Some(Get));
+        assert_eq!(ep("analytics excluded").verb(&Params::new()), Some(Get));
+        assert_eq!(
+            ep("analytics excluded").verb(&params(&[("set", json!(["a"]))])),
+            Some(Put)
+        );
+        assert_eq!(
+            ep("sns block-delete").verb(&params(&[("action", json!("uninstall"))])),
+            Some(Delete)
+        );
+        assert_eq!(ep("sns block-delete").verb(&Params::new()), None);
+        assert_eq!(ep("sns block-delete").verbs(), [Get, Put, Delete]);
+    }
+
+    #[test]
+    fn status_follows_the_error_code_then_the_exit_code() {
+        let fail = |code: &str, details: Value| json!({ "success": false, "error": { "code": code, "message": "m", "details": details } });
+        assert_eq!(
+            status_for(&json!({ "success": true, "data": 1 }), 0),
+            StatusCode::OK
+        );
+        assert_eq!(
+            status_for(&fail("invalid_arguments", Value::Null), 2),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            status_for(&fail("config_error", Value::Null), 3),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            status_for(&fail("unsupported", Value::Null), 4),
+            StatusCode::NOT_IMPLEMENTED
+        );
+        assert_eq!(
+            status_for(&fail("native_error", Value::Null), 4),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            status_for(
+                &fail("runtime_error", json!({ "failureKind": "not_found" })),
+                1
+            ),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            status_for(&fail("runtime_error", Value::Null), 1),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            status_for(&fail("user_interrupt", Value::Null), 130).as_u16(),
+            499
+        );
+        assert_eq!(
+            status_for(&fail("something_new", Value::Null), 3),
+            StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn tokens_are_checked_from_the_header_or_the_query() {
+        let mut headers = HeaderMap::new();
+        assert!(!authorized("t0k", &headers, &[]));
+        assert!(authorized(
+            "t0k",
+            &headers,
+            &[("access_token".into(), "t0k".into())]
+        ));
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer t0k"),
+        );
+        assert!(authorized("t0k", &headers, &[]));
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("bearer t0kx"),
+        );
+        assert!(!authorized("t0k", &headers, &[]));
+        assert_eq!(generate_token().len(), 32);
+        assert_ne!(generate_token(), generate_token());
+    }
+
+    #[test]
+    fn language_comes_from_accept_language() {
+        let lang = |v: &'static str| {
+            let mut h = HeaderMap::new();
+            h.insert(header::ACCEPT_LANGUAGE, HeaderValue::from_static(v));
+            request_lang(&h)
+        };
+        assert_eq!(lang("zh-CN,zh;q=0.9,en;q=0.8"), Some("zh"));
+        assert_eq!(lang("en-US"), Some("en"));
+        assert_eq!(lang("*"), None);
+        assert_eq!(request_lang(&HeaderMap::new()), None);
+    }
+}

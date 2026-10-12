@@ -4,6 +4,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod i18n;
+mod serve_api;
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
@@ -251,7 +252,7 @@ enum ConfigSubcommand {
     /// Set a key
     Set {
         #[arg(
-            help = "Key name; `<profile>.<key>` (for example `work.wxid`) sets a key of another profile\n  db_path                  WeChat data directory (`db detect` finds it)\n  wxid                     Account wxid (`db wxid` prints it)\n  decrypt_key              Database key in hex (`key db` prints it)\n  image_xor_key            Image XOR key, a number (`key image` prints it)\n  image_aes_key            Image AES key (`key image` prints it)\n  cache_path               Folder for cached images, voices, stickers and Moments (default: `cache` next to the config file)\n  http_api_token           Access token of the HTTP API (`serve`)\n  http_api_host            Listen address of `serve` (default 127.0.0.1)\n  http_api_port            Listen port of `serve` (default 5031)\n  ai_model_api_base_url    Base URL of the AI model API used by `insight`\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  log_enabled              true or false; kept for the desktop app, the CLI does not read it\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears (default 5; 0 = always)\nSettings of the config file itself (stored in that file, not in a profile; each config file has its own):\n  lang                     Output language, en or zh (the same as `weflow lang`)\n  current_profile          Active profile name, created when it does not exist (default: default)\nWhich config file is used (kept next to the default location, not in any config file):\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
+            help = "Key name; `<profile>.<key>` (for example `work.wxid`) sets a key of another profile\n  db_path                  WeChat data directory (`db detect` finds it)\n  wxid                     Account wxid (`db wxid` prints it)\n  decrypt_key              Database key in hex (`key db` prints it)\n  image_xor_key            Image XOR key, a number (`key image` prints it)\n  image_aes_key            Image AES key (`key image` prints it)\n  cache_path               Folder for cached images, voices, stickers and Moments (default: `cache` next to the config file)\n  http_api_token           Access token of the HTTP API (`serve`)\n  http_api_host            Listen address of `serve --desktop` (default 127.0.0.1)\n  http_api_port            Listen port of `serve --desktop` (default 5031)\n  ai_model_api_base_url    Base URL of the AI model API used by `insight`\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  log_enabled              true or false; kept for the desktop app, the CLI does not read it\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears (default 5; 0 = always)\nSettings of the config file itself (stored in that file, not in a profile; each config file has its own):\n  lang                     Output language, en or zh (the same as `weflow lang`)\n  current_profile          Active profile name, created when it does not exist (default: default)\nWhich config file is used (kept next to the default location, not in any config file):\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
         )]
         key: String,
         /// Value to store
@@ -1269,10 +1270,10 @@ enum InsightSubcommand {
 
 #[derive(Args, Debug)]
 struct ServeCommand {
-    /// Serve the HTTP API
-    #[arg(long)]
-    http: bool,
-    /// Push new messages to HTTP clients (SSE)
+    /// Serve the desktop app's HTTP API (`/api/v1/*`) instead of the command API
+    #[arg(long, alias = "http")]
+    desktop: bool,
+    /// Push new messages to HTTP clients (SSE; needs --desktop)
     #[arg(long)]
     message_push: bool,
     /// Run the AI insight engine
@@ -1281,13 +1282,13 @@ struct ServeCommand {
     /// Run the image auto-download hook (Windows only)
     #[arg(long)]
     image_auto_download: bool,
-    /// Listen address (default: `http_api_host` from the config, else 127.0.0.1).
+    /// Listen address (default: 127.0.0.1; with --desktop: `http_api_host` from the config, else 127.0.0.1).
     #[arg(long)]
     host: Option<String>,
-    /// Listen port (default: `http_api_port` from the config, else 5031).
+    /// Listen port (default: 57108; with --desktop: `http_api_port` from the config, else 5031).
     #[arg(long)]
     port: Option<u16>,
-    /// Access token for the HTTP API (default: `http_api_token` from the config).
+    /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run).
     #[arg(long, env = "WEFLOW_HTTP_TOKEN")]
     api_token: Option<String>,
 }
@@ -2807,11 +2808,11 @@ fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// `serve` runs the command API (every CLI command over HTTP, see `serve_api`) or, with `--desktop`, the desktop
+/// app's HTTP API, next to the optional insight and image auto-download services.
 async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
-    if !command.http && !command.message_push && !command.insight && !command.image_auto_download {
-        return Err(AppError::usage(
-            "serve needs at least one of --http, --message-push, --insight, --image-auto-download",
-        ));
+    if command.message_push && !command.desktop {
+        return Err(AppError::usage("--message-push needs --desktop"));
     }
 
     let cfg_str = |key: &str| {
@@ -2821,22 +2822,39 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    let host = command
-        .host
-        .clone()
-        .or_else(|| cfg_str("httpApiHost"))
-        .unwrap_or_else(|| "127.0.0.1".into());
-    let port = command
-        .port
-        .or_else(|| hub.config_value("httpApiPort").as_u64().map(|p| p as u16))
-        .unwrap_or(5031);
+    let host = command.host.clone().unwrap_or_else(|| {
+        if command.desktop {
+            cfg_str("httpApiHost").unwrap_or_else(|| "127.0.0.1".into())
+        } else {
+            "127.0.0.1".into()
+        }
+    });
+    let port = command.port.unwrap_or_else(|| {
+        if command.desktop {
+            hub.config_value("httpApiPort")
+                .as_u64()
+                .map(|p| p as u16)
+                .unwrap_or(5031)
+        } else {
+            serve_api::DEFAULT_PORT
+        }
+    });
     let token = command
         .api_token
         .clone()
         .or_else(|| cfg_str("httpApiToken"));
+    // without a configured token the command API makes one up; the desktop API refuses every request instead
+    let generated_token = (!command.desktop && token.is_none()).then(serve_api::generate_token);
     let addr = format!("{host}:{port}")
         .parse::<std::net::SocketAddr>()
         .map_err(|err| AppError::usage(format!("invalid listen address: {err}")))?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|err| AppError::runtime(format!("failed to bind HTTP server: {err}")))?;
+    let bound = listener.local_addr().unwrap_or(addr);
+    // the command API runs every request in this same executable
+    let exe = std::env::current_exe()
+        .map_err(|err| AppError::runtime(format!("cannot locate the weflow executable: {err}")))?;
 
     let auto_download = if command.image_auto_download {
         let svc = weflow_core::image_download::ImageAutoDownload::new(hub.runtime_dir());
@@ -2887,16 +2905,21 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         });
     }
 
-    weflow_core::output::event(json!({
+    let mut started = json!({
         "type": "server_started",
-        "url": format!("http://{addr}"),
-        "http": command.http,
+        "url": format!("http://{bound}"),
+        "api": !command.desktop,
+        "desktop": command.desktop,
         "tokenConfigured": token.is_some(),
         "messagePush": command.message_push,
         "insight": command.insight,
         "imageAutoDownload": command.image_auto_download
-    }));
-    if command.http && token.is_none() {
+    });
+    if let Some(generated) = &generated_token {
+        started["generatedToken"] = json!(generated);
+    }
+    weflow_core::output::event(started);
+    if command.desktop && token.is_none() {
         eprintln!(
             "{}",
             weflow_core::locale::tr(
@@ -2905,24 +2928,33 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             )
         );
     }
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|err| AppError::runtime(format!("failed to bind HTTP server: {err}")))?;
-    let cfg = weflow_core::http_server::HttpConfig {
-        host,
-        port: listener.local_addr().map(|a| a.port()).unwrap_or(port),
-        token,
-        push_enabled: command.message_push
-            || hub.config_value("messagePushEnabled").as_bool() == Some(true),
-    };
+    if !command.desktop && !bound.ip().is_loopback() {
+        eprintln!(
+            "{}",
+            weflow_core::locale::tr(
+                "warning: the command API listens beyond this machine; anyone with the token can run any weflow command here",
+                "警告：命令 API 监听在本机以外的地址；持有令牌的人可以在这台机器上运行任何 weflow 命令"
+            )
+        );
+    }
     let server = async {
-        if command.http {
-            weflow_core::http_server::serve(hub.clone(), cfg, broker, listener)
-                .await
-                .map_err(|err| AppError::runtime(format!("HTTP server stopped: {err}")))
+        let stopped = if command.desktop {
+            let cfg = weflow_core::http_server::HttpConfig {
+                host,
+                port: bound.port(),
+                token,
+                push_enabled: command.message_push
+                    || hub.config_value("messagePushEnabled").as_bool() == Some(true),
+            };
+            weflow_core::http_server::serve(hub.clone(), cfg, broker, listener).await
         } else {
-            std::future::pending::<AppResult<()>>().await
-        }
+            let cfg = serve_api::ApiConfig {
+                exe,
+                token: token.or(generated_token).unwrap_or_default(),
+            };
+            serve_api::serve(cfg, listener).await
+        };
+        stopped.map_err(|err| AppError::runtime(format!("HTTP server stopped: {err}")))
     };
     let outcome = tokio::select! {
         result = server => result.map(|_| ()),
