@@ -156,7 +156,7 @@ fresh-key Windows real-client decode, remain separate manual validation requirem
 Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA%\weflow\runtime\<version>\<target>`
 (on Linux/macOS under the platform's data directory).
 
-`serve` offers every command over HTTP on `127.0.0.1:57108` ([serve-api.md](serve-api.md)). `serve --desktop` (formerly `--http`) exposes the desktop app's HTTP API instead ([HTTP-API.md](HTTP-API.md); token required except `/health`; set `http_api_token` or `--api-token`).
+`serve` offers every command over HTTP on `127.0.0.1:57108` ([serve-api.md](serve-api.md)). `serve --desktop` exposes the desktop app's HTTP API instead ([HTTP-API.md](HTTP-API.md); token required except `/health`; set `http_api_token` or `--api-token`).
 `serve --insight` runs the AI insight engine; each generated insight is printed to stderr (as a JSON line with `--json`).
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
 Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`). WXGF images (an HEVC picture in

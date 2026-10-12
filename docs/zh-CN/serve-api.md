@@ -18,7 +18,7 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 |---|---|
 | `--host`、`--port` | 监听地址；默认 `127.0.0.1:57108`（加 `--desktop` 时：`http_api_host` / `http_api_port`，默认 `127.0.0.1:5031`） |
 | `--api-token` | 访问令牌（也可用 `WEFLOW_HTTP_TOKEN`，或配置中的 `http_api_token`） |
-| `--desktop` | 启动桌面端 API，而不是命令 API（`--http` 是它的旧名称） |
+| `--desktop` | 启动桌面端 API，而不是命令 API |
 | `--message-push` | 桌面端 API 的 SSE 推送；需要 `--desktop` |
 | `--insight`、`--image-auto-download` | 与任一 API 一起运行这些服务 |
 

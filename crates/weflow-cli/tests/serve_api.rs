@@ -317,4 +317,7 @@ fn desktop_mode_serves_the_desktop_api() {
     let (exit, stdout, _) = run_cli(&root, &["--json", "serve", "--message-push"]);
     assert_eq!(exit, 2);
     assert!(stdout.contains("--desktop"), "{stdout}");
+    // the old name of --desktop is gone
+    let (exit, _, _) = run_cli(&root, &["--json", "serve", "--http"]);
+    assert_eq!(exit, 2);
 }

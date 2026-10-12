@@ -1271,7 +1271,7 @@ enum InsightSubcommand {
 #[derive(Args, Debug)]
 struct ServeCommand {
     /// Serve the desktop app's HTTP API (`/api/v1/*`) instead of the command API
-    #[arg(long, alias = "http")]
+    #[arg(long)]
     desktop: bool,
     /// Push new messages to HTTP clients (SSE; needs --desktop)
     #[arg(long)]

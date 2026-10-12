@@ -18,7 +18,7 @@ weflow serve --desktop             # the desktop app's API instead (port `http_a
 |---|---|
 | `--host`, `--port` | Listen address; default `127.0.0.1:57108` (with `--desktop`: `http_api_host` / `http_api_port`, default `127.0.0.1:5031`) |
 | `--api-token` | Access token (also `WEFLOW_HTTP_TOKEN`, or `http_api_token` in the config) |
-| `--desktop` | Serve the desktop app's API instead of the command API (`--http` is an old name for it) |
+| `--desktop` | Serve the desktop app's API instead of the command API |
 | `--message-push` | SSE push of the desktop API; needs `--desktop` |
 | `--insight`, `--image-auto-download` | Run these services next to either API |
 
