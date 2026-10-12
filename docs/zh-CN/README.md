@@ -8,7 +8,7 @@
 - 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
-- 本地 HTTP API（token 鉴权、SSE 推送，`serve --http`）、消息推送、AI 见解。
+- 所有命令的 HTTP 接口（`serve`）、桌面端的本地 HTTP API（token 鉴权、SSE 推送，`serve --desktop`）、消息推送、AI 见解。
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
 
 > [!WARNING]

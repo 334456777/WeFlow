@@ -6,7 +6,9 @@ WeFlow 提供本地 HTTP API（已支持GET 和 POST请求），便于外部脚�
 
 ## 启用方式
 
-在应用设置页启用 `API 服务`。
+在应用设置页启用 `API 服务`，或运行 `weflow serve --desktop`（加 `--message-push` 开启主动推送）。
+
+不带 `--desktop` 的 `weflow serve` 启动的是另一个 API，把每条 CLI 命令都提供为 HTTP 接口，见 [serve-api.md](serve-api.md)。
 
 - 默认监听地址：`127.0.0.1`
 - 默认端口：`5031`

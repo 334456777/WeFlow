@@ -39,13 +39,13 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ./weflow video     info | parse-md5
 ./weflow image     decrypt | resolve-cache | resolve-batch | auto-download start|status
 ./weflow backup    create | inspect | restore
-./weflow serve     --http --message-push --insight --image-auto-download
+./weflow serve     [--desktop [--message-push]] --insight --image-auto-download
 ./weflow runtime   info | manifest
 ./weflow cache     list | clear | clear-account
 ./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
 ```
 
-数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库，因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`。
+数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库，因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。这类拒绝的错误码为 `unsupported`（退出码 `4`）。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`，错误码为 `native_error`。
 
 进度：运行超过延迟时间（默认 5 秒；可用 `./weflow config set progress_delay_seconds <秒>` 或环境变量 `WEFLOW_PROGRESS_DELAY` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 不受影响）。`./weflow config set no_progress true` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
 
@@ -123,7 +123,7 @@ AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及�
 
 路径：配置 `%APPDATA%\weflow\config.json`，解压出的运行时 `%APPDATA%\weflow\runtime\<版本>\<target>`（Linux/macOS 位于各平台的数据目录）。
 
-`serve --http` 提供桌面端的 HTTP API（除 `/health` 外都需要 token；设置 `http_api_token` 或使用 `--api-token`）。
+`serve` 在 `127.0.0.1:57108` 把每条命令都提供为 HTTP 接口（[serve-api.md](serve-api.md)）。`serve --desktop` 改为提供桌面端的 HTTP API（[HTTP-API.md](HTTP-API.md)；除 `/health` 外都需要 token；设置 `http_api_token` 或使用 `--api-token`）。
 `serve --insight` 运行 AI 见解引擎，每条生成的见解输出到 stderr（加 `--json` 时为 JSON 行）。
 `image auto-download` 与 `serve --image-auto-download` 通过 `img_helper.dll` 钩住微信，仅支持 Windows x64。
 语音消息使用内置的 Skype SILK SDK 副本（`crates/weflow-silk`）解码。WXGF 图片（微信容器里的一帧 HEVC 画面）用 Rust 解码（`heic-rs`，再写成 JPEG）；只有它读不了的画面（10-bit、4:2:2 或 4:4:4）才交给 `ffmpeg`：先用 `FFMPEG_PATH`，其次是 `PATH` 中的 `ffmpeg`，最后是 `ffmpeg install` 安装到 WeFlow 文件夹的副本（`ffmpeg path` 显示实际使用哪一个）。`ffmpeg install` 下载桌面端自带的同一版本（npm `ffmpeg-static` 5.3.0，即 eugeneware/ffmpeg-static 的 `b6.1.1` 发布，GPL-3.0，附带其许可证文件），校验 SHA-256 后解压到配置文件旁的 `ffmpeg/b6.1.1/`；只有运行这个命令时才会下载。已安装的副本完好时不会重复下载（`--force` 强制重新下载）；新副本完整且通过校验后才替换旧的，`ffmpeg/` 下其他版本的文件夹会被删除。`ffmpeg set baseurl <url>` 可改从这些发布文件的镜像下载，而不是 GitHub（例如 `https://registry.npmmirror.com/-/binary/ffmpeg-static`；地址保存在配置文件里，`ffmpeg unset baseurl` 恢复为 GitHub），文件同样会被校验。Windows 版本是 x64 构建（Windows on Arm 通过模拟运行）。`ffmpeg path` 显示能否找到 ffmpeg（见 [README](README.md#检查-ffmpeg可选步骤)）：需要 ffmpeg 却找不到的 WXGF 图片会以 `failure_kind` `ffmpeg_missing` 失败，错误信息里写明其消息的发送时间；导出会把这类图片计入 `ffmpegMissing`，并在 `ffmpegMissingImages` 里逐张列出所在会话和发送时间。

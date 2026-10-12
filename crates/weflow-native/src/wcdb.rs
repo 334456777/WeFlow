@@ -14,6 +14,12 @@ use serde_json::Value;
 
 use crate::native_db::NativeAccount;
 
+/// A call the backend refuses by design (it opens WeChat's databases read-only) or has not ported yet.
+/// Callers can find it with `anyhow::Error::downcast_ref` to tell it apart from a failure.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct Unsupported(pub String);
+
 /// One argument of a generic by-name call (after the implicit account).
 #[derive(Clone, Copy, Debug)]
 pub enum Arg<'a> {
@@ -50,14 +56,15 @@ impl Wcdb {
         {
             return self.read_only(name);
         }
-        Err(anyhow!(
+        Err(Unsupported(format!(
             "{name} is not implemented in the native database backend yet"
         ))
+        .into())
     }
 
     /// Operations that would modify WeChat's own database files (triggers, edits, deletes, read marks).
     fn read_only<T>(&self, name: &str) -> Result<T> {
-        Err(anyhow!("{name} is not supported: the native database backend opens WeChat's databases read-only"))
+        Err(Unsupported(format!("{name} is not supported: the native database backend opens WeChat's databases read-only")).into())
     }
 
     fn account(&self) -> Result<&NativeAccount> {

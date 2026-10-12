@@ -8,7 +8,7 @@
 - Sessions, messages, contacts, and Moments; private and group chat analytics; annual reports and dual reports.
 - Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, and `sql`.
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, and stickers.
-- Local HTTP API (token authentication, SSE push, `serve --http`), message push, and AI insights.
+- Every command over HTTP (`serve`), the desktop app's local HTTP API (token authentication, SSE push, `serve --desktop`), message push, and AI insights.
 - `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `./weflow lang en|zh` saves your choice.
 
 > [!WARNING]

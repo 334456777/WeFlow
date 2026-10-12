@@ -455,10 +455,16 @@ fn moments_users_and_export_stats() {
 fn operations_that_modify_wechat_databases_are_refused_clearly() {
     let (hub, _root) = common::mock_hub("n-readonly");
     for err in [
-        hub.sns_block_delete_install().unwrap_err().into_message(),
-        hub.sns_delete_post("1001").unwrap_err().into_message(),
-        hub.chat_mark_all_read().unwrap_err().into_message(),
+        hub.sns_block_delete_install().unwrap_err(),
+        hub.sns_delete_post("1001").unwrap_err(),
+        hub.chat_mark_all_read().unwrap_err(),
+        hub.delete_message("wxid_friend", 1, 1, None).unwrap_err(),
+        hub.anti_revoke("install", &["wxid_friend".into()])
+            .unwrap_err(),
     ] {
+        // refused by design, told apart from failures (the HTTP API answers 501)
+        assert_eq!((err.code.as_str(), err.exit_code), ("unsupported", 4));
+        let err = err.into_message();
         assert!(err.contains("read-only"), "{err}");
     }
 }

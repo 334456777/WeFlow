@@ -34,7 +34,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("--start ({}) is after --end ({})", "--start（{0}）晚于 --end（{1}）"),
     ("request failed", "请求失败"),
     ("payload_json must be JSON: {}", "payload_json 必须是合法的 JSON：{}"),
-    ("serve needs at least one of --http, --message-push, --insight, --image-auto-download", "serve 至少需要 --http、--message-push、--insight、--image-auto-download 之一"),
+    ("--message-push needs --desktop", "--message-push 需要 --desktop"),
     ("invalid listen address: {}", "监听地址无效：{}"),
     ("failed to bind HTTP server: {}", "绑定 HTTP 服务失败：{}"),
     ("HTTP server stopped: {}", "HTTP 服务已停止：{}"),
