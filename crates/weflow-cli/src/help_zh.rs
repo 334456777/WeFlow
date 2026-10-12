@@ -86,7 +86,7 @@ const HELP: &[(&str, &str)] = &[
     ("Last day, inclusive (YYYY-MM-DD)", "结束日期，含当天（YYYY-MM-DD）"),
     ("List image / video / voice / file messages across sessions", "列出所有会话中的图片 / 视频 / 语音 / 文件消息"),
     ("List insight records (newest first)", "列出洞察记录（最新在前）"),
-    ("Listen address (default: 127.0.0.1; with --desktop: `http_api_host` from the config, else 127.0.0.1)", "监听地址（默认：127.0.0.1；加 --desktop 时：配置中的 `http_api_host`，否则为 127.0.0.1）"),
+    ("Listen address (default: 127.0.0.1; with --desktop: `http_api_host` from the config, else 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1]", "监听地址（默认：127.0.0.1；加 --desktop 时：配置中的 `http_api_host`，否则为 127.0.0.1）。监听回环地址时，命令 API 只响应发往 localhost、127.0.0.1 或 [::1] 的请求"),
     ("Listen port (default: 57108; with --desktop: `http_api_port` from the config, else 5031)", "监听端口（默认：57108；加 --desktop 时：配置中的 `http_api_port`，否则为 5031）"),
     ("Local message id", "本地消息 ID"),
     ("Locate videos stored by WeChat and parse video md5s", "定位微信保存的视频并解析视频 md5"),

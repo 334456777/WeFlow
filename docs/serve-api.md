@@ -30,6 +30,8 @@ The startup message (an event on stderr; a JSON line with `--json`) shows the ad
 
 Every request except `GET /health` needs the token, as `Authorization: Bearer <token>` or as the `access_token` query parameter. Without a configured token, `serve` makes one up for each run and prints it in the startup message (`generatedToken` with `--json`); set `http_api_token` or pass `--api-token` to keep a fixed one.
 
+On a loopback address (the default) the server also checks the `Host` header of every request, `/health` included: only `localhost` and loopback addresses (`127.0.0.1`, `[::1]`, …), with any port, are answered; any other name gets `403` with the error code `invalid_host`. This keeps a web page from reaching the API through a name of its own that it makes resolve to `127.0.0.1` (DNS rebinding). Listening on another address with `--host` turns the check off, as the machine is then reached by other names.
+
 ## Requests
 
 ### Path and method
@@ -93,7 +95,7 @@ By the error code first, then by the exit code. The CLI's exit codes do not chan
 | `runtime_error` | `1` | `500`; `404` when `details.failureKind` is `not_found` |
 | `user_interrupt` | `130` | `499` |
 
-`std=out` and `std=err` have no error code and go by the exit code alone. Errors of the server itself use the same shape: `unauthorized` (`401`), `not_found` (`404`), `method_not_allowed` (`405`), `invalid_arguments` (`400`), `busy` (`429`, see [Limits](#limits)).
+`std=out` and `std=err` have no error code and go by the exit code alone. Errors of the server itself use the same shape: `unauthorized` (`401`), `invalid_host` (`403`, see [Authentication](#authentication)), `not_found` (`404`), `method_not_allowed` (`405`), `invalid_arguments` (`400`), `busy` (`429`, see [Limits](#limits)).
 
 ## Files
 
@@ -153,8 +155,27 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 
 Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, backups, reports, …) run one at a time (`--max-tasks`), other commands up to one per CPU at once (`--max-reads`). A direct request over the limit is not kept waiting: it answers `429` with the error code `busy` and `Retry-After` (5 seconds for tasks, 1 otherwise). A job over the limit waits in the queue (`queued`) and starts when a place is free.
 
+## OpenAPI description
+
+`GET /openapi.json` (with the token) answers an OpenAPI 3.1 description of the API. It is built from the command tree and the method table of the running `weflow`, so it always matches it; summaries and parameter descriptions are the commands' help, in the language of `Accept-Language` (else the server's).
+
+- Each command is one operation per method, with `x-weflow-command` naming the command. `operationId` is the command path with `_` (`chat_sessions`); a command whose method follows an argument has one operation per method (`analytics_excluded_get`, `analytics_excluded_put`).
+- `GET` and `DELETE` list the parameters as query parameters, the other methods as a JSON body; both ways work for every method (see [Parameters](#parameters)). Types come from the CLI: numbers, switches, lists and choices.
+- The answers are described by their envelope (`{"success", "data"}` or `{"success", "error"}`), jobs, and `?return=file`; the shape of each command's `data` is not.
+- `/health`, `/openapi.json` and `/jobs` are described under the tag `server`.
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:57108/openapi.json
+```
+
+Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `1`. It is raised only by a change that breaks existing clients, not by new commands or options. `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
+
+```json
+{"status": "ok", "apiVersion": "1", "version": "5.0.0"}
+```
+
 ## How it runs
 
 Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. Starting the process, reading the configuration and opening the database cost some tens of milliseconds per request. A client that closes the connection before the answer ends its command; so does cancelling a job.
 
-Not here yet (issue #131): an OpenAPI description, `Host` header checks, and the WebUI.
+Not here yet (issue #131): the WebUI (issue #130) and the endpoints it needs.

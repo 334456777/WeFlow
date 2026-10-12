@@ -30,6 +30,8 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 
 除 `GET /health` 外，所有请求都需要令牌，放在 `Authorization: Bearer <令牌>` 头里，或作为 `access_token` 查询参数。没有配置令牌时，`serve` 每次启动生成一个，显示在启动提示里（加 `--json` 时为 `generatedToken`）；设置 `http_api_token` 或传入 `--api-token` 可以固定令牌。
 
+监听回环地址时（默认如此），服务端还会检查每个请求的 `Host` 头，`/health` 也不例外：只响应 `localhost` 和回环地址（`127.0.0.1`、`[::1]` 等），端口不限；其他名称返回 `403`，错误码为 `invalid_host`。这样网页就无法把自己的域名解析到 `127.0.0.1` 来访问 API（DNS rebinding）。用 `--host` 监听其他地址时不做这项检查，因为这时本来就要通过其他名称访问这台机器。
+
 ## 请求
 
 ### 路径与方法
@@ -93,7 +95,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 | `runtime_error` | `1` | `500`；`details.failureKind` 为 `not_found` 时 `404` |
 | `user_interrupt` | `130` | `499` |
 
-`std=out` 和 `std=err` 没有错误码，只按退出码决定。服务端自己的错误也是同样的格式：`unauthorized`（`401`）、`not_found`（`404`）、`method_not_allowed`（`405`）、`invalid_arguments`（`400`）、`busy`（`429`，见[并发限制](#并发限制)）。
+`std=out` 和 `std=err` 没有错误码，只按退出码决定。服务端自己的错误也是同样的格式：`unauthorized`（`401`）、`invalid_host`（`403`，见[鉴权](#鉴权)）、`not_found`（`404`）、`method_not_allowed`（`405`）、`invalid_arguments`（`400`）、`busy`（`429`，见[并发限制](#并发限制)）。
 
 ## 返回文件
 
@@ -153,8 +155,27 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 
 为了不让机器卡住，有两个上限：任务（`POST` 命令：导出、取钥、备份、报告等）一次只运行一个（`--max-tasks`），其他命令最多同时运行与 CPU 核数相同的数量（`--max-reads`）。超出上限的直接请求不会排队等待，而是返回 `429`，错误码为 `busy`，并带 `Retry-After`（任务为 5 秒，其他为 1 秒）。超出上限的作业在队列里等待（`queued`），有空位时开始运行。
 
+## OpenAPI 描述
+
+`GET /openapi.json`（需要令牌）返回 API 的 OpenAPI 3.1 描述。它由正在运行的 `weflow` 的命令树和方法表生成，所以总是与之一致；摘要和参数说明来自命令的帮助文字，语言按 `Accept-Language` 决定（没有时用服务端的语言）。
+
+- 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
+- `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
+- 响应只描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`；不描述每条命令 `data` 的结构。
+- `/health`、`/openapi.json` 和 `/jobs` 归在 `server` 标签下。
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:57108/openapi.json
+```
+
+客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `1`。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
+
+```json
+{"status": "ok", "apiVersion": "1", "version": "5.0.0"}
+```
+
 ## 执行方式
 
 每个请求都以子进程再运行一次 `weflow`，使用同一份配置，所以输出和退出码与终端一致，单条命令出错也不会拖垮服务。启动进程、读取配置和打开数据库，每个请求要花几十毫秒。客户端在响应完成前断开连接时，它的命令随之终止；取消作业也一样。
 
-尚未实现（见 issue #131）：OpenAPI 描述、`Host` 头校验，以及 WebUI。
+尚未实现（见 issue #131）：WebUI（issue #130）以及它需要的接口。
