@@ -181,6 +181,8 @@ const HELP: &[(&str, &str)] = &[
     ("Contact username (wxid)", "联系人用户名（wxid）"),
     ("Edit a message (always refused: the database is read-only)", "修改消息（一律拒绝：数据库是只读的）"),
     ("Message create time (seconds)", "消息创建时间（秒）"),
+    ("Message create time (seconds): tells apart messages of different message databases that share the local id", "消息创建时间（秒）：用于区分不同消息库中本地 ID 相同的消息"),
+    ("Create time (seconds) of the message, with --local-id: tells apart messages of different message databases that share the local id", "消息的创建时间（秒），与 --local-id 一起使用：用于区分不同消息库中本地 ID 相同的消息"),
     ("New message content", "新的消息内容"),
     ("Delete a message (always refused: the database is read-only)", "删除消息（一律拒绝：数据库是只读的）"),
     ("Database file the message is stored in", "消息所在的数据库文件"),

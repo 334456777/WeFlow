@@ -1015,8 +1015,16 @@ impl ServiceHub {
             let local_id = messages[i].local_id;
             if local_id > 0 {
                 attempted += 1;
-                match wcdb.message_by_id(talker, local_id as i32) {
-                    Ok(row) if row.is_object() => {
+                // the create time tells apart messages of different databases that share the local id
+                let found = super::chat::message_by_local_id(
+                    wcdb,
+                    talker,
+                    local_id,
+                    Some(messages[i].create_time),
+                    None,
+                );
+                match found {
+                    Ok(Some(row)) => {
                         if let Some(h) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
                             .into_iter()
                             .next()
@@ -1363,21 +1371,26 @@ impl ServiceHub {
             if talker.ends_with("@chatroom") {
                 for m in messages.iter_mut() {
                     if m.local_id > 0 && (m.sender_username.is_none() || m.is_send.is_none()) {
-                        if let Ok(row) = wcdb.message_by_id(&talker, m.local_id as i32) {
-                            if row.is_object() {
-                                if let Some(d) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
-                                    .into_iter()
-                                    .next()
-                                {
-                                    let (parsed, raw) =
-                                        (m.parsed_content.clone(), m.raw_content.clone());
-                                    *m = d;
-                                    if !parsed.is_empty() {
-                                        m.parsed_content = parsed;
-                                    }
-                                    if !raw.is_empty() {
-                                        m.raw_content = raw;
-                                    }
+                        let found = super::chat::message_by_local_id(
+                            &wcdb,
+                            &talker,
+                            m.local_id,
+                            Some(m.create_time),
+                            None,
+                        );
+                        if let Ok(Some(row)) = found {
+                            if let Some(d) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
+                                .into_iter()
+                                .next()
+                            {
+                                let (parsed, raw) =
+                                    (m.parsed_content.clone(), m.raw_content.clone());
+                                *m = d;
+                                if !parsed.is_empty() {
+                                    m.parsed_content = parsed;
+                                }
+                                if !raw.is_empty() {
+                                    m.raw_content = raw;
                                 }
                             }
                         }

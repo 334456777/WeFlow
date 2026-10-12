@@ -158,10 +158,10 @@ impl ServiceHub {
         let mut server = server_id.map(normalize_unsigned_token).unwrap_or_default();
         let strong = create_time.is_some_and(|t| t > 0) && !server.is_empty();
         if !strong {
-            if let Ok(row) = wcdb.message_by_id(
-                session_id,
-                local_id.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-            ) {
+            // several message databases may hold the local id: the create time, then the voice type, pick one
+            if let Ok(Some(row)) =
+                super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(34))
+            {
                 if row.as_object().is_some_and(|o| !o.is_empty()) {
                     let my = self.my_wxid_cleaned();
                     if let Some(m) = chat_msg::map_rows(std::slice::from_ref(&row), &my)

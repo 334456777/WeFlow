@@ -1267,19 +1267,20 @@ impl ServiceHub {
     }
 
     /// `chat:getImageData`: the decrypted image of a message as bytes.
-    pub fn image_data_for_message(&self, session_id: &str, msg_id: &str) -> AppResult<Vec<u8>> {
+    /// The decrypted image of a message; `create_time` tells apart messages of different message databases that
+    /// share the local id (an image is preferred among them anyway).
+    pub fn image_data_for_message(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+    ) -> AppResult<Vec<u8>> {
         let local_id = crate::api::js_parse_int(msg_id)
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
-        let row = wcdb
-            .message_by_id(
-                session_id,
-                local_id.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-            )
-            .map_err(|e| AppError::native(e.to_string()))?;
-        if row.as_object().is_none_or(|o| o.is_empty()) {
-            return Err(AppError::runtime("message not found"));
-        }
+        let row =
+            super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(3))?
+                .ok_or_else(|| AppError::runtime("message not found"))?;
         let my = self.my_wxid_cleaned();
         let msg = crate::chat_msg::map_rows(std::slice::from_ref(&row), &my)
             .into_iter()

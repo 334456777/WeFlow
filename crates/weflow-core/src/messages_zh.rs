@@ -22,6 +22,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("invalid value '{}' for {}; use a whole number of seconds (0 or more)", "{1} 的值 '{0}' 无效；请使用整数秒数（0 或更大）"),
     ("old Electron config not found; pass an explicit path", "未找到旧版 Electron 配置；请显式指定路径"),
     ("pass exactly one of --local-id or --server-id", "--local-id 与 --server-id 必须且只能指定其一"),
+    ("local id {} names {} messages in different message databases; pick one with --create-time (see details.candidates)", "本地 ID {} 在不同的消息库中对应 {} 条消息；请用 --create-time 指定其中一条（见 details.candidates）"),
     ("failed to create {}: {}", "创建 {} 失败：{}"),
     ("failed to write {}: {}", "写入 {} 失败：{}"),
     ("failed to read {}: {}", "读取 {} 失败：{}"),
