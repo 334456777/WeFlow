@@ -4,7 +4,11 @@
 //! command's long option names, and the HTTP method says what kind of side effect the command has (see
 //! [`METHODS`]). Each request runs the command in a child `weflow` process, so the answer is exactly what the
 //! terminal gets: by default the `--json` document as it is, with the HTTP status taken from its error code and
-//! the exit code.
+//! the exit code. A request may also run the command in the background ([`jobs`]) or get back the file it wrote
+//! ([`files`]).
+
+mod files;
+mod jobs;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -17,6 +21,7 @@ use axum::response::Response;
 use axum::Router;
 use clap::{ArgAction, Command, CommandFactory};
 use serde_json::{json, Value};
+use tokio::sync::Semaphore;
 
 pub const DEFAULT_PORT: u16 = 57108;
 
@@ -471,20 +476,50 @@ pub struct ApiConfig {
     /// The `weflow` executable the commands run in.
     pub exe: PathBuf,
     pub token: String,
+    /// Where `?return=file` puts the files of requests that name no `--out` (one folder per request).
+    pub files_dir: PathBuf,
+    /// `POST` commands (exports, keys, backups…) that may run at once.
+    pub max_tasks: usize,
+    /// Other commands that may run at once.
+    pub max_reads: usize,
 }
 
 struct AppState {
     cfg: ApiConfig,
     endpoints: Endpoints,
+    jobs: Arc<jobs::Jobs>,
+    tasks: Arc<Semaphore>,
+    reads: Arc<Semaphore>,
+}
+
+impl AppState {
+    /// The limit a command with this method runs under.
+    fn limit(&self, verb: Option<Verb>) -> &Arc<Semaphore> {
+        if verb == Some(Post) {
+            &self.tasks
+        } else {
+            &self.reads
+        }
+    }
 }
 
 pub fn router(cfg: ApiConfig) -> Router {
+    let tasks = Arc::new(Semaphore::new(cfg.max_tasks.max(1)));
+    let reads = Arc::new(Semaphore::new(cfg.max_reads.max(1)));
     Router::new()
         .fallback(dispatch)
         .with_state(Arc::new(AppState {
             cfg,
             endpoints: Endpoints::new(),
+            jobs: Arc::new(jobs::Jobs::new()),
+            tasks,
+            reads,
         }))
+}
+
+/// The default of [`ApiConfig::max_reads`]: one per CPU.
+pub fn default_max_reads() -> usize {
+    std::thread::available_parallelism().map_or(4, |n| n.get())
 }
 
 /// Serves the API on an already-bound listener until the future is dropped.
@@ -597,11 +632,15 @@ fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
         );
         h.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("Content-Type, Authorization, Accept-Language"),
+            HeaderValue::from_static(
+                "Content-Type, Authorization, Accept-Language, Prefer, Last-Event-ID",
+            ),
         );
         h.insert(
             header::ACCESS_CONTROL_EXPOSE_HEADERS,
-            HeaderValue::from_static("X-WeFlow-Exit-Code, X-WeFlow-Error-Code"),
+            HeaderValue::from_static(
+                "X-WeFlow-Exit-Code, X-WeFlow-Error-Code, Location, Retry-After",
+            ),
         );
     }
     resp
@@ -633,6 +672,52 @@ enum Std {
     Err,
 }
 
+fn bad_request(message: &str) -> Response {
+    error_response(StatusCode::BAD_REQUEST, "invalid_arguments", message)
+}
+
+/// `429 Too Many Requests`: as many commands of this kind as allowed are running.
+fn busy(task: bool) -> Response {
+    let mut resp = error_response(
+        StatusCode::TOO_MANY_REQUESTS,
+        "busy",
+        if task {
+            "another task is running; retry later, or send `Prefer: respond-async` to queue it"
+        } else {
+            "too many commands are running; retry later, or send `Prefer: respond-async` to queue it"
+        },
+    );
+    resp.headers_mut().insert(
+        header::RETRY_AFTER,
+        HeaderValue::from_static(if task { "5" } else { "1" }),
+    );
+    resp
+}
+
+/// `Prefer: respond-async`: run the command as a job.
+fn prefers_async(headers: &HeaderMap) -> bool {
+    headers
+        .get_all("prefer")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .any(|p| {
+            p.split(';')
+                .next()
+                .is_some_and(|t| t.trim().eq_ignore_ascii_case("respond-async"))
+        })
+}
+
+/// Where `?return=file` finds the written file.
+struct FileOut {
+    /// The `--out` passed to the command.
+    out: String,
+    /// The result field holding the written path.
+    field: Option<&'static str>,
+    /// The request's own folder, when the server chose `--out`.
+    dir: Option<PathBuf>,
+}
+
 async fn route(st: &AppState, req: Request) -> Response {
     let (parts, body) = req.into_parts();
     let path = parts.uri.path();
@@ -652,6 +737,14 @@ async fn route(st: &AppState, req: Request) -> Response {
         .filter(|s| !s.is_empty())
         .map(url_decode)
         .collect();
+    if segments.first().is_some_and(|s| s == "jobs") {
+        let last_event_id = parts
+            .headers
+            .get("last-event-id")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse().ok());
+        return jobs::route(&st.jobs, &parts.method, &segments, last_event_id).await;
+    }
     let Some(endpoint) = st.endpoints.get(&segments) else {
         return error_response(StatusCode::NOT_FOUND, "not_found", "no such command");
     };
@@ -682,13 +775,7 @@ async fn route(st: &AppState, req: Request) -> Response {
                         }
                     }
                 }
-                _ => {
-                    return error_response(
-                        StatusCode::BAD_REQUEST,
-                        "invalid_arguments",
-                        "the request body must be a JSON object",
-                    )
-                }
+                _ => return bad_request("the request body must be a JSON object"),
             }
         }
     }
@@ -700,29 +787,88 @@ async fn route(st: &AppState, req: Request) -> Response {
             "out" => Std::Out,
             "err" => Std::Err,
             other => {
-                return error_response(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_arguments",
-                    &format!("unknown std value `{other}`; expected in, out or err"),
-                )
+                return bad_request(&format!(
+                    "unknown std value `{other}`; expected in, out or err"
+                ))
             }
         },
     };
+    let want_file = match params.remove("return").and_then(|v| v.into_iter().next()) {
+        None => false,
+        Some(v) => match text_of(&v).as_str() {
+            "json" => false,
+            "file" => true,
+            other => {
+                return bad_request(&format!(
+                    "unknown return value `{other}`; expected json or file"
+                ))
+            }
+        },
+    };
+    let background = prefers_async(&parts.headers);
 
-    match endpoint.verb(&params) {
+    let verb = endpoint.verb(&params);
+    match verb {
         Some(verb) if verb.method() != parts.method => return method_not_allowed(&[verb]),
         None if !endpoint.verbs().iter().any(|v| v.method() == parts.method) => {
             return method_not_allowed(&endpoint.verbs())
         }
         _ => {}
     }
+
+    let command = endpoint.command_name();
+    let mut file_out = None;
+    if want_file {
+        if std != Std::Json {
+            return bad_request("return=file cannot be combined with std");
+        }
+        if background {
+            return bad_request(
+                "return=file is answered right away; send it without `Prefer: respond-async`",
+            );
+        }
+        let Some((default_out, field)) = files::file_command(&command) else {
+            return bad_request(&format!(
+                "`{command}` does not write a single file, so return=file is not available for it"
+            ));
+        };
+        let given = params
+            .iter()
+            .find(|(k, _)| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
+            .and_then(|(_, v)| v.first())
+            .map(text_of);
+        file_out = Some(match given {
+            Some(out) => FileOut {
+                out,
+                field,
+                dir: None,
+            },
+            None => {
+                let dir = st.cfg.files_dir.join(&generate_token()[..16]);
+                let out = if default_out.is_empty() {
+                    dir.clone()
+                } else {
+                    dir.join(default_out)
+                };
+                let out = out.to_string_lossy().into_owned();
+                params.insert("out".into(), vec![Value::String(out.clone())]);
+                FileOut {
+                    out,
+                    field,
+                    dir: Some(dir),
+                }
+            }
+        });
+    }
+
     let argv = match endpoint.argv(&params) {
         Ok(a) => a,
-        Err(message) => {
-            return error_response(StatusCode::BAD_REQUEST, "invalid_arguments", &message)
-        }
+        Err(message) => return bad_request(&message),
     };
     let mut full = vec!["--json".to_string()];
+    if background {
+        full.push("--progress".into());
+    }
     full.extend(argv.iter().cloned());
     if std == Std::In {
         let shown: Vec<String> = std::iter::once("weflow".to_string()).chain(full).collect();
@@ -732,6 +878,28 @@ async fn route(st: &AppState, req: Request) -> Response {
         );
     }
     let lang = request_lang(&parts.headers);
+    let limit = st.limit(verb);
+    if background {
+        if std != Std::Json {
+            return bad_request(
+                "std=out and std=err are answered right away; send them without `Prefer: respond-async`",
+            );
+        }
+        let job = st.jobs.start(st.cfg.exe.clone(), full, lang, limit.clone());
+        return jobs::accepted(&job);
+    }
+    let Ok(_permit) = limit.clone().try_acquire_owned() else {
+        return busy(verb == Some(Post));
+    };
+    if let Some(dir) = file_out.as_ref().and_then(|f| f.dir.as_ref()) {
+        if let Err(err) = std::fs::create_dir_all(dir) {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "runtime_error",
+                &format!("failed to create {}: {err}", dir.display()),
+            );
+        }
+    }
     let args = if std == Std::Json { &full } else { &argv };
     let output = match run(&st.cfg.exe, args, lang).await {
         Ok(o) => o,
@@ -748,14 +916,33 @@ async fn route(st: &AppState, req: Request) -> Response {
     let mut resp = match std {
         Std::Json => match serde_json::from_slice::<Value>(&output.stdout) {
             Ok(doc) => {
-                let code = doc["error"]["code"].as_str().unwrap_or("").to_string();
-                let mut resp = json_body(status_for(&doc, exit), output.stdout);
-                if !code.is_empty() {
-                    if let Ok(v) = HeaderValue::from_str(&code) {
-                        resp.headers_mut().insert("x-weflow-error-code", v);
+                let status = status_for(&doc, exit);
+                match file_out {
+                    Some(file) if status == StatusCode::OK => {
+                        let mut path = files::written_file(&doc, file.field, &file.out);
+                        if file.dir.is_some() {
+                            path = files::add_extension(&path);
+                        }
+                        match files::multipart(&path).await {
+                            Ok(resp) => resp,
+                            Err(message) => error_response(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                "runtime_error",
+                                &message,
+                            ),
+                        }
+                    }
+                    _ => {
+                        let code = doc["error"]["code"].as_str().unwrap_or("").to_string();
+                        let mut resp = json_body(status, output.stdout);
+                        if !code.is_empty() {
+                            if let Ok(v) = HeaderValue::from_str(&code) {
+                                resp.headers_mut().insert("x-weflow-error-code", v);
+                            }
+                        }
+                        resp
                     }
                 }
-                resp
             }
             Err(_) => {
                 let body = json!({
@@ -804,22 +991,27 @@ fn request_lang(headers: &HeaderMap) -> Option<&'static str> {
     })
 }
 
-async fn run(
-    exe: &std::path::Path,
-    args: &[String],
-    lang: Option<&str>,
-) -> std::io::Result<std::process::Output> {
+/// `weflow <args>` with no stdin and both outputs captured.
+fn command(exe: &std::path::Path, args: &[String], lang: Option<&str>) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(exe);
     cmd.args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        // the command is killed if the request is dropped before it ends
+        // the command is killed if its request or job goes away before it ends
         .kill_on_drop(true);
     if let Some(lang) = lang {
         cmd.env("WEFLOW_LANG", lang);
     }
-    cmd.output().await
+    cmd
+}
+
+async fn run(
+    exe: &std::path::Path,
+    args: &[String],
+    lang: Option<&str>,
+) -> std::io::Result<std::process::Output> {
+    command(exe, args, lang).output().await
 }
 
 /// The HTTP status of a `--json` document: by its error code first, then by the exit code.
@@ -861,7 +1053,7 @@ mod tests {
     use super::*;
 
     /// Query / body keys the server reads itself; no command argument may use them.
-    const RESERVED_PARAMS: &[&str] = &["std", "access_token"];
+    const RESERVED_PARAMS: &[&str] = &["std", "return", "access_token"];
 
     /// First path segments that are not commands (the WebUI, later endpoints).
     const RESERVED_PATHS: &[&str] = &["api", "assets", "health", "jobs", "openapi.json", "ui"];
@@ -913,6 +1105,35 @@ mod tests {
         for (p, _) in METHODS {
             assert!(seen.insert(*p), "{p} is listed twice");
         }
+    }
+
+    #[test]
+    fn file_commands_write_to_out() {
+        let endpoints = Endpoints::new();
+        for (name, _, _) in files::FILE_COMMANDS {
+            let ep = endpoints
+                .0
+                .get(*name)
+                .unwrap_or_else(|| panic!("{name} is not a command"));
+            // `--out`, or the positional `out` of the group exports
+            assert!(
+                ep.params.iter().any(|p| p.name == "out"),
+                "{name} has no out"
+            );
+        }
+    }
+
+    #[test]
+    fn async_is_asked_for_with_prefer() {
+        let prefer = |v: &'static str| {
+            let mut h = HeaderMap::new();
+            h.insert("prefer", HeaderValue::from_static(v));
+            prefers_async(&h)
+        };
+        assert!(prefer("respond-async"));
+        assert!(prefer("return=minimal, Respond-Async; wait=10"));
+        assert!(!prefer("respond-asynchronously"));
+        assert!(!prefers_async(&HeaderMap::new()));
     }
 
     #[test]

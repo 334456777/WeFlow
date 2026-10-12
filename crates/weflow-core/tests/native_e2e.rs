@@ -742,6 +742,7 @@ fn cache_parts_clear_on_their_own_and_all_together() {
         put(base.join("analytics_cache.json")),
         put(base.join("api-media/s/x.jpg")),
         put(base.join("push-avatar-files/a.png")),
+        put(hub.serve_files_dir().join("0123/voice.wav")),
         put(hub.cache_part_paths(CachePart::Keys)[0].clone()),
     ];
     // the mock hub runs as version `test`: its runtime stays, other versions' go
@@ -765,7 +766,7 @@ fn cache_parts_clear_on_their_own_and_all_together() {
         ),
         (json!(3), json!(1))
     );
-    assert_eq!(entry("api")["files"], 2);
+    assert_eq!(entry("api")["files"], 3);
     assert_eq!(
         entry("runtime")["paths"],
         json!([hub.runtime_root().join("2.0.0")])
