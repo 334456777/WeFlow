@@ -396,6 +396,89 @@ fn account_commands_and_read_only_refusals() {
 }
 
 #[test]
+fn reads_run_in_process_with_the_same_answers() {
+    let root = temp_root("in-process");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let same = |target: &str| {
+        let child = server.call("GET", target, "");
+        let own = server.call("GET", &format!("/api{target}"), "");
+        assert_eq!(
+            (own.status, &own.body),
+            (child.status, &child.body),
+            "{target}"
+        );
+        for h in ["x-weflow-exit-code", "x-weflow-error-code"] {
+            assert_eq!(own.headers.get(h), child.headers.get(h), "{target} {h}");
+        }
+        own
+    };
+    for target in [
+        "/chat/sessions",
+        "/chat/sessions?limit=1",
+        "/chat/messages?session-id=wxid_bob&limit=2&offset=1",
+        "/chat/messages?session-id=room1%40chatroom",
+        "/chat/latest?session-id=wxid_bob&limit=1",
+        "/chat/message?session-id=wxid_bob&local-id=2",
+        "/chat/contact?username=wxid_bob",
+        "/chat/contacts",
+        "/chat/counts?sessions=wxid_bob&sessions=room1%40chatroom",
+        "/chat/search?keyword=hello",
+    ] {
+        let r = same(target);
+        assert_eq!(r.status, 200, "{target}: {}", r.body);
+    }
+    // the member panel carries the time it was made, and the open hub keeps it for a while
+    let target = "/group/members?chatroom-id=room1%40chatroom";
+    let panel = |path: &str| {
+        let r = server.call("GET", path, "");
+        assert_eq!(r.status, 200, "{path}: {}", r.body);
+        let mut doc = r.json();
+        let cached = doc["data"]["fromCache"].take();
+        doc["data"]["updatedAt"].take();
+        (doc, cached)
+    };
+    let (child, _) = panel(target);
+    let (own, _) = panel(&format!("/api{target}"));
+    assert_eq!(own, child);
+    assert_eq!(panel(&format!("/api{target}")).1, true);
+    assert_eq!(panel(&format!("/api{target}&refresh=true")).1, false);
+    // failures answer the same too: from the command, and from parsing (left to the child process)
+    assert_eq!(same("/chat/message?session-id=wxid_bob").status, 400);
+    assert_eq!(same("/chat/messages").status, 400);
+    assert_eq!(
+        same("/chat/messages?limit=many&session-id=wxid_bob").status,
+        400
+    );
+
+    // a changed config is read again
+    let r = server.call(
+        "PUT",
+        "/config/set",
+        r#"{"key": "decrypt_key", "value": "00"}"#,
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_ne!(same("/chat/sessions").status, 200);
+
+    // only the listed reads, as plain --json
+    let r = server.call("POST", "/api/export/sessions", "");
+    assert_eq!(r.status, 404);
+    assert_eq!(server.call("GET", "/api/config/list", "").status, 404);
+    assert_eq!(server.call("POST", "/api/chat/sessions", "").status, 405);
+    for target in ["/api/chat/sessions?std=out", "/api/chat/sessions?std=in"] {
+        assert_eq!(server.call("GET", target, "").status, 400, "{target}");
+    }
+    let auth = format!("Bearer {TOKEN}");
+    let r = server.request(
+        "GET",
+        "/api/chat/sessions",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        "",
+    );
+    assert_eq!(r.status, 400);
+}
+
+#[test]
 fn a_missing_account_is_a_conflict() {
     let root = temp_root("no-account");
     let server = start(&root, &["--api-token", TOKEN]);

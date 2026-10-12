@@ -8,7 +8,9 @@ use clap::builder::StyledStr;
 use clap::{Arg, Command, CommandFactory};
 use serde_json::{json, Map, Value};
 
-use super::{api_args, files, param_of, Kind, Rule, Verb, API_VERSION, HIDDEN, METHODS};
+use super::{
+    api_args, files, in_process, param_of, Kind, Rule, Verb, API_VERSION, HIDDEN, METHODS,
+};
 
 fn pick(zh: bool, en: &str, cn: &str) -> String {
     if zh { cn } else { en }.to_string()
@@ -81,10 +83,14 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
     if subs.is_empty() {
         let name = path.join(" ");
         if let Some((_, rule)) = METHODS.iter().find(|(p, _)| *p == name) {
-            paths.insert(
-                format!("/{}", path.join("/")),
-                path_item(cmd, path, *rule, zh),
-            );
+            let item = path_item(cmd, path, *rule, zh);
+            if in_process::COMMANDS.contains(&name.as_str()) {
+                paths.insert(
+                    format!("/api/{}", path.join("/")),
+                    in_process_item(&item, zh),
+                );
+            }
+            paths.insert(format!("/{}", path.join("/")), item);
         }
         return;
     }
@@ -93,6 +99,32 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
         walk(sub, path, zh, paths);
         path.pop();
     }
+}
+
+/// The `/api/` twin of a command's path item: the same parameters and answer, without what only a child process
+/// does (`std`, `return=file`, jobs, `Accept-Language`).
+fn in_process_item(item: &Value, zh: bool) -> Value {
+    let mut item = item.clone();
+    for op in item.as_object_mut().unwrap().values_mut() {
+        op["operationId"] = format!("api_{}", op["operationId"].as_str().unwrap()).into();
+        let note = pick(
+            zh,
+            "Runs in the server's process on databases it keeps open: much faster than the route without \
+             `/api/`, with the same parameters and answer, in the server's language.",
+            "在服务进程内执行，数据库保持打开：比不带 `/api/` 的路由快得多，参数和回复相同，语言为服务端的语言。",
+        );
+        op["description"] = match op["description"].as_str() {
+            Some(d) => format!("{note}\n\n{d}").into(),
+            None => note.into(),
+        };
+        if let Some(params) = op["parameters"].as_array_mut() {
+            params.retain(|p| p.get("$ref").is_none());
+        }
+        if let Some(responses) = op["responses"].as_object_mut() {
+            responses.remove("202");
+        }
+    }
+    item
 }
 
 /// What one operation of a command whose method depends on an argument covers.
@@ -732,6 +764,27 @@ mod tests {
         assert_eq!(action("get"), json!(["check"]));
         assert_eq!(action("put"), json!(["install"]));
         assert_eq!(action("delete"), json!(["uninstall"]));
+    }
+
+    #[test]
+    fn in_process_reads_have_their_own_routes() {
+        let doc = document(false);
+        for name in in_process::COMMANDS {
+            let plain = &doc["paths"][format!("/{}", name.replace(' ', "/"))]["get"];
+            let own = &doc["paths"][format!("/api/{}", name.replace(' ', "/"))]["get"];
+            assert_eq!(
+                own["operationId"],
+                format!("api_{}", plain["operationId"].as_str().unwrap())
+            );
+            assert_eq!(own["x-weflow-command"], *name);
+            assert!(own["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|p| p.get("$ref").is_none()));
+            assert!(own["responses"]["202"].is_null());
+        }
+        assert!(doc["paths"]["/api/export/sessions"].is_null());
     }
 
     #[test]

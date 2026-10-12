@@ -162,7 +162,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 - 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
 - `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
 - 响应只描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`；不描述每条命令 `data` 的结构。
-- `/health`、`/openapi.json` 和 `/jobs` 归在 `server` 标签下。
+- `/health`、`/openapi.json` 和 `/jobs` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:57108/openapi.json
@@ -176,6 +176,29 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 
 ## 执行方式
 
-每个请求都以子进程再运行一次 `weflow`，使用同一份配置，所以输出和退出码与终端一致，单条命令出错也不会拖垮服务。启动进程、读取配置和打开数据库，每个请求要花几十毫秒。客户端在响应完成前断开连接时，它的命令随之终止；取消作业也一样。
+每个请求都以子进程再运行一次 `weflow`，使用同一份配置，所以输出和退出码与终端一致，单条命令出错也不会拖垮服务。客户端在响应完成前断开连接时，它的命令随之终止；取消作业也一样。
 
-尚未实现（见 issue #131）：WebUI（issue #130）以及它需要的接口。
+代价是每个请求都要付出：启动进程和读取配置约 20 ms，而且每次都要重新打开数据库，缓存都是冷的。在一个大账号上（Windows，release 构建），这样取会话列表约 490 ms，取一页消息约 200 ms。聊天客户端频繁使用的读取请改用 [`/api/`](#进程内读取)。
+
+## 进程内读取
+
+`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`group members`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（同一套解析、同一个处理函数，有测试逐字节比较），只是更快：
+
+| 读取（大账号，Windows） | `/<路径>` | `/api/<路径>` |
+|---|---|---|
+| `chat sessions` | 490 ms | 32 ms |
+| `chat messages`，一页 50 条 | 194 ms | 16 ms |
+| `chat latest`，20 条 | 224 ms | 16 ms |
+| `chat contact` | 185 ms | 16 ms |
+| `group members` | 186 ms | 15 ms |
+| 同时请求 16 页消息（总耗时） | 661 ms | 32 ms |
+
+（每个数字都包含客户端自身约 15 ms 的往返。）搜索提升较少（1560 → 843 ms）：时间花在查询本身，长会话里很靠后的消息页也是如此（issue #149）。
+
+- 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
+- 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。
+- 配置文件变化后（`PUT /config/set`、切换配置档案），下一个请求会重新读取。
+- `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。
+- 这些读取计入 `--max-reads` 的上限。
+
+尚未实现（见 issue #140）：查看用的媒体（图片、语音）以及给 WebUI（issue #130）用的消息推送。

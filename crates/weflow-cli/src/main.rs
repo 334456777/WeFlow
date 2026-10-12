@@ -1373,22 +1373,61 @@ async fn main() -> ExitCode {
     } else {
         weflow_core::output::ProgressMode::Auto
     });
-    let outcome = run(&cli)
-        .await
-        .and_then(|value| match reported_failure(&value) {
-            Some(err) => Err(err),
-            None => Ok(value),
-        });
+    let outcome = run(&cli).await;
     weflow_core::output::finish_progress();
-    match outcome {
+    if cli.json {
+        let (doc, exit) = json_document(outcome);
+        println!("{}", serde_json::to_string(&doc).unwrap());
+        return ExitCode::from(exit);
+    }
+    match checked(outcome) {
         Ok(value) => {
             print_response(&success(value), &cli);
             ExitCode::SUCCESS
         }
         Err(err) => {
-            print_failure(&err, &cli);
+            print_failure(&err);
             ExitCode::from(err.exit_code as u8)
         }
+    }
+}
+
+/// The hub `run` builds, and the config file it was built from: the command API's in-process routes keep one
+/// open and build it again when that file changes.
+fn open_hub() -> AppResult<(ServiceHub, PathBuf)> {
+    let ctx = AppContext::new(None, VERSION)?;
+    let config =
+        ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
+    let path = ctx.config_path.clone();
+    Ok((ServiceHub::new(ctx, config, None, None, None, None), path))
+}
+
+/// Commands the command API may also run in its own process (`/api/…`, issue #140): reads that print nothing
+/// but their result, so running them on a hub that stays open answers what the child process would.
+fn runs_in_process(command: &Commands) -> bool {
+    match command {
+        Commands::Chat(c) => matches!(
+            c.command,
+            ChatSubcommand::Sessions { .. }
+                | ChatSubcommand::Messages(_)
+                | ChatSubcommand::Latest { .. }
+                | ChatSubcommand::Message { .. }
+                | ChatSubcommand::Contact { .. }
+                | ChatSubcommand::Contacts
+                | ChatSubcommand::Counts { .. }
+                | ChatSubcommand::Search { .. }
+        ),
+        Commands::Group(c) => matches!(c.command, GroupSubcommand::Members { .. }),
+        _ => false,
+    }
+}
+
+/// Runs a command for which [`runs_in_process`] holds, the way `run` does.
+async fn run_in_process(cli: &Cli, hub: &ServiceHub) -> AppResult<Value> {
+    match &cli.command {
+        Commands::Chat(command) => handle_chat(command, hub).await,
+        Commands::Group(command) => handle_group(command, hub),
+        _ => Err(AppError::runtime("this command does not run in process")),
     }
 }
 
@@ -3176,21 +3215,39 @@ fn parse_config_value(raw: &str) -> Value {
     serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()))
 }
 
+/// A result that reports `success: false` itself is a failure.
+fn checked(outcome: AppResult<Value>) -> AppResult<Value> {
+    outcome.and_then(|value| match reported_failure(&value) {
+        Some(err) => Err(err),
+        None => Ok(value),
+    })
+}
+
+/// The `--json` document of a command's outcome, and its exit code. The command API's in-process routes answer
+/// with it too, so they match the child process byte for byte.
+fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
+    let (mut doc, exit) = match checked(outcome) {
+        Ok(value) => (serde_json::to_value(success(value)).unwrap(), 0),
+        Err(err) => (
+            serde_json::to_value(failure(err.payload())).unwrap(),
+            err.exit_code as u8,
+        ),
+    };
+    weflow_core::locale::localize_json(&mut doc);
+    (doc, exit)
+}
+
+/// The human-readable output: the payload itself, without the {success, data} envelope.
 fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
     let mut value = serde_json::to_value(response).unwrap();
     weflow_core::locale::localize_json(&mut value);
-    if cli.json {
-        println!("{}", serde_json::to_string(&value).unwrap());
-    } else {
-        // Human-readable: the payload itself, without the {success, data} envelope.
-        let data = value.get("data").cloned().unwrap_or(Value::Null);
-        match key_summary(&cli.command, &data) {
-            Some(text) => print!("{text}"),
-            None => print!("{}", weflow_core::render::render(&data)),
-        }
-        if let Some(meta) = value.get("meta") {
-            print!("\n{}", weflow_core::render::render(meta));
-        }
+    let data = value.get("data").cloned().unwrap_or(Value::Null);
+    match key_summary(&cli.command, &data) {
+        Some(text) => print!("{text}"),
+        None => print!("{}", weflow_core::render::render(&data)),
+    }
+    if let Some(meta) = value.get("meta") {
+        print!("\n{}", weflow_core::render::render(meta));
     }
 }
 
@@ -3310,16 +3367,12 @@ fn reported_failure(value: &Value) -> Option<AppError> {
     Some(err)
 }
 
-fn print_failure(err: &AppError, cli: &Cli) {
-    if cli.json {
-        print_response(&failure(err.payload()), cli);
-    } else {
-        let details = err.details.as_ref();
-        eprint!(
-            "{}",
-            weflow_core::render::render_error(&err.message, details)
-        );
-    }
+fn print_failure(err: &AppError) {
+    let details = err.details.as_ref();
+    eprint!(
+        "{}",
+        weflow_core::render::render_error(&err.message, details)
+    );
 }
 
 #[cfg(test)]
