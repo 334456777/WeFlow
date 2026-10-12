@@ -81,7 +81,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 | `cache clear --emojis` | 表情 |
 | `cache clear --sns` | 朋友圈的图片和视频 |
 | `cache clear --analytics` | 统计汇总 |
-| `cache clear --api` | HTTP API 导出的媒体（`api-media`）和推送的头像（`push-avatar-files`） |
+| `cache clear --api` | HTTP API 导出的媒体（`api-media`）和推送的头像（`push-avatar-files`），以及 `serve` 返回的文件（`serve-files`，见 [serve-api.md](serve-api.md#返回文件)） |
 | `cache clear --keys` | 校验通过的密钥指纹；下一条命令会重新校验密钥 |
 | `cache clear --runtime` | 其他 WeFlow 版本在 `runtime/` 下释放的运行时；保留当前版本 |
 | `cache clear --all` | 以上全部 |

@@ -193,7 +193,7 @@ struct CacheClearArgs {
     /// Analytics aggregate
     #[arg(long)]
     analytics: bool,
-    /// Media exported and avatars pushed by the HTTP API
+    /// Media exported and avatars pushed by the HTTP API, and files returned by `serve` (`?return=file`)
     #[arg(long)]
     api: bool,
     /// Fingerprints of keys that worked (the next command checks the key again)
@@ -1291,6 +1291,12 @@ struct ServeCommand {
     /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run).
     #[arg(long, env = "WEFLOW_HTTP_TOKEN")]
     api_token: Option<String>,
+    /// Tasks (`POST` commands: exports, keys, backups…) the command API runs at once; more are queued or refused (default: 1)
+    #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+    max_tasks: Option<u16>,
+    /// Other commands the command API runs at once (default: the number of CPUs)
+    #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+    max_reads: Option<u16>,
 }
 
 #[derive(Args, Debug)]
@@ -2814,6 +2820,11 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     if command.message_push && !command.desktop {
         return Err(AppError::usage("--message-push needs --desktop"));
     }
+    if command.desktop && (command.max_tasks.is_some() || command.max_reads.is_some()) {
+        return Err(AppError::usage(
+            "--max-tasks and --max-reads are for the command API, not --desktop",
+        ));
+    }
 
     let cfg_str = |key: &str| {
         hub.config_value(key)
@@ -2905,6 +2916,20 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         });
     }
 
+    // files returned by an earlier run of the command API are not needed any more
+    let files_dir = hub.serve_files_dir();
+    if !command.desktop {
+        if let Err(err) = std::fs::remove_dir_all(&files_dir) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "{}{}: {err}",
+                    weflow_core::locale::tr("warning: cannot clear ", "警告：无法清空 "),
+                    files_dir.display()
+                );
+            }
+        }
+    }
+
     let mut started = json!({
         "type": "server_started",
         "url": format!("http://{bound}"),
@@ -2951,6 +2976,11 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             let cfg = serve_api::ApiConfig {
                 exe,
                 token: token.or(generated_token).unwrap_or_default(),
+                files_dir,
+                max_tasks: command.max_tasks.map_or(1, usize::from),
+                max_reads: command
+                    .max_reads
+                    .map_or_else(serve_api::default_max_reads, usize::from),
             };
             serve_api::serve(cfg, listener).await
         };

@@ -147,11 +147,20 @@ impl ServiceHub {
             CachePart::Emojis => vec![base.join("Emojis")],
             CachePart::Sns => vec![base.join("sns_cache")],
             CachePart::Analytics => vec![base.join("analytics_cache.json")],
-            CachePart::Api => vec![base.join("api-media"), base.join("push-avatar-files")],
+            CachePart::Api => vec![
+                base.join("api-media"),
+                base.join("push-avatar-files"),
+                self.serve_files_dir(),
+            ],
             // fingerprints of keys that worked, so later commands skip the slower check
             CachePart::Keys => vec![self.ctx.cache_dir().join("verified-keys")],
             CachePart::Runtime => self.older_runtimes(),
         }
+    }
+
+    /// Folder of the files `weflow serve` writes for `?return=file` requests that name no `--out`.
+    pub fn serve_files_dir(&self) -> PathBuf {
+        self.cache_base().join("serve-files")
     }
 
     /// Folder the embedded runtimes are unpacked into, one subfolder per version.

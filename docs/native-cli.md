@@ -97,7 +97,7 @@ All cache cleanup is under `weflow cache`:
 | `cache clear --emojis` | Stickers |
 | `cache clear --sns` | Images and videos of Moments |
 | `cache clear --analytics` | The analytics aggregate |
-| `cache clear --api` | Media exported (`api-media`) and avatars pushed (`push-avatar-files`) by the HTTP API |
+| `cache clear --api` | Media exported (`api-media`) and avatars pushed (`push-avatar-files`) by the HTTP API, and files returned by `serve` (`serve-files`, see [serve-api.md](serve-api.md#files)) |
 | `cache clear --keys` | Fingerprints of keys that worked; the next command checks the key again |
 | `cache clear --runtime` | Runtimes unpacked by other WeFlow versions under `runtime/`; the running version's stays |
 | `cache clear --all` | All of the above |

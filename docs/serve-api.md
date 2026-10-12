@@ -21,6 +21,8 @@ weflow serve --desktop             # the desktop app's API instead (port `http_a
 | `--desktop` | Serve the desktop app's API instead of the command API |
 | `--message-push` | SSE push of the desktop API; needs `--desktop` |
 | `--insight`, `--image-auto-download` | Run these services next to either API |
+| `--max-tasks` | Tasks (`POST` commands) that run at once; default 1 (see [Limits](#limits)) |
+| `--max-reads` | Other commands that run at once; default the number of CPUs |
 
 The startup message (an event on stderr; a JSON line with `--json`) shows the address. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
 
@@ -67,7 +69,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 
 ## Answers
 
-Every answer is JSON (`application/json; charset=utf-8`), with the headers `X-WeFlow-Exit-Code` (the command's exit code) and, on failure, `X-WeFlow-Error-Code`.
+Answers are JSON (`application/json; charset=utf-8`), apart from [`?return=file`](#files) and the [event stream of a job](#jobs), with the headers `X-WeFlow-Exit-Code` (the command's exit code) and, on failure, `X-WeFlow-Error-Code`.
 
 | Request | Runs the command | Body |
 |---|---|---|
@@ -75,6 +77,7 @@ Every answer is JSON (`application/json; charset=utf-8`), with the headers `X-We
 | `?std=out` | yes, without `--json` | `{"exitCode": 0, "stdout": "<the text a terminal shows>"}` |
 | `?std=err` | yes, without `--json` | `{"exitCode": 0, "stderr": "<warnings, progress>"}` |
 | `?std=in` | no | `{"argv": ["weflow", "--json", …], "stdin": null}`: the equivalent command line |
+| `?return=file` | yes, with `--json` | The result and the file the command wrote (see [Files](#files)); not with `std` |
 
 ### Status codes
 
@@ -82,7 +85,7 @@ By the error code first, then by the exit code. The CLI's exit codes do not chan
 
 | Error code | Exit code | HTTP |
 |---|---|---|
-| (success) | `0` | `200` |
+| (success) | `0` | `200` (`202` for a request started as a [job](#jobs)) |
 | `invalid_arguments` | `2` | `400` |
 | `config_error` | `3` | `409` (no account, key or database path configured yet) |
 | `unsupported` | `4` | `501` (refused by the read-only database, or not ported) |
@@ -90,10 +93,68 @@ By the error code first, then by the exit code. The CLI's exit codes do not chan
 | `runtime_error` | `1` | `500`; `404` when `details.failureKind` is `not_found` |
 | `user_interrupt` | `130` | `499` |
 
-`std=out` and `std=err` have no error code and go by the exit code alone. Errors of the server itself use the same shape: `unauthorized` (`401`), `not_found` (`404`), `method_not_allowed` (`405`), `invalid_arguments` (`400`).
+`std=out` and `std=err` have no error code and go by the exit code alone. Errors of the server itself use the same shape: `unauthorized` (`401`), `not_found` (`404`), `method_not_allowed` (`405`), `invalid_arguments` (`400`), `busy` (`429`, see [Limits](#limits)).
+
+## Files
+
+Commands that write one file can send it back in the answer: add `?return=file` (the default is `return=json`).
+
+| Command | File |
+|---|---|
+| `chat voice-data` | the WAV |
+| `chat image-data` | the image |
+| `export sessions`, `export contacts`, `export footprint`, `export messages` | the export (with `export messages --media`, only the messages file; the media stay on disk) |
+| `group export-member-messages`, `group export-members` | the `.csv` / `.xlsx` |
+| `sns media`, `sns download-image` | the image or video |
+| `backup create` | the backup archive |
+
+Other commands answer `400`: their output is a folder or many files (`export media`, `sns export`, `chat emoji`, …) or no file at all.
+
+- `out` may be left out, also where the command requires it: the server then writes into a folder of its own, `serve-files/<request id>/` in the cache folder (`<home>/cache` or `cache_path`), and names the file itself (the extension of an image or video comes from its content). Given an `out`, the file is written there and sent as well.
+- On success the answer is `200` with `Content-Type: multipart/form-data` and two parts: `result`, `application/json`, `{"success": true, "data": {"path": "<the file on the server>"}}`; then `file`, the content, with a `Content-Type` from its extension and the file name in `filename` (UTF-8) and `filename*` (RFC 5987). The file is read from disk as it is sent. In a browser, `await (await fetch(url, init)).formData()` gives both parts.
+- On failure there is no file: the usual JSON error and status code.
+- `serve-files/` is emptied when `serve` starts and is part of `cache list` / `cache clear --api`.
+
+```sh
+curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:57108/export/sessions?return=file"
+```
+
+## Jobs
+
+A long command (an export, `key db`, `backup create`) need not hold a request open. Send `Prefer: respond-async` and the command runs in the background as a job: the answer is `202 Accepted`, `Location: /jobs/<id>`, and `{"success": true, "data": <job>}`.
+
+| Request | Answer |
+|---|---|
+| `GET /jobs` | `{"success": true, "data": [<job>, …]}`, oldest first, without results |
+| `GET /jobs/<id>` | The job with its `result` |
+| `GET /jobs/<id>/events` | Server-sent events until the job ends (below) |
+| `DELETE /jobs/<id>` | A queued or running job is cancelled (its command is killed) and the answer is the cancelled job; a finished job is forgotten |
+
+A job is `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "exitCode", "httpStatus", "progress", "result"}`: `status` is `queued`, `running`, `succeeded`, `failed` or `cancelled`; `command` the command line it runs (always `--json --progress`); times in Unix milliseconds; `httpStatus` the status a direct request would have answered; `progress` the last progress event; `result` the `--json` document, as a direct request would have answered. A cancelled job has `httpStatus` `499` and the error code `user_interrupt`.
+
+The event stream sends, each with an `id`:
+
+- `status`: `{"type": "status", "status": "running"}` when the job leaves the queue;
+- the command's `--progress` events, named by their `type` (`progress`: `{"type": "progress", "stage", "message", "current", "total", "percent"}`), and its other events on stderr;
+- `stderr`: `{"type": "stderr", "text"}` for other lines on stderr;
+- `result`: the finished job with its `result`, after which the stream ends.
+
+A client that subscribes late or reconnects gets the events kept so far (up to 1000 per job); with `Last-Event-ID`, only those after it. Jobs live in the server's memory only: they are gone when it stops, and only the 100 most recent finished jobs are kept.
+
+`?std=out`, `?std=err` and `?return=file` are answered right away and cannot be jobs (`400`); `?std=in` never runs anything.
+
+```sh
+curl -i -X POST -H "Authorization: Bearer $TOKEN" -H "Prefer: respond-async" \
+  -d '{"session-id":"wxid_xxx","out":"chat.html","format":"html"}' http://127.0.0.1:57108/export/messages
+curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/events
+```
+
+## Limits
+
+Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, backups, reports, …) run one at a time (`--max-tasks`), other commands up to one per CPU at once (`--max-reads`). A direct request over the limit is not kept waiting: it answers `429` with the error code `busy` and `Retry-After` (5 seconds for tasks, 1 otherwise). A job over the limit waits in the queue (`queued`) and starts when a place is free.
 
 ## How it runs
 
-Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. Starting the process, reading the configuration and opening the database cost some tens of milliseconds per request.
+Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. Starting the process, reading the configuration and opening the database cost some tens of milliseconds per request. A client that closes the connection before the answer ends its command; so does cancelling a job.
 
-Not here yet (issue #131): asynchronous jobs with progress and cancellation, limits on parallel commands, returning a produced file in the answer, an OpenAPI description, `Host` header checks, and the WebUI.
+Not here yet (issue #131): an OpenAPI description, `Host` header checks, and the WebUI.
