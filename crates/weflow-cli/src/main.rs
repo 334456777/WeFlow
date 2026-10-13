@@ -619,6 +619,12 @@ struct PageArgs {
     /// Number of results to skip
     #[arg(long, default_value_t = 0)]
     offset: i32,
+    /// Only messages older than this one: the `_cursor` of the last message of the previous page (as fast however far back)
+    #[arg(long, conflicts_with_all = ["offset", "after"])]
+    before: Option<String>,
+    /// Only messages newer than this one (the `_cursor` of a message): the closest ones, still newest first
+    #[arg(long, conflicts_with = "offset")]
+    after: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -2038,8 +2044,16 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             }
             Ok(Value::Array(sessions))
         }
-        ChatSubcommand::Messages(args) => hub.messages(&args.session_id, args.limit, args.offset),
-        ChatSubcommand::Latest { session_id, limit } => hub.latest(session_id, *limit),
+        ChatSubcommand::Messages(args) => hub.message_page(
+            &args.session_id,
+            args.limit,
+            args.offset,
+            args.before.as_deref(),
+            args.after.as_deref(),
+        ),
+        ChatSubcommand::Latest { session_id, limit } => {
+            hub.message_page(session_id, *limit, 0, None, None)
+        }
         ChatSubcommand::Search {
             keyword,
             session_id,

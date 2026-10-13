@@ -193,7 +193,7 @@ The price is paid on every request: starting the process and reading the configu
 | `group members` | 186 ms | 15 ms |
 | 16 pages of messages at once (in all) | 661 ms | 32 ms |
 
-(Each figure includes about 15 ms of the client's own round trip.) Searching gains less (1560 → 843 ms): the time goes to the query itself, as it does for pages deep into a long conversation (issue #149).
+(Each figure includes about 15 ms of the client's own round trip.) Searching gains less (1560 → 843 ms): the time goes to the query itself. Pages deep into a long conversation are slow with `offset` (about 1.4 s in the middle of 210,000 messages) but not from a cursor: pass the `_cursor` of the last message shown as `before` (`after` for newer ones), and the same page takes about 3 ms.
 
 - `?std`, `?return=file` and `Prefer: respond-async` are not available (`400`); other commands answer `404`.
 - The answer is in the server's language: `Accept-Language` does not apply, as the language is set once per process.

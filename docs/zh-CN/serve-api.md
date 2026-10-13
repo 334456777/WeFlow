@@ -193,7 +193,7 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 | `group members` | 186 ms | 15 ms |
 | 同时请求 16 页消息（总耗时） | 661 ms | 32 ms |
 
-（每个数字都包含客户端自身约 15 ms 的往返。）搜索提升较少（1560 → 843 ms）：时间花在查询本身，长会话里很靠后的消息页也是如此（issue #149）。
+（每个数字都包含客户端自身约 15 ms 的往返。）搜索提升较少（1560 → 843 ms）：时间花在查询本身。长会话里很靠后的消息页用 `offset` 取会很慢（21 万条消息的中间一页约 1.4 秒），用游标则不会：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
 
 - 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
 - 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。

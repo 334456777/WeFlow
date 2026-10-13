@@ -147,6 +147,16 @@ impl Wcdb {
         self.account()?.messages(session_id, limit, offset)
     }
 
+    /// See [`NativeAccount::messages_from`](crate::native_db::NativeAccount::messages_from).
+    pub fn messages_from(
+        &self,
+        session_id: &str,
+        limit: i32,
+        from: crate::native_msg::PageFrom,
+    ) -> Result<Value> {
+        self.account()?.messages_from(session_id, limit, from)
+    }
+
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
         self.account()?.message_count(session_id)
     }
