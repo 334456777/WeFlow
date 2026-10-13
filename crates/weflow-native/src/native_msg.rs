@@ -115,6 +115,63 @@ fn row_key(row: &Value) -> (i64, i64, i64) {
     (seq, create, int(row, "local_id"))
 }
 
+/// A message's place in its conversation's newest-first order, to page from: its sort key (`sort_seq`, or
+/// `create_time * 1000` without one, then `create_time`, `local_id`) and the number of its `message_<n>.db`. Equal
+/// keys of different databases are listed by ascending database number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MsgPos {
+    pub sort_seq: i64,
+    pub create_time: i64,
+    pub local_id: i64,
+    pub shard: u32,
+}
+
+impl MsgPos {
+    /// The place of a message row (`sort_seq`, `create_time`, `local_id`, `db_name`).
+    pub fn of_row(row: &Value) -> Option<Self> {
+        let (sort_seq, create_time, local_id) = row_key(row);
+        let shard = is_message_db(&format!("{}.db", row.get("db_name")?.as_str()?))?;
+        Some(Self {
+            sort_seq,
+            create_time,
+            local_id,
+            shard,
+        })
+    }
+
+    /// `sort_seq.create_time.local_id.shard`, what [`parse`](Self::parse) reads back.
+    pub fn token(&self) -> String {
+        format!(
+            "{}.{}.{}.{}",
+            self.sort_seq, self.create_time, self.local_id, self.shard
+        )
+    }
+
+    pub fn parse(token: &str) -> Option<Self> {
+        let mut parts = token.trim().split('.');
+        let pos = Self {
+            sort_seq: parts.next()?.parse().ok()?,
+            create_time: parts.next()?.parse().ok()?,
+            local_id: parts.next()?.parse().ok()?,
+            shard: parts.next()?.parse().ok()?,
+        };
+        parts.next().is_none().then_some(pos)
+    }
+
+    fn key(&self) -> (i64, i64, i64) {
+        (self.sort_seq, self.create_time, self.local_id)
+    }
+}
+
+/// Where a page of [`NativeAccount::messages_from`] starts.
+#[derive(Clone, Copy, Debug)]
+pub enum PageFrom {
+    /// The messages listed after this one: older ones.
+    Before(MsgPos),
+    /// The messages listed before this one: newer ones, the closest first taken.
+    After(MsgPos),
+}
+
 fn is_message_db(name: &str) -> Option<u32> {
     let lower = name.to_ascii_lowercase();
     lower
@@ -221,15 +278,33 @@ impl NativeAccount {
             } else {
                 None
             };
-            let page = match floor {
+            let indexed = match floor {
                 Some(floor) => self.query(
                     &t.db,
-                    &Self::select_sql(&t, &format!("where m.sort_seq >= ?2 {order}")),
+                    &Self::select_sql(
+                        &t,
+                        &format!("where m.sort_seq >= ?2 and m.sort_seq <> 0 {order}"),
+                    ),
                     &[&want, &floor],
                 )?,
-                None => self.query(&t.db, &Self::select_sql(&t, order), &[&want])?,
+                None => self.query(
+                    &t.db,
+                    &Self::select_sql(&t, &format!("where m.sort_seq <> 0 {order}")),
+                    &[&want],
+                )?,
             };
-            for mut r in page {
+            // rows without a sort_seq are keyed by create_time * 1000 (see `row_key`): below any floor, they are read
+            // apart
+            let unsequenced = self.query(
+                &t.db,
+                &Self::select_sql(
+                    &t,
+                    "where (m.sort_seq is null or m.sort_seq = 0) \
+                     order by m.create_time desc, m.local_id desc limit ?1",
+                ),
+                &[&want],
+            )?;
+            for mut r in indexed.into_iter().chain(unsequenced) {
                 self.finish_row(&mut r, &t, false);
                 rows.push(r);
             }
@@ -241,6 +316,79 @@ impl NativeAccount {
         } else {
             it.take(limit).collect()
         }))
+    }
+
+    /// A newest-first page of messages next to a message (see [`MsgPos`]): `limit` of the older ones, or of the newer
+    /// ones closest to it, still listed newest first; `limit == 0` means all of them. Each table is read from the
+    /// position on through its `sort_seq` index, so a page deep into a long conversation costs what the first does.
+    pub fn messages_from(&self, session_id: &str, limit: i32, from: PageFrom) -> Result<Value> {
+        let want = if limit <= 0 { -1 } else { i64::from(limit) };
+        let (pos, older) = match from {
+            PageFrom::Before(p) => (p, true),
+            PageFrom::After(p) => (p, false),
+        };
+        let dir = if older { "desc" } else { "asc" };
+        let mut rows: Vec<(Value, u32)> = Vec::new();
+        for t in self.message_tables(session_id)? {
+            let Some(shard) =
+                t.db.file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(is_message_db)
+            else {
+                continue;
+            };
+            // a row with the position's own key is past it only in a database listed after the position's
+            let cmp = match (older, shard > pos.shard, shard < pos.shard) {
+                (true, true, _) => "<=",
+                (true, false, _) => "<",
+                (false, _, true) => ">=",
+                (false, _, false) => ">",
+            };
+            let bound = if older { "<=" } else { ">=" };
+            // rows with a sort_seq, through its index; the few without one are keyed by create_time * 1000
+            let indexed = format!(
+                "where m.sort_seq {bound} ?1 and m.sort_seq <> 0 and (m.sort_seq, m.create_time, m.local_id) {cmp} (?1, ?2, ?3) \
+                 order by m.sort_seq {dir}, m.create_time {dir}, m.local_id {dir} limit ?4"
+            );
+            let unsequenced = format!(
+                "where (m.sort_seq is null or m.sort_seq = 0) \
+                 and (m.create_time * 1000, m.create_time, m.local_id) {cmp} (?1, ?2, ?3) \
+                 order by m.create_time {dir}, m.local_id {dir} limit ?4"
+            );
+            for tail in [indexed, unsequenced] {
+                let page = self.query(
+                    &t.db,
+                    &Self::select_sql(&t, &tail),
+                    &[&pos.sort_seq, &pos.create_time, &pos.local_id, &want],
+                )?;
+                for mut r in page {
+                    self.finish_row(&mut r, &t, false);
+                    rows.push((r, shard));
+                }
+            }
+        }
+        // the listing's order: newest key first, equal keys by ascending database
+        rows.sort_by(|(a, sa), (b, sb)| row_key(b).cmp(&row_key(a)).then(sa.cmp(sb)));
+        if !older {
+            // the newer rows closest to the position are at the end
+            let skip = if want < 0 {
+                0
+            } else {
+                rows.len().saturating_sub(want as usize)
+            };
+            rows.drain(..skip);
+        } else if want >= 0 {
+            rows.truncate(want as usize);
+        }
+        debug_assert!(rows.iter().all(|(r, s)| {
+            let k = row_key(r);
+            if older {
+                k < pos.key() || (k == pos.key() && *s > pos.shard)
+            } else {
+                k > pos.key() || (k == pos.key() && *s < pos.shard)
+            }
+        }));
+        Ok(Value::Array(rows.into_iter().map(|(r, _)| r).collect()))
     }
 
     /// The `n`-th largest `sort_seq` of a table: every one of its `n` newest rows has a `sort_seq` at least this big.
@@ -1260,15 +1408,12 @@ mod tests {
         )
         .unwrap();
         let acct = NativeAccount::new(&dir, &hex(&KEY)).unwrap();
-        // what the plain "sort everything, take the first rows" query gives
+        // every row sorted by its key, then the page taken: rows without a sort_seq (null or 0) are keyed by
+        // create_time * 1000, so here they are the newest ones
         let t = acct.message_tables("wxid_bob").unwrap().remove(0);
         let reference = |limit: i32, offset: i32| -> Vec<String> {
-            let want = (offset + limit) as i64;
-            let sql = NativeAccount::select_sql(
-                &t,
-                "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1",
-            );
-            let mut rows = acct.query(&t.db, &sql, &[&want]).unwrap();
+            let sql = NativeAccount::select_sql(&t, "");
+            let mut rows = acct.query(&t.db, &sql, &[]).unwrap();
             rows.sort_by(NativeAccount::cmp_desc);
             texts(&Value::Array(
                 rows.into_iter()
@@ -1307,6 +1452,46 @@ mod tests {
                 (limit as usize).min(60 - (offset as usize).min(60))
             );
         }
+
+        // pages from a cursor, both ways, list the same order through the ties and the rows without a sort_seq
+        let all = acct.messages("wxid_bob", 0, 0).unwrap();
+        let all = all.as_array().unwrap();
+        let pos = |row: &Value| MsgPos::of_row(row).unwrap();
+        let mut back = texts(&acct.messages("wxid_bob", 7, 0).unwrap());
+        while back.len() < 60 {
+            let last = &all[back.len() - 1];
+            let page = acct
+                .messages_from("wxid_bob", 7, PageFrom::Before(pos(last)))
+                .unwrap();
+            assert!(
+                !page.as_array().unwrap().is_empty(),
+                "stuck at {}",
+                back.len()
+            );
+            back.extend(texts(&page));
+        }
+        assert_eq!(back, reference(60, 0));
+        assert!(acct
+            .messages_from("wxid_bob", 7, PageFrom::Before(pos(&all[59])))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty());
+        for at in [1, 9, 30, 59] {
+            // the 7 rows listed just before row `at`
+            let page = acct
+                .messages_from("wxid_bob", 7, PageFrom::After(pos(&all[at])))
+                .unwrap();
+            let from = at.saturating_sub(7);
+            assert_eq!(
+                texts(&page),
+                reference((at - from) as i32, from as i32),
+                "after row {at}"
+            );
+        }
+        assert_eq!(MsgPos::parse(&pos(&all[3]).token()), Some(pos(&all[3])));
+        assert_eq!(MsgPos::parse("1.2.3"), None);
+        assert_eq!(MsgPos::parse("1.2.3.4.5"), None);
     }
 
     #[test]

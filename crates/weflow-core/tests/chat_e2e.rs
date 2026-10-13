@@ -190,3 +190,110 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
         .unwrap();
     assert_eq!(prepared["success"], true);
 }
+
+/// (local_id, database) of each row of a page.
+fn places(page: &serde_json::Value) -> Vec<(i64, String)> {
+    page.as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["local_id"].as_i64().unwrap(),
+                r["db_name"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
+fn cursor_of(page: &serde_json::Value, i: usize) -> String {
+    page[i]["_cursor"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn pages_from_a_cursor_follow_the_offset_order() {
+    let (hub, _root, _f) = common::custom_hub("cursor", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        let msg = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, &format!("m{id}"));
+        f.message_shard(
+            0,
+            &[("wxid_bob", (1..=12).map(|i| msg(i, T0 + i * 10)).collect())],
+        );
+        f.message_shard(
+            1,
+            &[(
+                "wxid_bob",
+                vec![
+                    // the very key of the first database's message 5
+                    msg(5, T0 + 50),
+                    msg(13, T0 + 130),
+                    // without a sort_seq: keyed by create_time * 1000
+                    msg(14, T0 + 140).with_sort_seq(0),
+                    msg(15, T0 + 135).with_sort_seq(0),
+                    msg(16, T0 + 160),
+                    msg(17, T0 + 170).with_sort_seq((T0 + 170) * 1000 + 1),
+                ],
+            )],
+        );
+    });
+    let page = |limit: i32, offset: i32, before: Option<&str>, after: Option<&str>| {
+        hub.message_page("wxid_bob", limit, offset, before, after)
+            .unwrap()
+    };
+    let all = page(0, 0, None, None);
+    let order = places(&all);
+    assert_eq!(order.len(), 18);
+    // equal keys: the first database's message comes first
+    let fives: Vec<usize> = (0..order.len()).filter(|i| order[*i].0 == 5).collect();
+    assert_eq!(fives.len(), 2);
+    assert_eq!(
+        (&order[fives[0]].1[..], &order[fives[1]].1[..]),
+        ("message_0", "message_1")
+    );
+
+    // walking back from the first page, 4 at a time, lists every message once, in order
+    let mut walked = places(&page(4, 0, None, None));
+    let mut last = page(4, 0, None, None);
+    loop {
+        let next = page(
+            4,
+            0,
+            Some(&cursor_of(&last, 3.min(last.as_array().unwrap().len() - 1))),
+            None,
+        );
+        if next.as_array().unwrap().is_empty() {
+            break;
+        }
+        walked.extend(places(&next));
+        last = next;
+    }
+    assert_eq!(walked, order);
+
+    // and forward from the oldest one, 4 at a time, each page newest first
+    let mut forward: Vec<(i64, String)> = Vec::new();
+    let mut from = cursor_of(&all, order.len() - 1);
+    loop {
+        let next = page(4, 0, None, Some(&from));
+        let got = places(&next);
+        if got.is_empty() {
+            break;
+        }
+        forward.splice(0..0, got);
+        from = cursor_of(&next, 0);
+    }
+    assert_eq!(forward[..], order[..order.len() - 1]);
+
+    // a page from a cursor is the page at the same offset
+    for at in [1, 4, 8, 11, 15] {
+        assert_eq!(
+            places(&page(5, 0, Some(&cursor_of(&all, at - 1)), None)),
+            places(&page(5, at as i32, None, None)),
+            "after row {at}"
+        );
+    }
+    // every row has a cursor, also `chat latest`'s
+    assert!(hub.message_page("wxid_bob", 2, 0, None, None).unwrap()[1]["_cursor"].is_string());
+    let err = hub
+        .message_page("wxid_bob", 2, 0, Some("1.2.3"), None)
+        .unwrap_err();
+    assert_eq!(err.code, "invalid_arguments");
+}

@@ -440,6 +440,31 @@ fn reads_run_in_process_with_the_same_answers() {
         let r = same(target);
         assert_eq!(r.status, 200, "{target}: {}", r.body);
     }
+    // a page from a message's cursor: the one before Bob's message 4 (in message_1.db) goes on in message_0.db
+    {
+        use weflow_native::fixture::{DAY, T0};
+        let latest = same("/chat/messages?session-id=wxid_bob&limit=2").json();
+        let cursor = format!("{}.{}.4.1", (T0 + 3 * DAY) * 1000, T0 + 3 * DAY);
+        assert_eq!(latest["data"][1]["_cursor"], cursor.as_str());
+        let r = same(&format!(
+            "/chat/messages?session-id=wxid_bob&limit=2&before={cursor}"
+        ));
+        assert_eq!(r.status, 200, "{}", r.body);
+        let ids: Vec<i64> = r.json()["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["local_id"].as_i64().unwrap())
+            .collect();
+        assert_eq!(ids, [3, 2]);
+        assert_eq!(
+            same(&format!(
+                "/chat/messages?session-id=wxid_bob&before={cursor}&offset=1"
+            ))
+            .status,
+            400
+        );
+    }
     // the member panel carries the time it was made, and the open hub keeps it for a while
     let target = "/group/members?chatroom-id=room1%40chatroom";
     let panel = |path: &str| {

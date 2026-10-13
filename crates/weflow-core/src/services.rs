@@ -166,6 +166,44 @@ impl ServiceHub {
         self.messages(session_id, limit, 0)
     }
 
+    /// A newest-first page of a conversation for `chat messages` and `chat latest`: from the newest message, after
+    /// `offset` of them, or next to the message of a `_cursor` (`before`: the older ones; `after`: the newer ones
+    /// closest to it). Every row gets its own `_cursor`, to ask for the page next to it.
+    pub fn message_page(
+        &self,
+        session_id: &str,
+        limit: i32,
+        offset: i32,
+        before: Option<&str>,
+        after: Option<&str>,
+    ) -> AppResult<Value> {
+        use weflow_native::native_msg::{MsgPos, PageFrom};
+        let pos = |token: &str| {
+            MsgPos::parse(token).ok_or_else(|| {
+                AppError::usage(format!(
+                    "`{token}` is not a message cursor; pass the `_cursor` of a message"
+                ))
+            })
+        };
+        let from = match (before, after) {
+            (Some(token), _) => Some(PageFrom::Before(pos(token)?)),
+            (None, Some(token)) => Some(PageFrom::After(pos(token)?)),
+            (None, None) => None,
+        };
+        let wcdb = self.open_wcdb()?;
+        let mut page = match from {
+            Some(from) => wcdb.messages_from(session_id, limit, from),
+            None => wcdb.messages(session_id, limit, offset),
+        }
+        .map_err(|err| AppError::native(err.to_string()))?;
+        for row in page.as_array_mut().into_iter().flatten() {
+            if let Some(pos) = MsgPos::of_row(row) {
+                row["_cursor"] = pos.token().into();
+            }
+        }
+        Ok(page)
+    }
+
     pub fn search(
         &self,
         keyword: &str,

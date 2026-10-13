@@ -620,6 +620,45 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
         .and_then(|d| page_is(d, down(n, 20)));
     c.check("latest 20", r);
 
+    // the cursor of message i: its sort key and its database
+    let per = n / SHARDS;
+    let cursor = |i: i64| {
+        let at = T0 + i * STEP;
+        format!("{}.{at}.{i}.{}", at * 1000, ((i - 1) / per).min(SHARDS - 1))
+    };
+    let r = c
+        .both(&format!("/chat/messages?session-id={room}&limit=5"), &[])
+        .and_then(|d| {
+            for m in rows(&d) {
+                let i = number(field(&m, &["local_id"])).unwrap_or(0);
+                ensure!(
+                    m["_cursor"] == cursor(i).as_str(),
+                    "message {i}: cursor {}",
+                    m["_cursor"]
+                );
+            }
+            Ok(())
+        });
+    c.check("messages carry their cursor", r);
+    let from_cursor = |key: &str, i: i64| {
+        format!(
+            "/chat/messages?session-id={room}&limit={PAGE}&{key}={}",
+            encode(&cursor(i))
+        )
+    };
+    let r = c
+        .both(&from_cursor("before", n - n / 2 + 1), &[])
+        .and_then(|d| page_is(d, down(n - n / 2, PAGE)));
+    c.check("messages before a cursor in the middle", r);
+    let r = c
+        .both(&from_cursor("before", per + 1), &[])
+        .and_then(|d| page_is(d, down(per, PAGE)));
+    c.check("messages before a cursor, into the previous database", r);
+    let r = c
+        .both(&from_cursor("after", n / 2), &[])
+        .and_then(|d| page_is(d, down(n / 2 + PAGE, PAGE)));
+    c.check("messages after a cursor", r);
+
     let id = n - 10;
     let at = T0 + id * STEP;
     let r = c
@@ -972,6 +1011,8 @@ struct Targets {
     private: Option<String>,
     /// (local id, create time): local ids repeat across message databases.
     one_message: Option<(i64, i64)>,
+    /// The `_cursor` of the message above the page in the middle of the biggest conversation.
+    middle_cursor: Option<String>,
     images: Vec<Value>,
 }
 
@@ -1047,6 +1088,20 @@ fn targets(addr: &str) -> Result<Targets> {
         }
     }
     images.truncate(SCREEN_OF_IMAGES);
+    // the cursor of the message just above the middle page, to ask for that page from it
+    let middle_cursor = request(
+        addr,
+        "GET",
+        &format!(
+            "/api/chat/messages?session-id={}&limit=1&offset={}",
+            encode(&big),
+            (big_messages / 2 - 1).max(0)
+        ),
+        "",
+    )?
+    .data()
+    .ok()
+    .and_then(|d| d[0]["_cursor"].as_str().map(String::from));
     Ok(Targets {
         sessions,
         big,
@@ -1055,6 +1110,7 @@ fn targets(addr: &str) -> Result<Targets> {
         private,
         one_message,
         images,
+        middle_cursor,
     })
 }
 
@@ -1329,6 +1385,15 @@ fn main() -> Result<()> {
             t.big_messages / 2
         ),
     )?;
+    if let Some(cursor) = &t.middle_cursor {
+        bench.both(
+            "messages, page in the middle, from a cursor",
+            &format!(
+                "/chat/messages?session-id={big}&limit={PAGE}&before={}",
+                encode(cursor)
+            ),
+        )?;
+    }
     bench.both(
         "latest 20 (polling)",
         &format!("/chat/latest?session-id={big}&limit=20"),
