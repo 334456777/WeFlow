@@ -8,6 +8,7 @@
 //! ([`files`]).
 
 mod files;
+mod in_process;
 mod jobs;
 mod openapi;
 
@@ -504,6 +505,8 @@ struct AppState {
     reads: Arc<Semaphore>,
     /// `/openapi.json` in English and in Chinese, built when first asked for.
     openapi: [OnceLock<String>; 2],
+    /// The hub of the `/api/` routes.
+    hub: in_process::Hub,
 }
 
 impl AppState {
@@ -529,6 +532,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             tasks,
             reads,
             openapi: Default::default(),
+            hub: Default::default(),
         }))
 }
 
@@ -806,9 +810,22 @@ async fn route(st: &AppState, req: Request) -> Response {
             .and_then(|v| v.trim().parse().ok());
         return jobs::route(&st.jobs, &parts.method, &segments, last_event_id).await;
     }
-    let Some(endpoint) = st.endpoints.get(&segments) else {
+    // `/api/<command path>`: the same command, run in this process (in_process)
+    let in_process = segments.first().is_some_and(|s| s == "api");
+    let Some(endpoint) = st.endpoints.get(&segments[in_process as usize..]) else {
         return error_response(StatusCode::NOT_FOUND, "not_found", "no such command");
     };
+    if in_process && !in_process::COMMANDS.contains(&endpoint.command_name().as_str()) {
+        return error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            &format!(
+                "`{}` does not run in process; use /{}",
+                endpoint.command_name(),
+                endpoint.path.join("/")
+            ),
+        );
+    }
 
     let mut params = Params::new();
     for (k, v) in query {
@@ -867,6 +884,12 @@ async fn route(st: &AppState, req: Request) -> Response {
         },
     };
     let background = prefers_async(&parts.headers);
+    if in_process && (std != Std::Json || want_file || background) {
+        return bad_request(
+            "/api/ answers the --json document right away: std, return=file and `Prefer: respond-async` are for \
+             the routes without /api/",
+        );
+    }
 
     let verb = endpoint.verb(&params);
     match verb {
@@ -952,6 +975,16 @@ async fn route(st: &AppState, req: Request) -> Response {
     let Ok(_permit) = limit.clone().try_acquire_owned() else {
         return busy(verb == Some(Post));
     };
+    if in_process {
+        if let Some((doc, exit)) = in_process::run(&st.hub, &argv).await {
+            // as the child process prints it
+            let body = format!("{}\n", serde_json::to_string(&doc).unwrap());
+            let mut resp = document_response(&doc, status_for(&doc, exit.into()), body);
+            resp.headers_mut()
+                .insert("x-weflow-exit-code", HeaderValue::from(i32::from(exit)));
+            return resp;
+        }
+    }
     if let Some(dir) = file_out.as_ref().and_then(|f| f.dir.as_ref()) {
         if let Err(err) = std::fs::create_dir_all(dir) {
             return error_response(
@@ -993,16 +1026,7 @@ async fn route(st: &AppState, req: Request) -> Response {
                             ),
                         }
                     }
-                    _ => {
-                        let code = doc["error"]["code"].as_str().unwrap_or("").to_string();
-                        let mut resp = json_body(status, output.stdout);
-                        if !code.is_empty() {
-                            if let Ok(v) = HeaderValue::from_str(&code) {
-                                resp.headers_mut().insert("x-weflow-error-code", v);
-                            }
-                        }
-                        resp
-                    }
+                    _ => document_response(&doc, status, output.stdout),
                 }
             }
             Err(_) => {
@@ -1035,6 +1059,17 @@ async fn route(st: &AppState, req: Request) -> Response {
         "x-weflow-exit-code",
         HeaderValue::from_str(&exit.to_string()).unwrap(),
     );
+    resp
+}
+
+/// A command's `--json` document, with its error code in a header.
+fn document_response(doc: &Value, status: StatusCode, body: impl Into<Body>) -> Response {
+    let mut resp = json_body(status, body);
+    if let Some(code) = doc["error"]["code"].as_str().filter(|c| !c.is_empty()) {
+        if let Ok(v) = HeaderValue::from_str(code) {
+            resp.headers_mut().insert("x-weflow-error-code", v);
+        }
+    }
     resp
 }
 

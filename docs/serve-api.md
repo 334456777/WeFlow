@@ -162,7 +162,7 @@ Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, b
 - Each command is one operation per method, with `x-weflow-command` naming the command. `operationId` is the command path with `_` (`chat_sessions`); a command whose method follows an argument has one operation per method (`analytics_excluded_get`, `analytics_excluded_put`).
 - `GET` and `DELETE` list the parameters as query parameters, the other methods as a JSON body; both ways work for every method (see [Parameters](#parameters)). Types come from the CLI: numbers, switches, lists and choices.
 - The answers are described by their envelope (`{"success", "data"}` or `{"success", "error"}`), jobs, and `?return=file`; the shape of each command's `data` is not.
-- `/health`, `/openapi.json` and `/jobs` are described under the tag `server`.
+- `/health`, `/openapi.json` and `/jobs` are described under the tag `server`; the [in-process reads](#in-process-reads) have their own operations, `api_chat_sessions` and so on.
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:57108/openapi.json
@@ -176,6 +176,29 @@ Two versions tell clients what they talk to: `version` (in `/health`, and `info.
 
 ## How it runs
 
-Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. Starting the process, reading the configuration and opening the database cost some tens of milliseconds per request. A client that closes the connection before the answer ends its command; so does cancelling a job.
+Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. A client that closes the connection before the answer ends its command; so does cancelling a job.
 
-Not here yet (issue #131): the WebUI (issue #130) and the endpoints it needs.
+The price is paid on every request: starting the process and reading the configuration take about 20 ms, and each request opens the databases again with cold caches. On a large account (Windows, release build) the conversation list takes about 490 ms this way and a page of messages about 200 ms. For the reads a chat client makes all the time, use [`/api/`](#in-process-reads).
+
+## In-process reads
+
+`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `group members`. Parameters, answer, status code and headers are those of the same path without `/api/` (the same parsing and the same handler; a test compares them byte for byte), only faster:
+
+| Read (large account, Windows) | `/<path>` | `/api/<path>` |
+|---|---|---|
+| `chat sessions` | 490 ms | 32 ms |
+| `chat messages`, one page of 50 | 194 ms | 16 ms |
+| `chat latest`, 20 messages | 224 ms | 16 ms |
+| `chat contact` | 185 ms | 16 ms |
+| `group members` | 186 ms | 15 ms |
+| 16 pages of messages at once (in all) | 661 ms | 32 ms |
+
+(Each figure includes about 15 ms of the client's own round trip.) Searching gains less (1560 → 843 ms): the time goes to the query itself, as it does for pages deep into a long conversation (issue #149).
+
+- `?std`, `?return=file` and `Prefer: respond-async` are not available (`400`); other commands answer `404`.
+- The answer is in the server's language: `Accept-Language` does not apply, as the language is set once per process.
+- A changed config file (`PUT /config/set`, another profile) is read again on the next request.
+- `group members` keeps a member panel for a while, as the desktop app does: within that time it answers `"fromCache": true`; pass `refresh=true` to build it again.
+- These reads count towards the `--max-reads` limit.
+
+Not here yet (issue #140): media for viewing (images, voices) and a message push for the WebUI (issue #130).
