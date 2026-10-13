@@ -23,6 +23,7 @@ weflow serve --desktop             # the desktop app's API instead (port `http_a
 | `--insight`, `--image-auto-download` | Run these services next to either API |
 | `--max-tasks` | Tasks (`POST` commands) that run at once; default 1 (see [Limits](#limits)) |
 | `--max-reads` | Other commands that run at once; default the number of CPUs |
+| `--max-media` | Images and voices the `/api/` media routes decode at once, more wait in line; default the number of CPUs (see [Media](#media)) |
 
 The startup message (an event on stderr; a JSON line with `--json`) shows the address. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
 
@@ -153,7 +154,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 
 ## Limits
 
-Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, backups, reports, …) run one at a time (`--max-tasks`), other commands up to one per CPU at once (`--max-reads`). A direct request over the limit is not kept waiting: it answers `429` with the error code `busy` and `Retry-After` (5 seconds for tasks, 1 otherwise). A job over the limit waits in the queue (`queued`) and starts when a place is free.
+Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, backups, reports, …) run one at a time (`--max-tasks`), other commands up to one per CPU at once (`--max-reads`). A direct request over the limit is not kept waiting: it answers `429` with the error code `busy` and `Retry-After` (5 seconds for tasks, 1 otherwise). A job over the limit waits in the queue (`queued`) and starts when a place is free. The `/api/` media routes have a limit of their own (`--max-media`, see [Media](#media)).
 
 ## OpenAPI description
 
@@ -211,7 +212,9 @@ The price is paid on every request: starting the process and reading the configu
 
 - The answer has an `ETag` and `Cache-Control: private, max-age=3600`. Asking again with `If-None-Match` answers `304` without the file when it has not changed.
 - A failure is the command's `--json` document with its status code, as for the other in-process reads.
-- They count towards `--max-reads`, not `--max-tasks`. On a large account an image takes about 4 ms instead of about 190 ms through `POST /chat/image-data`, and 20 images asked for at once all answer within 8 ms. Requests beyond the limit (one per CPU by default) still answer `429`: issue #154 gives media a limit of their own.
+- They have a limit of their own, `--max-media` (one per CPU by default), and count towards neither `--max-reads` nor `--max-tasks`, so a screen of images does not hold up the messages beside it.
+- A request over the limit waits in line instead of answering `429` straight away: a screen of thumbnails asks for its images at once, and each takes a few milliseconds. Only when 256 requests are already waiting, or a request has waited 10 seconds, does it answer `429` (`busy`, `Retry-After: 1`).
+- On a large account an image takes about 4 ms instead of about 190 ms through `POST /chat/image-data`, and 20 images asked for at once all answer within 10 ms.
 
 ### Message push
 
