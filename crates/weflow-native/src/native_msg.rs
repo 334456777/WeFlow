@@ -231,6 +231,16 @@ impl NativeAccount {
         )
     }
 
+    /// The rows of [`select_sql`](Self::select_sql) with `indexed` (rows with a `sort_seq`), then those with
+    /// `unsequenced` (rows without one), as one statement: a second one per table costs its own preparation.
+    fn select_both_sql(t: &MsgTable, indexed: &str, unsequenced: &str) -> String {
+        format!(
+            "select * from ({}) union all select * from ({})",
+            Self::select_sql(t, indexed),
+            Self::select_sql(t, unsequenced)
+        )
+    }
+
     pub(crate) fn finish_row(&self, row: &mut Value, t: &MsgTable, lite: bool) {
         let is_send = self.is_me(
             row.get("sender_username")
@@ -278,33 +288,31 @@ impl NativeAccount {
             } else {
                 None
             };
-            let indexed = match floor {
+            // rows without a sort_seq are keyed by create_time * 1000 (see `row_key`): below any floor, they are read
+            // apart
+            let unsequenced = "where (m.sort_seq is null or m.sort_seq = 0) \
+                               order by m.create_time desc, m.local_id desc limit ?1";
+            let page = match floor {
                 Some(floor) => self.query(
                     &t.db,
-                    &Self::select_sql(
+                    &Self::select_both_sql(
                         &t,
                         &format!("where m.sort_seq >= ?2 and m.sort_seq <> 0 {order}"),
+                        unsequenced,
                     ),
                     &[&want, &floor],
                 )?,
                 None => self.query(
                     &t.db,
-                    &Self::select_sql(&t, &format!("where m.sort_seq <> 0 {order}")),
+                    &Self::select_both_sql(
+                        &t,
+                        &format!("where m.sort_seq <> 0 {order}"),
+                        unsequenced,
+                    ),
                     &[&want],
                 )?,
             };
-            // rows without a sort_seq are keyed by create_time * 1000 (see `row_key`): below any floor, they are read
-            // apart
-            let unsequenced = self.query(
-                &t.db,
-                &Self::select_sql(
-                    &t,
-                    "where (m.sort_seq is null or m.sort_seq = 0) \
-                     order by m.create_time desc, m.local_id desc limit ?1",
-                ),
-                &[&want],
-            )?;
-            for mut r in indexed.into_iter().chain(unsequenced) {
+            for mut r in page {
                 self.finish_row(&mut r, &t, false);
                 rows.push(r);
             }
@@ -355,16 +363,14 @@ impl NativeAccount {
                  and (m.create_time * 1000, m.create_time, m.local_id) {cmp} (?1, ?2, ?3) \
                  order by m.create_time {dir}, m.local_id {dir} limit ?4"
             );
-            for tail in [indexed, unsequenced] {
-                let page = self.query(
-                    &t.db,
-                    &Self::select_sql(&t, &tail),
-                    &[&pos.sort_seq, &pos.create_time, &pos.local_id, &want],
-                )?;
-                for mut r in page {
-                    self.finish_row(&mut r, &t, false);
-                    rows.push((r, shard));
-                }
+            let page = self.query(
+                &t.db,
+                &Self::select_both_sql(&t, &indexed, &unsequenced),
+                &[&pos.sort_seq, &pos.create_time, &pos.local_id, &want],
+            )?;
+            for mut r in page {
+                self.finish_row(&mut r, &t, false);
+                rows.push((r, shard));
             }
         }
         // the listing's order: newest key first, equal keys by ascending database
