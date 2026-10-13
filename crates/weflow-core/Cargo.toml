@@ -54,3 +54,5 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 [dev-dependencies]
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
+# examples/search_probe.rs reads rows through `NativeAccount::with_db`
+rusqlite = "0.40"

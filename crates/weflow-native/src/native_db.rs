@@ -503,8 +503,23 @@ impl NativeAccount {
         path: &Path,
         sql: &str,
         params: &[&dyn rusqlite::ToSql],
-        mut start: impl FnMut(),
+        start: impl FnMut(),
         mut each: impl FnMut(Value),
+    ) -> Result<()> {
+        self.query_until(path, sql, params, start, |row| {
+            each(row);
+            true
+        })
+    }
+
+    /// Like [`query_each`](Self::query_each), but stops reading once `each` returns false.
+    pub fn query_until(
+        &self,
+        path: &Path,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+        mut start: impl FnMut(),
+        mut each: impl FnMut(Value) -> bool,
     ) -> Result<()> {
         self.with_db(path, |conn| {
             start();
@@ -518,7 +533,9 @@ impl NativeAccount {
                 for (i, name) in names.iter().enumerate() {
                     obj.insert(name.clone(), value_to_json(name, row.get_ref(i)?));
                 }
-                each(Value::Object(obj));
+                if !each(Value::Object(obj)) {
+                    break;
+                }
             }
             Ok(())
         })

@@ -2646,6 +2646,7 @@ dependencies = [
  "rand 0.8.8",
  "regex",
  "reqwest",
+ "rusqlite",
  "rust_xlsxwriter",
  "serde",
  "serde_json",
