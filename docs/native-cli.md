@@ -235,3 +235,13 @@ reads the configured account without changing its databases and compares indexed
 Use a stable local database copy and separate configuration/cache folders when comparing builds. Keep the inventory, exports and detailed
 logs private: they contain conversation identifiers, dates, messages or local paths. Only the probe's aggregate stdout is suitable for a
 local summary; publishing account-derived statistics requires the account owner's authorization.
+
+To measure the command API ([serve-api.md](serve-api.md)), build `cargo build --release -p weflow-cli --bin weflow --example serve_bench`
+and run `target/release/examples/serve_bench <work-dir> --save base.json`. It starts `weflow serve` on a synthetic encrypted account
+(`<work-dir>/data`, rebuilt only when `--messages`, `--sessions` or `--contacts` change: by default one group of 200,000 messages with
+images, 500 private conversations and 3,000 contacts) and times the reads a chat window makes (conversation list, first and middle page of
+messages, polling, contacts, counts, search, group members, 16 pages at once, a screen of images) through both the child-process routes
+and `/api/`, printing the median and 95th percentile of `--runs` requests (default 10). `--compare base.json` adds the ratio to an earlier
+run and fails when a median is more than `--tolerance` times (default 2) and more than 20 ms slower. `--home <WEFLOW_HOME>` runs the same
+reads on the account of that WeFlow home instead (use a copy of the configuration); the conversations are picked by message count and
+only aggregate numbers are printed.

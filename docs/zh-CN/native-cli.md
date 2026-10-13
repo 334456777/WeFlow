@@ -177,3 +177,10 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 本地账号回归可运行 `cargo run -p weflow-core --example real_account_probe -- <隔离配置.json> <私有清单.json> --compare-bounded`。
 探针只读配置账号的数据库，并对异常时间键附近的范围比较索引游标与精确游标。跨构建对比时，应使用稳定的本地数据库副本，并隔离配置和缓存目录。
 清单、导出和详细日志含会话标识、日期、消息或本地路径，应保存在本地；探针的汇总输出仅用于本地报告，公开账号衍生统计需要账号所有者授权。
+
+要测量命令 API([serve-api.md](serve-api.md))的响应时间，先构建 `cargo build --release -p weflow-cli --bin weflow --example serve_bench`，
+再运行 `target/release/examples/serve_bench <工作目录> --save base.json`。它在合成的加密账号上启动 `weflow serve`
+(`<工作目录>/data`，只在 `--messages`、`--sessions`、`--contacts` 改变时重建；默认是一个带图片的 20 万条消息的群、500 个私聊和 3000 个联系人)，
+按聊天窗口的用法计时：会话列表、第一页和中间一页消息、轮询、联系人、消息数、搜索、群成员、同时请求 16 页、一屏图片。每项分别走子进程路由和 `/api/`,
+各请求 `--runs` 次(默认 10)，输出中位数和 95 分位。`--compare base.json` 会加上与之前结果的比值，某项中位数慢了 `--tolerance` 倍(默认 2)以上且多于 20 ms 时报错退出。
+`--home <WEFLOW_HOME>` 改为测量该 WeFlow 目录配置的账号(请使用配置的副本);会话按消息数自动选取，只输出汇总数字。
