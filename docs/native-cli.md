@@ -241,8 +241,8 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
 
 - A synthetic encrypted account checks the answers. It lives in `<work-dir>/data`, rebuilt only when `--messages`, `--sessions` or
   `--contacts` change; by default it has one group of 200,000 messages with images, 500 private conversations and 3,000 contacts. The
-  reads a chat window makes (conversation list, first, middle and last page of messages, polling, one message, contacts, counts, search,
-  group members, 16 pages at once, images) go through both the child-process routes and `/api/`. Both must give the same answer, and that
+  reads a chat window makes (conversation list, first, middle and last page of messages, polling, one message, contacts, counts, search
+  (also for a word found nowhere, which reads every message), group members, 16 pages at once, images) go through both the child-process routes and `/api/`. Both must give the same answer, and that
   answer must match what the account holds. Last, a message is added while `/api/push/messages` is listened to; it must arrive exactly once.
   Any failed check fails the run.
 - The real account of `--home` measures the speed (use a copy of the configuration). First, once each: the server's start, the first

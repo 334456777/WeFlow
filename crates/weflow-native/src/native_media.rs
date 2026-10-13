@@ -113,6 +113,11 @@ impl Newest {
         }
     }
 
+    /// The key of the row that would come last, once `k` rows are kept: a row with a smaller key cannot make it.
+    fn last_kept(&self) -> Option<(i64, i64, i64)> {
+        (self.k > 0 && self.heap.len() == self.k).then(|| self.heap.peek().map(|r| r.key))?
+    }
+
     /// Add the rows another `Newest` kept, as if they had been pushed here in the order they were found (after
     /// everything pushed so far). Rows it dropped could not have made the cut here either.
     fn absorb(&mut self, other: Newest) {
@@ -174,38 +179,88 @@ impl NativeAccount {
             offset.max(0) as usize,
             if limit > 0 { limit as usize } else { 50 },
         );
-        let mut hits = Newest::new(offset + limit);
+        let want = offset + limit;
+        let mut hits = Newest::new(want);
+        let mut tables = Vec::new();
         for sid in &sessions {
             for t in self.message_tables(sid)? {
-                // plain text is pre-filtered in SQL; blobs (zstd) can only be matched after decoding
-                let sql = format!(
-                    "select m.*, n.user_name as sender_username from \"{table}\" m left join Name2Id n on n.rowid = m.real_sender_id \
-                     where m.local_type in ({kinds}){range} and (typeof(m.message_content) = 'blob' or m.message_content like ?1 escape '\\')",
+                let at = tables.len();
+                // only the sort key and the text are read to match: plain text is pre-filtered in SQL, blobs (zstd)
+                // can only be matched after decoding; `+` keeps SQLite on the sort_seq index, not the type index
+                let light = format!(
+                    "select m.sort_seq, m.create_time, m.local_id, m.message_content from \"{table}\" m \
+                     where +m.local_type in ({kinds}){range} and (typeof(m.message_content) = 'blob' or m.message_content like ?1 escape '\\')",
                     table = t.table
                 );
-                // rows are matched as they are read: a short keyword can match most of a big conversation
-                let table_hits = std::cell::RefCell::new(Newest::new(offset + limit));
-                self.query_each(
-                    &t.db,
-                    &sql,
-                    &[&like],
-                    || *table_hits.borrow_mut() = Newest::new(offset + limit),
-                    |mut r| {
-                        if text(&r, "message_content").to_lowercase().contains(&needle) {
-                            self.finish_row(&mut r, &t, false);
-                            r["_session_id"] = json!(sid);
-                            table_hits.borrow_mut().push(r);
-                        }
-                    },
-                )?;
-                hits.absorb(table_hits.into_inner());
+                // rows with a sort_seq newest first, through its index: once a page is kept, a row with a smaller
+                // sort_seq cannot make it, and nor can any after it; the few without one are keyed by
+                // create_time * 1000 and read apart
+                let mut table_hits = Newest::new(want);
+                for (tail, newest_first) in [
+                    (" and m.sort_seq <> 0 order by m.sort_seq desc", true),
+                    (" and (m.sort_seq is null or m.sort_seq = 0)", false),
+                ] {
+                    let found = std::cell::RefCell::new(Newest::new(want));
+                    self.query_until(
+                        &t.db,
+                        &format!("{light}{tail}"),
+                        &[&like],
+                        || *found.borrow_mut() = Newest::new(want),
+                        |mut r| {
+                            if newest_first
+                                && found
+                                    .borrow()
+                                    .last_kept()
+                                    .is_some_and(|last| int(&r, "sort_seq") < last.0)
+                            {
+                                return false;
+                            }
+                            if text(&r, "message_content").to_lowercase().contains(&needle) {
+                                r["message_content"] = Value::Null;
+                                r["_table"] = json!(at);
+                                found.borrow_mut().push(r);
+                            }
+                            true
+                        },
+                    )?;
+                    table_hits.absorb(found.into_inner());
+                }
+                hits.absorb(table_hits);
+                tables.push((sid, t));
+            }
+        }
+        let page: Vec<Value> = hits
+            .into_rows()
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+        // then the whole rows of the page
+        let mut wanted: std::collections::BTreeMap<usize, Vec<String>> = Default::default();
+        for r in &page {
+            wanted
+                .entry(int(r, "_table") as usize)
+                .or_default()
+                .push(int(r, "local_id").to_string());
+        }
+        let mut whole = std::collections::HashMap::new();
+        for (at, ids) in wanted {
+            let (sid, t) = &tables[at];
+            let sql = format!(
+                "select m.*, n.user_name as sender_username from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id \
+                 where m.local_id in ({})",
+                t.table,
+                ids.join(",")
+            );
+            for mut r in self.query(&t.db, &sql, &[])? {
+                self.finish_row(&mut r, t, false);
+                r["_session_id"] = json!(sid);
+                whole.insert((at, int(&r, "local_id")), r);
             }
         }
         Ok(Value::Array(
-            hits.into_rows()
-                .into_iter()
-                .skip(offset)
-                .take(limit)
+            page.iter()
+                .filter_map(|r| whole.remove(&(int(r, "_table") as usize, int(r, "local_id"))))
                 .collect(),
         ))
     }
@@ -608,6 +663,124 @@ mod tests {
                 .unwrap(),
             json!([])
         );
+    }
+
+    #[test]
+    fn search_pages_are_those_of_a_sort_of_every_hit() {
+        use crate::fixture::{Fixture, MsgSpec, SessionSpec};
+        let root = std::env::temp_dir().join(format!("weflow-search-ties-{}", std::process::id()));
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        // two databases; sort_seq ties within and across them, rows without a sort_seq, compressed text, and a
+        // kind that is never searched
+        let mut all = Vec::new();
+        for shard in 0..2u32 {
+            let msgs: Vec<MsgSpec> = (1..=60i64)
+                .map(|i| {
+                    let fruit = ["apple", "Apple pie", "banana"][(i % 3) as usize];
+                    let mut m = MsgSpec::text(
+                        i,
+                        "wxid_bob",
+                        T0 + (i * 7) % 40,
+                        &format!("msg {shard}-{i} {fruit}"),
+                    )
+                    .with_sort_seq(if i % 9 == 0 {
+                        0
+                    } else {
+                        (i % 15) * 1000 + 5
+                    });
+                    if i % 4 == 0 {
+                        m = m.compressed();
+                    }
+                    if i % 5 == 0 {
+                        m = m.of_type(49);
+                    }
+                    if i % 11 == 0 {
+                        m = m.of_type(3);
+                    }
+                    m
+                })
+                .collect();
+            all.extend(msgs.iter().map(|m| (shard, m.clone())));
+            f.message_shard(shard, &[("wxid_bob", msgs)]);
+        }
+        let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let expected = |keyword: &str, limit: usize, offset: usize, begin: i64, end: i64| {
+            let mut hits: Vec<_> = all
+                .iter()
+                .filter(|(_, m)| {
+                    SEARCHABLE.contains(&m.local_type)
+                        && m.content.to_lowercase().contains(keyword)
+                        && (begin == 0 || m.create_time >= begin)
+                        && (end == 0 || m.create_time <= end)
+                })
+                .map(|(shard, m)| {
+                    let seq = match m.sort_seq.unwrap() {
+                        0 => m.create_time * 1000,
+                        s => s,
+                    };
+                    ((seq, m.create_time, m.local_id), *shard)
+                })
+                .collect();
+            // newest first; equal keys in database order
+            hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            hits.into_iter()
+                .skip(offset)
+                .take(limit)
+                .map(|((_, _, id), shard)| (format!("message_{shard}"), id))
+                .collect::<Vec<_>>()
+        };
+        for keyword in ["apple", "banana", "pie", "msg", "zzz"] {
+            // pages ending at every place, some inside a run of equal sort_seq
+            let pages = (1..=14).map(|limit| (limit, 0)).chain([
+                (50, 0),
+                (5, 5),
+                (7, 3),
+                (4, 9),
+                (1, 30),
+                (200, 0),
+                (10, 100),
+            ]);
+            for (limit, offset) in pages {
+                for (begin, end) in [(0, 0), (T0 + 10, T0 + 30)] {
+                    let got: Vec<(String, i64)> = a
+                        .search_messages(
+                            &keyword.to_uppercase(),
+                            Some("wxid_bob"),
+                            limit as i32,
+                            offset as i32,
+                            begin,
+                            end,
+                        )
+                        .unwrap()
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|r| {
+                            assert_eq!(r["_session_id"], "wxid_bob");
+                            assert!(r.get("_table").is_none());
+                            (text(r, "db_name"), int(r, "local_id"))
+                        })
+                        .collect();
+                    assert_eq!(
+                        got,
+                        expected(keyword, limit, offset, begin, end),
+                        "{keyword} limit {limit} offset {offset} from {begin} to {end}"
+                    );
+                }
+            }
+        }
+        // whole rows: the decoded text, as before
+        let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0];
+        assert!(text(first, "message_content").ends_with("Apple pie"));
+        assert_eq!(first["sender_username"], "wxid_bob");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

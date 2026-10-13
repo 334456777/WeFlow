@@ -58,6 +58,8 @@ const SCREEN_OF_IMAGES: usize = 20;
 const NOISE_MS: f64 = 20.0;
 /// The pushed message is this many seconds older than the group's latest one, so the group stays first.
 const PUSHED_AT: i64 = 1;
+/// A keyword no message holds, so a search reads every message of the conversation.
+const ABSENT: &str = "qzxwvk";
 /// How long the push engine's CPU time is measured on the real account, idle and with a listener.
 const PUSH_WINDOW: Duration = Duration::from_secs(10);
 
@@ -718,11 +720,26 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
                     "a hit of another conversation"
                 );
             }
-            let got = ids(&d);
-            ensure!(got.windows(2).all(|w| w[0] > w[1]), "hits not newest first");
-            Ok(())
+            // the newest messages with the keyword, none skipped
+            let expected: Vec<i64> = (1..=n)
+                .rev()
+                .filter(|i| i % IMAGE_EVERY != 0 && text(*i).contains(CHECKED_KEYWORD))
+                .take(20)
+                .collect();
+            page_is(d, expected)
         });
     c.check("search in the conversation", r);
+
+    let r = c
+        .both(
+            &format!(
+                "/chat/search?keyword={}&session-id={room}&limit=20",
+                encode(ABSENT)
+            ),
+            &[],
+        )
+        .and_then(|d| page_is(d, Vec::new()));
+    c.check("search for a word found nowhere", r);
 
     let r = c
         .both(
@@ -1449,6 +1466,14 @@ fn main() -> Result<()> {
         &format!(
             "/chat/search?keyword={}&session-id={big}&limit=20",
             encode(&args.keyword)
+        ),
+    )?;
+    // the worst case: every message of the conversation is read
+    bench.both(
+        "search in the conversation, a word found nowhere",
+        &format!(
+            "/chat/search?keyword={}&session-id={big}&limit=20",
+            encode(ABSENT)
         ),
     )?;
     if let Some(group) = &t.group {
