@@ -1,27 +1,29 @@
-//! Response-time benchmark of the command API (`weflow serve`).
+//! Benchmark of the command API (`weflow serve`) on two accounts, both required: a synthetic one, whose content is
+//! known, checks that the answers are right; a real one measures how fast they come.
 //!
-//! usage: serve_bench <work dir> [--weflow PATH] [--home DIR] [--runs N] [--messages N] [--sessions N]
+//! usage: serve_bench <work dir> --home <WEFLOW_HOME> [--weflow PATH] [--runs N] [--messages N] [--sessions N]
 //!                    [--contacts N] [--keyword K] [--save FILE] [--compare FILE] [--tolerance X]
 //!                    [-- <more `weflow serve` arguments>]
 //!
 //! Build both programs in the same profile, then run the example:
 //! `cargo build --release -p weflow-cli --bin weflow --example serve_bench`, then
-//! `target/release/examples/serve_bench <work dir>`. The `weflow` one folder above the example is started unless
-//! `--weflow` names another.
+//! `target/release/examples/serve_bench <work dir> --home <WEFLOW_HOME>`. The `weflow` one folder above the example
+//! is started unless `--weflow` names another.
 //!
-//! Without `--home` the account is synthetic: `<work dir>/data` (rebuilt only when a size option changes) holds one
-//! group with `--messages` messages (default 200000) over 4 message databases, every 20th an image whose `.dat`
-//! files exist for the latest 1000 messages, `--sessions` private conversations (default 500) of 30 messages each and
-//! `--contacts` contacts in all (default 3000); `<work dir>/home` is the WeFlow home pointing at it. With `--home` the
-//! given WeFlow home is used as it is: point it at a copy of a real account's configuration.
+//! The synthetic account: `<work dir>/data` (rebuilt only when a size option changes) holds one group with
+//! `--messages` messages (default 200000) over 4 message databases, every 20th an image whose `.dat` files exist for
+//! the latest 1000 messages, `--sessions` private conversations (default 500) of 30 messages each and `--contacts`
+//! contacts in all (default 3000); `<work dir>/home` is the WeFlow home pointing at it. Each read is made through both
+//! routes, the child process one (`/chat/...`) and the in-process one (`/api/chat/...`), and its answer checked: the
+//! same from both routes, and the conversations, counts, pages, search hits, group members and image bytes the
+//! account holds. Any failed check makes the run fail.
 //!
-//! The conversations are picked the same way in both cases (the one with the most messages among the 60 latest, a
-//! group, a private chat), and only aggregate numbers are printed, never a conversation id, a name or a message.
-//!
-//! Each read is timed `--runs` times (default 10) through both routes, the child process one (`/chat/...`) and the
-//! in-process one (`/api/chat/...`). The table shows the median and the 95th percentile in milliseconds as the client
-//! sees them (connection included) and the size of the answer. `--save` writes the numbers to a JSON file; `--compare`
-//! reads such a file, adds a column with the ratio to it and exits with an error when a median is more than
+//! The real account is the one of `--home`, used as it is: point it at a copy of a real account's configuration. Its
+//! conversations are picked by message count (the biggest of the 60 latest, a group, a private chat) and only
+//! aggregate numbers are printed, never a conversation id, a name or a message. Each read is timed `--runs` times
+//! (default 10) through both routes; the table shows the median and the 95th percentile in milliseconds as the client
+//! sees them (connection included) and the size of the answer. `--save` writes the numbers to a JSON file;
+//! `--compare` reads such a file, adds a column with the ratio to it and fails when a median is more than
 //! `--tolerance` times (default 2) and more than 20 ms slower.
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -54,7 +56,8 @@ const NOISE_MS: f64 = 20.0;
 struct Args {
     work: PathBuf,
     weflow: Option<PathBuf>,
-    home: Option<PathBuf>,
+    /// The WeFlow home of the real account.
+    home: PathBuf,
     runs: usize,
     messages: i64,
     sessions: usize,
@@ -68,13 +71,16 @@ struct Args {
 
 fn parse_args() -> Result<Args> {
     let mut it = std::env::args().skip(1);
-    let work = it.next().filter(|a| !a.starts_with('-')).ok_or_else(|| {
-        anyhow!("usage: serve_bench <work dir> [--weflow PATH] [--home DIR] [--runs N] [--messages N] [--sessions N] [--contacts N] [--keyword K] [--save FILE] [--compare FILE] [--tolerance X] [-- <serve arguments>]")
-    })?;
+    const USAGE: &str = "usage: serve_bench <work dir> --home <WEFLOW_HOME> [--weflow PATH] [--runs N] [--messages N] [--sessions N] [--contacts N] [--keyword K] [--save FILE] [--compare FILE] [--tolerance X] [-- <serve arguments>]";
+    let work = it
+        .next()
+        .filter(|a| !a.starts_with('-'))
+        .ok_or_else(|| anyhow!(USAGE))?;
+    let mut home = None;
     let mut args = Args {
         work: work.into(),
         weflow: None,
-        home: None,
+        home: PathBuf::new(),
         runs: 10,
         messages: 200_000,
         sessions: 500,
@@ -93,7 +99,7 @@ fn parse_args() -> Result<Args> {
         let value = it.next().ok_or_else(|| anyhow!("{flag} needs a value"))?;
         match flag.as_str() {
             "--weflow" => args.weflow = Some(value.into()),
-            "--home" => args.home = Some(value.into()),
+            "--home" => home = Some(PathBuf::from(value)),
             "--runs" => args.runs = value.parse()?,
             "--messages" => args.messages = value.parse()?,
             "--sessions" => args.sessions = value.parse()?,
@@ -105,6 +111,9 @@ fn parse_args() -> Result<Args> {
             _ => bail!("unknown option {flag}"),
         }
     }
+    args.home = home.ok_or_else(|| {
+        anyhow!("--home is required: the real account measures the speed, the synthetic one only checks the answers\n{USAGE}")
+    })?;
     ensure!(args.runs > 0, "--runs must be at least 1");
     ensure!(
         args.messages >= SHARDS * PAGE * 4,
@@ -274,7 +283,7 @@ fn weflow_command(weflow: &Path, home: &Path) -> Command {
 }
 
 /// The WeFlow home of the synthetic account, built when missing or of another size.
-fn synthetic_home(weflow: &Path, args: &Args) -> Result<(PathBuf, Value)> {
+fn synthetic_home(weflow: &Path, args: &Args) -> Result<PathBuf> {
     let data = args.work.join("data");
     let home = args.work.join("home");
     let size = json!({
@@ -313,7 +322,298 @@ fn synthetic_home(weflow: &Path, args: &Args) -> Result<(PathBuf, Value)> {
             start.elapsed().as_secs_f64()
         );
     }
-    Ok((home, json!({ "kind": "synthetic", "size": size })))
+    Ok(home)
+}
+
+// ---- the checks on the synthetic account ----
+
+/// The keyword of the checked search: a word of [`text`].
+const CHECKED_KEYWORD: &str = "好";
+
+struct Checks<'a> {
+    addr: &'a str,
+    passed: usize,
+    failed: Vec<String>,
+}
+
+impl Checks<'_> {
+    fn check(&mut self, name: &str, outcome: Result<()>) {
+        match outcome {
+            Ok(()) => self.passed += 1,
+            Err(err) => self.failed.push(format!("{name}: {err:#}")),
+        }
+    }
+
+    /// `target` through both routes: both answer 200 and the same document (but for the `volatile` fields of its
+    /// `data`); returns that `data`.
+    fn both(&self, target: &str, volatile: &[&str]) -> Result<Value> {
+        let sub = request(self.addr, "GET", target, "")?;
+        let api = request(self.addr, "GET", &format!("/api{target}"), "")?;
+        ensure!(
+            sub.status == 200 && api.status == 200,
+            "status {}, and {} through /api/",
+            sub.status,
+            api.status
+        );
+        let same = if volatile.is_empty() {
+            sub.body == api.body
+        } else {
+            let strip = |body: &[u8]| -> Result<Value> {
+                let mut doc: Value = serde_json::from_slice(body)?;
+                if let Some(data) = doc["data"].as_object_mut() {
+                    for key in volatile {
+                        data.remove(*key);
+                    }
+                }
+                Ok(doc)
+            };
+            strip(&sub.body)? == strip(&api.body)?
+        };
+        ensure!(same, "the two routes answer differently");
+        sub.data()
+    }
+}
+
+fn ids(data: &Value) -> Vec<i64> {
+    rows(data)
+        .iter()
+        .filter_map(|m| number(field(m, &["local_id", "localId"])))
+        .collect()
+}
+
+/// The ids of a page, newest first: `count` of them from `from` down, as far as 1.
+fn down(from: i64, count: i64) -> Vec<i64> {
+    (0..count).map(|k| from - k).filter(|i| *i > 0).collect()
+}
+
+fn page_is(data: Value, expected: Vec<i64>) -> Result<()> {
+    let got = ids(&data);
+    ensure!(
+        got == expected,
+        "{} messages from {:?} to {:?}, expected {} from {:?} to {:?}",
+        got.len(),
+        got.first(),
+        got.last(),
+        expected.len(),
+        expected.first(),
+        expected.last()
+    );
+    Ok(())
+}
+
+/// Reads through both routes and checks their answers against what the synthetic account holds.
+fn check_answers<'a>(addr: &'a str, args: &Args) -> Checks<'a> {
+    let n = args.messages;
+    let room = encode(ROOM);
+    let mut c = Checks {
+        addr,
+        passed: 0,
+        failed: Vec::new(),
+    };
+
+    let r = c.both("/chat/sessions", &[]).and_then(|d| {
+        let all = rows(&d);
+        ensure!(
+            all.len() == args.sessions + 1,
+            "{} conversations, expected {}",
+            all.len(),
+            args.sessions + 1
+        );
+        let first = field(&all[0], &["username"]).and_then(Value::as_str);
+        ensure!(
+            first == Some(ROOM),
+            "the group is not the latest conversation"
+        );
+        Ok(())
+    });
+    c.check("conversations, newest first", r);
+    let r = c.both("/chat/sessions?limit=50", &[]).and_then(|d| {
+        ensure!(rows(&d).len() == 50, "{} conversations", rows(&d).len());
+        Ok(())
+    });
+    c.check("conversations, limit 50", r);
+
+    let r = c
+        .both(
+            &format!("/chat/counts?sessions={room}&sessions=wxid_f0"),
+            &[],
+        )
+        .and_then(|d| {
+            ensure!(
+                number(d.get(ROOM)) == Some(n)
+                    && number(d.get("wxid_f0")) == Some(PRIVATE_MESSAGES),
+                "counts {d}"
+            );
+            Ok(())
+        });
+    c.check("message counts", r);
+
+    let page =
+        |offset: i64| format!("/chat/messages?session-id={room}&limit={PAGE}&offset={offset}");
+    let r = c
+        .both(
+            &format!("/chat/messages?session-id={room}&limit={PAGE}"),
+            &[],
+        )
+        .and_then(|d| page_is(d, down(n, PAGE)));
+    c.check("messages, first page", r);
+    let r = c
+        .both(&page(n / 2), &[])
+        .and_then(|d| page_is(d, down(n - n / 2, PAGE)));
+    c.check("messages, page in the middle", r);
+    let r = c
+        .both(&page(n - 10), &[])
+        .and_then(|d| page_is(d, down(10, PAGE)));
+    c.check("messages, last page (10 left)", r);
+    let r = c.both(&page(n), &[]).and_then(|d| page_is(d, Vec::new()));
+    c.check("messages, past the end", r);
+    let r = c
+        .both(&format!("/chat/latest?session-id={room}&limit=20"), &[])
+        .and_then(|d| page_is(d, down(n, 20)));
+    c.check("latest 20", r);
+
+    let id = n - 10;
+    let at = T0 + id * STEP;
+    let r = c
+        .both(
+            &format!("/chat/message?session-id={room}&local-id={id}&create-time={at}"),
+            &[],
+        )
+        .and_then(|d| {
+            let m = &d["message"];
+            ensure!(
+                number(m.get("localId")) == Some(id) && number(m.get("createTime")) == Some(at),
+                "got message {} at {}",
+                m["localId"],
+                m["createTime"]
+            );
+            Ok(())
+        });
+    c.check("one message", r);
+
+    let r = c.both("/chat/contact?username=wxid_f3", &[]).and_then(|d| {
+        let nick = field(&d, &["nick_name", "nickName"]).and_then(Value::as_str);
+        ensure!(nick == Some("好友3"), "nickname {nick:?}");
+        Ok(())
+    });
+    c.check("one contact", r);
+    let r = c.both("/chat/contacts", &[]).and_then(|d| {
+        // the friends and the other contacts, `wxid_me` and the group
+        let expected = args.contacts.max(args.sessions) + 2;
+        ensure!(
+            rows(&d).len() == expected,
+            "{} contacts, expected {expected}",
+            rows(&d).len()
+        );
+        Ok(())
+    });
+    c.check("contacts", r);
+
+    let r = c
+        .both(
+            &format!(
+                "/chat/search?keyword={}&session-id={room}&limit=20",
+                encode(CHECKED_KEYWORD)
+            ),
+            &[],
+        )
+        .and_then(|d| {
+            let hits = rows(&d);
+            ensure!(!hits.is_empty() && hits.len() <= 20, "{} hits", hits.len());
+            for m in &hits {
+                let content = m["message_content"].as_str().unwrap_or("");
+                ensure!(
+                    content.contains(CHECKED_KEYWORD),
+                    "a hit without the keyword"
+                );
+                ensure!(
+                    m["_session_id"].as_str() == Some(ROOM),
+                    "a hit of another conversation"
+                );
+            }
+            let got = ids(&d);
+            ensure!(got.windows(2).all(|w| w[0] > w[1]), "hits not newest first");
+            Ok(())
+        });
+    c.check("search in the conversation", r);
+
+    let r = c
+        .both(
+            &format!("/group/members?chatroom-id={room}"),
+            &["updatedAt", "fromCache"],
+        )
+        .and_then(|d| {
+            let expected = MEMBERS.min(args.sessions);
+            ensure!(
+                number(d.get("count")) == Some(expected as i64)
+                    && d["members"].as_array().map(Vec::len) == Some(expected),
+                "{} members, expected {expected}",
+                d["count"]
+            );
+            Ok(())
+        });
+    c.check("group members", r);
+
+    for prefix in ["", "/api"] {
+        let r = (|| -> Result<()> {
+            let pages: Vec<Result<Value>> = std::thread::scope(|s| {
+                let handles: Vec<_> = (0..AT_ONCE)
+                    .map(|k| {
+                        let target = format!("{prefix}{}", page(k * PAGE));
+                        s.spawn(move || request(addr, "GET", &target, "")?.data())
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|h| h.join().unwrap_or_else(|_| Err(anyhow!("thread panicked"))))
+                    .collect()
+            });
+            let mut got = Vec::new();
+            for p in pages {
+                got.extend(ids(&p?));
+            }
+            ensure!(
+                got == down(n, AT_ONCE * PAGE),
+                "the pages do not join up into the latest {} messages",
+                AT_ONCE * PAGE
+            );
+            Ok(())
+        })();
+        c.check(
+            &format!(
+                "{AT_ONCE} pages at once through {}",
+                if prefix.is_empty() {
+                    "the child process"
+                } else {
+                    "/api/"
+                }
+            ),
+            r,
+        );
+    }
+
+    let latest_image = n - n % IMAGE_EVERY;
+    let r = (|| -> Result<()> {
+        for k in 0..5 {
+            let i = latest_image - k * IMAGE_EVERY;
+            let body = json!({ "session-id": ROOM, "msg-id": i.to_string(), "create-time": T0 + i * STEP });
+            let reply = request(
+                addr,
+                "POST",
+                "/chat/image-data?return=file",
+                &body.to_string(),
+            )?;
+            ensure!(reply.status == 200, "image {i}: status {}", reply.status);
+            let plain: Vec<u8> = image_dat(81_920, i).iter().map(|b| b ^ XOR_KEY).collect();
+            ensure!(
+                reply.body.windows(plain.len()).any(|w| w == plain),
+                "image {i}: the decrypted bytes are not in the answer"
+            );
+        }
+        Ok(())
+    })();
+    c.check("images, decrypted", r);
+    c
 }
 
 // ---- the server and its requests ----
@@ -751,12 +1051,17 @@ fn main() -> Result<()> {
         "{} is missing: build it with `cargo build --release -p weflow-cli --bin weflow` or pass --weflow",
         weflow.display()
     );
-    let (home, account) = match &args.home {
-        Some(home) => (home.clone(), json!({ "kind": "real" })),
-        None => synthetic_home(&weflow, &args)?,
-    };
+    let synthetic = synthetic_home(&weflow, &args)?;
+    let (server, _) = start(&weflow, &synthetic, &args.serve)?;
+    let checks = check_answers(&server.addr, &args);
+    let (passed, failed) = (checks.passed, checks.failed);
+    drop(server);
+    eprintln!(
+        "synthetic account: {passed} of {} checks passed",
+        passed + failed.len()
+    );
 
-    let (server, start_ms) = start(&weflow, &home, &args.serve)?;
+    let (server, start_ms) = start(&weflow, &args.home, &args.serve)?;
     let addr = server.addr.clone();
     let addr = addr.as_str();
     let health: Value = serde_json::from_slice(&request(addr, "GET", "/health", "")?.body)?;
@@ -861,22 +1166,25 @@ fn main() -> Result<()> {
     };
 
     println!(
-        "weflow {} on {} {}, {} logical CPUs; {} account{}; {} runs each; milliseconds as the client sees them",
+        "weflow {} on {} {}, {} logical CPUs",
         health["version"].as_str().unwrap_or("?"),
         std::env::consts::OS,
         std::env::consts::ARCH,
         std::thread::available_parallelism().map_or(0, |n| n.get()),
-        account["kind"].as_str().unwrap_or("?"),
-        match account["kind"].as_str() {
-            Some("synthetic") => format!(
-                " ({} group messages, {} conversations, {} contacts)",
-                args.messages,
-                args.sessions + 1,
-                args.contacts
-            ),
-            _ => String::new(),
-        },
-        args.runs,
+    );
+    println!(
+        "answers on the synthetic account ({} group messages, {} conversations, {} contacts): {passed} of {} checks passed",
+        args.messages,
+        args.sessions + 1,
+        args.contacts.max(args.sessions),
+        passed + failed.len()
+    );
+    for f in &failed {
+        println!("  FAILED {f}");
+    }
+    println!(
+        "speed on the real account, {} runs each, milliseconds as the client sees them",
+        args.runs
     );
     println!(
         "biggest of the {} latest conversations: {} messages; {} image messages found for the image reads",
@@ -935,18 +1243,27 @@ fn main() -> Result<()> {
             "version": health["version"],
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
-            "account": account,
+            "account": "real",
             "runs": args.runs,
             "results": results,
         });
         std::fs::write(path, serde_json::to_vec_pretty(&doc)?)?;
     }
+    let mut problems = Vec::new();
+    if !failed.is_empty() {
+        problems.push(format!(
+            "{} checks failed on the synthetic account:\n  {}",
+            failed.len(),
+            failed.join("\n  ")
+        ));
+    }
     if !slower.is_empty() {
-        bail!(
+        problems.push(format!(
             "slower than the baseline by more than {}× and {NOISE_MS} ms:\n  {}",
             args.tolerance,
             slower.join("\n  ")
-        );
+        ));
     }
+    ensure!(problems.is_empty(), "{}", problems.join("\n"));
     Ok(())
 }
