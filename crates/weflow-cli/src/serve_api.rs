@@ -886,7 +886,8 @@ async fn route(st: &AppState, req: Request) -> Response {
     let background = prefers_async(&parts.headers);
     if in_process && (std != Std::Json || want_file || background) {
         return bad_request(
-            "/api/ answers the --json document right away: std, return=file and `Prefer: respond-async` are for              the routes without /api/",
+            "/api/ answers the --json document right away: std, return=file and `Prefer: respond-async` are for \
+             the routes without /api/",
         );
     }
 
@@ -977,11 +978,7 @@ async fn route(st: &AppState, req: Request) -> Response {
     if in_process {
         if let Some((doc, exit)) = in_process::run(&st.hub, &argv).await {
             // as the child process prints it
-            let body = format!(
-                "{}
-",
-                serde_json::to_string(&doc).unwrap()
-            );
+            let body = format!("{}\n", serde_json::to_string(&doc).unwrap());
             let mut resp = document_response(&doc, status_for(&doc, exit.into()), body);
             resp.headers_mut()
                 .insert("x-weflow-exit-code", HeaderValue::from(i32::from(exit)));
