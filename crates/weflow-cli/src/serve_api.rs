@@ -11,6 +11,7 @@ mod files;
 mod in_process;
 mod jobs;
 mod openapi;
+mod push;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -506,7 +507,9 @@ struct AppState {
     /// `/openapi.json` in English and in Chinese, built when first asked for.
     openapi: [OnceLock<String>; 2],
     /// The hub of the `/api/` routes.
-    hub: in_process::Hub,
+    hub: Arc<in_process::Hub>,
+    /// `/api/push/messages`.
+    push: push::Push,
 }
 
 impl AppState {
@@ -533,6 +536,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             reads,
             openapi: Default::default(),
             hub: Default::default(),
+            push: Default::default(),
         }))
 }
 
@@ -796,6 +800,26 @@ async fn route(st: &AppState, req: Request) -> Response {
         };
         let doc = st.openapi[zh as usize].get_or_init(|| openapi::document(zh).to_string());
         return json_body(StatusCode::OK, doc.clone());
+    }
+    if path == "/api/push/messages" {
+        if parts.method != Method::GET {
+            return method_not_allowed(&[Get]);
+        }
+        // EventSource sends the header when it reconnects; a page that opens a new one passes the query
+        let last_id = parts
+            .headers
+            .get("last-event-id")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+            .or_else(|| {
+                query
+                    .iter()
+                    .find(|(k, _)| k == "last-event-id")
+                    .map(|(_, v)| v.clone())
+            })
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(0);
+        return st.push.stream(st.hub.clone(), last_id);
     }
     let segments: Vec<String> = path
         .split('/')

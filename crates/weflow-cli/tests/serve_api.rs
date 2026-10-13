@@ -360,8 +360,14 @@ fn account_home(root: &Path) -> PathBuf {
 
 /// [`account_home`] with more done to the account first.
 fn account_home_with(root: &Path, more: impl FnOnce(&Fixture)) -> PathBuf {
-    let fixture = Fixture::standard(&root.join("data"));
+    let (home, fixture) = account(root);
     more(&fixture);
+    home
+}
+
+/// [`account_home`] and the account, to change it later.
+fn account(root: &Path) -> (PathBuf, Fixture) {
+    let fixture = Fixture::standard(&root.join("data"));
     let home = root.join("home");
     for (key, value) in [
         ("db_path", fixture.account_dir.to_string_lossy().to_string()),
@@ -371,7 +377,7 @@ fn account_home_with(root: &Path, more: impl FnOnce(&Fixture)) -> PathBuf {
         let (exit, _, stderr) = run_cli(&home, &["config", "set", key, &value]);
         assert_eq!(exit, 0, "{stderr}");
     }
-    home
+    (home, fixture)
 }
 
 #[test]
@@ -630,6 +636,135 @@ fn media_come_back_as_files_from_the_process() {
         "",
     );
     assert_eq!(r.status, 400, "{}", r.body);
+}
+
+/// An open `GET /api/push/messages` and what it sent so far.
+struct EventStream {
+    stream: TcpStream,
+    text: String,
+}
+
+impl EventStream {
+    fn open(server: &Server, headers: &[(&str, &str)]) -> Self {
+        let mut stream = TcpStream::connect(&server.addr).unwrap();
+        let mut req = format!(
+            "GET /api/push/messages HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {TOKEN}\r\n",
+            server.addr
+        );
+        for (k, v) in headers {
+            req.push_str(&format!("{k}: {v}\r\n"));
+        }
+        req.push_str("\r\n");
+        stream.write_all(req.as_bytes()).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_millis(200)))
+            .unwrap();
+        Self {
+            stream,
+            text: String::new(),
+        }
+    }
+
+    /// Reads until `needle` arrives (true) or `secs` pass (false).
+    fn wait_for(&mut self, needle: &str, secs: u64) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+        let mut buf = [0u8; 4096];
+        while !self.text.contains(needle) && std::time::Instant::now() < deadline {
+            match self.stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => self.text.push_str(&String::from_utf8_lossy(&buf[..n])),
+                Err(_) => {}
+            }
+        }
+        self.text.contains(needle)
+    }
+}
+
+#[test]
+fn new_messages_are_pushed_as_events() {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, DAY, T0};
+    let root = temp_root("push");
+    let (home, fixture) = account(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+
+    let mut first = EventStream::open(&server, &[]);
+    assert!(first.wait_for("event: ready", 10), "{}", first.text);
+    assert!(first.text.starts_with("HTTP/1.1 200"), "{}", first.text);
+    assert!(first.text.contains("text/event-stream"), "{}", first.text);
+    // the engine takes its baseline within a second of the first listener
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // Bob writes again: a newer conversation time and a new message in the second message database
+    fixture.message_shard(
+        1,
+        &[(
+            "wxid_bob",
+            vec![
+                MsgSpec::text(4, "wxid_me", T0 + 3 * DAY, "later, compressed").compressed(),
+                MsgSpec::text(5, "wxid_bob", T0 + 4 * DAY, "see you"),
+                MsgSpec::text(6, "wxid_bob", T0 + 5 * DAY, "brand new"),
+            ],
+        )],
+    );
+    fixture.session_db(&[
+        SessionSpec {
+            username: "wxid_bob",
+            summary: "brand new",
+            last_timestamp: T0 + 5 * DAY,
+            unread: 3,
+            last_msg_type: 1,
+        },
+        SessionSpec {
+            username: "room1@chatroom",
+            summary: "ok",
+            last_timestamp: T0 + 2 * DAY,
+            unread: 0,
+            last_msg_type: 1,
+        },
+        SessionSpec {
+            username: "gh_news",
+            summary: "daily",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 49,
+        },
+    ]);
+    assert!(first.wait_for("brand new", 10), "{}", first.text);
+    assert!(first.text.contains("event: message.new"), "{}", first.text);
+    assert!(
+        first.text.contains(r#""sessionId":"wxid_bob""#),
+        "{}",
+        first.text
+    );
+    let id: u64 = first
+        .text
+        .lines()
+        .find_map(|l| l.strip_prefix("id: "))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+
+    // a page that comes later gets the kept events; one that reconnects after them does not get them again
+    let mut later = EventStream::open(&server, &[]);
+    assert!(later.wait_for("brand new", 5), "{}", later.text);
+    let last = id.to_string();
+    let mut again = EventStream::open(&server, &[("Last-Event-ID", &last)]);
+    assert!(again.wait_for("event: ready", 5), "{}", again.text);
+    assert!(!again.wait_for("brand new", 2), "{}", again.text);
+    // nothing new: each message is pushed once
+    assert!(
+        !first.wait_for(&format!("id: {}", id + 1), 2),
+        "{}",
+        first.text
+    );
+
+    let r = server.call("POST", "/api/push/messages", "");
+    assert_eq!(r.status, 405);
+    assert_eq!(
+        server.request("GET", "/api/push/messages", &[], "").status,
+        401
+    );
 }
 
 #[test]

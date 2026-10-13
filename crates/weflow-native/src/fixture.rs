@@ -244,6 +244,15 @@ impl Fixture {
         }
     }
 
+    /// The account [`new`](Self::new) built under `root` earlier, to change some of its databases.
+    pub fn open(root: &Path, account: &str) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            account_dir: root.join(account),
+            cipher: PageCipher::derive(&KEY, &SALT),
+        }
+    }
+
     pub fn key_hex(&self) -> String {
         hex(&KEY)
     }

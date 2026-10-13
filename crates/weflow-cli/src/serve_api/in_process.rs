@@ -38,6 +38,8 @@ struct Open {
     hub: ServiceHub,
     config: PathBuf,
     stamp: Stamp,
+    /// Counts the hubs built, so a user of [`Hub::get_counted`] tells a new hub from the one it had.
+    generation: u64,
 }
 
 /// The hub of the in-process routes, built again when the config file changes (`PUT /config/set`, another
@@ -49,12 +51,17 @@ pub(super) struct Hub {
 
 impl Hub {
     fn get(&self) -> AppResult<ServiceHub> {
+        self.get_counted().map(|(hub, _)| hub)
+    }
+
+    /// The hub, and which one it is: the number changes when the hub is built again.
+    pub(super) fn get_counted(&self) -> AppResult<(ServiceHub, u64)> {
         let mut open = self.open.lock().unwrap();
         let before = match open.as_ref() {
             Some(o) => {
                 let now = stamp(&o.config);
                 if now == o.stamp {
-                    return Ok(o.hub.clone());
+                    return Ok((o.hub.clone(), o.generation));
                 }
                 now
             }
@@ -67,12 +74,14 @@ impl Hub {
         } else {
             stamp(&config)
         };
+        let generation = open.as_ref().map_or(0, |o| o.generation + 1);
         *open = Some(Open {
             hub: hub.clone(),
             config,
             stamp,
+            generation,
         });
-        Ok(hub)
+        Ok((hub, generation))
     }
 }
 
@@ -227,6 +236,15 @@ mod tests {
                 "{name} does not run in process"
             );
         }
+    }
+
+    #[test]
+    fn the_push_route_is_not_a_command() {
+        // `/api/push/messages` is the event stream
+        assert!(COMMANDS
+            .iter()
+            .chain(MEDIA)
+            .all(|c| !c.starts_with("push ")));
     }
 
     #[test]

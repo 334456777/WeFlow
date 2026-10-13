@@ -961,6 +961,11 @@ impl ServiceHub {
         Ok(wcdb)
     }
 
+    /// The configured account's folder (the one holding `db_storage`).
+    pub fn account_dir(&self) -> AppResult<PathBuf> {
+        self.connection_inputs().map(|(dir, _, _)| dir)
+    }
+
     fn connection_inputs(&self) -> AppResult<(PathBuf, String, Option<String>)> {
         let profile = self.profile()?;
         let db_path = self
