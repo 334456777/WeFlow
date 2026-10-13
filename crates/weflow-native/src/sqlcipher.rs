@@ -11,6 +11,7 @@
 //! The key from `key db` is the raw 32 bytes fed to PBKDF2 as the password, *not* its hex text.
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use aes::Aes256;
 use anyhow::{anyhow, bail, Result};
@@ -122,6 +123,41 @@ pub fn verify_key(db: &[u8], raw_key: &[u8; 32]) -> Result<PageCipher> {
     let cipher = PageCipher::derive(raw_key, &db[..SALT_LEN]);
     let mut scratch = vec![0u8; PAGE_SIZE];
     cipher.decrypt_page(1, &db[..PAGE_SIZE], &mut scratch)?;
+    Ok(cipher)
+}
+
+/// Keys being derived or derived, per raw key and salt.
+type Derived = HashMap<([u8; 32], [u8; SALT_LEN]), Arc<Mutex<Option<Arc<PageCipher>>>>>;
+
+/// Keys kept by [`shared_cipher`]; past this many, they are all dropped (an account has a few dozen databases).
+const MAX_DERIVED: usize = 1024;
+
+/// [`verify_key`], derived once per process for each raw key and salt: the 256,000 rounds take about 0.1 s, and
+/// the same file is opened again after its snapshot was dropped, or by two threads at once. A thread asking for keys
+/// another one is deriving waits for them instead of deriving them too.
+pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
+    static DERIVED: OnceLock<Mutex<Derived>> = OnceLock::new();
+    if db.len() < PAGE_SIZE || &db[..SQLITE_MAGIC.len()] == SQLITE_MAGIC {
+        return verify_key(db, raw_key).map(Arc::new); // which says what is wrong
+    }
+    let mut salt = [0u8; SALT_LEN];
+    salt.copy_from_slice(&db[..SALT_LEN]);
+    let slot = {
+        let mut all = DERIVED
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if all.len() >= MAX_DERIVED && !all.contains_key(&(*raw_key, salt)) {
+            all.clear();
+        }
+        all.entry((*raw_key, salt)).or_default().clone()
+    };
+    let mut slot = slot.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cipher) = slot.as_ref() {
+        return Ok(cipher.clone());
+    }
+    let cipher = Arc::new(verify_key(db, raw_key)?);
+    *slot = Some(cipher.clone());
     Ok(cipher)
 }
 
@@ -430,6 +466,27 @@ mod tests {
         }
         assert!(parse_key(&"g".repeat(64)).is_err());
         assert_eq!(parse_key(&"0A".repeat(32)).unwrap(), [0x0a; 32]);
+    }
+
+    #[test]
+    fn keys_are_derived_once_per_key_and_salt() {
+        let enc = encrypt_db(&plain_db(&["x"]), &PageCipher::derive(&[3u8; 32], &SALT));
+        let first = std::thread::scope(|s| {
+            let all: Vec<_> = (0..4)
+                .map(|_| s.spawn(|| shared_cipher(&enc, &[3u8; 32]).unwrap()))
+                .collect();
+            let all: Vec<_> = all.into_iter().map(|h| h.join().unwrap()).collect();
+            assert!(all.iter().all(|c| Arc::ptr_eq(c, &all[0])));
+            all[0].clone()
+        });
+        assert!(Arc::ptr_eq(
+            &first,
+            &shared_cipher(&enc, &[3u8; 32]).unwrap()
+        ));
+        // a wrong key is checked, and not kept
+        assert!(shared_cipher(&enc, &[4u8; 32]).is_err());
+        assert!(shared_cipher(&enc, &[4u8; 32]).is_err());
+        assert!(shared_cipher(&plain_db(&["x"]), &[3u8; 32]).is_err());
     }
 
     #[test]

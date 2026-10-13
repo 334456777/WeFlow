@@ -570,6 +570,8 @@ pub fn router(cfg: ApiConfig) -> Router {
     let tasks = Arc::new(Semaphore::new(cfg.max_tasks.max(1)));
     let reads = Arc::new(Semaphore::new(cfg.max_reads.max(1)));
     let media = MediaLimit::new(cfg.max_media);
+    let hub = Arc::new(in_process::Hub::default());
+    hub.warm();
     Router::new()
         .fallback(dispatch)
         .with_state(Arc::new(AppState {
@@ -580,7 +582,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             reads,
             media,
             openapi: Default::default(),
-            hub: Default::default(),
+            hub,
             push: Default::default(),
         }))
 }

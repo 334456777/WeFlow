@@ -199,6 +199,7 @@ The price is paid on every request: starting the process and reading the configu
 - `?std`, `?return=file` and `Prefer: respond-async` are not available (`400`); other commands answer `404`.
 - The answer is in the server's language: `Accept-Language` does not apply, as the language is set once per process.
 - A changed config file (`PUT /config/set`, another profile) is read again on the next request.
+- Right after the start, and again after the config changed, the server opens the databases of a chat page in the background, all at once: conversations, contacts, avatars, image links, messages and voices. Opening a database first derives its key (about 0.1 s), so the first reads would otherwise wait for every database they touch. On a large account the warm-up is over within half a second; the conversation list then first takes about 12 ms instead of about 440 ms, and about 240 ms when asked for right at the start.
 - `group members` keeps a member panel for a while, as the desktop app does: within that time it answers `"fromCache": true`; pass `refresh=true` to build it again.
 - These reads count towards the `--max-reads` limit.
 
