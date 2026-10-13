@@ -9,14 +9,16 @@
 
 mod files;
 mod jobs;
+mod openapi;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
+use axum::http::uri::Authority;
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::Response;
 use axum::Router;
 use clap::{ArgAction, Command, CommandFactory};
@@ -24,6 +26,10 @@ use serde_json::{json, Value};
 use tokio::sync::Semaphore;
 
 pub const DEFAULT_PORT: u16 = 57108;
+
+/// The version of the API's rules (routes, methods, parameters, answers, jobs), for clients such as the WebUI to
+/// check. Raised only by changes that break existing clients; new commands and options do not raise it.
+pub const API_VERSION: &str = "1";
 
 const MAX_BODY: usize = 1 << 20;
 
@@ -288,39 +294,42 @@ fn collect(cmd: &Command, path: &mut Vec<String>, out: &mut BTreeMap<String, End
 }
 
 fn params_of(cmd: &Command) -> Vec<Param> {
-    cmd.get_arguments()
-        .filter(|a| {
-            let id = a.get_id().as_str();
-            !a.is_global_set() && !a.is_hide_set() && id != "help" && id != "version"
-        })
-        .map(|a| {
-            let name = a
-                .get_long()
-                .map(str::to_string)
-                .unwrap_or_else(|| a.get_id().as_str().replace('_', "-"));
-            let kind = match a.get_action() {
-                ArgAction::SetTrue | ArgAction::SetFalse | ArgAction::Count => Kind::Flag,
-                _ => {
-                    let range = a
-                        .get_num_args()
-                        .unwrap_or(clap::builder::ValueRange::SINGLE);
-                    if range.min_values() == 0 && range.takes_values() {
-                        Kind::MultiOrBare
-                    } else if range.max_values() > 1 || matches!(a.get_action(), ArgAction::Append)
-                    {
-                        Kind::Multi
-                    } else {
-                        Kind::Single
-                    }
-                }
-            };
-            Param {
-                name,
-                kind,
-                index: a.get_index(),
+    api_args(cmd).map(param_of).collect()
+}
+
+/// The arguments of a command that a request may set.
+fn api_args(cmd: &Command) -> impl Iterator<Item = &clap::Arg> {
+    cmd.get_arguments().filter(|a| {
+        let id = a.get_id().as_str();
+        !a.is_global_set() && !a.is_hide_set() && id != "help" && id != "version"
+    })
+}
+
+fn param_of(a: &clap::Arg) -> Param {
+    let name = a
+        .get_long()
+        .map(str::to_string)
+        .unwrap_or_else(|| a.get_id().as_str().replace('_', "-"));
+    let kind = match a.get_action() {
+        ArgAction::SetTrue | ArgAction::SetFalse | ArgAction::Count => Kind::Flag,
+        _ => {
+            let range = a
+                .get_num_args()
+                .unwrap_or(clap::builder::ValueRange::SINGLE);
+            if range.min_values() == 0 && range.takes_values() {
+                Kind::MultiOrBare
+            } else if range.max_values() > 1 || matches!(a.get_action(), ArgAction::Append) {
+                Kind::Multi
+            } else {
+                Kind::Single
             }
-        })
-        .collect()
+        }
+    };
+    Param {
+        name,
+        kind,
+        index: a.get_index(),
+    }
 }
 
 /// Request parameters by name: query strings, overridden by the keys of a JSON body.
@@ -482,6 +491,9 @@ pub struct ApiConfig {
     pub max_tasks: usize,
     /// Other commands that may run at once.
     pub max_reads: usize,
+    /// Answer only requests whose `Host` names this machine (see [`local_host`]); set when listening on a
+    /// loopback address.
+    pub check_host: bool,
 }
 
 struct AppState {
@@ -490,6 +502,8 @@ struct AppState {
     jobs: Arc<jobs::Jobs>,
     tasks: Arc<Semaphore>,
     reads: Arc<Semaphore>,
+    /// `/openapi.json` in English and in Chinese, built when first asked for.
+    openapi: [OnceLock<String>; 2],
 }
 
 impl AppState {
@@ -514,6 +528,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             jobs: Arc::new(jobs::Jobs::new()),
             tasks,
             reads,
+            openapi: Default::default(),
         }))
 }
 
@@ -646,9 +661,39 @@ fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
     resp
 }
 
+/// Whether the request names this machine: `localhost` or a loopback address, with any port. A page of another
+/// site whose name it made resolve to 127.0.0.1 (DNS rebinding) sends that name and is refused.
+fn local_host(uri: &Uri, headers: &HeaderMap) -> bool {
+    let authority = uri.authority().cloned().or_else(|| {
+        headers
+            .get(header::HOST)?
+            .to_str()
+            .ok()?
+            .parse::<Authority>()
+            .ok()
+    });
+    let Some(authority) = authority else {
+        return false;
+    };
+    let host = authority.host().trim_end_matches('.');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
 async fn dispatch(State(st): State<Arc<AppState>>, req: Request) -> Response {
     let headers = req.headers().clone();
-    let resp = if req.method() == Method::OPTIONS {
+    let resp = if st.cfg.check_host && !local_host(req.uri(), &headers) {
+        error_response(
+            StatusCode::FORBIDDEN,
+            "invalid_host",
+            "this server only answers requests to localhost, 127.0.0.1 or [::1]; to reach it by another name, \
+             start it with --host",
+        )
+    } else if req.method() == Method::OPTIONS {
         Response::builder()
             .status(StatusCode::NO_CONTENT)
             .body(Body::empty())
@@ -722,7 +767,12 @@ async fn route(st: &AppState, req: Request) -> Response {
     let (parts, body) = req.into_parts();
     let path = parts.uri.path();
     if path == "/health" {
-        return json_body(StatusCode::OK, json!({ "status": "ok" }).to_string());
+        let body = json!({
+            "status": "ok",
+            "apiVersion": API_VERSION,
+            "version": env!("WEFLOW_VERSION"),
+        });
+        return json_body(StatusCode::OK, body.to_string());
     }
     let query = query_pairs(parts.uri.query());
     if !authorized(&st.cfg.token, &parts.headers, &query) {
@@ -731,6 +781,17 @@ async fn route(st: &AppState, req: Request) -> Response {
             "unauthorized",
             "invalid or missing access token",
         );
+    }
+    if path == "/openapi.json" {
+        if parts.method != Method::GET {
+            return method_not_allowed(&[Get]);
+        }
+        let zh = match request_lang(&parts.headers) {
+            Some(lang) => lang == "zh",
+            None => weflow_core::locale::current() == weflow_core::locale::Lang::Zh,
+        };
+        let doc = st.openapi[zh as usize].get_or_init(|| openapi::document(zh).to_string());
+        return json_body(StatusCode::OK, doc.clone());
     }
     let segments: Vec<String> = path
         .split('/')
@@ -1340,6 +1401,48 @@ mod tests {
         assert!(!authorized("t0k", &headers, &[]));
         assert_eq!(generate_token().len(), 32);
         assert_ne!(generate_token(), generate_token());
+    }
+
+    #[test]
+    fn only_this_machine_is_answered_by_name() {
+        let host = |v: &'static str| {
+            let mut h = HeaderMap::new();
+            h.insert(header::HOST, HeaderValue::from_static(v));
+            local_host(&Uri::from_static("/chat/sessions"), &h)
+        };
+        for ok in [
+            "localhost",
+            "LOCALHOST:57108",
+            "localhost.:57108",
+            "127.0.0.1",
+            "127.0.0.1:57108",
+            "127.1.2.3:80",
+            "[::1]",
+            "[::1]:57108",
+        ] {
+            assert!(host(ok), "{ok}");
+        }
+        for bad in [
+            "evil.example",
+            "evil.example:57108",
+            "localhost.evil.example",
+            "127.0.0.1.nip.io",
+            "192.168.1.2:57108",
+            "[::2]:57108",
+            "",
+        ] {
+            assert!(!host(bad), "{bad}");
+        }
+        assert!(!local_host(&Uri::from_static("/"), &HeaderMap::new()));
+        // HTTP/2 and absolute-form requests carry the name in the URI
+        assert!(local_host(
+            &Uri::from_static("http://localhost:57108/health"),
+            &HeaderMap::new()
+        ));
+        assert!(!local_host(
+            &Uri::from_static("http://evil.example/health"),
+            &HeaderMap::new()
+        ));
     }
 
     #[test]

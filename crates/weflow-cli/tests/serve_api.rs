@@ -120,10 +120,12 @@ impl Server {
     fn request(&self, method: &str, target: &str, headers: &[(&str, &str)], body: &str) -> Reply {
         let mut stream = TcpStream::connect(&self.addr).unwrap();
         let mut req = format!(
-            "{method} {target} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Length: {}\r\n",
-            self.addr,
+            "{method} {target} HTTP/1.1\r\nConnection: close\r\nContent-Length: {}\r\n",
             body.len()
         );
+        if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("host")) {
+            req.push_str(&format!("Host: {}\r\n", self.addr));
+        }
         for (k, v) in headers {
             req.push_str(&format!("{k}: {v}\r\n"));
         }
@@ -173,7 +175,9 @@ fn health_needs_no_token_and_everything_else_does() {
     let root = temp_root("auth");
     let server = start(&root, &["--api-token", TOKEN]);
     let r = server.request("GET", "/health", &[], "");
-    assert_eq!((r.status, r.json()), (200, json!({ "status": "ok" })));
+    assert_eq!(r.status, 200);
+    assert_eq!(r.json()["status"], "ok");
+    assert_eq!(r.json()["apiVersion"], "1");
 
     let r = server.request("GET", "/config/path", &[], "");
     assert_eq!(r.status, 401);
@@ -192,6 +196,67 @@ fn health_needs_no_token_and_everything_else_does() {
         "",
     );
     assert_eq!(r.status, 200);
+}
+
+#[test]
+fn the_api_describes_itself() {
+    let root = temp_root("openapi");
+    let server = start(&root, &["--api-token", TOKEN]);
+    assert_eq!(server.request("GET", "/openapi.json", &[], "").status, 401);
+    let auth = format!("Bearer {TOKEN}");
+    let get = |lang: &str| {
+        let r = server.request(
+            "GET",
+            "/openapi.json",
+            &[("Authorization", &auth), ("Accept-Language", lang)],
+            "",
+        );
+        assert_eq!(r.status, 200);
+        r.json()
+    };
+    let en = get("en");
+    assert_eq!(en["openapi"], "3.1.0");
+    let health = server.request("GET", "/health", &[], "").json();
+    assert_eq!(en["info"]["x-weflow-api-version"], health["apiVersion"]);
+    assert_eq!(en["info"]["version"], health["version"]);
+    for path in ["/chat/sessions", "/backup/create", "/jobs/{id}/events"] {
+        assert!(en["paths"][path].is_object(), "{path} is missing");
+    }
+    assert!(en["paths"]["/serve"].is_null());
+    let zh = get("zh-CN");
+    let summary = |d: &Value| d["paths"]["/chat/sessions"]["get"]["summary"].clone();
+    assert_ne!(summary(&en), summary(&zh));
+    assert_eq!(server.call("POST", "/openapi.json", "").status, 405);
+}
+
+#[test]
+fn only_requests_to_this_machine_are_answered() {
+    let root = temp_root("host");
+    let server = start(&root, &["--api-token", TOKEN]);
+    let port = server.addr.rsplit_once(':').unwrap().1.to_string();
+    let auth = format!("Bearer {TOKEN}");
+    for host in ["evil.example", "evil.example:80", "localhost.evil.example"] {
+        let host = host.replace(":80", &format!(":{port}"));
+        for target in ["/health", "/config/path"] {
+            let r = server.request(
+                "GET",
+                target,
+                &[("Host", &host), ("Authorization", &auth)],
+                "",
+            );
+            assert_eq!(r.status, 403, "{host} {target}");
+            assert_eq!(r.json()["error"]["code"], "invalid_host");
+        }
+    }
+    for host in [format!("localhost:{port}"), format!("127.0.0.1:{port}")] {
+        let r = server.request(
+            "GET",
+            "/config/path",
+            &[("Host", &host), ("Authorization", &auth)],
+            "",
+        );
+        assert_eq!(r.status, 200, "{host}");
+    }
 }
 
 #[test]

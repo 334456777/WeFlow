@@ -1288,7 +1288,7 @@ struct ServeCommand {
     /// Run the image auto-download hook (Windows only)
     #[arg(long)]
     image_auto_download: bool,
-    /// Listen address (default: 127.0.0.1; with --desktop: `http_api_host` from the config, else 127.0.0.1).
+    /// Listen address (default: 127.0.0.1; with --desktop: `http_api_host` from the config, else 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
     #[arg(long)]
     host: Option<String>,
     /// Listen port (default: 57108; with --desktop: `http_api_port` from the config, else 5031).
@@ -2982,6 +2982,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             weflow_core::http_server::serve(hub.clone(), cfg, broker, listener).await
         } else {
             let cfg = serve_api::ApiConfig {
+                check_host: bound.ip().is_loopback(),
                 exe,
                 token: token.or(generated_token).unwrap_or_default(),
                 files_dir,
