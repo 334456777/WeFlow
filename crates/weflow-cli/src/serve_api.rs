@@ -815,7 +815,8 @@ async fn route(st: &AppState, req: Request) -> Response {
     let Some(endpoint) = st.endpoints.get(&segments[in_process as usize..]) else {
         return error_response(StatusCode::NOT_FOUND, "not_found", "no such command");
     };
-    if in_process && !in_process::COMMANDS.contains(&endpoint.command_name().as_str()) {
+    let media = in_process && in_process::MEDIA.contains(&endpoint.command_name().as_str());
+    if in_process && !media && !in_process::COMMANDS.contains(&endpoint.command_name().as_str()) {
         return error_response(
             StatusCode::NOT_FOUND,
             "not_found",
@@ -891,7 +892,12 @@ async fn route(st: &AppState, req: Request) -> Response {
         );
     }
 
-    let verb = endpoint.verb(&params);
+    // a media route reads, whatever the command does without /api/
+    let verb = if media {
+        Some(Get)
+    } else {
+        endpoint.verb(&params)
+    };
     match verb {
         Some(verb) if verb.method() != parts.method => return method_not_allowed(&[verb]),
         None if !endpoint.verbs().iter().any(|v| v.method() == parts.method) => {
@@ -945,6 +951,18 @@ async fn route(st: &AppState, req: Request) -> Response {
         });
     }
 
+    if media {
+        if params
+            .keys()
+            .any(|k| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
+        {
+            return bad_request(
+                "an /api/ media route answers with the file itself: leave out `out`",
+            );
+        }
+        // satisfies the command line; nothing is written there
+        params.insert("out".into(), vec![Value::String("-".into())]);
+    }
     let argv = match endpoint.argv(&params) {
         Ok(a) => a,
         Err(message) => return bad_request(&message),
@@ -975,14 +993,17 @@ async fn route(st: &AppState, req: Request) -> Response {
     let Ok(_permit) = limit.clone().try_acquire_owned() else {
         return busy(verb == Some(Post));
     };
-    if in_process {
+    if media {
+        match in_process::media(&st.hub, &argv).await {
+            Some(Ok(file)) => return media_response(&parts.headers, file),
+            Some(Err((doc, exit))) => return in_process_document(&doc, exit),
+            // the child process reports the command line error; with `out` set to `-` and the command line
+            // refused, it writes nothing
+            None => {}
+        }
+    } else if in_process {
         if let Some((doc, exit)) = in_process::run(&st.hub, &argv).await {
-            // as the child process prints it
-            let body = format!("{}\n", serde_json::to_string(&doc).unwrap());
-            let mut resp = document_response(&doc, status_for(&doc, exit.into()), body);
-            resp.headers_mut()
-                .insert("x-weflow-exit-code", HeaderValue::from(i32::from(exit)));
-            return resp;
+            return in_process_document(&doc, exit);
         }
     }
     if let Some(dir) = file_out.as_ref().and_then(|f| f.dir.as_ref()) {
@@ -1060,6 +1081,47 @@ async fn route(st: &AppState, req: Request) -> Response {
         HeaderValue::from_str(&exit.to_string()).unwrap(),
     );
     resp
+}
+
+/// The `--json` document of a command run in this process, answered as the child process prints it.
+fn in_process_document(doc: &Value, exit: u8) -> Response {
+    let body = format!("{}\n", serde_json::to_string(doc).unwrap());
+    let mut resp = document_response(doc, status_for(doc, exit.into()), body);
+    resp.headers_mut()
+        .insert("x-weflow-exit-code", HeaderValue::from(i32::from(exit)));
+    resp
+}
+
+/// The file of an `/api/` media route. Its `ETag` lets a page ask again with `If-None-Match` and get `304`; the
+/// file of a message rarely changes (a thumbnail replaced by the full image), so it may be kept for an hour.
+fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    file.bytes.hash(&mut hasher);
+    let etag = format!("\"{:016x}\"", hasher.finish());
+    let unchanged = headers
+        .get_all(header::IF_NONE_MATCH)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .any(|tag| {
+            let tag = tag.trim();
+            tag == "*" || tag.trim_start_matches("W/") == etag
+        });
+    let builder = Response::builder()
+        .header(header::ETAG, &etag)
+        .header(header::CACHE_CONTROL, "private, max-age=3600");
+    if unchanged {
+        return builder
+            .status(StatusCode::NOT_MODIFIED)
+            .body(Body::empty())
+            .unwrap();
+    }
+    builder
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, file.mime)
+        .body(Body::from(file.bytes))
+        .unwrap()
 }
 
 /// A command's `--json` document, with its error code in a header.

@@ -82,18 +82,21 @@ fn command_tree() -> Command {
         .clone()
 }
 
-/// The `--json` document and exit code of `weflow --json <argv>`, run in this process; `None` when the command
-/// line does not parse, so the request goes to a child process, which reports that as the terminal does.
-pub(super) async fn run(hub: &Hub, argv: &[String]) -> Option<(Value, u8)> {
+fn parse(argv: &[String]) -> Option<crate::Cli> {
     let line = ["weflow", "--json"]
         .into_iter()
         .map(String::from)
         .chain(argv.iter().cloned());
-    let cli = command_tree()
+    command_tree()
         .try_get_matches_from(line)
         .ok()
         .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
-        .filter(|cli| crate::runs_in_process(&cli.command))?;
+}
+
+/// The `--json` document and exit code of `weflow --json <argv>`, run in this process; `None` when the command
+/// line does not parse, so the request goes to a child process, which reports that as the terminal does.
+pub(super) async fn run(hub: &Hub, argv: &[String]) -> Option<(Value, u8)> {
+    let cli = parse(argv).filter(|cli| crate::runs_in_process(&cli.command))?;
     let hub = match hub.get() {
         Ok(hub) => hub,
         Err(err) => return Some(crate::json_document(Err(err))),
@@ -106,6 +109,71 @@ pub(super) async fn run(hub: &Hub, argv: &[String]) -> Option<(Value, u8)> {
     Some(done.unwrap_or_else(|err| {
         crate::json_document(Err(AppError::runtime(format!("the command failed: {err}"))))
     }))
+}
+
+/// Commands whose `/api/` route is a `GET` that answers the file itself, for a page to show: the image or the voice
+/// of a message. The parameters are those of the command, but for `out`.
+pub(super) const MEDIA: &[&str] = &["chat image-data", "chat voice-data"];
+
+/// A media file and its content type.
+pub(super) struct MediaFile {
+    pub bytes: Vec<u8>,
+    pub mime: &'static str,
+}
+
+/// The file a [`MEDIA`] command would write, read in this process: the decrypted image or the decoded WAV, or the
+/// `--json` failure document and exit code. `None` when the command line does not parse.
+pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile, (Value, u8)>> {
+    use crate::{ChatSubcommand, Commands};
+    let cli = parse(argv)?;
+    let Commands::Chat(chat) = cli.command else {
+        return None;
+    };
+    let hub = match hub.get() {
+        Ok(hub) => hub,
+        Err(err) => return Some(Err(crate::json_document(Err(err)))),
+    };
+    let done = tokio::task::spawn_blocking(move || match &chat.command {
+        ChatSubcommand::ImageData {
+            session_id,
+            msg_id,
+            create_time,
+            ..
+        } => hub
+            .image_data_for_message(session_id, msg_id, *create_time)
+            .map(|bytes| {
+                let ext = weflow_core::decrypt::detect_image_extension(&bytes);
+                let mime = mime_guess::from_ext(ext.trim_start_matches('.'))
+                    .first_raw()
+                    .filter(|m| m.starts_with("image/"))
+                    .unwrap_or("application/octet-stream");
+                MediaFile { bytes, mime }
+            }),
+        ChatSubcommand::VoiceData {
+            session_id,
+            msg_id,
+            create_time,
+            server_id,
+            sender,
+            ..
+        } => hub
+            .voice_data(
+                session_id,
+                msg_id,
+                *create_time,
+                server_id.as_deref(),
+                sender.as_deref(),
+            )
+            .map(|bytes| MediaFile {
+                bytes,
+                mime: "audio/wav",
+            }),
+        _ => Err(AppError::runtime("this command has no media route")),
+    })
+    .await;
+    let outcome =
+        done.unwrap_or_else(|err| Err(AppError::runtime(format!("the command failed: {err}"))));
+    Some(outcome.map_err(|err| crate::json_document(Err(err))))
 }
 
 #[cfg(test)]
@@ -157,6 +225,35 @@ mod tests {
             assert!(
                 crate::runs_in_process(&cli.command),
                 "{name} does not run in process"
+            );
+        }
+    }
+
+    #[test]
+    fn media_commands_parse_with_the_placeholder_out() {
+        use crate::{ChatSubcommand, Commands};
+        let endpoints = super::super::Endpoints::new();
+        for name in MEDIA {
+            let ep = endpoints
+                .0
+                .get(*name)
+                .unwrap_or_else(|| panic!("{name} is not a command"));
+            assert!(
+                ep.params.iter().any(|p| p.name == "out"),
+                "{name} has no `out`"
+            );
+            let mut argv = ep.path.clone();
+            argv.extend(["--out=-", "--", "wxid_bob", "3"].map(String::from));
+            let cli = parse(&argv).unwrap_or_else(|| panic!("{name} does not parse"));
+            let Commands::Chat(chat) = cli.command else {
+                panic!("{name} is not a chat command")
+            };
+            assert!(
+                matches!(
+                    chat.command,
+                    ChatSubcommand::ImageData { .. } | ChatSubcommand::VoiceData { .. }
+                ),
+                "{name} has no media route in `media`"
             );
         }
     }

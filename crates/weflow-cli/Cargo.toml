@@ -29,6 +29,7 @@ weflow-assets = { path = "../weflow-assets" }
 
 [dev-dependencies]
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
+weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
 
 # turns on ANSI colours in the Windows console (`cache list` prints its header in green)
 [target."cfg(windows)".dependencies]

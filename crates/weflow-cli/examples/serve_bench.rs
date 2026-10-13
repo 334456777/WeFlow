@@ -596,24 +596,55 @@ fn check_answers<'a>(addr: &'a str, args: &Args) -> Checks<'a> {
     let r = (|| -> Result<()> {
         for k in 0..5 {
             let i = latest_image - k * IMAGE_EVERY;
-            let body = json!({ "session-id": ROOM, "msg-id": i.to_string(), "create-time": T0 + i * STEP });
-            let reply = request(
-                addr,
-                "POST",
-                "/chat/image-data?return=file",
-                &body.to_string(),
-            )?;
-            ensure!(reply.status == 200, "image {i}: status {}", reply.status);
+            let img = json!({ "session-id": ROOM, "msg-id": i.to_string(), "create-time": T0 + i * STEP });
             let plain: Vec<u8> = image_dat(81_920, i).iter().map(|b| b ^ XOR_KEY).collect();
+            let child = image_request(addr, "sub", &img)?;
+            ensure!(child.status == 200, "image {i}: status {}", child.status);
             ensure!(
-                reply.body.windows(plain.len()).any(|w| w == plain),
+                child.body.windows(plain.len()).any(|w| w == plain),
                 "image {i}: the decrypted bytes are not in the answer"
+            );
+            // the /api/ route answers the file itself
+            let own = image_request(addr, "api", &img)?;
+            ensure!(
+                own.status == 200 && own.body == plain,
+                "image {i}: /api/ answers {} with {} bytes",
+                own.status,
+                own.body.len()
             );
         }
         Ok(())
     })();
-    c.check("images, decrypted", r);
+    c.check("images, decrypted, through both routes", r);
     c
+}
+
+/// The image of a message (`{"session-id", "msg-id", "create-time"}`) through one route: `POST` with the file in
+/// the answer for the child process, `GET` answering the file itself for `/api/`.
+fn image_request(addr: &str, route: &str, img: &Value) -> Result<Reply> {
+    if route == "api" {
+        let mut query = Vec::new();
+        for key in ["session-id", "msg-id", "create-time"] {
+            match &img[key] {
+                Value::String(s) => query.push(format!("{key}={}", encode(s))),
+                Value::Number(n) => query.push(format!("{key}={n}")),
+                _ => {}
+            }
+        }
+        request(
+            addr,
+            "GET",
+            &format!("/api/chat/image-data?{}", query.join("&")),
+            "",
+        )
+    } else {
+        request(
+            addr,
+            "POST",
+            "/chat/image-data?return=file",
+            &img.to_string(),
+        )
+    }
 }
 
 // ---- the server and its requests ----
@@ -969,15 +1000,15 @@ impl Bench<'_> {
         Ok(())
     }
 
-    /// The images of one screen: each alone (first time and again), then all of them at the same time.
-    fn images(&mut self, images: &[Value]) -> Result<()> {
-        let path = "/chat/image-data?return=file";
+    /// The images of one screen through one route: each alone (first time and again), then all of them at the same
+    /// time.
+    fn images(&mut self, route: &'static str, images: &[Value]) -> Result<()> {
         let each = |op: &str, this: &mut Self| -> Result<()> {
             let mut ms = Vec::new();
             let mut ok = 0;
             let mut bytes = 0;
             for img in images {
-                let r = request(this.addr, "POST", path, &img.to_string())?;
+                let r = image_request(this.addr, route, img)?;
                 ms.push(r.ms);
                 if r.status == 200 {
                     ok += 1;
@@ -987,7 +1018,7 @@ impl Bench<'_> {
             let (median, p95) = median_p95(ms);
             this.push(Row {
                 op: op.into(),
-                route: "sub",
+                route,
                 median,
                 p95,
                 bytes: Some(bytes),
@@ -1006,8 +1037,7 @@ impl Bench<'_> {
                 let handles: Vec<_> = images
                     .iter()
                     .map(|img| {
-                        let body = img.to_string();
-                        s.spawn(move || request(addr, "POST", path, &body).map_or(0, |r| r.status))
+                        s.spawn(move || image_request(addr, route, img).map_or(0, |r| r.status))
                     })
                     .collect();
                 handles.into_iter().map(|h| h.join().unwrap_or(0)).collect()
@@ -1018,7 +1048,7 @@ impl Bench<'_> {
         let (median, p95) = median_p95(walls);
         self.push(Row {
             op: format!("{} images at once (all of them)", images.len()),
-            route: "sub",
+            route,
             median,
             p95,
             bytes: None,
@@ -1151,7 +1181,8 @@ fn main() -> Result<()> {
     bench.pages_at_once("sub", &t.big)?;
     bench.pages_at_once("api", &t.big)?;
     if !t.images.is_empty() {
-        bench.images(&t.images)?;
+        bench.images("sub", &t.images)?;
+        bench.images("api", &t.images)?;
     }
     drop(server);
 
