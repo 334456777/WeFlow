@@ -236,12 +236,15 @@ Use a stable local database copy and separate configuration/cache folders when c
 logs private: they contain conversation identifiers, dates, messages or local paths. Only the probe's aggregate stdout is suitable for a
 local summary; publishing account-derived statistics requires the account owner's authorization.
 
-To measure the command API ([serve-api.md](serve-api.md)), build `cargo build --release -p weflow-cli --bin weflow --example serve_bench`
-and run `target/release/examples/serve_bench <work-dir> --save base.json`. It starts `weflow serve` on a synthetic encrypted account
-(`<work-dir>/data`, rebuilt only when `--messages`, `--sessions` or `--contacts` change: by default one group of 200,000 messages with
-images, 500 private conversations and 3,000 contacts) and times the reads a chat window makes (conversation list, first and middle page of
-messages, polling, contacts, counts, search, group members, 16 pages at once, a screen of images) through both the child-process routes
-and `/api/`, printing the median and 95th percentile of `--runs` requests (default 10). `--compare base.json` adds the ratio to an earlier
-run and fails when a median is more than `--tolerance` times (default 2) and more than 20 ms slower. `--home <WEFLOW_HOME>` runs the same
-reads on the account of that WeFlow home instead (use a copy of the configuration); the conversations are picked by message count and
-only aggregate numbers are printed.
+To benchmark the command API ([serve-api.md](serve-api.md)), build `cargo build --release -p weflow-cli --bin weflow --example serve_bench`
+and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --save base.json`. It always uses two accounts:
+
+- A synthetic encrypted account checks the answers. It lives in `<work-dir>/data`, rebuilt only when `--messages`, `--sessions` or
+  `--contacts` change; by default it has one group of 200,000 messages with images, 500 private conversations and 3,000 contacts. The
+  reads a chat window makes (conversation list, first, middle and last page of messages, polling, one message, contacts, counts, search,
+  group members, 16 pages at once, images) go through both the child-process routes and `/api/`. Both must give the same answer, and that
+  answer must match what the account holds. Any failed check fails the run.
+- The real account of `--home` measures the speed (use a copy of the configuration). The same reads go through both routes, `--runs`
+  times each (default 10), and the median and 95th percentile are printed. The conversations are picked by message count, and only
+  aggregate numbers are printed. `--compare base.json` adds the ratio to an earlier run and fails when a median is more than `--tolerance`
+  times (default 2) and more than 20 ms slower.
