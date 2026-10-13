@@ -199,6 +199,7 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 - 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
 - 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。
 - 配置文件变化后（`PUT /config/set`、切换配置档案），下一个请求会重新读取。
+- 服务刚启动时，以及配置变化之后，会在后台同时打开聊天页面要用的数据库：会话、联系人、头像、图片链接、消息和语音。每个数据库第一次打开都要先派生密钥（约 0.1 秒），否则最初的几次读取要等它们用到的每个库。在大账号上，预热半秒内完成；之后第一次读取会话列表约 12 ms，原来约 440 ms；如果启动后立即请求，约 240 ms。
 - `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。
 - 这些读取计入 `--max-reads` 的上限。
 

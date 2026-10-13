@@ -1347,6 +1347,22 @@ fn main() -> Result<()> {
         "the first read failed with status {}: is the account configured?",
         first.status
     );
+    // then the page opens the conversation on top: its first page, before anything else read its databases
+    let top = rows(&first.data()?)
+        .first()
+        .and_then(|s| field(s, &["username", "userName"])?.as_str().map(encode))
+        .ok_or_else(|| anyhow!("the account has no conversations"))?;
+    let opened = request(
+        addr,
+        "GET",
+        &format!("/api/chat/messages?session-id={top}&limit={PAGE}"),
+        "",
+    )?;
+    ensure!(
+        opened.status == 200,
+        "the first conversation failed with status {}",
+        opened.status
+    );
     let t = targets(addr)?;
 
     let mut bench = Bench {
@@ -1367,6 +1383,14 @@ fn main() -> Result<()> {
                 median: first.ms,
                 p95: first.ms,
                 bytes: Some(first.body.len()),
+                note: "once".into(),
+            },
+            Row {
+                op: "first conversation opened after start (first page)".into(),
+                route: "api",
+                median: opened.ms,
+                p95: opened.ms,
+                bytes: Some(opened.body.len()),
                 note: "once".into(),
             },
         ],

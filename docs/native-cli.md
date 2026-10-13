@@ -245,7 +245,8 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
   group members, 16 pages at once, images) go through both the child-process routes and `/api/`. Both must give the same answer, and that
   answer must match what the account holds. Last, a message is added while `/api/push/messages` is listened to; it must arrive exactly once.
   Any failed check fails the run.
-- The real account of `--home` measures the speed (use a copy of the configuration). The same reads go through both routes, `--runs`
+- The real account of `--home` measures the speed (use a copy of the configuration). First, once each: the server's start, the first
+  read of the conversation list, and the first page of the conversation on top, as a page asks for them right after the start. Then the same reads go through both routes, `--runs`
   times each (default 10), and the median and 95th percentile are printed, followed by the server's CPU time per second while the push is
   listened to. The conversations are picked by message count, and only
   aggregate numbers are printed. `--compare base.json` adds the ratio to an earlier run and fails when a median is more than `--tolerance`

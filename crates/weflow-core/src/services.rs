@@ -1004,6 +1004,14 @@ impl ServiceHub {
         self.connection_inputs().map(|(dir, _, _)| dir)
     }
 
+    /// Opens the databases a chat page reads, so the first reads do not wait for their keys to be derived; returns
+    /// how many opened. The databases stay open for the whole process.
+    pub fn warm_chat_databases(&self) -> AppResult<usize> {
+        self.open_wcdb()?
+            .warm_chat_databases()
+            .map_err(|e| AppError::native(e.to_string()))
+    }
+
     fn connection_inputs(&self) -> AppResult<(PathBuf, String, Option<String>)> {
         let profile = self.profile()?;
         let db_path = self

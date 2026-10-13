@@ -221,13 +221,12 @@ impl CipherFile {
             let c = match &cipher {
                 Some(c) => c.clone(),
                 None => {
-                    let c =
-                        Arc::new(sqlcipher::verify_key(&first, raw_key).with_context(|| {
-                            format!(
-                                "cannot decrypt {} with the configured database key",
-                                path.display()
-                            )
-                        })?);
+                    let c = sqlcipher::shared_cipher(&first, raw_key).with_context(|| {
+                        format!(
+                            "cannot decrypt {} with the configured database key",
+                            path.display()
+                        )
+                    })?;
                     cipher = Some(c.clone());
                     c
                 }

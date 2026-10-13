@@ -538,6 +538,52 @@ impl NativeAccount {
         })
     }
 
+    /// The databases a chat page reads: conversations, contacts, avatars, image links, messages and voices.
+    pub fn chat_databases(&self) -> Vec<PathBuf> {
+        let mut all: Vec<PathBuf> = [
+            "session/session.db",
+            "contact/contact.db",
+            "head_image/head_image.db",
+            "hardlink/hardlink.db",
+        ]
+        .iter()
+        .map(|rel| self.db_path(rel))
+        .collect();
+        all.extend(self.message_dbs());
+        all.extend(self.media_dbs());
+        all.retain(|p| p.is_file());
+        all
+    }
+
+    /// Opens these databases at the same time, so their keys are derived before a read needs them (see
+    /// [`sqlcipher::shared_cipher`]); returns how many opened.
+    pub fn warm(&self, paths: &[PathBuf]) -> usize {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let (next, opened) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let workers = std::thread::available_parallelism()
+            .map_or(4, |n| n.get())
+            .min(paths.len());
+        std::thread::scope(|s| {
+            for _ in 0..workers {
+                s.spawn(|| {
+                    while let Some(path) = paths.get(next.fetch_add(1, Ordering::Relaxed)) {
+                        let schema = self.with_db(path, |conn| {
+                            Ok(
+                                conn.query_row("select count(*) from sqlite_master", [], |r| {
+                                    r.get::<_, i64>(0)
+                                })?,
+                            )
+                        });
+                        if schema.is_ok() {
+                            opened.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                });
+            }
+        });
+        opened.into_inner()
+    }
+
     /// Rows of `SessionTable`, newest first — the same columns WeChat stores.
     pub fn sessions(&self) -> Result<Value> {
         let rows = self.query(
@@ -558,5 +604,37 @@ mod tests {
         let all: Vec<u8> = (0..=255).collect();
         let expected: String = all.iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(super::hex(&all), expected);
+    }
+
+    #[test]
+    fn the_databases_of_a_chat_page_open_at_once() {
+        use crate::fixture::{Fixture, SessionSpec, T0};
+        let root = std::env::temp_dir().join(format!("weflow-warm-{}", std::process::id()));
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        f.session_db(&[SessionSpec {
+            username: "wxid_bob",
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }]);
+        for shard in 0..2 {
+            f.message_shard(shard, &[]);
+        }
+        let acct = super::NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let all = acct.chat_databases();
+        for rel in [
+            "session/session.db",
+            "message/message_0.db",
+            "message/message_1.db",
+        ] {
+            assert!(all.contains(&acct.db_path(rel)), "{rel} in {all:?}");
+        }
+        assert!(all.iter().all(|p| p.is_file()));
+        assert_eq!(acct.warm(&all), all.len());
+        // a database that cannot be opened is skipped
+        let missing = acct.db_path("message/message_9.db");
+        assert_eq!(acct.warm(&[missing]), 0);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

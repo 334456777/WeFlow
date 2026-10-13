@@ -50,6 +50,15 @@ pub(super) struct Hub {
 }
 
 impl Hub {
+    /// Builds the hub in the background, which opens the databases of a chat page (see [`get_counted`]), so the
+    /// first request finds them ready.
+    ///
+    /// [`get_counted`]: Self::get_counted
+    pub(super) fn warm(self: &std::sync::Arc<Self>) {
+        let hub = self.clone();
+        std::thread::spawn(move || hub.get());
+    }
+
     fn get(&self) -> AppResult<ServiceHub> {
         self.get_counted().map(|(hub, _)| hub)
     }
@@ -75,6 +84,9 @@ impl Hub {
             stamp(&config)
         };
         let generation = open.as_ref().map_or(0, |o| o.generation + 1);
+        // the databases of a chat page, opened in the background: the first reads would wait for their keys
+        let warm = hub.clone();
+        std::thread::spawn(move || warm.warm_chat_databases());
         *open = Some(Open {
             hub: hub.clone(),
             config,

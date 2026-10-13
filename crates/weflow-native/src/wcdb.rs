@@ -157,6 +157,13 @@ impl Wcdb {
         self.account()?.messages_from(session_id, limit, from)
     }
 
+    /// Opens the databases a chat page reads, at the same time (see
+    /// [`NativeAccount::warm`](crate::native_db::NativeAccount::warm)); returns how many opened.
+    pub fn warm_chat_databases(&self) -> Result<usize> {
+        let account = self.account()?;
+        Ok(account.warm(&account.chat_databases()))
+    }
+
     pub fn message_count(&self, session_id: &str) -> Result<i32> {
         self.account()?.message_count(session_id)
     }
