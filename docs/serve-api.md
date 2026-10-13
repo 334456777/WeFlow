@@ -201,4 +201,16 @@ The price is paid on every request: starting the process and reading the configu
 - `group members` keeps a member panel for a while, as the desktop app does: within that time it answers `"fromCache": true`; pass `refresh=true` to build it again.
 - These reads count towards the `--max-reads` limit.
 
-Not here yet (issue #140): media for viewing (images, voices) and a message push for the WebUI (issue #130).
+### Media
+
+`GET /api/chat/image-data` and `GET /api/chat/voice-data` answer the file itself, for a page to show in `<img>` or `<audio>`: the decrypted image (`Content-Type` from its bytes, such as `image/jpeg`) or the voice decoded to `audio/wav`. They take the parameters of the commands (`session-id`, `msg-id`, `create-time`; for voices also `server-id`, `sender`) as a query, but not `out`, which answers `400`. Only `GET` is allowed (`405` otherwise); the routes without `/api/` are unchanged (`POST`, a task, writing a file).
+
+```html
+<img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
+```
+
+- The answer has an `ETag` and `Cache-Control: private, max-age=3600`. Asking again with `If-None-Match` answers `304` without the file when it has not changed.
+- A failure is the command's `--json` document with its status code, as for the other in-process reads.
+- They count towards `--max-reads`, not `--max-tasks`. On a large account an image takes about 4 ms instead of about 190 ms through `POST /chat/image-data`, and 20 images asked for at once all answer within 8 ms. Requests beyond the limit (one per CPU by default) still answer `429`: issue #154 gives media a limit of their own.
+
+Not here yet (issue #140): a message push for the WebUI (issue #130).

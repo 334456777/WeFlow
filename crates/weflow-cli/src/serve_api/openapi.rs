@@ -90,6 +90,12 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
                     in_process_item(&item, zh),
                 );
             }
+            if in_process::MEDIA.contains(&name.as_str()) {
+                paths.insert(
+                    format!("/api/{}", path.join("/")),
+                    media_item(cmd, path, zh),
+                );
+            }
             paths.insert(format!("/{}", path.join("/")), item);
         }
         return;
@@ -125,6 +131,45 @@ fn in_process_item(item: &Value, zh: bool) -> Value {
         }
     }
     item
+}
+
+/// The `/api/` route of a media command: a `GET` with the command's parameters but `out`, answering the file.
+fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
+    let mut op = operation(cmd, path, Verb::Get, &Variant::All, false, None, zh);
+    op["operationId"] = format!("api_{}", op["operationId"].as_str().unwrap()).into();
+    if let Some(params) = op["parameters"].as_array_mut() {
+        params.retain(|p| p.get("$ref").is_none() && p["name"] != "out");
+    }
+    op["description"] = pick(
+        zh,
+        "Runs in the server's process and answers the file itself, for a page to show; counted with the reads \
+         (`--max-reads`). The answer has an `ETag` and may be kept for an hour; ask again with `If-None-Match` to \
+         get `304` when it has not changed. Errors are the command's `--json` document, in the server's language.",
+        "在服务进程内执行，直接返回文件本身，供网页显示；计入读取的并发上限（`--max-reads`）。回复带 `ETag`，\
+         可以缓存一小时；带 `If-None-Match` 再次请求时，内容没变就返回 `304`。出错时返回命令的 `--json` 文档，语言为服务端的语言。",
+    )
+    .into();
+    let (mime, what) = if path.last().is_some_and(|p| p == "voice-data") {
+        ("audio/wav", pick(zh, "The voice as WAV", "WAV 格式的语音"))
+    } else {
+        ("image/*", pick(zh, "The decrypted image", "解密后的图片"))
+    };
+    op["responses"] = json!({
+        "200": {
+            "description": what,
+            "headers": {
+                "ETag": { "schema": { "type": "string" } },
+                "Cache-Control": { "schema": { "type": "string" } },
+            },
+            "content": { mime: {} },
+        },
+        "304": { "description": pick(zh, "Unchanged since the `ETag` sent in `If-None-Match`", "自 `If-None-Match` 中的 `ETag` 以来没有变化") },
+        "4XX": { "$ref": "#/components/responses/Error" },
+        "5XX": { "$ref": "#/components/responses/Error" },
+    });
+    let mut item = Map::new();
+    item.insert("get".into(), op);
+    Value::Object(item)
 }
 
 /// What one operation of a command whose method depends on an argument covers.
@@ -785,6 +830,40 @@ mod tests {
             assert!(own["responses"]["202"].is_null());
         }
         assert!(doc["paths"]["/api/export/sessions"].is_null());
+    }
+
+    #[test]
+    fn media_routes_answer_files() {
+        let doc = document(false);
+        for (name, mime) in [
+            ("chat/image-data", "image/*"),
+            ("chat/voice-data", "audio/wav"),
+        ] {
+            let item = &doc["paths"][format!("/api/{name}")];
+            assert_eq!(item.as_object().unwrap().len(), 1, "{name}: only GET");
+            let op = &item["get"];
+            assert!(
+                op["responses"]["200"]["content"][mime].is_object(),
+                "{name}"
+            );
+            assert!(op["responses"]["304"].is_object(), "{name}");
+            let params: Vec<&str> = op["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| p["name"].as_str().unwrap())
+                .collect();
+            assert!(
+                params.contains(&"session-id") && params.contains(&"msg-id"),
+                "{name}: {params:?}"
+            );
+            assert!(!params.contains(&"out"), "{name}");
+            // the route without /api/ is unchanged
+            assert!(
+                doc["paths"][format!("/{name}")]["post"].is_object(),
+                "{name}"
+            );
+        }
     }
 
     #[test]

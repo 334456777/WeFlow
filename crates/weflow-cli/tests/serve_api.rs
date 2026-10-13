@@ -355,7 +355,13 @@ fn commands_answer_like_the_terminal() {
 
 /// A WeFlow home under `root` set up for a synthetic account.
 fn account_home(root: &Path) -> PathBuf {
+    account_home_with(root, |_| {})
+}
+
+/// [`account_home`] with more done to the account first.
+fn account_home_with(root: &Path, more: impl FnOnce(&Fixture)) -> PathBuf {
     let fixture = Fixture::standard(&root.join("data"));
+    more(&fixture);
     let home = root.join("home");
     for (key, value) in [
         ("db_path", fixture.account_dir.to_string_lossy().to_string()),
@@ -476,6 +482,154 @@ fn reads_run_in_process_with_the_same_answers() {
         "",
     );
     assert_eq!(r.status, 400);
+}
+
+#[test]
+fn media_come_back_as_files_from_the_process() {
+    use weflow_native::fixture::{VoiceSpec, DAY, T0};
+    let root = temp_root("media");
+    let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    jpeg.extend((0..3000u32).map(|i| (i as u8).wrapping_mul(7) | 1));
+    let voice_at = T0 + 500;
+    let home = account_home_with(&root, |f| {
+        // the image of `wxid_bob`'s message 3 (an old-style .dat: the whole file XOR-ed) and a real SILK voice
+        let img = f
+            .account_dir
+            .join("msg/attach")
+            .join(weflow_core::image::session_dir_for_storage(
+                "wxid_bob",
+                |s| s.to_string(),
+            ))
+            .join(weflow_core::image::year_month_from_create_time(Some(
+                T0 + DAY,
+            )))
+            .join("Img");
+        std::fs::create_dir_all(&img).unwrap();
+        std::fs::write(
+            img.join("aabbccddeeff00112233445566778899.dat"),
+            jpeg.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
+        )
+        .unwrap();
+        f.media_db(
+            0,
+            &[VoiceSpec {
+                chat: "wxid_bob",
+                create_time: voice_at,
+                local_id: 6,
+                svr_id: 9_000_000_000_001,
+                data: weflow_silk::testenc::encode_tone(24000),
+                index: "0",
+            }],
+        );
+    });
+    let (exit, _, stderr) = run_cli(&home, &["config", "set", "image_xor_key", "90"]);
+    assert_eq!(exit, 0, "{stderr}");
+    let server = start(&home, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+
+    // the image: its bytes, the same as the child process writes, with an ETag that answers 304
+    let query = format!("session-id=wxid_bob&msg-id=3&create-time={}", T0 + DAY);
+    let r = server.call("GET", &format!("/api/chat/image-data?{query}"), "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(r.headers["content-type"], "image/jpeg");
+    assert_eq!(r.bytes, jpeg);
+    assert!(r.headers["cache-control"].contains("max-age"));
+    let etag = r.headers["etag"].clone();
+    let child = server.call(
+        "POST",
+        "/chat/image-data?return=file",
+        &format!(
+            r#"{{"session-id": "wxid_bob", "msg-id": "3", "create-time": {}}}"#,
+            T0 + DAY
+        ),
+    );
+    assert_eq!(child.status, 200, "{}", child.body);
+    assert_eq!(form_parts(&child)[1].1, jpeg);
+    let again = server.request(
+        "GET",
+        &format!("/api/chat/image-data?{query}"),
+        &[("Authorization", &auth), ("If-None-Match", &etag)],
+        "",
+    );
+    assert_eq!(again.status, 304);
+    assert!(again.bytes.is_empty());
+    assert_eq!(again.headers["etag"], etag);
+    let other = server.request(
+        "GET",
+        &format!("/api/chat/image-data?{query}"),
+        &[("Authorization", &auth), ("If-None-Match", "\"0\"")],
+        "",
+    );
+    assert_eq!(other.status, 200);
+
+    // the voice, decoded to WAV: the same as the child process prints in base64
+    let query = format!(
+        "session-id=wxid_bob&msg-id=6&create-time={voice_at}&server-id=9000000000001&sender=wxid_bob"
+    );
+    let r = server.call("GET", &format!("/api/chat/voice-data?{query}"), "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(r.headers["content-type"], "audio/wav");
+    assert_eq!(&r.bytes[..4], b"RIFF");
+    let child = server.call(
+        "POST",
+        "/chat/voice-data",
+        &format!(
+            r#"{{"session-id": "wxid_bob", "msg-id": "6", "create-time": {voice_at}, "server-id": "9000000000001", "sender": "wxid_bob"}}"#
+        ),
+    );
+    assert_eq!(child.status, 200, "{}", child.body);
+    let printed = child.json()["data"]
+        .as_object()
+        .unwrap()
+        .values()
+        .find_map(|v| v.as_str().filter(|s| s.len() > 100).map(String::from))
+        .expect("the WAV in base64");
+    use base64::Engine;
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(printed)
+            .unwrap(),
+        r.bytes
+    );
+
+    // failures are the command's --json document, as from the child process
+    let failed = |api: &str, child_body: &str| {
+        let own = server.call("GET", api, "");
+        let child = server.call("POST", &api["/api".len()..], child_body);
+        assert_ne!(own.status, 200, "{api}");
+        assert_eq!(
+            (own.status, own.json()["error"]["code"].clone()),
+            (child.status, child.json()["error"]["code"].clone()),
+            "{api}: {} / {}",
+            own.body,
+            child.body
+        );
+    };
+    // a text message has no image
+    failed(
+        "/api/chat/image-data?session-id=wxid_bob&msg-id=1",
+        r#"{"session-id": "wxid_bob", "msg-id": "1", "out": "unused.jpg"}"#,
+    );
+    failed(
+        "/api/chat/voice-data?session-id=wxid_bob&msg-id=99",
+        r#"{"session-id": "wxid_bob", "msg-id": "99"}"#,
+    );
+    // a command line that does not parse is reported by the child process, which writes nothing
+    let r = server.call("GET", "/api/chat/image-data?session-id=wxid_bob", "");
+    assert_eq!(r.status, 400, "{}", r.body);
+    assert_eq!(r.json()["error"]["code"], "invalid_arguments");
+    assert!(!Path::new("-").exists());
+
+    // only GET, and the file is the answer
+    let r = server.call("POST", &format!("/api/chat/image-data?{query}"), "");
+    assert_eq!(r.status, 405);
+    assert_eq!(r.headers["allow"], "GET");
+    let r = server.call(
+        "GET",
+        "/api/chat/image-data?session-id=wxid_bob&msg-id=3&out=x.jpg",
+        "",
+    );
+    assert_eq!(r.status, 400, "{}", r.body);
 }
 
 #[test]

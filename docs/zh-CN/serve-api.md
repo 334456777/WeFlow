@@ -201,4 +201,16 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 - `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。
 - 这些读取计入 `--max-reads` 的上限。
 
-尚未实现（见 issue #140）：查看用的媒体（图片、语音）以及给 WebUI（issue #130）用的消息推送。
+### 媒体
+
+`GET /api/chat/image-data` 和 `GET /api/chat/voice-data` 直接返回文件本身，方便网页用 `<img>`、`<audio>` 显示：解密后的图片（`Content-Type` 按内容判断，如 `image/jpeg`），或解码为 `audio/wav` 的语音。参数与命令相同，放在查询字符串里：`session-id`、`msg-id`、`create-time`，语音另有 `server-id`、`sender`。不接受 `out`，给了返回 `400`。只允许 `GET`，其他方法返回 `405`。不带 `/api/` 的路由不变：仍是 `POST`，属于任务，写出文件。
+
+```html
+<img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
+```
+
+- 回复带 `ETag` 和 `Cache-Control: private, max-age=3600`。带 `If-None-Match` 再次请求时，如果内容没变，返回 `304`，不带文件。
+- 出错时返回命令的 `--json` 文档和对应的状态码，与其他进程内读取一样。
+- 计入 `--max-reads`，不计入 `--max-tasks`。在大账号上，一张图片约 4 ms；走 `POST /chat/image-data` 约 190 ms。同时请求 20 张时，8 ms 内都有回复。超出上限（默认每个 CPU 一个）的请求仍返回 `429`，issue #154 会给媒体单独设上限。
+
+尚未实现（见 issue #140）：给 WebUI（issue #130）用的消息推送。
