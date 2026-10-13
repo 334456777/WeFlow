@@ -566,6 +566,57 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
             },
         }}),
     );
+    paths.insert(
+        "/api/push/messages".into(),
+        json!({ "get": {
+            "operationId": "api_push_messages",
+            "tags": ["server"],
+            "summary": pick(
+                zh,
+                "New and recalled messages as server-sent events",
+                "以服务器发送事件（SSE）推送新消息和撤回",
+            ),
+            "description": pick(
+                zh,
+                "First a `ready` event, then the kept events (up to 10 minutes or 1000 of them) after `Last-Event-ID`, \
+                 then each new one as `message.new` or `message.revoke`, with the fields of the desktop app's push. \
+                 The server looks for new messages once a second while someone listens. The stream is not counted \
+                 with the reads.",
+                "先发送 `ready` 事件，再补发 `Last-Event-ID` 之后保留的事件（最多 10 分钟或 1000 条），之后每条新事件为 \
+                 `message.new` 或 `message.revoke`，字段与桌面端的推送相同。有人订阅时，服务器每秒检查一次新消息。\
+                 这个连接不计入读取的并发上限。",
+            ),
+            "parameters": [
+                {
+                    "name": "Last-Event-ID",
+                    "in": "header",
+                    "schema": { "type": "integer" },
+                    "description": pick(zh, "Resume after this event", "从这个事件之后继续"),
+                },
+                {
+                    "name": "last-event-id",
+                    "in": "query",
+                    "schema": { "type": "integer" },
+                    "description": pick(
+                        zh,
+                        "The same, for a page that opens a new stream",
+                        "作用相同，供网页新开连接时使用",
+                    ),
+                },
+            ],
+            "responses": {
+                "200": {
+                    "description": pick(
+                        zh,
+                        "Events named `ready`, `message.new` and `message.revoke`",
+                        "事件名为 `ready`、`message.new` 和 `message.revoke`",
+                    ),
+                    "content": { "text/event-stream": { "schema": { "type": "string" } } },
+                },
+                "4XX": error,
+            },
+        }}),
+    );
 }
 
 fn components(zh: bool) -> Value {

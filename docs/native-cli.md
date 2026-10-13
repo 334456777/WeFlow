@@ -243,8 +243,10 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
   `--contacts` change; by default it has one group of 200,000 messages with images, 500 private conversations and 3,000 contacts. The
   reads a chat window makes (conversation list, first, middle and last page of messages, polling, one message, contacts, counts, search,
   group members, 16 pages at once, images) go through both the child-process routes and `/api/`. Both must give the same answer, and that
-  answer must match what the account holds. Any failed check fails the run.
+  answer must match what the account holds. Last, a message is added while `/api/push/messages` is listened to; it must arrive exactly once.
+  Any failed check fails the run.
 - The real account of `--home` measures the speed (use a copy of the configuration). The same reads go through both routes, `--runs`
-  times each (default 10), and the median and 95th percentile are printed. The conversations are picked by message count, and only
+  times each (default 10), and the median and 95th percentile are printed, followed by the server's CPU time per second while the push is
+  listened to. The conversations are picked by message count, and only
   aggregate numbers are printed. `--compare base.json` adds the ratio to an earlier run and fails when a median is more than `--tolerance`
   times (default 2) and more than 20 ms slower.

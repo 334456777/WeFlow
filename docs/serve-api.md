@@ -162,7 +162,7 @@ Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, b
 - Each command is one operation per method, with `x-weflow-command` naming the command. `operationId` is the command path with `_` (`chat_sessions`); a command whose method follows an argument has one operation per method (`analytics_excluded_get`, `analytics_excluded_put`).
 - `GET` and `DELETE` list the parameters as query parameters, the other methods as a JSON body; both ways work for every method (see [Parameters](#parameters)). Types come from the CLI: numbers, switches, lists and choices.
 - The answers are described by their envelope (`{"success", "data"}` or `{"success", "error"}`), jobs, and `?return=file`; the shape of each command's `data` is not.
-- `/health`, `/openapi.json` and `/jobs` are described under the tag `server`; the [in-process reads](#in-process-reads) have their own operations, `api_chat_sessions` and so on.
+- `/health`, `/openapi.json`, `/jobs` and `/api/push/messages` are described under the tag `server`; the [in-process reads](#in-process-reads) have their own operations, `api_chat_sessions` and so on.
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:57108/openapi.json
@@ -213,4 +213,16 @@ The price is paid on every request: starting the process and reading the configu
 - A failure is the command's `--json` document with its status code, as for the other in-process reads.
 - They count towards `--max-reads`, not `--max-tasks`. On a large account an image takes about 4 ms instead of about 190 ms through `POST /chat/image-data`, and 20 images asked for at once all answer within 8 ms. Requests beyond the limit (one per CPU by default) still answer `429`: issue #154 gives media a limit of their own.
 
-Not here yet (issue #140): a message push for the WebUI (issue #130).
+### Message push
+
+`GET /api/push/messages` sends new and recalled messages as server-sent events, so a page need not poll `chat latest`:
+
+```js
+const events = new EventSource("http://127.0.0.1:57108/api/push/messages?access_token=TOKEN");
+events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
+```
+
+- First comes a `ready` event, then each new message as `message.new` and each recall as `message.revoke`, with the fields of the desktop app's push ([HTTP-API.md](HTTP-API.md#2-active-push)): `sessionId`, `sessionType`, `rawid`, `sourceName`, `groupName`, `content`, `timestamp`, … Every event has an `id`; a comment line every 25 seconds keeps a quiet stream open.
+- The server keeps the events of the last 10 minutes (at most 1000). A client that reconnects with `Last-Event-ID` (EventSource does it by itself), or opens a new stream with `?last-event-id=`, gets the ones after that id; without either it gets all kept events.
+- Only while someone listens, the server checks once a second whether the account's session and message databases changed, and then looks for new messages on the hub of the in-process reads (at least every 30 seconds anyway). A new message reaches the page within a second or two; listening costs the server about 5 ms of CPU a second on a large account. The first listener starts from what the account holds at that moment, and so does a listener after the config changed (another account).
+- Only `GET`; the stream is not counted towards `--max-reads`. It is not the desktop app's `--message-push`, which belongs to `--desktop`.

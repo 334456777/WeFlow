@@ -162,7 +162,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 - 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
 - `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
 - 响应只描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`；不描述每条命令 `data` 的结构。
-- `/health`、`/openapi.json` 和 `/jobs` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
+- `/health`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:57108/openapi.json
@@ -213,4 +213,16 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 - 出错时返回命令的 `--json` 文档和对应的状态码，与其他进程内读取一样。
 - 计入 `--max-reads`，不计入 `--max-tasks`。在大账号上，一张图片约 4 ms；走 `POST /chat/image-data` 约 190 ms。同时请求 20 张时，8 ms 内都有回复。超出上限（默认每个 CPU 一个）的请求仍返回 `429`，issue #154 会给媒体单独设上限。
 
-尚未实现（见 issue #140）：给 WebUI（issue #130）用的消息推送。
+### 消息推送
+
+`GET /api/push/messages` 以服务器发送事件（SSE）推送新消息和撤回，网页不必轮询 `chat latest`：
+
+```js
+const events = new EventSource("http://127.0.0.1:57108/api/push/messages?access_token=TOKEN");
+events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
+```
+
+- 先发送 `ready` 事件，之后每条新消息是一个 `message.new` 事件，每次撤回是一个 `message.revoke` 事件。字段与桌面端的推送相同（见 [HTTP-API.md](HTTP-API.md#2-主动推送)），包括 `sessionId`、`sessionType`、`rawid`、`sourceName`、`groupName`、`content`、`timestamp` 等。每个事件都有 `id`。连接空闲时每 25 秒发送一行注释，防止连接被关闭。
+- 服务器保留最近 10 分钟的事件，最多 1000 条。客户端可以带 `Last-Event-ID` 重连（EventSource 会自动这样做），也可以新开连接时带上 `?last-event-id=`，这两种情况都会收到该 id 之后的事件。两者都不带时，会收到所有保留的事件。
+- 只有在有人订阅时，服务器才会每秒检查一次账号的会话库和消息库是否有变化，有变化时才用进程内读取的 hub 查找新消息；即使没有变化，至少每 30 秒也会查找一次。新消息一两秒内就会到达网页。在大账号上，有人订阅时服务端每秒约占用 5 ms CPU。第一个订阅者以订阅那一刻账号里已有的内容为起点；配置变化（例如换了账号）之后的订阅者也一样。
+- 只允许 `GET`。这个连接不计入 `--max-reads`。它与桌面端的 `--message-push` 不是一回事，后者属于 `--desktop`。

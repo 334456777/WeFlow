@@ -16,13 +16,17 @@
 //! contacts in all (default 3000); `<work dir>/home` is the WeFlow home pointing at it. Each read is made through both
 //! routes, the child process one (`/chat/...`) and the in-process one (`/api/chat/...`), and its answer checked: the
 //! same from both routes, and the conversations, counts, pages, search hits, group members and image bytes the
-//! account holds. Any failed check makes the run fail.
+//! account holds. Last, a message is added to a private chat while `/api/push/messages` is listened to: it must
+//! arrive once (the time it took is printed); it is taken out again when the server has stopped. Any failed check
+//! makes the run fail.
 //!
 //! The real account is the one of `--home`, used as it is: point it at a copy of a real account's configuration. Its
 //! conversations are picked by message count (the biggest of the 60 latest, a group, a private chat) and only
 //! aggregate numbers are printed, never a conversation id, a name or a message. Each read is timed `--runs` times
 //! (default 10) through both routes; the table shows the median and the 95th percentile in milliseconds as the client
-//! sees them (connection included) and the size of the answer. `--save` writes the numbers to a JSON file;
+//! sees them (connection included) and the size of the answer. A last row gives the server's CPU time per second
+//! while `/api/push/messages` is listened to (the engine looks for new messages every second), next to the idle
+//! one. `--save` writes the numbers to a JSON file;
 //! `--compare` reads such a file, adds a column with the ratio to it and fails when a median is more than
 //! `--tolerance` times (default 2) and more than 20 ms slower.
 use std::collections::BTreeMap;
@@ -30,7 +34,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use serde_json::{json, Value};
@@ -52,6 +56,10 @@ const AT_ONCE: i64 = 16;
 const SCREEN_OF_IMAGES: usize = 20;
 /// A slower median is only a regression when it is also slower by this much.
 const NOISE_MS: f64 = 20.0;
+/// The pushed message is this many seconds older than the group's latest one, so the group stays first.
+const PUSHED_AT: i64 = 1;
+/// How long the push engine's CPU time is measured on the real account, idle and with a listener.
+const PUSH_WINDOW: Duration = Duration::from_secs(10);
 
 struct Args {
     work: PathBuf,
@@ -170,6 +178,40 @@ fn group_message(i: i64, members: &[&'static str]) -> MsgSpec {
     MsgSpec::text(i, sender, at, &text(i))
 }
 
+/// The conversation list: the group, then the private chats ten minutes apart. With `pushed`, that private chat
+/// has a new message ([`PUSHED_AT`]).
+fn session_specs(args: &Args, pushed: Option<usize>) -> Vec<SessionSpec> {
+    let last = T0 + args.messages * STEP;
+    let mut sessions = vec![SessionSpec {
+        username: ROOM,
+        summary: "",
+        last_timestamp: last,
+        unread: 3,
+        last_msg_type: 1,
+    }];
+    sessions.extend((0..args.sessions).map(|k| {
+        let new = pushed == Some(k);
+        SessionSpec {
+            username: leak(format!("wxid_f{k}")),
+            summary: "",
+            last_timestamp: if new {
+                last - PUSHED_AT
+            } else {
+                last - (k as i64 + 1) * 600
+            },
+            unread: new as i64,
+            last_msg_type: 1,
+        }
+    }));
+    sessions
+}
+
+/// The message database the push check adds, and removes once the server has stopped.
+fn pushed_shard(data: &Path) -> PathBuf {
+    data.join(OWNER)
+        .join(format!("db_storage/message/message_{SHARDS}.db"))
+}
+
 fn build(data: &Path, args: &Args) -> Result<Fixture> {
     let f = Fixture::new(data, OWNER);
     let friends: Vec<&'static str> = (0..args.sessions)
@@ -211,21 +253,7 @@ fn build(data: &Path, args: &Args) -> Result<Fixture> {
     );
 
     let last = T0 + args.messages * STEP;
-    let mut sessions = vec![SessionSpec {
-        username: ROOM,
-        summary: "",
-        last_timestamp: last,
-        unread: 3,
-        last_msg_type: 1,
-    }];
-    sessions.extend(friends.iter().enumerate().map(|(k, u)| SessionSpec {
-        username: u,
-        summary: "",
-        last_timestamp: last - (k as i64 + 1) * 600,
-        unread: 0,
-        last_msg_type: 1,
-    }));
-    f.session_db(&sessions);
+    f.session_db(&session_specs(args, None));
 
     let per = args.messages / SHARDS;
     for shard in 0..SHARDS {
@@ -296,7 +324,8 @@ fn synthetic_home(weflow: &Path, args: &Args) -> Result<PathBuf> {
     let built = std::fs::read(&stamp)
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
-    if built.as_ref() != Some(&size) || !data.exists() {
+    // a pushed message left by a run that stopped early changes the answers: build again
+    if built.as_ref() != Some(&size) || !data.exists() || pushed_shard(&data).exists() {
         let start = Instant::now();
         let _ = std::fs::remove_file(&stamp);
         let f = build(&data, args)?;
@@ -334,6 +363,124 @@ struct Checks<'a> {
     addr: &'a str,
     passed: usize,
     failed: Vec<String>,
+    /// How long a new message took to reach a listener of `/api/push/messages`.
+    pushed_ms: Option<f64>,
+}
+
+/// An open `GET /api/push/messages` and what it sent so far.
+struct EventStream {
+    stream: TcpStream,
+    text: String,
+}
+
+impl EventStream {
+    fn open(addr: &str) -> Result<Self> {
+        let mut stream = TcpStream::connect(addr)?;
+        stream.write_all(
+            format!(
+                "GET /api/push/messages HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer {TOKEN}\r\n\r\n"
+            )
+            .as_bytes(),
+        )?;
+        stream.set_read_timeout(Some(Duration::from_millis(100)))?;
+        Ok(Self {
+            stream,
+            text: String::new(),
+        })
+    }
+
+    /// Reads until `needle` arrives (true) or `wait` passes (false).
+    fn wait_for(&mut self, needle: &str, wait: Duration) -> bool {
+        let deadline = Instant::now() + wait;
+        let mut buf = [0u8; 4096];
+        while !self.text.contains(needle) && Instant::now() < deadline {
+            match self.stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => self.text.push_str(&String::from_utf8_lossy(&buf[..n])),
+                Err(_) => {}
+            }
+        }
+        self.text.contains(needle)
+    }
+}
+
+/// Adds a message to the last private chat while a listener waits for it; the time it took to arrive.
+fn check_push(addr: &str, data: &Path, args: &Args) -> Result<f64> {
+    let mut events = EventStream::open(addr)?;
+    ensure!(
+        events.wait_for("event: ready", Duration::from_secs(10)),
+        "no `ready` event"
+    );
+    // the engine takes its baseline when the first listener comes
+    std::thread::sleep(Duration::from_secs(2));
+    let k = args.sessions - 1;
+    let friend = leak(format!("wxid_f{k}"));
+    let at = T0 + args.messages * STEP - PUSHED_AT;
+    let f = Fixture::open(data, OWNER);
+    let begin = Instant::now();
+    f.message_shard(
+        SHARDS as u32,
+        &[(
+            friend,
+            vec![MsgSpec::text(
+                PRIVATE_MESSAGES + 1,
+                friend,
+                at,
+                "pushed now",
+            )],
+        )],
+    );
+    f.session_db(&session_specs(args, Some(k)));
+    let wanted = format!("\"sessionId\":\"{friend}\"");
+    ensure!(
+        events.wait_for(&wanted, Duration::from_secs(10)),
+        "no event for the new message within 10 s"
+    );
+    let ms = begin.elapsed().as_secs_f64() * 1000.0;
+    ensure!(
+        events.text.contains("event: message.new") && events.text.contains("pushed now"),
+        "the event is not a `message.new` with the message"
+    );
+    // two more seconds: nothing else comes
+    events.wait_for("\u{0}", Duration::from_secs(2));
+    ensure!(
+        events.text.matches("event: message.new").count() == 1,
+        "the message was pushed more than once"
+    );
+    Ok(ms)
+}
+
+/// CPU time the process has used so far, in milliseconds.
+fn cpu_ms(pid: u32) -> Option<f64> {
+    if cfg!(target_os = "linux") {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let fields: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+        // utime and stime, in clock ticks (100 a second)
+        let ticks = fields.get(11)?.parse::<f64>().ok()? + fields.get(12)?.parse::<f64>().ok()?;
+        Some(ticks * 10.0)
+    } else if cfg!(windows) {
+        let out = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!("(Get-Process -Id {pid}).TotalProcessorTime.TotalMilliseconds"),
+            ])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+    } else {
+        // macOS: [[dd-]hh:]mm:ss.ss
+        let out = Command::new("ps")
+            .args(["-o", "time=", "-p", &pid.to_string()])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut seconds = 0.0;
+        for part in text.trim().split(':') {
+            seconds = seconds * 60.0 + part.parse::<f64>().ok()?;
+        }
+        Some(seconds * 1000.0)
+    }
 }
 
 impl Checks<'_> {
@@ -402,13 +549,14 @@ fn page_is(data: Value, expected: Vec<i64>) -> Result<()> {
 }
 
 /// Reads through both routes and checks their answers against what the synthetic account holds.
-fn check_answers<'a>(addr: &'a str, args: &Args) -> Checks<'a> {
+fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
     let n = args.messages;
     let room = encode(ROOM);
     let mut c = Checks {
         addr,
         passed: 0,
         failed: Vec::new(),
+        pushed_ms: None,
     };
 
     let r = c.both("/chat/sessions", &[]).and_then(|d| {
@@ -616,6 +764,10 @@ fn check_answers<'a>(addr: &'a str, args: &Args) -> Checks<'a> {
         Ok(())
     })();
     c.check("images, decrypted, through both routes", r);
+
+    // last: it adds a message, removed again once the server has stopped
+    let r = check_push(addr, data, args).map(|ms| c.pushed_ms = Some(ms));
+    c.check("a new message is pushed once", r);
     c
 }
 
@@ -1000,6 +1152,38 @@ impl Bench<'_> {
         Ok(())
     }
 
+    /// What the push engine costs: the server's CPU time per second, idle and then with a listener of
+    /// `/api/push/messages` (from its second second on, after the baseline), and the events that came meanwhile.
+    fn push_cost(&mut self, pid: u32) -> Result<()> {
+        let rate = |begin: f64, end: f64| (end - begin) / PUSH_WINDOW.as_secs_f64();
+        let cpu = || cpu_ms(pid).ok_or_else(|| anyhow!("cannot read the server's CPU time"));
+        let start = cpu()?;
+        std::thread::sleep(PUSH_WINDOW);
+        let idle = rate(start, cpu()?);
+        let mut events = EventStream::open(self.addr)?;
+        ensure!(
+            events.wait_for("event: ready", Duration::from_secs(10)),
+            "no `ready` event on the real account"
+        );
+        std::thread::sleep(Duration::from_secs(2));
+        let start = cpu()?;
+        events.wait_for("\u{0}", PUSH_WINDOW);
+        let listening = rate(start, cpu()?);
+        let pushed = events.text.matches("\nevent: message.").count();
+        self.push(Row {
+            op: "push engine, CPU ms per second while listened to".into(),
+            route: "api",
+            median: listening,
+            p95: listening,
+            bytes: None,
+            note: format!(
+                "idle {idle:.1}; {pushed} events in {} s",
+                PUSH_WINDOW.as_secs()
+            ),
+        });
+        Ok(())
+    }
+
     /// The images of one screen through one route: each alone (first time and again), then all of them at the same
     /// time.
     fn images(&mut self, route: &'static str, images: &[Value]) -> Result<()> {
@@ -1083,9 +1267,15 @@ fn main() -> Result<()> {
     );
     let synthetic = synthetic_home(&weflow, &args)?;
     let (server, _) = start(&weflow, &synthetic, &args.serve)?;
-    let checks = check_answers(&server.addr, &args);
-    let (passed, failed) = (checks.passed, checks.failed);
+    let data = args.work.join("data");
+    let checks = check_answers(&server.addr, &data, &args);
+    let (passed, failed, pushed_ms) = (checks.passed, checks.failed, checks.pushed_ms);
     drop(server);
+    // take the pushed message out again (the server had its database open); left behind, it makes the next
+    // run build the account again
+    if pushed_shard(&data).exists() && std::fs::remove_file(pushed_shard(&data)).is_ok() {
+        Fixture::open(&data, OWNER).session_db(&session_specs(&args, None));
+    }
     eprintln!(
         "synthetic account: {passed} of {} checks passed",
         passed + failed.len()
@@ -1184,6 +1374,7 @@ fn main() -> Result<()> {
         bench.images("sub", &t.images)?;
         bench.images("api", &t.images)?;
     }
+    bench.push_cost(server.child.id())?;
     drop(server);
 
     let baseline = match &args.compare {
@@ -1212,6 +1403,9 @@ fn main() -> Result<()> {
     );
     for f in &failed {
         println!("  FAILED {f}");
+    }
+    if let Some(ms) = pushed_ms {
+        println!("  a new message reached the listener after {ms:.0} ms");
     }
     println!(
         "speed on the real account, {} runs each, milliseconds as the client sees them",
