@@ -555,7 +555,10 @@ fn media_come_back_as_files_from_the_process() {
     });
     let (exit, _, stderr) = run_cli(&home, &["config", "set", "image_xor_key", "90"]);
     assert_eq!(exit, 0, "{stderr}");
-    let server = start(&home, &["--api-token", TOKEN]);
+    let server = start(
+        &home,
+        &["--api-token", TOKEN, "--max-media", "1", "--max-reads", "1"],
+    );
     let auth = format!("Bearer {TOKEN}");
 
     // the image: its bytes, the same as the child process writes, with an ETag that answers 304
@@ -592,6 +595,17 @@ fn media_come_back_as_files_from_the_process() {
         "",
     );
     assert_eq!(other.status, 200);
+
+    // a screen of images asked for at once, one decoded at a time: they wait in line instead of answering 429, and
+    // take no place of the other reads
+    let statuses: Vec<u16> = std::thread::scope(|s| {
+        let all: Vec<_> = (0..20)
+            .map(|_| s.spawn(|| server.call("GET", &format!("/api/chat/image-data?{query}"), "")))
+            .collect();
+        assert_eq!(server.call("GET", "/api/chat/sessions", "").status, 200);
+        all.into_iter().map(|h| h.join().unwrap().status).collect()
+    });
+    assert!(statuses.iter().all(|&s| s == 200), "{statuses:?}");
 
     // the voice, decoded to WAV: the same as the child process prints in base64
     let query = format!(

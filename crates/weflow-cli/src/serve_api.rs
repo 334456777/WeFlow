@@ -493,6 +493,8 @@ pub struct ApiConfig {
     pub max_tasks: usize,
     /// Other commands that may run at once.
     pub max_reads: usize,
+    /// Images and voices of the `/api/` media routes decoded at once; more wait in line (see [`MediaLimit`]).
+    pub max_media: usize,
     /// Answer only requests whose `Host` names this machine (see [`local_host`]); set when listening on a
     /// loopback address.
     pub check_host: bool,
@@ -504,6 +506,7 @@ struct AppState {
     jobs: Arc<jobs::Jobs>,
     tasks: Arc<Semaphore>,
     reads: Arc<Semaphore>,
+    media: MediaLimit,
     /// `/openapi.json` in English and in Chinese, built when first asked for.
     openapi: [OnceLock<String>; 2],
     /// The hub of the `/api/` routes.
@@ -523,9 +526,50 @@ impl AppState {
     }
 }
 
+/// Media requests waiting for a place at once, beyond those decoded.
+const MEDIA_QUEUE: usize = 256;
+/// How long a media request waits for a place before it answers `429`.
+const MEDIA_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The limit of the `/api/` media routes. A screen of thumbnails asks for its images at once and each takes a few
+/// milliseconds, so a request over the limit waits for a place instead of answering `429`, unless the line is full
+/// or the wait too long.
+struct MediaLimit {
+    /// Requests decoded and waiting.
+    admitted: Arc<Semaphore>,
+    decoding: Arc<Semaphore>,
+}
+
+impl MediaLimit {
+    fn new(max: usize) -> Self {
+        let max = max.max(1);
+        Self {
+            admitted: Arc::new(Semaphore::new(max + MEDIA_QUEUE)),
+            decoding: Arc::new(Semaphore::new(max)),
+        }
+    }
+
+    /// A place to decode in, after waiting at most `wait`; `None` when the line is full or the wait ran out.
+    async fn enter(
+        &self,
+        wait: std::time::Duration,
+    ) -> Option<(
+        tokio::sync::OwnedSemaphorePermit,
+        tokio::sync::OwnedSemaphorePermit,
+    )> {
+        let admitted = self.admitted.clone().try_acquire_owned().ok()?;
+        let decoding = tokio::time::timeout(wait, self.decoding.clone().acquire_owned())
+            .await
+            .ok()?
+            .ok()?;
+        Some((admitted, decoding))
+    }
+}
+
 pub fn router(cfg: ApiConfig) -> Router {
     let tasks = Arc::new(Semaphore::new(cfg.max_tasks.max(1)));
     let reads = Arc::new(Semaphore::new(cfg.max_reads.max(1)));
+    let media = MediaLimit::new(cfg.max_media);
     Router::new()
         .fallback(dispatch)
         .with_state(Arc::new(AppState {
@@ -534,13 +578,14 @@ pub fn router(cfg: ApiConfig) -> Router {
             jobs: Arc::new(jobs::Jobs::new()),
             tasks,
             reads,
+            media,
             openapi: Default::default(),
             hub: Default::default(),
             push: Default::default(),
         }))
 }
 
-/// The default of [`ApiConfig::max_reads`]: one per CPU.
+/// The default of [`ApiConfig::max_reads`] and [`ApiConfig::max_media`]: one per CPU.
 pub fn default_max_reads() -> usize {
     std::thread::available_parallelism().map_or(4, |n| n.get())
 }
@@ -731,19 +776,25 @@ fn bad_request(message: &str) -> Response {
 
 /// `429 Too Many Requests`: as many commands of this kind as allowed are running.
 fn busy(task: bool) -> Response {
-    let mut resp = error_response(
-        StatusCode::TOO_MANY_REQUESTS,
-        "busy",
+    busy_with(
         if task {
             "another task is running; retry later, or send `Prefer: respond-async` to queue it"
         } else {
             "too many commands are running; retry later, or send `Prefer: respond-async` to queue it"
         },
-    );
-    resp.headers_mut().insert(
-        header::RETRY_AFTER,
-        HeaderValue::from_static(if task { "5" } else { "1" }),
-    );
+        if task { "5" } else { "1" },
+    )
+}
+
+/// `429 Too Many Requests` of a media route: its line of waiting requests is full, or the wait ran out.
+fn busy_media() -> Response {
+    busy_with("too many images and voices are asked for; retry later", "1")
+}
+
+fn busy_with(message: &str, retry_after: &'static str) -> Response {
+    let mut resp = error_response(StatusCode::TOO_MANY_REQUESTS, "busy", message);
+    resp.headers_mut()
+        .insert(header::RETRY_AFTER, HeaderValue::from_static(retry_after));
     resp
 }
 
@@ -1014,8 +1065,16 @@ async fn route(st: &AppState, req: Request) -> Response {
         let job = st.jobs.start(st.cfg.exe.clone(), full, lang, limit.clone());
         return jobs::accepted(&job);
     }
-    let Ok(_permit) = limit.clone().try_acquire_owned() else {
-        return busy(verb == Some(Post));
+    let (_permit, _decoding) = if media {
+        let Some((admitted, decoding)) = st.media.enter(MEDIA_WAIT).await else {
+            return busy_media();
+        };
+        (admitted, Some(decoding))
+    } else {
+        let Ok(permit) = limit.clone().try_acquire_owned() else {
+            return busy(verb == Some(Post));
+        };
+        (permit, None)
     };
     if media {
         match in_process::media(&st.hub, &argv).await {
@@ -1577,5 +1636,27 @@ mod tests {
         assert_eq!(lang("en-US"), Some("en"));
         assert_eq!(lang("*"), None);
         assert_eq!(request_lang(&HeaderMap::new()), None);
+    }
+
+    #[tokio::test]
+    async fn media_wait_in_line_until_it_is_full_or_too_long() {
+        use std::time::Duration;
+        let limit = MediaLimit::new(1);
+        let first = limit.enter(Duration::ZERO).await.expect("a free place");
+        // the place is taken: a request waits, and gets it once it is given back
+        let (waited, _) = tokio::join!(limit.enter(Duration::from_secs(10)), async {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            drop(first);
+        });
+        let decoding = waited.expect("the place given back");
+        // a wait that runs out
+        assert!(limit.enter(Duration::from_millis(20)).await.is_none());
+        // a full line: no wait at all
+        let line: Vec<_> = (0..MEDIA_QUEUE)
+            .map(|_| limit.admitted.clone().try_acquire_owned().unwrap())
+            .collect();
+        assert!(limit.enter(Duration::from_secs(10)).await.is_none());
+        drop((line, decoding));
+        assert!(limit.enter(Duration::ZERO).await.is_some());
     }
 }

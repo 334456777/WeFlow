@@ -1309,6 +1309,9 @@ struct ServeCommand {
     /// Other commands the command API runs at once (default: the number of CPUs)
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     max_reads: Option<u16>,
+    /// Images and voices the command API's /api/ media routes decode at once; more wait in line (default: the number of CPUs)
+    #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+    max_media: Option<u16>,
 }
 
 #[derive(Args, Debug)]
@@ -2881,9 +2884,13 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     if command.message_push && !command.desktop {
         return Err(AppError::usage("--message-push needs --desktop"));
     }
-    if command.desktop && (command.max_tasks.is_some() || command.max_reads.is_some()) {
+    if command.desktop
+        && (command.max_tasks.is_some()
+            || command.max_reads.is_some()
+            || command.max_media.is_some())
+    {
         return Err(AppError::usage(
-            "--max-tasks and --max-reads are for the command API, not --desktop",
+            "--max-tasks, --max-reads and --max-media are for the command API, not --desktop",
         ));
     }
 
@@ -3042,6 +3049,9 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
                 max_tasks: command.max_tasks.map_or(1, usize::from),
                 max_reads: command
                     .max_reads
+                    .map_or_else(serve_api::default_max_reads, usize::from),
+                max_media: command
+                    .max_media
                     .map_or_else(serve_api::default_max_reads, usize::from),
             };
             serve_api::serve(cfg, listener).await

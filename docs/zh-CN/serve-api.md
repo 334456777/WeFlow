@@ -23,6 +23,7 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 | `--insight`、`--image-auto-download` | 与任一 API 一起运行这些服务 |
 | `--max-tasks` | 同时运行的任务（`POST` 命令）数；默认 1（见[并发限制](#并发限制)） |
 | `--max-reads` | 同时运行的其他命令数；默认为 CPU 核数 |
+| `--max-media` | `/api/` 媒体路由同时解码的图片和语音数，超出的排队等待；默认为 CPU 核数（见[媒体](#媒体)） |
 
 启动提示（stderr 上的事件；加 `--json` 时为一行 JSON）会显示地址。绑定回环以外的地址时会给出警告：持有令牌的人可以在这台机器上运行任何 `weflow` 命令，使用服务端的文件系统和配置。
 
@@ -153,7 +154,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 
 ## 并发限制
 
-为了不让机器卡住，有两个上限：任务（`POST` 命令：导出、取钥、备份、报告等）一次只运行一个（`--max-tasks`），其他命令最多同时运行与 CPU 核数相同的数量（`--max-reads`）。超出上限的直接请求不会排队等待，而是返回 `429`，错误码为 `busy`，并带 `Retry-After`（任务为 5 秒，其他为 1 秒）。超出上限的作业在队列里等待（`queued`），有空位时开始运行。
+为了不让机器卡住，有两个上限：任务（`POST` 命令：导出、取钥、备份、报告等）一次只运行一个（`--max-tasks`），其他命令最多同时运行与 CPU 核数相同的数量（`--max-reads`）。超出上限的直接请求不会排队等待，而是返回 `429`，错误码为 `busy`，并带 `Retry-After`（任务为 5 秒，其他为 1 秒）。超出上限的作业在队列里等待（`queued`），有空位时开始运行。`/api/` 的媒体路由另有自己的上限（`--max-media`，见[媒体](#媒体)）。
 
 ## OpenAPI 描述
 
@@ -211,7 +212,9 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 
 - 回复带 `ETag` 和 `Cache-Control: private, max-age=3600`。带 `If-None-Match` 再次请求时，如果内容没变，返回 `304`，不带文件。
 - 出错时返回命令的 `--json` 文档和对应的状态码，与其他进程内读取一样。
-- 计入 `--max-reads`，不计入 `--max-tasks`。在大账号上，一张图片约 4 ms；走 `POST /chat/image-data` 约 190 ms。同时请求 20 张时，8 ms 内都有回复。超出上限（默认每个 CPU 一个）的请求仍返回 `429`，issue #154 会给媒体单独设上限。
+- 有自己的上限 `--max-media`（默认每个 CPU 一个），不计入 `--max-reads`，也不计入 `--max-tasks`。所以一屏图片不会挡住旁边消息的读取。
+- 超出上限的请求排队等待，不会立即返回 `429`：一屏缩略图是同时请求的，而每张只要几毫秒。只有已有 256 个请求在排队，或者一个请求已经等了 10 秒，才返回 `429`（`busy`，`Retry-After: 1`）。
+- 在大账号上，一张图片约 4 ms；走 `POST /chat/image-data` 约 190 ms。同时请求 20 张时，10 ms 内都有回复。
 
 ### 消息推送
 
