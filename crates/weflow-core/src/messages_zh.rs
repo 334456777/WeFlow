@@ -36,7 +36,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("request failed", "请求失败"),
     ("payload_json must be JSON: {}", "payload_json 必须是合法的 JSON：{}"),
     ("--message-push needs --desktop", "--message-push 需要 --desktop"),
-    ("--max-tasks and --max-reads are for the command API, not --desktop", "--max-tasks 和 --max-reads 只用于命令 API，不能与 --desktop 一起使用"),
+    ("--max-tasks, --max-reads, --max-media and --log-requests are for the command API, not --desktop", "--max-tasks、--max-reads、--max-media 和 --log-requests 只用于命令 API，不能与 --desktop 一起使用"),
     ("invalid listen address: {}", "监听地址无效：{}"),
     ("failed to bind HTTP server: {}", "绑定 HTTP 服务失败：{}"),
     ("HTTP server stopped: {}", "HTTP 服务已停止：{}"),

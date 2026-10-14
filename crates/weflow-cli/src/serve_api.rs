@@ -498,6 +498,8 @@ pub struct ApiConfig {
     /// Answer only requests whose `Host` names this machine (see [`local_host`]); set when listening on a
     /// loopback address.
     pub check_host: bool,
+    /// Print each request on stderr (`--log-requests`): method, path, status and time, never the query.
+    pub log_requests: bool,
 }
 
 struct AppState {
@@ -717,6 +719,11 @@ fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
             HeaderValue::from_str(origin).unwrap(),
         );
         h.insert(header::VARY, HeaderValue::from_static("Origin"));
+        // the stages of `Server-Timing` in the page's own performance entries
+        h.insert(
+            "timing-allow-origin",
+            HeaderValue::from_str(origin).unwrap(),
+        );
         h.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
             HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"),
@@ -730,7 +737,7 @@ fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
         h.insert(
             header::ACCESS_CONTROL_EXPOSE_HEADERS,
             HeaderValue::from_static(
-                "X-WeFlow-Exit-Code, X-WeFlow-Error-Code, Location, Retry-After",
+                "X-WeFlow-Exit-Code, X-WeFlow-Error-Code, Location, Retry-After, Server-Timing",
             ),
         );
     }
@@ -761,8 +768,10 @@ fn local_host(uri: &Uri, headers: &HeaderMap) -> bool {
 }
 
 async fn dispatch(State(st): State<Arc<AppState>>, req: Request) -> Response {
+    let start = std::time::Instant::now();
     let headers = req.headers().clone();
-    let resp = if st.cfg.check_host && !local_host(req.uri(), &headers) {
+    let (method, path) = (req.method().clone(), req.uri().path().to_string());
+    let mut resp = if st.cfg.check_host && !local_host(req.uri(), &headers) {
         error_response(
             StatusCode::FORBIDDEN,
             "invalid_host",
@@ -777,7 +786,47 @@ async fn dispatch(State(st): State<Arc<AppState>>, req: Request) -> Response {
     } else {
         route(&st, req).await
     };
+    let ms = start.elapsed().as_secs_f64() * 1000.0;
+    let mut timing = resp
+        .extensions_mut()
+        .remove::<Timing>()
+        .unwrap_or_default()
+        .0;
+    timing.push(format!("total;dur={ms:.1}"));
+    if let Ok(v) = HeaderValue::from_str(&timing.join(", ")) {
+        resp.headers_mut().insert("server-timing", v);
+    }
+    if st.cfg.log_requests {
+        weflow_core::output::event(json!({
+            "type": "request",
+            "method": method.as_str(),
+            "path": path,
+            "status": resp.status().as_u16(),
+            "ms": (ms * 10.0).round() / 10.0,
+        }));
+    }
     cors(&headers, resp)
+}
+
+/// What a request spent its time on besides the total, for `Server-Timing` (issue #158): kept in the answer's
+/// extensions by [`route`], written out by [`dispatch`].
+#[derive(Clone, Default)]
+struct Timing(Vec<String>);
+
+impl Timing {
+    /// The time since `since`, as `name` (and what it was, `desc`).
+    fn stage(&mut self, name: &str, desc: Option<&str>, since: std::time::Instant) {
+        let ms = since.elapsed().as_secs_f64() * 1000.0;
+        self.0.push(match desc {
+            Some(desc) => format!("{name};desc=\"{desc}\";dur={ms:.1}"),
+            None => format!("{name};dur={ms:.1}"),
+        });
+    }
+
+    fn on(self, mut resp: Response) -> Response {
+        resp.extensions_mut().insert(self);
+        resp
+    }
 }
 
 /// What a request asks for besides the command (`?std=`).
@@ -1095,10 +1144,13 @@ async fn route(st: &AppState, req: Request) -> Response {
         let job = st.jobs.start(st.cfg.exe.clone(), full, lang, limit.clone());
         return jobs::accepted(&job);
     }
+    let mut timing = Timing::default();
     let (_permit, _decoding) = if media {
+        let waited = std::time::Instant::now();
         let Some((admitted, decoding)) = st.media.enter(MEDIA_WAIT).await else {
             return busy_media();
         };
+        timing.stage("wait", Some("in line for a media place"), waited);
         (admitted, Some(decoding))
     } else {
         let Ok(permit) = limit.clone().try_acquire_owned() else {
@@ -1106,17 +1158,21 @@ async fn route(st: &AppState, req: Request) -> Response {
         };
         (permit, None)
     };
+    let ran = std::time::Instant::now();
     if media {
-        match in_process::media(&st.hub, &argv).await {
-            Some(Ok(file)) => return media_response(&parts.headers, file),
-            Some(Err((doc, exit))) => return in_process_document(&doc, exit, None),
+        let done = in_process::media(&st.hub, &argv).await;
+        timing.stage("cmd", Some("in process"), ran);
+        match done {
+            Some(Ok(file)) => return timing.on(media_response(&parts.headers, file)),
+            Some(Err((doc, exit))) => return timing.on(in_process_document(&doc, exit, None)),
             // the child process reports the command line error; with `out` set to `-` and the command line
             // refused, it writes nothing
             None => {}
         }
     } else if in_process {
         if let Some((doc, exit)) = in_process::run(&st.hub, &argv).await {
-            return in_process_document(&doc, exit, fields.as_deref());
+            timing.stage("cmd", Some("in process"), ran);
+            return timing.on(in_process_document(&doc, exit, fields.as_deref()));
         }
     }
     if let Some(dir) = file_out.as_ref().and_then(|f| f.dir.as_ref()) {
@@ -1129,6 +1185,7 @@ async fn route(st: &AppState, req: Request) -> Response {
         }
     }
     let args = if std == Std::Json { &full } else { &argv };
+    let ran = std::time::Instant::now();
     let output = match run(&st.cfg.exe, args, lang).await {
         Ok(o) => o,
         Err(err) => {
@@ -1139,6 +1196,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             )
         }
     };
+    timing.stage("cmd", Some("child process"), ran);
     // killed by a signal: no exit code
     let exit = output.status.code().unwrap_or(-1);
     let mut resp = match std {
@@ -1200,7 +1258,7 @@ async fn route(st: &AppState, req: Request) -> Response {
         "x-weflow-exit-code",
         HeaderValue::from_str(&exit.to_string()).unwrap(),
     );
-    resp
+    timing.on(resp)
 }
 
 /// The `--json` document of a command run in this process, answered as the child process prints it.

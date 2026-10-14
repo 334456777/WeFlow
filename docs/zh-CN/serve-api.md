@@ -24,6 +24,7 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 | `--max-tasks` | 同时运行的任务（`POST` 命令）数；默认 1（见[并发限制](#并发限制)） |
 | `--max-reads` | 同时运行的其他命令数；默认为 CPU 核数 |
 | `--max-media` | `/api/` 媒体路由同时解码的图片和语音数，超出的排队等待；默认为 CPU 核数（见[媒体](#媒体)） |
+| `--log-requests` | 每个请求在 stderr 输出一行：方法、路径、状态码和耗时（见[时间花在哪里](#时间花在哪里)） |
 
 启动提示（stderr 上的事件；加 `--json` 时为一行 JSON）会显示地址。绑定回环以外的地址时会给出警告：持有令牌的人可以在这台机器上运行任何 `weflow` 命令，使用服务端的文件系统和配置。
 
@@ -193,6 +194,16 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 代价是每个请求都要付出：启动进程和读取配置约 20 ms，而且每次都要重新打开数据库，缓存都是冷的。在一个大账号上（Windows，release 构建），这样取会话列表约 37 ms，取一页消息约 31 ms。聊天客户端频繁使用的读取请改用 [`/api/`](#进程内读取)。
 
 每个数据库第一次打开时，都要先用配置里的密钥派生出它自己的密钥（约 0.1 秒）。服务端把已经派生出的密钥（即聊天页面要用的数据库的密钥，见下文的预热）通过 stdin 交给它启动的每条命令，命令就不必再派生；没有这一步时，上面两项读取分别约 500 ms 和 175 ms。交来的密钥打不开对应的文件时，命令会重新派生。
+
+### 时间花在哪里
+
+每个响应都带 `Server-Timing` 头，浏览器的开发者工具会在请求旁边显示：`cmd` 是执行命令的时间，`desc="in process"` 表示在服务进程内执行，`desc="child process"` 表示在子进程执行；`wait` 是 `/api/` 媒体请求排队等位置的时间（见[媒体](#媒体)）；`total` 是请求在服务端的全部时间，从收到请求到发出响应头（事件流则到它开始）。从 `localhost` 打开的网页还会收到 `Timing-Allow-Origin`，脚本可以在 `performance.getEntriesByType("resource")` 里读到这些阶段。
+
+```text
+Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
+```
+
+`--log-requests` 让每个请求在 stderr 输出一行：时间、方法、路径、状态码和毫秒数；带 `--json` 时输出事件 `{"type": "request", "method", "path", "status", "ms"}`。不输出查询参数，因为里面可能有会话 ID 和令牌；也不输出响应的任何内容。默认关闭。
 
 ## 进程内读取
 

@@ -114,6 +114,14 @@ fn human_event(event: &Value) -> String {
             tr("insight record:", "洞察记录："),
             render(&event["record"])
         ),
+        "request" => format!(
+            "{} {} {} {} {:.1} ms\n",
+            chrono::Local::now().format("%H:%M:%S"),
+            text("method"),
+            text("path"),
+            event["status"],
+            event["ms"].as_f64().unwrap_or(0.0)
+        ),
         "server_started" => {
             let mut services = Vec::new();
             for (key, en, zh) in [

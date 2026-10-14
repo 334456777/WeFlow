@@ -37,6 +37,8 @@ struct Server {
     child: Child,
     addr: String,
     home: PathBuf,
+    /// The lines the server printed on stderr after it started.
+    stderr: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl Drop for Server {
@@ -73,7 +75,13 @@ fn start(home: &Path, extra: &[&str]) -> Server {
         }
     };
     // keep draining stderr so the server never blocks on a full pipe
-    std::thread::spawn(move || for _ in lines {});
+    let stderr = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let printed = stderr.clone();
+    std::thread::spawn(move || {
+        for line in lines.map_while(Result::ok) {
+            printed.lock().unwrap().push(line);
+        }
+    });
     let addr = started["url"]
         .as_str()
         .unwrap()
@@ -83,6 +91,7 @@ fn start(home: &Path, extra: &[&str]) -> Server {
         child,
         addr,
         home: home.to_path_buf(),
+        stderr,
     }
 }
 
@@ -666,6 +675,73 @@ fn answers_are_compressed_when_asked_and_cut_to_fields() {
 }
 
 #[test]
+fn answers_tell_where_the_time_went() {
+    let root = temp_root("timing");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN, "--log-requests"]);
+    // `Server-Timing`: what ran the command and how long it took, then the total
+    let stages = |target: &str| {
+        let r = server.call("GET", target, "");
+        assert_eq!(r.status, 200, "{target}: {}", r.body);
+        let timing = r.headers["server-timing"].clone();
+        timing
+            .split(", ")
+            .map(|s| {
+                let (name, rest) = s.split_once(';').unwrap();
+                let ms: f64 = rest.rsplit_once("dur=").unwrap().1.parse().unwrap();
+                assert!(ms >= 0.0, "{timing}");
+                let desc = rest
+                    .split_once("desc=\"")
+                    .map(|(_, d)| d.split('"').next().unwrap().to_string());
+                (name.to_string(), desc)
+            })
+            .collect::<Vec<_>>()
+    };
+    let cmd = |desc: &str| ("cmd".to_string(), Some(desc.to_string()));
+    let total = ("total".to_string(), None);
+    assert_eq!(
+        stages("/api/chat/sessions?limit=1"),
+        [cmd("in process"), total.clone()]
+    );
+    assert_eq!(
+        stages("/chat/sessions?limit=1"),
+        [cmd("child process"), total.clone()]
+    );
+    assert_eq!(stages("/health"), [total]);
+    let local = server.request("GET", "/health", &[("Origin", "http://localhost:5173")], "");
+    assert_eq!(
+        local.headers["timing-allow-origin"],
+        "http://localhost:5173"
+    );
+    assert!(local.headers["access-control-expose-headers"].contains("Server-Timing"));
+
+    // `--log-requests`: one line each, with the path and without the query, which may hold ids
+    let r = server.call("GET", "/chat/messages?session-id=wxid_bob&limit=1", "");
+    assert_eq!(r.status, 200);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let logged = loop {
+        let lines = server.stderr.lock().unwrap().clone();
+        let found: Vec<Value> = lines
+            .iter()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|e| e["type"] == "request")
+            .collect();
+        if found.len() >= 5 || std::time::Instant::now() > deadline {
+            break (found, lines);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    let (events, lines) = logged;
+    assert!(lines.iter().all(|l| !l.contains("wxid_bob")), "{lines:?}");
+    let last = events.last().unwrap_or_else(|| panic!("{lines:?}"));
+    assert_eq!(last["method"], "GET");
+    assert_eq!(last["path"], "/chat/messages");
+    assert_eq!(last["status"], 200);
+    assert!(last["ms"].as_f64().unwrap() >= 0.0);
+    assert_eq!(events.len(), 5, "{lines:?}");
+}
+
+#[test]
 fn media_come_back_as_files_from_the_process() {
     use weflow_native::fixture::{VoiceSpec, DAY, T0};
     let root = temp_root("media");
@@ -720,6 +796,12 @@ fn media_come_back_as_files_from_the_process() {
     assert_eq!(r.headers["content-type"], "image/jpeg");
     assert_eq!(r.bytes, jpeg);
     assert!(r.headers["cache-control"].contains("max-age"));
+    // the time in line for a place to decode, then the decoding
+    let timing = &r.headers["server-timing"];
+    assert!(
+        timing.starts_with("wait;") && timing.contains(", cmd;desc=\"in process\";"),
+        "{timing}"
+    );
     let etag = r.headers["etag"].clone();
     let child = server.call(
         "POST",
