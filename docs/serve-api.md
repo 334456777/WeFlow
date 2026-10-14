@@ -179,7 +179,9 @@ Two versions tell clients what they talk to: `version` (in `/health`, and `info.
 
 Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. A client that closes the connection before the answer ends its command; so does cancelling a job.
 
-The price is paid on every request: starting the process and reading the configuration take about 20 ms, and each request opens the databases again with cold caches. On a large account (Windows, release build) the conversation list takes about 490 ms this way and a page of messages about 200 ms. For the reads a chat client makes all the time, use [`/api/`](#in-process-reads).
+The price is paid on every request: starting the process and reading the configuration take about 20 ms, and each request opens the databases again with cold caches. On a large account (Windows, release build) the conversation list takes about 37 ms this way and a page of messages about 31 ms. For the reads a chat client makes all the time, use [`/api/`](#in-process-reads).
+
+Opening a database first derives its key from the one in the configuration (about 0.1 s). The server hands the keys it has derived (those of a chat page's databases, see the warm-up below) to each command it runs, through the command's stdin, so the command does not derive them again; without this, the two reads above took about 500 ms and 175 ms. A key that does not open its file is derived again.
 
 ## In-process reads
 
@@ -187,14 +189,14 @@ The price is paid on every request: starting the process and reading the configu
 
 | Read (large account, Windows) | `/<path>` | `/api/<path>` |
 |---|---|---|
-| `chat sessions` | 490 ms | 32 ms |
-| `chat messages`, one page of 50 | 194 ms | 16 ms |
-| `chat latest`, 20 messages | 224 ms | 16 ms |
-| `chat contact` | 185 ms | 16 ms |
-| `group members` | 186 ms | 15 ms |
-| 16 pages of messages at once (in all) | 661 ms | 32 ms |
+| `chat sessions` | 37 ms | 9 ms |
+| `chat messages`, one page of 50 | 31 ms | 5 ms |
+| `chat latest`, 20 messages | 29 ms | 4 ms |
+| `chat contact` | 24 ms | 2 ms |
+| `group members` | 33 ms | 2 ms |
+| 16 pages of messages at once (in all) | 156 ms | 140 ms |
 
-(Each figure includes about 15 ms of the client's own round trip.) A search reads a conversation from its newest messages and stops once a page is found, so a common word takes about 5 ms; a word found nowhere still reads every message (about 0.7 s for 210,000 of them). Pages deep into a long conversation are slow with `offset` (about 1.4 s in the middle of 210,000 messages) but not from a cursor: pass the `_cursor` of the last message shown as `before` (`after` for newer ones), and the same page takes about 3 ms.
+(Medians measured by `serve_bench`, as the client sees them; see [native-cli.md](native-cli.md).) A search reads a conversation from its newest messages and stops once a page is found, so a common word takes about 5 ms; a word found nowhere still reads every message (about 0.7 s for 210,000 of them). Pages deep into a long conversation are slow with `offset` (about 1.4 s in the middle of 210,000 messages) but not from a cursor: pass the `_cursor` of the last message shown as `before` (`after` for newer ones), and the same page takes about 3 ms.
 
 - `?std`, `?return=file` and `Prefer: respond-async` are not available (`400`); other commands answer `404`.
 - The answer is in the server's language: `Accept-Language` does not apply, as the language is set once per process.

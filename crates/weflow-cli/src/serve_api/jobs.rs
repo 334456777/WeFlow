@@ -282,8 +282,7 @@ async fn run(
         }
     };
     job.set_running();
-    let mut cmd = super::command(exe, args, lang);
-    let mut child = match cmd.spawn() {
+    let mut child = match super::spawn(exe, args, lang).await {
         Ok(c) => c,
         Err(err) => {
             let doc = json!({

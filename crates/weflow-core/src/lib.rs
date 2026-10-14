@@ -34,3 +34,8 @@ pub mod xml;
 
 pub use config::{AppContext, ConfigStore, ProfileConfig};
 pub use error::{AppError, AppResult};
+
+/// The database keys `weflow serve` hands to the commands it runs, so they do not derive them again.
+pub mod page_keys {
+    pub use weflow_native::sqlcipher::{export_keys, import_keys};
+}

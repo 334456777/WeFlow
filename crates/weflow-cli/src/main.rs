@@ -1376,6 +1376,16 @@ async fn main() -> ExitCode {
         .init();
 
     let cli: Cli = i18n::parse();
+    // a command run by `serve` gets the database keys the server already derived on stdin (see `serve_api::spawn`)
+    if std::env::var_os(serve_api::KEYS_ON_STDIN).is_some() {
+        let mut stdin = std::io::stdin();
+        let mut keys = Vec::new();
+        if !std::io::IsTerminal::is_terminal(&stdin)
+            && std::io::Read::read_to_end(&mut stdin, &mut keys).is_ok()
+        {
+            weflow_core::page_keys::import_keys(&keys);
+        }
+    }
     weflow_core::output::set_json_output(cli.json);
     weflow_core::output::set_progress_mode(if cli.progress {
         weflow_core::output::ProgressMode::Ndjson
