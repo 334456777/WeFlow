@@ -100,7 +100,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 
 ### 体积
 
-请求的 `Accept-Encoding` 接受时，响应用 gzip 或 br 压缩；浏览器总会带上这个头。图片、语音、`?return=file` 的文件、文件的一部分（`206`）和事件流原样发送。`fields=<键>,<键>`（也可以重复写这个参数）让成功的 `--json` 文档里每一行只保留这些键：`data` 是列表时，处理其中的每个对象；`data` 是对象时，处理它里面每个列表中的对象；失败的文档原样返回。它由服务端处理，不是命令的参数，所以两种路由都能用，但不能与 `std`、`return=file`、`Prefer: respond-async` 或媒体路由同时使用（返回 `400`）。
+请求的 `Accept-Encoding` 接受时，响应用 gzip 或 br 压缩；浏览器总会带上这个头。图片、语音、视频、`?return=file` 的文件、文件的一部分（`206`）和事件流原样发送。`fields=<键>,<键>`（也可以重复写这个参数）让成功的 `--json` 文档里每一行只保留这些键：`data` 是列表时，处理其中的每个对象；`data` 是对象时，处理它里面每个列表中的对象；失败的文档原样返回。它由服务端处理，不是命令的参数，所以两种路由都能用，但不能与 `std`、`return=file`、`Prefer: respond-async` 或媒体路由同时使用（返回 `400`）。
 
 | 响应（大账号，`/api/`） | 原样 | br | `fields` | `fields` 加 br |
 |---|---:|---:|---:|---:|

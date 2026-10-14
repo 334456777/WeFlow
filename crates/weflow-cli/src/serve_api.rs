@@ -589,7 +589,7 @@ pub fn router(cfg: ApiConfig) -> Router {
 }
 
 /// gzip or br, as `Accept-Encoding` asks (issue #155): a page of messages or the contacts are mostly repeated
-/// column names and XML. Not for what is compressed already or streamed: images, voices, the files of
+/// column names and XML. Not for what is compressed already or streamed: images, voices, videos, the files of
 /// `return=file`, the event streams, and a part of a file (`206`).
 fn compression(
 ) -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate> {
@@ -601,6 +601,7 @@ fn compression(
     tower_http::compression::CompressionLayer::new().compress_when(
         DefaultPredicate::new()
             .and(NotForContentType::const_new("audio/"))
+            .and(NotForContentType::const_new("video/"))
             .and(NotForContentType::const_new("multipart/"))
             .and(NotForContentType::const_new("application/octet-stream"))
             .and(whole),

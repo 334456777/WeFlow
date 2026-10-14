@@ -100,7 +100,7 @@ By the error code first, then by the exit code. The CLI's exit codes do not chan
 
 ### Size
 
-Answers are compressed with gzip or br when the request's `Accept-Encoding` takes them, as browsers always do. Images, voices, the files of `?return=file`, a part of a file (`206`) and event streams are sent as they are. `fields=<key>,<key>` (or the key repeated) keeps only those keys of each row in a successful `--json` document: of each object in `data` when it is a list, or of each object in the lists of `data` when it is an object; a failure comes back whole. It is the server's, not the command's, so it works on both routes, but not with `std`, `return=file`, `Prefer: respond-async` or a media route (`400`).
+Answers are compressed with gzip or br when the request's `Accept-Encoding` takes them, as browsers always do. Images, voices, videos, the files of `?return=file`, a part of a file (`206`) and event streams are sent as they are. `fields=<key>,<key>` (or the key repeated) keeps only those keys of each row in a successful `--json` document: of each object in `data` when it is a list, or of each object in the lists of `data` when it is an object; a failure comes back whole. It is the server's, not the command's, so it works on both routes, but not with `std`, `return=file`, `Prefer: respond-async` or a media route (`400`).
 
 | Answer (large account, `/api/`) | As printed | br | `fields` | `fields` and br |
 |---|---:|---:|---:|---:|
