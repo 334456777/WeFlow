@@ -74,6 +74,9 @@ resources/native-db/
 resources/native-key/
 
 # docs: only top-level files, es-ES and zh-CN are kept; other folders are third-party/reference material
+/docs/sarv.blog/
+/docs/sjzar/
 /docs/weflow-tech-docs/
+/docs/YeJe-cpu/
 /docs/ycccccccy/
 weflow.exe
