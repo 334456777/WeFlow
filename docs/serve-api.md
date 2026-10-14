@@ -24,6 +24,7 @@ weflow serve --desktop             # the desktop app's API instead (port `http_a
 | `--max-tasks` | Tasks (`POST` commands) that run at once; default 1 (see [Limits](#limits)) |
 | `--max-reads` | Other commands that run at once; default the number of CPUs |
 | `--max-media` | Images and voices the `/api/` media routes decode at once, more wait in line; default the number of CPUs (see [Media](#media)) |
+| `--log-requests` | A line on stderr for each request: method, path, status and time (see [Where the time goes](#where-the-time-goes)) |
 
 The startup message (an event on stderr; a JSON line with `--json`) shows the address. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
 
@@ -193,6 +194,16 @@ Each request runs `weflow` again as a child process with the same configuration,
 The price is paid on every request: starting the process and reading the configuration take about 20 ms, and each request opens the databases again with cold caches. On a large account (Windows, release build) the conversation list takes about 37 ms this way and a page of messages about 31 ms. For the reads a chat client makes all the time, use [`/api/`](#in-process-reads).
 
 Opening a database first derives its key from the one in the configuration (about 0.1 s). The server hands the keys it has derived (those of a chat page's databases, see the warm-up below) to each command it runs, through the command's stdin, so the command does not derive them again; without this, the two reads above took about 500 ms and 175 ms. A key that does not open its file is derived again.
+
+### Where the time goes
+
+Every answer has a `Server-Timing` header, which a browser's developer tools show next to the request: `cmd` is the command, with `desc="in process"` or `desc="child process"`; `wait` is the time an `/api/` media request waited in line for a place (see [Media](#media)); `total` is the whole request in the server, from its arrival to its answer's headers (for an event stream, until it opens). A page served from `localhost` also gets `Timing-Allow-Origin`, so its scripts can read the stages in `performance.getEntriesByType("resource")`.
+
+```text
+Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
+```
+
+`--log-requests` prints a line on stderr for each request: the time, method, path, status and milliseconds, or with `--json` an event `{"type": "request", "method", "path", "status", "ms"}`. The query is left out, as it may hold conversation ids and the token; nothing of the answer is printed. It is off by default.
 
 ## In-process reads
 
