@@ -26,6 +26,15 @@ fn main() {
         "cargo:rustc-env=WEFLOW_BUILD_INFO={commit}{} {stamp}",
         if dirty { "-dirty" } else { "" }
     );
+    // the main thread's stack, 8 MB as on Linux and macOS: Windows gives it 1 MB, which the command tree clap
+    // derives (built again by `serve`) and the commands' futures outgrow in a debug build
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        match std::env::var("CARGO_CFG_TARGET_ENV").as_deref() {
+            Ok("msvc") => println!("cargo:rustc-link-arg-bin=weflow=/STACK:8388608"),
+            Ok("gnu") => println!("cargo:rustc-link-arg-bin=weflow=-Wl,--stack,8388608"),
+            _ => {}
+        }
+    }
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/index");
     println!("cargo:rerun-if-changed=../../.git/refs/tags");

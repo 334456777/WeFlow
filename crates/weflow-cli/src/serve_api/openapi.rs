@@ -149,17 +149,29 @@ fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
     }
     op["description"] = pick(
         zh,
-        "Runs in the server's process and answers the file itself, for a page to show; counted with the reads \
-         (`--max-reads`). The answer has an `ETag` and may be kept for an hour; ask again with `If-None-Match` to \
-         get `304` when it has not changed. Errors are the command's `--json` document, in the server's language.",
-        "在服务进程内执行，直接返回文件本身，供网页显示；计入读取的并发上限（`--max-reads`）。回复带 `ETag`，\
-         可以缓存一小时；带 `If-None-Match` 再次请求时，内容没变就返回 `304`。出错时返回命令的 `--json` 文档，语言为服务端的语言。",
+        "Runs in the server's process and answers the file itself, for a page to show; counted with the other \
+         media requests (`--max-media`), which wait in line for a place. The answer has an `ETag` and may be kept \
+         for an hour; ask again with `If-None-Match` to get `304` when it has not changed. `Range: bytes=…` asks \
+         for a part (`206`, or `416` past the end). Errors are the command's `--json` document, in the server's \
+         language.",
+        "在服务进程内执行，直接返回文件本身，供网页显示；计入媒体请求的上限（`--max-media`），超出时排队等待。\
+         回复带 `ETag`，可以缓存一小时；带 `If-None-Match` 再次请求时，内容没变就返回 `304`。`Range: bytes=…` \
+         只取一部分（`206`；起点超出末尾时 `416`）。出错时返回命令的 `--json` 文档，语言为服务端的语言。",
     )
     .into();
-    let (mime, what) = if path.last().is_some_and(|p| p == "voice-data") {
-        ("audio/wav", pick(zh, "The voice as WAV", "WAV 格式的语音"))
-    } else {
-        ("image/*", pick(zh, "The decrypted image", "解密后的图片"))
+    let content = match path.last().map(String::as_str) {
+        Some("voice-data") => json!({ "audio/wav": {} }),
+        Some("video-data") => json!({ "video/mp4": {}, "image/*": {} }),
+        _ => json!({ "image/*": {} }),
+    };
+    let what = match path.last().map(String::as_str) {
+        Some("voice-data") => pick(zh, "The voice as WAV", "WAV 格式的语音"),
+        Some("video-data") => pick(
+            zh,
+            "The video as WeChat keeps it; with `thumb=true`, its thumbnail or cover",
+            "微信保存的视频；带 `thumb=true` 时为缩略图或封面",
+        ),
+        _ => pick(zh, "The decrypted image", "解密后的图片"),
     };
     op["responses"] = json!({
         "200": {
@@ -168,9 +180,15 @@ fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
                 "ETag": { "schema": { "type": "string" } },
                 "Cache-Control": { "schema": { "type": "string" } },
             },
-            "content": { mime: {} },
+            "content": content.clone(),
+        },
+        "206": {
+            "description": pick(zh, "The part asked for in `Range`", "`Range` 请求的那一部分"),
+            "headers": { "Content-Range": { "schema": { "type": "string" } } },
+            "content": content,
         },
         "304": { "description": pick(zh, "Unchanged since the `ETag` sent in `If-None-Match`", "自 `If-None-Match` 中的 `ETag` 以来没有变化") },
+        "416": { "description": pick(zh, "The range starts past the end of the file", "请求的区间起点超出文件末尾") },
         "4XX": { "$ref": "#/components/responses/Error" },
         "5XX": { "$ref": "#/components/responses/Error" },
     });
@@ -913,6 +931,7 @@ mod tests {
         for (name, mime) in [
             ("chat/image-data", "image/*"),
             ("chat/voice-data", "audio/wav"),
+            ("chat/video-data", "video/mp4"),
         ] {
             let item = &doc["paths"][format!("/api/{name}")];
             assert_eq!(item.as_object().unwrap().len(), 1, "{name}: only GET");

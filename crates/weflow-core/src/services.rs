@@ -325,6 +325,40 @@ impl ServiceHub {
         .to_json())
     }
 
+    /// The files WeChat keeps of a message's video (`msg/video/<yyyy-mm>/<md5>.mp4`, its cover and thumbnail),
+    /// found by the md5 in the message. Not there (WeChat has not downloaded it): a `not_found` failure.
+    pub fn video_files_for_message(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+    ) -> AppResult<crate::video::VideoFiles> {
+        let local_id = crate::api::js_parse_int(msg_id)
+            .ok_or_else(|| AppError::usage("invalid message id"))?;
+        let wcdb = self.open_wcdb()?;
+        let row = chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(43))?
+            .ok_or_else(|| AppError::runtime("message not found"))?;
+        let msg = crate::chat_msg::map_rows(std::slice::from_ref(&row), &self.my_wxid_cleaned())
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::runtime("message not found"))?;
+        if msg.local_type != 43 {
+            return Err(AppError::usage("the message is not a video"));
+        }
+        let md5 = msg
+            .video_md5
+            .filter(|m| !m.is_empty())
+            .ok_or_else(|| AppError::runtime("the video message has no md5"))?;
+        let month = crate::image::year_month_from_create_time(Some(msg.create_time));
+        let account_dir = self.account_dir_only()?;
+        crate::video::video_files(&account_dir.join("msg").join("video"), &md5, &month).ok_or_else(
+            || {
+                AppError::runtime("the video is not on this computer: open it in WeChat first")
+                    .with_details(json!({ "failureKind": "not_found" }))
+            },
+        )
+    }
+
     /// Path of the on-disk video for a message md5, if WeChat stored one.
     pub(super) fn video_file_path(&self, md5: &str) -> Option<PathBuf> {
         let account_dir = self.account_dir_only().ok()?;

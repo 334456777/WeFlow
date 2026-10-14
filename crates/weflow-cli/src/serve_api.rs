@@ -135,6 +135,7 @@ const METHODS: &[(&str, Rule)] = &[
     ("chat voice", Rule::Fixed(Post)),
     ("chat voice-data", Rule::Fixed(Post)),
     ("chat image-data", Rule::Fixed(Post)),
+    ("chat video-data", Rule::Fixed(Post)),
     ("chat voice-cache", Rule::Fixed(Get)),
     ("chat voice-preload", Rule::Fixed(Post)),
     ("chat emoji", Rule::Fixed(Post)),
@@ -1321,12 +1322,34 @@ fn only_fields(mut doc: Value, fields: &[String]) -> Value {
 }
 
 /// The file of an `/api/` media route. Its `ETag` lets a page ask again with `If-None-Match` and get `304`; the
-/// file of a message rarely changes (a thumbnail replaced by the full image), so it may be kept for an hour.
+/// file of a message rarely changes (a thumbnail replaced by the full image), so it may be kept for an hour. A file
+/// on disk (a video) is read as it is sent, only the part asked for: its `ETag` comes from its size and time.
 fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response {
     use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    file.bytes.hash(&mut hasher);
-    let etag = format!("\"{:016x}\"", hasher.finish());
+    let (etag, len) = match &file.body {
+        in_process::MediaBody::Bytes(bytes) => {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            bytes.hash(&mut hasher);
+            (format!("\"{:016x}\"", hasher.finish()), bytes.len())
+        }
+        in_process::MediaBody::File(path) => match std::fs::metadata(path) {
+            Ok(meta) => {
+                let at = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_nanos());
+                (format!("\"{:x}-{at:x}\"", meta.len()), meta.len() as usize)
+            }
+            Err(err) => {
+                return error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "runtime_error",
+                    &format!("failed to read {}: {err}", path.display()),
+                )
+            }
+        },
+    };
     let unchanged = headers
         .get_all(header::IF_NONE_MATCH)
         .iter()
@@ -1346,7 +1369,6 @@ fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response 
             .body(Body::empty())
             .unwrap();
     }
-    let len = file.bytes.len();
     // `If-Range` asks for the part only while the file is the one it names
     let same = headers
         .get(header::IF_RANGE)
@@ -1358,27 +1380,75 @@ fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response 
         .filter(|_| same)
         .and_then(|v| byte_range(v, len));
     let builder = builder.header(header::CONTENT_TYPE, file.mime);
-    match range {
-        None => builder
-            .status(StatusCode::OK)
-            .body(Body::from(file.bytes))
-            .unwrap(),
-        Some(Ok((first, last))) => {
-            let mut bytes = file.bytes;
-            bytes.truncate(last + 1);
-            bytes.drain(..first);
+    let (builder, first, last) = match range {
+        None => (builder.status(StatusCode::OK), 0, len.saturating_sub(1)),
+        Some(Ok((first, last))) => (
             builder
                 .status(StatusCode::PARTIAL_CONTENT)
-                .header(header::CONTENT_RANGE, format!("bytes {first}-{last}/{len}"))
-                .body(Body::from(bytes))
+                .header(header::CONTENT_RANGE, format!("bytes {first}-{last}/{len}")),
+            first,
+            last,
+        ),
+        Some(Err(())) => {
+            return builder
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(header::CONTENT_RANGE, format!("bytes */{len}"))
+                .body(Body::empty())
                 .unwrap()
         }
-        Some(Err(())) => builder
-            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-            .header(header::CONTENT_RANGE, format!("bytes */{len}"))
-            .body(Body::empty())
-            .unwrap(),
-    }
+    };
+    let count = if len == 0 { 0 } else { last + 1 - first };
+    let body = match file.body {
+        in_process::MediaBody::Bytes(mut bytes) => {
+            bytes.truncate(first + count);
+            bytes.drain(..first);
+            Body::from(bytes)
+        }
+        in_process::MediaBody::File(path) => file_part(path, first as u64, count as u64),
+    };
+    builder
+        .header(header::CONTENT_LENGTH, count)
+        .body(body)
+        .unwrap()
+}
+
+/// `count` bytes of a file from `first` on, read as they are sent: a video is not held in memory.
+fn file_part(path: PathBuf, first: u64, count: u64) -> Body {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    let chunks = async_stream::stream! {
+        let mut file = match tokio::fs::File::open(&path).await {
+            Ok(file) => file,
+            Err(err) => {
+                yield Err(err);
+                return;
+            }
+        };
+        if let Err(err) = file.seek(std::io::SeekFrom::Start(first)).await {
+            yield Err(err);
+            return;
+        }
+        let mut left = count;
+        let mut buf = vec![0u8; 256 * 1024];
+        while left > 0 {
+            let want = buf.len().min(usize::try_from(left).unwrap_or(usize::MAX));
+            match file.read(&mut buf[..want]).await {
+                // shorter than it was: the answer ends early, as its length says it should not
+                Ok(0) => {
+                    yield Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
+                    return;
+                }
+                Ok(n) => {
+                    left -= n as u64;
+                    yield Ok::<_, std::io::Error>(axum::body::Bytes::copy_from_slice(&buf[..n]));
+                }
+                Err(err) => {
+                    yield Err(err);
+                    return;
+                }
+            }
+        }
+    };
+    Body::from_stream(chunks)
 }
 
 /// The one range of a `Range: bytes=…` header for a file of `len` bytes, as (first, last) byte, clamped to the file;

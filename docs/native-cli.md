@@ -38,7 +38,7 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ./weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
-                 voice | voice-data | voice-cache | voice-preload | image-data | emoji
+                 voice | voice-data | voice-cache | voice-preload | image-data | video-data | emoji
 ./weflow export    sessions | contacts | footprint | media | messages   (messages: chatlab, chatlab-jsonl, json,
                  arkme-json, html, txt, excel, weclone, sql)
 ./weflow analytics overall | rankings | time | excluded | exclude-candidates
@@ -59,7 +59,7 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Such a refusal has the error code `unsupported` (exit code `4`). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file), with the error code `native_error`.
 
-Message ids: a message's local id (`local_id` / `localId`) is only unique within one `message_N.db`, and a conversation spread over several of them can have different messages with the same local id. Commands that take a local id (`chat message --local-id`, `chat image-data`, `chat voice-data`) also take `--create-time` (seconds, the message's `create_time`) to tell them apart; `chat image-data` and `chat voice-data` also prefer the message of their own kind. When a local id still names several messages, `chat message` and `chat image-data` answer `invalid_arguments` with the candidates (`createTime`, `localType`, `dbName`) in `details.candidates` instead of picking one (`chat voice-data` then needs `--create-time`). The server id (`chat message --server-id`) is unique.
+Message ids: a message's local id (`local_id` / `localId`) is only unique within one `message_N.db`, and a conversation spread over several of them can have different messages with the same local id. Commands that take a local id (`chat message --local-id`, `chat image-data`, `chat voice-data`, `chat video-data`) also take `--create-time` (seconds, the message's `create_time`) to tell them apart; `chat image-data` and `chat voice-data` also prefer the message of their own kind. When a local id still names several messages, `chat message` and `chat image-data` answer `invalid_arguments` with the candidates (`createTime`, `localType`, `dbName`) in `details.candidates` instead of picking one (`chat voice-data` then needs `--create-time`). The server id (`chat message --server-id`) is unique.
 
 Progress: commands that run longer than the delay (default 5 seconds; `./weflow config set progress_delay_seconds <s>` or env `WEFLOW_PROGRESS_DELAY`, `0` = always) show a single-line progress bar on stderr (only when stderr is a
 terminal; stdout is never touched). `./weflow config set no_progress true` turns it off, `--progress` prints machine-readable NDJSON events instead.
@@ -250,7 +250,7 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
   read of the conversation list, and the first page of the conversation on top, as a page asks for them right after the start. Then the same reads go through both routes, `--runs`
   times each (default 10), and the median and 95th percentile are printed, followed by the server's CPU time per second while the push is
   listened to. The first page of messages and the contacts are also asked for compressed (gzip, br) and cut to the `fields` a page uses, to
-  show what each saves. The conversations are picked by message count, and only
+  show what each saves. Videos are read as a player reads them: the first megabyte, then one from the middle. The conversations are picked by message count, and only
   aggregate numbers are printed. `--compare base.json` adds the ratio to an earlier run and fails when a median is more than `--tolerance`
   times (default 2) and more than 20 ms slower.
 - Both accounts also time the reads that had no `/api/` route ([#175](https://github.com/334456777/WeFlow/issues/175)): through the

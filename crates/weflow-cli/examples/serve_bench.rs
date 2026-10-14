@@ -58,6 +58,9 @@ const XOR_KEY: u8 = 0x5a;
 const PAGE: i64 = 50;
 const AT_ONCE: i64 = 16;
 const SCREEN_OF_IMAGES: usize = 20;
+/// Video messages tried for the video reads, and the part of a video a player asks for first.
+const VIDEOS: usize = 10;
+const VIDEO_PART: usize = 1 << 20;
 /// A slower median is only a regression when it is also slower by this much.
 const NOISE_MS: f64 = 20.0;
 /// The pushed message is this many seconds older than the group's latest one, so the group stays first.
@@ -962,6 +965,8 @@ struct Reply {
     status: u16,
     body: Vec<u8>,
     ms: f64,
+    /// The size of the whole file, of a `206` answer.
+    content_range_total: Option<usize>,
 }
 
 impl Reply {
@@ -1029,7 +1034,17 @@ fn request_with(
     if head.contains("\r\ntransfer-encoding: chunked") {
         body = dechunk(&body);
     }
-    Ok(Reply { status, body, ms })
+    let content_range_total = head
+        .lines()
+        .find_map(|l| l.strip_prefix("content-range: bytes "))
+        .and_then(|r| r.rsplit_once('/'))
+        .and_then(|(_, total)| total.trim().parse().ok());
+    Ok(Reply {
+        status,
+        body,
+        ms,
+        content_range_total,
+    })
 }
 
 fn encode(s: &str) -> String {
@@ -1098,6 +1113,8 @@ struct Targets {
     /// The `_cursor` of the message above the page in the middle of the biggest conversation.
     middle_cursor: Option<String>,
     images: Vec<Value>,
+    /// Video messages, whose files may or may not be on the computer.
+    videos: Vec<Value>,
 }
 
 fn targets(addr: &str) -> Result<Targets> {
@@ -1143,6 +1160,7 @@ fn targets(addr: &str) -> Result<Targets> {
 
     let mut one_message = None;
     let mut images = Vec::new();
+    let mut videos = Vec::new();
     for (_, sid) in ranked.iter().take(15) {
         let page = request(
             addr,
@@ -1157,21 +1175,19 @@ fn targets(addr: &str) -> Result<Targets> {
             if sid == &big && one_message.is_none() {
                 one_message = id.zip(at);
             }
-            if number(field(&m, &["local_type", "localType"])) == Some(3) {
-                if let Some(id) = id {
-                    images.push(json!({
-                        "session-id": sid,
-                        "msg-id": id.to_string(),
-                        "create-time": at,
-                    }));
-                }
+            let found = json!({ "session-id": sid, "msg-id": id.map(|i| i.to_string()), "create-time": at });
+            match number(field(&m, &["local_type", "localType"])) {
+                Some(3) if id.is_some() => images.push(found),
+                Some(43) if id.is_some() => videos.push(found),
+                _ => {}
             }
         }
-        if images.len() >= SCREEN_OF_IMAGES {
+        if images.len() >= SCREEN_OF_IMAGES && videos.len() >= VIDEOS {
             break;
         }
     }
     images.truncate(SCREEN_OF_IMAGES);
+    videos.truncate(VIDEOS);
     // the cursor of the message just above the middle page, to ask for that page from it
     let middle_cursor = request(
         addr,
@@ -1194,6 +1210,7 @@ fn targets(addr: &str) -> Result<Targets> {
         private,
         one_message,
         images,
+        videos,
         middle_cursor,
     })
 }
@@ -1492,6 +1509,77 @@ impl Bench<'_> {
     }
 }
 
+impl Bench<'_> {
+    /// Videos as a player reads them through `/api/`: the start of each, then a part from its middle, as when the
+    /// viewer skips ahead. Only the videos whose file is on the computer count.
+    fn videos(&mut self, videos: &[Value]) -> Result<()> {
+        let query = |v: &Value| {
+            ["session-id", "msg-id", "create-time"]
+                .iter()
+                .filter_map(|k| match &v[*k] {
+                    Value::String(s) => Some(format!("{k}={}", encode(s))),
+                    Value::Number(n) => Some(format!("{k}={n}")),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("&")
+        };
+        let part = |v: &Value, first: usize| {
+            request_with(
+                self.addr,
+                "GET",
+                &format!("/api/chat/video-data?{}", query(v)),
+                "",
+                &format!("Range: bytes={first}-{}\r\n", first + VIDEO_PART - 1),
+            )
+        };
+        let (mut start, mut middle, mut thumbs, mut sizes) =
+            (Vec::new(), Vec::new(), Vec::new(), 0);
+        for v in videos {
+            let r = part(v, 0)?;
+            if r.status != 206 && r.status != 200 {
+                continue;
+            }
+            start.push(r.ms);
+            let total = r.content_range_total.unwrap_or(r.body.len());
+            sizes += total;
+            middle.push(part(v, total / 2)?.ms);
+            let t = request(
+                self.addr,
+                "GET",
+                &format!("/api/chat/video-data?{}&thumb=true", query(v)),
+                "",
+            )?;
+            thumbs.push(t.ms);
+        }
+        if start.is_empty() {
+            return Ok(());
+        }
+        let found = start.len();
+        let note = format!(
+            "{found} of {} on disk, {} MB each on average",
+            videos.len(),
+            sizes / found / (1 << 20)
+        );
+        for (op, ms) in [
+            ("video, its first 1 MB (each)", start),
+            ("video, 1 MB from its middle (each)", middle),
+            ("thumbnail of the video (each)", thumbs),
+        ] {
+            let (median, p95) = median_p95(ms);
+            self.push(Row {
+                op: op.into(),
+                route: "api",
+                median,
+                p95,
+                bytes: None,
+                note: note.clone(),
+            });
+        }
+        Ok(())
+    }
+}
+
 fn key(row: &Row) -> String {
     format!("{} [{}]", row.op, row.route)
 }
@@ -1694,6 +1782,7 @@ fn main() -> Result<()> {
         bench.images("sub", &t.images)?;
         bench.images("api", &t.images)?;
     }
+    bench.videos(&t.videos)?;
     bench.push_cost(server.child.id())?;
     drop(server);
 
