@@ -574,6 +574,7 @@ pub fn router(cfg: ApiConfig) -> Router {
     hub.warm();
     Router::new()
         .fallback(dispatch)
+        .layer(compression())
         .with_state(Arc::new(AppState {
             cfg,
             endpoints: Endpoints::new(),
@@ -585,6 +586,26 @@ pub fn router(cfg: ApiConfig) -> Router {
             hub,
             push: Default::default(),
         }))
+}
+
+/// gzip or br, as `Accept-Encoding` asks (issue #155): a page of messages or the contacts are mostly repeated
+/// column names and XML. Not for what is compressed already or streamed: images, voices, videos, the files of
+/// `return=file`, the event streams, and a part of a file (`206`).
+fn compression(
+) -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate> {
+    use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
+    let whole =
+        |status: StatusCode, _: axum::http::Version, _: &HeaderMap, _: &axum::http::Extensions| {
+            status != StatusCode::PARTIAL_CONTENT
+        };
+    tower_http::compression::CompressionLayer::new().compress_when(
+        DefaultPredicate::new()
+            .and(NotForContentType::const_new("audio/"))
+            .and(NotForContentType::const_new("video/"))
+            .and(NotForContentType::const_new("multipart/"))
+            .and(NotForContentType::const_new("application/octet-stream"))
+            .and(whole),
+    )
 }
 
 /// The default of [`ApiConfig::max_reads`] and [`ApiConfig::max_media`]: one per CPU.
@@ -961,7 +982,14 @@ async fn route(st: &AppState, req: Request) -> Response {
             }
         },
     };
+    let fields = params.remove("fields").map(|values| field_names(&values));
     let background = prefers_async(&parts.headers);
+    if fields.is_some() && (std != Std::Json || want_file || background || media) {
+        return bad_request(
+            "fields picks the columns of a --json document answered right away: not with std, return=file, \
+             `Prefer: respond-async` or a media route",
+        );
+    }
     if in_process && (std != Std::Json || want_file || background) {
         return bad_request(
             "/api/ answers the --json document right away: std, return=file and `Prefer: respond-async` are for \
@@ -1081,14 +1109,14 @@ async fn route(st: &AppState, req: Request) -> Response {
     if media {
         match in_process::media(&st.hub, &argv).await {
             Some(Ok(file)) => return media_response(&parts.headers, file),
-            Some(Err((doc, exit))) => return in_process_document(&doc, exit),
+            Some(Err((doc, exit))) => return in_process_document(&doc, exit, None),
             // the child process reports the command line error; with `out` set to `-` and the command line
             // refused, it writes nothing
             None => {}
         }
     } else if in_process {
         if let Some((doc, exit)) = in_process::run(&st.hub, &argv).await {
-            return in_process_document(&doc, exit);
+            return in_process_document(&doc, exit, fields.as_deref());
         }
     }
     if let Some(dir) = file_out.as_ref().and_then(|f| f.dir.as_ref()) {
@@ -1132,7 +1160,14 @@ async fn route(st: &AppState, req: Request) -> Response {
                             ),
                         }
                     }
-                    _ => document_response(&doc, status, output.stdout),
+                    _ => match &fields {
+                        Some(fields) => document_response(
+                            &doc,
+                            status,
+                            json_line(&only_fields(doc.clone(), fields)),
+                        ),
+                        None => document_response(&doc, status, output.stdout),
+                    },
                 }
             }
             Err(_) => {
@@ -1169,12 +1204,62 @@ async fn route(st: &AppState, req: Request) -> Response {
 }
 
 /// The `--json` document of a command run in this process, answered as the child process prints it.
-fn in_process_document(doc: &Value, exit: u8) -> Response {
-    let body = format!("{}\n", serde_json::to_string(doc).unwrap());
+fn in_process_document(doc: &Value, exit: u8, fields: Option<&[String]>) -> Response {
+    let body = match fields {
+        Some(fields) => json_line(&only_fields(doc.clone(), fields)),
+        None => json_line(doc),
+    };
     let mut resp = document_response(doc, status_for(doc, exit.into()), body);
     resp.headers_mut()
         .insert("x-weflow-exit-code", HeaderValue::from(i32::from(exit)));
     resp
+}
+
+/// A `--json` document as the command prints it: on one line.
+fn json_line(doc: &Value) -> String {
+    format!("{}\n", serde_json::to_string(doc).unwrap())
+}
+
+/// The names of `?fields=`: repeated, comma-separated, or a JSON array.
+fn field_names(values: &[Value]) -> Vec<String> {
+    values
+        .iter()
+        .flat_map(|v| match v {
+            Value::Array(items) => items.iter().map(text_of).collect(),
+            other => vec![text_of(other)],
+        })
+        .flat_map(|v| {
+            v.split(',')
+                .map(|f| f.trim().to_string())
+                .collect::<Vec<_>>()
+        })
+        .filter(|f| !f.is_empty())
+        .collect()
+}
+
+/// `?fields=` (issue #155): of a successful document, only the named keys of each row: the objects of `data` when
+/// it is a list, or of each list in `data` when it is an object. Anything else is left as it is.
+fn only_fields(mut doc: Value, fields: &[String]) -> Value {
+    if doc["success"] != true {
+        return doc;
+    }
+    let keep = |row: &mut Value| {
+        if let Value::Object(row) = row {
+            row.retain(|k, _| fields.iter().any(|f| f == k));
+        }
+    };
+    match doc.get_mut("data") {
+        Some(Value::Array(rows)) => rows.iter_mut().for_each(keep),
+        Some(Value::Object(data)) => {
+            for value in data.values_mut() {
+                if let Value::Array(rows) = value {
+                    rows.iter_mut().for_each(keep);
+                }
+            }
+        }
+        _ => {}
+    }
+    doc
 }
 
 /// The file of an `/api/` media route. Its `ETag` lets a page ask again with `If-None-Match` and get `304`; the
@@ -1379,7 +1464,7 @@ mod tests {
     use super::*;
 
     /// Query / body keys the server reads itself; no command argument may use them.
-    const RESERVED_PARAMS: &[&str] = &["std", "return", "access_token"];
+    const RESERVED_PARAMS: &[&str] = &["std", "return", "access_token", "fields"];
 
     /// First path segments that are not commands (the WebUI, later endpoints).
     const RESERVED_PATHS: &[&str] = &["api", "assets", "health", "jobs", "openapi.json", "ui"];

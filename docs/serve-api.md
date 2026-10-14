@@ -98,6 +98,17 @@ By the error code first, then by the exit code. The CLI's exit codes do not chan
 
 `std=out` and `std=err` have no error code and go by the exit code alone. Errors of the server itself use the same shape: `unauthorized` (`401`), `invalid_host` (`403`, see [Authentication](#authentication)), `not_found` (`404`), `method_not_allowed` (`405`), `invalid_arguments` (`400`), `busy` (`429`, see [Limits](#limits)).
 
+### Size
+
+Answers are compressed with gzip or br when the request's `Accept-Encoding` takes them, as browsers always do. Images, voices, videos, the files of `?return=file`, a part of a file (`206`) and event streams are sent as they are. `fields=<key>,<key>` (or the key repeated) keeps only those keys of each row in a successful `--json` document: of each object in `data` when it is a list, or of each object in the lists of `data` when it is an object; a failure comes back whole. It is the server's, not the command's, so it works on both routes, but not with `std`, `return=file`, `Prefer: respond-async` or a media route (`400`).
+
+| Answer (large account, `/api/`) | As printed | br | `fields` | `fields` and br |
+|---|---:|---:|---:|---:|
+| `chat messages`, 50 messages | 126 KB, 3.5 ms | 18 KB, 5.1 ms | 87 KB | 15 KB, 4.9 ms |
+| `chat contacts`, all | 538 KB, 6.1 ms | 119 KB, 10.7 ms | 154 KB | 71 KB, 7.4 ms |
+
+(The `fields` of a chat window: `local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,_cursor`; of a contact list: `username,alias,remark,nick_name,small_head_url,local_type`.) gzip is a little bigger than br and costs about as much. With both, all the contacts come in one answer of about 70 KB, so `chat contacts` is not paged: a page searches and sorts them itself.
+
 ## Files
 
 Commands that write one file can send it back in the answer: add `?return=file` (the default is `return=json`).

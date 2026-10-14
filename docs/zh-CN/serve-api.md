@@ -98,6 +98,17 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 
 `std=out` 和 `std=err` 没有错误码，只按退出码决定。服务端自己的错误也是同样的格式：`unauthorized`（`401`）、`invalid_host`（`403`，见[鉴权](#鉴权)）、`not_found`（`404`）、`method_not_allowed`（`405`）、`invalid_arguments`（`400`）、`busy`（`429`，见[并发限制](#并发限制)）。
 
+### 体积
+
+请求的 `Accept-Encoding` 接受时，响应用 gzip 或 br 压缩；浏览器总会带上这个头。图片、语音、视频、`?return=file` 的文件、文件的一部分（`206`）和事件流原样发送。`fields=<键>,<键>`（也可以重复写这个参数）让成功的 `--json` 文档里每一行只保留这些键：`data` 是列表时，处理其中的每个对象；`data` 是对象时，处理它里面每个列表中的对象；失败的文档原样返回。它由服务端处理，不是命令的参数，所以两种路由都能用，但不能与 `std`、`return=file`、`Prefer: respond-async` 或媒体路由同时使用（返回 `400`）。
+
+| 响应（大账号，`/api/`） | 原样 | br | `fields` | `fields` 加 br |
+|---|---:|---:|---:|---:|
+| `chat messages`，50 条消息 | 126 KB，3.5 ms | 18 KB，5.1 ms | 87 KB | 15 KB，4.9 ms |
+| `chat contacts`，全部 | 538 KB，6.1 ms | 119 KB，10.7 ms | 154 KB | 71 KB，7.4 ms |
+
+（聊天窗口用的 `fields`：`local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,_cursor`；联系人列表用的：`username,alias,remark,nick_name,small_head_url,local_type`。）gzip 比 br 稍大，耗时差不多。两者一起用，全部联系人一次约 70 KB，所以 `chat contacts` 不分页：由网页自己搜索和排序。
+
 ## 返回文件
 
 写出单个文件的命令可以在响应里直接带回这个文件：加上 `?return=file`（默认为 `return=json`）。
