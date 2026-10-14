@@ -1,6 +1,6 @@
 # Windows database-key capture
 
-[简体中文](zh-CN/windows-db-key.md)
+**English** | [简体中文](zh-CN/windows-db-key.md)
 
 Windows x64 `key db` uses Rust in `weflow-native/src/windows_db_key/`. The key argument layout (RDX points to a structure with a pointer at +8 and a byte count at +16) was checked against [ycccccccy/wx_key](https://github.com/ycccccccy/wx_key), under its [MIT license](../crates/weflow-native/src/windows_db_key/LICENSE), and the maintainer's disassembly of the original helper.
 
