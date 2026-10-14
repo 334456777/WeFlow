@@ -13,8 +13,8 @@
 //! The synthetic account: `<work dir>/data` (rebuilt only when a size option changes) holds one group with
 //! `--messages` messages (default 200000) over 4 message databases, every 20th an image whose `.dat` files exist for
 //! the latest 1000 messages and all but the newest 50 in WeChat's own search index, `--sessions` private conversations
-//! (default 500) of 30 messages each and `--contacts`
-//! contacts in all (default 3000); `<work dir>/home` is the WeFlow home pointing at it. Each read is made through both
+//! (default 500) of 30 messages each, `--contacts` contacts in all (default 3000) and 2000 Moments posts;
+//! `<work dir>/home` is the WeFlow home pointing at it. Each read is made through both
 //! routes, the child process one (`/chat/...`) and the in-process one (`/api/chat/...`), and its answer checked: the
 //! same from both routes, and the conversations, counts, pages, search hits, group members and image bytes the
 //! account holds. Last, a message is added to a private chat while `/api/push/messages` is listened to: it must
@@ -27,7 +27,8 @@
 //! (default 10) through both routes; the table shows the median and the 95th percentile in milliseconds as the client
 //! sees them (connection included) and the size of the answer. A last row gives the server's CPU time per second
 //! while `/api/push/messages` is listened to (the engine looks for new messages every second), next to the idle
-//! one. `--save` writes the numbers to a JSON file;
+//! one. Both accounts also time the reads that had no `/api/` route (issue #175), in a table of their own on the
+//! synthetic one. `--save` writes the numbers to a JSON file;
 //! `--compare` reads such a file, adds a column with the ratio to it and fails when a median is more than
 //! `--tolerance` times (default 2) and more than 20 ms slower.
 use std::collections::BTreeMap;
@@ -39,7 +40,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use serde_json::{json, Value};
-use weflow_native::fixture::{ContactSpec, Fixture, FtsSpec, MsgSpec, RoomSpec, SessionSpec, T0};
+use weflow_native::fixture::{
+    ContactSpec, Fixture, FtsSpec, MsgSpec, RoomSpec, SessionSpec, SnsPostSpec, T0,
+};
 
 const TOKEN: &str = "serve-bench";
 const OWNER: &str = "wxid_me_ab12";
@@ -63,6 +66,15 @@ const PUSHED_AT: i64 = 1;
 const ABSENT: &str = "qzxwvk";
 /// The newest messages of the group that WeChat's index does not hold yet, so a search scans them.
 const UNINDEXED: i64 = 50;
+/// The reads of [`Bench::candidates`] given an `/api/` route since, by the start of their path.
+const IN_API: &[&str] = &[
+    "/chat/dates?",
+    "/chat/date-counts?",
+    "/chat/detail?",
+    "/sns/",
+];
+/// Moments of the synthetic account, from its friends in turn.
+const SNS_POSTS: i64 = 2000;
 /// How long the push engine's CPU time is measured on the real account, idle and with a listener.
 const PUSH_WINDOW: Duration = Duration::from_secs(10);
 
@@ -303,6 +315,20 @@ fn build(data: &Path, args: &Args) -> Result<Fixture> {
         })
         .collect();
     f.message_fts_db(&[indexed]);
+    // the friends' moments, newest first by tid as WeChat keeps them
+    let posts: Vec<SnsPostSpec> = (0..SNS_POSTS)
+        .map(|k| SnsPostSpec {
+            tid: SNS_POSTS - k,
+            user: friends[k as usize % friends.len()],
+            create_time: last - k * 3600,
+            desc: leak(text(k)),
+            kind: 1,
+            media: (k % 4) as usize,
+            likes: &[],
+            extra: "",
+        })
+        .collect();
+    f.sns_db(&posts);
 
     let dir = f
         .account_dir
@@ -339,7 +365,7 @@ fn synthetic_home(weflow: &Path, args: &Args) -> Result<PathBuf> {
         "messages": args.messages,
         "sessions": args.sessions,
         "contacts": args.contacts,
-        "layout": 2,
+        "layout": 3,
     });
     let stamp = args.work.join("data.json");
     let built = std::fs::read(&stamp)
@@ -1175,26 +1201,33 @@ impl Bench<'_> {
 
     /// Times `runs` requests of one read through the given route.
     fn read(&mut self, op: &str, route: &'static str, target: &str) -> Result<()> {
+        self.read_n(op, route, target, self.runs)
+    }
+
+    fn read_n(&mut self, op: &str, route: &'static str, target: &str, runs: usize) -> Result<()> {
         let path = if route == "api" {
             format!("/api{target}")
         } else {
             target.to_string()
         };
-        let mut ms = Vec::with_capacity(self.runs);
+        let mut ms = Vec::with_capacity(runs);
         let mut bytes = 0;
         let mut statuses = BTreeMap::<u16, usize>::new();
-        for _ in 0..self.runs {
+        for _ in 0..runs {
             let r = request(self.addr, "GET", &path, "")?;
             ms.push(r.ms);
             bytes = r.body.len();
             *statuses.entry(r.status).or_default() += 1;
         }
         let (median, p95) = median_p95(ms);
-        let note = if statuses.keys().eq([200].iter()) {
+        let mut note = if statuses.keys().eq([200].iter()) {
             String::new()
         } else {
             format!("status {statuses:?}")
         };
+        if runs == 1 {
+            note = [note.as_str(), "once"].join(if note.is_empty() { "" } else { "; " });
+        }
         self.push(Row {
             op: op.into(),
             route,
@@ -1209,6 +1242,83 @@ impl Bench<'_> {
     fn both(&mut self, op: &str, target: &str) -> Result<()> {
         self.read(op, "sub", target)?;
         self.read(op, "api", target)
+    }
+
+    /// The reads that had no `/api/` route (issue #175): through the child process route, to tell whether one is
+    /// worth adding, and through both for those added.
+    fn candidates(&mut self, t: &Targets) -> Result<()> {
+        let big = encode(&t.big);
+        let statuses: Vec<String> = t
+            .sessions
+            .iter()
+            .map(|s| format!("usernames={}", encode(s)))
+            .collect();
+        let mut reads = vec![
+            (
+                "chat dates".to_string(),
+                format!("/chat/dates?session-id={big}"),
+            ),
+            (
+                "chat date-counts".into(),
+                format!("/chat/date-counts?session-id={big}"),
+            ),
+            (
+                format!("chat statuses of {} conversations", t.sessions.len()),
+                format!("/chat/statuses?{}", statuses.join("&")),
+            ),
+            (
+                "chat detail --fast".into(),
+                format!("/chat/detail?session-id={big}&fast=true"),
+            ),
+            ("chat tab-counts".into(), "/chat/tab-counts".into()),
+            (
+                "chat resources, all conversations".into(),
+                "/chat/resources".into(),
+            ),
+            (
+                "chat resources, all conversations, far page".into(),
+                "/chat/resources?offset=3000".into(),
+            ),
+            (
+                "chat resources, one conversation".into(),
+                format!("/chat/resources?session={big}"),
+            ),
+            ("group list".into(), "/group/list".into()),
+            ("sns timeline, 20".into(), "/sns/timeline".into()),
+            (
+                "sns timeline, 20, far page".into(),
+                "/sns/timeline?offset=1000".into(),
+            ),
+            ("sns users".into(), "/sns/users".into()),
+            ("sns stats --fast".into(), "/sns/stats?fast=true".into()),
+            (
+                "sns post-counts --prefer-cache".into(),
+                "/sns/post-counts?prefer-cache=true".into(),
+            ),
+        ];
+        for kind in ["image", "video", "voice", "file"] {
+            reads.push((
+                format!("chat resources, all conversations, {kind}"),
+                format!("/chat/resources?type={kind}"),
+            ));
+        }
+        for (op, target) in &reads {
+            if IN_API.iter().any(|p| target.starts_with(p)) {
+                self.both(op, target)?;
+            } else {
+                self.read(op, "sub", target)?;
+            }
+        }
+        // the aggregate of the statistics: computed once, then read from its cache
+        self.read_n(
+            "analytics overall --force",
+            "sub",
+            "/analytics/overall?force=true",
+            1,
+        )?;
+        self.read("analytics overall (cached)", "sub", "/analytics/overall")?;
+        self.read("analytics rankings (cached)", "sub", "/analytics/rankings")?;
+        self.read("analytics time (cached)", "sub", "/analytics/time")
     }
 
     /// `AT_ONCE` pages of the big conversation requested at the same time: the wall time of all of them.
@@ -1374,6 +1484,14 @@ fn main() -> Result<()> {
     let data = args.work.join("data");
     let checks = check_answers(&server.addr, &data, &args);
     let (passed, failed, pushed_ms) = (checks.passed, checks.failed, checks.pushed_ms);
+    // the reads without an `/api/` route, on an account whose size is known
+    let mut synthetic_candidates = Bench {
+        addr: &server.addr,
+        runs: args.runs,
+        rows: Vec::new(),
+    };
+    synthetic_candidates.candidates(&targets(&server.addr)?)?;
+    let synthetic_candidates = synthetic_candidates.rows;
     drop(server);
     // take the pushed message out again (the server had its database open); left behind, it makes the next
     // run build the account again
@@ -1513,6 +1631,7 @@ fn main() -> Result<()> {
             &format!("/group/members?chatroom-id={}", encode(group)),
         )?;
     }
+    bench.candidates(&t)?;
     bench.pages_at_once("sub", &t.big)?;
     bench.pages_at_once("api", &t.big)?;
     if !t.images.is_empty() {
@@ -1552,6 +1671,25 @@ fn main() -> Result<()> {
     if let Some(ms) = pushed_ms {
         println!("  a new message reached the listener after {ms:.0} ms");
     }
+    println!(
+        "reads that had no /api/ route, on the synthetic account ({SNS_POSTS} moments), {} runs each",
+        args.runs
+    );
+    println!();
+    println!("| read | route | median | p95 | bytes | note |");
+    println!("|---|---|---:|---:|---:|---|");
+    for row in &synthetic_candidates {
+        println!(
+            "| {} | {} | {:.1} | {:.1} | {} | {} |",
+            row.op,
+            row.route,
+            row.median,
+            row.p95,
+            row.bytes.map_or_else(|| "-".into(), |b| b.to_string()),
+            row.note
+        );
+    }
+    println!();
     println!(
         "speed on the real account, {} runs each, milliseconds as the client sees them",
         args.runs

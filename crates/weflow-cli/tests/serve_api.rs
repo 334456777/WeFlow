@@ -439,7 +439,24 @@ fn commands_answer_with_the_keys_the_server_hands_over() {
 #[test]
 fn reads_run_in_process_with_the_same_answers() {
     let root = temp_root("in-process");
-    let home = account_home(&root);
+    let home = account_home_with(&root, |f| {
+        use weflow_native::fixture::{SnsPostSpec, T0};
+        let post = |tid: i64, user: &'static str, desc: &'static str| SnsPostSpec {
+            tid,
+            user,
+            create_time: T0 + tid * 60,
+            desc,
+            kind: 1,
+            media: tid as usize % 3,
+            likes: &[("wxid_me_ab12", "Me")],
+            extra: "",
+        };
+        f.sns_db(&[
+            post(1, "wxid_bob", "first"),
+            post(2, "wxid_me_ab12", "mine"),
+            post(3, "wxid_bob", "third"),
+        ]);
+    });
     let server = start(&home, &["--api-token", TOKEN]);
     let same = |target: &str| {
         let child = server.call("GET", target, "");
@@ -465,6 +482,20 @@ fn reads_run_in_process_with_the_same_answers() {
         "/chat/contacts",
         "/chat/counts?sessions=wxid_bob&sessions=room1%40chatroom",
         "/chat/search?keyword=hello",
+        "/chat/dates?session-id=wxid_bob",
+        "/chat/date-counts?session-id=wxid_bob",
+        "/chat/detail?session-id=wxid_bob&fast=true",
+        // the rest of the details, and the timeline with its media, from the child process
+        "/chat/detail?session-id=wxid_bob",
+        "/sns/timeline",
+        "/sns/timeline?limit=1&offset=1&user=wxid_bob",
+        "/sns/timeline?keyword=thi",
+        "/sns/users",
+        "/sns/stats",
+        "/sns/stats?fast=true",
+        "/sns/post-counts",
+        "/sns/post-counts?prefer-cache=true",
+        "/sns/post-counts?user=wxid_bob",
     ] {
         let r = same(target);
         assert_eq!(r.status, 200, "{target}: {}", r.body);

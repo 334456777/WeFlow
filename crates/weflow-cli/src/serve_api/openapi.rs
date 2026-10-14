@@ -87,7 +87,7 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
             if in_process::COMMANDS.contains(&name.as_str()) {
                 paths.insert(
                     format!("/api/{}", path.join("/")),
-                    in_process_item(&item, zh),
+                    in_process_item(&item, &name, zh),
                 );
             }
             if in_process::MEDIA.contains(&name.as_str()) {
@@ -109,16 +109,19 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
 
 /// The `/api/` twin of a command's path item: the same parameters and answer, without what only a child process
 /// does (`std`, `return=file`, jobs, `Accept-Language`).
-fn in_process_item(item: &Value, zh: bool) -> Value {
+fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
     let mut item = item.clone();
     for op in item.as_object_mut().unwrap().values_mut() {
         op["operationId"] = format!("api_{}", op["operationId"].as_str().unwrap()).into();
-        let note = pick(
+        let mut note = pick(
             zh,
             "Runs in the server's process on databases it keeps open: much faster than the route without \
              `/api/`, with the same parameters and answer, in the server's language.",
             "在服务进程内执行，数据库保持打开：比不带 `/api/` 的路由快得多，参数和回复相同，语言为服务端的语言。",
         );
+        if let Some((_, en, cn)) = in_process::IN_PART.iter().find(|(n, ..)| *n == name) {
+            note = format!("{note}{}{}", if zh { "" } else { " " }, pick(zh, en, cn));
+        }
         op["description"] = match op["description"].as_str() {
             Some(d) => format!("{note}\n\n{d}").into(),
             None => note.into(),

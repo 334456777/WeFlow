@@ -47,30 +47,74 @@ fn decode(s: &str) -> String {
         .to_string()
 }
 
+/// Each opening `<name>` or `<name ...>` tag: (where its attributes begin, where they end, just after the tag).
+/// Read with plain string search: a post is parsed for every field of every one shown, and a regex built per
+/// call cost a millisecond a post.
+fn open_tags<'a>(xml: &'a str, name: &'a str) -> impl Iterator<Item = (usize, usize, usize)> + 'a {
+    let open = format!("<{name}");
+    xml.match_indices(open.as_str())
+        .map(|(at, _)| at + open.len())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter_map(|from| {
+            let rest = &xml[from..];
+            if rest.starts_with('>') {
+                return Some((from, from, from + 1));
+            }
+            if !rest.starts_with(char::is_whitespace) {
+                return None;
+            }
+            let end = from + rest.find('>')?;
+            Some((from, end, end + 1))
+        })
+}
+
 /// Text of the first `<name ...>text</name>`.
 fn tag_text(xml: &str, name: &str) -> Option<String> {
-    Regex::new(&format!(
-        r"(?s)<{0}(?:\s[^>]*)?>(.*?)</{0}>",
-        regex::escape(name)
-    ))
-    .ok()?
-    .captures(xml)
-    .map(|c| decode(&c[1]))
+    let close = format!("</{name}>");
+    open_tags(xml, name)
+        .find_map(|(_, _, inner)| xml[inner..].find(&close).map(|n| &xml[inner..inner + n]))
+        .map(decode)
 }
 
 /// Attribute string of the first opening `<name ...>` tag.
 fn tag_attrs(xml: &str, name: &str) -> Option<String> {
-    Regex::new(&format!(r"<{}(\s[^>]*)?/?>", regex::escape(name)))
-        .ok()?
-        .captures(xml)
-        .map(|c| c.get(1).map(|m| m.as_str().to_string()).unwrap_or_default())
+    let open = format!("<{name}");
+    xml.match_indices(open.as_str()).find_map(|(at, _)| {
+        let from = at + open.len();
+        let rest = &xml[from..];
+        if rest.starts_with('>') || rest.starts_with("/>") {
+            return Some(String::new());
+        }
+        if !rest.starts_with(char::is_whitespace) {
+            return None;
+        }
+        rest.find('>').map(|end| rest[..end].to_string())
+    })
 }
 
+/// The value of `name="value"` (any case) in an attribute string, decoded; `None` when empty.
 fn attr(attrs: &str, name: &str) -> Option<String> {
-    let c = Regex::new(&format!(r#"(?i)\b{}\s*=\s*"([^"]*)""#, regex::escape(name)))
-        .ok()?
-        .captures(attrs)?;
-    Some(decode(&c[1])).filter(|v| !v.is_empty())
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    // ASCII lowering keeps every byte where it was
+    let lower = attrs.to_ascii_lowercase();
+    let wanted = name.to_ascii_lowercase();
+    lower
+        .match_indices(wanted.as_str())
+        .find_map(|(at, _)| {
+            let before = attrs[..at].chars().next_back();
+            let first = name.chars().next()?;
+            // `\b` before the name: between a word character and another kind
+            if before.is_some_and(word) == word(first) {
+                return None;
+            }
+            let rest = attrs[at + name.len()..].trim_start();
+            let rest = rest.strip_prefix('=')?.trim_start();
+            let value = rest.strip_prefix('"')?;
+            let end = value.find('"')?;
+            Some(decode(&value[..end]))
+        })
+        .filter(|v| !v.is_empty())
 }
 
 /// `{ url, thumb, token, key, md5, encIdx }` for a `<media>`/`<livePhoto>` fragment.
@@ -102,6 +146,14 @@ fn media_item(frag: &str) -> Value {
     Value::Object(o)
 }
 
+/// `<createTime>` of a post, `0` when it has none.
+fn post_time(xml: &str) -> i64 {
+    R_CREATE
+        .captures(xml)
+        .and_then(|c| c[1].parse::<i64>().ok())
+        .unwrap_or(0)
+}
+
 /// One timeline row → the post object the service layer expects.
 pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> Value {
     let tid_text = (tid as u64).to_string();
@@ -109,10 +161,7 @@ pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> Value {
         .captures(xml)
         .map(|c| c[1].to_string())
         .unwrap_or_else(|| tid_text.clone());
-    let create_time = R_CREATE
-        .captures(xml)
-        .and_then(|c| c[1].parse::<i64>().ok())
-        .unwrap_or(0);
+    let create_time = post_time(xml);
     let post_type = R_TYPE
         .captures(xml)
         .and_then(|c| c[1].parse::<i64>().ok())
@@ -230,20 +279,17 @@ impl NativeAccount {
         let needle = keyword
             .map(|k| k.trim().to_lowercase())
             .filter(|k| !k.is_empty());
-        let mut posts: Vec<(i64, u64, Value)> = self
+        // only the time and the text of every post, to filter and order them; the page alone is parsed whole
+        let mut posts: Vec<(i64, u64, String, String)> = self
             .sns_rows(usernames)?
             .into_iter()
-            .map(|(tid, user, xml)| {
-                let p = parse_post(tid, &user, &xml);
-                (p["createTime"].as_i64().unwrap_or(0), tid as u64, p)
-            })
-            .filter(|(t, _, p)| {
+            .map(|(tid, user, xml)| (post_time(&xml), tid as u64, user, xml))
+            .filter(|(t, _, _, xml)| {
                 (start <= 0 || *t >= start)
                     && (end <= 0 || *t <= end)
                     && needle.as_ref().is_none_or(|n| {
-                        p["contentDesc"]
-                            .as_str()
-                            .unwrap_or("")
+                        tag_text(xml, "contentDesc")
+                            .unwrap_or_default()
                             .to_lowercase()
                             .contains(n.as_str())
                     })
@@ -253,7 +299,7 @@ impl NativeAccount {
         let it = posts
             .into_iter()
             .skip(offset.max(0) as usize)
-            .map(|(_, _, p)| p);
+            .map(|(_, tid, user, xml)| parse_post(tid as i64, &user, &xml));
         Ok(Value::Array(if limit > 0 {
             it.take(limit as usize).collect()
         } else {
@@ -268,16 +314,31 @@ impl NativeAccount {
             if user.is_empty() {
                 continue;
             }
-            let t = R_CREATE
-                .captures(&xml)
-                .and_then(|c| c[1].parse::<i64>().ok())
-                .unwrap_or(0);
+            let t = post_time(&xml);
             let e = last.entry(user).or_insert(0);
             *e = (*e).max(t.max(tid.clamp(0, 1)));
         }
         let mut v: Vec<(String, i64)> = last.into_iter().collect();
         v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         Ok(Value::Array(v.into_iter().map(|(u, _)| json!(u)).collect()))
+    }
+
+    /// `{ username: posts }`: the poster of each post is its `user_name`, or the `<username>` of its XML when
+    /// that is empty, as in [`parse_post`]. Counted from the table, without parsing the posts.
+    pub fn sns_post_counts(&self) -> Result<Value> {
+        let mut counts: BTreeMap<String, i64> = BTreeMap::new();
+        for (_, user, xml) in self.sns_rows(&[])? {
+            let user = if user.is_empty() {
+                tag_text(&xml, "username").unwrap_or_default()
+            } else {
+                user
+            };
+            let user = user.trim();
+            if !user.is_empty() {
+                *counts.entry(user.to_string()).or_default() += 1;
+            }
+        }
+        Ok(json!(counts))
     }
 
     /// `{ total_posts, total_friends, my_posts }` (`my_posts` only when `my_wxid` is given).
@@ -303,10 +364,7 @@ impl NativeAccount {
         let (mut likers, mut liked): (HashMap<String, i64>, HashMap<String, i64>) =
             Default::default();
         for (tid, user, xml) in self.sns_rows(&[])? {
-            let t = R_CREATE
-                .captures(&xml)
-                .and_then(|c| c[1].parse::<i64>().ok())
-                .unwrap_or(0);
+            let t = post_time(&xml);
             if (begin > 0 && t < begin) || (end > 0 && t > end) {
                 continue;
             }
@@ -392,6 +450,69 @@ mod tests {
         assert_eq!(p["videoKey"], "2105122989");
         assert_eq!(p["rawXml"], XML);
         assert_eq!(liker_usernames(XML), ["wxid_carol", "wxid_me"]);
+    }
+
+    #[test]
+    fn tags_and_attributes_are_read_as_the_regexes_read_them() {
+        let samples = [
+            XML,
+            "<url>a</url><url>b</url>",
+            "<urls>no</urls><url >yes</url>",
+            "<url/><url>after empty</url>",
+            "<url key=\"1\"/>",
+            "<url\tkey=\"1\">tab</url>",
+            "<url>open only",
+            "<url key=\"no close\"",
+            "<urlx>x</urlx><url\nmd5=\"m\">新</url>",
+            "<thumb><url>nested</url></thumb>",
+            "<url/x><url>y</url>",
+            "",
+        ];
+        let attr_samples = [
+            r#" key="1" token="T""#,
+            r#" xkey="1" key="2""#,
+            r#" KEY = "3""#,
+            r#" key="" key="4""#,
+            r#" enc_idx="1" idx="2""#,
+            r#" 键key="5" key="6""#,
+            r#" key=5 key="6""#,
+            r#" key="&amp;""#,
+            r#" md5"#,
+            "",
+        ];
+        for name in ["url", "thumb", "contentDesc", "id"] {
+            let text = Regex::new(&format!(
+                r"(?s)<{0}(?:\s[^>]*)?>(.*?)</{0}>",
+                regex::escape(name)
+            ))
+            .unwrap();
+            let attrs = Regex::new(&format!(r"<{}(\s[^>]*)?/?>", regex::escape(name))).unwrap();
+            for s in samples {
+                assert_eq!(
+                    tag_text(s, name),
+                    text.captures(s).map(|c| decode(&c[1])),
+                    "{name} in {s:?}"
+                );
+                assert_eq!(
+                    tag_attrs(s, name),
+                    attrs
+                        .captures(s)
+                        .map(|c| c.get(1).map_or("", |m| m.as_str()).to_string()),
+                    "{name} in {s:?}"
+                );
+            }
+        }
+        for name in ["key", "token", "md5", "enc_idx", "idx"] {
+            let re =
+                Regex::new(&format!(r#"(?i)\b{}\s*=\s*"([^"]*)""#, regex::escape(name))).unwrap();
+            for s in attr_samples {
+                let want = re
+                    .captures(s)
+                    .map(|c| decode(&c[1]))
+                    .filter(|v| !v.is_empty());
+                assert_eq!(attr(s, name), want, "{name} in {s:?}");
+            }
+        }
     }
 
     #[test]
@@ -501,6 +622,20 @@ mod fixture_tests {
             a.sns_export_stats(Some("wxid_nobody")).unwrap()["my_posts"],
             0
         );
+        // the posts of each poster, as the parsed timeline has them
+        let mut from_timeline = BTreeMap::<String, i64>::new();
+        for p in a
+            .sns_timeline(0, 0, &[], None, 0, 0)
+            .unwrap()
+            .as_array()
+            .unwrap()
+        {
+            *from_timeline
+                .entry(p["username"].as_str().unwrap().to_string())
+                .or_default() += 1;
+        }
+        assert_eq!(from_timeline.values().sum::<i64>(), 5);
+        assert_eq!(a.sns_post_counts().unwrap(), json!(from_timeline));
     }
 
     #[test]

@@ -454,6 +454,10 @@ impl Wcdb {
         self.account()?.sns_usernames()
     }
 
+    pub fn sns_post_counts(&self) -> Result<Value> {
+        self.account()?.sns_post_counts()
+    }
+
     pub fn sns_export_stats(&self, my_wxid: Option<&str>) -> Result<Value> {
         self.account()?.sns_export_stats(my_wxid)
     }

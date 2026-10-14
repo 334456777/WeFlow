@@ -185,7 +185,7 @@ Opening a database first derives its key from the one in the configuration (abou
 
 ## In-process reads
 
-`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `group members`. Parameters, answer, status code and headers are those of the same path without `/api/` (the same parsing and the same handler; a test compares them byte for byte), only faster:
+`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `chat dates`, `chat date-counts`, `chat detail` (with `fast=true`), `group members`, `sns timeline` (without `with-media`), `sns users`, `sns stats`, `sns post-counts`. Parameters, answer, status code and headers are those of the same path without `/api/` (the same parsing and the same handler; a test compares them byte for byte), only faster:
 
 | Read (large account, Windows) | `/<path>` | `/api/<path>` |
 |---|---|---|
@@ -194,6 +194,9 @@ Opening a database first derives its key from the one in the configuration (abou
 | `chat latest`, 20 messages | 29 ms | 4 ms |
 | `chat contact` | 24 ms | 2 ms |
 | `group members` | 33 ms | 2 ms |
+| `chat date-counts`, 213,000 messages | 584 ms | 63 ms |
+| `chat detail --fast` | 55 ms | 2 ms |
+| `sns timeline`, 20 posts | 235 ms | 6 ms |
 | 16 pages of messages at once (in all) | 156 ms | 140 ms |
 
 (Medians measured by `serve_bench`, as the client sees them; see [native-cli.md](native-cli.md).) A search in a conversation first reads its newest messages and stops once a page is found, so a common word takes about 5 ms; after a few thousand messages (or 15 ms) it turns to WeChat's own index (see [cli-unsupported.md](cli-unsupported.md)), so a word found nowhere takes about 60 ms in a conversation of 210,000 messages instead of reading them all. Pages deep into a long conversation are slow with `offset` (about 1.4 s in the middle of 210,000 messages) but not from a cursor: pass the `_cursor` of the last message shown as `before` (`after` for newer ones), and the same page takes about 3 ms.
@@ -203,6 +206,8 @@ Opening a database first derives its key from the one in the configuration (abou
 - A changed config file (`PUT /config/set`, another profile) is read again on the next request.
 - Right after the start, and again after the config changed, the server opens the databases of a chat page in the background, all at once: conversations, contacts, avatars, image links, the search index, messages and voices. Opening a database first derives its key (about 0.1 s), so the first reads would otherwise wait for every database they touch. On a large account the warm-up is over within half a second; the conversation list then first takes about 12 ms instead of about 440 ms, and about 240 ms when asked for right at the start.
 - `group members` keeps a member panel for a while, as the desktop app does: within that time it answers `"fromCache": true`; pass `refresh=true` to build it again.
+- `chat detail` without `fast=true` and `sns timeline` with `with-media=true` run as the route without `/api/` does: the rest of the details (the tables, the first and last times) is slower to read, and the media of the timeline are downloaded.
+- `sns stats` with `fast=true` and `sns post-counts` with `prefer-cache=true` keep their numbers for 5 minutes, as the desktop app does: new posts show in them after that, or at once without those switches.
 - These reads count towards the `--max-reads` limit.
 
 ### Media

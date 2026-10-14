@@ -23,7 +23,29 @@ pub(super) const COMMANDS: &[&str] = &[
     "chat contacts",
     "chat counts",
     "chat search",
+    "chat dates",
+    "chat date-counts",
+    "chat detail",
     "group members",
+    "sns timeline",
+    "sns users",
+    "sns stats",
+    "sns post-counts",
+];
+
+/// Commands of [`COMMANDS`] that run in process only in part, and which part (English, Chinese); the rest runs as
+/// the route without `/api/` does, with the same answer.
+pub(super) const IN_PART: &[(&str, &str, &str)] = &[
+    (
+        "chat detail",
+        "Only `fast=true` runs in process.",
+        "只有 `fast=true` 在服务进程内执行。",
+    ),
+    (
+        "sns timeline",
+        "`with-media=true`, which downloads the media, runs as the route without `/api/`.",
+        "`with-media=true` 要下载媒体，按不带 `/api/` 的路由执行。",
+    ),
 ];
 
 /// When a file was last written, as far as telling a change goes.
@@ -205,6 +227,10 @@ pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile
 mod tests {
     use super::*;
 
+    /// Commands of [`COMMANDS`] that run in process only with these arguments; without them, `/api/` runs them as
+    /// the route without `/api/` does.
+    const ONLY_WITH: &[(&str, &str)] = &[("chat detail", "--fast")];
+
     #[test]
     fn the_list_matches_the_cli() {
         let endpoints = super::super::Endpoints::new();
@@ -226,6 +252,12 @@ mod tests {
                 sub = sub.find_subcommand(p).unwrap();
             }
             let mut argv: Vec<String> = ep.path.clone();
+            argv.extend(
+                ONLY_WITH
+                    .iter()
+                    .filter(|(n, _)| n == name)
+                    .map(|(_, a)| a.to_string()),
+            );
             let mut positionals = Vec::new();
             for a in sub.get_arguments().filter(|a| a.is_required_set()) {
                 match a.get_long() {
