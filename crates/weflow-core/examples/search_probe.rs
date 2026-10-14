@@ -404,6 +404,74 @@ fn fts_probe(
         *how.entry((*kind == 244_813_135_921, what)).or_default() += 1;
     }
     println!("  indexed text of non-text messages (is a quote, how): {how:?}");
+    // what follows the title: the separator (whitespace or punctuation only) and which XML tag it is
+    let tags = [
+        "des",
+        "sourcedisplayname",
+        "appname",
+        "displayname",
+        "content",
+        "nickname",
+        "fromusername",
+        "chatusr",
+        "sourceusername",
+        "datadesc",
+        "recorditem",
+        "url",
+        "fileext",
+        "username",
+    ];
+    let mut rest_how = std::collections::BTreeMap::<(i64, String, String), usize>::new();
+    for (k, (kind, text)) in &indexed {
+        if *kind == 1 {
+            continue;
+        }
+        let Some((_, xml, _)) = all.get(k) else {
+            continue;
+        };
+        let Some(title) = tag(xml, "title") else {
+            continue;
+        };
+        let Some(rest) = text.strip_prefix(title.as_str()) else {
+            continue;
+        };
+        let sep: String = rest
+            .chars()
+            .take_while(|c| c.is_whitespace() || c.is_ascii_punctuation())
+            .flat_map(char::escape_default)
+            .collect();
+        let body = rest.trim_start_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation());
+        let what = if body.is_empty() {
+            "nothing".to_string()
+        } else if let Some(t) = tags
+            .iter()
+            .find(|t| tag(xml, t).is_some_and(|v| v.trim() == body))
+        {
+            format!("= <{t}>")
+        } else if let Some(t) = tags.iter().find(|t| {
+            tag(xml, t).is_some_and(|v| !v.trim().is_empty() && body.starts_with(v.trim()))
+        }) {
+            format!("starts with <{t}>")
+        } else if let Some(t) = tags
+            .iter()
+            .find(|t| tag(xml, t).is_some_and(|v| v.contains(body)))
+        {
+            format!("part of <{t}>")
+        } else {
+            format!(
+                "none ({} chars)",
+                if body.chars().count() > 20 {
+                    ">20"
+                } else {
+                    "<=20"
+                }
+            )
+        };
+        *rest_how.entry((*kind >> 32, sep, what)).or_default() += 1;
+    }
+    for ((sub, sep, what), n) in rest_how {
+        println!("    subtype {sub}, separator \"{sep}\", then {what}: {n}");
+    }
     // a table of user names in the index database: is session_id its row?
     for (i, name) in names.iter().enumerate() {
         let cols: Vec<String> = account

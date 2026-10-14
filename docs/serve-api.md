@@ -196,7 +196,7 @@ Opening a database first derives its key from the one in the configuration (abou
 | `group members` | 33 ms | 2 ms |
 | 16 pages of messages at once (in all) | 156 ms | 140 ms |
 
-(Medians measured by `serve_bench`, as the client sees them; see [native-cli.md](native-cli.md).) A search reads WeChat's own index (see [cli-unsupported.md](cli-unsupported.md)) and scans only the messages it does not hold yet: in a conversation of 210,000 messages, a word found nowhere takes about 45 ms, and a common word about 70 ms, as the index is not in time order and is read whole. Pages deep into a long conversation are slow with `offset` (about 1.4 s in the middle of 210,000 messages) but not from a cursor: pass the `_cursor` of the last message shown as `before` (`after` for newer ones), and the same page takes about 3 ms.
+(Medians measured by `serve_bench`, as the client sees them; see [native-cli.md](native-cli.md).) A search in a conversation first reads its newest messages and stops once a page is found, so a common word takes about 5 ms; after a few thousand messages (or 15 ms) it turns to WeChat's own index (see [cli-unsupported.md](cli-unsupported.md)), so a word found nowhere takes about 60 ms in a conversation of 210,000 messages instead of reading them all. Pages deep into a long conversation are slow with `offset` (about 1.4 s in the middle of 210,000 messages) but not from a cursor: pass the `_cursor` of the last message shown as `before` (`after` for newer ones), and the same page takes about 3 ms.
 
 - `?std`, `?return=file` and `Prefer: respond-async` are not available (`400`); other commands answer `404`.
 - The answer is in the server's language: `Accept-Language` does not apply, as the language is set once per process.

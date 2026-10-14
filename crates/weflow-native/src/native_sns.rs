@@ -48,7 +48,7 @@ fn decode(s: &str) -> String {
 }
 
 /// Text of the first `<name ...>text</name>`.
-pub(crate) fn tag_text(xml: &str, name: &str) -> Option<String> {
+fn tag_text(xml: &str, name: &str) -> Option<String> {
     Regex::new(&format!(
         r"(?s)<{0}(?:\s[^>]*)?>(.*?)</{0}>",
         regex::escape(name)
