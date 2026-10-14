@@ -45,7 +45,7 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 | 方法 | 命令 |
 |---|---|
 | `GET` | 读取（可能写入可重建的缓存）：`config path/list/get`、`db *`、`chat sessions/messages/search/…`、`analytics *`、`group list/members/…`、`sns timeline/…`、`biz *`、`runtime *`、`cache list` 等 |
-| `POST` | 执行任务或写文件：`export *`、`report * generate`、`key *`、`backup create/restore`、`chat voice-data/image-data/…`、`sns export/media/…`、`image decrypt`、`insight test/trigger/scan`、`config import`、`ffmpeg install` 等 |
+| `POST` | 执行任务或写文件：`export *`、`report * generate`、`key *`、`backup create/restore`、`chat voice-data/image-data/video-data/…`、`sns export/media/…`、`image decrypt`、`insight test/trigger/scan`、`config import`、`ffmpeg install` 等 |
 | `PUT` | 修改设置：`config set`、`lang`、`ffmpeg set baseurl`、`insight mark-read`，以及带 `set` 的 `analytics excluded` 和 `chat group-hint` |
 | `DELETE` | 删除：`config unset/clear`、`cache clear/clear-account`、`ffmpeg unset baseurl`、`insight clear` |
 
@@ -118,6 +118,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 |---|---|
 | `chat voice-data` | WAV 文件 |
 | `chat image-data` | 图片 |
+| `chat video-data` | 视频（带 `thumb` 时为缩略图或封面） |
 | `export sessions`、`export contacts`、`export footprint`、`export messages` | 导出的文件（`export messages --media` 只返回消息文件，媒体留在磁盘上） |
 | `group export-member-messages`、`group export-members` | `.csv` / `.xlsx` 文件 |
 | `sns media`、`sns download-image` | 图片或视频 |
@@ -234,17 +235,18 @@ Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
 
 ### 媒体
 
-`GET /api/chat/image-data` 和 `GET /api/chat/voice-data` 直接返回文件本身，方便网页用 `<img>`、`<audio>` 显示：解密后的图片（`Content-Type` 按内容判断，如 `image/jpeg`），或解码为 `audio/wav` 的语音。参数与命令相同，放在查询字符串里：`session-id`、`msg-id`、`create-time`，语音另有 `server-id`、`sender`。不接受 `out`，给了返回 `400`。只允许 `GET`，其他方法返回 `405`。不带 `/api/` 的路由不变：仍是 `POST`，属于任务，写出文件。
+`GET /api/chat/image-data`、`GET /api/chat/voice-data` 和 `GET /api/chat/video-data` 直接返回文件本身，方便网页用 `<img>`、`<audio>`、`<video>` 显示：解密后的图片（`Content-Type` 按内容判断，如 `image/jpeg`），解码为 `audio/wav` 的语音，或微信保存的视频（`video/mp4`）。参数与命令相同，放在查询字符串里：`session-id`、`msg-id`、`create-time`，语音另有 `server-id`、`sender`。不接受 `out`，给了返回 `400`。只允许 `GET`，其他方法返回 `405`。不带 `/api/` 的路由不变：仍是 `POST`，属于任务，写出文件。
 
 ```html
 <img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
 ```
 
 - 加上 `thumb=true`（即命令的 `--thumb`）时，返回微信自己保存的图片缩略图，只有几 KB，适合列表；没有缩略图时返回原图。在大账号上，一张缩略图约 2 ms，大小约为原图的五分之一。
-- 回复带 `ETag` 和 `Cache-Control: private, max-age=3600`。带 `If-None-Match` 再次请求时，如果内容没变，返回 `304`，不带文件。
+- 视频加上 `thumb=true` 时，返回微信保存的视频缩略图，没有时返回封面。视频不解码：边从微信的视频文件夹读边发送，只读请求的那一段，所以再长的视频也不占内存，播放器拖动进度时能立即开始：在大账号上，视频的第一个 1 MB 约 4.5 ms，从中间取 1 MB 约 3.5 ms。微信还没下载的视频返回 `404`（`failureKind: not_found`），要先在微信里打开它。
+- 回复带 `ETag`（视频的 `ETag` 由文件的大小和修改时间得出）和 `Cache-Control: private, max-age=3600`。带 `If-None-Match` 再次请求时，如果内容没变，返回 `304`，不带文件。
 - 可以用 `Range: bytes=…` 只取文件的一部分，`<audio>` 播放器就是这样请求的：返回 `206` 并带 `Content-Range`；起点超出文件末尾时返回 `416`。请求多个区间，或 `If-Range` 指的是文件的另一个版本时，返回整个文件。
 - 出错时返回命令的 `--json` 文档和对应的状态码，与其他进程内读取一样。
-- 有自己的上限 `--max-media`（默认每个 CPU 一个），不计入 `--max-reads`，也不计入 `--max-tasks`。所以一屏图片不会挡住旁边消息的读取。
+- 有自己的上限 `--max-media`（默认每个 CPU 一个；视频只在查找文件时占用名额，发送时不占），不计入 `--max-reads`，也不计入 `--max-tasks`。所以一屏图片不会挡住旁边消息的读取。
 - 超出上限的请求排队等待，不会立即返回 `429`：一屏缩略图是同时请求的，而每张只要几毫秒。只有已有 256 个请求在排队，或者一个请求已经等了 10 秒，才返回 `429`（`busy`，`Retry-After: 1`）。
 - 在大账号上，一张图片约 4 ms；走 `POST /chat/image-data` 约 190 ms。同时请求 20 张时，10 ms 内都有回复。
 

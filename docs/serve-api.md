@@ -45,7 +45,7 @@ The method says what kind of side effect the command has:
 | Method | Commands |
 |---|---|
 | `GET` | Reading (it may fill caches that can be rebuilt): `config path/list/get`, `db *`, `chat sessions/messages/search/…`, `analytics *`, `group list/members/…`, `sns timeline/…`, `biz *`, `runtime *`, `cache list`, … |
-| `POST` | Running a task or writing files: `export *`, `report * generate`, `key *`, `backup create/restore`, `chat voice-data/image-data/…`, `sns export/media/…`, `image decrypt`, `insight test/trigger/scan`, `config import`, `ffmpeg install`, … |
+| `POST` | Running a task or writing files: `export *`, `report * generate`, `key *`, `backup create/restore`, `chat voice-data/image-data/video-data/…`, `sns export/media/…`, `image decrypt`, `insight test/trigger/scan`, `config import`, `ffmpeg install`, … |
 | `PUT` | Changing a setting: `config set`, `lang`, `ffmpeg set baseurl`, `insight mark-read`, `analytics excluded` and `chat group-hint` with `set` |
 | `DELETE` | Removing: `config unset/clear`, `cache clear/clear-account`, `ffmpeg unset baseurl`, `insight clear` |
 
@@ -118,6 +118,7 @@ Commands that write one file can send it back in the answer: add `?return=file` 
 |---|---|
 | `chat voice-data` | the WAV |
 | `chat image-data` | the image |
+| `chat video-data` | the video (with `thumb`, its thumbnail or cover) |
 | `export sessions`, `export contacts`, `export footprint`, `export messages` | the export (with `export messages --media`, only the messages file; the media stay on disk) |
 | `group export-member-messages`, `group export-members` | the `.csv` / `.xlsx` |
 | `sns media`, `sns download-image` | the image or video |
@@ -234,17 +235,18 @@ Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
 
 ### Media
 
-`GET /api/chat/image-data` and `GET /api/chat/voice-data` answer the file itself, for a page to show in `<img>` or `<audio>`: the decrypted image (`Content-Type` from its bytes, such as `image/jpeg`) or the voice decoded to `audio/wav`. They take the parameters of the commands (`session-id`, `msg-id`, `create-time`; for voices also `server-id`, `sender`) as a query, but not `out`, which answers `400`. Only `GET` is allowed (`405` otherwise); the routes without `/api/` are unchanged (`POST`, a task, writing a file).
+`GET /api/chat/image-data`, `GET /api/chat/voice-data` and `GET /api/chat/video-data` answer the file itself, for a page to show in `<img>`, `<audio>` or `<video>`: the decrypted image (`Content-Type` from its bytes, such as `image/jpeg`), the voice decoded to `audio/wav`, or the video as WeChat keeps it (`video/mp4`). They take the parameters of the commands (`session-id`, `msg-id`, `create-time`; for voices also `server-id`, `sender`) as a query, but not `out`, which answers `400`. Only `GET` is allowed (`405` otherwise); the routes without `/api/` are unchanged (`POST`, a task, writing a file).
 
 ```html
 <img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
 ```
 
 - `thumb=true` (`--thumb` of the command) answers the thumbnail WeChat keeps of the image, a few kilobytes, for a list; the image itself when there is none. On a large account a thumbnail takes about 2 ms and is about a fifth of the size of the image.
-- The answer has an `ETag` and `Cache-Control: private, max-age=3600`. Asking again with `If-None-Match` answers `304` without the file when it has not changed.
+- For a video, `thumb=true` answers the thumbnail WeChat keeps of it, or its cover when there is none. A video is not decoded: it is read from WeChat's video folder as it is sent, only the part asked for, so a long one takes no memory and a player can skip ahead at once: on a large account the first megabyte of a video takes about 4.5 ms, a megabyte from its middle about 3.5 ms. A video WeChat has not downloaded answers `404` (`failureKind: not_found`): open it in WeChat first.
+- The answer has an `ETag` (for a video, from the size and time of its file) and `Cache-Control: private, max-age=3600`. Asking again with `If-None-Match` answers `304` without the file when it has not changed.
 - A part of the file can be asked for with `Range: bytes=…`, as an `<audio>` player does: `206` with `Content-Range`, or `416` past the end. Several ranges, or an `If-Range` that names another version of the file, get the whole file.
 - A failure is the command's `--json` document with its status code, as for the other in-process reads.
-- They have a limit of their own, `--max-media` (one per CPU by default), and count towards neither `--max-reads` nor `--max-tasks`, so a screen of images does not hold up the messages beside it.
+- They have a limit of their own, `--max-media` (one per CPU by default; a video holds its place while its file is found, not while it is sent), and count towards neither `--max-reads` nor `--max-tasks`, so a screen of images does not hold up the messages beside it.
 - A request over the limit waits in line instead of answering `429` straight away: a screen of thumbnails asks for its images at once, and each takes a few milliseconds. Only when 256 requests are already waiting, or a request has waited 10 seconds, does it answer `429` (`busy`, `Retry-After: 1`).
 - On a large account an image takes about 4 ms instead of about 190 ms through `POST /chat/image-data`, and 20 images asked for at once all answer within 10 ms.
 

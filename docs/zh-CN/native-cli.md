@@ -26,7 +26,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ./weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
-                 voice | voice-data | voice-cache | voice-preload | image-data | emoji
+                 voice | voice-data | voice-cache | voice-preload | image-data | video-data | emoji
 ./weflow export    sessions | contacts | footprint | media | messages   （messages 支持：chatlab、chatlab-jsonl、json、
                  arkme-json、html、txt、excel、weclone、sql）
 ./weflow analytics overall | rankings | time | excluded | exclude-candidates
@@ -47,7 +47,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库，因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。这类拒绝的错误码为 `unsupported`（退出码 `4`）。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`，错误码为 `native_error`。
 
-消息 ID：消息的本地 ID（`local_id` / `localId`）只在单个 `message_N.db` 内唯一，分布在多个消息库里的会话可能有本地 ID 相同的不同消息。接受本地 ID 的命令（`chat message --local-id`、`chat image-data`、`chat voice-data`）也接受 `--create-time`（秒，即消息的 `create_time`）来区分它们；`chat image-data` 和 `chat voice-data` 还会优先选择对应类型的消息。本地 ID 仍然对应多条消息时，`chat message` 和 `chat image-data` 不会任选一条，而是返回 `invalid_arguments`，并在 `details.candidates` 中列出候选（`createTime`、`localType`、`dbName`）（`chat voice-data` 此时需要传入 `--create-time`）。服务器 ID（`chat message --server-id`）是唯一的。
+消息 ID：消息的本地 ID（`local_id` / `localId`）只在单个 `message_N.db` 内唯一，分布在多个消息库里的会话可能有本地 ID 相同的不同消息。接受本地 ID 的命令（`chat message --local-id`、`chat image-data`、`chat voice-data`、`chat video-data`）也接受 `--create-time`（秒，即消息的 `create_time`）来区分它们；`chat image-data` 和 `chat voice-data` 还会优先选择对应类型的消息。本地 ID 仍然对应多条消息时，`chat message` 和 `chat image-data` 不会任选一条，而是返回 `invalid_arguments`，并在 `details.candidates` 中列出候选（`createTime`、`localType`、`dbName`）（`chat voice-data` 此时需要传入 `--create-time`）。服务器 ID（`chat message --server-id`）是唯一的。
 
 进度：运行超过延迟时间（默认 5 秒；可用 `./weflow config set progress_delay_seconds <秒>` 或环境变量 `WEFLOW_PROGRESS_DELAY` 设置，`0` 表示立即显示）的命令会在 stderr 显示单行进度条（仅当 stderr 是终端时；stdout 不受影响）。`./weflow config set no_progress true` 关闭，`--progress` 改为输出机器可读的 NDJSON 事件。
 
@@ -184,7 +184,7 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 - **合成的加密账号检查答案。** 账号放在 `<工作目录>/data`，只在 `--messages`、`--sessions`、`--contacts` 改变时重建；默认有一个带图片的 20 万条消息的群（除最新的 50 条外都在微信的搜索索引里）、500 个私聊、3000 个联系人和 2000 条朋友圈动态。
   按聊天窗口的用法读取：会话列表、第一页、中间一页和最后一页消息、轮询、单条消息、联系人、消息数、搜索（包括搜一个哪里都没有的词，这要读完整个索引）、群成员、同时请求 16 页、图片。每项分别走子进程路由和 `/api/`，
   两者的回复必须相同，并且与账号的实际内容一致。最后一项检查是在订阅 `/api/push/messages` 时写入一条新消息，它必须恰好推送一次。任何一项检查失败，都会报错退出。
-- **`--home` 指定的真实账号测量速度**(请使用配置的副本)。先各测一次：服务启动、启动后第一次读取会话列表、打开最上面的会话（第一页），和网页刚启动时的请求顺序一样。然后同样的读取分别走两种路由，各请求 `--runs` 次(默认 10)，输出中位数和 95 分位；最后给出有人订阅推送时，服务端每秒占用的 CPU 时间。消息的第一页和联系人还会以压缩（gzip、br）和只取网页所用的 `fields` 的方式各请求一次，看各省多少。
+- **`--home` 指定的真实账号测量速度**(请使用配置的副本)。先各测一次：服务启动、启动后第一次读取会话列表、打开最上面的会话（第一页），和网页刚启动时的请求顺序一样。然后同样的读取分别走两种路由，各请求 `--runs` 次(默认 10)，输出中位数和 95 分位；最后给出有人订阅推送时，服务端每秒占用的 CPU 时间。消息的第一页和联系人还会以压缩（gzip、br）和只取网页所用的 `fields` 的方式各请求一次，看各省多少。视频按播放器的方式读取：先取开头 1 MB，再从中间取 1 MB。
   会话按消息数自动选取，只输出汇总数字。`--compare base.json` 会加上与之前结果的比值，某项中位数慢了 `--tolerance` 倍(默认 2)以上且多于 20 ms 时报错退出。
 - **两个账号还会测量原先没有 `/api/` 路由的读取**（[#175](https://github.com/334456777/WeFlow/issues/175)）：走子进程路由，后来补了路由的再走 `/api/`。补不补由这些数字决定：网页在打开页面、点击或滚动时会调用，且子进程路由超过 50 ms，或一屏会同时请求多次。
 

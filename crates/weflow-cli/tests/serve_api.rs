@@ -994,6 +994,130 @@ fn media_come_back_as_files_from_the_process() {
 }
 
 /// An open `GET /api/push/messages` and what it sent so far.
+#[test]
+fn videos_are_sent_in_the_parts_asked_for() {
+    use weflow_native::fixture::{MsgSpec, DAY, T0};
+    let root = temp_root("video");
+    let md5 = "0123456789abcdef0123456789abcdef";
+    let at = T0 + 4 * DAY + 60;
+    // larger than one chunk read, so a range crosses chunks
+    let video: Vec<u8> = (0..700_000u32).map(|i| (i % 251) as u8).collect();
+    let (cover, thumb) = (b"\xFF\xD8\xFFcover".to_vec(), b"\xFF\xD8\xFFthumb".to_vec());
+    let mut folder = PathBuf::new();
+    let home = account_home_with(&root, |f| {
+        let xml = |md5: &str| {
+            format!("<msg><videomsg md5=\"{md5}\" length=\"700000\" playlength=\"3\" /></msg>")
+        };
+        f.message_shard(
+            1,
+            &[(
+                "wxid_bob",
+                vec![
+                    MsgSpec::text(4, "wxid_me", T0 + 3 * DAY, "later"),
+                    MsgSpec::text(5, "wxid_bob", T0 + 4 * DAY, "see you"),
+                    MsgSpec::text(7, "wxid_bob", at, &xml(md5)).of_type(43),
+                    // WeChat has not downloaded this one
+                    MsgSpec::text(
+                        8,
+                        "wxid_bob",
+                        at + 60,
+                        &xml("ffffffffffffffffffffffffffffffff"),
+                    )
+                    .of_type(43),
+                ],
+            )],
+        );
+        folder = f
+            .account_dir
+            .join("msg/video")
+            .join(weflow_core::image::year_month_from_create_time(Some(at)));
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join(format!("{md5}.mp4")), &video).unwrap();
+        std::fs::write(folder.join(format!("{md5}.jpg")), &cover).unwrap();
+        std::fs::write(folder.join(format!("{md5}_thumb.jpg")), &thumb).unwrap();
+    });
+    let server = start(&home, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+    let query = format!("session-id=wxid_bob&msg-id=7&create-time={at}");
+    let get = |extra: &[(&str, &str)], q: &str| {
+        let mut headers = vec![("Authorization", auth.as_str())];
+        headers.extend_from_slice(extra);
+        server.request("GET", &format!("/api/chat/video-data?{q}"), &headers, "")
+    };
+
+    // the whole video, then parts of it, as a player asks while it plays and seeks
+    let r = get(&[], &query);
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(r.headers["content-type"], "video/mp4");
+    assert_eq!(r.headers["content-length"], video.len().to_string());
+    assert_eq!(r.headers["accept-ranges"], "bytes");
+    assert_eq!(r.bytes, video);
+    let etag = r.headers["etag"].clone();
+    let len = video.len();
+    for (range, first, last) in [
+        ("bytes=0-1", 0, 1),
+        ("bytes=200000-600000", 200_000, 600_000),
+        ("bytes=650000-", 650_000, len - 1),
+        ("bytes=-10", len - 10, len - 1),
+    ] {
+        let r = get(&[("Range", range)], &query);
+        assert_eq!(r.status, 206, "{range}");
+        assert_eq!(
+            r.headers["content-range"],
+            format!("bytes {first}-{last}/{len}")
+        );
+        assert_eq!(r.headers["content-length"], (last + 1 - first).to_string());
+        assert_eq!(r.bytes, video[first..=last], "{range}");
+    }
+    assert_eq!(
+        get(&[("Range", &format!("bytes={len}-"))], &query).status,
+        416
+    );
+    assert_eq!(get(&[("If-None-Match", &etag)], &query).status, 304);
+    // a changed file is another file
+    let r = get(&[("Range", "bytes=0-1"), ("If-Range", &etag)], &query);
+    assert_eq!(r.status, 206);
+    std::fs::write(folder.join(format!("{md5}.mp4")), &video[..1000]).unwrap();
+    let r = get(&[("Range", "bytes=0-1"), ("If-Range", &etag)], &query);
+    assert_eq!((r.status, r.bytes.len()), (200, 1000));
+    std::fs::write(folder.join(format!("{md5}.mp4")), &video).unwrap();
+
+    // its thumbnail, else its cover
+    let r = get(&[], &format!("{query}&thumb=true"));
+    assert_eq!(
+        (r.status, r.headers["content-type"].as_str()),
+        (200, "image/jpeg")
+    );
+    assert_eq!(r.bytes, thumb);
+    std::fs::remove_file(folder.join(format!("{md5}_thumb.jpg"))).unwrap();
+    assert_eq!(get(&[], &format!("{query}&thumb=true")).bytes, cover);
+
+    // through the child process: the video written to a file
+    let child = server.call(
+        "POST",
+        "/chat/video-data?return=file",
+        &format!(r#"{{"session-id": "wxid_bob", "msg-id": "7", "create-time": {at}}}"#),
+    );
+    assert_eq!(child.status, 200, "{}", child.body);
+    let parts = form_parts(&child);
+    assert_eq!(parts[1].1, video);
+    let result: Value = serde_json::from_slice(&parts[0].1).unwrap();
+    assert_eq!(result["success"], true, "{result}");
+
+    // not on this computer: 404; not a video: 400
+    let r = get(
+        &[],
+        &format!("session-id=wxid_bob&msg-id=8&create-time={}", at + 60),
+    );
+    assert_eq!(r.status, 404, "{}", r.body);
+    assert_eq!(r.json()["error"]["details"]["failureKind"], "not_found");
+    let r = get(
+        &[],
+        &format!("session-id=wxid_bob&msg-id=5&create-time={}", T0 + 4 * DAY),
+    );
+    assert_eq!(r.status, 400, "{}", r.body);
+}
+
 struct EventStream {
     stream: TcpStream,
     text: String,

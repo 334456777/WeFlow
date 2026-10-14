@@ -216,48 +216,92 @@ pub fn video_info(
     include_poster: bool,
     format: PosterFormat,
 ) -> VideoInfo {
+    match locate(video_base_dir, md5) {
+        Some(f) => info_for(
+            &f.video,
+            f.cover.as_deref(),
+            f.thumb.as_deref(),
+            include_poster,
+            format,
+        ),
+        None => VideoInfo::default(),
+    }
+}
+
+/// The files WeChat keeps of a video: the video itself, and where its cover and its small thumbnail are (they
+/// may not exist).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoFiles {
+    pub video: PathBuf,
+    pub cover: Option<PathBuf>,
+    pub thumb: Option<PathBuf>,
+}
+
+/// The md5 and its `_raw` twin, the names a video may have.
+fn names_of(md5: &str) -> Option<Vec<String>> {
     let normalized = md5.trim().to_lowercase();
-    if normalized.is_empty() || !video_base_dir.exists() {
-        return VideoInfo::default();
+    if normalized.is_empty() {
+        return None;
     }
-    let real = normalize_video_file_token(&normalized).unwrap_or_else(|| normalized.clone());
+    let real = normalize_video_file_token(&normalized).unwrap_or(normalized);
+    let twin = match real.strip_suffix("_raw") {
+        Some(base) => base.to_string(),
+        None => format!("{real}_raw"),
+    };
+    Some(vec![real, twin])
+}
+
+/// The files of the video `md5` in one month folder.
+fn in_folder(dir: &Path, names: &[String]) -> Option<VideoFiles> {
+    names.iter().find_map(|name| {
+        let video = dir.join(format!("{name}.mp4"));
+        video.exists().then(|| {
+            let base = name.trim_end_matches("_raw");
+            VideoFiles {
+                video,
+                cover: Some(dir.join(format!("{base}.jpg"))),
+                thumb: Some(dir.join(format!("{base}_thumb.jpg"))),
+            }
+        })
+    })
+}
+
+/// The files of the video `md5` as [`video_info`] finds them.
+fn locate(video_base_dir: &Path, md5: &str) -> Option<VideoFiles> {
+    let names = names_of(md5)?;
+    if !video_base_dir.exists() {
+        return None;
+    }
     let index = build_index(video_base_dir);
-    let mut candidates = vec![real.clone()];
-    match real.strip_suffix("_raw") {
-        Some(base) => candidates.push(base.to_string()),
-        None => candidates.push(format!("{real}_raw")),
-    }
-    for key in &candidates {
+    for key in &names {
         let Some(entry) = index.get(key) else {
             continue;
         };
         let Some(video) = entry.video.as_ref().filter(|p| p.exists()) else {
             continue;
         };
-        return info_for(
-            video,
-            entry.cover.as_deref(),
-            entry.thumb.as_deref(),
-            include_poster,
-            format,
-        );
+        return Some(VideoFiles {
+            video: video.clone(),
+            cover: entry.cover.clone(),
+            thumb: entry.thumb.clone(),
+        });
     }
-    // fallback scan
-    for dir in year_month_dirs(video_base_dir) {
-        let video = dir.join(format!("{real}.mp4"));
-        if !video.exists() {
-            continue;
+    // fallback scan, for the md5 itself
+    year_month_dirs(video_base_dir)
+        .iter()
+        .find_map(|dir| in_folder(dir, &names[..1]))
+}
+
+/// The files of a message's video: first in the folder of the month it was sent (`yyyy-mm`, where WeChat puts
+/// it), without listing the others; else as [`video_info`] finds them.
+pub fn video_files(video_base_dir: &Path, md5: &str, month: &str) -> Option<VideoFiles> {
+    let names = names_of(md5)?;
+    if !month.is_empty() {
+        if let Some(found) = in_folder(&video_base_dir.join(month), &names) {
+            return Some(found);
         }
-        let base = real.trim_end_matches("_raw");
-        return info_for(
-            &video,
-            Some(&dir.join(format!("{base}.jpg"))),
-            Some(&dir.join(format!("{base}_thumb.jpg"))),
-            include_poster,
-            format,
-        );
     }
-    VideoInfo::default()
+    locate(video_base_dir, md5)
 }
 
 /// `parseVideoMd5`: five strategies, in the desktop app's order.

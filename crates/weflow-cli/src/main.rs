@@ -588,6 +588,22 @@ enum ChatSubcommand {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Copy the video of one message (as WeChat keeps it, MP4) to a file
+    VideoData {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
+        session_id: String,
+        /// Local message id
+        msg_id: String,
+        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        #[arg(long)]
+        create_time: Option<i64>,
+        /// WeChat's own thumbnail of the video, or its cover when there is none, instead of the video
+        #[arg(long)]
+        thumb: bool,
+        /// Output file
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Check whether a decoded voice WAV is already cached for a message id
     VoiceCache {
         /// Conversation id: the other party's wxid, or xxx@chatroom for a group
@@ -1425,6 +1441,22 @@ fn open_hub() -> AppResult<(ServiceHub, PathBuf)> {
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
     let path = ctx.config_path.clone();
     Ok((ServiceHub::new(ctx, config, None, None, None, None), path))
+}
+
+/// The file `chat video-data` answers: the video, or with `thumb` its thumbnail, else its cover.
+fn video_file(files: &weflow_core::video::VideoFiles, thumb: bool) -> AppResult<&std::path::Path> {
+    if !thumb {
+        return Ok(&files.video);
+    }
+    [&files.thumb, &files.cover]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+        .map(PathBuf::as_path)
+        .ok_or_else(|| {
+            AppError::runtime("the video has no thumbnail or cover")
+                .with_details(json!({ "failureKind": "not_found" }))
+        })
 }
 
 /// Commands the command API may also run in its own process (`/api/…`, issue #140): reads that print nothing
@@ -2278,6 +2310,27 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             })?;
             Ok(
                 serde_json::json!({ "success": true, "path": out.to_string_lossy(), "bytes": bytes.len() }),
+            )
+        }
+        ChatSubcommand::VideoData {
+            session_id,
+            msg_id,
+            create_time,
+            thumb,
+            out,
+        } => {
+            let files = hub.video_files_for_message(session_id, msg_id, *create_time)?;
+            let from = video_file(&files, *thumb)?;
+            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    AppError::runtime(format!("failed to create {}: {e}", parent.display()))
+                })?;
+            }
+            let bytes = std::fs::copy(from, out).map_err(|e| {
+                AppError::runtime(format!("failed to write {}: {e}", out.display()))
+            })?;
+            Ok(
+                serde_json::json!({ "success": true, "path": out.to_string_lossy(), "bytes": bytes }),
             )
         }
         ChatSubcommand::VoiceCache { session_id, msg_id } => {

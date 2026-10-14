@@ -154,14 +154,29 @@ pub(super) async fn run(hub: &Hub, argv: &[String]) -> Option<(Value, u8)> {
     }))
 }
 
-/// Commands whose `/api/` route is a `GET` that answers the file itself, for a page to show: the image or the voice
-/// of a message. The parameters are those of the command, but for `out`.
-pub(super) const MEDIA: &[&str] = &["chat image-data", "chat voice-data"];
+/// Commands whose `/api/` route is a `GET` that answers the file itself, for a page to show: the image, the voice or
+/// the video of a message. The parameters are those of the command, but for `out`.
+pub(super) const MEDIA: &[&str] = &["chat image-data", "chat voice-data", "chat video-data"];
 
 /// A media file and its content type.
 pub(super) struct MediaFile {
-    pub bytes: Vec<u8>,
+    pub body: MediaBody,
     pub mime: &'static str,
+}
+
+/// What a media file is made of: bytes decoded in memory, or a file on disk, sent as it is read (a video).
+pub(super) enum MediaBody {
+    Bytes(Vec<u8>),
+    File(std::path::PathBuf),
+}
+
+/// The content type of an image, from its first bytes.
+fn image_mime(bytes: &[u8]) -> &'static str {
+    let ext = weflow_core::decrypt::detect_image_extension(bytes);
+    mime_guess::from_ext(ext.trim_start_matches('.'))
+        .first_raw()
+        .filter(|m| m.starts_with("image/"))
+        .unwrap_or("application/octet-stream")
 }
 
 /// The file a [`MEDIA`] command would write, read in this process: the decrypted image or the decoded WAV, or the
@@ -188,13 +203,9 @@ pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile
         } else {
             hub.image_data_for_message(session_id, msg_id, *create_time)
         }
-        .map(|bytes| {
-            let ext = weflow_core::decrypt::detect_image_extension(&bytes);
-            let mime = mime_guess::from_ext(ext.trim_start_matches('.'))
-                .first_raw()
-                .filter(|m| m.starts_with("image/"))
-                .unwrap_or("application/octet-stream");
-            MediaFile { bytes, mime }
+        .map(|bytes| MediaFile {
+            mime: image_mime(&bytes),
+            body: MediaBody::Bytes(bytes),
         }),
         ChatSubcommand::VoiceData {
             session_id,
@@ -212,8 +223,33 @@ pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile
                 sender.as_deref(),
             )
             .map(|bytes| MediaFile {
-                bytes,
+                body: MediaBody::Bytes(bytes),
                 mime: "audio/wav",
+            }),
+        ChatSubcommand::VideoData {
+            session_id,
+            msg_id,
+            create_time,
+            thumb,
+            ..
+        } => hub
+            .video_files_for_message(session_id, msg_id, *create_time)
+            .and_then(|files| {
+                let path = crate::video_file(&files, *thumb)?;
+                if !*thumb {
+                    return Ok(MediaFile {
+                        body: MediaBody::File(path.to_path_buf()),
+                        mime: "video/mp4",
+                    });
+                }
+                // a poster is small: read, to tell its type
+                let bytes = std::fs::read(path).map_err(|e| {
+                    AppError::runtime(format!("failed to read {}: {e}", path.display()))
+                })?;
+                Ok(MediaFile {
+                    mime: image_mime(&bytes),
+                    body: MediaBody::Bytes(bytes),
+                })
             }),
         _ => Err(AppError::runtime("this command has no media route")),
     })
@@ -317,7 +353,9 @@ mod tests {
             assert!(
                 matches!(
                     chat.command,
-                    ChatSubcommand::ImageData { .. } | ChatSubcommand::VoiceData { .. }
+                    ChatSubcommand::ImageData { .. }
+                        | ChatSubcommand::VoiceData { .. }
+                        | ChatSubcommand::VideoData { .. }
                 ),
                 "{name} has no media route in `media`"
             );

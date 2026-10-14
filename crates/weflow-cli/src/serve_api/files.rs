@@ -15,6 +15,7 @@ use tokio::io::AsyncReadExt;
 pub(super) const FILE_COMMANDS: &[(&str, &str, Option<&str>)] = &[
     ("chat voice-data", "voice.wav", Some("path")),
     ("chat image-data", "image", Some("path")),
+    ("chat video-data", "video", Some("path")),
     ("export sessions", "", Some("out")),
     ("export contacts", "", Some("out")),
     ("export footprint", "", Some("out")),
