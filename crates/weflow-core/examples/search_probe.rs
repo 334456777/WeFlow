@@ -100,11 +100,534 @@ fn scan(
     Ok((ms(t), hits, rows, blobs, inflating))
 }
 
+/// (sort_seq, local_id) of a message, the key that matches it to WeChat's index.
+type Key = (i64, i64);
+
+/// The rows of WeChat's full-text index for one conversation: key, local_type, text.
+fn fts_rows(
+    account: &NativeAccount,
+    fts: &Path,
+    table: &str,
+    session: &rusqlite::types::Value,
+) -> Result<Vec<(Key, i64, String)>> {
+    account.with_db(fts, |conn| {
+        let mut stmt = conn.prepare(&format!(
+            "select c2, c1, c3, c0 from \"{table}\" where c4 = ?1"
+        ))?;
+        let rows = stmt
+            .query_map([session], |r| {
+                Ok((
+                    (
+                        r.get::<_, Option<i64>>(0)?.unwrap_or(0),
+                        r.get::<_, Option<i64>>(1)?.unwrap_or(0),
+                    ),
+                    r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    content(r.get_ref(3)?).0,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    })
+}
+
+/// WeChat's index `message/message_fts.db` against the messages of conversation `big`: its shape, which rows it
+/// holds and how they map to the messages, how its text compares, and how fast a LIKE over its plain `_content`
+/// tables is. Only counts and timings are printed; table names are replaced by their position.
+fn fts_probe(
+    account: &NativeAccount,
+    big: &str,
+    tables: &[weflow_native::native_msg::MsgTable],
+    keyword: &str,
+) -> Result<()> {
+    let fts = account.db_path("message/message_fts.db");
+    anyhow::ensure!(fts.is_file(), "no message_fts.db");
+    let names: Vec<String> = account
+        .query(
+            &fts,
+            "select name from sqlite_master where type = 'table' order by name",
+            &[],
+        )?
+        .iter()
+        .filter_map(|r| r["name"].as_str().map(str::to_string))
+        .collect();
+    // the tables beside the index groups: columns and rows
+    for (i, name) in names.iter().enumerate() {
+        let is_group = name.starts_with("message_fts_")
+            && ["_content", "_data", "_idx", "_docsize", "_config", "aux"]
+                .iter()
+                .any(|s| name.ends_with(s));
+        if is_group || name.contains("img") {
+            continue;
+        }
+        let cols: Vec<String> = account
+            .query(&fts, &format!("pragma table_info(\"{name}\")"), &[])?
+            .iter()
+            .filter_map(|r| r["name"].as_str().map(str::to_string))
+            .collect();
+        let n = account.query(&fts, &format!("select count(*) as n from \"{name}\""), &[])?;
+        let kind = if name.ends_with("_range") {
+            "…_range"
+        } else {
+            name.as_str()
+        };
+        // a name of only letters and underscores tells nothing private; others are named by kind
+        let shown = if kind
+            .chars()
+            .all(|c| c.is_ascii_alphabetic() || c == '_' || c == '…')
+        {
+            kind.to_string()
+        } else {
+            format!("table #{i}")
+        };
+        println!("  {shown}: columns {cols:?}, {} rows", n[0]["n"]);
+    }
+
+    // which value of c4 (session_id) is this conversation: its user name, or a Name2Id row of a message database
+    let mut ids = std::collections::BTreeSet::new();
+    for t in tables {
+        for r in account.query(
+            &t.db,
+            "select rowid as id from Name2Id where user_name = ?1",
+            &[&big],
+        )? {
+            if let Some(id) = r["id"].as_i64() {
+                ids.insert(id);
+            }
+        }
+    }
+    let contents: Vec<&String> = names
+        .iter()
+        .filter(|n| n.starts_with("message_fts_") && n.ends_with("_content"))
+        .collect();
+    let mut keys: Vec<(usize, rusqlite::types::Value)> = Vec::new();
+    for (g, content) in contents.iter().enumerate() {
+        let cols: Vec<String> = account
+            .query(&fts, &format!("pragma table_info(\"{content}\")"), &[])?
+            .iter()
+            .filter_map(|r| r["name"].as_str().map(str::to_string))
+            .collect();
+        let shape = account.query(
+            &fts,
+            &format!(
+                "select count(*) as n, max(c2) as max_seq, sum(typeof(c4) = 'text') as text_ids, \
+                 sum(typeof(c4) = 'integer') as int_ids, count(distinct c4) as sessions from \"{content}\""
+            ),
+            &[],
+        )?;
+        let by_name = account.query(
+            &fts,
+            &format!("select count(*) as n from \"{content}\" where c4 = ?1"),
+            &[&big],
+        )?[0]["n"]
+            .as_i64()
+            .unwrap_or(0);
+        let mut by_id = Vec::new();
+        for id in &ids {
+            let n = account.query(
+                &fts,
+                &format!("select count(*) as n from \"{content}\" where c4 = ?1"),
+                &[id],
+            )?[0]["n"]
+                .as_i64()
+                .unwrap_or(0);
+            by_id.push(n);
+            if n > 0 {
+                keys.push((g, rusqlite::types::Value::Integer(*id)));
+            }
+        }
+        if by_name > 0 {
+            keys.push((g, rusqlite::types::Value::Text(big.to_string())));
+        }
+        println!(
+            "group {g}: columns {cols:?}; {}; this conversation by name {by_name}, by Name2Id rows {by_id:?}",
+            serde_json::to_string(&shape[0])?
+        );
+    }
+
+    // the messages, keyed as the index keys them
+    let kinds: Vec<i64> = KINDS.split(',').map(|k| k.parse().unwrap()).collect();
+    let mut messages = std::collections::HashMap::<Key, (i64, String)>::new();
+    // every message, with the table it is in
+    let mut all = std::collections::HashMap::<Key, (i64, String, usize)>::new();
+    let mut max_msg_seq = 0;
+    let mut max_local_id = vec![0i64; tables.len()];
+    for (ti, t) in tables.iter().enumerate() {
+        account.with_db(&t.db, |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "select sort_seq, local_id, local_type, message_content from \"{}\"",
+                t.table
+            ))?;
+            let mut it = stmt.query([])?;
+            while let Some(r) = it.next()? {
+                let seq = r.get::<_, Option<i64>>(0)?.unwrap_or(0);
+                max_msg_seq = max_msg_seq.max(seq);
+                let kind = r.get::<_, Option<i64>>(2)?.unwrap_or(0);
+                let key = (seq, r.get::<_, Option<i64>>(1)?.unwrap_or(0));
+                max_local_id[ti] = max_local_id[ti].max(key.1);
+                let text = content(r.get_ref(3)?).0;
+                if kinds.contains(&kind) {
+                    messages.insert(key, (kind, text.clone()));
+                }
+                all.insert(key, (kind, text, ti));
+            }
+            Ok(())
+        })?;
+    }
+    let files: Vec<String> = tables
+        .iter()
+        .map(|t| {
+            t.db.file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        })
+        .collect();
+    println!("message tables in {files:?}, newest local_id {max_local_id:?}");
+    let mut indexed = std::collections::HashMap::<Key, (i64, String)>::new();
+    let mut max_fts_seq = 0;
+    for (g, key) in &keys {
+        let mut by_table = std::collections::BTreeMap::<String, usize>::new();
+        for (k, kind, text) in fts_rows(account, &fts, contents[*g], key)? {
+            max_fts_seq = max_fts_seq.max(k.0);
+            let at = all
+                .get(&k)
+                .map_or("no message".to_string(), |m| files[m.2].clone());
+            *by_table.entry(at).or_default() += 1;
+            indexed.insert(k, (kind, text));
+        }
+        // the short numbers in the group's name, which may say which database it indexes
+        let numbers: Vec<&str> = contents[*g]
+            .split('_')
+            .filter(|s| !s.is_empty() && s.len() <= 3 && s.chars().all(|c| c.is_ascii_digit()))
+            .collect();
+        println!("group {g} (numbers in its name {numbers:?}): rows by message table {by_table:?}");
+    }
+    // the `_range` table: what it holds for this conversation
+    if let Some(range) = names.iter().find(|n| n.ends_with("_range")) {
+        for (_, key) in &keys {
+            let r = account.with_db(&fts, |conn| {
+                Ok(conn.query_row(
+                    &format!(
+                        "select count(*), min(start_local_id), max(end_local_id), max(db_time_stamp) from \"{range}\" where session_id = ?1"
+                    ),
+                    [key],
+                    |r| {
+                        Ok((
+                            r.get::<_, i64>(0)?,
+                            r.get::<_, Option<i64>>(1)?,
+                            r.get::<_, Option<i64>>(2)?,
+                            r.get::<_, Option<i64>>(3)?.is_some(),
+                        ))
+                    },
+                )?)
+            })?;
+            println!(
+                "  _range for this conversation: rows {}, start {:?}, end {:?}, has a time {}",
+                r.0, r.1, r.2, r.3
+            );
+        }
+        let types = account.query(
+            &fts,
+            &format!("select typeof(session_id) as t, count(*) as n from \"{range}\" group by 1"),
+            &[],
+        )?;
+        println!(
+            "  _range session_id types: {}",
+            serde_json::to_string(&types)?
+        );
+    }
+    // rows only in the index: messages of other types, or none at all
+    let mut extra = std::collections::BTreeMap::<&str, usize>::new();
+    let mut titles = std::collections::BTreeMap::<i64, (usize, usize)>::new();
+    for (k, (kind, text)) in &indexed {
+        let Some((_, xml, _)) = all.get(k) else {
+            *extra.entry("no message").or_default() += 1;
+            continue;
+        };
+        if !messages.contains_key(k) {
+            *extra
+                .entry("message of a type not searched today")
+                .or_default() += 1;
+        }
+        // is the indexed text the message's <title>?
+        let escaped = text
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        let entry = titles.entry(*kind).or_default();
+        entry.1 += 1;
+        if xml.contains(&format!("<title>{text}</title>"))
+            || xml.contains(&format!("<title>{escaped}</title>"))
+            || xml.contains(&format!("<title><![CDATA[{text}]]></title>"))
+        {
+            entry.0 += 1;
+        }
+    }
+    println!("  rows only in the index: {extra:?}");
+    // the indexed text against the <title> and <des> of the message XML, entities decoded
+    let tag = |xml: &str, name: &str| -> Option<String> {
+        let open = format!("<{name}>");
+        let start = xml.find(&open)? + open.len();
+        let end = xml[start..].find(&format!("</{name}>"))? + start;
+        let raw = xml[start..end].trim();
+        let raw = raw
+            .strip_prefix("<![CDATA[")
+            .and_then(|r| r.strip_suffix("]]>"))
+            .unwrap_or(raw);
+        Some(
+            raw.replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&amp;", "&"),
+        )
+    };
+    let mut how = std::collections::BTreeMap::<(bool, &str), usize>::new();
+    for (k, (kind, text)) in &indexed {
+        if *kind == 1 {
+            continue;
+        }
+        let Some((_, xml, _)) = all.get(k) else {
+            continue;
+        };
+        let (title, des) = (tag(xml, "title"), tag(xml, "des"));
+        let what = match (&title, &des) {
+            _ if text.is_empty() => "empty",
+            (Some(t), _) if t == text => "title",
+            (Some(t), Some(d)) if format!("{t}{d}") == *text || format!("{t} {d}") == *text => {
+                "title and des"
+            }
+            (Some(t), _) if text.starts_with(t.as_str()) => "starts with the title",
+            (Some(t), _) if t.contains(text.as_str()) => "part of the title",
+            (None, _) => "no title",
+            _ => "other",
+        };
+        *how.entry((*kind == 244_813_135_921, what)).or_default() += 1;
+    }
+    println!("  indexed text of non-text messages (is a quote, how): {how:?}");
+    // what follows the title: the separator (whitespace or punctuation only) and which XML tag it is
+    let tags = [
+        "des",
+        "sourcedisplayname",
+        "appname",
+        "displayname",
+        "content",
+        "nickname",
+        "fromusername",
+        "chatusr",
+        "sourceusername",
+        "datadesc",
+        "recorditem",
+        "url",
+        "fileext",
+        "username",
+    ];
+    let mut rest_how = std::collections::BTreeMap::<(i64, String, String), usize>::new();
+    for (k, (kind, text)) in &indexed {
+        if *kind == 1 {
+            continue;
+        }
+        let Some((_, xml, _)) = all.get(k) else {
+            continue;
+        };
+        let Some(title) = tag(xml, "title") else {
+            continue;
+        };
+        let Some(rest) = text.strip_prefix(title.as_str()) else {
+            continue;
+        };
+        let sep: String = rest
+            .chars()
+            .take_while(|c| c.is_whitespace() || c.is_ascii_punctuation())
+            .flat_map(char::escape_default)
+            .collect();
+        let body = rest.trim_start_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation());
+        let what = if body.is_empty() {
+            "nothing".to_string()
+        } else if let Some(t) = tags
+            .iter()
+            .find(|t| tag(xml, t).is_some_and(|v| v.trim() == body))
+        {
+            format!("= <{t}>")
+        } else if let Some(t) = tags.iter().find(|t| {
+            tag(xml, t).is_some_and(|v| !v.trim().is_empty() && body.starts_with(v.trim()))
+        }) {
+            format!("starts with <{t}>")
+        } else if let Some(t) = tags
+            .iter()
+            .find(|t| tag(xml, t).is_some_and(|v| v.contains(body)))
+        {
+            format!("part of <{t}>")
+        } else {
+            format!(
+                "none ({} chars)",
+                if body.chars().count() > 20 {
+                    ">20"
+                } else {
+                    "<=20"
+                }
+            )
+        };
+        *rest_how.entry((*kind >> 32, sep, what)).or_default() += 1;
+    }
+    for ((sub, sep, what), n) in rest_how {
+        println!("    subtype {sub}, separator \"{sep}\", then {what}: {n}");
+    }
+    // a table of user names in the index database: is session_id its row?
+    for (i, name) in names.iter().enumerate() {
+        let cols: Vec<String> = account
+            .query(&fts, &format!("pragma table_info(\"{name}\")"), &[])?
+            .iter()
+            .filter_map(|r| r["name"].as_str().map(str::to_string))
+            .collect();
+        if cols == ["username"] {
+            let row = account.query(
+                &fts,
+                &format!("select rowid as id from \"{name}\" where username = ?1"),
+                &[&big],
+            )?;
+            let id = row.first().and_then(|r| r["id"].as_i64());
+            println!(
+                "  table #{i} (username): this conversation's row {}; it is the session_id that matched: {}",
+                if id.is_some() { "found" } else { "missing" },
+                keys.iter()
+                    .any(|(_, k)| id.is_some_and(|id| *k == rusqlite::types::Value::Integer(id)))
+            );
+        }
+    }
+    println!("  indexed text that is the message's <title>, by type (title, all): {titles:?}");
+    println!(
+        "searchable messages {}, rows in the index {}; newest sort_seq: messages {max_msg_seq}, index {max_fts_seq}",
+        messages.len(),
+        indexed.len()
+    );
+    let kinds_of = |rows: &std::collections::HashMap<Key, (i64, String)>| {
+        let mut by = std::collections::BTreeMap::<i64, usize>::new();
+        for (kind, _) in rows.values() {
+            *by.entry(*kind).or_default() += 1;
+        }
+        by
+    };
+    println!(
+        "  by type: messages {:?}, index {:?}",
+        kinds_of(&messages),
+        kinds_of(&indexed)
+    );
+    let (mut both, mut only_msg, mut only_msg_newer, mut only_fts) = (0, 0, 0, 0);
+    let mut only_msg_kinds = std::collections::BTreeMap::<i64, usize>::new();
+    let mut same = std::collections::BTreeMap::<(i64, &str), usize>::new();
+    for (k, (kind, text)) in &messages {
+        match indexed.get(k) {
+            Some((_, indexed_text)) => {
+                both += 1;
+                let tail = text.split_once(":\n").map_or("", |(_, t)| t);
+                let how = if indexed_text == text {
+                    "equal"
+                } else if !tail.is_empty() && indexed_text == tail {
+                    "equal without the sender prefix"
+                } else if text.contains(indexed_text.as_str()) {
+                    "part of the message"
+                } else if indexed_text.is_empty() {
+                    "empty in the index"
+                } else {
+                    "different"
+                };
+                *same.entry((*kind, how)).or_default() += 1;
+            }
+            None => {
+                only_msg += 1;
+                *only_msg_kinds.entry(*kind).or_default() += 1;
+                if k.0 > max_fts_seq {
+                    only_msg_newer += 1;
+                }
+            }
+        }
+    }
+    for k in indexed.keys() {
+        if !messages.contains_key(k) {
+            only_fts += 1;
+        }
+    }
+    println!(
+        "  matched {both}; only in the messages {only_msg} (by type {only_msg_kinds:?}, newer than the index {only_msg_newer}); only in the index {only_fts}"
+    );
+    println!("  text of matched rows (type, how): {same:?}");
+
+    // the hits of a search, by today's rule (the message text contains the word) and by the index's text
+    for word in [keyword, "qzxwvk"] {
+        let hit = |rows: &std::collections::HashMap<Key, (i64, String)>| -> std::collections::HashSet<Key> {
+            rows.iter()
+                .filter(|(_, (_, t))| t.to_lowercase().contains(word))
+                .map(|(k, _)| *k)
+                .collect()
+        };
+        let (a, b) = (hit(&messages), hit(&indexed));
+        let mut a_only = std::collections::BTreeMap::<i64, usize>::new();
+        for k in a.difference(&b) {
+            *a_only.entry(messages[k].0).or_default() += 1;
+        }
+        println!(
+            "  word #{}: hits today {}, in the index {}, both {}; only today by type {a_only:?}; only in the index {}",
+            if word == keyword { 1 } else { 2 },
+            a.len(),
+            b.len(),
+            a.intersection(&b).count(),
+            b.difference(&a).count()
+        );
+        // a LIKE over the plain tables, newest first, as a search would run it
+        let like = format!("%{word}%");
+        let mut runs = Vec::new();
+        let mut found = 0;
+        for _ in 0..3 {
+            let t = Instant::now();
+            found = 0;
+            for (g, key) in &keys {
+                account.with_db(&fts, |conn| {
+                    let mut stmt = conn.prepare(&format!(
+                        "select c2, c1 from \"{}\" where c4 = ?1 and c0 like ?2 order by c2 desc",
+                        contents[*g]
+                    ))?;
+                    found += stmt
+                        .query_map(rusqlite::params![key, like], |_| Ok(()))?
+                        .count();
+                    Ok(())
+                })?;
+            }
+            runs.push(ms(t));
+        }
+        println!(
+            "    LIKE over the index: median {:.1} ms (first {:.1} ms), {found} rows",
+            median(runs.clone()),
+            runs[0]
+        );
+    }
+    if let Some((g, _)) = keys.first() {
+        let plan = account.query(
+            &fts,
+            &format!(
+                "explain query plan select c2, c1 from \"{}\" where c4 = ?1 and c0 like ?2 order by c2 desc",
+                contents[*g]
+            ),
+            &[&big, &"%x%"],
+        )?;
+        let plan: Vec<String> = plan
+            .iter()
+            .map(|r| {
+                r["detail"]
+                    .as_str()
+                    .unwrap_or("")
+                    .replace(contents[*g].as_str(), "T")
+            })
+            .collect();
+        println!("  plan: {}", plan.join(" / "));
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     anyhow::ensure!(
         !args.is_empty(),
-        "usage: search_probe <isolated config.json> [keyword]"
+        "usage: search_probe <isolated config.json> [keyword] [fts]"
     );
     let keyword = args.get(1).map_or("好", String::as_str).to_lowercase();
     let config = ConfigStore::load(Path::new(&args[0])).context("read isolated account config")?;
@@ -144,6 +667,35 @@ fn main() -> Result<()> {
     let (count, big) = biggest;
     let tables = account.message_tables(&big)?;
     println!("conversation: {count} messages in {} tables", tables.len());
+    if args.get(2).map(String::as_str) == Some("fts") {
+        return fts_probe(&account, &big, &tables, &keyword);
+    }
+    if args.get(2).map(String::as_str) == Some("time") {
+        // only the search itself, in this process, as `/api/` runs it
+        for (name, word) in [("common", keyword.as_str()), ("absent", "qzxwvk")] {
+            for session in [Some(big.as_str()), None] {
+                let mut times = Vec::new();
+                let mut found = 0;
+                for _ in 0..6 {
+                    let t = Instant::now();
+                    let page = account.search_messages(word, session, 20, 0, 0, 0)?;
+                    times.push(ms(t));
+                    found = page.as_array().map_or(0, Vec::len);
+                }
+                println!(
+                    "{name} word, {}: first {:.1} ms, then median {:.1} ms, {found} hits",
+                    if session.is_some() {
+                        "one conversation"
+                    } else {
+                        "all"
+                    },
+                    times[0],
+                    median(times[1..].to_vec())
+                );
+            }
+        }
+        return Ok(());
+    }
 
     // what the tables hold
     for (i, t) in tables.iter().enumerate() {

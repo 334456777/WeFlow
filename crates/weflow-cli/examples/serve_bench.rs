@@ -12,7 +12,8 @@
 //!
 //! The synthetic account: `<work dir>/data` (rebuilt only when a size option changes) holds one group with
 //! `--messages` messages (default 200000) over 4 message databases, every 20th an image whose `.dat` files exist for
-//! the latest 1000 messages, `--sessions` private conversations (default 500) of 30 messages each and `--contacts`
+//! the latest 1000 messages and all but the newest 50 in WeChat's own search index, `--sessions` private conversations
+//! (default 500) of 30 messages each and `--contacts`
 //! contacts in all (default 3000); `<work dir>/home` is the WeFlow home pointing at it. Each read is made through both
 //! routes, the child process one (`/chat/...`) and the in-process one (`/api/chat/...`), and its answer checked: the
 //! same from both routes, and the conversations, counts, pages, search hits, group members and image bytes the
@@ -38,7 +39,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use serde_json::{json, Value};
-use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, RoomSpec, SessionSpec, T0};
+use weflow_native::fixture::{ContactSpec, Fixture, FtsSpec, MsgSpec, RoomSpec, SessionSpec, T0};
 
 const TOKEN: &str = "serve-bench";
 const OWNER: &str = "wxid_me_ab12";
@@ -60,6 +61,8 @@ const NOISE_MS: f64 = 20.0;
 const PUSHED_AT: i64 = 1;
 /// A keyword no message holds, so a search reads every message of the conversation.
 const ABSENT: &str = "qzxwvk";
+/// The newest messages of the group that WeChat's index does not hold yet, so a search scans them.
+const UNINDEXED: i64 = 50;
 /// How long the push engine's CPU time is measured on the real account, idle and with a listener.
 const PUSH_WINDOW: Duration = Duration::from_secs(10);
 
@@ -284,6 +287,22 @@ fn build(data: &Path, args: &Args) -> Result<Fixture> {
         }
         f.message_shard(shard as u32, &convs);
     }
+    // WeChat's own index of the group, which has not caught up with its newest messages
+    let indexed: Vec<FtsSpec> = (1..=args.messages - UNINDEXED)
+        .filter(|i| i % IMAGE_EVERY != 0)
+        .map(|i| {
+            let m = group_message(i, &members);
+            FtsSpec {
+                text: m.content,
+                local_id: i,
+                sort_seq: m.create_time * 1000,
+                local_type: 1,
+                session: ROOM,
+                create_time: m.create_time,
+            }
+        })
+        .collect();
+    f.message_fts_db(&[indexed]);
 
     let dir = f
         .account_dir
@@ -320,7 +339,7 @@ fn synthetic_home(weflow: &Path, args: &Args) -> Result<PathBuf> {
         "messages": args.messages,
         "sessions": args.sessions,
         "contacts": args.contacts,
-        "layout": 1,
+        "layout": 2,
     });
     let stamp = args.work.join("data.json");
     let built = std::fs::read(&stamp)

@@ -110,6 +110,17 @@ impl MsgSpec {
     }
 }
 
+/// One row of WeChat's full-text index, for [`Fixture::message_fts_db`].
+#[derive(Clone)]
+pub struct FtsSpec {
+    pub text: String,
+    pub local_id: i64,
+    pub sort_seq: i64,
+    pub local_type: i64,
+    pub session: &'static str,
+    pub create_time: i64,
+}
+
 /// One Moments post for [`Fixture::sns_db`].
 pub struct SnsPostSpec {
     /// Stored as-is (a negative value stands for an unsigned snowflake above `i64::MAX`).
@@ -535,6 +546,45 @@ impl Fixture {
                     c.execute("insert into chat_room(id, username, owner, ext_buffer) values (?1,?2,?3,?4)", params![rid, user, owner, ext]).unwrap();
                     for mid in member_ids {
                         c.execute("insert into chatroom_member(room_id, member_id) values (?1, ?2)", params![rid, mid]).unwrap();
+                    }
+                }
+            }),
+        );
+    }
+
+    /// `message/message_fts.db` in the shape WeChat writes it: an FTS5 table per group (here with SQLite's own
+    /// tokenizer, where WeChat has its `mmftstokenizer`), and a table of user names whose row numbers are the
+    /// `session_id` of the rows.
+    pub fn message_fts_db(&self, groups: &[Vec<FtsSpec>]) {
+        let groups = groups.to_vec();
+        self.write(
+            "message/message_fts.db",
+            plain_db_with(move |c: &Connection| {
+                c.execute_batch("create table fts_username_v1(username text primary key)")
+                    .unwrap();
+                let mut ids: std::collections::HashMap<&str, i64> = Default::default();
+                for (g, rows) in groups.iter().enumerate() {
+                    c.execute_batch(&format!(
+                        "create virtual table message_fts_v4_{g} using fts5(acontent, message_local_id unindexed, \
+                         sort_seq unindexed, local_type unindexed, session_id unindexed, sender_id unindexed, \
+                         create_time unindexed)"
+                    ))
+                    .unwrap();
+                    for r in rows {
+                        let next = ids.len() as i64 + 1;
+                        let id = *ids.entry(r.session).or_insert_with(|| {
+                            c.execute(
+                                "insert into fts_username_v1(rowid, username) values (?1, ?2)",
+                                params![next, r.session],
+                            )
+                            .unwrap();
+                            next
+                        });
+                        c.execute(
+                            &format!("insert into message_fts_v4_{g} values (?1, ?2, ?3, ?4, ?5, 0, ?6)"),
+                            params![r.text, r.local_id, r.sort_seq, r.local_type, id, r.create_time],
+                        )
+                        .unwrap();
                     }
                 }
             }),

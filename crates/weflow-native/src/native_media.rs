@@ -8,8 +8,6 @@ use serde_json::{json, Map, Value};
 
 use crate::native_db::NativeAccount;
 
-/// Message kinds the search looks into: text, app messages (links/files/quotes) and quote replies.
-const SEARCHABLE: [i64; 3] = [1, 49, 244_813_135_921];
 /// `scan_media_stream` codes: 1 = images, 2 = videos, anything else = both.
 const IMAGE: i64 = 3;
 const VIDEO: i64 = 43;
@@ -142,9 +140,290 @@ impl Newest {
     }
 }
 
+/// WeChat's own full-text index of messages, `message/message_fts.db`. Its FTS5 tables use WeChat's tokenizer
+/// (`mmftstokenizer`), so only the plain `_content` tables behind them are read, with `LIKE`.
+struct FtsIndex {
+    path: PathBuf,
+    /// Each `_content` table, with its columns (`c0`…) of [text, local_id, sort_seq, session, create_time].
+    tables: Vec<(String, [String; 5])>,
+    /// The table whose row numbers are the `session_id` of the index.
+    users: String,
+}
+
+/// The column names of a `create table` statement, or of the arguments of `using fts5(…)`, in order. Options such
+/// as `tokenize = '…'` and table constraints are left out.
+fn declared_columns(sql: &str) -> Vec<String> {
+    let (Some(open), Some(close)) = (sql.find('('), sql.rfind(')')) else {
+        return Vec::new();
+    };
+    sql[open + 1..close]
+        .split(',')
+        .filter_map(|part| {
+            let part = part.trim();
+            if part.contains('=') {
+                return None;
+            }
+            let name = part
+                .split_whitespace()
+                .next()?
+                .trim_matches(|c| matches!(c, '"' | '`' | '[' | ']' | '\''))
+                .to_ascii_lowercase();
+            let constraint = ["primary", "unique", "check", "foreign", "constraint"];
+            (!constraint.contains(&name.as_str())).then_some(name)
+        })
+        .collect()
+}
+
+/// The text WeChat's index holds for a message, as far as it can be told from the message: the text of a text
+/// message, without the `sender:\n` a group message from someone else starts with, and the `<title>` of an app
+/// message (links, files, quotes…).
+fn indexed_text(local_type: i64, content: &str, group: bool) -> String {
+    if local_type != 1 {
+        return title_of(content).unwrap_or_default();
+    }
+    match content.split_once(":\n") {
+        Some((sender, text))
+            if group && !sender.is_empty() && !sender.contains(char::is_whitespace) =>
+        {
+            text.to_string()
+        }
+        _ => content.to_string(),
+    }
+}
+
+/// The text of the first `<title>` of an app message's XML, entities decoded. Plain string search: it runs for every
+/// app message a search reads.
+fn title_of(xml: &str) -> Option<String> {
+    let start = xml.find("<title>")? + "<title>".len();
+    let raw = &xml[start..start + xml[start..].find("</title>")?];
+    let raw = raw
+        .strip_prefix("<![CDATA[")
+        .and_then(|r| r.strip_suffix("]]>"))
+        .unwrap_or(raw);
+    if !raw.contains('&') {
+        return Some(raw.to_string());
+    }
+    Some(
+        raw.replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&"),
+    )
+}
+
+/// Where a hit of [`NativeAccount::search_messages`] is: its table and local_id when it was scanned, its
+/// conversation, local_id and sort_seq when it comes from WeChat's index.
+fn place(r: &Value) -> String {
+    match r.get("_session").and_then(Value::as_str) {
+        Some(sid) => format!("{sid}\n{}\n{}", int(r, "local_id"), int(r, "sort_seq")),
+        None => format!("{}\n{}", int(r, "_table"), int(r, "local_id")),
+    }
+}
+
+/// The tables a hit may be in: its own when it was scanned, those of its conversation when it comes from the index.
+fn tables_of(r: &Value, tables: &[(String, crate::native_msg::MsgTable)]) -> Vec<usize> {
+    match r.get("_session").and_then(Value::as_str) {
+        Some(sid) => (0..tables.len())
+            .filter(|&at| tables[at].0 == sid)
+            .collect(),
+        None => vec![int(r, "_table") as usize],
+    }
+}
+
+/// How much of a conversation a search reads newest first before it turns to WeChat's index: rows of each message
+/// table, and time in all. A common word fills a page well before; a word found nowhere loses no more than that.
+/// The hits are the same whatever the budget, only how fast they come.
+const NEWEST_FIRST_ROWS: usize = 2000;
+#[cfg_attr(test, allow(dead_code))]
+const NEWEST_FIRST_TIME: std::time::Duration = std::time::Duration::from_millis(15);
+
+/// Rows and the time when [`NEWEST_FIRST_ROWS`] reading stops.
+#[derive(Clone, Copy)]
+struct Budget {
+    rows: usize,
+    until: Option<std::time::Instant>,
+}
+
+impl Budget {
+    const NONE: Budget = Budget {
+        rows: usize::MAX,
+        until: None,
+    };
+
+    fn newest_first() -> Self {
+        #[cfg(test)]
+        return Budget {
+            rows: TEST_NEWEST_FIRST_ROWS.with(std::cell::Cell::get),
+            until: None,
+        };
+        #[cfg(not(test))]
+        Budget {
+            rows: NEWEST_FIRST_ROWS,
+            until: Some(std::time::Instant::now() + NEWEST_FIRST_TIME),
+        }
+    }
+
+    fn spent(&self, rows: usize) -> bool {
+        rows >= self.rows || self.until.is_some_and(|u| std::time::Instant::now() >= u)
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// [`NEWEST_FIRST_ROWS`] for the test running on this thread (with no time limit, so that runs are alike).
+    static TEST_NEWEST_FIRST_ROWS: std::cell::Cell<usize> = const { std::cell::Cell::new(NEWEST_FIRST_ROWS) };
+}
+
+/// Text messages, and app messages of any kind (`(kind << 32) | 49`): what WeChat's index holds. Each test has its
+/// own `+` to keep SQLite on the sort_seq index, not the type index.
+const SEARCHABLE_SQL: &str = "(+m.local_type = 1 or (+m.local_type & 4294967295) = 49)";
+
 impl NativeAccount {
+    /// WeChat's index of this account, when it has one in the shape this reader knows.
+    fn fts_index(&self) -> Option<FtsIndex> {
+        let path = self.db_path("message/message_fts.db");
+        if !path.is_file() {
+            return None;
+        }
+        let master = self
+            .query(
+                &path,
+                "select name, coalesce(sql, '') as sql from sqlite_master where type = 'table'",
+                &[],
+            )
+            .ok()?;
+        let names: std::collections::HashSet<String> =
+            master.iter().map(|r| text(r, "name")).collect();
+        let (mut tables, mut users) = (Vec::new(), Vec::new());
+        for r in &master {
+            let (name, sql) = (text(r, "name"), text(r, "sql"));
+            let columns = declared_columns(&sql);
+            let virtual_table = sql.to_ascii_lowercase().starts_with("create virtual table");
+            if virtual_table && name.starts_with("message_fts") {
+                let at = |c: &str| columns.iter().position(|x| x == c).map(|i| format!("c{i}"));
+                let content = format!("{name}_content");
+                if let (Some(t), Some(id), Some(seq), Some(s), Some(time), true) = (
+                    at("acontent"),
+                    at("message_local_id"),
+                    at("sort_seq"),
+                    at("session_id"),
+                    at("create_time"),
+                    names.contains(&content),
+                ) {
+                    tables.push((content, [t, id, seq, s, time]));
+                }
+            } else if !virtual_table && columns == ["username"] {
+                users.push(name);
+            }
+        }
+        (!tables.is_empty() && users.len() == 1).then(|| FtsIndex {
+            path,
+            tables,
+            users: users.remove(0),
+        })
+    }
+
+    /// The hits of `ix` among `sessions` (with `below`, only those with a sort_seq up to it, and not 0), pushed into
+    /// `hits` as `{sort_seq, create_time, local_id, _session}`; returns the newest sort_seq the index holds for each of
+    /// those sessions it knows.
+    fn search_index(
+        &self,
+        ix: &FtsIndex,
+        sessions: &[String],
+        like: &str,
+        (begin, end): (i64, i64),
+        below: Option<i64>,
+        hits: &mut Newest,
+    ) -> Result<std::collections::HashMap<String, i64>> {
+        let wanted: std::collections::HashSet<&str> = sessions.iter().map(String::as_str).collect();
+        let mut ids = std::collections::HashMap::new();
+        for r in self.query(
+            &ix.path,
+            &format!("select rowid as id, username from \"{}\"", ix.users),
+            &[],
+        )? {
+            let name = text(&r, "username");
+            if wanted.contains(name.as_str()) {
+                ids.insert(int(&r, "id"), name);
+            }
+        }
+        let mut newest = std::collections::HashMap::new();
+        if ids.is_empty() {
+            return Ok(newest);
+        }
+        let list = ids.keys().map(i64::to_string).collect::<Vec<_>>().join(",");
+        let mut tops = std::collections::HashMap::<i64, i64>::new();
+        for (table, [t, id, seq, s, time]) in &ix.tables {
+            let mut range = String::new();
+            if begin > 0 {
+                range.push_str(&format!(" and {time} >= {begin}"));
+            }
+            if end > 0 {
+                range.push_str(&format!(" and {time} <= {end}"));
+            }
+            if let Some(below) = below {
+                range.push_str(&format!(" and {seq} <= {below} and {seq} <> 0"));
+            }
+            // one pass over the rows of these conversations, for the newest sort_seq of each (what the index holds of
+            // it) and for the hits. `like` holds the lowercased keyword, and LIKE ignores the case of ASCII letters
+            // only: what it matches, the scan's lowercased comparison matches too. Rows come newest-ish first (in the
+            // order WeChat added them), so once a page is kept, most hits are passed over without building a row.
+            let sql = format!(
+                "select {seq}, {time}, {id}, {s}, ({t} like ?1 escape '\\'{range}) from \"{table}\" \
+                 where {s} in ({list}) order by rowid desc"
+            );
+            let mut found = Newest::new(hits.k);
+            let mut table_tops = std::collections::HashMap::<i64, i64>::new();
+            self.with_db(&ix.path, |conn| {
+                found = Newest::new(hits.k);
+                table_tops.clear();
+                let mut stmt = conn.prepare(&sql)?;
+                let mut rows = stmt.query([like])?;
+                while let Some(r) = rows.next()? {
+                    let [seq, time, local_id, s, hit] = [0, 1, 2, 3, 4]
+                        .map(|i| r.get::<_, Option<i64>>(i).ok().flatten().unwrap_or(0));
+                    let top = table_tops.entry(s).or_insert(seq);
+                    *top = (*top).max(seq);
+                    if hit == 0 {
+                        continue;
+                    }
+                    let key = (if seq == 0 { time * 1000 } else { seq }, time, local_id);
+                    // a row ranked no higher than the last one kept, and found after it, cannot make it
+                    if found.last_kept().is_some_and(|last| key <= last) {
+                        continue;
+                    }
+                    if let Some(name) = ids.get(&s) {
+                        found.push(json!({
+                            "sort_seq": seq,
+                            "create_time": time,
+                            "local_id": local_id,
+                            "_session": name,
+                        }));
+                    }
+                }
+                Ok(())
+            })?;
+            hits.absorb(found);
+            for (s, top) in table_tops {
+                let all = tops.entry(s).or_insert(top);
+                *all = (*all).max(top);
+            }
+        }
+        for (s, top) in tops {
+            if let Some(name) = ids.get(&s) {
+                newest.insert(name.clone(), top);
+            }
+        }
+        Ok(newest)
+    }
+
     /// Newest-first messages whose text contains `keyword` (case-insensitive), from one session or all.
-    /// Each row is a message row plus `_session_id`. Compressed contents are decoded before matching.
+    /// Each row is a message row plus `_session_id`.
+    ///
+    /// The text is the one WeChat's own search matches: WeChat's index (`message_fts.db`) is read where it holds the
+    /// messages, and the messages it does not hold yet (or every message, without an index) are matched on the same
+    /// text, told from the message ([`indexed_text`]).
     pub fn search_messages(
         &self,
         keyword: &str,
@@ -169,79 +448,53 @@ impl NativeAccount {
                 .replace('%', "\\%")
                 .replace('_', "\\_")
         );
-        let kinds = SEARCHABLE
-            .iter()
-            .map(i64::to_string)
-            .collect::<Vec<_>>()
-            .join(",");
-        let range = range_sql(begin, end);
         let (offset, limit) = (
             offset.max(0) as usize,
             if limit > 0 { limit as usize } else { 50 },
         );
         let want = offset + limit;
-        let mut hits = Newest::new(want);
         let mut tables = Vec::new();
         for sid in &sessions {
             for t in self.message_tables(sid)? {
-                let at = tables.len();
-                // only the sort key and the text are read to match: plain text is pre-filtered in SQL, blobs (zstd)
-                // can only be matched after decoding; `+` keeps SQLite on the sort_seq index, not the type index
-                let light = format!(
-                    "select m.sort_seq, m.create_time, m.local_id, m.message_content from \"{table}\" m \
-                     where +m.local_type in ({kinds}){range} and (typeof(m.message_content) = 'blob' or m.message_content like ?1 escape '\\')",
-                    table = t.table
-                );
-                // rows with a sort_seq newest first, through its index: once a page is kept, a row with a smaller
-                // sort_seq cannot make it, and nor can any after it; the few without one are keyed by
-                // create_time * 1000 and read apart
-                let mut table_hits = Newest::new(want);
-                for (tail, newest_first) in [
-                    (" and m.sort_seq <> 0 order by m.sort_seq desc", true),
-                    (" and (m.sort_seq is null or m.sort_seq = 0)", false),
-                ] {
-                    let found = std::cell::RefCell::new(Newest::new(want));
-                    self.query_until(
-                        &t.db,
-                        &format!("{light}{tail}"),
-                        &[&like],
-                        || *found.borrow_mut() = Newest::new(want),
-                        |mut r| {
-                            if newest_first
-                                && found
-                                    .borrow()
-                                    .last_kept()
-                                    .is_some_and(|last| int(&r, "sort_seq") < last.0)
-                            {
-                                return false;
-                            }
-                            if text(&r, "message_content").to_lowercase().contains(&needle) {
-                                r["message_content"] = Value::Null;
-                                r["_table"] = json!(at);
-                                found.borrow_mut().push(r);
-                            }
-                            true
-                        },
-                    )?;
-                    table_hits.absorb(found.into_inner());
-                }
-                hits.absorb(table_hits);
-                tables.push((sid, t));
+                tables.push((sid.clone(), t));
             }
         }
-        let page: Vec<Value> = hits
-            .into_rows()
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
-        // then the whole rows of the page
+        let index = self.fts_index();
+        // a message the index still holds after it was deleted is left out: while some of the first `k` hits are
+        // such, more are ranked
+        let mut k = want;
+        let page: Vec<Value> = loop {
+            let ranked = self.search_ranked(
+                index.as_ref(),
+                &tables,
+                &sessions,
+                &needle,
+                &like,
+                (begin, end),
+                k,
+            )?;
+            let gone = self.deleted_hits(&ranked, &tables)?;
+            let kept: Vec<Value> = ranked
+                .iter()
+                .filter(|r| !gone.contains(&place(r)))
+                .cloned()
+                .collect();
+            if gone.is_empty() || kept.len() >= want || ranked.len() < k {
+                break kept.into_iter().skip(offset).take(limit).collect();
+            }
+            k += want - kept.len();
+        };
+
+        // then the whole rows of the page: by table for those scanned, by conversation for those of the index (which
+        // knows a message by its local_id and sort_seq, not by its database)
         let mut wanted: std::collections::BTreeMap<usize, Vec<String>> = Default::default();
         for r in &page {
-            wanted
-                .entry(int(r, "_table") as usize)
-                .or_default()
-                .push(int(r, "local_id").to_string());
+            for at in tables_of(r, &tables) {
+                wanted
+                    .entry(at)
+                    .or_default()
+                    .push(int(r, "local_id").to_string());
+            }
         }
         let mut whole = std::collections::HashMap::new();
         for (at, ids) in wanted {
@@ -253,16 +506,234 @@ impl NativeAccount {
                 ids.join(",")
             );
             for mut r in self.query(&t.db, &sql, &[])? {
+                let (id, seq) = (int(&r, "local_id"), int(&r, "sort_seq"));
                 self.finish_row(&mut r, t, false);
                 r["_session_id"] = json!(sid);
-                whole.insert((at, int(&r, "local_id")), r);
+                whole.insert(format!("{sid}\n{id}\n{seq}"), r.clone());
+                whole.insert(format!("{at}\n{id}"), r);
             }
         }
         Ok(Value::Array(
             page.iter()
-                .filter_map(|r| whole.remove(&(int(r, "_table") as usize, int(r, "local_id"))))
+                .filter_map(|r| whole.remove(&place(r)))
                 .collect(),
         ))
+    }
+
+    /// The hits of the index among `ranked` whose message is not in its conversation any more.
+    fn deleted_hits(
+        &self,
+        ranked: &[Value],
+        tables: &[(String, crate::native_msg::MsgTable)],
+    ) -> Result<std::collections::HashSet<String>> {
+        let mut wanted: std::collections::BTreeMap<usize, Vec<String>> = Default::default();
+        let mut gone = std::collections::HashSet::new();
+        for r in ranked.iter().filter(|r| r.get("_session").is_some()) {
+            gone.insert(place(r));
+            for at in tables_of(r, tables) {
+                wanted
+                    .entry(at)
+                    .or_default()
+                    .push(int(r, "local_id").to_string());
+            }
+        }
+        for (at, ids) in wanted {
+            let (sid, t) = &tables[at];
+            let sql = format!(
+                "select local_id, sort_seq from \"{}\" where local_id in ({})",
+                t.table,
+                ids.join(",")
+            );
+            for r in self.query(&t.db, &sql, &[])? {
+                gone.remove(&format!(
+                    "{sid}\n{}\n{}",
+                    int(&r, "local_id"),
+                    int(&r, "sort_seq")
+                ));
+            }
+        }
+        Ok(gone)
+    }
+
+    /// The first `want` hits, newest first. A hit of the index is `{sort_seq, create_time, local_id, _session}`, a
+    /// scanned one names its table (`_table`).
+    ///
+    /// A single conversation is first read from its newest messages, as for a search without an index; with an index,
+    /// only as far as a [`Budget`] of rows and time, where a common word fills a page without the index
+    /// being read. Older messages come from the index, and those it does not hold yet are scanned.
+    #[allow(clippy::too_many_arguments)]
+    fn search_ranked(
+        &self,
+        index: Option<&FtsIndex>,
+        tables: &[(String, crate::native_msg::MsgTable)],
+        sessions: &[String],
+        needle: &str,
+        like: &str,
+        (begin, end): (i64, i64),
+        want: usize,
+    ) -> Result<Vec<Value>> {
+        let mut hits = Newest::new(want);
+        // with Some(line), every message with a sort_seq above it (and every one without a sort_seq) was read
+        let mut line = None;
+        if index.is_none() || sessions.len() == 1 {
+            let budget = if index.is_some() {
+                Budget::newest_first()
+            } else {
+                Budget::NONE
+            };
+            let mut cut = None;
+            for (at, (sid, t)) in tables.iter().enumerate() {
+                let (found, stopped) = self.scan_table(
+                    at,
+                    sid,
+                    t,
+                    needle,
+                    like,
+                    (begin, end),
+                    "",
+                    want,
+                    budget,
+                    true,
+                )?;
+                hits.absorb(found);
+                cut = cut.max(stopped);
+            }
+            let Some(l) = cut else {
+                return Ok(hits.into_rows());
+            };
+            // the hits above the line are all there are; below it they are looked for again
+            let rows = hits.into_rows();
+            let above = |r: &Value| int(r, "sort_seq") == 0 || int(r, "sort_seq") > l;
+            if rows.iter().filter(|r| above(r)).count() >= want {
+                return Ok(rows.into_iter().filter(above).collect());
+            }
+            hits = Newest::new(want);
+            rows.into_iter().filter(above).for_each(|r| hits.push(r));
+            line = Some(l);
+        }
+        // an index that cannot be read is left aside, and every message scanned instead
+        let mut covered = std::collections::HashMap::new();
+        if let Some(ix) = index {
+            let mut found = Newest::new(want);
+            if let Ok(newest) =
+                self.search_index(ix, sessions, like, (begin, end), line, &mut found)
+            {
+                covered = newest;
+                hits.absorb(found);
+            }
+        }
+        for (at, (sid, t)) in tables.iter().enumerate() {
+            // what the index holds of this conversation, and what was read above, is not read again
+            let mut cond = covered
+                .get(sid)
+                .map_or(String::new(), |top| format!(" and m.sort_seq > {top}"));
+            if let Some(l) = line {
+                cond.push_str(&format!(" and m.sort_seq <= {l}"));
+            }
+            let (found, _) = self.scan_table(
+                at,
+                sid,
+                t,
+                needle,
+                like,
+                (begin, end),
+                &cond,
+                want,
+                Budget::NONE,
+                line.is_none(),
+            )?;
+            hits.absorb(found);
+        }
+        Ok(hits.into_rows())
+    }
+
+    /// The hits of one message table under `cond`, matched on [`indexed_text`]: its rows with a sort_seq newest first,
+    /// at most `budget` of them, and with `unsequenced`, the few without one. Also returns, when the budget stopped the
+    /// reading, the sort_seq of the first row left unread: rows above it were all read, not all of those at or below.
+    #[allow(clippy::too_many_arguments)]
+    fn scan_table(
+        &self,
+        at: usize,
+        sid: &str,
+        t: &crate::native_msg::MsgTable,
+        needle: &str,
+        like: &str,
+        (begin, end): (i64, i64),
+        cond: &str,
+        want: usize,
+        budget: Budget,
+        unsequenced: bool,
+    ) -> Result<(Newest, Option<i64>)> {
+        let group = sid.ends_with("@chatroom");
+        let range = range_sql(begin, end);
+        // only the sort key and the text are read to match. Plain text is pre-filtered in SQL, the XML of app messages
+        // too (their title is in it as is, unless the keyword has a character XML writes as an entity), blobs (zstd)
+        // only after decoding
+        let xml_escaped = if needle.contains(['&', '<', '>', '"', '\'']) {
+            " or +m.local_type <> 1"
+        } else {
+            ""
+        };
+        let light = format!(
+            "select m.sort_seq, m.create_time, m.local_id, m.local_type, m.message_content from \"{table}\" m \
+             where {SEARCHABLE_SQL}{range}{cond} and (typeof(m.message_content) = 'blob'{xml_escaped} \
+             or m.message_content like ?1 escape '\\')",
+            table = t.table
+        );
+        // rows with a sort_seq newest first, through its index: once a page is kept, a row with a smaller sort_seq
+        // cannot make it, and nor can any after it; the few without one are keyed by create_time * 1000 and read apart
+        let mut table_hits = Newest::new(want);
+        let mut stopped = None;
+        let mut tails = vec![(" and m.sort_seq <> 0 order by m.sort_seq desc", true)];
+        if unsequenced {
+            tails.push((" and (m.sort_seq is null or m.sort_seq = 0)", false));
+        }
+        for (tail, newest_first) in tails {
+            let found = std::cell::RefCell::new(Newest::new(want));
+            // rows read, and the sort_seq of the first one left unread for the budget
+            let read = std::cell::Cell::new((0usize, None));
+            self.query_until(
+                &t.db,
+                &format!("{light}{tail}"),
+                &[&like],
+                || {
+                    *found.borrow_mut() = Newest::new(want);
+                    read.set((0, None));
+                },
+                |mut r| {
+                    if newest_first {
+                        if found
+                            .borrow()
+                            .last_kept()
+                            .is_some_and(|last| int(&r, "sort_seq") < last.0)
+                        {
+                            return false;
+                        }
+                        let (n, _) = read.get();
+                        if budget.spent(n) {
+                            read.set((n, Some(int(&r, "sort_seq"))));
+                            return false;
+                        }
+                        read.set((n + 1, None));
+                    }
+                    let kind = int(&r, "local_type");
+                    let matched = indexed_text(kind, &text(&r, "message_content"), group)
+                        .to_lowercase()
+                        .contains(needle);
+                    if matched {
+                        r["message_content"] = Value::Null;
+                        r["_table"] = json!(at);
+                        found.borrow_mut().push(r);
+                    }
+                    true
+                },
+            )?;
+            if newest_first {
+                stopped = read.get().1;
+            }
+            table_hits.absorb(found.into_inner());
+        }
+        Ok((table_hits, stopped))
     }
 
     /// Image/video messages across sessions, newest first; returns the page and whether more remain.
@@ -613,6 +1084,11 @@ mod tests {
         );
         assert_eq!(ok[0]["_session_id"], "room1@chatroom");
         assert_eq!(ok[0]["sender_username"], "wxid_quiet");
+        // but the prefix is not part of the text searched
+        assert_eq!(
+            a.search_messages("quiet", None, 50, 0, 0, 0).unwrap(),
+            json!([])
+        );
         // the image message's XML is type 3, which is never searched
         assert_eq!(
             a.search_messages("aabbccdd", None, 50, 0, 0, 0).unwrap(),
@@ -677,8 +1153,8 @@ mod tests {
             unread: 0,
             last_msg_type: 1,
         }]);
-        // two databases; sort_seq ties within and across them, rows without a sort_seq, compressed text, and a
-        // kind that is never searched
+        // two databases; sort_seq ties within and across them, rows without a sort_seq, compressed text, app
+        // messages (matched on their title only), and a kind that is never searched
         let mut all = Vec::new();
         for shard in 0..2u32 {
             let msgs: Vec<MsgSpec> = (1..=60i64)
@@ -699,7 +1175,12 @@ mod tests {
                         m = m.compressed();
                     }
                     if i % 5 == 0 {
-                        m = m.of_type(49);
+                        // a link, whose description must not match
+                        m = m.of_type((5 << 32) | 49);
+                        m.content = format!(
+                            "<msg><appmsg><title>{}</title><des>apple pie banana</des></appmsg></msg>",
+                            m.content
+                        );
                     }
                     if i % 11 == 0 {
                         m = m.of_type(3);
@@ -711,12 +1192,20 @@ mod tests {
             f.message_shard(shard, &[("wxid_bob", msgs)]);
         }
         let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        let shown = |m: &MsgSpec| match m.local_type {
+            1 => Some(m.content.clone()),
+            k if k & 0xffff_ffff == 49 => m
+                .content
+                .split_once("<title>")
+                .and_then(|(_, t)| t.split_once("</title>"))
+                .map(|(t, _)| t.to_string()),
+            _ => None,
+        };
         let expected = |keyword: &str, limit: usize, offset: usize, begin: i64, end: i64| {
             let mut hits: Vec<_> = all
                 .iter()
                 .filter(|(_, m)| {
-                    SEARCHABLE.contains(&m.local_type)
-                        && m.content.to_lowercase().contains(keyword)
+                    shown(m).is_some_and(|t| t.to_lowercase().contains(keyword))
                         && (begin == 0 || m.create_time >= begin)
                         && (end == 0 || m.create_time <= end)
                 })
@@ -780,6 +1269,205 @@ mod tests {
         let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0];
         assert!(text(first, "message_content").ends_with("Apple pie"));
         assert_eq!(first["sender_username"], "wxid_bob");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn search_reads_wechats_index_and_scans_what_it_does_not_hold() {
+        use crate::fixture::{Fixture, FtsSpec, MsgSpec, SessionSpec};
+        let root = std::env::temp_dir().join(format!("weflow-search-fts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let f = Fixture::new(&root, "wxid_me_ab12");
+        let room = "room9@chatroom";
+        f.session_db(&[room, "wxid_bob"].map(|username| SessionSpec {
+            username,
+            summary: "",
+            last_timestamp: T0,
+            unread: 0,
+            last_msg_type: 1,
+        }));
+        // the index holds the group's messages up to this sort_seq, not the newer ones, and none of bob's
+        const INDEXED_UP_TO: i64 = 40_000;
+        let mut all = Vec::new();
+        let mut groups = vec![Vec::new(), Vec::new()];
+        for shard in 0..2u32 {
+            let msgs: Vec<MsgSpec> = (1..=25i64)
+                .map(|i| {
+                    let fruit = ["apple", "Apple pie", "banana"][(i % 3) as usize];
+                    // the databases at different paces, with a few equal sort_seq across them
+                    let seq = if shard == 0 { i * 2000 } else { i * 3000 + 1000 };
+                    let said = format!("msg {shard}-{i} {fruit}");
+                    let mut m =
+                        MsgSpec::text(i, "wxid_alice", T0 + seq / 1000, &format!("wxid_alice:\n{said}"))
+                            .with_sort_seq(seq);
+                    if i % 4 == 0 {
+                        m = m.compressed();
+                    }
+                    if i % 5 == 0 {
+                        // a quote: its title is its text, the quoted message is not
+                        m = m.of_type((57 << 32) | 49);
+                        m.content = format!(
+                            "wxid_alice:\n<msg><appmsg><title>{said}</title><refermsg><content>banana pie</content>\
+                             </refermsg></appmsg></msg>"
+                        );
+                    }
+                    m
+                })
+                .collect();
+            for m in msgs.iter().filter(|m| m.sort_seq.unwrap() <= INDEXED_UP_TO) {
+                let said = m.content.split_once(":\n").unwrap().1;
+                // WeChat keeps the text without its sender, and for an app message its title and a little more
+                let text = match m.local_type {
+                    1 => said.to_string(),
+                    _ => format!("{} indexed", indexed_text(m.local_type, said, false)),
+                };
+                // the groups of the index do not follow the databases' numbers
+                groups[1 - shard as usize].push(FtsSpec {
+                    text,
+                    local_id: m.local_id,
+                    sort_seq: m.sort_seq.unwrap(),
+                    local_type: m.local_type,
+                    session: room,
+                    create_time: m.create_time,
+                });
+            }
+            all.extend(msgs.iter().map(|m| (room, shard, m.clone())));
+            let mut sessions = vec![(room, msgs)];
+            if shard == 0 {
+                let bob: Vec<MsgSpec> = (100..110i64)
+                    .map(|i| {
+                        MsgSpec::text(i, "wxid_bob", T0 + i, &format!("bob {i} apple"))
+                            .with_sort_seq((i - 100) * 4000 + 500)
+                    })
+                    .collect();
+                all.extend(bob.iter().map(|m| ("wxid_bob", 0, m.clone())));
+                sessions.push(("wxid_bob", bob));
+            }
+            f.message_shard(shard, &sessions);
+        }
+        // a message deleted after it was indexed
+        groups[0].push(FtsSpec {
+            text: "deleted apple".into(),
+            local_id: 77,
+            sort_seq: 39_500,
+            local_type: 1,
+            session: room,
+            create_time: T0 + 39,
+        });
+        f.message_fts_db(&groups);
+        let a = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+
+        let shown = |session: &str, m: &MsgSpec| -> String {
+            let said = m
+                .content
+                .split_once(":\n")
+                .map_or(m.content.as_str(), |(_, s)| s);
+            let fallback = indexed_text(m.local_type, &m.content, session == room);
+            match (
+                session == room && m.sort_seq.unwrap() <= INDEXED_UP_TO,
+                m.local_type,
+            ) {
+                (true, 1) => said.to_string(),
+                (true, _) => format!("{fallback} indexed"),
+                (false, _) => fallback,
+            }
+        };
+        let expected = |keyword: &str,
+                        session: Option<&str>,
+                        limit: usize,
+                        offset: usize,
+                        begin: i64,
+                        end: i64| {
+            let mut hits: Vec<_> = all
+                .iter()
+                .filter(|(s, _, m)| {
+                    session.is_none_or(|x| x == *s)
+                        && shown(s, m).to_lowercase().contains(keyword)
+                        && (begin == 0 || m.create_time >= begin)
+                        && (end == 0 || m.create_time <= end)
+                })
+                .map(|(s, shard, m)| {
+                    (
+                        m.sort_seq.unwrap(),
+                        s.to_string(),
+                        format!("message_{shard}"),
+                        m.local_id,
+                    )
+                })
+                .collect();
+            // newest first: by sort_seq, then local_id (the time follows the sort_seq here)
+            hits.sort_by_key(|h| std::cmp::Reverse((h.0, h.3)));
+            hits.into_iter()
+                .skip(offset)
+                .take(limit)
+                .map(|(_, s, db, id)| (s, db, id))
+                .collect::<Vec<_>>()
+        };
+        // a conversation is first read newest first, as far as a budget of rows of each table, then from the index:
+        // with the budget at 0 the index serves all; with no limit, it is never read for one conversation. Read from
+        // the messages, an app message is matched on its title only, so a word of the index's text after it
+        // ("indexed") is found in a conversation only below the line where the reading stopped.
+        for budget in (0..=12).chain([usize::MAX]) {
+            TEST_NEWEST_FIRST_ROWS.with(|b| b.set(budget));
+            for keyword in ["apple", "pie", "indexed", "msg", "alice", "banana", "zzz"] {
+                for session in [Some(room), None] {
+                    if keyword == "indexed" && session.is_some() && budget != 0 {
+                        if budget == usize::MAX {
+                            assert_eq!(
+                                a.search_messages(keyword, session, 50, 0, 0, 0).unwrap(),
+                                json!([])
+                            );
+                        }
+                        continue;
+                    }
+                    for (limit, offset) in
+                        (1..=8)
+                            .map(|l| (l, 0))
+                            .chain([(5, 5), (3, 10), (50, 0), (10, 40)])
+                    {
+                        for (begin, end) in [(0, 0), (T0 + 10, T0 + 45)] {
+                            let got: Vec<_> = a
+                                .search_messages(
+                                    &keyword.to_uppercase(),
+                                    session,
+                                    limit as i32,
+                                    offset as i32,
+                                    begin,
+                                    end,
+                                )
+                                .unwrap()
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|r| {
+                                    assert!(
+                                        r.get("_table").is_none() && r.get("_session").is_none()
+                                    );
+                                    (
+                                        text(r, "_session_id"),
+                                        text(r, "db_name"),
+                                        int(r, "local_id"),
+                                    )
+                                })
+                                .collect();
+                            assert_eq!(
+                            got,
+                            expected(keyword, session, limit, offset, begin, end),
+                            "{keyword} in {session:?}, limit {limit} offset {offset}, from {begin} to {end}, \
+                             budget {budget}"
+                        );
+                        }
+                    }
+                }
+            }
+        }
+        // whole rows, as a scan gives them
+        TEST_NEWEST_FIRST_ROWS.with(|b| b.set(0));
+        let first = &a
+            .search_messages("indexed", Some(room), 1, 0, 0, 0)
+            .unwrap()[0];
+        assert_eq!(first["sender_username"], "wxid_alice");
+        assert!(text(first, "message_content").contains("<refermsg>"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

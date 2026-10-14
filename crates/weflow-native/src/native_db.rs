@@ -555,13 +555,15 @@ impl NativeAccount {
         })
     }
 
-    /// The databases a chat page reads: conversations, contacts, avatars, image links, messages and voices.
+    /// The databases a chat page reads: conversations, contacts, avatars, image links, WeChat's search index,
+    /// messages and voices.
     pub fn chat_databases(&self) -> Vec<PathBuf> {
         let mut all: Vec<PathBuf> = [
             "session/session.db",
             "contact/contact.db",
             "head_image/head_image.db",
             "hardlink/hardlink.db",
+            "message/message_fts.db",
         ]
         .iter()
         .map(|rel| self.db_path(rel))
