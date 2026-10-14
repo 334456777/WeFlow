@@ -106,8 +106,10 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
   digits first, then Han characters by pinyin, then Latin letters.
 - **Group text**: exported group messages keep the line break that follows the sender prefix (`wxid_xxx:` is removed, the newline stays),
   as in the desktop app's exporter.
-- **Search** looks at text, link/file and quote-reply messages; the keyword is matched literally (case-insensitive), compressed
-  messages are decoded before matching. Images, voice and stickers are not searched.
+- **Search** matches the text WeChat's own search matches, read from WeChat's index (`message/message_fts.db`): the text of a text
+  message without the `sender:` of a group message, and the title (and a little more) of link, file, quote and other app messages.
+  The keyword is matched literally (case-insensitive). Messages the index does not hold yet, or all of them without an index, are
+  matched on the same text told from the message (the title only, for app messages). Images, voice and stickers are not searched.
 - **Folded / muted** session state is derived from contact flag bits (folded: bit 28; muted: bit 9 or the group notify flag) following
   WeChat's conventions; it has not been verified against a folded chat.
 - **Footprint** counts `@all` (`notify@all`) as a mention of you, and a mention needs both an `@` in the text and your id (or
