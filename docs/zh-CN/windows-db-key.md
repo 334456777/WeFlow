@@ -1,6 +1,6 @@
 # Windows 数据库密钥捕获
 
-[English](../windows-db-key.md)
+[English](../windows-db-key.md) | **简体中文**
 
 Windows x64 `key db` 使用 `weflow-native/src/windows_db_key/` 中的 Rust 实现。密钥参数结构（RDX 指向结构，+8 为指针，+16 为字节数）已与 [ycccccccy/wx_key](https://github.com/ycccccccy/wx_key) 源码及维护者提供的原 DLL 反编译材料核对；源码遵循其 [MIT 许可证](../../crates/weflow-native/src/windows_db_key/LICENSE)。
 
