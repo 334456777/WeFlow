@@ -241,7 +241,7 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
 
 - A synthetic encrypted account checks the answers. It lives in `<work-dir>/data`, rebuilt only when `--messages`, `--sessions` or
   `--contacts` change; by default it has one group of 200,000 messages with images, all but the newest 50 of them in WeChat's search
-  index, 500 private conversations and 3,000 contacts. The
+  index, 500 private conversations, 3,000 contacts and 2,000 Moments posts. The
   reads a chat window makes (conversation list, first, middle and last page of messages, polling, one message, contacts, counts, search
   (also for a word found nowhere, which reads the whole index), group members, 16 pages at once, images) go through both the child-process routes and `/api/`. Both must give the same answer, and that
   answer must match what the account holds. Last, a message is added while `/api/push/messages` is listened to; it must arrive exactly once.
@@ -252,3 +252,20 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
   listened to. The conversations are picked by message count, and only
   aggregate numbers are printed. `--compare base.json` adds the ratio to an earlier run and fails when a median is more than `--tolerance`
   times (default 2) and more than 20 ms slower.
+- Both accounts also time the reads that had no `/api/` route ([#175](https://github.com/334456777/WeFlow/issues/175)): through the
+  child-process route, and through both routes for those given one since. They decided which were worth one: a read the page makes when
+  it opens, on a click or while scrolling, slower than 50 ms through the child process, or asked for many times at once.
+
+| Read (large account, Windows) | `/<path>` | `/api/<path>` | Decision |
+|---|---:|---:|---|
+| `chat dates`, `chat date-counts` (213,000 messages) | 589 ms | 63 ms | added: the calendar opens on a click |
+| `chat detail --fast` | 55 ms | 2 ms | added: shown when a conversation is picked |
+| `sns timeline`, 20 posts | 235 ms | 6 ms | added, without `with-media` |
+| `sns users`, `sns stats --fast`, `sns post-counts --prefer-cache` | 22 ms | under 2 ms | added: asked for with the timeline; a child process takes 160 ms more while the server has not opened `sns.db` itself |
+| `chat statuses` (60 conversations), `chat tab-counts`, `group list` | 21–24 ms | – | not added: about the cost of starting the process, once per list |
+| `chat resources` | 72–317 ms | – | not yet: the time goes into reading the messages, and its paging is to change first ([#178](https://github.com/334456777/WeFlow/issues/178)) |
+| `analytics overall`, `rankings`, `time` with their cache | 20–23 ms | – | not added: fast enough with the cache; without it (`--force`, 129 ms here) the statistics are counted again, which is for a job |
+
+The same measurements found two reads of the Moments slow in themselves, not only through the child process: the timeline parsed
+every post to show 20 (2.5 s for 2,000 posts on the synthetic account, now 77 ms), and `sns post-counts` read the timeline again
+for every 500 posts (12 s, now 27 ms).

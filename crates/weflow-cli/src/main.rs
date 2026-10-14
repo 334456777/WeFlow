@@ -1438,8 +1438,25 @@ fn runs_in_process(command: &Commands) -> bool {
                 | ChatSubcommand::Contacts
                 | ChatSubcommand::Counts { .. }
                 | ChatSubcommand::Search { .. }
+                | ChatSubcommand::Dates { .. }
+                | ChatSubcommand::DateCounts { .. }
+                | ChatSubcommand::Detail {
+                    fast: true,
+                    extra: false,
+                    ..
+                }
         ),
         Commands::Group(c) => matches!(c.command, GroupSubcommand::Members { .. }),
+        // the timeline without its media, which are downloaded
+        Commands::Sns(c) => matches!(
+            c.command,
+            SnsSubcommand::Timeline {
+                with_media: false,
+                ..
+            } | SnsSubcommand::Users
+                | SnsSubcommand::Stats { .. }
+                | SnsSubcommand::PostCounts { .. }
+        ),
         _ => false,
     }
 }
@@ -1449,6 +1466,7 @@ async fn run_in_process(cli: &Cli, hub: &ServiceHub) -> AppResult<Value> {
     match &cli.command {
         Commands::Chat(command) => handle_chat(command, hub).await,
         Commands::Group(command) => handle_group(command, hub),
+        Commands::Sns(command) => handle_sns(command, hub).await,
         _ => Err(AppError::runtime("this command does not run in process")),
     }
 }

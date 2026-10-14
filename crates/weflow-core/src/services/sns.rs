@@ -476,15 +476,15 @@ impl ServiceHub {
             }
         }
         let wcdb = self.open_wcdb()?;
-        let mut counts: HashMap<String, i64> = HashMap::new();
-        let res = self.scan_timeline_rows(&wcdb, 2000, |row| {
-            let u = sns::pick_timeline_username(row);
-            if !u.is_empty() {
-                *counts.entry(u).or_default() += 1;
-            }
+        let res = wcdb.sns_post_counts().map_err(err_native).map(|v| {
+            v.as_object()
+                .into_iter()
+                .flatten()
+                .map(|(u, n)| (u.clone(), n.as_i64().unwrap_or(0)))
+                .collect::<HashMap<String, i64>>()
         });
         match res {
-            Ok(()) => {
+            Ok(counts) => {
                 self.sns_state.lock().unwrap().user_counts = Some((counts.clone(), Instant::now()));
                 Ok(counts)
             }

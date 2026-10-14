@@ -14,6 +14,9 @@ use serde_json::{json, Map, Value};
 
 use crate::native_db::NativeAccount;
 
+/// A quarter of an hour in seconds: the step of the local dates of messages.
+const QUARTER: i64 = 900;
+
 /// Columns dropped from "lite" rows (bulk scans that only need type, time, sender and text).
 const LITE_DROP: &[&str] = &[
     "compress_content",
@@ -429,8 +432,12 @@ impl NativeAccount {
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         let mut counts: std::collections::BTreeMap<String, i64> = Default::default();
         for t in self.message_tables(session_id)? {
+            // the local date of each quarter of an hour, not of each message: SQLite's `localtime` is the slow part,
+            // and every time zone today is a whole number of quarters away from UTC, moving on a quarter
             let sql = format!(
-                "select date(create_time, 'unixepoch', 'localtime') as d, count(*) as n from \"{}\" where create_time > 0 group by d",
+                "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
+                 (select create_time / {QUARTER} as q, count(*) as n from \"{}\" where create_time > 0 group by q) \
+                 group by d",
                 t.table
             );
             for r in self.query(&t.db, &sql, &[])? {
@@ -1547,6 +1554,46 @@ mod tests {
                 .unwrap(),
             json!({"wxid_bob": 5, "x": 0})
         );
+    }
+
+    #[test]
+    fn days_are_counted_as_the_local_date_of_each_message() {
+        let dir = std::env::temp_dir().join(format!("weflow-msg-{}-days", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("message")).unwrap();
+        // a message every 6 min 13 s for ten days, so midnights fall between the quarters' own messages
+        let texts: Vec<String> = (0..2400).map(|k| format!("m{k}")).collect();
+        let msgs: Vec<(i64, i64, i64, i64, &str)> = texts
+            .iter()
+            .enumerate()
+            .map(|(k, t)| (k as i64 + 1, k as i64 * 373 - 7, 1, 1, t.as_str()))
+            .collect();
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        std::fs::write(
+            dir.join("message/message_0.db"),
+            encrypt_db(&shard(&msgs, None), &cipher),
+        )
+        .unwrap();
+        let acct = NativeAccount::new(&dir, &hex(&KEY)).unwrap();
+        let sqlite = Connection::open_in_memory().unwrap();
+        let mut want = serde_json::Map::new();
+        for (_, offset, ..) in &msgs {
+            let day: String = sqlite
+                .query_row(
+                    "select date(?1, 'unixepoch', 'localtime')",
+                    [T0 + offset],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            let n = want.entry(day).or_insert(json!(0));
+            *n = json!(n.as_i64().unwrap() + 1);
+        }
+        assert!(want.len() >= 10);
+        assert_eq!(
+            acct.session_message_date_counts("wxid_bob").unwrap(),
+            Value::Object(want)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
