@@ -494,7 +494,7 @@ pub struct ApiConfig {
     pub max_tasks: usize,
     /// Other commands that may run at once.
     pub max_reads: usize,
-    /// Images and voices of the `/api/` media routes decoded at once; more wait in line (see [`MediaLimit`]).
+    /// Images and voices of the `/api/` media routes decoded at once; more wait in line (see [`Line`]).
     pub max_media: usize,
     /// Answer only requests whose `Host` names this machine (see [`local_host`]); set when listening on a
     /// loopback address.
@@ -509,7 +509,9 @@ struct AppState {
     jobs: Arc<jobs::Jobs>,
     tasks: Arc<Semaphore>,
     reads: Arc<Semaphore>,
-    media: MediaLimit,
+    /// The `/api/` reads, which wait for a place of `reads`.
+    api_reads: Line,
+    media: Line,
     /// `/openapi.json` in English and in Chinese, built when first asked for.
     openapi: [OnceLock<String>; 2],
     /// The hub of the `/api/` routes.
@@ -529,30 +531,31 @@ impl AppState {
     }
 }
 
-/// Media requests waiting for a place at once, beyond those decoded.
-const MEDIA_QUEUE: usize = 256;
-/// How long a media request waits for a place before it answers `429`.
-const MEDIA_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Requests of a [`Line`] waiting at once for a place, beyond those running.
+const QUEUE: usize = 256;
+/// How long a request of a [`Line`] waits for a place before it answers `429`.
+const WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// The limit of the `/api/` media routes. A screen of thumbnails asks for its images at once and each takes a few
-/// milliseconds, so a request over the limit waits for a place instead of answering `429`, unless the line is full
-/// or the wait too long.
-struct MediaLimit {
-    /// Requests decoded and waiting.
+/// A limit whose requests over it wait for a place instead of answering `429`, unless the line is full or the
+/// wait too long (issue #157): the `/api/` reads and media routes, which a page asks for several at once and
+/// each of which takes a few milliseconds. The routes without `/api/` start a process each, and answer `429`
+/// right away.
+struct Line {
+    /// Requests running and waiting.
     admitted: Arc<Semaphore>,
-    decoding: Arc<Semaphore>,
+    running: Arc<Semaphore>,
 }
 
-impl MediaLimit {
-    fn new(max: usize) -> Self {
-        let max = max.max(1);
+impl Line {
+    /// A line for the places of `running`, of which there are `max`.
+    fn new(running: Arc<Semaphore>, max: usize) -> Self {
         Self {
-            admitted: Arc::new(Semaphore::new(max + MEDIA_QUEUE)),
-            decoding: Arc::new(Semaphore::new(max)),
+            admitted: Arc::new(Semaphore::new(max.max(1) + QUEUE)),
+            running,
         }
     }
 
-    /// A place to decode in, after waiting at most `wait`; `None` when the line is full or the wait ran out.
+    /// A place to run in, after waiting at most `wait`; `None` when the line is full or the wait ran out.
     async fn enter(
         &self,
         wait: std::time::Duration,
@@ -561,18 +564,22 @@ impl MediaLimit {
         tokio::sync::OwnedSemaphorePermit,
     )> {
         let admitted = self.admitted.clone().try_acquire_owned().ok()?;
-        let decoding = tokio::time::timeout(wait, self.decoding.clone().acquire_owned())
+        let running = tokio::time::timeout(wait, self.running.clone().acquire_owned())
             .await
             .ok()?
             .ok()?;
-        Some((admitted, decoding))
+        Some((admitted, running))
     }
 }
 
 pub fn router(cfg: ApiConfig) -> Router {
     let tasks = Arc::new(Semaphore::new(cfg.max_tasks.max(1)));
     let reads = Arc::new(Semaphore::new(cfg.max_reads.max(1)));
-    let media = MediaLimit::new(cfg.max_media);
+    let api_reads = Line::new(reads.clone(), cfg.max_reads);
+    let media = Line::new(
+        Arc::new(Semaphore::new(cfg.max_media.max(1))),
+        cfg.max_media,
+    );
     let hub = Arc::new(in_process::Hub::default());
     hub.warm();
     Router::new()
@@ -584,6 +591,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             jobs: Arc::new(jobs::Jobs::new()),
             tasks,
             reads,
+            api_reads,
             media,
             openapi: Default::default(),
             hub,
@@ -859,9 +867,16 @@ fn busy(task: bool) -> Response {
     )
 }
 
-/// `429 Too Many Requests` of a media route: its line of waiting requests is full, or the wait ran out.
-fn busy_media() -> Response {
-    busy_with("too many images and voices are asked for; retry later", "1")
+/// `429 Too Many Requests` of an `/api/` route: its line of waiting requests is full, or the wait ran out.
+fn busy_line(media: bool) -> Response {
+    busy_with(
+        if media {
+            "too many images, voices and videos are asked for; retry later"
+        } else {
+            "too many reads are asked for; retry later"
+        },
+        "1",
+    )
 }
 
 fn busy_with(message: &str, retry_after: &'static str) -> Response {
@@ -1146,13 +1161,14 @@ async fn route(st: &AppState, req: Request) -> Response {
         return jobs::accepted(&job);
     }
     let mut timing = Timing::default();
-    let (_permit, _decoding) = if media {
+    let (_permit, _running) = if in_process {
+        let line = if media { &st.media } else { &st.api_reads };
         let waited = std::time::Instant::now();
-        let Some((admitted, decoding)) = st.media.enter(MEDIA_WAIT).await else {
-            return busy_media();
+        let Some((admitted, running)) = line.enter(WAIT).await else {
+            return busy_line(media);
         };
-        timing.stage("wait", Some("in line for a media place"), waited);
-        (admitted, Some(decoding))
+        timing.stage("wait", Some("in line for a place"), waited);
+        (admitted, Some(running))
     } else {
         let Ok(permit) = limit.clone().try_acquire_owned() else {
             return busy(verb == Some(Post));
@@ -1963,9 +1979,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn media_wait_in_line_until_it_is_full_or_too_long() {
+    async fn requests_wait_in_line_until_it_is_full_or_too_long() {
         use std::time::Duration;
-        let limit = MediaLimit::new(1);
+        let limit = Line::new(Arc::new(Semaphore::new(1)), 1);
         let first = limit.enter(Duration::ZERO).await.expect("a free place");
         // the place is taken: a request waits, and gets it once it is given back
         let (waited, _) = tokio::join!(limit.enter(Duration::from_secs(10)), async {
@@ -1976,7 +1992,7 @@ mod tests {
         // a wait that runs out
         assert!(limit.enter(Duration::from_millis(20)).await.is_none());
         // a full line: no wait at all
-        let line: Vec<_> = (0..MEDIA_QUEUE)
+        let line: Vec<_> = (0..QUEUE)
             .map(|_| limit.admitted.clone().try_acquire_owned().unwrap())
             .collect();
         assert!(limit.enter(Duration::from_secs(10)).await.is_none());

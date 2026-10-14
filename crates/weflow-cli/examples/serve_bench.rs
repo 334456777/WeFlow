@@ -1414,6 +1414,49 @@ impl Bench<'_> {
         Ok(())
     }
 
+    /// `n` requests of one read at the same time (issue #157): the wall time of all of them, and how many were
+    /// refused (`429`) or failed otherwise.
+    fn at_once(&mut self, op: &str, route: &'static str, target: &str, n: usize) -> Result<()> {
+        let path = if route == "api" {
+            format!("/api{target}")
+        } else {
+            target.to_string()
+        };
+        let (mut walls, mut busy, mut failed) = (Vec::with_capacity(self.runs), 0, 0);
+        let addr = self.addr;
+        for _ in 0..self.runs {
+            let begin = Instant::now();
+            let statuses: Vec<u16> = std::thread::scope(|s| {
+                let handles: Vec<_> = (0..n)
+                    .map(|_| s.spawn(|| request(addr, "GET", &path, "").map_or(0, |r| r.status)))
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap_or(0)).collect()
+            });
+            walls.push(begin.elapsed().as_secs_f64() * 1000.0);
+            busy += statuses.iter().filter(|s| **s == 429).count();
+            failed += statuses.iter().filter(|s| **s != 200 && **s != 429).count();
+        }
+        let (median, p95) = median_p95(walls);
+        let all = self.runs * n;
+        let answered = (all - busy - failed) as f64 / self.runs as f64;
+        let mut note = format!("{:.0} answered a second", answered * 1000.0 / median);
+        if busy > 0 {
+            note.push_str(&format!("; {busy} of {all} refused (429)"));
+        }
+        if failed > 0 {
+            note.push_str(&format!("; {failed} of {all} failed"));
+        }
+        self.push(Row {
+            op: format!("{op}, {n} at once (all of them)"),
+            route,
+            median,
+            p95,
+            bytes: None,
+            note,
+        });
+        Ok(())
+    }
+
     /// What the push engine costs: the server's CPU time per second, idle and then with a listener of
     /// `/api/push/messages` (from its second second on, after the baseline), and the events that came meanwhile.
     fn push_cost(&mut self, pid: u32) -> Result<()> {
@@ -1778,6 +1821,15 @@ fn main() -> Result<()> {
     bench.candidates(&t)?;
     bench.pages_at_once("sub", &t.big)?;
     bench.pages_at_once("api", &t.big)?;
+    // the same read asked for by many at once, around the limit of reads (one per CPU by default): a browser
+    // sends at most 6 at once to one server
+    let first_page = format!("/chat/messages?session-id={big}&limit={PAGE}");
+    for n in [1, 6, 16, 32, 64] {
+        bench.at_once("first page", "api", &first_page, n)?;
+    }
+    for n in [1, 6, 16, 32] {
+        bench.at_once("first page", "sub", &first_page, n)?;
+    }
     if !t.images.is_empty() {
         bench.images("sub", &t.images)?;
         bench.images("api", &t.images)?;
