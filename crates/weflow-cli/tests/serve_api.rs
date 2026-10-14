@@ -576,6 +576,96 @@ fn reads_run_in_process_with_the_same_answers() {
 }
 
 #[test]
+fn answers_are_compressed_when_asked_and_cut_to_fields() {
+    let root = temp_root("reply-size");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+
+    // gzip or br as the client takes them, the same answer once decoded; nothing without `Accept-Encoding`
+    for target in ["/chat/contacts", "/api/chat/contacts"] {
+        let plain = server.call("GET", target, "");
+        assert_eq!(plain.status, 200, "{}", plain.body);
+        assert_eq!(plain.headers.get("content-encoding"), None);
+        let ask = |encoding: &str| {
+            server.request(
+                "GET",
+                target,
+                &[("Authorization", &auth), ("Accept-Encoding", encoding)],
+                "",
+            )
+        };
+        let gz = ask("gzip");
+        assert_eq!(gz.headers["content-encoding"], "gzip", "{target}");
+        let mut unzipped = Vec::new();
+        flate2::read::GzDecoder::new(gz.bytes.as_slice())
+            .read_to_end(&mut unzipped)
+            .unwrap();
+        assert_eq!(unzipped, plain.bytes, "{target}");
+        let br = ask("br;q=1, gzip;q=0.5");
+        assert_eq!(br.headers["content-encoding"], "br", "{target}");
+        let mut unbrotlied = Vec::new();
+        brotli_decompressor::Decompressor::new(br.bytes.as_slice(), 4096)
+            .read_to_end(&mut unbrotlied)
+            .unwrap();
+        assert_eq!(unbrotlied, plain.bytes, "{target}");
+        assert_eq!(ask("identity").headers.get("content-encoding"), None);
+    }
+
+    // `fields`: only those keys of each row, the same from both routes, however the names are given
+    let rows = |target: &str| {
+        let child = server.call("GET", target, "");
+        let own = server.call("GET", &format!("/api{target}"), "");
+        assert_eq!(
+            (own.status, &own.body),
+            (child.status, &child.body),
+            "{target}"
+        );
+        assert_eq!(child.status, 200, "{target}: {}", child.body);
+        child.json()["data"].clone()
+    };
+    let page = rows("/chat/messages?session-id=wxid_bob&fields=local_id,create_time");
+    let full = rows("/chat/messages?session-id=wxid_bob");
+    assert!(full[0].as_object().unwrap().len() > 2);
+    let cut: Vec<Value> = full
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| json!({ "local_id": m["local_id"], "create_time": m["create_time"] }))
+        .collect();
+    assert_eq!(page, Value::Array(cut));
+    assert_eq!(
+        rows("/chat/messages?session-id=wxid_bob&fields=local_id&fields=+create_time,,"),
+        page
+    );
+    let contacts = rows("/chat/contacts?fields=username,nosuchfield");
+    assert!(contacts.as_array().unwrap().iter().all(|c| c
+        .as_object()
+        .unwrap()
+        .keys()
+        .eq(["username"])));
+    // a failure as it is
+    let failed = server.call("GET", "/chat/messages?fields=local_id", "");
+    assert_eq!(
+        (failed.status, &failed.body),
+        (400, &server.call("GET", "/chat/messages", "").body)
+    );
+    for target in [
+        "/chat/sessions?fields=username&std=out",
+        "/chat/sessions?fields=username&return=file",
+    ] {
+        assert_eq!(server.call("GET", target, "").status, 400, "{target}");
+    }
+    let r = server.request(
+        "GET",
+        "/chat/sessions?fields=username",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        "",
+    );
+    assert_eq!(r.status, 400);
+}
+
+#[test]
 fn media_come_back_as_files_from_the_process() {
     use weflow_native::fixture::{VoiceSpec, DAY, T0};
     let root = temp_root("media");
@@ -657,11 +747,24 @@ fn media_come_back_as_files_from_the_process() {
         "",
     );
     assert_eq!(other.status, 200);
+    // the file as it is, even to a client that takes compressed answers: an image is compressed already
+    let plain = server.request(
+        "GET",
+        &format!("/api/chat/image-data?{query}"),
+        &[("Authorization", &auth), ("Accept-Encoding", "gzip, br")],
+        "",
+    );
+    assert_eq!(plain.headers.get("content-encoding"), None);
+    assert_eq!(plain.bytes, jpeg);
 
     // a part of it, as a player or a resumed download asks: 206, or 416 past the end, or the whole file when it
     // changed since (`If-Range`)
     let part = |range: &str, if_range: &str| {
-        let mut headers = vec![("Authorization", auth.as_str()), ("Range", range)];
+        let mut headers = vec![
+            ("Authorization", auth.as_str()),
+            ("Range", range),
+            ("Accept-Encoding", "gzip"),
+        ];
         if !if_range.is_empty() {
             headers.push(("If-Range", if_range));
         }
@@ -678,6 +781,7 @@ fn media_come_back_as_files_from_the_process() {
     assert_eq!(r.bytes, jpeg[..10]);
     assert_eq!(r.headers["content-range"], format!("bytes 0-9/{len}"));
     assert_eq!(r.headers["accept-ranges"], "bytes");
+    assert_eq!(r.headers.get("content-encoding"), None);
     let r = part("bytes=-4", &etag);
     assert_eq!((r.status, r.bytes.as_slice()), (206, &jpeg[len - 4..]));
     let r = part("bytes=0-9", "\"0\"");
@@ -737,6 +841,14 @@ fn media_come_back_as_files_from_the_process() {
     assert_eq!(r.status, 200, "{}", r.body);
     assert_eq!(r.headers["content-type"], "audio/wav");
     assert_eq!(&r.bytes[..4], b"RIFF");
+    let wav = server.request(
+        "GET",
+        &format!("/api/chat/voice-data?{query}"),
+        &[("Authorization", &auth), ("Accept-Encoding", "gzip")],
+        "",
+    );
+    assert_eq!(wav.headers.get("content-encoding"), None);
+    assert_eq!(wav.bytes, r.bytes);
     let child = server.call(
         "POST",
         "/chat/voice-data",
@@ -848,8 +960,14 @@ fn new_messages_are_pushed_as_events() {
     let (home, fixture) = account(&root);
     let server = start(&home, &["--api-token", TOKEN]);
 
-    let mut first = EventStream::open(&server, &[]);
+    // as a browser asks: the events stream as they come, not compressed
+    let mut first = EventStream::open(&server, &[("Accept-Encoding", "gzip, deflate, br")]);
     assert!(first.wait_for("event: ready", 10), "{}", first.text);
+    assert!(
+        !first.text.to_ascii_lowercase().contains("content-encoding"),
+        "{}",
+        first.text
+    );
     assert!(first.text.starts_with("HTTP/1.1 200"), "{}", first.text);
     assert!(first.text.contains("text/event-stream"), "{}", first.text);
     // the engine takes its baseline within a second of the first listener

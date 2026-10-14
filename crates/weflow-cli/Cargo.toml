@@ -22,12 +22,16 @@ serde.workspace = true
 serde_json.workspace = true
 # `serve` runs each request of the command API in a child process
 tokio = { workspace = true, features = ["process", "io-util", "fs", "sync", "time"] }
+# `serve` compresses its JSON answers (gzip / br, from `Accept-Encoding`)
+tower-http = { workspace = true, features = ["compression-gzip", "compression-br"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 weflow-core = { path = "../weflow-core" }
 weflow-assets = { path = "../weflow-assets" }
 
 [dev-dependencies]
+brotli-decompressor = "5"
+flate2.workspace = true
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
 

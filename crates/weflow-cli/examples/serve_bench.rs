@@ -76,6 +76,10 @@ const IN_API: &[&str] = &[
 /// Moments of the synthetic account, from its friends in turn.
 const SNS_POSTS: i64 = 2000;
 /// How long the push engine's CPU time is measured on the real account, idle and with a listener.
+/// The columns a chat window shows of a message, and a list of a contact (`?fields=`).
+const MESSAGE_FIELDS: &str =
+    "local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,_cursor";
+const CONTACT_FIELDS: &str = "username,alias,remark,nick_name,small_head_url,local_type";
 const PUSH_WINDOW: Duration = Duration::from_secs(10);
 
 struct Args {
@@ -985,10 +989,21 @@ fn dechunk(mut raw: &[u8]) -> Vec<u8> {
 }
 
 fn request(addr: &str, method: &str, target: &str, body: &str) -> Result<Reply> {
+    request_with(addr, method, target, body, "")
+}
+
+/// [`request`] with more header lines, each ending in CRLF; the body comes back as sent (compressed or not).
+fn request_with(
+    addr: &str,
+    method: &str,
+    target: &str,
+    body: &str,
+    headers: &str,
+) -> Result<Reply> {
     let begin = Instant::now();
     let mut stream = TcpStream::connect(addr)?;
     let mut req = format!(
-        "{method} {target} HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer {TOKEN}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        "{method} {target} HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer {TOKEN}\r\nConnection: close\r\nContent-Length: {}\r\n{headers}",
         body.len()
     );
     if !body.is_empty() {
@@ -1201,10 +1216,30 @@ impl Bench<'_> {
 
     /// Times `runs` requests of one read through the given route.
     fn read(&mut self, op: &str, route: &'static str, target: &str) -> Result<()> {
-        self.read_n(op, route, target, self.runs)
+        self.read_n(op, route, target, self.runs, "")
     }
 
-    fn read_n(&mut self, op: &str, route: &'static str, target: &str, runs: usize) -> Result<()> {
+    /// [`read`](Self::read) asking for a compressed answer: its size is the compressed one.
+    fn read_encoded(
+        &mut self,
+        op: &str,
+        route: &'static str,
+        target: &str,
+        encoding: &str,
+    ) -> Result<()> {
+        let header = format!("Accept-Encoding: {encoding}\r\n");
+        self.read_n(op, route, target, self.runs, &header)
+    }
+
+    /// [`read`](Self::read) `runs` times, with more header lines.
+    fn read_n(
+        &mut self,
+        op: &str,
+        route: &'static str,
+        target: &str,
+        runs: usize,
+        headers: &str,
+    ) -> Result<()> {
         let path = if route == "api" {
             format!("/api{target}")
         } else {
@@ -1214,7 +1249,7 @@ impl Bench<'_> {
         let mut bytes = 0;
         let mut statuses = BTreeMap::<u16, usize>::new();
         for _ in 0..runs {
-            let r = request(self.addr, "GET", &path, "")?;
+            let r = request_with(self.addr, "GET", &path, "", headers)?;
             ms.push(r.ms);
             bytes = r.body.len();
             *statuses.entry(r.status).or_default() += 1;
@@ -1315,6 +1350,7 @@ impl Bench<'_> {
             "sub",
             "/analytics/overall?force=true",
             1,
+            "",
         )?;
         self.read("analytics overall (cached)", "sub", "/analytics/overall")?;
         self.read("analytics rankings (cached)", "sub", "/analytics/rankings")?;
@@ -1564,9 +1600,17 @@ fn main() -> Result<()> {
     let big = encode(&t.big);
     bench.both("sessions, 50", "/chat/sessions?limit=50")?;
     bench.both("sessions, all", "/chat/sessions")?;
-    bench.both(
-        "messages, first page",
-        &format!("/chat/messages?session-id={big}&limit={PAGE}"),
+    let first_page = format!("/chat/messages?session-id={big}&limit={PAGE}");
+    bench.both("messages, first page", &first_page)?;
+    bench.read_encoded("messages, first page, gzip", "api", &first_page, "gzip")?;
+    bench.read_encoded("messages, first page, br", "api", &first_page, "br")?;
+    let shown = format!("{first_page}&fields={MESSAGE_FIELDS}");
+    bench.read("messages, first page, the fields shown", "api", &shown)?;
+    bench.read_encoded(
+        "messages, first page, the fields shown, br",
+        "api",
+        &shown,
+        "br",
     )?;
     bench.both(
         "messages, page in the middle",
@@ -1601,6 +1645,18 @@ fn main() -> Result<()> {
         )?;
     }
     bench.both("contacts, all", "/chat/contacts")?;
+    // the size of an answer (issue #155): compressed, or only the columns a page uses
+    let contacts = "/chat/contacts";
+    bench.read_encoded("contacts, all, gzip", "api", contacts, "gzip")?;
+    bench.read_encoded("contacts, all, br", "api", contacts, "br")?;
+    let contacts = format!("{contacts}?fields={CONTACT_FIELDS}");
+    bench.read("contacts, all, the fields of a list", "api", &contacts)?;
+    bench.read_encoded(
+        "contacts, all, the fields of a list, br",
+        "api",
+        &contacts,
+        "br",
+    )?;
     let counts: Vec<String> = t
         .sessions
         .iter()

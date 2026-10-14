@@ -51,6 +51,7 @@ sha2 = "0.10.9"
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "signal", "net"] }
 tokio-stream = "0.1"
+tower-http = { version = "0.6", default-features = false }
 toml = "0.8.23"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }

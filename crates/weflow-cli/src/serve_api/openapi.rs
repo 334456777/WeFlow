@@ -127,7 +127,11 @@ fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
             None => note.into(),
         };
         if let Some(params) = op["parameters"].as_array_mut() {
-            params.retain(|p| p.get("$ref").is_none());
+            // of the parameters every route has, only `fields` applies to /api/
+            params.retain(|p| {
+                p.get("$ref")
+                    .is_none_or(|r| r == "#/components/parameters/fields")
+            });
         }
         if let Some(responses) = op["responses"].as_object_mut() {
             responses.remove("202");
@@ -286,7 +290,7 @@ fn operation(
         }
     }
     let file = files::file_command(&name).is_some();
-    for common in ["std", "Prefer", "Accept-Language"] {
+    for common in ["std", "fields", "Prefer", "Accept-Language"] {
         parameters.push(json!({ "$ref": format!("#/components/parameters/{common}") }));
     }
     if file {
@@ -649,6 +653,20 @@ fn components(zh: bool) -> Value {
                      stdout / stderr（`{exitCode, stdout}` / `{exitCode, stderr}`）",
                 ),
             },
+            "fields": {
+                "name": "fields",
+                "in": "query",
+                "style": "form",
+                "explode": false,
+                "schema": { "type": "array", "items": { "type": "string" } },
+                "description": pick(
+                    zh,
+                    "Only these keys of each row of a successful answer: of each object in `data`, or in the lists of \
+                     `data`; not with `std`, `return=file` or `Prefer: respond-async`",
+                    "成功的回复里每一行只保留这些键：`data` 里的每个对象，或 `data` 里各个列表中的对象；不能与 `std`、\
+                     `return=file` 或 `Prefer: respond-async` 同时使用",
+                ),
+            },
             "return": {
                 "name": "return",
                 "in": "query",
@@ -876,11 +894,14 @@ mod tests {
                 format!("api_{}", plain["operationId"].as_str().unwrap())
             );
             assert_eq!(own["x-weflow-command"], *name);
-            assert!(own["parameters"]
+            // of the parameters of every route, only `fields`
+            let shared: Vec<&Value> = own["parameters"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .all(|p| p.get("$ref").is_none()));
+                .filter_map(|p| p.get("$ref"))
+                .collect();
+            assert_eq!(shared, ["#/components/parameters/fields"]);
             assert!(own["responses"]["202"].is_null());
         }
         assert!(doc["paths"]["/api/export/sessions"].is_null());
