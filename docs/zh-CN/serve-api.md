@@ -167,7 +167,19 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 
 ## 并发限制
 
-为了不让机器卡住，有两个上限：任务（`POST` 命令：导出、取钥、备份、报告等）一次只运行一个（`--max-tasks`），其他命令最多同时运行与 CPU 核数相同的数量（`--max-reads`）。超出上限的直接请求不会排队等待，而是返回 `429`，错误码为 `busy`，并带 `Retry-After`（任务为 5 秒，其他为 1 秒）。超出上限的作业在队列里等待（`queued`），有空位时开始运行。`/api/` 的媒体路由另有自己的上限（`--max-media`，见[媒体](#媒体)）。
+为了不让机器卡住，有两个上限：任务（`POST` 命令：导出、取钥、备份、报告等）一次只运行一个（`--max-tasks`），其他命令最多同时运行与 CPU 核数相同的数量（`--max-reads`）。不带 `/api/` 的路由每个请求都要启动一个进程，超出上限的直接请求不会排队等待，而是返回 `429`，错误码为 `busy`，并带 `Retry-After`（任务为 5 秒，其他为 1 秒）。超出上限的作业在队列里等待（`queued`），有空位时开始运行。
+
+[`/api/` 的读取](#进程内读取)和它们共用 `--max-reads`，但超出上限时会排队等位置：网页会同时发出好几个请求，而每个只要几毫秒。只有已有 256 个请求在排队，或者一个请求已经等了 10 秒，才返回 `429`（`busy`，`Retry-After: 1`）。`/api/` 的媒体路由有自己的上限和队列（`--max-media`，见[媒体](#媒体)），所以一屏图片不会挡住读取。
+
+| 同时请求同一项读取（消息第一页，大账号，16 核） | `/api/<路径>` | `/<路径>` |
+|---|---:|---:|
+| 1 个 | 3.7 ms | 31 ms |
+| 6 个 | 12 ms | 48 ms |
+| 16 个 | 24 ms | 98 ms |
+| 32 个 | 46 ms | 105 ms，一半返回 `429` |
+| 64 个 | 84 ms，每秒约 760 个 | – |
+
+浏览器对同一个服务器最多同时发 6 个请求（HTTP/1.1），打开的事件流（如 `/api/push/messages`）还要占一个，所以单个网页不会超过默认上限；更多的并发来自多个标签页或脚本。给这些读取的每个数据库多开几个连接并没有变快：时间花在生成每个回复上（一页消息约 120 KB 的 JSON），而不是等数据库。
 
 ## OpenAPI 描述
 
@@ -198,10 +210,10 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 
 ### 时间花在哪里
 
-每个响应都带 `Server-Timing` 头，浏览器的开发者工具会在请求旁边显示：`cmd` 是执行命令的时间，`desc="in process"` 表示在服务进程内执行，`desc="child process"` 表示在子进程执行；`wait` 是 `/api/` 媒体请求排队等位置的时间（见[媒体](#媒体)）；`total` 是请求在服务端的全部时间，从收到请求到发出响应头（事件流则到它开始）。从 `localhost` 打开的网页还会收到 `Timing-Allow-Origin`，脚本可以在 `performance.getEntriesByType("resource")` 里读到这些阶段。
+每个响应都带 `Server-Timing` 头，浏览器的开发者工具会在请求旁边显示：`cmd` 是执行命令的时间，`desc="in process"` 表示在服务进程内执行，`desc="child process"` 表示在子进程执行；`wait` 是 `/api/` 请求排队等位置的时间（见[并发限制](#并发限制)）；`total` 是请求在服务端的全部时间，从收到请求到发出响应头（事件流则到它开始）。从 `localhost` 打开的网页还会收到 `Timing-Allow-Origin`，脚本可以在 `performance.getEntriesByType("resource")` 里读到这些阶段。
 
 ```text
-Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
+Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";dur=3.1, total;dur=3.4
 ```
 
 `--log-requests` 让每个请求在 stderr 输出一行：时间、方法、路径、状态码和毫秒数；带 `--json` 时输出事件 `{"type": "request", "method", "path", "status", "ms"}`。不输出查询参数，因为里面可能有会话 ID 和令牌；也不输出响应的任何内容。默认关闭。
@@ -231,7 +243,7 @@ Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
 - `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。
 - 不带 `fast=true` 的 `chat detail` 和带 `with-media=true` 的 `sns timeline` 按不带 `/api/` 的路由执行：其余的详情（数据表、最早和最新时间）读起来慢，时间线的媒体要下载。
 - 带 `fast=true` 的 `sns stats` 和带 `prefer-cache=true` 的 `sns post-counts` 和桌面端一样，把数字保留 5 分钟：新动态要过了这段时间才计入，不带这两个开关则立即计入。
-- 这些读取计入 `--max-reads` 的上限。
+- 这些读取计入 `--max-reads` 的上限，超出时排队等位置，而不是返回 `429`（见[并发限制](#并发限制)）。
 
 ### 媒体
 

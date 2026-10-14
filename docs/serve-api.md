@@ -167,7 +167,19 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 
 ## Limits
 
-Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, backups, reports, …) run one at a time (`--max-tasks`), other commands up to one per CPU at once (`--max-reads`). A direct request over the limit is not kept waiting: it answers `429` with the error code `busy` and `Retry-After` (5 seconds for tasks, 1 otherwise). A job over the limit waits in the queue (`queued`) and starts when a place is free. The `/api/` media routes have a limit of their own (`--max-media`, see [Media](#media)).
+Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, backups, reports, …) run one at a time (`--max-tasks`), other commands up to one per CPU at once (`--max-reads`). A direct request over the limit through a route without `/api/`, which starts a process, is not kept waiting: it answers `429` with the error code `busy` and `Retry-After` (5 seconds for tasks, 1 otherwise). A job over the limit waits in the queue (`queued`) and starts when a place is free.
+
+The [`/api/` reads](#in-process-reads) share `--max-reads` with them, but a request over it waits in line for a place: a page asks for several at once, and each takes a few milliseconds. Only when 256 are already waiting, or one has waited 10 seconds, does it answer `429` (`busy`, `Retry-After: 1`). The `/api/` media routes have a limit and a line of their own (`--max-media`, see [Media](#media)), so a screen of images does not hold up the reads.
+
+| The same read asked for at once (first page of messages, large account, 16 CPUs) | `/api/<path>` | `/<path>` |
+|---|---:|---:|
+| 1 | 3.7 ms | 31 ms |
+| 6 | 12 ms | 48 ms |
+| 16 | 24 ms | 98 ms |
+| 32 | 46 ms | 105 ms, half of them `429` |
+| 64 | 84 ms, about 760 answered a second | – |
+
+A browser sends at most 6 requests at once to one server (HTTP/1.1), and an open event stream such as `/api/push/messages` holds one of them, so a page alone stays below the default limit; more come from several tabs or from scripts. Allowing a database more connections for these reads did not make them faster: the time goes into each answer (about 120 KB of JSON for a page), not into waiting for the database.
 
 ## OpenAPI description
 
@@ -198,10 +210,10 @@ Opening a database first derives its key from the one in the configuration (abou
 
 ### Where the time goes
 
-Every answer has a `Server-Timing` header, which a browser's developer tools show next to the request: `cmd` is the command, with `desc="in process"` or `desc="child process"`; `wait` is the time an `/api/` media request waited in line for a place (see [Media](#media)); `total` is the whole request in the server, from its arrival to its answer's headers (for an event stream, until it opens). A page served from `localhost` also gets `Timing-Allow-Origin`, so its scripts can read the stages in `performance.getEntriesByType("resource")`.
+Every answer has a `Server-Timing` header, which a browser's developer tools show next to the request: `cmd` is the command, with `desc="in process"` or `desc="child process"`; `wait` is the time an `/api/` request waited in line for a place (see [Limits](#limits)); `total` is the whole request in the server, from its arrival to its answer's headers (for an event stream, until it opens). A page served from `localhost` also gets `Timing-Allow-Origin`, so its scripts can read the stages in `performance.getEntriesByType("resource")`.
 
 ```text
-Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
+Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";dur=3.1, total;dur=3.4
 ```
 
 `--log-requests` prints a line on stderr for each request: the time, method, path, status and milliseconds, or with `--json` an event `{"type": "request", "method", "path", "status", "ms"}`. The query is left out, as it may hold conversation ids and the token; nothing of the answer is printed. It is off by default.
@@ -231,7 +243,7 @@ Server-Timing: cmd;desc="in process";dur=3.1, total;dur=3.4
 - `group members` keeps a member panel for a while, as the desktop app does: within that time it answers `"fromCache": true`; pass `refresh=true` to build it again.
 - `chat detail` without `fast=true` and `sns timeline` with `with-media=true` run as the route without `/api/` does: the rest of the details (the tables, the first and last times) is slower to read, and the media of the timeline are downloaded.
 - `sns stats` with `fast=true` and `sns post-counts` with `prefer-cache=true` keep their numbers for 5 minutes, as the desktop app does: new posts show in them after that, or at once without those switches.
-- These reads count towards the `--max-reads` limit.
+- These reads count towards the `--max-reads` limit, and wait in line for a place instead of answering `429` (see [Limits](#limits)).
 
 ### Media
 

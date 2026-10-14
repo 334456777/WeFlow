@@ -701,7 +701,11 @@ fn answers_tell_where_the_time_went() {
     let total = ("total".to_string(), None);
     assert_eq!(
         stages("/api/chat/sessions?limit=1"),
-        [cmd("in process"), total.clone()]
+        [
+            ("wait".to_string(), Some("in line for a place".to_string())),
+            cmd("in process"),
+            total.clone()
+        ]
     );
     assert_eq!(
         stages("/chat/sessions?limit=1"),
@@ -914,6 +918,19 @@ fn media_come_back_as_files_from_the_process() {
         all.into_iter().map(|h| h.join().unwrap().status).collect()
     });
     assert!(statuses.iter().all(|&s| s == 200), "{statuses:?}");
+    // so do the reads of /api/, one at a time here; a child process route is refused at once instead
+    let at_once = |target: &str, n: usize| -> Vec<u16> {
+        std::thread::scope(|s| {
+            let all: Vec<_> = (0..n)
+                .map(|_| s.spawn(|| server.call("GET", target, "").status))
+                .collect();
+            all.into_iter().map(|h| h.join().unwrap()).collect()
+        })
+    };
+    let statuses = at_once("/api/chat/sessions?limit=1", 12);
+    assert!(statuses.iter().all(|&s| s == 200), "{statuses:?}");
+    let statuses = at_once("/chat/sessions?limit=1", 8);
+    assert!(statuses.contains(&429), "{statuses:?}");
 
     // the voice, decoded to WAV: the same as the child process prints in base64
     let query = format!(
