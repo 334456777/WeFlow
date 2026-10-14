@@ -213,7 +213,9 @@ Opening a database first derives its key from the one in the configuration (abou
 <img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
 ```
 
+- `thumb=true` (`--thumb` of the command) answers the thumbnail WeChat keeps of the image, a few kilobytes, for a list; the image itself when there is none. On a large account a thumbnail takes about 2 ms and is about a fifth of the size of the image.
 - The answer has an `ETag` and `Cache-Control: private, max-age=3600`. Asking again with `If-None-Match` answers `304` without the file when it has not changed.
+- A part of the file can be asked for with `Range: bytes=…`, as an `<audio>` player does: `206` with `Content-Range`, or `416` past the end. Several ranges, or an `If-Range` that names another version of the file, get the whole file.
 - A failure is the command's `--json` document with its status code, as for the other in-process reads.
 - They have a limit of their own, `--max-media` (one per CPU by default), and count towards neither `--max-reads` nor `--max-tasks`, so a screen of images does not hold up the messages beside it.
 - A request over the limit waits in line instead of answering `429` straight away: a screen of thumbnails asks for its images at once, and each takes a few milliseconds. Only when 256 requests are already waiting, or a request has waited 10 seconds, does it answer `429` (`busy`, `Retry-After: 1`).

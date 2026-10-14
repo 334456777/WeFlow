@@ -187,6 +187,7 @@ const HELP: &[(&str, &str)] = &[
     ("Edit a message (always refused: the database is read-only)", "修改消息（一律拒绝：数据库是只读的）"),
     ("Message create time (seconds)", "消息创建时间（秒）"),
     ("Message create time (seconds): tells apart messages of different message databases that share the local id", "消息创建时间（秒）：用于区分不同消息库中本地 ID 相同的消息"),
+    ("WeChat's own thumbnail of the image (a few KB, for lists), or the image when there is none", "微信自己保存的图片缩略图（几 KB，适合列表），没有缩略图时返回原图"),
     ("Create time (seconds) of the message, with --local-id: tells apart messages of different message databases that share the local id", "消息的创建时间（秒），与 --local-id 一起使用：用于区分不同消息库中本地 ID 相同的消息"),
     ("New message content", "新的消息内容"),
     ("Delete a message (always refused: the database is read-only)", "删除消息（一律拒绝：数据库是只读的）"),

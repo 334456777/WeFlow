@@ -159,17 +159,21 @@ pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile
             session_id,
             msg_id,
             create_time,
+            thumb,
             ..
-        } => hub
-            .image_data_for_message(session_id, msg_id, *create_time)
-            .map(|bytes| {
-                let ext = weflow_core::decrypt::detect_image_extension(&bytes);
-                let mime = mime_guess::from_ext(ext.trim_start_matches('.'))
-                    .first_raw()
-                    .filter(|m| m.starts_with("image/"))
-                    .unwrap_or("application/octet-stream");
-                MediaFile { bytes, mime }
-            }),
+        } => if *thumb {
+            hub.image_thumbnail_for_message(session_id, msg_id, *create_time)
+        } else {
+            hub.image_data_for_message(session_id, msg_id, *create_time)
+        }
+        .map(|bytes| {
+            let ext = weflow_core::decrypt::detect_image_extension(&bytes);
+            let mime = mime_guess::from_ext(ext.trim_start_matches('.'))
+                .first_raw()
+                .filter(|m| m.starts_with("image/"))
+                .unwrap_or("application/octet-stream");
+            MediaFile { bytes, mime }
+        }),
         ChatSubcommand::VoiceData {
             session_id,
             msg_id,

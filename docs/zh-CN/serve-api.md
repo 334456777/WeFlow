@@ -213,7 +213,9 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 <img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
 ```
 
+- 加上 `thumb=true`（即命令的 `--thumb`）时，返回微信自己保存的图片缩略图，只有几 KB，适合列表；没有缩略图时返回原图。在大账号上，一张缩略图约 2 ms，大小约为原图的五分之一。
 - 回复带 `ETag` 和 `Cache-Control: private, max-age=3600`。带 `If-None-Match` 再次请求时，如果内容没变，返回 `304`，不带文件。
+- 可以用 `Range: bytes=…` 只取文件的一部分，`<audio>` 播放器就是这样请求的：返回 `206` 并带 `Content-Range`；起点超出文件末尾时返回 `416`。请求多个区间，或 `If-Range` 指的是文件的另一个版本时，返回整个文件。
 - 出错时返回命令的 `--json` 文档和对应的状态码，与其他进程内读取一样。
 - 有自己的上限 `--max-media`（默认每个 CPU 一个），不计入 `--max-reads`，也不计入 `--max-tasks`。所以一屏图片不会挡住旁边消息的读取。
 - 超出上限的请求排队等待，不会立即返回 `429`：一屏缩略图是同时请求的，而每张只要几毫秒。只有已有 256 个请求在排队，或者一个请求已经等了 10 秒，才返回 `429`（`busy`，`Retry-After: 1`）。
