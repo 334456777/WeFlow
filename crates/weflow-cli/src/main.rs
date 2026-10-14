@@ -581,6 +581,9 @@ enum ChatSubcommand {
         /// Message create time (seconds): tells apart messages of different message databases that share the local id
         #[arg(long)]
         create_time: Option<i64>,
+        /// WeChat's own thumbnail of the image (a few KB, for lists), or the image when there is none
+        #[arg(long)]
+        thumb: bool,
         /// Output file
         #[arg(long)]
         out: PathBuf,
@@ -2236,9 +2239,14 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             session_id,
             msg_id,
             create_time,
+            thumb,
             out,
         } => {
-            let bytes = hub.image_data_for_message(session_id, msg_id, *create_time)?;
+            let bytes = if *thumb {
+                hub.image_thumbnail_for_message(session_id, msg_id, *create_time)?
+            } else {
+                hub.image_data_for_message(session_id, msg_id, *create_time)?
+            };
             if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     AppError::runtime(format!("failed to create {}: {e}", parent.display()))

@@ -1275,6 +1275,62 @@ impl ServiceHub {
         msg_id: &str,
         create_time: Option<i64>,
     ) -> AppResult<Vec<u8>> {
+        let payload = self.image_payload_for_message(session_id, msg_id, create_time)?;
+        self.image_data_for_payload(&payload)
+    }
+
+    /// The thumbnail WeChat keeps of a message's image (`<md5>_t.dat`, a few kilobytes), decrypted in memory; the
+    /// image itself ([`Self::image_data_for_message`]) when there is none.
+    pub fn image_thumbnail_for_message(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+    ) -> AppResult<Vec<u8>> {
+        let payload = self.image_payload_for_message(session_id, msg_id, create_time)?;
+        match self.thumbnail_bytes(&payload) {
+            Some(bytes) => Ok(bytes),
+            None => self.image_data_for_payload(&payload),
+        }
+    }
+
+    /// The `_t.dat` beside the image file of `p`, decrypted, when it is an image a page can show.
+    fn thumbnail_bytes(&self, p: &ImagePayload) -> Option<Vec<u8>> {
+        let account_dir = self.account_dir_only().ok()?;
+        let dat = self.resolve_dat_path(
+            &account_dir,
+            p,
+            DatSearch {
+                allow_thumbnail: true,
+                skip_resolved_cache: false,
+                allow_dat_name_fallback: p.allow_cache_index != Some(false),
+            },
+        )?;
+        let path = Path::new(&dat);
+        let thumb = if img::is_t_variant_dat(&dat) {
+            path.to_path_buf()
+        } else {
+            let base = img::normalize_dat_base(&path.file_name()?.to_string_lossy());
+            path.with_file_name(format!("{base}_t.dat"))
+        };
+        if !thumb.is_file() {
+            return None;
+        }
+        let (xor_key, aes_key) = self.image_keys();
+        let decrypted = crate::decrypt::decrypt_file(&thumb, xor_key?, aes_key.as_ref()).ok()?;
+        let (data, _) = img::unwrap_wxgf(decrypted.data);
+        // a WXGF that could not be converted is left to the full path, which says why
+        let ext = crate::decrypt::detect_image_extension(&data);
+        (ext != ".bin" && ext != ".wxgf").then_some(data)
+    }
+
+    /// What [`Self::image_decrypt`] needs to find the image of a message.
+    fn image_payload_for_message(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+    ) -> AppResult<ImagePayload> {
         let local_id = crate::api::js_parse_int(msg_id)
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
@@ -1297,7 +1353,7 @@ impl ServiceHub {
                 "image has no md5 / datName, cannot locate the original file",
             ));
         }
-        let result = self.image_decrypt(&ImagePayload {
+        Ok(ImagePayload {
             session_id: Some(session_id.to_string()),
             image_md5: raw_md5,
             image_dat_name: dat_name,
@@ -1305,7 +1361,11 @@ impl ServiceHub {
             prefer_file_path: true,
             hardlink_only: true,
             ..Default::default()
-        });
+        })
+    }
+
+    fn image_data_for_payload(&self, payload: &ImagePayload) -> AppResult<Vec<u8>> {
+        let result = self.image_decrypt(payload);
         let path = result
             .local_path
             .filter(|_| result.success)

@@ -551,6 +551,7 @@ fn media_come_back_as_files_from_the_process() {
     let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
     jpeg.extend((0..3000u32).map(|i| (i as u8).wrapping_mul(7) | 1));
     let voice_at = T0 + 500;
+    let mut img_dir = PathBuf::new();
     let home = account_home_with(&root, |f| {
         // the image of `wxid_bob`'s message 3 (an old-style .dat: the whole file XOR-ed) and a real SILK voice
         let img = f
@@ -570,6 +571,7 @@ fn media_come_back_as_files_from_the_process() {
             jpeg.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
         )
         .unwrap();
+        img_dir = img;
         f.media_db(
             0,
             &[VoiceSpec {
@@ -624,6 +626,66 @@ fn media_come_back_as_files_from_the_process() {
         "",
     );
     assert_eq!(other.status, 200);
+
+    // a part of it, as a player or a resumed download asks: 206, or 416 past the end, or the whole file when it
+    // changed since (`If-Range`)
+    let part = |range: &str, if_range: &str| {
+        let mut headers = vec![("Authorization", auth.as_str()), ("Range", range)];
+        if !if_range.is_empty() {
+            headers.push(("If-Range", if_range));
+        }
+        server.request(
+            "GET",
+            &format!("/api/chat/image-data?{query}"),
+            &headers,
+            "",
+        )
+    };
+    let len = jpeg.len();
+    let r = part("bytes=0-9", "");
+    assert_eq!(r.status, 206);
+    assert_eq!(r.bytes, jpeg[..10]);
+    assert_eq!(r.headers["content-range"], format!("bytes 0-9/{len}"));
+    assert_eq!(r.headers["accept-ranges"], "bytes");
+    let r = part("bytes=-4", &etag);
+    assert_eq!((r.status, r.bytes.as_slice()), (206, &jpeg[len - 4..]));
+    let r = part("bytes=0-9", "\"0\"");
+    assert_eq!((r.status, r.bytes.len()), (200, len));
+    let r = part(&format!("bytes={len}-"), "");
+    assert_eq!(r.status, 416);
+    assert_eq!(r.headers["content-range"], format!("bytes */{len}"));
+
+    // a thumbnail for a list: WeChat's own `_t.dat` when there is one, else the image
+    let thumb = format!("/api/chat/image-data?{query}&thumb=true");
+    assert_eq!(server.call("GET", &thumb, "").bytes, jpeg);
+    let small: Vec<u8> = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3].to_vec();
+    std::fs::write(
+        img_dir.join("aabbccddeeff00112233445566778899_t.dat"),
+        small.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    let r = server.call("GET", &thumb, "");
+    assert_eq!(
+        (r.status, r.headers["content-type"].as_str()),
+        (200, "image/jpeg")
+    );
+    assert_eq!(r.bytes, small);
+    let child = server.call(
+        "POST",
+        "/chat/image-data?return=file",
+        &format!(
+            r#"{{"session-id": "wxid_bob", "msg-id": "3", "create-time": {}, "thumb": true}}"#,
+            T0 + DAY
+        ),
+    );
+    assert_eq!(form_parts(&child)[1].1, small);
+    // and the image itself is still the image
+    assert_eq!(
+        server
+            .call("GET", &format!("/api/chat/image-data?{query}"), "")
+            .bytes,
+        jpeg
+    );
 
     // a screen of images asked for at once, one decoded at a time: they wait in line instead of answering 429, and
     // take no place of the other reads

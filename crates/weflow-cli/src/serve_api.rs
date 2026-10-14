@@ -1195,18 +1195,76 @@ fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response 
         });
     let builder = Response::builder()
         .header(header::ETAG, &etag)
-        .header(header::CACHE_CONTROL, "private, max-age=3600");
+        .header(header::CACHE_CONTROL, "private, max-age=3600")
+        .header(header::ACCEPT_RANGES, "bytes");
     if unchanged {
         return builder
             .status(StatusCode::NOT_MODIFIED)
             .body(Body::empty())
             .unwrap();
     }
-    builder
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, file.mime)
-        .body(Body::from(file.bytes))
-        .unwrap()
+    let len = file.bytes.len();
+    // `If-Range` asks for the part only while the file is the one it names
+    let same = headers
+        .get(header::IF_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .is_none_or(|tag| tag.trim() == etag);
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .filter(|_| same)
+        .and_then(|v| byte_range(v, len));
+    let builder = builder.header(header::CONTENT_TYPE, file.mime);
+    match range {
+        None => builder
+            .status(StatusCode::OK)
+            .body(Body::from(file.bytes))
+            .unwrap(),
+        Some(Ok((first, last))) => {
+            let mut bytes = file.bytes;
+            bytes.truncate(last + 1);
+            bytes.drain(..first);
+            builder
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header(header::CONTENT_RANGE, format!("bytes {first}-{last}/{len}"))
+                .body(Body::from(bytes))
+                .unwrap()
+        }
+        Some(Err(())) => builder
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .header(header::CONTENT_RANGE, format!("bytes */{len}"))
+            .body(Body::empty())
+            .unwrap(),
+    }
+}
+
+/// The one range of a `Range: bytes=…` header for a file of `len` bytes, as (first, last) byte, clamped to the file;
+/// `Err` when it starts past the end. `None` (the whole file) for a header that names several ranges or that this
+/// does not read, as RFC 9110 allows.
+fn byte_range(header: &str, len: usize) -> Option<Result<(usize, usize), ()>> {
+    let spec = header.trim().strip_prefix("bytes=")?.trim();
+    if spec.contains(',') {
+        return None;
+    }
+    let (from, to) = spec.split_once('-')?;
+    let (from, to) = (from.trim(), to.trim());
+    if from.is_empty() {
+        // the last `to` bytes
+        let n: usize = to.parse().ok()?;
+        if n == 0 {
+            return Some(Err(()));
+        }
+        return Some(Ok((len.saturating_sub(n), len.checked_sub(1)?)));
+    }
+    let first: usize = from.parse().ok()?;
+    let last = match to {
+        "" => len.saturating_sub(1),
+        to => to.parse::<usize>().ok()?.min(len.saturating_sub(1)),
+    };
+    if first >= len {
+        return Some(Err(()));
+    }
+    (first <= last).then_some(Ok((first, last)))
 }
 
 /// A command's `--json` document, with its error code in a header.
@@ -1663,6 +1721,32 @@ mod tests {
         assert_eq!(lang("en-US"), Some("en"));
         assert_eq!(lang("*"), None);
         assert_eq!(request_lang(&HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn byte_ranges_are_read_as_rfc_9110_has_them() {
+        let r = |h: &str| byte_range(h, 100);
+        assert_eq!(r("bytes=0-9"), Some(Ok((0, 9))));
+        assert_eq!(r("bytes=90-"), Some(Ok((90, 99))));
+        assert_eq!(r("bytes=90-500"), Some(Ok((90, 99))), "clamped to the file");
+        assert_eq!(r("bytes=-10"), Some(Ok((90, 99))), "the last ten");
+        assert_eq!(r("bytes=-500"), Some(Ok((0, 99))));
+        assert_eq!(r(" bytes= 5 - 6 "), Some(Ok((5, 6))));
+        // past the end: 416
+        assert_eq!(r("bytes=100-"), Some(Err(())));
+        assert_eq!(r("bytes=-0"), Some(Err(())));
+        // the whole file: several ranges, other units, nonsense, a range that ends before it starts
+        for h in [
+            "bytes=0-1,5-6",
+            "items=0-1",
+            "bytes=a-b",
+            "bytes=5",
+            "bytes=9-3",
+            "",
+        ] {
+            assert_eq!(r(h), None, "{h}");
+        }
+        assert_eq!(byte_range("bytes=-5", 0), None);
     }
 
     #[tokio::test]

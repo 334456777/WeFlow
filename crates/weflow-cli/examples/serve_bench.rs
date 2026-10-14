@@ -821,14 +821,14 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
             let i = latest_image - k * IMAGE_EVERY;
             let img = json!({ "session-id": ROOM, "msg-id": i.to_string(), "create-time": T0 + i * STEP });
             let plain: Vec<u8> = image_dat(81_920, i).iter().map(|b| b ^ XOR_KEY).collect();
-            let child = image_request(addr, "sub", &img)?;
+            let child = image_request(addr, "sub", &img, false)?;
             ensure!(child.status == 200, "image {i}: status {}", child.status);
             ensure!(
                 child.body.windows(plain.len()).any(|w| w == plain),
                 "image {i}: the decrypted bytes are not in the answer"
             );
             // the /api/ route answers the file itself
-            let own = image_request(addr, "api", &img)?;
+            let own = image_request(addr, "api", &img, false)?;
             ensure!(
                 own.status == 200 && own.body == plain,
                 "image {i}: /api/ answers {} with {} bytes",
@@ -846,9 +846,9 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
     c
 }
 
-/// The image of a message (`{"session-id", "msg-id", "create-time"}`) through one route: `POST` with the file in
-/// the answer for the child process, `GET` answering the file itself for `/api/`.
-fn image_request(addr: &str, route: &str, img: &Value) -> Result<Reply> {
+/// The image of a message (`{"session-id", "msg-id", "create-time"}`), or its thumbnail, through one route: `POST`
+/// with the file in the answer for the child process, `GET` answering the file itself for `/api/`.
+fn image_request(addr: &str, route: &str, img: &Value, thumb: bool) -> Result<Reply> {
     if route == "api" {
         let mut query = Vec::new();
         for key in ["session-id", "msg-id", "create-time"] {
@@ -858,6 +858,9 @@ fn image_request(addr: &str, route: &str, img: &Value) -> Result<Reply> {
                 _ => {}
             }
         }
+        if thumb {
+            query.push("thumb=true".into());
+        }
         request(
             addr,
             "GET",
@@ -865,11 +868,15 @@ fn image_request(addr: &str, route: &str, img: &Value) -> Result<Reply> {
             "",
         )
     } else {
+        let mut body = img.clone();
+        if thumb {
+            body["thumb"] = json!(true);
+        }
         request(
             addr,
             "POST",
             "/chat/image-data?return=file",
-            &img.to_string(),
+            &body.to_string(),
         )
     }
 }
@@ -1279,18 +1286,20 @@ impl Bench<'_> {
     /// The images of one screen through one route: each alone (first time and again), then all of them at the same
     /// time.
     fn images(&mut self, route: &'static str, images: &[Value]) -> Result<()> {
-        let each = |op: &str, this: &mut Self| -> Result<()> {
+        let each = |op: &str, thumb: bool, this: &mut Self| -> Result<()> {
             let mut ms = Vec::new();
             let mut ok = 0;
             let mut bytes = 0;
             for img in images {
-                let r = image_request(this.addr, route, img)?;
+                let r = image_request(this.addr, route, img, thumb)?;
                 ms.push(r.ms);
                 if r.status == 200 {
                     ok += 1;
-                    bytes = r.body.len();
+                    bytes += r.body.len();
                 }
             }
+            // the mean size of one
+            let bytes = bytes / ok.max(1);
             let (median, p95) = median_p95(ms);
             this.push(Row {
                 op: op.into(),
@@ -1302,8 +1311,9 @@ impl Bench<'_> {
             });
             Ok(())
         };
-        each("image, first time (each)", self)?;
-        each("image, again (each)", self)?;
+        each("image, first time (each)", false, self)?;
+        each("image, again (each)", false, self)?;
+        each("thumbnail of the image (each)", true, self)?;
         let mut walls = Vec::new();
         let mut ok = 0;
         let addr = self.addr;
@@ -1313,7 +1323,9 @@ impl Bench<'_> {
                 let handles: Vec<_> = images
                     .iter()
                     .map(|img| {
-                        s.spawn(move || image_request(addr, route, img).map_or(0, |r| r.status))
+                        s.spawn(move || {
+                            image_request(addr, route, img, false).map_or(0, |r| r.status)
+                        })
                     })
                     .collect();
                 handles.into_iter().map(|h| h.join().unwrap_or(0)).collect()
