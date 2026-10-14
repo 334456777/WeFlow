@@ -17,7 +17,7 @@ use aes::Aes256;
 use anyhow::{anyhow, bail, Result};
 use cbc::cipher::{block_padding::NoPadding, BlockDecryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
-use sha2::Sha512;
+use sha2::{Digest, Sha256, Sha512};
 
 pub const PAGE_SIZE: usize = 4096;
 const SALT_LEN: usize = 16;
@@ -64,6 +64,11 @@ impl PageCipher {
     pub fn derive(raw_key: &[u8; 32], salt: &[u8]) -> Self {
         let mut enc_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(raw_key, salt, KDF_ITER, &mut enc_key);
+        Self::from_enc_key(enc_key, salt)
+    }
+
+    /// The keys of a database whose page key, the slow part of [`Self::derive`], is known.
+    fn from_enc_key(enc_key: [u8; 32], salt: &[u8]) -> Self {
         let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
         let mut mac_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(&enc_key, &mac_salt, 2, &mut mac_key);
@@ -121,22 +126,100 @@ pub fn verify_key(db: &[u8], raw_key: &[u8; 32]) -> Result<PageCipher> {
         bail!("file is a plain (unencrypted) SQLite database");
     }
     let cipher = PageCipher::derive(raw_key, &db[..SALT_LEN]);
-    let mut scratch = vec![0u8; PAGE_SIZE];
-    cipher.decrypt_page(1, &db[..PAGE_SIZE], &mut scratch)?;
+    check_page1(&cipher, db)?;
     Ok(cipher)
+}
+
+fn check_page1(cipher: &PageCipher, db: &[u8]) -> Result<()> {
+    let mut scratch = vec![0u8; PAGE_SIZE];
+    cipher.decrypt_page(1, &db[..PAGE_SIZE], &mut scratch)
 }
 
 /// Keys being derived or derived, per raw key and salt.
 type Derived = HashMap<([u8; 32], [u8; SALT_LEN]), Arc<Mutex<Option<Arc<PageCipher>>>>>;
 
+static DERIVED: OnceLock<Mutex<Derived>> = OnceLock::new();
+
 /// Keys kept by [`shared_cipher`]; past this many, they are all dropped (an account has a few dozen databases).
 const MAX_DERIVED: usize = 1024;
 
+/// Page keys handed over by another process ([`import_keys`]), per SHA-256 of their raw key and salt.
+type Imported = HashMap<([u8; 32], [u8; SALT_LEN]), [u8; 32]>;
+
+static IMPORTED: OnceLock<Imported> = OnceLock::new();
+
+/// One key of [`export_keys`]: the SHA-256 of its raw key, its salt and its page key.
+const RECORD: usize = 32 + SALT_LEN + 32;
+
+fn fingerprint(raw_key: &[u8; 32]) -> [u8; 32] {
+    Sha256::digest(raw_key).into()
+}
+
+/// The page keys [`shared_cipher`] derived so far, for [`import_keys`] in a process this one starts. A page key
+/// opens its database just as the raw key does: the bytes are meant for a pipe to that process, nothing else.
+pub fn export_keys() -> Vec<u8> {
+    let slots: Vec<_> = DERIVED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .map(|((raw_key, salt), slot)| (fingerprint(raw_key), *salt, slot.clone()))
+        .collect();
+    let mut out = Vec::with_capacity(slots.len() * RECORD);
+    for (fingerprint, salt, slot) in slots {
+        // a key being derived right now is left out rather than waited for
+        if let Ok(slot) = slot.try_lock() {
+            if let Some(cipher) = slot.as_ref() {
+                out.extend_from_slice(&fingerprint);
+                out.extend_from_slice(&salt);
+                out.extend_from_slice(&cipher.enc_key);
+            }
+        }
+    }
+    out
+}
+
+/// Take the page keys of [`export_keys`], from the process that started this one, instead of deriving them again;
+/// only the first call counts. A key is used for a file only when it opens it.
+pub fn import_keys(bytes: &[u8]) {
+    let _ = IMPORTED.set(parse_keys(bytes));
+}
+
+fn parse_keys(bytes: &[u8]) -> Imported {
+    bytes
+        .as_chunks::<RECORD>()
+        .0
+        .iter()
+        .map(|r| {
+            let key = (r[..32].try_into().unwrap(), r[32..48].try_into().unwrap());
+            (key, r[48..].try_into().unwrap())
+        })
+        .collect()
+}
+
+/// [`verify_key`] for an encrypted `db`, with its page key taken from `imported` when one there opens it.
+fn verify_key_with(
+    imported: Option<&Imported>,
+    db: &[u8],
+    raw_key: &[u8; 32],
+) -> Result<PageCipher> {
+    let salt: [u8; SALT_LEN] = db[..SALT_LEN]
+        .try_into()
+        .expect("checked to be a page long");
+    if let Some(enc_key) = imported.and_then(|keys| keys.get(&(fingerprint(raw_key), salt))) {
+        let cipher = PageCipher::from_enc_key(*enc_key, &salt);
+        if check_page1(&cipher, db).is_ok() {
+            return Ok(cipher);
+        }
+    }
+    verify_key(db, raw_key)
+}
+
 /// [`verify_key`], derived once per process for each raw key and salt: the 256,000 rounds take about 0.1 s, and
 /// the same file is opened again after its snapshot was dropped, or by two threads at once. A thread asking for keys
-/// another one is deriving waits for them instead of deriving them too.
+/// another one is deriving waits for them instead of deriving them too, and keys handed over by the process that
+/// started this one ([`import_keys`]) are not derived at all.
 pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
-    static DERIVED: OnceLock<Mutex<Derived>> = OnceLock::new();
     if db.len() < PAGE_SIZE || &db[..SQLITE_MAGIC.len()] == SQLITE_MAGIC {
         return verify_key(db, raw_key).map(Arc::new); // which says what is wrong
     }
@@ -156,7 +239,7 @@ pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
     if let Some(cipher) = slot.as_ref() {
         return Ok(cipher.clone());
     }
-    let cipher = Arc::new(verify_key(db, raw_key)?);
+    let cipher = Arc::new(verify_key_with(IMPORTED.get(), db, raw_key)?);
     *slot = Some(cipher.clone());
     Ok(cipher)
 }
@@ -487,6 +570,36 @@ mod tests {
         assert!(shared_cipher(&enc, &[4u8; 32]).is_err());
         assert!(shared_cipher(&enc, &[4u8; 32]).is_err());
         assert!(shared_cipher(&plain_db(&["x"]), &[3u8; 32]).is_err());
+    }
+
+    #[test]
+    fn keys_handed_over_are_used_when_they_open_the_file() {
+        let raw = [11u8; 32];
+        let real = PageCipher::derive(&raw, &SALT);
+        let enc = encrypt_db(&plain_db(&["x"]), &real);
+
+        // what a process derived is exported, and reads back as it was
+        shared_cipher(&enc, &raw).unwrap();
+        let exported = export_keys();
+        assert_eq!(exported.len() % RECORD, 0);
+        let keys = parse_keys(&exported);
+        assert_eq!(keys.get(&(fingerprint(&raw), SALT)), Some(&real.enc_key));
+        // the raw key itself is not in it
+        assert!(!exported.windows(32).any(|w| w == raw));
+
+        // a key handed over is taken without deriving: here it is filed under a raw key that does not derive it
+        let other = [12u8; 32];
+        let mut handed = Imported::new();
+        handed.insert((fingerprint(&other), SALT), real.enc_key);
+        let taken = verify_key_with(Some(&handed), &enc, &other).unwrap();
+        assert_eq!(taken.mac_key, real.mac_key);
+        // one that does not open the file is derived again, so a wrong raw key still fails
+        handed.insert((fingerprint(&raw), SALT), [0u8; 32]);
+        let derived = verify_key_with(Some(&handed), &enc, &raw).unwrap();
+        assert_eq!(derived.enc_key, real.enc_key);
+        assert!(verify_key_with(Some(&handed), &enc, &[13u8; 32]).is_err());
+        // a cut-off record is dropped
+        assert_eq!(parse_keys(&exported[..RECORD - 1]).len(), 0);
     }
 
     #[test]

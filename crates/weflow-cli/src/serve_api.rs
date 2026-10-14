@@ -1249,12 +1249,37 @@ fn command(exe: &std::path::Path, args: &[String], lang: Option<&str>) -> tokio:
     cmd
 }
 
+/// Set for a command whose stdin carries the database keys the server derived (see [`spawn`]).
+pub const KEYS_ON_STDIN: &str = "WEFLOW_KEYS_ON_STDIN";
+
+/// [`command`], started, with the database keys this server derived written to its stdin
+/// ([`weflow_core::page_keys::export_keys`]): opening a database derives its key first (about 0.1 s), and the
+/// command does not have to do it again. The keys go through the pipe only, never to a file or the environment.
+pub(super) async fn spawn(
+    exe: &std::path::Path,
+    args: &[String],
+    lang: Option<&str>,
+) -> std::io::Result<tokio::process::Child> {
+    let keys = weflow_core::page_keys::export_keys();
+    let mut cmd = command(exe, args, lang);
+    if !keys.is_empty() {
+        cmd.stdin(std::process::Stdio::piped())
+            .env(KEYS_ON_STDIN, "1");
+    }
+    let mut child = cmd.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        // a command that ends without reading them did not need them; closing the pipe ends what it reads
+        let _ = tokio::io::AsyncWriteExt::write_all(&mut stdin, &keys).await;
+    }
+    Ok(child)
+}
+
 async fn run(
     exe: &std::path::Path,
     args: &[String],
     lang: Option<&str>,
 ) -> std::io::Result<std::process::Output> {
-    command(exe, args, lang).output().await
+    spawn(exe, args, lang).await?.wait_with_output().await
 }
 
 /// The HTTP status of a `--json` document: by its error code first, then by the exit code.

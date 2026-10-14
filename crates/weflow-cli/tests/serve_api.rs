@@ -408,6 +408,35 @@ fn account_commands_and_read_only_refusals() {
 }
 
 #[test]
+fn commands_answer_with_the_keys_the_server_hands_over() {
+    let root = temp_root("keys");
+    let home = account_home(&root);
+    let (exit, terminal, stderr) = run_cli(&home, &["--json", "chat", "sessions"]);
+    assert_eq!(exit, 0, "{stderr}");
+
+    // once the server has opened the databases of a chat page, the commands it runs get their keys
+    let server = start(&home, &["--api-token", TOKEN]);
+    assert_eq!(server.call("GET", "/api/chat/sessions", "").status, 200);
+    let r = server.call("GET", "/chat/sessions", "");
+    assert_eq!((r.status, &r.body), (200, &terminal));
+
+    // keys that do not open the files, a cut-off record or none at all: the keys are derived again
+    for given in [vec![0u8; 80 * 3], vec![1u8; 7], Vec::new()] {
+        let mut child = weflow(&home)
+            .args(["--json", "chat", "sessions"])
+            .env("WEFLOW_KEYS_ON_STDIN", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(&given).unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout), terminal);
+    }
+}
+
+#[test]
 fn reads_run_in_process_with_the_same_answers() {
     let root = temp_root("in-process");
     let home = account_home(&root);
