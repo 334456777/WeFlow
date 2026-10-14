@@ -1,7 +1,7 @@
 //! Moments service: ports the stateful parts of `electron/services/snsService.ts`
 //! (timeline queries, stats caches, media download/decrypt, export, emoji download).
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -22,7 +22,7 @@ const VIDEO_HEADER_BYTES: usize = 131_072;
 #[derive(Default)]
 pub(crate) struct SnsState {
     export_stats: Option<(Value, Instant)>,
-    user_counts: Option<(HashMap<String, i64>, Instant)>,
+    user_counts: Option<(BTreeMap<String, i64>, Instant)>,
     last_timeline_fallback: Option<Instant>,
     image_cache: HashMap<String, (String, Instant)>,
     image_order: VecDeque<String>,
@@ -467,7 +467,8 @@ impl ServiceHub {
         Ok(normalized)
     }
 
-    pub fn sns_user_post_counts(&self, prefer_cache: bool) -> AppResult<HashMap<String, i64>> {
+    /// Posts per username, in the order of the usernames.
+    pub fn sns_user_post_counts(&self, prefer_cache: bool) -> AppResult<BTreeMap<String, i64>> {
         if prefer_cache {
             if let Some((c, at)) = &self.sns_state.lock().unwrap().user_counts {
                 if at.elapsed() <= USER_COUNTS_TTL {
@@ -481,7 +482,7 @@ impl ServiceHub {
                 .into_iter()
                 .flatten()
                 .map(|(u, n)| (u.clone(), n.as_i64().unwrap_or(0)))
-                .collect::<HashMap<String, i64>>()
+                .collect::<BTreeMap<String, i64>>()
         });
         match res {
             Ok(counts) => {
