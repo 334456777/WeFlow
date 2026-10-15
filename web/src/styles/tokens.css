@@ -1,7 +1,7 @@
 /*
- * Design tokens of the WeFlow WebUI (#192, #193). Pages use these variables only; no stray sizes, colours,
- * durations or curves. Sizes and motion follow the parameters studied in open-claude-ui (#191); colours stay
- * neutral black, white and grey (#50).
+ * Design tokens of the WeFlow WebUI (#192, #193, #220). Pages use these variables only; no stray sizes, colours,
+ * shadows, durations or curves. Sizes and motion follow the parameters studied in open-claude-ui (#191); the
+ * surfaces are neumorphic in neutral grey (#220).
  */
 :root {
   color-scheme: light dark;
@@ -47,38 +47,79 @@
   /* The console column on the right (#130). */
   --console-width: clamp(340px, 30vw, 440px);
 
-  /* Colours. Fills mark controls inside a bordered panel; borders are kept for the panels themselves. */
-  --bg-page: #f7f8f9;
-  --bg-surface: #ffffff;
-  --bg-sunken: #f3f4f6;
-  /* Popovers, dialogs and notices. */
-  --bg-raised: #ffffff;
-  /* The moving thumb of a segmented control or a switch. */
-  --thumb: #ffffff;
-  --fill-subtle: #f0f2f4;
-  --fill-muted: #e8ebee;
-  --fill-strong: #dce0e5;
+  /*
+   * Neumorphism (#220). Every element has the page's colour and is one of five surfaces: raised, raised-sm,
+   * inset, pressed or flat. One light at the top left: raised surfaces catch it on their top-left edge and cast
+   * a shadow to the bottom right; hollows are the other way round. A sharp 1px edge light along each rim
+   * keeps the edges readable. Only the status dots, the preview's overlay and the focus ring step outside.
+   */
+  --surface: #e4e6e9;
+  /* Body text 4.5:1 or more on the surface, captions included. */
   --fg: #15191d;
-  --fg-muted: #5d656e;
-  --fg-subtle: #8a929b;
-  --border: #e2e5e9;
-  --border-strong: #cdd2d8;
-  --inverse: #16191c;
-  --inverse-hover: #2e3439;
-  --fg-inverse: #ffffff;
-  --focus-ring: #8e97a1;
+  --fg-muted: #4d535a;
+  --fg-subtle: #5b6168;
+  --focus-ring: #4d535a;
   --overlay: rgb(14 17 20 / .55);
-  --state-ok: #1a9e55;
-  --state-busy: #c99b2e;
-  --state-idle: #a9b0b8;
-  --state-danger: #b44a4a;
+  --scrollbar: #b9bec5;
+  --state-ok: #1a8a4b;
+  --state-busy: #b8892a;
+  --state-idle: #8f969e;
+  --state-danger: #a63d3d;
 
-  /* Shadows. */
-  --shadow-sm: 0 1px 2px rgb(16 20 24 / .06), 0 1px 1px rgb(16 20 24 / .04);
-  --shadow-md: 0 2px 4px rgb(16 20 24 / .05), 0 4px 12px rgb(16 20 24 / .07);
-  --shadow-lg: 0 8px 16px rgb(16 20 24 / .08), 0 16px 40px rgb(16 20 24 / .12);
-  /* A floating layer draws its edge with a ring instead of a border. */
-  --shadow-popover: 0 0 0 1px rgb(16 20 24 / .07), 0 4px 8px rgb(16 20 24 / .06), 0 12px 32px rgb(16 20 24 / .12);
+  /* The light: a soft glow and shadow, and the sharp rim of each edge. */
+  --neu-light: rgb(255 255 255 / .9);
+  --neu-dark: rgb(150 157 168 / .6);
+  --neu-edge-light: rgb(255 255 255 / .95);
+  --neu-edge-dark: rgb(40 46 54 / .35);
+  --neu-edge-light-hover: rgb(255 255 255 / 1);
+  --neu-edge-dark-hover: rgb(40 46 54 / .45);
+
+  /*
+   * The five surfaces. Each is the same six layers (two rims, two inner shades, two outer shades), so a
+   * transition between any two of them, such as raised to pressed, moves smoothly instead of jumping.
+   */
+  --neu-raised:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -6px -6px 12px var(--neu-light), 6px 6px 12px var(--neu-dark);
+  --neu-raised-sm:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -3px -3px 6px var(--neu-light), 3px 3px 6px var(--neu-dark);
+  --neu-inset:
+    inset 1px 1px 0 var(--neu-edge-dark), inset -1px -1px 0 var(--neu-edge-light),
+    inset 4px 4px 8px var(--neu-dark), inset -4px -4px 8px var(--neu-light),
+    0 0 0 transparent, 0 0 0 transparent;
+  --neu-pressed:
+    inset 1px 1px 0 var(--neu-edge-dark), inset -1px -1px 0 var(--neu-edge-light),
+    inset 2px 2px 4px var(--neu-dark), inset -2px -2px 4px var(--neu-light),
+    0 0 0 transparent, 0 0 0 transparent;
+  --neu-flat:
+    inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent,
+    0 0 0 transparent, 0 0 0 transparent;
+  /* Hover: a raised surface's shadow goes a little deeper and farther and its rim brightens. */
+  --neu-raised-hover:
+    inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -8px -8px 16px var(--neu-light), 8px 8px 16px var(--neu-dark);
+  --neu-raised-sm-hover:
+    inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -4px -4px 8px var(--neu-light), 4px 4px 8px var(--neu-dark);
+  /* Floating layers (dialogs, notices, a dragged card) are raised too, only farther from the page. */
+  --neu-raised-float:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    -12px -12px 24px var(--neu-light), 14px 14px 28px var(--neu-dark);
+  /*
+   * The preview sits on the dark overlay, where no lit page is left to glow on: it keeps its rims and casts a
+   * darker shadow to the bottom right, without the top-left glow that would show as a white haze.
+   */
+  --neu-overlay-shadow: rgb(0 0 0 / .35);
+  --neu-raised-overlay:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    0 0 0 transparent, 16px 16px 32px var(--neu-overlay-shadow);
 
   /* Motion. Durations: micro, snap, base, panel, page; hover and exits have their own. */
   --duration-micro: 60ms;
@@ -97,39 +138,53 @@
   --ease-overshoot: cubic-bezier(.34, 1.3, .64, 1);
   --ease-glow: cubic-bezier(.16, 1, .3, 1);
   --press-scale: .98;
-  --lift: -1.5px;
   --enter-scale: .95;
   --enter-offset: 6px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-page: #0f1113;
-    --bg-surface: #17191c;
-    --bg-sunken: #131517;
-    --bg-raised: #1f2226;
-    --thumb: #3b4047;
-    --fill-subtle: #202328;
-    --fill-muted: #292d32;
-    --fill-strong: #343940;
+    --surface: #25282c;
     --fg: #e7e9ec;
-    --fg-muted: #a1a8b0;
-    --fg-subtle: #737b84;
-    --border: #2a2e33;
-    --border-strong: #3b4047;
-    --inverse: #eceef0;
-    --inverse-hover: #d3d7db;
-    --fg-inverse: #121416;
-    --focus-ring: #7d8690;
+    --fg-muted: #b0b6bd;
+    --fg-subtle: #9aa0a7;
+    --focus-ring: #b0b6bd;
     --overlay: rgb(0 0 0 / .65);
+    --scrollbar: #464b52;
     --state-ok: #38c172;
     --state-busy: #d9b04e;
-    --state-idle: #5f666e;
-    --state-danger: #d26a6a;
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
-    --shadow-md: 0 2px 4px rgb(0 0 0 / .3), 0 4px 12px rgb(0 0 0 / .35);
-    --shadow-lg: 0 8px 16px rgb(0 0 0 / .35), 0 16px 40px rgb(0 0 0 / .45);
-    --shadow-popover: 0 0 0 1px rgb(255 255 255 / .08), 0 4px 8px rgb(0 0 0 / .3), 0 12px 32px rgb(0 0 0 / .45);
+    --state-idle: #6c737b;
+    --state-danger: #e07a7a;
+    --neu-light: rgb(255 255 255 / .05);
+    --neu-dark: rgb(0 0 0 / .5);
+    --neu-edge-light: rgb(255 255 255 / .1);
+    --neu-edge-dark: rgb(0 0 0 / .6);
+    --neu-edge-light-hover: rgb(255 255 255 / .16);
+    --neu-edge-dark-hover: rgb(0 0 0 / .7);
+    --neu-overlay-shadow: rgb(0 0 0 / .6);
+  }
+}
+
+/* Higher contrast: deeper shadows and sharper rims, still no borders. */
+@media (prefers-contrast: more) {
+  :root {
+    --fg-muted: #3d4349;
+    --fg-subtle: #454b52;
+    --neu-dark: rgb(120 127 138 / .75);
+    --neu-edge-light: rgb(255 255 255 / 1);
+    --neu-edge-dark: rgb(30 35 42 / .6);
+    --neu-edge-dark-hover: rgb(30 35 42 / .7);
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --fg-muted: #c6cbd1;
+    --fg-subtle: #b4bac1;
+    --neu-dark: rgb(0 0 0 / .7);
+    --neu-edge-light: rgb(255 255 255 / .22);
+    --neu-edge-dark: rgb(0 0 0 / .85);
+    --neu-edge-light-hover: rgb(255 255 255 / .28);
+    --neu-edge-dark-hover: rgb(0 0 0 / .9);
   }
 }
 
@@ -138,11 +193,11 @@
   :root {
     --duration-micro: 0ms; --duration-snap: 0ms; --duration-base: 0ms; --duration-panel: 0ms;
     --duration-page: 0ms; --duration-hover: 0ms; --duration-exit: 0ms;
-    --press-scale: 1; --lift: 0px; --enter-scale: 1; --enter-offset: 0px;
+    --press-scale: 1; --enter-scale: 1; --enter-offset: 0px;
   }
 }
 :root.reduced-motion {
   --duration-micro: 0ms; --duration-snap: 0ms; --duration-base: 0ms; --duration-panel: 0ms;
   --duration-page: 0ms; --duration-hover: 0ms; --duration-exit: 0ms;
-  --press-scale: 1; --lift: 0px; --enter-scale: 1; --enter-offset: 0px;
+  --press-scale: 1; --enter-scale: 1; --enter-offset: 0px;
 }
