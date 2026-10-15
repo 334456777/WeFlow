@@ -1,0 +1,64 @@
+# WeFlow WebUI
+
+[English](README.md)
+
+`weflow serve` 的网页界面（#130）。用 React + TypeScript 编写，Vite 构建成静态文件：
+- 由 `weflow serve` 托管在 `/ui/` 下（#146）；
+- 与 `weflow` 二进制分开发布（#148）。
+
+它调用的 API 见 [docs/zh-CN/serve-api.md](../docs/zh-CN/serve-api.md)。
+
+界面来自 #130 的原型，目前显示的还是示例记录（`src/mock/`）。只有连接状态读的是真实的服务。
+
+## 开发
+
+需要 Node.js 20.19+ 和 npm，CI 用的是 24。先启动 `weflow serve`，再启动开发服务器，两边使用同一个令牌：
+
+```sh
+export WEFLOW_HTTP_TOKEN=dev-token        # PowerShell：$env:WEFLOW_HTTP_TOKEN = "dev-token"
+weflow serve                              # 或：cargo run -p weflow-cli -- serve
+
+cd web
+npm ci
+npm run dev                               # http://localhost:5173/ui/
+```
+
+开发服务器自己处理 `/ui/`。其他路径都转发给 `weflow serve`，包括 `/chat/sessions`、`/api/…`、`/jobs`、`/health`、`/openapi.json`。转发时加上 `Authorization: Bearer $WEFLOW_HTTP_TOKEN`。令牌只留在代理里，不会编译进网页。这两个变量也可以写在 `web/.env.local` 里（不提交）：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `WEFLOW_SERVE_URL` | `http://127.0.0.1:57108` | `weflow serve` 的地址，例如用了 `serve --port 18108` 时 |
+| `WEFLOW_HTTP_TOKEN` | 无 | 代理加上的令牌 |
+
+完成 #146 后，由 `weflow serve` 打开的网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
+
+## 脚本
+
+| 脚本 | 说明 |
+|---|---|
+| `npm run dev` | 开发服务器，支持热更新 |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Vitest（jsdom） |
+| `npm run build` | 类型检查后构建到 `dist/` |
+| `npm run preview` | 用同样的代理预览 `dist/` |
+| `npm run check` | 类型检查、测试和构建，与 CI 相同 |
+
+`web/` 下有改动时，`.github/workflows/web.yml` 会运行 `typecheck`、`test` 和 `build`，并上传 `dist/`。
+
+## 版本
+
+`package.json` 记录了 WebUI 自己的版本。`weflow` 字段下记录它需要的 API：
+- `apiVersion` 必须等于 `GET /health` 返回的 `apiVersion`；
+- 服务端的 `version` 不能低于 `minBackendVersion`。开发构建的 `git describe` 版本按它所在的 tag 计算。
+
+构建时，这些信息写入 `dist/weflow-web.json`，供 `weflow web` 使用（#148）。网页也会拿它们和 `/health` 比对，不满足时显示「版本不兼容」。
+
+## 目录
+
+| 路径 | 说明 |
+|---|---|
+| `src/api/client.ts` | 调用 `weflow serve`：负责查询参数或 JSON 请求体，带上令牌，出错时抛出带服务端错误码的 `ApiError` |
+| `src/api/backend.ts` | 读取 `/health`，检查版本，提供 `useBackend` |
+| `src/App.tsx`、`src/app.css` | 工作台界面 |
+| `src/mock/` | 示例记录，界面接入 API 后删除 |
+| `src/export.ts` | 在浏览器里导出示例记录。真正的导出将调用 `export messages` 并用 `?return=file` 取回文件 |
