@@ -66,6 +66,9 @@ npm run dev                               # http://localhost:5173/ui/
 |---|---|
 | `src/api/client.ts` | 调用 `weflow serve`：负责查询参数或 JSON 请求体，带上令牌，出错时抛出带服务端错误码的 `ApiError` |
 | `src/api/backend.ts` | 读取 `/health`，检查版本，提供 `useBackend` |
-| `src/App.tsx`、`src/app.css` | 工作台界面 |
+| `src/styles/tokens.css` | 设计令牌：字号、控件高度、圆角、颜色（含深色模式）、阴影、动效时长和缓动（#192、#193）。页面样式只引用这些变量 |
+| `src/motion.ts` | 弹簧预设，`usePresence` 让浮层、对话框和提示播完退出动画再移除 |
+| `src/CardStack.tsx` | 操作控制台的卡片：点标题展开或收起；用鼠标拖动或按 Alt+↑ / Alt+↓ 调整顺序。顺序和展开状态保存在浏览器的 `localStorage` 里 |
+| `src/App.tsx`、`src/app.css` | 工作台界面：左侧导航，中间是记录，右侧是操作控制台 |
 | `src/mock/` | 示例记录，界面接入 API 后删除 |
 | `src/export.ts` | 在浏览器里导出示例记录。真正的导出将调用 `export messages` 并用 `?return=file` 取回文件 |
