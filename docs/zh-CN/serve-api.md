@@ -9,14 +9,14 @@
 ## 启动
 
 ```sh
-weflow serve                       # 命令 API，地址 http://127.0.0.1:57108
+weflow serve                       # 命令 API，地址 http://127.0.0.1:18108
 weflow serve --port 8080 --host 127.0.0.1
 weflow serve --desktop             # 改为启动桌面端 API（端口 `http_api_port`，默认 5031）
 ```
 
 | 选项 | 含义 |
 |---|---|
-| `--host`、`--port` | 监听地址；默认 `127.0.0.1:57108`（加 `--desktop` 时：`http_api_host` / `http_api_port`，默认 `127.0.0.1:5031`） |
+| `--host`、`--port` | 监听地址；默认 `127.0.0.1:18108`（加 `--desktop` 时：`http_api_host` / `http_api_port`，默认 `127.0.0.1:5031`） |
 | `--api-token` | 访问令牌（也可用 `WEFLOW_HTTP_TOKEN`，或配置中的 `http_api_token`） |
 | `--desktop` | 启动桌面端 API，而不是命令 API |
 | `--message-push` | 桌面端 API 的 SSE 推送；需要 `--desktop` |
@@ -26,7 +26,7 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 | `--max-media` | `/api/` 媒体路由同时解码的图片和语音数，超出的排队等待；默认为 CPU 核数（见[媒体](#媒体)） |
 | `--log-requests` | 每个请求在 stderr 输出一行：方法、路径、状态码和耗时（见[时间花在哪里](#时间花在哪里)） |
 
-启动提示（stderr 上的事件；加 `--json` 时为一行 JSON）会显示地址。绑定回环以外的地址时会给出警告：持有令牌的人可以在这台机器上运行任何 `weflow` 命令，使用服务端的文件系统和配置。
+启动提示（stderr 上的事件；加 `--json` 时为一行 JSON）会显示地址。默认端口低于 49152，不在 Windows 的动态端口范围内。Hyper-V、WSL 2、Docker 会在这个范围里成段保留端口，被保留的端口任何程序都无法绑定。绑定回环以外的地址时会给出警告：持有令牌的人可以在这台机器上运行任何 `weflow` 命令，使用服务端的文件系统和配置。
 
 ## 鉴权
 
@@ -65,8 +65,8 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 服务端把参数还原成命令行，再由命令像在终端里一样检查：缺少参数或参数格式错误时返回 `400`，内容是命令自己的 `invalid_arguments` 错误。命令没有的参数名在执行前就返回 `400`。
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:57108/chat/latest?session-id=wxid_xxx&limit=20"
-curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"true"}' http://127.0.0.1:57108/config/set
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:18108/chat/latest?session-id=wxid_xxx&limit=20"
+curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"true"}' http://127.0.0.1:18108/config/set
 ```
 
 `Accept-Language` 决定消息的语言（`zh…` 为中文，其他为英文）；没有这个头时，命令按平常的规则决定（`WEFLOW_LANG`、`weflow lang`、系统语言）。
@@ -132,7 +132,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 - `serve-files/` 在 `serve` 启动时清空，并纳入 `cache list` / `cache clear --api`。
 
 ```sh
-curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:57108/export/sessions?return=file"
+curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18108/export/sessions?return=file"
 ```
 
 ## 异步作业
@@ -161,8 +161,8 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:57
 
 ```sh
 curl -i -X POST -H "Authorization: Bearer $TOKEN" -H "Prefer: respond-async" \
-  -d '{"session-id":"wxid_xxx","out":"chat.html","format":"html"}' http://127.0.0.1:57108/export/messages
-curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/events
+  -d '{"session-id":"wxid_xxx","out":"chat.html","format":"html"}' http://127.0.0.1:18108/export/messages
+curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/events
 ```
 
 ## 并发限制
@@ -191,7 +191,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/event
 - `/health`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:57108/openapi.json
+curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
 客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `1`。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
@@ -250,7 +250,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 `GET /api/chat/image-data`、`GET /api/chat/voice-data` 和 `GET /api/chat/video-data` 直接返回文件本身，方便网页用 `<img>`、`<audio>`、`<video>` 显示：解密后的图片（`Content-Type` 按内容判断，如 `image/jpeg`），解码为 `audio/wav` 的语音，或微信保存的视频（`video/mp4`）。参数与命令相同，放在查询字符串里：`session-id`、`msg-id`、`create-time`，语音另有 `server-id`、`sender`。不接受 `out`，给了返回 `400`。只允许 `GET`，其他方法返回 `405`。不带 `/api/` 的路由不变：仍是 `POST`，属于任务，写出文件。
 
 ```html
-<img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
+<img src="http://127.0.0.1:18108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
 ```
 
 - 加上 `thumb=true`（即命令的 `--thumb`）时，返回微信自己保存的图片缩略图，只有几 KB，适合列表；没有缩略图时返回原图。在大账号上，一张缩略图约 2 ms，大小约为原图的五分之一。
@@ -267,7 +267,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 `GET /api/push/messages` 以服务器发送事件（SSE）推送新消息和撤回，网页不必轮询 `chat latest`：
 
 ```js
-const events = new EventSource("http://127.0.0.1:57108/api/push/messages?access_token=TOKEN");
+const events = new EventSource("http://127.0.0.1:18108/api/push/messages?access_token=TOKEN");
 events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
 ```
 
