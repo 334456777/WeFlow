@@ -9,14 +9,14 @@ The desktop app's HTTP API (`/api/v1/*`, SSE push) is a separate server started 
 ## Starting
 
 ```sh
-weflow serve                       # command API on http://127.0.0.1:57108
+weflow serve                       # command API on http://127.0.0.1:18108
 weflow serve --port 8080 --host 127.0.0.1
 weflow serve --desktop             # the desktop app's API instead (port `http_api_port`, default 5031)
 ```
 
 | Option | Meaning |
 |---|---|
-| `--host`, `--port` | Listen address; default `127.0.0.1:57108` (with `--desktop`: `http_api_host` / `http_api_port`, default `127.0.0.1:5031`) |
+| `--host`, `--port` | Listen address; default `127.0.0.1:18108` (with `--desktop`: `http_api_host` / `http_api_port`, default `127.0.0.1:5031`) |
 | `--api-token` | Access token (also `WEFLOW_HTTP_TOKEN`, or `http_api_token` in the config) |
 | `--desktop` | Serve the desktop app's API instead of the command API |
 | `--message-push` | SSE push of the desktop API; needs `--desktop` |
@@ -26,7 +26,7 @@ weflow serve --desktop             # the desktop app's API instead (port `http_a
 | `--max-media` | Images and voices the `/api/` media routes decode at once, more wait in line; default the number of CPUs (see [Media](#media)) |
 | `--log-requests` | A line on stderr for each request: method, path, status and time (see [Where the time goes](#where-the-time-goes)) |
 
-The startup message (an event on stderr; a JSON line with `--json`) shows the address. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
+The startup message (an event on stderr; a JSON line with `--json`) shows the address. The default port lies below 49152, outside the range Windows hands out to programs and from which Hyper-V, WSL 2 and Docker reserve blocks of ports that no one can bind. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
 
 ## Authentication
 
@@ -65,8 +65,8 @@ Parameter names are the long option names; positional arguments use their name i
 The server turns the parameters into a command line and the command checks it as on a terminal: a missing or malformed argument answers `400` with the command's own `invalid_arguments` error. A name the command does not have answers `400` before anything runs.
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:57108/chat/latest?session-id=wxid_xxx&limit=20"
-curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"true"}' http://127.0.0.1:57108/config/set
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:18108/chat/latest?session-id=wxid_xxx&limit=20"
+curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"true"}' http://127.0.0.1:18108/config/set
 ```
 
 `Accept-Language` picks the language of messages (`zh…` is Chinese, anything else English); without it the command follows its usual rules (`WEFLOW_LANG`, `weflow lang`, the system).
@@ -132,7 +132,7 @@ Other commands answer `400`: their output is a folder or many files (`export med
 - `serve-files/` is emptied when `serve` starts and is part of `cache list` / `cache clear --api`.
 
 ```sh
-curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:57108/export/sessions?return=file"
+curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18108/export/sessions?return=file"
 ```
 
 ## Jobs
@@ -161,8 +161,8 @@ A client that subscribes late or reconnects gets the events kept so far (up to 1
 
 ```sh
 curl -i -X POST -H "Authorization: Bearer $TOKEN" -H "Prefer: respond-async" \
-  -d '{"session-id":"wxid_xxx","out":"chat.html","format":"html"}' http://127.0.0.1:57108/export/messages
-curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:57108/jobs/<id>/events
+  -d '{"session-id":"wxid_xxx","out":"chat.html","format":"html"}' http://127.0.0.1:18108/export/messages
+curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/events
 ```
 
 ## Limits
@@ -191,7 +191,7 @@ A browser sends at most 6 requests at once to one server (HTTP/1.1), and an open
 - `/health`, `/openapi.json`, `/jobs` and `/api/push/messages` are described under the tag `server`; the [in-process reads](#in-process-reads) have their own operations, `api_chat_sessions` and so on.
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:57108/openapi.json
+curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
 Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `1`. It is raised only by a change that breaks existing clients, not by new commands or options. `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
@@ -250,7 +250,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 `GET /api/chat/image-data`, `GET /api/chat/voice-data` and `GET /api/chat/video-data` answer the file itself, for a page to show in `<img>`, `<audio>` or `<video>`: the decrypted image (`Content-Type` from its bytes, such as `image/jpeg`), the voice decoded to `audio/wav`, or the video as WeChat keeps it (`video/mp4`). They take the parameters of the commands (`session-id`, `msg-id`, `create-time`; for voices also `server-id`, `sender`) as a query, but not `out`, which answers `400`. Only `GET` is allowed (`405` otherwise); the routes without `/api/` are unchanged (`POST`, a task, writing a file).
 
 ```html
-<img src="http://127.0.0.1:57108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
+<img src="http://127.0.0.1:18108/api/chat/image-data?session-id=wxid_xxx&msg-id=123&create-time=1700000000&access_token=TOKEN">
 ```
 
 - `thumb=true` (`--thumb` of the command) answers the thumbnail WeChat keeps of the image, a few kilobytes, for a list; the image itself when there is none. On a large account a thumbnail takes about 2 ms and is about a fifth of the size of the image.
@@ -267,7 +267,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 `GET /api/push/messages` sends new and recalled messages as server-sent events, so a page need not poll `chat latest`:
 
 ```js
-const events = new EventSource("http://127.0.0.1:57108/api/push/messages?access_token=TOKEN");
+const events = new EventSource("http://127.0.0.1:18108/api/push/messages?access_token=TOKEN");
 events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
 ```
 
