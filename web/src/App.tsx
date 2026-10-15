@@ -6,7 +6,7 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import {
   Aperture, ArrowClockwise, ArrowLeft, ArrowsLeftRight, ArrowSquareOut, Article, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, Circle, CircleNotch,
-  DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, Wallet, X,
+  DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend } from './api/backend';
 import { CardStack, type Card } from './CardStack';
@@ -39,6 +39,35 @@ function backendDetail(backend: Backend): string {
     case 'incompatible': return backend.reason + '。';
     case 'ready': return 'weflow ' + backend.health.version + ' · API ' + backend.health.apiVersion;
   }
+}
+
+/** How long a connection stays 「已连接」 before its notice fades away. */
+const STEADY_MS = 3000;
+const SIDEBAR_KEY = 'weflow.sidebar';
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => Boolean(window.matchMedia?.(query).matches));
+  useEffect(() => {
+    const list = window.matchMedia?.(query);
+    if (!list) return;
+    const update = () => setMatches(list.matches);
+    update();
+    list.addEventListener('change', update);
+    return () => list.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+}
+
+/** True once the backend has stayed ready for STEADY_MS; any other state shows the notice again at once. */
+function useSteadyConnection(state: Backend['state']): boolean {
+  const [steady, setSteady] = useState(false);
+  useEffect(() => {
+    setSteady(false);
+    if (state !== 'ready') return;
+    const timer = window.setTimeout(() => setSteady(true), STEADY_MS);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+  return steady && state === 'ready';
 }
 
 function prefersReducedMotion(setting: boolean): boolean {
@@ -122,6 +151,15 @@ function TaskStatus({ conversation, from, to, connected, stage, result, error }:
 export function App() {
   const [backend, recheckBackend] = useBackend();
   const connected = backend.state === 'ready';
+  const steady = useSteadyConnection(backend.state);
+  const narrow = useMediaQuery('(max-width: 1100px)');
+  const [sidebarFolded, setSidebarFolded] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'folded'; } catch { return false; } });
+  const folded = narrow || sidebarFolded;
+  const toggleSidebar = () => {
+    const next = !sidebarFolded;
+    setSidebarFolded(next);
+    try { localStorage.setItem(SIDEBAR_KEY, next ? 'folded' : 'open'); } catch { /* only lost on reload */ }
+  };
   const [section, setSection] = useState<Navigation>('chat');
   const [activeCategory, setActiveCategory] = useState<Category>('chat');
   const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', articles: 'article-design', payments: 'payment-coffee' });
@@ -265,7 +303,7 @@ export function App() {
     },
   ];
 
-  return <main className="workspace">
+  return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
       <nav aria-label="主导航">
         {navigation.map(item => {
@@ -276,7 +314,10 @@ export function App() {
           </button>;
         })}
       </nav>
-      <div className={'connection ' + backend.state} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{backendLabels[backend.state]}</span></div>
+      <div className="sidebar-footer">
+        {!narrow && <button type="button" className="icon-button sidebar-toggle" aria-label={folded ? '展开侧边栏' : '收起侧边栏'} title={folded ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!folded} onClick={toggleSidebar}><SidebarSimple size={18} /></button>}
+        <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{backendLabels[backend.state]}</span></div>
+      </div>
     </aside>
 
     <div className="main-area">

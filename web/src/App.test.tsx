@@ -84,4 +84,40 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '减少动画' }));
     expect(document.documentElement.classList.contains('reduced-motion')).toBe(false);
   });
+  it('hides a steady connection after 3 s, shows it again when it is lost, and keeps showing no connection', async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => { vi.useRealTimers(); });
+    let up = true;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (!up) throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.4' }));
+    }));
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const status = () => document.querySelector('.connection')!;
+    expect(status().textContent).toBe('已连接');
+    expect(status().classList.contains('quiet')).toBe(false);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(status().classList.contains('quiet')).toBe(true);
+
+    up = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(status().textContent).toBe('未连接');
+    expect(status().classList.contains('quiet')).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(status().classList.contains('quiet')).toBe(false);
+  });
+
+  it('folds the sidebar from its bottom-left button and remembers it', async () => {
+    await renderWith(new TypeError('Failed to fetch'));
+    fireEvent.click(screen.getByRole('button', { name: '收起侧边栏' }));
+    expect(screen.getByRole('main').classList.contains('sidebar-collapsed')).toBe(true);
+    expect(localStorage.getItem('weflow.sidebar')).toBe('folded');
+    cleanup();
+    await renderWith(new TypeError('Failed to fetch'));
+    expect(screen.getByRole('main').classList.contains('sidebar-collapsed')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '展开侧边栏' }));
+    expect(screen.getByRole('main').classList.contains('sidebar-collapsed')).toBe(false);
+  });
 });

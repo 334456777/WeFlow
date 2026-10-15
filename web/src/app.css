@@ -85,22 +85,41 @@ time, .num { font-variant-numeric: tabular-nums; }
 }
 .segmented > button:hover { color: var(--fg); }
 .segmented [aria-selected='true'], .segmented [aria-pressed='true'] { color: var(--fg); font-weight: var(--weight-medium); }
-/* Layout. */
-.workspace { height: 100dvh; min-height: 520px; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
-.sidebar { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; min-height: 0; padding: var(--space-4) var(--space-3); border-right: 1px solid var(--border); }
+/* Layout. The sidebar folds into a rail of icons; the icons keep their place while the width changes. */
+.workspace {
+  height: 100dvh; min-height: 520px; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  transition: grid-template-columns var(--duration-panel) var(--ease-snap);
+}
+.workspace.sidebar-collapsed { grid-template-columns: var(--sidebar-rail) minmax(0, 1fr); }
+.sidebar { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; min-height: 0; padding: var(--space-4) var(--space-2) var(--space-3); overflow: hidden; border-right: 1px solid var(--border); }
 .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
-  display: flex; align-items: center; gap: var(--space-2); height: var(--control-md); padding: 0 var(--space-2);
-  border-radius: var(--radius-md); color: var(--fg-muted); font-size: var(--text-sm); font-weight: var(--weight-medium);
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; height: var(--control-md); padding: 0 var(--space-2) 0 11px;
+  overflow: hidden; border-radius: var(--radius-md); color: var(--fg-muted); font-size: var(--text-sm); font-weight: var(--weight-medium);
   text-align: left; white-space: nowrap;
+  transition: background-color var(--duration-hover) ease, color var(--duration-hover) ease,
+    transform var(--duration-micro) var(--ease-out), width var(--duration-panel) var(--ease-snap);
 }
 .nav-item:hover { background: var(--fill-subtle); color: var(--fg); }
 .nav-item.selected { background: var(--fill-muted); color: var(--fg); }
+.nav-label { transition: opacity var(--duration-base) var(--ease-out); }
+.sidebar-collapsed .nav-item { width: var(--control-lg); }
+.sidebar-collapsed .nav-label { opacity: 0; }
+/* Bottom row: the fold button on the left, the connection on the right; stacked in the rail. */
+.sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: auto; }
+.sidebar-toggle { margin-left: var(--space-1); }
+.sidebar-collapsed .sidebar-footer { flex-direction: column-reverse; align-items: center; }
+.sidebar-collapsed .sidebar-toggle { margin-left: 0; }
 .connection {
-  margin-top: auto; display: flex; align-items: center; gap: var(--space-2); height: var(--control-sm); padding: 0 var(--space-2);
+  display: flex; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-sm); padding: 0 var(--space-2);
   color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap;
+  transition: opacity var(--duration-base) var(--ease-out), visibility 0s;
 }
-.connection-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--state-ok); transition: background-color var(--duration-base) var(--ease-glow); }
+/* A steady connection fades away; it comes back as soon as it changes. */
+.connection.quiet { opacity: 0; visibility: hidden; transition: opacity var(--duration-panel) var(--ease-out), visibility 0s var(--duration-panel); }
+.sidebar-collapsed .connection { padding: 0; }
+.sidebar-collapsed .connection-label { display: none; }
+.connection-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--state-ok); transition: background-color var(--duration-base) var(--ease-glow); }
 .connection.checking .connection-dot { background: var(--state-busy); animation: pulse var(--loop-pulse) ease-in-out infinite; }
 .connection.offline .connection-dot { background: var(--state-idle); }
 .connection.incompatible .connection-dot { background: var(--state-danger); }
@@ -348,13 +367,8 @@ time, .num { font-variant-numeric: tabular-nums; }
 @keyframes pulse { 50% { opacity: .35; } }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
-/* Narrow screens: the navigation becomes a rail of icons. */
+/* Narrow screens: a shorter conversation list (App folds the sidebar below 1100px). */
 @media (max-width: 1100px) {
-  .workspace { grid-template-columns: var(--sidebar-rail) minmax(0, 1fr); }
-  .sidebar { align-items: center; padding: var(--space-3) var(--space-2); }
-  .nav-item { justify-content: center; width: var(--control-lg); height: var(--control-lg); padding: 0; }
-  .nav-label, .connection-label { display: none; }
-  .connection { justify-content: center; padding: 0; }
   .browser-panel { --list-width: 240px; }
 }
 /* Too narrow for three columns: the console moves below the records. */
