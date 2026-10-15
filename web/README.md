@@ -1,6 +1,6 @@
 # WeFlow WebUI
 
-[简体中文](README.zh-CN.md)
+English | [简体中文](README.zh-CN.md)
 
 The web interface of `weflow serve` (#130): React + TypeScript, built with Vite into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148). The API it talks to is described in [docs/serve-api.md](../docs/serve-api.md).
 
