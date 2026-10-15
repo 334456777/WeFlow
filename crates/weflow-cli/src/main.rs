@@ -1316,7 +1316,7 @@ struct ServeCommand {
     /// Listen address (default: 127.0.0.1; with --desktop: `http_api_host` from the config, else 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
     #[arg(long)]
     host: Option<String>,
-    /// Listen port (default: 57108; with --desktop: `http_api_port` from the config, else 5031).
+    /// Listen port (default: 18108; with --desktop: `http_api_port` from the config, else 5031).
     #[arg(long)]
     port: Option<u16>,
     /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run).

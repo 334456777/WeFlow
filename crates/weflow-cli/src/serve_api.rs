@@ -27,7 +27,9 @@ use clap::{ArgAction, Command, CommandFactory};
 use serde_json::{json, Value};
 use tokio::sync::Semaphore;
 
-pub const DEFAULT_PORT: u16 = 57108;
+// Below 49152: Windows reserves blocks of its dynamic range (49152-65535) for Hyper-V, WSL 2 and Docker,
+// and a reserved port cannot be bound (#188)
+pub const DEFAULT_PORT: u16 = 18108;
 
 /// The version of the API's rules (routes, methods, parameters, answers, jobs), for clients such as the WebUI to
 /// check. Raised only by changes that break existing clients; new commands and options do not raise it.
@@ -1906,23 +1908,23 @@ mod tests {
         };
         for ok in [
             "localhost",
-            "LOCALHOST:57108",
-            "localhost.:57108",
+            "LOCALHOST:18108",
+            "localhost.:18108",
             "127.0.0.1",
-            "127.0.0.1:57108",
+            "127.0.0.1:18108",
             "127.1.2.3:80",
             "[::1]",
-            "[::1]:57108",
+            "[::1]:18108",
         ] {
             assert!(host(ok), "{ok}");
         }
         for bad in [
             "evil.example",
-            "evil.example:57108",
+            "evil.example:18108",
             "localhost.evil.example",
             "127.0.0.1.nip.io",
-            "192.168.1.2:57108",
-            "[::2]:57108",
+            "192.168.1.2:18108",
+            "[::2]:18108",
             "",
         ] {
             assert!(!host(bad), "{bad}");
@@ -1930,7 +1932,7 @@ mod tests {
         assert!(!local_host(&Uri::from_static("/"), &HeaderMap::new()));
         // HTTP/2 and absolute-form requests carry the name in the URI
         assert!(local_host(
-            &Uri::from_static("http://localhost:57108/health"),
+            &Uri::from_static("http://localhost:18108/health"),
             &HeaderMap::new()
         ));
         assert!(!local_host(
