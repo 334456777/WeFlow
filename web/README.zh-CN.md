@@ -1,6 +1,6 @@
 # WeFlow WebUI
 
-[English](README.md)
+[English](README.md) | 简体中文
 
 `weflow serve` 的网页界面（#130）。用 React + TypeScript 编写，Vite 构建成静态文件：
 - 由 `weflow serve` 托管在 `/ui/` 下（#146）；
