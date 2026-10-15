@@ -26,7 +26,7 @@ function webMeta(): Plugin {
 export default defineConfig(({ mode }) => {
   // WEFLOW_* from the shell or web/.env.local; `weflow serve` reads the same WEFLOW_HTTP_TOKEN
   const env = loadEnv(mode, process.cwd(), 'WEFLOW_');
-  const target = env.WEFLOW_SERVE_URL || 'http://127.0.0.1:57108';
+  const target = env.WEFLOW_SERVE_URL || 'http://127.0.0.1:18108';
   const token = env.WEFLOW_HTTP_TOKEN;
 
   // Everything outside /ui/ belongs to `weflow serve`: the command routes (/chat/sessions), /api/, /jobs, /health,

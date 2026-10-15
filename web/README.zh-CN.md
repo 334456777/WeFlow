@@ -27,8 +27,15 @@ npm run dev                               # http://localhost:5173/ui/
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `WEFLOW_SERVE_URL` | `http://127.0.0.1:57108` | `weflow serve` 的地址，例如用了 `serve --port 18108` 时 |
+| `WEFLOW_SERVE_URL` | `http://127.0.0.1:18108` | `weflow serve` 的地址，例如用了 `serve --port 8080` 时 |
 | `WEFLOW_HTTP_TOKEN` | 无 | 代理加上的令牌 |
+
+**只调整界面时**：先运行一次 `npm ci`，之后运行 `npm run dev` 就够了，不需要 `weflow serve`。这时：
+- 界面显示示例记录；
+- 连接状态显示「未连接」；
+- 每次检查 `/health`（每 15 秒一次），终端都会打印一条代理错误，可以忽略。
+
+要从另一台电脑打开开发服务器，运行 `npm run dev -- --host`，再打开 `http://<这台机器的地址>:5173/ui/`。这时不要设置 `WEFLOW_HTTP_TOKEN`。否则，代理会把令牌交给任何能访问这个端口的人，他们就能运行任何 `weflow` 命令。
 
 完成 #146 后，由 `weflow serve` 打开的网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
 

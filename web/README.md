@@ -23,8 +23,12 @@ The dev server answers `/ui/` itself and passes every other path (`/chat/session
 
 | Variable | Default | |
 |---|---|---|
-| `WEFLOW_SERVE_URL` | `http://127.0.0.1:57108` | Where `weflow serve` listens, for example after `serve --port 18108` |
+| `WEFLOW_SERVE_URL` | `http://127.0.0.1:18108` | Where `weflow serve` listens, for example after `serve --port 8080` |
 | `WEFLOW_HTTP_TOKEN` | none | The token the proxy adds |
+
+**Working on the screens only**: `npm ci` once, then `npm run dev` is enough; `weflow serve` is not needed. The screens show the sample records, the connection state says "未连接", and the terminal reports a proxy error for each `/health` check (every 15 s), which can be ignored.
+
+To open the dev server from another computer, run `npm run dev -- --host` and open `http://<this machine's address>:5173/ui/`. Do it without `WEFLOW_HTTP_TOKEN`: with it, the proxy hands the token to everyone who can reach the port, and with it every `weflow` command.
 
 Opened by `weflow serve` (once #146 is done), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
 
