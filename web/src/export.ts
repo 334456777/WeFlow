@@ -51,7 +51,8 @@ async function imageAsDataUrl(path: string): Promise<string> {
   });
 }
 
-export async function exportConversation(conversation: Conversation, options: ExportOptions): Promise<ExportResult> {
+/** Builds the file and starts its download; nothing is downloaded once `signal` is aborted. */
+export async function exportConversation(conversation: Conversation, options: ExportOptions, signal?: AbortSignal): Promise<ExportResult> {
   if (!options.from || !options.to || options.from > options.to) throw new Error('请选择有效的时间范围。');
   const messages = getMessagesInRange(conversation, options.from, options.to);
   if (!messages.length) throw new Error('当前时间范围内没有可导出的记录。');
@@ -82,6 +83,7 @@ export async function exportConversation(conversation: Conversation, options: Ex
     bytes = zipSync(archive, { level: 6 });
     fileName = name + '.zip'; type = 'application/zip';
   }
+  signal?.throwIfAborted();
   const downloadUrl = download(bytes, type, fileName);
   return { fileName, count: messages.length, downloadUrl };
 }
