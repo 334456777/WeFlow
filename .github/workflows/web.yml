@@ -1,0 +1,68 @@
+name: WebUI
+
+# The WebUI under web/ (React + TypeScript + Vite) is built on its own, apart from the Rust workspace: changes to it
+# type-check it, run its tests and build it. The build is uploaded so a run's output can be tried with
+# `weflow serve --ui-dir` once #146 lands; publishing it is #148.
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck, test and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Size of the build
+        run: |
+          {
+            echo '### WebUI build'
+            echo
+            echo '| File | Bytes | Gzip |'
+            echo '|---|---:|---:|'
+            find dist -type f | sort | while read -r f; do
+              echo "| ${f#dist/} | $(wc -c < "$f") | $(gzip -9c "$f" | wc -c) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: weflow-web
+          path: web/dist
+          retention-days: 14

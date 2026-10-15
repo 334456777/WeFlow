@@ -25,9 +25,15 @@
 - `resources/`：随包分发的原生库与辅助程序（密钥/图片解密 helper、旧版 `wcdb` 库、字体等）；`public/` 为前端静态资源
 - `scripts/`：构建脚本（`build-native-db.cjs` 编译 FFI 库并复制到 `resources/native-db/`，`i18n-check.cjs` 等）；`scripts/research/` 为调研探针
 
+### WebUI（`web/`）
+`weflow serve` 的网页界面（#130），独立的 React + TypeScript + Vite 项目，有自己的 `package.json`，不依赖根目录的 Electron 工程。构建产物 `dist/` 由 `serve` 托管在 `/ui/`（#146），与二进制分开发布（#148）。
+- `src/api/` 调用命令 API 并检查 `/health` 的版本，`src/mock/` 是暂用的示例数据
+- `npm run dev` 的代理把 `/ui/` 以外的路径转给 `weflow serve`，令牌取自 `WEFLOW_HTTP_TOKEN`，不编进网页
+- `package.json` 的 `weflow.apiVersion` / `minBackendVersion` 声明需要的 API，构建时写入 `dist/weflow-web.json`
+
 ### 其他
 - `docs/`：英文文档，`docs/zh-CN/` 为对应中文版
-- `.github/workflows/` 下的 `release.yml`（推送 tag 或在 Actions 页面手动运行并填写 tag 时触发，tag 不存在时由 github-actions[bot] 在所选分支的最新提交上创建附注 tag，已有的轻量 tag 会被拒绝；依次 build → test → release：构建 6 个平台的发布版，在每个平台上跑测试并核对包里 `weflow --version` 与 tag 一致，全部通过才发布；正式版 tag 与根 `Cargo.toml` 的版本号不一致时只给出警告，不拦截；发布说明来自 `.github/release-notes.md`，开头的「更新日志」由 `.github/scripts/release-changelog.sh` 生成：手动运行时填写的 notes，加上与上一个版本相比关闭的 issue（按标签分组，不含文档类）、没有关联 issue 的 PR、新登记的 issue）和 `ci.yml`（代码变动时只测三个主流平台：Linux、macOS 运行 `make ci`（rustfmt、clippy、全部测试），外加 `make docs-check`；Windows x64 构建发布版、跑测试并运行一次）和 `docs-check.yml`（仅文档变动时运行 `make docs-check`）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
+- `.github/workflows/` 下的 `release.yml`（推送 tag 或在 Actions 页面手动运行并填写 tag 时触发，tag 不存在时由 github-actions[bot] 在所选分支的最新提交上创建附注 tag，已有的轻量 tag 会被拒绝；依次 build → test → release：构建 6 个平台的发布版，在每个平台上跑测试并核对包里 `weflow --version` 与 tag 一致，全部通过才发布；正式版 tag 与根 `Cargo.toml` 的版本号不一致时只给出警告，不拦截；发布说明来自 `.github/release-notes.md`，开头的「更新日志」由 `.github/scripts/release-changelog.sh` 生成：手动运行时填写的 notes，加上与上一个版本相比关闭的 issue（按标签分组，不含文档类）、没有关联 issue 的 PR、新登记的 issue）和 `ci.yml`（代码变动时只测三个主流平台：Linux、macOS 运行 `make ci`（rustfmt、clippy、全部测试），外加 `make docs-check`；Windows x64 构建发布版、跑测试并运行一次）和 `docs-check.yml`（仅文档变动时运行 `make docs-check`）和 `web.yml`（`web/` 变动时类型检查、测试、构建并上传 `dist/`）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
 
 
 ## 约定
