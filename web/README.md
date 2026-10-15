@@ -57,6 +57,7 @@ Opened by `weflow serve` (once #146 is done), the page gets its token from the a
 | `src/api/backend.ts` | `/health`, version checks, `useBackend` |
 | `src/styles/tokens.css` | Design tokens: type, control heights, radii, colours (with dark mode), shadows, motion durations and curves (#192, #193). Page styles use only these variables |
 | `src/motion.ts` | Spring presets; `usePresence` keeps popovers, dialogs and notices until their exit has played |
+| `src/CardStack.tsx` | The console's cards: the header opens and closes a card; drag it with the mouse or press Alt+↑ / Alt+↓ to reorder. Order and open state stay in the browser's `localStorage` |
 | `src/App.tsx`, `src/app.css` | The workspace: navigation on the left, records in the middle, the operations console on the right |
 | `src/mock/` | Sample records, until the screens read the API |
 | `src/export.ts` | Sample export in the browser; real exports will use `export messages` with `?return=file` |

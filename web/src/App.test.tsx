@@ -5,6 +5,7 @@ import { App } from './App';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 async function renderWith(health: Response | Error) {
@@ -18,6 +19,8 @@ describe('App', () => {
     await renderWith(new Response(JSON.stringify({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.4' })));
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeTruthy();
     expect(screen.getByRole('region', { name: '操作控制台' })).toBeTruthy();
+    expect(screen.queryByText('操作控制台')).toBeNull();
+    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料', '媒体文件']);
     expect(screen.getByRole('status').textContent).toBe('已连接');
   });
 

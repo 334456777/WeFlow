@@ -2,18 +2,18 @@
 // console on the right as in Claude.ai (#130).
 // Records are still sample data (src/mock); the connection state is the real `weflow serve`.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import {
   Aperture, ArrowClockwise, ArrowLeft, ArrowsLeftRight, ArrowSquareOut, Article, CalendarBlank,
-  ChatCircleDots, Check, CheckCircle, CaretDown, Circle, CircleNotch,
-  DownloadSimple, FilePdf, Gear, ImageSquare, ListBullets,
-  MagnifyingGlass, Plugs, SlidersHorizontal, Wallet, X,
+  ChatCircleDots, Check, CheckCircle, Circle, CircleNotch,
+  DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend } from './api/backend';
+import { CardStack, type Card } from './CardStack';
 import { exportConversation } from './export';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
-import type { Category, ConsoleMode, Conversation, ExportFormat, ExportResult, Navigation } from './types';
+import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
 type Preview = { type: 'image'; src: string; title: string } | { type: 'file'; title: string };
@@ -54,7 +54,7 @@ function Avatar({ conversation }: { conversation: Conversation }) {
 /** Options in a pill with a thumb that slides to the selected one. */
 function Segmented({ count, index, className, children, ...rest }: {
   count: number; index: number; className: string; children: ReactNode;
-  role?: string; 'aria-label': string; onKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+  role?: string; 'aria-label': string;
 }) {
   const style = { '--count': count, '--index': index } as CSSProperties;
   return <div className={'segmented ' + className} style={style} {...rest}>
@@ -93,14 +93,14 @@ function ExportControl({ stage, result, onStart, onCancel }: {
   </div>;
 }
 
+const exportStatus: Record<ExportStage, string> = { idle: '等待导出', exporting: '正在导出', done: '已完成', error: '未完成' };
+
 function TaskStatus({ conversation, from, to, connected, stage, result, error }: {
   conversation: Conversation; from: string; to: string; connected: boolean;
   stage: ExportStage; result: ExportResult | null; error: string;
 }) {
   const completed = stage === 'done';
-  return <aside className="task-area" aria-label="当前任务">
-    <h3><ListBullets size={16} aria-hidden="true" />当前任务</h3>
-    <ol className="task-list">
+  return <ol className="task-list">
       <li className={connected ? 'task complete' : 'task'}>
         <span className="task-icon">{connected ? <Check size={12} weight="bold" /> : <Circle size={16} />}</span>
         <div><strong>{connected ? '已连接 weflow serve' : '未连接 weflow serve'}</strong></div><time>14:10</time>
@@ -116,8 +116,7 @@ function TaskStatus({ conversation, from, to, connected, stage, result, error }:
           {completed && result && <a className="download-link" href={result.downloadUrl} download={result.fileName}>下载文件</a>}
         </div><time>{completed ? '完成' : '--:--'}</time>
       </li>
-    </ol>
-  </aside>;
+    </ol>;
 }
 
 export function App() {
@@ -126,8 +125,6 @@ export function App() {
   const [section, setSection] = useState<Navigation>('chat');
   const [activeCategory, setActiveCategory] = useState<Category>('chat');
   const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', articles: 'article-design', payments: 'payment-coffee' });
-  const [mode, setMode] = useState<ConsoleMode>('export');
-  const [moreOpen, setMoreOpen] = useState(false);
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(CURRENT_DATE);
   const [format, setFormat] = useState<ExportFormat>('HTML');
@@ -143,10 +140,8 @@ export function App() {
   const [toast, setToast] = useState('');
   const [mobileDetail, setMobileDetail] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const exportAbort = useRef<AbortController | null>(null);
-  const menu = usePresence(moreOpen);
   const shownPreview = usePresence(preview);
   const shownToast = usePresence(toast);
 
@@ -178,18 +173,6 @@ export function App() {
     const timer = window.setTimeout(() => setHighlighted(null), FEEDBACK_MS);
     return () => window.clearTimeout(timer);
   }, [highlighted, reducedMotion]);
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => { if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false); };
-    const key = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (moreRef.current?.contains(document.activeElement)) moreRef.current.querySelector('button')?.focus();
-      setMoreOpen(false);
-    };
-    document.addEventListener('click', close);
-    document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', key); };
-  }, []);
 
   // The dialog stays in the top layer until its exit animation has played.
   useEffect(() => {
@@ -234,18 +217,53 @@ export function App() {
     setSubmittedQuery(query.trim());
   };
 
-  const moveConsoleFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const isMenu = (event.target as HTMLElement).getAttribute('role') === 'menuitem';
-    const forward = isMenu ? 'ArrowDown' : 'ArrowRight';
-    const backward = isMenu ? 'ArrowUp' : 'ArrowLeft';
-    if (![forward, backward, 'Home', 'End'].includes(event.key)) return;
-    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(isMenu ? 'button[role="menuitem"]' : 'button[role="tab"]'));
-    const index = controls.indexOf(document.activeElement as HTMLButtonElement);
-    if (index < 0) return;
-    event.preventDefault();
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? controls.length - 1 : (index + (event.key === forward ? 1 : -1) + controls.length) % controls.length;
-    controls[next]?.focus();
-  };
+  const cards: Card[] = [
+    {
+      id: 'export', title: '导出', summary: format + (includeMedia ? ' · 含媒体' : ''),
+      content: <>
+        <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span><span className="badge">示例数据</span></p>
+        <div className="form-row"><span className="field-label">时间范围</span><DateRange from={from} to={to} onFrom={value => { setFrom(value); resetExport(); }} onTo={value => { setTo(value); resetExport(); }} /></div>
+        <div className="form-row format-row"><span className="field-label">导出格式</span>
+          <Segmented className="format-group" count={formats.length} index={formats.indexOf(format)} role="group" aria-label="导出格式">
+            {formats.map(value => <button type="button" key={value} aria-pressed={format === value} onClick={() => { setFormat(value); resetExport(); }}>{value}</button>)}
+          </Segmented>
+          <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span>附带媒体文件 <small>图片、语音、视频与表情</small></span></label>
+        </div>
+        <ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={resetExport} />
+      </>,
+    },
+    {
+      id: 'tasks', title: '当前任务',
+      summary: <><span className={'status-dot ' + stage} />{exportStatus[stage]}</>,
+      content: <TaskStatus conversation={selected} from={from} to={to} connected={connected} stage={stage} result={exportResult} error={error} />,
+    },
+    {
+      id: 'search', title: '搜索', summary: submittedQuery === null ? '当前会话' : results.length + ' 条结果',
+      content: <>
+        <form className="search-form" onSubmit={search}>
+          <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索此会话的消息" placeholder={'搜索' + selected.name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} /><button className={'icon-button small' + (searchDatesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={searchDatesOpen} onClick={() => setSearchDatesOpen(value => !value)}><CalendarBlank size={16} /></button></div>
+          <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="fold-label">搜索</span></button>
+        </form>
+        {searchDatesOpen && <div className="search-date-row"><span className="field-label">时间范围</span><DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} /></div>}
+        <div className="search-results" aria-live="polite">{submittedQuery === null
+          ? <p className="empty-text">输入关键词，搜索当前会话的记录。</p>
+          : results.length
+            ? <><p className="results-count">找到 {results.length} 条记录<span>点击可定位到消息</span></p>{results.map(message => <button className="search-result" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
+            : <p className="empty-text">没有找到匹配的消息，试试其他关键词或时间范围。</p>}</div>
+      </>,
+    },
+    {
+      id: 'info', title: '会话资料', summary: selected.messages.length + ' 条记录',
+      content: <>
+        <div className="info-content"><Avatar conversation={selected} /><div><h4>{selected.name}</h4><p className="clamp-2">{selected.description}</p></div></div>
+        <dl className="info-grid"><div><dt>类型</dt><dd>{categoryLabels[selected.category]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messages.length} 条</dd></div><div><dt>媒体文件</dt><dd className="num">{media.length} 个</dd></div><div><dt>时间范围</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>
+      </>,
+    },
+    {
+      id: 'media', title: '媒体文件', summary: media.length + ' 个',
+      content: <div className="media-list">{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
+    },
+  ];
 
   return <main className="workspace">
     <aside className="sidebar">
@@ -298,54 +316,8 @@ export function App() {
         </div>
       </section>}
 
-      <section className="panel console-panel" aria-label="操作控制台">
-        <header className="console-header"><h2><SlidersHorizontal size={18} aria-hidden="true" />操作控制台</h2>
-          <Segmented className="function-group" count={3} index={mode === 'export' ? 0 : mode === 'search' ? 1 : 2} role="tablist" aria-label="控制台功能" onKeyDown={moveConsoleFocus}>
-            <button type="button" role="tab" id="export-tab" aria-selected={mode === 'export'} aria-controls="console-content" onClick={() => { setMode('export'); setMoreOpen(false); }}>导出</button>
-            <button type="button" role="tab" id="search-tab" aria-selected={mode === 'search'} aria-controls="console-content" onClick={() => { setMode('search'); setMoreOpen(false); }}>搜索</button>
-            <div className="more-wrapper" ref={moreRef}><button type="button" role="tab" id="more-tab" aria-selected={mode === 'info' || mode === 'media'} aria-haspopup="menu" aria-expanded={moreOpen} aria-controls="console-content" onClick={() => setMoreOpen(value => !value)}>更多<CaretDown size={14} aria-hidden="true" /></button>
-              {menu && <div className="menu" role="menu" aria-label="更多功能" data-state={menu.closing ? 'closing' : 'open'}>
-                <button type="button" role="menuitem" className="menu-item" onClick={() => { setMode('info'); setMoreOpen(false); }}><Article size={16} />会话资料</button>
-                <button type="button" role="menuitem" className="menu-item" onClick={() => { setMode('media'); setMoreOpen(false); }}><ImageSquare size={16} />媒体文件</button>
-              </div>}
-            </div>
-          </Segmented>
-        </header>
-
-        <div id="console-content" role="tabpanel" aria-labelledby={mode === 'export' ? 'export-tab' : mode === 'search' ? 'search-tab' : 'more-tab'} className={'console-body scroll-area ' + mode} key={mode}>
-          {mode === 'export' ? <>
-            <div className="export-area"><div className="function-title"><h3>导出{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</h3><span className="badge">示例数据</span></div>
-              <div className="form-row"><span className="field-label">时间范围</span><DateRange from={from} to={to} onFrom={value => { setFrom(value); resetExport(); }} onTo={value => { setTo(value); resetExport(); }} /></div>
-              <div className="form-row format-row"><span className="field-label">导出格式</span>
-                <Segmented className="format-group" count={formats.length} index={formats.indexOf(format)} role="group" aria-label="导出格式">
-                  {formats.map(value => <button type="button" key={value} aria-pressed={format === value} onClick={() => { setFormat(value); resetExport(); }}>{value}</button>)}
-                </Segmented>
-                <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span>附带媒体文件 <small>图片、语音、视频与表情</small></span></label>
-              </div>
-              <ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={resetExport} />
-            </div>
-            <TaskStatus conversation={selected} from={from} to={to} connected={connected} stage={stage} result={exportResult} error={error} />
-          </> : mode === 'search' ? <div className="search-area">
-            <div className="function-title"><h3>搜索{selected.name}的消息</h3><span className="badge">示例数据</span></div>
-            <form className="search-form" onSubmit={search}>
-              <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索此会话的消息" placeholder="搜索此会话的消息" value={query} onChange={event => setQuery(event.target.value)} /><button className={'icon-button small' + (searchDatesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={searchDatesOpen} onClick={() => setSearchDatesOpen(value => !value)}><CalendarBlank size={16} /></button></div>
-              <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="fold-label">搜索</span></button>
-            </form>
-            {searchDatesOpen && <div className="search-date-row"><span className="field-label">时间范围</span><DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} /></div>}
-            <div className="search-results" aria-live="polite">{submittedQuery === null
-              ? <p className="empty-text">输入关键词，搜索当前会话的记录。</p>
-              : results.length
-                ? <><p className="results-count">找到 {results.length} 条记录<span>点击可定位到消息</span></p>{results.map(message => <button className="search-result" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
-                : <p className="empty-text">没有找到匹配的消息，试试其他关键词或时间范围。</p>}</div>
-          </div> : mode === 'info' ? <div className="info-area">
-            <div className="function-title"><h3>会话资料</h3><span className="badge">示例数据</span></div>
-            <div className="info-content"><Avatar conversation={selected} /><div><h4>{selected.name}</h4><p className="clamp-2">{selected.description}</p></div></div>
-            <dl className="info-grid"><div><dt>类型</dt><dd>{categoryLabels[selected.category]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messages.length} 条</dd></div><div><dt>媒体文件</dt><dd className="num">{media.length} 个</dd></div><div><dt>时间范围</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>
-          </div> : <div className="media-area">
-            <div className="function-title"><h3>{selected.name}的媒体文件</h3><span className="badge">示例数据</span></div>
-            <div className="media-list">{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>
-          </div>}
-        </div>
+      <section className="console scroll-area" aria-label="操作控制台">
+        <CardStack cards={cards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label="操作控制台" />
       </section>
     </div>
 
