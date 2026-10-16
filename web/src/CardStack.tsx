@@ -10,7 +10,8 @@ export interface Card {
   title: string;
   /** Shown on the right of the header while the card is closed. */
   summary?: ReactNode;
-  content: ReactNode;
+  /** A closed card's content stays (it only folds away); one that reads only while open is given `open`. */
+  content: ReactNode | ((open: boolean) => ReactNode);
 }
 
 export interface CardLayout {
@@ -194,7 +195,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
             {card.summary !== undefined && <span className="card-summary" aria-hidden={open}>{card.summary}</span>}
           </button>
         </h2>
-        <div className="card-body" id={'card-body-' + id} inert={!open}><div className="card-inner"><div className="card-content">{card.content}</div></div></div>
+        <div className="card-body" id={'card-body-' + id} inert={!open}><div className="card-inner"><div className="card-content">{typeof card.content === 'function' ? card.content(open) : card.content}</div></div></div>
       </section>;
     })}
   </div>;

@@ -96,11 +96,12 @@ describe('App', () => {
     expect(screen.getByRole('status').textContent).toBe('实时');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '折叠的群聊']);
     expect(calls).toContain('/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
-    // The first conversation is opened; its media wait for #200.
+    // The first conversation is opened; its details and media are read only once their cards open (#200).
     expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
-    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料']);
+    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料', '媒体文件']);
+    expect(calls.filter(url => /detail|resources|group\//.test(url))).toEqual([]);
     expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', true);
-    expect(screen.getByText('约 42 条记录', { exact: false })).toBeTruthy();
+    expect(document.querySelector('[data-card="info"] .card-summary')?.textContent).toBe('约 42 条');
     // Its messages, oldest first: a text, a notice in the middle, a file sent by me.
     await act(async () => {});
     const rows = Array.from(document.querySelectorAll('.message-pane .message-row'));
@@ -315,6 +316,65 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(text()).toContain('不适用于这个网页');
     expect(text()).toContain('weflow web use');
+  });
+
+  it('shows the details, members and media of a real conversation once their cards open (#200)', async () => {
+    const calls: string[] = [];
+    const members = Array.from({ length: 1500 }, (_, i) => ({ username: 'wxid_m' + i, displayName: '成员' + i, groupNickname: i === 8 ? '小七' : '', isOwner: i === 0, isFriend: i % 2 === 0 }));
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      const path = url.split('?')[0];
+      if (path === '/api/chat/sessions') return json({ success: true, data: [{ username: 'g@chatroom', displayName: '家人群', summary: '晚饭', sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1 }] });
+      if (path === '/chat/statuses') return json({ success: true, data: {} });
+      if (path === '/api/chat/messages') {
+        const around = url.includes('after=') || url.includes('before=');
+        return json({ success: true, data: around ? [] : [{ _cursor: 'c.9', localId: 9, localType: 1, createTime: 1760000000, isSend: 0, senderUsername: 'wxid_m1', parsedContent: '晚饭' }] });
+      }
+      if (path === '/api/chat/detail') return json({ success: true, data: { wxid: 'g@chatroom', displayName: '家人群', messageCount: 12345 } });
+      if (path === '/chat/detail') return json({ success: true, data: { firstMessageTime: 1600000000, latestMessageTime: 1760000000, messageTables: [] } });
+      if (path === '/api/group/members') return json({ success: true, data: { members } });
+      if (path === '/group/member') {
+        return json({ success: true, data: { statistics: { totalMessages: 321, textMessages: 300, imageMessages: 21, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, firstMessageTime: 1600000000, lastMessageTime: 1760000000, activeDays: 42 }, timeDistribution: { 21: 50 }, commonPhrases: [{ phrase: '好的', count: 9 }], commonEmojis: [] } });
+      }
+      if (path === '/chat/resources') {
+        return json({ success: true, data: { items: [{ localId: 5, createTime: 1750000000, localType: 25769803825, resourceType: 'file', fileName: '旅行计划.pdf', fileSize: 4096 }], total: 1, hasMore: false } });
+      }
+      if (path === '/api/chat/message') return json({ success: true, data: { _cursor: 'c.5', localId: 5, localType: 25769803825, appMsgKind: 'file', createTime: 1750000000, isSend: 1, senderUsername: 'wxid_me', parsedContent: '[文件] 旅行计划.pdf', fileName: '旅行计划.pdf', fileSize: 4096 } });
+      return json({ success: true, data: null });
+    }));
+    render(<App />);
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole('button', { name: /^会话资料/ }));
+    await act(async () => {});
+    const info = document.querySelector('[data-card="info"]')!;
+    expect(info.textContent).toContain('12,345 条');
+    expect(info.textContent).toContain('2020');
+    expect(screen.getByRole('region', { name: '群成员' }).textContent).toContain('1500');
+    // a thousand and more members: only those in sight are drawn
+    expect(document.querySelectorAll('.member-row').length).toBeLessThan(60);
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索群成员' }), { target: { value: '小七' } });
+    expect(Array.from(document.querySelectorAll('.member-row'), row => row.getAttribute('aria-label'))).toEqual(['小七，好友']);
+    fireEvent.click(screen.getByRole('button', { name: '小七，好友' }));
+    await act(async () => {});
+    expect(calls).toContain('/group/member?chatroom-id=g%40chatroom&username=wxid_m8');
+    const stats = screen.getByRole('region', { name: '小七的群内统计' });
+    expect(stats.textContent).toContain('321 条');
+    expect(stats.textContent).toContain('21:00 – 22:00');
+    expect(stats.textContent).toContain('好的');
+    fireEvent.click(screen.getByRole('button', { name: '返回群成员' }));
+    expect(screen.getByRole('region', { name: '群成员' })).toBeTruthy();
+
+    // the media card: a file opens the conversation at its message
+    fireEvent.click(screen.getByRole('button', { name: /^媒体文件/ }));
+    await act(async () => {});
+    expect(calls.find(url => url.startsWith('/chat/resources'))).toBe('/chat/resources?session=g%40chatroom&type=image&type=video&type=file&limit=60&offset=0');
+    fireEvent.click(screen.getByRole('button', { name: /^旅行计划\.pdf/ }));
+    await act(async () => {});
+    expect(calls).toContain('/api/chat/message?session-id=g%40chatroom&local-id=5&create-time=1750000000&parsed=true');
+    await act(async () => {});
+    expect(document.querySelector('.message-pane')!.textContent).toContain('旅行计划.pdf');
   });
 
   it('folds the sidebar from its bottom-left button and remembers it', async () => {
