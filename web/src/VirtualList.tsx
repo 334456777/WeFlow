@@ -2,6 +2,7 @@
 // all of them, so thousands of conversations scroll without thousands of elements.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import type { ForwardedRef, HTMLAttributes, ReactNode, Ref } from 'react';
+import { HoverTrack } from './HoverTrack';
 import { Scrollbar } from './Scrollbar';
 
 export interface VirtualListHandle {
@@ -19,13 +20,15 @@ interface Props<T> extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
   overscan?: number;
   /** Space above the first row and below the last. */
   padding?: number;
+  /** The rows' clickable items, as a selector: a hover hollow slides between them (#232). */
+  track?: string;
 }
 
 /** Rows drawn before the list knows its height (the first paint, or a test without layout). */
 const FALLBACK_ROWS = 20;
 
 function VirtualListInner<T>(
-  { items, rowHeight, keyOf, renderRow, overscan = 6, padding = 0, className, ...rest }: Props<T>,
+  { items, rowHeight, keyOf, renderRow, overscan = 6, padding = 0, track, className, ...rest }: Props<T>,
   ref: ForwardedRef<VirtualListHandle>,
 ) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -74,7 +77,7 @@ function VirtualListInner<T>(
     rows.push(<div key={keyOf(item)} className="virtual-row" style={{ transform: `translateY(${padding + i * rowHeight}px)`, height: rowHeight }}>{renderRow(item, i)}</div>);
   }
   return <><div ref={scroller} className={'virtual-list ' + (className ?? '')} onScroll={onScroll} {...rest}>
-    <div className="virtual-space" style={{ height: 2 * padding + items.length * rowHeight }}>{rows}</div>
+    <div className="virtual-space" style={{ height: 2 * padding + items.length * rowHeight }}>{track && <HoverTrack items={track} />}{rows}</div>
   </div><Scrollbar target={scroller} /></>;
 }
 

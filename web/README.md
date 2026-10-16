@@ -61,6 +61,7 @@ Opened by `weflow serve` (once #146 is done), the page gets its token from the a
 | `src/CardStack.tsx` | The console's cards: the header opens and closes a card; drag it with the mouse or press Alt+↑ / Alt+↓ to reorder. Order and open state stay in the browser's `localStorage` |
 | `src/VirtualList.tsx` | A list that draws only the rows in sight, for lists of thousands of rows (#159) |
 | `src/Scrollbar.tsx` | The page's own scrollbar: floats over a scroll area (the browser's is hidden), takes no width, can be dragged |
+| `src/HoverTrack.tsx` | The hover hollow that slides (#232): in a group of items, the pointer crossing into another item slides the hollow over from the last one |
 | `src/Popover.tsx` | A floating layer anchored to a control: grows out of it, stays on screen, closes on Esc or a click outside |
 | `src/calendar/` | The page's own calendar (#224): `Calendar.tsx` (a month in the ARIA grid pattern, Monday first, month and year views), `DateRange.tsx` (a range picked in one calendar), `DateField.tsx` (one day), `dates.ts` (days as `YYYY-MM-DD` in local time) |
 | `src/api/messages.ts` | Messages of a conversation as the server parses them (`chat messages --parsed`, cursor pages), group members, and media addresses for `<img>`, `<audio>`, `<video>` |

@@ -9,6 +9,7 @@ import type { SearchHit } from '../api/messages';
 import { DateField } from '../calendar/DateField';
 import { DateRange, type Range } from '../calendar/DateRange';
 import { parseDay } from '../calendar/dates';
+import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
 import { loadMembers, memberName, membersKnown } from './LiveMessages';
 import { dayOf, formatClock, isMine } from './messages';
@@ -124,7 +125,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
       <DateField label="跳到日期" placeholder="选择一天" value={jumpDay} marks={counts} onOpen={request}
         onChange={day => { setJumpDay(day); if (sessionId) onJumpDay(sessionId, day); }} />
     </div>
-    <div className="search-results" aria-live="polite" aria-busy={state.status === 'loading'}>{
+    <div className="search-results" aria-live="polite" aria-busy={state.status === 'loading'}><HoverTrack items=".search-result" />{
       state.status === 'idle' ? <p className="empty-text">输入关键词，搜索{scope === 'all' ? '全部会话' : '当前会话'}的消息。</p>
         : state.status === 'loading' ? <p className="empty-text"><CircleNotch size={14} className="spin" /> 正在搜索</p>
           : state.status === 'error' ? <p className="empty-text">{state.error}</p>
