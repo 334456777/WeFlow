@@ -24,6 +24,8 @@ pub struct UiDir {
     root: PathBuf,
     /// The version kept by `weflow web` it is, if it is one.
     version: Option<String>,
+    /// Keeps that version from `weflow web prune` while the server shows it.
+    _hold: Option<std::sync::Arc<std::fs::File>>,
 }
 
 impl UiDir {
@@ -33,13 +35,16 @@ impl UiDir {
         root.join("index.html").is_file().then_some(Self {
             root,
             version: None,
+            _hold: None,
         })
     }
 
-    /// A version kept by `weflow web`.
-    pub fn open_version(dir: &Path, version: &str) -> Option<Self> {
-        Self::open(dir).map(|ui| Self {
+    /// A version kept by `weflow web`, held (see `WebStore::hold`) for as long as this or a clone of it lives.
+    pub fn open_version(store: &weflow_core::webui::WebStore, version: &str) -> Option<Self> {
+        let hold = store.hold(version).ok()?;
+        Self::open(&store.dir(version)).map(|ui| Self {
             version: Some(version.to_string()),
+            _hold: Some(std::sync::Arc::new(hold)),
             ..ui
         })
     }

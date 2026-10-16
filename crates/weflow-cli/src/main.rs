@@ -138,7 +138,8 @@ enum WebSubcommand {
     },
     /// Download and pick the newest published WebUI version that suits this weflow
     Update,
-    /// Remove the WebUI versions kept here that are neither picked nor the one this weflow comes with
+    /// Remove the WebUI versions kept here that are neither picked nor the one this weflow comes with, nor shown by a
+    /// running serve
     Prune,
 }
 
@@ -3102,31 +3103,38 @@ async fn serve_webui(
         let meta =
             weflow_core::webui::install(&store, &registry, version, web_backend(), &progress)
                 .await?;
-        return Ok((
-            UiDir::open_version(&store.dir(&meta.version), &meta.version),
-            None,
-        ));
+        return Ok((UiDir::open_version(&store, &meta.version), None));
     }
     let Some(wanted) = web_wanted(&store) else {
         return Ok((None, None));
     };
-    if let Some(meta) = store.meta(&wanted) {
-        return Ok((
-            UiDir::open_version(&store.dir(&meta.version), &meta.version),
-            None,
-        ));
-    }
     let backend = web_backend();
-    let meanwhile = store
-        .installed()
-        .into_iter()
-        .find(|m| {
-            backend
-                .refusal(&m.api_version, &m.min_backend_version)
-                .is_none()
-        })
-        .and_then(|m| UiDir::open_version(&store.dir(&m.version), &m.version));
-    Ok((meanwhile, Some(wanted)))
+    // the newest suitable version kept here: shown while the one wanted downloads, or instead of one kept that
+    // does not suit this weflow
+    let fallback = || {
+        store
+            .installed()
+            .into_iter()
+            .find(|m| {
+                backend
+                    .refusal(&m.api_version, &m.min_backend_version)
+                    .is_none()
+            })
+            .and_then(|m| UiDir::open_version(&store, &m.version))
+    };
+    match weflow_core::webui::kept(&store, &wanted, backend) {
+        Ok(Some(meta)) => Ok((UiDir::open_version(&store, &meta.version), None)),
+        Ok(None) => Ok((fallback(), Some(wanted))),
+        // kept by another weflow: downloading it again would not help
+        Err(refused) => {
+            eprintln!(
+                "{}{}",
+                weflow_core::locale::tr("warning: ", "警告："),
+                weflow_core::locale::localize(refused.message.clone())
+            );
+            Ok((fallback(), None))
+        }
+    }
 }
 
 /// `weflow web …`: the WebUI versions kept here and published (issue #148).
@@ -3238,18 +3246,39 @@ async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> 
             )
         }
         WebSubcommand::Prune => {
-            let mut removed = Vec::new();
+            let (mut removed, mut shown) = (Vec::new(), Vec::new());
             for meta in store.installed() {
                 let keep =
                     chosen.as_deref() == Some(meta.version.as_str()) || meta.version == WEB_VERSION;
-                if !keep && store.remove(&meta.version)? {
-                    removed.push(meta.version);
+                if keep {
+                    continue;
+                }
+                match store.remove(&meta.version) {
+                    Ok(true) => removed.push(meta.version),
+                    Ok(false) => {}
+                    // a running serve shows it: kept until that stops
+                    Err(e) if e.code == "in_use" => shown.push(meta.version),
+                    Err(e) => return Err(e),
                 }
             }
             let kept: Vec<String> = store.installed().into_iter().map(|m| m.version).collect();
-            Ok(json!({ "removed": removed, "kept": kept }))
+            Ok(json!({ "removed": removed, "kept": kept, "shown": shown }))
         }
     }
+}
+
+/// `value` as a URL query value: every byte but the unreserved ones (RFC 3986) percent-encoded, so a token with `+`,
+/// `&`, `#` or `=` reaches the page as it is.
+fn query_escape(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 /// Opens `url` in the default browser, as `serve` does with the WebUI; nothing happens where there is none.
@@ -3429,15 +3458,22 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         let token = token.as_ref().or(generated_token.as_ref());
         format!(
             "http://{at}/ui/{}",
-            token.map(|t| format!("?token={t}")).unwrap_or_default()
+            token
+                .map(|t| format!("?token={}", query_escape(t)))
+                .unwrap_or_default()
         )
     };
-    let shown = ui.read().unwrap().clone();
+    // only its version: a clone of the page kept here would hold its version after the page is replaced
+    let shown = ui
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|ui| ui.version().map(str::to_string));
     if !command.desktop {
         started["ui"] = json!(shown.is_some());
-        if let Some(shown) = &shown {
+        if let Some(version) = &shown {
             started["uiUrl"] = json!(page_url);
-            if let Some(version) = shown.version() {
+            if let Some(version) = version {
                 started["uiVersion"] = json!(version);
             }
         }
@@ -3467,7 +3503,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
                 }
                 Err(e) => Err(e),
             };
-            match installed.map(|meta| serve_api::ui::UiDir::open(&store.dir(&meta.version))) {
+            match installed.map(|meta| serve_api::ui::UiDir::open_version(&store, &meta.version)) {
                 Ok(Some(dir)) => {
                     *ui.write().unwrap() = Some(dir);
                     weflow_core::output::event(
