@@ -161,9 +161,11 @@ impl MsgPos {
         parts.next().is_none().then_some(pos)
     }
 
-    /// The place of a moment (Unix seconds): after every message sent before it, before every one sent at it or
-    /// later. WeChat's `sort_seq` is `create_time` in milliseconds plus a few (within 2 s of it on a real account), so
-    /// a page [`After`](PageFrom::After) it starts at the first message of that moment.
+    /// The place of a moment (Unix seconds) in the chat's order, which is WeChat's: `sort_seq`, the send time in
+    /// milliseconds plus a little. A page [`After`](PageFrom::After) it starts at the first message ordered at that
+    /// moment or later. A message ordered a second or two off its own send time (seen on a real account) falls on
+    /// the side its order puts it, as in the chat window, so pages on from there neither skip nor repeat one
+    /// (issue #242).
     pub fn at_time(seconds: i64) -> Self {
         Self {
             sort_seq: seconds.saturating_mul(1000),
