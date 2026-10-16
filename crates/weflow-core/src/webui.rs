@@ -200,18 +200,65 @@ impl WebStore {
         std::fs::rename(&tmp, self.root.join("current")).map_err(fail)
     }
 
-    /// Removes a version kept here; the pick goes with it.
+    /// Removes a version kept here; the pick goes with it. A version a running `weflow serve` shows (see
+    /// [`WebStore::hold`]) is left as it is: the error's code is `in_use`.
     pub fn remove(&self, version: &str) -> AppResult<bool> {
-        let dir = self.dir(checked_version(version)?);
+        let version = checked_version(version)?;
+        let dir = self.dir(version);
         if !dir.exists() {
             return Ok(false);
+        }
+        let lock = self.lock_file(version)?;
+        match lock.try_lock() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(AppError::new(
+                    "in_use",
+                    format!("WebUI {version} is shown by a running `weflow serve`; stop it first"),
+                    1,
+                ))
+            }
+            Err(std::fs::TryLockError::Error(e)) => {
+                return Err(AppError::runtime(format!(
+                    "cannot lock WebUI {version}: {e}"
+                )))
+            }
         }
         std::fs::remove_dir_all(&dir)
             .map_err(|e| AppError::runtime(format!("cannot remove {}: {e}", dir.display())))?;
         if self.chosen().as_deref() == Some(version) {
             let _ = std::fs::remove_file(self.root.join("current"));
         }
+        let _ = std::fs::remove_file(self.lock_path(version));
         Ok(true)
+    }
+
+    /// Keeps a version from being removed while the file returned is open: a shared lock on `.lock-<version>`
+    /// beside it, which [`WebStore::remove`] asks for alone. It holds across processes, and ends with the process
+    /// that holds it, however that ends.
+    pub fn hold(&self, version: &str) -> AppResult<std::fs::File> {
+        let version = checked_version(version)?;
+        let lock = self.lock_file(version)?;
+        lock.lock_shared()
+            .map_err(|e| AppError::runtime(format!("cannot lock WebUI {version}: {e}")))?;
+        Ok(lock)
+    }
+
+    fn lock_path(&self, version: &str) -> PathBuf {
+        self.root.join(format!(".lock-{version}"))
+    }
+
+    fn lock_file(&self, version: &str) -> AppResult<std::fs::File> {
+        let path = self.lock_path(version);
+        std::fs::create_dir_all(&self.root)
+            .and_then(|()| {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .write(true)
+                    .open(&path)
+            })
+            .map_err(|e| AppError::runtime(format!("cannot open {}: {e}", path.display())))
     }
 
     /// A fresh folder for one download, beside the versions (so the last step is a rename on one disk).
@@ -524,7 +571,21 @@ pub fn unpack(package: &Path, dir: &Path) -> AppResult<()> {
     Ok(())
 }
 
-/// Downloads, checks and keeps a version (nothing to do when it is kept already), for this backend.
+/// A version kept here, when it suits this backend: an `incompatible` error when it does not (kept by a newer
+/// weflow, say), and `None` when it is not kept.
+pub fn kept(store: &WebStore, version: &str, backend: Backend<'_>) -> AppResult<Option<WebMeta>> {
+    let version = checked_version(version)?;
+    match store.meta(version) {
+        Some(meta) => match backend.refusal(&meta.api_version, &meta.min_backend_version) {
+            Some(why) => Err(incompatible(version, &why)),
+            None => Ok(Some(meta)),
+        },
+        None => Ok(None),
+    }
+}
+
+/// Downloads, checks and keeps a version for this backend; one kept already is checked again, as it may have been
+/// kept by another weflow.
 pub async fn install(
     store: &WebStore,
     registry: &Registry,
@@ -533,7 +594,7 @@ pub async fn install(
     progress: &(dyn Fn(u64, u64) + Send + Sync),
 ) -> AppResult<WebMeta> {
     let version = checked_version(version)?;
-    if let Some(meta) = store.meta(version) {
+    if let Some(meta) = kept(store, version, backend)? {
         return Ok(meta);
     }
     let published = registry.published(version).await?;

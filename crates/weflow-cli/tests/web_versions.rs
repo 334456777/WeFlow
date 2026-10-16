@@ -149,6 +149,33 @@ fn cli(home: &Path, registry: &str, args: &[&str]) -> Value {
     doc["data"].clone()
 }
 
+/// `weflow --json <args>` that fails: its error.
+fn cli_error(home: &Path, registry: &str, args: &[&str]) -> Value {
+    let out = weflow(home, registry)
+        .arg("--json")
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "{args:?} succeeded");
+    let doc: Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{args:?}: {e}: {}", String::from_utf8_lossy(&out.stderr)));
+    assert_eq!(doc["success"], false, "{args:?}: {doc}");
+    doc["error"].clone()
+}
+
+/// A version kept by another weflow, written straight into the store.
+fn keep(home: &Path, version: &str, api_version: &str, min_backend_version: &str) {
+    let dir = home.join("cache").join("web").join(version);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("index.html"),
+        format!("<!doctype html><title>WeFlow {version}</title>"),
+    )
+    .unwrap();
+    let meta = json!({ "name": "weflow-web", "version": version, "apiVersion": api_version, "minBackendVersion": min_backend_version });
+    std::fs::write(dir.join("weflow-web.json"), meta.to_string()).unwrap();
+}
+
 /// A running `weflow serve` and the events it prints on stderr.
 struct Server {
     child: Child,
@@ -165,8 +192,12 @@ impl Drop for Server {
 
 impl Server {
     fn start(home: &Path, registry: &str, extra: &[&str]) -> Self {
+        Self::start_with(home, registry, TOKEN, extra)
+    }
+
+    fn start_with(home: &Path, registry: &str, token: &str, extra: &[&str]) -> Self {
         let mut child = weflow(home, registry)
-            .args(["--json", "serve", "--port", "0", "--api-token", TOKEN])
+            .args(["--json", "serve", "--port", "0", "--api-token", token])
             .args(extra)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -339,4 +370,87 @@ fn versions_are_installed_picked_and_pruned() {
     assert!(web["files"].as_u64().unwrap() >= 4);
     cli(&home, &reg, &["cache", "clear", "--web", "-y"]);
     assert_eq!(cli(&home, &reg, &["web", "list"]), json!([]));
+}
+
+#[test]
+fn the_page_address_carries_the_token_as_it_is() {
+    let home = temp_root("token");
+    let version = built_in();
+    keep(&home, &version, "1", "0.0.1");
+    let token = "abc+def/ghi==&x#y z%";
+    let server = Server::start_with(&home, "http://127.0.0.1:9", token, &[]);
+    let url = server.started["uiUrl"].as_str().unwrap();
+    assert!(
+        url.ends_with("/ui/?token=abc%2Bdef%2Fghi%3D%3D%26x%23y%20z%25"),
+        "{url}"
+    );
+}
+
+#[test]
+fn versions_kept_by_another_weflow_are_checked_again() {
+    let home = temp_root("kept");
+    let reg = registry(&["0.0.9"]);
+    cli(&home, &reg, &["web", "use", "0.0.9"]);
+    // kept by a newer weflow: another API, and a weflow newer than this one
+    keep(&home, "0.0.6", "2", "0.0.1");
+    keep(&home, "0.0.7", "1", "99.0.0");
+    for version in ["0.0.6", "0.0.7"] {
+        for args in [["web", "install", version], ["web", "use", version]] {
+            let error = cli_error(&home, &reg, &args);
+            assert_eq!(error["code"], "incompatible", "{args:?}: {error}");
+        }
+        let failed = weflow(&home, &reg)
+            .args(["--json", "serve", "--port", "0", "--web-version", version])
+            .output()
+            .unwrap();
+        assert!(!failed.status.success(), "serve --web-version {version}");
+    }
+    // the pick stays as it was
+    assert_eq!(cli(&home, &reg, &["web", "info"])["picked"], "0.0.9");
+
+    // picked before this weflow: serve shows the newest version that suits it instead, and downloads nothing
+    std::fs::write(
+        home.join("cache").join("web").join("current"),
+        "0.0.7
+",
+    )
+    .unwrap();
+    let server = Server::start(&home, &reg, &[]);
+    assert_eq!(server.started["uiVersion"], "0.0.9");
+    assert!(server.started["uiDownloading"].is_null());
+    assert!(server.get("/ui/").1.contains("WeFlow 0.0.9"));
+}
+
+#[test]
+fn prune_leaves_the_version_a_server_shows() {
+    let home = temp_root("shown");
+    let version = built_in();
+    let reg = registry(&["0.0.8", &version]);
+    cli(&home, &reg, &["web", "install", "0.0.8"]);
+    cli(&home, &reg, &["web", "install", &version]);
+
+    let server = Server::start(&home, &reg, &["--web-version", "0.0.8"]);
+    assert_eq!(server.started["uiVersion"], "0.0.8");
+    let pruned = cli(&home, &reg, &["web", "prune"]);
+    assert_eq!(pruned["removed"], json!([]));
+    assert_eq!(pruned["shown"], json!(["0.0.8"]));
+    let (status, body) = server.get("/ui/");
+    assert_eq!(status, 200);
+    assert!(body.contains("WeFlow 0.0.8"));
+    drop(server);
+
+    let pruned = cli(&home, &reg, &["web", "prune"]);
+    assert_eq!(pruned["removed"], json!(["0.0.8"]));
+    assert_eq!(pruned["shown"], json!([]));
+
+    // the version shown while the one wanted downloads (here: cannot) is left too
+    let home = temp_root("meanwhile");
+    cli(&home, &reg, &["web", "install", "0.0.8"]);
+    let server = Server::start(&home, "http://127.0.0.1:9", &[]);
+    assert_eq!(server.started["uiVersion"], "0.0.8");
+    assert_eq!(server.started["uiDownloading"], version.as_str());
+    assert_eq!(server.wait("webui_unavailable")["kept"], true);
+    let pruned = cli(&home, &reg, &["web", "prune"]);
+    assert_eq!(pruned["shown"], json!(["0.0.8"]));
+    assert_eq!(server.get("/ui/").0, 200);
 }

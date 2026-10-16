@@ -40,11 +40,11 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 1. 加 `--api-only` 时不提供网页；
 2. 用 `--ui-dir` 指定的目录，只对本次运行有效（目录里没有 `index.html` 时，启动就会报错）；
 3. 用 `--web-version` 指定的版本，只对本次运行有效，需要时先下载；
-4. 否则用 `weflow web use` 选定的版本；还没有选定时，用这个 `weflow` 自带的版本（构建时 `web/package.json` 里的版本）。这个版本还没下载时，服务端立刻启动（先用本机已有的、适用的最新版本，没有就只提供 API），同时在后台下载，下载完成后显示新版本：发出事件 `webui_ready`；下载失败时发出 `webui_unavailable`，已有的版本保持不变。
+4. 否则用 `weflow web use` 选定的版本；还没有选定时，用这个 `weflow` 自带的版本（构建时 `web/package.json` 里的版本）。这个版本还没下载时，服务端立刻启动（先用本机已有的、适用的最新版本，没有就只提供 API），同时在后台下载，下载完成后显示新版本：发出事件 `webui_ready`；下载失败时发出 `webui_unavailable`，已有的版本保持不变。本机已有但不适用于这个 `weflow` 的版本（例如由更新的 `weflow` 下载的）不会显示：服务端给出警告，改用本机已有的、适用的最新版本，没有就只提供 API。
 
 没有网页时只提供 API，启动提示里会说明。
 
-有网页时，启动提示给出带令牌的地址 `http://127.0.0.1:18108/ui/?token=…`（加 `--json` 时为 `uiUrl`）。stderr 是终端时，服务端会在浏览器中打开它（`--no-browser` 可以关掉）。网页把令牌存在当前标签页里，并从地址栏去掉；令牌不会写进网页的文件。
+有网页时，启动提示给出带令牌的地址 `http://127.0.0.1:18108/ui/?token=…`（加 `--json` 时为 `uiUrl`；令牌经过百分号编码，含 `+`、`&`、`#`、`=` 的令牌也能原样传给网页）。stderr 是终端时，服务端会在浏览器中打开它（`--no-browser` 可以关掉）。网页把令牌存在当前标签页里，并从地址栏去掉；令牌不会写进网页的文件。
 
 - 网页的文件不需要令牌，这一点和 API 不同，但下面的 `Host` 检查照样进行。只响应 `GET` 和 `HEAD`。
 - `/ui` 跳到 `/ui/`（`308`）。有网页时，`/` 也跳到 `/ui/`（`302`）。查询参数都会保留。
@@ -63,11 +63,11 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 | `web install <版本>` | 下载一个版本，校验后保存 |
 | `web use <版本>` | 选定 `serve` 显示的版本（需要时先下载） |
 | `web update` | 下载并选定已发布的、适用于这个 `weflow` 的最新版本（正式版优先于预发布版） |
-| `web prune` | 删除本机上既没有选定、也不是这个 `weflow` 自带的版本 |
+| `web prune` | 删除本机上既没有选定、也不是这个 `weflow` 自带的版本；正在运行的 `serve` 显示的版本会保留（列在 `shown` 里），等该服务停止后才能删除 |
 
-- 一个版本适用于这个 `weflow`，要求它需要的 API 正是这个 `weflow` 提供的（`/health` 的 `apiVersion`），并且它要求的最低 `weflow` 版本（`minBackendVersion`）不高于这个 `weflow`。manifest 里写着这两项，所以不适用的版本在下载前就会被拒绝；`weflow-web.json` 里也写着，下载后再检查一次。
+- 一个版本适用于这个 `weflow`，要求它需要的 API 正是这个 `weflow` 提供的（`/health` 的 `apiVersion`），并且它要求的最低 `weflow` 版本（`minBackendVersion`）不高于这个 `weflow`。manifest 里写着这两项，所以不适用的版本在下载前就会被拒绝；`weflow-web.json` 里也写着，下载后再检查一次。本机已有的版本可能是其他 `weflow` 下载的，所以每次安装、选定或显示时都会重新检查；`web use` 拒绝不适用的版本时，原来选定的版本保持不变。
 - 下载的内容要和 manifest 给出的大小与 SHA-256 摘要一致，然后在限制下解压到单独的目录：压缩包最大 64 MB，解压后最多 256 MB、10,000 个文件，不允许指向目录外的路径和链接。检查 `index.html`、元数据和所要的版本之后，再用一次重命名放到正式位置。下载失败、损坏或中断时，本机已有的版本保持不变；同时下载同一个版本时，只保留一份。
-- 这些版本和 WeFlow 的其他缓存放在一起，存放在 `<home>/cache/web/<版本>/`；选定的版本记在 `<home>/cache/web/current` 里。`cache clear --web` 会把它们全部删除，`serve` 需要时会重新下载。
+- 这些版本和 WeFlow 的其他缓存放在一起，存放在 `<home>/cache/web/<版本>/`；选定的版本记在 `<home>/cache/web/current` 里。正在运行的 `serve` 对所显示的版本持有 `<home>/cache/web/.lock-<版本>` 的共享锁，`web prune` 删除前会检查这个锁；服务无论以什么方式结束，锁都会随之释放。`cache clear --web` 会把它们全部删除，`serve` 需要时会重新下载。
 - 访问仓库的方式遵循 OCI Distribution API：先取匿名令牌，再读 manifest 和 blob。用 `WEFLOW_WEB_REGISTRY` 可以指定其他仓库（镜像，或测试用的仓库）。
 
 ## 鉴权

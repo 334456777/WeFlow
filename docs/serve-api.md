@@ -40,11 +40,11 @@ The startup message (an event on stderr; a JSON line with `--json`) shows the ad
 1. none with `--api-only`;
 2. the folder `--ui-dir` names, for this run only (a folder without `index.html` is refused at the start);
 3. the version `--web-version` names, for this run only, downloaded first when needed;
-4. else the version picked with `weflow web use`, or, until one is picked, the version this `weflow` comes with (the one in `web/package.json` when it was built). When that version is not here yet, the server starts at once (with the newest suitable version already here, or as the API alone), downloads it beside, and shows it once it is in place: the event `webui_ready`, or `webui_unavailable` when the download fails, in which case what was there stays.
+4. else the version picked with `weflow web use`, or, until one is picked, the version this `weflow` comes with (the one in `web/package.json` when it was built). When that version is not here yet, the server starts at once (with the newest suitable version already here, or as the API alone), downloads it beside, and shows it once it is in place: the event `webui_ready`, or `webui_unavailable` when the download fails, in which case what was there stays. A version kept here that does not suit this `weflow` (kept by a newer one, say) is not shown: the server warns, shows the newest suitable version kept here instead, or runs as the API alone.
 
 Without a WebUI the server runs as the API alone, and the startup message says so.
 
-With a WebUI, the startup message gives its address with the token, `http://127.0.0.1:18108/ui/?token=…` (`uiUrl` with `--json`), and when stderr is a terminal the server opens it in the browser (`--no-browser` turns that off). The page keeps the token for its tab and removes it from the address bar; it is never written into the WebUI's files.
+With a WebUI, the startup message gives its address with the token, `http://127.0.0.1:18108/ui/?token=…` (`uiUrl` with `--json`; the token percent-encoded, so one with `+`, `&`, `#` or `=` reaches the page as it is), and when stderr is a terminal the server opens it in the browser (`--no-browser` turns that off). The page keeps the token for its tab and removes it from the address bar; it is never written into the WebUI's files.
 
 - The page's files need no token, unlike the API, but the `Host` check below still applies. Only `GET` and `HEAD` are answered.
 - `/ui` goes to `/ui/` (`308`), and with a WebUI `/` goes to `/ui/` too (`302`), keeping the query.
@@ -63,11 +63,11 @@ The WebUI is published apart from `weflow`, as OCI artifacts on GHCR (`ghcr.io/3
 | `web install <version>` | Downloads a version, checks it and keeps it |
 | `web use <version>` | Picks the version `serve` shows (downloaded first when needed) |
 | `web update` | Downloads and picks the newest published version that suits this `weflow` (a release before a pre-release) |
-| `web prune` | Removes the versions kept here that are neither picked nor the one this `weflow` comes with |
+| `web prune` | Removes the versions kept here that are neither picked nor the one this `weflow` comes with; one a running `serve` shows is left (listed in `shown`) until that server stops |
 
-- A version suits this `weflow` when it needs the API it serves (`apiVersion` of `/health`) and a `weflow` no newer than it (`minBackendVersion`). The manifest says both, so an unsuitable version is refused before it is downloaded, and its `weflow-web.json` says them again, checked after.
+- A version suits this `weflow` when it needs the API it serves (`apiVersion` of `/health`) and a `weflow` no newer than it (`minBackendVersion`). The manifest says both, so an unsuitable version is refused before it is downloaded, and its `weflow-web.json` says them again, checked after. A version kept already is checked again each time it is installed, picked or shown, as another `weflow` may have kept it; `web use` refuses an unsuitable one and the pick stays as it was.
 - A download is checked against the size and the SHA-256 digest of its manifest, and unpacked under limits (at most 64 MB packed, 256 MB and 10,000 files unpacked; no path leading out of its folder, no links) into a folder of its own, then checked (`index.html`, the metadata, the version asked for) before one rename moves it into place. A failed, damaged or interrupted download leaves the versions already here as they were; two downloads of one version at once keep one copy.
-- The versions are kept with WeFlow's other caches, in `<home>/cache/web/<version>/`; the one picked is named in `<home>/cache/web/current`. `cache clear --web` removes them all; `serve` downloads the one it needs again.
+- The versions are kept with WeFlow's other caches, in `<home>/cache/web/<version>/`; the one picked is named in `<home>/cache/web/current`. A running `serve` holds a shared lock on `<home>/cache/web/.lock-<version>` for the version it shows, which `web prune` checks before removing it; the lock ends with the server, however it ends. `cache clear --web` removes them all; `serve` downloads the one it needs again.
 - The registry is reached as the OCI Distribution API describes (an anonymous token, then the manifest and the blob); `WEFLOW_WEB_REGISTRY` names another (a mirror, or a test's).
 
 ## Authentication
