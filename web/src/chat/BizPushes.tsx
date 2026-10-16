@@ -101,7 +101,7 @@ export function BizPushes({ session }: { session: ChatSession }) {
     </header>
     {feed.pushes.length
       ? feed.pushes.map(push => <PushCard key={push.localId + ':' + push.createTime} push={push} />)
-      : <p className="biz-empty">本机没有这个公众号的推送。电脑版微信打开公众号文章时，多数内容在线显示，不保存在本地数据库（#113）。</p>}
+      : <p className="biz-empty">本机没有这个公众号的推送记录。公众号历史文章可能在网页中显示；已删除或尚未保存在本机的消息无法读取。</p>}
     {feed.error && <p className="biz-empty" role="alert">{feed.error}</p>}
     {feed.hasMore && <button type="button" className="secondary-button biz-more" onClick={more} disabled={feed.loadingMore}>
       {feed.loadingMore ? <><CircleNotch size={14} className="spin" />正在加载</> : '加载更早的推送'}
