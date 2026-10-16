@@ -33,7 +33,7 @@ npm run dev                               # http://localhost:5173/ui/
 **只调整界面时**：先运行一次 `npm ci`，之后运行 `npm run dev` 就够了，不需要 `weflow serve`。这时：
 - 界面显示示例记录；
 - 连接状态显示「未连接」；
-- 每次检查 `/health`（每 15 秒一次），终端都会打印一条代理错误，可以忽略。
+- 每次尝试连接 `/health/events`（按 1、2、4 …… 最长 30 秒的间隔重试），终端都会打印一条代理错误，可以忽略。
 
 要从另一台电脑打开开发服务器，运行 `npm run dev -- --host`，再打开 `http://<这台机器的地址>:5173/ui/`。这时不要设置 `WEFLOW_HTTP_TOKEN`。否则，代理会把令牌交给任何能访问这个端口的人，他们就能运行任何 `weflow` 命令。
 
@@ -58,7 +58,7 @@ npm run dev                               # http://localhost:5173/ui/
 - `apiVersion` 必须等于 `GET /health` 返回的 `apiVersion`；
 - 服务端的 `version` 不能低于 `minBackendVersion`。开发构建的 `git describe` 版本按它所在的 tag 计算。
 
-构建时，这些信息写入 `dist/weflow-web.json`，供 `weflow web` 使用（#148）。网页也会拿它们和 `/health` 比对，不满足时显示「版本不兼容」。
+构建时，这些信息写入 `dist/weflow-web.json`，供 `weflow web` 使用（#148）。网页也会拿它们和 `/health/events` 的 `hello` 比对，不满足时显示「版本不兼容」。没有 `/health/events` 的服务端（5.0.0-rc.5 及更早）不再支持，连接时显示「未连接」。
 
 发布新版本时，先提高 `package.json` 里的 `version`，再推送 tag `web-v<版本>`（或在 Actions 里运行 *WebUI release*）：`.github/workflows/web-release.yml` 构建后发布到 `ghcr.io/334456777/weflow-web:<版本>`，`weflow web` 和 `weflow serve` 从那里下载。同一个版本只能发布一次。每个 `weflow` 构建默认显示构建时 `package.json` 里的版本（见 [docs/serve-api.md](../docs/zh-CN/serve-api.md#网页的版本)）。
 
@@ -67,7 +67,7 @@ npm run dev                               # http://localhost:5173/ui/
 | 路径 | 说明 |
 |---|---|
 | `src/api/client.ts` | 调用 `weflow serve`：负责查询参数或 JSON 请求体，带上令牌，出错时抛出带服务端错误码的 `ApiError` |
-| `src/api/backend.ts` | 读取 `/health`，检查版本，提供 `useBackend` |
+| `src/api/backend.ts` | 连接状态：保持 `/health/events` 长连接，加上看门狗和退避重连（#221）；检查版本，提供 `useBackend` |
 | `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/chat/statuses`，每次 100 个） |
 | `src/styles/tokens.css` | 设计令牌：字号、控件高度、圆角、颜色（含深色模式）、新拟态的五种表面（#220）、动效时长和缓动（#192、#193）。页面样式只引用这些变量 |
 | `src/motion.ts` | 弹簧预设，`usePresence` 让浮层、对话框和提示播完退出动画再移除 |

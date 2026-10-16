@@ -8,18 +8,50 @@ afterEach(() => {
   localStorage.clear();
 });
 
-async function renderWith(health: Response | Error) {
-  vi.stubGlobal('fetch', vi.fn(() => (health instanceof Error ? Promise.reject(health) : Promise.resolve(health.clone()))));
+/** The server's event stream (`/health/events`): `hello` with `serving`, or an error when there is no server. */
+let serving: object | null = null;
+const opened: FakeEventSource[] = [];
+
+class FakeEventSource {
+  onerror: ((event: Event) => void) | null = null;
+  closed = false;
+  private listeners = new Map<string, ((event: MessageEvent) => void)[]>();
+  constructor(readonly url: string) {
+    opened.push(this);
+    queueMicrotask(() => {
+      if (this.closed) return;
+      if (serving) this.emit('hello', serving);
+      else this.fail();
+    });
+  }
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  close() { this.closed = true; }
+  emit(type: string, data: unknown) {
+    for (const listener of this.listeners.get(type) ?? []) listener(new MessageEvent(type, { data: JSON.stringify(data) }));
+  }
+  fail() { this.onerror?.(new Event('error')); }
+}
+
+/** Runs a server saying `health` (none for null). */
+function serve(health: object | null) {
+  serving = health;
+  vi.stubGlobal('EventSource', FakeEventSource);
+}
+
+async function renderWith(health: object | null) {
+  serve(health);
   render(<App />);
   await act(async () => {});
 }
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
-const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' };
+const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0-rc.5', data: 'a' };
 
 describe('App', () => {
   it('shows the workspace with the sample records while no backend is connected', async () => {
-    await renderWith(new TypeError('Failed to fetch'));
+    await renderWith(null);
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeTruthy();
     expect(screen.getByRole('region', { name: '操作控制台' })).toBeTruthy();
     expect(screen.queryByText('操作控制台')).toBeNull();
@@ -29,7 +61,7 @@ describe('App', () => {
   });
 
   it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
-    await renderWith(new TypeError('Failed to fetch'));
+    await renderWith(null);
     const nav = screen.getByRole('navigation', { name: '主导航' });
     expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '设置']);
     fireEvent.click(screen.getByRole('button', { name: '公众号' }));
@@ -38,9 +70,9 @@ describe('App', () => {
 
   it('lists the conversations of a running backend', async () => {
     const calls: string[] = [];
+    serve(HEALTH);
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       calls.push(url);
-      if (url === '/health') return json(HEALTH);
       if (url.startsWith('/api/chat/sessions')) {
         return json({ success: true, data: [
           { username: 'wxid_a', displayName: '林沐', summary: '你好', unreadCount: 1, sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1, messageCountHint: 42 },
@@ -80,8 +112,8 @@ describe('App', () => {
 
   it('says why the conversations could not be read and tries again', async () => {
     let fail = true;
+    serve(HEALTH);
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url === '/health') return json(HEALTH);
       if (url.startsWith('/api/chat/sessions')) {
         return fail
           ? new Response(JSON.stringify({ success: false, error: { code: 'config_error', message: 'no account' } }), { status: 409 })
@@ -99,15 +131,15 @@ describe('App', () => {
   });
 
   it('says when there is no backend or an incompatible one', async () => {
-    await renderWith(new TypeError('Failed to fetch'));
+    await renderWith(null);
     expect(screen.getByRole('status').textContent).toBe('未连接');
     cleanup();
-    await renderWith(new Response(JSON.stringify({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.3' })));
+    await renderWith({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.3', data: 'a' });
     expect(screen.getByRole('status').textContent).toBe('版本不兼容');
   });
 
   it('switches between the conversations and the settings', async () => {
-    await renderWith(new TypeError('Failed to fetch'));
+    await renderWith(null);
     fireEvent.click(screen.getByRole('button', { name: '选择陈屿' }));
     expect(screen.getByText('好的，周一见。', { selector: '.message-bubble' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
@@ -118,8 +150,8 @@ describe('App', () => {
     // The HTML export waits for the photo; hold that fetch until the export has been cancelled.
     let releasePhoto = () => {};
     const photo = new Promise<void>(resolve => { releasePhoto = resolve; });
-    vi.stubGlobal('fetch', vi.fn(async (path: string) => {
-      if (path === '/health') throw new TypeError('Failed to fetch');
+    serve(null);
+    vi.stubGlobal('fetch', vi.fn(async () => {
       await photo;
       return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { 'Content-Type': 'image/svg+xml' } });
     }));
@@ -151,7 +183,7 @@ describe('App', () => {
   });
 
   it('follows the reduce-motion switch on the root element', async () => {
-    await renderWith(new TypeError('Failed to fetch'));
+    await renderWith(null);
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '减少动画' }));
     expect(document.documentElement.classList.contains('reduced-motion')).toBe(true);
@@ -161,11 +193,8 @@ describe('App', () => {
   it('hides a steady connection after 3 s, shows it again when it is lost, and keeps showing no connection', async () => {
     vi.useFakeTimers();
     onTestFinished(() => { vi.useRealTimers(); });
-    let up = true;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      if (!up) throw new TypeError('Failed to fetch');
-      return new Response(JSON.stringify({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' }));
-    }));
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, data: [] })));
     render(<App />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     const status = () => document.querySelector('.connection')!;
@@ -175,8 +204,9 @@ describe('App', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
     expect(status().classList.contains('quiet')).toBe(true);
 
-    up = false;
-    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    // the server stops: the stream breaks, and the tries to connect again fail
+    serving = null;
+    await act(async () => { opened[opened.length - 1].fail(); });
     expect(status().textContent).toBe('未连接');
     expect(status().classList.contains('quiet')).toBe(false);
     await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
@@ -184,12 +214,12 @@ describe('App', () => {
   });
 
   it('folds the sidebar from its bottom-left button and remembers it', async () => {
-    await renderWith(new TypeError('Failed to fetch'));
+    await renderWith(null);
     fireEvent.click(screen.getByRole('button', { name: '收起侧边栏' }));
     expect(screen.getByRole('main').classList.contains('sidebar-collapsed')).toBe(true);
     expect(localStorage.getItem('weflow.sidebar')).toBe('folded');
     cleanup();
-    await renderWith(new TypeError('Failed to fetch'));
+    await renderWith(null);
     expect(screen.getByRole('main').classList.contains('sidebar-collapsed')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '展开侧边栏' }));
     expect(screen.getByRole('main').classList.contains('sidebar-collapsed')).toBe(false);

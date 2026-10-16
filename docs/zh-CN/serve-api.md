@@ -72,7 +72,7 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 
 ## 鉴权
 
-除 `GET /health` 外，所有请求都需要令牌，放在 `Authorization: Bearer <令牌>` 头里，或作为 `access_token` 查询参数。没有配置令牌时，`serve` 每次启动生成一个，显示在启动提示里（加 `--json` 时为 `generatedToken`）；设置 `http_api_token` 或传入 `--api-token` 可以固定令牌。
+除 `GET /health` 和 `GET /health/events` 外，所有请求都需要令牌，放在 `Authorization: Bearer <令牌>` 头里，或作为 `access_token` 查询参数。没有配置令牌时，`serve` 每次启动生成一个，显示在启动提示里（加 `--json` 时为 `generatedToken`）；设置 `http_api_token` 或传入 `--api-token` 可以固定令牌。
 
 监听回环地址时（默认如此），服务端还会检查每个请求的 `Host` 头，`/health` 也不例外：只响应 `localhost` 和回环地址（`127.0.0.1`、`[::1]` 等），端口不限；其他名称返回 `403`，错误码为 `invalid_host`。这样网页就无法把自己的域名解析到 `127.0.0.1` 来访问 API（DNS rebinding）。用 `--host` 监听其他地址时不做这项检查，因为这时本来就要通过其他名称访问这台机器。
 
@@ -230,7 +230,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 - 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
 - `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
 - 响应只描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`；不描述每条命令 `data` 的结构。
-- `/health`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
+- `/health`、`/health/events`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:18108/openapi.json
@@ -243,6 +243,15 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 ```
 
 `data` 是一个不透明的值：服务器每次启动、配置每次改变（例如换成另一个账号）时都会变化。变化之前读到的记录可能属于另一个账号，所以网页会丢掉已经保存的内容（消息、群成员、有消息的日期），重新读取。它是带密钥的哈希，密钥每次运行重新生成，不会透露配置的内容。
+
+### 保持连接
+
+`GET /health/events` 以服务器发送事件（SSE）的形式提供同样的内容。网页保持这一条连接，不必反复请求 `/health`。它和 `/health` 一样不需要令牌（`EventSource` 不能带请求头），同样做 `Host` 检查，也不会启动任何后台工作。
+
+- 连上后先发 `event: hello`，数据就是 `/health` 的响应；之后每 15 秒发一次 `event: heartbeat`，数据为 `{"data": "…"}`。心跳是事件而不是注释行，网页能收到。37.5 秒（两个半心跳间隔）没有任何事件，就说明连接半开（断网、NAT 超时等），这种情况单靠连接关闭是发现不了的。
+- `/api/push/messages` 开头发同样的 `hello`，也发同样的心跳，所以订阅它的网页不需要再开第二条流。
+
+网页只保持一条这样的流，并据此显示连接状态：流一断开（服务停止），指示立刻变为「未连接」；之后按 1、2、4 …… 最长 30 秒的间隔重连（上下浮动五分之一），网络恢复、切回标签页或点「重新检测」时立即重连。空闲时不发任何请求。网页和服务在同一台机器上（`127.0.0.1`）时，断网不会切断两者的连接，所以这时只立即重新确认一次，不直接变红。没有 `/health/events` 的服务端（5.0.0-rc.5 及更早）网页不再支持。
 
 ## 执行方式
 
@@ -318,7 +327,7 @@ const events = new EventSource("http://127.0.0.1:18108/api/push/messages?access_
 events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
 ```
 
-- 先发送 `ready` 事件，之后每条新消息是一个 `message.new` 事件，每次撤回是一个 `message.revoke` 事件。字段与桌面端的推送相同（见 [HTTP-API.md](HTTP-API.md#2-主动推送)），包括 `sessionId`、`sessionType`、`rawid`、`sourceName`、`groupName`、`content`、`timestamp` 等。每个事件都有 `id`。连接空闲时每 25 秒发送一行注释，防止连接被关闭。
+- 先发送 `hello` 事件（数据就是 `/health` 的响应）和 `ready` 事件，之后每条新消息是一个 `message.new` 事件，每次撤回是一个 `message.revoke` 事件。字段与桌面端的推送相同（见 [HTTP-API.md](HTTP-API.md#2-主动推送)），包括 `sessionId`、`sessionType`、`rawid`、`sourceName`、`groupName`、`content`、`timestamp` 等。每个消息事件都有 `id`。每 15 秒发一次 `heartbeat` 事件，防止空闲连接被关闭，也让客户端知道连接还活着（见[保持连接](#保持连接)）。
 - 服务器保留最近 10 分钟的事件，最多 1000 条。客户端可以带 `Last-Event-ID` 重连（EventSource 会自动这样做），也可以新开连接时带上 `?last-event-id=`，这两种情况都会收到该 id 之后的事件。两者都不带时，会收到所有保留的事件。
 - 只有在有人订阅时，服务器才会每秒检查一次账号的会话库和消息库是否有变化，有变化时才用进程内读取的 hub 查找新消息；即使没有变化，至少每 30 秒也会查找一次。新消息一两秒内就会到达网页。在大账号上，有人订阅时服务端每秒约占用 5 ms CPU。第一个订阅者以订阅那一刻账号里已有的内容为起点；配置变化（例如换了账号）之后的订阅者也一样。
 - 只允许 `GET`。这个连接不计入 `--max-reads`。它与桌面端的 `--message-push` 不是一回事，后者属于 `--desktop`。

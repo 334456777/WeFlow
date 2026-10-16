@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkBackend, compareVersions, incompatibility } from './backend';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
 
 const web = { name: 'weflow-web', version: '0.1.0', apiVersion: '1', minBackendVersion: '5.0.0-rc.4' };
 
@@ -33,17 +33,154 @@ describe('incompatibility', () => {
   });
 });
 
-describe('checkBackend', () => {
-  it('reads /health', async () => {
-    const health = { status: 'ok', apiVersion: '1', version: '9.0.0' };
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(health))));
-    await expect(checkBackend()).resolves.toEqual({ state: 'ready', health });
+/** A stand-in for EventSource: the test says what the server sends. */
+class FakeStream implements Stream {
+  onerror: ((event: Event) => void) | null = null;
+  closed = false;
+  private listeners = new Map<string, ((event: MessageEvent) => void)[]>();
+  constructor(readonly url: string) {}
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  close() { this.closed = true; }
+  send(type: string, data: unknown) {
+    for (const listener of this.listeners.get(type) ?? []) listener(new MessageEvent(type, { data: JSON.stringify(data) }));
+  }
+  fail() { this.onerror?.(new Event('error')); }
+}
+
+const health = { status: 'ok', apiVersion: '1', version: '9.0.0', data: 'a' };
+
+/** A connection on fake streams and timers: the streams it opened, and the states it reported. */
+function connection(options: { loopback?: boolean } = {}) {
+  const streams: FakeStream[] = [];
+  const states: Backend[] = [];
+  const live = new Connection(state => states.push(state), {
+    open: url => { const stream = new FakeStream(url); streams.push(stream); return stream; },
+    loopback: options.loopback ?? true,
+    random: () => 0.5,
+  });
+  live.start();
+  const last = () => streams[streams.length - 1];
+  return { live, streams, states, last, now: () => states[states.length - 1] };
+}
+
+describe('Connection (#221)', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('is ready on hello, and offline the moment the stream breaks', () => {
+    const c = connection();
+    expect(c.streams).toHaveLength(1);
+    expect(c.last().url).toBe('/health/events');
+    c.last().send('hello', health);
+    expect(c.now()).toEqual({ state: 'ready', health });
+    // heartbeats change nothing
+    c.last().send('heartbeat', { data: 'a' });
+    expect(c.states).toHaveLength(1);
+    c.last().fail();
+    expect(c.now()).toEqual({ state: 'offline' });
+    expect(c.streams[0].closed).toBe(true);
+    c.live.stop();
   });
 
-  it('is offline without a server or with an error', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
-    await expect(checkBackend()).resolves.toEqual({ state: 'offline' });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 502 })));
-    await expect(checkBackend()).resolves.toEqual({ state: 'offline' });
+  it('says when the server does not suit this page', () => {
+    const c = connection();
+    c.last().send('hello', { ...health, apiVersion: '2' });
+    expect(c.now().state).toBe('incompatible');
+    c.live.stop();
+  });
+
+  it('tells a new account by the data of a heartbeat', () => {
+    const c = connection();
+    c.last().send('hello', health);
+    c.last().send('heartbeat', { data: 'b' });
+    expect(c.now()).toEqual({ state: 'ready', health: { ...health, data: 'b' } });
+    c.live.stop();
+  });
+
+  it('drops a silent stream after the watchdog and connects again', () => {
+    const c = connection();
+    c.last().send('hello', health);
+    vi.advanceTimersByTime(15_000);
+    c.last().send('heartbeat', { data: 'a' });
+    vi.advanceTimersByTime(WATCHDOG_MS - 1);
+    expect(c.now().state).toBe('ready');
+    vi.advanceTimersByTime(1);
+    expect(c.now()).toEqual({ state: 'offline' });
+    expect(c.streams[0].closed).toBe(true);
+    vi.advanceTimersByTime(1_000);
+    expect(c.streams).toHaveLength(2);
+    c.live.stop();
+  });
+
+  it('waits 1, 2, 4 … 30 s between tries, and starts over once connected', () => {
+    expect([0, 1, 2, 3, 4, 5, 6, 9].map(n => retryDelay(n, () => 0.5))).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000]);
+    expect(retryDelay(0, () => 0)).toBe(800);
+    expect(retryDelay(9, () => 1)).toBe(30_000);
+    const c = connection();
+    const waits: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      c.last().fail();
+      const before = c.streams.length;
+      let waited = 0;
+      while (c.streams.length === before) { vi.advanceTimersByTime(100); waited += 100; }
+      waits.push(waited);
+    }
+    expect(waits).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]);
+    c.last().send('hello', health);
+    c.last().fail();
+    vi.advanceTimersByTime(1_000);
+    expect(c.streams).toHaveLength(9);
+    c.live.stop();
+  });
+
+  it('connects at once when the network or the tab comes back, or when asked', () => {
+    const c = connection();
+    c.last().fail();
+    for (let i = 0; i < 3; i++) { vi.advanceTimersByTime(30_000); c.last().fail(); }
+    const opened = c.streams.length;
+    window.dispatchEvent(new Event('online'));
+    expect(c.streams).toHaveLength(opened + 1);
+    c.last().fail();
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(c.streams).toHaveLength(opened + 2);
+    c.last().fail();
+    c.live.reconnect();
+    expect(c.streams).toHaveLength(opened + 3);
+    // ready and heard from lately: coming back changes nothing
+    c.last().send('hello', health);
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(c.streams).toHaveLength(opened + 3);
+    // ready, but the timers slept in the background past the watchdog
+    vi.setSystemTime(Date.now() + WATCHDOG_MS + 1);
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(c.streams).toHaveLength(opened + 4);
+    c.live.stop();
+  });
+
+  it('does not turn red when the network goes on this machine, but does across machines', () => {
+    const near = connection({ loopback: true });
+    near.last().send('hello', health);
+    window.dispatchEvent(new Event('offline'));
+    expect(near.now().state).toBe('ready');
+    // it only checked again
+    expect(near.streams).toHaveLength(2);
+    near.live.stop();
+
+    const far = connection({ loopback: false });
+    far.last().send('hello', health);
+    window.dispatchEvent(new Event('offline'));
+    expect(far.now()).toEqual({ state: 'offline' });
+    far.live.stop();
+  });
+
+  it('stops for good', () => {
+    const c = connection();
+    c.live.stop();
+    expect(c.last().closed).toBe(true);
+    vi.advanceTimersByTime(60_000);
+    window.dispatchEvent(new Event('online'));
+    expect(c.streams).toHaveLength(1);
   });
 });
