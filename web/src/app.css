@@ -245,6 +245,73 @@ time, .num { font-variant-numeric: tabular-nums; }
 .mobile-back { display: none !important; }
 
 /*
+ * Real messages (#198). The edge of the history keeps one height whether it loads or not, so nothing above the
+ * messages jumps. In a group the sender's picture and name lead their first message in a row.
+ */
+/* Neither the edge nor a day's heading anchors the scroll: older messages arrive between them and the rest. */
+.history-edge, .messages.live .date-separator { overflow-anchor: none; }
+.history-edge {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control-md);
+  color: var(--fg-subtle); font-size: var(--text-2xs);
+}
+.message-row.with-avatar { align-items: flex-start; }
+.message-row .message-time { align-self: flex-end; }
+.message-row .avatar { width: 32px; height: 32px; font-size: var(--text-sm); }
+.avatar-gap { width: 32px; flex-shrink: 0; }
+.message-body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: min(560px, calc(100% - 88px)); }
+.outgoing .message-body { align-items: flex-end; }
+.message-body > .message-bubble, .message-body > .photo-button { max-width: 100%; }
+.message-sender { margin: 0 0 2px var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+.message-row.system { justify-content: center; }
+.system-message { max-width: 80%; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); text-align: center; overflow-wrap: anywhere; }
+
+/* Pictures and videos: WeChat's thumbnail at its own shape, within 240px; an empty frame while it loads. */
+.message-thumb { display: block; max-width: 240px; max-height: 240px; min-width: 48px; min-height: 48px; object-fit: cover; border-radius: var(--radius-md); }
+.message-thumb.loading { width: 160px; height: 120px; }
+.video-button { position: relative; }
+.play-badge {
+  position: absolute; top: 50%; left: 50%; display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%;
+  background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg); opacity: .9;
+}
+.media-missing {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1);
+  min-width: 120px; min-height: 80px; color: var(--fg-subtle); font-size: var(--text-2xs);
+}
+.emoji-sticker img { display: block; max-width: 120px; max-height: 120px; }
+.preview-video { display: block; max-width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 120px); margin: 0 auto; }
+
+/* Voice: a button whose length follows the duration, with a row of bars that pulse while it plays. */
+.voice-bubble { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 72px; color: var(--fg); font-size: var(--text-sm); text-align: left; }
+.voice-wave { flex: 1; height: 10px; background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 5px); opacity: .35; border-radius: 1px; }
+.voice-bubble.playing .voice-wave { animation: pulse var(--loop-pulse) ease-in-out infinite; }
+.voice-bubble.error { color: var(--fg-muted); }
+
+/* Cards: links, Channels posts, files, chat records, contacts, places, red packets and transfers. */
+.card-bubble { display: flex; flex-direction: column; gap: var(--space-1); width: min(280px, 100%); color: inherit; text-decoration: none; font-size: var(--text-sm); }
+a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underline-offset: 3px; }
+.card-bubble-title { display: flex; align-items: flex-start; gap: var(--space-1); font-weight: var(--weight-semibold); }
+.card-bubble-title svg { margin-top: 3px; }
+.card-bubble-body { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.card-bubble-body > span { flex: 1; min-width: 0; }
+.card-thumb { width: 48px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-sm); }
+.card-bubble-foot { display: flex; align-items: center; gap: var(--space-1); padding-top: var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+.finder-cover { position: relative; display: block; overflow: hidden; border-radius: var(--radius-md); }
+.finder-cover img { display: block; width: 100%; max-height: 260px; object-fit: cover; }
+.record-lines { display: flex; flex-direction: column; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.record-lines > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.record-lines.open > span { white-space: pre-wrap; overflow-wrap: anywhere; }
+.record-lines:not(.open) > span:nth-child(n + 4) { display: none; }
+.contact-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.location-bubble > span { color: var(--fg-muted); font-size: var(--text-xs); }
+.money-bubble > span { color: var(--fg-muted); font-size: var(--text-xs); }
+.call-bubble { display: inline-flex; align-items: center; gap: var(--space-2); }
+.quote-bubble { display: flex; flex-direction: column; gap: var(--space-1); }
+.quote-block { padding: 2px var(--space-2); border-radius: var(--radius-sm); box-shadow: var(--neu-pressed); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); white-space: normal; }
+.text-button { align-self: flex-start; color: var(--fg-muted); font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 3px; }
+.text-button:hover { color: var(--fg); }
+
+/*
  * Operations console: a column of raised cards on the page, like the side panel of Claude Code. Each card
  * opens and closes from its header (the body's grid row runs from 0fr to 1fr) and can be dragged into place.
  */
