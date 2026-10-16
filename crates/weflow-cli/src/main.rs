@@ -685,7 +685,7 @@ struct PageArgs {
     /// Only messages newer than this one (the `_cursor` of a message): the closest ones, still newest first
     #[arg(long, conflicts_with = "offset")]
     after: Option<String>,
-    /// Only messages sent at this time or later (Unix seconds): the earliest ones, still newest first, as when a chat window jumps to a day
+    /// The messages from where this time (Unix seconds) falls in the chat's order: the earliest ones, still newest first, as when a chat window jumps to a day
     #[arg(long, conflicts_with_all = ["offset", "before", "after"])]
     since: Option<i64>,
     /// Each message parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row

@@ -345,6 +345,69 @@ fn pages_from_a_cursor_follow_the_offset_order() {
 }
 
 #[test]
+fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
+    // WeChat orders a chat by sort_seq, the send time in milliseconds plus a little; a message may be ordered a
+    // second or two off its own send time (issue #242)
+    let t = T0 + 100;
+    let (hub, _root, _f) = common::custom_hub("since-drift", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        let msg = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, &format!("m{id}"));
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![
+                    msg(1, t - 10),
+                    // sent before t, ordered after it
+                    msg(2, t - 1).with_sort_seq(t * 1000 + 1),
+                    // sent at t, ordered before it
+                    msg(3, t).with_sort_seq(t * 1000 - 1),
+                    msg(4, t + 10),
+                ],
+            )],
+        );
+        f.message_shard(1, &[("wxid_bob", vec![msg(5, t + 20), msg(6, t - 20)])]);
+    });
+    let ids = |page: &serde_json::Value| -> Vec<i64> {
+        page.as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["local_id"].as_i64().unwrap())
+            .collect()
+    };
+    let newest_first = ids(&hub.message_page("wxid_bob", 10, 0, None, None).unwrap());
+    assert_eq!(newest_first, vec![5, 4, 2, 3, 1, 6], "the chat order");
+    // the page starts where t falls in that order: 2 opens it, 3 sits right above it
+    let since = hub.message_page_since("wxid_bob", 10, t).unwrap();
+    assert_eq!(ids(&since), vec![5, 4, 2]);
+    // pages on both ways join it without a gap or a repeat, in small pages too
+    let mut seen = ids(&since);
+    let mut cursor = since[2]["_cursor"].as_str().unwrap().to_string();
+    loop {
+        let older = hub
+            .message_page("wxid_bob", 1, 0, Some(&cursor), None)
+            .unwrap();
+        let Some(last) = older.as_array().unwrap().last() else {
+            break;
+        };
+        cursor = last["_cursor"].as_str().unwrap().to_string();
+        seen.extend(ids(&older));
+    }
+    assert_eq!(seen, newest_first);
+    let small = hub.message_page_since("wxid_bob", 1, t).unwrap();
+    assert_eq!(ids(&small), vec![2]);
+    let newer = hub
+        .message_page("wxid_bob", 10, 0, None, small[0]["_cursor"].as_str())
+        .unwrap();
+    assert_eq!(ids(&newer), vec![5, 4]);
+    // a moment exactly at an order position: that message opens the page
+    assert_eq!(
+        ids(&hub.message_page_since("wxid_bob", 1, t + 10).unwrap()),
+        vec![4]
+    );
+}
+
+#[test]
 fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
     let (hub, _root, _f) = common::custom_hub("since", |f| {
         f.session_db(&[session("wxid_bob")]);
