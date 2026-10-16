@@ -14,14 +14,64 @@ async function renderWith(health: Response | Error) {
   await act(async () => {});
 }
 
+const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0-rc.4' };
+
 describe('App', () => {
-  it('shows the workspace and a running backend', async () => {
-    await renderWith(new Response(JSON.stringify({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.4' })));
+  it('shows the workspace with the sample records while no backend is connected', async () => {
+    await renderWith(new TypeError('Failed to fetch'));
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeTruthy();
     expect(screen.getByRole('region', { name: '操作控制台' })).toBeTruthy();
     expect(screen.queryByText('操作控制台')).toBeNull();
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料', '媒体文件']);
+    expect(screen.getByText('示例数据 · 连接 weflow serve 后显示真实会话')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '选择设计协作群' }).textContent).toContain('李婷：这版看起来不错');
+  });
+
+  it('lists the conversations of a running backend', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      if (url === '/health') return json(HEALTH);
+      if (url.startsWith('/api/chat/sessions')) {
+        return json({ success: true, data: [
+          { username: 'wxid_a', displayName: '林沐', summary: '你好', unreadCount: 1, sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1, messageCountHint: 42 },
+          { username: 'g@chatroom', displayName: '家人群', summary: '晚饭', unreadCount: 0, sortTimestamp: 1750000000, lastTimestamp: 1750000000, lastMsgType: 1 },
+        ] });
+      }
+      if (url.startsWith('/chat/statuses')) return json({ success: true, data: { 'g@chatroom': { isFolded: true, isMuted: true } } });
+      throw new TypeError('unexpected ' + url);
+    }));
+    render(<App />);
+    await act(async () => {});
     expect(screen.getByRole('status').textContent).toBe('已连接');
+    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '折叠的群聊']);
+    expect(calls).toContain('/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
+    // The first conversation is opened; search and media wait for its messages (#198, #199).
+    expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
+    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '会话资料']);
+    expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', true);
+    expect(screen.getByText('约 42 条记录', { exact: false })).toBeTruthy();
+  });
+
+  it('says why the conversations could not be read and tries again', async () => {
+    let fail = true;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/health') return json(HEALTH);
+      if (url.startsWith('/api/chat/sessions')) {
+        return fail
+          ? new Response(JSON.stringify({ success: false, error: { code: 'config_error', message: 'no account' } }), { status: 409 })
+          : json({ success: true, data: [] });
+      }
+      return json({ success: true, data: {} });
+    }));
+    render(<App />);
+    await act(async () => {});
+    expect(screen.getByRole('alert').textContent).toContain('weflow 还没有配置账号');
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    await act(async () => {});
+    expect(screen.getByText('这个账号还没有会话。')).toBeTruthy();
   });
 
   it('says when there is no backend or an incompatible one', async () => {

@@ -66,9 +66,12 @@ npm run dev                               # http://localhost:5173/ui/
 |---|---|
 | `src/api/client.ts` | 调用 `weflow serve`：负责查询参数或 JSON 请求体，带上令牌，出错时抛出带服务端错误码的 `ApiError` |
 | `src/api/backend.ts` | 读取 `/health`，检查版本，提供 `useBackend` |
+| `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/chat/statuses`，每次 100 个） |
 | `src/styles/tokens.css` | 设计令牌：字号、控件高度、圆角、颜色（含深色模式）、新拟态的五种表面（#220）、动效时长和缓动（#192、#193）。页面样式只引用这些变量 |
 | `src/motion.ts` | 弹簧预设，`usePresence` 让浮层、对话框和提示播完退出动画再移除 |
 | `src/CardStack.tsx` | 操作控制台的卡片：点标题展开或收起；用鼠标拖动或按 Alt+↑ / Alt+↓ 调整顺序。顺序和展开状态保存在浏览器的 `localStorage` 里 |
+| `src/VirtualList.tsx` | 只绘制看得见的行的列表，用于成千上万行的列表（#159） |
+| `src/chat/` | 聊天页（#196）：会话列表，含搜索、筛选、折叠的群聊和方向键切换（#197） |
 | `src/App.tsx`、`src/app.css` | 工作台界面：左侧导航，中间是记录，右侧是操作控制台 |
 | `src/mock/` | 示例记录，界面接入 API 后删除 |
 | `src/export.ts` | 在浏览器里导出示例记录。真正的导出将调用 `export messages` 并用 `?return=file` 取回文件 |

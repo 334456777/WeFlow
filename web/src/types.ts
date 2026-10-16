@@ -25,6 +25,11 @@ export interface Conversation {
   stamp: string;
   description: string;
   messages: Message[];
+  /** Read from `weflow serve` rather than the sample records. */
+  live?: boolean;
+  messageCount?: number;
+  /** Unix seconds of the last message. */
+  lastTime?: number;
 }
 
 export interface ExportOptions {

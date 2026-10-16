@@ -168,6 +168,38 @@ time, .num { font-variant-numeric: tabular-nums; }
 .conversation-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-md); font-weight: var(--weight-medium); }
 .conversation-time { flex-shrink: 0; color: var(--fg-subtle); font-size: var(--text-2xs); }
 .conversation-preview { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.conversation-foot { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.conversation-foot .conversation-preview { flex: 1; min-width: 0; }
+.muted-icon { color: var(--fg-subtle); }
+/* Unread messages: a small raised count, or only a dot for a muted conversation. Neutral grey, not a status colour. */
+.unread-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; flex-shrink: 0;
+  border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--neu-raised-sm);
+  color: var(--fg); font-size: var(--text-2xs); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums;
+}
+.unread-dot { width: 8px; height: 8px; flex-shrink: 0; margin: 0 5px; border-radius: 50%; background: var(--fg-subtle); }
+
+/* The conversation list of the chat page (#197): search and filter on top, the rows below in a virtual list. */
+.session-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.session-tools { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-3) var(--space-1); }
+.session-search { flex: none; }
+.session-filter { height: var(--control-sm); }
+.session-filter > button { padding: 0 var(--space-1); font-size: var(--text-xs); }
+.session-note { color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+.folded-head { display: flex; align-items: center; gap: var(--space-2); height: var(--control-sm); font-size: var(--text-sm); }
+.folded-head .num { color: var(--fg-subtle); font-size: var(--text-xs); }
+.session-message { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-4); color: var(--fg-muted); font-size: var(--text-sm); }
+.virtual-list.conversation-list { position: relative; display: block; flex: 1; padding: 0; }
+.virtual-space { position: relative; }
+.virtual-row { position: absolute; top: 0; left: var(--space-2); right: var(--space-2); }
+.virtual-row > .conversation-row { height: calc(100% - 2px); }
+.session-skeleton { flex: 1; overflow: hidden; }
+.skeleton-row { display: flex; align-items: center; gap: var(--space-3); height: 56px; flex-shrink: 0; padding: 0 var(--space-3); }
+.skeleton-row > span:last-child { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); }
+.skeleton.line { display: block; width: 70%; height: 10px; }
+.skeleton.line.short { width: 45%; }
+.pane-message { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); height: 100%; color: var(--fg-muted); font-size: var(--text-sm); text-align: center; }
+.pane-message strong { color: var(--fg); font-size: var(--text-md); }
 /* The messages sit in a hollow inside the panel. */
 .message-pane { min-width: 0; margin: var(--space-2); padding: var(--space-3) var(--space-5) var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--neu-inset); scroll-behavior: smooth; }
 .date-separator { width: fit-content; margin: var(--space-3) auto var(--space-2); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
@@ -263,6 +295,8 @@ time, .num { font-variant-numeric: tabular-nums; }
 .export-side:hover { box-shadow: var(--neu-raised-hover); }
 .export-side:active { box-shadow: var(--neu-pressed); transform: scale(var(--press-scale)); }
 .export-control.expanded .export-side { width: var(--control-lg); margin-left: var(--space-3); opacity: 1; }
+.card-note { margin-top: var(--space-3); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.export-pending { width: 240px; max-width: 100%; margin-top: var(--space-4); }
 .morph-label { display: inline-flex; align-items: center; gap: var(--space-2); animation: label-in var(--duration-base) var(--ease-out); }
 
 /* Narrow cards: labels above their fields. */
@@ -414,10 +448,10 @@ time, .num { font-variant-numeric: tabular-nums; }
   .sidebar { position: sticky; top: 0; height: 100dvh; }
   .main-area { --gutter: var(--space-4); grid-template-rows: auto auto; }
   .browser-panel { display: block; height: 60dvh; min-height: 360px; }
-  .conversation-list { height: 100%; }
+  .conversation-list, .session-pane { height: 100%; }
   .message-pane { display: none; height: calc(100% - 2 * var(--space-2)); padding: var(--space-2) var(--space-3); }
   .show-detail .message-pane { display: block; }
-  .show-detail .conversation-list { display: none; }
+  .show-detail .conversation-list, .show-detail .session-pane { display: none; }
   .mobile-back { display: inline-flex !important; margin-bottom: var(--space-1); }
   .console { overflow: visible; }
   .search-date-row { flex-wrap: wrap; gap: var(--space-2); }

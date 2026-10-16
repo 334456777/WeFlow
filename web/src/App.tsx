@@ -2,17 +2,23 @@
 // console on the right as in Claude.ai (#130).
 // Records are still sample data (src/mock); the connection state is the real `weflow serve`.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, FormEvent, ReactNode } from 'react';
+import type { FormEvent } from 'react';
 import {
   Aperture, ArrowClockwise, ArrowLeft, ArrowsLeftRight, ArrowSquareOut, Article, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, Circle, CircleNotch,
   DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend } from './api/backend';
+import type { ChatSession } from './api/chat';
+import { Avatar } from './Avatar';
 import { CardStack, type Card } from './CardStack';
+import { SessionList } from './chat/SessionList';
+import { formatSessionTime, kindLabels, kindOf } from './chat/sessions';
+import { useSessions, type SessionsState } from './chat/useSessions';
 import { exportConversation } from './export';
-import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay } from './mock/data';
+import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
+import { Segmented } from './Segmented';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -74,21 +80,20 @@ function prefersReducedMotion(setting: boolean): boolean {
   return setting || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 }
 
-function Avatar({ conversation }: { conversation: Conversation }) {
-  return conversation.avatar
-    ? <img className="avatar" src={conversation.avatar} alt="" />
-    : <span className="avatar avatar-initial" aria-hidden="true">{Array.from(conversation.name)[0]}</span>;
-}
+const SAMPLE_SESSIONS: SessionsState = { status: 'ready', sessions: sampleSessions, statuses: {} };
+// Until /health has answered, neither the sample nor the real list: no sample flashes up before the real one.
+const CHECKING: SessionsState = { status: 'loading' };
 
-/** Options in a pill with a thumb that slides to the selected one. */
-function Segmented({ count, index, className, children, ...rest }: {
-  count: number; index: number; className: string; children: ReactNode;
-  role?: string; 'aria-label': string;
-}) {
-  const style = { '--count': count, '--index': index } as CSSProperties;
-  return <div className={'segmented ' + className} style={style} {...rest}>
-    <span className="segmented-thumb" aria-hidden="true" />{children}
-  </div>;
+/** A conversation of `weflow serve`, for the console; its messages are read by #198. */
+function liveConversation(session: ChatSession | undefined): Conversation {
+  if (!session) return { id: '', category: 'chat', name: '', preview: '', stamp: '', description: '', messages: [], live: true };
+  const count = session.messageCountHint;
+  return {
+    id: session.username, category: 'chat', name: session.displayName || session.username, avatar: session.avatarUrl,
+    preview: session.summary, stamp: formatSessionTime(session.lastTimestamp),
+    description: kindLabels[kindOf(session.username)] + (count ? ' · 约 ' + count + ' 条记录' : ''),
+    messages: [], live: true, messageCount: count, lastTime: session.lastTimestamp,
+  };
 }
 
 function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: (value: string) => void; onTo: (value: string) => void }) {
@@ -136,7 +141,9 @@ function TaskStatus({ conversation, from, to, connected, stage, result, error }:
       </li>
       <li className="task complete">
         <span className="task-icon"><Check size={12} weight="bold" /></span>
-        <div><strong>已载入{conversation.name}的{conversation.category === 'chat' ? '聊天记录' : '记录'}</strong><small>({from || '不限'} ~ {to || '不限'})</small></div><time>14:11</time>
+        <div>{conversation.live
+          ? <strong>{conversation.name ? '已选择' + conversation.name : '还没有选择会话'}</strong>
+          : <><strong>已载入{conversation.name}的{conversation.category === 'chat' ? '聊天记录' : '记录'}</strong><small>({from || '不限'} ~ {to || '不限'})</small></>}</div><time>14:11</time>
       </li>
       <li className={'task last ' + (stage === 'error' ? 'error' : completed ? 'complete' : '')}>
         <span className="task-icon">{stage === 'exporting' ? <CircleNotch size={16} className="spin" /> : completed ? <Check size={12} weight="bold" /> : <Circle size={16} />}</span>
@@ -183,8 +190,17 @@ export function App() {
   const shownPreview = usePresence(preview);
   const shownToast = usePresence(toast);
 
+  // The chat page reads `weflow serve` once it is connected; until then, and on the other pages, sample records.
+  const live = activeCategory === 'chat' && (connected || backend.state === 'checking');
+  const [liveSessions, reloadSessions] = useSessions(connected);
+  const [liveId, setLiveId] = useState<string | null>(null);
+  const sessionList = liveSessions.status === 'ready' ? liveSessions.sessions : [];
+  const liveSession = sessionList.find(session => session.username === liveId);
+  useEffect(() => {
+    if (!liveSession && sessionList.length) setLiveId(sessionList[0].username);
+  }, [liveSession, sessionList]);
   const list = conversations.filter(item => item.category === activeCategory);
-  const selected = list.find(item => item.id === selectedIds[activeCategory]) || list[0];
+  const selected = live ? liveConversation(liveSession) : list.find(item => item.id === selectedIds[activeCategory]) || list[0];
   const media = selected.messages.filter(message => message.kind !== 'text');
   const results = useMemo(() => submittedQuery === null ? [] : selected.messages.filter(message => {
     const matchesDate = !searchDatesOpen || ((!from || message.date >= from) && (!to || message.date <= to));
@@ -230,8 +246,9 @@ export function App() {
     if (value !== 'settings') { setActiveCategory(value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
-  const selectConversation = (conversation: Conversation) => {
-    setSelectedIds(current => ({ ...current, [activeCategory]: conversation.id }));
+  const selectConversation = (id: string) => {
+    if (live) setLiveId(id);
+    else setSelectedIds(current => ({ ...current, [activeCategory]: id }));
     setMobileDetail(true); setSubmittedQuery(null); setQuery(''); resetExport();
   };
 
@@ -259,7 +276,7 @@ export function App() {
     {
       id: 'export', title: '导出', summary: format + (includeMedia ? ' · 含媒体' : ''),
       content: <>
-        <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span><span className="badge">示例数据</span></p>
+        <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
         <div className="form-row"><span className="field-label">时间范围</span><DateRange from={from} to={to} onFrom={value => { setFrom(value); resetExport(); }} onTo={value => { setTo(value); resetExport(); }} /></div>
         <div className="form-row format-row"><span className="field-label">导出格式</span>
           <Segmented className="format-group" count={formats.length} index={formats.indexOf(format)} role="group" aria-label="导出格式">
@@ -267,7 +284,9 @@ export function App() {
           </Segmented>
           <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>图片、语音、视频与表情</small></span></label>
         </div>
-        <ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={resetExport} />
+        {selected.live
+          ? <><button type="button" className="primary-button large export-pending" disabled><DownloadSimple size={18} />开始导出</button><p className="card-note">真实记录的导出将由 weflow serve 生成，在导出页（#211）接入。</p></>
+          : <ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={resetExport} />}
       </>,
     },
     {
@@ -291,10 +310,12 @@ export function App() {
       </>,
     },
     {
-      id: 'info', title: '会话资料', summary: selected.messages.length + ' 条记录',
+      id: 'info', title: '会话资料', summary: selected.live ? (selected.messageCount ? '约 ' + selected.messageCount + ' 条' : '') : selected.messages.length + ' 条记录',
       content: <>
-        <div className="info-content"><Avatar conversation={selected} /><div><h4>{selected.name}</h4><p className="clamp-2">{selected.description}</p></div></div>
-        <dl className="info-grid"><div><dt>类型</dt><dd>{categoryLabels[selected.category]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messages.length} 条</dd></div><div><dt>媒体文件</dt><dd className="num">{media.length} 个</dd></div><div><dt>时间范围</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>
+        <div className="info-content"><Avatar name={selected.name} url={selected.avatar} /><div><h4>{selected.name}</h4><p className="clamp-2">{selected.description}</p></div></div>
+        {selected.live
+          ? <dl className="info-grid"><div><dt>类型</dt><dd>{kindLabels[kindOf(selected.id)]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messageCount ? '约 ' + selected.messageCount + ' 条' : '—'}</dd></div><div><dt>最后一条消息</dt><dd className="num">{selected.lastTime ? new Date(selected.lastTime * 1000).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</dd></div></dl>
+          : <dl className="info-grid"><div><dt>类型</dt><dd>{categoryLabels[selected.category]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messages.length} 条</dd></div><div><dt>媒体文件</dt><dd className="num">{media.length} 个</dd></div><div><dt>时间范围</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>}
       </>,
     },
     {
@@ -302,6 +323,8 @@ export function App() {
       content: <div className="media-list">{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
   ];
+  // Search and media need the messages (#198, #199).
+  const hiddenCards = selected.live ? ['search', 'media'] : [];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -330,17 +353,22 @@ export function App() {
         <div className="setting-row"><div><h2>减少动画</h2><p>所有过渡立即完成，状态提示保留。也跟随系统的「减少动态效果」。</p></div><label className="toggle"><input type="checkbox" aria-label="减少动画" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /><span /></label></div>
         <small className="settings-footnote">聊天记录目前是示例数据，页面接入 API 后替换。</small>
       </section> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
-        <div className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}>
-          {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation)}>
-            <Avatar conversation={conversation} />
+        {activeCategory === 'chat'
+          ? <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions} />
+          : <div className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}>
+          {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
+            <Avatar name={conversation.name} url={conversation.avatar} />
             <span className="conversation-copy">
               <span className="conversation-head"><span className="conversation-name">{conversation.name}</span><time className="conversation-time">{conversation.stamp}</time></span>
               <span className="conversation-preview clamp-1">{conversation.preview}</span>
             </span>
           </button>)}
-        </div>
+        </div>}
         <div className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
           <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
+          {selected.live && <div className="pane-message">{selected.name
+            ? <><strong>{selected.name}</strong><p>消息的显示还在开发中（#198）。</p></>
+            : liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>}
           <div className="messages">
             {selected.messages.map((message, index) => <div key={message.id}>
               {(index === 0 || selected.messages[index - 1].date !== message.date) && <div className="date-separator">{formatDay(message.date)}</div>}
@@ -358,7 +386,7 @@ export function App() {
       </section>}
 
       <section className="console scroll-area" aria-label="操作控制台">
-        <CardStack cards={cards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label="操作控制台" />
+        <CardStack cards={cards} hidden={hiddenCards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label="操作控制台" />
       </section>
     </div>
 

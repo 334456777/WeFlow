@@ -57,10 +57,14 @@ interface Drag {
   active: boolean;
 }
 
-export function CardStack({ cards, storageKey, defaultClosed, label }: {
+export function CardStack({ cards, storageKey, defaultClosed, label, hidden = [] }: {
   cards: Card[]; storageKey: string; defaultClosed: string[]; label: string;
+  /** Cards left out for now; they keep their place in the saved order and come back there. */
+  hidden?: readonly string[];
 }) {
   const [layout, setLayout] = useState(() => loadLayout(storageKey, cards.map(card => card.id), defaultClosed));
+  const hiddenNow = useRef(hidden);
+  hiddenNow.current = hidden;
   const [dragging, setDragging] = useState<string | null>(null);
   const container = useRef<HTMLDivElement>(null);
   const current = useRef(layout);
@@ -77,10 +81,15 @@ export function CardStack({ cards, storageKey, defaultClosed, label }: {
     try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* the order is only lost on reload */ }
   };
 
+  /** Moves a card to `index` among the cards shown; the hidden ones stay in their slots of the whole order. */
   const move = (id: string, index: number, options: { skip?: string; focus?: string } = {}) => {
-    const order = current.current.order.filter(other => other !== id);
-    if (index < 0 || index > order.length || current.current.order.indexOf(id) === index) return;
-    order.splice(index, 0, id);
+    const all = current.current.order;
+    const shown = all.filter(other => !hiddenNow.current.includes(other));
+    const rest = shown.filter(other => other !== id);
+    if (index < 0 || index > rest.length || shown.indexOf(id) === index) return;
+    rest.splice(index, 0, id);
+    let next = 0;
+    const order = all.map(other => (hiddenNow.current.includes(other) ? other : rest[next++]));
     before.current = { tops: tops(container.current), ...options };
     save({ ...current.current, order });
   };
@@ -165,14 +174,15 @@ export function CardStack({ cards, storageKey, defaultClosed, label }: {
   const moveWithKeys = (event: ReactKeyboardEvent<HTMLButtonElement>, id: string) => {
     if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
     event.preventDefault();
-    move(id, current.current.order.indexOf(id) + (event.key === 'ArrowUp' ? -1 : 1), { focus: id });
+    const shown = current.current.order.filter(other => !hiddenNow.current.includes(other));
+    move(id, shown.indexOf(id) + (event.key === 'ArrowUp' ? -1 : 1), { focus: id });
   };
 
   const byId = new Map(cards.map(card => [card.id, card]));
   return <div className="card-stack" ref={container} role="list" aria-label={label}>
     {layout.order.map(id => {
       const card = byId.get(id);
-      if (!card) return null;
+      if (!card || hidden.includes(id)) return null;
       const open = !layout.closed.includes(id);
       return <section key={id} role="listitem" data-card={id} className={'card' + (open ? '' : ' collapsed') + (dragging === id ? ' dragging' : '')} aria-labelledby={'card-' + id}>
         <h2 className="card-heading">
