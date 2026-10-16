@@ -2,8 +2,10 @@
 import { ApiError, get, type Params } from './client';
 import type { GroupMember, ParsedMessage } from './messages';
 
-// These routes each start a command; the default server runs only one at a time. Opening two cards must not
-// make them refuse one another. A command from another tab may still occupy the slot, so retry `busy` briefly.
+// These routes each start a command, and unlike the `/api/` reads they do not wait for a place: with the server's
+// reads (`--max-reads`, one per processor by default) all taken, they answer `busy` (429) at once. Read them one at
+// a time, so that the open cards do not crowd each other out; other tabs may still take the places, so retry `busy`
+// briefly.
 let commands: Promise<unknown> = Promise.resolve();
 function commandRead<T>(path: string, params: Params, signal?: AbortSignal): Promise<T> {
   const next = commands.then(async () => {

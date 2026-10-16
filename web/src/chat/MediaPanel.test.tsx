@@ -1,8 +1,9 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { emitLive, LIVE_COMMAND_MS } from '../api/live';
 import { MediaPanel } from './MediaPanel';
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 const json = (items: unknown[], hasMore: boolean) => new Response(JSON.stringify({ success: true, data: { items, hasMore } }));
 const item = (id: number) => ({ localId: id, createTime: 1760000000 + id, localType: 25769803825, resourceType: 'file', fileName: '文件' + id });
 
@@ -28,4 +29,36 @@ it('pages media with the shown offset and cancels the next page when its card cl
   view.rerender(<MediaPanel {...props} active={false} />);
   await act(async () => {});
   expect(signal?.aborted).toBe(true);
+});
+
+it('reads a burst of live messages once and keeps the older pages shown (#201)', async () => {
+  vi.useFakeTimers();
+  const page = (from: number) => json(Array.from({ length: 60 }, (_, i) => item(from - i)), true);
+  // newest first: 200…141, then 140…81; then two new files, which push 142 and 141 onto the second page
+  const fetch = vi.fn().mockResolvedValueOnce(page(200)).mockResolvedValueOnce(page(140))
+    .mockResolvedValueOnce(page(202)).mockResolvedValueOnce(page(80));
+  vi.stubGlobal('fetch', fetch);
+  render(<MediaPanel sessionId="person" onOpen={vi.fn()} />);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+  await act(async () => {});
+  expect(document.querySelectorAll('.media-item')).toHaveLength(120);
+
+  act(() => { for (let i = 0; i < 3; i++) emitLive({ type: 'message.new', sessionId: 'person' }); });
+  emitLive({ type: 'message.new', sessionId: 'someone else' });
+  await act(async () => { await vi.advanceTimersByTimeAsync(LIVE_COMMAND_MS - 1); });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(fetch.mock.calls[2][0]).toContain('offset=0');
+  const names = () => [...document.querySelectorAll('.media-item .clamp-1')].map(e => e.textContent);
+  expect(names()).toHaveLength(122);
+  expect(names().slice(0, 3)).toEqual(['文件202', '文件201', '文件200']);
+  expect(new Set(names()).size).toBe(122);
+
+  // the next page goes on from where the list ends
+  fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+  await act(async () => {});
+  expect(fetch.mock.calls[3][0]).toContain('offset=122');
+  expect(names().at(-1)).toBe('文件21');
 });
