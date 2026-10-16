@@ -68,6 +68,20 @@ impl ServiceHub {
         &self.ctx.runtime_dir
     }
 
+    /// The WebUI `serve` shows without `--ui-dir`: the version picked with `weflow web use` (issue #148), kept with
+    /// WeFlow's other caches in `<home>/cache/web/<version>/` and named in `<home>/cache/web/current`. `None` until
+    /// one is picked.
+    pub fn web_in_use(&self) -> Option<PathBuf> {
+        let root = self.ctx.cache_dir().join("web");
+        let version = std::fs::read_to_string(root.join("current")).ok()?;
+        let version = version.trim();
+        let plain = !version.is_empty()
+            && version != "."
+            && version != ".."
+            && !version.contains(['/', '\\', ':']);
+        plain.then(|| root.join(version))
+    }
+
     pub fn runtime_info(&self) -> Value {
         json!({
             "homeDir": self.ctx.home_dir,

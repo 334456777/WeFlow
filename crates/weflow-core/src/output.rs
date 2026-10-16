@@ -152,6 +152,17 @@ fn human_event(event: &Value) -> String {
                     )
                 ));
             }
+            if let Some(url) = event["uiUrl"].as_str() {
+                out.push_str(&format!("{} {url}\n", tr("web UI:", "网页：")));
+            } else if event["ui"] == false {
+                out.push_str(&format!(
+                    "{}\n",
+                    tr(
+                        "(API only: no WebUI; pass --ui-dir with the folder of a built WebUI to serve one)",
+                        "（只提供 API：没有网页；用 --ui-dir 指定构建好的网页目录即可提供网页）"
+                    )
+                ));
+            }
             out
         }
         _ => render(event),

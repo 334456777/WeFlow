@@ -268,6 +268,181 @@ fn only_requests_to_this_machine_are_answered() {
     }
 }
 
+/// A built WebUI's folder: its page, an asset, and a secret beside the folder that must stay out of reach.
+fn webui(root: &Path) -> PathBuf {
+    let dist = root.join("dist");
+    std::fs::create_dir_all(dist.join("assets")).unwrap();
+    std::fs::write(
+        dist.join("index.html"),
+        "<!doctype html><title>WeFlow</title>",
+    )
+    .unwrap();
+    std::fs::write(dist.join("assets/index-a1b2.js"), "console.log(1)").unwrap();
+    std::fs::write(dist.join("weflow-web.json"), "{}").unwrap();
+    std::fs::write(root.join("secret.txt"), "not for the page").unwrap();
+    dist
+}
+
+#[test]
+fn the_webui_is_served_under_ui() {
+    let root = temp_root("webui");
+    let dist = webui(&root);
+    let server = start(
+        &root,
+        &["--api-token", TOKEN, "--ui-dir", dist.to_str().unwrap()],
+    );
+    let get = |target: &str| server.request("GET", target, &[], "");
+
+    // the page and its files need no token
+    let page = get("/ui/");
+    assert_eq!(page.status, 200);
+    assert!(page.body.contains("<title>WeFlow"));
+    assert_eq!(page.headers["content-type"], "text/html; charset=utf-8");
+    assert_eq!(page.headers["cache-control"], "no-cache");
+    assert_eq!(page.headers["referrer-policy"], "no-referrer");
+    assert_eq!(page.headers["x-content-type-options"], "nosniff");
+    let script = get("/ui/assets/index-a1b2.js");
+    assert_eq!(script.status, 200);
+    assert_eq!(script.body, "console.log(1)");
+    assert_eq!(
+        script.headers["content-type"],
+        "text/javascript; charset=utf-8"
+    );
+    assert!(script.headers["cache-control"].contains("immutable"));
+    assert_eq!(
+        get("/ui/weflow-web.json").headers["cache-control"],
+        "no-cache"
+    );
+
+    // the page's own paths get the page; missing files and API paths do not
+    assert!(get("/ui/chat/wxid_a").body.contains("<title>WeFlow"));
+    assert_eq!(get("/ui/assets/missing.js").status, 404);
+    assert_eq!(get("/ui/assets/chunk").status, 404);
+    assert_eq!(get("/ui/missing.png").status, 404);
+    let api = server.call("GET", "/chat/no-such-command", "");
+    assert_eq!(api.status, 404);
+    assert_eq!(api.json()["success"], false);
+
+    // nothing outside the folder
+    for target in [
+        "/ui/../secret.txt",
+        "/ui/%2e%2e/secret.txt",
+        "/ui/assets/..%2f..%2fsecret.txt",
+        "/ui/..%5csecret.txt",
+    ] {
+        let r = get(target);
+        assert!(!r.body.contains("not for the page"), "{target}");
+        assert_ne!(r.status, 200, "{target}");
+    }
+
+    // into the page, keeping the token in the address
+    let r = get("/ui?token=abc");
+    assert_eq!(r.status, 308);
+    assert_eq!(r.headers["location"], "/ui/?token=abc");
+    let r = get("/?token=abc");
+    assert_eq!(r.status, 302);
+    assert_eq!(r.headers["location"], "/ui/?token=abc");
+    // read-only, and still only for this machine
+    assert_eq!(server.call("POST", "/ui/", "").status, 405);
+    let r = server.request("GET", "/ui/", &[("Host", "evil.example")], "");
+    assert_eq!(r.status, 403);
+}
+
+#[test]
+fn a_link_out_of_the_webui_folder_is_not_followed() {
+    let root = temp_root("webui-link");
+    let dist = webui(&root);
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(root.join("secret.txt"), dist.join("leak.txt"));
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_file(root.join("secret.txt"), dist.join("leak.txt"));
+    if linked.is_err() {
+        // Windows without the right to make links
+        return;
+    }
+    let server = start(
+        &root,
+        &["--api-token", TOKEN, "--ui-dir", dist.to_str().unwrap()],
+    );
+    let r = server.request("GET", "/ui/leak.txt", &[], "");
+    assert_eq!(r.status, 404);
+    assert!(!r.body.contains("not for the page"));
+}
+
+#[test]
+fn without_a_webui_the_api_runs_alone() {
+    let root = temp_root("no-webui");
+    let mut child = weflow(&root)
+        .args(["--json", "serve", "--port", "0", "--api-token", TOKEN])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+    let event: Value = loop {
+        let line = lines.next().unwrap().unwrap();
+        if let Ok(v) = serde_json::from_str::<Value>(&line) {
+            break v;
+        }
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    assert_eq!(event["ui"], false);
+    assert!(event["uiUrl"].is_null());
+
+    let server = start(&root, &["--api-token", TOKEN]);
+    let r = server.request("GET", "/ui/", &[], "");
+    assert_eq!(r.status, 404);
+    assert!(r.json()["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("--ui-dir"));
+    // `/` is not taken over
+    assert_eq!(server.request("GET", "/", &[], "").status, 401);
+
+    // a folder without a page is refused at the start
+    let (code, _, err) = run_cli(
+        &root,
+        &["serve", "--port", "0", "--ui-dir", root.to_str().unwrap()],
+    );
+    assert_eq!(code, 2, "{err}");
+    assert!(err.contains("index.html"), "{err}");
+}
+
+#[test]
+fn the_startup_message_gives_the_webui_address_with_the_token() {
+    let root = temp_root("webui-url");
+    let dist = webui(&root);
+    let mut child = weflow(&root)
+        .args([
+            "--json",
+            "serve",
+            "--port",
+            "0",
+            "--api-token",
+            TOKEN,
+            "--ui-dir",
+        ])
+        .arg(&dist)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+    let event: Value = loop {
+        let line = lines.next().unwrap().unwrap();
+        if let Ok(v) = serde_json::from_str::<Value>(&line) {
+            break v;
+        }
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    assert_eq!(event["ui"], true);
+    let url = event["uiUrl"].as_str().unwrap();
+    assert!(url.starts_with("http://127.0.0.1:"), "{url}");
+    assert!(url.ends_with(&format!("/ui/?token={TOKEN}")), "{url}");
+}
+
 #[test]
 fn a_token_is_made_up_when_none_is_configured() {
     let root = temp_root("gen-token");

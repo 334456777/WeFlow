@@ -12,6 +12,7 @@
 weflow serve                       # 命令 API，地址 http://127.0.0.1:18108
 weflow serve --port 8080 --host 127.0.0.1
 weflow serve --desktop             # 改为启动桌面端 API（端口 `http_api_port`，默认 5031）
+weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.1:18108/ui/
 ```
 
 | 选项 | 含义 |
@@ -25,8 +26,22 @@ weflow serve --desktop             # 改为启动桌面端 API（端口 `http_ap
 | `--max-reads` | 同时运行的其他命令数；默认为 CPU 核数 |
 | `--max-media` | `/api/` 媒体路由同时解码的图片和语音数，超出的排队等待；默认为 CPU 核数（见[媒体](#媒体)） |
 | `--log-requests` | 每个请求在 stderr 输出一行：方法、路径、状态码和耗时（见[时间花在哪里](#时间花在哪里)） |
+| `--ui-dir` | 只在本次运行中，从这个目录（构建好的网页，例如 `web/dist`）提供网页（见[网页](#网页)） |
+| `--no-browser` | 启动时不在浏览器中打开网页 |
 
 启动提示（stderr 上的事件；加 `--json` 时为一行 JSON）会显示地址。默认端口低于 49152，不在 Windows 的动态端口范围内。Hyper-V、WSL 2、Docker 会在这个范围里成段保留端口，被保留的端口任何程序都无法绑定。绑定回环以外的地址时会给出警告：持有令牌的人可以在这台机器上运行任何 `weflow` 命令，使用服务端的文件系统和配置。
+
+## 网页
+
+`serve` 还在 `/ui/` 下提供网页界面（`web/`，issue #130）：本次运行用 `--ui-dir` 指定的目录，没有指定时用 `weflow web use` 选定的版本（issue #148）。目录里没有 `index.html` 时，启动就会报错。没有网页时只提供 API，启动提示里会说明。
+
+有网页时，启动提示给出带令牌的地址 `http://127.0.0.1:18108/ui/?token=…`（加 `--json` 时为 `uiUrl`）。stderr 是终端时，服务端会在浏览器中打开它（`--no-browser` 可以关掉）。网页把令牌存在当前标签页里，并从地址栏去掉；令牌不会写进网页的文件。
+
+- 网页的文件不需要令牌，这一点和 API 不同，但下面的 `Host` 检查照样进行。只响应 `GET` 和 `HEAD`。
+- `/ui` 跳到 `/ui/`（`308`）。有网页时，`/` 也跳到 `/ui/`（`302`）。查询参数都会保留。
+- 网页自己的路径（不带扩展名，例如 `/ui/chat`）不是文件时，返回 `index.html`，由网页自己处理。带扩展名的文件或 `/ui/assets/` 下的文件不存在时，返回 `404`。`/ui/` 以外的路径不会这样回退：未知的 API 路径仍然返回 JSON 格式的 `404`。
+- 只提供目录里面的文件：`..`（无论是否编码）和指向目录外的链接都返回 `404`。
+- 构建出的资源（`/ui/assets/`，文件名随内容变化）长期缓存；`index.html` 和其他文件每次都重新确认（`Cache-Control: no-cache`），所以新版本立刻生效。所有文件都带 `X-Content-Type-Options: nosniff`，网页还带 `Referrer-Policy: no-referrer`。
 
 ## 鉴权
 
