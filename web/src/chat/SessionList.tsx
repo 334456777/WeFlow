@@ -92,7 +92,7 @@ export function SessionList({ state, sample, selectedId, onSelect, onRetry }: {
   } else if (!rows.length) {
     body = <p className="session-message">{query.trim() ? '没有名称匹配的会话。' : state.sessions.length ? '这一类没有会话。' : '这个账号还没有会话。'}</p>;
   } else {
-    body = <VirtualList ref={list} className="conversation-list scroll-area" aria-label="会话列表" items={rows} rowHeight={ROW_HEIGHT} padding={LIST_PADDING}
+    body = <VirtualList ref={list} className="conversation-list scroll-area" aria-label="会话列表" items={rows} rowHeight={ROW_HEIGHT} padding={LIST_PADDING} track=".conversation-row"
       keyOf={row => row.id} onKeyDown={onKeyDown}
       renderRow={row => <SessionItem row={row} active={row.id === selectedId} now={now} onClick={() => open(row)} />} />;
   }

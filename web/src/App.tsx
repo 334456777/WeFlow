@@ -26,6 +26,7 @@ import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
 import { exportConversation } from './export';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
+import { HoverTrack } from './HoverTrack';
 import { Scrollbar } from './Scrollbar';
 import { Segmented } from './Segmented';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
@@ -330,7 +331,7 @@ export function App() {
           <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="fold-label">搜索</span></button>
         </form>
         {searchDatesOpen && <div className="search-date-row"><span className="field-label">时间范围</span><DateRange label="搜索的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); }} /></div>}
-        <div className="search-results" aria-live="polite">{submittedQuery === null
+        <div className="search-results" aria-live="polite"><HoverTrack items=".search-result" />{submittedQuery === null
           ? <p className="empty-text">输入关键词，搜索当前会话的记录。</p>
           : results.length
             ? <><p className="results-count">找到 {results.length} 条记录<span>点击可定位到消息</span></p>{results.map(message => <button className="search-result" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
@@ -348,7 +349,7 @@ export function App() {
     },
     {
       id: 'media', title: '媒体文件', summary: media.length + ' 个',
-      content: <div className="media-list">{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
+      content: <div className="media-list"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
   ];
   // The media of a real conversation come with #200.
@@ -356,7 +357,7 @@ export function App() {
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
-      <nav aria-label="主导航">
+      <nav aria-label="主导航"><HoverTrack items=".nav-item" />
         {navigation.map(item => {
           const Icon = item.icon;
           const current = section === item.id;
@@ -383,7 +384,7 @@ export function App() {
       </section><Scrollbar target={settingsRef} /></> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
         {activeCategory === 'chat'
           ? <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions} />
-          : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}>
+          : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}><HoverTrack items=".conversation-row" />
           {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
             <Avatar name={conversation.name} url={conversation.avatar} />
             <span className="conversation-copy">

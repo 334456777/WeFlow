@@ -132,6 +132,22 @@ time, .num { font-variant-numeric: tabular-nums; }
 .nav-item:hover { box-shadow: var(--neu-pressed); color: var(--fg); }
 .nav-item.selected { box-shadow: var(--neu-inset); color: var(--fg); font-weight: var(--weight-semibold); }
 .nav-label { transition: opacity var(--duration-base) var(--ease-out); }
+
+/*
+ * The hover hollow that slides (HoverTrack.tsx, #232): in a group it takes over the items' own hover hollow. It lies
+ * under the items (first in the group, the items positioned after it) and slides with the snap curve, like the
+ * segmented control's thumb; it fades in and out, and over a selected item it fades away instead of doubling its
+ * shade. Held down, an item still sinks in itself.
+ */
+.hover-track-host { position: relative; }
+:where(.hover-track-host) > :where(:not(.hover-hollow)) { position: relative; }
+.hover-hollow {
+  position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; opacity: 0; box-shadow: var(--neu-pressed);
+  transition: transform var(--duration-snap) var(--ease-snap), width var(--duration-snap) var(--ease-snap),
+    height var(--duration-snap) var(--ease-snap), opacity var(--duration-hover) ease;
+}
+.hover-hollow[data-state='on'] { opacity: 1; }
+.hover-track-host :is(.nav-item, .conversation-row, .search-result, .media-item):hover:not(.selected, .active, :active) { box-shadow: var(--neu-flat); }
 .sidebar-collapsed .nav-item { width: var(--control-lg); }
 .sidebar-collapsed .nav-label { opacity: 0; }
 /*

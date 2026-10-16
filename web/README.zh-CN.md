@@ -72,6 +72,7 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/CardStack.tsx` | 操作控制台的卡片：点标题展开或收起；用鼠标拖动或按 Alt+↑ / Alt+↓ 调整顺序。顺序和展开状态保存在浏览器的 `localStorage` 里 |
 | `src/VirtualList.tsx` | 只绘制看得见的行的列表，用于成千上万行的列表（#159） |
 | `src/Scrollbar.tsx` | 网页自己的滚动条：浮在滚动区域上（隐藏浏览器自带的），不占宽度，可以拖动 |
+| `src/HoverTrack.tsx` | 会平移的悬停凹陷（#232）：在一组元素里，指针移到另一个元素时，凹陷从上一个元素滑过去 |
 | `src/Popover.tsx` | 依附在控件上的浮层：从控件处展开，不超出屏幕，按 Esc 或点外面收起 |
 | `src/calendar/` | 网页自己的日历（#224）：`Calendar.tsx`（按 ARIA grid 模式排的一个月，周一开头，可切换到按月、按年选择），`DateRange.tsx`（在一个日历里选时间范围），`DateField.tsx`（选一天），`dates.ts`（用本地时间的 `YYYY-MM-DD` 表示日期） |
 | `src/api/messages.ts` | 会话的消息（服务端解析好的 `chat messages --parsed`，按游标翻页）、群成员，以及给 `<img>`、`<audio>`、`<video>` 用的媒体地址 |
