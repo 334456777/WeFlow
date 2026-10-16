@@ -32,6 +32,8 @@ To open the dev server from another computer, run `npm run dev -- --host` and op
 
 Opened by `weflow serve --ui-dir web/dist` (after `npm run build`), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
 
+A refused token (HTTP 401) shows an input to reconnect. Settings can replace or clear the tab's token; it never goes into `localStorage` or the build. Settings also show the server and API versions, compatibility advice, and the server's task/read/media limits and insight status when provided by `/health` or the stream's `hello` (#214).
+
 ## Scripts
 
 | Script | |
@@ -56,6 +58,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | Path | |
 |---|---|
 | `src/api/client.ts` | Calls to `weflow serve`: query or JSON body, token, `ApiError` with the server's error code |
+| `src/TokenForm.tsx` | Token input and reconnection prompt (#214) |
 | `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), or `/api/push/messages` with live messages on (#201); version checks, `useBackend` |
 | `src/api/live.ts` | Live message events, handed to the conversation list and the open conversation (#201) |
 | `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/chat/statuses`, in batches of 100) |

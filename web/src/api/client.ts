@@ -17,6 +17,7 @@ export type Params = Record<string, string | number | boolean | null | undefined
 
 const TOKEN_KEY = 'weflow.token';
 let memoryToken: string | null = null;
+let tokenRevision = 0;
 
 function storage(): Storage | null {
   try {
@@ -31,12 +32,53 @@ export function token(): string | null {
   return memoryToken ?? storage()?.getItem(TOKEN_KEY) ?? null;
 }
 
+/**
+ * Sets the token for this tab (#214): kept in `sessionStorage` only, never `localStorage` nor the build. The
+ * connection hears of it and tries again.
+ */
 export function setToken(value: string | null): void {
+  tokenRevision += 1;
   memoryToken = value;
   const s = storage();
-  if (!s) return;
-  if (value) s.setItem(TOKEN_KEY, value);
-  else s.removeItem(TOKEN_KEY);
+  if (s) {
+    if (value) s.setItem(TOKEN_KEY, value);
+    else s.removeItem(TOKEN_KEY);
+  }
+  tellAuth('token');
+}
+
+/** `unauthorized`: the server refused the token (401); `token`: another token was set. */
+export type AuthEvent = 'unauthorized' | 'token';
+const authListeners = new Set<(event: AuthEvent) => void>();
+
+export function onAuth(listener: (event: AuthEvent) => void): () => void {
+  authListeners.add(listener);
+  return () => { authListeners.delete(listener); };
+}
+
+function tellAuth(event: AuthEvent): void {
+  for (const listener of [...authListeners]) listener(event);
+}
+
+/**
+ * Whether the server takes this tab's token, asked with a light route that needs one (`/jobs`): `ok`,
+ * `unauthorized` (401), or `offline` (no answer). An event stream cannot tell why it failed; this can.
+ */
+export async function checkToken(signal?: AbortSignal): Promise<'ok' | 'unauthorized' | 'offline'> {
+  const bearer = token();
+  const revision = tokenRevision;
+  try {
+    const response = await fetch('/jobs', { headers: bearer ? { Authorization: 'Bearer ' + bearer } : {}, cache: 'no-store', signal });
+    if (revision !== tokenRevision || signal?.aborted) return 'offline';
+    if (response.status === 401) {
+      tellAuth('unauthorized');
+      return 'unauthorized';
+    }
+    return 'ok';
+  } catch (problem) {
+    if (problem instanceof DOMException && problem.name === 'AbortError') throw problem;
+    return 'offline';
+  }
 }
 
 /**
@@ -68,6 +110,7 @@ type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Runs a route: GET and DELETE take the parameters as a query, the other methods as a JSON body. */
 export async function call<T>(method: Method, path: string, params: Params = {}, signal?: AbortSignal): Promise<T> {
+  const revision = tokenRevision;
   const inQuery = method === 'GET' || method === 'DELETE';
   const headers: Record<string, string> = { Accept: 'application/json' };
   const bearer = token();
@@ -86,6 +129,8 @@ export async function call<T>(method: Method, path: string, params: Params = {},
     if (problem instanceof DOMException && problem.name === 'AbortError') throw problem;
     throw new ApiError(0, 'offline', '无法连接 weflow serve');
   }
+  // An old request may finish after the person has already supplied the right token.
+  if (response.status === 401 && revision === tokenRevision && !signal?.aborted) tellAuth('unauthorized');
 
   let doc: { success?: boolean; data?: T; error?: { code?: string; message?: string; details?: unknown } };
   try {

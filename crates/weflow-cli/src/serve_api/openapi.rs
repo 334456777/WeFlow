@@ -487,6 +487,23 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
                                     "每次启动服务器、配置改变（包括切换账号）时都会变化；变化之前读到的记录可能属于另一个账号",
                                 ),
                             },
+                            "limits": {
+                                "type": "object",
+                                "description": pick(
+                                    zh,
+                                    "What may run at once: --max-tasks, --max-reads, --max-media",
+                                    "可同时运行的数量：--max-tasks、--max-reads、--max-media",
+                                ),
+                                "properties": {
+                                    "maxTasks": { "type": "integer" },
+                                    "maxReads": { "type": "integer" },
+                                    "maxMedia": { "type": "integer" },
+                                },
+                            },
+                            "insight": {
+                                "type": "boolean",
+                                "description": pick(zh, "Whether the insight engine runs beside (--insight)", "是否同时运行灵感引擎（--insight）"),
+                            },
                         },
                     })),
                 },

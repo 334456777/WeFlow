@@ -39,6 +39,8 @@ npm run dev                               # http://localhost:5173/ui/
 
 运行 `npm run build` 后用 `weflow serve --ui-dir web/dist` 打开网页时，网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
 
+令牌被拒绝（HTTP 401）时，网页提示输入令牌后重新连接。也可以在设置里更换或清除当前标签页的令牌；令牌不写入 `localStorage` 或构建产物。设置同时显示服务端与 API 版本、兼容性和处理建议，以及 `/health` 或状态流的 `hello` 提供的任务、读取、媒体限额和灵感引擎状态（#214）。
+
 ## 脚本
 
 | 脚本 | 说明 |
@@ -67,6 +69,7 @@ npm run dev                               # http://localhost:5173/ui/
 | 路径 | 说明 |
 |---|---|
 | `src/api/client.ts` | 调用 `weflow serve`：负责查询参数或 JSON 请求体，带上令牌，出错时抛出带服务端错误码的 `ApiError` |
+| `src/TokenForm.tsx` | 令牌输入与重新连接提示（#214） |
 | `src/api/backend.ts` | 连接状态：保持 `/health/events` 长连接，加上看门狗和退避重连（#221）；打开实时消息时改为 `/api/push/messages`（#201）；检查版本，提供 `useBackend` |
 | `src/api/live.ts` | 实时消息事件，分发给会话列表和打开的会话（#201） |
 | `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/chat/statuses`，每次 100 个） |
