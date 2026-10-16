@@ -272,9 +272,10 @@ impl ServiceHub {
         Ok(msgs)
     }
 
-    /// `chat messages --parsed`: each raw row of a [`message_page`](Self::message_page) as the desktop app parses it
-    /// ([`ChatMessage::to_json`]: type, text, quote, media, link, file, card, location, transfer, …), keeping its
-    /// `_cursor`, so a client pages the same way without parsing WeChat's XML itself.
+    /// `chat messages --parsed` (and `chat search --parsed`): each raw row of a [`message_page`](Self::message_page)
+    /// as the desktop app parses it ([`ChatMessage::to_json`]: type, text, quote, media, link, file, card, location,
+    /// transfer, …), keeping its `_cursor` (and a search hit's `_session_id`), so a client pages the same way without
+    /// parsing WeChat's XML itself.
     pub fn parsed_message_page(&self, page: Value) -> Value {
         let my = self.wmy();
         let rows = match page {
@@ -284,14 +285,17 @@ impl ServiceHub {
         Value::Array(
             rows.into_iter()
                 .map(|row| {
-                    let cursor = row.get("_cursor").cloned();
                     let mut message = chat_msg::map_rows(std::slice::from_ref(&row), &my)
                         .into_iter()
                         .next()
                         .map(|m| m.to_json())
                         .unwrap_or_else(|| json!({}));
-                    if let (Some(cursor), Some(object)) = (cursor, message.as_object_mut()) {
-                        object.insert("_cursor".into(), cursor);
+                    if let Some(object) = message.as_object_mut() {
+                        for key in ["_cursor", "_session_id"] {
+                            if let Some(value) = row.get(key) {
+                                object.insert(key.into(), value.clone());
+                            }
+                        }
                     }
                     message
                 })

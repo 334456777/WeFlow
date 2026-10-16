@@ -343,3 +343,82 @@ fn pages_from_a_cursor_follow_the_offset_order() {
         .unwrap_err();
     assert_eq!(err.code, "invalid_arguments");
 }
+
+#[test]
+fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
+    let (hub, _root, _f) = common::custom_hub("since", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        let msg = |id: i64, at: i64, text: &str| MsgSpec::text(id, "wxid_bob", at, text);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                (1..=8)
+                    .map(|i| msg(i, T0 + i * 10, &format!("m{i}")))
+                    .collect(),
+            )],
+        );
+        f.message_shard(
+            1,
+            &[(
+                "wxid_bob",
+                vec![
+                    // the same second as message 4 of the first database, and one without a sort_seq
+                    msg(9, T0 + 40, "m9 trip"),
+                    msg(10, T0 + 55, "m10 trip").with_sort_seq(0),
+                ],
+            )],
+        );
+    });
+    let ids = |page: &serde_json::Value| -> Vec<i64> {
+        page.as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["local_id"].as_i64().unwrap())
+            .collect()
+    };
+    // the earliest messages sent at T0 + 40 or later, newest first: both of that second, then the next ones
+    let since = hub.message_page_since("wxid_bob", 4, T0 + 40).unwrap();
+    assert_eq!(ids(&since), vec![10, 5, 9, 4]);
+    // between two messages: the next one is the first
+    assert_eq!(
+        ids(&hub.message_page_since("wxid_bob", 2, T0 + 51).unwrap()),
+        vec![6, 10]
+    );
+    // after the last message: nothing; before the first: the oldest
+    assert!(ids(&hub.message_page_since("wxid_bob", 5, T0 + 81).unwrap()).is_empty());
+    assert_eq!(
+        ids(&hub.message_page_since("wxid_bob", 1, T0).unwrap()),
+        vec![1]
+    );
+    // the page pages on both ways from its own cursors
+    let older = hub
+        .message_page("wxid_bob", 10, 0, since[3]["_cursor"].as_str(), None)
+        .unwrap();
+    assert_eq!(ids(&older), vec![3, 2, 1]);
+    let newer = hub
+        .message_page("wxid_bob", 10, 0, None, since[0]["_cursor"].as_str())
+        .unwrap();
+    assert_eq!(ids(&newer), vec![8, 7, 6]);
+
+    // a hit carries its message's cursor and conversation, parsed or not
+    let hits = hub.search("trip", Some("wxid_bob"), 10, 0, 0, 0).unwrap();
+    assert_eq!(ids(&hits), vec![10, 9]);
+    let parsed = hub.parsed_message_page(hits.clone());
+    for (p, h) in parsed
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(hits.as_array().unwrap())
+    {
+        assert!(h["_cursor"].is_string());
+        assert_eq!(p["_cursor"], h["_cursor"]);
+        assert_eq!(p["_session_id"], "wxid_bob");
+    }
+    assert_eq!(parsed[1]["parsedContent"], "m9 trip");
+    // the messages around a hit: older from its cursor, newer from it too
+    let around = hub
+        .message_page("wxid_bob", 2, 0, None, hits[1]["_cursor"].as_str())
+        .unwrap();
+    assert_eq!(ids(&around), vec![10, 5]);
+}

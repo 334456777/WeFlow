@@ -191,19 +191,31 @@ impl ServiceHub {
             (None, None) => None,
         };
         let wcdb = self.open_wcdb()?;
-        let mut page = match from {
+        let page = match from {
             Some(from) => wcdb.messages_from(session_id, limit, from),
             None => wcdb.messages(session_id, limit, offset),
         }
         .map_err(|err| AppError::native(err.to_string()))?;
-        for row in page.as_array_mut().into_iter().flatten() {
-            if let Some(pos) = MsgPos::of_row(row) {
-                row["_cursor"] = pos.token().into();
-            }
-        }
-        Ok(page)
+        Ok(with_cursors(page))
     }
 
+    /// `chat messages --since`: the `limit` messages sent at `seconds` (Unix time) or later, the earliest ones, still
+    /// newest first, each with its `_cursor`: where a chat window jumps to a day, then pages both ways from.
+    pub fn message_page_since(
+        &self,
+        session_id: &str,
+        limit: i32,
+        seconds: i64,
+    ) -> AppResult<Value> {
+        use weflow_native::native_msg::{MsgPos, PageFrom};
+        let wcdb = self.open_wcdb()?;
+        let page = wcdb
+            .messages_from(session_id, limit, PageFrom::After(MsgPos::at_time(seconds)))
+            .map_err(|err| AppError::native(err.to_string()))?;
+        Ok(with_cursors(page))
+    }
+
+    /// `chat search`: the hits, newest first, each with the `_cursor` of its message, to page its conversation from.
     pub fn search(
         &self,
         keyword: &str,
@@ -215,6 +227,7 @@ impl ServiceHub {
     ) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         wcdb.search(keyword, session_id, limit, offset, begin, end)
+            .map(with_cursors)
             .map_err(|err| AppError::native(err.to_string()))
     }
 
@@ -1075,6 +1088,16 @@ impl ServiceHub {
     pub fn profile_name(&self) -> &str {
         &self.profile_name
     }
+}
+
+/// Each message row with its `_cursor`, to ask for the page next to it.
+fn with_cursors(mut page: Value) -> Value {
+    for row in page.as_array_mut().into_iter().flatten() {
+        if let Some(pos) = weflow_native::native_msg::MsgPos::of_row(row) {
+            row["_cursor"] = pos.token().into();
+        }
+    }
+    page
 }
 
 /// Account folders of a WeChat data directory (or the folder itself when it is one), with their wxid.
