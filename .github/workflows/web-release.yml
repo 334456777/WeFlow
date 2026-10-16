@@ -75,7 +75,7 @@ jobs:
 
       - uses: oras-project/setup-oras@v2
         with:
-          version: 1.2.2
+          version: 2.0.1
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
