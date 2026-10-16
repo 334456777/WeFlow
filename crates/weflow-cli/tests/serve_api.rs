@@ -58,7 +58,12 @@ fn temp_root(tag: &str) -> PathBuf {
 
 /// Starts `weflow serve` on a free port and waits for its `server_started` event.
 fn start(home: &Path, extra: &[&str]) -> Server {
+    start_env(home, extra, &[])
+}
+
+fn start_env(home: &Path, extra: &[&str], env: &[(&str, &str)]) -> Server {
     let mut child = weflow(home)
+        .envs(env.iter().copied())
         .args(["--json", "serve", "--port", "0"])
         .args(extra)
         .stdout(Stdio::null())
@@ -1343,11 +1348,17 @@ struct EventStream {
 
 impl EventStream {
     fn open(server: &Server, headers: &[(&str, &str)]) -> Self {
+        let auth = format!("Bearer {TOKEN}");
+        Self::open_at(
+            server,
+            "/api/push/messages",
+            &[&[("Authorization", auth.as_str())], headers].concat(),
+        )
+    }
+
+    fn open_at(server: &Server, path: &str, headers: &[(&str, &str)]) -> Self {
         let mut stream = TcpStream::connect(&server.addr).unwrap();
-        let mut req = format!(
-            "GET /api/push/messages HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {TOKEN}\r\n",
-            server.addr
-        );
+        let mut req = format!("GET {path} HTTP/1.1\r\nHost: {}\r\n", server.addr);
         for (k, v) in headers {
             req.push_str(&format!("{k}: {v}\r\n"));
         }
@@ -1375,6 +1386,71 @@ impl EventStream {
         }
         self.text.contains(needle)
     }
+}
+
+#[test]
+fn health_events_say_hello_then_beat_without_a_token() {
+    let root = temp_root("health-events");
+    let server = start_env(
+        &root,
+        &["--api-token", TOKEN],
+        &[("WEFLOW_SSE_HEARTBEAT_MS", "200")],
+    );
+    let health = server.request("GET", "/health", &[], "").json();
+    let mut events = EventStream::open_at(&server, "/health/events", &[]);
+    assert!(events.wait_for("event: heartbeat", 10), "{}", events.text);
+    assert!(events.text.starts_with("HTTP/1.1 200"), "{}", events.text);
+    assert!(events.text.contains("text/event-stream"), "{}", events.text);
+    // hello first, with what /health says; then heartbeats with the data
+    let hello = events.text.find("event: hello").unwrap();
+    assert!(hello < events.text.find("event: heartbeat").unwrap());
+    for key in ["apiVersion", "version", "data"] {
+        let said = format!("\"{key}\":{}", health[key]);
+        assert!(events.text.contains(&said), "{key}: {}", events.text);
+    }
+    assert!(events.text.contains(&format!(
+        "event: heartbeat\ndata: {{\"data\":{}}}",
+        health["data"]
+    )));
+    let beats = events.text.matches("event: heartbeat").count();
+    events.wait_for("not in the stream", 1);
+    assert!(events.text.matches("event: heartbeat").count() >= beats + 2);
+
+    assert_eq!(
+        server.request("POST", "/health/events", &[], "").status,
+        405
+    );
+    // the Host check holds here too
+    let mut stream = TcpStream::connect(&server.addr).unwrap();
+    stream
+        .write_all(
+            b"GET /health/events HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n",
+        )
+        .unwrap();
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).unwrap();
+    assert!(reply.starts_with("HTTP/1.1 403"), "{reply}");
+}
+
+// Ctrl+C as a signal; Windows has no way to send one to another process alone
+#[cfg(unix)]
+#[test]
+fn event_streams_say_bye_when_the_server_stops() {
+    let root = temp_root("bye");
+    let server = start(&root, &["--api-token", TOKEN]);
+    let mut events = EventStream::open_at(&server, "/health/events", &[]);
+    assert!(events.wait_for("event: hello", 10), "{}", events.text);
+    let sent = Command::new("kill")
+        .args(["-INT", &server.child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(sent.success());
+    assert!(events.wait_for("event: bye", 5), "{}", events.text);
+    assert!(
+        events.text.contains("\"reason\":\"stopped\""),
+        "{}",
+        events.text
+    );
 }
 
 #[test]

@@ -12,6 +12,8 @@ mod in_process;
 mod jobs;
 mod openapi;
 mod push;
+mod status;
+pub use status::Farewell;
 pub mod ui;
 
 use std::collections::BTreeMap;
@@ -514,6 +516,8 @@ pub struct ApiConfig {
     pub ui: Arc<std::sync::RwLock<Option<ui::UiDir>>>,
     /// The configuration the commands read: what `data` of `/health` follows.
     pub config_path: PathBuf,
+    /// Ends the event streams with `bye` when the server stops.
+    pub farewell: Farewell,
 }
 
 struct AppState {
@@ -531,20 +535,11 @@ struct AppState {
     hub: Arc<in_process::Hub>,
     /// `/api/push/messages`.
     push: push::Push,
-    /// Drawn at start, so `data` of `/health` differs between two runs and tells nothing of the configuration.
-    data_seed: std::collections::hash_map::RandomState,
+    /// `data` of `/health` and of the event streams.
+    data: status::DataKey,
 }
 
 impl AppState {
-    /// `data` of `/health` (issue #198): changes when the configuration does (so with the account the commands read)
-    /// and with each run, so a client knows when what it read before may be another account's. A keyed hash: it
-    /// says nothing of the configuration itself.
-    fn data_key(&self) -> String {
-        use std::hash::BuildHasher;
-        let config = std::fs::read(&self.cfg.config_path).unwrap_or_default();
-        format!("{:016x}", self.data_seed.hash_one(&config))
-    }
-
     /// The limit a command with this method runs under.
     fn limit(&self, verb: Option<Verb>) -> &Arc<Semaphore> {
         if verb == Some(Post) {
@@ -606,6 +601,7 @@ pub fn router(cfg: ApiConfig) -> Router {
     );
     let hub = Arc::new(in_process::Hub::default());
     hub.warm();
+    let cfg_config_path = cfg.config_path.clone();
     Router::new()
         .fallback(dispatch)
         .layer(compression())
@@ -620,7 +616,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             openapi: Default::default(),
             hub,
             push: Default::default(),
-            data_seed: Default::default(),
+            data: status::DataKey::new(cfg_config_path),
         }))
 }
 
@@ -939,13 +935,13 @@ async fn route(st: &AppState, req: Request) -> Response {
     let (parts, body) = req.into_parts();
     let path = parts.uri.path();
     if path == "/health" {
-        let body = json!({
-            "status": "ok",
-            "apiVersion": API_VERSION,
-            "version": env!("WEFLOW_VERSION"),
-            "data": st.data_key(),
-        });
-        return json_body(StatusCode::OK, body.to_string());
+        return json_body(StatusCode::OK, status::health(&st.data).to_string());
+    }
+    if path == "/health/events" {
+        if parts.method != Method::GET {
+            return method_not_allowed(&[Get]);
+        }
+        return status::events(st.data.clone(), &st.cfg.farewell);
     }
     // the WebUI's files need no token: the page brings it in its address
     if let Some(rest) = path
@@ -1014,7 +1010,9 @@ async fn route(st: &AppState, req: Request) -> Response {
             })
             .and_then(|v| v.trim().parse().ok())
             .unwrap_or(0);
-        return st.push.stream(st.hub.clone(), last_id);
+        return st
+            .push
+            .stream(st.hub.clone(), last_id, st.data.clone(), &st.cfg.farewell);
     }
     let segments: Vec<String> = path
         .split('/')

@@ -26,7 +26,7 @@ The dev server answers `/ui/` itself and passes every other path (`/chat/session
 | `WEFLOW_SERVE_URL` | `http://127.0.0.1:18108` | Where `weflow serve` listens, for example after `serve --port 8080` |
 | `WEFLOW_HTTP_TOKEN` | none | The token the proxy adds |
 
-**Working on the screens only**: `npm ci` once, then `npm run dev` is enough; `weflow serve` is not needed. The screens show the sample records, the connection state says "未连接", and the terminal reports a proxy error for each `/health` check (every 15 s), which can be ignored.
+**Working on the screens only**: `npm ci` once, then `npm run dev` is enough; `weflow serve` is not needed. The screens show the sample records, the connection state says "未连接", and the terminal reports a proxy error for each try to connect to `/health/events` (after 1, 2, 4 … at most 30 s), which can be ignored.
 
 To open the dev server from another computer, run `npm run dev -- --host` and open `http://<this machine's address>:5173/ui/`. Do it without `WEFLOW_HTTP_TOKEN`: with it, the proxy hands the token to everyone who can reach the port, and with it every `weflow` command.
 
@@ -47,7 +47,7 @@ Opened by `weflow serve --ui-dir web/dist` (after `npm run build`), the page get
 
 ## Versions
 
-`package.json` holds the WebUI's own version and, under `weflow`, the API it needs: `apiVersion` must equal the `apiVersion` of `GET /health`, and the server's `version` must be at least `minBackendVersion` (a development build's `git describe` version counts as its tag). The build writes these to `dist/weflow-web.json` for `weflow web` (#148); the page checks them against `/health` and shows "版本不兼容" otherwise.
+`package.json` holds the WebUI's own version and, under `weflow`, the API it needs: `apiVersion` must equal the `apiVersion` of `GET /health`, and the server's `version` must be at least `minBackendVersion` (a development build's `git describe` version counts as its tag). The build writes these to `dist/weflow-web.json` for `weflow web` (#148); the page checks them against the `hello` of `/health/events` and shows "版本不兼容" otherwise. A server without `/health/events` (5.0.0-rc.5 and older) is not supported: the page shows "未连接".
 
 To publish a version, raise `version` in `package.json` and push the tag `web-v<version>` (or run *WebUI release* in Actions): `.github/workflows/web-release.yml` builds it and publishes it to `ghcr.io/334456777/weflow-web:<version>`, where `weflow web` and `weflow serve` find it. A version is published once. Each `weflow` build shows, by default, the version `package.json` had when it was built (see [docs/serve-api.md](../docs/serve-api.md#versions-of-the-webui)).
 
@@ -56,7 +56,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | Path | |
 |---|---|
 | `src/api/client.ts` | Calls to `weflow serve`: query or JSON body, token, `ApiError` with the server's error code |
-| `src/api/backend.ts` | `/health`, version checks, `useBackend` |
+| `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), version checks, `useBackend` |
 | `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/chat/statuses`, in batches of 100) |
 | `src/styles/tokens.css` | Design tokens: type, control heights, radii, colours (with dark mode), the five neumorphic surfaces (#220), motion durations and curves (#192, #193). Page styles use only these variables |
 | `src/motion.ts` | Spring presets; `usePresence` keeps popovers, dialogs and notices until their exit has played |

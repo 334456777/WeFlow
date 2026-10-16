@@ -27,7 +27,7 @@
 
 ### WebUI（`web/`）
 `weflow serve` 的网页界面（#130），独立的 React + TypeScript + Vite 项目，有自己的 `package.json`，不依赖根目录的 Electron 工程。构建产物 `dist/` 由 `serve` 托管在 `/ui/`（#146），与二进制分开发布（#148）。
-- `src/api/` 调用命令 API 并检查 `/health` 的版本，`src/mock/` 是暂用的示例数据
+- `src/api/` 调用命令 API，用 `/health/events` 长连接显示连接状态并检查版本（#221），`src/mock/` 是暂用的示例数据
 - `npm run dev` 的代理把 `/ui/` 以外的路径转给 `weflow serve`，令牌取自 `WEFLOW_HTTP_TOKEN`，不编进网页
 - `package.json` 的 `weflow.apiVersion` / `minBackendVersion` 声明需要的 API，构建时写入 `dist/weflow-web.json`
 

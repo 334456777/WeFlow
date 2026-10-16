@@ -72,7 +72,7 @@ The WebUI is published apart from `weflow`, as OCI artifacts on GHCR (`ghcr.io/3
 
 ## Authentication
 
-Every request except `GET /health` needs the token, as `Authorization: Bearer <token>` or as the `access_token` query parameter. Without a configured token, `serve` makes one up for each run and prints it in the startup message (`generatedToken` with `--json`); set `http_api_token` or pass `--api-token` to keep a fixed one.
+Every request except `GET /health` and `GET /health/events` needs the token, as `Authorization: Bearer <token>` or as the `access_token` query parameter. Without a configured token, `serve` makes one up for each run and prints it in the startup message (`generatedToken` with `--json`); set `http_api_token` or pass `--api-token` to keep a fixed one.
 
 On a loopback address (the default) the server also checks the `Host` header of every request, `/health` included: only `localhost` and loopback addresses (`127.0.0.1`, `[::1]`, …), with any port, are answered; any other name gets `403` with the error code `invalid_host`. This keeps a web page from reaching the API through a name of its own that it makes resolve to `127.0.0.1` (DNS rebinding). Listening on another address with `--host` turns the check off, as the machine is then reached by other names.
 
@@ -230,7 +230,7 @@ A browser sends at most 6 requests at once to one server (HTTP/1.1), and an open
 - Each command is one operation per method, with `x-weflow-command` naming the command. `operationId` is the command path with `_` (`chat_sessions`); a command whose method follows an argument has one operation per method (`analytics_excluded_get`, `analytics_excluded_put`).
 - `GET` and `DELETE` list the parameters as query parameters, the other methods as a JSON body; both ways work for every method (see [Parameters](#parameters)). Types come from the CLI: numbers, switches, lists and choices.
 - The answers are described by their envelope (`{"success", "data"}` or `{"success", "error"}`), jobs, and `?return=file`; the shape of each command's `data` is not.
-- `/health`, `/openapi.json`, `/jobs` and `/api/push/messages` are described under the tag `server`; the [in-process reads](#in-process-reads) have their own operations, `api_chat_sessions` and so on.
+- `/health`, `/health/events`, `/openapi.json`, `/jobs` and `/api/push/messages` are described under the tag `server`; the [in-process reads](#in-process-reads) have their own operations, `api_chat_sessions` and so on.
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:18108/openapi.json
@@ -243,6 +243,16 @@ Two versions tell clients what they talk to: `version` (in `/health`, and `info.
 ```
 
 `data` is an opaque value that changes with each start of the server and whenever its configuration changes, such as when another account is set up. Records a client read before it changed may be another account's: the WebUI forgets what it kept (messages, group members, the days with messages) and reads again. It is a keyed hash, drawn anew each run, and tells nothing of the configuration.
+
+### Staying connected
+
+`GET /health/events` is the same as a stream of server-sent events, for a page that keeps one connection open instead of asking `/health` again and again. Like `/health` it needs no token (an `EventSource` cannot send a header) and is behind the `Host` check; it starts no work.
+
+- It starts with `event: hello`, whose data is what `/health` answers, then sends `event: heartbeat` every 15 seconds with `{"data": "…"}`. A heartbeat is an event, not a comment line, so a page sees it: no event for 37.5 seconds (two and a half heartbeats) means a half-open connection (the network gone, a NAT that forgot it), which closing the stream alone would not tell.
+- `/api/push/messages` starts with the same `hello` and sends the same heartbeat, so a page listening to it needs no second stream.
+- When the server stops on Ctrl+C, both streams end with `event: bye` (`{"reason": "stopped"}`; the server waits at most half a second for them to go out), so a client can tell a server that stopped from one it lost.
+
+The WebUI holds one such stream and reports the connection by it: the moment the stream breaks (the server stopped), the indicator says 「未连接」; it connects again after 1, 2, 4 … at most 30 seconds (give or take a fifth), at once when the network or the tab comes back and on 「重新检测」. Idle, it sends no request. On this machine (`127.0.0.1`) losing the network does not cut the page from the server, so there it only checks again. A server without `/health/events` (5.0.0-rc.5 and older) is not supported by the WebUI.
 
 ## How it runs
 
@@ -318,7 +328,7 @@ const events = new EventSource("http://127.0.0.1:18108/api/push/messages?access_
 events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
 ```
 
-- First comes a `ready` event, then each new message as `message.new` and each recall as `message.revoke`, with the fields of the desktop app's push ([HTTP-API.md](HTTP-API.md#2-active-push)): `sessionId`, `sessionType`, `rawid`, `sourceName`, `groupName`, `content`, `timestamp`, … Every event has an `id`; a comment line every 25 seconds keeps a quiet stream open.
+- First come a `hello` event (what `/health` answers) and a `ready` event, then each new message as `message.new` and each recall as `message.revoke`, with the fields of the desktop app's push ([HTTP-API.md](HTTP-API.md#2-active-push)): `sessionId`, `sessionType`, `rawid`, `sourceName`, `groupName`, `content`, `timestamp`, … Every message event has an `id`; a `heartbeat` event every 15 seconds keeps a quiet stream open and shows it alive (see [Staying connected](#staying-connected)).
 - The server keeps the events of the last 10 minutes (at most 1000). A client that reconnects with `Last-Event-ID` (EventSource does it by itself), or opens a new stream with `?last-event-id=`, gets the ones after that id; without either it gets all kept events.
 - Only while someone listens, the server checks once a second whether the account's session and message databases changed, and then looks for new messages on the hub of the in-process reads (at least every 30 seconds anyway). A new message reaches the page within a second or two; listening costs the server about 5 ms of CPU a second on a large account. The first listener starts from what the account holds at that moment, and so does a listener after the config changed (another account).
 - Only `GET`; the stream is not counted towards `--max-reads`. It is not the desktop app's `--message-push`, which belongs to `--desktop`.

@@ -495,6 +495,27 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
         }}),
     );
     paths.insert(
+        "/health/events".into(),
+        json!({ "get": {
+            "operationId": "health_events",
+            "tags": ["server"],
+            "summary": pick(zh, "The server's state as a stream: hello, then a heartbeat every 15 s", "以事件流提供服务器状态：先发 hello，之后每 15 秒一次心跳"),
+            "description": pick(
+                zh,
+                "Server-sent events. `hello` carries what `/health` answers; `heartbeat` carries `{\"data\": …}`; `bye` ends the stream when the server stops on Ctrl+C. No event for 37.5 s means the connection is dead.",
+                "服务器发送事件（SSE）。`hello` 的数据就是 `/health` 的响应；`heartbeat` 的数据为 `{\"data\": …}`；服务端按 Ctrl+C 停止时，以 `bye` 结束这条流。37.5 秒收不到任何事件，说明连接已经断开。",
+            ),
+            "security": [],
+            "responses": {
+                "200": {
+                    "description": pick(zh, "The event stream", "事件流"),
+                    "content": { "text/event-stream": { "schema": { "type": "string" } } },
+                },
+                "4XX": error,
+            },
+        }}),
+    );
+    paths.insert(
         "/openapi.json".into(),
         json!({ "get": {
             "operationId": "openapi",

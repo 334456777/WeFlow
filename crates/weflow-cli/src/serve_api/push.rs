@@ -10,18 +10,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use axum::body::{Body, Bytes};
-use axum::http::{header, StatusCode};
 use axum::response::Response;
 use serde_json::json;
 use weflow_core::push::{PushBroker, PushEngine};
 use weflow_core::services::ServiceHub;
 
 use super::in_process;
+use super::status::{self, DataKey, Farewell};
 
 /// How often the engine looks for new messages while someone listens.
 const INTERVAL: Duration = Duration::from_secs(1);
-/// A comment line this often keeps proxies and browsers from closing a quiet stream.
-const HEARTBEAT: Duration = Duration::from_secs(25);
 
 pub(super) struct Push {
     broker: Arc<PushBroker>,
@@ -152,8 +150,16 @@ impl Push {
         });
     }
 
-    /// The event stream: `ready`, the kept events after `last_id` (all of them for 0), then each new one.
-    pub(super) fn stream(&self, hub: Arc<in_process::Hub>, last_id: u64) -> Response {
+    /// The event stream: `hello` (see `status`), `ready`, the kept events after `last_id` (all of them for 0), then
+    /// each new one, with a `heartbeat` when it is quiet; `bye` when the server stops.
+    pub(super) fn stream(
+        &self,
+        hub: Arc<in_process::Hub>,
+        last_id: u64,
+        data: DataKey,
+        farewell: &Farewell,
+    ) -> Response {
+        let mut listening = farewell.listen();
         self.listeners.fetch_add(1, Ordering::SeqCst);
         let listener = Listener(self.listeners.clone());
         self.watch(hub);
@@ -161,14 +167,15 @@ impl Push {
         let replay = self.broker.replay_since(last_id);
         let stream = async_stream::stream! {
             let _listener = listener;
+            yield Ok::<_, Infallible>(status::hello(&data));
             let ready = format!("event: ready\ndata: {}\n\n", json!({ "success": true }));
-            yield Ok::<_, Infallible>(Bytes::from(ready));
+            yield Ok(Bytes::from(ready));
             let mut highest = last_id;
             for (id, body) in replay {
                 highest = highest.max(id);
                 yield Ok(Bytes::from(body.as_bytes().to_vec()));
             }
-            let mut heartbeat = tokio::time::interval(HEARTBEAT);
+            let mut heartbeat = tokio::time::interval(status::heartbeat());
             heartbeat.tick().await;
             loop {
                 tokio::select! {
@@ -183,16 +190,14 @@ impl Push {
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                         Err(_) => break,
                     },
-                    _ = heartbeat.tick() => yield Ok(Bytes::from_static(b": ping\n\n")),
+                    _ = heartbeat.tick() => yield Ok(status::beat(&data)),
+                    _ = listening.stopping() => {
+                        yield Ok(status::bye());
+                        break;
+                    }
                 }
             }
         };
-        Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
-            .header(header::CACHE_CONTROL, "no-cache, no-transform")
-            .header("x-accel-buffering", "no")
-            .body(Body::from_stream(stream))
-            .unwrap()
+        status::event_stream(Body::from_stream(stream))
     }
 }

@@ -2,9 +2,9 @@
 // messages) belongs to one server and one account; once either may have changed, a new scope starts: everything
 // kept is forgotten, and an answer to a request of the old scope is not kept.
 //
-// A new scope starts when the server's `data` (in `/health`: it changes with each start of `weflow serve` and with
-// its configuration, so with the account) is not the one seen before, and when the server comes back after it was
-// gone (an older server says no `data`).
+// A new scope starts when the server's `data` (in `hello` and each `heartbeat` of `/health/events`: it changes with
+// each start of `weflow serve` and with its configuration, so with the account) is not the one seen before, and
+// when the server comes back after it was gone.
 import { useEffect, useRef, useState } from 'react';
 import type { Backend } from './backend';
 
