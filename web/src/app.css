@@ -353,13 +353,70 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
   position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; height: var(--control-md);
   padding: 0 var(--space-3) 0 var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); color: var(--fg-muted);
 }
-.date-field:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-/* A hollow field is already sunk: held down, it only shrinks a little. */
-.date-field { transition: transform var(--duration-micro) var(--ease-out); }
+/* A hollow field is already sunk: held down, it only shrinks a little; while its calendar is open, its icon lights. */
+.date-field { transition: transform var(--duration-micro) var(--ease-out), color var(--duration-hover) ease; }
+.date-field:hover, .date-field.open { color: var(--fg); }
 .date-field:active { transform: scale(var(--press-scale)); }
-.date-field input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
 .date-display { color: var(--fg); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .range-arrow { color: var(--fg-subtle); }
+
+/*
+ * Floating layers anchored to a control (Popover.tsx): raised at the floating level, they grow out of the control
+ * with the base duration and leave with the exit one.
+ */
+.popover {
+  position: fixed; z-index: 40; padding: var(--space-3); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--neu-raised-float);
+  animation: popover-in var(--duration-base) var(--ease-out) both;
+}
+.popover[data-state='closing'] { animation: popover-out var(--duration-exit) var(--ease-out) both; }
+@keyframes popover-in { from { opacity: 0; transform: scale(var(--enter-scale)); } }
+@keyframes popover-out { to { opacity: 0; transform: scale(var(--enter-scale)); } }
+
+/*
+ * The calendar (#224). Days are flat; under the pointer and inside a range they are pressed (a shallow hollow);
+ * the chosen days sink inset and turn bold. Today has a short bar above its number, days with messages a dot
+ * below it, and with marks the days without messages turn quieter (still to pick).
+ */
+.calendar { --cell: 40px; width: calc(7 * var(--cell) + 6 * 2px); }
+.calendar-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.calendar-title {
+  display: inline-flex; align-items: center; height: var(--control-sm); padding: 0 var(--space-3); border-radius: var(--radius-full);
+  font-size: var(--text-sm); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums;
+}
+button.calendar-title { transition: box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out); }
+button.calendar-title:hover { box-shadow: var(--neu-pressed); }
+.calendar-grid { width: 100%; border-collapse: separate; border-spacing: 2px; margin: -2px; table-layout: fixed; }
+.calendar-grid th { height: 28px; padding: 0; color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-medium); }
+.calendar-grid td { padding: 0; }
+.calendar-day {
+  position: relative; height: var(--cell); border-radius: var(--radius-md); text-align: center; cursor: pointer;
+  font-size: var(--text-sm); font-variant-numeric: tabular-nums; box-shadow: var(--neu-flat);
+  transition: box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out), color var(--duration-hover) ease;
+}
+.calendar-day:focus-visible { outline-offset: -2px; }
+.calendar-day:hover:not([aria-disabled]), .calendar-day.between { box-shadow: var(--neu-pressed); }
+.calendar-day.between { color: var(--fg-muted); }
+.calendar-day.chosen { box-shadow: var(--neu-inset); font-weight: var(--weight-semibold); }
+.calendar-day.quiet:not(.chosen, .between) { color: var(--fg-subtle); }
+.calendar-day[aria-disabled] { color: var(--fg-subtle); opacity: .45; cursor: default; }
+.calendar-day.today::before, .calendar-day.marked::after {
+  content: ''; position: absolute; left: 50%; transform: translateX(-50%); background: currentColor; pointer-events: none;
+}
+.calendar-day.today::before { top: 6px; width: 10px; height: 2px; border-radius: var(--radius-full); }
+.calendar-day.marked::after { bottom: 5px; width: 4px; height: 4px; border-radius: 50%; opacity: .7; }
+.calendar-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.calendar-choice {
+  height: 44px; border-radius: var(--radius-md); font-size: var(--text-sm); font-variant-numeric: tabular-nums;
+  transition: box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+}
+.calendar-choice:hover:not(:disabled) { box-shadow: var(--neu-pressed); }
+.calendar-choice.chosen { box-shadow: var(--neu-inset); font-weight: var(--weight-semibold); }
+.calendar-choice:disabled { opacity: .45; }
+/* Held down, a day or a choice sinks all the way and shrinks; after the hover rules so it wins. */
+.calendar-day:active:not([aria-disabled]), .calendar-choice:active:not(:disabled), button.calendar-title:active {
+  box-shadow: var(--neu-inset); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro);
+}
 .format-group { width: 216px; }
 /* Our own check box: raised-sm when clear, inset with a tick when checked. */
 .checkbox { position: relative; display: flex; align-items: center; gap: var(--space-2); min-width: 0; cursor: pointer; font-size: var(--text-sm); }

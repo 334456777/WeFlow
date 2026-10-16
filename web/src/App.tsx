@@ -4,13 +4,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  Aperture, ArrowClockwise, ArrowLeft, ArrowsLeftRight, ArrowSquareOut, CalendarBlank,
+  Aperture, ArrowClockwise, ArrowLeft, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, Circle, CircleNotch,
   DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend } from './api/backend';
 import type { ChatSession } from './api/chat';
 import { Avatar } from './Avatar';
+import { DateRange } from './calendar/DateRange';
 import { CardStack, type Card } from './CardStack';
 import { SessionList } from './chat/SessionList';
 import { formatSessionTime, kindLabels, kindOf } from './chat/sessions';
@@ -96,18 +97,6 @@ function liveConversation(session: ChatSession | undefined): Conversation {
     description: kindLabels[kindOf(session.username)] + (count ? ' · 约 ' + count + ' 条记录' : ''),
     messages: [], live: true, messageCount: count, lastTime: session.lastTimestamp,
   };
-}
-
-function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: (value: string) => void; onTo: (value: string) => void }) {
-  return <div className="date-range">
-    <label className="date-field"><CalendarBlank size={16} aria-hidden="true" /><span className="date-display" aria-hidden="true">{from || '选择日期'}</span>
-      <input type="date" aria-label="开始日期" value={from} onClick={event => event.currentTarget.showPicker?.()} onInput={event => onFrom(event.currentTarget.value)} onChange={event => onFrom(event.target.value)} onBlur={event => { if (event.currentTarget.value !== from) onFrom(event.currentTarget.value); }} />
-    </label>
-    <ArrowsLeftRight className="range-arrow" size={16} aria-hidden="true" />
-    <label className="date-field"><CalendarBlank size={16} aria-hidden="true" /><span className="date-display" aria-hidden="true">{to || '选择日期'}</span>
-      <input type="date" aria-label="结束日期" value={to} onClick={event => event.currentTarget.showPicker?.()} onInput={event => onTo(event.currentTarget.value)} onChange={event => onTo(event.target.value)} onBlur={event => { if (event.currentTarget.value !== to) onTo(event.currentTarget.value); }} />
-    </label>
-  </div>;
 }
 
 /** The export button; while exporting it grows a cancel button, when done it offers the file and another run. */
@@ -274,7 +263,6 @@ export function App() {
 
   const search = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (searchDatesOpen && from && to && from > to) { setToast('开始日期不能晚于结束日期。'); return; }
     setSubmittedQuery(query.trim());
   };
 
@@ -283,7 +271,7 @@ export function App() {
       id: 'export', title: '导出', summary: format + (includeMedia ? ' · 含媒体' : ''),
       content: <>
         <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
-        <div className="form-row"><span className="field-label">时间范围</span><DateRange from={from} to={to} onFrom={value => { setFrom(value); resetExport(); }} onTo={value => { setTo(value); resetExport(); }} /></div>
+        <div className="form-row"><span className="field-label">时间范围</span><DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} /></div>
         <div className="form-row format-row"><span className="field-label">导出格式</span>
           <Segmented className="format-group" count={formats.length} index={formats.indexOf(format)} role="group" aria-label="导出格式">
             {formats.map(value => <button type="button" key={value} aria-pressed={format === value} onClick={() => { setFormat(value); resetExport(); }}>{value}</button>)}
@@ -307,7 +295,7 @@ export function App() {
           <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索此会话的消息" placeholder={'搜索' + selected.name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} /><button className={'icon-button small' + (searchDatesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={searchDatesOpen} onClick={() => setSearchDatesOpen(value => !value)}><CalendarBlank size={16} /></button></div>
           <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="fold-label">搜索</span></button>
         </form>
-        {searchDatesOpen && <div className="search-date-row"><span className="field-label">时间范围</span><DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} /></div>}
+        {searchDatesOpen && <div className="search-date-row"><span className="field-label">时间范围</span><DateRange label="搜索的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); }} /></div>}
         <div className="search-results" aria-live="polite">{submittedQuery === null
           ? <p className="empty-text">输入关键词，搜索当前会话的记录。</p>
           : results.length
