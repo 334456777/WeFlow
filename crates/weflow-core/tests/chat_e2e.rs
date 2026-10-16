@@ -191,6 +191,52 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
     assert_eq!(prepared["success"], true);
 }
 
+#[test]
+fn parsed_pages_keep_the_cursors_and_parse_each_kind() {
+    let (hub, _root, _f) = common::custom_hub("parsed", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        f.message_shard(
+            0,
+            &[(
+                "wxid_bob",
+                vec![
+                    MsgSpec::text(1, "wxid_bob", T0 + 10, "hello"),
+                    image(2, 20, MD5_A),
+                    MsgSpec::text(
+                        3,
+                        "wxid_bob",
+                        T0 + 30,
+                        "<msg><appmsg><title>Trip plan.pdf</title><type>6</type>\
+                         <appattach><totallen>2048</totallen><fileext>pdf</fileext></appattach></appmsg></msg>",
+                    )
+                    .of_type(49),
+                ],
+            )],
+        );
+    });
+    let raw = hub.message_page("wxid_bob", 10, 0, None, None).unwrap();
+    let parsed = hub.parsed_message_page(raw.clone());
+    let rows = parsed.as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    // the same rows, newest first, each with the cursor of its raw row
+    for (p, r) in rows.iter().zip(raw.as_array().unwrap()) {
+        assert_eq!(p["_cursor"], r["_cursor"]);
+        assert_eq!(p["localId"], r["local_id"]);
+    }
+    assert_eq!(rows[0]["localType"], 49);
+    assert_eq!(rows[0]["fileName"], "Trip plan.pdf");
+    assert_eq!(rows[0]["fileSize"], 2048);
+    assert_eq!(rows[1]["localType"], 3);
+    assert_eq!(rows[1]["imageMd5"], MD5_A);
+    assert_eq!(rows[2]["parsedContent"], "hello");
+    assert_eq!(rows[2]["senderUsername"], "wxid_bob");
+    // the next page from a parsed row's cursor
+    let older = hub
+        .message_page("wxid_bob", 10, 0, rows[1]["_cursor"].as_str(), None)
+        .unwrap();
+    assert_eq!(older.as_array().unwrap().len(), 1);
+}
+
 /// (local_id, database) of each row of a page.
 fn places(page: &serde_json::Value) -> Vec<(i64, String)> {
     page.as_array()

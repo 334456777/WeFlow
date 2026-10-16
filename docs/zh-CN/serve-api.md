@@ -236,6 +236,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 （这些是 `serve_bench` 测得的中位数，即客户端看到的耗时，见 [native-cli.md](native-cli.md)。）在会话里搜索时，先从最新的消息往前读，找够一页就停，所以常见的词约 5 ms；读了几千条（或 15 ms）还不够，就改查微信自己的索引（见 [cli-unsupported.md](cli-unsupported.md)），所以在有 21 万条消息的会话里，哪里都没有的词约 60 ms，不必读完所有消息。长会话里很靠后的消息页用 `offset` 取会很慢（21 万条消息的中间一页约 1.4 秒），用游标则不会：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
 
+- `chat messages` 带 `parsed=true`（`--parsed`）时，每条消息按桌面端的方式解析后返回，而不是数据库的原始行：`localType`、`parsedContent`、引用（`quotedContent`、`quotedSender`）、媒体的标识（`imageMd5`、`videoMd5`、`voiceDurationSeconds`、`emojiCdnUrl`）、链接、文件、名片、位置、视频号、聊天记录（应用消息的种类见 `appMsgKind`），`_cursor` 照旧。这样聊天窗口不必自己解析 XML。在大账号上，一页 50 条，服务端多花约 1 ms（中位数 1.9 → 2.8 ms），回复比原始行还小；用 `fields` 可以去掉 `rawContent`，即解析前的 XML。
 - 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
 - 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。
 - 配置文件变化后（`PUT /config/set`、切换配置档案），下一个请求会重新读取。

@@ -644,6 +644,9 @@ struct PageArgs {
     /// Only messages newer than this one (the `_cursor` of a message): the closest ones, still newest first
     #[arg(long, conflicts_with = "offset")]
     after: Option<String>,
+    /// Each message parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row
+    #[arg(long)]
+    parsed: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -2113,13 +2116,20 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             }
             Ok(Value::Array(sessions))
         }
-        ChatSubcommand::Messages(args) => hub.message_page(
-            &args.session_id,
-            args.limit,
-            args.offset,
-            args.before.as_deref(),
-            args.after.as_deref(),
-        ),
+        ChatSubcommand::Messages(args) => {
+            let page = hub.message_page(
+                &args.session_id,
+                args.limit,
+                args.offset,
+                args.before.as_deref(),
+                args.after.as_deref(),
+            )?;
+            Ok(if args.parsed {
+                hub.parsed_message_page(page)
+            } else {
+                page
+            })
+        }
         ChatSubcommand::Latest { session_id, limit } => {
             hub.message_page(session_id, *limit, 0, None, None)
         }
