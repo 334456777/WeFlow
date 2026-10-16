@@ -60,6 +60,7 @@ Opened by `weflow serve` (once #146 is done), the page gets its token from the a
 | `src/motion.ts` | Spring presets; `usePresence` keeps popovers, dialogs and notices until their exit has played |
 | `src/CardStack.tsx` | The console's cards: the header opens and closes a card; drag it with the mouse or press Alt+↑ / Alt+↓ to reorder. Order and open state stay in the browser's `localStorage` |
 | `src/VirtualList.tsx` | A list that draws only the rows in sight, for lists of thousands of rows (#159) |
+| `src/Scrollbar.tsx` | The page's own scrollbar: floats over a scroll area (the browser's is hidden), takes no width, can be dragged |
 | `src/chat/` | The chat page (#196): the conversation list with search, filters, folded groups and arrow keys (#197) |
 | `src/App.tsx`, `src/app.css` | The workspace: navigation on the left, records in the middle, the operations console on the right |
 | `src/mock/` | Sample records, until the screens read the API |

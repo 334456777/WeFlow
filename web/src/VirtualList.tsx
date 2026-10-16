@@ -2,6 +2,7 @@
 // all of them, so thousands of conversations scroll without thousands of elements.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import type { ForwardedRef, HTMLAttributes, ReactNode, Ref } from 'react';
+import { Scrollbar } from './Scrollbar';
 
 export interface VirtualListHandle {
   /** Scrolls just enough to bring the row into sight. */
@@ -72,9 +73,9 @@ function VirtualListInner<T>(
     const item = items[i];
     rows.push(<div key={keyOf(item)} className="virtual-row" style={{ transform: `translateY(${padding + i * rowHeight}px)`, height: rowHeight }}>{renderRow(item, i)}</div>);
   }
-  return <div ref={scroller} className={'virtual-list ' + (className ?? '')} onScroll={onScroll} {...rest}>
+  return <><div ref={scroller} className={'virtual-list ' + (className ?? '')} onScroll={onScroll} {...rest}>
     <div className="virtual-space" style={{ height: 2 * padding + items.length * rowHeight }}>{rows}</div>
-  </div>;
+  </div><Scrollbar target={scroller} /></>;
 }
 
 export const VirtualList = forwardRef(VirtualListInner) as <T>(

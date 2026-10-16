@@ -18,6 +18,7 @@ import { useSessions, type SessionsState } from './chat/useSessions';
 import { exportConversation } from './export';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
+import { Scrollbar } from './Scrollbar';
 import { Segmented } from './Segmented';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
 
@@ -185,6 +186,10 @@ export function App() {
   const [mobileDetail, setMobileDetail] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const consoleRef = useRef<HTMLElement>(null);
+  const settingsRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
   const exportAbort = useRef<AbortController | null>(null);
   const shownPreview = usePresence(preview);
   const shownToast = usePresence(toast);
@@ -343,7 +348,7 @@ export function App() {
     </aside>
 
     <div className="main-area">
-      {section === 'settings' ? <section className="panel browser-panel settings-panel scroll-area" aria-label="设置">
+      {section === 'settings' ? <><section ref={settingsRef} className="panel browser-panel settings-panel scroll-area" aria-label="设置">
         <div className="settings-heading"><Gear size={20} /><h1>设置</h1></div>
         <p className="muted">管理连接和浏览偏好。</p>
         <div className="setting-row"><div><h2>weflow serve</h2><p>{backendDetail(backend)}</p></div><button className="secondary-button" type="button" onClick={recheckBackend}>重新检测</button></div>
@@ -351,10 +356,10 @@ export function App() {
         <div className="setting-row"><div><h2>默认附带媒体文件</h2><p>导出时同时保存照片等媒体。</p></div><label className="toggle"><input type="checkbox" aria-label="默认附带媒体文件" checked={includeMedia} onChange={event => setIncludeMedia(event.target.checked)} /><span /></label></div>
         <div className="setting-row"><div><h2>减少动画</h2><p>所有过渡立即完成，状态提示保留。也跟随系统的「减少动态效果」。</p></div><label className="toggle"><input type="checkbox" aria-label="减少动画" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /><span /></label></div>
         <small className="settings-footnote">聊天记录目前是示例数据，页面接入 API 后替换。</small>
-      </section> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
+      </section><Scrollbar target={settingsRef} /></> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
         {activeCategory === 'chat'
           ? <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions} />
-          : <div className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}>
+          : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}>
           {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
             <Avatar name={conversation.name} url={conversation.avatar} />
             <span className="conversation-copy">
@@ -362,8 +367,8 @@ export function App() {
               <span className="conversation-preview clamp-1">{conversation.preview}</span>
             </span>
           </button>)}
-        </div>}
-        <div className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
+        </div><Scrollbar target={listRef} /></>}
+        <div ref={paneRef} className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
           <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
           {selected.live && <div className="pane-message">{selected.name
             ? <><strong>{selected.name}</strong><p>消息的显示还在开发中（#198）。</p></>
@@ -382,11 +387,13 @@ export function App() {
             </div>)}
           </div>
         </div>
+        <Scrollbar target={paneRef} />
       </section>}
 
-      <section className="console scroll-area" aria-label="操作控制台">
+      <section ref={consoleRef} className="console scroll-area" aria-label="操作控制台">
         <CardStack cards={cards} hidden={hiddenCards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label="操作控制台" />
       </section>
+      <Scrollbar target={consoleRef} />
     </div>
 
     <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
