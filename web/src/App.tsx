@@ -9,6 +9,7 @@ import {
   DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend } from './api/backend';
+import { useScope } from './api/scope';
 import type { ChatSession } from './api/chat';
 import { Avatar } from './Avatar';
 import { DateRange } from './calendar/DateRange';
@@ -193,7 +194,9 @@ export function App() {
 
   // The chat page reads `weflow serve` once it is connected; until then, and on the other pages, sample records.
   const live = activeCategory === 'chat' && (connected || backend.state === 'checking');
-  const [liveSessions, reloadSessions] = useSessions(connected);
+  // another server or account (#198): what was read for the one before goes
+  const scope = useScope(backend);
+  const [liveSessions, reloadSessions] = useSessions(connected, scope);
   const [liveId, setLiveId] = useState<string | null>(null);
   const sessionList = liveSessions.status === 'ready' ? liveSessions.sessions : [];
   const liveSession = sessionList.find(session => session.username === liveId);
@@ -201,6 +204,12 @@ export function App() {
   // A day picked or a search hit opened: its conversation shows the messages there (#199).
   const [jumpTo, setJumpTo] = useState<Jump | null>(null);
   const jumps = useRef(0);
+  const { clear: clearSearch } = liveSearch;
+  useEffect(() => {
+    if (!scope) return;
+    setJumpTo(null);
+    clearSearch();
+  }, [scope, clearSearch]);
   useEffect(() => {
     if (!liveSession && sessionList.length) setLiveId(sessionList[0].username);
   }, [liveSession, sessionList]);
@@ -324,7 +333,7 @@ export function App() {
     {
       id: 'search', title: '搜索', summary: selected.live ? searchSummary(liveSearch.state) : submittedQuery === null ? '当前会话' : results.length + ' 条结果',
       content: selected.live
-        ? <SearchPanel session={liveSession} sessions={sessionList} search={liveSearch} onOpenHit={openHit} onJumpDay={jumpToDay} />
+        ? <SearchPanel key={scope} session={liveSession} sessions={sessionList} search={liveSearch} onOpenHit={openHit} onJumpDay={jumpToDay} />
         : <>
         <form className="search-form" onSubmit={search}>
           <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索此会话的消息" placeholder={'搜索' + selected.name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} /><button className={'icon-button small' + (searchDatesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={searchDatesOpen} onClick={() => setSearchDatesOpen(value => !value)}><CalendarBlank size={16} /></button></div>
@@ -396,7 +405,7 @@ export function App() {
         <div ref={paneRef} className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
           <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
           {selected.live && (liveSession
-            ? <LiveMessages session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={setPreview} />
+            ? <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={setPreview} />
             : <div className="pane-message">{liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>)}
           {!selected.live && <div className="messages">
             {selected.messages.map((message, index) => <div key={message.id}>

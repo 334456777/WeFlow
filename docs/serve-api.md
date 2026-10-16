@@ -239,8 +239,10 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json 
 Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `1`. It is raised only by a change that breaks existing clients, not by new commands or options. `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
 
 ```json
-{"status": "ok", "apiVersion": "1", "version": "5.0.0"}
+{"status": "ok", "apiVersion": "1", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41"}
 ```
+
+`data` is an opaque value that changes with each start of the server and whenever its configuration changes, such as when another account is set up. Records a client read before it changed may be another account's: the WebUI forgets what it kept (messages, group members, the days with messages) and reads again. It is a keyed hash, drawn anew each run, and tells nothing of the configuration.
 
 ## How it runs
 

@@ -208,6 +208,32 @@ fn health_needs_no_token_and_everything_else_does() {
 }
 
 #[test]
+fn health_data_changes_with_the_configuration_and_each_run() {
+    let root = temp_root("data");
+    let server = start(&root, &["--api-token", TOKEN]);
+    let data = || {
+        server.request("GET", "/health", &[], "").json()["data"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let first = data();
+    assert_eq!(first.len(), 16);
+    assert_eq!(data(), first);
+    // another account set up while the server runs
+    let (code, _, err) = run_cli(&root, &["config", "set", "myWxid", "wxid_synthetic_b"]);
+    assert_eq!(code, 0, "{err}");
+    let second = data();
+    assert_ne!(second, first);
+    assert_eq!(data(), second);
+    drop(server);
+    // the same configuration, another run
+    let server = start(&root, &["--api-token", TOKEN]);
+    let third = server.request("GET", "/health", &[], "").json()["data"].clone();
+    assert_ne!(third, json!(second));
+}
+
+#[test]
 fn the_api_describes_itself() {
     let root = temp_root("openapi");
     let server = start(&root, &["--api-token", TOKEN]);

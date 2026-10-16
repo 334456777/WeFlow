@@ -512,6 +512,8 @@ pub struct ApiConfig {
     pub log_requests: bool,
     /// The WebUI served at `/ui/` (issue #146), if any; set later when its version is downloaded beside the server.
     pub ui: Arc<std::sync::RwLock<Option<ui::UiDir>>>,
+    /// The configuration the commands read: what `data` of `/health` follows.
+    pub config_path: PathBuf,
 }
 
 struct AppState {
@@ -529,9 +531,20 @@ struct AppState {
     hub: Arc<in_process::Hub>,
     /// `/api/push/messages`.
     push: push::Push,
+    /// Drawn at start, so `data` of `/health` differs between two runs and tells nothing of the configuration.
+    data_seed: std::collections::hash_map::RandomState,
 }
 
 impl AppState {
+    /// `data` of `/health` (issue #198): changes when the configuration does (so with the account the commands read)
+    /// and with each run, so a client knows when what it read before may be another account's. A keyed hash: it
+    /// says nothing of the configuration itself.
+    fn data_key(&self) -> String {
+        use std::hash::BuildHasher;
+        let config = std::fs::read(&self.cfg.config_path).unwrap_or_default();
+        format!("{:016x}", self.data_seed.hash_one(&config))
+    }
+
     /// The limit a command with this method runs under.
     fn limit(&self, verb: Option<Verb>) -> &Arc<Semaphore> {
         if verb == Some(Post) {
@@ -607,6 +620,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             openapi: Default::default(),
             hub,
             push: Default::default(),
+            data_seed: Default::default(),
         }))
 }
 
@@ -929,6 +943,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             "status": "ok",
             "apiVersion": API_VERSION,
             "version": env!("WEFLOW_VERSION"),
+            "data": st.data_key(),
         });
         return json_body(StatusCode::OK, body.to_string());
     }
