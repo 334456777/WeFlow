@@ -468,6 +468,9 @@ enum ChatSubcommand {
         /// Create time (seconds) of the message, with --local-id: tells apart messages of different message databases that share the local id
         #[arg(long, requires = "local_id")]
         create_time: Option<i64>,
+        /// The message alone, parsed as `chat messages --parsed` gives it, with its `_cursor`
+        #[arg(long)]
+        parsed: bool,
     },
     /// Dates that have messages in a session (YYYY-MM-DD)
     Dates {
@@ -2243,13 +2246,21 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             local_id,
             server_id,
             create_time,
-        } => match (local_id, server_id) {
-            (Some(id), None) => hub.chat_message_by_id(session_id, *id, *create_time),
-            (None, Some(svr)) => hub.chat_message_by_server_id(session_id, svr),
-            _ => Err(AppError::usage(
-                "pass exactly one of --local-id or --server-id",
-            )),
-        },
+            parsed,
+        } => {
+            let found = match (local_id, server_id) {
+                (Some(id), None) => hub.chat_message_by_id(session_id, *id, *create_time),
+                (None, Some(svr)) => hub.chat_message_by_server_id(session_id, svr),
+                _ => Err(AppError::usage(
+                    "pass exactly one of --local-id or --server-id",
+                )),
+            }?;
+            Ok(if *parsed {
+                hub.parsed_lookup(found)
+            } else {
+                found
+            })
+        }
         ChatSubcommand::Dates { session_id } => hub.chat_dates(session_id),
         ChatSubcommand::DateCounts { session_id } => hub.chat_date_counts(session_id),
         ChatSubcommand::Counts { sessions } => hub.chat_counts(sessions),

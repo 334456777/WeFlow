@@ -345,6 +345,38 @@ fn pages_from_a_cursor_follow_the_offset_order() {
 }
 
 #[test]
+fn a_message_looked_up_parsed_is_the_one_of_its_page() {
+    // a media list knows a message by its local id and time; opening it there needs the page's `_cursor` (#200)
+    let (hub, _root, _f) = common::custom_hub("lookup-parsed", |f| {
+        f.session_db(&[session("wxid_bob")]);
+        let msg = |id: i64, at: i64, text: &str| MsgSpec::text(id, "wxid_bob", at, text);
+        f.message_shard(
+            0,
+            &[("wxid_bob", vec![msg(1, T0, "one"), msg(2, T0 + 10, "two")])],
+        );
+        f.message_shard(1, &[("wxid_bob", vec![msg(2, T0 + 20, "other two")])]);
+    });
+    let page = hub.parsed_message_page(hub.message_page("wxid_bob", 10, 0, None, None).unwrap());
+    let in_page = |text: &str| {
+        page.as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["parsedContent"] == text)
+            .unwrap()
+            .clone()
+    };
+    for (at, text) in [(T0 + 10, "two"), (T0 + 20, "other two")] {
+        let found = hub.parsed_lookup(hub.chat_message_by_id("wxid_bob", 2, Some(at)).unwrap());
+        assert_eq!(found, in_page(text), "{text}");
+        assert!(found["_cursor"].is_string());
+    }
+    assert!(hub.chat_message_by_id("wxid_bob", 9999, None).is_err());
+    assert!(hub
+        .parsed_lookup(serde_json::json!({ "row": null }))
+        .is_null());
+}
+
+#[test]
 fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
     // WeChat orders a chat by sort_seq, the send time in milliseconds plus a little; a message may be ordered a
     // second or two off its own send time (issue #242)

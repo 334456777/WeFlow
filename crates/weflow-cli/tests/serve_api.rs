@@ -693,6 +693,7 @@ fn reads_run_in_process_with_the_same_answers() {
         "/chat/messages?session-id=room1%40chatroom",
         "/chat/latest?session-id=wxid_bob&limit=1",
         "/chat/message?session-id=wxid_bob&local-id=2",
+        "/chat/message?session-id=wxid_bob&local-id=2&parsed=true",
         "/chat/contact?username=wxid_bob",
         "/chat/contacts",
         "/chat/counts?sessions=wxid_bob&sessions=room1%40chatroom",
@@ -715,6 +716,17 @@ fn reads_run_in_process_with_the_same_answers() {
         let r = same(target);
         assert_eq!(r.status, 200, "{target}: {}", r.body);
     }
+    // A media list lookup has exactly the parsed shape and cursor of the conversation page.
+    let parsed = same("/chat/messages?session-id=wxid_bob&parsed=true").json();
+    let lookup = same("/chat/message?session-id=wxid_bob&local-id=2&parsed=true").json();
+    assert_eq!(
+        parsed["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["localId"] == 2),
+        Some(&lookup["data"])
+    );
     // a page from a message's cursor: the one before Bob's message 4 (in message_1.db) goes on in message_0.db
     {
         use weflow_native::fixture::{DAY, T0};
