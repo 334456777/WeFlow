@@ -181,6 +181,7 @@ const HELP: &[(&str, &str)] = &[
     ("Number of results to skip", "跳过的条数"),
     ("Only messages older than this one: the `_cursor` of the last message of the previous page (as fast however far back)", "只返回比这条更早的消息：传上一页最后一条消息的 `_cursor`（翻得再远也一样快）"),
     ("Only messages newer than this one (the `_cursor` of a message): the closest ones, still newest first", "只返回比这条更新的消息（传某条消息的 `_cursor`）：取离它最近的若干条，仍按最新在前排列"),
+    ("Each message parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row", "每条消息按桌面端的方式解析（类型、文字、引用、媒体、链接、文件等），而不是数据库的原始行"),
     ("Only messages from this time on (Unix seconds, 0 = no limit)", "只搜索这个时间之后的消息（Unix 秒，0 表示不限）"),
     ("Only messages up to this time (Unix seconds, 0 = no limit)", "只搜索到这个时间为止的消息（Unix 秒，0 表示不限）"),
     ("List all contacts", "列出所有联系人"),
