@@ -506,8 +506,10 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .export-pending { width: 240px; max-width: 100%; margin-top: var(--space-4); }
 .morph-label { display: inline-flex; align-items: center; gap: var(--space-2); animation: label-in var(--duration-base) var(--ease-out); }
 
-/* Narrow cards: labels above their fields. */
+/* Narrow cards: labels above their fields, and the search button an icon, by the width alone (#254). */
 @container (max-width: 340px) {
+  .search-button { width: var(--control-md); padding: 0; }
+  .search-button-label { display: none; }
   .form-row { flex-wrap: wrap; gap: var(--space-2); }
   .field-label { min-width: 100%; }
   .date-range { width: 100%; }
@@ -530,19 +532,20 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .download-link { display: inline-block; margin-top: 2px; color: var(--fg); font-size: var(--text-xs); text-underline-offset: 3px; }
 .spin { animation: spin var(--loop-spin) linear infinite; }
 
-/* Search. When the field has focus the button folds to its icon and leaves the room to the field (#50). */
-.search-form { display: flex; align-items: center; gap: var(--space-3); }
+/*
+ * Search: the field, the button and the dates toggle side by side. Nothing moves when the field takes focus, so a
+ * click that focuses it lands where it was aimed (#254).
+ */
+.search-form { display: flex; align-items: center; gap: var(--space-2); }
+.search-form .icon-button { flex-shrink: 0; }
 .search-input {
   display: flex; flex: 1; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-md);
-  padding: 0 3px 0 var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); color: var(--fg-muted);
+  padding: 0 var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); color: var(--fg-muted);
 }
 .search-input:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .search-input input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: var(--fg); font-size: var(--text-sm); }
 .search-input input::placeholder { color: var(--fg-subtle); }
-.search-button { transition: box-shadow var(--duration-hover) var(--ease-out), gap var(--duration-base) var(--ease-snap), padding var(--duration-base) var(--ease-snap), transform var(--duration-micro) var(--ease-out); }
-.fold-label { display: inline-block; max-width: 4em; overflow: hidden; white-space: nowrap; transition: max-width var(--duration-base) var(--ease-snap), opacity var(--duration-snap) ease; }
-.search-input:focus-within + .search-button { gap: 0; padding: 0 var(--space-3); }
-.search-input:focus-within + .search-button .fold-label { max-width: 0; opacity: 0; }
+.search-button { flex-shrink: 0; }
 .search-date-row { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); animation: content-in var(--duration-base) var(--ease-out); }
 .search-results { margin-top: var(--space-3); }
 .empty-text { padding: var(--space-2) 0; color: var(--fg-muted); font-size: var(--text-sm); }
