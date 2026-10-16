@@ -225,6 +225,20 @@ impl ServiceHub {
         Ok(with_cursors(page))
     }
 
+    /// `chat message --parsed`: the message a lookup found, parsed as a page's are and with its `_cursor`, so a
+    /// chat window can open its conversation there (issue #200).
+    pub fn parsed_lookup(&self, lookup: Value) -> Value {
+        let row = lookup.get("row").cloned().unwrap_or(Value::Null);
+        if !row.is_object() {
+            return Value::Null;
+        }
+        let page = self.parsed_message_page(with_cursors(Value::Array(vec![row])));
+        page.as_array()
+            .and_then(|rows| rows.first())
+            .cloned()
+            .unwrap_or(Value::Null)
+    }
+
     /// `chat search`: the hits, newest first, each with the `_cursor` of its message, to page its conversation from.
     pub fn search(
         &self,

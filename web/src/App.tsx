@@ -23,6 +23,9 @@ import { BizPushes } from './chat/BizPushes';
 import { LiveMessages } from './chat/LiveMessages';
 import { useBizAccounts } from './chat/useBizAccounts';
 import { SearchPanel, searchSummary } from './chat/SearchPanel';
+import { SessionInfo } from './chat/SessionInfo';
+import { MediaPanel } from './chat/MediaPanel';
+import { lookupMessage, type Resource } from './api/details';
 import type { Jump } from './chat/useMessages';
 import { useSearch } from './chat/useSearch';
 import { parseDay } from './calendar/dates';
@@ -225,6 +228,8 @@ export function App() {
   const scope = useScope(backend);
   const [liveSessions, reloadSessions] = useSessions(connected, scope);
   const [liveId, setLiveId] = useState<string | null>(null);
+  const mediaLookup = useRef<AbortController | null>(null);
+  useEffect(() => () => { mediaLookup.current?.abort(); }, [scope, liveId, section]);
   const sessionList = liveSessions.status === 'ready' ? liveSessions.sessions : [];
   // the official accounts followed without a conversation, once the 「公众号」 filter is first chosen (#203)
   const [officialsWanted, setOfficialsWanted] = useState(false);
@@ -314,6 +319,22 @@ export function App() {
     showMessages();
   };
 
+  // a picture, video or file of the media card: its conversation opens at the message (#200)
+  const openMedia = async (sessionId: string, item: Resource) => {
+    mediaLookup.current?.abort();
+    const controller = new AbortController();
+    mediaLookup.current = controller;
+    try {
+      const message = await lookupMessage(sessionId, item.localId, item.createTime, controller.signal);
+      if (controller.signal.aborted) return;
+      if (!message?._cursor) { setToast('没有找到这条消息。'); return; }
+      setJumpTo({ sessionId, target: { at: 'message', message }, seq: ++jumps.current });
+      showMessages();
+    } catch {
+      if (!controller.signal.aborted) setToast('没有找到这条消息。');
+    }
+  };
+
   const jumpToDay = (sessionId: string, day: string) => {
     setJumpTo({ sessionId, target: { at: 'time', seconds: parseDay(day).getTime() / 1000 }, seq: ++jumps.current });
     showMessages();
@@ -379,20 +400,22 @@ export function App() {
     },
     {
       id: 'info', title: '会话资料', summary: selected.live ? (selected.messageCount ? '约 ' + selected.messageCount + ' 条' : '') : selected.messages.length + ' 条记录',
-      content: <>
-        <div className="info-content"><Avatar name={selected.name} url={selected.avatar} /><div><h4>{selected.name}</h4><p className="clamp-2">{selected.description}</p></div></div>
-        {selected.live
-          ? <dl className="info-grid"><div><dt>类型</dt><dd>{kindLabels[kindOf(selected.id)]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messageCount ? '约 ' + selected.messageCount + ' 条' : '—'}</dd></div><div><dt>最后一条消息</dt><dd className="num">{selected.lastTime ? new Date(selected.lastTime * 1000).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</dd></div></dl>
-          : <dl className="info-grid"><div><dt>类型</dt><dd>{categoryLabels[selected.category]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messages.length} 条</dd></div><div><dt>媒体文件</dt><dd className="num">{media.length} 个</dd></div><div><dt>时间范围</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>}
-      </>,
+      content: selected.live
+        ? (open: boolean) => liveSession ? <SessionInfo key={scope + ':' + liveSession.username} session={liveSession} active={open} /> : null
+        : <>
+          <div className="info-content"><Avatar name={selected.name} url={selected.avatar} /><div><h4>{selected.name}</h4><p className="clamp-2">{selected.description}</p></div></div>
+          <dl className="info-grid"><div><dt>类型</dt><dd>{categoryLabels[selected.category]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messages.length} 条</dd></div><div><dt>媒体文件</dt><dd className="num">{media.length} 个</dd></div><div><dt>时间范围</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>
+        </>,
     },
     {
-      id: 'media', title: '媒体文件', summary: media.length + ' 个',
-      content: <div className="media-list"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
+      id: 'media', title: '媒体文件', summary: selected.live ? '图片、视频与文件' : media.length + ' 个',
+      content: selected.live
+        ? (open: boolean) => liveSession ? <MediaPanel key={scope + ':' + liveSession.username} sessionId={liveSession.username} active={open} onOpen={item => openMedia(liveSession.username, item)} /> : null
+        : <div className="media-list"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
   ];
-  // The media of a real conversation come with #200.
-  const hiddenCards = selected.live ? ['media'] : [];
+  // nothing to show of a real conversation until one is open
+  const hiddenCards = selected.live && !liveSession ? ['info', 'media'] : [];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">

@@ -73,6 +73,8 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/api/backend.ts` | 连接状态：保持 `/health/events` 长连接，加上看门狗和退避重连（#221）；打开实时消息时改为 `/api/push/messages`（#201）；检查版本，提供 `useBackend` |
 | `src/api/live.ts` | 实时消息事件，分发给会话列表和打开的会话（#201） |
 | `src/api/biz.ts` | 公众号：关注的公众号（`/biz/accounts`）和它们的推送（`/biz/messages`）（#203） |
+| `src/api/details.ts` | 会话资料、群成员统计、媒体及解析后的单条消息查询；串行执行子进程读取（#200） |
+| `src/chat/SessionInfo.tsx`、`src/chat/MediaPanel.tsx` | 展开时读取的控制台卡片：会话资料、虚拟化的群成员列表，以及可定位到原消息的媒体文件（#200） |
 | `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/chat/statuses`，每次 100 个） |
 | `src/styles/tokens.css` | 设计令牌：字号、控件高度、圆角、颜色（含深色模式）、新拟态的五种表面（#220）、动效时长和缓动（#192、#193）。页面样式只引用这些变量 |
 | `src/motion.ts` | 弹簧预设，`usePresence` 让浮层、对话框和提示播完退出动画再移除 |

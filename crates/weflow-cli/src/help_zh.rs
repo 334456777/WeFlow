@@ -198,6 +198,7 @@ const HELP: &[(&str, &str)] = &[
     ("Each message parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row", "每条消息按桌面端的方式解析（类型、文字、引用、媒体、链接、文件等），而不是数据库的原始行"),
     ("The messages from where this time (Unix seconds) falls in the chat's order: the earliest ones, still newest first, as when a chat window jumps to a day", "从这个时间（Unix 秒）在聊天顺序中的位置开始的消息：取最早的若干条，仍按最新在前排列，用于聊天窗口跳到某一天"),
     ("Each hit parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row", "每条结果按桌面端的方式解析（类型、文字、引用、媒体、链接、文件等），而不是数据库的原始行"),
+    ("The message alone, parsed as `chat messages --parsed` gives it, with its `_cursor`", "只返回这条消息，按 `chat messages --parsed` 的方式解析，并带上它的 `_cursor`"),
     ("Only messages from this time on (Unix seconds, 0 = no limit)", "只搜索这个时间之后的消息（Unix 秒，0 表示不限）"),
     ("Only messages up to this time (Unix seconds, 0 = no limit)", "只搜索到这个时间为止的消息（Unix 秒，0 表示不限）"),
     ("List all contacts", "列出所有联系人"),
