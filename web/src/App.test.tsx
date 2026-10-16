@@ -15,7 +15,7 @@ async function renderWith(health: Response | Error) {
 }
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
-const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0-rc.4' };
+const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' };
 
 describe('App', () => {
   it('shows the workspace with the sample records while no backend is connected', async () => {
@@ -164,7 +164,7 @@ describe('App', () => {
     let up = true;
     vi.stubGlobal('fetch', vi.fn(async () => {
       if (!up) throw new TypeError('Failed to fetch');
-      return new Response(JSON.stringify({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.4' }));
+      return new Response(JSON.stringify({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' }));
     }));
     render(<App />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });

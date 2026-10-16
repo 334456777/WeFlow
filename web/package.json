@@ -7,7 +7,7 @@
   "license": "CC-BY-NC-SA-4.0",
   "weflow": {
     "apiVersion": "1",
-    "minBackendVersion": "5.0.0-rc.4"
+    "minBackendVersion": "5.0.0-rc.5"
   },
   "engines": {
     "node": ">=20.19"
