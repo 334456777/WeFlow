@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSessions, getStatuses, type ChatSession, type SessionStatus } from '../api/chat';
 import { ApiError } from '../api/client';
 
@@ -18,17 +18,21 @@ function messageOf(problem: unknown): string {
 
 /**
  * The conversation list of `weflow serve` while `enabled` (the server is there and compatible): the list first, then
- * the folded and muted states, which only change how it is shown and do not hold it up.
+ * the folded and muted states, which only change how it is shown and do not hold it up. A new `scope` (another
+ * server or account, see `scope.ts`) reads it again without showing the one before meanwhile.
  */
-export function useSessions(enabled: boolean): [SessionsState, () => void] {
+export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => void] {
   const [state, setState] = useState<SessionsState>({ status: 'idle' });
   const [round, setRound] = useState(0);
   const reload = useCallback(() => setRound(n => n + 1), []);
+  const shownScope = useRef(scope);
 
   useEffect(() => {
     if (!enabled) { setState({ status: 'idle' }); return; }
     const controller = new AbortController();
-    setState(old => (old.status === 'ready' ? old : { status: 'loading' }));
+    const fresh = shownScope.current !== scope;
+    shownScope.current = scope;
+    setState(old => (old.status === 'ready' && !fresh ? old : { status: 'loading' }));
     (async () => {
       let sessions: ChatSession[];
       try {
@@ -47,7 +51,7 @@ export function useSessions(enabled: boolean): [SessionsState, () => void] {
       }
     })();
     return () => controller.abort();
-  }, [enabled, round]);
+  }, [enabled, round, scope]);
 
   return [state, reload];
 }

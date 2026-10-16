@@ -6,6 +6,7 @@ import type { RefObject } from 'react';
 import { ArrowClockwise, ArrowDown, CircleNotch } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
 import { getMembers, type GroupMember } from '../api/messages';
+import { currentScope, onNewScope } from '../api/scope';
 import { Avatar } from '../Avatar';
 import { FEEDBACK_MS } from '../motion';
 import { dayOf, formatClock, formatDayHeading, isMine, kindOf } from './messages';
@@ -31,14 +32,17 @@ function place(el: HTMLElement, node: HTMLElement, focus: Focus) {
 interface Person { name: string; avatarUrl?: string }
 
 const memberCache = new Map<string, Map<string, Person>>();
+onNewScope(() => memberCache.clear());
 
 /** The members of a group, read once and kept: their names in the group and their pictures. */
 export async function loadMembers(chatroomId: string, signal?: AbortSignal): Promise<Map<string, Person>> {
   const kept = memberCache.get(chatroomId);
   if (kept) return kept;
+  const scope = currentScope();
   const members = await getMembers(chatroomId, signal);
   const map = new Map(members.map((m: GroupMember) => [m.username, { name: m.groupNickname || m.displayName || m.username, avatarUrl: m.avatarUrl || undefined }]));
-  memberCache.set(chatroomId, map);
+  // read for the account before: given to its caller (gone by now), not kept
+  if (scope === currentScope()) memberCache.set(chatroomId, map);
   return map;
 }
 

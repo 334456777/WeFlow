@@ -3527,6 +3527,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
                     .map_or_else(serve_api::default_max_reads, usize::from),
                 log_requests: command.log_requests,
                 ui,
+                config_path: hub.config_path().to_path_buf(),
             };
             serve_api::serve(cfg, listener).await
         };

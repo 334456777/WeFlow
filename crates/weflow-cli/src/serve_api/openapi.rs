@@ -479,6 +479,14 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
                                 "type": "string",
                                 "description": pick(zh, "Version of weflow", "weflow 的版本"),
                             },
+                            "data": {
+                                "type": "string",
+                                "description": pick(
+                                    zh,
+                                    "Changes with each start of the server and with its configuration (so with the account); records read before it changed may be another account's",
+                                    "每次启动服务器、配置改变（包括切换账号）时都会变化；变化之前读到的记录可能属于另一个账号",
+                                ),
+                            },
                         },
                     })),
                 },

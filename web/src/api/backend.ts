@@ -6,6 +6,8 @@ export interface Health {
   status: string;
   apiVersion: string;
   version: string;
+  /** Changes with each start of the server and with its configuration (so with the account); see `scope.ts`. */
+  data?: string;
 }
 
 export type Backend =

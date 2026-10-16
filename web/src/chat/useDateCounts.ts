@@ -1,8 +1,10 @@
 // The days of a conversation that have messages, for the calendars (#199): read the first time one opens, then kept.
 import { useCallback, useEffect, useState } from 'react';
 import { getDateCounts } from '../api/messages';
+import { currentScope, onNewScope } from '../api/scope';
 
 const cache = new Map<string, Record<string, number>>();
+onNewScope(() => cache.clear());
 
 /** The counts of `sessionId` once asked for (`request`), else null; a calendar shows plain days until they come. */
 export function useDateCounts(sessionId: string | null): { counts: Record<string, number> | null; request(): void } {
@@ -14,7 +16,9 @@ export function useDateCounts(sessionId: string | null): { counts: Record<string
     const kept = cache.get(sessionId);
     if (kept) { setCounts({ id: sessionId, counts: kept }); return; }
     const controller = new AbortController();
+    const scope = currentScope();
     getDateCounts(sessionId, controller.signal).then(found => {
+      if (scope !== currentScope()) return;
       cache.set(sessionId, found);
       setCounts({ id: sessionId, counts: found });
     }, () => { /* without the marks the calendar still works */ });

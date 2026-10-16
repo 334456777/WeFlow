@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
+import { currentScope, onNewScope } from '../api/scope';
 import { getMessages, PAGE_SIZE, type PageFrom, type ParsedMessage } from '../api/messages';
 
 /** A message to bring into view after a jump: a search hit in the middle, a day from its first message at the top. */
@@ -45,8 +46,9 @@ const AROUND = 25;
 const cache = new Map<string, Thread>();
 const CACHE_SIZE = 20;
 
-function remember(id: string, thread: Thread) {
-  if (thread.hasNewer) return;
+/** Keeps a thread read in `scope`, unless a new scope started meanwhile. */
+function remember(id: string, thread: Thread, scope: number) {
+  if (thread.hasNewer || scope !== currentScope()) return;
   cache.delete(id);
   cache.set(id, { ...thread, loadingOlder: false, loadingNewer: false, focus: null });
   while (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);
@@ -56,6 +58,7 @@ function remember(id: string, thread: Thread) {
 export function forgetMessages() {
   cache.clear();
 }
+onNewScope(forgetMessages);
 
 function messageOf(problem: unknown): string {
   if (problem instanceof ApiError) {
@@ -124,11 +127,12 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
     if (!sessionId) { update(null, IDLE); return; }
     const target = jump && jump.sessionId === sessionId && jump.seq !== handled.current ? jump : null;
     const controller = new AbortController();
+    const scope = currentScope();
     if (target) {
       handled.current = target.seq;
       update(sessionId, LOADING);
       threadAt(sessionId, target.target, target.seq, controller.signal).then(next => {
-        remember(sessionId, next);
+        remember(sessionId, next, scope);
         update(sessionId, next);
       }, problem => {
         if (!controller.signal.aborted) update(sessionId, { ...IDLE, status: 'error', error: messageOf(problem) });
@@ -141,7 +145,7 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
     update(sessionId, LOADING);
     getMessages(sessionId, null, controller.signal).then(page => {
       const next: Thread = { ...IDLE, status: 'ready', messages: page.slice().reverse(), hasMore: page.length === PAGE_SIZE };
-      remember(sessionId, next);
+      remember(sessionId, next, scope);
       update(sessionId, next);
     }, problem => {
       if (!controller.signal.aborted) update(sessionId, { ...IDLE, status: 'error', error: messageOf(problem) });
@@ -157,6 +161,7 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
     const left = side === 'older' ? now.hasMore : now.hasNewer;
     if (!id || now.status !== 'ready' || !left || busy || !now.messages.length) return;
     const controller = new AbortController();
+    const scope = currentScope();
     paging.current = controller;
     const flag = side === 'older' ? 'loadingOlder' : 'loadingNewer';
     update(id, { ...now, [flag]: true, error: undefined });
@@ -169,7 +174,7 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
         const next: Thread = side === 'older'
           ? { ...old, loadingOlder: false, hasMore: got.length === PAGE_SIZE, messages: [...added, ...old.messages] }
           : { ...old, loadingNewer: false, hasNewer: got.length === PAGE_SIZE, messages: [...old.messages, ...added] };
-        remember(id, next);
+        remember(id, next, scope);
         return next;
       });
     }, problem => {
