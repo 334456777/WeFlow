@@ -254,6 +254,8 @@ Two versions tell clients what they talk to: `version` (in `/health`, and `info.
 
 The WebUI holds one such stream and reports the connection by it: the moment the stream breaks (the server stopped), the indicator says 「未连接」; it connects again after 1, 2, 4 … at most 30 seconds (give or take a fifth), at once when the network or the tab comes back and on 「重新检测」. Idle, it sends no request. On this machine (`127.0.0.1`) losing the network does not cut the page from the server, so there it only checks again. A server without `/health/events` (5.0.0-rc.5 and older) is not supported by the WebUI.
 
+With 「实时消息」 on (the default, in the settings), the WebUI holds `/api/push/messages` instead, the token in its address (`access_token`), and the indicator says 「实时」. A message event has the conversation read again: the list, and the open conversation from its last message on (`after`); a recall, or a break, reads its newest page again too. After a break it reconnects with the id of the last event (`last-event-id`); the ids of a run start at the time it started, so a page coming back to a restarted server misses none.
+
 ## How it runs
 
 Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. A client that closes the connection before the answer ends its command; so does cancelling a job.

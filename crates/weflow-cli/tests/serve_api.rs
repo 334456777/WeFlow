@@ -1531,6 +1531,11 @@ fn new_messages_are_pushed_as_events() {
     let mut again = EventStream::open(&server, &[("Last-Event-ID", &last)]);
     assert!(again.wait_for("event: ready", 5), "{}", again.text);
     assert!(!again.wait_for("brand new", 2), "{}", again.text);
+    // one that comes back with the id of a run before (from 1 on, say) misses none of this run's: they start at
+    // the time the server started
+    assert!(id > 1_700_000_000_000, "{id}");
+    let mut restarted = EventStream::open(&server, &[("Last-Event-ID", "57")]);
+    assert!(restarted.wait_for("brand new", 5), "{}", restarted.text);
     // nothing new: each message is pushed once
     assert!(
         !first.wait_for(&format!("id: {}", id + 1), 2),

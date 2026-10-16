@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
+import { onLive, type LiveEvent } from './live';
 
 const web = { name: 'weflow-web', version: '0.1.0', apiVersion: '1', minBackendVersion: '5.0.0-rc.4' };
 
@@ -47,6 +48,9 @@ class FakeStream implements Stream {
     for (const listener of this.listeners.get(type) ?? []) listener(new MessageEvent(type, { data: JSON.stringify(data) }));
   }
   fail() { this.onerror?.(new Event('error')); }
+  emitWithId(type: string, data: unknown, lastEventId: string) {
+    for (const listener of this.listeners.get(type) ?? []) listener(new MessageEvent(type, { data: JSON.stringify(data), lastEventId }));
+  }
 }
 
 const health = { status: 'ok', apiVersion: '1', version: '9.0.0', data: 'a' };
@@ -186,6 +190,51 @@ describe('Connection (#221)', () => {
     window.dispatchEvent(new Event('offline'));
     expect(far.now()).toEqual({ state: 'offline' });
     far.live.stop();
+  });
+
+  it('listens to the live messages on one stream, and goes on from the last one after a break (#201)', () => {
+    sessionStorage.setItem('weflow.token', 't+1');
+    const heard: LiveEvent[] = [];
+    const off = onLive(event => heard.push(event));
+    const c = connection();
+    c.last().send('hello', health);
+    expect(heard).toEqual([]);
+    // turned on later: what came while it was off is read too
+    c.live.setLive(true);
+    expect(c.last().url).toBe('/api/push/messages?access_token=t%2B1');
+    c.last().send('hello', health);
+    expect(heard).toEqual([{ type: 'resumed' }]);
+    c.last().send('ready', { success: true });
+    for (const listener of ['message.new', 'message.revoke']) {
+      c.last().emitWithId(listener, { sessionId: 'wxid_a', content: 'hi' }, listener === 'message.new' ? '1760000000123' : '1760000000124');
+    }
+    expect(heard.slice(1)).toEqual([{ type: 'message.new', sessionId: 'wxid_a' }, { type: 'message.revoke', sessionId: 'wxid_a' }]);
+    // a break: back from the last event, and anything may have come meanwhile
+    c.last().fail();
+    vi.advanceTimersByTime(1_000);
+    expect(c.last().url).toBe('/api/push/messages?access_token=t%2B1&last-event-id=1760000000124');
+    c.last().send('hello', health);
+    expect(heard.at(-1)).toEqual({ type: 'resumed' });
+    // turned off: the state alone again
+    c.live.setLive(false);
+    expect(c.last().url).toBe('/health/events');
+    off();
+    c.live.stop();
+    sessionStorage.clear();
+  });
+
+  it('needs no catching up on the first hello of a page that starts live', () => {
+    const heard: LiveEvent[] = [];
+    const off = onLive(event => heard.push(event));
+    const streams: FakeStream[] = [];
+    const live = new Connection(() => {}, { open: url => { const s = new FakeStream(url); streams.push(s); return s; }, loopback: true });
+    live.setLive(true);
+    live.start();
+    expect(streams).toHaveLength(1);
+    streams[0].send('hello', health);
+    expect(heard).toEqual([]);
+    off();
+    live.stop();
   });
 
   it('stops for good', () => {

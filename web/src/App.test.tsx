@@ -91,7 +91,8 @@ describe('App', () => {
     }));
     render(<App />);
     await act(async () => {});
-    expect(screen.getByRole('status').textContent).toBe('已连接');
+    // live messages are on unless turned off
+    expect(screen.getByRole('status').textContent).toBe('实时');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '折叠的群聊']);
     expect(calls).toContain('/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
     // The first conversation is opened; its media wait for #200.
@@ -198,7 +199,7 @@ describe('App', () => {
     render(<App />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     const status = () => document.querySelector('.connection')!;
-    expect(status().textContent).toBe('已连接');
+    expect(status().textContent).toBe('实时');
     expect(status().classList.contains('quiet')).toBe(false);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
@@ -211,6 +212,65 @@ describe('App', () => {
     expect(status().classList.contains('quiet')).toBe(false);
     await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
     expect(status().classList.contains('quiet')).toBe(false);
+  });
+
+  it('shows live messages in the list and the open conversation, and stops them when turned off (#201)', async () => {
+    let newest = 1760000000;
+    let read = 0;
+    const said = (n: number) => ({ _cursor: 'c.' + n, localId: n, localType: 1, createTime: 1760000000 + n, isSend: 0, senderUsername: 'wxid_a', parsedContent: 'm' + n });
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith('/api/chat/sessions')) {
+        read++;
+        return json({ success: true, data: [
+          { username: 'wxid_b', displayName: '陈屿', summary: 'b', sortTimestamp: 1760000001, lastTimestamp: 1760000001, lastMsgType: 1 },
+          { username: 'wxid_a', displayName: '林沐', summary: 'm' + (newest - 1760000000), sortTimestamp: newest, lastTimestamp: newest, lastMsgType: 1 },
+        ].sort((x, y) => y.sortTimestamp - x.sortTimestamp) });
+      }
+      if (url.startsWith('/chat/statuses')) return json({ success: true, data: {} });
+      if (url.startsWith('/api/chat/messages')) {
+        const after = new URL(url, 'http://x').searchParams.get('after');
+        const last = newest - 1760000000;
+        if (after) {
+          const from = Number(after.split('.')[1]);
+          return json({ success: true, data: Array.from({ length: last - from }, (_, i) => said(last - i)) });
+        }
+        return json({ success: true, data: Array.from({ length: last + 1 }, (_, i) => said(last - i)).slice(0, 50) });
+      }
+      return json({ success: true, data: null });
+    }));
+    render(<App />);
+    await act(async () => {});
+    const stream = opened[opened.length - 1];
+    expect(stream.url).toContain('/api/push/messages');
+    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['陈屿', '林沐']);
+    // 林沐 writes twice: the list puts the conversation on top, once for both
+    newest += 2;
+    const before = read;
+    await act(async () => {
+      stream.emit('message.new', { sessionId: 'wxid_a' });
+      stream.emit('message.new', { sessionId: 'wxid_a' });
+      await new Promise(resolve => setTimeout(resolve, 700));
+    });
+    expect(read).toBe(before + 1);
+    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '陈屿']);
+    // open, it shows them; one more comes below the last
+    fireEvent.click(screen.getByRole('button', { name: /选择林沐/ }));
+    await act(async () => {});
+    const texts = () => Array.from(document.querySelectorAll('.message-pane .message-row .message-body'), body => body.textContent);
+    expect(texts()).toEqual(['m0', 'm1', 'm2']);
+    newest += 1;
+    await act(async () => { stream.emit('message.new', { sessionId: 'wxid_a' }); await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(texts()).toEqual(['m0', 'm1', 'm2', 'm3']);
+
+    // turned off: the state alone, from /health/events
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '实时消息' }));
+    await act(async () => {});
+    expect(opened[opened.length - 1].url).toBe('/health/events');
+    expect(stream.closed).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe('已连接');
+    expect(localStorage.getItem('weflow.live')).toBe('off');
   });
 
   it('folds the sidebar from its bottom-left button and remembers it', async () => {

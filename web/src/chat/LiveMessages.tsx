@@ -81,6 +81,25 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
   const shownFor = useRef<string | null>(null);
   const [marked, setMarked] = useState<string | null>(null);
   const focus = thread.focus;
+  // Live messages (#201) that came below while the person reads further up: counted, not scrolled to
+  const [unseen, setUnseen] = useState(0);
+  const tail = useRef<{ id: string; cursor: string | null } | null>(null);
+  useEffect(() => {
+    const last = thread.messages[thread.messages.length - 1]?._cursor ?? null;
+    const before = tail.current;
+    tail.current = { id, cursor: last };
+    if (!before || before.id !== id) { setUnseen(0); return; }
+    if (!before.cursor || last === before.cursor || thread.hasNewer || atBottom.current) return;
+    const at = thread.messages.findIndex(m => m._cursor === before.cursor);
+    if (at >= 0) setUnseen(n => n + thread.messages.length - 1 - at);
+  }, [id, thread.messages, thread.hasNewer]);
+  const toNewest = () => {
+    const el = scroller.current;
+    if (el) moveTo(el, el.scrollHeight);
+    atBottom.current = true;
+    pinned.current = null;
+    setUnseen(0);
+  };
 
   // Opening a conversation shows its newest messages; a jump shows its message (a hit in the middle, a day's first
   // message at the top) and marks it for a moment.
@@ -139,7 +158,10 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
     const below = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const idle = thread.status === 'ready' && !thread.loadingOlder && !thread.loadingNewer;
     const onScroll = () => {
-      if (!thread.hasNewer && !pinned.current && below() < STICK) atBottom.current = true;
+      if (!thread.hasNewer && !pinned.current && below() < STICK) {
+        atBottom.current = true;
+        setUnseen(0);
+      }
       if (el.scrollTop < LOAD_AHEAD && idle && thread.hasMore) ask();
       else if (below() < LOAD_AHEAD && idle && thread.hasNewer) loadNewer();
     };
@@ -210,5 +232,6 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
     })}
     {thread.hasNewer && <div className="history-edge newer" aria-live="polite">{thread.loadingNewer ? <><CircleNotch size={14} className="spin" />正在加载更新的消息</> : null}</div>}
     {thread.hasNewer && <div className="latest-bar"><button type="button" className="secondary-button" onClick={reload}><ArrowDown size={14} />回到最新消息</button></div>}
+    {!thread.hasNewer && unseen > 0 && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen} 条新消息</button></div>}
   </div>;
 }

@@ -30,7 +30,8 @@ pub(super) struct Push {
 impl Default for Push {
     fn default() -> Self {
         Self {
-            broker: PushBroker::new(),
+            // ids from now on, so a page that comes back after a restart misses nothing
+            broker: PushBroker::from_now(),
             listeners: Default::default(),
             running: Default::default(),
         }

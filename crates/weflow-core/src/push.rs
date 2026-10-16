@@ -1292,11 +1292,25 @@ struct BrokerInner {
 const REPLAY_LIMIT: usize = 1000;
 
 impl PushBroker {
+    /// Ids from 1.
     pub fn new() -> std::sync::Arc<Self> {
+        Self::after(0)
+    }
+
+    /// Ids from the current Unix time in milliseconds on: a client that comes back to a restarted server with the
+    /// `Last-Event-ID` of the run before has an id below all of this run's, so it misses none of them.
+    pub fn from_now() -> std::sync::Arc<Self> {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64);
+        Self::after(millis)
+    }
+
+    fn after(last: u64) -> std::sync::Arc<Self> {
         let (tx, _) = broadcast::channel(512);
         std::sync::Arc::new(Self {
             inner: std::sync::Mutex::new(BrokerInner {
-                next_id: 0,
+                next_id: last,
                 buffer: Default::default(),
             }),
             tx,

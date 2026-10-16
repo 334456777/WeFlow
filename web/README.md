@@ -56,7 +56,8 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | Path | |
 |---|---|
 | `src/api/client.ts` | Calls to `weflow serve`: query or JSON body, token, `ApiError` with the server's error code |
-| `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), version checks, `useBackend` |
+| `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), or `/api/push/messages` with live messages on (#201); version checks, `useBackend` |
+| `src/api/live.ts` | Live message events, handed to the conversation list and the open conversation (#201) |
 | `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/chat/statuses`, in batches of 100) |
 | `src/styles/tokens.css` | Design tokens: type, control heights, radii, colours (with dark mode), the five neumorphic surfaces (#220), motion durations and curves (#192, #193). Page styles use only these variables |
 | `src/motion.ts` | Spring presets; `usePresence` keeps popovers, dialogs and notices until their exit has played |

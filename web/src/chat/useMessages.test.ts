@@ -1,8 +1,10 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { emitLive } from '../api/live';
 import { forgetMessages, useMessages, type Jump } from './useMessages';
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
   forgetMessages();
 });
@@ -129,5 +131,75 @@ describe('useMessages', () => {
     const { result } = renderHook(() => useMessages('wxid_a'));
     await waitFor(() => expect(result.current.thread.status).toBe('error'));
     expect(result.current.thread.error).toContain('chat messages --parsed');
+  });
+});
+
+describe('live messages (#201)', () => {
+  /** A conversation whose newest message is `last` (cursor `c.<n>`, older ones lower), with `recalled` ones changed. */
+  function live(state: { last: number; recalled: Set<number> }) {
+    const calls: string[] = [];
+    const said = (n: number) => ({ ...message(1000, 1000 - n), _cursor: 'c.' + n, localId: n, parsedContent: state.recalled.has(n) ? '撤回了一条消息' : 'm' + n });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      const query = new URL(url, 'http://x').searchParams;
+      const limit = Number(query.get('limit') || 50);
+      const after = query.get('after');
+      const from = after ? Number(after.split('.')[1]) + 1 : Math.max(0, state.last - limit + 1);
+      const page = [];
+      // newest first; after a cursor, the closest ones
+      const top = after ? Math.min(state.last, from + limit - 1) : state.last;
+      for (let n = top; n >= from; n--) page.push(said(n));
+      return json({ success: true, data: page });
+    }));
+    return calls;
+  }
+  const texts = (thread: { messages: { parsedContent?: string | null }[] }) => thread.messages.map(m => m.parsedContent);
+
+  it('adds the messages that came, all of them, to the open conversation only', async () => {
+    const state = { last: 2, recalled: new Set<number>() };
+    const calls = live(state);
+    const { result } = renderHook(() => useMessages('wxid_a'));
+    await waitFor(() => expect(result.current.thread.status).toBe('ready'));
+    expect(texts(result.current.thread)).toEqual(['m0', 'm1', 'm2']);
+    // another conversation: nothing read
+    act(() => emitLive({ type: 'message.new', sessionId: 'wxid_b' }));
+    expect(calls).toHaveLength(1);
+    // more than a page came at once
+    state.last = 120;
+    act(() => emitLive({ type: 'message.new', sessionId: 'wxid_a' }));
+    await waitFor(() => expect(result.current.thread.messages).toHaveLength(121));
+    expect(texts(result.current.thread).slice(-2)).toEqual(['m119', 'm120']);
+    expect(calls.slice(1).every(url => url.includes('after='))).toBe(true);
+    // twice for one message: once shown
+    act(() => { emitLive({ type: 'message.new', sessionId: 'wxid_a' }); emitLive({ type: 'message.new', sessionId: 'wxid_a' }); });
+    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(6));
+    expect(result.current.thread.messages).toHaveLength(121);
+  });
+
+  it('shows a recall in place, and catches up after a break', async () => {
+    const state = { last: 3, recalled: new Set<number>() };
+    live(state);
+    const { result } = renderHook(() => useMessages('wxid_a'));
+    await waitFor(() => expect(result.current.thread.status).toBe('ready'));
+    state.recalled.add(2);
+    act(() => emitLive({ type: 'message.revoke', sessionId: 'wxid_a' }));
+    await waitFor(() => expect(texts(result.current.thread)).toEqual(['m0', 'm1', '撤回了一条消息', 'm3']));
+    state.last = 4;
+    state.recalled.add(3);
+    act(() => emitLive({ type: 'resumed' }));
+    await waitFor(() => expect(texts(result.current.thread)).toEqual(['m0', 'm1', '撤回了一条消息', '撤回了一条消息', 'm4']));
+  });
+
+  it('leaves a conversation left in the past by a jump alone', async () => {
+    const state = { last: 200, recalled: new Set<number>() };
+    const calls = live(state);
+    const hit = { _cursor: 'c.100', _session_id: 'wxid_a', localId: 100, localType: 1, createTime: 1, isSend: 0, senderUsername: 'wxid_a', parsedContent: 'm100' };
+    const jump: Jump = { sessionId: 'wxid_a', target: { at: 'message', message: hit as never }, seq: 1 };
+    const { result } = renderHook(() => useMessages('wxid_a', jump));
+    await waitFor(() => expect(result.current.thread.status).toBe('ready'));
+    expect(result.current.thread.hasNewer).toBe(true);
+    const read = calls.length;
+    act(() => emitLive({ type: 'message.new', sessionId: 'wxid_a' }));
+    expect(calls).toHaveLength(read);
   });
 });
