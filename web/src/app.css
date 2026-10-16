@@ -239,7 +239,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .photo-button { display: block; max-width: calc(100% - 48px); padding: var(--space-1); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--neu-raised-sm); }
 .outgoing .photo-button { box-shadow: var(--neu-inset); }
 .message-photo { width: 240px; max-width: 100%; aspect-ratio: 1.6973; object-fit: cover; border-radius: var(--radius-md); }
-.highlighted .message-bubble, .highlighted .photo-button { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.highlighted :is(.message-bubble, .photo-button, .emoji-sticker, .system-message) { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .file-bubble { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
 .file-bubble small { display: block; color: var(--fg-muted); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
 .mobile-back { display: none !important; }
@@ -254,6 +254,14 @@ time, .num { font-variant-numeric: tabular-nums; }
   display: flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control-md);
   color: var(--fg-subtle); font-size: var(--text-2xs);
 }
+/*
+ * Left in the past by a jump (#199): newer messages load below, and a raised button floats at the bottom to go back
+ * to the newest ones.
+ */
+.latest-bar { position: sticky; bottom: var(--space-3); z-index: 2; display: flex; justify-content: center; margin-top: var(--space-2); pointer-events: none; }
+.latest-bar .secondary-button { pointer-events: auto; box-shadow: var(--neu-raised); }
+.latest-bar .secondary-button:hover { box-shadow: var(--neu-raised-hover); }
+.latest-bar .secondary-button:active { box-shadow: var(--neu-pressed); }
 .message-row.with-avatar { align-items: flex-start; }
 .message-row .message-time { align-self: flex-end; }
 .message-row .avatar { width: 32px; height: 32px; font-size: var(--text-sm); }
@@ -403,8 +411,12 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .calendar-day.today::before, .calendar-day.marked::after {
   content: ''; position: absolute; left: 50%; transform: translateX(-50%); background: currentColor; pointer-events: none;
 }
-.calendar-day.today::before { top: 6px; width: 10px; height: 2px; border-radius: var(--radius-full); }
+.calendar-day.today { font-weight: var(--weight-semibold); }
+.calendar-day.today::before { top: 8px; width: 12px; height: 2px; border-radius: var(--radius-full); }
 .calendar-day.marked::after { bottom: 5px; width: 4px; height: 4px; border-radius: 50%; opacity: .7; }
+/* The busier the day, the bigger its dot (chat date-counts, in three steps). */
+.calendar-day[data-heat='1']::after { width: 3px; height: 3px; }
+.calendar-day[data-heat='3']::after { width: 6px; height: 6px; bottom: 4px; }
 .calendar-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .calendar-choice {
   height: 44px; border-radius: var(--radius-md); font-size: var(--text-sm); font-variant-numeric: tabular-nums;
@@ -501,7 +513,14 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 }
 .search-result:hover { box-shadow: var(--neu-pressed); color: var(--fg); }
 .search-result-copy { display: flex; flex: 1; align-items: baseline; gap: var(--space-3); min-width: 0; }
-.search-result-copy strong { flex-shrink: 0; color: var(--fg-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+.search-result-copy strong { flex-shrink: 0; max-width: 40%; color: var(--fg-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+/* The keyword in a hit: bold and underlined, not coloured. */
+.search-result mark { background: none; color: inherit; font-weight: var(--weight-semibold); text-decoration: underline; text-underline-offset: 3px; }
+/* Hits of all conversations: the conversation (and sender) above the text, so long names keep the text aligned. */
+.search-result-copy.stacked { flex-direction: column; align-items: stretch; gap: 2px; }
+.search-result-copy.stacked strong { max-width: none; }
+.more-button { margin-top: var(--space-2); }
+.scope-group { width: 216px; }
 .search-result-copy > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }
 .search-result time { flex-shrink: 0; color: var(--fg-subtle); font-size: var(--text-2xs); }
 

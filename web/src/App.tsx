@@ -17,6 +17,11 @@ import { SessionList } from './chat/SessionList';
 import { formatSessionTime, kindLabels, kindOf } from './chat/sessions';
 import { useSessions, type SessionsState } from './chat/useSessions';
 import { LiveMessages } from './chat/LiveMessages';
+import { SearchPanel, searchSummary } from './chat/SearchPanel';
+import type { Jump } from './chat/useMessages';
+import { useSearch } from './chat/useSearch';
+import { parseDay } from './calendar/dates';
+import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
 import { exportConversation } from './export';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
@@ -191,6 +196,10 @@ export function App() {
   const [liveId, setLiveId] = useState<string | null>(null);
   const sessionList = liveSessions.status === 'ready' ? liveSessions.sessions : [];
   const liveSession = sessionList.find(session => session.username === liveId);
+  const liveSearch = useSearch();
+  // A day picked or a search hit opened: its conversation shows the messages there (#199).
+  const [jumpTo, setJumpTo] = useState<Jump | null>(null);
+  const jumps = useRef(0);
   useEffect(() => {
     if (!liveSession && sessionList.length) setLiveId(sessionList[0].username);
   }, [liveSession, sessionList]);
@@ -242,9 +251,32 @@ export function App() {
   };
 
   const selectConversation = (id: string) => {
-    if (live) setLiveId(id);
+    if (live) {
+      setLiveId(id);
+      // a search of the conversation left behind is over; one of all conversations still holds
+      if (liveSearch.state.query?.sessionId) liveSearch.clear();
+    }
     else setSelectedIds(current => ({ ...current, [activeCategory]: id }));
     setMobileDetail(true); setSubmittedQuery(null); setQuery(''); resetExport();
+  };
+
+  // On a phone the console is below the messages: after a jump, the page goes up to them.
+  const showMessages = () => {
+    setMobileDetail(true);
+    if (!window.matchMedia?.('(max-width: 640px)').matches) return;
+    requestAnimationFrame(() => paneRef.current?.closest('.browser-panel')?.scrollIntoView({ block: 'start', behavior: prefersReducedMotion(reducedMotion) ? 'auto' : 'smooth' }));
+  };
+
+  const openHit = (hit: SearchHit) => {
+    if (!sessionList.some(session => session.username === hit._session_id)) { setToast('这条消息所在的会话不在会话列表里。'); return; }
+    setLiveId(hit._session_id);
+    setJumpTo({ sessionId: hit._session_id, target: { at: 'message', message: hit }, seq: ++jumps.current });
+    showMessages();
+  };
+
+  const jumpToDay = (sessionId: string, day: string) => {
+    setJumpTo({ sessionId, target: { at: 'time', seconds: parseDay(day).getTime() / 1000 }, seq: ++jumps.current });
+    showMessages();
   };
 
   const exportRecords = async () => {
@@ -289,8 +321,10 @@ export function App() {
       content: <TaskStatus conversation={selected} from={from} to={to} connected={connected} stage={stage} result={exportResult} error={error} />,
     },
     {
-      id: 'search', title: '搜索', summary: submittedQuery === null ? '当前会话' : results.length + ' 条结果',
-      content: <>
+      id: 'search', title: '搜索', summary: selected.live ? searchSummary(liveSearch.state) : submittedQuery === null ? '当前会话' : results.length + ' 条结果',
+      content: selected.live
+        ? <SearchPanel session={liveSession} sessions={sessionList} search={liveSearch} onOpenHit={openHit} onJumpDay={jumpToDay} />
+        : <>
         <form className="search-form" onSubmit={search}>
           <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索此会话的消息" placeholder={'搜索' + selected.name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} /><button className={'icon-button small' + (searchDatesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={searchDatesOpen} onClick={() => setSearchDatesOpen(value => !value)}><CalendarBlank size={16} /></button></div>
           <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="fold-label">搜索</span></button>
@@ -317,8 +351,8 @@ export function App() {
       content: <div className="media-list">{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
   ];
-  // Search and media need the messages (#198, #199).
-  const hiddenCards = selected.live ? ['search', 'media'] : [];
+  // The media of a real conversation come with #200.
+  const hiddenCards = selected.live ? ['media'] : [];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -361,7 +395,7 @@ export function App() {
         <div ref={paneRef} className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
           <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
           {selected.live && (liveSession
-            ? <LiveMessages session={liveSession} scroller={paneRef} onPreview={setPreview} />
+            ? <LiveMessages session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={setPreview} />
             : <div className="pane-message">{liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>)}
           {!selected.live && <div className="messages">
             {selected.messages.map((message, index) => <div key={message.id}>

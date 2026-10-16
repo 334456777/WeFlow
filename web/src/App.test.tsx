@@ -62,9 +62,9 @@ describe('App', () => {
     expect(screen.getByRole('status').textContent).toBe('已连接');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '折叠的群聊']);
     expect(calls).toContain('/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
-    // The first conversation is opened; search and media wait for its messages (#198, #199).
+    // The first conversation is opened; its media wait for #200.
     expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
-    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '会话资料']);
+    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料']);
     expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', true);
     expect(screen.getByText('约 42 条记录', { exact: false })).toBeTruthy();
     // Its messages, oldest first: a text, a notice in the middle, a file sent by me.

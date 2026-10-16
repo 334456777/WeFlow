@@ -73,9 +73,9 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/VirtualList.tsx` | 只绘制看得见的行的列表，用于成千上万行的列表（#159） |
 | `src/Scrollbar.tsx` | 网页自己的滚动条：浮在滚动区域上（隐藏浏览器自带的），不占宽度，可以拖动 |
 | `src/Popover.tsx` | 依附在控件上的浮层：从控件处展开，不超出屏幕，按 Esc 或点外面收起 |
-| `src/calendar/` | 网页自己的日历（#224）：`Calendar.tsx`（按 ARIA grid 模式排的一个月，周一开头，可切换到按月、按年选择），`DateRange.tsx`（在一个日历里选时间范围），`dates.ts`（用本地时间的 `YYYY-MM-DD` 表示日期） |
+| `src/calendar/` | 网页自己的日历（#224）：`Calendar.tsx`（按 ARIA grid 模式排的一个月，周一开头，可切换到按月、按年选择），`DateRange.tsx`（在一个日历里选时间范围），`DateField.tsx`（选一天），`dates.ts`（用本地时间的 `YYYY-MM-DD` 表示日期） |
 | `src/api/messages.ts` | 会话的消息（服务端解析好的 `chat messages --parsed`，按游标翻页）、群成员，以及给 `<img>`、`<audio>`、`<video>` 用的媒体地址 |
-| `src/chat/` | 聊天页（#196）：会话列表，含搜索、筛选、折叠的群聊和方向键切换（#197）；按类型显示消息，往上滚动时加载更早的消息（#198） |
+| `src/chat/` | 聊天页（#196）：会话列表，含搜索、筛选、折叠的群聊和方向键切换（#197）；按类型显示消息，往上滚动时加载更早的消息（#198）；搜索卡片，以及跳到某一天或某条搜索结果，之后往下滚动时加载更新的消息（#199） |
 | `src/App.tsx`、`src/app.css` | 工作台界面：左侧导航，中间是记录，右侧是操作控制台 |
 | `src/mock/` | 示例记录，界面接入 API 后删除 |
 | `src/export.ts` | 在浏览器里导出示例记录。真正的导出将调用 `export messages` 并用 `?return=file` 取回文件 |

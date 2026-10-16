@@ -52,11 +52,47 @@ const MESSAGE_FIELDS = [
 
 export const PAGE_SIZE = 50;
 
-/** A page of messages, newest first: the newest ones, or those older than a message's `_cursor`. */
-export function getMessages(sessionId: string, before: string | null, signal?: AbortSignal): Promise<ParsedMessage[]> {
+/** Where a page starts: the newest messages, those older or newer than a message's `_cursor`, or a time on. */
+export type PageFrom = null | { before: string } | { after: string } | { since: number };
+
+/**
+ * A page of messages, newest first: the newest ones, those older than a message's `_cursor` (`before`), the newer
+ * ones closest to it (`after`), or the first sent at a time (Unix seconds) or later (`since`, #199).
+ */
+export function getMessages(sessionId: string, from: PageFrom, signal?: AbortSignal, limit = PAGE_SIZE): Promise<ParsedMessage[]> {
   return get<ParsedMessage[]>('api/chat/messages', {
-    'session-id': sessionId, limit: PAGE_SIZE, before: before ?? undefined, parsed: true, fields: MESSAGE_FIELDS,
+    'session-id': sessionId, limit, ...(from ?? {}), parsed: true, fields: MESSAGE_FIELDS,
   }, signal);
+}
+
+/** A hit of `chat search --parsed`: the message, and the conversation it is in. */
+export interface SearchHit extends ParsedMessage {
+  _session_id: string;
+}
+
+export interface SearchQuery {
+  keyword: string;
+  /** One conversation, or all of them. */
+  sessionId: string | null;
+  /** Unix seconds; 0 for no limit. */
+  start: number;
+  end: number;
+}
+
+export const SEARCH_PAGE = 20;
+
+/** Hits newest first, as WeChat's own search matches them; `offset` pages on. */
+export function searchMessages(query: SearchQuery, offset: number, signal?: AbortSignal): Promise<SearchHit[]> {
+  return get<SearchHit[]>('api/chat/search', {
+    keyword: query.keyword, 'session-id': query.sessionId ?? undefined, limit: SEARCH_PAGE, offset,
+    start: query.start || undefined, end: query.end || undefined, parsed: true, fields: MESSAGE_FIELDS + ',_session_id',
+  }, signal);
+}
+
+/** How many messages each day of a conversation has (`YYYY-MM-DD` → count). */
+export async function getDateCounts(sessionId: string, signal?: AbortSignal): Promise<Record<string, number>> {
+  const data = await get<{ counts?: Record<string, number> }>('api/chat/date-counts', { 'session-id': sessionId }, signal);
+  return data?.counts ?? {};
 }
 
 export interface GroupMember {
