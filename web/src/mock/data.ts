@@ -1,11 +1,12 @@
 // Sample records for the prototype screens, until the pages read from `weflow serve` (#130).
+import type { ChatSession } from '../api/chat';
 import type { Category, Conversation, Message } from '../types';
 import photo from './street.svg';
 
 export const CURRENT_DATE = '2026-10-12';
 export const DEFAULT_FROM = '2026-10-01';
 export const categoryLabels: Record<Category, string> = {
-  chat: '聊天', moments: '朋友圈', articles: '公众号', payments: '微信支付',
+  chat: '聊天', moments: '朋友圈', payments: '微信支付',
 };
 
 function text(id: string, sender: string, content: string, date: string, time: string, outgoing = false): Message {
@@ -33,7 +34,7 @@ export const conversations: Conversation[] = [
     ],
   },
   {
-    id: 'design', category: 'chat', name: '设计协作群',
+    id: 'design@chatroom', category: 'chat', name: '设计协作群',
     preview: '李婷：这版看起来不错 👍', stamp: '10/08', description: '群聊 · 4 位成员 · 示例记录',
     messages: [
       text('design-1', '李婷', '把浏览和操作分开，读消息的时候更清楚。', '2026-10-08', '10:05'),
@@ -42,7 +43,7 @@ export const conversations: Conversation[] = [
     ],
   },
   {
-    id: 'files', category: 'chat', name: '文件传输助手',
+    id: 'filehelper', category: 'chat', name: '文件传输助手',
     preview: '旅行计划.pdf', stamp: '10/06', description: '文件记录 · 示例内容',
     messages: [
       text('file-1', '我', '这次旅行的计划先保存在这里。', '2026-10-06', '09:30', true),
@@ -63,7 +64,7 @@ export const conversations: Conversation[] = [
     messages: [text('moment-3', '陈屿', '周末，慢慢走。', '2026-10-11', '16:30')],
   },
   {
-    id: 'article-design', category: 'articles', name: '设计观察',
+    id: 'gh_design', category: 'chat', name: '设计观察',
     preview: '让工具回到清楚、简单的使用方式', stamp: '10/10', description: '公众号 · 示例文章',
     messages: [
       text('article-1', '设计观察', '让工具回到清楚、简单的使用方式', '2026-10-10', '09:00'),
@@ -71,7 +72,7 @@ export const conversations: Conversation[] = [
     ],
   },
   {
-    id: 'article-life', category: 'articles', name: '城市手记',
+    id: 'gh_city', category: 'chat', name: '城市手记',
     preview: '一条小街的午后', stamp: '10/07', description: '公众号 · 示例文章',
     messages: [
       text('article-3', '城市手记', '一条小街的午后', '2026-10-07', '11:45'),
@@ -89,6 +90,18 @@ export const conversations: Conversation[] = [
     messages: [text('pay-2', '微信支付', '付款成功\n商户：出行服务\n金额：¥12.00\n方式：余额\n交易时间：2026-10-11 17:40', '2026-10-11', '17:40')],
   },
 ];
+
+/** The sample chats as `chat sessions` rows, for the conversation list while no server is connected. */
+export const sampleSessions: ChatSession[] = conversations.filter(c => c.category === 'chat').map(c => {
+  const last = c.messages[c.messages.length - 1];
+  const time = Math.floor(new Date(last.date + 'T' + last.time + ':00').getTime() / 1000);
+  const group = c.id.endsWith('@chatroom');
+  return {
+    username: c.id, displayName: c.name, summary: last.kind === 'text' ? last.text : last.kind === 'image' ? '[图片]' : '[文件] ' + (last.fileName ?? ''),
+    unreadCount: 0, sortTimestamp: time, lastTimestamp: time, lastMsgType: 1,
+    ...(group && last.direction === 'incoming' ? { lastSenderDisplayName: last.sender } : {}),
+  };
+}).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
 export function formatDay(date: string): string {
   const value = new Date(date + 'T12:00:00');

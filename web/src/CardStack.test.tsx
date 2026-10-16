@@ -49,6 +49,19 @@ describe('CardStack', () => {
   });
 });
 
+describe('hidden cards', () => {
+  it('are left out, keep their place while the others move, and come back there', () => {
+    const { rerender } = render(<CardStack cards={cards} hidden={['b']} storageKey={KEY} defaultClosed={[]} label="卡片" />);
+    expect(titles()).toEqual(['甲', '丙']);
+    const header = screen.getByRole('button', { name: /丙/ });
+    fireEvent.keyDown(header, { key: 'ArrowUp', altKey: true });
+    expect(titles()).toEqual(['丙', '甲']);
+    expect(JSON.parse(localStorage.getItem(KEY)!).order).toEqual(['c', 'b', 'a']);
+    rerender(<CardStack cards={cards} hidden={[]} storageKey={KEY} defaultClosed={[]} label="卡片" />);
+    expect(titles()).toEqual(['丙', '乙', '甲']);
+  });
+});
+
 describe('loadLayout', () => {
   it('drops unknown cards, appends new ones and ignores a broken entry', () => {
     localStorage.setItem(KEY, JSON.stringify({ order: ['c', 'gone', 'a'], closed: ['gone', 'c'] }));

@@ -1,4 +1,4 @@
-export type Category = 'chat' | 'moments' | 'articles' | 'payments';
+export type Category = 'chat' | 'moments' | 'payments';
 export type Navigation = Category | 'settings';
 export type ExportFormat = 'HTML' | 'JSON' | 'Excel';
 export type MessageKind = 'text' | 'image' | 'file';
@@ -25,6 +25,11 @@ export interface Conversation {
   stamp: string;
   description: string;
   messages: Message[];
+  /** Read from `weflow serve` rather than the sample records. */
+  live?: boolean;
+  messageCount?: number;
+  /** Unix seconds of the last message. */
+  lastTime?: number;
 }
 
 export interface ExportOptions {
