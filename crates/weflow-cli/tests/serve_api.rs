@@ -1432,6 +1432,66 @@ fn health_events_say_hello_then_beat_without_a_token() {
     assert!(reply.starts_with("HTTP/1.1 403"), "{reply}");
 }
 
+#[test]
+fn official_accounts_and_their_pushes_as_the_webui_reads_them() {
+    use weflow_native::fixture::{MsgSpec, T0};
+    let root = temp_root("biz");
+    let push = |title: &str, more: &str| {
+        format!(
+            "<msg><appmsg><title>{title}</title><des>about {title}</des><url>https://mp.example/{title}</url>\
+             <thumburl>https://mp.example/{title}.jpg</thumburl><content_list>{more}</content_list></appmsg></msg>"
+        )
+    };
+    let second = "<item><title>second</title><url>https://mp.example/second</url><cover>https://mp.example/2.jpg</cover><digest>two</digest></item>";
+    let home = account_home_with(&root, |f| {
+        f.message_shard(
+            0,
+            &[(
+                "gh_news",
+                vec![
+                    MsgSpec::text(1, "gh_news", T0, &push("first", "")).of_type(49),
+                    MsgSpec::text(2, "gh_news", T0 + 3600, &push("lead", second)).of_type(49),
+                ],
+            )],
+        );
+    });
+    let server = start(&home, &["--api-token", TOKEN]);
+
+    let accounts = server.call("GET", "/biz/accounts", "").json();
+    let accounts = accounts["data"]["accounts"].as_array().unwrap().clone();
+    let news = accounts
+        .iter()
+        .find(|a| a["username"] == "gh_news")
+        .unwrap_or_else(|| panic!("{accounts:?}"));
+    assert_eq!(news["nick_name"], "News");
+
+    let r = server.call(
+        "GET",
+        "/biz/messages?username=gh_news&limit=20&offset=0",
+        "",
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    let pushes = r.json()["data"]["messages"].as_array().unwrap().clone();
+    // newest first, the lead article and the others of the push
+    let titles: Vec<&str> = pushes
+        .iter()
+        .map(|p| p["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["lead", "first"]);
+    assert_eq!(pushes[0]["url"], "https://mp.example/lead");
+    assert_eq!(pushes[0]["cover"], "https://mp.example/lead.jpg");
+    assert_eq!(pushes[0]["description"], "about lead");
+    assert_eq!(pushes[0]["contentList"][0]["title"], "second");
+    assert_eq!(pushes[0]["contentList"][0]["summary"], "two");
+    assert!(pushes[0]["createTime"].as_i64().unwrap() > pushes[1]["createTime"].as_i64().unwrap());
+    let r = server.call(
+        "GET",
+        "/biz/messages?username=gh_news&limit=20&offset=1",
+        "",
+    );
+    assert_eq!(r.json()["data"]["messages"].as_array().unwrap().len(), 1);
+}
+
 // Ctrl+C as a signal; Windows has no way to send one to another process alone
 #[cfg(unix)]
 #[test]
