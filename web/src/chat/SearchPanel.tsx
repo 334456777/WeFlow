@@ -8,7 +8,7 @@ import type { ChatSession } from '../api/chat';
 import type { SearchHit } from '../api/messages';
 import { DateField } from '../calendar/DateField';
 import { DateRange, type Range } from '../calendar/DateRange';
-import { parseDay } from '../calendar/dates';
+import { addDays, parseDay } from '../calendar/dates';
 import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
 import { loadMembers, memberName, membersKnown } from './LiveMessages';
@@ -19,11 +19,14 @@ import { useSearch, type SearchState } from './useSearch';
 
 type Scope = 'session' | 'all';
 
-/** The start of a day and the end of another, in Unix seconds; 0 where open. */
+/**
+ * The start of a day and the end of another, in Unix seconds; 0 where open. The end is the second before the next
+ * day's local midnight, as a day is not always 24 hours long (23 or 25 where the clocks change).
+ */
 export function secondsOf(range: Range): { start: number; end: number } {
   return {
     start: range.from ? parseDay(range.from).getTime() / 1000 : 0,
-    end: range.to ? parseDay(range.to).getTime() / 1000 + 86_399 : 0,
+    end: range.to ? parseDay(addDays(range.to, 1)).getTime() / 1000 - 1 : 0,
   };
 }
 

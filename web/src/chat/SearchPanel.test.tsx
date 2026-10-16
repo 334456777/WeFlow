@@ -111,3 +111,37 @@ describe('SearchPanel', () => {
     expect(screen.getByRole('button', { name: '跳到日期：2026-10-03' })).toBeTruthy();
   });
 });
+
+describe('secondsOf (#241)', () => {
+  const zone = process.env.TZ;
+  afterEach(() => { process.env.TZ = zone; });
+  const local = (y: number, m: number, d: number, h = 0, min = 0, sec = 0) => new Date(y, m - 1, d, h, min, sec).getTime() / 1000;
+  const midnight = (day: string) => { const [y, m, d] = day.split('-').map(Number); return local(y, m, d); };
+
+  it('ends a day at its last second, however long the day is', () => {
+    for (const tz of ['America/Los_Angeles', 'UTC', 'Asia/Tokyo']) {
+      process.env.TZ = tz;
+      // a 25-hour and a 23-hour day (in Los Angeles), across a month, across a year
+      for (const [from, to, end] of [
+        ['2026-11-01', '2026-11-01', local(2026, 11, 1, 23, 59, 59)],
+        ['2026-03-08', '2026-03-08', local(2026, 3, 8, 23, 59, 59)],
+        ['2026-10-30', '2026-11-02', local(2026, 11, 2, 23, 59, 59)],
+        ['2026-12-31', '2027-01-01', local(2027, 1, 1, 23, 59, 59)],
+      ] as const) {
+        const range = secondsOf({ from, to });
+        expect(range.start, tz + ' ' + from).toBe(midnight(from));
+        expect(range.end, tz + ' ' + to).toBe(end);
+        // the next day is left out
+        expect(range.end + 1, tz + ' ' + to).toBe(midnight(to === '2027-01-01' ? '2027-01-02' : to === '2026-11-02' ? '2026-11-03' : to.slice(0, 8) + String(Number(to.slice(8)) + 1).padStart(2, '0')));
+      }
+    }
+    process.env.TZ = 'America/Los_Angeles';
+    expect(secondsOf({ from: '2026-11-01', to: '2026-11-01' }).end - midnight('2026-11-01')).toBe(25 * 3600 - 1);
+    expect(secondsOf({ from: '2026-03-08', to: '2026-03-08' }).end - midnight('2026-03-08')).toBe(23 * 3600 - 1);
+  });
+
+  it('leaves an open end open', () => {
+    expect(secondsOf({ from: '', to: '' })).toEqual({ start: 0, end: 0 });
+    expect(secondsOf({ from: '2026-10-03', to: '' }).end).toBe(0);
+  });
+});

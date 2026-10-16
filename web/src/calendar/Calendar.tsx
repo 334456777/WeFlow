@@ -13,6 +13,8 @@ export interface CalendarProps {
   /** The chosen days: one day (`from` = `to`), a range, or none (''). */
   from: string;
   to: string;
+  /** Days are picked as a range: several days are selected at once. */
+  range?: boolean;
   /** The start of a range whose end is being picked: the range up to the day under the pointer is previewed. */
   pending?: string | null;
   /** The day focused when the calendar opens. */
@@ -25,12 +27,14 @@ export interface CalendarProps {
 
 const YEARS = 12;
 
-export function Calendar({ from, to, pending, initial, max, marks, onPick }: CalendarProps) {
+export function Calendar({ from, to, range, pending, initial, max, marks, onPick }: CalendarProps) {
   const [focus, setFocus] = useState(() => clampDay(initial, max));
   const [view, setView] = useState<View>('days');
   const [hover, setHover] = useState<string | null>(null);
   const grid = useRef<HTMLTableElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const moved = useRef(true);
+  const opened = useRef(false);
   const now = today();
   const { year, month } = monthOf(focus);
   const maxMonth = max ? monthOf(max) : null;
@@ -41,6 +45,16 @@ export function Calendar({ from, to, pending, initial, max, marks, onPick }: Cal
     moved.current = false;
     grid.current?.querySelector<HTMLElement>('[data-day="' + focus + '"]')?.focus();
   }, [focus, view]);
+
+  // a list of months or years takes the focus as it opens, on the one chosen (the control that opened it is gone),
+  // so the keyboard goes on from there and Esc still reaches the popover
+  useEffect(() => {
+    if (!opened.current) { opened.current = true; return; }
+    if (view === 'days') return;
+    const choices = root.current?.querySelectorAll<HTMLButtonElement>('.calendar-choice:not(:disabled)');
+    const chosen = [...(choices ?? [])].find(choice => choice.classList.contains('chosen'));
+    (chosen ?? choices?.[0])?.focus();
+  }, [view]);
 
   const move = (day: string) => { moved.current = true; setFocus(clampDay(day, max)); };
   const disabled = (day: string) => Boolean(max && day > max);
@@ -79,7 +93,7 @@ export function Calendar({ from, to, pending, initial, max, marks, onPick }: Cal
     </div>;
 
   if (view === 'years') {
-    return <div className="calendar">
+    return <div ref={root} className="calendar">
       {header(firstYear + ' – ' + (firstYear + YEARS - 1), null, () => shift(-12 * YEARS),
         maxMonth && firstYear + YEARS > maxMonth.year ? null : () => shift(12 * YEARS), '组年份')}
       <div className="calendar-choices">
@@ -91,7 +105,7 @@ export function Calendar({ from, to, pending, initial, max, marks, onPick }: Cal
   }
 
   if (view === 'months') {
-    return <div className="calendar">
+    return <div ref={root} className="calendar">
       {header(year + '年', () => setView('years'), () => shift(-12),
         maxMonth && year >= maxMonth.year ? null : () => shift(12), '年')}
       <div className="calendar-choices">
@@ -102,10 +116,11 @@ export function Calendar({ from, to, pending, initial, max, marks, onPick }: Cal
     </div>;
   }
 
-  return <div className="calendar">
+  return <div ref={root} className="calendar">
     {header(year + '年' + (month + 1) + '月', () => setView('months'), () => shift(-1),
       monthDisabled(year, month + 1) ? null : () => shift(1), '个月')}
-    <table ref={grid} role="grid" className="calendar-grid" aria-label={year + '年' + (month + 1) + '月'} onKeyDown={keyDown}
+    <table ref={grid} role="grid" className="calendar-grid" aria-label={year + '年' + (month + 1) + '月'}
+      aria-multiselectable={range || undefined} onKeyDown={keyDown}
       onPointerLeave={() => setHover(null)}>
       <thead><tr>{WEEKDAYS.map(name => <th key={name} scope="col" abbr={'星期' + name}>{name}</th>)}</tr></thead>
       <tbody>{monthGrid(year, month).map(week => <tr key={week[0]}>{week.map(day => {

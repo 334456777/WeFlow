@@ -69,7 +69,7 @@ export function DateRange({ from, to, onChange, onOpen, max = today(), marks, la
     {field('to', to, '结束日期')}
     <Popover anchor={anchor} open={side !== null} onClose={reason => close(reason === 'escape')}
       label={label + '：' + (shown.current === 'to' || pending ? '选择结束日期' : '选择开始日期')} className="calendar-popover">
-      <Calendar key={shown.current} from={from} to={to} pending={pending} max={max} marks={marks}
+      <Calendar key={shown.current} range from={from} to={to} pending={pending} max={max} marks={marks}
         initial={openingDay(shown.current === 'to' ? to || from : from || to, max)} onPick={pick} />
     </Popover>
   </div>;

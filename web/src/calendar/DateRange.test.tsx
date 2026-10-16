@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DateField } from './DateField';
 import { DateRange, type Range } from './DateRange';
 
 beforeEach(() => {
@@ -15,6 +16,7 @@ function Harness({ initial, marks, changes }: { initial: Range; marks?: Record<s
 }
 
 const day = (n: number) => screen.getByRole('gridcell', { name: new RegExp('^2026年10月' + n + '日') });
+const cell = (name: string) => screen.getByRole('gridcell', { name: new RegExp('^' + name) });
 const open = (name: string) => fireEvent.click(screen.getByRole('button', { name: new RegExp('^' + name) }));
 
 describe('DateRange', () => {
@@ -90,6 +92,47 @@ describe('DateRange', () => {
     expect(screen.getByRole('grid', { name: '2019年3月' })).toBeTruthy();
     act(() => { fireEvent.pointerDown(screen.getByRole('button', { name: '外面' })); });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('keeps the keyboard in the month and year lists, where Esc still closes (#238)', async () => {
+    render(<Harness initial={{ from: '2026-10-07', to: '2026-10-09' }} changes={[]} />);
+    const field = screen.getByRole('button', { name: /^开始日期/ });
+    open('开始日期');
+    fireEvent.click(screen.getByRole('button', { name: '2026年10月' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '10月' }));
+    // the year list has no title to click: the focus goes to the year chosen, not to <body>
+    fireEvent.click(screen.getByRole('button', { name: '2026年' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '2026' }));
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(field);
+
+    // a year picked: the month list takes the focus, and a month the day grid
+    open('开始日期');
+    fireEvent.click(screen.getByRole('button', { name: '2026年10月' }));
+    fireEvent.click(screen.getByRole('button', { name: '2026年' }));
+    fireEvent.click(screen.getByRole('button', { name: '2019' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '10月' }));
+    fireEvent.click(screen.getByRole('button', { name: '3月' }));
+    expect(document.activeElement).toBe(cell('2019年3月7日'));
+    // with the focus lost all the same (on <body>), Esc closes and gives the focus back
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('tells that a range is several days, and one day is one (#240)', () => {
+    render(<Harness initial={{ from: '2026-10-01', to: '2026-10-12' }} changes={[]} />);
+    open('开始日期');
+    expect(screen.getByRole('grid').getAttribute('aria-multiselectable')).toBe('true');
+    expect(screen.getAllByRole('gridcell', { selected: true })).toHaveLength(12);
+    cleanup();
+    render(<DateField value="2026-10-05" onChange={() => {}} label="跳转日期" />);
+    fireEvent.click(screen.getByRole('button', { name: /^跳转日期/ }));
+    expect(screen.getByRole('grid').getAttribute('aria-multiselectable')).toBeNull();
+    expect(screen.getAllByRole('gridcell', { selected: true })).toHaveLength(1);
   });
 
   it('marks the days with messages and quiets the others', () => {
