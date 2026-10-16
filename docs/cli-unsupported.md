@@ -50,6 +50,7 @@ pause/resume, renderer-only report screenshots, the Moments cache-migration UI.
 
 ## 4. Platform and verification limits
 
+- Database-key extraction (`key db`) requires x64 on Windows and Linux. ARM64 builds return `Windows database-key extraction requires x64` or `Linux database-key extraction requires x64` before loading libraries or looking for helpers.
 - The native database layer (session, message, contact, Moments, media and voice databases) was verified against one real Windows
   WeChat 4.x account with a **Linux build**, and the cross-compiled Windows `weflow.exe` (`x86_64-pc-windows-gnu`) was run on
   Windows against the same account (about 80 commands, message exports with media, image exports). Other Windows versions have

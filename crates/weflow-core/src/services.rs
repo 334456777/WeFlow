@@ -519,6 +519,11 @@ impl ServiceHub {
                 "Windows database-key extraction requires x64",
             ));
         }
+        if cfg!(target_os = "linux") && !cfg!(target_arch = "x86_64") {
+            return Err(AppError::native(
+                "Linux database-key extraction requires x64",
+            ));
+        }
         let wxkey = weflow_native::wxkey::WxKey::load(&self.ctx.runtime_dir)
             .map_err(|err| AppError::native(err.to_string()))?;
         if wxkey.is_available() {
