@@ -241,6 +241,31 @@ time, .num { font-variant-numeric: tabular-nums; }
 /* The messages sit in a hollow inside the panel. */
 .message-pane { min-width: 0; margin: var(--space-2); padding: var(--space-3) var(--space-5) var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--neu-inset); scroll-behavior: smooth; }
 .date-separator { width: fit-content; margin: var(--space-3) auto var(--space-2); color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+/*
+ * An official account's pushes (#203): a column of raised cards, each its lead article (a wide cover, the title, the
+ * summary) and the other articles of the push as rows with a small cover; hovering an article presses it.
+ */
+.biz-feed { display: flex; flex-direction: column; gap: var(--space-4); max-width: 520px; margin: 0 auto; }
+.biz-head { display: flex; align-items: center; gap: var(--space-3); }
+.biz-head h2 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.biz-head p { display: flex; align-items: center; gap: var(--space-1); color: var(--fg-subtle); font-size: var(--text-xs); }
+.biz-push { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+.biz-push-time { align-self: center; padding: var(--space-1) 0; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+.biz-lead, .biz-item {
+  display: flex; border-radius: var(--radius-md); color: inherit; text-decoration: none;
+  transition: box-shadow var(--duration-hover) var(--ease-out);
+}
+a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
+.biz-lead { flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-1) var(--space-2); }
+.biz-lead-cover { width: 100%; aspect-ratio: 2.35 / 1; object-fit: cover; border-radius: var(--radius-md); }
+.biz-lead-title { padding: 0 var(--space-1); font-size: var(--text-md); font-weight: var(--weight-semibold); line-height: var(--leading-md); }
+.biz-lead-summary { padding: 0 var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.biz-item { align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-1) var(--space-2) var(--space-2); }
+.biz-item-title { flex: 1; min-width: 0; font-size: var(--text-sm); line-height: var(--leading-sm); }
+.biz-item-cover { width: 48px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-sm); }
+.biz-cover-missing { display: flex; align-items: center; justify-content: center; color: var(--fg-subtle); box-shadow: var(--neu-inset); }
+.biz-empty { color: var(--fg-muted); font-size: var(--text-sm); line-height: var(--leading-sm); text-align: center; }
+.biz-more { align-self: center; }
 .message-row { display: flex; align-items: flex-end; gap: var(--space-2); min-width: 0; margin-bottom: var(--space-3); }
 .message-row.outgoing { flex-direction: row-reverse; }
 .message-bubble {

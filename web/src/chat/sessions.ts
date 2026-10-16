@@ -55,17 +55,26 @@ function matches(session: ChatSession, query: string): boolean {
   return session.displayName.toLocaleLowerCase().includes(query) || session.username.toLocaleLowerCase().includes(query);
 }
 
+/** The conversations, then the official accounts not among them. */
+export function withOfficials(sessions: readonly ChatSession[], officials: readonly ChatSession[]): ChatSession[] {
+  const listed = new Set(sessions.map(s => s.username));
+  return [...sessions, ...officials.filter(o => !listed.has(o.username))];
+}
+
 /**
  * The rows for a filter and a search. Folded groups are gathered into one entry at the time of the newest of them,
- * or listed on their own in the folded view; a search looks through all of them by name.
+ * or listed on their own in the folded view; a search looks through all of them by name. The 「公众号」 filter adds
+ * the `officials` followed that have no conversation, after the ones that do (#203).
  */
 export function sessionRows(
-  sessions: readonly ChatSession[],
+  listed: readonly ChatSession[],
   statuses: Readonly<Record<string, SessionStatus>>,
   filter: SessionFilter,
   query: string,
   foldedView = false,
+  officials: readonly ChatSession[] = [],
 ): SessionRow[] {
+  const sessions = filter === 'official' && officials.length ? withOfficials(listed, officials) : listed;
   const wanted = (session: ChatSession) => filter === 'all' || kindOf(session.username) === filter;
   const isFolded = (session: ChatSession) => Boolean(statuses[session.username]?.isFolded);
   const search = query.trim().toLocaleLowerCase();

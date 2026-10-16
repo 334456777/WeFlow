@@ -17,7 +17,9 @@ import { CardStack, type Card } from './CardStack';
 import { SessionList } from './chat/SessionList';
 import { formatSessionTime, kindLabels, kindOf } from './chat/sessions';
 import { useSessions, type SessionsState } from './chat/useSessions';
+import { BizPushes } from './chat/BizPushes';
 import { LiveMessages } from './chat/LiveMessages';
+import { useBizAccounts } from './chat/useBizAccounts';
 import { SearchPanel, searchSummary } from './chat/SearchPanel';
 import type { Jump } from './chat/useMessages';
 import { useSearch } from './chat/useSearch';
@@ -206,7 +208,10 @@ export function App() {
   const [liveSessions, reloadSessions] = useSessions(connected, scope);
   const [liveId, setLiveId] = useState<string | null>(null);
   const sessionList = liveSessions.status === 'ready' ? liveSessions.sessions : [];
-  const liveSession = sessionList.find(session => session.username === liveId);
+  // the official accounts followed without a conversation, once the 「公众号」 filter is first chosen (#203)
+  const [officialsWanted, setOfficialsWanted] = useState(false);
+  const officials = useBizAccounts(connected && officialsWanted, scope);
+  const liveSession = sessionList.find(session => session.username === liveId) ?? officials.find(session => session.username === liveId);
   const liveSearch = useSearch();
   // A day picked or a search hit opened: its conversation shows the messages there (#199).
   const [jumpTo, setJumpTo] = useState<Jump | null>(null);
@@ -400,7 +405,8 @@ export function App() {
         <small className="settings-footnote">聊天记录目前是示例数据，页面接入 API 后替换。</small>
       </section><Scrollbar target={settingsRef} /></> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
         {activeCategory === 'chat'
-          ? <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions} />
+          ? <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions}
+            officials={officials} onFilter={filter => { if (filter === 'official') setOfficialsWanted(true); }} />
           : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}><HoverTrack items=".conversation-row" />
           {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
             <Avatar name={conversation.name} url={conversation.avatar} />
@@ -413,7 +419,9 @@ export function App() {
         <div ref={paneRef} className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
           <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
           {selected.live && (liveSession
-            ? <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={setPreview} />
+            ? kindOf(liveSession.username) === 'official'
+              ? <BizPushes key={scope + ':' + liveSession.username} session={liveSession} />
+              : <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={setPreview} />
             : <div className="pane-message">{liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>)}
           {!selected.live && <div className="messages">
             {selected.messages.map((message, index) => <div key={message.id}>

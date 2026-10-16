@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { ArrowClockwise, ArrowLeft, BellSlash, MagnifyingGlass, UsersThree } from '@phosphor-icons/react';
+import type { ChatSession } from '../api/chat';
 import { Avatar } from '../Avatar';
 import { Segmented } from '../Segmented';
 import { VirtualList, type VirtualListHandle } from '../VirtualList';
@@ -31,15 +32,19 @@ function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: b
   </button>;
 }
 
-export function SessionList({ state, sample, selectedId, onSelect, onRetry }: {
+export function SessionList({ state, sample, selectedId, onSelect, onRetry, officials = [], onFilter }: {
   state: SessionsState;
   /** Sample sessions, shown while no server is connected. */
   sample: boolean;
   selectedId: string | null;
   onSelect(id: string): void;
   onRetry(): void;
+  /** Official accounts followed without a conversation, for the 「公众号」 filter (#203). */
+  officials?: readonly ChatSession[];
+  onFilter?(filter: SessionFilter): void;
 }) {
-  const [filter, setFilter] = useState<SessionFilter>('all');
+  const [filter, setFilterState] = useState<SessionFilter>('all');
+  const setFilter = (next: SessionFilter) => { setFilterState(next); onFilter?.(next); };
   const [query, setQuery] = useState('');
   const [foldedView, setFoldedView] = useState(false);
   const list = useRef<VirtualListHandle>(null);
@@ -47,8 +52,8 @@ export function SessionList({ state, sample, selectedId, onSelect, onRetry }: {
   const now = useMemo(() => new Date(), [state]);
 
   const rows = useMemo(
-    () => (state.status === 'ready' ? sessionRows(state.sessions, state.statuses, filter, query, foldedView) : []),
-    [state, filter, query, foldedView],
+    () => (state.status === 'ready' ? sessionRows(state.sessions, state.statuses, filter, query, foldedView, officials) : []),
+    [state, filter, query, foldedView, officials],
   );
   const foldedCount = state.status === 'ready' ? state.sessions.filter(s => state.statuses[s.username]?.isFolded).length : 0;
   useEffect(() => { if (foldedView && !foldedCount) setFoldedView(false); }, [foldedView, foldedCount]);

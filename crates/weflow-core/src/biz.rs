@@ -173,6 +173,17 @@ fn build_session_map(sessions: &Value) -> std::collections::HashMap<String, Valu
     map
 }
 
+/// `xml` without its `<tag>…</tag>` section.
+fn without_section(xml: &str, tag: &str) -> String {
+    let (open, close) = (format!("<{tag}>"), format!("</{tag}>"));
+    match (xml.find(&open), xml.find(&close)) {
+        (Some(start), Some(end)) if end > start => {
+            format!("{}{}", &xml[..start], &xml[end + close.len()..])
+        }
+        _ => xml.to_string(),
+    }
+}
+
 pub fn parse_biz_messages(messages: &Value) -> Vec<Value> {
     let Some(items) = messages.as_array() else {
         return Vec::new();
@@ -184,11 +195,13 @@ pub fn parse_biz_messages(messages: &Value) -> Vec<Value> {
             continue;
         }
         let content = content.as_str();
-        let title = extract_xml_value(content, "title");
-        let des = extract_xml_value(content, "des");
-        let url = extract_xml_value(content, "url");
-        let cover = fallback_or_empty(&extract_xml_value(content, "cover"), || {
-            extract_xml_value(content, "thumburl")
+        // the lead article's own fields, not the first of the other articles listed after it
+        let lead = without_section(content, "content_list");
+        let title = extract_xml_value(&lead, "title");
+        let des = extract_xml_value(&lead, "des");
+        let url = extract_xml_value(&lead, "url");
+        let cover = fallback_or_empty(&extract_xml_value(&lead, "cover"), || {
+            extract_xml_value(&lead, "thumburl")
         });
         let content_list_str = extract_xml_value(content, "content_list");
         let content_list = parse_biz_content_list(&content_list_str);
