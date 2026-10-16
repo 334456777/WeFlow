@@ -48,6 +48,13 @@ describe('App', () => {
         ] });
       }
       if (url.startsWith('/chat/statuses')) return json({ success: true, data: { 'g@chatroom': { isFolded: true, isMuted: true } } });
+      if (url.startsWith('/api/chat/messages')) {
+        return json({ success: true, data: [
+          { _cursor: 'c.0', localId: 3, localType: 25769803825, appMsgKind: 'file', createTime: 1760000000, isSend: 1, senderUsername: 'wxid_me', parsedContent: '[文件] 计划.pdf', fileName: '计划.pdf', fileSize: 2048 },
+          { _cursor: 'c.1', localId: 2, localType: 10000, createTime: 1759999990, isSend: 0, senderUsername: null, parsedContent: '"林沐" 撤回了一条消息' },
+          { _cursor: 'c.2', localId: 1, localType: 1, createTime: 1759999900, isSend: 0, senderUsername: 'wxid_a', parsedContent: '你好' },
+        ] });
+      }
       throw new TypeError('unexpected ' + url);
     }));
     render(<App />);
@@ -60,6 +67,15 @@ describe('App', () => {
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '会话资料']);
     expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', true);
     expect(screen.getByText('约 42 条记录', { exact: false })).toBeTruthy();
+    // Its messages, oldest first: a text, a notice in the middle, a file sent by me.
+    await act(async () => {});
+    const rows = Array.from(document.querySelectorAll('.message-pane .message-row'));
+    expect(rows.map(row => row.className)).toEqual(['message-row incoming', 'message-row system', 'message-row outgoing']);
+    expect(rows[0].textContent).toContain('你好');
+    expect(rows[1].textContent).toBe('"林沐" 撤回了一条消息');
+    expect(rows[2].textContent).toContain('计划.pdf');
+    expect(rows[2].textContent).toContain('2.0 KB');
+    expect(calls.find(url => url.startsWith('/api/chat/messages'))).toContain('session-id=wxid_a');
   });
 
   it('says why the conversations could not be read and tries again', async () => {

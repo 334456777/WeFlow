@@ -15,6 +15,8 @@ import { CardStack, type Card } from './CardStack';
 import { SessionList } from './chat/SessionList';
 import { formatSessionTime, kindLabels, kindOf } from './chat/sessions';
 import { useSessions, type SessionsState } from './chat/useSessions';
+import { LiveMessages } from './chat/LiveMessages';
+import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
 import { exportConversation } from './export';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
@@ -23,7 +25,7 @@ import { Segmented } from './Segmented';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
-type Preview = { type: 'image'; src: string; title: string } | { type: 'file'; title: string };
+// Previews of the sample records and of real messages (images and videos of #198).
 
 const navigation = [
   { id: 'chat', label: '聊天', icon: ChatCircleDots },
@@ -370,10 +372,10 @@ export function App() {
         </div><Scrollbar target={listRef} /></>}
         <div ref={paneRef} className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
           <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
-          {selected.live && <div className="pane-message">{selected.name
-            ? <><strong>{selected.name}</strong><p>消息的显示还在开发中（#198）。</p></>
-            : liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>}
-          <div className="messages">
+          {selected.live && (liveSession
+            ? <LiveMessages session={liveSession} scroller={paneRef} onPreview={setPreview} />
+            : <div className="pane-message">{liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>)}
+          {!selected.live && <div className="messages">
             {selected.messages.map((message, index) => <div key={message.id}>
               {(index === 0 || selected.messages[index - 1].date !== message.date) && <div className="date-separator">{formatDay(message.date)}</div>}
               <div id={'message-' + message.id} className={'message-row ' + message.direction + (highlighted === message.id ? ' highlighted' : '')}>
@@ -385,7 +387,7 @@ export function App() {
                 <time className="message-time">{message.time}</time>
               </div>
             </div>)}
-          </div>
+          </div>}
         </div>
         <Scrollbar target={paneRef} />
       </section>}
@@ -399,7 +401,11 @@ export function App() {
     <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
       onCancel={event => { event.preventDefault(); setPreview(null); }} onClick={event => { if (event.target === event.currentTarget) setPreview(null); }}>
       {shownPreview && <div className="preview-content"><header><strong>{shownPreview.value.title}</strong><button type="button" className="icon-button" aria-label="关闭预览" onClick={() => setPreview(null)}><X size={18} /></button></header>
-        {shownPreview.value.type === 'image' ? <img src={shownPreview.value.src} alt={shownPreview.value.title} /> : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}
+        {shownPreview.value.type === 'image'
+          ? <PreviewImage src={shownPreview.value.src} title={shownPreview.value.title} />
+          : shownPreview.value.type === 'video'
+            ? <PreviewVideo src={shownPreview.value.src} poster={shownPreview.value.poster} />
+            : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}
     </dialog>
     {shownToast && <div className="toast" role="status" data-state={shownToast.closing ? 'closing' : 'open'}><CheckCircle size={16} />{shownToast.value}</div>}
   </main>;
