@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  Aperture, ArrowClockwise, ArrowLeft, ArrowsLeftRight, ArrowSquareOut, Article, CalendarBlank,
+  Aperture, ArrowClockwise, ArrowLeft, ArrowsLeftRight, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, Circle, CircleNotch,
   DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -27,7 +27,6 @@ type Preview = { type: 'image'; src: string; title: string } | { type: 'file'; t
 const navigation = [
   { id: 'chat', label: '聊天', icon: ChatCircleDots },
   { id: 'moments', label: '朋友圈', icon: Aperture },
-  { id: 'articles', label: '公众号', icon: Article },
   { id: 'payments', label: '微信支付', icon: Wallet },
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
@@ -169,7 +168,7 @@ export function App() {
   };
   const [section, setSection] = useState<Navigation>('chat');
   const [activeCategory, setActiveCategory] = useState<Category>('chat');
-  const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', articles: 'article-design', payments: 'payment-coffee' });
+  const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', payments: 'payment-coffee' });
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(CURRENT_DATE);
   const [format, setFormat] = useState<ExportFormat>('HTML');

@@ -6,7 +6,7 @@ import photo from './street.svg';
 export const CURRENT_DATE = '2026-10-12';
 export const DEFAULT_FROM = '2026-10-01';
 export const categoryLabels: Record<Category, string> = {
-  chat: '聊天', moments: '朋友圈', articles: '公众号', payments: '微信支付',
+  chat: '聊天', moments: '朋友圈', payments: '微信支付',
 };
 
 function text(id: string, sender: string, content: string, date: string, time: string, outgoing = false): Message {
@@ -64,7 +64,7 @@ export const conversations: Conversation[] = [
     messages: [text('moment-3', '陈屿', '周末，慢慢走。', '2026-10-11', '16:30')],
   },
   {
-    id: 'article-design', category: 'articles', name: '设计观察',
+    id: 'gh_design', category: 'chat', name: '设计观察',
     preview: '让工具回到清楚、简单的使用方式', stamp: '10/10', description: '公众号 · 示例文章',
     messages: [
       text('article-1', '设计观察', '让工具回到清楚、简单的使用方式', '2026-10-10', '09:00'),
@@ -72,7 +72,7 @@ export const conversations: Conversation[] = [
     ],
   },
   {
-    id: 'article-life', category: 'articles', name: '城市手记',
+    id: 'gh_city', category: 'chat', name: '城市手记',
     preview: '一条小街的午后', stamp: '10/07', description: '公众号 · 示例文章',
     messages: [
       text('article-3', '城市手记', '一条小街的午后', '2026-10-07', '11:45'),
@@ -101,7 +101,7 @@ export const sampleSessions: ChatSession[] = conversations.filter(c => c.categor
     unreadCount: 0, sortTimestamp: time, lastTimestamp: time, lastMsgType: 1,
     ...(group && last.direction === 'incoming' ? { lastSenderDisplayName: last.sender } : {}),
   };
-});
+}).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
 export function formatDay(date: string): string {
   const value = new Date(date + 'T12:00:00');

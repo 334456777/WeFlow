@@ -28,6 +28,14 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '选择设计协作群' }).textContent).toContain('李婷：这版看起来不错');
   });
 
+  it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
+    await renderWith(new TypeError('Failed to fetch'));
+    const nav = screen.getByRole('navigation', { name: '主导航' });
+    expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '设置']);
+    fireEvent.click(screen.getByRole('button', { name: '公众号' }));
+    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['设计观察', '城市手记']);
+  });
+
   it('lists the conversations of a running backend', async () => {
     const calls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
