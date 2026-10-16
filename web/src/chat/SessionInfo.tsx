@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowClockwise, CircleNotch, Crown, MagnifyingGlass, UserChe
 import type { ChatSession } from '../api/chat';
 import { ApiError } from '../api/client';
 import { getDetail, getDetailExtra, getMemberStats, getPanel, type MemberStats, type PanelMember, type SessionDetail, type SessionDetailExtra } from '../api/details';
-import { useLive } from '../api/live';
+import { useGathered, useLive } from '../api/live';
 import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import { kindLabels, kindOf } from './sessions';
@@ -42,9 +42,10 @@ export function SessionInfo({ session, active = true }: { session: ChatSession; 
   const key = active ? id : null;
   const [detail, refreshDetail] = useLoaded<SessionDetail>(key, signal => getDetail(id, signal), '读取会话资料失败');
   const [extra, refreshExtra] = useLoaded<SessionDetailExtra>(key, signal => getDetailExtra(id, signal), '读取首条和最新消息的时间失败');
-  // a new message changes the count and the latest time (#201)
+  // a new message changes the count and the latest time (#201); the times are a command, read once for a burst
+  const refresh = useGathered(() => { refreshDetail(); refreshExtra(); });
   useLive(event => {
-    if (event.type === 'resumed' || event.sessionId === id) { refreshDetail(); refreshExtra(); }
+    if (event.type === 'resumed' || event.sessionId === id) refresh();
   });
 
   const fact = detail.status === 'ready' ? detail.value : null;

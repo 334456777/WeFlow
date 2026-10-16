@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowSquareOut, CircleNotch, FileText, VideoCamera } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
 import { getResources, RESOURCE_PAGE, type Resource, type ResourceType } from '../api/details';
-import { useLive } from '../api/live';
+import { useGathered, useLive } from '../api/live';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
@@ -28,6 +28,27 @@ function size(bytes?: number): string {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
+const keyOf = (item: Resource) => item.resourceType + item.localId + '.' + item.createTime;
+
+function unseen(items: readonly Resource[], shown: readonly Resource[]): Resource[] {
+  const seen = new Set(shown.map(keyOf));
+  return items.filter(item => !seen.has(keyOf(item)));
+}
+
+/**
+ * The first page, read again for a new message or on reopening the card: it takes the place of what it covers
+ * (so a recalled message goes), and the older pages already shown stay, so a new message does not take the list
+ * back to its first page.
+ */
+function withFirstPage(old: State, filter: number, page: { items: Resource[]; hasMore: boolean }): State {
+  const oldest = page.items.at(-1);
+  if (old.status !== 'ready' || old.filter !== filter || !oldest || page.items.length < RESOURCE_PAGE) {
+    return { status: 'ready', filter, items: page.items, hasMore: page.hasMore, more: false };
+  }
+  const rest = unseen(old.items.filter(item => item.createTime <= oldest.createTime), page.items);
+  return { status: 'ready', filter, items: [...page.items, ...rest], hasMore: rest.length ? old.hasMore : page.hasMore, more: false };
+}
+
 const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
 
 /** One conversation's media, read while `active` (its card open): give it a `key` per conversation. */
@@ -45,15 +66,16 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     // read again for the same filter: what is shown stays meanwhile
     setState(old => (old.status === 'ready' && old.filter === filter ? old : { status: 'loading' }));
     getResources(sessionId, FILTERS[filter].types, 0, controller.signal).then(
-      page => { if (!controller.signal.aborted) setState({ status: 'ready', filter, items: page.items, hasMore: page.hasMore, more: false }); },
+      page => { if (!controller.signal.aborted) setState(old => withFirstPage(old, filter, page)); },
       problem => { if (!controller.signal.aborted) setState({ status: 'error', message: errorOf(problem) }); },
     );
     return () => controller.abort();
   }, [sessionId, filter, round, active]);
 
-  // a picture or a file sent now shows at the top (#201)
+  // a picture or a file sent now shows at the top (#201); a burst of messages reads once, as each read is a command
+  const refresh = useGathered(() => setRound(n => n + 1));
   useLive(event => {
-    if (event.type === 'resumed' || event.sessionId === sessionId) setRound(n => n + 1);
+    if (event.type === 'resumed' || event.sessionId === sessionId) refresh();
   });
 
   const more = () => {
@@ -63,7 +85,8 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     setState({ ...state, more: true, error: undefined });
     getResources(sessionId, types, shown.length, signal).then(
       page => { if (!signal?.aborted) setState(old => (old.status === 'ready' && old.items === shown
-        ? { ...old, items: [...shown, ...page.items], hasMore: page.hasMore && page.items.length === RESOURCE_PAGE, more: false }
+        // a message sent meanwhile moves the offsets on: what is already shown is not shown twice
+        ? { ...old, items: [...shown, ...unseen(page.items, shown)], hasMore: page.hasMore && page.items.length === RESOURCE_PAGE, more: false }
         : old)); },
       problem => { if (!signal?.aborted) setState(old => (old.status === 'ready' && old.items === shown ? { ...old, more: false, error: errorOf(problem) } : old)); },
     );
@@ -77,7 +100,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     {state.status === 'error' && <p className="empty-text" role="alert">{state.message} <button type="button" className="text-button" onClick={() => setRound(n => n + 1)}>重试</button></p>}
     {state.status === 'ready' && (state.items.length
       ? <div className="media-list"><HoverTrack items=".media-item" />
-        {state.items.map(item => <MediaItem key={item.resourceType + item.localId + '.' + item.createTime} sessionId={sessionId} item={item} onOpen={onOpen} />)}
+        {state.items.map(item => <MediaItem key={keyOf(item)} sessionId={sessionId} item={item} onOpen={onOpen} />)}
         {state.hasMore && <button type="button" className="secondary-button media-more" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />正在读取</> : '加载更多'}</button>}
         {state.error && <p className="empty-text" role="alert">{state.error}</p>}
       </div>
