@@ -60,6 +60,8 @@ npm run dev                               # http://localhost:5173/ui/
 
 构建时，这些信息写入 `dist/weflow-web.json`，供 `weflow web` 使用（#148）。网页也会拿它们和 `/health` 比对，不满足时显示「版本不兼容」。
 
+发布新版本时，先提高 `package.json` 里的 `version`，再推送 tag `web-v<版本>`（或在 Actions 里运行 *WebUI release*）：`.github/workflows/web-release.yml` 构建后发布到 `ghcr.io/334456777/weflow-web:<版本>`，`weflow web` 和 `weflow serve` 从那里下载。同一个版本只能发布一次。每个 `weflow` 构建默认显示构建时 `package.json` 里的版本（见 [docs/serve-api.md](../docs/zh-CN/serve-api.md#网页的版本)）。
+
 ## 目录
 
 | 路径 | 说明 |

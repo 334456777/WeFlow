@@ -2,7 +2,7 @@ name: WebUI
 
 # The WebUI under web/ (React + TypeScript + Vite) is built on its own, apart from the Rust workspace: changes to it
 # type-check it, run its tests and build it. The build is uploaded so a run's output can be tried with
-# `weflow serve --ui-dir` once #146 lands; publishing it is #148.
+# `weflow serve --ui-dir`; web-release.yml publishes it (#148).
 on:
   pull_request:
     paths:

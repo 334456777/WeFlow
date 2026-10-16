@@ -33,7 +33,7 @@
 
 ### 其他
 - `docs/`：英文文档，`docs/zh-CN/` 为对应中文版
-- `.github/workflows/` 下的 `release.yml`（推送 tag 或在 Actions 页面手动运行并填写 tag 时触发，tag 不存在时由 github-actions[bot] 在所选分支的最新提交上创建附注 tag，已有的轻量 tag 会被拒绝；依次 build → test → release：构建 6 个平台的发布版，在每个平台上跑测试并核对包里 `weflow --version` 与 tag 一致，全部通过才发布；正式版 tag 与根 `Cargo.toml` 的版本号不一致时只给出警告，不拦截；发布说明来自 `.github/release-notes.md`，开头的「更新日志」由 `.github/scripts/release-changelog.sh` 生成：手动运行时填写的 notes，加上与上一个版本相比关闭的 issue（按标签分组，不含文档类）、没有关联 issue 的 PR、新登记的 issue）和 `ci.yml`（代码变动时只测三个主流平台：Linux、macOS 运行 `make ci`（rustfmt、clippy、全部测试），外加 `make docs-check`；Windows x64 构建发布版、跑测试并运行一次）和 `docs-check.yml`（仅文档变动时运行 `make docs-check`）和 `web.yml`（`web/` 变动时类型检查、测试、构建并上传 `dist/`）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
+- `.github/workflows/` 下的 `release.yml`（推送 tag 或在 Actions 页面手动运行并填写 tag 时触发，tag 不存在时由 github-actions[bot] 在所选分支的最新提交上创建附注 tag，已有的轻量 tag 会被拒绝；依次 build → test → release：构建 6 个平台的发布版，在每个平台上跑测试并核对包里 `weflow --version` 与 tag 一致，全部通过才发布；正式版 tag 与根 `Cargo.toml` 的版本号不一致时只给出警告，不拦截；发布说明来自 `.github/release-notes.md`，开头的「更新日志」由 `.github/scripts/release-changelog.sh` 生成：手动运行时填写的 notes，加上与上一个版本相比关闭的 issue（按标签分组，不含文档类）、没有关联 issue 的 PR、新登记的 issue）和 `ci.yml`（代码变动时只测三个主流平台：Linux、macOS 运行 `make ci`（rustfmt、clippy、全部测试），外加 `make docs-check`；Windows x64 构建发布版、跑测试并运行一次）和 `docs-check.yml`（仅文档变动时运行 `make docs-check`）和 `web.yml`（`web/` 变动时类型检查、测试、构建并上传 `dist/`）和 `web-release.yml`（推送 `web-v<版本>` tag 或手动运行：版本须与 `web/package.json` 一致，构建 `web/` 后打成 zip，用 ORAS 发布到 `ghcr.io/334456777/weflow-web:<版本>`，manifest 注明 API 版本和最低 weflow 版本；已发布的版本拒绝覆盖，`weflow web` / `serve` 从这里下载）是实际生效的 CI；`.github/weflow/` 是上游桌面端的 GitHub 配置副本，不会被触发
 
 
 ## 约定

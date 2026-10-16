@@ -2610,6 +2610,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tower-http",
  "tracing",
@@ -2619,6 +2620,7 @@ dependencies = [
  "weflow-native",
  "weflow-silk",
  "windows-sys 0.61.2",
+ "zip",
 ]
 
 [[package]]

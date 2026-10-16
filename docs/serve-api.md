@@ -28,12 +28,21 @@ weflow serve --ui-dir web/dist     # with the WebUI at http://127.0.0.1:18108/ui
 | `--log-requests` | A line on stderr for each request: method, path, status and time (see [Where the time goes](#where-the-time-goes)) |
 | `--ui-dir` | Serve the WebUI from this folder (a built WebUI, such as `web/dist`) for this run only (see [WebUI](#webui)) |
 | `--no-browser` | Do not open the WebUI in the browser at the start |
+| `--web-version` | Show this WebUI version for this run, downloaded first when needed (see [Versions of the WebUI](#versions-of-the-webui)) |
+| `--api-only` | Serve the API alone, without the WebUI |
 
 The startup message (an event on stderr; a JSON line with `--json`) shows the address. The default port lies below 49152, outside the range Windows hands out to programs and from which Hyper-V, WSL 2 and Docker reserve blocks of ports that no one can bind. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
 
 ## WebUI
 
-`serve` also hosts the web interface (`web/`, issue #130) under `/ui/`, from the folder `--ui-dir` names for this run, else from the version picked with `weflow web use` (issue #148). A folder without `index.html` is refused at the start. Without a WebUI the server runs as the API alone, and the startup message says so.
+`serve` also hosts the web interface (`web/`, issue #130) under `/ui/`. Which one:
+
+1. none with `--api-only`;
+2. the folder `--ui-dir` names, for this run only (a folder without `index.html` is refused at the start);
+3. the version `--web-version` names, for this run only, downloaded first when needed;
+4. else the version picked with `weflow web use`, or, until one is picked, the version this `weflow` comes with (the one in `web/package.json` when it was built). When that version is not here yet, the server starts at once (with the newest suitable version already here, or as the API alone), downloads it beside, and shows it once it is in place: the event `webui_ready`, or `webui_unavailable` when the download fails, in which case what was there stays.
+
+Without a WebUI the server runs as the API alone, and the startup message says so.
 
 With a WebUI, the startup message gives its address with the token, `http://127.0.0.1:18108/ui/?token=…` (`uiUrl` with `--json`), and when stderr is a terminal the server opens it in the browser (`--no-browser` turns that off). The page keeps the token for its tab and removes it from the address bar; it is never written into the WebUI's files.
 
@@ -42,6 +51,24 @@ With a WebUI, the startup message gives its address with the token, `http://127.
 - A path of the page's own (without an extension, such as `/ui/chat`) that is not a file gets `index.html`, so the page routes it; a missing file with an extension, or under `/ui/assets/`, answers `404`. Nothing outside `/ui/` falls back: an unknown API path still answers `404` in JSON.
 - Only files inside the folder are served: `..`, encoded or not, and links that lead out of it answer `404`.
 - The built assets (`/ui/assets/`, named after their content) are cached for good; `index.html` and the other files are checked again each time (`Cache-Control: no-cache`), so a new version shows at once. Every file is sent with `X-Content-Type-Options: nosniff`, and the page with `Referrer-Policy: no-referrer`.
+
+### Versions of the WebUI
+
+The WebUI is published apart from `weflow`, as OCI artifacts on GHCR (`ghcr.io/334456777/weflow-web:<version>`, by `.github/workflows/web-release.yml`), and `weflow` downloads them itself: no Docker, ORAS, Node.js or npm is needed, and the CLI and the API work without any of it.
+
+| Command | What it does |
+|---|---|
+| `web info` | The version in use, the one picked, the one this `weflow` comes with, and the versions kept here |
+| `web list [--remote]` | The versions kept here; with `--remote` the published ones, and whether each suits this `weflow` |
+| `web install <version>` | Downloads a version, checks it and keeps it |
+| `web use <version>` | Picks the version `serve` shows (downloaded first when needed) |
+| `web update` | Downloads and picks the newest published version that suits this `weflow` (a release before a pre-release) |
+| `web prune` | Removes the versions kept here that are neither picked nor the one this `weflow` comes with |
+
+- A version suits this `weflow` when it needs the API it serves (`apiVersion` of `/health`) and a `weflow` no newer than it (`minBackendVersion`). The manifest says both, so an unsuitable version is refused before it is downloaded, and its `weflow-web.json` says them again, checked after.
+- A download is checked against the size and the SHA-256 digest of its manifest, and unpacked under limits (at most 64 MB packed, 256 MB and 10,000 files unpacked; no path leading out of its folder, no links) into a folder of its own, then checked (`index.html`, the metadata, the version asked for) before one rename moves it into place. A failed, damaged or interrupted download leaves the versions already here as they were; two downloads of one version at once keep one copy.
+- The versions are kept with WeFlow's other caches, in `<home>/cache/web/<version>/`; the one picked is named in `<home>/cache/web/current`. `cache clear --web` removes them all; `serve` downloads the one it needs again.
+- The registry is reached as the OCI Distribution API describes (an anonymous token, then the manifest and the blob); `WEFLOW_WEB_REGISTRY` names another (a mirror, or a test's).
 
 ## Authentication
 

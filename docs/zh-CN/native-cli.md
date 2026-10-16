@@ -86,6 +86,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 | `cache clear --api` | HTTP API 导出的媒体（`api-media`）和推送的头像（`push-avatar-files`），以及 `serve` 返回的文件（`serve-files`，见 [serve-api.md](serve-api.md#返回文件)） |
 | `cache clear --keys` | 校验通过的密钥指纹；下一条命令会重新校验密钥 |
 | `cache clear --runtime` | 其他 WeFlow 版本在 `runtime/` 下释放的运行时；保留当前版本 |
+| `cache clear --web` | `weflow web` 和 `serve` 下载的网页版本（`cache/web/`，见 [serve-api.md](serve-api.md#网页)）；`serve` 需要的版本会重新下载 |
 | `cache clear --all` | 以上全部 |
 | `cache clear-account [--exports-dir <目录>]` | 删除当前账号缓存的图片、语音、表情、朋友圈、统计和密钥指纹，并把该账号移出配置档案（删除 `db_path`、`wxid`、`decrypt_key` 和图片密钥）；`--exports-dir`（可重复）还会删除该目录下以账号命名的条目 |
 

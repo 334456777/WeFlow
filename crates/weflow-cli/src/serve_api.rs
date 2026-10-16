@@ -220,6 +220,12 @@ const METHODS: &[(&str, Rule)] = &[
     ("ffmpeg path", Rule::Fixed(Get)),
     ("ffmpeg set baseurl", Rule::Fixed(Put)),
     ("ffmpeg unset baseurl", Rule::Fixed(Delete)),
+    ("web info", Rule::Fixed(Get)),
+    ("web list", Rule::Fixed(Get)),
+    ("web install", Rule::Fixed(Post)),
+    ("web use", Rule::Fixed(Put)),
+    ("web update", Rule::Fixed(Post)),
+    ("web prune", Rule::Fixed(Delete)),
     ("lang", Rule::Fixed(Put)),
 ];
 
@@ -504,8 +510,8 @@ pub struct ApiConfig {
     pub check_host: bool,
     /// Print each request on stderr (`--log-requests`): method, path, status and time, never the query.
     pub log_requests: bool,
-    /// The WebUI served at `/ui/` (issue #146), if any.
-    pub ui: Option<ui::UiDir>,
+    /// The WebUI served at `/ui/` (issue #146), if any; set later when its version is downloaded beside the server.
+    pub ui: Arc<std::sync::RwLock<Option<ui::UiDir>>>,
 }
 
 struct AppState {
@@ -931,7 +937,8 @@ async fn route(st: &AppState, req: Request) -> Response {
         .strip_prefix("/ui")
         .filter(|r| r.is_empty() || r.starts_with('/'))
     {
-        return match &st.cfg.ui {
+        let shown = st.cfg.ui.read().unwrap().clone();
+        return match &shown {
             Some(dir) => ui::serve(dir, &parts.method, rest, parts.uri.query()).await,
             None => error_response(
                 StatusCode::NOT_FOUND,
@@ -940,7 +947,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             ),
         };
     }
-    if path == "/" && st.cfg.ui.is_some() && parts.method == Method::GET {
+    if path == "/" && st.cfg.ui.read().unwrap().is_some() && parts.method == Method::GET {
         let to = format!(
             "/ui/{}",
             parts

@@ -49,6 +49,8 @@ Opened by `weflow serve --ui-dir web/dist` (after `npm run build`), the page get
 
 `package.json` holds the WebUI's own version and, under `weflow`, the API it needs: `apiVersion` must equal the `apiVersion` of `GET /health`, and the server's `version` must be at least `minBackendVersion` (a development build's `git describe` version counts as its tag). The build writes these to `dist/weflow-web.json` for `weflow web` (#148); the page checks them against `/health` and shows "版本不兼容" otherwise.
 
+To publish a version, raise `version` in `package.json` and push the tag `web-v<version>` (or run *WebUI release* in Actions): `.github/workflows/web-release.yml` builds it and publishes it to `ghcr.io/334456777/weflow-web:<version>`, where `weflow web` and `weflow serve` find it. A version is published once. Each `weflow` build shows, by default, the version `package.json` had when it was built (see [docs/serve-api.md](../docs/serve-api.md#versions-of-the-webui)).
+
 ## Layout
 
 | Path | |
