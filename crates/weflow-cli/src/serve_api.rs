@@ -12,6 +12,7 @@ mod in_process;
 mod jobs;
 mod openapi;
 mod push;
+pub mod ui;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -503,6 +504,8 @@ pub struct ApiConfig {
     pub check_host: bool,
     /// Print each request on stderr (`--log-requests`): method, path, status and time, never the query.
     pub log_requests: bool,
+    /// The WebUI served at `/ui/` (issue #146), if any.
+    pub ui: Option<ui::UiDir>,
 }
 
 struct AppState {
@@ -922,6 +925,35 @@ async fn route(st: &AppState, req: Request) -> Response {
             "version": env!("WEFLOW_VERSION"),
         });
         return json_body(StatusCode::OK, body.to_string());
+    }
+    // the WebUI's files need no token: the page brings it in its address
+    if let Some(rest) = path
+        .strip_prefix("/ui")
+        .filter(|r| r.is_empty() || r.starts_with('/'))
+    {
+        return match &st.cfg.ui {
+            Some(dir) => ui::serve(dir, &parts.method, rest, parts.uri.query()).await,
+            None => error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "no WebUI is served; start serve with --ui-dir <a built WebUI>",
+            ),
+        };
+    }
+    if path == "/" && st.cfg.ui.is_some() && parts.method == Method::GET {
+        let to = format!(
+            "/ui/{}",
+            parts
+                .uri
+                .query()
+                .map(|q| format!("?{q}"))
+                .unwrap_or_default()
+        );
+        return Response::builder()
+            .status(StatusCode::FOUND)
+            .header(header::LOCATION, to)
+            .body(Body::empty())
+            .unwrap();
     }
     let query = query_pairs(parts.uri.query());
     if !authorized(&st.cfg.token, &parts.headers, &query) {

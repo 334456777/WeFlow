@@ -1343,6 +1343,12 @@ struct ServeCommand {
     /// Print a line on stderr for each request of the command API: method, path (no query), status and time
     #[arg(long)]
     log_requests: bool,
+    /// Serve the WebUI at /ui/ from this folder (a built WebUI, such as web/dist) for this run only, instead of the installed one
+    #[arg(long, value_name = "DIR")]
+    ui_dir: Option<PathBuf>,
+    /// Do not open the WebUI in the browser when the server starts
+    #[arg(long)]
+    no_browser: bool,
 }
 
 #[derive(Args, Debug)]
@@ -2997,6 +3003,28 @@ fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Opens `url` in the default browser, as `serve` does with the WebUI; nothing happens where there is none.
+fn open_in_browser(url: &str) {
+    let mut opener = if cfg!(windows) {
+        let mut cmd = std::process::Command::new("rundll32");
+        cmd.args(["url.dll,FileProtocolHandler", url]);
+        cmd
+    } else if cfg!(target_os = "macos") {
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg(url);
+        cmd
+    } else {
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(url);
+        cmd
+    };
+    let _ = opener
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+}
+
 /// `serve` runs the command API (every CLI command over HTTP, see `serve_api`) or, with `--desktop`, the desktop
 /// app's HTTP API, next to the optional insight and image auto-download services.
 async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
@@ -3007,12 +3035,27 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
         && (command.max_tasks.is_some()
             || command.max_reads.is_some()
             || command.max_media.is_some()
-            || command.log_requests)
+            || command.log_requests
+            || command.ui_dir.is_some()
+            || command.no_browser)
     {
         return Err(AppError::usage(
-            "--max-tasks, --max-reads, --max-media and --log-requests are for the command API, not --desktop",
+            "--max-tasks, --max-reads, --max-media, --log-requests, --ui-dir and --no-browser are for the command API, not --desktop",
         ));
     }
+    // the WebUI of this run (--ui-dir), else the one installed (issue #148)
+    let ui = match (&command.ui_dir, command.desktop) {
+        (_, true) => None,
+        (Some(dir), false) => Some(serve_api::ui::UiDir::open(dir).ok_or_else(|| {
+            AppError::usage(format!(
+                "--ui-dir {}: no index.html there; pass the folder of a built WebUI (such as web/dist)",
+                dir.display()
+            ))
+        })?),
+        (None, false) => hub
+            .web_in_use()
+            .and_then(|dir| serve_api::ui::UiDir::open(&dir)),
+    };
 
     let cfg_str = |key: &str| {
         hub.config_value(key)
@@ -3131,7 +3174,32 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     if let Some(generated) = &generated_token {
         started["generatedToken"] = json!(generated);
     }
+    // the page's address carries the token, as Jupyter's does; the page keeps it for its tab and drops it from the
+    // address bar. A server listening on every address is still reached here as 127.0.0.1.
+    let ui_url = ui.as_ref().map(|_| {
+        let at = if bound.ip().is_unspecified() {
+            std::net::SocketAddr::new(std::net::Ipv4Addr::LOCALHOST.into(), bound.port())
+        } else {
+            bound
+        };
+        let token = token.as_ref().or(generated_token.as_ref());
+        format!(
+            "http://{at}/ui/{}",
+            token.map(|t| format!("?token={t}")).unwrap_or_default()
+        )
+    });
+    if !command.desktop {
+        started["ui"] = json!(ui_url.is_some());
+        if let Some(url) = &ui_url {
+            started["uiUrl"] = json!(url);
+        }
+    }
     weflow_core::output::event(started);
+    if let Some(url) = &ui_url {
+        if !command.no_browser && std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+            open_in_browser(url);
+        }
+    }
     if command.desktop && token.is_none() {
         eprintln!(
             "{}",
@@ -3174,6 +3242,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
                     .max_media
                     .map_or_else(serve_api::default_max_reads, usize::from),
                 log_requests: command.log_requests,
+                ui,
             };
             serve_api::serve(cfg, listener).await
         };

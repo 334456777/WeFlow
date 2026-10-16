@@ -37,7 +37,7 @@ npm run dev                               # http://localhost:5173/ui/
 
 要从另一台电脑打开开发服务器，运行 `npm run dev -- --host`，再打开 `http://<这台机器的地址>:5173/ui/`。这时不要设置 `WEFLOW_HTTP_TOKEN`。否则，代理会把令牌交给任何能访问这个端口的人，他们就能运行任何 `weflow` 命令。
 
-完成 #146 后，由 `weflow serve` 打开的网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
+运行 `npm run build` 后用 `weflow serve --ui-dir web/dist` 打开网页时，网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
 
 ## 脚本
 

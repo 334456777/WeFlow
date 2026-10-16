@@ -13,6 +13,8 @@ const HELP: &[(&str, &str)] = &[
     ("Other commands the command API runs at once (default: the number of CPUs)", "命令 API 同时运行的其他命令数（默认：CPU 核数）"),
     ("Images and voices the command API's /api/ media routes decode at once; more wait in line (default: the number of CPUs)", "命令 API 的 /api/ 媒体路由同时解码的图片和语音数；超出的排队等待（默认：CPU 核数）"),
     ("Print a line on stderr for each request of the command API: method, path (no query), status and time", "命令 API 每处理一个请求，在 stderr 输出一行：方法、路径（不含查询参数）、状态码和耗时"),
+    ("Serve the WebUI at /ui/ from this folder (a built WebUI, such as web/dist) for this run only, instead of the installed one", "只在本次运行中，从这个目录（构建好的网页，例如 web/dist）在 /ui/ 提供网页，代替已安装的版本"),
+    ("Do not open the WebUI in the browser when the server starts", "启动时不在浏览器中打开网页"),
     ("Account directory to search for templates (default: the configured account directory)", "用于查找模板的账号目录（默认：已配置的账号目录）"),
     ("All image identifiers of a session (md5 / dat name), newest first", "会话的全部图片标识（md5 / dat 名），最新在前"),
     ("All voice messages of a session", "会话的全部语音消息"),

@@ -12,6 +12,7 @@ The desktop app's HTTP API (`/api/v1/*`, SSE push) is a separate server started 
 weflow serve                       # command API on http://127.0.0.1:18108
 weflow serve --port 8080 --host 127.0.0.1
 weflow serve --desktop             # the desktop app's API instead (port `http_api_port`, default 5031)
+weflow serve --ui-dir web/dist     # with the WebUI at http://127.0.0.1:18108/ui/
 ```
 
 | Option | Meaning |
@@ -25,8 +26,22 @@ weflow serve --desktop             # the desktop app's API instead (port `http_a
 | `--max-reads` | Other commands that run at once; default the number of CPUs |
 | `--max-media` | Images and voices the `/api/` media routes decode at once, more wait in line; default the number of CPUs (see [Media](#media)) |
 | `--log-requests` | A line on stderr for each request: method, path, status and time (see [Where the time goes](#where-the-time-goes)) |
+| `--ui-dir` | Serve the WebUI from this folder (a built WebUI, such as `web/dist`) for this run only (see [WebUI](#webui)) |
+| `--no-browser` | Do not open the WebUI in the browser at the start |
 
 The startup message (an event on stderr; a JSON line with `--json`) shows the address. The default port lies below 49152, outside the range Windows hands out to programs and from which Hyper-V, WSL 2 and Docker reserve blocks of ports that no one can bind. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
+
+## WebUI
+
+`serve` also hosts the web interface (`web/`, issue #130) under `/ui/`, from the folder `--ui-dir` names for this run, else from the version picked with `weflow web use` (issue #148). A folder without `index.html` is refused at the start. Without a WebUI the server runs as the API alone, and the startup message says so.
+
+With a WebUI, the startup message gives its address with the token, `http://127.0.0.1:18108/ui/?token=…` (`uiUrl` with `--json`), and when stderr is a terminal the server opens it in the browser (`--no-browser` turns that off). The page keeps the token for its tab and removes it from the address bar; it is never written into the WebUI's files.
+
+- The page's files need no token, unlike the API, but the `Host` check below still applies. Only `GET` and `HEAD` are answered.
+- `/ui` goes to `/ui/` (`308`), and with a WebUI `/` goes to `/ui/` too (`302`), keeping the query.
+- A path of the page's own (without an extension, such as `/ui/chat`) that is not a file gets `index.html`, so the page routes it; a missing file with an extension, or under `/ui/assets/`, answers `404`. Nothing outside `/ui/` falls back: an unknown API path still answers `404` in JSON.
+- Only files inside the folder are served: `..`, encoded or not, and links that lead out of it answer `404`.
+- The built assets (`/ui/assets/`, named after their content) are cached for good; `index.html` and the other files are checked again each time (`Cache-Control: no-cache`), so a new version shows at once. Every file is sent with `X-Content-Type-Options: nosniff`, and the page with `Referrer-Policy: no-referrer`.
 
 ## Authentication
 

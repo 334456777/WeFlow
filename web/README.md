@@ -30,7 +30,7 @@ The dev server answers `/ui/` itself and passes every other path (`/chat/session
 
 To open the dev server from another computer, run `npm run dev -- --host` and open `http://<this machine's address>:5173/ui/`. Do it without `WEFLOW_HTTP_TOKEN`: with it, the proxy hands the token to everyone who can reach the port, and with it every `weflow` command.
 
-Opened by `weflow serve` (once #146 is done), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
+Opened by `weflow serve --ui-dir web/dist` (after `npm run build`), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
 
 ## Scripts
 
