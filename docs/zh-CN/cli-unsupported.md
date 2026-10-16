@@ -48,6 +48,7 @@
 
 ## 4. 平台与验证范围
 
+- Windows 和 Linux 的数据库取钥（`key db`）仅支持 x64。ARM64 构建会在加载库或查找辅助程序前返回 `Windows database-key extraction requires x64` 或 `Linux database-key extraction requires x64`。
 - 原生数据库层(会话、消息、联系人、朋友圈、媒体、语音库)用一个真实的 Windows 微信 4.x 账号做过验证，用的是 **Linux 构建**;交叉编译出的
   Windows `weflow.exe`(`x86_64-pc-windows-gnu`)也在 Windows 上对同一个账号运行过(约 80 个命令、带媒体的消息导出、图片导出)。其他 Windows 版本没有试过。
 - macOS 和 Linux 的微信数据库文件格式相同，但没有测试过。
