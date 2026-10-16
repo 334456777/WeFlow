@@ -157,9 +157,10 @@
     --state-danger: #e07a7a;
     --neu-light: rgb(255 255 255 / .05);
     --neu-dark: rgb(0 0 0 / .5);
-    --neu-edge-light: rgb(255 255 255 / .1);
+    /* The lit rim: white light catching the edge of what is raised or sunk, as the dark rim does on light surfaces. */
+    --neu-edge-light: rgb(255 255 255 / .22);
     --neu-edge-dark: rgb(0 0 0 / .6);
-    --neu-edge-light-hover: rgb(255 255 255 / .16);
+    --neu-edge-light-hover: rgb(255 255 255 / .3);
     --neu-edge-dark-hover: rgb(0 0 0 / .7);
     --neu-overlay-shadow: rgb(0 0 0 / .6);
   }
@@ -181,9 +182,9 @@
     --fg-muted: #c6cbd1;
     --fg-subtle: #b4bac1;
     --neu-dark: rgb(0 0 0 / .7);
-    --neu-edge-light: rgb(255 255 255 / .22);
+    --neu-edge-light: rgb(255 255 255 / .36);
     --neu-edge-dark: rgb(0 0 0 / .85);
-    --neu-edge-light-hover: rgb(255 255 255 / .28);
+    --neu-edge-light-hover: rgb(255 255 255 / .44);
     --neu-edge-dark-hover: rgb(0 0 0 / .9);
   }
 }
