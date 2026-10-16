@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { App } from './App';
+import { setToken } from './api/client';
 
 afterEach(() => {
   cleanup();
@@ -271,6 +272,49 @@ describe('App', () => {
     expect(stream.closed).toBe(true);
     expect(screen.getByRole('status').textContent).toBe('已连接');
     expect(localStorage.getItem('weflow.live')).toBe('off');
+  });
+
+  it('asks for the token when the server refuses it, and goes on with the one typed (#214)', async () => {
+    let accepted = 'right';
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const bearer = new Headers(init?.headers).get('Authorization');
+      if (bearer !== 'Bearer ' + accepted) return new Response(JSON.stringify({ success: false, error: { code: 'unauthorized', message: 'invalid or missing access token' } }), { status: 401 });
+      if (url.startsWith('/api/chat/sessions')) return json({ success: true, data: [{ username: 'wxid_a', displayName: '林沐', summary: '你好', sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1 }] });
+      return json({ success: true, data: url.startsWith('/api/chat/messages') ? [] : {} });
+    }));
+    render(<App />);
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.getByRole('status').textContent).toBe('需要令牌');
+    expect(screen.getByRole('alert').textContent).toContain('?token=');
+    // typed, kept for this tab only, never shown again
+    fireEvent.change(screen.getByLabelText('令牌'), { target: { value: ' right ' } });
+    fireEvent.click(screen.getByRole('button', { name: '连接' }));
+    expect(sessionStorage.getItem('weflow.token')).toBe('right');
+    expect(localStorage.getItem('weflow.token')).toBeNull();
+    expect((screen.queryByLabelText('令牌') as HTMLInputElement | null)?.value ?? '').toBe('');
+    await act(async () => {});
+    await act(async () => {});
+    expect(opened[opened.length - 1].url).toContain('access_token=right');
+    expect(screen.getByRole('status').textContent).toBe('实时');
+    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐']);
+    setToken(null);
+  });
+
+  it('says in the settings what the server is, whether it suits the page, and what to do when not (#214)', async () => {
+    await renderWith({ ...HEALTH, limits: { maxTasks: 1, maxReads: 4, maxMedia: 4 }, insight: true });
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    const text = () => screen.getByRole('region', { name: '设置' }).textContent ?? '';
+    expect(text()).toContain('weflow 5.0.0-rc.5 · API 1');
+    expect(text()).toContain('适用于这个网页');
+    expect(text()).toContain('同时运行任务 1 个 · 读取 4 个 · 媒体解码 4 个 · 灵感引擎已开启');
+    expect(text()).toContain('没有保存令牌');
+    cleanup();
+    await renderWith({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.3', data: 'a' });
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(text()).toContain('不适用于这个网页');
+    expect(text()).toContain('weflow web use');
   });
 
   it('folds the sidebar from its bottom-left button and remembers it', async () => {

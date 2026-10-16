@@ -16,7 +16,7 @@ use weflow_core::push::{PushBroker, PushEngine};
 use weflow_core::services::ServiceHub;
 
 use super::in_process;
-use super::status::{self, DataKey, Farewell};
+use super::status::{self, Farewell, Status};
 
 /// How often the engine looks for new messages while someone listens.
 const INTERVAL: Duration = Duration::from_secs(1);
@@ -157,7 +157,7 @@ impl Push {
         &self,
         hub: Arc<in_process::Hub>,
         last_id: u64,
-        data: DataKey,
+        server: Status,
         farewell: &Farewell,
     ) -> Response {
         let mut listening = farewell.listen();
@@ -168,7 +168,7 @@ impl Push {
         let replay = self.broker.replay_since(last_id);
         let stream = async_stream::stream! {
             let _listener = listener;
-            yield Ok::<_, Infallible>(status::hello(&data));
+            yield Ok::<_, Infallible>(server.hello());
             let ready = format!("event: ready\ndata: {}\n\n", json!({ "success": true }));
             yield Ok(Bytes::from(ready));
             let mut highest = last_id;
@@ -191,7 +191,7 @@ impl Push {
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                         Err(_) => break,
                     },
-                    _ = heartbeat.tick() => yield Ok(status::beat(&data)),
+                    _ = heartbeat.tick() => yield Ok(server.beat()),
                     _ = listening.stopping() => {
                         yield Ok(status::bye());
                         break;

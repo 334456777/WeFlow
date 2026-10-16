@@ -3566,6 +3566,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
                 ui,
                 config_path: hub.config_path().to_path_buf(),
                 farewell: farewell.clone(),
+                insight: command.insight,
             };
             serve_api::serve(cfg, listener).await
         };

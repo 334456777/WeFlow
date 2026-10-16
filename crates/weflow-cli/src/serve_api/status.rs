@@ -2,7 +2,7 @@
 //! stream of server-sent events that a page keeps open instead of asking again and again.
 //!
 //! - The stream starts with `event: hello`, whose data is `/health`'s; then `event: heartbeat` every 15 s, whose
-//!   data is `{"data": …}` (see [`DataKey`]). A heartbeat is an event, not a comment line: `EventSource` reports
+//!   data is `{"data": …}` (see [`Status::data`]). A heartbeat is an event, not a comment line: `EventSource` reports
 //!   no comment, and a page needs something it can see to tell a stream still alive from a half-open one.
 //! - Like `/health`, it needs no token (an `EventSource` cannot send a header, and a token in the address ends up
 //!   in logs and history) and is behind the `Host` check. It starts no work: no push engine, only the heartbeat.
@@ -102,49 +102,74 @@ pub(super) fn heartbeat() -> Duration {
     })
 }
 
-/// `data` of `/health` (issue #198): changes when the configuration does (so with the account the commands read)
-/// and with each run, so a client knows when what it read before may be another account's. A keyed hash, its key
-/// drawn at start: it says nothing of the configuration itself.
+/// What `/health` and `hello` say of the server.
 #[derive(Clone)]
-pub(super) struct DataKey {
+pub(super) struct Status {
+    /// Drawn at start, so `data` differs between two runs and tells nothing of the configuration.
     seed: std::collections::hash_map::RandomState,
+    /// The configuration the commands read.
     config: PathBuf,
+    /// How it runs (issue #214): its limits and whether the insight engine runs; nothing of the account.
+    server: Arc<Value>,
 }
 
-impl DataKey {
-    pub(super) fn new(config: PathBuf) -> Self {
+/// How a server runs, as `/health` says it.
+pub(super) struct ServerInfo {
+    pub(super) max_tasks: usize,
+    pub(super) max_reads: usize,
+    pub(super) max_media: usize,
+    pub(super) insight: bool,
+}
+
+impl Status {
+    pub(super) fn new(config: PathBuf, server: &ServerInfo) -> Self {
         Self {
             seed: Default::default(),
             config,
+            server: Arc::new(json!({
+                "limits": {
+                    "maxTasks": server.max_tasks,
+                    "maxReads": server.max_reads,
+                    "maxMedia": server.max_media,
+                },
+                "insight": server.insight,
+            })),
         }
     }
 
-    pub(super) fn get(&self) -> String {
+    /// `data` (issue #198): changes when the configuration does (so with the account the commands read) and with
+    /// each run, so a client knows when what it read before may be another account's. A keyed hash, its key drawn
+    /// at start: it says nothing of the configuration itself.
+    pub(super) fn data(&self) -> String {
         use std::hash::BuildHasher;
         let config = std::fs::read(&self.config).unwrap_or_default();
         format!("{:016x}", self.seed.hash_one(&config))
     }
-}
 
-/// The body of `/health`, and the data of `hello`.
-pub(super) fn health(data: &DataKey) -> Value {
-    json!({
-        "status": "ok",
-        "apiVersion": API_VERSION,
-        "version": env!("WEFLOW_VERSION"),
-        "data": data.get(),
-    })
-}
+    /// The body of `/health`, and the data of `hello`.
+    pub(super) fn health(&self) -> Value {
+        let mut body = json!({
+            "status": "ok",
+            "apiVersion": API_VERSION,
+            "version": env!("WEFLOW_VERSION"),
+            "data": self.data(),
+        });
+        if let (Some(body), Some(server)) = (body.as_object_mut(), self.server.as_object()) {
+            body.extend(server.clone());
+        }
+        body
+    }
 
-pub(super) fn hello(data: &DataKey) -> Bytes {
-    Bytes::from(format!("event: hello\ndata: {}\n\n", health(data)))
-}
+    pub(super) fn hello(&self) -> Bytes {
+        Bytes::from(format!("event: hello\ndata: {}\n\n", self.health()))
+    }
 
-pub(super) fn beat(data: &DataKey) -> Bytes {
-    Bytes::from(format!(
-        "event: heartbeat\ndata: {}\n\n",
-        json!({ "data": data.get() })
-    ))
+    pub(super) fn beat(&self) -> Bytes {
+        Bytes::from(format!(
+            "event: heartbeat\ndata: {}\n\n",
+            json!({ "data": self.data() })
+        ))
+    }
 }
 
 /// An event stream of the command API, with its headers.
@@ -159,15 +184,15 @@ pub(super) fn event_stream(body: Body) -> Response {
 }
 
 /// `GET /health/events`.
-pub(super) fn events(data: DataKey, farewell: &Farewell) -> Response {
+pub(super) fn events(status: Status, farewell: &Farewell) -> Response {
     let mut listening = farewell.listen();
     let stream = async_stream::stream! {
-        yield Ok::<_, Infallible>(hello(&data));
+        yield Ok::<_, Infallible>(status.hello());
         let mut every = tokio::time::interval(heartbeat());
         every.tick().await;
         loop {
             tokio::select! {
-                _ = every.tick() => yield Ok(beat(&data)),
+                _ = every.tick() => yield Ok(status.beat()),
                 _ = listening.stopping() => {
                     yield Ok(bye());
                     break;

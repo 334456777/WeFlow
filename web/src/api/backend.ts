@@ -2,7 +2,7 @@
 // token; its `hello` is `/health`'s `{"status": "ok", "apiVersion": "1", "version": "5.0.0", "data": "…"}`
 // (docs/serve-api.md, "Versions"). A server without it (5.0.0-rc.5 and older) is not supported.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiUrl, token } from './client';
+import { apiUrl, checkToken, onAuth, token } from './client';
 import { emitLive } from './live';
 
 export interface Health {
@@ -11,13 +11,19 @@ export interface Health {
   version: string;
   /** Changes with each start of the server and with its configuration (so with the account); see `scope.ts`. */
   data?: string;
+  /** What may run at once (`--max-tasks`, `--max-reads`, `--max-media`). */
+  limits?: { maxTasks?: number; maxReads?: number; maxMedia?: number };
+  /** Whether the insight engine runs beside (`--insight`). */
+  insight?: boolean;
 }
 
 export type Backend =
   | { state: 'checking' }
   | { state: 'offline' }
   | { state: 'ready'; health: Health }
-  | { state: 'incompatible'; health: Health; reason: string };
+  | { state: 'incompatible'; health: Health; reason: string; advice: string }
+  /** The server is there and suits this page, but refuses the token of this tab (#214). */
+  | { state: 'unauthorized'; health: Health };
 
 export const WEB = __WEFLOW_WEB__;
 
@@ -78,9 +84,22 @@ export function incompatibility(health: Health, web = WEB): string | null {
   return null;
 }
 
+/**
+ * What to do about a server that does not suit this page (#214): a weflow too old (or of an older API) is upgraded,
+ * or another WebUI picked that suits it; a WebUI of an older API than the server's is updated.
+ */
+export function adviceFor(health: Health, web = WEB): string {
+  const ours = Number(web.apiVersion);
+  const theirs = Number(health.apiVersion);
+  if (health.apiVersion !== web.apiVersion && Number.isFinite(ours) && Number.isFinite(theirs) && theirs > ours) {
+    return '这个网页比 weflow 旧：在终端运行 weflow web update，换成适用的最新网页版本，再重新打开。';
+  }
+  return '请把 weflow 升级到 ' + web.minBackendVersion + ' 或更新的版本；或运行 weflow web list --remote 找一个适用于当前 weflow 的网页版本，再用 weflow web use <版本> 换上。';
+}
+
 function stateOf(health: Health): Backend {
   const reason = incompatibility(health);
-  return reason ? { state: 'incompatible', health, reason } : { state: 'ready', health };
+  return reason ? { state: 'incompatible', health, reason, advice: adviceFor(health) } : { state: 'ready', health };
 }
 
 /** The server's event stream (#221): `hello` with what `/health` says, then a `heartbeat` every 15 s. */
@@ -103,6 +122,8 @@ export interface ConnectionOptions {
   /** True when the page and the server are on this machine, where losing the network does not cut them apart. */
   loopback?: boolean;
   random?: () => number;
+  /** Whether the server takes the token, asked when the live stream (which needs it) fails; see `checkToken`. */
+  checkToken?: () => Promise<'ok' | 'unauthorized' | 'offline'>;
 }
 
 /** The wait before attempt `n` (0 first): doubling from 1 s up to 30 s, give or take a fifth so tabs spread out. */
@@ -134,14 +155,22 @@ export class Connection {
   private lastEventId = '';
   /** Whether the next `hello` is the page's very first, which needs no catching up. */
   private first = true;
+  /**
+   * The server refused the token (#214): the state stays `unauthorized` and the stream is `/health/events`, which
+   * needs none, until another token is set.
+   */
+  private unauthorized = false;
+  private stopAuth: (() => void) | null = null;
   private readonly open: (url: string) => Stream;
   private readonly loopback: boolean;
   private readonly random: () => number;
+  private readonly checkToken: () => Promise<'ok' | 'unauthorized' | 'offline'>;
 
   constructor(private readonly onChange: (backend: Backend) => void, options: ConnectionOptions = {}) {
     this.open = options.open ?? (url => new EventSource(url));
     this.loopback = options.loopback ?? isLoopback(window.location.hostname);
     this.random = options.random ?? Math.random;
+    this.checkToken = options.checkToken ?? (() => checkToken());
   }
 
   start(): void {
@@ -149,6 +178,7 @@ export class Connection {
     window.addEventListener('online', this.online);
     window.addEventListener('offline', this.offline);
     document.addEventListener('visibilitychange', this.visible);
+    this.stopAuth = onAuth(this.auth);
     this.connect();
   }
 
@@ -157,6 +187,8 @@ export class Connection {
     window.removeEventListener('online', this.online);
     window.removeEventListener('offline', this.offline);
     document.removeEventListener('visibilitychange', this.visible);
+    this.stopAuth?.();
+    this.stopAuth = null;
     this.drop();
   }
 
@@ -174,9 +206,33 @@ export class Connection {
   }
 
   private url(): string {
-    if (!this.live) return EVENTS_URL;
+    if (!this.live || this.unauthorized) return EVENTS_URL;
     // EventSource sends no header: the token goes in the address, as for media
     return apiUrl('api/push/messages', { access_token: token() ?? undefined, 'last-event-id': this.lastEventId || undefined });
+  }
+
+  /** The state for what the server says, as long as it takes the token. */
+  private judged(health: Health): Backend {
+    const state = stateOf(health);
+    return state.state === 'ready' && this.unauthorized ? { state: 'unauthorized', health } : state;
+  }
+
+  // A 401 from any request, or another token set by the person
+  private readonly auth = (event: 'unauthorized' | 'token') => {
+    if (event === 'token') {
+      this.unauthorized = false;
+      if (!this.stopped) this.reconnect();
+      return;
+    }
+    if (!this.unauthorized) this.refused();
+  };
+
+  private refused(): void {
+    this.unauthorized = true;
+    const now = this.state;
+    if (now.state === 'ready') this.set({ state: 'unauthorized', health: now.health });
+    // the live stream needs the token: the state alone, until another one is set
+    if (this.live && !this.stopped) this.reconnect();
   }
 
   private set(next: Backend): void {
@@ -210,7 +266,7 @@ export class Connection {
       heard();
       this.attempt = 0;
       try {
-        this.set(stateOf(JSON.parse(event.data) as Health));
+        this.set(this.judged(JSON.parse(event.data) as Health));
       } catch {
         this.lost();
         return;
@@ -240,7 +296,7 @@ export class Connection {
       if (!('health' in now)) return;
       try {
         const { data } = JSON.parse(event.data) as { data?: string };
-        if (data !== undefined && data !== now.health.data) this.set(stateOf({ ...now.health, data }));
+        if (data !== undefined && data !== now.health.data) this.set(this.judged({ ...now.health, data }));
       } catch {
         // a heartbeat says the stream is alive whatever it holds
       }
@@ -250,7 +306,14 @@ export class Connection {
       if (this.stream === stream) this.lost();
     });
     stream.onerror = () => {
-      if (this.stream === stream) this.lost();
+      if (this.stream !== stream) return;
+      this.lost();
+      if (!this.live || this.unauthorized) return;
+      // The live stream needs the token, and an EventSource cannot tell a refused one (401) from a lost server: ask.
+      // Refused, it turns to the state alone at once, which then says `unauthorized`.
+      this.checkToken().then(answer => {
+        if (answer === 'unauthorized' && !this.stopped && !this.unauthorized) this.refused();
+      }, () => { /* no answer: lost, as said */ });
     };
     heard();
   }
@@ -275,7 +338,7 @@ export class Connection {
   // A tab in the background has its timers slowed down: on coming back, connect at once unless all is well
   private readonly visible = () => {
     if (document.visibilityState !== 'visible') return;
-    if (this.state.state !== 'ready' && this.state.state !== 'incompatible') this.reconnect();
+    if (!('health' in this.state)) this.reconnect();
     else if (Date.now() - this.lastEvent > WATCHDOG_MS) this.reconnect();
   };
 }

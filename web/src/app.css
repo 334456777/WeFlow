@@ -170,7 +170,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .connection-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--state-ok); transition: background-color var(--duration-base) var(--ease-glow); }
 .connection.checking .connection-dot { background: var(--state-busy); animation: pulse var(--loop-pulse) ease-in-out infinite; }
 .connection.offline .connection-dot { background: var(--state-idle); }
-.connection.incompatible .connection-dot { background: var(--state-danger); }
+.connection.incompatible .connection-dot, .connection.unauthorized .connection-dot { background: var(--state-danger); }
 /*
  * Records in the middle, the console in a full-height column on the right, as in Claude.ai (#130). Raised
  * surfaces cast about 18px of shadow, so panels and cards keep 20px apart, and the console's scroll box reaches
@@ -594,6 +594,22 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .setting-row h2 { font-size: var(--text-sm); font-weight: var(--weight-medium); }
 .setting-row p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .source-name { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
+.source-name.warning, .setting-row p.setting-warning { color: var(--state-danger); }
+.setting-row p + p { margin-top: var(--space-1); }
+/* The token (#214): typed in a hollow field, never shown back. */
+.setting-token > div { flex: 1; min-width: 0; }
+.token-form { display: flex; align-items: center; gap: var(--space-2); max-width: 420px; margin-top: var(--space-2); }
+.token-input {
+  display: flex; flex: 1; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-md);
+  padding: 0 var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); color: var(--fg-muted);
+}
+.token-input:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.token-input input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg); font-size: var(--text-sm); outline: none; }
+.token-prompt { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5) var(--space-4); }
+.token-prompt h2 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.token-prompt p { color: var(--fg-muted); font-size: var(--text-sm); line-height: var(--leading-sm); }
+.token-prompt p.muted { font-size: var(--text-xs); }
+.token-prompt code { font-family: var(--font-mono); font-size: .92em; }
 .toggle { position: relative; display: inline-flex; flex-shrink: 0; cursor: pointer; }
 .toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 /* Switch: a hollow track and a raised knob; when on, the knob slides right and lights a dot in its middle. */

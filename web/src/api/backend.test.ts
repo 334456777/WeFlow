@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
+import { adviceFor, compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
+import { call, setToken } from './client';
 import { onLive, type LiveEvent } from './live';
 
 const web = { name: 'weflow-web', version: '0.1.0', apiVersion: '1', minBackendVersion: '5.0.0-rc.4' };
@@ -56,13 +57,14 @@ class FakeStream implements Stream {
 const health = { status: 'ok', apiVersion: '1', version: '9.0.0', data: 'a' };
 
 /** A connection on fake streams and timers: the streams it opened, and the states it reported. */
-function connection(options: { loopback?: boolean } = {}) {
+function connection(options: { loopback?: boolean; tokenTaken?: () => boolean } = {}) {
   const streams: FakeStream[] = [];
   const states: Backend[] = [];
   const live = new Connection(state => states.push(state), {
     open: url => { const stream = new FakeStream(url); streams.push(stream); return stream; },
     loopback: options.loopback ?? true,
     random: () => 0.5,
+    checkToken: async () => (options.tokenTaken?.() ?? true ? 'ok' : 'unauthorized'),
   });
   live.start();
   const last = () => streams[streams.length - 1];
@@ -235,6 +237,57 @@ describe('Connection (#221)', () => {
     expect(heard).toEqual([]);
     off();
     live.stop();
+  });
+
+  it('tells a refused token from a lost server on the live stream, and tries a new token at once (#214)', async () => {
+    let taken = false;
+    const c = connection({ tokenTaken: () => taken });
+    c.live.setLive(true);
+    c.last().send('hello', health);
+    expect(c.now().state).toBe('ready');
+    // the token is refused: the stream fails; asked, the server says 401
+    c.last().fail();
+    expect(c.now().state).toBe('offline');
+    await vi.advanceTimersByTimeAsync(0);
+    // the state alone, which needs no token, and says the server is there
+    expect(c.last().url).toBe('/health/events');
+    c.last().send('hello', health);
+    expect(c.now()).toEqual({ state: 'unauthorized', health });
+    c.last().send('heartbeat', { data: 'a' });
+    expect(c.now().state).toBe('unauthorized');
+    // another token: the live stream again, at once
+    taken = true;
+    setToken('fresh');
+    expect(c.last().url).toBe('/api/push/messages?access_token=fresh');
+    c.last().send('hello', health);
+    expect(c.now()).toEqual({ state: 'ready', health });
+    c.live.stop();
+    setToken(null);
+  });
+
+  it('turns unauthorized on a 401 from any request, without live messages too', async () => {
+    const c = connection();
+    c.last().send('hello', health);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: false, error: { code: 'unauthorized', message: 'invalid or missing access token' } }), { status: 401 })));
+    await expect(call('GET', 'api/chat/sessions')).rejects.toMatchObject({ status: 401 });
+    expect(c.now()).toEqual({ state: 'unauthorized', health });
+    // the state stream needs no token: it stays as it was
+    expect(c.streams).toHaveLength(1);
+    setToken('fresh');
+    expect(c.streams).toHaveLength(2);
+    c.last().send('hello', health);
+    expect(c.now()).toEqual({ state: 'ready', health });
+    vi.unstubAllGlobals();
+    c.live.stop();
+    setToken(null);
+  });
+
+  it('advises what to do about a server that does not suit the page', () => {
+    const web = { name: 'weflow-web', version: '0.2.0', apiVersion: '1', minBackendVersion: '5.0.0-rc.6' };
+    expect(adviceFor({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' }, web)).toContain('升级到 5.0.0-rc.6');
+    expect(adviceFor({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.5' }, web)).toContain('weflow web use');
+    // a server of a newer API: this page is the old one
+    expect(adviceFor({ status: 'ok', apiVersion: '2', version: '6.0.0' }, web)).toContain('weflow web update');
   });
 
   it('stops for good', () => {
