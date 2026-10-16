@@ -8,7 +8,9 @@ import {
   ChatCircleDots, Check, CheckCircle, Circle, CircleNotch,
   DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
-import { useBackend, WEB, type Backend } from './api/backend';
+import { useBackend, WEB, type Backend, type Health } from './api/backend';
+import { onAuth, setToken, token } from './api/client';
+import { TokenForm, TokenPrompt } from './TokenForm';
 import { useScope } from './api/scope';
 import type { ChatSession } from './api/chat';
 import { Avatar } from './Avatar';
@@ -47,7 +49,7 @@ const navigation = [
 const formats = ['HTML', 'JSON', 'Excel'] as const;
 
 const backendLabels: Record<Backend['state'], string> = {
-  checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容',
+  checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容', unauthorized: '需要令牌',
 };
 
 function backendDetail(backend: Backend): string {
@@ -55,8 +57,21 @@ function backendDetail(backend: Backend): string {
     case 'checking': return '正在检查 weflow serve。';
     case 'offline': return '没有找到 weflow serve，请先运行 weflow serve。';
     case 'incompatible': return backend.reason + '。';
-    case 'ready': return 'weflow ' + backend.health.version + ' · API ' + backend.health.apiVersion;
+    case 'unauthorized': return 'weflow serve 在运行，但拒绝了这个标签页的令牌。';
+    case 'ready': return '已连接 weflow serve。';
   }
+}
+
+/** How the server runs (#214): its limits and the insight engine, when it says them. */
+function serverDetail(health: Health): string | null {
+  const { limits, insight } = health;
+  if (!limits && insight === undefined) return null;
+  const parts: string[] = [];
+  if (limits?.maxTasks !== undefined) parts.push('同时运行任务 ' + limits.maxTasks + ' 个');
+  if (limits?.maxReads !== undefined) parts.push('读取 ' + limits.maxReads + ' 个');
+  if (limits?.maxMedia !== undefined) parts.push('媒体解码 ' + limits.maxMedia + ' 个');
+  if (insight !== undefined) parts.push(insight ? '灵感引擎已开启' : '灵感引擎未开启');
+  return parts.join(' · ');
 }
 
 /** How long a connection stays 「已连接」 before its notice fades away. */
@@ -165,6 +180,9 @@ export function App() {
   };
   const [backend, recheckBackend] = useBackend(realtime);
   const connected = backend.state === 'ready';
+  // whether this tab holds a token (#214); never its value
+  const [tokenSaved, setTokenSaved] = useState(() => Boolean(token()));
+  useEffect(() => onAuth(event => { if (event === 'token') setTokenSaved(Boolean(token())); }), []);
   const steady = useSteadyConnection(backend.state);
   const narrow = useMediaQuery('(max-width: 1100px)');
   const [sidebarFolded, setSidebarFolded] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'folded'; } catch { return false; } });
@@ -398,15 +416,26 @@ export function App() {
         <div className="settings-heading"><Gear size={20} /><h1>设置</h1></div>
         <p className="muted">管理连接和浏览偏好。</p>
         <div className="setting-row"><div><h2>weflow serve</h2><p>{backendDetail(backend)}</p></div><button className="secondary-button" type="button" onClick={recheckBackend}>重新检测</button></div>
+        {'health' in backend && <div className="setting-row"><div><h2>weflow 版本</h2>
+          <p>weflow {backend.health.version} · API {backend.health.apiVersion}</p>
+          {backend.state === 'incompatible' && <p className="setting-warning">{backend.reason}。{backend.advice}</p>}
+        </div><span className={'source-name' + (backend.state === 'incompatible' ? ' warning' : '')}>{backend.state === 'incompatible' ? '不适用于这个网页' : '适用于这个网页'}</span></div>}
         <div className="setting-row"><div><h2>网页版本</h2><p>需要 API {WEB.apiVersion}，weflow {WEB.minBackendVersion} 或更新的版本。</p></div><span className="source-name"><Plugs size={14} />{WEB.version}</span></div>
+        <div className="setting-row setting-token"><div><h2>令牌</h2>
+          <p>{tokenSaved ? '这个标签页保存了令牌，关闭后清除。' : '没有保存令牌：从 weflow serve 启动时给出的地址打开网页，可自动连接。'}需要更换时在这里粘贴，只保存在这个标签页里。</p>
+          <TokenForm label="新的令牌" />
+        </div>{tokenSaved && <button className="secondary-button" type="button" onClick={() => setToken(null)}>清除</button>}</div>
+        {'health' in backend && serverDetail(backend.health) && <div className="setting-row"><div><h2>运行方式</h2><p>{serverDetail(backend.health)}</p></div></div>}
         <div className="setting-row"><div><h2>实时消息</h2><p>微信收到消息后几秒内显示在会话列表和打开的会话里。关掉后不再接收，左下角显示「已连接」而不是「实时」。</p></div><label className="toggle"><input type="checkbox" aria-label="实时消息" checked={realtime} onChange={event => toggleRealtime(event.target.checked)} /><span /></label></div>
         <div className="setting-row"><div><h2>默认附带媒体文件</h2><p>导出时同时保存照片等媒体。</p></div><label className="toggle"><input type="checkbox" aria-label="默认附带媒体文件" checked={includeMedia} onChange={event => setIncludeMedia(event.target.checked)} /><span /></label></div>
         <div className="setting-row"><div><h2>减少动画</h2><p>所有过渡立即完成，状态提示保留。也跟随系统的「减少动态效果」。</p></div><label className="toggle"><input type="checkbox" aria-label="减少动画" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /><span /></label></div>
-        <small className="settings-footnote">聊天记录目前是示例数据，页面接入 API 后替换。</small>
+        <small className="settings-footnote">连接到 weflow serve 后读取本机记录；未连接时显示示例数据。</small>
       </section><Scrollbar target={settingsRef} /></> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
         {activeCategory === 'chat'
-          ? <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions}
-            officials={officials} onFilter={filter => { if (filter === 'official') setOfficialsWanted(true); }} />
+          ? backend.state === 'unauthorized'
+            ? <TokenPrompt />
+            : <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions}
+              officials={officials} onFilter={filter => { if (filter === 'official') setOfficialsWanted(true); }} />
           : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}><HoverTrack items=".conversation-row" />
           {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
             <Avatar name={conversation.name} url={conversation.avatar} />

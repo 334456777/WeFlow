@@ -518,6 +518,8 @@ pub struct ApiConfig {
     pub config_path: PathBuf,
     /// Ends the event streams with `bye` when the server stops.
     pub farewell: Farewell,
+    /// Whether the insight engine runs beside (`--insight`), as `/health` says.
+    pub insight: bool,
 }
 
 struct AppState {
@@ -535,8 +537,8 @@ struct AppState {
     hub: Arc<in_process::Hub>,
     /// `/api/push/messages`.
     push: push::Push,
-    /// `data` of `/health` and of the event streams.
-    data: status::DataKey,
+    /// What `/health` and the event streams say of the server.
+    status: status::Status,
 }
 
 impl AppState {
@@ -601,7 +603,15 @@ pub fn router(cfg: ApiConfig) -> Router {
     );
     let hub = Arc::new(in_process::Hub::default());
     hub.warm();
-    let cfg_config_path = cfg.config_path.clone();
+    let server = status::Status::new(
+        cfg.config_path.clone(),
+        &status::ServerInfo {
+            max_tasks: cfg.max_tasks,
+            max_reads: cfg.max_reads,
+            max_media: cfg.max_media,
+            insight: cfg.insight,
+        },
+    );
     Router::new()
         .fallback(dispatch)
         .layer(compression())
@@ -616,7 +626,7 @@ pub fn router(cfg: ApiConfig) -> Router {
             openapi: Default::default(),
             hub,
             push: Default::default(),
-            data: status::DataKey::new(cfg_config_path),
+            status: server,
         }))
 }
 
@@ -935,13 +945,13 @@ async fn route(st: &AppState, req: Request) -> Response {
     let (parts, body) = req.into_parts();
     let path = parts.uri.path();
     if path == "/health" {
-        return json_body(StatusCode::OK, status::health(&st.data).to_string());
+        return json_body(StatusCode::OK, st.status.health().to_string());
     }
     if path == "/health/events" {
         if parts.method != Method::GET {
             return method_not_allowed(&[Get]);
         }
-        return status::events(st.data.clone(), &st.cfg.farewell);
+        return status::events(st.status.clone(), &st.cfg.farewell);
     }
     // the WebUI's files need no token: the page brings it in its address
     if let Some(rest) = path
@@ -1012,7 +1022,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             .unwrap_or(0);
         return st
             .push
-            .stream(st.hub.clone(), last_id, st.data.clone(), &st.cfg.farewell);
+            .stream(st.hub.clone(), last_id, st.status.clone(), &st.cfg.farewell);
     }
     let segments: Vec<String> = path
         .split('/')

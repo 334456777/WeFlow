@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { adoptToken, ApiError, apiUrl, call, setToken, token } from './client';
+import { adoptToken, ApiError, apiUrl, call, checkToken, onAuth, setToken, token } from './client';
 
 function answer(status: number, body: unknown): Response {
   return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -21,6 +21,23 @@ describe('apiUrl', () => {
 });
 
 describe('the token', () => {
+  it('ignores a late refusal of the token replaced while a request was in flight', async () => {
+    const replies: ((response: Response) => void)[] = [];
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => replies.push(resolve))));
+    setToken('old');
+    const events: string[] = [];
+    const off = onAuth(event => events.push(event));
+    try {
+      const request = call('GET', 'api/chat/sessions');
+      const probe = checkToken();
+      setToken('new');
+      for (const reply of replies) reply(answer(401, { success: false, error: { code: 'unauthorized' } }));
+      await expect(request).rejects.toMatchObject({ status: 401 });
+      await expect(probe).resolves.toBe('offline');
+      expect(events).toEqual(['token']);
+    } finally { off(); }
+  });
+
   it('is taken from the address and removed from it', () => {
     window.history.replaceState(null, '', '/ui/chat?token=secret&x=1#top');
     adoptToken();

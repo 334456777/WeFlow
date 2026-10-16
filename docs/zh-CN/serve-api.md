@@ -239,10 +239,13 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `1`。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
 
 ```json
-{"status": "ok", "apiVersion": "1", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41"}
+{"status": "ok", "apiVersion": "1", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41",
+ "limits": {"maxTasks": 1, "maxReads": 4, "maxMedia": 4}, "insight": false}
 ```
 
 `data` 是一个不透明的值：服务器每次启动、配置每次改变（例如换成另一个账号）时都会变化。变化之前读到的记录可能属于另一个账号，所以网页会丢掉已经保存的内容（消息、群成员、有消息的日期），重新读取。它是带密钥的哈希，密钥每次运行重新生成，不会透露配置的内容。
+
+`limits` 是可同时运行的数量（`--max-tasks`、`--max-reads`、`--max-media`，见[并发限制](#并发限制)），`insight` 表示是否同时运行灵感引擎（`--insight`）；网页在设置里显示它们。它们只说明服务端的运行方式，不涉及账号。
 
 ### 保持连接
 

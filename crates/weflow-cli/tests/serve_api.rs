@@ -192,6 +192,29 @@ fn health_needs_no_token_and_everything_else_does() {
     assert_eq!(r.status, 200);
     assert_eq!(r.json()["status"], "ok");
     assert_eq!(r.json()["apiVersion"], "1");
+    // how it runs, for the settings (#214)
+    assert_eq!(r.json()["limits"]["maxTasks"], 1);
+    assert!(r.json()["limits"]["maxReads"].as_u64().unwrap() >= 1);
+    assert_eq!(r.json()["insight"], false);
+    drop(server);
+    let server = start(
+        &root,
+        &[
+            "--api-token",
+            TOKEN,
+            "--max-tasks",
+            "2",
+            "--max-reads",
+            "3",
+            "--max-media",
+            "4",
+        ],
+    );
+    let limits = server.request("GET", "/health", &[], "").json()["limits"].clone();
+    assert_eq!(
+        limits,
+        json!({ "maxTasks": 2, "maxReads": 3, "maxMedia": 4 })
+    );
 
     let r = server.request("GET", "/config/path", &[], "");
     assert_eq!(r.status, 401);
