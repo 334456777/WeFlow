@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
+import { onLive, useLive } from '../api/live';
 import { currentScope, onNewScope } from '../api/scope';
 import { getMessages, PAGE_SIZE, type PageFrom, type ParsedMessage } from '../api/messages';
 
@@ -59,6 +60,12 @@ export function forgetMessages() {
   cache.clear();
 }
 onNewScope(forgetMessages);
+// A conversation kept here that got a message is read again when opened; after a break any may have (#201). The
+// open one catches up by itself (see `catchUp`).
+onLive(event => {
+  if (event.type === 'resumed') cache.clear();
+  else cache.delete(event.sessionId);
+});
 
 function messageOf(problem: unknown): string {
   if (problem instanceof ApiError) {
@@ -190,6 +197,44 @@ export function useMessages(sessionId: string | null, jump: Jump | null = null):
     fresh.current = true;
     setRound(n => n + 1);
   }, []);
+
+  /**
+   * Live messages (#201): the ones after the last shown, all of them, below it; with `revised` (a recall, or after a
+   * break) the newest page again too, for the messages it changed. A thread left in the past by a jump is not
+   * touched: 「回到最新消息」 reads the newest.
+   */
+  const catchUp = useCallback((revised: boolean) => {
+    const id = current.current;
+    const now = latest.current;
+    if (!id || now.status !== 'ready' || now.hasNewer || !now.messages.length) return;
+    const scope = currentScope();
+    (async () => {
+      const added: ParsedMessage[] = [];
+      let last = now.messages[now.messages.length - 1]._cursor;
+      for (;;) {
+        const page = (await getMessages(id, { after: last })).slice().reverse();
+        added.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        last = page[page.length - 1]._cursor;
+      }
+      const newest = revised ? await getMessages(id, null) : [];
+      if (current.current !== id || scope !== currentScope()) return;
+      update(id, old => {
+        if (old.status !== 'ready' || old.hasNewer) return old;
+        const changed = new Map(newest.map(m => [m._cursor, m]));
+        const messages = old.messages.map(m => changed.get(m._cursor) ?? m);
+        const seen = new Set(messages.map(m => m._cursor));
+        const next: Thread = { ...old, messages: [...messages, ...added.filter(m => !seen.has(m._cursor))] };
+        remember(id, next, scope);
+        return next;
+      });
+    })().catch(() => { /* the next event or break tries again */ });
+  }, [update]);
+
+  useLive(event => {
+    if (event.type === 'resumed') catchUp(true);
+    else if (event.sessionId === current.current) catchUp(event.type === 'message.revoke');
+  });
 
   return { thread, loadOlder, loadNewer, reload };
 }

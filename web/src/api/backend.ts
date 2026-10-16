@@ -2,6 +2,8 @@
 // token; its `hello` is `/health`'s `{"status": "ok", "apiVersion": "1", "version": "5.0.0", "data": "…"}`
 // (docs/serve-api.md, "Versions"). A server without it (5.0.0-rc.5 and older) is not supported.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiUrl, token } from './client';
+import { emitLive } from './live';
 
 export interface Health {
   status: string;
@@ -126,6 +128,12 @@ export class Connection {
   private watchdog: ReturnType<typeof setTimeout> | undefined;
   private lastEvent = 0;
   private stopped = false;
+  /** Live messages (#201): the stream is `/api/push/messages`, which says `hello` and beats the same. */
+  private live = false;
+  /** The id of the last message event, to go on from it after a break (`last-event-id`). */
+  private lastEventId = '';
+  /** Whether the next `hello` is the page's very first, which needs no catching up. */
+  private first = true;
   private readonly open: (url: string) => Stream;
   private readonly loopback: boolean;
   private readonly random: () => number;
@@ -158,6 +166,19 @@ export class Connection {
     this.connect();
   }
 
+  /** Listens to the live messages (one stream for both, #221 a) or to the server's state alone. */
+  setLive(live: boolean): void {
+    if (live === this.live) return;
+    this.live = live;
+    if (!this.stopped && this.stream) this.reconnect();
+  }
+
+  private url(): string {
+    if (!this.live) return EVENTS_URL;
+    // EventSource sends no header: the token goes in the address, as for media
+    return apiUrl('api/push/messages', { access_token: token() ?? undefined, 'last-event-id': this.lastEventId || undefined });
+  }
+
   private set(next: Backend): void {
     const now = this.state;
     const same = now.state === next.state && (next.state === 'checking' || next.state === 'offline'
@@ -177,7 +198,7 @@ export class Connection {
   private connect(): void {
     if (this.stopped) return;
     this.drop();
-    const stream = this.open(EVENTS_URL);
+    const stream = this.open(this.url());
     this.stream = stream;
     const heard = () => {
       this.lastEvent = Date.now();
@@ -192,8 +213,25 @@ export class Connection {
         this.set(stateOf(JSON.parse(event.data) as Health));
       } catch {
         this.lost();
+        return;
       }
+      // back after a break, or live just turned on: messages may have come meanwhile
+      if (this.live && !this.first) emitLive({ type: 'resumed' });
+      this.first = false;
     });
+    for (const type of ['message.new', 'message.revoke'] as const) {
+      stream.addEventListener(type, event => {
+        if (this.stream !== stream) return;
+        heard();
+        if (event.lastEventId) this.lastEventId = event.lastEventId;
+        try {
+          const { sessionId } = JSON.parse(event.data) as { sessionId?: string };
+          if (sessionId) emitLive({ type, sessionId });
+        } catch {
+          // an event without its conversation tells nothing to show
+        }
+      });
+    }
     stream.addEventListener('heartbeat', event => {
       if (this.stream !== stream) return;
       heard();
@@ -242,21 +280,29 @@ export class Connection {
   };
 }
 
-/** The backend's state, from one event stream (see `Connection`); `recheck` connects again at once. */
-export function useBackend(): [Backend, () => void] {
+/**
+ * The backend's state, from one event stream (see `Connection`); `recheck` connects again at once. With `live` the
+ * stream is the live messages' (see live.ts).
+ */
+export function useBackend(live = false): [Backend, () => void] {
   const [backend, setBackend] = useState<Backend>({ state: 'checking' });
   const connection = useRef<Connection | null>(null);
   const recheck = useCallback(() => connection.current?.reconnect(), []);
+  const wanted = useRef(live);
+  wanted.current = live;
 
   useEffect(() => {
-    const live = new Connection(setBackend);
-    connection.current = live;
-    live.start();
+    const kept = new Connection(setBackend);
+    kept.setLive(wanted.current);
+    connection.current = kept;
+    kept.start();
     return () => {
-      live.stop();
+      kept.stop();
       connection.current = null;
     };
   }, []);
+
+  useEffect(() => { connection.current?.setLive(live); }, [live]);
 
   return [backend, recheck];
 }

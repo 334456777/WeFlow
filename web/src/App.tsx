@@ -60,6 +60,7 @@ function backendDetail(backend: Backend): string {
 /** How long a connection stays 「已连接」 before its notice fades away. */
 const STEADY_MS = 3000;
 const SIDEBAR_KEY = 'weflow.sidebar';
+const LIVE_KEY = 'weflow.live';
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => Boolean(window.matchMedia?.(query).matches));
@@ -154,7 +155,13 @@ function TaskStatus({ conversation, from, to, connected, stage, result, error }:
 }
 
 export function App() {
-  const [backend, recheckBackend] = useBackend();
+  // Live messages (#201): on unless turned off, and remembered
+  const [realtime, setRealtime] = useState(() => { try { return localStorage.getItem(LIVE_KEY) !== 'off'; } catch { return true; } });
+  const toggleRealtime = (on: boolean) => {
+    setRealtime(on);
+    try { localStorage.setItem(LIVE_KEY, on ? 'on' : 'off'); } catch { /* only lost on reload */ }
+  };
+  const [backend, recheckBackend] = useBackend(realtime);
   const connected = backend.state === 'ready';
   const steady = useSteadyConnection(backend.state);
   const narrow = useMediaQuery('(max-width: 1100px)');
@@ -377,7 +384,7 @@ export function App() {
       </nav>
       <div className="sidebar-footer">
         {!narrow && <button type="button" className="icon-button sidebar-toggle" aria-label={folded ? '展开侧边栏' : '收起侧边栏'} title={folded ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!folded} onClick={toggleSidebar}><SidebarSimple size={18} /></button>}
-        <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{backendLabels[backend.state]}</span></div>
+        <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{connected && realtime ? '实时' : backendLabels[backend.state]}</span></div>
       </div>
     </aside>
 
@@ -387,6 +394,7 @@ export function App() {
         <p className="muted">管理连接和浏览偏好。</p>
         <div className="setting-row"><div><h2>weflow serve</h2><p>{backendDetail(backend)}</p></div><button className="secondary-button" type="button" onClick={recheckBackend}>重新检测</button></div>
         <div className="setting-row"><div><h2>网页版本</h2><p>需要 API {WEB.apiVersion}，weflow {WEB.minBackendVersion} 或更新的版本。</p></div><span className="source-name"><Plugs size={14} />{WEB.version}</span></div>
+        <div className="setting-row"><div><h2>实时消息</h2><p>微信收到消息后几秒内显示在会话列表和打开的会话里。关掉后不再接收，左下角显示「已连接」而不是「实时」。</p></div><label className="toggle"><input type="checkbox" aria-label="实时消息" checked={realtime} onChange={event => toggleRealtime(event.target.checked)} /><span /></label></div>
         <div className="setting-row"><div><h2>默认附带媒体文件</h2><p>导出时同时保存照片等媒体。</p></div><label className="toggle"><input type="checkbox" aria-label="默认附带媒体文件" checked={includeMedia} onChange={event => setIncludeMedia(event.target.checked)} /><span /></label></div>
         <div className="setting-row"><div><h2>减少动画</h2><p>所有过渡立即完成，状态提示保留。也跟随系统的「减少动态效果」。</p></div><label className="toggle"><input type="checkbox" aria-label="减少动画" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /><span /></label></div>
         <small className="settings-footnote">聊天记录目前是示例数据，页面接入 API 后替换。</small>
