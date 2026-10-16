@@ -28,12 +28,21 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 | `--log-requests` | 每个请求在 stderr 输出一行：方法、路径、状态码和耗时（见[时间花在哪里](#时间花在哪里)） |
 | `--ui-dir` | 只在本次运行中，从这个目录（构建好的网页，例如 `web/dist`）提供网页（见[网页](#网页)） |
 | `--no-browser` | 启动时不在浏览器中打开网页 |
+| `--web-version` | 只在本次运行中显示这个网页版本，需要时先下载（见[网页的版本](#网页的版本)） |
+| `--api-only` | 只提供 API，不提供网页 |
 
 启动提示（stderr 上的事件；加 `--json` 时为一行 JSON）会显示地址。默认端口低于 49152，不在 Windows 的动态端口范围内。Hyper-V、WSL 2、Docker 会在这个范围里成段保留端口，被保留的端口任何程序都无法绑定。绑定回环以外的地址时会给出警告：持有令牌的人可以在这台机器上运行任何 `weflow` 命令，使用服务端的文件系统和配置。
 
 ## 网页
 
-`serve` 还在 `/ui/` 下提供网页界面（`web/`，issue #130）：本次运行用 `--ui-dir` 指定的目录，没有指定时用 `weflow web use` 选定的版本（issue #148）。目录里没有 `index.html` 时，启动就会报错。没有网页时只提供 API，启动提示里会说明。
+`serve` 还在 `/ui/` 下提供网页界面（`web/`，issue #130）。用哪个网页：
+
+1. 加 `--api-only` 时不提供网页；
+2. 用 `--ui-dir` 指定的目录，只对本次运行有效（目录里没有 `index.html` 时，启动就会报错）；
+3. 用 `--web-version` 指定的版本，只对本次运行有效，需要时先下载；
+4. 否则用 `weflow web use` 选定的版本；还没有选定时，用这个 `weflow` 自带的版本（构建时 `web/package.json` 里的版本）。这个版本还没下载时，服务端立刻启动（先用本机已有的、适用的最新版本，没有就只提供 API），同时在后台下载，下载完成后显示新版本：发出事件 `webui_ready`；下载失败时发出 `webui_unavailable`，已有的版本保持不变。
+
+没有网页时只提供 API，启动提示里会说明。
 
 有网页时，启动提示给出带令牌的地址 `http://127.0.0.1:18108/ui/?token=…`（加 `--json` 时为 `uiUrl`）。stderr 是终端时，服务端会在浏览器中打开它（`--no-browser` 可以关掉）。网页把令牌存在当前标签页里，并从地址栏去掉；令牌不会写进网页的文件。
 
@@ -42,6 +51,24 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 - 网页自己的路径（不带扩展名，例如 `/ui/chat`）不是文件时，返回 `index.html`，由网页自己处理。带扩展名的文件或 `/ui/assets/` 下的文件不存在时，返回 `404`。`/ui/` 以外的路径不会这样回退：未知的 API 路径仍然返回 JSON 格式的 `404`。
 - 只提供目录里面的文件：`..`（无论是否编码）和指向目录外的链接都返回 `404`。
 - 构建出的资源（`/ui/assets/`，文件名随内容变化）长期缓存；`index.html` 和其他文件每次都重新确认（`Cache-Control: no-cache`），所以新版本立刻生效。所有文件都带 `X-Content-Type-Options: nosniff`，网页还带 `Referrer-Policy: no-referrer`。
+
+### 网页的版本
+
+网页和 `weflow` 分开发布，作为 OCI artifact 发布在 GHCR 上（`ghcr.io/334456777/weflow-web:<版本>`，由 `.github/workflows/web-release.yml` 发布），由 `weflow` 自己下载：不需要 Docker、ORAS、Node.js 或 npm，没有网页时 CLI 和 API 照常使用。
+
+| 命令 | 作用 |
+|---|---|
+| `web info` | 正在使用的版本、选定的版本、这个 `weflow` 自带的版本，以及本机已有的版本 |
+| `web list [--remote]` | 本机已有的版本；加 `--remote` 时列出已发布的版本，以及每个版本是否适用于这个 `weflow` |
+| `web install <版本>` | 下载一个版本，校验后保存 |
+| `web use <版本>` | 选定 `serve` 显示的版本（需要时先下载） |
+| `web update` | 下载并选定已发布的、适用于这个 `weflow` 的最新版本（正式版优先于预发布版） |
+| `web prune` | 删除本机上既没有选定、也不是这个 `weflow` 自带的版本 |
+
+- 一个版本适用于这个 `weflow`，要求它需要的 API 正是这个 `weflow` 提供的（`/health` 的 `apiVersion`），并且它要求的最低 `weflow` 版本（`minBackendVersion`）不高于这个 `weflow`。manifest 里写着这两项，所以不适用的版本在下载前就会被拒绝；`weflow-web.json` 里也写着，下载后再检查一次。
+- 下载的内容要和 manifest 给出的大小与 SHA-256 摘要一致，然后在限制下解压到单独的目录：压缩包最大 64 MB，解压后最多 256 MB、10,000 个文件，不允许指向目录外的路径和链接。检查 `index.html`、元数据和所要的版本之后，再用一次重命名放到正式位置。下载失败、损坏或中断时，本机已有的版本保持不变；同时下载同一个版本时，只保留一份。
+- 这些版本和 WeFlow 的其他缓存放在一起，存放在 `<home>/cache/web/<版本>/`；选定的版本记在 `<home>/cache/web/current` 里。`cache clear --web` 会把它们全部删除，`serve` 需要时会重新下载。
+- 访问仓库的方式遵循 OCI Distribution API：先取匿名令牌，再读 manifest 和 blob。用 `WEFLOW_WEB_REGISTRY` 可以指定其他仓库（镜像，或测试用的仓库）。
 
 ## 鉴权
 

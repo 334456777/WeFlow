@@ -20,11 +20,12 @@ pub enum CachePart {
     Api,
     Keys,
     Runtime,
+    Web,
 }
 
 impl CachePart {
     /// Every part, in the order they are listed; `cache clear --all` clears them all.
-    pub const ALL: [CachePart; 8] = [
+    pub const ALL: [CachePart; 9] = [
         CachePart::Images,
         CachePart::Voices,
         CachePart::Emojis,
@@ -33,6 +34,7 @@ impl CachePart {
         CachePart::Api,
         CachePart::Keys,
         CachePart::Runtime,
+        CachePart::Web,
     ];
 
     /// Name in the JSON output; also the option of `weflow cache clear` (`--images`, …).
@@ -46,6 +48,7 @@ impl CachePart {
             CachePart::Api => "api",
             CachePart::Keys => "keys",
             CachePart::Runtime => "runtime",
+            CachePart::Web => "web",
         }
     }
 }
@@ -155,6 +158,8 @@ impl ServiceHub {
             // fingerprints of keys that worked, so later commands skip the slower check
             CachePart::Keys => vec![self.ctx.cache_dir().join("verified-keys")],
             CachePart::Runtime => self.older_runtimes(),
+            // the WebUI versions downloaded (issue #148); `serve` downloads the one it needs again
+            CachePart::Web => vec![self.web_store().root().to_path_buf()],
         }
     }
 

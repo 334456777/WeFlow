@@ -22,13 +22,30 @@ use axum::response::Response;
 pub struct UiDir {
     /// Resolved (links followed), to tell what lies inside it.
     root: PathBuf,
+    /// The version kept by `weflow web` it is, if it is one.
+    version: Option<String>,
 }
 
 impl UiDir {
     /// The folder, when it holds a page (`index.html`).
     pub fn open(dir: &Path) -> Option<Self> {
         let root = std::fs::canonicalize(dir).ok()?;
-        root.join("index.html").is_file().then_some(Self { root })
+        root.join("index.html").is_file().then_some(Self {
+            root,
+            version: None,
+        })
+    }
+
+    /// A version kept by `weflow web`.
+    pub fn open_version(dir: &Path, version: &str) -> Option<Self> {
+        Self::open(dir).map(|ui| Self {
+            version: Some(version.to_string()),
+            ..ui
+        })
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
     }
 
     /// The file a path inside the folder names, when it is one and lies inside the folder.

@@ -16,6 +16,22 @@ fn tag_version() -> String {
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default())
 }
 
+/// `"version"` of web/package.json (its first line holding one), or empty when it is not there.
+fn web_version() -> String {
+    let text = std::fs::read_to_string("../../web/package.json").unwrap_or_default();
+    text.lines()
+        .find_map(|line| {
+            let rest = line.trim().strip_prefix("\"version\":")?;
+            Some(
+                rest.trim()
+                    .trim_end_matches(',')
+                    .trim_matches('"')
+                    .to_string(),
+            )
+        })
+        .unwrap_or_default()
+}
+
 fn main() {
     println!("cargo:rustc-env=WEFLOW_VERSION={}", tag_version());
     let commit = run("git", &["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".into());
@@ -35,6 +51,9 @@ fn main() {
             _ => {}
         }
     }
+    // the WebUI version this build runs by default (issue #148): the one in web/ next to it, checked together
+    println!("cargo:rustc-env=WEFLOW_WEB_VERSION={}", web_version());
+    println!("cargo:rerun-if-changed=../../web/package.json");
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/index");
     println!("cargo:rerun-if-changed=../../.git/refs/tags");

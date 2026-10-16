@@ -100,12 +100,46 @@ enum Commands {
     Cache(CacheCommand),
     /// Install and locate the ffmpeg for the few WXGF images the built-in decoder cannot read
     Ffmpeg(FfmpegCommand),
+    /// Download, pick and remove versions of the WebUI that `serve` shows
+    Web(WebCommand),
     /// Save the output language
     Lang {
         /// Output language
         #[arg(value_enum)]
         lang: LangArg,
     },
+}
+
+#[derive(Args, Debug)]
+struct WebCommand {
+    #[command(subcommand)]
+    command: WebSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum WebSubcommand {
+    /// The WebUI `serve` shows: the version in use, the one picked, the one this weflow comes with, and where they are kept
+    Info,
+    /// WebUI versions kept on this machine, or published ones (--remote) and whether they suit this weflow
+    List {
+        /// List the versions published in the registry instead
+        #[arg(long)]
+        remote: bool,
+    },
+    /// Download a WebUI version, check it and keep it
+    Install {
+        /// WebUI version, such as 0.1.0
+        version: String,
+    },
+    /// Pick the WebUI version `serve` shows (downloaded first when needed)
+    Use {
+        /// WebUI version, such as 0.1.0
+        version: String,
+    },
+    /// Download and pick the newest published WebUI version that suits this weflow
+    Update,
+    /// Remove the WebUI versions kept here that are neither picked nor the one this weflow comes with
+    Prune,
 }
 
 #[derive(Args, Debug)]
@@ -202,6 +236,9 @@ struct CacheClearArgs {
     /// Runtimes unpacked by other WeFlow versions (the running version's stays)
     #[arg(long)]
     runtime: bool,
+    /// WebUI versions downloaded by `weflow web` and `serve` (the one `serve` needs is downloaded again)
+    #[arg(long)]
+    web: bool,
     /// Every part above
     #[arg(long)]
     all: bool,
@@ -222,6 +259,7 @@ impl CacheClearArgs {
             self.api,
             self.keys,
             self.runtime,
+            self.web,
         ];
         CachePart::ALL
             .into_iter()
@@ -1349,6 +1387,12 @@ struct ServeCommand {
     /// Do not open the WebUI in the browser when the server starts
     #[arg(long)]
     no_browser: bool,
+    /// Show this WebUI version for this run (downloaded first when needed), instead of the one picked with `weflow web use`
+    #[arg(long, value_name = "VERSION", conflicts_with = "ui_dir")]
+    web_version: Option<String>,
+    /// Serve the API alone, without the WebUI
+    #[arg(long, conflicts_with_all = ["ui_dir", "web_version", "no_browser"])]
+    api_only: bool,
 }
 
 #[derive(Args, Debug)]
@@ -1629,6 +1673,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
             }
         },
         Commands::Serve(command) => handle_serve(command, &hub).await,
+        Commands::Web(command) => handle_web(command, &hub).await,
         Commands::Backup(command) => handle_backup(command, &hub),
         Commands::Runtime(_)
         | Commands::Ffmpeg(_)
@@ -1738,6 +1783,7 @@ fn cache_part_label(part: CachePart) -> &'static str {
         CachePart::Api => tr("HTTP API", "API 导出"),
         CachePart::Keys => tr("key fingerprints", "密钥指纹"),
         CachePart::Runtime => tr("older runtimes", "旧运行时"),
+        CachePart::Web => tr("WebUI versions", "网页版本"),
     }
 }
 
@@ -3003,6 +3049,209 @@ fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The WebUI version this build comes with (web/package.json at build time).
+const WEB_VERSION: &str = env!("WEFLOW_WEB_VERSION");
+
+/// What a WebUI has to suit: this command API and this weflow.
+fn web_backend() -> weflow_core::webui::Backend<'static> {
+    weflow_core::webui::Backend {
+        api_version: serve_api::API_VERSION,
+        version: env!("WEFLOW_VERSION"),
+    }
+}
+
+/// The version `serve` shows without `--ui-dir` and `--web-version`: the one picked with `weflow web use`, else the
+/// one this weflow comes with.
+fn web_wanted(store: &weflow_core::webui::WebStore) -> Option<String> {
+    store
+        .chosen()
+        .or_else(|| (!WEB_VERSION.is_empty()).then(|| WEB_VERSION.to_string()))
+}
+
+/// The WebUI `serve` starts with, and the version to download beside it (issue #148): none with `--api-only`; the
+/// folder of `--ui-dir`; `--web-version` (downloaded first); else the version wanted, or while it is downloaded,
+/// the newest suitable one kept here.
+async fn serve_webui(
+    command: &ServeCommand,
+    hub: &ServiceHub,
+) -> AppResult<(Option<serve_api::ui::UiDir>, Option<String>)> {
+    use serve_api::ui::UiDir;
+    if command.api_only {
+        return Ok((None, None));
+    }
+    if let Some(dir) = &command.ui_dir {
+        let ui = UiDir::open(dir).ok_or_else(|| {
+            AppError::usage(format!(
+                "--ui-dir {}: no index.html there; pass the folder of a built WebUI (such as web/dist)",
+                dir.display()
+            ))
+        })?;
+        return Ok((Some(ui), None));
+    }
+    let store = hub.web_store();
+    if let Some(version) = &command.web_version {
+        let registry = weflow_core::webui::Registry::default_registry()?;
+        let progress = |done: u64, total: u64| {
+            weflow_core::output::progress(
+                "web",
+                "downloading the WebUI",
+                done as usize,
+                total as usize,
+            )
+        };
+        let meta =
+            weflow_core::webui::install(&store, &registry, version, web_backend(), &progress)
+                .await?;
+        return Ok((
+            UiDir::open_version(&store.dir(&meta.version), &meta.version),
+            None,
+        ));
+    }
+    let Some(wanted) = web_wanted(&store) else {
+        return Ok((None, None));
+    };
+    if let Some(meta) = store.meta(&wanted) {
+        return Ok((
+            UiDir::open_version(&store.dir(&meta.version), &meta.version),
+            None,
+        ));
+    }
+    let backend = web_backend();
+    let meanwhile = store
+        .installed()
+        .into_iter()
+        .find(|m| {
+            backend
+                .refusal(&m.api_version, &m.min_backend_version)
+                .is_none()
+        })
+        .and_then(|m| UiDir::open_version(&store.dir(&m.version), &m.version));
+    Ok((meanwhile, Some(wanted)))
+}
+
+/// `weflow web …`: the WebUI versions kept here and published (issue #148).
+async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> {
+    use weflow_core::webui::{self, Registry, WebMeta};
+    let store = hub.web_store();
+    let backend = web_backend();
+    let chosen = store.chosen();
+    let wanted = web_wanted(&store);
+    let entry = |m: &WebMeta| {
+        json!({
+            "version": m.version,
+            "apiVersion": m.api_version,
+            "minBackendVersion": m.min_backend_version,
+            "path": store.dir(&m.version),
+            "inUse": wanted.as_deref() == Some(m.version.as_str()),
+            "picked": chosen.as_deref() == Some(m.version.as_str()),
+            "suits": backend.refusal(&m.api_version, &m.min_backend_version).is_none(),
+        })
+    };
+    let progress = |done: u64, total: u64| {
+        weflow_core::output::progress(
+            "web",
+            "downloading the WebUI",
+            done as usize,
+            total as usize,
+        )
+    };
+    match &command.command {
+        WebSubcommand::Info => {
+            let in_use = wanted.as_deref().and_then(|v| store.meta(v));
+            Ok(json!({
+                "inUse": in_use.as_ref().map(|m| m.version.clone()),
+                "path": in_use.as_ref().map(|m| store.dir(&m.version)),
+                "picked": chosen,
+                "builtIn": WEB_VERSION,
+                "wanted": wanted,
+                "downloaded": in_use.is_some(),
+                "store": store.root(),
+                "installed": store.installed().iter().map(|m| m.version.clone()).collect::<Vec<_>>(),
+            }))
+        }
+        WebSubcommand::List { remote: false } => {
+            Ok(Value::Array(store.installed().iter().map(entry).collect()))
+        }
+        WebSubcommand::List { remote: true } => {
+            let registry = Registry::default_registry()?;
+            let mut out = Vec::new();
+            for version in registry.versions().await?.into_iter().take(30) {
+                let published = registry.published(&version).await?;
+                let refusal = match (&published.api_version, &published.min_backend_version) {
+                    (Some(api), Some(min)) => backend.refusal(api, min),
+                    _ => None,
+                };
+                out.push(json!({
+                    "version": version,
+                    "size": published.size,
+                    "apiVersion": published.api_version,
+                    "minBackendVersion": published.min_backend_version,
+                    "suits": refusal.is_none(),
+                    "why": refusal,
+                    "downloaded": store.meta(&version).is_some(),
+                }));
+            }
+            Ok(Value::Array(out))
+        }
+        WebSubcommand::Install { version } => {
+            let registry = Registry::default_registry()?;
+            let meta = webui::install(&store, &registry, version, backend, &progress).await?;
+            Ok(entry(&meta))
+        }
+        WebSubcommand::Use { version } => {
+            let registry = Registry::default_registry()?;
+            let meta = webui::install(&store, &registry, version, backend, &progress).await?;
+            store.choose(&meta.version)?;
+            Ok(json!({ "version": meta.version, "path": store.dir(&meta.version) }))
+        }
+        WebSubcommand::Update => {
+            let registry = Registry::default_registry()?;
+            let mut suitable = Vec::new();
+            for version in registry.versions().await?.into_iter().take(30) {
+                let published = registry.published(&version).await?;
+                if let (Some(api), Some(min)) =
+                    (&published.api_version, &published.min_backend_version)
+                {
+                    if backend.refusal(api, min).is_none() {
+                        suitable.push(version);
+                    }
+                }
+            }
+            // the newest release, or the newest pre-release when there is no release yet
+            let newest = suitable
+                .iter()
+                .find(|v| !v.contains('-'))
+                .or(suitable.first())
+                .cloned()
+                .ok_or_else(|| {
+                    AppError::new(
+                        "not_found",
+                        "no published WebUI version suits this weflow",
+                        1,
+                    )
+                })?;
+            let before = wanted.clone();
+            let meta = webui::install(&store, &registry, &newest, backend, &progress).await?;
+            store.choose(&meta.version)?;
+            Ok(
+                json!({ "version": meta.version, "before": before, "path": store.dir(&meta.version) }),
+            )
+        }
+        WebSubcommand::Prune => {
+            let mut removed = Vec::new();
+            for meta in store.installed() {
+                let keep =
+                    chosen.as_deref() == Some(meta.version.as_str()) || meta.version == WEB_VERSION;
+                if !keep && store.remove(&meta.version)? {
+                    removed.push(meta.version);
+                }
+            }
+            let kept: Vec<String> = store.installed().into_iter().map(|m| m.version).collect();
+            Ok(json!({ "removed": removed, "kept": kept }))
+        }
+    }
+}
+
 /// Opens `url` in the default browser, as `serve` does with the WebUI; nothing happens where there is none.
 fn open_in_browser(url: &str) {
     let mut opener = if cfg!(windows) {
@@ -3037,25 +3286,20 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             || command.max_media.is_some()
             || command.log_requests
             || command.ui_dir.is_some()
-            || command.no_browser)
+            || command.no_browser
+            || command.web_version.is_some()
+            || command.api_only)
     {
         return Err(AppError::usage(
-            "--max-tasks, --max-reads, --max-media, --log-requests, --ui-dir and --no-browser are for the command API, not --desktop",
+            "--max-tasks, --max-reads, --max-media, --log-requests, --ui-dir, --no-browser, --web-version and --api-only are for the command API, not --desktop",
         ));
     }
-    // the WebUI of this run (--ui-dir), else the one installed (issue #148)
-    let ui = match (&command.ui_dir, command.desktop) {
-        (_, true) => None,
-        (Some(dir), false) => Some(serve_api::ui::UiDir::open(dir).ok_or_else(|| {
-            AppError::usage(format!(
-                "--ui-dir {}: no index.html there; pass the folder of a built WebUI (such as web/dist)",
-                dir.display()
-            ))
-        })?),
-        (None, false) => hub
-            .web_in_use()
-            .and_then(|dir| serve_api::ui::UiDir::open(&dir)),
+    let (ui, fetch) = if command.desktop {
+        (None, None)
+    } else {
+        serve_webui(command, hub).await?
     };
+    let ui = std::sync::Arc::new(std::sync::RwLock::new(ui));
 
     let cfg_str = |key: &str| {
         hub.config_value(key)
@@ -3176,7 +3420,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     }
     // the page's address carries the token, as Jupyter's does; the page keeps it for its tab and drops it from the
     // address bar. A server listening on every address is still reached here as 127.0.0.1.
-    let ui_url = ui.as_ref().map(|_| {
+    let page_url = {
         let at = if bound.ip().is_unspecified() {
             std::net::SocketAddr::new(std::net::Ipv4Addr::LOCALHOST.into(), bound.port())
         } else {
@@ -3187,18 +3431,58 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             "http://{at}/ui/{}",
             token.map(|t| format!("?token={t}")).unwrap_or_default()
         )
-    });
+    };
+    let shown = ui.read().unwrap().clone();
     if !command.desktop {
-        started["ui"] = json!(ui_url.is_some());
-        if let Some(url) = &ui_url {
-            started["uiUrl"] = json!(url);
+        started["ui"] = json!(shown.is_some());
+        if let Some(shown) = &shown {
+            started["uiUrl"] = json!(page_url);
+            if let Some(version) = shown.version() {
+                started["uiVersion"] = json!(version);
+            }
+        }
+        if let Some(version) = &fetch {
+            started["uiDownloading"] = json!(version);
         }
     }
     weflow_core::output::event(started);
-    if let Some(url) = &ui_url {
-        if !command.no_browser && std::io::IsTerminal::is_terminal(&std::io::stderr()) {
-            open_in_browser(url);
-        }
+    let browse = !command.no_browser && std::io::IsTerminal::is_terminal(&std::io::stderr());
+    if shown.is_some() && browse {
+        open_in_browser(&page_url);
+    }
+    // the version wanted is downloaded beside the server, which shows it once it is in place
+    if let Some(version) = fetch {
+        let (store, ui, page_url, had_page) = (
+            hub.web_store(),
+            ui.clone(),
+            page_url.clone(),
+            shown.is_some(),
+        );
+        tokio::spawn(async move {
+            let quiet = |_: u64, _: u64| {};
+            let installed = match weflow_core::webui::Registry::default_registry() {
+                Ok(registry) => {
+                    weflow_core::webui::install(&store, &registry, &version, web_backend(), &quiet)
+                        .await
+                }
+                Err(e) => Err(e),
+            };
+            match installed.map(|meta| serve_api::ui::UiDir::open(&store.dir(&meta.version))) {
+                Ok(Some(dir)) => {
+                    *ui.write().unwrap() = Some(dir);
+                    weflow_core::output::event(
+                        json!({ "type": "webui_ready", "version": version, "uiUrl": page_url }),
+                    );
+                    if browse && !had_page {
+                        open_in_browser(&page_url);
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => weflow_core::output::event(json!({
+                    "type": "webui_unavailable", "version": version, "error": e.message.clone(), "kept": had_page,
+                })),
+            }
+        });
     }
     if command.desktop && token.is_none() {
         eprintln!(

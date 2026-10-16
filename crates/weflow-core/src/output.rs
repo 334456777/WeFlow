@@ -98,6 +98,7 @@ pub fn event(event: Value) {
 
 fn human_event(event: &Value) -> String {
     use crate::render::render;
+    let zh = || crate::locale::current() == crate::locale::Lang::Zh;
     let text = |key: &str| event[key].as_str().unwrap_or("").to_string();
     let enabled = |key: &str| event[key].as_bool() == Some(true);
     match event["type"].as_str().unwrap_or("") {
@@ -154,6 +155,13 @@ fn human_event(event: &Value) -> String {
             }
             if let Some(url) = event["uiUrl"].as_str() {
                 out.push_str(&format!("{} {url}\n", tr("web UI:", "网页：")));
+            }
+            if let Some(version) = event["uiDownloading"].as_str() {
+                out.push_str(&if zh() {
+                    format!("（正在下载网页 {version}，下载完成后即可打开）\n")
+                } else {
+                    format!("(downloading WebUI {version}; it shows once it is in place)\n")
+                });
             } else if event["ui"] == false {
                 out.push_str(&format!(
                     "{}\n",
@@ -164,6 +172,23 @@ fn human_event(event: &Value) -> String {
                 ));
             }
             out
+        }
+        "webui_ready" => {
+            let (version, url) = (text("version"), text("uiUrl"));
+            if zh() {
+                format!("网页 {version} 已下载完成：{url}\n")
+            } else {
+                format!("WebUI {version} is in place: {url}\n")
+            }
+        }
+        "webui_unavailable" => {
+            let (version, error) = (text("version"), text("error"));
+            match (zh(), enabled("kept")) {
+                (true, true) => format!("网页 {version} 下载失败（{error}），继续使用已有的版本\n"),
+                (true, false) => format!("网页 {version} 下载失败（{error}），只提供 API\n"),
+                (false, true) => format!("WebUI {version} could not be downloaded ({error}); the version already here is shown\n"),
+                (false, false) => format!("WebUI {version} could not be downloaded ({error}); the API runs alone\n"),
+            }
         }
         _ => render(event),
     }

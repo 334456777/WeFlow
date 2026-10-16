@@ -102,6 +102,7 @@ All cache cleanup is under `weflow cache`:
 | `cache clear --api` | Media exported (`api-media`) and avatars pushed (`push-avatar-files`) by the HTTP API, and files returned by `serve` (`serve-files`, see [serve-api.md](serve-api.md#files)) |
 | `cache clear --keys` | Fingerprints of keys that worked; the next command checks the key again |
 | `cache clear --runtime` | Runtimes unpacked by other WeFlow versions under `runtime/`; the running version's stays |
+| `cache clear --web` | WebUI versions downloaded by `weflow web` and `serve` (`cache/web/`, see [serve-api.md](serve-api.md#webui)); `serve` downloads the one it needs again |
 | `cache clear --all` | All of the above |
 | `cache clear-account [--exports-dir <dir>]` | The current account's cached images, voices, stickers, Moments, analytics and key fingerprints; then signs the account out of the profile (`db_path`, `wxid`, `decrypt_key` and the image keys are removed). `--exports-dir` (repeatable) also removes the entries named after the account in that folder |
 

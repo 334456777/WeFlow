@@ -1,0 +1,120 @@
+name: WebUI release
+
+# Publishes the WebUI (web/) on GHCR as an OCI artifact, ghcr.io/334456777/weflow-web:<version>, which `weflow web`
+# and `weflow serve` download, check and keep (#148). Two ways to start it:
+# - push a tag web-v<version> (annotated), the version of web/package.json;
+# - run it by hand (Actions → WebUI release → Run workflow) with that version.
+# The package is web/dist zipped (its weflow-web.json inside); the manifest also names the API the page needs and the
+# oldest weflow it runs on, so weflow can refuse it before downloading it. A version is published once: publishing it
+# again is refused, as weflow trusts a version never to change.
+on:
+  push:
+    tags:
+      - "web-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, the one in web/package.json (e.g. 0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: web-release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/334456777/weflow-web
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Check the version
+        id: meta
+        env:
+          ASKED: ${{ inputs.version }}
+        run: |
+          want="${ASKED:-${GITHUB_REF_NAME#web-v}}"
+          have=$(node -p "require('./web/package.json').version")
+          if [ "$want" != "$have" ]; then
+            echo "::error::asked for $want, but web/package.json is $have"
+            exit 1
+          fi
+          {
+            echo "version=$have"
+            echo "api=$(node -p "require('./web/package.json').weflow.apiVersion")"
+            echo "min=$(node -p "require('./web/package.json').weflow.minBackendVersion")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Type-check, test and build
+        working-directory: web
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Pack
+        run: |
+          (cd web/dist && zip -X -r -q ../../weflow-web.zip .)
+          unzip -l weflow-web.zip
+          sha256sum weflow-web.zip
+
+      - uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.2
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Refuse a version already published
+        run: |
+          if oras manifest fetch "$IMAGE:${{ steps.meta.outputs.version }}" > /dev/null 2>&1; then
+            echo "::error::$IMAGE:${{ steps.meta.outputs.version }} is published already; raise the version in web/package.json"
+            exit 1
+          fi
+
+      - name: Publish
+        run: |
+          oras push "$IMAGE:${{ steps.meta.outputs.version }}" \
+            --artifact-type application/vnd.weflow.web.v1 \
+            --annotation "io.weflow.web.api-version=${{ steps.meta.outputs.api }}" \
+            --annotation "io.weflow.web.min-backend-version=${{ steps.meta.outputs.min }}" \
+            --annotation "org.opencontainers.image.version=${{ steps.meta.outputs.version }}" \
+            --annotation "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --annotation "org.opencontainers.image.description=WebUI for weflow serve" \
+            weflow-web.zip:application/vnd.weflow.web.layer.v1+zip
+
+      - name: Check an anonymous download
+        run: |
+          oras logout ghcr.io
+          mkdir pulled
+          if oras pull "$IMAGE:${{ steps.meta.outputs.version }}" -o pulled; then
+            cmp pulled/weflow-web.zip weflow-web.zip
+            echo "anonymous download: ok"
+          else
+            echo "::warning::$IMAGE cannot be downloaded without a login; make the package public once (Package settings → Change visibility)"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### WebUI ${{ steps.meta.outputs.version }}"
+            echo
+            echo "\`$IMAGE:${{ steps.meta.outputs.version }}\`: API ${{ steps.meta.outputs.api }}, weflow ${{ steps.meta.outputs.min }} or newer, $(wc -c < weflow-web.zip) bytes"
+            echo
+            echo "\`weflow web use ${{ steps.meta.outputs.version }}\` picks it."
+          } >> "$GITHUB_STEP_SUMMARY"
