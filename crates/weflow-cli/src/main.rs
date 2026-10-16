@@ -377,6 +377,9 @@ enum ChatSubcommand {
         /// Only messages up to this time (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         end: i32,
+        /// Each hit parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row
+        #[arg(long)]
+        parsed: bool,
     },
     /// List all contacts
     Contacts,
@@ -644,6 +647,9 @@ struct PageArgs {
     /// Only messages newer than this one (the `_cursor` of a message): the closest ones, still newest first
     #[arg(long, conflicts_with = "offset")]
     after: Option<String>,
+    /// Only messages sent at this time or later (Unix seconds): the earliest ones, still newest first, as when a chat window jumps to a day
+    #[arg(long, conflicts_with_all = ["offset", "before", "after"])]
+    since: Option<i64>,
     /// Each message parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row
     #[arg(long)]
     parsed: bool,
@@ -2117,13 +2123,16 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             Ok(Value::Array(sessions))
         }
         ChatSubcommand::Messages(args) => {
-            let page = hub.message_page(
-                &args.session_id,
-                args.limit,
-                args.offset,
-                args.before.as_deref(),
-                args.after.as_deref(),
-            )?;
+            let page = match args.since {
+                Some(seconds) => hub.message_page_since(&args.session_id, args.limit, seconds)?,
+                None => hub.message_page(
+                    &args.session_id,
+                    args.limit,
+                    args.offset,
+                    args.before.as_deref(),
+                    args.after.as_deref(),
+                )?,
+            };
             Ok(if args.parsed {
                 hub.parsed_message_page(page)
             } else {
@@ -2140,14 +2149,22 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             offset,
             start,
             end,
-        } => hub.search(
-            keyword,
-            session_id.as_deref(),
-            *limit,
-            *offset,
-            *start,
-            *end,
-        ),
+            parsed,
+        } => {
+            let hits = hub.search(
+                keyword,
+                session_id.as_deref(),
+                *limit,
+                *offset,
+                *start,
+                *end,
+            )?;
+            Ok(if *parsed {
+                hub.parsed_message_page(hits)
+            } else {
+                hits
+            })
+        }
         ChatSubcommand::Contacts => hub.contacts(),
         ChatSubcommand::Contact { username } => hub.contact(username),
         ChatSubcommand::UpdateMessage {

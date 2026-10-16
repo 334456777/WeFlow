@@ -161,6 +161,18 @@ impl MsgPos {
         parts.next().is_none().then_some(pos)
     }
 
+    /// The place of a moment (Unix seconds): after every message sent before it, before every one sent at it or
+    /// later. WeChat's `sort_seq` is `create_time` in milliseconds plus a few (within 2 s of it on a real account), so
+    /// a page [`After`](PageFrom::After) it starts at the first message of that moment.
+    pub fn at_time(seconds: i64) -> Self {
+        Self {
+            sort_seq: seconds.saturating_mul(1000),
+            create_time: seconds,
+            local_id: i64::MIN,
+            shard: 0,
+        }
+    }
+
     fn key(&self) -> (i64, i64, i64) {
         (self.sort_seq, self.create_time, self.local_id)
     }
