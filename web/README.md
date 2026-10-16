@@ -62,9 +62,9 @@ Opened by `weflow serve` (once #146 is done), the page gets its token from the a
 | `src/VirtualList.tsx` | A list that draws only the rows in sight, for lists of thousands of rows (#159) |
 | `src/Scrollbar.tsx` | The page's own scrollbar: floats over a scroll area (the browser's is hidden), takes no width, can be dragged |
 | `src/Popover.tsx` | A floating layer anchored to a control: grows out of it, stays on screen, closes on Esc or a click outside |
-| `src/calendar/` | The page's own calendar (#224): `Calendar.tsx` (a month in the ARIA grid pattern, Monday first, month and year views), `DateRange.tsx` (a range picked in one calendar), `dates.ts` (days as `YYYY-MM-DD` in local time) |
+| `src/calendar/` | The page's own calendar (#224): `Calendar.tsx` (a month in the ARIA grid pattern, Monday first, month and year views), `DateRange.tsx` (a range picked in one calendar), `DateField.tsx` (one day), `dates.ts` (days as `YYYY-MM-DD` in local time) |
 | `src/api/messages.ts` | Messages of a conversation as the server parses them (`chat messages --parsed`, cursor pages), group members, and media addresses for `<img>`, `<audio>`, `<video>` |
-| `src/chat/` | The chat page (#196): the conversation list with search, filters, folded groups and arrow keys (#197); the messages of each kind, paged back as the window scrolls up (#198) |
+| `src/chat/` | The chat page (#196): the conversation list with search, filters, folded groups and arrow keys (#197); the messages of each kind, paged back as the window scrolls up (#198); the search card and the jump to a day or a search hit, with newer pages loaded below (#199) |
 | `src/App.tsx`, `src/app.css` | The workspace: navigation on the left, records in the middle, the operations console on the right |
 | `src/mock/` | Sample records, until the screens read the API |
 | `src/export.ts` | Sample export in the browser; real exports will use `export messages` with `?return=file` |

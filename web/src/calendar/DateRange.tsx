@@ -11,10 +11,12 @@ export interface Range { from: string; to: string }
 
 type Side = 'from' | 'to';
 
-export function DateRange({ from, to, onChange, max = today(), marks, label = '时间范围' }: {
+export function DateRange({ from, to, onChange, onOpen, max = today(), marks, label = '时间范围' }: {
   from: string;
   to: string;
   onChange: (range: Range) => void;
+  /** Called as the calendar opens, to ask for its marks. */
+  onOpen?: () => void;
   max?: string;
   marks?: Record<string, number> | null;
   label?: string;
@@ -34,6 +36,7 @@ export function DateRange({ from, to, onChange, max = today(), marks, label = '�
   };
   const toggle = (which: Side) => {
     setPending(null);
+    if (side === null) onOpen?.();
     setSide(current => (current === which ? null : which));
   };
 

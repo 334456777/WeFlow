@@ -64,6 +64,9 @@ export function Calendar({ from, to, pending, initial, max, marks, onPick }: Cal
   const [start, end] = pending ? ordered(pending, hover || pending) : [from, to];
   const monthDisabled = (y: number, m: number) => Boolean(maxMonth && (y > maxMonth.year || (y === maxMonth.year && m > maxMonth.month)));
   const firstYear = year - (((year % YEARS) + YEARS) % YEARS);
+  // how busy a day was, in three steps on a log scale: the dot grows with it
+  const most = marks ? Math.max(1, ...Object.values(marks)) : 1;
+  const heat = (count: number) => Math.max(1, Math.ceil((3 * Math.log1p(count)) / Math.log1p(most)));
 
   const shift = (months: number) => { setFocus(clampDay(addMonths(focus, months), max)); };
   const header = (title: string, onTitle: (() => void) | null, back: () => void, forward: (() => void) | null, unit: string) =>
@@ -113,7 +116,7 @@ export function Calendar({ from, to, pending, initial, max, marks, onPick }: Cal
         const count = marks?.[day] ?? 0;
         const className = 'calendar-day' + (ends ? ' chosen' : '') + (between ? ' between' : '') + (day === now ? ' today' : '')
           + (marks ? (count ? ' marked' : ' quiet') : '');
-        return <td key={day} role="gridcell" data-day={day} className={className} tabIndex={day === focus ? 0 : -1}
+        return <td key={day} role="gridcell" data-day={day} data-heat={count ? heat(count) : undefined} className={className} tabIndex={day === focus ? 0 : -1}
           aria-selected={ends || between} aria-disabled={off || undefined} aria-current={day === now ? 'date' : undefined}
           aria-label={dayLabel(day) + (count ? '，' + count + ' 条消息' : '')}
           onClick={() => { if (!off) { setFocus(day); onPick(day); } }} onPointerEnter={() => setHover(day)}>
