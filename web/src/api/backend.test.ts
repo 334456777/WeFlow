@@ -84,6 +84,19 @@ describe('Connection (#221)', () => {
     c.live.stop();
   });
 
+  it('is offline when the server says bye, and comes back once it starts again', () => {
+    const c = connection();
+    c.last().send('hello', health);
+    c.last().send('bye', { reason: 'stopped' });
+    expect(c.now()).toEqual({ state: 'offline' });
+    expect(c.streams[0].closed).toBe(true);
+    vi.advanceTimersByTime(1_000);
+    expect(c.streams).toHaveLength(2);
+    c.last().send('hello', health);
+    expect(c.now().state).toBe('ready');
+    c.live.stop();
+  });
+
   it('says when the server does not suit this page', () => {
     const c = connection();
     c.last().send('hello', { ...health, apiVersion: '2' });

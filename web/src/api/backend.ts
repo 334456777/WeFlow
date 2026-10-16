@@ -207,6 +207,10 @@ export class Connection {
         // a heartbeat says the stream is alive whatever it holds
       }
     });
+    // the server stopped on purpose (Ctrl+C): offline at once, as when it is lost, and back once it starts again
+    stream.addEventListener('bye', () => {
+      if (this.stream === stream) this.lost();
+    });
     stream.onerror = () => {
       if (this.stream === stream) this.lost();
     };

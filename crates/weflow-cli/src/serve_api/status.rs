@@ -8,18 +8,87 @@
 //!   in logs and history) and is behind the `Host` check. It starts no work: no push engine, only the heartbeat.
 //! - `/api/push/messages` starts with the same `hello` and sends the same heartbeat, so a page listening to it
 //!   needs no second stream.
+//! - When the server stops on Ctrl+C, each of these streams ends with `event: bye` (see [`Farewell`]), so a page
+//!   can tell a server that stopped from one it lost.
 
 use std::convert::Infallible;
 use std::path::PathBuf;
-use std::sync::OnceLock;
-use std::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 use axum::body::{Body, Bytes};
 use axum::http::{header, StatusCode};
 use axum::response::Response;
 use serde_json::{json, Value};
+use tokio::sync::watch;
 
 use super::API_VERSION;
+
+/// Says `bye` on every open event stream when the server stops.
+#[derive(Clone)]
+pub struct Farewell {
+    stopping: Arc<watch::Sender<bool>>,
+    open: Arc<AtomicUsize>,
+}
+
+impl Default for Farewell {
+    fn default() -> Self {
+        Self {
+            stopping: Arc::new(watch::channel(false).0),
+            open: Default::default(),
+        }
+    }
+}
+
+impl Farewell {
+    /// Every open stream sends `bye` and ends; returns once they all did, or `within` passed.
+    pub async fn say(&self, within: Duration) {
+        self.stopping.send_replace(true);
+        let deadline = Instant::now() + within;
+        while self.open.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        // the last `bye` handed over is still on its way out
+        if self.open.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// A stream that is open: it ends with `bye` once [`Farewell::say`] is called.
+    pub(super) fn listen(&self) -> Listening {
+        self.open.fetch_add(1, Ordering::SeqCst);
+        Listening {
+            stopping: self.stopping.subscribe(),
+            open: self.open.clone(),
+        }
+    }
+}
+
+pub(super) struct Listening {
+    stopping: watch::Receiver<bool>,
+    open: Arc<AtomicUsize>,
+}
+
+impl Listening {
+    /// Resolves when the server stops.
+    pub(super) async fn stopping(&mut self) {
+        let _ = self.stopping.wait_for(|stopping| *stopping).await;
+    }
+}
+
+impl Drop for Listening {
+    fn drop(&mut self) {
+        self.open.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub(super) fn bye() -> Bytes {
+    Bytes::from(format!(
+        "event: bye\ndata: {}\n\n",
+        json!({ "reason": "stopped" })
+    ))
+}
 
 /// How often a stream sends `heartbeat`; `WEFLOW_SSE_HEARTBEAT_MS` sets another for tests.
 pub(super) fn heartbeat() -> Duration {
@@ -90,14 +159,20 @@ pub(super) fn event_stream(body: Body) -> Response {
 }
 
 /// `GET /health/events`.
-pub(super) fn events(data: DataKey) -> Response {
+pub(super) fn events(data: DataKey, farewell: &Farewell) -> Response {
+    let mut listening = farewell.listen();
     let stream = async_stream::stream! {
         yield Ok::<_, Infallible>(hello(&data));
         let mut every = tokio::time::interval(heartbeat());
         every.tick().await;
         loop {
-            every.tick().await;
-            yield Ok(beat(&data));
+            tokio::select! {
+                _ = every.tick() => yield Ok(beat(&data)),
+                _ = listening.stopping() => {
+                    yield Ok(bye());
+                    break;
+                }
+            }
         }
     };
     event_stream(Body::from_stream(stream))

@@ -13,6 +13,7 @@ mod jobs;
 mod openapi;
 mod push;
 mod status;
+pub use status::Farewell;
 pub mod ui;
 
 use std::collections::BTreeMap;
@@ -515,6 +516,8 @@ pub struct ApiConfig {
     pub ui: Arc<std::sync::RwLock<Option<ui::UiDir>>>,
     /// The configuration the commands read: what `data` of `/health` follows.
     pub config_path: PathBuf,
+    /// Ends the event streams with `bye` when the server stops.
+    pub farewell: Farewell,
 }
 
 struct AppState {
@@ -938,7 +941,7 @@ async fn route(st: &AppState, req: Request) -> Response {
         if parts.method != Method::GET {
             return method_not_allowed(&[Get]);
         }
-        return status::events(st.data.clone());
+        return status::events(st.data.clone(), &st.cfg.farewell);
     }
     // the WebUI's files need no token: the page brings it in its address
     if let Some(rest) = path
@@ -1007,7 +1010,9 @@ async fn route(st: &AppState, req: Request) -> Response {
             })
             .and_then(|v| v.trim().parse().ok())
             .unwrap_or(0);
-        return st.push.stream(st.hub.clone(), last_id, st.data.clone());
+        return st
+            .push
+            .stream(st.hub.clone(), last_id, st.data.clone(), &st.cfg.farewell);
     }
     let segments: Vec<String> = path
         .split('/')

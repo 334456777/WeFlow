@@ -1432,6 +1432,27 @@ fn health_events_say_hello_then_beat_without_a_token() {
     assert!(reply.starts_with("HTTP/1.1 403"), "{reply}");
 }
 
+// Ctrl+C as a signal; Windows has no way to send one to another process alone
+#[cfg(unix)]
+#[test]
+fn event_streams_say_bye_when_the_server_stops() {
+    let root = temp_root("bye");
+    let server = start(&root, &["--api-token", TOKEN]);
+    let mut events = EventStream::open_at(&server, "/health/events", &[]);
+    assert!(events.wait_for("event: hello", 10), "{}", events.text);
+    let sent = Command::new("kill")
+        .args(["-INT", &server.child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(sent.success());
+    assert!(events.wait_for("event: bye", 5), "{}", events.text);
+    assert!(
+        events.text.contains("\"reason\":\"stopped\""),
+        "{}",
+        events.text
+    );
+}
+
 #[test]
 fn new_messages_are_pushed_as_events() {
     use weflow_native::fixture::{MsgSpec, SessionSpec, DAY, T0};

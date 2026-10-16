@@ -16,7 +16,7 @@ use weflow_core::push::{PushBroker, PushEngine};
 use weflow_core::services::ServiceHub;
 
 use super::in_process;
-use super::status::{self, DataKey};
+use super::status::{self, DataKey, Farewell};
 
 /// How often the engine looks for new messages while someone listens.
 const INTERVAL: Duration = Duration::from_secs(1);
@@ -151,13 +151,15 @@ impl Push {
     }
 
     /// The event stream: `hello` (see `status`), `ready`, the kept events after `last_id` (all of them for 0), then
-    /// each new one, with a `heartbeat` when it is quiet.
+    /// each new one, with a `heartbeat` when it is quiet; `bye` when the server stops.
     pub(super) fn stream(
         &self,
         hub: Arc<in_process::Hub>,
         last_id: u64,
         data: DataKey,
+        farewell: &Farewell,
     ) -> Response {
+        let mut listening = farewell.listen();
         self.listeners.fetch_add(1, Ordering::SeqCst);
         let listener = Listener(self.listeners.clone());
         self.watch(hub);
@@ -189,6 +191,10 @@ impl Push {
                         Err(_) => break,
                     },
                     _ = heartbeat.tick() => yield Ok(status::beat(&data)),
+                    _ = listening.stopping() => {
+                        yield Ok(status::bye());
+                        break;
+                    }
                 }
             }
         };

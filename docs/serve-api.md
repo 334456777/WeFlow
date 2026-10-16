@@ -250,6 +250,7 @@ Two versions tell clients what they talk to: `version` (in `/health`, and `info.
 
 - It starts with `event: hello`, whose data is what `/health` answers, then sends `event: heartbeat` every 15 seconds with `{"data": "…"}`. A heartbeat is an event, not a comment line, so a page sees it: no event for 37.5 seconds (two and a half heartbeats) means a half-open connection (the network gone, a NAT that forgot it), which closing the stream alone would not tell.
 - `/api/push/messages` starts with the same `hello` and sends the same heartbeat, so a page listening to it needs no second stream.
+- When the server stops on Ctrl+C, both streams end with `event: bye` (`{"reason": "stopped"}`; the server waits at most half a second for them to go out), so a client can tell a server that stopped from one it lost.
 
 The WebUI holds one such stream and reports the connection by it: the moment the stream breaks (the server stopped), the indicator says 「未连接」; it connects again after 1, 2, 4 … at most 30 seconds (give or take a fifth), at once when the network or the tab comes back and on 「重新检测」. Idle, it sends no request. On this machine (`127.0.0.1`) losing the network does not cut the page from the server, so there it only checks again. A server without `/health/events` (5.0.0-rc.5 and older) is not supported by the WebUI.
 

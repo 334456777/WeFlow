@@ -3538,6 +3538,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             )
         );
     }
+    let farewell = serve_api::Farewell::default();
     let server = async {
         let stopped = if command.desktop {
             let cfg = weflow_core::http_server::HttpConfig {
@@ -3564,6 +3565,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
                 log_requests: command.log_requests,
                 ui,
                 config_path: hub.config_path().to_path_buf(),
+                farewell: farewell.clone(),
             };
             serve_api::serve(cfg, listener).await
         };
@@ -3571,7 +3573,11 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     };
     let outcome = tokio::select! {
         result = server => result.map(|_| ()),
-        _ = tokio::signal::ctrl_c() => Err(AppError::new("user_interrupt", "interrupted by user", 130)),
+        _ = tokio::signal::ctrl_c() => {
+            // the open event streams end with `bye`, so a page tells a server that stopped from one it lost
+            farewell.say(std::time::Duration::from_millis(500)).await;
+            Err(AppError::new("user_interrupt", "interrupted by user", 130))
+        }
     };
     insight_stop.store(true, std::sync::atomic::Ordering::Relaxed);
     if let Some(svc) = &auto_download {
