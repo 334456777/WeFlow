@@ -68,10 +68,11 @@ impl ServiceHub {
         &self.ctx.runtime_dir
     }
 
-    /// The WebUI `serve` shows without `--ui-dir`: the version picked with `weflow web use` (issue #148), kept in
-    /// `<home>/web/<version>/` and named in `<home>/web/current`. `None` until one is picked.
+    /// The WebUI `serve` shows without `--ui-dir`: the version picked with `weflow web use` (issue #148), kept with
+    /// WeFlow's other program files in `<home>/runtime/web/<version>/` and named in `<home>/runtime/web/current`.
+    /// `None` until one is picked.
     pub fn web_in_use(&self) -> Option<PathBuf> {
-        let root = self.ctx.home_dir.join("web");
+        let root = self.runtime_root().join("web");
         let version = std::fs::read_to_string(root.join("current")).ok()?;
         let version = version.trim();
         let plain = !version.is_empty()
