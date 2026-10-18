@@ -36,6 +36,54 @@
 
 > 怎么确认：打开终端输入 `uname -m`。显示 `x86_64` 选 x64，显示 `aarch64` 选 arm64。
 
+### 验证下载文件
+
+本版本提供构建来源证明（Artifact Attestation）。安装 [GitHub CLI](https://cli.github.com/) 后，在下载目录中执行对应命令，验证压缩包的完整性和构建来源。
+
+#### Windows
+
+**x64：**
+
+```powershell
+gh attestation verify weflow-{{TAG}}-windows-x64.zip --repo {{REPO}}
+```
+
+**ARM64：**
+
+```powershell
+gh attestation verify weflow-{{TAG}}-windows-arm64.zip --repo {{REPO}}
+```
+
+#### macOS
+
+**Apple 芯片（ARM64）：**
+
+```bash
+gh attestation verify weflow-{{TAG}}-macos-arm64.tar.gz --repo {{REPO}}
+```
+
+**Intel 芯片（x64）：**
+
+```bash
+gh attestation verify weflow-{{TAG}}-macos-x64.tar.gz --repo {{REPO}}
+```
+
+#### Linux
+
+**x64：**
+
+```bash
+gh attestation verify weflow-{{TAG}}-linux-x64.tar.gz --repo {{REPO}}
+```
+
+**ARM64：**
+
+```bash
+gh attestation verify weflow-{{TAG}}-linux-arm64.tar.gz --repo {{REPO}}
+```
+
+验证成功表示文件完整，且与本仓库签署的构建来源证明一致。无需另外下载 `.sha256` 文件。
+
 ### 下载后怎么用
 
 每个压缩包里有 `weflow` 程序、`README.md`（英文说明）、`README.zh-CN.md`（中文说明）和 `LICENSE`。下载后解压（tar.gz文件用`tar -zxvf <文件名.tar.gz>`）就能使用里面的 `weflow`。
