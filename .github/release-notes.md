@@ -6,7 +6,7 @@
 
 不知道选哪个？先看你的系统，再往下看对应的说明。**绝大多数 Windows 电脑选 x64 就对了。**
 
-本版本提供构建来源证明（Artifact Attestation）。安装 [GitHub CLI](https://cli.github.com/) 后，在下载目录执行对应下载项下的命令，即可验证压缩包的完整性和构建来源。验证成功表示文件完整，且与本仓库签署的构建来源证明一致；无需另外下载 `.sha256` 文件。
+本版本提供构建来源证明（Artifact Attestation）。安装 [GitHub CLI](https://cli.github.com/) 后，展开对应下载项下的“验证下载文件”，在下载目录执行其中的命令，即可验证压缩包的完整性和构建来源。验证成功表示文件完整，且与本仓库签署的构建来源证明一致；无需另外下载 `.sha256` 文件。
 
 ### Windows
 
@@ -14,21 +14,31 @@
 
 适合**绝大多数 Windows 电脑**，包括常见的台式机和笔记本（Intel 或 AMD 处理器）。不确定就选这个。
 
-验证下载文件：
+<details>
+<summary>验证下载文件</summary>
+
+在下载目录中执行：
 
 ```powershell
 gh attestation verify weflow-{{TAG}}-windows-x64.zip --repo {{REPO}}
 ```
 
+</details>
+
 #### [weflow-{{TAG}}-windows-arm64.zip](https://github.com/{{REPO}}/releases/download/{{TAG}}/weflow-{{TAG}}-windows-arm64.zip)
 
 只适合**使用 ARM 处理器的 Windows 电脑**，比如搭载骁龙芯片的笔记本、Surface Pro X。这类电脑比较少见。
 
-验证下载文件：
+<details>
+<summary>验证下载文件</summary>
+
+在下载目录中执行：
 
 ```powershell
 gh attestation verify weflow-{{TAG}}-windows-arm64.zip --repo {{REPO}}
 ```
+
+</details>
 
 > 怎么确认：打开「设置 → 系统 → 系统信息」，看“系统类型”。写着“x64 处理器”选上面那个，写着“ARM 处理器”选这个。
 
@@ -38,21 +48,31 @@ gh attestation verify weflow-{{TAG}}-windows-arm64.zip --repo {{REPO}}
 
 适合**2020 年底之后发售的 Mac**，也就是用苹果自家芯片（M1、M2、M3 等）的机器。
 
-验证下载文件：
+<details>
+<summary>验证下载文件</summary>
+
+在下载目录中执行：
 
 ```bash
 gh attestation verify weflow-{{TAG}}-macos-arm64.tar.gz --repo {{REPO}}
 ```
 
+</details>
+
 #### [weflow-{{TAG}}-macos-x64.tar.gz](https://github.com/{{REPO}}/releases/download/{{TAG}}/weflow-{{TAG}}-macos-x64.tar.gz)
 
 适合**较老的 Mac**，也就是用 Intel 处理器的机器。
 
-验证下载文件：
+<details>
+<summary>验证下载文件</summary>
+
+在下载目录中执行：
 
 ```bash
 gh attestation verify weflow-{{TAG}}-macos-x64.tar.gz --repo {{REPO}}
 ```
+
+</details>
 
 > 怎么确认：点屏幕左上角苹果图标 →「关于本机」。“芯片”一栏写着 Apple M1 之类的，选第一个；写着 Intel 的，选第二个。
 
@@ -62,21 +82,31 @@ gh attestation verify weflow-{{TAG}}-macos-x64.tar.gz --repo {{REPO}}
 
 适合**常见的 Linux 电脑和服务器**（Intel 或 AMD 处理器）。
 
-验证下载文件：
+<details>
+<summary>验证下载文件</summary>
+
+在下载目录中执行：
 
 ```bash
 gh attestation verify weflow-{{TAG}}-linux-x64.tar.gz --repo {{REPO}}
 ```
 
+</details>
+
 #### [weflow-{{TAG}}-linux-arm64.tar.gz](https://github.com/{{REPO}}/releases/download/{{TAG}}/weflow-{{TAG}}-linux-arm64.tar.gz)
 
 适合**使用 ARM 处理器的 Linux 设备**，比如运行 64 位系统的树莓派、部分云服务器。
 
-验证下载文件：
+<details>
+<summary>验证下载文件</summary>
+
+在下载目录中执行：
 
 ```bash
 gh attestation verify weflow-{{TAG}}-linux-arm64.tar.gz --repo {{REPO}}
 ```
+
+</details>
 
 > 怎么确认：打开终端输入 `uname -m`。显示 `x86_64` 选 x64，显示 `aarch64` 选 arm64。
 
