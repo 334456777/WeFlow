@@ -1853,30 +1853,41 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-/// Pads the cells of `rows` into columns two spaces apart (CJK counts double); empty columns are left out.
+/// Pads the cells of `rows` into columns two spaces apart (CJK counts double); empty columns are left out. A cell
+/// of several values (one per line, `\n` between them) takes as many lines, each starting under its column's
+/// header (issue #258).
 fn align_columns(rows: &[Vec<String>]) -> Vec<String> {
     use weflow_core::render::display_width;
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     let widths: Vec<usize> = (0..columns)
         .map(|i| {
             rows.iter()
-                .map(|r| r.get(i).map_or(0, |c| display_width(c)))
+                .filter_map(|r| r.get(i))
+                .flat_map(|c| c.lines())
+                .map(display_width)
                 .max()
                 .unwrap_or(0)
         })
         .collect();
-    rows.iter()
-        .map(|row| {
-            row.iter()
+    let mut out = Vec::new();
+    for row in rows {
+        let cells: Vec<Vec<&str>> = row.iter().map(|c| c.lines().collect()).collect();
+        let height = cells.iter().map(Vec::len).max().unwrap_or(0).max(1);
+        for line in 0..height {
+            let text = cells
+                .iter()
                 .zip(&widths)
                 .filter(|&(_, &w)| w > 0)
-                .map(|(cell, &w)| format!("{cell}{}", " ".repeat(w - display_width(cell))))
+                .map(|(cell, &w)| {
+                    let part = cell.get(line).copied().unwrap_or("");
+                    format!("{part}{}", " ".repeat(w - display_width(part)))
+                })
                 .collect::<Vec<_>>()
-                .join("  ")
-                .trim_end()
-                .to_string()
-        })
-        .collect()
+                .join("  ");
+            out.push(text.trim_end().to_string());
+        }
+    }
+    out
 }
 
 /// `text` in green on a terminal; plain when stdout is not one or NO_COLOR is set (https://no-color.org).
@@ -1939,7 +1950,8 @@ fn cache_summary(command: &CacheSubcommand, data: &Value) -> Option<String> {
                     if paths.is_empty() {
                         tr("(none)", "（无）").to_string()
                     } else {
-                        paths.join(", ")
+                        // one path a line, under the header
+                        paths.join("\n")
                     },
                 ]);
             }
@@ -4074,6 +4086,25 @@ mod tests {
             vec!["".to_string(), "keys".to_string(), "20 MB".to_string()],
         ];
         assert_eq!(align_columns(&rows), ["图片  1 KB", "keys  20 MB"]);
+    }
+
+    #[test]
+    fn a_cell_of_several_values_takes_a_line_each_under_its_column() {
+        let row = |cells: &[&str]| cells.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+        let rows = vec![
+            row(&["部分", "大小", "路径"]),
+            row(&["旧运行时", "3 MB", "/a/runtime/1\n/a/runtime/longer/2"]),
+            row(&["图片", "1 KB", "/a/images"]),
+        ];
+        assert_eq!(
+            align_columns(&rows),
+            [
+                "部分      大小  路径",
+                "旧运行时  3 MB  /a/runtime/1",
+                "                /a/runtime/longer/2",
+                "图片      1 KB  /a/images",
+            ]
+        );
     }
 
     #[test]
