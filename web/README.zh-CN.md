@@ -78,6 +78,7 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/chat/statuses`，每次 100 个） |
 | `src/styles/tokens.css` | 设计令牌：字号、控件高度、圆角、颜色（含深色模式）、新拟态的五种表面（#220）、动效时长和缓动（#192、#193）。页面样式只引用这些变量 |
 | `src/motion.ts` | 弹簧预设，`usePresence` 让浮层、对话框和提示播完退出动画再移除 |
+| `src/theme.ts` | 设置里选择的颜色主题：跟随系统（默认）、浅色或深色，保存在 `localStorage`；把生效的主题写到 `<html>` 的 `data-theme`。`index.html` 在首次绘制前已经设好，页面不会先闪一下另一种主题（#252） |
 | `src/CardStack.tsx` | 操作控制台的卡片：点标题展开或收起；用鼠标拖动或按 Alt+↑ / Alt+↓ 调整顺序。顺序和展开状态保存在浏览器的 `localStorage` 里 |
 | `src/VirtualList.tsx` | 只绘制看得见的行的列表，用于成千上万行的列表（#159） |
 | `src/Scrollbar.tsx` | 网页自己的滚动条：浮在滚动区域上（隐藏浏览器自带的），不占宽度，可以拖动 |

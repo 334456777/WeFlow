@@ -37,6 +37,7 @@ import { FEEDBACK_MS, usePresence } from './motion';
 import { HoverTrack } from './HoverTrack';
 import { Scrollbar } from './Scrollbar';
 import { Segmented } from './Segmented';
+import { useTheme, type ThemeChoice } from './theme';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -79,6 +80,7 @@ function serverDetail(health: Health): string | null {
 
 /** How long a connection stays 「已连接」 before its notice fades away. */
 const STEADY_MS = 3000;
+const THEMES: { value: ThemeChoice; label: string }[] = [{ value: 'system', label: '跟随系统' }, { value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }];
 const SIDEBAR_KEY = 'weflow.sidebar';
 const LIVE_KEY = 'weflow.live';
 
@@ -213,6 +215,7 @@ export function App() {
   const [toast, setToast] = useState('');
   const [mobileDetail, setMobileDetail] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [theme, setTheme] = useTheme();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const consoleRef = useRef<HTMLElement>(null);
   const settingsRef = useRef<HTMLElement>(null);
@@ -452,6 +455,10 @@ export function App() {
         {'health' in backend && serverDetail(backend.health) && <div className="setting-row"><div><h2>运行方式</h2><p>{serverDetail(backend.health)}</p></div></div>}
         <div className="setting-row"><div><h2>实时消息</h2><p>微信收到消息后几秒内显示在会话列表和打开的会话里。关掉后不再接收，左下角显示「已连接」而不是「实时」。</p></div><label className="toggle"><input type="checkbox" aria-label="实时消息" checked={realtime} onChange={event => toggleRealtime(event.target.checked)} /><span /></label></div>
         <div className="setting-row"><div><h2>默认附带媒体文件</h2><p>导出时同时保存照片等媒体。</p></div><label className="toggle"><input type="checkbox" aria-label="默认附带媒体文件" checked={includeMedia} onChange={event => setIncludeMedia(event.target.checked)} /><span /></label></div>
+        <div className="setting-row setting-choice"><div><h2>颜色主题</h2><p>跟随系统时随系统的浅色、深色模式切换。只保存在这个浏览器里。</p></div>
+          <Segmented className="theme-group" count={THEMES.length} index={THEMES.findIndex(t => t.value === theme)} role="group" aria-label="颜色主题">
+            {THEMES.map(t => <button type="button" key={t.value} aria-pressed={theme === t.value} onClick={() => setTheme(t.value)}>{t.label}</button>)}
+          </Segmented></div>
         <div className="setting-row"><div><h2>减少动画</h2><p>所有过渡立即完成，状态提示保留。也跟随系统的「减少动态效果」。</p></div><label className="toggle"><input type="checkbox" aria-label="减少动画" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /><span /></label></div>
         <small className="settings-footnote">连接到 weflow serve 后读取本机记录；未连接时显示示例数据。</small>
       </section><Scrollbar target={settingsRef} /></> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
