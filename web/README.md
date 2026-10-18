@@ -62,6 +62,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), or `/api/push/messages` with live messages on (#201); version checks, `useBackend` |
 | `src/api/live.ts` | Live message events, handed to the conversation list and the open conversation (#201) |
 | `src/api/biz.ts` | Official accounts: the ones followed (`/biz/accounts`) and their pushes (`/biz/messages`) (#203) |
+| `src/api/sns.ts`, `src/moments/` | Moments (#202): the timeline, who posts and how often, the totals (`/api/sns/timeline`, `post-counts`, `stats`), and the pictures and videos of a post through `/api/sns/media`; the page beside the timeline lists the posters, the console narrows it by words and days |
 | `src/api/details.ts` | Conversation details, group member statistics, media and parsed message lookups; serializes command reads (#200) |
 | `src/chat/SessionInfo.tsx`, `src/chat/MediaPanel.tsx` | Console cards loaded while open: conversation facts, virtualized group members, and media that open at their message (#200) |
 | `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/chat/statuses`, in batches of 100) |
