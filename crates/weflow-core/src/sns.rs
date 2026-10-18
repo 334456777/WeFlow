@@ -126,6 +126,24 @@ pub fn fix_sns_url(url: &str, token: Option<&str>, is_video: bool) -> String {
     format!("{fixed}{connector}token={token}&idx=1")
 }
 
+/// Whether `url` is an https address of WeChat's Moments media servers: images on `*.qpic.cn` (and
+/// `*.c2c.wechat.com` for accounts abroad), videos and their covers on `*.video.qq.com` and `*.tc.qq.com`. A route
+/// that fetches media for a page takes only these, so it cannot be made to fetch whatever a page names.
+pub fn is_wechat_media_url(url: &str) -> bool {
+    const SERVERS: &[&str] = &[".qpic.cn", ".wechat.com", ".video.qq.com", ".tc.qq.com"];
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    parsed.scheme() == "https"
+        && parsed.port().is_none()
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+        && SERVERS.iter().any(|s| host.ends_with(s))
+}
+
 pub fn is_video_url(url: &str) -> bool {
     if url.is_empty() || url.contains("vweixinthumb") {
         return false;
@@ -767,7 +785,7 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
     let mut out = post.as_object().cloned().unwrap_or_default();
     let is_video_post = post.get("type").and_then(Value::as_i64) == Some(15);
     let raw_xml = s_of(post.get("rawXml")).unwrap_or_default();
-    let video_key = extract_video_key(&raw_xml);
+    let video_key = extract_video_key(&raw_xml).or_else(|| s_of(post.get("videoKey")));
     let location = merge_location(
         normalize_location(post.get("location")).as_ref(),
         parse_location_from_xml(&raw_xml).as_ref(),
@@ -781,6 +799,9 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
         .iter()
         .map(|m| {
             let token = s_of(m.get("token"));
+            // A video in a post of another type (a row of type 1 holding one) opens with the post's video key too:
+            // its own key opens neither the video nor its cover (#202)
+            let is_video = is_video_post || is_video_url(&s_of(m.get("url")).unwrap_or_default());
             let mut o = Map::new();
             o.insert(
                 "url".into(),
@@ -803,7 +824,7 @@ pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
                 ("token", m.get("token").filter(|v| !v.is_null()).cloned()),
                 (
                     "key",
-                    if is_video_post {
+                    if is_video {
                         video_key
                             .clone()
                             .map(Value::from)
@@ -1361,6 +1382,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_wechat_media_servers_are_fetched_for_a_page() {
+        for ok in [
+            "https://shmmsns.qpic.cn/mmsns/abc/0?token=T&idx=1",
+            "https://mmsns.c2c.wechat.com/mmsns/abc/0",
+            "https://szzjwxsns.video.qq.com/102/20202/snsvideodownload?m=x",
+            "https://vweixinthumb.tc.qq.com/150/20250/snsvideodownload",
+        ] {
+            assert!(is_wechat_media_url(ok), "{ok}");
+        }
+        for refused in [
+            "http://shmmsns.qpic.cn/mmsns/abc/0",
+            "https://shmmsns.qpic.cn:8443/mmsns/abc/0",
+            "https://user@shmmsns.qpic.cn/mmsns/abc/0",
+            "https://qpic.cn.example.com/a",
+            "https://evilqpic.cn/a",
+            "https://127.0.0.1/a",
+            "https://www.qq.com/",
+            "file:///etc/passwd",
+            "not a url",
+        ] {
+            assert!(!is_wechat_media_url(refused), "{refused}");
+        }
+    }
+
+    #[test]
     fn fixes_urls_like_the_desktop_app() {
         assert_eq!(
             fix_sns_url("http://x.qq.com/a/150", Some("T"), false),
@@ -1453,6 +1499,22 @@ mod tests {
         assert_eq!(e["media"][0]["thumb"], "https://t/0?token=T&idx=1");
         assert_eq!(e["comments"][1]["refNickname"], "A");
         assert_eq!(e["location"]["city"], "X");
+    }
+
+    #[test]
+    fn a_video_in_a_post_of_another_type_takes_the_video_key() {
+        // seen on real accounts: a row of type 1 whose medium is a video; only the post's video key opens the
+        // video and its cover (#202), while an image of such a row keeps its own
+        let post = json!({
+            "id": "1", "username": "wxid_a", "createTime": 1700000000, "type": 1, "videoKey": "888",
+            "media": [
+                {"url": "http://v.video.qq.com/102/snsvideodownload?m=1", "thumb": "http://v.video.qq.com/t", "key": "own"},
+                {"url": "http://a.qpic.cn/mmsns/x/150", "thumb": "http://a.qpic.cn/mmsns/x/150", "key": "image"}
+            ]
+        });
+        let e = enrich_post(&post, None);
+        assert_eq!(e["media"][0]["key"], "888");
+        assert_eq!(e["media"][1]["key"], "image");
     }
 
     #[test]

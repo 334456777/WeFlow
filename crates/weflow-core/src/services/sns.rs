@@ -26,6 +26,9 @@ pub(crate) struct SnsState {
     last_timeline_fallback: Option<Instant>,
     image_cache: HashMap<String, (String, Instant)>,
     image_order: VecDeque<String>,
+    /// The client for WeChat's media servers, kept so that requests reuse their connections (#202): a page asks
+    /// for a screen of pictures at once, and a new client per picture redid DNS and TLS every time.
+    client: Option<reqwest::Client>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -79,6 +82,14 @@ fn err_native(e: anyhow::Error) -> AppError {
 
 fn truthy_key(key: Option<&str>) -> Option<&str> {
     key.map(str::trim).filter(|k| !k.is_empty())
+}
+
+/// Whether a cached medium is an image, from its first bytes; a video is not read whole for that.
+fn cached_is_image(path: &Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 16];
+    let read = std::fs::File::open(path).and_then(|mut f| f.read(&mut head));
+    read.is_ok_and(|n| sns::detect_image_mime(&head[..n], "").starts_with("image/"))
 }
 
 fn export_stats_value(total_posts: i64, total_friends: i64, my_posts: Option<i64>) -> Value {
@@ -584,11 +595,20 @@ impl ServiceHub {
     // ── media download / decrypt ──
 
     fn sns_http_client(&self, insecure: bool) -> AppResult<reqwest::Client> {
-        reqwest::Client::builder()
+        if !insecure {
+            if let Some(client) = self.sns_state.lock().unwrap().client.clone() {
+                return Ok(client);
+            }
+        }
+        let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .danger_accept_invalid_certs(insecure)
             .build()
-            .map_err(|e| AppError::runtime(format!("failed to create HTTP client: {e}")))
+            .map_err(|e| AppError::runtime(format!("failed to create HTTP client: {e}")))?;
+        if !insecure {
+            self.sns_state.lock().unwrap().client = Some(client.clone());
+        }
+        Ok(client)
     }
 
     /// `fetchAndDecryptImage`: downloads a Moments image/video, decrypting with the ISAAC64 key.
@@ -600,7 +620,8 @@ impl ServiceHub {
         let cache_path = self.sns_cache_file(url);
 
         if cache_path.exists() {
-            if is_video {
+            // the cover of a video lives on the video servers too: what was kept tells which it is
+            if is_video && !cached_is_image(&cache_path) {
                 return Ok(SnsMediaFetch {
                     data: None,
                     content_type: "video/mp4".into(),
@@ -641,7 +662,13 @@ impl ServiceHub {
         })?;
         let status = resp.status();
         if status.as_u16() != 200 && status.as_u16() != 206 {
-            return Err(AppError::runtime(format!("HTTP {}", status.as_u16())));
+            let err = AppError::runtime(format!("HTTP {}", status.as_u16()));
+            // gone from WeChat's servers, as the media of a deleted post are: a 404 for a page, not a failure
+            return Err(if matches!(status.as_u16(), 404 | 410) {
+                err.with_details(json!({ "failureKind": "not_found" }))
+            } else {
+                err
+            });
         }
         let x_enc = resp
             .headers()
@@ -663,16 +690,23 @@ impl ServiceHub {
             .to_vec();
         let key = truthy_key(key);
 
-        if is_video {
+        // A video's cover comes from the video servers as a plain image: decrypting it as a video's first bytes
+        // would ruin it, so it goes the way of the images.
+        if is_video && !sns::detect_image_mime(&raw, "").starts_with("image/") {
             if let Some(k) = key {
                 isaac64::xor_in_place(&mut raw, k, Some(VIDEO_HEADER_BYTES));
             }
             std::fs::write(&cache_path, &raw).map_err(|e| {
                 AppError::runtime(format!("failed to write {}: {e}", cache_path.display()))
             })?;
+            // a video's cover, encrypted with the video's key, is an image once decrypted
+            let content_type = match sns::detect_image_mime(&raw, "") {
+                image if image.starts_with("image/") => image,
+                _ => "video/mp4".into(),
+            };
             return Ok(SnsMediaFetch {
                 data: Some(raw),
-                content_type: "video/mp4".into(),
+                content_type,
                 cache_path: Some(cache_path),
             });
         }

@@ -1376,6 +1376,100 @@ fn videos_are_sent_in_the_parts_asked_for() {
     assert_eq!(r.status, 400, "{}", r.body);
 }
 
+#[test]
+fn moments_media_come_from_the_cache_and_only_from_wechat() {
+    use md5::{Digest, Md5};
+    // what `sns media` fetched before is kept in the cache, named after the md5 of its address: the route reads it
+    // from there, without the network (#202)
+    let root = temp_root("sns-media");
+    let home = account_home(&root);
+    let (exit, listed, _) = run_cli(&home, &["--json", "cache", "list"]);
+    assert_eq!(exit, 0);
+    let listed: Value = serde_json::from_str(&listed).unwrap();
+    let folder = listed["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|part| part["part"] == "sns")
+        .and_then(|part| part["paths"][0].as_str())
+        .map(PathBuf::from)
+        .expect("the Moments cache folder");
+    std::fs::create_dir_all(&folder).unwrap();
+    let cached = |url: &str, ext: &str, bytes: &[u8]| {
+        let name = format!("{:x}{ext}", Md5::digest(url.as_bytes()));
+        std::fs::write(folder.join(name), bytes).unwrap();
+    };
+    let image_url = "https://shmmsns.qpic.cn/mmsns/abc/0?token=T&idx=1";
+    let image = b"\xFF\xD8\xFF\xE0moments".to_vec();
+    cached(image_url, ".jpg", &image);
+    let video_url = "https://szzjwxsns.video.qq.com/102/20202/snsvideodownload?m=x&token=T&idx=1";
+    let video: Vec<u8> = (0..300_000u32).map(|i| (i % 253) as u8).collect();
+    cached(video_url, ".mp4", &video);
+
+    let server = start(&home, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+    let get = |url: &str, extra: &[(&str, &str)]| {
+        let mut headers = vec![("Authorization", auth.as_str())];
+        headers.extend_from_slice(extra);
+        let q = format!("url={}&key=123", percent(url));
+        server.request("GET", &format!("/api/sns/media?{q}"), &headers, "")
+    };
+
+    let r = get(image_url, &[]);
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert_eq!(r.headers["content-type"], "image/jpeg");
+    assert_eq!(r.bytes, image);
+    assert_eq!(
+        get(image_url, &[("If-None-Match", &r.headers["etag"])]).status,
+        304
+    );
+    // a video is sent from its file, in the parts a player asks for
+    let r = get(video_url, &[("Range", "bytes=1000-1999")]);
+    assert_eq!(r.status, 206, "{}", r.body);
+    assert_eq!(r.headers["content-type"], "video/mp4");
+    assert_eq!(
+        r.headers["content-range"],
+        format!("bytes 1000-1999/{}", video.len())
+    );
+    assert_eq!(r.bytes, video[1000..2000]);
+
+    // only https addresses of WeChat's media servers: the route does not fetch whatever it is given
+    for url in [
+        "http://shmmsns.qpic.cn/mmsns/abc/0",
+        "https://127.0.0.1/secret",
+        "https://qpic.cn.example.com/a",
+        "file:///etc/hosts",
+    ] {
+        let r = get(url, &[]);
+        assert_eq!(r.status, 400, "{url}: {}", r.body);
+        assert_eq!(r.json()["error"]["code"], "invalid_arguments", "{url}");
+    }
+    // and it needs the token, as every /api/ route does
+    assert_eq!(
+        server
+            .request(
+                "GET",
+                "/api/sns/media?url=https%3A%2F%2Fa.qpic.cn%2Fx",
+                &[],
+                ""
+            )
+            .status,
+        401
+    );
+}
+
+/// `text` as it goes in a query string.
+fn percent(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 struct EventStream {
     stream: TcpStream,
     text: String,

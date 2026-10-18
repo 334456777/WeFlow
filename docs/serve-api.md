@@ -325,6 +325,11 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - A request over the limit waits in line instead of answering `429` straight away: a screen of thumbnails asks for its images at once, and each takes a few milliseconds. Only when 256 requests are already waiting, or a request has waited 10 seconds, does it answer `429` (`busy`, `Retry-After: 1`).
 - On a large account an image takes about 4 ms instead of about 190 ms through `POST /chat/image-data`, and 20 images asked for at once all answer within 10 ms.
 
+`GET /api/sns/media` does the same for the images and videos of Moments posts, with the parameters of `sns media`: the `url` and `key` of a medium of `sns timeline` (`media[].thumb` or `media[].url`, and `media[].key`). WeChat keeps them on its servers, encrypted, so the first request fetches the medium and decrypts it; it is kept in the cache (`<cache>/sns_cache`, cleared by `cache clear --sns`) and later requests read it from there. A video is sent from its file, so `Range` works as for the videos of messages.
+
+- Only `https` addresses of WeChat's media servers are taken (`*.qpic.cn`, `*.wechat.com`, `*.video.qq.com`, `*.tc.qq.com`); anything else answers `400` (`invalid_arguments`), so the route cannot be made to fetch other addresses. `POST /sns/media` is unchanged.
+- A request waits for WeChat's servers the first time, while holding its place among the media requests.
+
 ### Message push
 
 `GET /api/push/messages` sends new and recalled messages as server-sent events, so a page need not poll `chat latest`:
