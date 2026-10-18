@@ -318,6 +318,39 @@ describe('App', () => {
     expect(text()).toContain('weflow web use');
   });
 
+  it('shows the Moments of a running backend: who posts, their posts, and the cards of the page (#202)', async () => {
+    const asked: string[] = [];
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      asked.push(url);
+      if (url.startsWith('/api/sns/post-counts')) return json({ success: true, data: { wxid_a: 2, wxid_b: 1 } });
+      if (url.startsWith('/api/chat/contacts')) return json({ success: true, data: [{ username: 'wxid_a', remark: '林沐' }, { username: 'wxid_b', nick_name: '小周' }] });
+      if (url.startsWith('/api/sns/timeline')) {
+        const only = new URL(url, 'http://x').searchParams.get('user');
+        const posts = [
+          { id: '1', username: 'wxid_a', nickname: '林沐', createTime: 1760000000, type: 2, contentDesc: '海边' },
+          { id: '2', username: 'wxid_b', nickname: '小周', createTime: 1759990000, type: 2, contentDesc: '加班' },
+        ].filter(p => !only || p.username === only);
+        return json({ success: true, data: { timeline: posts } });
+      }
+      return json({ success: true, data: [] });
+    }));
+    render(<App />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '朋友圈' }));
+    await act(async () => {});
+    const people = screen.getByRole('region', { name: '朋友圈浏览' });
+    expect(Array.from(people.querySelectorAll('.conversation-name'), n => n.textContent)).toEqual(['全部朋友圈', '林沐', '小周']);
+    expect(Array.from(document.querySelectorAll('.moment-text'), n => n.textContent)).toEqual(['海边', '加班']);
+    // the console has the page's own cards
+    expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['筛选朋友圈', '朋友圈统计']);
+    // one poster
+    fireEvent.click(screen.getByRole('button', { name: '只看小周，1 条' }));
+    await act(async () => {});
+    expect(asked.at(-1)).toContain('user=wxid_b');
+    expect(Array.from(document.querySelectorAll('.moment-text'), n => n.textContent)).toEqual(['加班']);
+  });
+
   it('switches the colour theme from the settings and remembers it (#252)', async () => {
     await renderWith(HEALTH);
     fireEvent.click(screen.getByRole('button', { name: '设置' }));

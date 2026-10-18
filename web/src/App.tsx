@@ -38,6 +38,11 @@ import { HoverTrack } from './HoverTrack';
 import { Scrollbar } from './Scrollbar';
 import { Segmented } from './Segmented';
 import { useTheme, type ThemeChoice } from './theme';
+import { NO_FILTER, type SnsFilter } from './api/sns';
+import { MomentsFeed } from './moments/MomentsFeed';
+import { MomentPeople } from './moments/MomentPeople';
+import { filterSummary, MomentsFilter, MomentsStats } from './moments/MomentsCards';
+import { useMomentPeople } from './moments/useMomentPeople';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -251,6 +256,11 @@ export function App() {
   useEffect(() => {
     if (!liveSession && sessionList.length) setLiveId(sessionList[0].username);
   }, [liveSession, sessionList]);
+  // The Moments page reads `weflow serve` too (#202): who posts, and the timeline narrowed to a poster, words, days.
+  const momentsLive = activeCategory === 'moments' && connected;
+  const [momentFilter, setMomentFilter] = useState<SnsFilter>(NO_FILTER);
+  useEffect(() => { setMomentFilter(NO_FILTER); }, [scope]);
+  const [people, reloadPeople] = useMomentPeople(momentsLive, scope, sessionList[0]?.selfWxid);
   const list = conversations.filter(item => item.category === activeCategory);
   const selected = live ? liveConversation(liveSession) : list.find(item => item.id === selectedIds[activeCategory]) || list[0];
   const media = selected.messages.filter(message => message.kind !== 'text');
@@ -417,9 +427,19 @@ export function App() {
         ? (open: boolean) => liveSession ? <MediaPanel key={scope + ':' + liveSession.username} sessionId={liveSession.username} active={open} onOpen={item => openMedia(liveSession.username, item)} /> : null
         : <div className="media-list"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
+    {
+      id: 'moments-filter', title: '筛选朋友圈', summary: filterSummary(momentFilter),
+      content: <MomentsFilter key={scope} filter={momentFilter} onChange={setMomentFilter} />,
+    },
+    {
+      id: 'moments-stats', title: '朋友圈统计',
+      content: (open: boolean) => <MomentsStats scope={scope} active={open && momentsLive} />,
+    },
   ];
-  // nothing to show of a real conversation until one is open
-  const hiddenCards = selected.live && !liveSession ? ['info', 'media'] : [];
+  // nothing to show of a real conversation until one is open; the Moments page has cards of its own
+  const hiddenCards = momentsLive
+    ? ['export', 'tasks', 'search', 'info', 'media']
+    : ['moments-filter', 'moments-stats', ...(selected.live && !liveSession ? ['info', 'media'] : [])];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -461,7 +481,19 @@ export function App() {
           </Segmented></div>
         <div className="setting-row"><div><h2>减少动画</h2><p>所有过渡立即完成，状态提示保留。也跟随系统的「减少动态效果」。</p></div><label className="toggle"><input type="checkbox" aria-label="减少动画" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /><span /></label></div>
         <small className="settings-footnote">连接到 weflow serve 后读取本机记录；未连接时显示示例数据。</small>
-      </section><Scrollbar target={settingsRef} /></> : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
+      </section><Scrollbar target={settingsRef} /></> : momentsLive || (activeCategory === 'moments' && backend.state === 'unauthorized')
+        ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="朋友圈浏览">
+          {backend.state === 'unauthorized'
+            ? <TokenPrompt />
+            : <MomentPeople state={people} total={null} selected={momentFilter.username} onRetry={reloadPeople}
+              onSelect={username => { setMomentFilter(filter => ({ ...filter, username })); setMobileDetail(true); }} />}
+          <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
+            <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
+            {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+          </div>
+          <Scrollbar target={paneRef} />
+        </section>
+        : <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label={categoryLabels[activeCategory] + '记录浏览'}>
         {activeCategory === 'chat'
           ? backend.state === 'unauthorized'
             ? <TokenPrompt />
