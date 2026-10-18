@@ -67,6 +67,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/chat/statuses`, in batches of 100) |
 | `src/styles/tokens.css` | Design tokens: type, control heights, radii, colours (with dark mode), the five neumorphic surfaces (#220), motion durations and curves (#192, #193). Page styles use only these variables |
 | `src/motion.ts` | Spring presets; `usePresence` keeps popovers, dialogs and notices until their exit has played |
+| `src/theme.ts` | The colour theme chosen in the settings: follow the system (default), light or dark, kept in `localStorage`; sets `data-theme` on `<html>`, which `index.html` already sets before the first paint (#252) |
 | `src/CardStack.tsx` | The console's cards: the header opens and closes a card; drag it with the mouse or press Alt+↑ / Alt+↓ to reorder. Order and open state stay in the browser's `localStorage` |
 | `src/VirtualList.tsx` | A list that draws only the rows in sight, for lists of thousands of rows (#159) |
 | `src/Scrollbar.tsx` | The page's own scrollbar: floats over a scroll area (the browser's is hidden), takes no width, can be dragged |

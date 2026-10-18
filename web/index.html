@@ -7,6 +7,15 @@
     <meta name="description" content="WeFlow 聊天记录工作台" />
     <link rel="icon" href="data:," />
     <title>WeFlow · 记录工作台</title>
+    <script>
+      // The theme in force before the first paint (#252); src/theme.ts keeps it afterwards, by the same rules.
+      (function () {
+        var choice = null;
+        try { choice = localStorage.getItem('weflow.theme'); } catch (e) {}
+        var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

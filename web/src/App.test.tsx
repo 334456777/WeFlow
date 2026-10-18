@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { App } from './App';
 import { setToken } from './api/client';
@@ -316,6 +316,19 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(text()).toContain('不适用于这个网页');
     expect(text()).toContain('weflow web use');
+  });
+
+  it('switches the colour theme from the settings and remembers it (#252)', async () => {
+    await renderWith(HEALTH);
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    const themes = screen.getByRole('group', { name: '颜色主题' });
+    expect(within(themes).getByRole('button', { name: '跟随系统' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(within(themes).getByRole('button', { name: '深色' }));
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(localStorage.getItem('weflow.theme')).toBe('dark');
+    fireEvent.click(within(themes).getByRole('button', { name: '跟随系统' }));
+    expect(localStorage.getItem('weflow.theme')).toBeNull();
+    expect(document.documentElement.dataset.theme).toBe('light');
   });
 
   it('shows the details, members and media of a real conversation once their cards open (#200)', async () => {

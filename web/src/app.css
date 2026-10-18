@@ -562,6 +562,10 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .search-result-copy.stacked strong { max-width: none; }
 .more-button { margin-top: var(--space-2); }
 .scope-group { width: 216px; }
+/* A row with a wide control: on a narrow screen the control goes under its text instead of squeezing it. */
+.setting-choice { flex-wrap: wrap; }
+.setting-choice > div:first-child { flex: 1 1 240px; }
+.theme-group { width: 240px; max-width: 100%; }
 .search-result-copy > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }
 .search-result time { flex-shrink: 0; color: var(--fg-subtle); font-size: var(--text-2xs); }
 

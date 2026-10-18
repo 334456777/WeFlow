@@ -4,7 +4,7 @@
  * surfaces are neumorphic in neutral grey (#220).
  */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   /* Type: captions 11–12px, body 13–14px, headings 14px, page titles 20px. */
   --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -143,27 +143,30 @@
   --enter-offset: 6px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #25282c;
-    --fg: #e7e9ec;
-    --fg-muted: #b0b6bd;
-    --fg-subtle: #9aa0a7;
-    --focus-ring: #b0b6bd;
-    --overlay: rgb(0 0 0 / .65);
-    --state-ok: #38c172;
-    --state-busy: #d9b04e;
-    --state-idle: #6c737b;
-    --state-danger: #e07a7a;
-    --neu-light: rgb(255 255 255 / .05);
-    --neu-dark: rgb(0 0 0 / .5);
-    /* The lit rim: white light catching the edge of what is raised or sunk, as the dark rim does on light surfaces. */
-    --neu-edge-light: rgb(255 255 255 / .22);
-    --neu-edge-dark: rgb(0 0 0 / .6);
-    --neu-edge-light-hover: rgb(255 255 255 / .3);
-    --neu-edge-dark-hover: rgb(0 0 0 / .7);
-    --neu-overlay-shadow: rgb(0 0 0 / .6);
-  }
+/*
+ * Dark (#252): `data-theme` on <html> is the theme in force, set before the first paint (index.html) and kept
+ * by theme.ts, which follows the system's light or dark mode unless one is chosen in the settings.
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface: #25282c;
+  --fg: #e7e9ec;
+  --fg-muted: #b0b6bd;
+  --fg-subtle: #9aa0a7;
+  --focus-ring: #b0b6bd;
+  --overlay: rgb(0 0 0 / .65);
+  --state-ok: #38c172;
+  --state-busy: #d9b04e;
+  --state-idle: #6c737b;
+  --state-danger: #e07a7a;
+  --neu-light: rgb(255 255 255 / .05);
+  --neu-dark: rgb(0 0 0 / .5);
+  /* The lit rim: white light catching the edge of what is raised or sunk, as the dark rim does on light surfaces. */
+  --neu-edge-light: rgb(255 255 255 / .22);
+  --neu-edge-dark: rgb(0 0 0 / .6);
+  --neu-edge-light-hover: rgb(255 255 255 / .3);
+  --neu-edge-dark-hover: rgb(0 0 0 / .7);
+  --neu-overlay-shadow: rgb(0 0 0 / .6);
 }
 
 /* Higher contrast: deeper shadows and sharper rims, still no borders. */
@@ -177,8 +180,8 @@
     --neu-edge-dark-hover: rgb(30 35 42 / .7);
   }
 }
-@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  :root {
+@media (prefers-contrast: more) {
+  :root[data-theme='dark'] {
     --fg-muted: #c6cbd1;
     --fg-subtle: #b4bac1;
     --neu-dark: rgb(0 0 0 / .7);
