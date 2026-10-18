@@ -325,6 +325,11 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - 超出上限的请求排队等待，不会立即返回 `429`：一屏缩略图是同时请求的，而每张只要几毫秒。只有已有 256 个请求在排队，或者一个请求已经等了 10 秒，才返回 `429`（`busy`，`Retry-After: 1`）。
 - 在大账号上，一张图片约 4 ms；走 `POST /chat/image-data` 约 190 ms。同时请求 20 张时，10 ms 内都有回复。
 
+`GET /api/sns/media` 对朋友圈的图片和视频做同样的事，参数与 `sns media` 相同：`sns timeline` 中某个媒体的 `url` 和 `key`（`media[].thumb` 或 `media[].url`，以及 `media[].key`）。这些媒体加密存放在微信的服务器上，所以第一次请求时服务端会下载并解密，然后保存在缓存里（`<cache>/sns_cache`，用 `cache clear --sns` 清理），之后的请求直接从缓存读取。视频从文件发送，所以和消息里的视频一样支持 `Range`。
+
+- 只接受微信媒体服务器的 `https` 地址（`*.qpic.cn`、`*.wechat.com`、`*.video.qq.com`、`*.tc.qq.com`），其他地址返回 `400`（`invalid_arguments`），因此不能借这个路由访问别的地址。`POST /sns/media` 不变。
+- 第一次请求要等微信服务器返回，等待期间占用一个媒体请求名额。
+
 ### 消息推送
 
 `GET /api/push/messages` 以服务器发送事件（SSE）推送新消息和撤回，网页不必轮询 `chat latest`：

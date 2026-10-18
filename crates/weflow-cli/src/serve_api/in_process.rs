@@ -155,8 +155,14 @@ pub(super) async fn run(hub: &Hub, argv: &[String]) -> Option<(Value, u8)> {
 }
 
 /// Commands whose `/api/` route is a `GET` that answers the file itself, for a page to show: the image, the voice or
-/// the video of a message. The parameters are those of the command, but for `out`.
-pub(super) const MEDIA: &[&str] = &["chat image-data", "chat voice-data", "chat video-data"];
+/// the video of a message, or an image or video of a Moments post. The parameters are those of the command, but for
+/// `out`.
+pub(super) const MEDIA: &[&str] = &[
+    "chat image-data",
+    "chat voice-data",
+    "chat video-data",
+    "sns media",
+];
 
 /// A media file and its content type.
 pub(super) struct MediaFile {
@@ -184,8 +190,10 @@ fn image_mime(bytes: &[u8]) -> &'static str {
 pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile, (Value, u8)>> {
     use crate::{ChatSubcommand, Commands};
     let cli = parse(argv)?;
-    let Commands::Chat(chat) = cli.command else {
-        return None;
+    let chat = match cli.command {
+        Commands::Chat(chat) => chat,
+        Commands::Sns(sns) => return Some(sns_media(hub, sns.command).await),
+        _ => return None,
     };
     let hub = match hub.get() {
         Ok(hub) => hub,
@@ -257,6 +265,41 @@ pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile
     let outcome =
         done.unwrap_or_else(|err| Err(AppError::runtime(format!("the command failed: {err}"))));
     Some(outcome.map_err(|err| crate::json_document(Err(err))))
+}
+
+/// `sns media` for a page (issue #202): an image or a video of a Moments post, fetched from WeChat's servers,
+/// decrypted with `key` and kept in the cache, so it is fetched once. Only addresses of WeChat's media servers are
+/// taken (see [`weflow_core::sns::is_wechat_media_url`]). A video is answered from its cached file, so a player can
+/// ask for a part of it.
+async fn sns_media(hub: &Hub, command: crate::SnsSubcommand) -> Result<MediaFile, (Value, u8)> {
+    let outcome = async {
+        let crate::SnsSubcommand::Media { url, key, .. } = command else {
+            return Err(AppError::runtime("this command has no media route"));
+        };
+        if !weflow_core::sns::is_wechat_media_url(&url) {
+            return Err(AppError::usage(
+                "url must be an https address of WeChat's Moments media servers",
+            ));
+        }
+        let fetched = hub.get()?.sns_fetch_media(&url, key.as_deref()).await?;
+        match (
+            fetched.content_type.starts_with("video/"),
+            fetched.cache_path,
+            fetched.data,
+        ) {
+            (true, Some(path), _) => Ok(MediaFile {
+                body: MediaBody::File(path),
+                mime: "video/mp4",
+            }),
+            (false, _, Some(bytes)) => Ok(MediaFile {
+                mime: image_mime(&bytes),
+                body: MediaBody::Bytes(bytes),
+            }),
+            _ => Err(AppError::runtime("the media could not be read")),
+        }
+    }
+    .await;
+    outcome.map_err(|err| crate::json_document(Err(err)))
 }
 
 #[cfg(test)]
@@ -333,7 +376,7 @@ mod tests {
 
     #[test]
     fn media_commands_parse_with_the_placeholder_out() {
-        use crate::{ChatSubcommand, Commands};
+        use crate::{ChatSubcommand, Commands, SnsSubcommand};
         let endpoints = super::super::Endpoints::new();
         for name in MEDIA {
             let ep = endpoints
@@ -345,20 +388,26 @@ mod tests {
                 "{name} has no `out`"
             );
             let mut argv = ep.path.clone();
-            argv.extend(["--out=-", "--", "wxid_bob", "3"].map(String::from));
-            let cli = parse(&argv).unwrap_or_else(|| panic!("{name} does not parse"));
-            let Commands::Chat(chat) = cli.command else {
-                panic!("{name} is not a chat command")
+            argv.extend(["--out=-", "--"].map(String::from));
+            // a message's conversation and id, or a Moments address
+            let positionals: &[&str] = if ep.path[0] == "sns" {
+                &["https://a.qpic.cn/x"]
+            } else {
+                &["wxid_bob", "3"]
             };
-            assert!(
-                matches!(
+            argv.extend(positionals.iter().map(|p| p.to_string()));
+            let cli = parse(&argv).unwrap_or_else(|| panic!("{name} does not parse"));
+            let handled = match cli.command {
+                Commands::Chat(chat) => matches!(
                     chat.command,
                     ChatSubcommand::ImageData { .. }
                         | ChatSubcommand::VoiceData { .. }
                         | ChatSubcommand::VideoData { .. }
                 ),
-                "{name} has no media route in `media`"
-            );
+                Commands::Sns(sns) => matches!(sns.command, SnsSubcommand::Media { .. }),
+                _ => false,
+            };
+            assert!(handled, "{name} has no media route in `media`");
         }
     }
 }

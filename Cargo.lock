@@ -2604,6 +2604,7 @@ dependencies = [
  "brotli-decompressor",
  "clap",
  "flate2",
+ "md-5",
  "mimalloc",
  "mime_guess",
  "rand 0.8.8",

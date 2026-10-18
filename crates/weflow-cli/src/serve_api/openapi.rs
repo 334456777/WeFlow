@@ -161,7 +161,7 @@ fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
     .into();
     let content = match path.last().map(String::as_str) {
         Some("voice-data") => json!({ "audio/wav": {} }),
-        Some("video-data") => json!({ "video/mp4": {}, "image/*": {} }),
+        Some("video-data") | Some("media") => json!({ "video/mp4": {}, "image/*": {} }),
         _ => json!({ "image/*": {} }),
     };
     let what = match path.last().map(String::as_str) {
@@ -170,6 +170,12 @@ fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
             zh,
             "The video as WeChat keeps it; with `thumb=true`, its thumbnail or cover",
             "微信保存的视频；带 `thumb=true` 时为缩略图或封面",
+        ),
+        Some("media") => pick(
+            zh,
+            "The image or video of a Moments post, fetched from WeChat's media servers (https only) and decrypted \
+             with `key`; kept in the cache after the first time",
+            "朋友圈的图片或视频：从微信的媒体服务器取回（只接受 https 地址），用 `key` 解密；第一次之后从缓存读取",
         ),
         _ => pick(zh, "The decrypted image", "解密后的图片"),
     };
@@ -1004,6 +1010,21 @@ mod tests {
                 "{name}"
             );
         }
+        // the media of a Moments post (#202): its address and key, no `out`
+        let op = &doc["paths"]["/api/sns/media"]["get"];
+        assert!(op["responses"]["200"]["content"]["video/mp4"].is_object());
+        assert!(op["responses"]["200"]["content"]["image/*"].is_object());
+        let params: Vec<&str> = op["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert!(
+            params.contains(&"url") && params.contains(&"key"),
+            "{params:?}"
+        );
+        assert!(!params.contains(&"out"));
     }
 
     #[test]

@@ -32,6 +32,8 @@ weflow-assets = { path = "../weflow-assets" }
 [dev-dependencies]
 brotli-decompressor = "5"
 flate2.workspace = true
+# tests/serve_api.rs names Moments media the way the cache does
+md-5.workspace = true
 # tests/web_versions.rs publishes WebUI packages in a registry of its own
 sha2.workspace = true
 zip.workspace = true
