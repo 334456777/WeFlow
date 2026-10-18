@@ -605,6 +605,15 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .media-item:hover { box-shadow: var(--neu-pressed); color: var(--fg); }
 /* Rows and navigation: hover sinks them a little, holding them down sinks them fully, as a selection does. */
 .nav-item:active, .conversation-row:active, .search-result:active, .media-item:active { box-shadow: var(--neu-inset); transition-duration: var(--duration-micro); }
+/*
+ * What is already sunk (a selection, a toggle that is on, a checked box, a sent photo) sinks further when held
+ * down, instead of staying as it is or rising to pressed (#253). After every press rule above, so it wins.
+ */
+.icon-button.on:active, .nav-item.selected:active, .conversation-row.active:active,
+.calendar-day.chosen:active:not([aria-disabled]), .calendar-choice.chosen:active:not(:disabled),
+.checkbox:active input:checked + .checkbox-box, .outgoing .photo-button:active {
+  box-shadow: var(--neu-inset-pressed); transition-duration: var(--duration-micro);
+}
 .media-item img { width: 72px; height: 48px; flex-shrink: 0; object-fit: cover; border-radius: var(--radius-xs); }
 .media-item > span { flex: 1; min-width: 0; color: var(--fg); font-size: var(--text-sm); }
 .media-item small { display: block; color: var(--fg-muted); font-size: var(--text-2xs); line-height: var(--leading-2xs); }

@@ -105,6 +105,14 @@
     inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
     inset 0 0 0 transparent, inset 0 0 0 transparent,
     -4px -4px 8px var(--neu-light), 4px 4px 8px var(--neu-dark);
+  /*
+   * Held down, an inset surface (a selection, a toggle that is on, a checked box) sinks deeper still: its shades
+   * grow and its top-left rim darkens, so a press on it shows as much as a press on a raised one (#253).
+   */
+  --neu-inset-pressed:
+    inset 1px 1px 0 var(--neu-edge-dark-hover), inset -1px -1px 0 var(--neu-edge-light),
+    inset 6px 6px 12px var(--neu-dark), inset -5px -5px 10px var(--neu-light),
+    0 0 0 transparent, 0 0 0 transparent;
   /* Floating layers (dialogs, notices, a dragged card) are raised too, only farther from the page. */
   --neu-raised-float:
     inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
