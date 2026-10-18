@@ -111,9 +111,9 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
     <form className="search-form" onSubmit={submit}>
       <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" />
         <input type="search" aria-label={scope === 'all' ? '搜索全部会话的消息' : '搜索此会话的消息'} placeholder={scope === 'all' ? '搜索全部会话的消息' : '搜索' + name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} />
-        <button className={'icon-button small' + (datesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={datesOpen} onClick={() => setDatesOpen(open => !open)}><CalendarBlank size={16} /></button>
       </div>
-      <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="fold-label">搜索</span></button>
+      <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="search-button-label">搜索</span></button>
+      <button className={'icon-button' + (datesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={datesOpen} onClick={() => setDatesOpen(open => !open)}><CalendarBlank size={16} /></button>
     </form>
     <div className="search-date-row"><span className="field-label">范围</span>
       <Segmented className="scope-group" count={2} index={scope === 'all' ? 1 : 0} role="group" aria-label="搜索范围">
