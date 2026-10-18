@@ -49,7 +49,7 @@
   - 用 `gh project item-add` 加入条目，用 `gh project item-edit` 改字段；重写 Status 选项会清空所有条目的状态，改选项后必须重新设置
 - Pull request 创建时及时添加 Lables（如果有对应 Development 则添加对应 Development）；PR关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 （只有这几个关键词是英文，PR描述其他部分仍然是中文）Issues；PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
 - 用户可能会出错，当用户出现明显错误或决策冲突时，请指出
-- 多个连锁 PR，使用 `gh stack`
+- 对于需要多个依赖 PR 的开发任务，请使用 `gh stack`
 - 修改 `docs/` 下的文档时，必须同步更新 `docs/zh-CN/` 中的对应版本（反之亦然），新增文档也要两种语言都提供；`docs/es-ES/` 不受此限
 
 ## 注意事项
