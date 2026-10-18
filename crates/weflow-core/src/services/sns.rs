@@ -26,6 +26,9 @@ pub(crate) struct SnsState {
     last_timeline_fallback: Option<Instant>,
     image_cache: HashMap<String, (String, Instant)>,
     image_order: VecDeque<String>,
+    /// The client for WeChat's media servers, kept so that requests reuse their connections (#202): a page asks
+    /// for a screen of pictures at once, and a new client per picture redid DNS and TLS every time.
+    client: Option<reqwest::Client>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -592,11 +595,20 @@ impl ServiceHub {
     // ── media download / decrypt ──
 
     fn sns_http_client(&self, insecure: bool) -> AppResult<reqwest::Client> {
-        reqwest::Client::builder()
+        if !insecure {
+            if let Some(client) = self.sns_state.lock().unwrap().client.clone() {
+                return Ok(client);
+            }
+        }
+        let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .danger_accept_invalid_certs(insecure)
             .build()
-            .map_err(|e| AppError::runtime(format!("failed to create HTTP client: {e}")))
+            .map_err(|e| AppError::runtime(format!("failed to create HTTP client: {e}")))?;
+        if !insecure {
+            self.sns_state.lock().unwrap().client = Some(client.clone());
+        }
+        Ok(client)
     }
 
     /// `fetchAndDecryptImage`: downloads a Moments image/video, decrypting with the ISAAC64 key.
