@@ -8,6 +8,7 @@ import { Segmented } from '../Segmented';
 import type { ExportFormat, ExportResult } from '../types';
 import { exportPayments } from './payExport';
 import { totalsOf, type PayFilter } from './usePayments';
+import { GridSkeleton } from '../Skeleton';
 
 const FORMATS: ExportFormat[] = ['HTML', 'JSON', 'Excel'];
 
@@ -28,7 +29,7 @@ export function PaymentsFilter({ filter, onChange }: { filter: PayFilter; onChan
 }
 
 export function PaymentsSummary({ payments }: { payments: Payment[] | null }) {
-  if (!payments) return <p className="empty-text" aria-busy="true">正在读取…</p>;
+  if (!payments) return <GridSkeleton label="正在读取支付记录" cells={2} />;
   const totals = totalsOf(payments);
   return <dl className="info-grid">
     <div><dt>笔数</dt><dd className="num">{totals.count.toLocaleString('zh-CN')} 笔</dd></div>

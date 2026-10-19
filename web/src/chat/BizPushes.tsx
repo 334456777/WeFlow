@@ -10,6 +10,7 @@ import type { ChatSession } from '../api/chat';
 import { useLive } from '../api/live';
 import { Avatar } from '../Avatar';
 import { dayOf, formatClock, formatDayHeading } from './messages';
+import { MomentsSkeleton } from '../Skeleton';
 
 interface Feed {
   status: 'loading' | 'ready' | 'error';
@@ -89,7 +90,7 @@ export function BizPushes({ session }: { session: ChatSession }) {
   });
 
   if (feed.status === 'loading') {
-    return <div className="pane-message" aria-busy="true"><CircleNotch size={20} className="spin" /><p>正在读取推送</p></div>;
+    return <MomentsSkeleton label="正在读取推送" />;
   }
   if (feed.status === 'error') {
     return <div className="pane-message" role="alert"><p>{feed.error}</p><button type="button" className="secondary-button" onClick={() => setRound(n => n + 1)}><ArrowClockwise size={14} />重试</button></div>;

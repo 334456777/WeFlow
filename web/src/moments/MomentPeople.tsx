@@ -4,6 +4,7 @@ import { Aperture, ArrowClockwise, MagnifyingGlass } from '@phosphor-icons/react
 import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import type { MomentPerson, PeopleState } from './useMomentPeople';
+import { ListSkeleton } from '../Skeleton';
 
 const ROW_HEIGHT = 58;
 const ALL = '@all';
@@ -26,7 +27,7 @@ export function MomentPeople({ state, total, selected, onSelect, onRetry }: {
   }, [state, query, total]);
 
   let body;
-  if (state.status === 'loading') body = <p className="session-message" aria-busy="true">正在读取发布者…</p>;
+  if (state.status === 'loading') body = <ListSkeleton label="正在读取发布者" />;
   else if (state.status === 'error') {
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!rows.length) body = <p className="session-message">{query.trim() ? '没有名称匹配的发布者。' : '本机没有朋友圈。'}</p>;

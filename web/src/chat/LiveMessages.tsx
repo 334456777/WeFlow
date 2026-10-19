@@ -13,6 +13,7 @@ import { dayOf, formatClock, formatDayHeading, isMine, kindOf } from './messages
 import { MessageView, type Preview } from './MessageView';
 import { kindOf as sessionKind } from './sessions';
 import { useMessages, type Focus, type Jump } from './useMessages';
+import { MessagesSkeleton } from '../Skeleton';
 
 /** Older (newer) messages are asked for while the top (bottom) is closer than this. */
 const LOAD_AHEAD = 600;
@@ -193,7 +194,7 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
   }, [thread, loadOlder, loadNewer, scroller]);
 
   if (thread.status === 'idle' || thread.status === 'loading') {
-    return <div className="pane-message" aria-busy="true"><CircleNotch size={20} className="spin" /><p>正在读取消息</p></div>;
+    return <MessagesSkeleton label="正在读取消息" />;
   }
   if (thread.status === 'error') {
     return <div className="pane-message" role="alert"><p>{thread.error}</p><button type="button" className="secondary-button" onClick={reload}><ArrowClockwise size={14} />重试</button></div>;

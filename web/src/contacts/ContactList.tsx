@@ -1,11 +1,12 @@
 // The contacts (#205), by kind with how many of each, or searched across all kinds by name, remark or WeChat ID.
 import { useMemo, useState } from 'react';
-import { ArrowClockwise, CircleNotch, MagnifyingGlass } from '@phosphor-icons/react';
+import { ArrowClockwise, MagnifyingGlass } from '@phosphor-icons/react';
 import { CONTACT_KINDS, contactKindLabels, countKinds, matchContacts, type Contact, type ContactKind } from '../api/contacts';
 import { Avatar } from '../Avatar';
 import { Segmented } from '../Segmented';
 import { VirtualList } from '../VirtualList';
 import type { ContactsState } from './useContacts';
+import { ListSkeleton } from '../Skeleton';
 
 const ROW_HEIGHT = 58;
 
@@ -31,7 +32,7 @@ export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }
 
   let body;
   if (state.status === 'loading' || state.status === 'idle') {
-    body = <p className="session-message" aria-busy="true"><CircleNotch size={14} className="spin" /> 正在读取通讯录…</p>;
+    body = <ListSkeleton label="正在读取通讯录" />;
   } else if (state.status === 'error') {
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!rows.length) {

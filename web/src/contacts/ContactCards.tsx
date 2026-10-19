@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { DownloadSimple } from '@phosphor-icons/react';
 import { CONTACT_FORMATS, CONTACT_KINDS, contactKindLabels, countKinds, type Contact, type ContactFormat, type ContactKind } from '../api/contacts';
 import { runJob } from '../jobs/useJobs';
+import { GridSkeleton } from '../Skeleton';
 
 export function ContactsSummary({ contacts }: { contacts: Contact[] | null }) {
-  if (!contacts) return <p className="empty-text" aria-busy="true">正在读取…</p>;
+  if (!contacts) return <GridSkeleton label="正在读取通讯录" cells={5} />;
   const counts = countKinds(contacts);
   const remarked = contacts.filter(c => c.type === 'friend' && c.remark).length;
   return <dl className="info-grid">

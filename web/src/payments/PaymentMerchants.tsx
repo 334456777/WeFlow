@@ -1,11 +1,12 @@
 // Beside the WeChat Pay records (#204): all of them, or one payee's, with how often and how much was paid there in
 // the days chosen; searchable by name.
 import { useMemo, useState } from 'react';
-import { ArrowClockwise, CircleNotch, MagnifyingGlass, Wallet } from '@phosphor-icons/react';
+import { ArrowClockwise, MagnifyingGlass, Wallet } from '@phosphor-icons/react';
 import { formatMoney } from '../api/pay';
 import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import type { Merchant, PaymentsState } from './usePayments';
+import { ListSkeleton } from '../Skeleton';
 
 const ROW_HEIGHT = 58;
 const ALL = '\u0000all';
@@ -29,7 +30,7 @@ export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry
 
   let body;
   if (state.status === 'loading') {
-    body = <p className="session-message" aria-busy="true"><CircleNotch size={14} className="spin" /> 正在读取支付记录{state.read ? '，已读 ' + state.read.toLocaleString('zh-CN') + ' 条' : '…'}</p>;
+    body = <ListSkeleton label="正在读取支付记录" note={state.read ? '已读 ' + state.read.toLocaleString('zh-CN') + ' 条消息' : undefined} />;
   } else if (state.status === 'error') {
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!state.payments.length) {

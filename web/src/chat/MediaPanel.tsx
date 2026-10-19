@@ -9,6 +9,7 @@ import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
 import { formatClock } from './messages';
+import { MediaSkeleton } from '../Skeleton';
 
 const FILTERS: { label: string; types: ResourceType[] }[] = [
   { label: '全部', types: ['image', 'video', 'file'] },
@@ -96,7 +97,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     <Segmented className="media-filter" count={FILTERS.length} index={filter} role="group" aria-label="媒体类型">
       {FILTERS.map((f, i) => <button type="button" key={f.label} aria-pressed={filter === i} onClick={() => setFilter(i)}>{f.label}</button>)}
     </Segmented>
-    {state.status === 'loading' && <p className="empty-text" aria-busy="true"><CircleNotch size={14} className="spin" /> 正在读取</p>}
+    {state.status === 'loading' && <MediaSkeleton label="正在读取媒体" />}
     {state.status === 'error' && <p className="empty-text" role="alert">{state.message} <button type="button" className="text-button" onClick={() => setRound(n => n + 1)}>重试</button></p>}
     {state.status === 'ready' && (state.items.length
       ? <div className="media-list"><HoverTrack items=".media-item" />

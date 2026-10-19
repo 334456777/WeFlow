@@ -8,6 +8,7 @@ import { Segmented } from '../Segmented';
 import { VirtualList, type VirtualListHandle } from '../VirtualList';
 import { filterLabels, FOLDED_ID, formatSessionTime, sessionRows, type SessionFilter, type SessionRow } from './sessions';
 import type { SessionsState } from './useSessions';
+import { ListSkeleton } from '../Skeleton';
 
 const FILTERS: SessionFilter[] = ['all', 'private', 'group', 'official'];
 /** A row is 56px high with 2px to the next (#192). */
@@ -89,9 +90,7 @@ export function SessionList({ state, sample, selectedId, onSelect, onRetry, offi
 
   let body;
   if (state.status === 'idle' || state.status === 'loading') {
-    body = <div className="conversation-list session-skeleton" aria-busy="true" aria-label="正在读取会话">
-      {Array.from({ length: SKELETON_ROWS }, (_, i) => <div className="skeleton-row" key={i}><span className="skeleton avatar" /><span><span className="skeleton line" /><span className="skeleton line short" /></span></div>)}
-    </div>;
+    body = <ListSkeleton label="正在读取会话" rows={SKELETON_ROWS} />;
   } else if (state.status === 'error') {
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!rows.length) {

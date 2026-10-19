@@ -8,6 +8,7 @@ import { getTimeline, isVideo, isWechatMedia, snsMediaUrl, SNS_PAGE, type SnsFil
 import { Avatar } from '../Avatar';
 import type { Preview } from '../chat/MessageView';
 import { dayOf, formatClock, formatDayHeading } from '../chat/messages';
+import { MomentsSkeleton } from '../Skeleton';
 
 type FeedState =
   | { status: 'loading' }
@@ -68,7 +69,7 @@ export function MomentsFeed({ filter, scroller, onPreview }: {
     return () => observer.disconnect();
   }, [scroller, state.status]);
 
-  if (state.status === 'loading') return <div className="pane-message" aria-busy="true"><CircleNotch size={16} className="spin" /> 正在读取朋友圈</div>;
+  if (state.status === 'loading') return <MomentsSkeleton label="正在读取朋友圈" />;
   if (state.status === 'error') {
     return <div className="pane-message" role="alert"><p>{state.message}</p>
       <button type="button" className="secondary-button" onClick={() => setRound(n => n + 1)}><ArrowClockwise size={14} />重试</button></div>;

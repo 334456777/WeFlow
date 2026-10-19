@@ -260,11 +260,24 @@ time, .num { font-variant-numeric: tabular-nums; }
 .virtual-space { position: relative; }
 .virtual-row { position: absolute; top: 0; left: var(--space-2); right: var(--space-2); }
 .virtual-row > .conversation-row { height: calc(100% - 2px); }
-.session-skeleton { flex: 1; overflow: hidden; }
-.skeleton-row { display: flex; align-items: center; gap: var(--space-3); height: 56px; flex-shrink: 0; padding: 0 var(--space-3); }
-.skeleton-row > span:last-child { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); }
+/* Loading placeholders (#282, Skeleton.tsx): each takes the place and the shape of what it waits for. */
+.list-skeleton { flex: 1; overflow: hidden; padding: 8px; }
+.skeleton-row { display: flex; align-items: center; gap: var(--space-3); height: 58px; flex-shrink: 0; padding: 0 var(--space-3); }
+.skeleton-row > span:last-child, .media-skeleton > span:last-child, .grid-skeleton-cell, .moment-skeleton-copy { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .skeleton.line { display: block; width: 70%; height: 10px; }
 .skeleton.line.short { width: 45%; }
+.skeleton.line.label { width: 40%; height: 8px; }
+.skeleton.avatar { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; }
+.message-row .skeleton.avatar { width: 32px; height: 32px; }
+.skeleton.bubble { display: block; max-width: calc(100% - 48px); border-radius: var(--radius-xl); }
+.skeleton.picture { display: block; width: 60%; max-width: 240px; aspect-ratio: 4 / 3; margin-top: var(--space-1); }
+.skeleton.thumb { flex-shrink: 0; width: 48px; height: 48px; border-radius: var(--radius-md); }
+.skeleton-note { padding: var(--space-1) var(--space-3) var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); }
+.messages-skeleton, .moments-skeleton { overflow: hidden; }
+.media-skeleton { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2); }
+.grid-skeleton-cell { gap: 6px; }
+.grid-skeleton-cell .skeleton.line:last-child { height: 14px; }
+.skeleton.line.value { width: 60%; height: 14px; margin-top: 4px; }
 .pane-message { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); height: 100%; color: var(--fg-muted); font-size: var(--text-sm); text-align: center; }
 .pane-message strong { color: var(--fg); font-size: var(--text-md); }
 /* The messages sit in a hollow inside the panel. */
