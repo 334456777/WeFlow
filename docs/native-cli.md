@@ -207,7 +207,7 @@ readable settings and skips the encrypted `safe:` / `lock:` values with a hint t
 The connection settings (`db_path`, `wxid`, `decrypt_key`) are only read from the config file, set them with `./weflow config set`; there are no command-line
 overrides. `./weflow config set --help` explains every key. `./weflow config set config_path <file>` makes later runs use another config file (it is remembered in
 `config_path` next to the default location; `./weflow config unset config_path` or the default path switches back), `./weflow config path` shows the one in use.
-`./weflow config set current_profile <name>` switches the active profile (created when it does not exist), and `./weflow config profiles` lists the profiles with their account and data directory, whether the database key and the image keys are set (`true` / `false`, never the keys themselves), and whether the profile is `complete` (enough to open the database). `-h` / `--help` and `-V` / `-v` / `--version` work everywhere but are left out of the option lists.
+`./weflow config set current_profile <name>` switches the active profile (created when it does not exist), and `./weflow config profiles` lists the profiles with their account and data directory, whether the database key, the image keys and the AI model API key are set (`true` / `false`, never the keys themselves), and whether the profile is `complete` (enough to open the database). `-h` / `--help` and `-V` / `-v` / `--version` work everywhere but are left out of the option lists.
 
 **Why the database layer is pure Rust.** The CLI was first meant to call the closed-source `wcdb_api` library through FFI. That
 library has an expiry check (after 2026-09-30 23:59:59 `wcdb_init` returns `-1000`) and unverified network code, so the CLI now
