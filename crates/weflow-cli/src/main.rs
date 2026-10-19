@@ -283,6 +283,8 @@ enum ConfigSubcommand {
     Path,
     /// Show every key of the active profile
     List,
+    /// List the profiles: account, data directory and whether the keys are set (never the keys themselves)
+    Profiles,
     /// Show one key (or all when omitted)
     Get {
         /// Key name (default: show every key)
@@ -2034,6 +2036,28 @@ fn apply_progress_settings(config: &ConfigStore, cli: &Cli) {
     }
 }
 
+/// `config profiles` (#215, #216): what each profile is set up with, the keys only as whether they are set, so a
+/// client can tell which account is ready without reading a key. `complete`: enough to open the database.
+fn profiles_summary(config: &ConfigStore) -> Value {
+    let set = |value: &Option<String>| value.as_deref().is_some_and(|v| !v.trim().is_empty());
+    let profiles = config
+        .profiles
+        .iter()
+        .map(|(name, p)| {
+            json!({
+                "name": name,
+                "current": *name == config.current_profile,
+                "wxid": p.wxid,
+                "dbPath": p.db_path,
+                "decryptKey": set(&p.decrypt_key),
+                "imageKeys": p.image_xor_key.is_some() && set(&p.image_aes_key),
+                "complete": set(&p.db_path) && set(&p.decrypt_key),
+            })
+        })
+        .collect();
+    Value::Array(profiles)
+}
+
 fn handle_config(
     command: &ConfigCommand,
     ctx: &AppContext,
@@ -2042,6 +2066,7 @@ fn handle_config(
     match &command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
         ConfigSubcommand::List => Ok(serde_json::to_value(config).unwrap()),
+        ConfigSubcommand::Profiles => Ok(profiles_summary(config)),
         ConfigSubcommand::Get { key } => {
             if matches!(key.as_deref(), Some("config_path" | "configPath")) {
                 return Ok(json!(ctx.config_path.to_string_lossy()));
@@ -3974,6 +3999,32 @@ mod tests {
         ] {
             assert!(reported_failure(&ok).is_none(), "{ok}");
         }
+    }
+
+    #[test]
+    fn profiles_say_whether_keys_are_set_but_not_what_they_are() {
+        let mut config = ConfigStore::default();
+        config.set_key(None, "db_path", json!("/data")).unwrap();
+        config
+            .set_key(None, "decrypt_key", json!("ab".repeat(32)))
+            .unwrap();
+        config
+            .set_key(None, "image_aes_key", json!("0123456789abcdef"))
+            .unwrap();
+        config
+            .set_key(Some("work"), "wxid", json!("wxid_w"))
+            .unwrap();
+        let summary = profiles_summary(&config);
+        assert_eq!(
+            summary,
+            json!([
+                { "name": "default", "current": true, "wxid": null, "dbPath": "/data",
+                  "decryptKey": true, "imageKeys": false, "complete": true },
+                { "name": "work", "current": false, "wxid": "wxid_w", "dbPath": null,
+                  "decryptKey": false, "imageKeys": false, "complete": false },
+            ])
+        );
+        assert!(!summary.to_string().contains("abab"));
     }
 
     #[test]

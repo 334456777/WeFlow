@@ -155,7 +155,7 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 配置放在 `WEFLOW_HOME`，否则是平台配置目录下的 `./weflow`:配置文件 `config.json`(也接受 TOML)，缓存、日志、运行时分目录存放。写配置时会锁住 `config.json.lock` 并先写临时文件再替换，多个 `weflow` 进程同时修改配置也不会互相覆盖。
 `./weflow config import` 迁移桌面端可读的设置，加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。
 
-连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `./weflow config set` 设置，没有命令行覆盖选项。`./weflow config set --help` 会解释每个键。`./weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`./weflow config unset config_path` 或传入默认路径即恢复），`./weflow config path` 显示当前使用的路径。`./weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
+连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `./weflow config set` 设置，没有命令行覆盖选项。`./weflow config set --help` 会解释每个键。`./weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`./weflow config unset config_path` 或传入默认路径即恢复），`./weflow config path` 显示当前使用的路径。`./weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）；`./weflow config profiles` 列出各个档案的账号和数据目录，以及数据库密钥、图片密钥是否已设置（只给出 `true` / `false`，不显示密钥本身）、是否 `complete`（足以打开数据库）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
 
 **为什么数据库层是纯 Rust。** 命令行原计划通过 FFI 调用闭源的 `wcdb_api` 库。这个库带有效期检查(2026-09-30 23:59:59 之后
 `wcdb_init` 返回 `-1000`)和未经核实的网络代码，所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4)，用纯 Rust **只读**

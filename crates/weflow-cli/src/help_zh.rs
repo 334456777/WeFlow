@@ -160,6 +160,7 @@ const HELP: &[(&str, &str)] = &[
     ("Sessions that anti-revoke can be installed for", "可安装防撤回的会话"),
     ("Set a key. Main keys: db_path, wxid, decrypt_key, image_xor_key, image_aes_key, cache_path, http_api_token, http_api_host, http_api_port, ai_model_api_base_url, ai_model_api_key, ai_model_api_model, ai_model_api_max_tokens, ai_insight_enabled, no_progress, progress_delay_seconds (desktop names such as dbPath also work)", "设置一个键。主要键：db_path、wxid、decrypt_key、image_xor_key、image_aes_key、cache_path、http_api_token、http_api_host、http_api_port、ai_model_api_base_url、ai_model_api_key、ai_model_api_model、ai_model_api_max_tokens、ai_insight_enabled、no_progress、progress_delay_seconds（也支持桌面应用的名称，如 dbPath）"),
     ("Show every key of the active profile", "显示当前档案的所有键"),
+    ("List the profiles: account, data directory and whether the keys are set (never the keys themselves)", "列出配置档案：账号、数据目录，以及密钥是否已设置（不显示密钥本身）"),
     ("Show one key (or all when omitted)", "显示某个键（省略则显示全部）"),
     ("Show the embedded runtime and manifest", "显示内置运行时与清单"),
     ("Show the exclusion list, or replace it with --set", "显示排除列表，或用 --set 替换"),
