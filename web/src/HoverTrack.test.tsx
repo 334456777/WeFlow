@@ -29,16 +29,16 @@ describe('HoverTrack', () => {
 
     fireEvent.pointerOver(items[0]);
     expect(hollow.dataset.state).toBe('on');
-    expect(hollow.style.transform).toBe('translate(0px, 0px)');
+    expect(hollow.style.translate).toBe('0px 0px');
     expect(hollow.style.height).toBe('40px');
 
     // the gap between two items keeps it where it is
     fireEvent.pointerOver(group);
     expect(hollow.dataset.state).toBe('on');
-    expect(hollow.style.transform).toBe('translate(0px, 0px)');
+    expect(hollow.style.translate).toBe('0px 0px');
 
     fireEvent.pointerOver(items[2]);
-    expect(hollow.style.transform).toBe('translate(0px, 88px)');
+    expect(hollow.style.translate).toBe('0px 88px');
     // sliding: the transition is the stylesheet's, not switched off
     expect(hollow.style.transition).toBe('');
 
@@ -70,7 +70,7 @@ describe('HoverTrack', () => {
     const { hollow, items } = setup();
     fireEvent.pointerOver(items[0]);
     fireEvent.pointerOver(items[1]);
-    expect(hollow.style.transform).toBe('translate(0px, 44px)');
+    expect(hollow.style.translate).toBe('0px 44px');
     expect(hollow.dataset.state).toBe('quiet');
     fireEvent.pointerOver(items[2]);
     expect(hollow.dataset.state).toBe('on');
@@ -78,6 +78,6 @@ describe('HoverTrack', () => {
     const touch = new Event('pointerover', { bubbles: true }) as Event & { pointerType: string };
     touch.pointerType = 'touch';
     items[0].dispatchEvent(touch);
-    expect(hollow.style.transform).toBe('translate(0px, 88px)');
+    expect(hollow.style.translate).toBe('0px 88px');
   });
 });

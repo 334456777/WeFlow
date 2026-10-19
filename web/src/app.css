@@ -144,7 +144,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .hover-hollow {
   position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; opacity: 0; box-shadow: var(--neu-pressed);
   transform-origin: center;
-  transition: transform var(--duration-snap) var(--ease-snap), width var(--duration-snap) var(--ease-snap),
+  transition: translate var(--duration-snap) var(--ease-snap), width var(--duration-snap) var(--ease-snap),
     height var(--duration-snap) var(--ease-snap), opacity var(--duration-hover) ease,
     box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
 }

@@ -33,7 +33,8 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
       if (!slide) hollow.style.transition = 'none';
       hollow.style.width = at.width + 'px';
       hollow.style.height = at.height + 'px';
-      hollow.style.transform = `translate(${x}px, ${y}px)`;
+      // `translate`, not `transform`: it applies before `scale`, so a press shrinks the hollow about its own centre
+      hollow.style.translate = `${x}px ${y}px`;
       hollow.style.borderRadius = getComputedStyle(item).borderRadius;
       if (!slide) { void hollow.offsetWidth; hollow.style.transition = ''; }
     };
