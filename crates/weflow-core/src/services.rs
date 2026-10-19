@@ -408,13 +408,15 @@ impl ServiceHub {
         info.video_url.map(PathBuf::from).filter(|p| p.exists())
     }
 
-    pub fn footprint(&self) -> AppResult<Value> {
+    /// Who I talked with and replied to, and where I was @-mentioned, between `begin` and `end` (Unix seconds,
+    /// both inclusive; 0 for no bound).
+    pub fn footprint(&self, begin: i64, end: i64) -> AppResult<Value> {
         let wcdb = self.open_wcdb()?;
         let profile = self.profile()?;
         let options = json!({
             "myWxid": self.wxid_override.as_deref().or(profile.wxid.as_deref()).unwrap_or_default(),
-            "beginTimestamp": 0,
-            "endTimestamp": 0
+            "beginTimestamp": begin,
+            "endTimestamp": end
         });
         wcdb.footprint_stats(&options)
             .map_err(|err| AppError::native(err.to_string()))
@@ -521,15 +523,9 @@ impl ServiceHub {
         Ok(json!({ "records": records, "hasMore": limit > 0 && read >= limit as usize }))
     }
 
-    pub fn insight_footprint(&self) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let profile = self.profile()?;
-        let options = json!({
-            "myWxid": self.wxid_override.as_deref().or(profile.wxid.as_deref()).unwrap_or_default(),
-            "type": "insight_footprint"
-        });
-        wcdb.footprint_stats(&options)
-            .map_err(|err| AppError::native(err.to_string()))
+    /// `insight footprint`: the same statistics as [`Self::footprint`].
+    pub fn insight_footprint(&self, begin: i64, end: i64) -> AppResult<Value> {
+        self.footprint(begin, end)
     }
 
     /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases, so the command

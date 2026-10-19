@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -68,6 +68,8 @@ import { useAnalytics, useGroups } from './analytics/useAnalytics';
 import type { Friend } from './reports/DualReport';
 import { ReportsPage } from './reports/ReportsPage';
 import { SaveReport } from './reports/SaveReport';
+import { FootprintAi, FootprintExport, FootprintPage } from './footprint/Footprint';
+import { presetRanges, type Footprint, type FootprintRange } from './api/footprint';
 import type { DayRange } from './api/groups';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
@@ -87,6 +89,7 @@ const navigation = [
   { id: 'contacts', label: '通讯录', icon: AddressBook },
   { id: 'analytics', label: '聊天分析', icon: ChartBar },
   { id: 'reports', label: '年度报告', icon: CalendarStar },
+  { id: 'footprint', label: '我的足迹', icon: Footprints },
   { id: 'insights', label: '灵感信箱', icon: Lightbulb },
   { id: 'export', label: '导出', icon: Export },
   { id: 'backup', label: '数据库备份', icon: Archive },
@@ -249,6 +252,7 @@ export function App() {
   const backupRef = useRef<HTMLElement>(null);
   const analyticsRef = useRef<HTMLElement>(null);
   const reportsRef = useRef<HTMLElement>(null);
+  const footprintRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const shownPreview = usePresence(preview);
@@ -328,6 +332,11 @@ export function App() {
   const [reportYear, setReportYear] = useState<number | null>(null);
   const [reportFriend, setReportFriend] = useState<Friend | null>(null);
   useEffect(() => { setReportYear(null); setReportFriend(null); }, [scope]);
+  // My footprint (#209): the range of days (today until another is picked), words to narrow the timeline to, and what
+  // was read, for the AI card.
+  const [footprintRange, setFootprintRange] = useState<FootprintRange>(() => presetRanges()[0]);
+  const [footprintKeyword, setFootprintKeyword] = useState('');
+  const [footprintData, setFootprintData] = useState<Footprint | null>(null);
   // The insights page (#210): the records of the AI insights, of everyone or one conversation, found by words.
   const insightsPage = section === 'insights';
   const [insightFilter, setInsightFilter] = useState<InsightFilter>({ keyword: '', session: null });
@@ -394,7 +403,7 @@ export function App() {
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'analytics' || value === 'reports' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'analytics' || value === 'reports' || value === 'footprint' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -421,13 +430,15 @@ export function App() {
     showMessages();
   };
 
-  // a picture, video or file of the media card: its conversation opens at the message (#200)
-  const openMedia = async (sessionId: string, item: Resource) => {
+  // a picture, video or file of the media card (#200), or a chat or mention of the footprint (#209): its conversation
+  // opens at the message
+  const openMedia = (sessionId: string, item: Resource) => openMessage(sessionId, item.localId, item.createTime);
+  const openMessage = async (sessionId: string, localId: number, createTime: number) => {
     mediaLookup.current?.abort();
     const controller = new AbortController();
     mediaLookup.current = controller;
     try {
-      const message = await lookupMessage(sessionId, item.localId, item.createTime, controller.signal);
+      const message = await lookupMessage(sessionId, localId, createTime, controller.signal);
       if (controller.signal.aborted) return;
       if (!message?._cursor) { setToast('没有找到这条消息。'); return; }
       setJumpTo({ sessionId, target: { at: 'message', message }, seq: ++jumps.current });
@@ -435,6 +446,13 @@ export function App() {
     } catch {
       if (!controller.signal.aborted) setToast('没有找到这条消息。');
     }
+  };
+
+  const openFootprint = (sessionId: string, localId: number, createTime: number) => {
+    if (!sessionList.some(session => session.username === sessionId)) { setToast('这段聊天所在的会话不在会话列表里。'); return; }
+    selectSection('chat');
+    setLiveId(sessionId);
+    void openMessage(sessionId, localId, createTime);
   };
 
   const jumpToDay = (sessionId: string, day: string) => {
@@ -568,6 +586,8 @@ export function App() {
         {(groupRange.from || groupRange.to) && <button type="button" className="secondary-button range-clear" onClick={() => setGroupRange({ from: '', to: '' })}>不限时间</button>}</>,
     },
     { id: 'group-export', title: '导出', summary: group?.displayName ?? '', content: <GroupExport group={group} member={groupMember} range={groupRange} /> },
+    { id: 'footprint-ai', title: 'AI 足迹总结', summary: footprintRange.label, content: <FootprintAi range={footprintRange} data={footprintData} aiReady={profile?.aiKey} /> },
+    { id: 'footprint-export', title: '导出足迹', summary: footprintRange.label, content: <FootprintExport range={footprintRange} /> },
     { id: 'report-save', title: '保存报告', content: <SaveReport find={() => reportsRef.current?.querySelector<HTMLElement>('article.report') ?? null} /> },
     { id: 'analytics-excluded', title: '不统计的好友', content: <ExcludedPeople key={scope} onSaved={() => reloadAnalytics()} /> },
     { id: 'insights-clear', title: '删除见解', content: <InsightClear session={insightFilter.session} name={insightName} count={insightCount} onDone={insights.reload} /> },
@@ -583,6 +603,7 @@ export function App() {
   const shownCards = exportPage ? ['tasks', ...(connected ? exportCards : [])]
     : section === 'backup' ? ['tasks']
     : section === 'reports' ? (connected ? ['report-save'] : [])
+    : section === 'footprint' ? (connected ? ['footprint-ai', 'footprint-export', 'tasks'] : [])
     : analyticsPage ? (connected ? (analyticsMode === 'group' ? ['analytics-range', 'group-export', 'tasks'] : ['analytics-excluded']) : [])
     : contactsPage ? ['tasks', ...(connected ? contactCards : [])]
       : insightsPage ? (connected ? insightCards : [])
@@ -680,6 +701,14 @@ export function App() {
               onChat={username => { selectSection('chat'); setLiveId(username); setMobileDetail(true); }} />
             : <p className="settings-footnote">连接 weflow serve 后，可以在这里查看私聊和群聊的统计。</p>}
         </section><Scrollbar target={analyticsRef} /></>
+        : section === 'footprint'
+        ? <><section ref={footprintRef} className="panel browser-panel settings-panel scroll-area" aria-label="我的足迹">
+          <div className="settings-heading"><Footprints size={20} /><h1>我的足迹</h1></div>
+          {backend.state === 'unauthorized' ? <TokenPrompt /> : connected
+            ? <FootprintPage key={scope} range={footprintRange} onRange={range => { setFootprintRange(range); footprintRef.current?.scrollTo({ top: 0 }); }}
+              keyword={footprintKeyword} onKeyword={setFootprintKeyword} onOpen={openFootprint} onData={setFootprintData} />
+            : <p className="settings-footnote">连接 weflow serve 后，可以在这里查看你和谁聊过天、谁 @过你。</p>}
+        </section><Scrollbar target={footprintRef} /></>
         : section === 'reports'
         ? <><section ref={reportsRef} className="panel browser-panel settings-panel scroll-area" aria-label="年度报告">
           <div className="settings-heading"><CalendarStar size={20} /><h1>年度报告</h1>
