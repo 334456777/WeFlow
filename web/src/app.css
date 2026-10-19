@@ -684,6 +684,9 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--space-3) var(--space-6); margin: 0; }
 .info-grid dt { color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
 .info-grid dd { margin: 0; font-size: var(--text-sm); }
+/* the time range takes a row of its own, so its two dates stay on one line (#280) */
+.info-grid .info-wide { grid-column: 1 / -1; }
+.info-grid .info-wide dd { white-space: nowrap; }
 .info-content > div, .member-copy { min-width: 0; }
 .info-id { font-family: var(--font-mono); font-size: var(--text-xs); }
 .members { position: relative; margin-top: var(--space-4); }
