@@ -53,6 +53,14 @@ time, .num { font-variant-numeric: tabular-nums; }
   opacity: 0; transition: opacity var(--duration-panel) var(--ease-out);
 }
 .scrollbar.scrollable { display: block; }
+/* The edges of a scroll area fade while there is more that way (#194): eased, not a straight ramp, and gone at the end. */
+.scroll-fade {
+  position: absolute; z-index: 1; height: 28px; pointer-events: none; opacity: 0;
+  transition: opacity var(--duration-hover) var(--ease-out);
+}
+.scroll-fade.shown { opacity: 1; }
+.scroll-fade.top { background: linear-gradient(to bottom, var(--surface) 0%, color-mix(in srgb, var(--surface) 72%, transparent) 30%, color-mix(in srgb, var(--surface) 28%, transparent) 65%, transparent 100%); }
+.scroll-fade.bottom { background: linear-gradient(to top, var(--surface) 0%, color-mix(in srgb, var(--surface) 72%, transparent) 30%, color-mix(in srgb, var(--surface) 28%, transparent) 65%, transparent 100%); }
 .scrollbar.active, .scrollbar.hover, .scrollbar.dragging { opacity: 1; transition-duration: var(--duration-hover); }
 .scrollbar-thumb {
   position: absolute; top: 0; right: 2px; width: 6px; border-radius: var(--radius-full);

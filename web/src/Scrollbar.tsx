@@ -1,6 +1,9 @@
 // A scrollbar drawn by the page over its scroll area (`.scroll-area` hides the browser's): it takes no width, so
 // content does not shift when it appears, and it looks like the rest of the page (a raised-sm thumb, #220).
 // Render it right after the scroll area, in the same positioned parent; it places itself along its right edge.
+// It also fades the area's top and bottom edges while there is more to scroll that way (#194): a layer in the
+// surface's colour, as every surface of the page has that colour (#220), so it works on panels with shadows too,
+// which a mask would clip.
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
@@ -9,10 +12,15 @@ const INSET = 4;
 const MIN_THUMB = 24;
 /** How long the bar stays after the last scroll. */
 const LINGER_MS = 900;
+/** Kept clear of the area's rounded corners by the fades; at the top and bottom they start at the edge, where a gap
+ * would let a strip of content show. */
+const FADE_INSET = 2;
 
 export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> }) {
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLDivElement>(null);
+  const fadeTop = useRef<HTMLDivElement>(null);
+  const fadeBottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const area = target.current;
@@ -23,11 +31,27 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     let room = 0;
     let linger = 0;
 
+    const fade = () => {
+      const top = fadeTop.current;
+      const bottom = fadeBottom.current;
+      if (!top || !bottom) return;
+      const overflow = room > 1 && area.clientHeight > 0;
+      top.classList.toggle('shown', overflow && area.scrollTop > 1);
+      bottom.classList.toggle('shown', overflow && area.scrollTop < room - 1);
+      if (!overflow) return;
+      const left = area.offsetLeft + area.clientLeft + FADE_INSET + 'px';
+      const width = Math.max(0, area.clientWidth - 2 * FADE_INSET) + 'px';
+      top.style.left = bottom.style.left = left;
+      top.style.width = bottom.style.width = width;
+      top.style.top = area.offsetTop + area.clientTop + 'px';
+      bottom.style.top = area.offsetTop + area.clientTop + area.clientHeight - bottom.offsetHeight + 'px';
+    };
     const place = () => {
       const { scrollHeight, clientHeight, scrollTop } = area;
       room = scrollHeight - clientHeight;
       const overflow = room > 1 && clientHeight > 0;
       bar.classList.toggle('scrollable', overflow);
+      fade();
       if (!overflow) return;
       const height = clientHeight - 2 * INSET;
       bar.style.top = area.offsetTop + area.clientTop + INSET + 'px';
@@ -104,5 +128,9 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
     };
   }, [target]);
 
-  return <div ref={track} className="scrollbar" aria-hidden="true"><div ref={thumb} className="scrollbar-thumb" /></div>;
+  return <>
+    <div ref={fadeTop} className="scroll-fade top" aria-hidden="true" />
+    <div ref={fadeBottom} className="scroll-fade bottom" aria-hidden="true" />
+    <div ref={track} className="scrollbar" aria-hidden="true"><div ref={thumb} className="scrollbar-thumb" /></div>
+  </>;
 }

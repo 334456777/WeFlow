@@ -19,6 +19,8 @@ import { MessagesSkeleton } from '../Skeleton';
 const LOAD_AHEAD = 600;
 /** Within this of the bottom the window follows new content (pictures that load, for one). */
 const STICK = 48;
+/** Farther than this from the bottom, a button goes back to the newest message (#194). */
+const FAR = 120;
 /** Moves the window at once: the message pane scrolls smoothly for people, which would turn these into slow glides. */
 const moveTo = (el: HTMLElement, top: number) => { if (el.scrollTo) el.scrollTo({ top, behavior: 'instant' }); else el.scrollTop = top; };
 const NATIVE_ANCHORING = typeof CSS !== 'undefined' && Boolean(CSS.supports?.('overflow-anchor', 'auto'));
@@ -84,6 +86,7 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
   const focus = thread.focus;
   // Live messages (#201) that came below while the person reads further up: counted, not scrolled to
   const [unseen, setUnseen] = useState(0);
+  const [far, setFar] = useState(false);
   const tail = useRef<{ id: string; cursor: string | null } | null>(null);
   useEffect(() => {
     const last = thread.messages[thread.messages.length - 1]?._cursor ?? null;
@@ -159,6 +162,7 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
     const below = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const idle = thread.status === 'ready' && !thread.loadingOlder && !thread.loadingNewer;
     const onScroll = () => {
+      setFar(below() > FAR);
       if (!thread.hasNewer && !pinned.current && below() < STICK) {
         atBottom.current = true;
         setUnseen(0);
@@ -233,6 +237,6 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
     })}
     {thread.hasNewer && <div className="history-edge newer" aria-live="polite">{thread.loadingNewer ? <><CircleNotch size={14} className="spin" />正在加载更新的消息</> : null}</div>}
     {thread.hasNewer && <div className="latest-bar"><button type="button" className="secondary-button" onClick={reload}><ArrowDown size={14} />回到最新消息</button></div>}
-    {!thread.hasNewer && unseen > 0 && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen} 条新消息</button></div>}
+    {!thread.hasNewer && (unseen > 0 || far) && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen > 0 ? unseen + ' 条新消息' : '回到最新消息'}</button></div>}
   </div>;
 }

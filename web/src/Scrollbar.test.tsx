@@ -33,6 +33,27 @@ describe('Scrollbar', () => {
     } finally { restore(); }
   });
 
+  it('fades the edges there is more beyond, and neither when nothing overflows', () => {
+    let restore = sized(400, 1200);
+    try {
+      const { container, getByTestId, unmount } = render(<Area />);
+      const shown = () => ['top', 'bottom'].filter(side => container.querySelector('.scroll-fade.' + side)!.classList.contains('shown'));
+      const area = getByTestId('area');
+      expect(shown()).toEqual(['bottom']);
+      area.scrollTop = 300;
+      fireEvent.scroll(area);
+      expect(shown()).toEqual(['top', 'bottom']);
+      area.scrollTop = 800;
+      fireEvent.scroll(area);
+      expect(shown()).toEqual(['top']);
+      unmount();
+      restore();
+      restore = sized(400, 400);
+      const again = render(<Area />);
+      expect(again.container.querySelectorAll('.scroll-fade.shown')).toHaveLength(0);
+    } finally { restore(); }
+  });
+
   it('sizes and places the thumb, shows while scrolling, and scrolls when the thumb is dragged', () => {
     const restore = sized(408, 4080);
     try {
