@@ -52,6 +52,9 @@ import { jobDetail, jobsSummary, outputOf, TaskCenter } from './jobs/TaskCenter'
 import { findJob, removeJob, runJob, useJobs } from './jobs/useJobs';
 import { batchSummary, BatchExport, DEFAULT_BATCH, formatLabel, MESSAGE_FORMATS, SessionsExport, type BatchOptions, type MessageFormat } from './exports/ExportCards';
 import { ExportPicker, PickedList } from './exports/ExportPicker';
+import { currentProfile, type Profile } from './api/setup';
+import { SetupWizard } from './settings/SetupWizard';
+import { dismissSetup, setupDismissed, useProfiles } from './settings/useProfiles';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
 // Previews of the sample records and of real messages (images and videos of #198).
@@ -64,6 +67,12 @@ const navigation = [
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
 
+
+/** The current profile in a line: its account, and how far it is set up. */
+function accountDetail(profile: Profile): string {
+  const state = !profile.complete ? '还没有配置完成，读不出记录' : profile.imageKeys ? '已配置，可以读取记录和图片' : '已配置，可以读取记录；没有图片密钥';
+  return '档案 ' + profile.name + ' · ' + (profile.wxid || '未选择账号') + ' · ' + state + '。';
+}
 
 const backendLabels: Record<Backend['state'], string> = {
   checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容', unauthorized: '需要令牌',
@@ -223,6 +232,15 @@ export function App() {
   // another server or account (#198): what was read for the one before goes
   const scope = useScope(backend);
   const jobs = useJobs(connected, scope);
+  // the account setup (#216): it opens by itself when a tab finds the account not set up, and from the settings
+  const { profiles, failed: profilesFailed, reload: reloadProfiles } = useProfiles(connected, scope);
+  const profile = profiles ? currentProfile(profiles) : undefined;
+  const [setupOpen, setSetupOpen] = useState(false);
+  const shownSetup = usePresence(setupOpen);
+  const setupRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (profile && !profile.complete && !setupDismissed()) setSetupOpen(true);
+  }, [profile?.name, profile?.complete]);
   const exportJob = findJob(jobs, exportJobId);
   const stage = stageOf(exportJob, exportError);
   const exportResult: ExportResult | null = exportJob?.status === 'succeeded' && exportJob.file
@@ -300,6 +318,13 @@ export function App() {
     if (shownPreview && dialog && !dialog.open) dialog.showModal?.();
     else if (!shownPreview && dialog?.open) dialog.close();
   }, [shownPreview]);
+
+  useEffect(() => {
+    const dialog = setupRef.current;
+    if (shownSetup && dialog && !dialog.open) dialog.showModal?.();
+    else if (!shownSetup && dialog?.open) dialog.close();
+  }, [shownSetup]);
+  const closeSetup = () => { dismissSetup(); setSetupOpen(false); };
 
   // another conversation or other options: the card lets go of its job, which goes on in the task centre
   const resetExport = () => { setExportJobId(null); setExportError(''); };
@@ -497,6 +522,8 @@ export function App() {
         <div className="settings-heading"><Gear size={20} /><h1>设置</h1></div>
         <p className="muted">管理连接和浏览偏好。</p>
         <div className="setting-row"><div><h2>weflow serve</h2><p>{backendDetail(backend)}</p></div><button className="secondary-button" type="button" onClick={recheckBackend}>重新检测</button></div>
+        {connected && <div className="setting-row"><div><h2>账号</h2><p>{profile ? accountDetail(profile) : profiles ? '配置里没有当前档案。' : profilesFailed ? '读不到账号配置：weflow 5.0.0-rc.7 起才能在网页里查看。' : '正在读取账号配置…'}</p></div>
+          <button className="secondary-button" type="button" onClick={() => setSetupOpen(true)}>配置向导</button></div>}
         {'health' in backend && <div className="setting-row"><div><h2>weflow 版本</h2>
           <p>weflow {backend.health.version} · API {backend.health.apiVersion}</p>
           {backend.state === 'incompatible' && <p className="setting-warning">{backend.reason}。{backend.advice}</p>}
@@ -605,6 +632,11 @@ export function App() {
           : shownPreview.value.type === 'video'
             ? <PreviewVideo src={shownPreview.value.src} poster={shownPreview.value.poster} />
             : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}
+    </dialog>
+    <dialog className="setup-dialog" ref={setupRef} aria-label="账号配置" data-state={shownSetup?.closing ? 'closing' : 'open'}
+      onCancel={event => { event.preventDefault(); closeSetup(); }}>
+      {shownSetup && <SetupWizard profile={profile} jobs={jobs} onChanged={reloadProfiles} onClose={closeSetup}
+        onDone={() => { setSetupOpen(false); selectSection('chat'); }} />}
     </dialog>
     {shownToast && <div className="toast" role="status" data-state={shownToast.closing ? 'closing' : 'open'}><CheckCircle size={16} />{shownToast.value}</div>}
   </main>;

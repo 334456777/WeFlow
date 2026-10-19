@@ -396,6 +396,40 @@ describe('App', () => {
     expect(text()).toContain('weflow web use');
   });
 
+  it('opens the account setup by itself when the account is not set up, once a tab, and from the settings (#216)', async () => {
+    let complete = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/config/profiles') return json({ success: true, data: [{ name: 'default', current: true, wxid: complete ? 'wxid_a' : null, dbPath: complete ? 'D:/x' : null, decryptKey: complete, imageKeys: false, complete }] });
+      if (url === '/db/detect') return json({ success: true, data: { candidates: [] } });
+      return json({ success: true, data: [] });
+    }));
+    await renderWith(HEALTH);
+    const dialog = () => document.querySelector<HTMLElement>('dialog.setup-dialog');
+    expect(dialog()?.textContent).toContain('数据库目录');
+    expect(document.querySelector('.setup-step[aria-current="step"]')?.textContent).toBe('1数据库目录');
+    fireEvent.click(screen.getByRole('button', { name: '关闭配置向导', hidden: true }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
+    expect(dialog()?.textContent).toBe('');
+    expect(sessionStorage.getItem('weflow.setup')).toBe('dismissed');
+
+    // the settings say how far the account is set up, and open the setup again
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(screen.getByRole('region', { name: '设置' }).textContent).toContain('档案 default · 未选择账号 · 还没有配置完成，读不出记录。');
+    fireEvent.click(screen.getByRole('button', { name: '配置向导' }));
+    await act(async () => {});
+    expect(dialog()?.textContent).toContain('数据库目录');
+
+    // a tab that finds the account set up does not open it
+    cleanup();
+    sessionStorage.clear();
+    complete = true;
+    await renderWith(HEALTH);
+    expect(dialog()?.textContent).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(screen.getByRole('region', { name: '设置' }).textContent).toContain('档案 default · wxid_a · 已配置，可以读取记录；没有图片密钥。');
+  });
+
   it('shows the Moments of a running backend: who posts, their posts, and the cards of the page (#202)', async () => {
     const asked: string[] = [];
     serve(HEALTH);
