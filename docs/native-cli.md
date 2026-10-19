@@ -268,7 +268,7 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
 | `sns timeline`, 20 posts | 235 ms | 6 ms | added, without `with-media` |
 | `sns users`, `sns stats --fast`, `sns post-counts --prefer-cache` | 22 ms | under 2 ms | added: asked for with the timeline; a child process takes 160 ms more while the server has not opened `sns.db` itself |
 | `chat statuses` (60 conversations), `chat tab-counts`, `group list` | 21–24 ms | – | not added: about the cost of starting the process, once per list |
-| `chat resources` | 72–317 ms | – | not yet: the time goes into reading the messages, and its paging is to change first ([#178](https://github.com/334456777/WeFlow/issues/178)) |
+| `chat resources`, a page of 300 | 52–123 ms | 16–56 ms | added once it pages from a cursor ([#178](https://github.com/334456777/WeFlow/issues/178)): the media card pages through it while scrolling. It used to read the newest 90 of each type in 80 conversations and cut an `offset` out of them, so it missed newer ones and deep pages came back empty; now it reads every conversation in the chats' order, newest first, and stops once no conversation left can hold a newer one. It is slowest when few conversations hold the type asked for, as each one is then read: 190–360 ms on the synthetic account, with no video, voice or file in its 501 conversations |
 | `analytics overall`, `rankings`, `time` with their cache | 20–23 ms | – | not added: fast enough with the cache; without it (`--force`, 129 ms here) the statistics are counted again, which is for a job |
 
 The same measurements found two reads of the Moments slow in themselves, not only through the child process: the timeline parsed

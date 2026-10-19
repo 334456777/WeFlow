@@ -180,6 +180,15 @@ impl MsgPos {
     }
 }
 
+/// Whether rows at a position's own place come after it, in a listing across conversations (issue #178): not in its
+/// own conversation (a row there at the same place is the same message, kept by more than one database) nor in
+/// one listed before it, all in one listed after it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ties {
+    None,
+    All,
+}
+
 /// Where a page of [`NativeAccount::messages_from`] starts.
 #[derive(Clone, Copy, Debug)]
 pub enum PageFrom {
@@ -412,6 +421,133 @@ impl NativeAccount {
             }
         }));
         Ok(Value::Array(rows.into_iter().map(|(r, _)| r).collect()))
+    }
+
+    /// Every message table of the account by its name ([`table_name_for`] a conversation), oldest shard first: one
+    /// read of each database, for a listing across conversations (issue #178).
+    pub fn message_tables_by_name(&self) -> Result<HashMap<String, Vec<MsgTable>>> {
+        let dbs = self.message_dbs();
+        self.prefetch(&dbs);
+        let mut out: HashMap<String, Vec<MsgTable>> = HashMap::new();
+        for db in dbs {
+            let names = self.with_db(&db, |c| {
+                let mut stmt = c.prepare(
+                    "select name from sqlite_master where type = 'table' and name like 'Msg\\_%' escape '\\'",
+                )?;
+                let names = stmt
+                    .query_map([], |r| r.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                Ok(names)
+            })?;
+            for table in names {
+                out.entry(table.clone()).or_default().push(MsgTable {
+                    db: db.clone(),
+                    table,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Messages of `tables` (one conversation's, from [`message_tables_by_name`](Self::message_tables_by_name)) of
+    /// the `local_types`, newest first in the chat's order, at most `limit` (all when negative): those listed after
+    /// `before` (older; with its [`Ties`]), all when `None`, sent between the Unix seconds of `range` (inclusive; 0
+    /// for no bound) and at `floor` or later in the chat's order (its `sort_seq`; 0 for no bound). One statement a
+    /// table, of one part a type, so the `(local_type, sort_seq)` index gives each part's rows in order and the
+    /// limit stops its read (issue #178).
+    pub fn typed_before(
+        &self,
+        tables: &[MsgTable],
+        local_types: &[i64],
+        before: Option<(MsgPos, Ties)>,
+        range: (i64, i64),
+        floor: i64,
+        limit: i64,
+    ) -> Result<Vec<Value>> {
+        let (pos, ties) = before.unwrap_or((
+            MsgPos {
+                sort_seq: i64::MAX,
+                create_time: i64::MAX,
+                local_id: i64::MAX,
+                shard: 0,
+            },
+            Ties::None,
+        ));
+        let (begin, end) = range;
+        let mut sent = String::new();
+        if begin > 0 {
+            sent.push_str(&format!(" and m.create_time >= {begin}"));
+        }
+        if end > 0 {
+            sent.push_str(&format!(" and m.create_time <= {end}"));
+        }
+        let cmp = match ties {
+            Ties::All => "<=",
+            Ties::None => "<",
+        };
+        let mut rows: Vec<(Value, u32)> = Vec::new();
+        for t in tables {
+            let Some(shard) =
+                t.db.file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(is_message_db)
+            else {
+                continue;
+            };
+            if local_types.is_empty() {
+                continue;
+            }
+            let table = &t.table;
+            // a part a type, so each reads its index in order; the few rows without a sort_seq in one part of all
+            // the types; the senders joined once, outside (each part takes its time to plan)
+            let mut parts: Vec<String> = local_types
+                .iter()
+                .map(|lt| {
+                    format!(
+                        "select * from (select * from \"{table}\" m where m.local_type = {lt} \
+                         and m.sort_seq <= ?1 and m.sort_seq >= ?5 and m.sort_seq <> 0 \
+                         and (m.sort_seq, m.create_time, m.local_id) {cmp} (?1, ?2, ?3){sent} \
+                         order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?4)"
+                    )
+                })
+                .collect();
+            let types = local_types
+                .iter()
+                .map(i64::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            parts.push(format!(
+                "select * from (select * from \"{table}\" m where m.local_type in ({types}) \
+                 and (m.sort_seq is null or m.sort_seq = 0) and m.create_time * 1000 >= ?5 \
+                 and (m.create_time * 1000, m.create_time, m.local_id) {cmp} (?1, ?2, ?3){sent} \
+                 order by m.create_time desc, m.local_id desc limit ?4)"
+            ));
+            let sql = format!(
+                "select m.*, n.user_name as sender_username from ({}) m \
+                 left join Name2Id n on n.rowid = m.real_sender_id",
+                parts.join(" union all ")
+            );
+            let page = self.query(
+                &t.db,
+                &sql,
+                &[
+                    &pos.sort_seq,
+                    &pos.create_time,
+                    &pos.local_id,
+                    &limit,
+                    &floor,
+                ],
+            )?;
+            for mut r in page {
+                self.finish_row(&mut r, t, false);
+                rows.push((r, shard));
+            }
+        }
+        rows.sort_by(|(a, sa), (b, sb)| row_key(b).cmp(&row_key(a)).then(sa.cmp(sb)));
+        if limit >= 0 {
+            rows.truncate(limit as usize);
+        }
+        Ok(rows.into_iter().map(|(r, _)| r).collect())
     }
 
     /// The `n`-th largest `sort_seq` of a table: every one of its `n` newest rows has a `sort_seq` at least this big.

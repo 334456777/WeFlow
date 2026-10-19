@@ -282,7 +282,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 ## 进程内读取
 
-`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`group members`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（同一套解析、同一个处理函数，有测试逐字节比较），只是更快：
+`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`chat resources`、`group members`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（同一套解析、同一个处理函数，有测试逐字节比较），只是更快：
 
 | 读取（大账号，Windows） | `/<路径>` | `/api/<路径>` |
 |---|---|---|
@@ -293,6 +293,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `group members` | 33 ms | 2 ms |
 | `chat date-counts`，21.3 万条消息 | 584 ms | 63 ms |
 | `chat detail --fast` | 55 ms | 2 ms |
+| `chat resources`，一页 300 条 | 109 ms | 42 ms |
 | `sns timeline`，20 条 | 235 ms | 6 ms |
 | 同时请求 16 页消息（总耗时） | 156 ms | 140 ms |
 

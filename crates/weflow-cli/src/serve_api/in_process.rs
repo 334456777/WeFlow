@@ -26,6 +26,7 @@ pub(super) const COMMANDS: &[&str] = &[
     "chat dates",
     "chat date-counts",
     "chat detail",
+    "chat resources",
     "group members",
     "sns timeline",
     "sns users",

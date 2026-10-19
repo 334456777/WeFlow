@@ -10,6 +10,7 @@ use crate::error::{AppError, AppResult};
 use crate::message::{
     collect_messages, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
 };
+use weflow_native::native_msg::table_name_for;
 
 const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
 const FILE_APP_TYPES: [i64; 4] = [49, 34_359_738_417, 103_079_215_153, 25_769_803_825];
@@ -144,7 +145,8 @@ pub struct ResourceQuery {
     pub begin: i64,
     pub end: i64,
     pub limit: usize,
-    pub offset: usize,
+    /// The `nextCursor` of the page before
+    pub before: Option<String>,
 }
 
 impl ServiceHub {
@@ -725,8 +727,12 @@ impl ServiceHub {
         out
     }
 
-    /// `getResourceMessages`: images / videos / voice / files across sessions.
+    /// `getResourceMessages`: images / videos / voice / files across sessions, newest first in the chats' order (a
+    /// place two conversations share by conversation id), `limit` a page (default 300, at most 2,000). The next page
+    /// goes on from the `nextCursor` of this one (issue #178).
     pub fn chat_resources(&self, q: &ResourceQuery) -> AppResult<Value> {
+        use std::cmp::Ordering;
+        use weflow_native::native_msg::{MsgPos, Ties};
         let wcdb = self.open_wcdb()?;
         let all_types = ["image", "video", "voice", "file"];
         let wanted: Vec<&str> = if q.types.is_empty() {
@@ -743,26 +749,44 @@ impl ServiceHub {
         } else {
             q.limit.clamp(1, 2000)
         };
-        let offset = q.offset;
-        let sessions = wcdb.sessions().map_err(native)?;
-        let mut session_rows: Vec<(String, i64)> = Vec::new();
-        for s in sessions.as_array().into_iter().flatten() {
-            let name = ["username", "userName", "talker", "sessionId"]
-                .iter()
-                .find_map(|k| s.get(*k).and_then(Value::as_str))
-                .unwrap_or("")
-                .to_string();
-            if !name.is_empty() {
-                session_rows.push((name, num(s, "sort_timestamp").max(num(s, "sortTimestamp"))));
-            }
-        }
-        session_rows.sort_by_key(|a| std::cmp::Reverse(a.1));
-        let requested = q.session_id.clone().unwrap_or_default();
-        let targets: Vec<String> = if requested.trim().is_empty() {
-            session_rows.iter().map(|s| s.0.clone()).collect()
-        } else {
-            vec![requested.trim().to_string()]
+        let before = match q.before.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+            Some(token) => Some(
+                token
+                    .split_once(':')
+                    .and_then(|(pos, sid)| Some((MsgPos::parse(pos)?, sid.to_string())))
+                    .filter(|(_, sid)| !sid.is_empty())
+                    .ok_or_else(|| {
+                        AppError::usage(format!(
+                            "`{token}` is not a resource cursor; pass the `nextCursor` of a page"
+                        ))
+                    })?,
+            ),
+            None => None,
         };
+        // conversations by their last message, newest first: none holds a message ordered much after it
+        let requested = q.session_id.as_deref().map(str::trim).unwrap_or("");
+        let mut sessions: Vec<(String, i64)> = Vec::new();
+        if requested.is_empty() {
+            for s in wcdb
+                .sessions()
+                .map_err(native)?
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                let name = ["username", "userName", "talker", "sessionId"]
+                    .iter()
+                    .find_map(|k| s.get(*k).and_then(Value::as_str))
+                    .unwrap_or("");
+                if !name.is_empty() {
+                    let last = num(s, "sort_timestamp").max(num(s, "sortTimestamp"));
+                    sessions.push((name.to_string(), last));
+                }
+            }
+            sessions.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        } else {
+            sessions.push((requested.to_string(), i64::MAX));
+        }
         let mut local_types: Vec<i64> = Vec::new();
         if wanted.contains(&"image") {
             local_types.push(3);
@@ -776,87 +800,117 @@ impl ServiceHub {
         if wanted.contains(&"file") {
             local_types.extend(FILE_APP_TYPES);
         }
-        local_types.dedup();
-        let ranged = q.begin > 0 || q.end > 0;
-        let target_count = offset + limit;
-        let per_type = if !requested.trim().is_empty() {
-            (target_count * 2).clamp(200, 2000)
-        } else if ranged {
-            140
-        } else {
-            90
-        };
-        let max_scan = if !requested.trim().is_empty() {
-            1
-        } else if ranged {
-            240
-        } else {
-            80
-        };
-        let scan: Vec<String> = targets.iter().take(max_scan).cloned().collect();
-        let mut maybe_more = targets.len() > scan.len();
-        let names = self.session_display_names(&wcdb, &scan);
+        // a conversation's last message time is in seconds, and a message's place is its send time in milliseconds
+        // plus a little
+        const SLACK_SECS: i64 = 10;
+        let want = limit + 1;
         let my = self.my_wxid_cleaned();
-        let mut items: Vec<(i64, i64, Value)> = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
-        for sid in &scan {
-            for lt in &local_types {
+        let place = |p: &MsgPos| (p.sort_seq, p.create_time, p.local_id);
+        // (place, conversation, message, kind), in the order of the listing
+        let mut items: Vec<(MsgPos, String, ExportMsg, &'static str)> = Vec::new();
+        let tables = wcdb.message_tables_by_name().map_err(native)?;
+        for (sid, last) in &sessions {
+            let floor = (items.len() >= want).then(|| items[want - 1].0.sort_seq);
+            let newest = last.saturating_add(SLACK_SECS);
+            if floor.is_some_and(|f| newest.saturating_mul(1000) < f)
+                || (q.begin > 0 && newest < q.begin)
+            {
+                break;
+            }
+            let Some(tables) = tables.get(&table_name_for(sid)) else {
+                continue;
+            };
+            let from = before.as_ref().map(|(pos, at)| {
+                let ties = match sid.as_str().cmp(at) {
+                    Ordering::Greater => Ties::All,
+                    _ => Ties::None,
+                };
+                (*pos, ties)
+            });
+            let opts = CollectOptions {
+                session_id: sid,
+                my_wxid: &my,
+                start: None,
+                end: None,
+                sender_filter: None,
+            };
+            // a message kept by more than one database (a re-synced one) is listed once
+            let mut seen: HashSet<(i64, i64, i64)> = HashSet::new();
+            let mut from = from;
+            let mut found = 0;
+            loop {
+                // what is older than the page so far cannot be on it
                 let rows = wcdb
-                    .messages_by_type(sid, *lt, false, per_type as i32, 0)
-                    .unwrap_or(Value::Null);
-                let rows = rows.as_array().cloned().unwrap_or_default();
-                if rows.len() >= per_type {
-                    maybe_more = true;
-                }
-                let msgs = collect_messages(
-                    &rows,
-                    &CollectOptions {
-                        session_id: sid,
-                        my_wxid: &my,
-                        start: None,
-                        end: None,
-                        sender_filter: None,
-                    },
-                );
-                for m in msgs {
+                    .typed_before(
+                        tables,
+                        &local_types,
+                        from,
+                        (q.begin, q.end),
+                        floor.unwrap_or(0),
+                        want as i64,
+                    )
+                    .map_err(native)?;
+                for row in &rows {
+                    let Some(pos) = MsgPos::of_row(row) else {
+                        continue;
+                    };
+                    if !seen.insert(place(&pos)) {
+                        continue;
+                    }
+                    let Some(m) = collect_messages(std::slice::from_ref(row), &opts).pop() else {
+                        continue;
+                    };
                     let Some(kind) = Self::resource_type(&m) else {
                         continue;
                     };
-                    if !wanted.contains(&kind) {
-                        continue;
-                    }
-                    if q.begin > 0 && m.create_time < q.begin {
-                        continue;
-                    }
-                    if q.end > 0 && m.create_time > q.end {
-                        continue;
-                    }
-                    let key = format!(
-                        "{sid}:{}:{}:{}:{}",
-                        m.local_id, m.server_id, m.create_time, m.local_type
-                    );
-                    if !seen.insert(key) {
-                        continue;
-                    }
-                    let mut j = m.to_json(&my);
-                    if let Some(o) = j.as_object_mut() {
-                        o.insert("sessionId".into(), json!(sid));
-                        o.insert(
-                            "sessionDisplayName".into(),
-                            json!(names.get(sid).cloned().unwrap_or_else(|| sid.clone())),
-                        );
-                        o.insert("resourceType".into(), json!(kind));
-                    }
-                    items.push((m.create_time, m.local_id, j));
+                    found += 1;
+                    items.push((pos, sid.clone(), m, kind));
                 }
+                // rows that are not resources (a type-49 app message is a file only by what it says) or
+                // listed already are read past
+                let Some(end) = rows.last().and_then(MsgPos::of_row) else {
+                    break;
+                };
+                if found >= want || rows.len() < want {
+                    break;
+                }
+                from = Some((end, Ties::None));
             }
+            items.sort_by(|a, b| place(&b.0).cmp(&place(&a.0)).then_with(|| a.1.cmp(&b.1)));
+            items.truncate(want);
         }
-        items.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
-        let total = items.len();
-        let start = offset.min(total);
-        let stop = (start + limit).min(total);
-        let page: Vec<Value> = items[start..stop].iter().map(|i| i.2.clone()).collect();
-        Ok(json!({ "items": page, "total": total, "hasMore": stop < total || maybe_more }))
+        let more = items.len() > limit;
+        items.truncate(limit);
+        let ids: Vec<String> = items
+            .iter()
+            .map(|i| i.1.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let names = self.session_display_names(&wcdb, &ids);
+        let mut next = Value::Null;
+        let page: Vec<Value> = items
+            .into_iter()
+            .map(|(pos, sid, m, kind)| {
+                let cursor = format!("{}:{sid}", pos.token());
+                next = json!(cursor);
+                let mut j = m.to_json(&my);
+                if let Some(o) = j.as_object_mut() {
+                    o.insert("_cursor".into(), json!(cursor));
+                    o.insert(
+                        "sessionDisplayName".into(),
+                        json!(names.get(&sid).cloned().unwrap_or_else(|| sid.clone())),
+                    );
+                    o.insert("sessionId".into(), json!(sid));
+                    o.insert("resourceType".into(), json!(kind));
+                }
+                j
+            })
+            .collect();
+        if !more {
+            next = Value::Null;
+        }
+        Ok(json!({ "items": page, "hasMore": more, "nextCursor": next }))
     }
 
     /// `getAllImageMessages`: de-duplicated image identifiers of a session, newest first.

@@ -564,9 +564,9 @@ enum ChatSubcommand {
         /// Maximum number of results
         #[arg(long, default_value_t = 300)]
         limit: usize,
-        /// Number of results to skip
-        #[arg(long, default_value_t = 0)]
-        offset: usize,
+        /// Cursor returned as `nextCursor` by the previous page
+        #[arg(long)]
+        before: Option<String>,
     },
     /// All image identifiers of a session (md5 / dat name), newest first
     Images {
@@ -1575,6 +1575,7 @@ fn runs_in_process(command: &Commands) -> bool {
                 | ChatSubcommand::Search { .. }
                 | ChatSubcommand::Dates { .. }
                 | ChatSubcommand::DateCounts { .. }
+                | ChatSubcommand::Resources { .. }
                 | ChatSubcommand::Detail {
                     fast: true,
                     extra: false,
@@ -2434,7 +2435,7 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             start,
             end,
             limit,
-            offset,
+            before,
         } => {
             let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
             hub.chat_resources(&weflow_core::services::ResourceQuery {
@@ -2443,7 +2444,7 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
                 begin: b.unwrap_or(0),
                 end: e.map(|x| x - 1).unwrap_or(0),
                 limit: *limit,
-                offset: *offset,
+                before: before.clone(),
             })
         }
         ChatSubcommand::Images { session_id } => hub.chat_all_images(session_id),

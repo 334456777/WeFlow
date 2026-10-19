@@ -619,7 +619,8 @@ impl Fixture {
                          real_sender_id integer, create_time integer, status integer, upload_status integer, download_status integer, server_seq integer, \
                          origin_source integer, source text, message_content, compress_content, packed_info_data blob, \
                          WCDB_CT_message_content integer default null, WCDB_CT_source integer default null); \
-                         create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq)"
+                         create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq); \
+                         create index \"{table}_TYPE_SEQ\" on \"{table}\"(local_type, sort_seq)"
                     ))
                     .unwrap();
                     for m in msgs {

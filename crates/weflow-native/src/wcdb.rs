@@ -157,6 +157,27 @@ impl Wcdb {
         self.account()?.messages_from(session_id, limit, from)
     }
 
+    /// See [`NativeAccount::message_tables_by_name`].
+    pub fn message_tables_by_name(
+        &self,
+    ) -> Result<std::collections::HashMap<String, Vec<crate::native_msg::MsgTable>>> {
+        self.account()?.message_tables_by_name()
+    }
+
+    /// See [`NativeAccount::typed_before`].
+    pub fn typed_before(
+        &self,
+        tables: &[crate::native_msg::MsgTable],
+        local_types: &[i64],
+        before: Option<(crate::native_msg::MsgPos, crate::native_msg::Ties)>,
+        range: (i64, i64),
+        floor: i64,
+        limit: i64,
+    ) -> Result<Vec<Value>> {
+        self.account()?
+            .typed_before(tables, local_types, before, range, floor, limit)
+    }
+
     /// Opens the databases a chat page reads, at the same time (see
     /// [`NativeAccount::warm`](crate::native_db::NativeAccount::warm)); returns how many opened.
     pub fn warm_chat_databases(&self) -> Result<usize> {
