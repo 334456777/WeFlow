@@ -35,7 +35,7 @@ describe('dual report', () => {
 
   it('tells the two of us: how it began, the year, the moments and the words', () => {
     render(<DualReportView report={REPORT} />);
-    expect(screen.getByRole('article').getAttribute('aria-label')).toBe('我自己和林沐的双人报告');
+    expect(screen.getByRole('article').getAttribute('aria-label')).toBe('我自己和林沐的 2025 年双人报告');
     expect(screen.getByLabelText('总览').textContent).toContain('2025 年，你和林沐聊了3,200条消息，写下 41,000 个字');
     const first = screen.getByLabelText('最早的几条消息').querySelectorAll('li');
     expect(Array.from(first, li => li.className)).toEqual(['', 'mine']);
@@ -82,6 +82,6 @@ describe('dual report', () => {
     rerender(<ReportsPage mode="dual" year={null} onYear={() => {}} friend={{ username: 'wxid_a', displayName: '林沐' }} onFriend={() => {}} />);
     await act(async () => {});
     expect(urls).toEqual(['/report/annual/years', '/report/dual/generate?friend=wxid_a&year=2025']);
-    expect(screen.getByRole('article').getAttribute('aria-label')).toBe('我自己和林沐的双人报告');
+    expect(screen.getByRole('article').getAttribute('aria-label')).toBe('我自己和林沐的 2025 年双人报告');
   });
 });

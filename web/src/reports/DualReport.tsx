@@ -82,7 +82,7 @@ export function DualReportView({ report }: { report: DualReport }) {
   const yearFirsts = r.year && r.yearFirstChat ? (r.yearFirstChat.firstThreeMessages.length ? r.yearFirstChat.firstThreeMessages : [r.yearFirstChat]) : [];
   const months = r.monthly ? monthBars({ hourlyDistribution: {}, weekdayDistribution: {}, monthlyDistribution: r.monthly }) : [];
   const opened = r.initiative ? r.initiative.initiated + r.initiative.received : 0;
-  return <article className="analytics-page report" aria-label={me + '和' + r.friendName + '的双人报告'}>
+  return <article className="analytics-page report" aria-label={me + '和' + r.friendName + '的' + (r.year ? ' ' + r.year + ' 年' : '') + '双人报告'}>
     <section className="report-hero" aria-label="总览">
       <span className="report-pair"><Avatar name={me} url={r.selfAvatarUrl} /><Avatar name={r.friendName} url={r.friendAvatarUrl} /></span>
       <span className="report-label">{span}，你和{r.friendName}聊了</span>

@@ -67,6 +67,7 @@ import { GroupExport, GroupPicker, GroupStats, MemberView } from './analytics/Gr
 import { useAnalytics, useGroups } from './analytics/useAnalytics';
 import type { Friend } from './reports/DualReport';
 import { ReportsPage } from './reports/ReportsPage';
+import { SaveReport } from './reports/SaveReport';
 import type { DayRange } from './api/groups';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
@@ -567,6 +568,7 @@ export function App() {
         {(groupRange.from || groupRange.to) && <button type="button" className="secondary-button range-clear" onClick={() => setGroupRange({ from: '', to: '' })}>不限时间</button>}</>,
     },
     { id: 'group-export', title: '导出', summary: group?.displayName ?? '', content: <GroupExport group={group} member={groupMember} range={groupRange} /> },
+    { id: 'report-save', title: '保存报告', content: <SaveReport find={() => reportsRef.current?.querySelector<HTMLElement>('article.report') ?? null} /> },
     { id: 'analytics-excluded', title: '不统计的好友', content: <ExcludedPeople key={scope} onSaved={() => reloadAnalytics()} /> },
     { id: 'insights-clear', title: '删除见解', content: <InsightClear session={insightFilter.session} name={insightName} count={insightCount} onDone={insights.reload} /> },
   ];
@@ -580,7 +582,7 @@ export function App() {
   // each page names the cards it shows; the others are hidden
   const shownCards = exportPage ? ['tasks', ...(connected ? exportCards : [])]
     : section === 'backup' ? ['tasks']
-    : section === 'reports' ? []
+    : section === 'reports' ? (connected ? ['report-save'] : [])
     : analyticsPage ? (connected ? (analyticsMode === 'group' ? ['analytics-range', 'group-export', 'tasks'] : ['analytics-excluded']) : [])
     : contactsPage ? ['tasks', ...(connected ? contactCards : [])]
       : insightsPage ? (connected ? insightCards : [])
