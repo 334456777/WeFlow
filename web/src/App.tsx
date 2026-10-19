@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  AddressBook, Aperture, Archive, ArrowClockwise, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, Archive, ArrowClockwise, ChartBar, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -62,6 +62,10 @@ import { markInsightRead } from './api/insights';
 import { InsightClear, InsightContacts, InsightList, InsightsSummary, InsightTrigger } from './insights/InsightViews';
 import { useInsights, type InsightFilter } from './insights/useInsights';
 import { BackupPage } from './backup/BackupPage';
+import { ExcludedPeople, PrivateAnalytics } from './analytics/AnalyticsViews';
+import { GroupExport, GroupPicker, GroupStats, MemberView } from './analytics/GroupAnalytics';
+import { useAnalytics, useGroups } from './analytics/useAnalytics';
+import type { DayRange } from './api/groups';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
 import { Accounts, AccountsSkeleton } from './settings/Accounts';
@@ -78,6 +82,7 @@ const navigation = [
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
   { id: 'contacts', label: '通讯录', icon: AddressBook },
+  { id: 'analytics', label: '聊天分析', icon: ChartBar },
   { id: 'insights', label: '灵感信箱', icon: Lightbulb },
   { id: 'export', label: '导出', icon: Export },
   { id: 'backup', label: '数据库备份', icon: Archive },
@@ -238,6 +243,7 @@ export function App() {
   const consoleRef = useRef<HTMLElement>(null);
   const settingsRef = useRef<HTMLElement>(null);
   const backupRef = useRef<HTMLElement>(null);
+  const analyticsRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const shownPreview = usePresence(preview);
@@ -299,6 +305,19 @@ export function App() {
   const [contactsExport, setContactsExport] = useState(DEFAULT_CONTACTS_EXPORT);
   const contacts = contactsState.status === 'ready' ? contactsState.contacts : null;
   const contact = contacts?.find(c => c.username === contactId);
+  // The chat analytics page (#207): the private chats counted once it is opened, again when the people left out change.
+  const analyticsPage = section === 'analytics';
+  const [analyticsMode, setAnalyticsMode] = useState<'private' | 'group'>('private');
+  const [analytics, reloadAnalytics] = useAnalytics(analyticsPage && analyticsMode === 'private' && connected, scope);
+  // the group mode: a group picked (the first until then), over a range of days, and one of its members
+  const [groups, reloadGroups] = useGroups(analyticsPage && analyticsMode === 'group' && connected, scope);
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [groupMember, setGroupMember] = useState<{ username: string; displayName: string; avatarUrl?: string } | null>(null);
+  const [groupRange, setGroupRange] = useState<DayRange>({ from: '', to: '' });
+  useEffect(() => { setGroupId(null); setGroupMember(null); }, [scope]);
+  const groupList = groups.status === 'ready' ? groups.groups : [];
+  const group = groupList.find(g => g.username === groupId) ?? groupList[0] ?? null;
+  const showGroupMember = (member: typeof groupMember) => { setGroupMember(member); analyticsRef.current?.scrollTo({ top: 0 }); };
   // The insights page (#210): the records of the AI insights, of everyone or one conversation, found by words.
   const insightsPage = section === 'insights';
   const [insightFilter, setInsightFilter] = useState<InsightFilter>({ keyword: '', session: null });
@@ -365,7 +384,7 @@ export function App() {
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'analytics' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -533,6 +552,13 @@ export function App() {
       content: <InsightsSummary state={insights.state} engine={'health' in backend ? backend.health.insight : undefined} aiReady={profile?.aiKey} />,
     },
     { id: 'insights-trigger', title: '生成见解', summary: insightName ?? '', content: <InsightTrigger session={insightFilter.session} name={insightName} onDone={insights.reload} /> },
+    {
+      id: 'analytics-range', title: '时间范围', summary: groupRange.from || groupRange.to ? (groupRange.from || '最早') + ' 至 ' + (groupRange.to || '今天') : '全部',
+      content: <><DateRange label="统计的时间范围" from={groupRange.from} to={groupRange.to} onChange={setGroupRange} />
+        {(groupRange.from || groupRange.to) && <button type="button" className="secondary-button range-clear" onClick={() => setGroupRange({ from: '', to: '' })}>不限时间</button>}</>,
+    },
+    { id: 'group-export', title: '导出', summary: group?.displayName ?? '', content: <GroupExport group={group} member={groupMember} range={groupRange} /> },
+    { id: 'analytics-excluded', title: '不统计的好友', content: <ExcludedPeople key={scope} onSaved={() => reloadAnalytics()} /> },
     { id: 'insights-clear', title: '删除见解', content: <InsightClear session={insightFilter.session} name={insightName} count={insightCount} onDone={insights.reload} /> },
   ];
   // nothing to show of a real conversation until one is open; the Moments and WeChat Pay pages have cards of their own
@@ -545,6 +571,7 @@ export function App() {
   // each page names the cards it shows; the others are hidden
   const shownCards = exportPage ? ['tasks', ...(connected ? exportCards : [])]
     : section === 'backup' ? ['tasks']
+    : analyticsPage ? (connected ? (analyticsMode === 'group' ? ['analytics-range', 'group-export', 'tasks'] : ['analytics-excluded']) : [])
     : contactsPage ? ['tasks', ...(connected ? contactCards : [])]
       : insightsPage ? (connected ? insightCards : [])
         : momentsLive ? momentCards
@@ -623,6 +650,24 @@ export function App() {
           </div>
           <Scrollbar target={paneRef} />
         </section>
+        : analyticsPage
+        ? <><section ref={analyticsRef} className="panel browser-panel settings-panel scroll-area" aria-label="聊天分析">
+          <div className="settings-heading"><ChartBar size={20} /><h1>聊天分析</h1>
+            <Segmented className="settings-tabs" count={2} index={analyticsMode === 'private' ? 0 : 1} role="group" aria-label="分析哪种聊天">
+              <button type="button" aria-pressed={analyticsMode === 'private'} onClick={() => setAnalyticsMode('private')}>私聊</button>
+              <button type="button" aria-pressed={analyticsMode === 'group'} onClick={() => setAnalyticsMode('group')}>群聊</button>
+            </Segmented></div>
+          {backend.state === 'unauthorized' ? <TokenPrompt /> : connected && analyticsMode === 'group'
+            ? <div className="group-analytics"><GroupPicker state={groups} selected={group} onRetry={reloadGroups} onSelect={id => { setGroupId(id); setGroupMember(null); }} />
+              {group && (groupMember
+                ? <MemberView group={group} member={groupMember} range={groupRange} onBack={() => showGroupMember(null)} />
+                : <GroupStats group={group} range={groupRange} onMember={showGroupMember} />)}</div>
+            : connected
+            ? <PrivateAnalytics state={analytics} onRetry={() => reloadAnalytics()} onRecount={() => reloadAnalytics(true)}
+              canChat={username => sessionList.some(s => s.username === username)}
+              onChat={username => { selectSection('chat'); setLiveId(username); setMobileDetail(true); }} />
+            : <p className="settings-footnote">连接 weflow serve 后，可以在这里查看私聊和群聊的统计。</p>}
+        </section><Scrollbar target={analyticsRef} /></>
         : section === 'backup'
         ? <><section ref={backupRef} className="panel browser-panel settings-panel scroll-area" aria-label="数据库备份">
           <div className="settings-heading"><Archive size={20} /><h1>数据库备份</h1></div>
