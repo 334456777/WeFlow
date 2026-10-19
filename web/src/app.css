@@ -783,6 +783,32 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .setting-row p + p { margin-top: var(--space-1); }
 /* The token (#214): typed in a hollow field, never shown back. */
 .setting-token > div { flex: 1; min-width: 0; }
+/* Accounts (#215): the profiles, raised rows with the current one inset; what clearing removes, shown before it asks. */
+.setting-accounts > div { flex: 1; min-width: 0; }
+.accounts { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
+.account-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.account { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-raised-sm); }
+.account.current { box-shadow: var(--neu-inset); }
+.account-copy { display: flex; flex: 1 1 200px; flex-direction: column; gap: 2px; min-width: 0; }
+.account-copy strong { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.account-id { font-family: var(--font-mono); font-size: var(--text-xs); }
+.account-path { overflow: hidden; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.account-state { display: inline-flex; flex-shrink: 0; margin-left: auto; align-items: center; gap: 4px; color: var(--state-danger); font-size: var(--text-xs); }
+.account-state.ok { color: var(--fg-muted); }
+.account-state.ok svg { color: var(--state-ok); }
+.account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.account-actions .token-form { flex: 1 1 320px; margin-top: 0; }
+.clear-plan { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.clear-plan ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.clear-plan li { display: flex; gap: var(--space-3); min-width: 0; }
+.clear-plan li .num { flex-shrink: 0; width: 64px; text-align: right; }
+.clear-plan-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.primary-button.danger { color: var(--state-danger); }
+.account-note { font-size: var(--text-xs); }
+.account .skeleton.line { height: 10px; }
+/* as tall as a row of an account: its name, wxid and folder */
+.accounts[aria-busy] .account-copy { gap: 9px; padding: 4px 0; }
+.skeleton.line.account-skeleton-state { flex-shrink: 0; width: 72px; margin-left: auto; }
 .token-form { display: flex; align-items: center; gap: var(--space-2); max-width: 420px; margin-top: var(--space-2); }
 .token-input {
   display: flex; flex: 1; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-md);

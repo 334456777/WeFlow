@@ -316,6 +316,7 @@ const HELP: &[(&str, &str)] = &[
     ("Remove the chosen parts of the cache; shows what goes and asks [y/N] first", "清理选中的缓存部分；先列出将要删除的内容并询问 [y/N]"),
     ("Remove WeFlow's data of the current account and take the account out of this profile: its cached images, voices, stickers, Moments, analytics and key fingerprints, then db_path, wxid, decrypt_key and the image keys of the profile. Shows what goes and asks [y/N] first. WeChat's own files are never touched", "删除 WeFlow 中当前账号的数据，并把该账号移出当前配置档案：缓存的图片、语音、表情、朋友圈、统计和密钥指纹，以及档案中的 db_path、wxid、decrypt_key 和图片密钥。先列出将要删除的内容并询问 [y/N]。不会触碰微信自身的文件"),
     ("Folder of exports; files and folders named after the account are removed too (repeatable)", "导出文件夹；其中以账号命名的文件和文件夹也会被删除（可重复）"),
+    ("Only list what would be removed, with its size; remove nothing", "只列出将会删除的内容和大小，不删除任何东西"),
     ("Do not ask before removing", "删除前不再询问"),
     ("Decrypted images", "已解密的图片"),
     ("Decoded voice messages", "已解码的语音"),

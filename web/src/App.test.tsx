@@ -479,7 +479,7 @@ describe('App', () => {
 
     // the settings say how far the account is set up, and open the setup again
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    expect(screen.getByRole('region', { name: '设置' }).textContent).toContain('档案 default · 未选择账号 · 还没有配置完成，读不出记录。');
+    expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前未选择账号还没有配置');
     fireEvent.click(screen.getByRole('button', { name: '配置向导' }));
     await act(async () => {});
     expect(dialog()?.textContent).toContain('数据库目录');
@@ -491,7 +491,7 @@ describe('App', () => {
     await renderWith(HEALTH);
     expect(dialog()?.textContent).toBe('');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    expect(screen.getByRole('region', { name: '设置' }).textContent).toContain('档案 default · wxid_a · 已配置，可以读取记录；没有图片密钥。');
+    expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前wxid_aD:/x已配置，没有图片密钥');
   });
 
   it('shows the Moments of a running backend: who posts, their posts, and the cards of the page (#202)', async () => {

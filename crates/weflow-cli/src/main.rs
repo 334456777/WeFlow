@@ -208,6 +208,9 @@ enum CacheSubcommand {
         /// Do not ask before removing
         #[arg(short = 'y', long)]
         yes: bool,
+        /// Only list what would be removed, with its size; remove nothing
+        #[arg(long, conflicts_with = "yes")]
+        dry_run: bool,
     },
 }
 
@@ -246,6 +249,9 @@ struct CacheClearArgs {
     /// Do not ask before removing
     #[arg(short = 'y', long)]
     yes: bool,
+    /// Only list what would be removed, with its size; remove nothing
+    #[arg(long, conflicts_with = "yes")]
+    dry_run: bool,
 }
 
 impl CacheClearArgs {
@@ -1744,6 +1750,9 @@ fn handle_cache(
                         })
                 })
                 .collect();
+            if args.dry_run {
+                return Ok(removal_plan(&targets, &[]));
+            }
             if targets.is_empty() {
                 return Ok(json!({ "removedPaths": [], "freedBytes": 0 }));
             }
@@ -1752,7 +1761,11 @@ fn handle_cache(
             }
             Ok(hub.cache_clear(&parts))
         }
-        CacheSubcommand::ClearAccount { exports_dir, yes } => {
+        CacheSubcommand::ClearAccount {
+            exports_dir,
+            yes,
+            dry_run,
+        } => {
             let targets: Vec<RemovalTarget> = hub
                 .account_data_paths(true, exports_dir)?
                 .into_iter()
@@ -1762,6 +1775,9 @@ fn handle_cache(
                     path,
                 })
                 .collect();
+            if *dry_run {
+                return Ok(removal_plan(&targets, &ACCOUNT_KEYS));
+            }
             let heading = tr(
                 "About to remove these files and take the account out of the profile (db_path, wxid, decrypt_key and the image keys):",
                 "将要删除以下文件，并把当前账号移出配置档案（db_path、wxid、decrypt_key 和图片密钥）：",
@@ -1772,13 +1788,7 @@ fn handle_cache(
             let result = hub.clear_current_account_data(true, exports_dir)?;
             // like the desktop app: the account is signed out of this profile
             ConfigStore::update(&ctx.config_path, |config| {
-                for key in [
-                    "db_path",
-                    "wxid",
-                    "decrypt_key",
-                    "image_xor_key",
-                    "image_aes_key",
-                ] {
+                for key in ACCOUNT_KEYS {
                     config.unset_key(None, key);
                 }
                 Ok(())
@@ -1786,6 +1796,26 @@ fn handle_cache(
             Ok(result)
         }
     }
+}
+
+/// The keys `cache clear-account` takes out of the profile.
+const ACCOUNT_KEYS: [&str; 5] = [
+    "db_path",
+    "wxid",
+    "decrypt_key",
+    "image_xor_key",
+    "image_aes_key",
+];
+
+/// `--dry-run` (#215): what `cache clear` / `cache clear-account` would remove, and the profile keys it would unset,
+/// for a page that asks before it removes anything.
+fn removal_plan(targets: &[RemovalTarget], keys: &[&str]) -> Value {
+    json!({
+        "dryRun": true,
+        "paths": targets.iter().map(|t| json!({ "path": t.path, "bytes": t.bytes })).collect::<Vec<_>>(),
+        "bytes": targets.iter().map(|t| t.bytes).sum::<u64>(),
+        "profileKeys": keys,
+    })
 }
 
 /// A file or folder `cache clear` / `cache clear-account` is about to remove.
@@ -1980,6 +2010,40 @@ fn cache_summary(command: &CacheSubcommand, data: &Value) -> Option<String> {
             Some(out)
         }
         CacheSubcommand::Clear(_) | CacheSubcommand::ClearAccount { .. } => {
+            if data["dryRun"] == true {
+                let paths = data["paths"].as_array()?;
+                let mut out = String::from(if paths.is_empty() {
+                    tr(
+                        "Nothing would be removed.
+",
+                        "没有需要清理的文件。
+",
+                    )
+                } else {
+                    tr(
+                        "Would remove:
+",
+                        "将会清理：
+",
+                    )
+                });
+                let rows: Vec<Vec<String>> = paths
+                    .iter()
+                    .map(|p| {
+                        vec![
+                            format_bytes(p["bytes"].as_u64().unwrap_or(0)),
+                            p["path"].as_str().unwrap_or("").to_string(),
+                        ]
+                    })
+                    .collect();
+                for line in align_columns(&rows) {
+                    out.push_str(&format!(
+                        "  {line}
+"
+                    ));
+                }
+                return Some(out);
+            }
             if data["cancelled"] == true {
                 return Some(format!(
                     "{}\n",

@@ -55,3 +55,28 @@ export async function serverPlatform(signal?: AbortSignal): Promise<'windows' | 
 
 /** A database key as `config set decrypt_key` takes it: 64 hexadecimal digits. */
 export const isDatabaseKey = (value: string) => /^[0-9a-fA-F]{64}$/.test(value.trim());
+
+/** `config set current_profile <name>`: switches to that profile, made when it is new. */
+export const switchProfile = (name: string) => setConfig('current_profile', name);
+
+/** What `cache clear-account` removes: WeFlow's files of the account, and the keys it takes out of the profile. */
+export interface ClearPlan {
+  paths: { path: string; bytes: number }[];
+  bytes: number;
+  profileKeys: string[];
+}
+
+/** `cache clear-account --dry-run`: what clearing the current account would remove, removing nothing. */
+export const planClearAccount = () => call<ClearPlan>('DELETE', 'cache/clear-account', { 'dry-run': true });
+
+/** `cache clear-account --yes`: removes it. */
+export const clearAccount = () => call<{ removedPaths?: string[]; freedBytes?: number }>('DELETE', 'cache/clear-account', { yes: true });
+
+/** A name `config set current_profile` takes for a new profile: letters, digits, `-` and `_`, and not one in use. */
+export function profileNameProblem(name: string, profiles: readonly Profile[]): string | null {
+  const typed = name.trim();
+  if (!typed) return '请填写档案名称。';
+  if (!/^[\p{L}\p{N}_-]+$/u.test(typed)) return '档案名称只能包含文字、数字、- 和 _。';
+  if (profiles.some(p => p.name === typed)) return '已经有这个档案了。';
+  return null;
+}
