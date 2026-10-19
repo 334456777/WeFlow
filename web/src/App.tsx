@@ -43,6 +43,7 @@ import { MomentPeople } from './moments/MomentPeople';
 import { filterSummary, MomentsFilter, MomentsStats } from './moments/MomentsCards';
 import { useMomentPeople } from './moments/useMomentPeople';
 import { PaymentList } from './payments/PaymentList';
+import { PaymentsSkeleton } from './Skeleton';
 import { PaymentMerchants } from './payments/PaymentMerchants';
 import { payFilterSummary, PaymentsExport, PaymentsFilter, PaymentsSummary } from './payments/PaymentCards';
 import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } from './payments/usePayments';
@@ -618,7 +619,9 @@ export function App() {
               onSelect={merchant => { setPayFilter(filter => ({ ...filter, merchant })); setMobileDetail(true); }} />}
           <div ref={paneRef} className="message-pane scroll-area" aria-label="支付记录">
             <button type="button" className="mobile-back icon-button" aria-label="返回商户列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
-            {paymentsLive && chosenPayments && <PaymentList key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} scroller={paneRef} narrowed={Boolean(payFilter.merchant || payFilter.from || payFilter.to)} />}
+            {paymentsLive && (chosenPayments
+              ? <PaymentList key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} scroller={paneRef} narrowed={Boolean(payFilter.merchant || payFilter.from || payFilter.to)} />
+              : payState.status === 'loading' && <PaymentsSkeleton label="正在读取支付记录" />)}
           </div>
           <Scrollbar target={paneRef} />
         </section>

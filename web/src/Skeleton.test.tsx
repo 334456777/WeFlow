@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GridSkeleton, ListSkeleton, MessagesSkeleton } from './Skeleton';
+import { GridSkeleton, ListSkeleton, MessagesSkeleton, PaymentsSkeleton, ResultsSkeleton } from './Skeleton';
 
 afterEach(cleanup);
 
@@ -24,5 +24,12 @@ describe('Skeleton', () => {
     expect(messages.querySelectorAll('.message-row.outgoing').length).toBeGreaterThan(0);
     expect(messages.querySelectorAll('.message-row.incoming .skeleton.avatar').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('正在统计').querySelectorAll('.grid-skeleton-cell')).toHaveLength(3);
+  });
+
+  it('stands in for the hits of a search and the records of WeChat Pay', () => {
+    render(<><ResultsSkeleton label="正在搜索" rows={3} /><PaymentsSkeleton label="正在读取支付记录" /></>);
+    expect(screen.getByLabelText('正在搜索').querySelectorAll('.result-skeleton')).toHaveLength(3);
+    const pay = screen.getByLabelText('正在读取支付记录');
+    expect(pay.querySelectorAll('.pay-card .skeleton.amount')).toHaveLength(4);
   });
 });

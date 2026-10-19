@@ -65,3 +65,24 @@ export function MediaSkeleton({ label, items = 4 }: { label: string; items?: num
     </span>)}
   </Wait>;
 }
+
+/** Hits of a search: the conversation, the text and the time, as `.search-result` rows. */
+export function ResultsSkeleton({ label, rows = 4 }: { label: string; rows?: number }) {
+  return <Wait label={label} className="results-skeleton">
+    {Array.from({ length: rows }, (_, i) => <span className="result-skeleton" key={i}>
+      <span className="skeleton line label" /><span className="skeleton line" style={{ width: width(i, 2) }} /><span className="skeleton line time" />
+    </span>)}
+  </Wait>;
+}
+
+/** WeChat Pay records, as `.pay-card`s under a day: a face, the payee and the time, the amount. */
+export function PaymentsSkeleton({ label }: { label: string }) {
+  return <Wait label={label} className="payments payments-skeleton">
+    <span className="skeleton line day" />
+    {[0, 1, 2, 3].map(i => <div className="pay-card" key={i}>
+      <span className="skeleton avatar" />
+      <span className="moment-skeleton-copy"><span className="skeleton line" style={{ width: width(i, 3) }} /><span className="skeleton line short" style={{ width: '30%' }} /></span>
+      <span className="skeleton line amount" />
+    </div>)}
+  </Wait>;
+}
