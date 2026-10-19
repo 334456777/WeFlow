@@ -741,6 +741,66 @@ fn clearing_an_account_can_be_looked_at_first() {
 }
 
 #[test]
+fn refused_commands_are_marked_and_refused() {
+    let root = temp_root("refused");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let doc = server.call("GET", "/openapi.json", "").json();
+    let mut marked = Vec::new();
+    for (path, ops) in doc["paths"].as_object().unwrap() {
+        for (method, op) in ops.as_object().unwrap() {
+            if op.get("x-weflow-refused") != Some(&Value::Bool(true)) {
+                continue;
+            }
+            marked.push(format!("{} {path}", method.to_uppercase()));
+            // its required parameters and its lists (the conversations of `anti-revoke install`, which refuses
+            // each one), made up, in the query: they are taken from there for every method
+            let mut query = Vec::new();
+            let mut take = |name: &str, schema: &Value| {
+                let value = match (schema.get("enum"), schema["type"].as_str()) {
+                    (Some(values), _) => values[0].as_str().unwrap().to_string(),
+                    (_, Some("integer")) => "1".to_string(),
+                    _ => "x".to_string(),
+                };
+                query.push(format!("{name}={value}"));
+            };
+            for p in op["parameters"].as_array().unwrap() {
+                if p["required"] == true || p["schema"]["type"] == "array" {
+                    take(p["name"].as_str().unwrap(), &p["schema"]);
+                }
+            }
+            let body = &op["requestBody"]["content"]["application/json"]["schema"];
+            let required = body["required"].as_array().cloned().unwrap_or_default();
+            for (name, schema) in body["properties"].as_object().into_iter().flatten() {
+                if required.contains(&Value::from(name.as_str())) || schema["type"] == "array" {
+                    take(name, schema);
+                }
+            }
+            let r = server.call(
+                &method.to_uppercase(),
+                &format!("{path}?{}", query.join("&")),
+                "",
+            );
+            assert_eq!(r.status, 501, "{method} {path}: {}", r.body);
+            assert_eq!(r.json()["error"]["code"], "unsupported");
+        }
+    }
+    marked.sort();
+    assert_eq!(
+        marked,
+        [
+            "DELETE /chat/anti-revoke/uninstall",
+            "DELETE /chat/delete-message",
+            "DELETE /sns/block-delete",
+            "DELETE /sns/delete",
+            "PATCH /chat/update-message",
+            "PUT /chat/anti-revoke/install",
+            "PUT /sns/block-delete",
+        ]
+    );
+}
+
+#[test]
 fn commands_answer_with_the_keys_the_server_hands_over() {
     let root = temp_root("keys");
     let home = account_home(&root);

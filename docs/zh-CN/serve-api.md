@@ -230,6 +230,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 `GET /openapi.json`（需要令牌）返回 API 的 OpenAPI 3.1 描述。它由正在运行的 `weflow` 的命令树和方法表生成，所以总是与之一致；摘要和参数说明来自命令的帮助文字，语言按 `Accept-Language` 决定（没有时用服务端的语言）。
 
 - 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
+- 会写入微信数据库、因而总被命令以 `501` 拒绝的操作（`chat update-message`、`chat delete-message`、`chat anti-revoke install/uninstall`、带 `install` 或 `uninstall` 的 `sns block-delete`、`sns delete`）带有 `"x-weflow-refused": true`，客户端可以不提供它们。
 - `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
 - 响应只描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`；不描述每条命令 `data` 的结构。
 - `/health`、`/health/events`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
