@@ -1,38 +1,15 @@
 // Export of the sample records, made in the browser. Real exports will run `export messages` on the server and
 // fetch the file with `?return=file` (docs/serve-api.md).
 import { strToU8, zipSync } from 'fflate';
+import { makeSheet, safeName, saveFile, xmlEscape, XLSX_TYPE } from './files';
 import { categoryLabels, getMessagesInRange } from './mock/data';
 import type { Conversation, ExportOptions, ExportResult, Message } from './types';
 
-const xmlEscape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
-
-function download(bytes: Uint8Array, type: string, fileName: string): string {
-  const copy = new Uint8Array(bytes.length);
-  copy.set(bytes);
-  const url = URL.createObjectURL(new Blob([copy], { type }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  return url;
-}
-
 export function makeSpreadsheet(messages: Message[]): Uint8Array {
-  const rows = [
+  return makeSheet('记录', [
     ['日期', '时间', '发送者', '类型', '内容', '媒体文件'],
     ...messages.map(message => [message.date, message.time, message.sender, ({ text: '文本', image: '图片', file: '文件' })[message.kind], message.text, message.fileName || '']),
-  ];
-  const sheetRows = rows.map((row, rowIndex) => '<row r="' + String(rowIndex + 1) + '">' + row.map((value, columnIndex) => '<c r="' + String.fromCharCode(65 + columnIndex) + String(rowIndex + 1) + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEscape(value) + '</t></is></c>').join('') + '</row>').join('');
-  const files: Record<string, Uint8Array> = {
-    '[Content_Types].xml': strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'),
-    '_rels/.rels': strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'),
-    'xl/workbook.xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="记录" sheetId="1" r:id="rId1"/></sheets></workbook>'),
-    'xl/_rels/workbook.xml.rels': strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'),
-    'xl/worksheets/sheet1.xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="3" width="20" customWidth="1"/><col min="4" max="4" width="10" customWidth="1"/><col min="5" max="5" width="64" customWidth="1"/><col min="6" max="6" width="28" customWidth="1"/></cols><sheetData>' + sheetRows + '</sheetData></worksheet>'),
-  };
-  return zipSync(files, { level: 6 });
+  ], [20, 20, 20, 10, 64, 28]);
 }
 
 async function fetchAsset(path: string): Promise<Blob> {
@@ -56,7 +33,7 @@ export async function exportConversation(conversation: Conversation, options: Ex
   if (!options.from || !options.to || options.from > options.to) throw new Error('请选择有效的时间范围。');
   const messages = getMessagesInRange(conversation, options.from, options.to);
   if (!messages.length) throw new Error('当前时间范围内没有可导出的记录。');
-  const name = (conversation.name + '_' + options.from + '_' + options.to).replace(/[<>:"/\\|?*]/g, '_');
+  const name = safeName(conversation.name + '_' + options.from + '_' + options.to);
   const mediaName = (message: Message) => 'media/' + (message.fileName || message.id);
   let bytes: Uint8Array;
   let fileName: string;
@@ -66,7 +43,7 @@ export async function exportConversation(conversation: Conversation, options: Ex
     fileName = name + '.json'; type = 'application/json;charset=utf-8';
   } else if (options.format === 'Excel') {
     bytes = makeSpreadsheet(messages);
-    fileName = name + '.xlsx'; type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    fileName = name + '.xlsx'; type = XLSX_TYPE;
   } else {
     const items = await Promise.all(messages.map(async message => {
       const image = message.asset && options.includeMedia ? '<img src="' + await imageAsDataUrl(message.asset) + '" alt="' + xmlEscape(message.text) + '" />' : '';
@@ -84,6 +61,6 @@ export async function exportConversation(conversation: Conversation, options: Ex
     fileName = name + '.zip'; type = 'application/zip';
   }
   signal?.throwIfAborted();
-  const downloadUrl = download(bytes, type, fileName);
+  const downloadUrl = saveFile(bytes, type, fileName);
   return { fileName, count: messages.length, downloadUrl };
 }
