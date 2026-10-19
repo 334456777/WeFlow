@@ -1,13 +1,13 @@
 {
   "name": "weflow-web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "WebUI for weflow serve",
   "license": "CC-BY-NC-SA-4.0",
   "weflow": {
     "apiVersion": "1",
-    "minBackendVersion": "5.0.0-rc.5"
+    "minBackendVersion": "5.0.0-rc.6"
   },
   "engines": {
     "node": ">=20.19"

@@ -48,7 +48,7 @@ async function renderWith(health: object | null) {
 }
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
-const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0-rc.5', data: 'a' };
+const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0-rc.6', data: 'a' };
 
 describe('App', () => {
   it('shows the workspace with the sample records while no backend is connected', async () => {
@@ -307,7 +307,7 @@ describe('App', () => {
     await renderWith({ ...HEALTH, limits: { maxTasks: 1, maxReads: 4, maxMedia: 4 }, insight: true });
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     const text = () => screen.getByRole('region', { name: '设置' }).textContent ?? '';
-    expect(text()).toContain('weflow 5.0.0-rc.5 · API 1');
+    expect(text()).toContain('weflow 5.0.0-rc.6 · API 1');
     expect(text()).toContain('适用于这个网页');
     expect(text()).toContain('同时运行任务 1 个 · 读取 4 个 · 媒体解码 4 个 · 灵感引擎已开启');
     expect(text()).toContain('没有保存令牌');
