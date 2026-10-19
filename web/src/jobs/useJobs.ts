@@ -57,8 +57,8 @@ export function refreshJobs(): Promise<void> {
       const jobs = (Array.isArray(listed) ? listed : []).filter(isJob);
       const known = new Map(state.jobs.map(j => [j.id, j]));
       set({ jobs: [...jobs].reverse().map(job => ({ ...job, result: known.get(job.id)?.result })), error: undefined });
-      // the result of a job this tab started, when it ended between two reads
-      const missing = state.jobs.filter(j => isFinished(j.status) && !j.result && state.labels[j.id]);
+      // the list leaves results out: those of the jobs this tab started, and why any job failed
+      const missing = state.jobs.filter(j => isFinished(j.status) && !j.result && (state.labels[j.id] || j.status === 'failed'));
       await Promise.all(missing.map(j => getJob(j.id).then(merge, () => {})));
     } catch (problem) {
       set({ error: (problem instanceof ApiError && problem.message) || '读取任务列表失败' });

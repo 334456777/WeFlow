@@ -54,11 +54,16 @@ function JobRow({ job, label }: { job: Job; label: string }) {
   </li>;
 }
 
-export function TaskCenter({ jobs, empty = '还没有任务。导出等耗时的命令会在这里排队、显示进度。' }: { jobs: JobsState; empty?: string }) {
+export function TaskCenter({ jobs, names, empty = '还没有任务。导出等耗时的命令会在这里排队、显示进度。' }: {
+  jobs: JobsState;
+  /** The conversations by id, to name the one a job started elsewhere exports. */
+  names?: ReadonlyMap<string, string>;
+  empty?: string;
+}) {
   if (jobs.error && !jobs.jobs.length) return <p className="empty-text" role="alert">{jobs.error}</p>;
   if (!jobs.jobs.length) return <p className="empty-text">{empty}</p>;
   return <ol className="task-list jobs" aria-live="polite">
-    {jobs.jobs.map(job => <JobRow key={job.id} job={job} label={jobs.labels[job.id] ?? describeCommand(job.command)} />)}
+    {jobs.jobs.map(job => <JobRow key={job.id} job={job} label={jobs.labels[job.id] ?? describeCommand(job.command, names)} />)}
   </ol>;
 }
 

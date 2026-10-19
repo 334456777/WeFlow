@@ -50,11 +50,16 @@ export const jobFileUrl = (id: string) => apiUrl('jobs/' + encodeURIComponent(id
 
 export const jobEventsUrl = (id: string) => apiUrl('jobs/' + encodeURIComponent(id) + '/events', { access_token: token() });
 
-/** What a job does, in words: 「导出聊天记录」 for `export messages`, … */
-export function describeCommand(command: string[]): string {
+/**
+ * What a job does, in words: 「导出聊天记录」 for `export messages`, … With `names` (conversations by id), the
+ * conversation it names: 「导出聊天记录 · 林沐」.
+ */
+export function describeCommand(command: string[], names?: ReadonlyMap<string, string>): string {
   const words = command.slice(1).filter(word => !word.startsWith('-'));
   const name = words.slice(0, 2).join(' ');
-  return COMMANDS[name] ?? COMMANDS[words[0]] ?? words.slice(0, 2).join(' ');
+  const what = COMMANDS[name] ?? COMMANDS[words[0]] ?? name;
+  const about = names && command.find(word => names.has(word));
+  return about ? what + ' · ' + names.get(about) : what;
 }
 
 const COMMANDS: Record<string, string> = {

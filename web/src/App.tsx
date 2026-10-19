@@ -263,6 +263,7 @@ export function App() {
   const merchants = useMemo(() => payDays ? merchantsOf(payDays) : [], [payDays]);
   const chosenPayments = useMemo(() => payDays && (payFilter.merchant === null ? payDays : payDays.filter(p => p.merchant === payFilter.merchant)), [payDays, payFilter.merchant]);
   const list = conversations.filter(item => item.category === activeCategory);
+  const sessionNames = useMemo(() => new Map(sessionList.map(s => [s.username, s.displayName || s.username])), [sessionList]);
   const selected = live ? liveConversation(liveSession) : list.find(item => item.id === selectedIds[activeCategory]) || list[0];
   const media = selected.messages.filter(message => message.kind !== 'text');
   const results = useMemo(() => submittedQuery === null ? [] : selected.messages.filter(message => {
@@ -392,9 +393,9 @@ export function App() {
       </>,
     },
     {
-      id: 'tasks', title: '当前任务',
+      id: 'tasks', title: '任务中心',
       summary: connected ? jobsSummary(jobs) : '未连接',
-      content: connected ? <TaskCenter jobs={jobs} /> : <p className="empty-text">连接 weflow serve 后，导出等任务会显示在这里。</p>,
+      content: connected ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">连接 weflow serve 后，导出等任务会显示在这里。</p>,
     },
     {
       id: 'search', title: '搜索', summary: selected.live ? searchSummary(liveSearch.state) : submittedQuery === null ? '当前会话' : results.length + ' 条结果',

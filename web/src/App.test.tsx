@@ -57,7 +57,7 @@ describe('App', () => {
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeTruthy();
     expect(screen.getByRole('region', { name: '操作控制台' })).toBeTruthy();
     expect(screen.queryByText('操作控制台')).toBeNull();
-    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料', '媒体文件']);
+    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
     expect(screen.getByText('示例数据 · 连接 weflow serve 后显示真实会话')).toBeTruthy();
     expect(screen.getByRole('button', { name: '选择设计协作群' }).textContent).toContain('李婷：这版看起来不错');
   });
@@ -99,7 +99,7 @@ describe('App', () => {
     expect(calls).toContain('/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
     // The first conversation is opened; its details and media are read only once their cards open (#200).
     expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
-    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料', '媒体文件']);
+    expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
     expect(calls.filter(url => /detail|resources|group\//.test(url))).toEqual([]);
     // the open conversation can be exported on the server (#211)
     expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', false);
