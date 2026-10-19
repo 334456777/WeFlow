@@ -54,6 +54,8 @@ npm run dev                               # http://localhost:5173/ui/
 
 `web/` 下有改动时，`.github/workflows/web.yml` 会运行 `typecheck`、`test` 和 `build`，并上传 `dist/`。
 
+网页显示前要加载的 JavaScript 超过 `plugins/sizeBudget.ts` 里的上限时，构建会失败（#159）；确实需要更多时，在那里有意地调高。图标只保留网页用到的粗细（`plugins/iconWeights.ts`：regular、fill、bold）；代码用到其他粗细时，测试会失败。
+
 ## 版本
 
 `package.json` 记录了 WebUI 自己的版本。`weflow` 字段下记录它需要的 API：
