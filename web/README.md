@@ -47,6 +47,8 @@ A refused token (HTTP 401) shows an input to reconnect. Settings can replace or 
 
 `.github/workflows/web.yml` runs `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
 
+The build fails when the JavaScript the page loads before it shows is over the budget in `plugins/sizeBudget.ts` (#159); raise it there on purpose when a change needs more. Icons keep only the weights the app draws (`plugins/iconWeights.ts`: regular, fill, bold); a test fails when the code asks for another.
+
 ## Versions
 
 `package.json` holds the WebUI's own version and, under `weflow`, the API it needs: `apiVersion` must equal the `apiVersion` of `GET /health`, and the server's `version` must be at least `minBackendVersion` (a development build's `git describe` version counts as its tag). The build writes these to `dist/weflow-web.json` for `weflow web` (#148); the page checks them against the `hello` of `/health/events` and shows "版本不兼容" otherwise. A server without `/health/events` (5.0.0-rc.5 and older) is not supported: the page shows "未连接".

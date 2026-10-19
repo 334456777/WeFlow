@@ -2,6 +2,8 @@
 import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
+import { iconWeights } from './plugins/iconWeights.ts';
+import { BUDGET, sizeBudget } from './plugins/sizeBudget.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -48,7 +50,9 @@ export default defineConfig(({ mode }) => {
     // weflow serve hosts the WebUI under /ui/ (#146)
     base: '/ui/',
     define: { __WEFLOW_WEB__: JSON.stringify(meta) },
-    plugins: [react(), webMeta()],
+    plugins: [react(), iconWeights(), webMeta(), sizeBudget()],
+    // Vite's own warning at the same size as the budget (#159)
+    build: { chunkSizeWarningLimit: BUDGET.js / 1000 },
     server: { proxy },
     preview: { proxy },
     test: { environment: 'jsdom' },
