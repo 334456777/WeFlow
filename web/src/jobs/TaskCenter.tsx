@@ -23,6 +23,9 @@ export function jobDetail(job: Job): string {
   return STATUS[job.status];
 }
 
+/** The state of a job and what it says: 「未完成 · 磁盘空间不足」. */
+export const jobLine = (job: Job) => (STATUS[job.status] === jobDetail(job) ? STATUS[job.status] : STATUS[job.status] + ' · ' + jobDetail(job));
+
 /** The folder of a finished export on the server, when the result names its file. */
 export function outputOf(job: Job): string {
   const out = job.result?.data?.out;
@@ -42,7 +45,7 @@ function JobRow({ job, label }: { job: Job; label: string }) {
     <span className="task-icon">{job.status === 'running' ? <CircleNotch size={16} className="spin" /> : job.status === 'succeeded' ? <Check size={12} weight="bold" /> : job.status === 'failed' ? <X size={12} weight="bold" /> : <Circle size={16} />}</span>
     <div>
       <strong className="clamp-1">{label}</strong>
-      <small className="clamp-2">{STATUS[job.status] === jobDetail(job) ? STATUS[job.status] : STATUS[job.status] + ' · ' + jobDetail(job)}</small>
+      <small className="clamp-2">{jobLine(job)}</small>
       {percent !== null && <span className="job-bar" role="progressbar" aria-label={label + '的进度'} aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: percent + '%' }} /></span>}
       {problem && <small role="alert">{problem}</small>}
       <span className="job-actions">
