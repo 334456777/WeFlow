@@ -33,6 +33,7 @@ import { parseDay } from './calendar/dates';
 import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
 import { canFly, fly, frameFlight, inSight, thumbnailOf } from './chat/previewMotion';
+import { OriginalButton } from './chat/OriginalButton';
 import type { ZoomControls } from './chat/ZoomImage';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
@@ -439,13 +440,14 @@ export function App() {
     window.addEventListener('pointerdown', down, true);
     return () => window.removeEventListener('pointerdown', down, true);
   }, []);
-  const opened = useRef<{ thumb: HTMLImageElement; src: string } | null>(null);
+  // the thumbnail opened from, and the picture it showed then: the image, or its original once shown instead
+  const opened = useRef<{ thumb: HTMLImageElement; src: string; hd?: string } | null>(null);
   const previewMedia = () => dialogRef.current?.querySelector<HTMLElement>('.zoom-frame img, .preview-video');
   const openPreview = (next: Preview) => {
     const thumb = next.type === 'file' ? null : thumbnailOf(document.activeElement, pressed.current);
     if (!thumb || next.type === 'file') { opened.current = null; setPreview(next); return; }
     const shown: Preview = { ...next, thumb: { src: thumb.currentSrc || thumb.src, aspect: thumb.naturalWidth / thumb.naturalHeight } };
-    opened.current = { thumb, src: next.src };
+    opened.current = { thumb, src: next.src, hd: next.type === 'image' ? next.hd?.src : undefined };
     if (!canFly(prefersReducedMotion(reducedMotion))) { setPreview(shown); return; }
     // the dialog's own fade and growth stay off while it is open: switched back on, they would play from the start
     dialogRef.current?.setAttribute('data-flown', '');
@@ -457,12 +459,21 @@ export function App() {
       if (f) done = frameFlight('open', f, media, from);
     }).then(() => done());
   };
+  // the original instead of the image opened (#194), in the same place: the image stays under it until it comes
+  const showOriginal = () => {
+    if (!preview || preview.type !== 'image' || !preview.hd) return;
+    const img = previewMedia();
+    const under = img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0
+      ? { src: img.currentSrc || img.src, aspect: preview.thumb?.aspect ?? img.naturalWidth / img.naturalHeight } : preview.thumb;
+    setPreview({ ...preview, src: preview.hd.src, thumb: under, hd: { ...preview.hd, shown: true } });
+  };
   const closePreview = () => {
     const back = opened.current;
     opened.current = null;
     const media = previewMedia();
     const dialog = dialogRef.current;
-    if (back && media && preview && preview.type !== 'file' && preview.src === back.src && inSight(back.thumb) && canFly(prefersReducedMotion(reducedMotion))) {
+    const same = preview && preview.type !== 'file' && (preview.src === back?.src || preview.src === back?.hd);
+    if (back && media && same && inSight(back.thumb) && canFly(prefersReducedMotion(reducedMotion))) {
       dialog?.setAttribute('data-flown', '');
       const frame = dialog?.querySelector<HTMLElement>('.preview-content');
       const done = frame ? frameFlight('close', frame, media, back.thumb.getBoundingClientRect()) : () => {};
@@ -933,7 +944,7 @@ export function App() {
     <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
       onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (event.target === event.currentTarget) closePreview(); }} onKeyDown={previewKeys}>
       {shownPreview && <div className="preview-content"><header><strong>{shownPreview.value.title}{gallery && <small className="num"> {gallery.index + 1} / {gallery.items.length}</small>}</strong>
-        <span className="preview-tools">{gallery && <>
+        <span className="preview-tools">{shownPreview.value.type === 'image' && shownPreview.value.hd && <OriginalButton key={shownPreview.value.hd.src} hd={shownPreview.value.hd} onShow={showOriginal} />}{gallery && <>
           <button type="button" className="icon-button" aria-label="上一个" title="上一个（←）" disabled={gallery.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={18} /></button>
           <button type="button" className="icon-button" aria-label="下一个" title="下一个（→）" disabled={gallery.index === gallery.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={18} /></button></>}
           {shownPreview.value.type !== 'file' && shownPreview.value.locate && <button type="button" className="icon-button" aria-label="在会话中定位" title="在会话中定位"

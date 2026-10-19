@@ -1104,6 +1104,18 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .zoom-frame.zoomed:active { cursor: grabbing; }
 .zoom-frame img { width: auto; max-width: 100%; max-height: calc(100dvh - 120px); object-fit: contain; transform-origin: center; user-select: none; }
 .preview-tools { display: flex; align-items: center; gap: var(--space-1); }
+/* 「原图」: a small raised control before the arrows; flat and faint when the original is not on this computer, and
+   sunk while it shows (#194) */
+.original-button {
+  display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-md); margin-right: var(--space-2); padding: 0 var(--space-3);
+  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted); font-size: var(--text-xs);
+  transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+}
+.original-button small { color: var(--fg-subtle); font-size: var(--text-2xs); }
+button.original-button:not([aria-disabled]):hover { color: var(--fg); box-shadow: var(--neu-pressed); }
+button.original-button:not([aria-disabled]):active { transform: scale(var(--press-scale)); }
+.original-button[aria-disabled] { box-shadow: var(--neu-disabled); color: var(--fg-subtle); cursor: not-allowed; }
+.original-button.shown { box-shadow: var(--neu-inset); color: var(--fg); }
 .preview-content header small { margin-left: var(--space-2); color: var(--fg-subtle); font-weight: var(--weight-regular); }
 .file-preview { min-width: 320px; padding: var(--space-8) var(--space-8) var(--space-6); text-align: center; }
 .file-preview > svg { margin: 0 auto var(--space-3); color: var(--fg-subtle); }

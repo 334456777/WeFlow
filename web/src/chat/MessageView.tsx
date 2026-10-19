@@ -11,9 +11,21 @@ import { appLabel, formatDuration, formatFileSize, kindOf, withoutLabel } from '
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 
 export type Preview =
-  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb }
+  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb; hd?: PreviewHd }
   | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb }
   | { type: 'file'; title: string };
+
+/** The original WeChat downloads on View original (`_h.dat`) of a picture the preview shows as opened (`.dat`), to
+ * show instead once it is on this computer (#194); `shown` once it is. */
+export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean }
+
+/** A picture message as the preview opens it: the image WeChat shows when it is opened, with its original beside. */
+export function imagePreview(sessionId: string, message: ParsedMessage, title: string): Extract<Preview, { type: 'image' }> {
+  return {
+    type: 'image', src: mediaUrl('image-data', sessionId, message, { variant: 'normal' }), title,
+    hd: { src: mediaUrl('image-data', sessionId, message, { variant: 'hd' }), sessionId, localId: message.localId, createTime: message.createTime },
+  };
+}
 
 /** The thumbnail a preview opened from (#194): the preview takes its shape at once and shows it until the picture
  * comes, so the picture that flies in from it has a place to land and does not move again when it loads. */
@@ -34,7 +46,7 @@ export interface Gallery { items: Preview[]; index: number }
 /** What a picture or video message opens in the preview; null for other messages. */
 export function mediaPreview(sessionId: string, message: ParsedMessage): Preview | null {
   const kind = kindOf(message);
-  if (kind === 'image') return { type: 'image', src: mediaUrl('image-data', sessionId, message), title: '图片' };
+  if (kind === 'image') return imagePreview(sessionId, message, '图片');
   if (kind === 'video') return { type: 'video', src: mediaUrl('video-data', sessionId, message), poster: mediaUrl('video-data', sessionId, message, { thumb: true }), title: '视频' };
   return null;
 }

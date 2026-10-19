@@ -115,6 +115,14 @@ export interface Contact {
   big_head_url?: string;
 }
 
+/** Which files WeChat keeps of a message's image are on this computer, and their sizes (bytes) as the message gives
+ * them: the original's (`hd`) even before WeChat has downloaded it (#194). */
+export interface ImageInfo { thumb: boolean; normal: boolean; hd: boolean; normalBytes?: number | null; hdBytes?: number | null }
+
+export function getImageInfo(sessionId: string, localId: number, createTime: number, signal?: AbortSignal): Promise<ImageInfo> {
+  return get<ImageInfo>('api/chat/image-info', { 'session-id': sessionId, 'msg-id': localId, 'create-time': createTime }, signal);
+}
+
 export function getContact(username: string, signal?: AbortSignal): Promise<Contact> {
   return get<Contact>('api/chat/contact', { username }, signal);
 }
