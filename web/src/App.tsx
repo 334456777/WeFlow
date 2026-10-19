@@ -46,11 +46,11 @@ import { PaymentList } from './payments/PaymentList';
 import { PaymentMerchants } from './payments/PaymentMerchants';
 import { payFilterSummary, PaymentsExport, PaymentsFilter, PaymentsSummary } from './payments/PaymentCards';
 import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } from './payments/usePayments';
-import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
+import type { Category, Conversation, ExportResult, Navigation } from './types';
 import { jobFileUrl, type Job } from './api/jobs';
 import { jobDetail, jobsSummary, outputOf, TaskCenter } from './jobs/TaskCenter';
 import { findJob, removeJob, runJob, useJobs } from './jobs/useJobs';
-import { batchSummary, BatchExport, DEFAULT_BATCH, SessionsExport, type BatchOptions } from './exports/ExportCards';
+import { batchSummary, BatchExport, DEFAULT_BATCH, formatLabel, MESSAGE_FORMATS, SessionsExport, type BatchOptions, type MessageFormat } from './exports/ExportCards';
 import { ExportPicker, PickedList } from './exports/ExportPicker';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -64,9 +64,6 @@ const navigation = [
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
 
-const formats = ['HTML', 'JSON', 'Excel'] as const;
-/** `export messages --format` of each choice. */
-const FORMAT_ARGS: Record<ExportFormat, string> = { HTML: 'html', JSON: 'json', Excel: 'excel' };
 
 const backendLabels: Record<Backend['state'], string> = {
   checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容', unauthorized: '需要令牌',
@@ -199,7 +196,7 @@ export function App() {
   const [to, setTo] = useState(CURRENT_DATE);
   // the days of a real export: all of them unless chosen (the sample's days are the sample's)
   const [liveRange, setLiveRange] = useState({ from: '', to: '' });
-  const [format, setFormat] = useState<ExportFormat>('HTML');
+  const [format, setFormat] = useState<MessageFormat>('html');
   const [includeMedia, setIncludeMedia] = useState(true);
   // the job of the export card (#211): it runs on the server, in the task centre
   const [exportJobId, setExportJobId] = useState<string | null>(null);
@@ -361,8 +358,8 @@ export function App() {
     if (!liveSession) return;
     setExportError(''); setExportJobId(null);
     try {
-      const job = await runJob('导出 ' + selected.name + ' · ' + format, 'POST', 'export/messages', {
-        'session-id': liveSession.username, format: FORMAT_ARGS[format], start: liveRange.from || undefined, end: liveRange.to || undefined,
+      const job = await runJob('导出 ' + selected.name + ' · ' + formatLabel(format), 'POST', 'export/messages', {
+        'session-id': liveSession.username, format, start: liveRange.from || undefined, end: liveRange.to || undefined,
         media: includeMedia ? 'all' : undefined,
       });
       setExportJobId(job.id);
@@ -381,16 +378,16 @@ export function App() {
 
   const cards: Card[] = [
     {
-      id: 'export', title: '导出', summary: format + (includeMedia ? ' · 含媒体' : ''),
+      id: 'export', title: '导出', summary: formatLabel(format) + (includeMedia ? ' · 含媒体' : ''),
       content: <>
         <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
         <div className="form-row"><span className="field-label">时间范围</span>{selected.live
           ? <DateRange label="导出的时间范围" from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
           : <DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
         <div className="form-row format-row"><span className="field-label">导出格式</span>
-          <Segmented className="format-group" count={formats.length} index={formats.indexOf(format)} role="group" aria-label="导出格式">
-            {formats.map(value => <button type="button" key={value} aria-pressed={format === value} onClick={() => { setFormat(value); resetExport(); }}>{value}</button>)}
-          </Segmented>
+          <div className="choice-chips" role="group" aria-label="导出格式">
+            {MESSAGE_FORMATS.map(f => <button type="button" key={f.value} className="chip" aria-pressed={format === f.value} onClick={() => { setFormat(f.value); resetExport(); }}>{f.label}</button>)}
+          </div>
           <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>图片、语音、视频与表情</small></span></label>
         </div>
         {selected.live && liveSession

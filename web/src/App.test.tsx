@@ -180,18 +180,20 @@ describe('App', () => {
     const side = () => screen.getByRole('button', { name: /取消导出|再次导出/, hidden: true });
     expect(side().hasAttribute('inert')).toBe(true);
 
+    // any format of `export messages`, not only the first three (#279)
+    fireEvent.click(within(document.querySelector<HTMLElement>('[data-card="export"]')!).getByRole('button', { name: 'TXT' }));
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
     await act(async () => {});
     // a job of the server that keeps its file
     expect(started[0].url).toBe('/export/messages?return=file');
     expect((started[0].init?.headers as Record<string, string>).Prefer).toBe('respond-async');
-    expect(JSON.parse(String(started[0].init?.body))).toMatchObject({ 'session-id': 'wxid_a', format: 'html', media: 'all' });
+    expect(JSON.parse(String(started[0].init?.body))).toMatchObject({ 'session-id': 'wxid_a', format: 'txt', media: 'all' });
     expect(screen.getByRole('button', { name: '正在导出' }).getAttribute('aria-disabled')).toBe('true');
     expect(side().hasAttribute('inert')).toBe(false);
     // its progress from the job's events, in the task centre too
     const events = opened.find(source => source.url.startsWith('/jobs/j1/events'))!;
     act(() => { events.emit('progress', { type: 'progress', message: '正在导出消息', current: 5, total: 10, percent: 50 }); });
-    expect(screen.getByRole('progressbar', { name: '导出 林沐 · HTML的进度' }).getAttribute('aria-valuenow')).toBe('50');
+    expect(screen.getByRole('progressbar', { name: '导出 林沐 · TXT的进度' }).getAttribute('aria-valuenow')).toBe('50');
 
     fireEvent.click(screen.getByRole('button', { name: '取消导出' }));
     await act(async () => {});

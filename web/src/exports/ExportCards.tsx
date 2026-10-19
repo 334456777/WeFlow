@@ -40,10 +40,10 @@ export function exportParams(session: string, options: BatchOptions) {
   };
 }
 
-const labelOf = (format: MessageFormat) => MESSAGE_FORMATS.find(f => f.value === format)!.label;
+export const formatLabel = (format: MessageFormat) => MESSAGE_FORMATS.find(f => f.value === format)!.label;
 
 export function batchSummary(picked: number, options: BatchOptions): string {
-  return (picked ? picked + ' 个会话' : '未选会话') + ' · ' + labelOf(options.format);
+  return (picked ? picked + ' 个会话' : '未选会话') + ' · ' + formatLabel(options.format);
 }
 
 export function BatchExport({ picked, options, onChange }: {
@@ -60,7 +60,7 @@ export function BatchExport({ picked, options, onChange }: {
     try {
       // one job each, in the order of the list; the server runs them one after another
       for (const session of picked) {
-        await runJob('导出 ' + nameOf(session) + ' · ' + labelOf(options.format), 'POST', 'export/messages', exportParams(session.username, options));
+        await runJob('导出 ' + nameOf(session) + ' · ' + formatLabel(options.format), 'POST', 'export/messages', exportParams(session.username, options));
         queued += 1;
       }
       setNote({ text: '已加入 ' + queued + ' 个导出任务，在任务中心查看进度和下载文件。' });
