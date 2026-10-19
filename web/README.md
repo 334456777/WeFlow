@@ -63,6 +63,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/api/live.ts` | Live message events, handed to the conversation list and the open conversation (#201) |
 | `src/api/biz.ts` | Official accounts: the ones followed (`/biz/accounts`) and their pushes (`/biz/messages`) (#203) |
 | `src/api/sns.ts`, `src/moments/` | Moments (#202): the timeline, who posts and how often, the totals (`/api/sns/timeline`, `post-counts`, `stats`), and the pictures and videos of a post through `/api/sns/media`; the page beside the timeline lists the posters, the console narrows it by words and days |
+| `src/api/pay.ts`, `src/payments/` | WeChat Pay (#204): every notice of the WeChat Pay account, read a page after another (`/biz/pay-records`), with the amount, method, state and payee taken from its lines; the list beside them sums up each payee, the console narrows them by days, adds them up and exports them as HTML, JSON or Excel |
 | `src/api/details.ts` | Conversation details, group member statistics, media and parsed message lookups; serializes command reads (#200) |
 | `src/chat/SessionInfo.tsx`, `src/chat/MediaPanel.tsx` | Console cards loaded while open: conversation facts, virtualized group members, and media that open at their message (#200) |
 | `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/chat/statuses`, in batches of 100) |
@@ -80,3 +81,4 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/App.tsx`, `src/app.css` | The workspace: navigation on the left, records in the middle, the operations console on the right |
 | `src/mock/` | Sample records, until the screens read the API |
 | `src/export.ts` | Sample export in the browser; real exports will use `export messages` with `?return=file` |
+| `src/files.ts` | Files the page saves: an .xlsx of rows, any bytes as a download |
