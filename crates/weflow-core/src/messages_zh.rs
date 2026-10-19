@@ -42,6 +42,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("HTTP server stopped: {}", "HTTP 服务已停止：{}"),
     ("interrupted by user", "已被用户中断"),
     ("failed to serialize JSON: {}", "序列化 JSON 失败：{}"),
+    ("no contacts of the kinds asked for", "没有所选类型的联系人"),
     ("unsupported export format: {}; supported: json, csv, txt, html, excel, sql, chatlab, weclone", "不支持的导出格式：{}；支持：json、csv、txt、html、excel、sql、chatlab、weclone"),
     ("CSV export expects an array; use --format json for nested data", "CSV 导出需要数组数据；嵌套数据请使用 --format json"),
     // config

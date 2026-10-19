@@ -758,6 +758,12 @@ enum ExportSubcommand {
         /// Output file
         #[arg(long)]
         out: PathBuf,
+        /// The contacts as `chat contacts --parsed` lists them instead of the database rows
+        #[arg(long)]
+        parsed: bool,
+        /// Only these kinds of contact (repeat for several; with --parsed)
+        #[arg(long, requires = "parsed", value_parser = ["friend", "group", "official", "former_friend"], action = clap::ArgAction::Append)]
+        kind: Vec<String>,
     },
     /// Export the footprint statistics
     Footprint {
@@ -2568,8 +2574,28 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             }
             write_export("sessions", format.as_deref(), out, &data)
         }
-        ExportSubcommand::Contacts { format, out } => {
-            let data = hub.contacts()?;
+        ExportSubcommand::Contacts {
+            format,
+            out,
+            parsed,
+            kind,
+        } => {
+            let data = if *parsed {
+                let mut contacts = hub.chat_contacts_parsed()?;
+                if !kind.is_empty() {
+                    contacts.retain(|c| {
+                        c["type"]
+                            .as_str()
+                            .is_some_and(|t| kind.iter().any(|k| k == t))
+                    });
+                }
+                if contacts.is_empty() {
+                    return Err(AppError::runtime("no contacts of the kinds asked for"));
+                }
+                Value::Array(contacts)
+            } else {
+                hub.contacts()?
+            };
             write_export("contacts", format.as_deref(), out, &data)
         }
         ExportSubcommand::Footprint { format, out } => {
