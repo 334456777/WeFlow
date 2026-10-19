@@ -282,7 +282,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 ## In-process reads
 
-`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `chat dates`, `chat date-counts`, `chat detail` (with `fast=true`), `group members`, `sns timeline` (without `with-media`), `sns users`, `sns stats`, `sns post-counts`. Parameters, answer, status code and headers are those of the same path without `/api/` (the same parsing and the same handler; a test compares them byte for byte), only faster:
+`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `chat dates`, `chat date-counts`, `chat detail` (with `fast=true`), `chat resources`, `group members`, `sns timeline` (without `with-media`), `sns users`, `sns stats`, `sns post-counts`. Parameters, answer, status code and headers are those of the same path without `/api/` (the same parsing and the same handler; a test compares them byte for byte), only faster:
 
 | Read (large account, Windows) | `/<path>` | `/api/<path>` |
 |---|---|---|
@@ -293,6 +293,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `group members` | 33 ms | 2 ms |
 | `chat date-counts`, 213,000 messages | 584 ms | 63 ms |
 | `chat detail --fast` | 55 ms | 2 ms |
+| `chat resources`, a page of 300 | 109 ms | 42 ms |
 | `sns timeline`, 20 posts | 235 ms | 6 ms |
 | 16 pages of messages at once (in all) | 156 ms | 140 ms |
 

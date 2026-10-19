@@ -879,6 +879,8 @@ fn reads_run_in_process_with_the_same_answers() {
         "/chat/dates?session-id=wxid_bob",
         "/chat/date-counts?session-id=wxid_bob",
         "/chat/detail?session-id=wxid_bob&fast=true",
+        "/chat/resources",
+        "/chat/resources?session=wxid_bob&type=image&limit=1",
         // the rest of the details, and the timeline with its media, from the child process
         "/chat/detail?session-id=wxid_bob",
         "/sns/timeline",
@@ -894,6 +896,8 @@ fn reads_run_in_process_with_the_same_answers() {
         let r = same(target);
         assert_eq!(r.status, 200, "{target}: {}", r.body);
     }
+    // a cursor that is not one fails the same way
+    assert_eq!(same("/chat/resources?before=1.2.3").status, 400);
     // A media list lookup has exactly the parsed shape and cursor of the conversation page.
     let parsed = same("/chat/messages?session-id=wxid_bob&parsed=true").json();
     let lookup = same("/chat/message?session-id=wxid_bob&local-id=2&parsed=true").json();

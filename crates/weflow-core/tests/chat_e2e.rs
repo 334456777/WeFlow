@@ -64,8 +64,9 @@ fn resources_and_images_are_deduplicated() {
         ..Default::default()
     };
     let r = hub.chat_resources(&q).unwrap();
-    assert_eq!(r["total"], 2);
+    assert_eq!(r["items"].as_array().unwrap().len(), 2);
     assert_eq!(r["hasMore"], false);
+    assert_eq!(r["nextCursor"], serde_json::Value::Null);
     assert_eq!(r["items"][0]["sessionDisplayName"], "Bobby");
     assert_eq!(r["items"][0]["resourceType"], "image");
 
@@ -77,6 +78,159 @@ fn resources_and_images_are_deduplicated() {
         .unwrap();
     assert_eq!(paged["items"].as_array().unwrap().len(), 1);
     assert_eq!(paged["hasMore"], true);
+    // the page after ends in the row both shards keep: it is listed once, and nothing comes after it
+    let rest = hub
+        .chat_resources(&ResourceQuery {
+            limit: 1,
+            before: paged["nextCursor"].as_str().map(str::to_string),
+            ..q.clone()
+        })
+        .unwrap();
+    assert_eq!(rest["items"].as_array().unwrap().len(), 1);
+    assert_eq!(rest["items"][0]["localId"], 1);
+    assert_eq!(rest["hasMore"], false);
+}
+
+fn app(local_id: i64, at: i64, xml_type: u32) -> MsgSpec {
+    MsgSpec::text(
+        local_id,
+        "wxid_bob",
+        T0 + at,
+        &format!("<msg><appmsg><title>f{local_id}</title><type>{xml_type}</type></appmsg></msg>"),
+    )
+    .of_type(49)
+}
+
+fn resources_world(f: &Fixture) {
+    f.session_db(&[
+        SessionSpec {
+            last_timestamp: T0 + 300,
+            ..session("wxid_bob")
+        },
+        SessionSpec {
+            last_timestamp: T0 + 250,
+            ..session("wxid_amy")
+        },
+        SessionSpec {
+            last_timestamp: T0 + 50,
+            ..session("room@chatroom")
+        },
+    ]);
+    f.message_shard(
+        0,
+        &[
+            (
+                "wxid_bob",
+                vec![
+                    image(1, 100, MD5_A),
+                    image(2, 200, MD5_B),
+                    app(3, 150, 6),
+                    // links are not files, and there are more of them than a page: they are read past
+                    app(4, 160, 5),
+                    app(5, 170, 5),
+                    app(6, 180, 5),
+                    MsgSpec::text(7, "wxid_bob", T0 + 300, "<msg><videomsg/></msg>").of_type(43),
+                ],
+            ),
+            (
+                "wxid_amy",
+                vec![
+                    // the same place as Bob's picture: the conversations are listed by id
+                    image(2, 200, MD5_A),
+                    MsgSpec::text(3, "wxid_amy", T0 + 250, "<msg><voicemsg/></msg>").of_type(34),
+                    app(4, 120, 6),
+                ],
+            ),
+            ("room@chatroom", vec![image(1, 50, MD5_A)]),
+        ],
+    );
+    f.message_shard(1, &[("wxid_bob", vec![image(1, 100, MD5_A)])]);
+}
+
+fn listed(r: &serde_json::Value) -> Vec<String> {
+    r["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| format!("{}#{}", i["sessionId"].as_str().unwrap(), i["localId"]))
+        .collect()
+}
+
+#[test]
+fn resources_page_across_conversations_from_a_cursor() {
+    let (hub, _root, _f) = common::custom_hub("chat-res-pages", resources_world);
+    let all = hub
+        .chat_resources(&ResourceQuery {
+            limit: 100,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(
+        listed(&all),
+        [
+            "wxid_bob#7",
+            "wxid_amy#3",
+            "wxid_amy#2",
+            "wxid_bob#2",
+            "wxid_bob#3",
+            "wxid_amy#4",
+            "wxid_bob#1",
+            "room@chatroom#1",
+        ]
+    );
+    assert_eq!(all["hasMore"], false);
+    for limit in 1..=3 {
+        let mut got = Vec::new();
+        let mut before = None;
+        loop {
+            let page = hub
+                .chat_resources(&ResourceQuery {
+                    limit,
+                    before: before.clone(),
+                    ..Default::default()
+                })
+                .unwrap();
+            got.extend(listed(&page));
+            if page["hasMore"] == false {
+                assert_eq!(page["nextCursor"], serde_json::Value::Null);
+                break;
+            }
+            let last = page["items"].as_array().unwrap().last().unwrap();
+            assert_eq!(page["nextCursor"], last["_cursor"]);
+            before = page["nextCursor"].as_str().map(str::to_string);
+        }
+        assert_eq!(got, listed(&all), "pages of {limit}");
+    }
+
+    let files = hub
+        .chat_resources(&ResourceQuery {
+            types: vec!["file".into()],
+            limit: 1,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(listed(&files), ["wxid_bob#3"]);
+    assert_eq!(files["hasMore"], true);
+    let ranged = hub
+        .chat_resources(&ResourceQuery {
+            begin: T0 + 110,
+            end: T0 + 200,
+            limit: 100,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(
+        listed(&ranged),
+        ["wxid_amy#2", "wxid_bob#2", "wxid_bob#3", "wxid_amy#4"]
+    );
+
+    let err = hub
+        .chat_resources(&ResourceQuery {
+            before: Some("1.2.3".into()),
+            ..Default::default()
+        })
+        .unwrap_err();
+    assert_eq!(err.code, "invalid_arguments");
 }
 
 #[test]

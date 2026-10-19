@@ -74,6 +74,7 @@ const IN_API: &[&str] = &[
     "/chat/dates?",
     "/chat/date-counts?",
     "/chat/detail?",
+    "/chat/resources",
     "/sns/",
 ];
 /// Moments of the synthetic account, from its friends in turn.
@@ -1328,10 +1329,6 @@ impl Bench<'_> {
                 "/chat/resources".into(),
             ),
             (
-                "chat resources, all conversations, far page".into(),
-                "/chat/resources?offset=3000".into(),
-            ),
-            (
                 "chat resources, one conversation".into(),
                 format!("/chat/resources?session={big}"),
             ),
@@ -1352,6 +1349,31 @@ impl Bench<'_> {
             reads.push((
                 format!("chat resources, all conversations, {kind}"),
                 format!("/chat/resources?type={kind}"),
+            ));
+        }
+        // the page after the first 3,000, from the cursor the pages before it end with
+        let mut far = None;
+        for limit in [2000, 1000] {
+            let from = far
+                .as_deref()
+                .map(|c| format!("&before={}", encode(c)))
+                .unwrap_or_default();
+            let page = request(
+                self.addr,
+                "GET",
+                &format!("/chat/resources?limit={limit}{from}"),
+                "",
+            )?
+            .data()?;
+            far = page["nextCursor"].as_str().map(String::from);
+            if far.is_none() {
+                break;
+            }
+        }
+        if let Some(cursor) = far {
+            reads.push((
+                "chat resources, all conversations, far page".into(),
+                format!("/chat/resources?before={}", encode(&cursor)),
             ));
         }
         for (op, target) in &reads {
