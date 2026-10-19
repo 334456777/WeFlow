@@ -7,6 +7,8 @@ import { dropJob, getJob, isFinished, jobEventsUrl, listJobs, startJob, type Job
 
 /** How often the list is read again while a job waits or runs. */
 const POLL_MS = 2000;
+/** How soon after a job was started the list is read again, to see it leave the queue. */
+const START_MS = 300;
 const LABELS_KEY = 'weflow.jobs';
 
 export interface JobsState {
@@ -68,13 +70,14 @@ export function refreshJobs(): Promise<void> {
   return reading;
 }
 
-function follow() {
+/** Follows the running job; `soon`: a job was just started, so the list is read again before long. */
+function follow(soon = false) {
   clearTimeout(timer);
   if (!users) { closeStream(); return; }
   const running = state.jobs.find(j => j.status === 'running');
   if (stream && stream.id !== running?.id) closeStream();
   if (running && !stream && typeof EventSource !== 'undefined') openStream(running.id);
-  if (state.jobs.some(j => !isFinished(j.status))) timer = setTimeout(() => { void refreshJobs(); }, POLL_MS);
+  if (state.jobs.some(j => !isFinished(j.status))) timer = setTimeout(() => { void refreshJobs(); }, soon ? START_MS : POLL_MS);
 }
 
 function openStream(id: string) {
@@ -103,7 +106,7 @@ export async function runJob(label: string, method: 'POST' | 'GET', path: string
   const job = await startJob(method, path, params, file);
   set({ labels: { ...state.labels, [job.id]: label } });
   merge(job);
-  follow();
+  follow(true);
   return job;
 }
 

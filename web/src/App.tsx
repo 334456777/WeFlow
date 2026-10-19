@@ -194,6 +194,8 @@ export function App() {
   const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', payments: 'payment-coffee' });
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(CURRENT_DATE);
+  // the days of a real export: all of them unless chosen (the sample's days are the sample's)
+  const [liveRange, setLiveRange] = useState({ from: '', to: '' });
   const [format, setFormat] = useState<ExportFormat>('HTML');
   const [includeMedia, setIncludeMedia] = useState(true);
   // the job of the export card (#211): it runs on the server, in the task centre
@@ -350,7 +352,7 @@ export function App() {
     setExportError(''); setExportJobId(null);
     try {
       const job = await runJob('导出 ' + selected.name + ' · ' + format, 'POST', 'export/messages', {
-        'session-id': liveSession.username, format: FORMAT_ARGS[format], start: from || undefined, end: to || undefined,
+        'session-id': liveSession.username, format: FORMAT_ARGS[format], start: liveRange.from || undefined, end: liveRange.to || undefined,
         media: includeMedia ? 'all' : undefined,
       });
       setExportJobId(job.id);
@@ -372,7 +374,9 @@ export function App() {
       id: 'export', title: '导出', summary: format + (includeMedia ? ' · 含媒体' : ''),
       content: <>
         <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
-        <div className="form-row"><span className="field-label">时间范围</span><DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} /></div>
+        <div className="form-row"><span className="field-label">时间范围</span>{selected.live
+          ? <DateRange label="导出的时间范围" from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
+          : <DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
         <div className="form-row format-row"><span className="field-label">导出格式</span>
           <Segmented className="format-group" count={formats.length} index={formats.indexOf(format)} role="group" aria-label="导出格式">
             {formats.map(value => <button type="button" key={value} aria-pressed={format === value} onClick={() => { setFormat(value); resetExport(); }}>{value}</button>)}
