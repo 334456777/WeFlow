@@ -72,6 +72,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 }
 .primary-button:hover:not(:disabled, [aria-disabled='true']) { box-shadow: var(--neu-raised-hover); }
 .primary-button[aria-disabled='true'] { cursor: progress; }
+.primary-button:disabled, .secondary-button:disabled, .icon-button:disabled, .chip:disabled { box-shadow: var(--neu-disabled); }
 .primary-button.large { height: var(--control-lg); padding: 0 var(--space-5); font-size: var(--text-md); }
 .secondary-button {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1);
