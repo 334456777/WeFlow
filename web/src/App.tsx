@@ -65,7 +65,8 @@ import { BackupPage } from './backup/BackupPage';
 import { ExcludedPeople, PrivateAnalytics } from './analytics/AnalyticsViews';
 import { GroupExport, GroupPicker, GroupStats, MemberView } from './analytics/GroupAnalytics';
 import { useAnalytics, useGroups } from './analytics/useAnalytics';
-import { AnnualReportPage } from './reports/AnnualReport';
+import type { Friend } from './reports/DualReport';
+import { ReportsPage } from './reports/ReportsPage';
 import type { DayRange } from './api/groups';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
@@ -321,9 +322,11 @@ export function App() {
   const groupList = groups.status === 'ready' ? groups.groups : [];
   const group = groupList.find(g => g.username === groupId) ?? groupList[0] ?? null;
   const showGroupMember = (member: typeof groupMember) => { setGroupMember(member); analyticsRef.current?.scrollTo({ top: 0 }); };
-  // The annual report page (#208): the year picked, the latest until then.
+  // The reports page (#208): the annual or the dual report, of the year picked (the latest until then) and a friend.
+  const [reportMode, setReportMode] = useState<'annual' | 'dual'>('annual');
   const [reportYear, setReportYear] = useState<number | null>(null);
-  useEffect(() => { setReportYear(null); }, [scope]);
+  const [reportFriend, setReportFriend] = useState<Friend | null>(null);
+  useEffect(() => { setReportYear(null); setReportFriend(null); }, [scope]);
   // The insights page (#210): the records of the AI insights, of everyone or one conversation, found by words.
   const insightsPage = section === 'insights';
   const [insightFilter, setInsightFilter] = useState<InsightFilter>({ keyword: '', session: null });
@@ -677,9 +680,14 @@ export function App() {
         </section><Scrollbar target={analyticsRef} /></>
         : section === 'reports'
         ? <><section ref={reportsRef} className="panel browser-panel settings-panel scroll-area" aria-label="年度报告">
-          <div className="settings-heading"><CalendarStar size={20} /><h1>年度报告</h1></div>
+          <div className="settings-heading"><CalendarStar size={20} /><h1>年度报告</h1>
+            <Segmented className="settings-tabs" count={2} index={reportMode === 'annual' ? 0 : 1} role="group" aria-label="哪种报告">
+              <button type="button" aria-pressed={reportMode === 'annual'} onClick={() => setReportMode('annual')}>年度</button>
+              <button type="button" aria-pressed={reportMode === 'dual'} onClick={() => setReportMode('dual')}>双人</button>
+            </Segmented></div>
           {backend.state === 'unauthorized' ? <TokenPrompt /> : connected
-            ? <AnnualReportPage key={scope} year={reportYear} onYear={year => { setReportYear(year); reportsRef.current?.scrollTo({ top: 0 }); }} />
+            ? <ReportsPage key={scope} mode={reportMode} year={reportYear} onYear={year => { setReportYear(year); reportsRef.current?.scrollTo({ top: 0 }); }}
+              friend={reportFriend} onFriend={setReportFriend} />
             : <p className="settings-footnote">连接 weflow serve 后，可以在这里生成私聊的年度报告。</p>}
         </section><Scrollbar target={reportsRef} /></>
         : section === 'backup'

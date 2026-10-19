@@ -47,3 +47,41 @@ export function busiestHour(data: number[][]): { weekday: number; hour: number; 
   data.forEach((row, weekday) => row.forEach((count, hour) => { if (count > 0 && (!best || count > best.count)) best = { weekday, hour, count }; }));
   return best;
 }
+
+/** A message of the dual report; `createTime` is in milliseconds, `content` raw for anything but text. */
+export interface DualMessage { content: string; isSentByMe: boolean; createTime: number; localType?: number }
+
+/** `report dual generate`: me and one friend, over one year or all of them. */
+export interface DualReport {
+  year: number;
+  selfName: string;
+  selfAvatarUrl?: string;
+  friendUsername: string;
+  friendName: string;
+  friendAvatarUrl?: string;
+  firstChat: DualMessage | null;
+  /** The first messages ever between the two. */
+  firstChatMessages?: DualMessage[];
+  /** The first messages of the year. */
+  yearFirstChat?: (DualMessage & { firstThreeMessages: DualMessage[] }) | null;
+  stats: { totalMessages: number; totalWords: number; imageCount: number; voiceCount: number; emojiCount: number };
+  topPhrases: { phrase: string; count: number }[];
+  myExclusivePhrases: { phrase: string; count: number }[];
+  friendExclusivePhrases: { phrase: string; count: number }[];
+  /** Weekday (Monday first) × hour. */
+  heatmap?: number[][];
+  /** Conversations opened by me, or by them. */
+  initiative?: { initiated: number; received: number };
+  /** Seconds. */
+  response?: { avg: number; fastest: number; slowest?: number; count: number };
+  /** `YYYY-MM` → messages. */
+  monthly?: Record<string, number>;
+  streak?: { days: number; startDate: string; endDate: string };
+}
+
+export const getDualReport = (friend: string, year: number, signal?: AbortSignal) => get<DualReport>('report/dual/generate', { friend, year }, signal);
+
+const KINDS: Record<number, string> = { 3: '[图片]', 34: '[语音]', 43: '[视频]', 47: '[表情]', 48: '[位置]', 49: '[链接或文件]', 50: '[通话]', 244813135921: '[引用回复]' };
+
+/** What a message of the dual report says: its text, or its kind for anything else. */
+export const messageText = (m: DualMessage) => (!m.localType || m.localType === 1 ? m.content : KINDS[m.localType] ?? '[消息]');

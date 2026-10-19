@@ -405,6 +405,11 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 .heatmap-cell { aspect-ratio: 1; border-radius: 2px; background: var(--fg); }
 .heatmap-ticks { display: grid; grid-template-columns: 1.5em repeat(24, minmax(0, 1fr)); }
 .report-phrases { align-items: baseline; }
+.report-pair { display: flex; margin-bottom: var(--space-2); }
+.report-pair .avatar + .avatar { margin-left: calc(-1 * var(--space-2)); }
+.report-exchange { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.report-exchange li { display: flex; flex-direction: column; gap: 2px; max-width: min(80%, 480px); padding: var(--space-2) var(--space-3); border-radius: var(--radius-lg); box-shadow: var(--neu-raised-sm); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.report-exchange li.mine { align-self: flex-end; box-shadow: var(--neu-inset); }
 .report-likes { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-8); }
 .report-likes > div { display: flex; flex-direction: column; gap: var(--space-2); }
 

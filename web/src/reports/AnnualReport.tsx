@@ -3,24 +3,24 @@
 import type { ReactNode } from 'react';
 import { ArrowClockwise } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
-import { busiestHour, formatWait, getAnnualReport, getReportYears, type AnnualReport } from '../api/reports';
+import { busiestHour, formatWait, getAnnualReport, type AnnualReport } from '../api/reports';
 import { n } from '../analytics/AnalyticsViews';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 
-const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+export const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
-const Failed = ({ title, message, onRetry }: { title: string; message: string; onRetry(): void }) =>
+export const Failed = ({ title, message, onRetry }: { title: string; message: string; onRetry(): void }) =>
   <div className="pane-message" role="alert"><strong>{title}</strong><p>{message}</p>
     <button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={12} />重试</button></div>;
 
 /** One moment of the year: what it is, its number, and a line about it. */
-function Moment({ label, value, children }: { label: string; value: ReactNode; children: ReactNode }) {
+export function Moment({ label, value, children }: { label: string; value: ReactNode; children: ReactNode }) {
   return <li className="report-moment"><span className="report-label">{label}</span><strong className="report-value num">{value}</strong><span className="report-note">{children}</span></li>;
 }
 
 /** Messages by weekday and hour, darker for more. */
-function Heatmap({ data }: { data: number[][] }) {
+export function Heatmap({ data }: { data: number[][] }) {
   const max = Math.max(1, ...data.flat());
   const best = busiestHour(data);
   return <figure className="chart report-heatmap">
@@ -36,9 +36,9 @@ function Heatmap({ data }: { data: number[][] }) {
 }
 
 /** The words said most, larger the more often. */
-function Phrases({ phrases }: { phrases: AnnualReport['topPhrases'] }) {
+export function Phrases({ phrases, label = '常用语' }: { phrases: AnnualReport['topPhrases']; label?: string }) {
   const max = Math.max(1, ...phrases.map(p => p.count));
-  return <ul className="word-chips report-phrases" aria-label="常用语">
+  return <ul className="word-chips report-phrases" aria-label={label}>
     {phrases.map(p => <li key={p.phrase} style={{ fontSize: 'calc(var(--text-sm) + ' + Math.round((p.count / max) * 8) + 'px)' }}>
       <span className="clamp-1">{p.phrase}</span><small className="num">{n(p.count)}</small></li>)}
   </ul>;
@@ -121,25 +121,12 @@ export function AnnualReportView({ report }: { report: AnnualReport }) {
   </article>;
 }
 
-/** The years to pick from, the latest first, and the report of the one picked. */
-export function AnnualReportPage({ year, onYear }: { year: number | null; onYear(year: number): void }) {
-  const [years, retryYears] = useRead('years', signal => getReportYears(signal));
-  const list = years.status === 'ready' ? [...years.value.years].sort((a, b) => b - a) : [];
-  const chosen = year ?? list[0] ?? null;
-  const [report, retryReport] = useRead('report:' + chosen, signal => (chosen === null ? Promise.resolve(null) : getAnnualReport(chosen, signal)));
-
-  if (years.status === 'error') return <Failed title="读取年份失败" message={years.message} onRetry={retryYears} />;
-  if (years.status === 'loading') return <ListSkeleton label="正在读取有消息的年份" rows={1} />;
-  if (!list.length) return <p className="muted report-years">还没有可以生成报告的私聊消息。</p>;
-  return <>
-    <div className="choice-chips report-years" role="group" aria-label="报告的年份">
-      {list.map(y => <button type="button" key={y} className="chip" aria-pressed={chosen === y} onClick={() => onYear(y)}>{y} 年</button>)}
-      <button type="button" className="chip" aria-pressed={chosen === 0} onClick={() => onYear(0)}>全部年份</button>
-    </div>
-    {report.status === 'error'
-      ? <Failed title="生成报告失败" message={report.message} onRetry={retryReport} />
-      : report.status === 'loading' || !report.value
-        ? <div className="analytics-page" aria-busy="true"><GridSkeleton label={'正在生成' + (chosen ? chosen + ' 年' : '全部年份') + '的报告'} cells={3} /><ListSkeleton label="正在统计" rows={3} /></div>
-        : <AnnualReportView report={report.value} />}
-  </>;
+/** The report of the year picked, 0 for all of them. */
+export function AnnualReportPage({ year }: { year: number }) {
+  const [report, retry] = useRead('report:' + year, signal => getAnnualReport(year, signal));
+  return report.status === 'error'
+    ? <Failed title="生成报告失败" message={report.message} onRetry={retry} />
+    : report.status === 'loading'
+      ? <div className="analytics-page" aria-busy="true"><GridSkeleton label={'正在生成' + (year ? year + ' 年' : '全部年份') + '的报告'} cells={3} /><ListSkeleton label="正在统计" rows={3} /></div>
+      : <AnnualReportView report={report.value} />;
 }

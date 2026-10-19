@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { busiestHour, formatWait, type AnnualReport } from '../api/reports';
-import { AnnualReportPage, AnnualReportView } from './AnnualReport';
+import { AnnualReportView } from './AnnualReport';
+import { ReportsPage } from './ReportsPage';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -62,7 +63,7 @@ describe('annual report', () => {
       return json({ success: true, data: url.startsWith('/report/annual/years') ? { years: [2024, 2025] } : { ...REPORT, year: Number(new URL(url, 'http://x').searchParams.get('year')) } });
     }));
     const onYear = vi.fn();
-    const { rerender } = render(<AnnualReportPage year={null} onYear={onYear} />);
+    const { rerender } = render(<ReportsPage mode="annual" year={null} onYear={onYear} friend={null} onFriend={() => {}} />);
     await act(async () => {});
     await act(async () => {});
     expect(urls).toEqual(['/report/annual/years', '/report/annual/generate?year=2025']);
@@ -70,7 +71,7 @@ describe('annual report', () => {
     expect(screen.getByRole('button', { name: '2025 年' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: '全部年份' }));
     expect(onYear).toHaveBeenCalledWith(0);
-    rerender(<AnnualReportPage year={0} onYear={onYear} />);
+    rerender(<ReportsPage mode="annual" year={0} onYear={onYear} friend={null} onFriend={() => {}} />);
     await act(async () => {});
     expect(urls.at(-1)).toBe('/report/annual/generate?year=0');
     expect(screen.getByRole('article').getAttribute('aria-label')).toBe('全部年份的年度报告');
