@@ -1,18 +1,40 @@
 // One message of the chat window (#198), drawn by its kind on the surfaces of #220: received bubbles raised,
 // sent ones inset; cards (links, files, records…) are bubbles too.
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import {
   Article, ChatsCircle, CurrencyCny, File, FilePdf, FileText, Gift, Image as ImageIcon, MapPin, Pause, Phone, Play,
   UserSquare, VideoCamera, Warning,
 } from '@phosphor-icons/react';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { appLabel, formatDuration, formatFileSize, kindOf, withoutLabel } from './messages';
+import { ZoomImage, type ZoomControls } from './ZoomImage';
 
 export type Preview =
-  | { type: 'image'; src: string; title: string }
-  | { type: 'video'; src: string; poster?: string; title: string }
+  | { type: 'image'; src: string; title: string; gallery?: Gallery }
+  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery }
   | { type: 'file'; title: string };
+
+/** The pictures and videos of the conversation read so far, the one shown at `index` (#194). */
+export interface Gallery { items: Preview[]; index: number }
+
+/** What a picture or video message opens in the preview; null for other messages. */
+export function mediaPreview(sessionId: string, message: ParsedMessage): Preview | null {
+  const kind = kindOf(message);
+  if (kind === 'image') return { type: 'image', src: mediaUrl('image-data', sessionId, message), title: '图片' };
+  if (kind === 'video') return { type: 'video', src: mediaUrl('video-data', sessionId, message), poster: mediaUrl('video-data', sessionId, message, { thumb: true }), title: '视频' };
+  return null;
+}
+
+/** The preview of `message` with the pictures and videos among `messages` to go through. */
+export function withGallery(sessionId: string, messages: readonly ParsedMessage[], message: ParsedMessage): Preview | null {
+  const own = mediaPreview(sessionId, message);
+  if (!own || own.type === 'file') return own;
+  const media = messages.filter(m => mediaPreview(sessionId, m));
+  const index = media.findIndex(m => m._cursor === message._cursor);
+  if (index < 0 || media.length < 2) return own;
+  return { ...own, gallery: { items: media.map(m => mediaPreview(sessionId, m)!), index } };
+}
 
 /** Pictures from WeChat's servers: no referrer, loaded when near the screen. */
 function RemoteImage({ src, className, alt = '' }: { src: string; className?: string; alt?: string }) {
@@ -89,14 +111,14 @@ export function MessageView({ sessionId, message, onPreview }: {
     case 'image': {
       const thumb = mediaUrl('image-data', sessionId, message, { thumb: true });
       return <button type="button" className="photo-button" aria-label="预览图片"
-        onClick={() => onPreview({ type: 'image', src: mediaUrl('image-data', sessionId, message), title: '图片' })}>
+        onClick={() => onPreview(mediaPreview(sessionId, message)!)}>
         <MediaThumb src={thumb} label="图片" />
       </button>;
     }
     case 'video': {
       const poster = mediaUrl('video-data', sessionId, message, { thumb: true });
       return <button type="button" className="photo-button video-button" aria-label="播放视频"
-        onClick={() => onPreview({ type: 'video', src: mediaUrl('video-data', sessionId, message), poster, title: '视频' })}>
+        onClick={() => onPreview(mediaPreview(sessionId, message)!)}>
         <MediaThumb src={poster} label="视频" /><span className="play-badge" aria-hidden="true"><Play size={20} weight="fill" /></span>
       </button>;
     }
@@ -171,9 +193,9 @@ function MediaError({ src, what }: { src: string; what: string }) {
   return <div className="file-preview"><Warning size={40} /><h3>{what}无法显示</h3><p>{reason || '正在查找原因…'}</p></div>;
 }
 
-export function PreviewImage({ src, title }: { src: string; title: string }) {
+export function PreviewImage({ src, title, controls }: { src: string; title: string; controls?: Ref<ZoomControls> }) {
   const [failed, setFailed] = useState(false);
-  return failed ? <MediaError src={src} what="图片" /> : <img src={src} alt={title} onError={() => setFailed(true)} />;
+  return failed ? <MediaError src={src} what="图片" /> : <ZoomImage ref={controls} src={src} alt={title} onError={() => setFailed(true)} />;
 }
 
 export function PreviewVideo({ src, poster }: { src: string; poster?: string }) {

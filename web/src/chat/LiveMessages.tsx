@@ -10,7 +10,7 @@ import { currentScope, onNewScope } from '../api/scope';
 import { Avatar } from '../Avatar';
 import { FEEDBACK_MS } from '../motion';
 import { dayOf, formatClock, formatDayHeading, isMine, kindOf } from './messages';
-import { MessageView, type Preview } from './MessageView';
+import { MessageView, withGallery, type Preview } from './MessageView';
 import { kindOf as sessionKind } from './sessions';
 import { useMessages, type Focus, type Jump } from './useMessages';
 import { MessagesSkeleton } from '../Skeleton';
@@ -19,6 +19,8 @@ import { MessagesSkeleton } from '../Skeleton';
 const LOAD_AHEAD = 600;
 /** Within this of the bottom the window follows new content (pictures that load, for one). */
 const STICK = 48;
+/** Farther than this from the bottom, a button goes back to the newest message (#194). */
+const FAR = 120;
 /** Moves the window at once: the message pane scrolls smoothly for people, which would turn these into slow glides. */
 const moveTo = (el: HTMLElement, top: number) => { if (el.scrollTo) el.scrollTo({ top, behavior: 'instant' }); else el.scrollTop = top; };
 const NATIVE_ANCHORING = typeof CSS !== 'undefined' && Boolean(CSS.supports?.('overflow-anchor', 'auto'));
@@ -84,6 +86,7 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
   const focus = thread.focus;
   // Live messages (#201) that came below while the person reads further up: counted, not scrolled to
   const [unseen, setUnseen] = useState(0);
+  const [far, setFar] = useState(false);
   const tail = useRef<{ id: string; cursor: string | null } | null>(null);
   useEffect(() => {
     const last = thread.messages[thread.messages.length - 1]?._cursor ?? null;
@@ -159,6 +162,7 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
     const below = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const idle = thread.status === 'ready' && !thread.loadingOlder && !thread.loadingNewer;
     const onScroll = () => {
+      setFar(below() > FAR);
       if (!thread.hasNewer && !pinned.current && below() < STICK) {
         atBottom.current = true;
         setUnseen(0);
@@ -220,12 +224,12 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
       return <Fragment key={message._cursor}>
         {newDay && <div className="date-separator">{formatDayHeading(day, now)}</div>}
         {system
-          ? <div className={'message-row system' + (marked === message._cursor ? ' highlighted' : '')} data-key={message._cursor}><MessageView sessionId={id} message={message} onPreview={onPreview} /></div>
+          ? <div className={'message-row system' + (marked === message._cursor ? ' highlighted' : '')} data-key={message._cursor}><MessageView sessionId={id} message={message} onPreview={preview => onPreview(withGallery(id, thread.messages, message) ?? preview)} /></div>
           : <div className={'message-row ' + (mine ? 'outgoing' : 'incoming') + (group && !mine ? ' with-avatar' : '') + (marked === message._cursor ? ' highlighted' : '')} data-key={message._cursor}>
             {group && !mine && (showSender ? <Avatar name={nameOf(message.senderUsername)} url={person?.avatarUrl} /> : <span className="avatar-gap" />)}
             <div className="message-body">
               {showSender && <span className="message-sender">{nameOf(message.senderUsername)}</span>}
-              <MessageView sessionId={id} message={message} onPreview={onPreview} />
+              <MessageView sessionId={id} message={message} onPreview={preview => onPreview(withGallery(id, thread.messages, message) ?? preview)} />
             </div>
             <time className="message-time" dateTime={new Date(message.createTime * 1000).toISOString()}>{formatClock(message.createTime)}</time>
           </div>}
@@ -233,6 +237,6 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
     })}
     {thread.hasNewer && <div className="history-edge newer" aria-live="polite">{thread.loadingNewer ? <><CircleNotch size={14} className="spin" />正在加载更新的消息</> : null}</div>}
     {thread.hasNewer && <div className="latest-bar"><button type="button" className="secondary-button" onClick={reload}><ArrowDown size={14} />回到最新消息</button></div>}
-    {!thread.hasNewer && unseen > 0 && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen} 条新消息</button></div>}
+    {!thread.hasNewer && (unseen > 0 || far) && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen > 0 ? unseen + ' 条新消息' : '回到最新消息'}</button></div>}
   </div>;
 }

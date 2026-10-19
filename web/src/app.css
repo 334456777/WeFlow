@@ -53,6 +53,14 @@ time, .num { font-variant-numeric: tabular-nums; }
   opacity: 0; transition: opacity var(--duration-panel) var(--ease-out);
 }
 .scrollbar.scrollable { display: block; }
+/* The edges of a scroll area fade while there is more that way (#194): eased, not a straight ramp, and gone at the end. */
+.scroll-fade {
+  position: absolute; z-index: 1; height: 28px; pointer-events: none; opacity: 0;
+  transition: opacity var(--duration-hover) var(--ease-out);
+}
+.scroll-fade.shown { opacity: 1; }
+.scroll-fade.top { background: linear-gradient(to bottom, var(--surface) 0%, color-mix(in srgb, var(--surface) 72%, transparent) 30%, color-mix(in srgb, var(--surface) 28%, transparent) 65%, transparent 100%); }
+.scroll-fade.bottom { background: linear-gradient(to top, var(--surface) 0%, color-mix(in srgb, var(--surface) 72%, transparent) 30%, color-mix(in srgb, var(--surface) 28%, transparent) 65%, transparent 100%); }
 .scrollbar.active, .scrollbar.hover, .scrollbar.dragging { opacity: 1; transition-duration: var(--duration-hover); }
 .scrollbar-thumb {
   position: absolute; top: 0; right: 2px; width: 6px; border-radius: var(--radius-full);
@@ -1036,6 +1044,13 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .preview-dialog[data-state='closing'] .preview-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
 .preview-content header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); font-size: var(--text-sm); }
 .preview-content > img { width: auto; max-height: calc(100dvh - 120px); margin: 0 auto; object-fit: contain; }
+/* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
+.zoom-frame { display: flex; justify-content: center; overflow: hidden; touch-action: none; cursor: zoom-in; }
+.zoom-frame.zoomed { cursor: grab; }
+.zoom-frame.zoomed:active { cursor: grabbing; }
+.zoom-frame img { width: auto; max-width: 100%; max-height: calc(100dvh - 120px); object-fit: contain; transform-origin: center; user-select: none; }
+.preview-tools { display: flex; align-items: center; gap: var(--space-1); }
+.preview-content header small { margin-left: var(--space-2); color: var(--fg-subtle); font-weight: var(--weight-regular); }
 .file-preview { min-width: 320px; padding: var(--space-8) var(--space-8) var(--space-6); text-align: center; }
 .file-preview > svg { margin: 0 auto var(--space-3); color: var(--fg-subtle); }
 .file-preview h3 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
