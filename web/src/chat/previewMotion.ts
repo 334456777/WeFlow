@@ -4,6 +4,7 @@
 // has no view transitions, or less motion is asked for, the preview opens and closes as it did, with a fade.
 
 export const MEDIA_NAME = 'preview-media';
+export const FRAME_NAME = 'preview-frame';
 
 /** The thumbnail of the control a preview opens from: the one focused (keys, and clicks in most browsers), else the
  * one last pressed; only once it has loaded, as its shape sizes the preview before the picture comes. */
@@ -30,19 +31,50 @@ export function inSight(element: Element): boolean {
 
 /**
  * Runs `change`, which must put the new state on the page before it returns (`flushSync`), in a view transition in
- * which `from` turns into what `to` finds after it; resolves once it has played.
+ * which `from` turns into what `to` finds after it; `after` runs once it is found, before the new state is taken.
+ * Resolves once it has played.
  */
-export function fly(from: HTMLElement, change: () => void, to: () => HTMLElement | null | undefined): Promise<void> {
+export function fly(from: HTMLElement, change: () => void, to: () => HTMLElement | null | undefined, after?: (target: HTMLElement) => void): Promise<void> {
   let target: HTMLElement | null | undefined = null;
   from.style.viewTransitionName = MEDIA_NAME;
   const transition = document.startViewTransition(() => {
     from.style.viewTransitionName = '';
     change();
     target = to();
-    if (target) target.style.viewTransitionName = MEDIA_NAME;
+    if (target) {
+      target.style.viewTransitionName = MEDIA_NAME;
+      after?.(target);
+    }
   });
   return transition.finished.catch(() => {}).finally(() => {
     from.style.viewTransitionName = '';
     if (target) target.style.viewTransitionName = '';
   });
 }
+
+/**
+ * The preview's frame (its bar and edges) grows out from under the picture as it flies in, and shrinks back under it
+ * as it flies out (#194): the frame's own box goes from the thumbnail's to its place (`open`) or back (`close`), and
+ * shows the part of it around the picture, which is on top. Marks the page for the styles that play it (app.css) and
+ * returns what takes the marks off once it has played.
+ */
+export function frameFlight(mode: 'open' | 'close', frame: HTMLElement, media: HTMLElement, thumb: DOMRect): () => void {
+  const root = document.documentElement;
+  const f = frame.getBoundingClientRect();
+  const m = media.getBoundingClientRect();
+  const vars: Record<string, string> = {
+    '--fly-x': thumb.left + 'px', '--fly-y': thumb.top + 'px', '--fly-w': thumb.width + 'px', '--fly-h': thumb.height + 'px',
+    // how far the picture's centre is from the frame's: the frame is shown around it while it is small
+    '--frame-ox': (m.left + m.width / 2 - (f.left + f.width / 2)) + 'px',
+    '--frame-oy': (m.top + m.height / 2 - (f.top + f.height / 2)) + 'px',
+  };
+  for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+  root.dataset.flight = mode;
+  frame.style.viewTransitionName = FRAME_NAME;
+  return () => {
+    for (const name of Object.keys(vars)) root.style.removeProperty(name);
+    delete root.dataset.flight;
+    frame.style.viewTransitionName = '';
+  };
+}
+

@@ -32,7 +32,7 @@ import { useSearch } from './chat/useSearch';
 import { parseDay } from './calendar/dates';
 import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
-import { canFly, fly, inSight, thumbnailOf } from './chat/previewMotion';
+import { canFly, fly, frameFlight, inSight, thumbnailOf } from './chat/previewMotion';
 import type { ZoomControls } from './chat/ZoomImage';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
@@ -449,7 +449,13 @@ export function App() {
     if (!canFly(prefersReducedMotion(reducedMotion))) { setPreview(shown); return; }
     // the dialog's own fade and growth stay off while it is open: switched back on, they would play from the start
     dialogRef.current?.setAttribute('data-flown', '');
-    void fly(thumb, () => flushSync(() => setPreview(shown)), previewMedia);
+    const from = thumb.getBoundingClientRect();
+    let done = () => {};
+    const frame = () => dialogRef.current?.querySelector<HTMLElement>('.preview-content');
+    void fly(thumb, () => flushSync(() => setPreview(shown)), previewMedia, media => {
+      const f = frame();
+      if (f) done = frameFlight('open', f, media, from);
+    }).then(() => done());
   };
   const closePreview = () => {
     const back = opened.current;
@@ -458,7 +464,9 @@ export function App() {
     const dialog = dialogRef.current;
     if (back && media && preview && preview.type !== 'file' && preview.src === back.src && inSight(back.thumb) && canFly(prefersReducedMotion(reducedMotion))) {
       dialog?.setAttribute('data-flown', '');
-      void fly(media, () => { flushSync(() => setPreview(null)); dialog?.close(); }, () => back.thumb).then(() => dialog?.removeAttribute('data-flown'));
+      const frame = dialog?.querySelector<HTMLElement>('.preview-content');
+      const done = frame ? frameFlight('close', frame, media, back.thumb.getBoundingClientRect()) : () => {};
+      void fly(media, () => { flushSync(() => setPreview(null)); dialog?.close(); }, () => back.thumb).then(() => { done(); dialog?.removeAttribute('data-flown'); });
     } else {
       dialog?.removeAttribute('data-flown');
       setPreview(null);
