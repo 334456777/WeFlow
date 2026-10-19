@@ -1,7 +1,7 @@
 // The workspace from the #130 prototype: navigation on the left, records in the middle, the operations
 // console on the right as in Claude.ai (#130).
 // Records are still sample data (src/mock); the connection state is the real `weflow serve`.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   AddressBook, Aperture, ArrowClockwise, ArrowLeft, ArrowSquareOut, CalendarBlank,
@@ -61,6 +61,8 @@ import { useContacts } from './contacts/useContacts';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
 import { Accounts, AccountsSkeleton } from './settings/Accounts';
+import { AdvancedTools } from './settings/AdvancedTools';
+import { CommandConsole } from './settings/CommandConsole';
 import { dismissSetup, setupDismissed, useProfiles } from './settings/useProfiles';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -221,6 +223,10 @@ export function App() {
   const [mobileDetail, setMobileDetail] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [theme, setTheme] = useTheme();
+  // the settings: the usual ones, or the CLI's own tools and the command console (#217)
+  const [settingsTab, setSettingsTab] = useState<'general' | 'advanced'>('general');
+  const [consolePick, setConsolePick] = useState<string | null>(null);
+  const consolePicked = useCallback(() => setConsolePick(null), []);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const consoleRef = useRef<HTMLElement>(null);
   const settingsRef = useRef<HTMLElement>(null);
@@ -541,7 +547,17 @@ export function App() {
 
     <div className="main-area">
       {section === 'settings' ? <><section ref={settingsRef} className="panel browser-panel settings-panel scroll-area" aria-label="设置">
-        <div className="settings-heading"><Gear size={20} /><h1>设置</h1></div>
+        <div className="settings-heading"><Gear size={20} /><h1>设置</h1>
+          <Segmented className="settings-tabs" count={2} index={settingsTab === 'general' ? 0 : 1} role="group" aria-label="设置分组">
+            <button type="button" aria-pressed={settingsTab === 'general'} onClick={() => setSettingsTab('general')}>常规</button>
+            <button type="button" aria-pressed={settingsTab === 'advanced'} onClick={() => setSettingsTab('advanced')}>高级</button>
+          </Segmented></div>
+        {settingsTab === 'advanced' ? <>
+          <p className="muted">CLI 独有的工具，以及按 OpenAPI 运行任意命令的控制台。</p>
+          {connected
+            ? <><AdvancedTools onOpen={setConsolePick} /><h2 className="settings-subheading">命令控制台</h2><CommandConsole pick={consolePick} onPicked={consolePicked} /></>
+            : <p className="settings-footnote">连接 weflow serve 后才能使用。</p>}
+        </> : <>
         <p className="muted">管理连接和浏览偏好。</p>
         <div className="setting-row"><div><h2>weflow serve</h2><p>{backendDetail(backend)}</p></div><button className="secondary-button" type="button" onClick={recheckBackend}>重新检测</button></div>
         {connected && (profiles
@@ -569,6 +585,7 @@ export function App() {
           </Segmented></div>
         <div className="setting-row"><div><h2>减少动画</h2><p>所有过渡立即完成，状态提示保留。也跟随系统的「减少动态效果」。</p></div><label className="toggle"><input type="checkbox" aria-label="减少动画" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} /><span /></label></div>
         <small className="settings-footnote">连接到 weflow serve 后读取本机记录；未连接时显示示例数据。</small>
+        </>}
       </section><Scrollbar target={settingsRef} /></> : momentsLive || (activeCategory === 'moments' && backend.state === 'unauthorized')
         ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="朋友圈浏览">
           {backend.state === 'unauthorized'

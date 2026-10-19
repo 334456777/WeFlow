@@ -836,6 +836,59 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .toggle:active input:checked + span::after { transform: translateX(18px) scale(var(--press-scale-sm)); }
 .toggle input:focus-visible + span { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .settings-footnote { display: block; margin-top: var(--space-4); color: var(--fg-subtle); font-size: var(--text-2xs); }
+.settings-tabs { width: 160px; margin-left: auto; }
+.settings-subheading { max-width: 720px; margin: var(--space-6) 0 var(--space-3); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+/* Advanced (#217): the CLI's own tools, each a row that opens it in the command console. */
+.advanced-tools { display: flex; flex-direction: column; max-width: 720px; margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+.advanced-tools li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) 0; }
+.advanced-tools h3 { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.advanced-tools p { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.advanced-tools code, .console-form code, .command-item code { font-family: var(--font-mono); font-size: var(--text-2xs); }
+.advanced-tools code { color: var(--fg-subtle); }
+/* The command console: a searchable list of the commands by tag, and the form of the one chosen. */
+.command-console { display: flex; flex-direction: column; gap: var(--space-3); max-width: 720px; }
+.command-list { max-height: 320px; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); }
+.command-group h4 { padding: var(--space-2) var(--space-2) var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-medium); text-transform: uppercase; }
+.command-item {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 32px; padding: 4px var(--space-2);
+  border-radius: var(--radius-sm); color: var(--fg-muted); text-align: left;
+  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out);
+}
+.command-item code { flex-shrink: 0; color: var(--fg); }
+.command-item:hover { box-shadow: var(--neu-raised-sm); color: var(--fg); }
+.command-item[aria-pressed='true'] { box-shadow: var(--neu-raised-sm); color: var(--fg); }
+.command-item:active { box-shadow: var(--neu-pressed); transition-duration: var(--duration-micro); }
+.command-item.refused code { color: var(--fg-subtle); text-decoration: line-through; }
+.command-summary { flex: 1; min-width: 0; font-size: var(--text-xs); }
+.command-method { flex-shrink: 0; color: var(--fg-subtle); font-family: var(--font-mono); font-size: var(--text-2xs); }
+.console-form { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--neu-raised-sm); }
+.console-form h3 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.console-form h3 code { font-size: var(--text-sm); }
+.console-form header p { margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.console-description { white-space: pre-line; }
+.badge.refused { color: var(--state-danger); box-shadow: var(--neu-inset); }
+.console-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3) var(--space-4); }
+.console-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.console-field.inline { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: var(--space-3); }
+.console-field.inline small { flex-basis: 100%; }
+.console-field small { color: var(--fg-subtle); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
+.console-field-name { font-size: var(--text-xs); }
+.console-required { margin-left: 2px; color: var(--state-danger); }
+.console-input {
+  width: 100%; min-width: 0; min-height: var(--control-md); padding: 6px var(--space-3); border: 0; border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-family: var(--font-mono); font-size: var(--text-xs); resize: vertical;
+}
+.console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.console-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.console-output-choice { width: 180px; margin-left: auto; }
+.console-line { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-pressed); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.console-line code { font-size: var(--text-xs); }
+.console-actions { display: flex; align-items: center; gap: var(--space-2); }
+.console-answer { display: flex; flex-direction: column; gap: var(--space-2); }
+.console-answer-head { display: flex; gap: var(--space-3); font-size: var(--text-xs); }
+.console-answer-head span { color: var(--fg-muted); }
+.console-answer.failed .console-answer-head strong { color: var(--state-danger); }
+.console-output { max-height: 360px; margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-family: var(--font-mono); font-size: var(--text-2xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Preview dialog: comes in from 95% with a small rise, leaves faster. */
 .preview-dialog { max-width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
