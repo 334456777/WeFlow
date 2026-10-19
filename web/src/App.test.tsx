@@ -65,7 +65,7 @@ describe('App', () => {
   it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
     await renderWith(null);
     const nav = screen.getByRole('navigation', { name: '主导航' });
-    expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '导出', '设置']);
+    expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '通讯录', '导出', '设置']);
     fireEvent.click(screen.getByRole('button', { name: '公众号' }));
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['设计观察', '城市手记']);
   });
@@ -213,6 +213,70 @@ describe('App', () => {
     // a finished job is deleted, with its file on the server: the cancelled one and the one done
     const deletes = screen.getAllByRole('button', { name: '删除' });
     expect(deletes.map(button => button.getAttribute('title'))).toEqual(['删除这个任务和它在服务端的文件', '删除这个任务']);
+  });
+
+  it('lists the contacts by kind, searches them, shows one and opens its conversation, and exports them (#205)', async () => {
+    const calls: string[] = [];
+    const started: { url: string; body: Record<string, unknown> }[] = [];
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push(url);
+      if (url.startsWith('/api/chat/sessions')) {
+        return json({ success: true, data: [
+          { username: 'wxid_a', displayName: '林沐', summary: '', unreadCount: 0, sortTimestamp: 3, lastTimestamp: 3, lastMsgType: 1 },
+          { username: 'wxid_b', displayName: '陈屿', summary: '', unreadCount: 0, sortTimestamp: 2, lastTimestamp: 2, lastMsgType: 1 },
+        ] });
+      }
+      if (url.startsWith('/api/chat/contacts')) {
+        return json({ success: true, data: [
+          { username: 'wxid_b', displayName: '小陈', remark: '小陈', nickname: '陈屿', alias: 'chenyu', region: '中国 上海', detailDescription: '慢慢走', labels: ['同学'], type: 'friend' },
+          { username: 'g@chatroom', displayName: '家人群', type: 'group' },
+          { username: 'wxid_c', displayName: '秋秋', nickname: '秋秋', type: 'friend' },
+          { username: 'gh_x', displayName: '城市手记', detailDescription: '一条小街', type: 'official' },
+        ] });
+      }
+      if (url.startsWith('/export/')) {
+        started.push({ url, body: JSON.parse(String(init?.body)) });
+        return json({ success: true, data: { id: 'c1', status: 'queued', command: ['weflow', 'export', 'contacts'], createdAt: 0, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null } });
+      }
+      return json({ success: true, data: [] });
+    }));
+    render(<App />);
+    await act(async () => {});
+    expect(calls.some(url => url.startsWith('/api/chat/contacts'))).toBe(false);
+    fireEvent.click(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('button', { name: '通讯录' }));
+    await act(async () => {});
+    expect(calls.filter(url => url.startsWith('/api/chat/contacts'))).toEqual(['/api/chat/contacts?parsed=true']);
+    expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['任务中心', '通讯录统计', '导出通讯录']);
+    // the friends first, with how many of each kind
+    const names = () => Array.from(document.querySelectorAll('.conversation-name'), n => n.textContent);
+    expect(names()).toEqual(['小陈', '秋秋']);
+    expect(screen.getByRole('button', { name: '群聊 1 个' })).toBeTruthy();
+    expect(document.querySelector('.conversation-preview')?.textContent).toBe('陈屿 · 中国 上海');
+    fireEvent.click(screen.getByRole('button', { name: '公众号 1 个' }));
+    expect(names()).toEqual(['城市手记']);
+    // a search goes through every kind
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索联系人' }), { target: { value: 'CHENYU' } });
+    expect(names()).toEqual(['小陈']);
+
+    fireEvent.click(screen.getByRole('button', { name: '查看小陈' }));
+    const card = screen.getByRole('article', { name: '小陈的资料' });
+    expect(card.textContent).toContain('微信号chenyu');
+    expect(card.textContent).toContain('签名慢慢走');
+    expect(card.textContent).toContain('同学');
+
+    // only the friends and groups, as Excel
+    fireEvent.click(within(document.querySelector<HTMLElement>('[data-card="contacts-export"]')!).getByRole('button', { name: '公众号' }));
+    fireEvent.click(within(document.querySelector<HTMLElement>('[data-card="contacts-export"]')!).getByRole('button', { name: '曾经的好友' }));
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-card="contacts-export"] .primary-button')!);
+    await act(async () => {});
+    expect(started).toEqual([{ url: '/export/contacts?return=file', body: { format: 'excel', parsed: true, kind: ['friend', 'group'] } }]);
+    expect(document.querySelector('.jobs .task strong')?.textContent).toBe('导出通讯录 · 好友、群聊 · Excel');
+
+    // the conversation with them
+    fireEvent.click(within(card).getByRole('button', { name: '查看聊天记录' }));
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: '选择陈屿' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('exports the conversations picked on the export page, one job each, with the options chosen (#211)', async () => {

@@ -330,6 +330,22 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 .pick-row > .checkbox { flex-shrink: 0; }
 .pick-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
 .pick-tools .checkbox { font-size: var(--text-xs); }
+/* Contacts (#205): the count of each kind under its name in the filter, and one contact's card beside the list. */
+.contact-kinds > button { display: inline-flex; align-items: baseline; justify-content: center; gap: 3px; }
+.contact-kinds small { color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: var(--weight-regular); }
+.contact-card { display: flex; flex-direction: column; gap: var(--space-5); max-width: 480px; margin: var(--space-6) auto; padding: 0 var(--space-4); }
+.contact-card header { display: flex; align-items: center; gap: var(--space-4); }
+.contact-card header .avatar { width: 64px; height: 64px; font-size: var(--text-xl); }
+.contact-card h2 { font-size: var(--text-lg); font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.contact-card header p { margin-top: 2px; color: var(--fg-muted); font-size: var(--text-xs); }
+.contact-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-3) var(--space-5); margin: 0; }
+.contact-facts > div { display: contents; }
+.contact-facts dt { color: var(--fg-subtle); font-size: var(--text-xs); line-height: var(--leading-sm); }
+.contact-facts dd { min-width: 0; margin: 0; font-size: var(--text-sm); line-height: var(--leading-sm); overflow-wrap: anywhere; white-space: pre-line; }
+.contact-labels { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.contact-labels .badge { box-shadow: var(--neu-inset); }
+.contact-actions { display: flex; flex-direction: column; align-items: flex-start; }
+.contact-actions .card-note { margin-top: var(--space-2); }
 .picked { max-width: 560px; margin: 0 auto; }
 .picked h2 { margin: var(--space-2) 0 var(--space-3); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 .picked ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }

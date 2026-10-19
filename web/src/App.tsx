@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  Aperture, ArrowClockwise, ArrowLeft, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, ArrowClockwise, ArrowLeft, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -52,6 +52,11 @@ import { jobDetail, jobsSummary, outputOf, TaskCenter } from './jobs/TaskCenter'
 import { findJob, removeJob, runJob, useJobs } from './jobs/useJobs';
 import { batchSummary, BatchExport, DEFAULT_BATCH, formatLabel, MESSAGE_FORMATS, SessionsExport, type BatchOptions, type MessageFormat } from './exports/ExportCards';
 import { ExportPicker, PickedList } from './exports/ExportPicker';
+import type { ContactKind } from './api/contacts';
+import { ContactList } from './contacts/ContactList';
+import { ContactDetail } from './contacts/ContactDetail';
+import { ContactsExport, contactsExportSummary, ContactsSummary, DEFAULT_CONTACTS_EXPORT } from './contacts/ContactCards';
+import { useContacts } from './contacts/useContacts';
 import { currentProfile, type Profile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
 import { dismissSetup, setupDismissed, useProfiles } from './settings/useProfiles';
@@ -63,6 +68,7 @@ const navigation = [
   { id: 'chat', label: '聊天', icon: ChatCircleDots },
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
+  { id: 'contacts', label: '通讯录', icon: AddressBook },
   { id: 'export', label: '导出', icon: Export },
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
@@ -274,6 +280,15 @@ export function App() {
   const [people, reloadPeople] = useMomentPeople(momentsLive, scope, sessionList[0]?.selfWxid);
   // The WeChat Pay page reads all the notices once (#204) and narrows them by payee and days itself.
   const paymentsLive = activeCategory === 'payments' && connected;
+  // The contacts page (#205): the list read once it is opened, one contact shown beside it.
+  const contactsPage = section === 'contacts';
+  const [contactsState, reloadContacts] = useContacts(contactsPage && connected, scope);
+  const [contactKind, setContactKind] = useState<ContactKind>('friend');
+  const [contactId, setContactId] = useState<string | null>(null);
+  useEffect(() => { setContactId(null); }, [scope]);
+  const [contactsExport, setContactsExport] = useState(DEFAULT_CONTACTS_EXPORT);
+  const contacts = contactsState.status === 'ready' ? contactsState.contacts : null;
+  const contact = contacts?.find(c => c.username === contactId);
   // The export page (#211): the conversations picked, and how they are exported, one job each.
   const exportPage = section === 'export';
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
@@ -331,7 +346,7 @@ export function App() {
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value === 'export' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -486,19 +501,30 @@ export function App() {
       content: <BatchExport picked={pickedSessions} options={batch} onChange={setBatch} />,
     },
     { id: 'sessions-export', title: '导出会话列表', content: <SessionsExport picked={pickedSessions} /> },
+    {
+      id: 'contacts-summary', title: '通讯录统计', summary: contacts ? contacts.length.toLocaleString('zh-CN') + ' 个' : '',
+      content: <ContactsSummary contacts={contacts} />,
+    },
+    {
+      id: 'contacts-export', title: '导出通讯录', summary: contactsExportSummary(contactsExport),
+      content: <ContactsExport options={contactsExport} onChange={setContactsExport} ready={Boolean(contacts)} />,
+    },
   ];
   // nothing to show of a real conversation until one is open; the Moments and WeChat Pay pages have cards of their own
   const chatCards = ['export', 'tasks', 'search', 'info', 'media'];
   const momentCards = ['moments-filter', 'moments-stats'];
   const payCards = ['pay-filter', 'pay-summary', 'pay-export'];
   const exportCards = ['batch-export', 'sessions-export'];
+  const contactCards = ['contacts-summary', 'contacts-export'];
   const hiddenCards = exportPage
-    ? [...chatCards.filter(id => id !== 'tasks'), ...momentCards, ...payCards, ...(connected ? [] : exportCards)]
-    : momentsLive
-      ? [...chatCards, ...payCards, ...exportCards]
-      : paymentsLive
-        ? [...chatCards, ...momentCards, ...exportCards]
-        : [...momentCards, ...payCards, ...exportCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
+    ? [...chatCards.filter(id => id !== 'tasks'), ...momentCards, ...payCards, ...contactCards, ...(connected ? [] : exportCards)]
+    : contactsPage
+      ? [...chatCards.filter(id => id !== 'tasks'), ...momentCards, ...payCards, ...exportCards, ...(connected ? [] : contactCards)]
+      : momentsLive
+        ? [...chatCards, ...payCards, ...exportCards, ...contactCards]
+        : paymentsLive
+          ? [...chatCards, ...momentCards, ...exportCards, ...contactCards]
+          : [...momentCards, ...payCards, ...exportCards, ...contactCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -551,6 +577,23 @@ export function App() {
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
             <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+          </div>
+          <Scrollbar target={paneRef} />
+        </section>
+        : contactsPage
+        ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="通讯录">
+          {backend.state === 'unauthorized'
+            ? <TokenPrompt />
+            : connected
+              ? <ContactList state={contactsState} kind={contactKind} onKind={setContactKind} selected={contactId} onRetry={reloadContacts}
+                onSelect={username => { setContactId(username); setMobileDetail(true); }} />
+              : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里查看通讯录。</p></div>}
+          <div ref={paneRef} className="message-pane scroll-area" aria-label="联系人资料">
+            <button type="button" className="mobile-back icon-button" aria-label="返回联系人列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
+            {connected && (contact
+              ? <ContactDetail key={contact.username} contact={contact} canChat={sessionList.some(s => s.username === contact.username)}
+                onChat={() => { selectSection('chat'); setLiveId(contact.username); setMobileDetail(true); }} />
+              : <div className="pane-message">{contacts && <p>选择左侧的一个联系人。</p>}</div>)}
           </div>
           <Scrollbar target={paneRef} />
         </section>
