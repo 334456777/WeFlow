@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  AddressBook, Aperture, ArrowClockwise, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, Archive, ArrowClockwise, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -61,6 +61,7 @@ import { useContacts } from './contacts/useContacts';
 import { markInsightRead } from './api/insights';
 import { InsightClear, InsightContacts, InsightList, InsightsSummary, InsightTrigger } from './insights/InsightViews';
 import { useInsights, type InsightFilter } from './insights/useInsights';
+import { BackupPage } from './backup/BackupPage';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
 import { Accounts, AccountsSkeleton } from './settings/Accounts';
@@ -79,6 +80,7 @@ const navigation = [
   { id: 'contacts', label: '通讯录', icon: AddressBook },
   { id: 'insights', label: '灵感信箱', icon: Lightbulb },
   { id: 'export', label: '导出', icon: Export },
+  { id: 'backup', label: '数据库备份', icon: Archive },
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
 
@@ -235,6 +237,7 @@ export function App() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const consoleRef = useRef<HTMLElement>(null);
   const settingsRef = useRef<HTMLElement>(null);
+  const backupRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const shownPreview = usePresence(preview);
@@ -362,7 +365,7 @@ export function App() {
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'insights' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -541,6 +544,7 @@ export function App() {
   const insightCards = ['insights-summary', 'insights-trigger', 'insights-clear'];
   // each page names the cards it shows; the others are hidden
   const shownCards = exportPage ? ['tasks', ...(connected ? exportCards : [])]
+    : section === 'backup' ? ['tasks']
     : contactsPage ? ['tasks', ...(connected ? contactCards : [])]
       : insightsPage ? (connected ? insightCards : [])
         : momentsLive ? momentCards
@@ -619,6 +623,11 @@ export function App() {
           </div>
           <Scrollbar target={paneRef} />
         </section>
+        : section === 'backup'
+        ? <><section ref={backupRef} className="panel browser-panel settings-panel scroll-area" aria-label="数据库备份">
+          <div className="settings-heading"><Archive size={20} /><h1>数据库备份</h1></div>
+          {backend.state === 'unauthorized' ? <TokenPrompt /> : connected ? <BackupPage jobs={jobs} /> : <p className="settings-footnote">连接 weflow serve 后，可以在这里备份和恢复数据库。</p>}
+        </section><Scrollbar target={backupRef} /></>
         : insightsPage
         ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="灵感信箱">
           {backend.state === 'unauthorized'

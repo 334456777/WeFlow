@@ -318,6 +318,19 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 .biz-empty { color: var(--fg-muted); font-size: var(--text-sm); line-height: var(--leading-sm); text-align: center; }
 .biz-more { align-self: center; }
 
+/* Database backup (#212): two blocks in the page's column, made of the settings' rows and forms. */
+.backup-page { display: flex; flex-direction: column; gap: var(--space-6); max-width: 720px; margin-top: var(--space-4); }
+.backup-block { display: flex; flex-direction: column; gap: var(--space-3); }
+.backup-block h2 { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.backup-block .export-pending { margin-top: 0; }
+.backup-parts { display: flex; flex-direction: column; gap: var(--space-2); }
+.backup-made { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.backup-made li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-raised-sm); }
+.backup-made strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.backup-made a.secondary-button { color: inherit; text-decoration: none; }
+.backup-made .backup-failed { color: var(--state-danger); }
+.backup-manifest { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); box-shadow: var(--neu-inset); }
+
 /* Insights (#210): a column of cards, an unread one marked by a dot; how it was written, folded under it. */
 .insights { display: flex; flex-direction: column; gap: var(--space-3); max-width: 560px; margin: 0 auto; }
 .insight-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
