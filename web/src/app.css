@@ -1074,6 +1074,14 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .preview-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
 .preview-content { overflow: hidden; border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay); animation: dialog-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing'] .preview-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
+/* The picture flying out of its thumbnail into the preview and back (#194): the frame grows from the thumbnail's
+   shape to the picture's, the picture filling it as it goes; the backdrop and the preview's bar fade meanwhile. */
+::view-transition-group(preview-media) { animation-duration: 260ms; animation-timing-function: var(--ease-out); }
+::view-transition-image-pair(preview-media) { overflow: hidden; border-radius: var(--radius-md); }
+::view-transition-old(preview-media), ::view-transition-new(preview-media) { width: 100%; height: 100%; object-fit: cover; animation-duration: 260ms; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--duration-base); }
+/* opened by a flight, the dialog's own fade and growth stay off until it closes without one */
+.preview-dialog[data-flown]::backdrop, .preview-dialog[data-flown] .preview-content { animation: none; }
 .preview-content header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); font-size: var(--text-sm); }
 .preview-content > img { width: auto; max-height: calc(100dvh - 120px); margin: 0 auto; object-fit: contain; }
 /* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */

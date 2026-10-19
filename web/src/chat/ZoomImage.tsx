@@ -2,6 +2,7 @@
 // around the pointer; a drag pans once it has moved 4px, so a click that wobbles does not; a double click goes to
 // 2.5× at the pointer and back. The picture never leaves the frame.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 
 export const MIN_SCALE = 1;
 export const MAX_SCALE = 8;
@@ -35,7 +36,8 @@ export function keep(view: View, width: number, height: number): View {
 
 export interface ZoomControls { zoomBy(factor: number): void; reset(): void }
 
-export const ZoomImage = forwardRef<ZoomControls, { src: string; alt: string; onError(): void }>(function ZoomImage({ src, alt, onError }, ref) {
+/** `sized`: the picture's size and what shows until it loads, when the preview knows its shape beforehand (#194). */
+export const ZoomImage = forwardRef<ZoomControls, { src: string; alt: string; onError(): void; sized?: CSSProperties }>(function ZoomImage({ src, alt, onError, sized }, ref) {
   const [view, setView] = useState<View>(FIT);
   const frame = useRef<HTMLDivElement>(null);
   const picture = useRef<HTMLImageElement>(null);
@@ -88,6 +90,6 @@ export const ZoomImage = forwardRef<ZoomControls, { src: string; alt: string; on
       setView(v => (v.scale > 1 ? FIT : zoomAt(v, DOUBLE, event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2, width, height)));
     }}>
     <img ref={picture} src={src} alt={alt} draggable={false} onError={onError}
-      style={{ transform: 'translate(' + view.x + 'px, ' + view.y + 'px) scale(' + view.scale + ')' }} />
+      style={{ ...sized, transform: 'translate(' + view.x + 'px, ' + view.y + 'px) scale(' + view.scale + ')' }} />
   </div>;
 });

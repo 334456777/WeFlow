@@ -1,7 +1,7 @@
 // One message of the chat window (#198), drawn by its kind on the surfaces of #220: received bubbles raised,
 // sent ones inset; cards (links, files, records…) are bubbles too.
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode, Ref } from 'react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
 import {
   Article, ChatsCircle, CurrencyCny, File, FilePdf, FileText, Gift, Image as ImageIcon, MapPin, Pause, Phone, Play,
   UserSquare, VideoCamera, Warning,
@@ -11,9 +11,22 @@ import { appLabel, formatDuration, formatFileSize, kindOf, withoutLabel } from '
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 
 export type Preview =
-  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void }
-  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void }
+  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb }
+  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb }
   | { type: 'file'; title: string };
+
+/** The thumbnail a preview opened from (#194): the preview takes its shape at once and shows it until the picture
+ * comes, so the picture that flies in from it has a place to land and does not move again when it loads. */
+export interface PreviewThumb { src: string; aspect: number }
+
+/** The size of a picture of that shape in the preview: as wide as fits, as the preview's own rules allow. */
+export function previewSize(thumb: PreviewThumb): CSSProperties {
+  return {
+    width: 'min(960px, 100vw - 32px, (100dvh - 120px) * ' + thumb.aspect.toFixed(4) + ')',
+    aspectRatio: String(thumb.aspect),
+    background: 'url(' + JSON.stringify(thumb.src) + ') center / contain no-repeat',
+  };
+}
 
 /** The pictures and videos of the conversation read so far, the one shown at `index` (#194). */
 export interface Gallery { items: Preview[]; index: number }
@@ -193,16 +206,16 @@ function MediaError({ src, what }: { src: string; what: string }) {
   return <div className="file-preview"><Warning size={40} /><h3>{what}无法显示</h3><p>{reason || '正在查找原因…'}</p></div>;
 }
 
-export function PreviewImage({ src, title, controls }: { src: string; title: string; controls?: Ref<ZoomControls> }) {
+export function PreviewImage({ src, title, controls, thumb }: { src: string; title: string; controls?: Ref<ZoomControls>; thumb?: PreviewThumb }) {
   const [failed, setFailed] = useState(false);
-  return failed ? <MediaError src={src} what="图片" /> : <ZoomImage ref={controls} src={src} alt={title} onError={() => setFailed(true)} />;
+  return failed ? <MediaError src={src} what="图片" /> : <ZoomImage ref={controls} src={src} alt={title} onError={() => setFailed(true)} sized={thumb && previewSize(thumb)} />;
 }
 
-export function PreviewVideo({ src, poster }: { src: string; poster?: string }) {
+export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: string; thumb?: PreviewThumb }) {
   const [failed, setFailed] = useState(false);
   return failed
     ? <MediaError src={src} what="视频" />
-    : <video className="preview-video" src={src} poster={poster} controls autoPlay playsInline onError={() => setFailed(true)} />;
+    : <video className="preview-video" src={src} poster={poster} controls autoPlay playsInline onError={() => setFailed(true)} style={thumb && previewSize(thumb)} />;
 }
 
 /** A thumbnail from the server; when it cannot be decoded, a placeholder that says so instead of a broken image. */

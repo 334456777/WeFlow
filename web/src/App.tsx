@@ -1,7 +1,8 @@
 // The workspace from the #130 prototype: navigation on the left, records in the middle, the operations
 // console on the right as in Claude.ai (#130).
 // Records are still sample data (src/mock); the connection state is the real `weflow serve`.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { FormEvent } from 'react';
 import {
   AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
@@ -31,6 +32,7 @@ import { useSearch } from './chat/useSearch';
 import { parseDay } from './calendar/dates';
 import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
+import { canFly, fly, inSight, thumbnailOf } from './chat/previewMotion';
 import type { ZoomControls } from './chat/ZoomImage';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
@@ -421,12 +423,47 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [highlighted, reducedMotion]);
 
-  // The dialog stays in the top layer until its exit animation has played.
-  useEffect(() => {
+  // The dialog stays in the top layer until its exit animation has played. Opened as the preview is rendered, so that
+  // a picture flying in from its thumbnail (#194) finds it open; one that flew back closed it already.
+  useLayoutEffect(() => {
     const dialog = dialogRef.current;
-    if (shownPreview && dialog && !dialog.open) dialog.showModal?.();
+    if (shownPreview && !shownPreview.closing && dialog && !dialog.open) dialog.showModal?.();
     else if (!shownPreview && dialog?.open) dialog.close();
   }, [shownPreview]);
+
+  // The picture or video of a preview flies out of the thumbnail it was opened from and back into it (#194): the one
+  // focused or last pressed. Back only while the preview shows that same one and its thumbnail is on screen.
+  const pressed = useRef<Element | null>(null);
+  useEffect(() => {
+    const down = (event: PointerEvent) => { pressed.current = event.target as Element; };
+    window.addEventListener('pointerdown', down, true);
+    return () => window.removeEventListener('pointerdown', down, true);
+  }, []);
+  const opened = useRef<{ thumb: HTMLImageElement; src: string } | null>(null);
+  const previewMedia = () => dialogRef.current?.querySelector<HTMLElement>('.zoom-frame img, .preview-video');
+  const openPreview = (next: Preview) => {
+    const thumb = next.type === 'file' ? null : thumbnailOf(document.activeElement, pressed.current);
+    if (!thumb || next.type === 'file') { opened.current = null; setPreview(next); return; }
+    const shown: Preview = { ...next, thumb: { src: thumb.currentSrc || thumb.src, aspect: thumb.naturalWidth / thumb.naturalHeight } };
+    opened.current = { thumb, src: next.src };
+    if (!canFly(prefersReducedMotion(reducedMotion))) { setPreview(shown); return; }
+    // the dialog's own fade and growth stay off while it is open: switched back on, they would play from the start
+    dialogRef.current?.setAttribute('data-flown', '');
+    void fly(thumb, () => flushSync(() => setPreview(shown)), previewMedia);
+  };
+  const closePreview = () => {
+    const back = opened.current;
+    opened.current = null;
+    const media = previewMedia();
+    const dialog = dialogRef.current;
+    if (back && media && preview && preview.type !== 'file' && preview.src === back.src && inSight(back.thumb) && canFly(prefersReducedMotion(reducedMotion))) {
+      dialog?.setAttribute('data-flown', '');
+      void fly(media, () => { flushSync(() => setPreview(null)); dialog?.close(); }, () => back.thumb).then(() => dialog?.removeAttribute('data-flown'));
+    } else {
+      dialog?.removeAttribute('data-flown');
+      setPreview(null);
+    }
+  };
 
   useEffect(() => {
     const dialog = setupRef.current;
@@ -581,7 +618,7 @@ export function App() {
       id: 'media', title: '媒体文件', summary: selected.live ? '图片、视频与文件' : media.length + ' 个',
       content: selected.live
         ? (open: boolean) => liveSession ? <MediaPanel key={scope + ':' + liveSession.username} sessionId={liveSession.username} active={open} onOpen={item => openMedia(liveSession.username, item)} /> : null
-        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
+        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? openPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
     {
       id: 'moments-filter', title: '筛选朋友圈', summary: filterSummary(momentFilter),
@@ -725,7 +762,7 @@ export function App() {
               onSelect={username => { setMomentFilter(filter => ({ ...filter, username })); setMobileDetail(true); }} />}
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
             <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
-            {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+            {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={openPreview} />}
           </div>
           <Scrollbar target={paneRef} />
         </section>
@@ -751,7 +788,7 @@ export function App() {
         ? <><section ref={resourcesRef} className="panel browser-panel settings-panel scroll-area" aria-label="资源浏览">
           <div className="settings-heading"><Images size={20} /><h1>资源浏览</h1></div>
           {backend.state === 'unauthorized' ? <TokenPrompt /> : connected
-            ? <ResourcesPage key={scope} filter={resourceFilter} onPreview={setPreview} onOpen={openResource} />
+            ? <ResourcesPage key={scope} filter={resourceFilter} onPreview={openPreview} onOpen={openResource} />
             : <p className="settings-footnote">连接 weflow serve 后，可以在这里浏览所有会话的图片、视频、语音和文件。</p>}
         </section><Scrollbar target={resourcesRef} /></>
         : section === 'footprint'
@@ -860,14 +897,14 @@ export function App() {
           {selected.live && (liveSession
             ? kindOf(liveSession.username) === 'official'
               ? <BizPushes key={scope + ':' + liveSession.username} session={liveSession} />
-              : <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={setPreview} />
+              : <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={openPreview} />
             : <div className="pane-message">{liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>)}
           {!selected.live && <div className="messages">
             {selected.messages.map((message, index) => <div key={message.id}>
               {(index === 0 || selected.messages[index - 1].date !== message.date) && <div className="date-separator">{formatDay(message.date)}</div>}
               <div id={'message-' + message.id} className={'message-row ' + message.direction + (highlighted === message.id ? ' highlighted' : '')}>
                 {message.kind === 'image' && message.asset
-                  ? <button type="button" className="photo-button" aria-label={'预览' + message.text} onClick={() => setPreview({ type: 'image', src: message.asset!, title: message.text })}><img className="message-photo" src={message.asset} alt={message.text} /></button>
+                  ? <button type="button" className="photo-button" aria-label={'预览' + message.text} onClick={() => openPreview({ type: 'image', src: message.asset!, title: message.text })}><img className="message-photo" src={message.asset} alt={message.text} /></button>
                   : message.kind === 'file'
                     ? <button className="message-bubble file-bubble" type="button" onClick={() => setPreview({ type: 'file', title: message.fileName || message.text })}><FilePdf size={28} /><span>{message.fileName}<small>示例文件</small></span></button>
                     : <div className="message-bubble">{message.text}</div>}
@@ -886,18 +923,18 @@ export function App() {
     </div>
 
     <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
-      onCancel={event => { event.preventDefault(); setPreview(null); }} onClick={event => { if (event.target === event.currentTarget) setPreview(null); }} onKeyDown={previewKeys}>
+      onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (event.target === event.currentTarget) closePreview(); }} onKeyDown={previewKeys}>
       {shownPreview && <div className="preview-content"><header><strong>{shownPreview.value.title}{gallery && <small className="num"> {gallery.index + 1} / {gallery.items.length}</small>}</strong>
         <span className="preview-tools">{gallery && <>
           <button type="button" className="icon-button" aria-label="上一个" title="上一个（←）" disabled={gallery.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={18} /></button>
           <button type="button" className="icon-button" aria-label="下一个" title="下一个（→）" disabled={gallery.index === gallery.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={18} /></button></>}
           {shownPreview.value.type !== 'file' && shownPreview.value.locate && <button type="button" className="icon-button" aria-label="在会话中定位" title="在会话中定位"
-            onClick={() => { const locate = shownPreview.value.type !== 'file' ? shownPreview.value.locate : undefined; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
-          <button type="button" className="icon-button" aria-label="关闭预览" onClick={() => setPreview(null)}><X size={18} /></button></span></header>
+            onClick={() => { const locate = shownPreview.value.type !== 'file' ? shownPreview.value.locate : undefined; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
+          <button type="button" className="icon-button" aria-label="关闭预览" onClick={closePreview}><X size={18} /></button></span></header>
         {shownPreview.value.type === 'image'
-          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} />
+          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} thumb={shownPreview.value.thumb} />
           : shownPreview.value.type === 'video'
-            ? <PreviewVideo key={shownPreview.value.src} src={shownPreview.value.src} poster={shownPreview.value.poster} />
+            ? <PreviewVideo key={shownPreview.value.src} src={shownPreview.value.src} poster={shownPreview.value.poster} thumb={shownPreview.value.thumb} />
             : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}
     </dialog>
     <dialog className="setup-dialog" ref={setupRef} aria-label="账号配置" data-state={shownSetup?.closing ? 'closing' : 'open'}
