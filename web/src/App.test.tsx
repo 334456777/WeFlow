@@ -65,7 +65,7 @@ describe('App', () => {
   it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
     await renderWith(null);
     const nav = screen.getByRole('navigation', { name: '主导航' });
-    expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '设置']);
+    expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '导出', '设置']);
     fireEvent.click(screen.getByRole('button', { name: '公众号' }));
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['设计观察', '城市手记']);
   });
@@ -208,6 +208,54 @@ describe('App', () => {
     expect(links[0].getAttribute('href')).toBe('/jobs/j2/file');
     expect(side().getAttribute('aria-label')).toBe('再次导出');
     expect(screen.getByText(/林沐\.html · 2\.0 KB/)).toBeTruthy();
+  });
+
+  it('exports the conversations picked on the export page, one job each, with the options chosen (#211)', async () => {
+    const started: { url: string; body: Record<string, unknown> }[] = [];
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/chat/sessions')) {
+        return json({ success: true, data: [
+          { username: 'wxid_a', displayName: '林沐', summary: '', unreadCount: 0, sortTimestamp: 3, lastTimestamp: 3, lastMsgType: 1 },
+          { username: 'g@chatroom', displayName: '家人群', summary: '', unreadCount: 0, sortTimestamp: 2, lastTimestamp: 2, lastMsgType: 1 },
+          { username: 'g2@chatroom', displayName: '同学群', summary: '', unreadCount: 0, sortTimestamp: 1, lastTimestamp: 1, lastMsgType: 1 },
+        ] });
+      }
+      if (url.startsWith('/export/')) {
+        const body = JSON.parse(String(init?.body));
+        started.push({ url, body });
+        return json({ success: true, data: { id: 'j' + started.length, status: 'queued', command: ['weflow', 'export'], createdAt: 0, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null } });
+      }
+      return json({ success: true, data: [] });
+    }));
+    render(<App />);
+    await act(async () => {});
+    fireEvent.click(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('button', { name: '导出' }));
+    await act(async () => {});
+    expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['任务中心', '批量导出', '导出会话列表']);
+    expect(screen.getByRole('button', { name: '先在左侧选择会话' })).toHaveProperty('disabled', true);
+    // the groups, all at once, then one taken off again beside the list
+    fireEvent.click(screen.getByRole('button', { name: '群聊' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选当前列出的会话' }));
+    expect(screen.getByRole('heading', { name: '已选 2 个会话' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '不导出同学群' }));
+    fireEvent.click(screen.getByRole('button', { name: '全部' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '导出林沐' }));
+    // Excel with the compact columns, by remark
+    fireEvent.click(screen.getByRole('button', { name: 'Excel' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Excel 精简列' }));
+    fireEvent.click(screen.getByRole('button', { name: '备注' }));
+    fireEvent.click(screen.getByRole('button', { name: '导出 2 个会话' }));
+    await act(async () => {});
+    expect(started.map(s => s.url)).toEqual(['/export/messages?return=file', '/export/messages?return=file']);
+    expect(started.map(s => s.body['session-id'])).toEqual(['wxid_a', 'g@chatroom']);
+    expect(started[0].body).toEqual({ 'session-id': 'wxid_a', format: 'excel', 'display-name': 'remark', 'excel-compact': true });
+    expect(screen.getByText('已加入 2 个导出任务，在任务中心查看进度和下载文件。')).toBeTruthy();
+    expect(Array.from(document.querySelectorAll('.jobs .task strong'), n => n.textContent)).toEqual(['导出 家人群 · Excel', '导出 林沐 · Excel']);
+    // the list of the conversations picked
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-card="sessions-export"] .secondary-button')!);
+    await act(async () => {});
+    expect(started[2]).toEqual({ url: '/export/sessions?return=file', body: { session: ['wxid_a', 'g@chatroom'] } });
   });
 
   it('follows the reduce-motion switch on the root element', async () => {

@@ -6,7 +6,7 @@ import type { FormEvent } from 'react';
 import {
   Aperture, ArrowClockwise, ArrowLeft, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, CircleNotch,
-  DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
+  DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend, type Health } from './api/backend';
 import { onAuth, setToken, token } from './api/client';
@@ -50,6 +50,8 @@ import type { Category, Conversation, ExportFormat, ExportResult, Navigation } f
 import { jobFileUrl, type Job } from './api/jobs';
 import { jobDetail, jobsSummary, outputOf, TaskCenter } from './jobs/TaskCenter';
 import { findJob, removeJob, runJob, useJobs } from './jobs/useJobs';
+import { batchSummary, BatchExport, DEFAULT_BATCH, SessionsExport, type BatchOptions } from './exports/ExportCards';
+import { ExportPicker, PickedList } from './exports/ExportPicker';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
 // Previews of the sample records and of real messages (images and videos of #198).
@@ -58,6 +60,7 @@ const navigation = [
   { id: 'chat', label: '聊天', icon: ChatCircleDots },
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
+  { id: 'export', label: '导出', icon: Export },
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
 
@@ -256,6 +259,11 @@ export function App() {
   const [people, reloadPeople] = useMomentPeople(momentsLive, scope, sessionList[0]?.selfWxid);
   // The WeChat Pay page reads all the notices once (#204) and narrows them by payee and days itself.
   const paymentsLive = activeCategory === 'payments' && connected;
+  // The export page (#211): the conversations picked, and how they are exported, one job each.
+  const exportPage = section === 'export';
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [batch, setBatch] = useState<BatchOptions>(DEFAULT_BATCH);
+  useEffect(() => { setPicked(new Set()); }, [scope]);
   const [payFilter, setPayFilter] = useState<PayFilter>(ALL_PAYMENTS);
   useEffect(() => { setPayFilter(ALL_PAYMENTS); }, [scope]);
   const [payState, reloadPayments] = usePayments(paymentsLive, scope);
@@ -264,6 +272,7 @@ export function App() {
   const chosenPayments = useMemo(() => payDays && (payFilter.merchant === null ? payDays : payDays.filter(p => p.merchant === payFilter.merchant)), [payDays, payFilter.merchant]);
   const list = conversations.filter(item => item.category === activeCategory);
   const sessionNames = useMemo(() => new Map(sessionList.map(s => [s.username, s.displayName || s.username])), [sessionList]);
+  const pickedSessions = useMemo(() => sessionList.filter(s => picked.has(s.username)), [sessionList, picked]);
   const selected = live ? liveConversation(liveSession) : list.find(item => item.id === selectedIds[activeCategory]) || list[0];
   const media = selected.messages.filter(message => message.kind !== 'text');
   const results = useMemo(() => submittedQuery === null ? [] : selected.messages.filter(message => {
@@ -300,7 +309,7 @@ export function App() {
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -450,16 +459,24 @@ export function App() {
       id: 'pay-export', title: '导出支付记录',
       content: <PaymentsExport key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} filter={payFilter} />,
     },
+    {
+      id: 'batch-export', title: '批量导出', summary: batchSummary(pickedSessions.length, batch),
+      content: <BatchExport picked={pickedSessions} options={batch} onChange={setBatch} />,
+    },
+    { id: 'sessions-export', title: '导出会话列表', content: <SessionsExport picked={pickedSessions} /> },
   ];
   // nothing to show of a real conversation until one is open; the Moments and WeChat Pay pages have cards of their own
   const chatCards = ['export', 'tasks', 'search', 'info', 'media'];
   const momentCards = ['moments-filter', 'moments-stats'];
   const payCards = ['pay-filter', 'pay-summary', 'pay-export'];
-  const hiddenCards = momentsLive
-    ? [...chatCards, ...payCards]
-    : paymentsLive
-      ? [...chatCards, ...momentCards]
-      : [...momentCards, ...payCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
+  const exportCards = ['batch-export', 'sessions-export'];
+  const hiddenCards = exportPage
+    ? [...chatCards.filter(id => id !== 'tasks'), ...momentCards, ...payCards, ...(connected ? [] : exportCards)]
+    : momentsLive
+      ? [...chatCards, ...payCards, ...exportCards]
+      : paymentsLive
+        ? [...chatCards, ...momentCards, ...exportCards]
+        : [...momentCards, ...payCards, ...exportCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -510,6 +527,19 @@ export function App() {
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
             <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+          </div>
+          <Scrollbar target={paneRef} />
+        </section>
+        : exportPage
+        ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="导出">
+          {backend.state === 'unauthorized'
+            ? <TokenPrompt />
+            : connected
+              ? <ExportPicker state={liveSessions} picked={picked} onChange={setPicked} onRetry={reloadSessions} />
+              : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里选择会话批量导出。</p></div>}
+          <div ref={paneRef} className="message-pane scroll-area" aria-label="已选的会话">
+            <button type="button" className="mobile-back icon-button" aria-label="返回会话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
+            {connected && <PickedList picked={pickedSessions} onRemove={id => setPicked(old => { const next = new Set(old); next.delete(id); return next; })} />}
           </div>
           <Scrollbar target={paneRef} />
         </section>

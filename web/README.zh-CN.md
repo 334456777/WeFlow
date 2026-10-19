@@ -92,4 +92,5 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/App.tsx`、`src/app.css` | 工作台界面：左侧导航，中间是记录，右侧是操作控制台 |
 | `src/mock/` | 示例记录，界面接入 API 后删除 |
 | `src/api/jobs.ts`、`src/jobs/` | 作业（#211）：用 `Prefer: respond-async` 启动命令（导出时带 `?return=file`），读取 `/jobs` 列表，通过 `/jobs/<id>/events` 跟踪正在运行的作业，用 `DELETE` 取消或删除，从 `/jobs/<id>/file` 保存文件；任务中心列出全部作业，控制台用 `export messages` 导出打开的会话 |
+| `src/exports/` | 导出页（#211）：从会话列表里勾选（可按类型筛选、一次全选当前列出的），每个会话一个作业，用 `export messages` 导出，可选 9 种格式、日期范围、发送者名称、媒体文件和 Excel 精简列；也可以用 `export sessions` 导出会话列表本身 |
 | `src/files.ts` | 网页保存的文件：把多行数据生成 .xlsx，或把任意内容交给浏览器下载 |
