@@ -296,6 +296,28 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 .moment-comments { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
 .moment-comments b { font-weight: var(--weight-medium); }
 .moments-end { display: flex; justify-content: center; padding: var(--space-2) 0 var(--space-4); color: var(--fg-subtle); font-size: var(--text-xs); }
+/* The export page (#211): conversations ticked in the list, the ones picked beside it, the formats as chips. */
+.pick-row { cursor: pointer; }
+.pick-row > .checkbox { flex-shrink: 0; }
+.pick-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
+.pick-tools .checkbox { font-size: var(--text-xs); }
+.picked { max-width: 560px; margin: 0 auto; }
+.picked h2 { margin: var(--space-2) 0 var(--space-3); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.picked ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.picked li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+.picked-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.picked-copy strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.picked-copy small { color: var(--fg-subtle); font-size: var(--text-xs); }
+.choice-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.chip {
+  height: var(--control-sm); padding: 0 var(--space-3); border-radius: var(--radius-full); background: var(--surface);
+  box-shadow: var(--neu-raised-sm); color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap;
+  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+}
+.chip:hover { color: var(--fg); box-shadow: var(--neu-raised-sm-hover); }
+.chip[aria-pressed='true'] { color: var(--fg); font-weight: var(--weight-semibold); box-shadow: var(--neu-inset); }
+/* held down, chosen or not, as deep as a chosen one held down, and shrunk like a button */
+.chip:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); transition-duration: var(--duration-micro); }
 .payments { display: flex; flex-direction: column; gap: var(--space-3); max-width: 560px; margin: 0 auto; }
 .pay-row { display: flex; flex-direction: column; }
 .pay-card { display: flex; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
@@ -576,6 +598,14 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .task time { flex-shrink: 0; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: 20px; }
 .task.error strong, .task.error .task-icon { color: var(--state-danger); }
 .download-link { display: inline-block; margin-top: 2px; color: var(--fg); font-size: var(--text-xs); text-underline-offset: 3px; }
+/* The task centre (#211): one row per job of the server, a bar while it runs, its file and a way off the list. */
+.jobs .task { padding-bottom: var(--space-3); }
+.jobs .task:last-child { padding-bottom: 0; }
+.job-bar { display: block; height: 6px; margin-top: var(--space-1); overflow: hidden; border-radius: var(--radius-full); box-shadow: var(--neu-inset); }
+.job-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--fg-muted); transition: width var(--duration-base) var(--ease-out); }
+.job-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: 2px; }
+.job-actions .download-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 0; }
+.job-actions .text-button { font-size: var(--text-xs); }
 .spin { animation: spin var(--loop-spin) linear infinite; }
 
 /*

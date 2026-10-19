@@ -107,7 +107,3 @@ export function formatDay(date: string): string {
   const value = new Date(date + 'T12:00:00');
   return String(value.getFullYear()) + '年' + String(value.getMonth() + 1) + '月' + String(value.getDate()) + '日  ' + ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][value.getDay()];
 }
-
-export function getMessagesInRange(conversation: Conversation, from: string, to: string): Message[] {
-  return conversation.messages.filter(message => (!from || message.date >= from) && (!to || message.date <= to));
-}

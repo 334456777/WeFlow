@@ -1,5 +1,5 @@
 export type Category = 'chat' | 'moments' | 'payments';
-export type Navigation = Category | 'settings';
+export type Navigation = Category | 'export' | 'settings';
 export type ExportFormat = 'HTML' | 'JSON' | 'Excel';
 export type MessageKind = 'text' | 'image' | 'file';
 
@@ -30,13 +30,6 @@ export interface Conversation {
   messageCount?: number;
   /** Unix seconds of the last message. */
   lastTime?: number;
-}
-
-export interface ExportOptions {
-  format: ExportFormat;
-  from: string;
-  to: string;
-  includeMedia: boolean;
 }
 
 export interface ExportResult {

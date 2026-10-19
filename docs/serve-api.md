@@ -172,6 +172,7 @@ Other commands answer `400`: their output is a folder or many files (`export med
 - On success the answer is `200` with `Content-Type: multipart/form-data` and two parts: `result`, `application/json`, `{"success": true, "data": {"path": "<the file on the server>"}}`; then `file`, the content, with a `Content-Type` from its extension and the file name in `filename` (UTF-8) and `filename*` (RFC 5987). The file is read from disk as it is sent. In a browser, `await (await fetch(url, init)).formData()` gives both parts.
 - On failure there is no file: the usual JSON error and status code.
 - `serve-files/` is emptied when `serve` starts and is part of `cache list` / `cache clear --api`.
+- With `Prefer: respond-async` the command runs as a [job](#jobs) instead and keeps its file: once the job has succeeded, its `file` names it (`{"name", "size"}`) and `GET /jobs/<id>/file` sends the file alone, with `Content-Disposition: attachment`, so that a link saves it. A folder the server chose is removed when the job fails, is cancelled or is forgotten.
 
 ```sh
 curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18108/export/sessions?return=file"
@@ -187,8 +188,9 @@ A long command (an export, `key db`, `backup create`) need not hold a request op
 | `GET /jobs/<id>` | The job with its `result` |
 | `GET /jobs/<id>/events` | Server-sent events until the job ends (below) |
 | `DELETE /jobs/<id>` | A queued or running job is cancelled (its command is killed) and the answer is the cancelled job; a finished job is forgotten |
+| `GET /jobs/<id>/file` | The file of a job started with `?return=file`, once it has succeeded (see [Files](#files)); `404` otherwise |
 
-A job is `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "exitCode", "httpStatus", "progress", "result"}`: `status` is `queued`, `running`, `succeeded`, `failed` or `cancelled`; `command` the command line it runs (always `--json --progress`); times in Unix milliseconds; `httpStatus` the status a direct request would have answered; `progress` the last progress event; `result` the `--json` document, as a direct request would have answered. A cancelled job has `httpStatus` `499` and the error code `user_interrupt`.
+A job is `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "exitCode", "httpStatus", "progress", "file", "result"}`: `status` is `queued`, `running`, `succeeded`, `failed` or `cancelled`; `command` the command line it runs (always `--json --progress`); times in Unix milliseconds; `httpStatus` the status a direct request would have answered; `progress` the last progress event; `file` the file of a `?return=file` job that succeeded (`{"name", "size"}`), else `null`; `result` the `--json` document, as a direct request would have answered. A cancelled job has `httpStatus` `499` and the error code `user_interrupt`.
 
 The event stream sends, each with an `id`:
 
@@ -199,7 +201,7 @@ The event stream sends, each with an `id`:
 
 A client that subscribes late or reconnects gets the events kept so far (up to 1000 per job); with `Last-Event-ID`, only those after it. Jobs live in the server's memory only: they are gone when it stops, and only the 100 most recent finished jobs are kept.
 
-`?std=out`, `?std=err` and `?return=file` are answered right away and cannot be jobs (`400`); `?std=in` never runs anything.
+`?std=out` and `?std=err` are answered right away and cannot be jobs (`400`); `?std=in` never runs anything.
 
 ```sh
 curl -i -X POST -H "Authorization: Bearer $TOKEN" -H "Prefer: respond-async" \

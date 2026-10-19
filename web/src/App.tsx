@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   Aperture, ArrowClockwise, ArrowLeft, ArrowSquareOut, CalendarBlank,
-  ChatCircleDots, Check, CheckCircle, Circle, CircleNotch,
-  DownloadSimple, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
+  ChatCircleDots, Check, CheckCircle, CircleNotch,
+  DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend, type Health } from './api/backend';
 import { onAuth, setToken, token } from './api/client';
@@ -31,7 +31,6 @@ import { useSearch } from './chat/useSearch';
 import { parseDay } from './calendar/dates';
 import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
-import { exportConversation } from './export';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
 import { HoverTrack } from './HoverTrack';
@@ -48,6 +47,11 @@ import { PaymentMerchants } from './payments/PaymentMerchants';
 import { payFilterSummary, PaymentsExport, PaymentsFilter, PaymentsSummary } from './payments/PaymentCards';
 import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } from './payments/usePayments';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
+import { jobFileUrl, type Job } from './api/jobs';
+import { jobDetail, jobsSummary, outputOf, TaskCenter } from './jobs/TaskCenter';
+import { findJob, removeJob, runJob, useJobs } from './jobs/useJobs';
+import { batchSummary, BatchExport, DEFAULT_BATCH, SessionsExport, type BatchOptions } from './exports/ExportCards';
+import { ExportPicker, PickedList } from './exports/ExportPicker';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
 // Previews of the sample records and of real messages (images and videos of #198).
@@ -56,10 +60,13 @@ const navigation = [
   { id: 'chat', label: '聊天', icon: ChatCircleDots },
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
+  { id: 'export', label: '导出', icon: Export },
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
 
 const formats = ['HTML', 'JSON', 'Excel'] as const;
+/** `export messages --format` of each choice. */
+const FORMAT_ARGS: Record<ExportFormat, string> = { HTML: 'html', JSON: 'json', Excel: 'excel' };
 
 const backendLabels: Record<Backend['state'], string> = {
   checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容', unauthorized: '需要令牌',
@@ -157,32 +164,11 @@ function ExportControl({ stage, result, onStart, onCancel }: {
   </div>;
 }
 
-const exportStatus: Record<ExportStage, string> = { idle: '等待导出', exporting: '正在导出', done: '已完成', error: '未完成' };
-
-function TaskStatus({ conversation, from, to, connected, stage, result, error }: {
-  conversation: Conversation; from: string; to: string; connected: boolean;
-  stage: ExportStage; result: ExportResult | null; error: string;
-}) {
-  const completed = stage === 'done';
-  return <ol className="task-list">
-      <li className={connected ? 'task complete' : 'task'}>
-        <span className="task-icon">{connected ? <Check size={12} weight="bold" /> : <Circle size={16} />}</span>
-        <div><strong>{connected ? '已连接 weflow serve' : '未连接 weflow serve'}</strong></div><time>14:10</time>
-      </li>
-      <li className="task complete">
-        <span className="task-icon"><Check size={12} weight="bold" /></span>
-        <div>{conversation.live
-          ? <strong>{conversation.name ? '已选择' + conversation.name : '还没有选择会话'}</strong>
-          : <><strong>已载入{conversation.name}的{conversation.category === 'chat' ? '聊天记录' : '记录'}</strong><small>({from || '不限'} ~ {to || '不限'})</small></>}</div><time>14:11</time>
-      </li>
-      <li className={'task last ' + (stage === 'error' ? 'error' : completed ? 'complete' : '')}>
-        <span className="task-icon">{stage === 'exporting' ? <CircleNotch size={16} className="spin" /> : completed ? <Check size={12} weight="bold" /> : <Circle size={16} />}</span>
-        <div aria-live="polite"><strong>{stage === 'exporting' ? '正在生成导出文件' : completed ? '导出完成' : stage === 'error' ? '导出未完成' : '等待开始导出'}</strong>
-          <small>{stage === 'exporting' ? '正在整理记录和媒体文件。' : completed ? '共 ' + String(result?.count || 0) + ' 条记录，文件已生成。' : stage === 'error' ? error : '请确认导出设置并点击开始导出。'}</small>
-          {completed && result && <a className="download-link" href={result.downloadUrl} download={result.fileName}>下载文件</a>}
-        </div><time>{completed ? '完成' : '--:--'}</time>
-      </li>
-    </ol>;
+/** Where the export of the card stands, from its job. */
+function stageOf(job: Job | undefined, error: string): ExportStage {
+  if (!job) return error ? 'error' : 'idle';
+  if (job.status === 'queued' || job.status === 'running') return 'exporting';
+  return job.status === 'succeeded' ? 'done' : job.status === 'failed' ? 'error' : 'idle';
 }
 
 export function App() {
@@ -211,11 +197,13 @@ export function App() {
   const [selectedIds, setSelectedIds] = useState<Record<Category, string>>({ chat: 'lin', moments: 'moment-lin', payments: 'payment-coffee' });
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(CURRENT_DATE);
+  // the days of a real export: all of them unless chosen (the sample's days are the sample's)
+  const [liveRange, setLiveRange] = useState({ from: '', to: '' });
   const [format, setFormat] = useState<ExportFormat>('HTML');
   const [includeMedia, setIncludeMedia] = useState(true);
-  const [stage, setStage] = useState<ExportStage>('idle');
-  const [exportResult, setExportResult] = useState<ExportResult | null>(null);
-  const [error, setError] = useState('');
+  // the job of the export card (#211): it runs on the server, in the task centre
+  const [exportJobId, setExportJobId] = useState<string | null>(null);
+  const [exportError, setExportError] = useState('');
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const [searchDatesOpen, setSearchDatesOpen] = useState(false);
@@ -230,7 +218,6 @@ export function App() {
   const settingsRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  const exportAbort = useRef<AbortController | null>(null);
   const shownPreview = usePresence(preview);
   const shownToast = usePresence(toast);
 
@@ -238,6 +225,11 @@ export function App() {
   const live = activeCategory === 'chat' && (connected || backend.state === 'checking');
   // another server or account (#198): what was read for the one before goes
   const scope = useScope(backend);
+  const jobs = useJobs(connected, scope);
+  const exportJob = findJob(jobs, exportJobId);
+  const stage = stageOf(exportJob, exportError);
+  const exportResult: ExportResult | null = exportJob?.status === 'succeeded' && exportJob.file
+    ? { fileName: exportJob.file.name, count: 0, downloadUrl: jobFileUrl(exportJob.id) } : null;
   const [liveSessions, reloadSessions] = useSessions(connected, scope);
   const [liveId, setLiveId] = useState<string | null>(null);
   const mediaLookup = useRef<AbortController | null>(null);
@@ -267,6 +259,11 @@ export function App() {
   const [people, reloadPeople] = useMomentPeople(momentsLive, scope, sessionList[0]?.selfWxid);
   // The WeChat Pay page reads all the notices once (#204) and narrows them by payee and days itself.
   const paymentsLive = activeCategory === 'payments' && connected;
+  // The export page (#211): the conversations picked, and how they are exported, one job each.
+  const exportPage = section === 'export';
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [batch, setBatch] = useState<BatchOptions>(DEFAULT_BATCH);
+  useEffect(() => { setPicked(new Set()); }, [scope]);
   const [payFilter, setPayFilter] = useState<PayFilter>(ALL_PAYMENTS);
   useEffect(() => { setPayFilter(ALL_PAYMENTS); }, [scope]);
   const [payState, reloadPayments] = usePayments(paymentsLive, scope);
@@ -274,6 +271,8 @@ export function App() {
   const merchants = useMemo(() => payDays ? merchantsOf(payDays) : [], [payDays]);
   const chosenPayments = useMemo(() => payDays && (payFilter.merchant === null ? payDays : payDays.filter(p => p.merchant === payFilter.merchant)), [payDays, payFilter.merchant]);
   const list = conversations.filter(item => item.category === activeCategory);
+  const sessionNames = useMemo(() => new Map(sessionList.map(s => [s.username, s.displayName || s.username])), [sessionList]);
+  const pickedSessions = useMemo(() => sessionList.filter(s => picked.has(s.username)), [sessionList, picked]);
   const selected = live ? liveConversation(liveSession) : list.find(item => item.id === selectedIds[activeCategory]) || list[0];
   const media = selected.messages.filter(message => message.kind !== 'text');
   const results = useMemo(() => submittedQuery === null ? [] : selected.messages.filter(message => {
@@ -291,10 +290,6 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  useEffect(() => () => {
-    if (exportResult) URL.revokeObjectURL(exportResult.downloadUrl);
-  }, [exportResult]);
-
   useEffect(() => {
     if (!highlighted) return;
     document.getElementById('message-' + highlighted)?.scrollIntoView({ block: 'center', behavior: prefersReducedMotion(reducedMotion) ? 'auto' : 'smooth' });
@@ -309,15 +304,12 @@ export function App() {
     else if (!shownPreview && dialog?.open) dialog.close();
   }, [shownPreview]);
 
-  const resetExport = () => {
-    exportAbort.current?.abort();
-    exportAbort.current = null;
-    setStage('idle'); setError(''); setExportResult(null);
-  };
+  // another conversation or other options: the card lets go of its job, which goes on in the task centre
+  const resetExport = () => { setExportJobId(null); setExportError(''); };
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -366,17 +358,20 @@ export function App() {
   };
 
   const exportRecords = async () => {
-    exportAbort.current?.abort();
-    const controller = new AbortController();
-    exportAbort.current = controller;
-    setStage('exporting'); setError(''); setExportResult(null);
+    if (!liveSession) return;
+    setExportError(''); setExportJobId(null);
     try {
-      const result = await exportConversation(selected, { format, from, to, includeMedia }, controller.signal);
-      if (exportAbort.current === controller) { setExportResult(result); setStage('done'); }
-      else URL.revokeObjectURL(result.downloadUrl);
+      const job = await runJob('导出 ' + selected.name + ' · ' + format, 'POST', 'export/messages', {
+        'session-id': liveSession.username, format: FORMAT_ARGS[format], start: liveRange.from || undefined, end: liveRange.to || undefined,
+        media: includeMedia ? 'all' : undefined,
+      });
+      setExportJobId(job.id);
     } catch (problem) {
-      if (exportAbort.current === controller) { setError(problem instanceof Error ? problem.message : '导出失败，请重试。'); setStage('error'); }
+      setExportError(problem instanceof Error && problem.message ? problem.message : '导出没有开始，请重试。');
     }
+  };
+  const cancelExport = () => {
+    if (exportJobId) removeJob(exportJobId).catch(() => setExportError('取消失败，请重试。'));
   };
 
   const search = (event: FormEvent<HTMLFormElement>) => {
@@ -389,22 +384,27 @@ export function App() {
       id: 'export', title: '导出', summary: format + (includeMedia ? ' · 含媒体' : ''),
       content: <>
         <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
-        <div className="form-row"><span className="field-label">时间范围</span><DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} /></div>
+        <div className="form-row"><span className="field-label">时间范围</span>{selected.live
+          ? <DateRange label="导出的时间范围" from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
+          : <DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
         <div className="form-row format-row"><span className="field-label">导出格式</span>
           <Segmented className="format-group" count={formats.length} index={formats.indexOf(format)} role="group" aria-label="导出格式">
             {formats.map(value => <button type="button" key={value} aria-pressed={format === value} onClick={() => { setFormat(value); resetExport(); }}>{value}</button>)}
           </Segmented>
           <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>图片、语音、视频与表情</small></span></label>
         </div>
-        {selected.live
-          ? <><button type="button" className="primary-button large export-pending" disabled><DownloadSimple size={18} />开始导出</button><p className="card-note">真实记录的导出将由 weflow serve 生成，在导出页（#211）接入。</p></>
-          : <ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={resetExport} />}
+        {selected.live && liveSession
+          ? <><ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={cancelExport} />
+            {stage === 'error' && <p className="card-note" role="alert">{exportJob ? jobDetail(exportJob) : exportError}</p>}
+            {stage === 'exporting' && exportJob && <p className="card-note" aria-live="polite">{exportJob.status === 'queued' ? '排队中：前面的任务完成后开始。' : jobDetail(exportJob)}</p>}
+            {stage === 'done' && includeMedia && outputOf(exportJob!) && <p className="card-note">媒体文件留在服务端，位于 {outputOf(exportJob!)} 旁的 media 文件夹；在任务中心移除任务时一并删除。</p>}</>
+          : <><button type="button" className="primary-button large export-pending" disabled><DownloadSimple size={18} />开始导出</button><p className="card-note">{selected.live ? '选择一个会话后导出。' : '连接 weflow serve 后，可以导出本机的真实记录。'}</p></>}
       </>,
     },
     {
-      id: 'tasks', title: '当前任务',
-      summary: <><span className={'status-dot ' + stage} />{exportStatus[stage]}</>,
-      content: <TaskStatus conversation={selected} from={from} to={to} connected={connected} stage={stage} result={exportResult} error={error} />,
+      id: 'tasks', title: '任务中心',
+      summary: connected ? jobsSummary(jobs) : '未连接',
+      content: connected ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">连接 weflow serve 后，导出等任务会显示在这里。</p>,
     },
     {
       id: 'search', title: '搜索', summary: selected.live ? searchSummary(liveSearch.state) : submittedQuery === null ? '当前会话' : results.length + ' 条结果',
@@ -459,16 +459,24 @@ export function App() {
       id: 'pay-export', title: '导出支付记录',
       content: <PaymentsExport key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} filter={payFilter} />,
     },
+    {
+      id: 'batch-export', title: '批量导出', summary: batchSummary(pickedSessions.length, batch),
+      content: <BatchExport picked={pickedSessions} options={batch} onChange={setBatch} />,
+    },
+    { id: 'sessions-export', title: '导出会话列表', content: <SessionsExport picked={pickedSessions} /> },
   ];
   // nothing to show of a real conversation until one is open; the Moments and WeChat Pay pages have cards of their own
   const chatCards = ['export', 'tasks', 'search', 'info', 'media'];
   const momentCards = ['moments-filter', 'moments-stats'];
   const payCards = ['pay-filter', 'pay-summary', 'pay-export'];
-  const hiddenCards = momentsLive
-    ? [...chatCards, ...payCards]
-    : paymentsLive
-      ? [...chatCards, ...momentCards]
-      : [...momentCards, ...payCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
+  const exportCards = ['batch-export', 'sessions-export'];
+  const hiddenCards = exportPage
+    ? [...chatCards.filter(id => id !== 'tasks'), ...momentCards, ...payCards, ...(connected ? [] : exportCards)]
+    : momentsLive
+      ? [...chatCards, ...payCards, ...exportCards]
+      : paymentsLive
+        ? [...chatCards, ...momentCards, ...exportCards]
+        : [...momentCards, ...payCards, ...exportCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -519,6 +527,19 @@ export function App() {
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
             <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+          </div>
+          <Scrollbar target={paneRef} />
+        </section>
+        : exportPage
+        ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="导出">
+          {backend.state === 'unauthorized'
+            ? <TokenPrompt />
+            : connected
+              ? <ExportPicker state={liveSessions} picked={picked} onChange={setPicked} onRetry={reloadSessions} />
+              : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里选择会话批量导出。</p></div>}
+          <div ref={paneRef} className="message-pane scroll-area" aria-label="已选的会话">
+            <button type="button" className="mobile-back icon-button" aria-label="返回会话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
+            {connected && <PickedList picked={pickedSessions} onRemove={id => setPicked(old => { const next = new Set(old); next.delete(id); return next; })} />}
           </div>
           <Scrollbar target={paneRef} />
         </section>

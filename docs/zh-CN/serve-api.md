@@ -172,6 +172,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 - 成功时返回 `200`，`Content-Type: multipart/form-data`，分两部分：`result` 为 `application/json`，内容是 `{"success": true, "data": {"path": "<服务端文件路径>"}}`；`file` 为文件内容，`Content-Type` 按扩展名决定，文件名写在 `filename`（UTF-8）和 `filename*`（RFC 5987）里。文件边读边发。浏览器里用 `await (await fetch(url, init)).formData()` 即可取到两部分。
 - 失败时不带文件，返回普通的 JSON 错误和对应状态码。
 - `serve-files/` 在 `serve` 启动时清空，并纳入 `cache list` / `cache clear --api`。
+- 同时带上 `Prefer: respond-async` 时，命令改为作为[作业](#异步作业)运行，并保留它写出的文件：作业成功后，它的 `file` 给出文件名和大小（`{"name", "size"}`），`GET /jobs/<id>/file` 单独发回这个文件，带 `Content-Disposition: attachment`，网页上的链接点开即可保存。作业失败、被取消或被删除时，服务端为它选的文件夹也会删除。
 
 ```sh
 curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18108/export/sessions?return=file"
@@ -187,8 +188,9 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18
 | `GET /jobs/<id>` | 作业及其 `result` |
 | `GET /jobs/<id>/events` | 服务器推送事件（SSE），直到作业结束（见下文） |
 | `DELETE /jobs/<id>` | 排队中或运行中的作业被取消（终止其命令），返回取消后的作业；已结束的作业则从列表中删除 |
+| `GET /jobs/<id>/file` | 以 `?return=file` 启动的作业成功后写出的文件（见[返回文件](#返回文件)）；否则返回 `404` |
 
-作业的格式为 `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "exitCode", "httpStatus", "progress", "result"}`：`status` 为 `queued`、`running`、`succeeded`、`failed` 或 `cancelled`；`command` 是实际运行的命令行（总是带 `--json --progress`）；时间为 Unix 毫秒；`httpStatus` 是直接请求时会返回的状态码；`progress` 是最后一个进度事件；`result` 是 `--json` 文档，与直接请求的响应相同。被取消的作业 `httpStatus` 为 `499`，错误码为 `user_interrupt`。
+作业的格式为 `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "exitCode", "httpStatus", "progress", "file", "result"}`：`status` 为 `queued`、`running`、`succeeded`、`failed` 或 `cancelled`；`command` 是实际运行的命令行（总是带 `--json --progress`）；时间为 Unix 毫秒；`httpStatus` 是直接请求时会返回的状态码；`progress` 是最后一个进度事件；`file` 是以 `?return=file` 启动并已成功的作业写出的文件（`{"name", "size"}`），否则为 `null`；`result` 是 `--json` 文档，与直接请求的响应相同。被取消的作业 `httpStatus` 为 `499`，错误码为 `user_interrupt`。
 
 事件流依次发送以下事件，每个都带 `id`：
 
@@ -199,7 +201,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18
 
 晚订阅或重新连接的客户端会收到已保存的事件（每个作业最多 1000 个）；带 `Last-Event-ID` 时只收到它之后的事件。作业只保存在服务端内存里：服务停止就没有了，已结束的作业只保留最近 100 个。
 
-`?std=out`、`?std=err` 和 `?return=file` 都是直接返回的，不能作为作业（返回 `400`）；`?std=in` 从不执行命令。
+`?std=out` 和 `?std=err` 都是直接返回的，不能作为作业（返回 `400`）；`?std=in` 从不执行命令。
 
 ```sh
 curl -i -X POST -H "Authorization: Bearer $TOKEN" -H "Prefer: respond-async" \
