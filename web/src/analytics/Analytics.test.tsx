@@ -26,8 +26,8 @@ const READY: AnalyticsState = {
 
 describe('chat analytics', () => {
   it('lays out the hours, the weekdays from Monday, every month between the first and last, and the kinds there are', () => {
-    expect(hourBars(SPREAD)).toHaveLength(24);
-    expect(hourBars(SPREAD)[21]).toEqual({ label: '21 点', value: 600 });
+    expect(hourBars(SPREAD.hourlyDistribution)).toHaveLength(24);
+    expect(hourBars(SPREAD.hourlyDistribution)[21]).toEqual({ label: '21 点', value: 600 });
     expect(weekdayBars(SPREAD).map(b => b.value)).toEqual([10, 0, 0, 0, 0, 0, 990]);
     expect(weekdayBars(SPREAD)[6].label).toBe('周日');
     expect(monthBars(SPREAD)).toEqual([

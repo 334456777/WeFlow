@@ -8,9 +8,9 @@ import { getExcludeCandidates, getExcluded, hourBars, monthBars, setExcluded, ty
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import type { AnalyticsState } from './useAnalytics';
 
-const n = (value: number) => value.toLocaleString('zh-CN');
-const day = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toLocaleDateString('zh-CN') : '—');
-const share = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0) + '%';
+export const n = (value: number) => value.toLocaleString('zh-CN');
+export const day = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toLocaleDateString('zh-CN') : '—');
+export const share = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0) + '%';
 
 /** Bars standing side by side, as tall as their share of the largest; `ticks` names some of them underneath. */
 export function Columns({ label, bars, ticks }: { label: string; bars: Bar[]; ticks(index: number, bar: Bar): string | null }) {
@@ -35,7 +35,7 @@ export const yearStarts = (months: Bar[], i: number) =>
   january(months[i]) || (i === 0 && !months.slice(1, Math.max(7, Math.ceil(months.length / 8) + 1)).some(january));
 
 /** One bar a row, each with its count and share of `total`. */
-function Shares({ label, bars, total }: { label: string; bars: Bar[]; total: number }) {
+export function Shares({ label, bars, total }: { label: string; bars: Bar[]; total: number }) {
   return <ul className="chart-shares" aria-label={label}>
     {bars.map(b => <li key={b.label}>
       <span className="chart-share-label">{b.label}</span>
@@ -55,7 +55,7 @@ function RankRow({ rank, person, top, canChat, onChat }: { rank: number; person:
       <span className="rank-split" aria-hidden="true"><span style={{ width: width(person.sentCount) }} /><span style={{ width: width(person.receivedCount) }} /></span>
       <span className="cache-text">我发 {n(person.sentCount)} · 对方 {n(person.receivedCount)} · 最近 {day(person.lastMessageTime)}</span>
     </span>
-    <button type="button" className="secondary-button" disabled={!canChat} title={canChat ? undefined : '会话列表里没有这个聊天'} aria-label={'查看和' + person.displayName + '的聊天'} onClick={onChat}><ChatCircleDots size={12} />查看聊天</button>
+    <button type="button" className="secondary-button rank-wide" disabled={!canChat} title={canChat ? undefined : '会话列表里没有这个聊天'} aria-label={'查看和' + person.displayName + '的聊天'} onClick={onChat}><ChatCircleDots size={12} />查看聊天</button>
   </li>;
 }
 
@@ -92,7 +92,7 @@ export function PrivateAnalytics({ state, onRetry, onRecount, canChat, onChat }:
     </section>
     <section className="analytics-block" aria-label="一天中的时段">
       <h2>一天中的时段</h2>
-      <Columns label="每小时的消息" bars={hourBars(spread)} ticks={i => (i % 6 === 0 ? String(i) : null)} />
+      <Columns label="每小时的消息" bars={hourBars(spread.hourlyDistribution)} ticks={i => (i % 6 === 0 ? String(i) : null)} />
     </section>
     <section className="analytics-block" aria-label="一周中的哪天">
       <h2>一周中的哪天</h2>

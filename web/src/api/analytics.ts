@@ -51,9 +51,9 @@ export const setExcluded = (usernames: string[]) => call<string[]>('PUT', 'analy
 
 export interface Bar { label: string; value: number }
 
-/** The hours 0–23, none left out. */
-export const hourBars = (spread: TimeSpread): Bar[] =>
-  Array.from({ length: 24 }, (_, h) => ({ label: h + ' 点', value: spread.hourlyDistribution[h] ?? 0 }));
+/** The hours 0–23, none left out, of a count keyed by hour. */
+export const hourBars = (hourly: Record<string, number>): Bar[] =>
+  Array.from({ length: 24 }, (_, h) => ({ label: h + ' 点', value: hourly[h] ?? 0 }));
 
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 export const weekdayBars = (spread: TimeSpread): Bar[] =>
