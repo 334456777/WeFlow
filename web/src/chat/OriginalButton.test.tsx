@@ -48,4 +48,19 @@ describe('the original of a picture (#194)', () => {
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.getByTitle('正在显示高清原图').textContent).toBe('原图');
   });
+
+  it('spins while the original is on its way', () => {
+    const hd = imagePreview('wxid_a', message, '图片').hd!;
+    const { rerender } = render(<OriginalButton hd={{ ...hd, shown: true, loading: true }} onShow={vi.fn()} />);
+    expect(screen.getByTitle('正在载入高清原图').querySelector('.spin')).not.toBeNull();
+    rerender(<OriginalButton hd={{ ...hd, shown: true, loading: false }} onShow={vi.fn()} />);
+    expect(screen.getByTitle('正在显示高清原图').querySelector('.spin')).toBeNull();
+  });
+
+  it('is already shown when only the original is on this computer', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ thumb: true, normal: false, hd: true, hdBytes: 2_400_000 })));
+    render(<OriginalButton hd={imagePreview('wxid_a', message, '图片').hd!} onShow={vi.fn()} />);
+    expect(await screen.findByTitle('正在显示高清原图')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
 });

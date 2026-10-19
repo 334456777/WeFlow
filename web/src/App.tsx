@@ -465,8 +465,10 @@ export function App() {
     const img = previewMedia();
     const under = img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0
       ? { src: img.currentSrc || img.src, aspect: preview.thumb?.aspect ?? img.naturalWidth / img.naturalHeight } : preview.thumb;
-    setPreview({ ...preview, src: preview.hd.src, thumb: under, hd: { ...preview.hd, shown: true } });
+    setPreview({ ...preview, src: preview.hd.src, thumb: under, hd: { ...preview.hd, shown: true, loading: true } });
   };
+  // the original has come (or failed): 「原图」 stops spinning
+  const originalSettled = () => setPreview(p => (p?.type === 'image' && p.hd?.loading ? { ...p, hd: { ...p.hd, loading: false } } : p));
   const closePreview = () => {
     const back = opened.current;
     opened.current = null;
@@ -951,7 +953,8 @@ export function App() {
             onClick={() => { const locate = shownPreview.value.type !== 'file' ? shownPreview.value.locate : undefined; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
           <button type="button" className="icon-button" aria-label="关闭预览" onClick={closePreview}><X size={18} /></button></span></header>
         {shownPreview.value.type === 'image'
-          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} thumb={shownPreview.value.thumb} />
+          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} thumb={shownPreview.value.thumb}
+            onSettled={shownPreview.value.hd?.loading ? originalSettled : undefined} />
           : shownPreview.value.type === 'video'
             ? <PreviewVideo key={shownPreview.value.src} src={shownPreview.value.src} poster={shownPreview.value.poster} thumb={shownPreview.value.thumb} />
             : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}

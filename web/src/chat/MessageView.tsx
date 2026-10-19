@@ -16,8 +16,8 @@ export type Preview =
   | { type: 'file'; title: string };
 
 /** The original WeChat downloads on View original (`_h.dat`) of a picture the preview shows as opened (`.dat`), to
- * show instead once it is on this computer (#194); `shown` once it is. */
-export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean }
+ * show instead once it is on this computer (#194); `shown` once asked for, `loading` until it has come. */
+export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean; loading?: boolean }
 
 /** A picture message as the preview opens it: the image WeChat shows when it is opened, with its original beside. */
 export function imagePreview(sessionId: string, message: ParsedMessage, title: string): Extract<Preview, { type: 'image' }> {
@@ -218,9 +218,11 @@ function MediaError({ src, what }: { src: string; what: string }) {
   return <div className="file-preview"><Warning size={40} /><h3>{what}无法显示</h3><p>{reason || '正在查找原因…'}</p></div>;
 }
 
-export function PreviewImage({ src, title, controls, thumb }: { src: string; title: string; controls?: Ref<ZoomControls>; thumb?: PreviewThumb }) {
+export function PreviewImage({ src, title, controls, thumb, onSettled }: { src: string; title: string; controls?: Ref<ZoomControls>; thumb?: PreviewThumb; onSettled?(): void }) {
   const [failed, setFailed] = useState(false);
-  return failed ? <MediaError src={src} what="图片" /> : <ZoomImage ref={controls} src={src} alt={title} onError={() => setFailed(true)} sized={thumb && previewSize(thumb)} />;
+  return failed
+    ? <MediaError src={src} what="图片" />
+    : <ZoomImage ref={controls} src={src} alt={title} onLoad={onSettled} onError={() => { setFailed(true); onSettled?.(); }} sized={thumb && previewSize(thumb)} />;
 }
 
 export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: string; thumb?: PreviewThumb }) {

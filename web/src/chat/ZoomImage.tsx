@@ -37,7 +37,7 @@ export function keep(view: View, width: number, height: number): View {
 export interface ZoomControls { zoomBy(factor: number): void; reset(): void }
 
 /** `sized`: the picture's size and what shows until it loads, when the preview knows its shape beforehand (#194). */
-export const ZoomImage = forwardRef<ZoomControls, { src: string; alt: string; onError(): void; sized?: CSSProperties }>(function ZoomImage({ src, alt, onError, sized }, ref) {
+export const ZoomImage = forwardRef<ZoomControls, { src: string; alt: string; onLoad?(): void; onError(): void; sized?: CSSProperties }>(function ZoomImage({ src, alt, onLoad, onError, sized }, ref) {
   const [view, setView] = useState<View>(FIT);
   const frame = useRef<HTMLDivElement>(null);
   const picture = useRef<HTMLImageElement>(null);
@@ -89,7 +89,7 @@ export const ZoomImage = forwardRef<ZoomControls, { src: string; alt: string; on
       const { width, height } = size();
       setView(v => (v.scale > 1 ? FIT : zoomAt(v, DOUBLE, event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2, width, height)));
     }}>
-    <img ref={picture} src={src} alt={alt} draggable={false} onError={onError}
+    <img ref={picture} src={src} alt={alt} draggable={false} onLoad={onLoad} onError={onError}
       style={{ ...sized, transform: 'translate(' + view.x + 'px, ' + view.y + 'px) scale(' + view.scale + ')' }} />
   </div>;
 });

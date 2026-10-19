@@ -33,8 +33,11 @@ export function OriginalButton({ hd, onShow }: { hd: PreviewHd; onShow(): void }
     return () => controller.abort();
   }, [hd.src, hd.shown, hd.sessionId, hd.localId, hd.createTime]);
 
-  if (hd.shown) {
-    return <span className="original-button shown" title="正在显示高清原图"><FrameCorners size={16} />原图</span>;
+  // with no image of its own (`.dat`) on this computer, the preview opened on the original already
+  if (hd.shown || (state.status === 'ready' && state.info.hd && !state.info.normal)) {
+    return hd.loading
+      ? <span className="original-button shown" title="正在载入高清原图"><CircleNotch size={16} className="spin" />原图</span>
+      : <span className="original-button shown" title="正在显示高清原图"><FrameCorners size={16} />原图</span>;
   }
   const hint = originalHint(state);
   const size = state.status === 'ready' && state.info.hd && state.info.hdBytes ? ' ' + formatFileSize(state.info.hdBytes) : '';
