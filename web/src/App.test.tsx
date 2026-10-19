@@ -62,6 +62,20 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '选择设计协作群' }).textContent).toContain('李婷：这版看起来不错');
   });
 
+  it('finds nothing in the sample conversation for an empty search, and clears what a search found (#199)', async () => {
+    await renderWith(null);
+    const field = screen.getByRole('searchbox', { name: '搜索此会话的消息' });
+    fireEvent.change(field, { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    expect(document.querySelectorAll('.search-results .search-result')).toHaveLength(0);
+    fireEvent.change(field, { target: { value: '照片' } });
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    expect(document.querySelectorAll('.search-results .search-result').length).toBeGreaterThan(0);
+    fireEvent.change(field, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    expect(document.querySelectorAll('.search-results .search-result')).toHaveLength(0);
+  });
+
   it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
     await renderWith(null);
     const nav = screen.getByRole('navigation', { name: '主导航' });

@@ -508,9 +508,10 @@ export function App() {
     if (exportJobId) removeJob(exportJobId).catch(() => setExportError('取消失败，请重试。'));
   };
 
+  // an empty search clears the results rather than matching every message (#199), as the live search does
   const search = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmittedQuery(query.trim());
+    setSubmittedQuery(query.trim() || null);
   };
 
   const cards: Card[] = [
