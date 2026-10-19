@@ -351,6 +351,38 @@ describe('App', () => {
     expect(Array.from(document.querySelectorAll('.moment-text'), n => n.textContent)).toEqual(['加班']);
   });
 
+  it('shows the WeChat Pay records of a running backend: all pages, by payee, with their totals (#204)', async () => {
+    const asked: string[] = [];
+    const at = (day: number) => Math.floor(new Date(2026, 9, day, 9).getTime() / 1000);
+    const record = (localId: number, title: string, description: string, merchantName: string, day: number) =>
+      ({ localId, createTime: at(day), title, description, merchantName, merchantIcon: '', timestamp: at(day) });
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      asked.push(url);
+      if (url.startsWith('/biz/pay-records')) {
+        const offset = Number(new URL(url, 'http://x').searchParams.get('offset'));
+        return json({ success: true, data: offset === 0
+          ? { records: [record(3, '微信支付凭证', '付款金额¥28.00\n支付方式零钱\n交易状态支付成功', '街角咖啡', 12)], hasMore: true }
+          : { records: [record(2, '退款到账', '退款金额¥5.00\n退款方式零钱', '街角咖啡', 11), record(1, '微信支付凭证', '付款金额：¥12.50', '出行服务', 2)], hasMore: false } });
+      }
+      return json({ success: true, data: [] });
+    }));
+    render(<App />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '微信支付' }));
+    await act(async () => {});
+    // both pages were read
+    expect(asked.filter(u => u.startsWith('/biz/pay-records'))).toHaveLength(2);
+    const list = screen.getByRole('region', { name: '微信支付浏览' });
+    expect(Array.from(list.querySelectorAll('.conversation-name'), n => n.textContent)).toEqual(['全部商户', '街角咖啡', '出行服务']);
+    expect(Array.from(document.querySelectorAll('.pay-amount'), n => n.textContent)).toEqual(['-28.00', '+5.00', '-12.50']);
+    expect(Array.from(document.querySelectorAll('.card-title'), t => t.textContent)).toEqual(['筛选支付记录', '合计', '导出支付记录']);
+    // one payee: the refund is taken off
+    fireEvent.click(screen.getByRole('button', { name: '只看街角咖啡，2 笔' }));
+    expect(Array.from(document.querySelectorAll('.pay-amount'), n => n.textContent)).toEqual(['-28.00', '+5.00']);
+    expect(within(list).getByRole('button', { name: '只看街角咖啡，2 笔' }).textContent).toContain('¥23.00');
+  });
+
   it('switches the colour theme from the settings and remembers it (#252)', async () => {
     await renderWith(HEALTH);
     fireEvent.click(screen.getByRole('button', { name: '设置' }));

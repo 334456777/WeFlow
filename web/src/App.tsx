@@ -43,6 +43,10 @@ import { MomentsFeed } from './moments/MomentsFeed';
 import { MomentPeople } from './moments/MomentPeople';
 import { filterSummary, MomentsFilter, MomentsStats } from './moments/MomentsCards';
 import { useMomentPeople } from './moments/useMomentPeople';
+import { PaymentList } from './payments/PaymentList';
+import { PaymentMerchants } from './payments/PaymentMerchants';
+import { payFilterSummary, PaymentsExport, PaymentsFilter, PaymentsSummary } from './payments/PaymentCards';
+import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } from './payments/usePayments';
 import type { Category, Conversation, ExportFormat, ExportResult, Navigation } from './types';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -261,6 +265,14 @@ export function App() {
   const [momentFilter, setMomentFilter] = useState<SnsFilter>(NO_FILTER);
   useEffect(() => { setMomentFilter(NO_FILTER); }, [scope]);
   const [people, reloadPeople] = useMomentPeople(momentsLive, scope, sessionList[0]?.selfWxid);
+  // The WeChat Pay page reads all the notices once (#204) and narrows them by payee and days itself.
+  const paymentsLive = activeCategory === 'payments' && connected;
+  const [payFilter, setPayFilter] = useState<PayFilter>(ALL_PAYMENTS);
+  useEffect(() => { setPayFilter(ALL_PAYMENTS); }, [scope]);
+  const [payState, reloadPayments] = usePayments(paymentsLive, scope);
+  const payDays = useMemo(() => payState.status === 'ready' ? withinDays(payState.payments, payFilter) : null, [payState, payFilter]);
+  const merchants = useMemo(() => payDays ? merchantsOf(payDays) : [], [payDays]);
+  const chosenPayments = useMemo(() => payDays && (payFilter.merchant === null ? payDays : payDays.filter(p => p.merchant === payFilter.merchant)), [payDays, payFilter.merchant]);
   const list = conversations.filter(item => item.category === activeCategory);
   const selected = live ? liveConversation(liveSession) : list.find(item => item.id === selectedIds[activeCategory]) || list[0];
   const media = selected.messages.filter(message => message.kind !== 'text');
@@ -435,11 +447,28 @@ export function App() {
       id: 'moments-stats', title: '朋友圈统计',
       content: (open: boolean) => <MomentsStats scope={scope} active={open && momentsLive} />,
     },
+    {
+      id: 'pay-filter', title: '筛选支付记录', summary: payFilterSummary(payFilter),
+      content: <PaymentsFilter filter={payFilter} onChange={setPayFilter} />,
+    },
+    {
+      id: 'pay-summary', title: '合计', summary: chosenPayments ? chosenPayments.length + ' 笔' : '',
+      content: <PaymentsSummary payments={chosenPayments} />,
+    },
+    {
+      id: 'pay-export', title: '导出支付记录',
+      content: <PaymentsExport key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} filter={payFilter} />,
+    },
   ];
-  // nothing to show of a real conversation until one is open; the Moments page has cards of its own
+  // nothing to show of a real conversation until one is open; the Moments and WeChat Pay pages have cards of their own
+  const chatCards = ['export', 'tasks', 'search', 'info', 'media'];
+  const momentCards = ['moments-filter', 'moments-stats'];
+  const payCards = ['pay-filter', 'pay-summary', 'pay-export'];
   const hiddenCards = momentsLive
-    ? ['export', 'tasks', 'search', 'info', 'media']
-    : ['moments-filter', 'moments-stats', ...(selected.live && !liveSession ? ['info', 'media'] : [])];
+    ? [...chatCards, ...payCards]
+    : paymentsLive
+      ? [...chatCards, ...momentCards]
+      : [...momentCards, ...payCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -490,6 +519,18 @@ export function App() {
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
             <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+          </div>
+          <Scrollbar target={paneRef} />
+        </section>
+        : paymentsLive || (activeCategory === 'payments' && backend.state === 'unauthorized')
+        ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="微信支付浏览">
+          {backend.state === 'unauthorized'
+            ? <TokenPrompt />
+            : <PaymentMerchants state={payState} merchants={merchants} selected={payFilter.merchant} onRetry={reloadPayments}
+              onSelect={merchant => { setPayFilter(filter => ({ ...filter, merchant })); setMobileDetail(true); }} />}
+          <div ref={paneRef} className="message-pane scroll-area" aria-label="支付记录">
+            <button type="button" className="mobile-back icon-button" aria-label="返回商户列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
+            {paymentsLive && chosenPayments && <PaymentList key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} scroller={paneRef} narrowed={Boolean(payFilter.merchant || payFilter.from || payFilter.to)} />}
           </div>
           <Scrollbar target={paneRef} />
         </section>

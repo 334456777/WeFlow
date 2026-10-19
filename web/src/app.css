@@ -296,6 +296,20 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 .moment-comments { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
 .moment-comments b { font-weight: var(--weight-medium); }
 .moments-end { display: flex; justify-content: center; padding: var(--space-2) 0 var(--space-4); color: var(--fg-subtle); font-size: var(--text-xs); }
+.payments { display: flex; flex-direction: column; gap: var(--space-3); max-width: 560px; margin: 0 auto; }
+.pay-row { display: flex; flex-direction: column; }
+.pay-card { display: flex; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--neu-raised-sm); }
+.pay-body { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.pay-body header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.pay-copy { display: flex; flex-direction: column; min-width: 0; }
+.pay-copy strong { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.pay-title { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.pay-amount { flex-shrink: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.pay-amount.refund { color: var(--state-ok); }
+.pay-lines { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: var(--space-2); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.pay-lines div { display: flex; gap: var(--space-2); }
+.pay-lines dt { flex-shrink: 0; min-width: 4em; color: var(--fg-subtle); }
+.pay-lines dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .moments-filter { display: flex; flex-direction: column; gap: var(--space-1); }
 .moments-clear { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin-top: var(--space-1); }
 .message-row { display: flex; align-items: flex-end; gap: var(--space-2); min-width: 0; margin-bottom: var(--space-3); }

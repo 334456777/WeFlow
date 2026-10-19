@@ -74,6 +74,7 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/api/live.ts` | 实时消息事件，分发给会话列表和打开的会话（#201） |
 | `src/api/biz.ts` | 公众号：关注的公众号（`/biz/accounts`）和它们的推送（`/biz/messages`）（#203） |
 | `src/api/sns.ts`、`src/moments/` | 朋友圈（#202）：时间线、发布者及其条数、总数（`/api/sns/timeline`、`post-counts`、`stats`），以及通过 `/api/sns/media` 读取的图片和视频；时间线旁列出发布者，控制台按文字和日期筛选 |
+| `src/api/pay.ts`、`src/payments/` | 微信支付（#204）：逐页读取「微信支付」公众号的全部通知（`/biz/pay-records`），从各行文字里拆出金额、方式、状态和收款方；旁边的列表按商户合计，控制台按日期筛选、汇总，并导出为 HTML、JSON 或 Excel |
 | `src/api/details.ts` | 会话资料、群成员统计、媒体及解析后的单条消息查询；串行执行子进程读取（#200） |
 | `src/chat/SessionInfo.tsx`、`src/chat/MediaPanel.tsx` | 展开时读取的控制台卡片：会话资料、虚拟化的群成员列表，以及可定位到原消息的媒体文件（#200） |
 | `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/chat/statuses`，每次 100 个） |
@@ -91,3 +92,4 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/App.tsx`、`src/app.css` | 工作台界面：左侧导航，中间是记录，右侧是操作控制台 |
 | `src/mock/` | 示例记录，界面接入 API 后删除 |
 | `src/export.ts` | 在浏览器里导出示例记录。真正的导出将调用 `export messages` 并用 `?return=file` 取回文件 |
+| `src/files.ts` | 网页保存的文件：把多行数据生成 .xlsx，或把任意内容交给浏览器下载 |

@@ -511,10 +511,14 @@ impl ServiceHub {
         Ok(json!({ "username": username, "messages": parsed }))
     }
 
+    /// The WeChat Pay notices among `limit` messages of the WeChat Pay account, from `offset` on, newest first.
+    /// Other messages of the account are left out, so a page may hold fewer records than `limit`: `hasMore`
+    /// says whether the account has messages past this page.
     pub fn biz_pay_records(&self, limit: i32, offset: i32) -> AppResult<Value> {
         let messages = self.messages("gh_3dfda90e39d6", limit, offset)?;
+        let read = messages.as_array().map_or(0, Vec::len);
         let records = crate::biz::parse_pay_records(&messages);
-        Ok(json!({ "records": records }))
+        Ok(json!({ "records": records, "hasMore": limit > 0 && read >= limit as usize }))
     }
 
     pub fn insight_footprint(&self) -> AppResult<Value> {
