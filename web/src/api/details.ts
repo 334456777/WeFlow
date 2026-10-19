@@ -95,8 +95,9 @@ export function getMemberStats(chatroomId: string, username: string, signal?: Ab
 
 export type ResourceType = 'image' | 'video' | 'file';
 
-/** A message of `chat resources`: no `_cursor`; `lookupMessage` finds its place. */
+/** A message of `chat resources`: its `_cursor` is its place in the listing, not in its conversation; `lookupMessage` finds that. */
 export interface Resource {
+  _cursor?: string;
   localId: number;
   createTime: number;
   localType: number;
@@ -113,10 +114,18 @@ export interface Resource {
 
 export const RESOURCE_PAGE = 60;
 
-/** The conversation's images, videos and files, newest first. */
-export async function getResources(sessionId: string, types: readonly ResourceType[], offset: number, signal?: AbortSignal): Promise<{ items: Resource[]; hasMore: boolean }> {
-  const data = await commandRead<{ items?: Resource[]; hasMore?: boolean }>('chat/resources', { session: sessionId, type: [...types], limit: RESOURCE_PAGE, offset }, signal);
-  return { items: data?.items ?? [], hasMore: Boolean(data?.hasMore) };
+export interface ResourcePage {
+  items: Resource[];
+  hasMore: boolean;
+  /** Where the next page starts (#178). */
+  nextCursor: string | null;
+}
+
+/** The conversation's images, videos and files, newest first: from the newest, or from the `nextCursor` of a page (in the server's process). */
+export async function getResources(sessionId: string, types: readonly ResourceType[], before: string | null, signal?: AbortSignal): Promise<ResourcePage> {
+  const data = await get<Partial<ResourcePage> | null>('api/chat/resources', { session: sessionId, type: [...types], limit: RESOURCE_PAGE, before }, signal);
+  const nextCursor = data?.hasMore ? data.nextCursor ?? null : null;
+  return { items: data?.items ?? [], hasMore: nextCursor !== null, nextCursor };
 }
 
 /** One message by its local id and time, parsed as a page's and with its `_cursor`: to open its conversation there. */

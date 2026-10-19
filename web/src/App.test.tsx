@@ -605,8 +605,8 @@ describe('App', () => {
       if (path === '/group/member') {
         return json({ success: true, data: { statistics: { totalMessages: 321, textMessages: 300, imageMessages: 21, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, firstMessageTime: 1600000000, lastMessageTime: 1760000000, activeDays: 42 }, timeDistribution: { 21: 50 }, commonPhrases: [{ phrase: '好的', count: 9 }], commonEmojis: [] } });
       }
-      if (path === '/chat/resources') {
-        return json({ success: true, data: { items: [{ localId: 5, createTime: 1750000000, localType: 25769803825, resourceType: 'file', fileName: '旅行计划.pdf', fileSize: 4096 }], total: 1, hasMore: false } });
+      if (path === '/api/chat/resources') {
+        return json({ success: true, data: { items: [{ localId: 5, createTime: 1750000000, localType: 25769803825, resourceType: 'file', fileName: '旅行计划.pdf', fileSize: 4096 }], hasMore: false, nextCursor: null } });
       }
       if (path === '/api/chat/message') return json({ success: true, data: { _cursor: 'c.5', localId: 5, localType: 25769803825, appMsgKind: 'file', createTime: 1750000000, isSend: 1, senderUsername: 'wxid_me', parsedContent: '[文件] 旅行计划.pdf', fileName: '旅行计划.pdf', fileSize: 4096 } });
       return json({ success: true, data: null });
@@ -637,7 +637,7 @@ describe('App', () => {
     // the media card: a file opens the conversation at its message
     fireEvent.click(screen.getByRole('button', { name: /^媒体文件/ }));
     await act(async () => {});
-    expect(calls.find(url => url.startsWith('/chat/resources'))).toBe('/chat/resources?session=g%40chatroom&type=image&type=video&type=file&limit=60&offset=0');
+    expect(calls.find(url => url.startsWith('/api/chat/resources'))).toBe('/api/chat/resources?session=g%40chatroom&type=image&type=video&type=file&limit=60');
     fireEvent.click(screen.getByRole('button', { name: /^旅行计划\.pdf/ }));
     await act(async () => {});
     expect(calls).toContain('/api/chat/message?session-id=g%40chatroom&local-id=5&create-time=1750000000&parsed=true');

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowSquareOut, CircleNotch, FileText, VideoCamera } from '@phosphor-icons/react';
 import { ApiError } from '../api/client';
-import { getResources, RESOURCE_PAGE, type Resource, type ResourceType } from '../api/details';
+import { getResources, RESOURCE_PAGE, type Resource, type ResourcePage, type ResourceType } from '../api/details';
 import { useGathered, useLive } from '../api/live';
 import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { HoverTrack } from '../HoverTrack';
@@ -18,7 +18,7 @@ const FILTERS: { label: string; types: ResourceType[] }[] = [
   { label: '文件', types: ['file'] },
 ];
 
-type State = { status: 'loading' } | { status: 'ready'; filter: number; items: Resource[]; hasMore: boolean; more: boolean; error?: string } | { status: 'error'; message: string };
+type State = { status: 'loading' } | { status: 'ready'; filter: number; items: Resource[]; next: string | null; more: boolean; error?: string } | { status: 'error'; message: string };
 
 const errorOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || '读取媒体文件失败';
 
@@ -41,13 +41,13 @@ function unseen(items: readonly Resource[], shown: readonly Resource[]): Resourc
  * (so a recalled message goes), and the older pages already shown stay, so a new message does not take the list
  * back to its first page.
  */
-function withFirstPage(old: State, filter: number, page: { items: Resource[]; hasMore: boolean }): State {
+function withFirstPage(old: State, filter: number, page: ResourcePage): State {
   const oldest = page.items.at(-1);
   if (old.status !== 'ready' || old.filter !== filter || !oldest || page.items.length < RESOURCE_PAGE) {
-    return { status: 'ready', filter, items: page.items, hasMore: page.hasMore, more: false };
+    return { status: 'ready', filter, items: page.items, next: page.nextCursor, more: false };
   }
   const rest = unseen(old.items.filter(item => item.createTime <= oldest.createTime), page.items);
-  return { status: 'ready', filter, items: [...page.items, ...rest], hasMore: rest.length ? old.hasMore : page.hasMore, more: false };
+  return { status: 'ready', filter, items: [...page.items, ...rest], next: rest.length ? old.next : page.nextCursor, more: false };
 }
 
 const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
@@ -66,7 +66,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     request.current = controller;
     // read again for the same filter: what is shown stays meanwhile
     setState(old => (old.status === 'ready' && old.filter === filter ? old : { status: 'loading' }));
-    getResources(sessionId, FILTERS[filter].types, 0, controller.signal).then(
+    getResources(sessionId, FILTERS[filter].types, null, controller.signal).then(
       page => { if (!controller.signal.aborted) setState(old => withFirstPage(old, filter, page)); },
       problem => { if (!controller.signal.aborted) setState({ status: 'error', message: errorOf(problem) }); },
     );
@@ -81,13 +81,13 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
 
   const more = () => {
     const signal = request.current?.signal;
-    if (!active || signal?.aborted || state.status !== 'ready' || state.more) return;
+    if (!active || signal?.aborted || state.status !== 'ready' || state.more || !state.next) return;
     const shown = state.items;
     setState({ ...state, more: true, error: undefined });
-    getResources(sessionId, types, shown.length, signal).then(
+    // the page after the last one shown, from its cursor: messages sent meanwhile do not move it (#178)
+    getResources(sessionId, types, state.next, signal).then(
       page => { if (!signal?.aborted) setState(old => (old.status === 'ready' && old.items === shown
-        // a message sent meanwhile moves the offsets on: what is already shown is not shown twice
-        ? { ...old, items: [...shown, ...unseen(page.items, shown)], hasMore: page.hasMore && page.items.length === RESOURCE_PAGE, more: false }
+        ? { ...old, items: [...shown, ...unseen(page.items, shown)], next: page.nextCursor, more: false }
         : old)); },
       problem => { if (!signal?.aborted) setState(old => (old.status === 'ready' && old.items === shown ? { ...old, more: false, error: errorOf(problem) } : old)); },
     );
@@ -102,7 +102,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     {state.status === 'ready' && (state.items.length
       ? <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />
         {state.items.map(item => <MediaItem key={keyOf(item)} sessionId={sessionId} item={item} onOpen={onOpen} />)}
-        {state.hasMore && <button type="button" className="secondary-button media-more" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />正在读取</> : '加载更多'}</button>}
+        {state.next && <button type="button" className="secondary-button media-more" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />正在读取</> : '加载更多'}</button>}
         {state.error && <p className="empty-text" role="alert">{state.error}</p>}
       </div>
       : <p className="empty-text">{filter ? '这个会话没有这类媒体。' : '这个会话没有图片、视频或文件。'}</p>)}
