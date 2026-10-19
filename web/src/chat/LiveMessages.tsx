@@ -10,7 +10,7 @@ import { currentScope, onNewScope } from '../api/scope';
 import { Avatar } from '../Avatar';
 import { FEEDBACK_MS } from '../motion';
 import { dayOf, formatClock, formatDayHeading, isMine, kindOf } from './messages';
-import { MessageView, type Preview } from './MessageView';
+import { MessageView, withGallery, type Preview } from './MessageView';
 import { kindOf as sessionKind } from './sessions';
 import { useMessages, type Focus, type Jump } from './useMessages';
 import { MessagesSkeleton } from '../Skeleton';
@@ -224,12 +224,12 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
       return <Fragment key={message._cursor}>
         {newDay && <div className="date-separator">{formatDayHeading(day, now)}</div>}
         {system
-          ? <div className={'message-row system' + (marked === message._cursor ? ' highlighted' : '')} data-key={message._cursor}><MessageView sessionId={id} message={message} onPreview={onPreview} /></div>
+          ? <div className={'message-row system' + (marked === message._cursor ? ' highlighted' : '')} data-key={message._cursor}><MessageView sessionId={id} message={message} onPreview={preview => onPreview(withGallery(id, thread.messages, message) ?? preview)} /></div>
           : <div className={'message-row ' + (mine ? 'outgoing' : 'incoming') + (group && !mine ? ' with-avatar' : '') + (marked === message._cursor ? ' highlighted' : '')} data-key={message._cursor}>
             {group && !mine && (showSender ? <Avatar name={nameOf(message.senderUsername)} url={person?.avatarUrl} /> : <span className="avatar-gap" />)}
             <div className="message-body">
               {showSender && <span className="message-sender">{nameOf(message.senderUsername)}</span>}
-              <MessageView sessionId={id} message={message} onPreview={onPreview} />
+              <MessageView sessionId={id} message={message} onPreview={preview => onPreview(withGallery(id, thread.messages, message) ?? preview)} />
             </div>
             <time className="message-time" dateTime={new Date(message.createTime * 1000).toISOString()}>{formatClock(message.createTime)}</time>
           </div>}

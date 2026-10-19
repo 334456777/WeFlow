@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
-  ChatCircleDots, Check, CheckCircle, CircleNotch,
+  CaretLeft, CaretRight, ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend, type Health } from './api/backend';
@@ -31,6 +31,7 @@ import { useSearch } from './chat/useSearch';
 import { parseDay } from './calendar/dates';
 import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
+import type { ZoomControls } from './chat/ZoomImage';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
 import { HoverTrack } from './HoverTrack';
@@ -256,6 +257,32 @@ export function App() {
   const listRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const shownPreview = usePresence(preview);
+  const zoom = useRef<ZoomControls>(null);
+  // the picture or video before or after in the conversation (#194), and the two each way read ahead of time
+  const gallery = preview && preview.type !== 'file' ? preview.gallery : undefined;
+  const stepPreview = (by: number) => {
+    if (!gallery) return;
+    const index = gallery.index + by;
+    const next = gallery.items[index];
+    if (next && next.type !== 'file') setPreview({ ...next, gallery: { items: gallery.items, index } });
+  };
+  useEffect(() => {
+    if (!gallery) return;
+    for (const item of gallery.items.slice(Math.max(0, gallery.index - 2), gallery.index + 3)) {
+      if (item.type === 'image') new Image().src = item.src;
+      else if (item.type === 'video' && item.poster) new Image().src = item.poster;
+    }
+  }, [gallery]);
+  const previewKeys = (event: { key: string; target: EventTarget; preventDefault(): void }) => {
+    // the video's own keys seek and change the volume
+    if (event.target instanceof HTMLVideoElement) return;
+    const act: Record<string, () => void> = {
+      ArrowLeft: () => stepPreview(-1), ArrowRight: () => stepPreview(1),
+      '+': () => zoom.current?.zoomBy(1.25), '=': () => zoom.current?.zoomBy(1.25), '-': () => zoom.current?.zoomBy(0.8), '0': () => zoom.current?.reset(),
+    };
+    const run = act[event.key];
+    if (run) { event.preventDefault(); run(); }
+  };
   const shownToast = usePresence(toast);
 
   // The chat page reads `weflow serve` once it is connected; until then, and on the other pages, sample records.
@@ -833,12 +860,16 @@ export function App() {
     </div>
 
     <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
-      onCancel={event => { event.preventDefault(); setPreview(null); }} onClick={event => { if (event.target === event.currentTarget) setPreview(null); }}>
-      {shownPreview && <div className="preview-content"><header><strong>{shownPreview.value.title}</strong><button type="button" className="icon-button" aria-label="关闭预览" onClick={() => setPreview(null)}><X size={18} /></button></header>
+      onCancel={event => { event.preventDefault(); setPreview(null); }} onClick={event => { if (event.target === event.currentTarget) setPreview(null); }} onKeyDown={previewKeys}>
+      {shownPreview && <div className="preview-content"><header><strong>{shownPreview.value.title}{gallery && <small className="num"> {gallery.index + 1} / {gallery.items.length}</small>}</strong>
+        <span className="preview-tools">{gallery && <>
+          <button type="button" className="icon-button" aria-label="上一个" title="上一个（←）" disabled={gallery.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={18} /></button>
+          <button type="button" className="icon-button" aria-label="下一个" title="下一个（→）" disabled={gallery.index === gallery.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={18} /></button></>}
+          <button type="button" className="icon-button" aria-label="关闭预览" onClick={() => setPreview(null)}><X size={18} /></button></span></header>
         {shownPreview.value.type === 'image'
-          ? <PreviewImage src={shownPreview.value.src} title={shownPreview.value.title} />
+          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} />
           : shownPreview.value.type === 'video'
-            ? <PreviewVideo src={shownPreview.value.src} poster={shownPreview.value.poster} />
+            ? <PreviewVideo key={shownPreview.value.src} src={shownPreview.value.src} poster={shownPreview.value.poster} />
             : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}
     </dialog>
     <dialog className="setup-dialog" ref={setupRef} aria-label="账号配置" data-state={shownSetup?.closing ? 'closing' : 'open'}
