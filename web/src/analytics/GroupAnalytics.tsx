@@ -10,29 +10,11 @@ import {
   type DayRange, type Group, type GroupRanked, type MemberMessage,
 } from '../api/groups';
 import { runJob } from '../jobs/useJobs';
+import { useRead } from '../useRead';
 import { Popover } from '../Popover';
 import { GridSkeleton, ListSkeleton, ResultsSkeleton } from '../Skeleton';
 import { Columns, day, n, Shares } from './AnalyticsViews';
 import type { GroupsState } from './useAnalytics';
-
-type Read<T> = { status: 'loading' } | { status: 'ready'; value: T } | { status: 'error'; message: string };
-
-/** What `read` answers, read again when `key` changes or `retry` is called. */
-function useRead<T>(key: string, read: (signal: AbortSignal) => Promise<T>): [Read<T>, () => void] {
-  const [state, setState] = useState<Read<T>>({ status: 'loading' });
-  const [round, setRound] = useState(0);
-  const latest = useRef(read);
-  latest.current = read;
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: 'loading' });
-    latest.current(controller.signal).then(value => setState({ status: 'ready', value }), problem => {
-      if (!controller.signal.aborted) setState({ status: 'error', message: (problem instanceof ApiError && problem.message) || '读取失败' });
-    });
-    return () => controller.abort();
-  }, [key, round]);
-  return [state, () => setRound(r => r + 1)];
-}
 
 const Failed = ({ message, onRetry }: { message: string; onRetry(): void }) =>
   <div className="pane-message" role="alert"><strong>读取失败</strong><p>{message}</p>
