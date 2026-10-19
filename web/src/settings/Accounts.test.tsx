@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Profile } from '../api/setup';
-import { Accounts } from './Accounts';
+import { Accounts, AccountsSkeleton } from './Accounts';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -67,5 +67,12 @@ describe('Accounts', () => {
     await act(async () => {});
     expect(calls.map(c => c.method + ' ' + c.url)).toEqual(['DELETE /cache/clear-account?dry-run=true', 'DELETE /cache/clear-account?yes=true']);
     expect(screen.queryByRole('group', { name: '将要清除的内容' })).toBeNull();
+  });
+
+  it('keeps the place of the accounts while they are read', () => {
+    render(<AccountsSkeleton />);
+    const wait = screen.getByLabelText('正在读取账号配置');
+    expect(wait.getAttribute('aria-busy')).toBe('true');
+    expect(wait.querySelectorAll('.account .skeleton')).toHaveLength(8);
   });
 });

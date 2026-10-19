@@ -105,3 +105,15 @@ export function Accounts({ profiles, onChanged, onSetup }: {
     {note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
   </section>;
 }
+
+/** While the profiles are read (#282): rows in the shape of the accounts, so the settings do not jump. */
+export function AccountsSkeleton() {
+  return <div className="accounts" aria-busy="true" aria-label="正在读取账号配置">
+    <ul className="account-list">
+      {[64, 48].map(w => <li key={w} className="account">
+        <span className="account-copy"><span className="skeleton line" style={{ width: '20%' }} /><span className="skeleton line" style={{ width: '30%' }} /><span className="skeleton line" style={{ width: w + '%' }} /></span>
+        <span className="skeleton line account-skeleton-state" />
+      </li>)}
+    </ul>
+  </div>;
+}

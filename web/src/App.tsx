@@ -60,7 +60,7 @@ import { ContactsExport, contactsExportSummary, ContactsSummary, DEFAULT_CONTACT
 import { useContacts } from './contacts/useContacts';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
-import { Accounts } from './settings/Accounts';
+import { Accounts, AccountsSkeleton } from './settings/Accounts';
 import { dismissSetup, setupDismissed, useProfiles } from './settings/useProfiles';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -547,8 +547,10 @@ export function App() {
         {connected && (profiles
           ? <div className="setting-row setting-accounts"><div><h2>账号</h2><p>每个配置档案对应一个微信账号。切换档案后，各页重新读取这个账号的记录。</p>
             <Accounts profiles={profiles} onChanged={reloadProfiles} onSetup={() => setSetupOpen(true)} /></div></div>
-          : <div className="setting-row"><div><h2>账号</h2><p>{profilesFailed ? '读不到账号配置：weflow 5.0.0-rc.7 起才能在网页里查看。' : '正在读取账号配置…'}</p></div>
-            <button className="secondary-button" type="button" onClick={() => setSetupOpen(true)}>配置向导</button></div>)}
+          : profilesFailed
+            ? <div className="setting-row"><div><h2>账号</h2><p>读不到账号配置：weflow 5.0.0-rc.7 起才能在网页里查看。</p></div>
+              <button className="secondary-button" type="button" onClick={() => setSetupOpen(true)}>配置向导</button></div>
+            : <div className="setting-row setting-accounts"><div><h2>账号</h2><p>每个配置档案对应一个微信账号。切换档案后，各页重新读取这个账号的记录。</p><AccountsSkeleton /></div></div>)}
         {'health' in backend && <div className="setting-row"><div><h2>weflow 版本</h2>
           <p>weflow {backend.health.version} · API {backend.health.apiVersion}</p>
           {backend.state === 'incompatible' && <p className="setting-warning">{backend.reason}。{backend.advice}</p>}

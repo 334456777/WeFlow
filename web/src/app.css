@@ -805,6 +805,10 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .clear-plan-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .primary-button.danger { color: var(--state-danger); }
 .account-note { font-size: var(--text-xs); }
+.account .skeleton.line { height: 10px; }
+/* as tall as a row of an account: its name, wxid and folder */
+.accounts[aria-busy] .account-copy { gap: 9px; padding: 4px 0; }
+.skeleton.line.account-skeleton-state { flex-shrink: 0; width: 72px; margin-left: auto; }
 .token-form { display: flex; align-items: center; gap: var(--space-2); max-width: 420px; margin-top: var(--space-2); }
 .token-input {
   display: flex; flex: 1; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-md);
