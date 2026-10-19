@@ -96,6 +96,11 @@
   --neu-flat:
     inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent, inset 0 0 0 transparent,
     0 0 0 transparent, 0 0 0 transparent;
+  /* A raised control that cannot be used keeps only its rims: its shape shows, but it no longer stands out (#278). */
+  --neu-disabled:
+    inset 1px 1px 0 var(--neu-edge-light), inset -1px -1px 0 var(--neu-edge-dark),
+    inset 0 0 0 transparent, inset 0 0 0 transparent,
+    0 0 0 transparent, 0 0 0 transparent;
   /* Hover: a raised surface's shadow goes a little deeper and farther and its rim brightens. */
   --neu-raised-hover:
     inset 1px 1px 0 var(--neu-edge-light-hover), inset -1px -1px 0 var(--neu-edge-dark-hover),
