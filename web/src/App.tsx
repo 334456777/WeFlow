@@ -63,6 +63,7 @@ import { SetupWizard } from './settings/SetupWizard';
 import { Accounts, AccountsSkeleton } from './settings/Accounts';
 import { AdvancedTools } from './settings/AdvancedTools';
 import { CommandConsole } from './settings/CommandConsole';
+import { AiSetting, CacheSetting, LanguageSetting } from './settings/MoreSettings';
 import { dismissSetup, setupDismissed, useProfiles } from './settings/useProfiles';
 
 type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
@@ -577,6 +578,7 @@ export function App() {
           <TokenForm label="新的令牌" />
         </div>{tokenSaved && <button className="secondary-button" type="button" onClick={() => setToken(null)}>清除</button>}</div>
         {'health' in backend && serverDetail(backend.health) && <div className="setting-row"><div><h2>运行方式</h2><p>{serverDetail(backend.health)}</p></div></div>}
+        {connected && <><LanguageSetting /><AiSetting profile={profile} onSaved={reloadProfiles} /><CacheSetting /></>}
         <div className="setting-row"><div><h2>实时消息</h2><p>微信收到消息后几秒内显示在会话列表和打开的会话里。关掉后不再接收，左下角显示「已连接」而不是「实时」。</p></div><label className="toggle"><input type="checkbox" aria-label="实时消息" checked={realtime} onChange={event => toggleRealtime(event.target.checked)} /><span /></label></div>
         <div className="setting-row"><div><h2>默认附带媒体文件</h2><p>导出时同时保存照片等媒体。</p></div><label className="toggle"><input type="checkbox" aria-label="默认附带媒体文件" checked={includeMedia} onChange={event => setIncludeMedia(event.target.checked)} /><span /></label></div>
         <div className="setting-row setting-choice"><div><h2>颜色主题</h2><p>跟随系统时随系统的浅色、深色模式切换。只保存在这个浏览器里。</p></div>

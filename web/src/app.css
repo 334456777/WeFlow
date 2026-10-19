@@ -805,6 +805,19 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .clear-plan-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .primary-button.danger { color: var(--state-danger); }
 .account-note { font-size: var(--text-xs); }
+/* The AI model API and the cache (#213). */
+.ai-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3) var(--space-4); margin-top: var(--space-3); }
+.ai-form .console-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ai-form .console-field-name { color: var(--fg-muted); font-size: var(--text-xs); }
+.ai-form .console-input { width: 100%; height: var(--control-md); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-inset); color: var(--fg); font-size: var(--text-sm); }
+.ai-form .console-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ai-form .ai-enabled, .ai-form .ai-actions, .ai-form .account-note { grid-column: 1 / -1; }
+.ai-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.cache-list { display: flex; flex-direction: column; margin: var(--space-2) 0 0; padding: 0; list-style: none; }
+.cache-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) 0; }
+.cache-list .account-copy strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.cache-text { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.cache-size { flex-shrink: 0; margin-left: auto; color: var(--fg-muted); font-size: var(--text-xs); }
 .account .skeleton.line { height: 10px; }
 /* as tall as a row of an account: its name, wxid and folder */
 .accounts[aria-busy] .account-copy { gap: 9px; padding: 4px 0; }

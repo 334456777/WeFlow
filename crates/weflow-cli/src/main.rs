@@ -2132,6 +2132,8 @@ fn profiles_summary(config: &ConfigStore) -> Value {
                 "dbPath": p.db_path,
                 "decryptKey": set(&p.decrypt_key),
                 "imageKeys": p.image_xor_key.is_some() && set(&p.image_aes_key),
+                // the key of the AI model API (#213), as the database keys: whether it is set
+                "aiKey": set(&p.ai_model_api_key),
                 "complete": set(&p.db_path) && set(&p.decrypt_key),
             })
         })
@@ -4177,17 +4179,21 @@ mod tests {
         config
             .set_key(Some("work"), "wxid", json!("wxid_w"))
             .unwrap();
+        config
+            .set_key(Some("work"), "ai_model_api_key", json!("sk-secret"))
+            .unwrap();
         let summary = profiles_summary(&config);
         assert_eq!(
             summary,
             json!([
                 { "name": "default", "current": true, "wxid": null, "dbPath": "/data",
-                  "decryptKey": true, "imageKeys": false, "complete": true },
+                  "decryptKey": true, "imageKeys": false, "aiKey": false, "complete": true },
                 { "name": "work", "current": false, "wxid": "wxid_w", "dbPath": null,
-                  "decryptKey": false, "imageKeys": false, "complete": false },
+                  "decryptKey": false, "imageKeys": false, "aiKey": true, "complete": false },
             ])
         );
         assert!(!summary.to_string().contains("abab"));
+        assert!(!summary.to_string().contains("sk-secret"));
     }
 
     #[test]
