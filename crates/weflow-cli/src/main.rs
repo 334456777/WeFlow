@@ -779,6 +779,12 @@ enum ExportSubcommand {
         /// Output file
         #[arg(long)]
         out: PathBuf,
+        /// Start date, local time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        end: Option<String>,
     },
     /// Export the images, voice (WAV), videos and stickers of messages
     Media {
@@ -1366,7 +1372,14 @@ enum InsightSubcommand {
     /// Run the silence scan once
     Scan,
     /// Footprint statistics from the database
-    Footprint,
+    Footprint {
+        /// Start date, local time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        start: Option<String>,
+        /// End date, local time, inclusive (YYYY-MM-DD)
+        #[arg(long)]
+        end: Option<String>,
+    },
     /// AI footprint summary; takes the JSON payload {rangeLabel, summary, privateSegments, mentionGroups}
     FootprintSummary {
         /// JSON payload
@@ -2664,8 +2677,14 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             };
             write_export("contacts", format.as_deref(), out, &data)
         }
-        ExportSubcommand::Footprint { format, out } => {
-            let data = hub.footprint()?;
+        ExportSubcommand::Footprint {
+            format,
+            out,
+            start,
+            end,
+        } => {
+            let (b, e) = day_span(start, end)?;
+            let data = hub.footprint(b, e)?;
             write_export("footprint", format.as_deref(), out, &data)
         }
         ExportSubcommand::Media {
@@ -2879,11 +2898,13 @@ fn handle_analytics(command: &AnalyticsCommand, hub: &ServiceHub) -> AppResult<V
     }
 }
 
+/// `--start` / `--end` as Unix seconds, both inclusive (the end is the last second of its day); 0 for no bound.
+fn day_span(start: &Option<String>, end: &Option<String>) -> AppResult<(i64, i64)> {
+    let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
+    Ok((b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0)))
+}
+
 fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
-    fn range(start: &Option<String>, end: &Option<String>) -> AppResult<(i64, i64)> {
-        let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-        Ok((b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0)))
-    }
     match &command.command {
         GroupSubcommand::List => Ok(json!(hub.group_chats()?)),
         GroupSubcommand::Members {
@@ -2903,7 +2924,7 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
             start,
             end,
         } => {
-            let (b, e) = range(start, end)?;
+            let (b, e) = day_span(start, end)?;
             Ok(json!(hub.group_message_ranking(
                 chatroom_id,
                 *limit,
@@ -2916,7 +2937,7 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
             start,
             end,
         } => {
-            let (b, e) = range(start, end)?;
+            let (b, e) = day_span(start, end)?;
             hub.group_active_hours(chatroom_id, b, e)
         }
         GroupSubcommand::Media {
@@ -2924,7 +2945,7 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
             start,
             end,
         } => {
-            let (b, e) = range(start, end)?;
+            let (b, e) = day_span(start, end)?;
             hub.group_media_stats(chatroom_id, b, e)
         }
         GroupSubcommand::Member {
@@ -2933,7 +2954,7 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
             start,
             end,
         } => {
-            let (b, e) = range(start, end)?;
+            let (b, e) = day_span(start, end)?;
             hub.group_member_analytics(chatroom_id, username, b, e)
         }
         GroupSubcommand::MemberMessages {
@@ -2944,7 +2965,7 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
             start,
             end,
         } => {
-            let (b, e) = range(start, end)?;
+            let (b, e) = day_span(start, end)?;
             hub.group_member_messages(chatroom_id, username, b, e, *limit, *cursor)
         }
         GroupSubcommand::ExportMemberMessages {
@@ -2954,7 +2975,7 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
             start,
             end,
         } => {
-            let (b, e) = range(start, end)?;
+            let (b, e) = day_span(start, end)?;
             hub.group_export_member_messages(chatroom_id, username, out, b, e)
         }
         GroupSubcommand::ExportMembers { chatroom_id, out } => {
@@ -3170,7 +3191,10 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
                 .await;
             Ok(json!({ "generated": n, "records": found }))
         }
-        InsightSubcommand::Footprint => hub.insight_footprint(),
+        InsightSubcommand::Footprint { start, end } => {
+            let (b, e) = day_span(start, end)?;
+            hub.insight_footprint(b, e)
+        }
         InsightSubcommand::FootprintSummary { payload_json } => {
             let payload: Value = serde_json::from_str(payload_json)
                 .map_err(|e| AppError::usage(format!("payload_json must be JSON: {e}")))?;

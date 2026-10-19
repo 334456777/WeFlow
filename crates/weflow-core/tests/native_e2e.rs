@@ -690,7 +690,7 @@ fn annual_report_uses_native_extras_and_native_moments() {
 #[test]
 fn footprint_reports_private_chats_segments_and_mentions() {
     let (hub, _root) = common::mock_hub("n-footprint");
-    let f = hub.footprint().unwrap();
+    let f = hub.footprint(0, 0).unwrap();
     assert_eq!(
         f["summary"],
         json!({"private_inbound_people": 1, "private_replied_people": 1, "private_outbound_people": 1, "private_reply_rate": 1.0, "mention_count": 0, "mention_group_count": 0})
@@ -709,8 +709,23 @@ fn footprint_reports_private_chats_segments_and_mentions() {
     assert_eq!(f["private_segments"][0]["message_count"], 2);
     assert_eq!(f["diagnostics"]["truncated"], false);
     assert_eq!(
-        hub.insight_footprint().unwrap()["summary"]["private_inbound_people"],
+        hub.insight_footprint(0, 0).unwrap()["summary"]["private_inbound_people"],
         1
+    );
+    // from the second day through the fourth (inclusive): messages 3 (Bob's) and 4 (mine), a segment each
+    let d = hub.footprint(1_700_086_400, 1_700_259_200).unwrap();
+    assert_eq!(
+        (
+            d["private_sessions"][0]["incoming_count"].as_i64(),
+            d["private_sessions"][0]["outgoing_count"].as_i64(),
+            d["private_segments"].as_array().map(Vec::len)
+        ),
+        (Some(1), Some(1), Some(2))
+    );
+    // a range without messages has no private chats
+    assert_eq!(
+        hub.footprint(1_800_000_000, 0).unwrap()["summary"]["private_inbound_people"],
+        0
     );
 }
 
