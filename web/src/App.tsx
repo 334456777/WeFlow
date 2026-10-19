@@ -6,7 +6,7 @@ import type { FormEvent } from 'react';
 import {
   AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
   CaretLeft, CaretRight, ChatCircleDots, Check, CheckCircle, CircleNotch,
-  DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
+  DownloadSimple, Export, FilePdf, Gear, Images, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
 import { useBackend, WEB, type Backend, type Health } from './api/backend';
 import { onAuth, setToken, token } from './api/client';
@@ -57,6 +57,7 @@ import { batchSummary, BatchExport, DEFAULT_BATCH, formatLabel, MESSAGE_FORMATS,
 import { ExportPicker, PickedList } from './exports/ExportPicker';
 import type { ContactKind } from './api/contacts';
 import { ContactList } from './contacts/ContactList';
+import { ALL_RESOURCES, ResourceFilterCard, resourceFilterSummary, ResourcesPage } from './resources/ResourcesPage';
 import { ContactDetail } from './contacts/ContactDetail';
 import { ContactsExport, contactsExportSummary, ContactsSummary, DEFAULT_CONTACTS_EXPORT } from './contacts/ContactCards';
 import { useContacts } from './contacts/useContacts';
@@ -89,6 +90,7 @@ const navigation = [
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
   { id: 'contacts', label: '通讯录', icon: AddressBook },
+  { id: 'resources', label: '资源浏览', icon: Images },
   { id: 'analytics', label: '聊天分析', icon: ChartBar },
   { id: 'reports', label: '年度报告', icon: CalendarStar },
   { id: 'footprint', label: '我的足迹', icon: Footprints },
@@ -258,6 +260,7 @@ export function App() {
   const analyticsRef = useRef<HTMLElement>(null);
   const reportsRef = useRef<HTMLElement>(null);
   const footprintRef = useRef<HTMLElement>(null);
+  const resourcesRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const shownPreview = usePresence(preview);
@@ -343,6 +346,9 @@ export function App() {
   const [contactId, setContactId] = useState<string | null>(null);
   useEffect(() => { setContactId(null); }, [scope]);
   const [contactsExport, setContactsExport] = useState(DEFAULT_CONTACTS_EXPORT);
+  // The resource browser (#206): the conversation and days of its console card; the page picks the type.
+  const [resourceFilter, setResourceFilter] = useState(ALL_RESOURCES);
+  useEffect(() => { setResourceFilter(ALL_RESOURCES); }, [scope]);
   const contacts = contactsState.status === 'ready' ? contactsState.contacts : null;
   const contact = contacts?.find(c => c.username === contactId);
   // The chat analytics page (#207): the private chats counted once it is opened, again when the people left out change.
@@ -434,7 +440,7 @@ export function App() {
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'analytics' || value === 'reports' || value === 'footprint' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'resources' || value === 'analytics' || value === 'reports' || value === 'footprint' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -479,12 +485,15 @@ export function App() {
     }
   };
 
-  const openFootprint = (sessionId: string, localId: number, createTime: number) => {
-    if (!sessionList.some(session => session.username === sessionId)) { setToast('这段聊天所在的会话不在会话列表里。'); return; }
+  // from another page: the chat page opens at the message, when its conversation is in the list
+  const openInChat = (missing: string) => (sessionId: string, localId: number, createTime: number) => {
+    if (!sessionList.some(session => session.username === sessionId)) { setToast(missing); return; }
     selectSection('chat');
     setLiveId(sessionId);
     void openMessage(sessionId, localId, createTime);
   };
+  const openFootprint = openInChat('这段聊天所在的会话不在会话列表里。');
+  const openResource = openInChat('这条消息所在的会话不在会话列表里。');
 
   const jumpToDay = (sessionId: string, day: string) => {
     setJumpTo({ sessionId, target: { at: 'time', seconds: parseDay(day).getTime() / 1000 }, seq: ++jumps.current });
@@ -618,6 +627,10 @@ export function App() {
         {(groupRange.from || groupRange.to) && <button type="button" className="secondary-button range-clear" onClick={() => setGroupRange({ from: '', to: '' })}>不限时间</button>}</>,
     },
     { id: 'group-export', title: '导出', summary: group?.displayName ?? '', content: <GroupExport group={group} member={groupMember} range={groupRange} /> },
+    {
+      id: 'resources-filter', title: '筛选资源', summary: resourceFilterSummary(resourceFilter, sessionList),
+      content: <ResourceFilterCard sessions={sessionList} filter={resourceFilter} onChange={setResourceFilter} />,
+    },
     { id: 'footprint-ai', title: 'AI 足迹总结', summary: footprintRange.label, content: <FootprintAi range={footprintRange} data={footprintData} aiReady={profile?.aiKey} /> },
     { id: 'footprint-export', title: '导出足迹', summary: footprintRange.label, content: <FootprintExport range={footprintRange} /> },
     { id: 'report-save', title: '保存报告', content: <SaveReport find={() => reportsRef.current?.querySelector<HTMLElement>('article.report') ?? null} /> },
@@ -636,6 +649,7 @@ export function App() {
     : section === 'backup' ? ['tasks']
     : section === 'reports' ? (connected ? ['report-save'] : [])
     : section === 'footprint' ? (connected ? ['footprint-ai', 'footprint-export', 'tasks'] : [])
+    : section === 'resources' ? (connected ? ['resources-filter'] : [])
     : analyticsPage ? (connected ? (analyticsMode === 'group' ? ['analytics-range', 'group-export', 'tasks'] : ['analytics-excluded']) : [])
     : contactsPage ? ['tasks', ...(connected ? contactCards : [])]
       : insightsPage ? (connected ? insightCards : [])
@@ -733,6 +747,13 @@ export function App() {
               onChat={username => { selectSection('chat'); setLiveId(username); setMobileDetail(true); }} />
             : <p className="settings-footnote">连接 weflow serve 后，可以在这里查看私聊和群聊的统计。</p>}
         </section><Scrollbar target={analyticsRef} /></>
+        : section === 'resources'
+        ? <><section ref={resourcesRef} className="panel browser-panel settings-panel scroll-area" aria-label="资源浏览">
+          <div className="settings-heading"><Images size={20} /><h1>资源浏览</h1></div>
+          {backend.state === 'unauthorized' ? <TokenPrompt /> : connected
+            ? <ResourcesPage key={scope} filter={resourceFilter} onPreview={setPreview} onOpen={openResource} />
+            : <p className="settings-footnote">连接 weflow serve 后，可以在这里浏览所有会话的图片、视频、语音和文件。</p>}
+        </section><Scrollbar target={resourcesRef} /></>
         : section === 'footprint'
         ? <><section ref={footprintRef} className="panel browser-panel settings-panel scroll-area" aria-label="我的足迹">
           <div className="settings-heading"><Footprints size={20} /><h1>我的足迹</h1></div>
@@ -870,6 +891,8 @@ export function App() {
         <span className="preview-tools">{gallery && <>
           <button type="button" className="icon-button" aria-label="上一个" title="上一个（←）" disabled={gallery.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={18} /></button>
           <button type="button" className="icon-button" aria-label="下一个" title="下一个（→）" disabled={gallery.index === gallery.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={18} /></button></>}
+          {shownPreview.value.type !== 'file' && shownPreview.value.locate && <button type="button" className="icon-button" aria-label="在会话中定位" title="在会话中定位"
+            onClick={() => { const locate = shownPreview.value.type !== 'file' ? shownPreview.value.locate : undefined; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
           <button type="button" className="icon-button" aria-label="关闭预览" onClick={() => setPreview(null)}><X size={18} /></button></span></header>
         {shownPreview.value.type === 'image'
           ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} />

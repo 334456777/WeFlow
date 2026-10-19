@@ -11,8 +11,8 @@ import { appLabel, formatDuration, formatFileSize, kindOf, withoutLabel } from '
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 
 export type Preview =
-  | { type: 'image'; src: string; title: string; gallery?: Gallery }
-  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery }
+  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void }
+  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void }
   | { type: 'file'; title: string };
 
 /** The pictures and videos of the conversation read so far, the one shown at `index` (#194). */
@@ -46,7 +46,7 @@ function RemoteImage({ src, className, alt = '' }: { src: string; className?: st
 /** One voice plays at a time across the page. */
 let playing: { audio: HTMLAudioElement; stop(): void } | null = null;
 
-function Voice({ sessionId, message }: { sessionId: string; message: ParsedMessage }) {
+export function Voice({ sessionId, message, className = 'message-bubble voice-bubble' }: { sessionId: string; message: ParsedMessage; className?: string }) {
   const [state, setState] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
   const audio = useRef<HTMLAudioElement | null>(null);
   useEffect(() => () => { audio.current?.pause(); }, []);
@@ -68,7 +68,7 @@ function Voice({ sessionId, message }: { sessionId: string; message: ParsedMessa
   };
   // Longer voices make a longer bubble, as in WeChat.
   const width = Math.min(220, 72 + seconds * 4);
-  return <button type="button" className={'message-bubble voice-bubble ' + state} style={{ width }} onClick={toggle}
+  return <button type="button" className={className + ' ' + state} style={className.includes('voice-bubble') ? { width } : undefined} onClick={toggle}
     aria-label={(state === 'playing' ? '暂停' : '播放') + '语音，' + formatDuration(seconds)}>
     {state === 'error' ? <Warning size={16} /> : state === 'playing' ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
     <span className="voice-wave" aria-hidden="true" />
@@ -177,7 +177,7 @@ export function MessageView({ sessionId, message, onPreview }: {
 }
 
 /** Why a media address failed: the server answers its error as JSON (a video not downloaded yet, a missing ffmpeg…). */
-async function reasonOf(src: string): Promise<string> {
+export async function reasonOf(src: string): Promise<string> {
   try {
     const response = await fetch(src, { headers: { Range: 'bytes=0-0' } });
     const doc = await response.json();
