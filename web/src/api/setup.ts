@@ -11,6 +11,8 @@ export interface Profile {
   dbPath: string | null;
   decryptKey: boolean;
   imageKeys: boolean;
+  /** The AI model API key (#213); absent from a `weflow` before it. */
+  aiKey?: boolean;
   /** Enough to open the database: a data directory and a database key. */
   complete: boolean;
 }
