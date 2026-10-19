@@ -46,6 +46,26 @@ describe('HoverTrack', () => {
     expect(hollow.dataset.state).toBe('off');
   });
 
+  it('sinks into the press of the item under it, and lets go anywhere', () => {
+    const { group, hollow, items } = setup();
+    fireEvent.pointerOver(items[0]);
+    fireEvent.pointerDown(items[0], { button: 0 });
+    expect(hollow.dataset.pressed).toBe('');
+    // released outside the group too
+    fireEvent.pointerUp(window);
+    expect(hollow.dataset.pressed).toBeUndefined();
+    // the selection takes its own press; another button, or moving on, does not press
+    fireEvent.pointerOver(items[1]);
+    fireEvent.pointerDown(items[1], { button: 0 });
+    expect(hollow.dataset.pressed).toBeUndefined();
+    fireEvent.pointerOver(items[2]);
+    fireEvent.pointerDown(items[2], { button: 2 });
+    expect(hollow.dataset.pressed).toBeUndefined();
+    fireEvent.pointerDown(items[2], { button: 0 });
+    fireEvent.pointerLeave(group);
+    expect(hollow.dataset.pressed).toBeUndefined();
+  });
+
   it('fades over a selected item, and ignores touch', () => {
     const { hollow, items } = setup();
     fireEvent.pointerOver(items[0]);

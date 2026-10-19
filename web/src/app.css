@@ -143,10 +143,21 @@ time, .num { font-variant-numeric: tabular-nums; }
 :where(.hover-track-host) > :where(:not(.hover-hollow)) { position: relative; }
 .hover-hollow {
   position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; opacity: 0; box-shadow: var(--neu-pressed);
+  transform-origin: center;
   transition: transform var(--duration-snap) var(--ease-snap), width var(--duration-snap) var(--ease-snap),
-    height var(--duration-snap) var(--ease-snap), opacity var(--duration-hover) ease;
+    height var(--duration-snap) var(--ease-snap), opacity var(--duration-hover) ease,
+    box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
 }
 .hover-hollow[data-state='on'] { opacity: 1; }
+/*
+ * Held down, the hollow deepens into the press and shrinks with the item, which stays flat over it; let go on an
+ * item that becomes the selection, the hollow fades out as deep as the selection, so one shade passes to the other.
+ */
+.hover-hollow[data-pressed], .hover-hollow[data-state='quiet'] { box-shadow: var(--neu-inset); }
+.hover-hollow[data-pressed] {
+  scale: var(--press-scale);
+  transition-duration: var(--duration-snap), var(--duration-snap), var(--duration-snap), var(--duration-hover), var(--duration-micro), var(--duration-micro);
+}
 .hover-track-host :is(.nav-item, .conversation-row, .search-result, .media-item):hover:not(.selected, .active, :active) { box-shadow: var(--neu-flat); }
 .sidebar-collapsed .nav-item { width: var(--control-lg); }
 .sidebar-collapsed .nav-label { opacity: 0; }
@@ -655,6 +666,8 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .media-item:hover { box-shadow: var(--neu-pressed); color: var(--fg); }
 /* Rows and navigation: hover sinks them a little, holding them down sinks them fully, as a selection does. */
 .nav-item:active, .conversation-row:active, .search-result:active, .media-item:active { box-shadow: var(--neu-inset); transition-duration: var(--duration-micro); }
+/* in a group whose hover hollow takes the press (HoverTrack.tsx), the item stays flat over it */
+.hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .search-result, .media-item):active:not(.selected, .active) { box-shadow: var(--neu-flat); }
 /*
  * What is already sunk (a selection, a toggle that is on, a checked box, a sent photo) sinks further when held
  * down, instead of staying as it is or rising to pressed (#253). After every press rule above, so it wins.
