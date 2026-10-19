@@ -129,7 +129,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
       <DateField label="跳到日期" placeholder="选择一天" value={jumpDay} marks={counts} onOpen={request}
         onChange={day => { setJumpDay(day); if (sessionId) onJumpDay(sessionId, day); }} />
     </div>
-    <div className="search-results" aria-live="polite" aria-busy={state.status === 'loading'}><HoverTrack items=".search-result" />{
+    <div className="search-results" aria-live="polite" aria-busy={state.status === 'loading'} data-roving="vertical" data-roving-items=".search-result"><HoverTrack items=".search-result" />{
       state.status === 'idle' ? <p className="empty-text">输入关键词，搜索{scope === 'all' ? '全部会话' : '当前会话'}的消息。</p>
         : state.status === 'loading' ? <ResultsSkeleton label="正在搜索" />
           : state.status === 'error' ? <p className="empty-text">{state.error}</p>

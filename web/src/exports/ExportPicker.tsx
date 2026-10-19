@@ -63,7 +63,7 @@ export function ExportPicker({ state, picked, onChange, onRetry }: {
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!shown.length) body = <p className="session-message">{query.trim() ? '没有名称匹配的会话。' : '没有这类会话。'}</p>;
   else {
-    body = <VirtualList className="conversation-list scroll-area" aria-label="可导出的会话" items={shown} rowHeight={ROW_HEIGHT} padding={8} track=".pick-row"
+    body = <VirtualList data-roving="vertical" data-roving-items=".pick-row input" className="conversation-list scroll-area" aria-label="可导出的会话" items={shown} rowHeight={ROW_HEIGHT} padding={8} track=".pick-row"
       keyOf={s => s.username} renderRow={s => {
         const on = picked.has(s.username);
         return <label className={'conversation-row pick-row' + (on ? ' active' : '')}>

@@ -32,7 +32,7 @@ export function MomentPeople({ state, total, selected, onSelect, onRetry }: {
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!rows.length) body = <p className="session-message">{query.trim() ? '没有名称匹配的发布者。' : '本机没有朋友圈。'}</p>;
   else {
-    body = <VirtualList className="conversation-list scroll-area" aria-label="朋友圈发布者" items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
+    body = <VirtualList data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label="朋友圈发布者" items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
       keyOf={p => p.username} renderRow={p => {
         const id = p.username === ALL ? null : p.username;
         const active = id === selected;

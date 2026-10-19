@@ -40,7 +40,7 @@ export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry
   } else if (!rows.length) {
     body = <p className="session-message">没有名称匹配的商户。</p>;
   } else {
-    body = <VirtualList className="conversation-list scroll-area" aria-label="商户" items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
+    body = <VirtualList data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label="商户" items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
       keyOf={m => m.name} renderRow={m => {
         const id = m.name === ALL ? null : m.name;
         const active = id === selected;

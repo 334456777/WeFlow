@@ -47,7 +47,7 @@ export function GroupPicker({ state, selected, onSelect, onRetry }: { state: Gro
     <Popover anchor={anchor} open={open} onClose={reason => close(reason === 'escape')} label="选择群聊" className="group-popover">
       <label className="token-input"><MagnifyingGlass size={14} aria-hidden="true" />
         <input type="search" autoFocus aria-label="搜索群聊" placeholder="搜索群名" value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
-      <div className="group-options" role="listbox" aria-label="群聊">
+      <div className="group-options" role="listbox" data-roving="vertical" data-roving-items="[role=option]" aria-label="群聊">
         {found.slice(0, LISTED).map(g => <button type="button" key={g.username} role="option" aria-selected={g.username === selected?.username}
           className={'conversation-row' + (g.username === selected?.username ? ' active' : '')} onClick={() => { onSelect(g.username); close(true); }}>
           <span className="conversation-copy"><span className="conversation-name clamp-1">{g.displayName}</span>

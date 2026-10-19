@@ -49,7 +49,7 @@ export function FriendPicker({ selected, onSelect }: { selected: Friend | null; 
       {people.status === 'error'
         ? <><p className="card-note setting-warning" role="alert">{people.message}</p><button type="button" className="secondary-button" onClick={retry}>重试</button></>
         : people.status === 'loading' ? <ListSkeleton label="正在读取私聊" rows={4} />
-          : <div className="group-options" role="listbox" aria-label="好友">
+          : <div className="group-options" role="listbox" data-roving="vertical" data-roving-items="[role=option]" aria-label="好友">
             {found.slice(0, LISTED).map(p => <button type="button" key={p.username} role="option" aria-selected={p.username === selected?.username}
               className={'conversation-row' + (p.username === selected?.username ? ' active' : '')} onClick={() => { onSelect(p); close(true); }}>
               <Avatar name={p.displayName} url={p.avatarUrl} />

@@ -36,6 +36,7 @@ import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, s
 import { FEEDBACK_MS, usePresence } from './motion';
 import { HoverTrack } from './HoverTrack';
 import { Scrollbar } from './Scrollbar';
+import { useRovingFocus, useSearchKey } from './roving';
 import { Segmented } from './Segmented';
 import { useTheme, type ThemeChoice } from './theme';
 import { NO_FILTER, type SnsFilter } from './api/sns';
@@ -202,6 +203,9 @@ function stageOf(job: Job | undefined, error: string): ExportStage {
 }
 
 export function App() {
+  // the keyboard (#195): one Tab stop per group, arrows within it; / to search
+  useRovingFocus();
+  useSearchKey();
   // Live messages (#201): on unless turned off, and remembered
   const [realtime, setRealtime] = useState(() => { try { return localStorage.getItem(LIVE_KEY) !== 'off'; } catch { return true; } });
   const toggleRealtime = (on: boolean) => {
@@ -547,7 +551,7 @@ export function App() {
           <button className={'icon-button' + (searchDatesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={searchDatesOpen} onClick={() => setSearchDatesOpen(value => !value)}><CalendarBlank size={16} /></button>
         </form>
         {searchDatesOpen && <div className="search-date-row"><span className="field-label">时间范围</span><DateRange label="搜索的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); }} /></div>}
-        <div className="search-results" aria-live="polite"><HoverTrack items=".search-result" />{submittedQuery === null
+        <div className="search-results" aria-live="polite" data-roving="vertical" data-roving-items=".search-result"><HoverTrack items=".search-result" />{submittedQuery === null
           ? <p className="empty-text">输入关键词，搜索当前会话的记录。</p>
           : results.length
             ? <><p className="results-count">找到 {results.length} 条记录<span>点击可定位到消息</span></p>{results.map(message => <button className="search-result" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
@@ -567,7 +571,7 @@ export function App() {
       id: 'media', title: '媒体文件', summary: selected.live ? '图片、视频与文件' : media.length + ' 个',
       content: selected.live
         ? (open: boolean) => liveSession ? <MediaPanel key={scope + ':' + liveSession.username} sessionId={liveSession.username} active={open} onOpen={item => openMedia(liveSession.username, item)} /> : null
-        : <div className="media-list"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
+        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
     {
       id: 'moments-filter', title: '筛选朋友圈', summary: filterSummary(momentFilter),
@@ -641,7 +645,7 @@ export function App() {
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
-      <nav aria-label="主导航"><HoverTrack items=".nav-item" />
+      <nav aria-label="主导航" data-roving="vertical" data-roving-items=".nav-item"><HoverTrack items=".nav-item" />
         {navigation.map(item => {
           const Icon = item.icon;
           const current = section === item.id;
@@ -820,7 +824,7 @@ export function App() {
             ? <TokenPrompt />
             : <SessionList state={connected ? liveSessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={reloadSessions}
               officials={officials} onFilter={filter => { if (filter === 'official') setOfficialsWanted(true); }} />
-          : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'}><HoverTrack items=".conversation-row" />
+          : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[activeCategory] + '列表'} data-roving="vertical" data-roving-items=".conversation-row"><HoverTrack items=".conversation-row" />
           {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
             <Avatar name={conversation.name} url={conversation.avatar} />
             <span className="conversation-copy">

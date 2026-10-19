@@ -38,7 +38,7 @@ export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }
   } else if (!rows.length) {
     body = <p className="session-message">{searching ? '没有匹配的联系人。' : '没有' + contactKindLabels[kind] + '。'}</p>;
   } else {
-    body = <VirtualList className="conversation-list scroll-area" aria-label={searching ? '搜索到的联系人' : contactKindLabels[kind]} items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
+    body = <VirtualList data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label={searching ? '搜索到的联系人' : contactKindLabels[kind]} items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
       keyOf={c => c.username} renderRow={c => {
         const active = c.username === selected;
         return <button type="button" className={'conversation-row' + (active ? ' active' : '')} aria-pressed={active} aria-label={'查看' + c.displayName} onClick={() => onSelect(c.username)}>

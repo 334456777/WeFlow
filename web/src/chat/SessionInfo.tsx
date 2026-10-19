@@ -96,7 +96,7 @@ function Members({ chatroomId, active }: { chatroomId: string; active: boolean }
     {members.status === 'ready' && <>
       <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索群成员" placeholder="搜索群昵称、备注或微信号" value={query} onChange={event => setQuery(event.target.value)} /></div>
       {shown.length
-        ? <VirtualList className="member-list scroll-area" aria-label="群成员列表" items={shown} rowHeight={MEMBER_ROW} track=".member-row"
+        ? <VirtualList data-roving="vertical" data-roving-items=".member-row" className="member-list scroll-area" aria-label="群成员列表" items={shown} rowHeight={MEMBER_ROW} track=".member-row"
           keyOf={m => m.username} renderRow={m => <button type="button" className="member-row" aria-label={memberName(m) + (m.isOwner ? '，群主' : '') + (m.isFriend ? '，好友' : '')} onClick={() => setChosen(m)}>
             <Avatar name={memberName(m)} url={m.avatarUrl} />
             <span className="member-copy"><span className="clamp-1">{memberName(m)}</span>{memberName(m) !== (m.remark || m.displayName) && (m.remark || m.displayName) && <small className="clamp-1">{m.remark || m.displayName}</small>}</span>

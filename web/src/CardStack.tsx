@@ -180,7 +180,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
   };
 
   const byId = new Map(cards.map(card => [card.id, card]));
-  return <div className="card-stack" ref={container} role="list" aria-label={label}>
+  return <div className="card-stack" ref={container} role="list" aria-label={label} data-roving="vertical" data-roving-items=".card-header">
     {layout.order.map(id => {
       const card = byId.get(id);
       if (!card || hidden.includes(id)) return null;
