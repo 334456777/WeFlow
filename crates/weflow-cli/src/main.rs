@@ -429,7 +429,11 @@ enum ChatSubcommand {
         parsed: bool,
     },
     /// List all contacts
-    Contacts,
+    Contacts {
+        /// The contact list as the desktop app shows it (friends, groups, official accounts, former friends, with names, labels, region, signature and avatar) instead of the database rows
+        #[arg(long)]
+        parsed: bool,
+    },
     /// Show one contact
     Contact {
         /// Contact username (wxid)
@@ -1541,7 +1545,7 @@ fn runs_in_process(command: &Commands) -> bool {
                 | ChatSubcommand::Latest { .. }
                 | ChatSubcommand::Message { .. }
                 | ChatSubcommand::Contact { .. }
-                | ChatSubcommand::Contacts
+                | ChatSubcommand::Contacts { .. }
                 | ChatSubcommand::Counts { .. }
                 | ChatSubcommand::Search { .. }
                 | ChatSubcommand::Dates { .. }
@@ -2265,7 +2269,8 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
                 hits
             })
         }
-        ChatSubcommand::Contacts => hub.contacts(),
+        ChatSubcommand::Contacts { parsed: false } => hub.contacts(),
+        ChatSubcommand::Contacts { parsed: true } => Ok(Value::Array(hub.chat_contacts_parsed()?)),
         ChatSubcommand::Contact { username } => hub.contact(username),
         ChatSubcommand::UpdateMessage {
             session_id,

@@ -249,6 +249,49 @@ fn contacts_and_groups_resolve_names_owner_and_nicknames() {
 }
 
 #[test]
+fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
+    let (hub, _root) = common::mock_hub("n-contacts-parsed");
+    let contacts = hub.chat_contacts_parsed().unwrap();
+    let rows: Vec<String> = contacts
+        .iter()
+        .map(|c| {
+            format!(
+                "{} {} {}",
+                c["type"].as_str().unwrap(),
+                c["username"].as_str().unwrap(),
+                c["displayName"].as_str().unwrap()
+            )
+        })
+        .collect();
+    // newest conversation first, then by name; the kind of each, and the name the desktop app shows
+    assert_eq!(
+        rows,
+        [
+            "friend wxid_bob Bobby",
+            "group room1@chatroom Project Room",
+            "official gh_news News",
+            "friend wxid_carol Carol",
+            "friend wxid_me Me Nick",
+        ]
+    );
+    let bob = contacts
+        .iter()
+        .find(|c| c["username"] == "wxid_bob")
+        .unwrap();
+    assert_eq!(
+        *bob,
+        serde_json::json!({ "username": "wxid_bob", "displayName": "Bobby", "remark": "Bobby", "nickname": "Bob",
+            "alias": "bobby_id", "type": "friend", "avatarUrl": "https://example.com/bob.png" })
+    );
+    // the list of the desktop API stays as it was, without avatars
+    assert!(hub
+        .chat_contacts_list()
+        .unwrap()
+        .iter()
+        .all(|c| c.get("avatarUrl").is_none()));
+}
+
+#[test]
 fn every_format_exports_five_messages_of_a_conversation() {
     let (hub, root) = common::mock_hub("n-formats");
     for (format, file) in [
