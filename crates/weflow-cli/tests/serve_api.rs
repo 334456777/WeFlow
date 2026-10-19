@@ -1621,6 +1621,75 @@ fn official_accounts_and_their_pushes_as_the_webui_reads_them() {
     assert_eq!(r.json()["data"]["messages"].as_array().unwrap().len(), 1);
 }
 
+#[test]
+fn wechat_pay_records_come_in_pages_that_say_whether_more_follow() {
+    use weflow_native::fixture::{MsgSpec, T0};
+    let root = temp_root("pay");
+    let notice = |title: &str, des: &str, shop: &str| {
+        format!(
+            "<msg><appmsg><title>{title}</title><des>{des}</des><mmreader><template_header>\
+             <display_name>{shop}</display_name><pub_time>{T0}</pub_time></template_header></mmreader></appmsg></msg>"
+        )
+    };
+    const PAY: &str = "gh_3dfda90e39d6";
+    let home = account_home_with(&root, |f| {
+        f.message_shard(
+            0,
+            &[(
+                PAY,
+                vec![
+                    MsgSpec::text(
+                        1,
+                        PAY,
+                        T0,
+                        &notice("微信支付凭证", "付款金额¥28.00\n支付方式零钱", "Cafe"),
+                    )
+                    .of_type(49),
+                    // not a notice: left out, but still read
+                    MsgSpec::text(
+                        2,
+                        PAY,
+                        T0 + 60,
+                        "<msg><appmsg><type>5</type></appmsg></msg>",
+                    )
+                    .of_type(49),
+                    MsgSpec::text(3, PAY, T0 + 120, &notice("退款到账", "退款金额¥5.00", ""))
+                        .of_type(49),
+                ],
+            )],
+        );
+    });
+    let server = start(&home, &["--api-token", TOKEN]);
+
+    let page = |offset: i32| {
+        let r = server.call(
+            "GET",
+            &format!("/biz/pay-records?limit=2&offset={offset}"),
+            "",
+        );
+        assert_eq!(r.status, 200, "{}", r.body);
+        r.json()["data"].clone()
+    };
+    // newest first: the refund, then the message that is no notice
+    let first = page(0);
+    assert_eq!(first["hasMore"], true);
+    let records = first["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["title"], "退款到账");
+    // no merchant named: WeChat Pay itself, in the server's language
+    assert!(!records[0]["merchantName"].as_str().unwrap().is_empty());
+    let second = page(2);
+    assert_eq!(second["hasMore"], false);
+    let records = second["records"].as_array().unwrap();
+    assert_eq!(records[0]["merchantName"], "Cafe");
+    assert_eq!(records[0]["description"], "付款金额¥28.00\n支付方式零钱");
+    assert_eq!(records[0]["timestamp"], T0);
+    // all of them at once
+    let all = server.call("GET", "/biz/pay-records?limit=0", "").json();
+    assert_eq!(all["data"]["records"].as_array().unwrap().len(), 2);
+    assert_eq!(all["data"]["hasMore"], false);
+}
+
 // Ctrl+C as a signal; Windows has no way to send one to another process alone
 #[cfg(unix)]
 #[test]

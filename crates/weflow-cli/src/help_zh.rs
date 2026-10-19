@@ -193,6 +193,8 @@ const HELP: &[(&str, &str)] = &[
     ("Only search this conversation (default: all conversations)", "只搜索这个会话（默认：所有会话）"),
     ("Maximum number of results", "最多返回的条数"),
     ("Number of results to skip", "跳过的条数"),
+    ("Number of the WeChat Pay account's messages to read (0 = all)", "读取「微信支付」公众号的消息条数（0 表示全部）"),
+    ("Number of the account's messages to skip (`hasMore` says whether more follow)", "跳过的消息条数（`hasMore` 表示后面是否还有）"),
     ("Only messages older than this one: the `_cursor` of the last message of the previous page (as fast however far back)", "只返回比这条更早的消息：传上一页最后一条消息的 `_cursor`（翻得再远也一样快）"),
     ("Only messages newer than this one (the `_cursor` of a message): the closest ones, still newest first", "只返回比这条更新的消息（传某条消息的 `_cursor`）：取离它最近的若干条，仍按最新在前排列"),
     ("Each message parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row", "每条消息按桌面端的方式解析（类型、文字、引用、媒体、链接、文件等），而不是数据库的原始行"),
