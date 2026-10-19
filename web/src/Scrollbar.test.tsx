@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { useRef } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { Scrollbar } from './Scrollbar';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SCROLL_INTENT, Scrollbar } from './Scrollbar';
 
 afterEach(cleanup);
 
@@ -71,11 +71,20 @@ describe('Scrollbar', () => {
       expect(bar.classList.contains('active')).toBe(true);
       expect(thumb.style.transform).toBe('translateY(180px)');
 
-      // 36px is a tenth of the 360px the thumb can travel, so a tenth of the 3672px the area can scroll.
+      // 36px is a tenth of the 360px the thumb can travel, so a tenth of the 3672px the area can scroll; the area
+      // hears that a person scrolls it (the thumb is not inside it)
+      const intent = vi.fn();
+      area.addEventListener(SCROLL_INTENT, intent);
       fireEvent.pointerDown(thumb, { button: 0, clientY: 200, pointerId: 1 });
       expect(bar.classList.contains('dragging')).toBe(true);
+      expect(intent).toHaveBeenCalledTimes(1);
       fireEvent.pointerMove(thumb, { clientY: 236, pointerId: 1 });
       expect(area.scrollTop).toBeCloseTo(1836 + 367.2);
+      // an area that scrolls smoothly is moved at once, or it would trail behind the pointer (#159)
+      const scrollTo = vi.fn();
+      area.scrollTo = scrollTo as typeof area.scrollTo;
+      fireEvent.pointerMove(thumb, { clientY: 272, pointerId: 1 });
+      expect(scrollTo).toHaveBeenLastCalledWith({ top: expect.closeTo(1836 + 734.4), behavior: 'instant' });
       fireEvent.pointerUp(thumb, { pointerId: 1 });
       expect(bar.classList.contains('dragging')).toBe(false);
     } finally { restore(); }

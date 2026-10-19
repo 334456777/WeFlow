@@ -15,6 +15,9 @@ const LINGER_MS = 900;
 /** Kept clear of the area's rounded corners by the fades; at the top and bottom they start at the edge, where a gap
  * would let a strip of content show. */
 const FADE_INSET = 2;
+/** Sent to the scroll area when a person starts dragging the thumb, which is not inside it: the area's own pointer
+ * events do not see that the person is scrolling (a chat window lets go of its bottom on it). */
+export const SCROLL_INTENT = 'weflow:scroll-intent';
 
 export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> }) {
   const track = useRef<HTMLDivElement>(null);
@@ -99,12 +102,15 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
       if (event.button !== 0) return;
       event.preventDefault();
       drag = { y: event.clientY, top: area.scrollTop };
+      area.dispatchEvent(new Event(SCROLL_INTENT));
       knob.setPointerCapture?.(event.pointerId);
       bar.classList.add('dragging');
     };
     const move = (event: PointerEvent) => {
       if (!drag || !travel) return;
-      area.scrollTop = drag.top + ((event.clientY - drag.y) * room) / travel;
+      const top = drag.top + ((event.clientY - drag.y) * room) / travel;
+      // at once: an area that scrolls smoothly (the chat window) would trail behind the pointer
+      if (area.scrollTo) area.scrollTo({ top, behavior: 'instant' }); else area.scrollTop = top;
     };
     const up = () => { drag = null; bar.classList.remove('dragging'); show(); };
     knob.addEventListener('pointerdown', down);
