@@ -37,6 +37,10 @@ time, .num { font-variant-numeric: tabular-nums; }
 .segmented button:active, .file-bubble:active, .photo-button:active, .media-item:active {
   transform: scale(var(--press-scale));
 }
+/*
+ * Something that can be chosen (a selection, a toggle, a check box, a day) looks the same held down whether it is
+ * chosen or not: as deep as a chosen one held down (#253), and shrunk as much. The rules below keep to that.
+ */
 .scroll-area { overflow: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .scroll-area::-webkit-scrollbar { display: none; }
 /*
@@ -87,6 +91,8 @@ time, .num { font-variant-numeric: tabular-nums; }
 .primary-button:active:not(:disabled, [aria-disabled='true']), .secondary-button:active, .icon-button:active {
   box-shadow: var(--neu-pressed); transition-duration: var(--duration-micro);
 }
+/* an icon button that toggles (the dates of a search, the sidebar) sinks as deep held down, on or off */
+.icon-button:is(.on, [aria-expanded], [aria-pressed]):active { box-shadow: var(--neu-inset-pressed); }
 .badge {
   display: inline-flex; align-items: center; height: 20px; padding: 0 var(--space-2); flex-shrink: 0;
   border-radius: var(--radius-full); color: var(--fg-muted);
@@ -102,7 +108,9 @@ time, .num { font-variant-numeric: tabular-nums; }
 .segmented-thumb {
   position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--count));
   border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--neu-raised-sm);
-  transform: translateX(calc(100% * var(--index))); transition: transform var(--duration-snap) var(--ease-snap);
+  /* `translate`, not `transform`, so that a press shrinks the thumb about its own centre */
+  translate: calc(100% * var(--index)) 0;
+  transition: translate var(--duration-snap) var(--ease-snap), box-shadow var(--duration-hover) var(--ease-out), scale var(--duration-micro) var(--ease-out);
 }
 .segmented > button {
   position: relative; z-index: 1; width: 100%; height: 100%;
@@ -110,8 +118,15 @@ time, .num { font-variant-numeric: tabular-nums; }
   border-radius: var(--radius-full); color: var(--fg-muted); font-size: var(--text-sm); white-space: nowrap;
 }
 .segmented > button:hover { color: var(--fg); }
-/* Held down, an option sinks into pressed: over the thumb when it is the selected one, in the track otherwise. */
+/*
+ * Held down, an option sinks into pressed and shrinks: in the track itself, or, the selected one, its thumb, which
+ * sinks and shrinks with its label instead of the label shrinking alone on a thumb that stays put.
+ */
 .segmented > button:active { box-shadow: var(--neu-pressed); transition-duration: var(--duration-micro); }
+.segmented > button:is([aria-pressed='true'], [aria-selected='true']):active { box-shadow: var(--neu-flat); }
+.segmented:has(> button:is([aria-pressed='true'], [aria-selected='true']):active) > .segmented-thumb {
+  box-shadow: var(--neu-pressed); scale: var(--press-scale); transition-duration: var(--duration-snap), var(--duration-micro), var(--duration-micro);
+}
 .segmented [aria-selected='true'], .segmented [aria-pressed='true'] { color: var(--fg); font-weight: var(--weight-semibold); }
 /* Layout. The sidebar folds into a rail of icons; the icons keep their place while the width changes. */
 .workspace {
@@ -153,11 +168,13 @@ time, .num { font-variant-numeric: tabular-nums; }
  * Held down, the hollow deepens into the press and shrinks with the item, which stays flat over it; let go on an
  * item that becomes the selection, the hollow fades out as deep as the selection, so one shade passes to the other.
  */
-.hover-hollow[data-pressed], .hover-hollow[data-state='quiet'] { box-shadow: var(--neu-inset); }
+.hover-hollow[data-state='quiet'] { box-shadow: var(--neu-inset); }
 .hover-hollow[data-pressed] {
-  scale: var(--press-scale);
+  box-shadow: var(--neu-inset-pressed);
   transition-duration: var(--duration-snap), var(--duration-snap), var(--duration-snap), var(--duration-hover), var(--duration-micro), var(--duration-micro);
 }
+/* it shrinks only where its items do (the navigation, the media), as they shrink when held down */
+.hover-track-host:has(> :is(.nav-item, .media-item)) > .hover-hollow[data-pressed] { scale: var(--press-scale); }
 .hover-track-host :is(.nav-item, .conversation-row, .search-result, .media-item):hover:not(.selected, .active, :active) { box-shadow: var(--neu-flat); }
 .sidebar-collapsed .nav-item { width: var(--control-lg); }
 .sidebar-collapsed .nav-label { opacity: 0; }
@@ -523,9 +540,9 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .calendar-choice:hover:not(:disabled) { box-shadow: var(--neu-pressed); }
 .calendar-choice.chosen { box-shadow: var(--neu-inset); font-weight: var(--weight-semibold); }
 .calendar-choice:disabled { opacity: .45; }
-/* Held down, a day or a choice sinks all the way and shrinks; after the hover rules so it wins. */
+/* Held down, a day or a choice, chosen or not, sinks as deep as a chosen one held down and shrinks. */
 .calendar-day:active:not([aria-disabled]), .calendar-choice:active:not(:disabled), button.calendar-title:active {
-  box-shadow: var(--neu-inset); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro);
+  box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro);
 }
 .format-group { width: 216px; }
 /* Our own check box: raised-sm when clear, inset with a tick when checked. */
@@ -538,9 +555,9 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 }
 .checkbox-box svg { opacity: 0; transform: scale(var(--enter-scale)); transition: opacity var(--duration-snap) ease, transform var(--duration-snap) var(--ease-overshoot); }
 .checkbox input:checked + .checkbox-box { box-shadow: var(--neu-inset); }
-/* Held down, like a button: the box turns pressed, checked or not, and shrinks a little. */
+/* Held down, checked or not, the box sinks as deep as a checked one held down and shrinks a little. */
 .checkbox:active .checkbox-box, .checkbox:active input:checked + .checkbox-box {
-  box-shadow: var(--neu-pressed); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro);
+  box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro);
 }
 .checkbox input:checked + .checkbox-box svg { opacity: 1; transform: none; }
 .checkbox input:focus-visible + .checkbox-box { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
@@ -664,8 +681,8 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
   border-radius: var(--radius-xl); color: var(--fg-subtle); text-align: left;
 }
 .media-item:hover { box-shadow: var(--neu-pressed); color: var(--fg); }
-/* Rows and navigation: hover sinks them a little, holding them down sinks them fully, as a selection does. */
-.nav-item:active, .conversation-row:active, .search-result:active, .media-item:active { box-shadow: var(--neu-inset); transition-duration: var(--duration-micro); }
+/* Rows and navigation: hover sinks them a little; held down, chosen or not, as deep as a chosen one held down. */
+.nav-item:active, .conversation-row:active, .search-result:active, .media-item:active { box-shadow: var(--neu-inset-pressed); transition-duration: var(--duration-micro); }
 /* in a group whose hover hollow takes the press (HoverTrack.tsx), the item stays flat over it */
 .hover-track-host:has(> .hover-hollow[data-pressed]) :is(.nav-item, .conversation-row, .search-result, .media-item):active:not(.selected, .active) { box-shadow: var(--neu-flat); }
 /*
