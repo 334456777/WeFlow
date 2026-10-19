@@ -65,7 +65,7 @@ describe('App', () => {
   it('keeps official accounts in the chat list rather than a sidebar entry of their own', async () => {
     await renderWith(null);
     const nav = screen.getByRole('navigation', { name: '主导航' });
-    expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '通讯录', '灵感信箱', '导出', '数据库备份', '设置']);
+    expect(Array.from(nav.querySelectorAll('.nav-label'), label => label.textContent)).toEqual(['聊天', '朋友圈', '微信支付', '通讯录', '聊天分析', '灵感信箱', '导出', '数据库备份', '设置']);
     fireEvent.click(screen.getByRole('button', { name: '公众号' }));
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['设计观察', '城市手记']);
   });

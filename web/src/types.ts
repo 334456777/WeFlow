@@ -1,5 +1,5 @@
 export type Category = 'chat' | 'moments' | 'payments';
-export type Navigation = Category | 'contacts' | 'insights' | 'export' | 'backup' | 'settings';
+export type Navigation = Category | 'contacts' | 'analytics' | 'insights' | 'export' | 'backup' | 'settings';
 export type ExportFormat = 'HTML' | 'JSON' | 'Excel';
 export type MessageKind = 'text' | 'image' | 'file';
 
