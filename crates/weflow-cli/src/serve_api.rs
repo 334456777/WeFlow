@@ -83,6 +83,25 @@ enum Rule {
     },
 }
 
+/// The commands that would write WeChat's databases, with the methods that run them so: the command always refuses
+/// them (`unsupported`, HTTP 501), and `/openapi.json` marks them `x-weflow-refused` (#217) so a client need not
+/// offer them. `refused_commands_are_marked_and_refused` (tests/serve_api.rs) checks both against a running server.
+const REFUSED: &[(&str, &[Verb])] = &[
+    ("chat update-message", &[Patch]),
+    ("chat delete-message", &[Delete]),
+    ("chat anti-revoke install", &[Put]),
+    ("chat anti-revoke uninstall", &[Delete]),
+    ("sns block-delete", &[Put, Delete]),
+    ("sns delete", &[Delete]),
+];
+
+/// Whether `name` run with `verb` is one of the [`REFUSED`].
+fn refused(name: &str, verb: Verb) -> bool {
+    REFUSED
+        .iter()
+        .any(|(n, verbs)| *n == name && verbs.contains(&verb))
+}
+
 /// The HTTP method of every command: `GET` reads (it may fill caches that can be rebuilt), `POST` runs a task or
 /// writes files, `PUT` changes a setting, `DELETE` removes one. Commands that would write WeChat's databases keep
 /// the method their action implies and are refused by the command itself (`unsupported`, HTTP 501).

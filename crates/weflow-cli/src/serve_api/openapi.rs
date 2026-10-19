@@ -9,7 +9,7 @@ use clap::{Arg, Command, CommandFactory};
 use serde_json::{json, Map, Value};
 
 use super::{
-    api_args, files, in_process, param_of, Kind, Rule, Verb, API_VERSION, HIDDEN, METHODS,
+    api_args, files, in_process, param_of, refused, Kind, Rule, Verb, API_VERSION, HIDDEN, METHODS,
 };
 
 fn pick(zh: bool, en: &str, cn: &str) -> String {
@@ -340,6 +340,9 @@ fn operation(
         .collect();
     if !description.is_empty() {
         op["description"] = description.join("\n\n").into();
+    }
+    if refused(&name, verb) {
+        op["x-weflow-refused"] = true.into();
     }
     if in_body && !properties.is_empty() {
         let mut schema = json!({
