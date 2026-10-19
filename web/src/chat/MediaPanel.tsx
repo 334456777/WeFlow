@@ -100,7 +100,7 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
     {state.status === 'loading' && <MediaSkeleton label="正在读取媒体" />}
     {state.status === 'error' && <p className="empty-text" role="alert">{state.message} <button type="button" className="text-button" onClick={() => setRound(n => n + 1)}>重试</button></p>}
     {state.status === 'ready' && (state.items.length
-      ? <div className="media-list"><HoverTrack items=".media-item" />
+      ? <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />
         {state.items.map(item => <MediaItem key={keyOf(item)} sessionId={sessionId} item={item} onOpen={onOpen} />)}
         {state.hasMore && <button type="button" className="secondary-button media-more" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />正在读取</> : '加载更多'}</button>}
         {state.error && <p className="empty-text" role="alert">{state.error}</p>}

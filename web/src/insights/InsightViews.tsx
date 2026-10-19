@@ -34,7 +34,7 @@ export function InsightContacts({ state, selected, onSelect, keyword, onKeyword,
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!contacts.length) body = <p className="session-message">还没有 AI 见解。</p>;
   else {
-    body = <div className="conversation-list scroll-area" aria-label="有见解的联系人"><HoverTrack items=".conversation-row" />
+    body = <div data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label="有见解的联系人"><HoverTrack items=".conversation-row" />
       {[null, ...contacts].map(c => {
         const id = c?.sessionId ?? null;
         const active = id === selected;
