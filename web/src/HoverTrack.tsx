@@ -33,7 +33,8 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
       if (!slide) hollow.style.transition = 'none';
       hollow.style.width = at.width + 'px';
       hollow.style.height = at.height + 'px';
-      hollow.style.transform = `translate(${x}px, ${y}px)`;
+      // `translate`, not `transform`: it applies before `scale`, so a press shrinks the hollow about its own centre
+      hollow.style.translate = `${x}px ${y}px`;
       hollow.style.borderRadius = getComputedStyle(item).borderRadius;
       if (!slide) { void hollow.offsetWidth; hollow.style.transition = ''; }
     };
@@ -46,8 +47,17 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
     };
     const hide = () => {
       current = null;
+      release();
       if (hollow.dataset.state) hollow.dataset.state = 'off';
     };
+    // Held down, the hollow under the item sinks into the press itself (and shrinks with the item), rather than the
+    // item sinking on top of it: one hollow that deepens, not two shades at once.
+    const press = (event: PointerEvent) => {
+      if (event.pointerType === 'touch' || event.button !== 0) return;
+      const item = itemOf(event.target);
+      if (item && item === current && !item.matches(quiet)) hollow.dataset.pressed = '';
+    };
+    const release = () => { delete hollow.dataset.pressed; };
     const itemOf = (target: EventTarget | null) => {
       const item = target instanceof Element ? target.closest<HTMLElement>(items) : null;
       return item && group.contains(item) ? item : null;
@@ -58,7 +68,7 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
       hovered = true;
       // in the gaps between items it stays where it is, so the next item still slides it on
       const item = itemOf(event.target);
-      if (item && item !== current) show(item);
+      if (item && item !== current) { release(); show(item); }
     };
     const leave = () => {
       hovered = false;
@@ -80,6 +90,9 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
 
     group.addEventListener('pointerover', over);
     group.addEventListener('pointerleave', leave);
+    group.addEventListener('pointerdown', press);
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
     group.addEventListener('focusin', focusIn);
     group.addEventListener('focusout', focusOut);
     window.addEventListener('scroll', scrolled, { capture: true, passive: true });
@@ -87,6 +100,9 @@ export function HoverTrack({ items, quiet = '.selected, .active' }: {
       group.classList.remove('hover-track-host');
       group.removeEventListener('pointerover', over);
       group.removeEventListener('pointerleave', leave);
+      group.removeEventListener('pointerdown', press);
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
       group.removeEventListener('focusin', focusIn);
       group.removeEventListener('focusout', focusOut);
       window.removeEventListener('scroll', scrolled, { capture: true });

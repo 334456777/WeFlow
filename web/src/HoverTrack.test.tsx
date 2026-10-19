@@ -29,16 +29,16 @@ describe('HoverTrack', () => {
 
     fireEvent.pointerOver(items[0]);
     expect(hollow.dataset.state).toBe('on');
-    expect(hollow.style.transform).toBe('translate(0px, 0px)');
+    expect(hollow.style.translate).toBe('0px 0px');
     expect(hollow.style.height).toBe('40px');
 
     // the gap between two items keeps it where it is
     fireEvent.pointerOver(group);
     expect(hollow.dataset.state).toBe('on');
-    expect(hollow.style.transform).toBe('translate(0px, 0px)');
+    expect(hollow.style.translate).toBe('0px 0px');
 
     fireEvent.pointerOver(items[2]);
-    expect(hollow.style.transform).toBe('translate(0px, 88px)');
+    expect(hollow.style.translate).toBe('0px 88px');
     // sliding: the transition is the stylesheet's, not switched off
     expect(hollow.style.transition).toBe('');
 
@@ -46,11 +46,31 @@ describe('HoverTrack', () => {
     expect(hollow.dataset.state).toBe('off');
   });
 
+  it('sinks into the press of the item under it, and lets go anywhere', () => {
+    const { group, hollow, items } = setup();
+    fireEvent.pointerOver(items[0]);
+    fireEvent.pointerDown(items[0], { button: 0 });
+    expect(hollow.dataset.pressed).toBe('');
+    // released outside the group too
+    fireEvent.pointerUp(window);
+    expect(hollow.dataset.pressed).toBeUndefined();
+    // the selection takes its own press; another button, or moving on, does not press
+    fireEvent.pointerOver(items[1]);
+    fireEvent.pointerDown(items[1], { button: 0 });
+    expect(hollow.dataset.pressed).toBeUndefined();
+    fireEvent.pointerOver(items[2]);
+    fireEvent.pointerDown(items[2], { button: 2 });
+    expect(hollow.dataset.pressed).toBeUndefined();
+    fireEvent.pointerDown(items[2], { button: 0 });
+    fireEvent.pointerLeave(group);
+    expect(hollow.dataset.pressed).toBeUndefined();
+  });
+
   it('fades over a selected item, and ignores touch', () => {
     const { hollow, items } = setup();
     fireEvent.pointerOver(items[0]);
     fireEvent.pointerOver(items[1]);
-    expect(hollow.style.transform).toBe('translate(0px, 44px)');
+    expect(hollow.style.translate).toBe('0px 44px');
     expect(hollow.dataset.state).toBe('quiet');
     fireEvent.pointerOver(items[2]);
     expect(hollow.dataset.state).toBe('on');
@@ -58,6 +78,6 @@ describe('HoverTrack', () => {
     const touch = new Event('pointerover', { bubbles: true }) as Event & { pointerType: string };
     touch.pointerType = 'touch';
     items[0].dispatchEvent(touch);
-    expect(hollow.style.transform).toBe('translate(0px, 88px)');
+    expect(hollow.style.translate).toBe('0px 88px');
   });
 });
