@@ -355,6 +355,9 @@ enum KeySubcommand {
         /// How long to wait for the key, in seconds
         #[arg(long, default_value_t = 180)]
         timeout: u64,
+        /// Save the key to the active profile instead of printing it
+        #[arg(long)]
+        save: bool,
     },
     /// Derive the image keys from WeChat's kvcomm cache (verified against a .dat template)
     Image {
@@ -367,6 +370,9 @@ enum KeySubcommand {
         /// Maximum filesystem entries scanned for templates in the selected account (default: 10000)
         #[arg(long)]
         scan_budget: Option<usize>,
+        /// Save the keys to the active profile instead of printing them
+        #[arg(long)]
+        save: bool,
     },
     /// Scan WeChat's memory for the image AES key (macOS)
     ScanImage {
@@ -1598,12 +1604,13 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         _ => {}
     }
 
+    let config_path = ctx.config_path.clone();
     let hub = ServiceHub::new(ctx, config, None, None, None, None);
 
     match &cli.command {
         Commands::Db(command) => handle_db(command, &hub),
         Commands::Chat(command) => handle_chat(command, &hub).await,
-        Commands::Key(command) => handle_key(command, &hub),
+        Commands::Key(command) => handle_key(command, &hub, &config_path),
         Commands::Export(command) => handle_export(command, &hub).await,
         Commands::Analytics(command) => handle_analytics(command, &hub),
         Commands::Group(command) => handle_group(command, &hub),
@@ -2476,13 +2483,45 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
     }
 }
 
-fn handle_key(command: &KeyCommand, hub: &ServiceHub) -> AppResult<Value> {
+/// `--save` (#216): writes the keys a `key` command found to the active profile and leaves them out of its result, so
+/// they go from WeChat to the config file without being printed, nor reaching a WebUI through `serve`.
+fn save_keys(config_path: &Path, mut data: Value, names: &[&str]) -> AppResult<Value> {
+    let fields = data
+        .as_object_mut()
+        .ok_or_else(|| AppError::runtime("no keys to save"))?;
+    let keys = names
+        .iter()
+        .map(|name| {
+            fields
+                .remove(*name)
+                .filter(|v| !v.is_null())
+                .map(|v| (*name, v))
+                .ok_or_else(|| AppError::runtime(format!("no {name} to save")))
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    ConfigStore::update(config_path, |config| {
+        keys.into_iter()
+            .try_for_each(|(name, value)| config.set_key(None, name, value))
+    })?;
+    fields.insert("saved".into(), json!(names));
+    Ok(data)
+}
+
+fn handle_key(command: &KeyCommand, hub: &ServiceHub, config_path: &Path) -> AppResult<Value> {
     match &command.command {
-        KeySubcommand::Db { pid, timeout } => hub.key_db(*pid, *timeout),
+        KeySubcommand::Db { pid, timeout, save } => {
+            let data = hub.key_db(*pid, *timeout)?;
+            if *save {
+                save_keys(config_path, data, &["decrypt_key"])
+            } else {
+                Ok(data)
+            }
+        }
         KeySubcommand::Image {
             user_dir,
             kvcomm_dir,
             scan_budget,
+            save,
         } => {
             if !cfg!(windows) {
                 return Err(AppError::native(
@@ -2496,11 +2535,16 @@ fn handle_key(command: &KeyCommand, hub: &ServiceHub) -> AppResult<Value> {
             if directories.is_empty() {
                 directories = weflow_core::image_keys::default_kvcomm_dirs();
             }
-            hub.key_image(
+            let data = hub.key_image(
                 user_dir.as_deref(),
                 &directories,
                 scan_budget.unwrap_or(weflow_core::image_keys::DEFAULT_SCAN_BUDGET),
-            )
+            )?;
+            if *save {
+                save_keys(config_path, data, &["image_xor_key", "image_aes_key"])
+            } else {
+                Ok(data)
+            }
         }
         KeySubcommand::ScanImage { user_dir } => hub.key_scan_image(user_dir),
     }
@@ -3903,6 +3947,30 @@ fn key_summary(command: &Commands, data: &Value) -> Option<String> {
     let Commands::Key(KeyCommand { command }) = command else {
         return None;
     };
+    if data.get("saved").is_some() {
+        let what = match command {
+            KeySubcommand::Db { .. } => tr("Database key", "数据库密钥"),
+            _ => tr("Image keys", "图片密钥"),
+        };
+        let mut text = format!(
+            "{}
+",
+            tr(
+                "{what} obtained and saved to the active profile",
+                "已获取{what}，已保存到当前档案"
+            )
+            .replace("{what}", what)
+        );
+        if data["verified"] == false {
+            text.push_str(tr(
+                "(AES header verified; XOR and the complete pair are not verified)
+",
+                "（AES 首块已验证；XOR 与整组密钥尚未验证）
+",
+            ));
+        }
+        return Some(text);
+    }
     match command {
         KeySubcommand::Db { .. } => {
             let key = data["decrypt_key"].as_str()?;
@@ -4025,6 +4093,36 @@ mod tests {
             ])
         );
         assert!(!summary.to_string().contains("abab"));
+    }
+
+    #[test]
+    fn saved_keys_go_to_the_profile_and_not_to_the_result() {
+        let dir = std::env::temp_dir().join(format!("weflow-key-save-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let found =
+            json!({ "image_xor_key": 83, "image_aes_key": "0123456789abcdef", "verified": true });
+        let shown = save_keys(&path, found, &["image_xor_key", "image_aes_key"]).unwrap();
+        assert_eq!(
+            shown,
+            json!({ "verified": true, "saved": ["image_xor_key", "image_aes_key"] })
+        );
+        let config = ConfigStore::load(&path).unwrap();
+        let profile = config.profile(None).unwrap();
+        assert_eq!(profile.image_xor_key, Some(83));
+        assert_eq!(profile.image_aes_key.as_deref(), Some("0123456789abcdef"));
+
+        let err = save_keys(&path, json!({ "method": "wx_key" }), &["decrypt_key"]).unwrap_err();
+        assert!(err.message.contains("decrypt_key"), "{}", err.message);
+        assert_eq!(
+            ConfigStore::load(&path)
+                .unwrap()
+                .profile(None)
+                .unwrap()
+                .decrypt_key,
+            None
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -120,7 +120,9 @@ whole procedure gives up after `--timeout`, default 180 s, and shows the seconds
 click "Enter WeChat" in the login window. It prints `decrypt_key: <key>`, the name `config set` expects. It needs an
 administrator terminal, looks for `Weixin.exe` then `WeChat.exe`, and with `--pid` it hooks that process directly instead of
 waiting for a restart. `key image` derives the image keys from the `kvcomm` cache, verifies them against a `_t.dat` template
-under the account directory, and prints `image_xor_key` and `image_aes_key`.
+under the account directory, and prints `image_xor_key` and `image_aes_key`. With `--save`, both commands write the keys
+to the active profile instead of printing them: the result says `saved` (the names of the keys written) and leaves the
+keys out, which is how the WebUI's setup gets them through `serve` without the keys reaching the browser.
 
 `key image` (Windows only; Linux and macOS report that it is not supported yet) reads the `kvcomm` cache files directly, without
 any DLL or process access (the Windows entry point of #89):
