@@ -13,6 +13,7 @@ import { dayOf, formatClock, formatDayHeading, isMine, kindOf } from './messages
 import { MessageView, withGallery, type Preview } from './MessageView';
 import { kindOf as sessionKind } from './sessions';
 import { useMessages, type Focus, type Jump } from './useMessages';
+import { SCROLL_INTENT } from '../Scrollbar';
 import { MessagesSkeleton } from '../Skeleton';
 
 /** Older (newer) messages are asked for while the top (bottom) is closer than this. */
@@ -134,14 +135,16 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
 
   // Older messages arrived above: keep the message that was on top where it was. Browsers with scroll anchoring
   // (Chrome, Edge, Firefox) do it themselves, pictures loading above included; correcting it here as well would move
-  // it twice. Safari has none, so it is done here.
+  // it twice. Safari has none, and the others do not anchor a window scrolled to the very top, which a fast fling,
+  // the scrollbar or Home reaches before the page comes (#159): it is done here then, which also takes the window off
+  // the top, so that scrolling up asks for the next page.
   useLayoutEffect(() => {
     const el = scroller.current;
     const kept = anchor.current;
     if (!el || !kept) return;
     const node = list.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(kept.key)}"]`);
     if (node && node.dataset.key !== thread.messages[0]?._cursor) {
-      if (!NATIVE_ANCHORING && !pinned.current) moveTo(el, el.scrollTop + node.getBoundingClientRect().top - kept.top);
+      if ((!NATIVE_ANCHORING || el.scrollTop === 0) && !pinned.current) moveTo(el, el.scrollTop + node.getBoundingClientRect().top - kept.top);
       anchor.current = null;
     }
   }, [thread.messages, scroller]);
@@ -171,7 +174,7 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
       else if (below() < LOAD_AHEAD && idle && thread.hasNewer) loadNewer();
     };
     const letGo = () => { atBottom.current = false; pinned.current = null; };
-    const intents = ['wheel', 'touchmove', 'keydown', 'pointerdown'] as const;
+    const intents = ['wheel', 'touchmove', 'keydown', 'pointerdown', SCROLL_INTENT] as const;
     el.addEventListener('scroll', onScroll, { passive: true });
     for (const name of intents) el.addEventListener(name, letGo, { passive: true });
     // A first page shorter than the window cannot be scrolled: ask for more at once.
