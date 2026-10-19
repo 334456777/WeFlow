@@ -20,7 +20,8 @@ class FakeEventSource {
   constructor(readonly url: string) {
     opened.push(this);
     queueMicrotask(() => {
-      if (this.closed) return;
+      // a job's events come only when a test sends them
+      if (this.closed || url.startsWith('/jobs/')) return;
       if (serving) this.emit('hello', serving);
       else this.fail();
     });
@@ -100,7 +101,8 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '当前任务', '搜索', '会话资料', '媒体文件']);
     expect(calls.filter(url => /detail|resources|group\//.test(url))).toEqual([]);
-    expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', true);
+    // the open conversation can be exported on the server (#211)
+    expect(screen.getByRole('button', { name: '开始导出' })).toHaveProperty('disabled', false);
     expect(document.querySelector('[data-card="info"] .card-summary')?.textContent).toBe('约 42 条');
     // Its messages, oldest first: a text, a notice in the middle, a file sent by me.
     await act(async () => {});
@@ -149,40 +151,63 @@ describe('App', () => {
     expect(screen.getByText('weflow serve')).toBeTruthy();
   });
 
-  it('stretches the export button into progress and cancel, and a cancelled export downloads nothing', async () => {
-    // The HTML export waits for the photo; hold that fetch until the export has been cancelled.
-    let releasePhoto = () => {};
-    const photo = new Promise<void>(resolve => { releasePhoto = resolve; });
-    serve(null);
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      await photo;
-      return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { 'Content-Type': 'image/svg+xml' } });
+  it('exports the open conversation as a job of the server: progress, cancel, then the file to save (#211)', async () => {
+    const job = (id: string, status: string, more: object = {}) =>
+      ({ id, status, command: ['weflow', '--json', '--progress', 'export', 'messages'], createdAt: 1760000000000, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null, file: null, ...more });
+    let jobs: ReturnType<typeof job>[] = [];
+    const started: { url: string; init?: RequestInit }[] = [];
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/chat/sessions')) {
+        return json({ success: true, data: [{ username: 'wxid_a', displayName: '林沐', summary: '你好', unreadCount: 0, sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1 }] });
+      }
+      if (url.startsWith('/export/messages')) {
+        started.push({ url, init });
+        const next = job('j' + started.length, 'running');
+        jobs = [...jobs, next];
+        return json({ success: true, data: next });
+      }
+      if (url === '/jobs') return json({ success: true, data: jobs });
+      if (url.startsWith('/jobs/') && init?.method === 'DELETE') {
+        const id = url.split('/')[2];
+        jobs = jobs.map(j => (j.id === id ? { ...j, status: 'cancelled' } : j));
+        return json({ success: true, data: jobs.find(j => j.id === id) });
+      }
+      return json({ success: true, data: [] });
     }));
     render(<App />);
     await act(async () => {});
-    // jsdom has no object URLs; a download needs one.
-    const createObjectURL = vi.fn(() => 'blob:export');
-    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true });
-    onTestFinished(() => { Reflect.deleteProperty(URL, 'createObjectURL'); });
     const side = () => screen.getByRole('button', { name: /取消导出|再次导出/, hidden: true });
     expect(side().hasAttribute('inert')).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
+    await act(async () => {});
+    // a job of the server that keeps its file
+    expect(started[0].url).toBe('/export/messages?return=file');
+    expect((started[0].init?.headers as Record<string, string>).Prefer).toBe('respond-async');
+    expect(JSON.parse(String(started[0].init?.body))).toMatchObject({ 'session-id': 'wxid_a', format: 'html', media: 'all' });
     expect(screen.getByRole('button', { name: '正在导出' }).getAttribute('aria-disabled')).toBe('true');
     expect(side().hasAttribute('inert')).toBe(false);
+    // its progress from the job's events, in the task centre too
+    const events = opened.find(source => source.url.startsWith('/jobs/j1/events'))!;
+    act(() => { events.emit('progress', { type: 'progress', message: '正在导出消息', current: 5, total: 10, percent: 50 }); });
+    expect(screen.getByRole('progressbar', { name: '导出 林沐 · HTML的进度' }).getAttribute('aria-valuenow')).toBe('50');
 
     fireEvent.click(screen.getByRole('button', { name: '取消导出' }));
-    await act(async () => { releasePhoto(); await new Promise(resolve => setTimeout(resolve, 20)); });
+    await act(async () => {});
     expect(screen.getByRole('button', { name: '开始导出' })).toBeTruthy();
     expect(side().hasAttribute('inert')).toBe(true);
-    expect(createObjectURL).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
-    expect(createObjectURL).toHaveBeenCalledOnce();
-    expect(screen.getAllByRole('link', { name: '下载文件' })).toHaveLength(2);
+    await act(async () => {});
+    const done = job('j2', 'succeeded', { file: { name: '林沐.html', size: 2048 }, result: { success: true, data: { out: '/srv/林沐.html' } } });
+    jobs = jobs.map(j => (j.id === 'j2' ? done : j));
+    await act(async () => { opened.find(source => source.url.startsWith('/jobs/j2/events'))!.emit('result', done); });
+    const links = screen.getAllByRole('link', { name: '下载文件' });
+    expect(links).toHaveLength(2);
+    expect(links[0].getAttribute('href')).toBe('/jobs/j2/file');
     expect(side().getAttribute('aria-label')).toBe('再次导出');
-    expect(side().hasAttribute('inert')).toBe(false);
+    expect(screen.getByText(/林沐\.html · 2\.0 KB/)).toBeTruthy();
   });
 
   it('follows the reduce-motion switch on the root element', async () => {

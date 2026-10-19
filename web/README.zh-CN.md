@@ -91,5 +91,5 @@ npm run dev                               # http://localhost:5173/ui/
 | `src/chat/` | 聊天页（#196）：会话列表，含搜索、筛选、折叠的群聊和方向键切换（#197）；按类型显示消息，往上滚动时加载更早的消息（#198）；搜索卡片，以及跳到某一天或某条搜索结果，之后往下滚动时加载更新的消息（#199） |
 | `src/App.tsx`、`src/app.css` | 工作台界面：左侧导航，中间是记录，右侧是操作控制台 |
 | `src/mock/` | 示例记录，界面接入 API 后删除 |
-| `src/export.ts` | 在浏览器里导出示例记录。真正的导出将调用 `export messages` 并用 `?return=file` 取回文件 |
+| `src/api/jobs.ts`、`src/jobs/` | 作业（#211）：用 `Prefer: respond-async` 启动命令（导出时带 `?return=file`），读取 `/jobs` 列表，通过 `/jobs/<id>/events` 跟踪正在运行的作业，用 `DELETE` 取消或删除，从 `/jobs/<id>/file` 保存文件；任务中心列出全部作业，控制台用 `export messages` 导出打开的会话 |
 | `src/files.ts` | 网页保存的文件：把多行数据生成 .xlsx，或把任意内容交给浏览器下载 |

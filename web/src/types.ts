@@ -32,13 +32,6 @@ export interface Conversation {
   lastTime?: number;
 }
 
-export interface ExportOptions {
-  format: ExportFormat;
-  from: string;
-  to: string;
-  includeMedia: boolean;
-}
-
 export interface ExportResult {
   fileName: string;
   count: number;

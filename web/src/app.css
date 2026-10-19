@@ -576,6 +576,14 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .task time { flex-shrink: 0; color: var(--fg-subtle); font-size: var(--text-2xs); line-height: 20px; }
 .task.error strong, .task.error .task-icon { color: var(--state-danger); }
 .download-link { display: inline-block; margin-top: 2px; color: var(--fg); font-size: var(--text-xs); text-underline-offset: 3px; }
+/* The task centre (#211): one row per job of the server, a bar while it runs, its file and a way off the list. */
+.jobs .task { padding-bottom: var(--space-3); }
+.jobs .task:last-child { padding-bottom: 0; }
+.job-bar { display: block; height: 6px; margin-top: var(--space-1); overflow: hidden; border-radius: var(--radius-full); box-shadow: var(--neu-inset); }
+.job-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--fg-muted); transition: width var(--duration-base) var(--ease-out); }
+.job-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: 2px; }
+.job-actions .download-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 0; }
+.job-actions .text-button { font-size: var(--text-xs); }
 .spin { animation: spin var(--loop-spin) linear infinite; }
 
 /*

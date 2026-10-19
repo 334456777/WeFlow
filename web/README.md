@@ -80,5 +80,5 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/chat/` | The chat page (#196): the conversation list with search, filters, folded groups and arrow keys (#197); the messages of each kind, paged back as the window scrolls up (#198); the search card and the jump to a day or a search hit, with newer pages loaded below (#199) |
 | `src/App.tsx`, `src/app.css` | The workspace: navigation on the left, records in the middle, the operations console on the right |
 | `src/mock/` | Sample records, until the screens read the API |
-| `src/export.ts` | Sample export in the browser; real exports will use `export messages` with `?return=file` |
+| `src/api/jobs.ts`, `src/jobs/` | Jobs (#211): commands started with `Prefer: respond-async` (`?return=file` for an export), the list of `/jobs`, the running one followed through `/jobs/<id>/events`, cancelled or forgotten with `DELETE`, its file saved from `/jobs/<id>/file`; the task centre shows them all, and the console exports the open conversation with `export messages` |
 | `src/files.ts` | Files the page saves: an .xlsx of rows, any bytes as a download |

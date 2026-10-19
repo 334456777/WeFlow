@@ -109,10 +109,10 @@ export function apiUrl(path: string, params: Params = {}): string {
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Runs a route: GET and DELETE take the parameters as a query, the other methods as a JSON body. */
-export async function call<T>(method: Method, path: string, params: Params = {}, signal?: AbortSignal): Promise<T> {
+export async function call<T>(method: Method, path: string, params: Params = {}, signal?: AbortSignal, extra: Record<string, string> = {}): Promise<T> {
   const revision = tokenRevision;
   const inQuery = method === 'GET' || method === 'DELETE';
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  const headers: Record<string, string> = { Accept: 'application/json', ...extra };
   const bearer = token();
   if (bearer) headers.Authorization = 'Bearer ' + bearer;
   if (!inQuery) headers['Content-Type'] = 'application/json';
