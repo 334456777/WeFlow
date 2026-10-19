@@ -1308,6 +1308,45 @@ fn media_come_back_as_files_from_the_process() {
         jpeg
     );
 
+    // the files WeChat keeps of it (#194): the thumbnail and the image are here, the HD original is not yet
+    let info = format!("/api/chat/image-info?{query}");
+    let r = server.call("GET", &info, "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let v = r.json()["data"].clone();
+    assert_eq!(
+        (v["thumb"].clone(), v["normal"].clone(), v["hd"].clone()),
+        (json!(true), json!(true), json!(false))
+    );
+    assert_eq!(
+        server.call("GET", &info, "").body,
+        server
+            .call("GET", &format!("/chat/image-info?{query}"), "")
+            .body
+    );
+    let hd_url = format!("/api/chat/image-data?{query}&variant=hd");
+    assert_eq!(server.call("GET", &hd_url, "").status, 404);
+    let normal_url = format!("/api/chat/image-data?{query}&variant=normal");
+    assert_eq!(server.call("GET", &normal_url, "").bytes, jpeg);
+    // once WeChat has downloaded it: `hd` is the original, and `normal` still the image opened
+    let mut original = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    original.extend((0..6000u32).map(|i| (i as u8).wrapping_mul(13) | 1));
+    std::fs::write(
+        img_dir.join("aabbccddeeff00112233445566778899_h.dat"),
+        original.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    assert_eq!(server.call("GET", &info, "").json()["data"]["hd"], true);
+    let r = server.call("GET", &hd_url, "");
+    assert_eq!((r.status, r.bytes == original), (200, true));
+    assert_eq!(server.call("GET", &normal_url, "").bytes, jpeg);
+    assert_eq!(
+        server
+            .call("GET", &format!("{normal_url}&thumb=true"), "")
+            .status,
+        400
+    );
+    std::fs::remove_file(img_dir.join("aabbccddeeff00112233445566778899_h.dat")).unwrap();
+
     // a screen of images asked for at once, one decoded at a time: they wait in line instead of answering 429, and
     // take no place of the other reads
     let statuses: Vec<u16> = std::thread::scope(|s| {

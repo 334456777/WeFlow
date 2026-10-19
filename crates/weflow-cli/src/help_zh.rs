@@ -216,6 +216,8 @@ const HELP: &[(&str, &str)] = &[
     ("Message create time (seconds)", "消息创建时间（秒）"),
     ("Message create time (seconds): tells apart messages of different message databases that share the local id", "消息创建时间（秒）：用于区分不同消息库中本地 ID 相同的消息"),
     ("WeChat's own thumbnail of the image (a few KB, for lists), or the image when there is none", "微信自己保存的图片缩略图（几 KB，适合列表），没有缩略图时返回原图"),
+    ("Which file of the image: best (the best on this computer), thumb (the thumbnail of a chat), normal (the image as opened), hd (the original WeChat downloads on View original; only when it has)", "取图片的哪个文件：best（本机最好的一个）、thumb（聊天里显示的缩略图）、normal（点开时的图片）、hd（在微信里点「查看原图」后下载的原图，只在已下载时有）"),
+    ("Which files of a message's image are on this computer (thumbnail, image, HD original) and their sizes", "一条图片消息在本机有哪些文件（缩略图、图片、高清原图），以及它们的大小"),
     ("WeChat's own thumbnail of the video, or its cover when there is none, instead of the video", "返回微信自己保存的视频缩略图（没有时返回封面），而不是视频本身"),
     ("Create time (seconds) of the message, with --local-id: tells apart messages of different message databases that share the local id", "消息的创建时间（秒），与 --local-id 一起使用：用于区分不同消息库中本地 ID 相同的消息"),
     ("New message content", "新的消息内容"),

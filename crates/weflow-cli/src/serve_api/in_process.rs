@@ -27,6 +27,7 @@ pub(super) const COMMANDS: &[&str] = &[
     "chat date-counts",
     "chat detail",
     "chat resources",
+    "chat image-info",
     "group members",
     "sns timeline",
     "sns users",
@@ -206,16 +207,19 @@ pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile
             msg_id,
             create_time,
             thumb,
+            variant,
             ..
-        } => if *thumb {
-            hub.image_thumbnail_for_message(session_id, msg_id, *create_time)
-        } else {
-            hub.image_data_for_message(session_id, msg_id, *create_time)
-        }
-        .map(|bytes| MediaFile {
-            mime: image_mime(&bytes),
-            body: MediaBody::Bytes(bytes),
-        }),
+        } => hub
+            .image_variant_for_message(
+                session_id,
+                msg_id,
+                *create_time,
+                crate::image_variant(*thumb, variant),
+            )
+            .map(|bytes| MediaFile {
+                mime: image_mime(&bytes),
+                body: MediaBody::Bytes(bytes),
+            }),
         ChatSubcommand::VoiceData {
             session_id,
             msg_id,

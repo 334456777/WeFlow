@@ -14,7 +14,7 @@ pub use cleanup::{disk_usage, normalize_account_id, CachePart};
 mod group;
 mod image;
 mod insight;
-pub use image::{ImagePayload, ImageResult};
+pub use image::{ImagePayload, ImageResult, ImageVariant};
 pub use insight::Trigger as InsightTrigger;
 mod reports;
 mod sns;
