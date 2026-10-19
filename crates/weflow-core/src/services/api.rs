@@ -680,6 +680,16 @@ impl ServiceHub {
 
     /// `getContacts`: friends / groups / official accounts / former friends, newest contact first.
     pub fn chat_contacts_list(&self) -> AppResult<Vec<Value>> {
+        self.contacts_list(false)
+    }
+
+    /// `chat contacts --parsed` (#205): [`Self::chat_contacts_list`] with each contact's `avatarUrl`, for a contact
+    /// list that shows the faces without asking for them one by one.
+    pub fn chat_contacts_parsed(&self) -> AppResult<Vec<Value>> {
+        self.contacts_list(true)
+    }
+
+    fn contacts_list(&self, with_avatar: bool) -> AppResult<Vec<Value>> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
             .contacts()
@@ -764,6 +774,12 @@ impl ServiceHub {
                 }
             }
             o.insert("type".into(), json!(kind));
+            if with_avatar {
+                let avatar = first_str(row, &["big_head_url", "small_head_url"]);
+                if !avatar.is_empty() {
+                    o.insert("avatarUrl".into(), json!(avatar));
+                }
+            }
             let t = last_contact.get(&username).copied().unwrap_or(0);
             contacts.push((Value::Object(o), t));
         }

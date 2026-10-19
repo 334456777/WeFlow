@@ -5,6 +5,7 @@ import { MagnifyingGlass, X } from '@phosphor-icons/react';
 import { getSnsStats, type SnsFilter, type SnsStats } from '../api/sns';
 import { DateRange } from '../calendar/DateRange';
 import { addDays, parseDay } from '../calendar/dates';
+import { GridSkeleton } from '../Skeleton';
 
 /** Unix seconds of the start of a local day, and of the last second of one. */
 const startOf = (day: string) => (day ? parseDay(day).getTime() / 1000 : 0);
@@ -51,7 +52,7 @@ export function MomentsStats({ scope, active }: { scope: number; active: boolean
   }, [scope, active]);
   const value = stats?.scope === scope ? stats.value : null;
   if (failed && !value) return <p className="empty-text" role="alert">读取朋友圈统计失败。</p>;
-  if (!value) return <p className="empty-text" aria-busy="true">正在统计…</p>;
+  if (!value) return <GridSkeleton label="正在统计朋友圈" cells={3} />;
   return <dl className="info-grid">
     <div><dt>朋友圈</dt><dd className="num">{value.totalPosts.toLocaleString('zh-CN')} 条</dd></div>
     <div><dt>发布者</dt><dd className="num">{value.totalFriends.toLocaleString('zh-CN')} 人</dd></div>

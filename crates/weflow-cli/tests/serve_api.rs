@@ -646,6 +646,66 @@ fn account_commands_and_read_only_refusals() {
 }
 
 #[test]
+fn contacts_come_parsed_and_export_by_kind() {
+    let root = temp_root("contacts");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    // the list the contacts page reads, in process, as the CLI gives it
+    let r = server.call("GET", "/api/chat/contacts?parsed=true", "");
+    let (_, stdout, _) = run_cli(&home, &["--json", "chat", "contacts", "--parsed"]);
+    assert_eq!((r.status, &r.body), (200, &stdout));
+    let kinds: Vec<String> = r.json()["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["type"].as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        kinds.iter().any(|k| k == "group") && kinds.iter().any(|k| k == "friend"),
+        "{kinds:?}"
+    );
+
+    let out = root.join("groups.json");
+    let (exit, _, stderr) = run_cli(
+        &home,
+        &[
+            "--json",
+            "export",
+            "contacts",
+            "--parsed",
+            "--kind",
+            "group",
+            "--out",
+            &out.to_string_lossy(),
+        ],
+    );
+    assert_eq!(exit, 0, "{stderr}");
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let written = written.as_array().unwrap();
+    assert_eq!(
+        written.len(),
+        kinds.iter().filter(|k| *k == "group").count()
+    );
+    assert!(written
+        .iter()
+        .all(|c| c["type"] == "group" && c.get("extra_buffer").is_none()));
+
+    // a kind asks for the parsed list
+    let (exit, _, _) = run_cli(
+        &home,
+        &[
+            "export",
+            "contacts",
+            "--kind",
+            "group",
+            "--out",
+            &out.to_string_lossy(),
+        ],
+    );
+    assert_eq!(exit, 2);
+}
+
+#[test]
 fn commands_answer_with_the_keys_the_server_hands_over() {
     let root = temp_root("keys");
     let home = account_home(&root);

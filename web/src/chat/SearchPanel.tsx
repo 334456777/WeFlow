@@ -9,6 +9,7 @@ import type { SearchHit } from '../api/messages';
 import { DateField } from '../calendar/DateField';
 import { DateRange, type Range } from '../calendar/DateRange';
 import { addDays, parseDay } from '../calendar/dates';
+import { ResultsSkeleton } from '../Skeleton';
 import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
 import { loadMembers, memberName, membersKnown } from './LiveMessages';
@@ -130,7 +131,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
     </div>
     <div className="search-results" aria-live="polite" aria-busy={state.status === 'loading'}><HoverTrack items=".search-result" />{
       state.status === 'idle' ? <p className="empty-text">输入关键词，搜索{scope === 'all' ? '全部会话' : '当前会话'}的消息。</p>
-        : state.status === 'loading' ? <p className="empty-text"><CircleNotch size={14} className="spin" /> 正在搜索</p>
+        : state.status === 'loading' ? <ResultsSkeleton label="正在搜索" />
           : state.status === 'error' ? <p className="empty-text">{state.error}</p>
             : state.hits.length
               ? <><p className="results-count">{state.hasMore ? '已显示 ' : '找到 '}{state.hits.length} 条记录<span>点击可定位到消息</span></p>

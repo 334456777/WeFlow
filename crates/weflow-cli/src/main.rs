@@ -429,7 +429,11 @@ enum ChatSubcommand {
         parsed: bool,
     },
     /// List all contacts
-    Contacts,
+    Contacts {
+        /// The contact list as the desktop app shows it (friends, groups, official accounts, former friends, with names, labels, region, signature and avatar) instead of the database rows
+        #[arg(long)]
+        parsed: bool,
+    },
     /// Show one contact
     Contact {
         /// Contact username (wxid)
@@ -754,6 +758,12 @@ enum ExportSubcommand {
         /// Output file
         #[arg(long)]
         out: PathBuf,
+        /// The contacts as `chat contacts --parsed` lists them instead of the database rows
+        #[arg(long)]
+        parsed: bool,
+        /// Only these kinds of contact (repeat for several; with --parsed)
+        #[arg(long, requires = "parsed", value_parser = ["friend", "group", "official", "former_friend"], action = clap::ArgAction::Append)]
+        kind: Vec<String>,
     },
     /// Export the footprint statistics
     Footprint {
@@ -1541,7 +1551,7 @@ fn runs_in_process(command: &Commands) -> bool {
                 | ChatSubcommand::Latest { .. }
                 | ChatSubcommand::Message { .. }
                 | ChatSubcommand::Contact { .. }
-                | ChatSubcommand::Contacts
+                | ChatSubcommand::Contacts { .. }
                 | ChatSubcommand::Counts { .. }
                 | ChatSubcommand::Search { .. }
                 | ChatSubcommand::Dates { .. }
@@ -2265,7 +2275,8 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
                 hits
             })
         }
-        ChatSubcommand::Contacts => hub.contacts(),
+        ChatSubcommand::Contacts { parsed: false } => hub.contacts(),
+        ChatSubcommand::Contacts { parsed: true } => Ok(Value::Array(hub.chat_contacts_parsed()?)),
         ChatSubcommand::Contact { username } => hub.contact(username),
         ChatSubcommand::UpdateMessage {
             session_id,
@@ -2563,8 +2574,28 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             }
             write_export("sessions", format.as_deref(), out, &data)
         }
-        ExportSubcommand::Contacts { format, out } => {
-            let data = hub.contacts()?;
+        ExportSubcommand::Contacts {
+            format,
+            out,
+            parsed,
+            kind,
+        } => {
+            let data = if *parsed {
+                let mut contacts = hub.chat_contacts_parsed()?;
+                if !kind.is_empty() {
+                    contacts.retain(|c| {
+                        c["type"]
+                            .as_str()
+                            .is_some_and(|t| kind.iter().any(|k| k == t))
+                    });
+                }
+                if contacts.is_empty() {
+                    return Err(AppError::runtime("no contacts of the kinds asked for"));
+                }
+                Value::Array(contacts)
+            } else {
+                hub.contacts()?
+            };
             write_export("contacts", format.as_deref(), out, &data)
         }
         ExportSubcommand::Footprint { format, out } => {

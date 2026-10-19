@@ -1,7 +1,7 @@
 // The console's 「会话资料」 for real conversations (#200): who it is, how many messages, the first and the latest;
 // in a group its members, searchable, each with what they said in it.
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowClockwise, CircleNotch, Crown, MagnifyingGlass, UserCheck } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowClockwise, Crown, MagnifyingGlass, UserCheck } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
 import { ApiError } from '../api/client';
 import { getDetail, getDetailExtra, getMemberStats, getPanel, type MemberStats, type PanelMember, type SessionDetail, type SessionDetailExtra } from '../api/details';
@@ -9,6 +9,7 @@ import { useGathered, useLive } from '../api/live';
 import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import { kindLabels, kindOf } from './sessions';
+import { GridSkeleton, ListSkeleton } from '../Skeleton';
 
 type Loaded<T> = { status: 'loading' } | { status: 'ready'; value: T } | { status: 'error'; message: string };
 
@@ -50,7 +51,8 @@ export function SessionInfo({ session, active = true }: { session: ChatSession; 
 
   const fact = detail.status === 'ready' ? detail.value : null;
   const name = fact?.remark || fact?.displayName || session.displayName || id;
-  const pending = <CircleNotch size={12} className="spin" aria-label="正在读取" />;
+  // a fact still on its way keeps the place of its value (#282)
+  const pending = <span className="skeleton line value" role="img" aria-label="正在读取" />;
   return <>
     <div className="info-content"><Avatar name={name} url={fact?.avatarUrl || session.avatarUrl} /><div>
       <h4>{name}</h4>
@@ -89,7 +91,7 @@ function Members({ chatroomId, active }: { chatroomId: string; active: boolean }
   if (chosen) return <MemberDetail chatroomId={chatroomId} member={chosen} active={active} onBack={() => setChosen(null)} />;
   return <section className="members" aria-label="群成员">
     <div className="members-head"><h5>群成员{members.status === 'ready' && <span className="num"> {all.length}</span>}</h5></div>
-    {members.status === 'loading' && <p className="empty-text" aria-busy="true"><CircleNotch size={14} className="spin" /> 正在读取群成员</p>}
+    {members.status === 'loading' && <ListSkeleton label="正在读取群成员" rows={4} />}
     {members.status === 'error' && <p className="empty-text" role="alert">{members.message} <button type="button" className="text-button" onClick={reload}><ArrowClockwise size={12} />重试</button></p>}
     {members.status === 'ready' && <>
       <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索群成员" placeholder="搜索群昵称、备注或微信号" value={query} onChange={event => setQuery(event.target.value)} /></div>
@@ -117,7 +119,7 @@ function MemberDetail({ chatroomId, member, active, onBack }: { chatroomId: stri
   return <section className="members" aria-label={name + '的群内统计'}>
     <div className="members-head"><button type="button" className="icon-button small" aria-label="返回群成员" onClick={onBack}><ArrowLeft size={16} /></button><h5 className="clamp-1">{name}</h5></div>
     <div className="info-content"><Avatar name={name} url={member.avatarUrl} /><div><p className="clamp-2">{[member.isOwner && '群主', member.isFriend && '好友', member.displayName !== name && member.displayName, member.username].filter(Boolean).join(' · ')}</p></div></div>
-    {stats.status === 'loading' && <p className="empty-text" aria-busy="true"><CircleNotch size={14} className="spin" /> 正在统计</p>}
+    {stats.status === 'loading' && <GridSkeleton label="正在统计" cells={6} />}
     {stats.status === 'error' && <p className="empty-text" role="alert">{stats.message} <button type="button" className="text-button" onClick={reload}>重试</button></p>}
     {s && <>
       <dl className="info-grid">

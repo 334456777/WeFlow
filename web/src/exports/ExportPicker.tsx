@@ -7,6 +7,7 @@ import { filterLabels, kindLabels, kindOf, type SessionFilter } from '../chat/se
 import type { SessionsState } from '../chat/useSessions';
 import { Segmented } from '../Segmented';
 import { VirtualList } from '../VirtualList';
+import { ListSkeleton } from '../Skeleton';
 
 const ROW_HEIGHT = 58;
 const FILTERS: SessionFilter[] = ['all', 'private', 'group', 'official'];
@@ -57,7 +58,7 @@ export function ExportPicker({ state, picked, onChange, onRetry }: {
   };
 
   let body;
-  if (state.status === 'loading') body = <p className="session-message" aria-busy="true">正在读取会话…</p>;
+  if (state.status === 'loading') body = <ListSkeleton label="正在读取会话" />;
   else if (state.status === 'error') {
     body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
   } else if (!shown.length) body = <p className="session-message">{query.trim() ? '没有名称匹配的会话。' : '没有这类会话。'}</p>;
