@@ -397,7 +397,7 @@ export function App() {
           ? <><ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={cancelExport} />
             {stage === 'error' && <p className="card-note" role="alert">{exportJob ? jobDetail(exportJob) : exportError}</p>}
             {stage === 'exporting' && exportJob && <p className="card-note" aria-live="polite">{exportJob.status === 'queued' ? '排队中：前面的任务完成后开始。' : jobDetail(exportJob)}</p>}
-            {stage === 'done' && includeMedia && outputOf(exportJob!) && <p className="card-note">媒体文件留在服务端，位于 {outputOf(exportJob!)} 旁的 media 文件夹；在任务中心移除任务时一并删除。</p>}</>
+            {stage === 'done' && includeMedia && outputOf(exportJob!) && <p className="card-note">媒体文件留在服务端，位于 {outputOf(exportJob!)} 旁的 media 文件夹；在任务中心删除任务时，导出文件和媒体文件一并删除。</p>}</>
           : <><button type="button" className="primary-button large export-pending" disabled><DownloadSimple size={18} />开始导出</button><p className="card-note">{selected.live ? '选择一个会话后导出。' : '连接 weflow serve 后，可以导出本机的真实记录。'}</p></>}
       </>,
     },

@@ -35,7 +35,7 @@ function JobRow({ job, label }: { job: Job; label: string }) {
   const done = isFinished(job.status);
   const remove = () => {
     setBusy(true); setProblem('');
-    removeJob(job.id).catch(() => setProblem(done ? '移除失败，请重试。' : '取消失败，请重试。')).finally(() => setBusy(false));
+    removeJob(job.id).catch(() => setProblem(done ? '删除失败，请重试。' : '取消失败，请重试。')).finally(() => setBusy(false));
   };
   const percent = job.status === 'running' && job.progress?.percent !== undefined ? Math.max(0, Math.min(100, job.progress.percent)) : null;
   return <li className={'task job ' + (job.status === 'succeeded' ? 'complete' : job.status === 'failed' ? 'error' : '')}>
@@ -47,7 +47,7 @@ function JobRow({ job, label }: { job: Job; label: string }) {
       {problem && <small role="alert">{problem}</small>}
       <span className="job-actions">
         {job.status === 'succeeded' && job.file && <a className="download-link" href={jobFileUrl(job.id)} download={job.file.name}><DownloadSimple size={12} />下载文件</a>}
-        <button type="button" className="text-button" disabled={busy} onClick={remove}>{done ? '移除' : '取消'}</button>
+        <button type="button" className="text-button" disabled={busy} onClick={remove} title={done ? (job.file ? '删除这个任务和它在服务端的文件' : '删除这个任务') : '取消这个任务'}>{done ? '删除' : '取消'}</button>
       </span>
     </div>
     <time className="num">{formatClock(Math.floor(job.createdAt / 1000))}</time>

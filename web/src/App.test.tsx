@@ -208,6 +208,9 @@ describe('App', () => {
     expect(links[0].getAttribute('href')).toBe('/jobs/j2/file');
     expect(side().getAttribute('aria-label')).toBe('再次导出');
     expect(screen.getByText(/林沐\.html · 2\.0 KB/)).toBeTruthy();
+    // a finished job is deleted, with its file on the server: the cancelled one and the one done
+    const deletes = screen.getAllByRole('button', { name: '删除' });
+    expect(deletes.map(button => button.getAttribute('title'))).toEqual(['删除这个任务和它在服务端的文件', '删除这个任务']);
   });
 
   it('exports the conversations picked on the export page, one job each, with the options chosen (#211)', async () => {
