@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  AddressBook, Aperture, ArrowClockwise, ArrowLeft, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, ArrowClockwise, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
   ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -58,6 +58,9 @@ import { ContactList } from './contacts/ContactList';
 import { ContactDetail } from './contacts/ContactDetail';
 import { ContactsExport, contactsExportSummary, ContactsSummary, DEFAULT_CONTACTS_EXPORT } from './contacts/ContactCards';
 import { useContacts } from './contacts/useContacts';
+import { markInsightRead } from './api/insights';
+import { InsightClear, InsightContacts, InsightList, InsightsSummary, InsightTrigger } from './insights/InsightViews';
+import { useInsights, type InsightFilter } from './insights/useInsights';
 import { currentProfile } from './api/setup';
 import { SetupWizard } from './settings/SetupWizard';
 import { Accounts, AccountsSkeleton } from './settings/Accounts';
@@ -74,6 +77,7 @@ const navigation = [
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
   { id: 'contacts', label: '通讯录', icon: AddressBook },
+  { id: 'insights', label: '灵感信箱', icon: Lightbulb },
   { id: 'export', label: '导出', icon: Export },
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
@@ -292,6 +296,15 @@ export function App() {
   const [contactsExport, setContactsExport] = useState(DEFAULT_CONTACTS_EXPORT);
   const contacts = contactsState.status === 'ready' ? contactsState.contacts : null;
   const contact = contacts?.find(c => c.username === contactId);
+  // The insights page (#210): the records of the AI insights, of everyone or one conversation, found by words.
+  const insightsPage = section === 'insights';
+  const [insightFilter, setInsightFilter] = useState<InsightFilter>({ keyword: '', session: null });
+  useEffect(() => { setInsightFilter({ keyword: '', session: null }); }, [scope]);
+  const insights = useInsights(insightsPage && connected, scope, insightFilter);
+  const insightPage = insights.state.status === 'ready' ? insights.state.page : null;
+  const insightName = insightFilter.session ? insightPage?.contacts.find(c => c.sessionId === insightFilter.session)?.displayName ?? null : null;
+  const insightCount = insightPage ? (insightFilter.session ? insightPage.contacts.find(c => c.sessionId === insightFilter.session)?.count ?? 0 : insightPage.contacts.reduce((n, c) => n + c.count, 0)) : 0;
+  const readInsight = (id: string) => { insights.markRead(id); markInsightRead(id).catch(() => {}); };
   // The export page (#211): the conversations picked, and how they are exported, one job each.
   const exportPage = section === 'export';
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
@@ -349,7 +362,7 @@ export function App() {
 
   const selectSection = (value: Navigation) => {
     setSection(value); setMobileDetail(false);
-    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
+    if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'insights' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
@@ -512,6 +525,12 @@ export function App() {
       id: 'contacts-export', title: '导出通讯录', summary: contactsExportSummary(contactsExport),
       content: <ContactsExport options={contactsExport} onChange={setContactsExport} ready={Boolean(contacts)} />,
     },
+    {
+      id: 'insights-summary', title: '见解概况', summary: insightPage ? insightPage.unreadCount + ' 条未读' : '',
+      content: <InsightsSummary state={insights.state} engine={'health' in backend ? backend.health.insight : undefined} aiReady={profile?.aiKey} />,
+    },
+    { id: 'insights-trigger', title: '生成见解', summary: insightName ?? '', content: <InsightTrigger session={insightFilter.session} name={insightName} onDone={insights.reload} /> },
+    { id: 'insights-clear', title: '删除见解', content: <InsightClear session={insightFilter.session} name={insightName} count={insightCount} onDone={insights.reload} /> },
   ];
   // nothing to show of a real conversation until one is open; the Moments and WeChat Pay pages have cards of their own
   const chatCards = ['export', 'tasks', 'search', 'info', 'media'];
@@ -519,15 +538,15 @@ export function App() {
   const payCards = ['pay-filter', 'pay-summary', 'pay-export'];
   const exportCards = ['batch-export', 'sessions-export'];
   const contactCards = ['contacts-summary', 'contacts-export'];
-  const hiddenCards = exportPage
-    ? [...chatCards.filter(id => id !== 'tasks'), ...momentCards, ...payCards, ...contactCards, ...(connected ? [] : exportCards)]
-    : contactsPage
-      ? [...chatCards.filter(id => id !== 'tasks'), ...momentCards, ...payCards, ...exportCards, ...(connected ? [] : contactCards)]
-      : momentsLive
-        ? [...chatCards, ...payCards, ...exportCards, ...contactCards]
-        : paymentsLive
-          ? [...chatCards, ...momentCards, ...exportCards, ...contactCards]
-          : [...momentCards, ...payCards, ...exportCards, ...contactCards, ...(selected.live && !liveSession ? ['info', 'media'] : [])];
+  const insightCards = ['insights-summary', 'insights-trigger', 'insights-clear'];
+  // each page names the cards it shows; the others are hidden
+  const shownCards = exportPage ? ['tasks', ...(connected ? exportCards : [])]
+    : contactsPage ? ['tasks', ...(connected ? contactCards : [])]
+      : insightsPage ? (connected ? insightCards : [])
+        : momentsLive ? momentCards
+          : paymentsLive ? payCards
+            : chatCards.filter(id => !(selected.live && !liveSession && (id === 'info' || id === 'media')));
+  const hiddenCards = cards.map(card => card.id).filter(id => !shownCards.includes(id));
 
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
@@ -597,6 +616,23 @@ export function App() {
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
             <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+          </div>
+          <Scrollbar target={paneRef} />
+        </section>
+        : insightsPage
+        ? <section className={'panel browser-panel' + (mobileDetail ? ' show-detail' : '')} aria-label="灵感信箱">
+          {backend.state === 'unauthorized'
+            ? <TokenPrompt />
+            : connected
+              ? <InsightContacts state={insights.state} selected={insightFilter.session} onRetry={insights.reload}
+                keyword={insightFilter.keyword} onKeyword={keyword => setInsightFilter(f => ({ ...f, keyword }))}
+                onSelect={session => { setInsightFilter(f => ({ ...f, session })); setMobileDetail(true); }} />
+              : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里查看 AI 见解。</p></div>}
+          <div ref={paneRef} className="message-pane scroll-area" aria-label="见解">
+            <button type="button" className="mobile-back icon-button" aria-label="返回联系人" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
+            {connected && <InsightList state={insights.state} narrowed={Boolean(insightFilter.keyword || insightFilter.session)} onRead={readInsight} onMore={insights.more}
+              canChat={session => sessionList.some(s => s.username === session)}
+              onChat={session => { selectSection('chat'); setLiveId(session); setMobileDetail(true); }} />}
           </div>
           <Scrollbar target={paneRef} />
         </section>
