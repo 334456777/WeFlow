@@ -90,7 +90,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 | `cache clear --all` | 以上全部 |
 | `cache clear-account [--exports-dir <目录>]` | 删除当前账号缓存的图片、语音、表情、朋友圈、统计和密钥指纹，并把该账号移出配置档案（删除 `db_path`、`wxid`、`decrypt_key` 和图片密钥）；`--exports-dir`（可重复）还会删除该目录下以账号命名的条目 |
 
-`cache clear` 的选项可以组合（`cache clear --images --voices`）。`cache clear` 和 `cache clear-account` 删除前会列出路径和大小，并询问 `[y/N]`：只有输入 `y` 或 `yes` 才会执行，直接回车或其他输入都会取消。`-y`/`--yes` 跳过询问；没有终端时（管道、脚本）必须加上它。不会动微信自己的文件。
+`cache clear` 的选项可以组合（`cache clear --images --voices`）。`cache clear` 和 `cache clear-account` 删除前会列出路径和大小，并询问 `[y/N]`：只有输入 `y` 或 `yes` 才会执行，直接回车或其他输入都会取消。`-y`/`--yes` 跳过询问；没有终端时（管道、脚本）必须加上它。`--dry-run` 只列出将会删除的内容和大小（`clear-account` 还会列出将要移除的档案键），不删除任何东西，网页可以先展示再询问。不会动微信自己的文件。
 
 `db detect` 以 `db_path: <路径>` 输出存在的微信数据目录，`db wxid` 以 `wxid: <wxid>` 输出检测到的账号的 wxid（文件夹名去掉 `_ab12` 后缀；也可附带数据目录作为可选参数来指定目录）；这两个名字都是 `config set` 要填的名字。
 

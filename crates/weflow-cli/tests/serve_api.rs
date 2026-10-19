@@ -706,6 +706,41 @@ fn contacts_come_parsed_and_export_by_kind() {
 }
 
 #[test]
+fn clearing_an_account_can_be_looked_at_first() {
+    let root = temp_root("clear-dry");
+    let home = account_home(&root);
+    let kept = home.join("cache").join("Images").join("wxid_me_ab12");
+    std::fs::create_dir_all(&kept).unwrap();
+    std::fs::write(kept.join("a.jpg"), b"jpeg").unwrap();
+    let server = start(&home, &["--api-token", TOKEN]);
+
+    // what would go, and nothing goes
+    let r = server.call("DELETE", "/cache/clear-account?dry-run=true", "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let plan = &r.json()["data"];
+    assert_eq!(plan["dryRun"], true);
+    let paths: Vec<PathBuf> = plan["paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| PathBuf::from(p["path"].as_str().unwrap()))
+        .collect();
+    assert!(
+        paths.iter().any(|p| p.ends_with("wxid_me_ab12")),
+        "{paths:?}"
+    );
+    assert!(plan["bytes"].as_u64().unwrap() >= 4);
+    assert_eq!(plan["profileKeys"][1], "wxid");
+    assert!(kept.join("a.jpg").exists());
+    let (_, wxid, _) = run_cli(&home, &["config", "get", "wxid"]);
+    assert_eq!(wxid.trim(), "wxid_me_ab12");
+
+    // and only with `yes`, without `dry-run`
+    let r = server.call("DELETE", "/cache/clear-account?dry-run=true&yes=true", "");
+    assert_eq!(r.status, 400, "{}", r.body);
+}
+
+#[test]
 fn commands_answer_with_the_keys_the_server_hands_over() {
     let root = temp_root("keys");
     let home = account_home(&root);

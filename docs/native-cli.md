@@ -108,8 +108,9 @@ All cache cleanup is under `weflow cache`:
 
 Options of `cache clear` combine (`cache clear --images --voices`). Before removing anything, `cache clear` and
 `cache clear-account` list the paths with their sizes and ask `[y/N]`: only `y` or `yes` goes ahead, and Enter or any other
-answer cancels. `-y`/`--yes` skips the question; without a terminal (a pipe or a script) it is required. Nothing in WeChat's
-own folders is touched.
+answer cancels. `-y`/`--yes` skips the question; without a terminal (a pipe or a script) it is required. `--dry-run` only lists
+what would go, with the sizes (and for `clear-account` the profile keys it would remove), and removes nothing: a page can show it
+before it asks. Nothing in WeChat's own folders is touched.
 
 `db detect` prints the WeChat data directories that exist as `db_path: <path>`, and `db wxid` prints the wxid of the
 account(s) it finds as `wxid: <wxid>` (the folder name without its `_ab12` suffix; add a data directory as an optional argument to read a specific one); both names are the ones `config set` takes.
