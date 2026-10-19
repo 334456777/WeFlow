@@ -2091,6 +2091,84 @@ fn files_come_back_with_the_result() {
     }
 }
 
+#[test]
+fn jobs_keep_the_file_they_wrote_for_the_browser() {
+    let root = temp_root("job-files");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+    let async_call = |target: &str| {
+        let r = server.request(
+            "POST",
+            target,
+            &[("Authorization", &auth), ("Prefer", "respond-async")],
+            "",
+        );
+        assert_eq!(r.status, 202, "{target}: {}", r.body);
+        r.json()["data"]["id"].as_str().unwrap().to_string()
+    };
+    let finished = |id: &str| {
+        let events = sse_events(&server.call("GET", &format!("/jobs/{id}/events"), "").body);
+        events.last().unwrap().1.clone()
+    };
+
+    // the server picks the folder, as for a direct request, and keeps the file once the job has succeeded
+    let id = async_call("/export/sessions?return=file");
+    let done = finished(&id);
+    assert_eq!(done["status"], "succeeded", "{done}");
+    assert_eq!(done["file"]["name"], "sessions.json");
+    let path = PathBuf::from(done["result"]["data"]["out"].as_str().unwrap());
+    assert!(
+        path.starts_with(home.join("cache").join("serve-files")),
+        "{path:?}"
+    );
+    let listed = server.call("GET", "/jobs", "").json();
+    assert_eq!(
+        listed["data"][0]["file"]["size"],
+        std::fs::metadata(&path).unwrap().len()
+    );
+
+    let r = server.call("GET", &format!("/jobs/{id}/file"), "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.headers["content-type"].starts_with("application/json"));
+    assert!(r.headers["content-disposition"].starts_with("attachment; filename=\"sessions.json\""));
+    assert_eq!(r.bytes, std::fs::read(&path).unwrap());
+    assert_eq!(
+        server.call("POST", &format!("/jobs/{id}/file"), "").status,
+        405
+    );
+
+    // forgetting the job removes the folder the server chose
+    assert_eq!(
+        server.call("DELETE", &format!("/jobs/{id}"), "").status,
+        200
+    );
+    assert!(!path.parent().unwrap().exists());
+
+    // a job without return=file, or one that failed, has no file
+    let plain = async_call("/export/sessions");
+    assert_eq!(finished(&plain)["file"], Value::Null);
+    assert_eq!(
+        server
+            .call("GET", &format!("/jobs/{plain}/file"), "")
+            .status,
+        404
+    );
+    let failed = async_call("/export/messages?return=file&session-id=x&format=nope");
+    assert_eq!(finished(&failed)["status"], "failed");
+    assert_eq!(
+        server
+            .call("GET", &format!("/jobs/{failed}/file"), "")
+            .status,
+        404
+    );
+    // its folder is gone
+    let left: Vec<_> = std::fs::read_dir(home.join("cache").join("serve-files"))
+        .map(|d| d.flatten().collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "{left:?}");
+}
+
 /// An AI endpoint that accepts connections and never answers; reports when each one opens and closes.
 fn silent_ai_server() -> (String, std::sync::mpsc::Receiver<&'static str>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

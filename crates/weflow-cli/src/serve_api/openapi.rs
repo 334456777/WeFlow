@@ -644,6 +644,30 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
         }}),
     );
     paths.insert(
+        "/jobs/{id}/file".into(),
+        json!({ "get": {
+            "operationId": "jobs_file",
+            "tags": ["server"],
+            "summary": pick(
+                zh,
+                "The file a job started with `return=file` wrote, to be saved",
+                "以 `return=file` 启动的作业写出的文件，以附件形式下载",
+            ),
+            "parameters": [job_id],
+            "responses": {
+                "200": {
+                    "description": pick(
+                        zh,
+                        "The file, with `Content-Disposition: attachment`",
+                        "文件本身，带 `Content-Disposition: attachment`",
+                    ),
+                    "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } },
+                },
+                "4XX": error,
+            },
+        }}),
+    );
+    paths.insert(
         "/api/push/messages".into(),
         json!({ "get": {
             "operationId": "api_push_messages",
@@ -837,6 +861,18 @@ fn components(zh: bool) -> Value {
                         ),
                     },
                     "progress": { "description": pick(zh, "The last `progress` event", "最近一次 `progress` 事件") },
+                    "file": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "name": { "type": "string" },
+                            "size": { "type": ["integer", "null"] },
+                        },
+                        "description": pick(
+                            zh,
+                            "The file of a job started with `return=file` once it has succeeded: `GET /jobs/{id}/file`",
+                            "以 `return=file` 启动的作业成功后写出的文件：用 `GET /jobs/{id}/file` 取回",
+                        ),
+                    },
                     "result": {
                         "$ref": "#/components/schemas/Result",
                         "description": pick(

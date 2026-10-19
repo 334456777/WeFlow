@@ -74,6 +74,8 @@ struct State {
     result: Option<Value>,
     events: VecDeque<Event>,
     next_seq: u64,
+    /// The file the command wrote, for a job started with `?return=file` that succeeded.
+    file: Option<PathBuf>,
 }
 
 pub(super) struct Job {
@@ -83,6 +85,8 @@ pub(super) struct Job {
     state: Mutex<State>,
     sender: broadcast::Sender<Event>,
     cancel: watch::Sender<bool>,
+    /// Where the command writes its file, for a job started with `?return=file`.
+    file_out: Option<super::FileOut>,
 }
 
 fn now_ms() -> u64 {
@@ -105,6 +109,10 @@ impl Job {
             "exitCode": st.exit_code,
             "httpStatus": st.http_status,
             "progress": st.progress,
+            "file": st.file.as_ref().map(|path| json!({
+                "name": path.file_name().map(|n| n.to_string_lossy()),
+                "size": std::fs::metadata(path).map(|m| m.len()).ok(),
+            })),
         });
         if full {
             out["result"] = st.result.clone().unwrap_or(Value::Null);
@@ -171,7 +179,21 @@ impl Job {
     }
 
     fn finish(&self, status: Status, exit_code: Option<i32>, http_status: u16, result: Value) {
+        let file = match &self.file_out {
+            Some(out) if status == Status::Succeeded => {
+                let mut path = super::files::written_file(&result, out.field, &out.out);
+                if out.dir.is_some() {
+                    path = super::files::add_extension(&path);
+                }
+                Some(path).filter(|p| p.is_file())
+            }
+            _ => None,
+        };
+        if file.is_none() {
+            self.remove_folder();
+        }
         let mut st = self.state.lock().unwrap();
+        st.file = file;
         st.status = status;
         st.finished = Some(now_ms());
         st.exit_code = exit_code;
@@ -181,6 +203,13 @@ impl Job {
         let doc = self.to_json(true).to_string();
         let mut st = self.state.lock().unwrap();
         self.emit(&mut st, "result", doc);
+    }
+
+    /// Removes the folder the server chose for the job's file (`serve-files/<id>/`); a given `out` stays.
+    fn remove_folder(&self) {
+        if let Some(dir) = self.file_out.as_ref().and_then(|f| f.dir.as_ref()) {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
@@ -211,6 +240,7 @@ impl Jobs {
         list.retain(|j| {
             if finished > KEEP_FINISHED && j.status().finished() {
                 finished -= 1;
+                j.remove_folder();
                 false
             } else {
                 true
@@ -218,13 +248,15 @@ impl Jobs {
         });
     }
 
-    /// Queues `args` (after `weflow`) and runs them once `limit` lets it; returns the new job.
+    /// Queues `args` (after `weflow`) and runs them once `limit` lets it; returns the new job. With `file_out`
+    /// (`?return=file`), the job keeps the file the command wrote for `GET /jobs/{id}/file`.
     pub(super) fn start(
         self: &Arc<Self>,
         exe: PathBuf,
         args: Vec<String>,
         lang: Option<&'static str>,
         limit: Arc<Semaphore>,
+        file_out: Option<super::FileOut>,
     ) -> Arc<Job> {
         let (sender, _) = broadcast::channel(256);
         let (cancel, cancelled) = watch::channel(false);
@@ -244,9 +276,11 @@ impl Jobs {
                 result: None,
                 events: VecDeque::new(),
                 next_seq: 1,
+                file: None,
             }),
             sender,
             cancel,
+            file_out,
         });
         self.list.lock().unwrap().push_back(job.clone());
         let jobs = self.clone();
@@ -423,6 +457,28 @@ pub(super) async fn route(
             }
             event_stream(job, last_event_id.unwrap_or(0))
         }
+        [_, id, file] if file == "file" => {
+            let Some(job) = jobs.get(id) else {
+                return not_found();
+            };
+            if method != Method::GET {
+                return super::method_not_allowed(&[super::Verb::Get]);
+            }
+            let path = job.state.lock().unwrap().file.clone();
+            match path {
+                Some(path) => match super::files::attachment(&path).await {
+                    Ok(resp) => resp,
+                    Err(message) => {
+                        error_response(StatusCode::NOT_FOUND, "not_found", &message)
+                    }
+                },
+                None => error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "the job has no file: it was not started with return=file, or has not succeeded",
+                ),
+            }
+        }
         _ => error_response(StatusCode::NOT_FOUND, "not_found", "no such job"),
     }
 }
@@ -431,6 +487,7 @@ pub(super) async fn route(
 async fn cancel_or_forget(jobs: &Jobs, job: &Arc<Job>) -> Response {
     if job.status().finished() {
         jobs.list.lock().unwrap().retain(|j| !Arc::ptr_eq(j, job));
+        job.remove_folder();
         return success(StatusCode::OK, job.to_json(true));
     }
     let mut rx = job.sender.subscribe();
@@ -541,9 +598,11 @@ mod tests {
                 result: None,
                 events: VecDeque::new(),
                 next_seq: 1,
+                file: None,
             }),
             sender,
             cancel,
+            file_out: None,
         }
     }
 

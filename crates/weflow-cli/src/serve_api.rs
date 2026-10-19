@@ -932,7 +932,7 @@ fn prefers_async(headers: &HeaderMap) -> bool {
 }
 
 /// Where `?return=file` finds the written file.
-struct FileOut {
+pub(super) struct FileOut {
     /// The `--out` passed to the command.
     out: String,
     /// The result field holding the written path.
@@ -1146,11 +1146,6 @@ async fn route(st: &AppState, req: Request) -> Response {
         if std != Std::Json {
             return bad_request("return=file cannot be combined with std");
         }
-        if background {
-            return bad_request(
-                "return=file is answered right away; send it without `Prefer: respond-async`",
-            );
-        }
         let Some((default_out, field)) = files::file_command(&command) else {
             return bad_request(&format!(
                 "`{command}` does not write a single file, so return=file is not available for it"
@@ -1215,13 +1210,30 @@ async fn route(st: &AppState, req: Request) -> Response {
     }
     let lang = request_lang(&parts.headers);
     let limit = st.limit(verb);
+    // the folder the server chose for the file, made once the command is sure to run
+    let make_folder =
+        |file_out: &Option<FileOut>| match file_out.as_ref().and_then(|f| f.dir.as_ref()) {
+            Some(dir) => std::fs::create_dir_all(dir).err().map(|err| {
+                error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "runtime_error",
+                    &format!("failed to create {}: {err}", dir.display()),
+                )
+            }),
+            None => None,
+        };
     if background {
         if std != Std::Json {
             return bad_request(
                 "std=out and std=err are answered right away; send them without `Prefer: respond-async`",
             );
         }
-        let job = st.jobs.start(st.cfg.exe.clone(), full, lang, limit.clone());
+        if let Some(failed) = make_folder(&file_out) {
+            return failed;
+        }
+        let job = st
+            .jobs
+            .start(st.cfg.exe.clone(), full, lang, limit.clone(), file_out);
         return jobs::accepted(&job);
     }
     let mut timing = Timing::default();
@@ -1256,14 +1268,8 @@ async fn route(st: &AppState, req: Request) -> Response {
             return timing.on(in_process_document(&doc, exit, fields.as_deref()));
         }
     }
-    if let Some(dir) = file_out.as_ref().and_then(|f| f.dir.as_ref()) {
-        if let Err(err) = std::fs::create_dir_all(dir) {
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "runtime_error",
-                &format!("failed to create {}: {err}", dir.display()),
-            );
-        }
+    if let Some(failed) = make_folder(&file_out) {
+        return failed;
     }
     let args = if std == Std::Json { &full } else { &argv };
     let ran = std::time::Instant::now();

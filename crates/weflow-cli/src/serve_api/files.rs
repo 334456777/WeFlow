@@ -108,8 +108,8 @@ fn content_type(path: &Path) -> String {
     }
 }
 
-/// `filename="…"` (UTF-8 as browsers read it, quotes and line breaks escaped) and RFC 5987 `filename*`.
-fn disposition(name: &str) -> String {
+/// `<kind>; filename="…"` (UTF-8 as browsers read it, quotes and line breaks escaped) and RFC 5987 `filename*`.
+fn disposition(kind: &str, name: &str) -> String {
     let plain: String = name
         .chars()
         .map(|c| match c {
@@ -125,12 +125,11 @@ fn disposition(name: &str) -> String {
             encoded.push_str(&format!("%{b:02X}"));
         }
     }
-    format!("form-data; name=\"file\"; filename=\"{plain}\"; filename*=UTF-8''{encoded}")
+    format!("{kind}; filename=\"{plain}\"; filename*=UTF-8''{encoded}")
 }
 
-/// The `multipart/form-data` answer: `{"success": true, "data": {"path": …}}`, then the file read from disk as it is
-/// sent.
-pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
+/// The file at `path`, opened, with its length and name.
+async fn open(path: &Path) -> Result<(tokio::fs::File, u64, String), String> {
     let file = tokio::fs::File::open(path)
         .await
         .map_err(|e| format!("cannot open {}: {e}", path.display()))?;
@@ -141,22 +140,19 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
     if !meta.is_file() {
         return Err(format!("{} is not a file", path.display()));
     }
-    let boundary = format!("weflow-{}", super::generate_token());
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "file".into());
-    let result = json!({ "success": true, "data": { "path": path } });
-    let head = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"result\"\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{result}\r\n--{boundary}\r\nContent-Disposition: {}\r\nContent-Type: {}\r\n\r\n",
-        disposition(&name),
-        content_type(path)
-    );
-    let tail = format!("\r\n--{boundary}--\r\n");
-    let length = head.len() as u64 + meta.len() + tail.len() as u64;
-    let stream = async_stream::stream! {
-        yield Ok::<_, std::io::Error>(Bytes::from(head));
-        let mut file = file;
+    Ok((file, meta.len(), name))
+}
+
+/// `head`, then the file read from disk as it is sent, then `tail`.
+fn between(head: String, mut file: tokio::fs::File, tail: String) -> Body {
+    Body::from_stream(async_stream::stream! {
+        if !head.is_empty() {
+            yield Ok::<_, std::io::Error>(Bytes::from(head));
+        }
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             match file.read(&mut buf).await {
@@ -168,8 +164,25 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
                 }
             }
         }
-        yield Ok(Bytes::from(tail));
-    };
+        if !tail.is_empty() {
+            yield Ok(Bytes::from(tail));
+        }
+    })
+}
+
+/// The `multipart/form-data` answer: `{"success": true, "data": {"path": …}}`, then the file read from disk as it is
+/// sent.
+pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
+    let (file, length, name) = open(path).await?;
+    let boundary = format!("weflow-{}", super::generate_token());
+    let result = json!({ "success": true, "data": { "path": path } });
+    let head = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"result\"\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{result}\r\n--{boundary}\r\nContent-Disposition: {}\r\nContent-Type: {}\r\n\r\n",
+        disposition("form-data; name=\"file\"", &name),
+        content_type(path)
+    );
+    let tail = format!("\r\n--{boundary}--\r\n");
+    let length = head.len() as u64 + length + tail.len() as u64;
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(
@@ -177,7 +190,22 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
             format!("multipart/form-data; boundary={boundary}"),
         )
         .header(header::CONTENT_LENGTH, length)
-        .body(Body::from_stream(stream))
+        .body(between(head, file, tail))
+        .unwrap())
+}
+
+/// The file alone, to be saved (`GET /jobs/{id}/file`): its type from its extension, its name as an attachment.
+pub(super) async fn attachment(path: &Path) -> Result<Response, String> {
+    let (file, length, name) = open(path).await?;
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type(path))
+        .header(
+            header::CONTENT_DISPOSITION,
+            disposition("attachment", &name),
+        )
+        .header(header::CONTENT_LENGTH, length)
+        .body(between(String::new(), file, String::new()))
         .unwrap())
 }
 
@@ -197,12 +225,12 @@ mod tests {
     #[test]
     fn names_survive_the_header() {
         assert_eq!(
-            disposition("a b.wav"),
+            disposition("form-data; name=\"file\"", "a b.wav"),
             "form-data; name=\"file\"; filename=\"a b.wav\"; filename*=UTF-8''a%20b.wav"
         );
         assert_eq!(
-            disposition("群\"1.xlsx"),
-            "form-data; name=\"file\"; filename=\"群_1.xlsx\"; filename*=UTF-8''%E7%BE%A4%221.xlsx"
+            disposition("attachment", "群\"1.xlsx"),
+            "attachment; filename=\"群_1.xlsx\"; filename*=UTF-8''%E7%BE%A4%221.xlsx"
         );
     }
 
