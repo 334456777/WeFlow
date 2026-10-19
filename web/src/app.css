@@ -802,6 +802,59 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
   animation: shimmer var(--loop-sweep) ease-in-out infinite;
 }
 
+/* Account setup (#216): a dialog of four steps; a choice is raised, and inset once chosen. */
+/* held at the same top, so the steps stay in place while the body under them changes height */
+.setup-dialog { width: min(600px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: max(24px, 12dvh) auto auto; padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
+.setup-dialog::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
+.setup-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
+.setup-content {
+  max-height: calc(100dvh - 48px); overflow: auto; padding: var(--space-4) var(--space-5) var(--space-5);
+  border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay);
+  animation: dialog-in var(--duration-base) var(--ease-out) both;
+}
+.setup-dialog[data-state='closing'] .setup-content { animation: dialog-out var(--duration-exit) var(--ease-out) both; }
+.setup-content header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.setup-content h2 { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.setup-content h2 small { color: var(--fg-subtle); font-size: var(--text-xs); font-weight: var(--weight-regular); }
+.setup-steps { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0; padding: 0; list-style: none; }
+.setup-step {
+  display: inline-flex; align-items: center; gap: var(--space-2); height: var(--control-sm); padding: 0 var(--space-3) 0 var(--space-1);
+  border-radius: var(--radius-full); color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap;
+  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-base) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+}
+.setup-step:hover { color: var(--fg); }
+.setup-step[aria-current='step'] { color: var(--fg); font-weight: var(--weight-semibold); box-shadow: var(--neu-inset); }
+.setup-step:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); transition-duration: var(--duration-micro); }
+.setup-step-number {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--surface); box-shadow: var(--neu-raised-sm); font-size: var(--text-2xs); font-variant-numeric: tabular-nums;
+}
+.setup-step.passed .setup-step-number { color: var(--state-ok); }
+.setup-body { display: flex; flex-direction: column; gap: var(--space-3); animation: label-in var(--duration-base) var(--ease-out); }
+.setup-lead { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.setup-choices { display: flex; flex-direction: column; gap: var(--space-2); }
+.setup-choice {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--control-lg); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); text-align: left;
+  transition: box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+}
+.setup-choice:hover { box-shadow: var(--neu-raised-sm-hover); }
+.setup-choice[aria-pressed='true'] { box-shadow: var(--neu-inset); }
+/* held down, chosen or not, as deep as a chosen one held down */
+.setup-choice:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale-sm)); transition-duration: var(--duration-micro); }
+.setup-choice-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--text-sm); }
+.setup-path { color: var(--fg-muted); font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.setup-note { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.setup-note.error { color: var(--state-danger); }
+.setup-state { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.setup-running { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-sm); }
+.setup-running p { display: flex; align-items: center; gap: var(--space-2); }
+.setup-manual summary { width: fit-content; cursor: pointer; color: var(--fg-muted); font-size: var(--text-xs); }
+.setup-manual summary:hover { color: var(--fg); }
+.setup-manual .token-form { margin-top: var(--space-2); }
+.setup-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.setup-actions.start { justify-content: flex-start; margin-top: 0; }
+
 @keyframes dialog-in { from { opacity: 0; transform: translateY(var(--enter-offset)) scale(var(--enter-scale)); } }
 @keyframes dialog-out { to { opacity: 0; transform: scale(var(--enter-scale)); } }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, var(--enter-offset)) scale(var(--enter-scale)); } }

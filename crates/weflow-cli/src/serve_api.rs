@@ -90,6 +90,7 @@ enum Rule {
 const METHODS: &[(&str, Rule)] = &[
     ("config path", Rule::Fixed(Get)),
     ("config list", Rule::Fixed(Get)),
+    ("config profiles", Rule::Fixed(Get)),
     ("config get", Rule::Fixed(Get)),
     ("config set", Rule::Fixed(Put)),
     ("config unset", Rule::Fixed(Delete)),

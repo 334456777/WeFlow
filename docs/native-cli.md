@@ -120,7 +120,9 @@ whole procedure gives up after `--timeout`, default 180 s, and shows the seconds
 click "Enter WeChat" in the login window. It prints `decrypt_key: <key>`, the name `config set` expects. It needs an
 administrator terminal, looks for `Weixin.exe` then `WeChat.exe`, and with `--pid` it hooks that process directly instead of
 waiting for a restart. `key image` derives the image keys from the `kvcomm` cache, verifies them against a `_t.dat` template
-under the account directory, and prints `image_xor_key` and `image_aes_key`.
+under the account directory, and prints `image_xor_key` and `image_aes_key`. With `--save`, both commands write the keys
+to the active profile instead of printing them: the result says `saved` (the names of the keys written) and leaves the
+keys out, which is how the WebUI's setup gets them through `serve` without the keys reaching the browser.
 
 `key image` (Windows only; Linux and macOS report that it is not supported yet) reads the `kvcomm` cache files directly, without
 any DLL or process access (the Windows entry point of #89):
@@ -204,7 +206,7 @@ readable settings and skips the encrypted `safe:` / `lock:` values with a hint t
 The connection settings (`db_path`, `wxid`, `decrypt_key`) are only read from the config file, set them with `./weflow config set`; there are no command-line
 overrides. `./weflow config set --help` explains every key. `./weflow config set config_path <file>` makes later runs use another config file (it is remembered in
 `config_path` next to the default location; `./weflow config unset config_path` or the default path switches back), `./weflow config path` shows the one in use.
-`./weflow config set current_profile <name>` switches the active profile (created when it does not exist). `-h` / `--help` and `-V` / `-v` / `--version` work everywhere but are left out of the option lists.
+`./weflow config set current_profile <name>` switches the active profile (created when it does not exist), and `./weflow config profiles` lists the profiles with their account and data directory, whether the database key and the image keys are set (`true` / `false`, never the keys themselves), and whether the profile is `complete` (enough to open the database). `-h` / `--help` and `-V` / `-v` / `--version` work everywhere but are left out of the option lists.
 
 **Why the database layer is pure Rust.** The CLI was first meant to call the closed-source `wcdb_api` library through FFI. That
 library has an expiry check (after 2026-09-30 23:59:59 `wcdb_init` returns `-1000`) and unverified network code, so the CLI now

@@ -94,7 +94,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 `db detect` 以 `db_path: <路径>` 输出存在的微信数据目录，`db wxid` 以 `wxid: <wxid>` 输出检测到的账号的 wxid（文件夹名去掉 `_ab12` 后缀；也可附带数据目录作为可选参数来指定目录）；这两个名字都是 `config set` 要填的名字。
 
-`key db`（Windows）通过 `wx_key.dll` 挂钩微信。微信只在打开数据库时才会产生密钥，所以命令会先请你完全退出微信（如果它正在运行）再重新打开，每秒检查一次微信进程（整个过程超过 `--timeout`，默认 180 秒，就会自动退出，并显示剩余秒数），然后挂钩新启动的微信，并请你在登录窗口点击「进入微信」。结果以 `decrypt_key: <密钥>` 输出，名字与 `config set` 一致。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`；用 `--pid` 指定时直接挂钩该进程，不再等待重启。`key image` 从 `kvcomm` 缓存推导图片密钥，用账号目录下的 `_t.dat` 模板校验，并输出 `image_xor_key` 和 `image_aes_key`。
+`key db`（Windows）通过 `wx_key.dll` 挂钩微信。微信只在打开数据库时才会产生密钥，所以命令会先请你完全退出微信（如果它正在运行）再重新打开，每秒检查一次微信进程（整个过程超过 `--timeout`，默认 180 秒，就会自动退出，并显示剩余秒数），然后挂钩新启动的微信，并请你在登录窗口点击「进入微信」。结果以 `decrypt_key: <密钥>` 输出，名字与 `config set` 一致。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`；用 `--pid` 指定时直接挂钩该进程，不再等待重启。`key image` 从 `kvcomm` 缓存推导图片密钥，用账号目录下的 `_t.dat` 模板校验，并输出 `image_xor_key` 和 `image_aes_key`。两条命令加上 `--save` 时，会把密钥写进当前档案而不输出：结果里用 `saved` 列出写入的键名，不含密钥本身。WebUI 的首次配置就是这样通过 `serve` 获取密钥，密钥不会经过浏览器。
 
 `key image`（仅 Windows；Linux 和 macOS 提示尚不支持）直接读取 `kvcomm` 缓存文件，不依赖任何 DLL，也不访问微信进程（#89 的 Windows 切口）：
 
@@ -155,7 +155,7 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 配置放在 `WEFLOW_HOME`，否则是平台配置目录下的 `./weflow`:配置文件 `config.json`(也接受 TOML)，缓存、日志、运行时分目录存放。写配置时会锁住 `config.json.lock` 并先写临时文件再替换，多个 `weflow` 进程同时修改配置也不会互相覆盖。
 `./weflow config import` 迁移桌面端可读的设置，加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。
 
-连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `./weflow config set` 设置，没有命令行覆盖选项。`./weflow config set --help` 会解释每个键。`./weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`./weflow config unset config_path` 或传入默认路径即恢复），`./weflow config path` 显示当前使用的路径。`./weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
+连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `./weflow config set` 设置，没有命令行覆盖选项。`./weflow config set --help` 会解释每个键。`./weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`./weflow config unset config_path` 或传入默认路径即恢复），`./weflow config path` 显示当前使用的路径。`./weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）；`./weflow config profiles` 列出各个档案的账号和数据目录，以及数据库密钥、图片密钥是否已设置（只给出 `true` / `false`，不显示密钥本身）、是否 `complete`（足以打开数据库）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
 
 **为什么数据库层是纯 Rust。** 命令行原计划通过 FFI 调用闭源的 `wcdb_api` 库。这个库带有效期检查(2026-09-30 23:59:59 之后
 `wcdb_init` 返回 `-1000`)和未经核实的网络代码，所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4)，用纯 Rust **只读**
