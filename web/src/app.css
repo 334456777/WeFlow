@@ -963,7 +963,7 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .account-state.ok svg { color: var(--state-ok); }
 .account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .account-actions .token-form { flex: 1 1 320px; margin-top: 0; }
-.clear-plan { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-xs); line-height: var(--leading-xs); }
+.clear-plan { flex-basis: 100%; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .clear-plan ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .clear-plan li { display: flex; gap: var(--space-3); min-width: 0; }
 .clear-plan li .num { flex-shrink: 0; width: 64px; text-align: right; }
@@ -979,7 +979,9 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .ai-form .ai-enabled, .ai-form .ai-actions, .ai-form .account-note { grid-column: 1 / -1; }
 .ai-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .cache-list { display: flex; flex-direction: column; margin: var(--space-2) 0 0; padding: 0; list-style: none; }
-.cache-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) 0; }
+.cache-list > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) 0; }
+/* a part's clear plan and the note on it take a line of their own under its row (#346) */
+.cache-list > li > .account-note { flex-basis: 100%; margin: 0; }
 .cache-list .account-copy strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
 .cache-text { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .cache-size { flex-shrink: 0; margin-left: auto; color: var(--fg-muted); font-size: var(--text-xs); }

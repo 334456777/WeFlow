@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from 'react-dom';
 import type { FormEvent } from 'react';
 import {
-  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowSquareOut,
   CaretLeft, CaretRight, ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, Images, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -252,7 +252,6 @@ export function App() {
   const [exportError, setExportError] = useState('');
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
-  const [searchDatesOpen, setSearchDatesOpen] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [toast, setToast] = useState('');
@@ -410,9 +409,9 @@ export function App() {
   const selected = live ? liveConversation(liveSession) : list.find(item => item.id === selectedIds[activeCategory]) || list[0];
   const media = selected.messages.filter(message => message.kind !== 'text');
   const results = useMemo(() => submittedQuery === null ? [] : selected.messages.filter(message => {
-    const matchesDate = !searchDatesOpen || ((!from || message.date >= from) && (!to || message.date <= to));
+    const matchesDate = (!from || message.date >= from) && (!to || message.date <= to);
     return matchesDate && (message.text + ' ' + message.sender).toLocaleLowerCase().includes(submittedQuery.toLocaleLowerCase());
-  }), [selected, submittedQuery, searchDatesOpen, from, to]);
+  }), [selected, submittedQuery, from, to]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('reduced-motion', reducedMotion);
@@ -623,9 +622,8 @@ export function App() {
         <form className="search-form" onSubmit={search}>
           <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索此会话的消息" placeholder={'搜索' + selected.name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} /></div>
           <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="search-button-label">搜索</span></button>
-          <button className={'icon-button' + (searchDatesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={searchDatesOpen} onClick={() => setSearchDatesOpen(value => !value)}><CalendarBlank size={16} /></button>
         </form>
-        {searchDatesOpen && <div className="search-date-row"><span className="field-label">时间范围</span><DateRange label="搜索的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); }} /></div>}
+        <div className="search-date-row"><span className="field-label">时间范围</span><DateRange label="搜索的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); }} /></div>
         <div className="search-results" aria-live="polite" data-roving="vertical" data-roving-items=".search-result"><HoverTrack items=".search-result" />{submittedQuery === null
           ? <p className="empty-text">输入关键词，搜索当前会话的记录。</p>
           : results.length

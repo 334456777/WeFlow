@@ -3,7 +3,7 @@
 // jumps to a day.
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { ArrowSquareOut, CalendarBlank, CircleNotch, MagnifyingGlass } from '@phosphor-icons/react';
+import { ArrowSquareOut, CircleNotch, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ChatSession } from '../api/chat';
 import type { SearchHit } from '../api/messages';
 import { DateField } from '../calendar/DateField';
@@ -63,7 +63,6 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
 }) {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<Scope>('session');
-  const [datesOpen, setDatesOpen] = useState(false);
   const [range, setRange] = useState<Range>({ from: '', to: '' });
   const [jumpDay, setJumpDay] = useState('');
   const sessionId = session?.username ?? null;
@@ -91,7 +90,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
     const keyword = query.trim();
     if (!keyword) { search.clear(); return; }
     if (scope === 'session' && !sessionId) return;
-    search.search({ keyword, sessionId: scope === 'session' ? sessionId : null, ...(datesOpen ? secondsOf(range) : { start: 0, end: 0 }) });
+    search.search({ keyword, sessionId: scope === 'session' ? sessionId : null, ...secondsOf(range) });
   };
 
   const nameOfSession = (id: string) => sessions.find(s => s.username === id)?.displayName || id;
@@ -114,7 +113,6 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
         <input type="search" aria-label={scope === 'all' ? '搜索全部会话的消息' : '搜索此会话的消息'} placeholder={scope === 'all' ? '搜索全部会话的消息' : '搜索' + name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
       <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="search-button-label">搜索</span></button>
-      <button className={'icon-button' + (datesOpen ? ' on' : '')} type="button" aria-label="筛选搜索日期" aria-expanded={datesOpen} onClick={() => setDatesOpen(open => !open)}><CalendarBlank size={16} /></button>
     </form>
     <div className="search-date-row"><span className="field-label">范围</span>
       <Segmented className="scope-group" count={2} index={scope === 'all' ? 1 : 0} role="group" aria-label="搜索范围">
@@ -122,9 +120,10 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
         <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>全部会话</button>
       </Segmented>
     </div>
-    {datesOpen && <div className="search-date-row"><span className="field-label">时间范围</span>
+    {/* always there, and optional: no days, no limit (#345) */}
+    <div className="search-date-row"><span className="field-label">时间范围</span>
       <DateRange label="搜索的时间范围" from={range.from} to={range.to} onChange={setRange}
-        marks={scope === 'session' ? counts : null} onOpen={scope === 'session' ? request : undefined} /></div>}
+        marks={scope === 'session' ? counts : null} onOpen={scope === 'session' ? request : undefined} /></div>
     <div className="search-date-row"><span className="field-label">跳到日期</span>
       <DateField label="跳到日期" placeholder="选择一天" value={jumpDay} marks={counts} onOpen={request}
         onChange={day => { setJumpDay(day); if (sessionId) onJumpDay(sessionId, day); }} />
