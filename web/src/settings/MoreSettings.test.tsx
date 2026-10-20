@@ -82,7 +82,10 @@ describe('settings', () => {
     expect((screen.getByRole('button', { name: '清理语音' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '清理图片' }));
     await act(async () => {});
-    expect(screen.getByRole('group', { name: '将要清理的内容' }).textContent).toContain('C:/c/Images');
+    const plan = screen.getByRole('group', { name: '将要清理的内容' });
+    expect(plan.textContent).toContain('C:/c/Images');
+    // under the row of the button pressed, not after the whole list (#346)
+    expect(plan.closest('li')).toBe(screen.getByRole('button', { name: '清理图片' }).closest('li'));
     expect(calls.some(c => c.url.includes('yes=true'))).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '确认清理' }));
     await act(async () => {});
@@ -90,6 +93,7 @@ describe('settings', () => {
       'DELETE /cache/clear?images=true&dry-run=true', 'DELETE /cache/clear?images=true&yes=true',
     ]);
     expect(document.querySelector('.cache-list')?.textContent).toContain('图片');
+    expect(screen.getByText(/^已清理图片/).closest('li')).toBe(screen.getByRole('button', { name: '清理图片' }).closest('li'));
     expect((screen.getByRole('button', { name: '清理图片' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

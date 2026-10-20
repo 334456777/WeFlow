@@ -125,28 +125,31 @@ export function CacheSetting() {
   const [plan, setPlan] = useState<{ part: CachePartName; paths: { path: string; bytes: number }[]; bytes: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<Note>(null);
+  // the part a note is about: it shows under that part's row, by its button (#346); null under the whole list
+  const [noted, setNoted] = useState<CachePartName | null>(null);
+  const tell = (text: Note, part: CachePartName | null) => { setNote(text); setNoted(part); };
   useEffect(() => {
     const controller = new AbortController();
     listCache(controller.signal).then(list => setParts(Array.isArray(list) ? list : []), problem => {
-      if (!controller.signal.aborted) { setParts([]); setNote({ text: reason(problem, '读不到缓存。'), error: true }); }
+      if (!controller.signal.aborted) { setParts([]); tell({ text: reason(problem, '读不到缓存。'), error: true }, null); }
     });
     return () => controller.abort();
   }, [round]);
   const look = async (part: CachePartName) => {
-    setBusy('plan:' + part); setNote(null);
+    setBusy('plan:' + part); tell(null, null);
     try { setPlan({ part, ...(await planClearCache(part)) }); }
-    catch (problem) { setNote({ text: reason(problem, '读不到将要清理的内容。'), error: true }); }
+    catch (problem) { tell({ text: reason(problem, '读不到将要清理的内容。'), error: true }, part); }
     finally { setBusy(null); }
   };
   const clear = async () => {
     if (!plan) return;
-    setBusy('clear'); setNote(null);
+    setBusy('clear'); tell(null, null);
     try {
       await clearCache(plan.part);
-      setNote({ text: '已清理' + CACHE_LABELS[plan.part].title + '，释放 ' + formatSize(plan.bytes) + '。' });
+      tell({ text: '已清理' + CACHE_LABELS[plan.part].title + '，释放 ' + formatSize(plan.bytes) + '。' }, plan.part);
       setPlan(null); setRound(n => n + 1);
     } catch (problem) {
-      setNote({ text: reason(problem, '清理失败，请重试。'), error: true });
+      tell({ text: reason(problem, '清理失败，请重试。'), error: true }, plan.part);
     } finally {
       setBusy(null);
     }
@@ -160,16 +163,24 @@ export function CacheSetting() {
         <span className="cache-size num">{formatSize(p.bytes)}{p.files ? ' · ' + p.files.toLocaleString('zh-CN') + ' 个文件' : ''}</span>
         <button type="button" className="secondary-button" aria-label={'清理' + (CACHE_LABELS[p.part]?.title ?? p.part)} disabled={!p.bytes || busy !== null} onClick={() => look(p.part)}>
           {busy === 'plan:' + p.part ? <CircleNotch size={12} className="spin" /> : <Trash size={12} />}清理</button>
+        {plan?.part === p.part && <ClearPlan plan={plan} busy={busy === 'clear'} onCancel={() => setPlan(null)} onClear={clear} />}
+        {noted === p.part && <NoteLine note={note} />}
       </li>)}
     </ul>}
-    {plan && <div className="clear-plan" role="group" aria-label="将要清理的内容">
-      <p>清理{CACHE_LABELS[plan.part].title}：删除下面的文件，共 {formatSize(plan.bytes)}。</p>
-      <ul>{plan.paths.map(p => <li key={p.path}><span className="num">{formatSize(p.bytes)}</span><span className="account-path" title={p.path}>{p.path}</span></li>)}</ul>
-      <div className="clear-plan-actions">
-        <button type="button" className="secondary-button" disabled={busy === 'clear'} onClick={() => setPlan(null)}>取消</button>
-        <button type="button" className="primary-button danger" disabled={busy === 'clear'} onClick={clear}>{busy === 'clear' ? <CircleNotch size={14} className="spin" /> : <Trash size={14} />}确认清理</button>
-      </div>
-    </div>}
-    <NoteLine note={note} />
+    {noted === null && <NoteLine note={note} />}
   </div></div>;
+}
+
+/** What `cache clear --dry-run` says would go, under the row of its part, with the way to go on. */
+function ClearPlan({ plan, busy, onCancel, onClear }: {
+  plan: { part: CachePartName; paths: { path: string; bytes: number }[]; bytes: number }; busy: boolean; onCancel(): void; onClear(): void;
+}) {
+  return <div className="clear-plan" role="group" aria-label="将要清理的内容">
+    <p>清理{CACHE_LABELS[plan.part].title}：删除下面的文件，共 {formatSize(plan.bytes)}。</p>
+    <ul>{plan.paths.map(p => <li key={p.path}><span className="num">{formatSize(p.bytes)}</span><span className="account-path" title={p.path}>{p.path}</span></li>)}</ul>
+    <div className="clear-plan-actions">
+      <button type="button" className="secondary-button" disabled={busy} onClick={onCancel}>取消</button>
+      <button type="button" className="primary-button danger" disabled={busy} onClick={onClear}>{busy ? <CircleNotch size={14} className="spin" /> : <Trash size={14} />}确认清理</button>
+    </div>
+  </div>;
 }

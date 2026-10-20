@@ -79,7 +79,6 @@ describe('SearchPanel', () => {
     serve(() => [hit(1, 'g@chatroom')]);
     render(<Panel />);
     fireEvent.click(screen.getByRole('button', { name: '全部会话' }));
-    fireEvent.click(screen.getByRole('button', { name: '筛选搜索日期' }));
     fireEvent.click(screen.getByRole('button', { name: /^开始日期/ }));
     fireEvent.click(screen.getByRole('gridcell', { name: /^2026年10月3日/ }));
     fireEvent.click(screen.getByRole('gridcell', { name: /^2026年10月9日/ }));
