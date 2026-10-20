@@ -388,6 +388,63 @@ fn write_bytes(path: &Path, data: &[u8]) -> Result<()> {
     fs::write(path, data).with_context(|| format!("write {}", path.display()))
 }
 
+/// Packs everything under `dir` into the zip `out` (#342), paths relative to `dir` with `/`; pictures, videos and
+/// other files that are compressed already are stored as they are.
+pub fn zip_folder(dir: &Path, out: &Path) -> Result<()> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    const STORED: &[&str] = &[
+        "jpg", "jpeg", "png", "gif", "webp", "heic", "mp4", "mov", "mp3", "silk", "amr", "zip",
+        "xlsx",
+    ];
+    let mut files = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(folder) = stack.pop() {
+        for entry in fs::read_dir(&folder).with_context(|| format!("read {}", folder.display()))? {
+            let path = entry?.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    let mut zip = zip::ZipWriter::new(
+        fs::File::create(out).with_context(|| format!("create {}", out.display()))?,
+    );
+    for path in files {
+        let name = path
+            .strip_prefix(dir)
+            .unwrap_or(&path)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let stored = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| STORED.contains(&e.to_ascii_lowercase().as_str()));
+        let options = SimpleFileOptions::default()
+            .compression_method(if stored {
+                zip::CompressionMethod::Stored
+            } else {
+                zip::CompressionMethod::Deflated
+            })
+            .large_file(
+                fs::metadata(&path)
+                    .map(|m| m.len() >= u32::MAX as u64)
+                    .unwrap_or(false),
+            );
+        zip.start_file(&name, options)
+            .with_context(|| format!("zip {name}"))?;
+        let mut file = fs::File::open(&path).with_context(|| format!("open {}", path.display()))?;
+        std::io::copy(&mut file, &mut zip).with_context(|| format!("zip {name}"))?;
+    }
+    zip.finish()?.flush()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

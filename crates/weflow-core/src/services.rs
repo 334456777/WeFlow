@@ -741,6 +741,42 @@ impl ServiceHub {
         Ok(result)
     }
 
+    /// One conversation in several formats at once (#342), each to its file in `outs`, all in one folder. With media,
+    /// the messages are read once and the selected media copied once, to `<out dir>/media/<first out name>/`, which
+    /// every format points at; without, each format streams as [`export_messages`](Self::export_messages) does.
+    pub async fn export_messages_formats(
+        &self,
+        req: &MessageExportRequest,
+        outs: &[(String, PathBuf)],
+        media: &crate::api::ApiMediaOptions,
+    ) -> AppResult<Vec<Value>> {
+        let request = |format: &str| MessageExportRequest {
+            format: format.to_string(),
+            ..req.clone()
+        };
+        if !media.enabled {
+            return outs
+                .iter()
+                .map(|(format, out)| self.export_messages(&request(format), out))
+                .collect();
+        }
+        let Some((_, first)) = outs.first() else {
+            return Ok(Vec::new());
+        };
+        let (wcdb, mut collected) = again_if_keys_changed(|| self.export_collect(req))?;
+        let stats = self
+            .attach_export_media(&wcdb, &mut collected, &req.session_id, first, media)
+            .await;
+        outs.iter()
+            .map(|(format, out)| {
+                let mut result =
+                    self.export_write(&request(format), out, &wcdb, collected.clone())?;
+                result["media"] = stats.clone();
+                Ok(result)
+            })
+            .collect()
+    }
+
     fn export_collect(
         &self,
         req: &MessageExportRequest,
@@ -1412,6 +1448,7 @@ fn base64_encode(data: &[u8]) -> String {
 pub const MESSAGE_EXPORT_FORMATS: &str =
     "json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql";
 
+#[derive(Clone)]
 pub struct MessageExportRequest {
     pub session_id: String,
     pub format: String,

@@ -827,12 +827,15 @@ enum ExportSubcommand {
         /// End date, local time, inclusive (YYYY-MM-DD)
         #[arg(long)]
         end: Option<String>,
-        /// Output file
+        /// Output file; with several formats a folder, or with --zip the zip (a folder: <conversation>.zip in it)
         #[arg(long)]
         out: PathBuf,
-        /// txt (default), json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql
-        #[arg(long, default_value = "txt")]
-        format: String,
+        /// txt (default), json, arkme-json, chatlab, chatlab-jsonl, excel, weclone, html, sql; several comma separated
+        #[arg(long, value_delimiter = ',', default_value = "txt")]
+        format: Vec<String>,
+        /// Pack the export (every format, and the media folder) into one zip
+        #[arg(long)]
+        zip: bool,
         /// Only export messages sent by this person: their bare wxid, as `chat contacts` lists it (not an account folder name with a `_xxxx` suffix)
         #[arg(long)]
         sender: Option<String>,
@@ -2741,31 +2744,56 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             display_name,
             excel_compact,
             media,
+            zip,
         } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
-            let fmt = format.to_ascii_lowercase();
+            let mut formats: Vec<String> = Vec::new();
+            for f in format
+                .iter()
+                .map(|f| f.trim().to_ascii_lowercase())
+                .filter(|f| !f.is_empty())
+            {
+                if !formats.contains(&f) {
+                    formats.push(f);
+                }
+            }
+            let fmt = formats.first().cloned().unwrap_or_else(|| "txt".into());
             let media_opts = parse_media_selection(media)?;
             let parse_display = |s: &str| {
                 weflow_core::export_msg::DisplayPref::parse(s).ok_or_else(|| {
                     AppError::usage("--display-name must be group-nickname, remark or nickname")
                 })
             };
-            let ext = match fmt.as_str() {
-                "txt" => "txt",
-                "json" | "arkme-json" => "json",
-                "chatlab" => "chatlab.json",
-                "chatlab-jsonl" => "jsonl",
-                "excel" | "xlsx" => "xlsx",
-                "weclone" => "csv",
-                "html" => "html",
-                "sql" => "sql",
-                other => {
-                    return Err(AppError::usage(format!(
-                        "unsupported message export format: {other}; supported: {}",
-                        weflow_core::services::MESSAGE_EXPORT_FORMATS
-                    )))
-                }
+            let ext_of = |fmt: &str| -> Result<&'static str, AppError> {
+                Ok(match fmt {
+                    "txt" => "txt",
+                    "json" | "arkme-json" => "json",
+                    "chatlab" => "chatlab.json",
+                    "chatlab-jsonl" => "jsonl",
+                    "excel" | "xlsx" => "xlsx",
+                    "weclone" => "csv",
+                    "html" => "html",
+                    "sql" => "sql",
+                    other => {
+                        return Err(AppError::usage(format!(
+                            "unsupported message export format: {other}; supported: {}",
+                            weflow_core::services::MESSAGE_EXPORT_FORMATS
+                        )))
+                    }
+                })
             };
+            // json and arkme-json write the same extension: two of them would take one file
+            let mut exts: Vec<&str> = Vec::new();
+            for f in &formats {
+                let e = ext_of(f)?;
+                if exts.contains(&e) {
+                    return Err(AppError::usage(format!(
+                        "--format {f} writes .{e} as another format given does; give one of them"
+                    )));
+                }
+                exts.push(e);
+            }
+            let ext = exts[0];
             let display_pref = parse_display(display_name.as_deref().unwrap_or("group-nickname"))?;
             let safe_name: String = session_id
                 .chars()
@@ -2788,14 +2816,89 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 display_pref,
                 excel_compact: *excel_compact,
             };
-            if media_opts.enabled {
-                hub.export_messages_with_media(&request, &target, &media_opts)
-                    .await
-            } else {
-                hub.export_messages(&request, &target)
+            if formats.len() == 1 && !*zip {
+                return if media_opts.enabled {
+                    hub.export_messages_with_media(&request, &target, &media_opts)
+                        .await
+                } else {
+                    hub.export_messages(&request, &target)
+                };
             }
+            export_messages_bundle(
+                hub,
+                &request,
+                &formats,
+                &exts,
+                &safe_name,
+                out,
+                *zip,
+                &media_opts,
+            )
+            .await
         }
     }
+}
+
+/// `export messages` in several formats or packed (#342): every format into one folder, the media in its `media/`
+/// folder; with `zip`, the folder (beside the zip, taken away after) packed into the zip, whose path is the result's
+/// `out`, the formats' files named inside it.
+#[allow(clippy::too_many_arguments)]
+async fn export_messages_bundle(
+    hub: &ServiceHub,
+    request: &weflow_core::services::MessageExportRequest,
+    formats: &[String],
+    exts: &[&str],
+    safe_name: &str,
+    out: &Path,
+    zip: bool,
+    media: &weflow_core::api::ApiMediaOptions,
+) -> AppResult<Value> {
+    let zip_path = zip.then(|| export_path(out, &format!("{safe_name}.zip")));
+    let folder = match &zip_path {
+        Some(z) => z.with_file_name(format!(
+            ".{}.parts",
+            z.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default()
+        )),
+        None if out.extension().is_some() => return Err(AppError::usage(
+            "several formats are written to a folder: give --out a folder, or pack them with --zip",
+        )),
+        None => out.to_path_buf(),
+    };
+    if zip_path.is_some() {
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+    std::fs::create_dir_all(&folder).map_err(|err| {
+        AppError::runtime(format!("failed to create {}: {err}", folder.display()))
+    })?;
+    let outs: Vec<(String, PathBuf)> = formats
+        .iter()
+        .zip(exts)
+        .map(|(f, e)| (f.clone(), folder.join(format!("{safe_name}.{e}"))))
+        .collect();
+    let written = hub.export_messages_formats(request, &outs, media).await;
+    let Some(zip_path) = zip_path else {
+        let files = written?;
+        return Ok(json!({ "out": folder, "formats": formats, "files": files }));
+    };
+    let packed = written.and_then(|mut files| {
+        weflow_core::export::zip_folder(&folder, &zip_path).map_err(|err| {
+            AppError::runtime(format!("failed to write {}: {err:#}", zip_path.display()))
+        })?;
+        // the files are inside the zip now: their names there
+        for (file, (_, path)) in files.iter_mut().zip(&outs) {
+            file["out"] = json!(path.file_name().map(|n| n.to_string_lossy().to_string()));
+        }
+        Ok(files)
+    });
+    let _ = std::fs::remove_dir_all(&folder);
+    let files = packed?;
+    let media = files
+        .first()
+        .map(|f| f["media"].clone())
+        .unwrap_or(Value::Null);
+    Ok(json!({ "out": zip_path, "formats": formats, "files": files, "media": media }))
 }
 
 /// `--media image,voice` / `--media all` → the media kinds to copy next to a message export.

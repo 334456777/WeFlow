@@ -56,9 +56,9 @@ import { payFilterSummary, PaymentsExport, PaymentsFilter, PaymentsSummary } fro
 import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } from './payments/usePayments';
 import type { Category, Conversation, ExportResult, Navigation } from './types';
 import { jobFileUrl, type Job } from './api/jobs';
-import { jobDetail, jobsSummary, outputOf, TaskCenter } from './jobs/TaskCenter';
+import { jobDetail, jobsSummary, TaskCenter } from './jobs/TaskCenter';
 import { findJob, removeJob, runJob, useJobs } from './jobs/useJobs';
-import { batchSummary, BatchExport, DEFAULT_BATCH, formatLabel, MESSAGE_FORMATS, SessionsExport, type BatchOptions, type MessageFormat } from './exports/ExportCards';
+import { batchSummary, BatchExport, DEFAULT_BATCH, FormatChips, formatsLabel, MEDIA_NOTE, packed, SessionsExport, type BatchOptions, type MessageFormat } from './exports/ExportCards';
 import { ExportPicker, PickedList } from './exports/ExportPicker';
 import type { ContactKind } from './api/contacts';
 import { ContactList } from './contacts/ContactList';
@@ -246,8 +246,9 @@ export function App() {
   const [to, setTo] = useState(CURRENT_DATE);
   // the days of a real export: all of them unless chosen (the sample's days are the sample's)
   const [liveRange, setLiveRange] = useState({ from: '', to: '' });
-  const [format, setFormat] = useState<MessageFormat>('html');
-  const [includeMedia, setIncludeMedia] = useState(true);
+  const [formats, setFormats] = useState<MessageFormat[]>(['html']);
+  // off unless asked for (#342)
+  const [includeMedia, setIncludeMedia] = useState(false);
   // the job of the export card (#211): it runs on the server, in the task centre
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportError, setExportError] = useState('');
@@ -571,9 +572,9 @@ export function App() {
     if (!liveSession) return;
     setExportError(''); setExportJobId(null);
     try {
-      const job = await runJob('导出 ' + selected.name + ' · ' + formatLabel(format), 'POST', 'export/messages', {
-        'session-id': liveSession.username, format, start: liveRange.from || undefined, end: liveRange.to || undefined,
-        media: includeMedia ? 'all' : undefined,
+      const job = await runJob('导出 ' + selected.name + ' · ' + formatsLabel(formats), 'POST', 'export/messages', {
+        'session-id': liveSession.username, format: formats, start: liveRange.from || undefined, end: liveRange.to || undefined,
+        media: includeMedia ? 'all' : undefined, zip: packed(formats, includeMedia) ? true : undefined,
       });
       setExportJobId(job.id);
     } catch (problem) {
@@ -592,23 +593,21 @@ export function App() {
 
   const cards: Card[] = [
     {
-      id: 'export', title: '导出', summary: formatLabel(format) + (includeMedia ? ' · 含媒体' : ''),
+      id: 'export', title: '导出', summary: formatsLabel(formats) + (includeMedia ? ' · 含媒体' : ''),
       content: <>
         <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
         <div className="form-row"><span className="field-label">时间范围</span>{selected.live
           ? <DateRange label="导出的时间范围" from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
           : <DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
         <div className="form-row format-row"><span className="field-label">导出格式</span>
-          <div className="choice-chips" role="group" aria-label="导出格式">
-            {MESSAGE_FORMATS.map(f => <button type="button" key={f.value} className="chip" aria-pressed={format === f.value} onClick={() => { setFormat(f.value); resetExport(); }}>{f.label}</button>)}
-          </div>
-          <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>图片、语音、视频与表情</small></span></label>
+          <FormatChips formats={formats} onChange={next => { setFormats(next); resetExport(); }} />
+          <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>{MEDIA_NOTE}</small></span></label>
         </div>
         {selected.live && liveSession
           ? <><ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={cancelExport} />
             {stage === 'error' && <p className="card-note" role="alert">{exportJob ? jobDetail(exportJob) : exportError}</p>}
             {stage === 'exporting' && exportJob && <p className="card-note" aria-live="polite">{exportJob.status === 'queued' ? '排队中：前面的任务完成后开始。' : jobDetail(exportJob)}</p>}
-            {stage === 'done' && includeMedia && outputOf(exportJob!) && <p className="card-note">媒体文件留在服务端，位于 {outputOf(exportJob!)} 旁的 media 文件夹；在任务中心删除任务时，导出文件和媒体文件一并删除。</p>}</>
+            {stage === 'done' && packed(formats, includeMedia) && <p className="card-note">{formats.length > 1 ? '各个格式的文件' : '导出文件'}{includeMedia ? '和 media 文件夹' : ''}打包在这个 zip 里。</p>}</>
           : <><button type="button" className="primary-button large export-pending" disabled><DownloadSimple size={18} />开始导出</button><p className="card-note">{selected.live ? '选择一个会话后导出。' : '连接 weflow serve 后，可以导出本机的真实记录。'}</p></>}
       </>,
     },
@@ -778,7 +777,7 @@ export function App() {
         {'health' in backend && serverDetail(backend.health) && <div className="setting-row"><div><h2>运行方式</h2><p>{serverDetail(backend.health)}</p></div></div>}
         {connected && <><LanguageSetting /><AiSetting profile={profile} onSaved={reloadProfiles} /><CacheSetting /></>}
         <div className="setting-row"><div><h2>实时消息</h2><p>微信收到消息后几秒内显示在会话列表和打开的会话里。关掉后不再接收，左下角显示「已连接」而不是「实时」。</p></div><label className="toggle"><input type="checkbox" aria-label="实时消息" checked={realtime} onChange={event => toggleRealtime(event.target.checked)} /><span /></label></div>
-        <div className="setting-row"><div><h2>默认附带媒体文件</h2><p>导出时同时保存照片等媒体。</p></div><label className="toggle"><input type="checkbox" aria-label="默认附带媒体文件" checked={includeMedia} onChange={event => setIncludeMedia(event.target.checked)} /><span /></label></div>
+        <div className="setting-row"><div><h2>默认附带媒体文件</h2><p>导出时把照片等媒体放进 media 文件夹，和导出文件一起打包成 zip。默认关闭。</p></div><label className="toggle"><input type="checkbox" aria-label="默认附带媒体文件" checked={includeMedia} onChange={event => setIncludeMedia(event.target.checked)} /><span /></label></div>
         <div className="setting-row setting-choice"><div><h2>颜色主题</h2><p>跟随系统时随系统的浅色、深色模式切换。只保存在这个浏览器里。</p></div>
           <Segmented className="theme-group" count={THEMES.length} index={THEMES.findIndex(t => t.value === theme)} role="group" aria-label="颜色主题">
             {THEMES.map(t => <button type="button" key={t.value} aria-pressed={theme === t.value} onClick={() => setTheme(t.value)}>{t.label}</button>)}

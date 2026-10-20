@@ -26,12 +26,6 @@ export function jobDetail(job: Job): string {
 /** The state of a job and what it says: 「未完成 · 磁盘空间不足」. */
 export const jobLine = (job: Job) => (STATUS[job.status] === jobDetail(job) ? STATUS[job.status] : STATUS[job.status] + ' · ' + jobDetail(job));
 
-/** The folder of a finished export on the server, when the result names its file. */
-export function outputOf(job: Job): string {
-  const out = job.result?.data?.out;
-  return typeof out === 'string' ? out : '';
-}
-
 function JobRow({ job, label }: { job: Job; label: string }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');

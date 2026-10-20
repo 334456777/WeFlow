@@ -161,7 +161,7 @@ Commands that write one file can send it back in the answer: add `?return=file` 
 | `chat voice-data` | the WAV |
 | `chat image-data` | the image |
 | `chat video-data` | the video (with `thumb`, its thumbnail or cover) |
-| `export sessions`, `export contacts`, `export footprint`, `export messages` | the export (with `export messages --media`, only the messages file; the media stay on disk) |
+| `export sessions`, `export contacts`, `export footprint`, `export messages` | the export (with `export messages --media`, only the messages file, the media stay on disk; with `--zip`, the zip of every format and the `media` folder) |
 | `group export-member-messages`, `group export-members` | the `.csv` / `.xlsx` |
 | `sns media`, `sns download-image` | the image or video |
 | `backup create` | the backup archive |

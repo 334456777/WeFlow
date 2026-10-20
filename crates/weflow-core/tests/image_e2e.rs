@@ -905,3 +905,62 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
     assert!(!plain_dir.join("media").exists());
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[tokio::test]
+async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
+    // #342: the messages read and the media copied once, every format pointing at the same files
+    let (hub, root) = embed_world("formats-zip");
+    let opts = weflow_core::api::ApiMediaOptions {
+        enabled: true,
+        images: true,
+        voices: true,
+        ..Default::default()
+    };
+    let dir = root.join("parts");
+    std::fs::create_dir_all(&dir).unwrap();
+    let outs: Vec<(String, std::path::PathBuf)> = [
+        ("json", "chat.json"),
+        ("html", "chat.html"),
+        ("txt", "chat.txt"),
+    ]
+    .iter()
+    .map(|(f, name)| (f.to_string(), dir.join(name)))
+    .collect();
+    let results = hub
+        .export_messages_formats(&media_request("json"), &outs, &opts)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 3);
+    let image_rel = "media/chat/images/aabbccddeeff00112233445566778899.jpg";
+    assert!(dir.join(image_rel).exists());
+    for (_, path) in &outs {
+        assert!(path.exists(), "{}", path.display());
+    }
+    for name in ["chat.json", "chat.html"] {
+        let text = std::fs::read_to_string(dir.join(name)).unwrap();
+        assert!(text.contains(image_rel), "{name} points at the one copy");
+    }
+    assert_eq!(results[1]["media"], results[0]["media"]);
+
+    let zip = root.join("chat.zip");
+    weflow_core::export::zip_folder(&dir, &zip).unwrap();
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip).unwrap()).unwrap();
+    let mut names: Vec<String> = archive.file_names().map(str::to_string).collect();
+    names.sort();
+    assert!(
+        [
+            "chat.html",
+            "chat.json",
+            "chat.txt",
+            image_rel,
+            "media/chat/voices/voice_4.wav"
+        ]
+        .iter()
+        .all(|n| names.iter().any(|m| m == n)),
+        "{names:?}"
+    );
+    let mut image = Vec::new();
+    std::io::Read::read_to_end(&mut archive.by_name(image_rel).unwrap(), &mut image).unwrap();
+    assert_eq!(image, std::fs::read(dir.join(image_rel)).unwrap());
+    let _ = std::fs::remove_dir_all(root);
+}

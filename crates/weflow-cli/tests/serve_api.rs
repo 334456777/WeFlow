@@ -2343,6 +2343,39 @@ fn jobs_keep_the_file_they_wrote_for_the_browser() {
     );
     assert!(!path.parent().unwrap().exists());
 
+    // several formats packed with --zip (#342): the job's file is the zip, the formats' files inside it
+    let id = async_call(
+        "/export/messages?return=file&session-id=wxid_bob&format=html&format=txt&zip=true",
+    );
+    let done = finished(&id);
+    assert_eq!(done["status"], "succeeded", "{done}");
+    assert_eq!(done["file"]["name"], "wxid_bob.zip", "{done}");
+    let r = server.call("GET", &format!("/jobs/{id}/file"), "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(
+        r.headers["content-type"].starts_with("application/zip"),
+        "{:?}",
+        r.headers
+    );
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(r.bytes.clone())).unwrap();
+    let mut names: Vec<String> = archive.file_names().map(str::to_string).collect();
+    names.sort();
+    assert_eq!(names, ["wxid_bob.html", "wxid_bob.txt"]);
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut archive.by_name("wxid_bob.txt").unwrap(), &mut text)
+        .unwrap();
+    assert!(text.contains("see you"), "{text}");
+    let zipped = PathBuf::from(done["result"]["data"]["out"].as_str().unwrap());
+    assert!(
+        !zipped.with_file_name(".wxid_bob.zip.parts").exists(),
+        "the folder the zip was made from is taken away"
+    );
+    assert_eq!(done["result"]["data"]["files"][1]["out"], "wxid_bob.txt");
+    assert_eq!(
+        server.call("DELETE", &format!("/jobs/{id}"), "").status,
+        200
+    );
+
     // a job without return=file, or one that failed, has no file
     let plain = async_call("/export/sessions");
     assert_eq!(finished(&plain)["file"], Value::Null);
