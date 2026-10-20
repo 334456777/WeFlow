@@ -48,6 +48,10 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
       top.style.width = bottom.style.width = width;
       top.style.top = area.offsetTop + area.clientTop + 'px';
       bottom.style.top = area.offsetTop + area.clientTop + area.clientHeight - bottom.offsetHeight + 'px';
+      // the area's rounded corners, less the inset, so the fades end where its hollow does (#347)
+      const radius = Math.max(0, parseFloat(getComputedStyle(area).borderTopLeftRadius) - FADE_INSET || 0) + 'px';
+      top.style.borderRadius = `${radius} ${radius} 0 0`;
+      bottom.style.borderRadius = `0 0 ${radius} ${radius}`;
     };
     const place = () => {
       const { scrollHeight, clientHeight, scrollTop } = area;
