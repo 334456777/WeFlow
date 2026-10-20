@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from 'react-dom';
 import type { FormEvent } from 'react';
 import {
-  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowSquareOut, CalendarBlank,
   CaretLeft, CaretRight, ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, Images, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -34,6 +34,7 @@ import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
 import { canFly, fly, frameFlight, inSight, thumbnailOf } from './chat/previewMotion';
 import { OriginalButton } from './chat/OriginalButton';
+import { MobileBar, MobileNav } from './MobileNav';
 import type { ZoomControls } from './chat/ZoomImage';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
@@ -93,7 +94,7 @@ const navigation = [
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
   { id: 'contacts', label: '通讯录', icon: AddressBook },
-  { id: 'resources', label: '资源浏览', icon: Images },
+  { id: 'resources', label: '资源浏览', icon: Images, short: '资源' },
   { id: 'analytics', label: '聊天分析', icon: ChartBar },
   { id: 'reports', label: '年度报告', icon: CalendarStar },
   { id: 'footprint', label: '我的足迹', icon: Footprints },
@@ -103,6 +104,9 @@ const navigation = [
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
 
+
+/** The pages on a phone's tab bar; the others are under 「更多」 (#335). */
+const MOBILE_TABS = ['chat', 'contacts', 'moments', 'resources'] as const;
 
 const backendLabels: Record<Backend['state'], string> = {
   checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容', unauthorized: '需要令牌',
@@ -224,6 +228,9 @@ export function App() {
   useEffect(() => onAuth(event => { if (event === 'token') setTokenSaved(Boolean(token())); }), []);
   const steady = useSteadyConnection(backend.state);
   const narrow = useMediaQuery('(max-width: 1100px)');
+  // a phone: the tab bar takes the sidebar's place (#335)
+  const phone = useMediaQuery('(max-width: 640px)');
+  const [navSheet, setNavSheet] = useState(false);
   const [sidebarFolded, setSidebarFolded] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'folded'; } catch { return false; } });
   const folded = narrow || sidebarFolded;
   const toggleSidebar = () => {
@@ -716,6 +723,8 @@ export function App() {
             : chatCards.filter(id => !(selected.live && !liveSession && (id === 'info' || id === 'media')));
   const hiddenCards = cards.map(card => card.id).filter(id => !shownCards.includes(id));
 
+  const connection = <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{connected && realtime ? '实时' : backendLabels[backend.state]}</span></div>;
+
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
       <nav aria-label="主导航" data-roving="vertical" data-roving-items=".nav-item"><HoverTrack items=".nav-item" />
@@ -729,9 +738,10 @@ export function App() {
       </nav>
       <div className="sidebar-footer">
         {!narrow && <button type="button" className="icon-button sidebar-toggle" aria-label={folded ? '展开侧边栏' : '收起侧边栏'} title={folded ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!folded} onClick={toggleSidebar}><SidebarSimple size={18} /></button>}
-        <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{connected && realtime ? '实时' : backendLabels[backend.state]}</span></div>
+        {connection}
       </div>
     </aside>
+    {phone && <MobileNav items={navigation} tabs={MOBILE_TABS} current={section} onSelect={selectSection} status={connection} open={navSheet} onOpen={setNavSheet} />}
 
     <div className="main-area">
       {section === 'settings' ? <><section ref={settingsRef} className="panel browser-panel settings-panel scroll-area" aria-label="设置">
@@ -781,8 +791,8 @@ export function App() {
             ? <TokenPrompt />
             : <MomentPeople state={people} total={null} selected={momentFilter.username} onRetry={reloadPeople}
               onSelect={username => { setMomentFilter(filter => ({ ...filter, username })); setMobileDetail(true); }} />}
+          <MobileBar label="返回发布者列表" title="朋友圈" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
-            <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={openPreview} />}
           </div>
           <Scrollbar target={paneRef} />
@@ -846,8 +856,8 @@ export function App() {
                 keyword={insightFilter.keyword} onKeyword={keyword => setInsightFilter(f => ({ ...f, keyword }))}
                 onSelect={session => { setInsightFilter(f => ({ ...f, session })); setMobileDetail(true); }} />
               : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里查看 AI 见解。</p></div>}
+          <MobileBar label="返回联系人" title="见解" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="见解">
-            <button type="button" className="mobile-back icon-button" aria-label="返回联系人" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {connected && <InsightList state={insights.state} narrowed={Boolean(insightFilter.keyword || insightFilter.session)} onRead={readInsight} onMore={insights.more}
               canChat={session => sessionList.some(s => s.username === session)}
               onChat={session => { selectSection('chat'); setLiveId(session); setMobileDetail(true); }} />}
@@ -862,8 +872,8 @@ export function App() {
               ? <ContactList state={contactsState} kind={contactKind} onKind={setContactKind} selected={contactId} onRetry={reloadContacts}
                 onSelect={username => { setContactId(username); setMobileDetail(true); }} />
               : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里查看通讯录。</p></div>}
+          <MobileBar label="返回联系人列表" title={contact?.displayName ?? '联系人资料'} onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="联系人资料">
-            <button type="button" className="mobile-back icon-button" aria-label="返回联系人列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {connected && (contact
               ? <ContactDetail key={contact.username} contact={contact} canChat={sessionList.some(s => s.username === contact.username)}
                 onChat={() => { selectSection('chat'); setLiveId(contact.username); setMobileDetail(true); }} />
@@ -878,8 +888,8 @@ export function App() {
             : connected
               ? <ExportPicker state={liveSessions} picked={picked} onChange={setPicked} onRetry={reloadSessions} />
               : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里选择会话批量导出。</p></div>}
+          <MobileBar label="返回会话列表" title="已选的会话" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="已选的会话">
-            <button type="button" className="mobile-back icon-button" aria-label="返回会话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {connected && <PickedList picked={pickedSessions} onRemove={id => setPicked(old => { const next = new Set(old); next.delete(id); return next; })} />}
           </div>
           <Scrollbar target={paneRef} />
@@ -890,8 +900,8 @@ export function App() {
             ? <TokenPrompt />
             : <PaymentMerchants state={payState} merchants={merchants} selected={payFilter.merchant} onRetry={reloadPayments}
               onSelect={merchant => { setPayFilter(filter => ({ ...filter, merchant })); setMobileDetail(true); }} />}
+          <MobileBar label="返回商户列表" title="支付记录" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="支付记录">
-            <button type="button" className="mobile-back icon-button" aria-label="返回商户列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {paymentsLive && (chosenPayments
               ? <PaymentList key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} scroller={paneRef} narrowed={Boolean(payFilter.merchant || payFilter.from || payFilter.to)} />
               : payState.status === 'loading' && <PaymentsSkeleton label="正在读取支付记录" />)}
@@ -913,8 +923,8 @@ export function App() {
             </span>
           </button>)}
         </div><Scrollbar target={listRef} /></>}
+        <MobileBar label="返回对话列表" title={selected.live ? liveSession?.displayName ?? '' : selected.name} onBack={() => setMobileDetail(false)} />
         <div ref={paneRef} className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
-          <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
           {selected.live && (liveSession
             ? kindOf(liveSession.username) === 'official'
               ? <BizPushes key={scope + ':' + liveSession.username} session={liveSession} />

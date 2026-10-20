@@ -583,7 +583,7 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
 .highlighted :is(.message-bubble, .photo-button, .emoji-sticker, .system-message) { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .file-bubble { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
 .file-bubble small { display: block; color: var(--fg-muted); font-size: var(--text-2xs); line-height: var(--leading-2xs); }
-.mobile-back { display: none !important; }
+.mobile-bar { display: none; }
 
 /*
  * Real messages (#198). The edge of the history keeps one height whether it loads or not, so nothing above the
@@ -1213,25 +1213,79 @@ button.original-button:not([aria-disabled]):active { transform: scale(var(--pres
   .main-area { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.5fr) minmax(300px, 1fr); }
   .browser-panel { --list-width: 200px; }
 }
-/* Phones: one column; the list and the messages take turns. */
+/*
+ * Phones (#335): one column. The tab bar along the bottom takes the sidebar's place; a list fills the first screen and
+ * the console's cards follow below it. A detail (a conversation, a contact, …) takes the whole screen under a bar with
+ * the way back, and the tab bar steps aside for it. The insets keep clear of a notch and of the home indicator.
+ */
 @media (max-width: 640px) {
-  .workspace { height: auto; min-height: 100dvh; }
-  .sidebar { position: sticky; top: 0; height: 100dvh; }
-  .main-area { --gutter: var(--space-4); grid-template-rows: auto auto; }
-  .browser-panel { display: block; height: 60dvh; min-height: 360px; }
+  .workspace { display: block; height: auto; min-height: 100dvh; }
+  .sidebar { display: none; }
+  .main-area {
+    --gutter: var(--space-3); --tab-bar: 60px;
+    --safe-y: calc(env(safe-area-inset-top) + env(safe-area-inset-bottom));
+    grid-template-rows: auto auto;
+    padding: calc(var(--gutter) + env(safe-area-inset-top)) calc(var(--gutter) + env(safe-area-inset-right))
+      calc(var(--gutter) + var(--tab-bar) + env(safe-area-inset-bottom)) calc(var(--gutter) + env(safe-area-inset-left));
+  }
+  .browser-panel { display: block; height: calc(100dvh - var(--tab-bar) - 2 * var(--gutter) - var(--safe-y)); min-height: 360px; }
   .conversation-list, .session-pane { height: 100%; }
-  .message-pane { display: none; height: calc(100% - 2 * var(--space-2)); padding: var(--space-2) var(--space-3); }
-  .show-detail .message-pane { display: block; }
-  .show-detail .conversation-list, .show-detail .session-pane { display: none; }
-  .mobile-back { display: inline-flex !important; margin-bottom: var(--space-1); }
+  .message-pane { display: none; }
+  .browser-panel.show-detail { display: flex; flex-direction: column; height: calc(100dvh - 2 * var(--gutter) - var(--safe-y)); }
+  .show-detail .message-pane { display: block; flex: 1; min-height: 0; margin: 0 var(--space-2) var(--space-2); padding: var(--space-2) var(--space-3); }
+  .show-detail :is(.conversation-list, .session-pane) { display: none; }
+  .show-detail .mobile-bar { display: flex; }
+  .main-area:has(> .show-detail) { padding-bottom: calc(var(--gutter) + env(safe-area-inset-bottom)); }
+  .workspace:has(.show-detail) .mobile-nav { display: none; }
   .console { overflow: visible; }
   .search-date-row { flex-wrap: wrap; gap: var(--space-2); }
   .search-result { flex-wrap: wrap; row-gap: 0; }
   .search-result-copy { flex-basis: calc(100% - 40px); }
   .settings-panel { height: auto; padding: var(--space-4); }
   .file-preview { min-width: 0; padding: var(--space-6); }
-  .toast { max-width: calc(100vw - 32px); }
+  .toast { max-width: calc(100vw - 32px); bottom: calc(var(--tab-bar, 60px) + var(--space-4) + env(safe-area-inset-bottom)); }
 }
+.mobile-bar { align-items: center; gap: var(--space-2); flex-shrink: 0; padding: var(--space-2) var(--space-3) var(--space-1) var(--space-2); }
+.mobile-bar strong { min-width: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); }
+
+/* The phone's tab bar and the sheet of the other pages (MobileNav.tsx, #335). */
+.mobile-nav {
+  position: fixed; z-index: 30; right: 0; bottom: 0; left: 0; display: flex; gap: var(--space-1);
+  padding: var(--space-1) calc(var(--space-2) + env(safe-area-inset-right)) calc(var(--space-1) + env(safe-area-inset-bottom)) calc(var(--space-2) + env(safe-area-inset-left));
+  background: var(--surface); box-shadow: 0 -8px 18px -12px var(--neu-dark);
+}
+.mobile-tab {
+  display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; height: 52px;
+  border-radius: var(--radius-md); color: var(--fg-muted); font-size: var(--text-2xs); line-height: var(--leading-2xs);
+  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-hover) ease, transform var(--duration-micro) var(--ease-out);
+}
+.mobile-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-tab[aria-current='page'] { box-shadow: var(--neu-inset); color: var(--fg); font-weight: var(--weight-semibold); }
+.mobile-tab:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); }
+.nav-sheet {
+  width: 100%; max-width: 100%; margin: auto 0 0; padding: var(--space-4) calc(var(--space-4) + env(safe-area-inset-right)) calc(var(--space-4) + env(safe-area-inset-bottom)) calc(var(--space-4) + env(safe-area-inset-left));
+  border: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; background: var(--surface); box-shadow: var(--neu-raised-overlay); color: inherit;
+  animation: sheet-in var(--duration-panel) var(--ease-snap) both;
+}
+.nav-sheet::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
+.nav-sheet[data-state='closing'] { animation: sheet-out var(--duration-exit) var(--ease-out) both; }
+.nav-sheet[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
+.nav-sheet-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.nav-sheet-item {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-3) var(--space-1);
+  border-radius: var(--radius-lg); color: var(--fg-muted); font-size: var(--text-xs); box-shadow: var(--neu-raised-sm);
+  transition: box-shadow var(--duration-hover) var(--ease-out), color var(--duration-hover) ease, transform var(--duration-micro) var(--ease-out);
+}
+.nav-sheet-item.selected { box-shadow: var(--neu-inset); color: var(--fg); font-weight: var(--weight-semibold); }
+.nav-sheet-item:active { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); }
+.nav-sheet-footer { display: flex; justify-content: center; margin-top: var(--space-4); }
+/* the sheet shows the state in words, as the open sidebar does (the folded one keeps only the dot) */
+.nav-sheet-footer .connection { padding: 0 var(--space-2); }
+.nav-sheet-footer .connection.quiet { opacity: 1; visibility: visible; }
+.nav-sheet-footer .connection-label { display: inline; }
+@keyframes sheet-in { from { transform: translateY(100%); } }
+@keyframes sheet-out { to { transform: translateY(100%); } }
+
 /* Touch screens: inputs at 16px so iOS does not zoom in on focus. */
 @media (pointer: coarse) {
   input, select, textarea { font-size: var(--text-input-touch) !important; }
