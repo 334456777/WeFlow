@@ -194,14 +194,21 @@ describe('App', () => {
     const side = () => screen.getByRole('button', { name: /取消导出|再次导出/, hidden: true });
     expect(side().hasAttribute('inert')).toBe(true);
 
-    // any format of `export messages`, not only the first three (#279)
-    fireEvent.click(within(document.querySelector<HTMLElement>('[data-card="export"]')!).getByRole('button', { name: 'TXT' }));
+    // any format of `export messages`, not only the first three (#279); several at once, HTML taken off (#342)
+    const exportCard = within(document.querySelector<HTMLElement>('[data-card="export"]')!);
+    fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
+    fireEvent.click(exportCard.getByRole('button', { name: 'HTML' }));
+    expect(exportCard.getByRole('button', { name: 'TXT' }).getAttribute('aria-pressed')).toBe('true');
+    expect(exportCard.getByRole('button', { name: 'HTML' }).getAttribute('aria-pressed')).toBe('false');
+    // the media off unless asked for (#342)
+    expect((exportCard.getByRole('checkbox', { name: '附带媒体文件' }) as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
     await act(async () => {});
     // a job of the server that keeps its file
     expect(started[0].url).toBe('/export/messages?return=file');
     expect((started[0].init?.headers as Record<string, string>).Prefer).toBe('respond-async');
-    expect(JSON.parse(String(started[0].init?.body))).toMatchObject({ 'session-id': 'wxid_a', format: 'txt', media: 'all' });
+    // one file, nothing to pack
+    expect(JSON.parse(String(started[0].init?.body))).toEqual({ 'session-id': 'wxid_a', format: ['txt'] });
     expect(screen.getByRole('button', { name: '正在导出' }).getAttribute('aria-disabled')).toBe('true');
     expect(side().hasAttribute('inert')).toBe(false);
     // its progress from the job's events, in the task centre too
@@ -324,7 +331,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '不导出同学群' }));
     fireEvent.click(screen.getByRole('button', { name: '全部' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '导出林沐' }));
-    // Excel with the compact columns, by remark
+    // Excel too, with the compact columns, by remark: two formats, packed into a zip (#342)
     fireEvent.click(screen.getByRole('button', { name: 'Excel' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Excel 精简列' }));
     fireEvent.click(screen.getByRole('button', { name: '备注' }));
@@ -332,9 +339,9 @@ describe('App', () => {
     await act(async () => {});
     expect(started.map(s => s.url)).toEqual(['/export/messages?return=file', '/export/messages?return=file']);
     expect(started.map(s => s.body['session-id'])).toEqual(['wxid_a', 'g@chatroom']);
-    expect(started[0].body).toEqual({ 'session-id': 'wxid_a', format: 'excel', 'display-name': 'remark', 'excel-compact': true });
+    expect(started[0].body).toEqual({ 'session-id': 'wxid_a', format: ['html', 'excel'], 'display-name': 'remark', 'excel-compact': true, zip: true });
     expect(screen.getByText('已加入 2 个导出任务，在任务中心查看进度和下载文件。')).toBeTruthy();
-    expect(Array.from(document.querySelectorAll('.jobs .task strong'), n => n.textContent)).toEqual(['导出 家人群 · Excel', '导出 林沐 · Excel']);
+    expect(Array.from(document.querySelectorAll('.jobs .task strong'), n => n.textContent)).toEqual(['导出 家人群 · HTML、Excel', '导出 林沐 · HTML、Excel']);
     // the list of the conversations picked
     fireEvent.click(document.querySelector<HTMLButtonElement>('[data-card="sessions-export"] .secondary-button')!);
     await act(async () => {});

@@ -161,7 +161,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 | `chat voice-data` | WAV 文件 |
 | `chat image-data` | 图片 |
 | `chat video-data` | 视频（带 `thumb` 时为缩略图或封面） |
-| `export sessions`、`export contacts`、`export footprint`、`export messages` | 导出的文件（`export messages --media` 只返回消息文件，媒体留在磁盘上） |
+| `export sessions`、`export contacts`、`export footprint`、`export messages` | 导出的文件（`export messages --media` 只返回消息文件，媒体留在磁盘上；加 `--zip` 时返回所有格式的文件和 `media` 文件夹打成的 zip） |
 | `group export-member-messages`、`group export-members` | `.csv` / `.xlsx` 文件 |
 | `sns media`、`sns download-image` | 图片或视频 |
 | `backup create` | 备份压缩包 |
