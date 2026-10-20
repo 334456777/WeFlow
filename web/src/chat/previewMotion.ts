@@ -53,21 +53,15 @@ export function fly(from: HTMLElement, change: () => void, to: () => HTMLElement
 }
 
 /**
- * The preview's frame (its bar and edges) grows out from under the picture as it flies in, and shrinks back under it
- * as it flies out (#194): the frame's own box goes from the thumbnail's to its place (`open`) or back (`close`), and
- * shows the part of it around the picture, which is on top. Marks the page for the styles that play it (app.css) and
- * returns what takes the marks off once it has played.
+ * The preview's frame (its bar, its hollow and its footer) grows out from under the picture as it flies in, and
+ * shrinks back under it as it flies out (#194): the frame's box goes from the thumbnail's to its place (`open`) or
+ * back (`close`), and the frame drawn in it is scaled and moved with the picture (#339), so that its part around the
+ * picture stays under the picture all the way and the rest comes out of where the picture comes from. Marks the page
+ * for the styles that play it (app.css) and returns what takes the marks off once it has played.
  */
 export function frameFlight(mode: 'open' | 'close', frame: HTMLElement, media: HTMLElement, thumb: DOMRect): () => void {
   const root = document.documentElement;
-  const f = frame.getBoundingClientRect();
-  const m = media.getBoundingClientRect();
-  const vars: Record<string, string> = {
-    '--fly-x': thumb.left + 'px', '--fly-y': thumb.top + 'px', '--fly-w': thumb.width + 'px', '--fly-h': thumb.height + 'px',
-    // how far the picture's centre is from the frame's: the frame is shown around it while it is small
-    '--frame-ox': (m.left + m.width / 2 - (f.left + f.width / 2)) + 'px',
-    '--frame-oy': (m.top + m.height / 2 - (f.top + f.height / 2)) + 'px',
-  };
+  const vars = frameVars(frame.getBoundingClientRect(), media.getBoundingClientRect(), thumb);
   for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
   root.dataset.flight = mode;
   frame.style.viewTransitionName = FRAME_NAME;
@@ -78,3 +72,20 @@ export function frameFlight(mode: 'open' | 'close', frame: HTMLElement, media: H
   };
 }
 
+type Box = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>;
+
+/**
+ * The boxes of a frame flight, for app.css: the thumbnail's (`--fly-*`), the frame's size (`--frame-w`, `--frame-h`),
+ * and the scale and shift that put the frame's picture `media` on the thumbnail (`--frame-s*`, `--frame-t*`), from the
+ * frame's own corner.
+ */
+export function frameVars(frame: Box, media: Box, thumb: Box): Record<string, string> {
+  const sx = media.width > 0 ? thumb.width / media.width : 1;
+  const sy = media.height > 0 ? thumb.height / media.height : 1;
+  return {
+    '--fly-x': thumb.left + 'px', '--fly-y': thumb.top + 'px', '--fly-w': thumb.width + 'px', '--fly-h': thumb.height + 'px',
+    '--frame-w': frame.width + 'px', '--frame-h': frame.height + 'px',
+    '--frame-sx': String(sx), '--frame-sy': String(sy),
+    '--frame-tx': -(media.left - frame.left) * sx + 'px', '--frame-ty': -(media.top - frame.top) * sy + 'px',
+  };
+}

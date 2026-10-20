@@ -16,8 +16,9 @@ export type Preview =
   | { type: 'file'; title: string };
 
 /** The original WeChat downloads on View original (`_h.dat`) of a picture the preview shows as opened (`.dat`), to
- * show instead once it is on this computer (#194); `shown` once asked for, `loading` until it has come. */
-export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean; loading?: boolean }
+ * show instead once it is on this computer (#194); `shown` once asked for, `loading` until it has come, `opened` the
+ * image it took the place of, to go back to (#338). */
+export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean; loading?: boolean; opened?: string }
 
 /** A picture message as the preview opens it: the image WeChat shows when it is opened, with its original beside. */
 export function imagePreview(sessionId: string, message: ParsedMessage, title: string): Extract<Preview, { type: 'image' }> {
@@ -34,7 +35,8 @@ export interface PreviewThumb { src: string; aspect: number }
 /** The size of a picture of that shape in the preview: as wide as fits, as the preview's own rules allow. */
 export function previewSize(thumb: PreviewThumb): CSSProperties {
   return {
-    width: 'min(960px, 100vw - 32px, (100dvh - 120px) * ' + thumb.aspect.toFixed(4) + ')',
+    // the room the preview's bar, corners and margins take: app.css, on .preview-dialog
+    width: 'min(960px, 100vw - var(--preview-room-x), (100dvh - var(--preview-room-y)) * ' + thumb.aspect.toFixed(4) + ')',
     aspectRatio: String(thumb.aspect),
     background: 'url(' + JSON.stringify(thumb.src) + ') center / contain no-repeat',
   };

@@ -1,7 +1,8 @@
-// 「原图」 in the preview's bar (#194): WeChat keeps up to three files of a picture: the thumbnail a chat shows, the
-// image shown when it is opened, which the preview shows, and the original it downloads on View original. The
-// button shows the original once `chat image-info` says it is on this computer; until WeChat has downloaded it, it
-// cannot be pressed and says why when the pointer rests on it.
+// 「原图」 in the preview's lower left corner (#194, #341): WeChat keeps up to three files of a picture: the thumbnail a
+// chat shows, the image shown when it is opened, which the preview shows, and the original it downloads on View
+// original. The button shows the original once `chat image-info` says it is on this computer, and pressed again the
+// image opened (#338); until WeChat has downloaded the original it cannot be pressed and says why when the pointer
+// rests on it.
 import { useEffect, useState } from 'react';
 import { CircleNotch, FrameCorners } from '@phosphor-icons/react';
 import { getImageInfo, type ImageInfo } from '../api/messages';
@@ -20,10 +21,11 @@ export function originalHint(state: State): string | null {
   return '高清原图（' + formatFileSize(info.hdBytes) + '）还没有下载到这台电脑：在微信里打开这张图片，点「查看原图」后再试';
 }
 
-export function OriginalButton({ hd, onShow }: { hd: PreviewHd; onShow(): void }) {
+/** `onToggle(true)` shows the original instead of the image opened, `onToggle(false)` the image again (#338). */
+export function OriginalButton({ hd, onToggle }: { hd: PreviewHd; onToggle(show: boolean): void }) {
   const [state, setState] = useState<State>({ status: 'loading' });
+  // read once a picture: which of its files are here does not change while it is shown, either of them
   useEffect(() => {
-    if (hd.shown) return;
     const controller = new AbortController();
     setState({ status: 'loading' });
     getImageInfo(hd.sessionId, hd.localId, hd.createTime, controller.signal).then(
@@ -31,19 +33,23 @@ export function OriginalButton({ hd, onShow }: { hd: PreviewHd; onShow(): void }
       () => { if (!controller.signal.aborted) setState({ status: 'error' }); },
     );
     return () => controller.abort();
-  }, [hd.src, hd.shown, hd.sessionId, hd.localId, hd.createTime]);
+  }, [hd.src, hd.sessionId, hd.localId, hd.createTime]);
 
-  // with no image of its own (`.dat`) on this computer, the preview opened on the original already
-  if (hd.shown || (state.status === 'ready' && state.info.hd && !state.info.normal)) {
-    return hd.loading
-      ? <span className="original-button shown" title="正在载入高清原图"><CircleNotch size={16} className="spin" />原图</span>
-      : <span className="original-button shown" title="正在显示高清原图"><FrameCorners size={16} />原图</span>;
+  const size = state.status === 'ready' && state.info.hd && state.info.hdBytes ? ' ' + formatFileSize(state.info.hdBytes) : '';
+  // with no image of its own (`.dat`) on this computer, the preview opened on the original already: nothing to go back to
+  if (!hd.shown && state.status === 'ready' && state.info.hd && !state.info.normal) {
+    return <span className="original-button shown" title="正在显示高清原图"><FrameCorners size={16} />原图</span>;
+  }
+  if (hd.shown) {
+    const title = hd.loading ? '正在载入高清原图，点此换回点开时的图片' : '正在显示高清原图，点此换回点开时的图片';
+    return <button type="button" className="original-button shown" aria-pressed="true" title={title} aria-label={title} onClick={() => onToggle(false)}>
+      {hd.loading ? <CircleNotch size={16} className="spin" /> : <FrameCorners size={16} />}原图<small className="num">{size}</small>
+    </button>;
   }
   const hint = originalHint(state);
-  const size = state.status === 'ready' && state.info.hd && state.info.hdBytes ? ' ' + formatFileSize(state.info.hdBytes) : '';
   // aria-disabled, not disabled: a disabled button takes no pointer, so its hint would not show
-  return <button type="button" className="original-button" aria-disabled={hint ? 'true' : undefined} title={hint ?? '查看高清原图'}
-    aria-label={hint ? '查看原图：' + hint : '查看高清原图' + size} onClick={() => { if (!hint) onShow(); }}>
+  return <button type="button" className="original-button" aria-pressed={hint ? undefined : 'false'} aria-disabled={hint ? 'true' : undefined} title={hint ?? '查看高清原图'}
+    aria-label={hint ? '查看原图：' + hint : '查看高清原图' + size} onClick={() => { if (!hint) onToggle(true); }}>
     {state.status === 'loading' ? <CircleNotch size={16} className="spin" /> : <FrameCorners size={16} />}原图<small className="num">{size}</small>
   </button>;
 }

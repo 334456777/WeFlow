@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { previewSize } from './MessageView';
-import { canFly, fly, MEDIA_NAME, thumbnailOf } from './previewMotion';
+import { canFly, fly, frameVars, MEDIA_NAME, thumbnailOf } from './previewMotion';
 
 afterEach(() => { document.body.innerHTML = ''; Reflect.deleteProperty(document, 'startViewTransition'); });
 
@@ -28,7 +28,7 @@ describe('the preview flying from its thumbnail (#194)', () => {
   it('sizes the preview by the thumbnail and shows it until the picture comes', () => {
     const style = previewSize({ src: '/t?x="1"', aspect: 4 / 3 });
     expect(style.aspectRatio).toBe(String(4 / 3));
-    expect(style.width).toBe('min(960px, 100vw - 32px, (100dvh - 120px) * 1.3333)');
+    expect(style.width).toBe('min(960px, 100vw - var(--preview-room-x), (100dvh - var(--preview-room-y)) * 1.3333)');
     expect(style.background).toBe('url("/t?x=\\"1\\"") center / contain no-repeat');
   });
 
@@ -62,5 +62,22 @@ describe('the preview flying from its thumbnail (#194)', () => {
     await flight;
     expect(to.style.viewTransitionName).toBe('');
     expect(from.style.viewTransitionName).toBe('');
+  });
+});
+
+describe('the frame flying with the picture (#339)', () => {
+  it('scales and shifts the frame so that its picture lies on the thumbnail', () => {
+    const frame = { left: 100, top: 80, width: 440, height: 420 };
+    const media = { left: 120, top: 130, width: 400, height: 300 };
+    const thumb = { left: 10, top: 500, width: 100, height: 75 };
+    const vars = frameVars(frame, media, thumb);
+    expect(vars).toMatchObject({ '--frame-w': '440px', '--frame-h': '420px', '--frame-sx': '0.25', '--frame-sy': '0.25', '--frame-tx': '-5px', '--frame-ty': '-12.5px' });
+    // at the start the frame's box is the thumbnail's, and its picture, scaled, starts at the box's corner
+    const at = (axis: 'x' | 'y') => {
+      const [corner, offset, scale] = axis === 'x' ? [thumb.left, media.left - frame.left, 0.25] : [thumb.top, media.top - frame.top, 0.25];
+      return corner + parseFloat(vars['--frame-t' + axis]) + offset * scale;
+    };
+    expect([at('x'), at('y')]).toEqual([thumb.left, thumb.top]);
+    expect(media.width * 0.25).toBe(thumb.width);
   });
 });

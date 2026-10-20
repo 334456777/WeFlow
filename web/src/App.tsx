@@ -34,6 +34,7 @@ import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
 import { canFly, fly, frameFlight, inSight, thumbnailOf } from './chat/previewMotion';
 import { OriginalButton } from './chat/OriginalButton';
+import { PreviewDownload } from './chat/PreviewDownload';
 import { MobileBar, MobileNav } from './MobileNav';
 import type { ZoomControls } from './chat/ZoomImage';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
@@ -465,13 +466,15 @@ export function App() {
       if (f) done = frameFlight('open', f, media, from);
     }).then(() => done());
   };
-  // the original instead of the image opened (#194), in the same place: the image stays under it until it comes
-  const showOriginal = () => {
+  // the original instead of the image opened (#194), or the image opened again (#338), in the same place: the one shown
+  // stays under the other until it comes
+  const toggleOriginal = (show: boolean) => {
     if (!preview || preview.type !== 'image' || !preview.hd) return;
     const img = previewMedia();
     const under = img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0
       ? { src: img.currentSrc || img.src, aspect: preview.thumb?.aspect ?? img.naturalWidth / img.naturalHeight } : preview.thumb;
-    setPreview({ ...preview, src: preview.hd.src, thumb: under, hd: { ...preview.hd, shown: true, loading: true } });
+    if (show) setPreview({ ...preview, src: preview.hd.src, thumb: under, hd: { ...preview.hd, shown: true, loading: true, opened: preview.src } });
+    else if (preview.hd.opened) setPreview({ ...preview, src: preview.hd.opened, thumb: under, hd: { ...preview.hd, shown: false, loading: false } });
   };
   // the original has come (or failed): 「原图」 stops spinning
   const originalSettled = () => setPreview(p => (p?.type === 'image' && p.hd?.loading ? { ...p, hd: { ...p.hd, loading: false } } : p));
@@ -953,19 +956,35 @@ export function App() {
 
     <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
       onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (event.target === event.currentTarget) closePreview(); }} onKeyDown={previewKeys}>
-      {shownPreview && <div className="preview-content"><header><strong>{shownPreview.value.title}{gallery && <small className="num"> {gallery.index + 1} / {gallery.items.length}</small>}</strong>
-        <span className="preview-tools">{shownPreview.value.type === 'image' && shownPreview.value.hd && <OriginalButton key={shownPreview.value.hd.src} hd={shownPreview.value.hd} onShow={showOriginal} />}{gallery && <>
-          <button type="button" className="icon-button" aria-label="上一个" title="上一个（←）" disabled={gallery.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={18} /></button>
-          <button type="button" className="icon-button" aria-label="下一个" title="下一个（→）" disabled={gallery.index === gallery.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={18} /></button></>}
-          {shownPreview.value.type !== 'file' && shownPreview.value.locate && <button type="button" className="icon-button" aria-label="在会话中定位" title="在会话中定位"
-            onClick={() => { const locate = shownPreview.value.type !== 'file' ? shownPreview.value.locate : undefined; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
-          <button type="button" className="icon-button" aria-label="关闭预览" onClick={closePreview}><X size={18} /></button></span></header>
-        {shownPreview.value.type === 'image'
-          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} thumb={shownPreview.value.thumb}
-            onSettled={shownPreview.value.hd?.loading ? originalSettled : undefined} />
-          : shownPreview.value.type === 'video'
-            ? <PreviewVideo key={shownPreview.value.src} src={shownPreview.value.src} poster={shownPreview.value.poster} thumb={shownPreview.value.thumb} />
-            : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}
+      {shownPreview && (() => {
+        const shown = shownPreview.value;
+        // what the preview shows, also while it fades out after it was let go of (#340)
+        const steps = shown.type !== 'file' ? shown.gallery : undefined;
+        return <div className="preview-content"><header><strong>{shown.title}{steps && <small className="num"> {steps.index + 1} / {steps.items.length}</small>}</strong>
+          <span className="preview-tools">
+            {shown.type !== 'file' && shown.locate && <button type="button" className="icon-button" aria-label="在会话中定位" title="在会话中定位"
+              onClick={() => { const locate = shown.locate; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
+            <button type="button" className="icon-button" aria-label="关闭预览" onClick={closePreview}><X size={18} /></button></span></header>
+          {shown.type === 'file'
+            ? <div className="file-preview"><FilePdf size={56} /><h3>{shown.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>
+            : <>
+              {/* the picture sunk in a hollow of the frame (#341) */}
+              <div className="preview-stage">{shown.type === 'image'
+                ? <PreviewImage key={shown.src} src={shown.src} title={shown.title} controls={zoom} thumb={shown.thumb}
+                  onSettled={shown.hd?.loading ? originalSettled : undefined} />
+                : <PreviewVideo key={shown.src} src={shown.src} poster={shown.poster} thumb={shown.thumb} />}</div>
+              <footer className="preview-foot">
+                <span className="preview-foot-side">{shown.type === 'image' && shown.hd && <OriginalButton key={shown.hd.src} hd={shown.hd} onToggle={toggleOriginal} />}</span>
+                {steps && <span className="preview-steps">
+                  <button type="button" className="preview-step" aria-label="上一个" title="上一个（←）" disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
+                  <button type="button" className="preview-step" aria-label="下一个" title="下一个（→）" disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>
+                </span>}
+                <span className="preview-foot-side end">{(shown.type === 'video' || /\/api\/chat\/image-data/.test(shown.src)) &&
+                  <PreviewDownload key={shown.src} src={shown.src} kind={shown.type} original={shown.type === 'image' && Boolean(shown.hd?.shown)} />}</span>
+              </footer>
+            </>}
+        </div>;
+      })()}
     </dialog>
     <dialog className="setup-dialog" ref={setupRef} aria-label="账号配置" data-state={shownSetup?.closing ? 'closing' : 'open'}
       onCancel={event => { event.preventDefault(); closeSetup(); }}>
