@@ -6,7 +6,7 @@
 //! `<work dir>/data` holds the account and `<work dir>/home` the WeFlow home pointing at it; both are built again only
 //! when [`VERSION`] changes. The home is printed on stdout.
 //!
-//! What is in it: private chats with a few friends, a group whose pictures are on this computer, some Moments, and
+//! What is in it: private chats with a few friends (50 to 100 messages each), a group whose pictures are on this computer, some Moments, and
 //! 「图片测试」, a chat of one picture per case of the files WeChat keeps of it (#194): the thumbnail a chat shows
 //! (`<md5>_t.dat`), the image opened (`<md5>.dat`) and the original downloaded on View original (`<md5>_h.dat`), each
 //! there or not. Every picture is a JPEG with its file and size written on it, so which one a page shows is plain.
@@ -18,7 +18,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, RoomSpec, SessionSpec, SnsPostSpec};
 
 /// Bump on any change to what is built, so the account is built again.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 /// The account's own wxid, and its folder as WeChat names it (the wxid and a suffix of four).
 const OWNER: &str = "wxid_devme";
 const ACCOUNT_DIR: &str = "wxid_devme_d3v0";
@@ -53,6 +53,36 @@ const LINES: &[&str] = &[
     "今天下雨了，改天吧",
     "没问题，下周再约",
     "路上注意安全",
+    "早上好，今天降温了，多穿点",
+    "中午一起吃饭吗？楼下新开了一家面馆",
+    "可以，十二点楼下见",
+    "我可能晚十分钟，会议还没结束",
+    "不急，我先去排队",
+    "这家的牛肉面真不错，下次还来",
+    "周报写完了吗？",
+    "还差一点，下班前发你",
+    "辛苦啦",
+    "明天几点的高铁？",
+    "八点四十，七点半要出门",
+    "要不要我送你去车站",
+    "不用啦，地铁很方便",
+    "到了说一声",
+    "已经到了，酒店挺干净的",
+    "哈哈哈哈哈",
+    "这个视频笑死我了",
+    "你看那本书了吗？我觉得结尾有点仓促",
+    "看了，前面很精彩，后面确实赶了点",
+    "生日快乐！🎂",
+    "谢谢！晚上一起吃蛋糕",
+    "猫今天又把杯子推下桌了",
+    "它是不是在报复你昨天没陪它玩",
+    "快递到了，帮我拿一下好吗",
+    "好的，放你门口了",
+    "下个月的旅行计划定了吗",
+    "初步定在云南，大理加丽江",
+    "我也想去！能带上我吗",
+    "当然，人多热闹",
+    "晚安",
 ];
 
 /// Which files of a picture are on this computer.
@@ -477,17 +507,25 @@ fn build(data: &Path, now: i64) -> Result<Fixture> {
     });
     chats.push((ROOM, msgs));
 
-    // the friends: a few lines each, a day further back each
+    // the friends: 50 to 100 messages each, a few talks over the weeks before the latest, a day further back each
     for (k, (user, _)) in FRIENDS.iter().enumerate() {
         let newest = now - (k as i64 + 1) * DAY;
-        let msgs: Vec<MsgSpec> = (0..20i64)
+        let count = 50 + (k as i64 * 37) % 51;
+        let msgs: Vec<MsgSpec> = (0..count)
             .map(|j| {
-                let sender = if j % 2 == 0 { *user } else { OWNER };
+                let back = count - 1 - j;
+                // a talk of up to 12 messages a few minutes apart, then three days back to the one before
+                let at = newest - (back / 12) * 3 * DAY - (back % 12) * 4 * MINUTE;
+                let sender = if (j + k as i64) % 3 == 0 {
+                    OWNER
+                } else {
+                    *user
+                };
                 MsgSpec::text(
                     j + 1,
                     sender,
-                    newest - (19 - j) * 13 * MINUTE,
-                    LINES[(j as usize + k) % LINES.len()],
+                    at,
+                    LINES[(j as usize * 7 + k * 11) % LINES.len()],
                 )
             })
             .collect();
