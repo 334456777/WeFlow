@@ -638,7 +638,7 @@ a.biz-lead:hover, a.biz-item:hover { box-shadow: var(--neu-pressed); }
   min-width: 120px; min-height: 80px; color: var(--fg-subtle); font-size: var(--text-2xs);
 }
 .emoji-sticker img { display: block; max-width: 120px; max-height: 120px; }
-.preview-video { display: block; max-width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 120px); margin: 0 auto; }
+.preview-video { display: block; max-width: min(960px, calc(100vw - var(--preview-room-x))); max-height: calc(100dvh - var(--preview-room-y)); margin: 0 auto; }
 
 /* Voice: a button whose length follows the duration, with a row of bars that pulse while it plays. */
 .voice-bubble { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 72px; color: var(--fg); font-size: var(--text-sm); text-align: left; }
@@ -1081,7 +1081,10 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .console-output { max-height: 360px; margin: 0; padding: var(--space-3); border-radius: var(--radius-md); box-shadow: var(--neu-inset); font-family: var(--font-mono); font-size: var(--text-2xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Preview dialog: comes in from 95% with a small rise, leaves faster. */
-.preview-dialog { max-width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
+.preview-dialog {
+  /* the room the frame takes around the picture: the bar above, the footer below, the hollow and the margins (#341) */
+  --preview-room-x: 72px; --preview-room-y: 184px;
+  max-width: min(960px + var(--preview-room-x) - 32px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; overflow: visible; border: 0; background: transparent; color: inherit; }
 .preview-dialog::backdrop { background: var(--overlay); animation: fade-in var(--duration-base) var(--ease-out) both; }
 .preview-dialog[data-state='closing']::backdrop { animation: fade-out var(--duration-exit) ease both; }
 .preview-content { overflow: hidden; border-radius: var(--radius-2xl); background: var(--surface); box-shadow: var(--neu-raised-overlay); animation: dialog-in var(--duration-base) var(--ease-out) both; }
@@ -1097,29 +1100,58 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 /* under the picture, which the browser would not keep on top of it */
 ::view-transition-group(preview-frame) { z-index: 1; animation-duration: 260ms; animation-timing-function: var(--ease-out); }
 ::view-transition-image-pair(preview-frame) { overflow: hidden; border-radius: var(--radius-2xl); }
-::view-transition-old(preview-frame), ::view-transition-new(preview-frame) { width: 100%; height: 100%; object-fit: none; }
+/*
+ * The frame's picture keeps its own size and is scaled from the thumbnail with the picture (#339): its part where the
+ * picture is stays under the picture all the way, so its bar and footer come out of where the picture comes from.
+ */
+::view-transition-old(preview-frame), ::view-transition-new(preview-frame) {
+  position: absolute; top: 0; left: 0; width: var(--frame-w, 100%); height: var(--frame-h, 100%); object-fit: fill; transform-origin: 0 0;
+}
 :root[data-flight='open']::view-transition-group(preview-frame) { animation-name: preview-frame-grow; }
-:root[data-flight='open']::view-transition-new(preview-frame) { animation: preview-frame-around 260ms var(--ease-out) both; }
+:root[data-flight='open']::view-transition-new(preview-frame) { animation: preview-frame-from 260ms var(--ease-out) both; }
 :root[data-flight='close']::view-transition-group(preview-frame) { animation-name: preview-frame-shrink; }
-:root[data-flight='close']::view-transition-old(preview-frame) { animation: preview-frame-under 260ms var(--ease-out) both; }
+:root[data-flight='close']::view-transition-old(preview-frame) { animation: preview-frame-to 260ms var(--ease-out) both; }
 @keyframes preview-frame-grow { from { transform: translate(var(--fly-x), var(--fly-y)); width: var(--fly-w); height: var(--fly-h); } }
 @keyframes preview-frame-shrink { to { transform: translate(var(--fly-x), var(--fly-y)); width: var(--fly-w); height: var(--fly-h); } }
-@keyframes preview-frame-around { from { object-position: calc(50% - var(--frame-ox)) calc(50% - var(--frame-oy)); } }
-@keyframes preview-frame-under { to { object-position: calc(50% - var(--frame-ox)) calc(50% - var(--frame-oy)); } }
+@keyframes preview-frame-from { from { transform: translate(var(--frame-tx), var(--frame-ty)) scale(var(--frame-sx), var(--frame-sy)); } }
+@keyframes preview-frame-to { to { transform: translate(var(--frame-tx), var(--frame-ty)) scale(var(--frame-sx), var(--frame-sy)); } }
 /* opened by a flight, the dialog's own fade and growth stay off until it closes without one */
 .preview-dialog[data-flown]::backdrop, .preview-dialog[data-flown] .preview-content { animation: none; }
 .preview-content header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); font-size: var(--text-sm); }
-.preview-content > img { width: auto; max-height: calc(100dvh - 120px); margin: 0 auto; object-fit: contain; }
+.preview-content > img { width: auto; max-height: calc(100dvh - var(--preview-room-y)); margin: 0 auto; object-fit: contain; }
+/*
+ * The picture sits sunk in a hollow of the frame; under it 「原图」 on the left, the long flat arrows in the middle and
+ * 「下载」 on the right (#341).
+ */
+.preview-content:has(> .preview-stage) { padding: 0 var(--space-3); }
+.preview-content:has(> .preview-stage) > header { margin: 0 calc(-1 * var(--space-3)); }
+/* as wide as the picture, in the middle when the bar or the footer is wider */
+.preview-stage { width: fit-content; max-width: 100%; margin: 0 auto; padding: var(--space-2); border-radius: var(--radius-xl); box-shadow: var(--neu-inset); }
+.preview-stage :is(.zoom-frame, .preview-video, .media-error) { border-radius: var(--radius-md); }
+.preview-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); padding: var(--space-3) 0; }
+.preview-foot-side { display: flex; min-width: 0; }
+.preview-foot-side.end { justify-content: flex-end; }
+.preview-steps { display: flex; gap: var(--space-3); }
+.preview-step {
+  display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 24px; border-radius: var(--radius-full);
+  background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted);
+  transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
+}
+.preview-step:hover:not(:disabled) { color: var(--fg); box-shadow: var(--neu-pressed); }
+.preview-step:active:not(:disabled) { box-shadow: var(--neu-inset-pressed); transform: scale(var(--press-scale)); }
+.preview-step:disabled { box-shadow: var(--neu-disabled); color: var(--fg-subtle); cursor: not-allowed; }
+.preview-download { box-shadow: var(--neu-raised-sm); }
+.preview-download.failed { color: var(--state-danger); }
 /* The zoomable picture (#194): the frame keeps the size of the picture at 1×, what is zoomed past it is clipped. */
 .zoom-frame { display: flex; justify-content: center; overflow: hidden; touch-action: none; cursor: zoom-in; }
 .zoom-frame.zoomed { cursor: grab; }
 .zoom-frame.zoomed:active { cursor: grabbing; }
-.zoom-frame img { width: auto; max-width: 100%; max-height: calc(100dvh - 120px); object-fit: contain; transform-origin: center; user-select: none; }
+.zoom-frame img { width: auto; max-width: 100%; max-height: calc(100dvh - var(--preview-room-y)); object-fit: contain; transform-origin: center; user-select: none; }
 .preview-tools { display: flex; align-items: center; gap: var(--space-1); }
-/* 「原图」: a small raised control before the arrows; flat and faint when the original is not on this computer, and
-   sunk while it shows (#194) */
+/* 「原图」: a small raised control in the lower left corner; flat and faint when the original is not on this computer,
+   and sunk while it shows, pressed again to go back (#194, #338) */
 .original-button {
-  display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-md); margin-right: var(--space-2); padding: 0 var(--space-3);
+  display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-md); padding: 0 var(--space-3);
   border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--neu-raised-sm); color: var(--fg-muted); font-size: var(--text-xs);
   transition: color var(--duration-hover) ease, box-shadow var(--duration-hover) var(--ease-out), transform var(--duration-micro) var(--ease-out);
 }
