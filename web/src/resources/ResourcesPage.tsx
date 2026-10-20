@@ -11,7 +11,7 @@ import { mediaUrl, type ParsedMessage } from '../api/messages';
 import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
 import { formatClock, formatFileSize } from '../chat/messages';
-import { reasonOf, Voice, type Preview } from '../chat/MessageView';
+import { imagePreview, reasonOf, Voice, type Preview } from '../chat/MessageView';
 import { Popover } from '../Popover';
 import { Failed } from '../reports/AnnualReport';
 import { Segmented } from '../Segmented';
@@ -100,7 +100,7 @@ function previewOf(item: Resource, onOpen: (item: Resource) => void): Preview | 
   const message = asMessage(item);
   const locate = () => onOpen(item);
   const title = (item.resourceType === 'video' ? '视频' : '图片') + ' · ' + nameOf(item);
-  if (item.resourceType === 'image') return { type: 'image', src: mediaUrl('image-data', sessionOf(item), message), title, locate };
+  if (item.resourceType === 'image') return { ...imagePreview(sessionOf(item), message, title), locate };
   if (item.resourceType === 'video') return { type: 'video', src: mediaUrl('video-data', sessionOf(item), message), poster: mediaUrl('video-data', sessionOf(item), message, { thumb: true }), title, locate };
   return null;
 }

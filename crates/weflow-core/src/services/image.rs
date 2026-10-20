@@ -167,6 +167,32 @@ fn lower_file_name(path: &Path) -> Option<String> {
     path.file_name().map(|n| n.to_string_lossy().to_lowercase())
 }
 
+/// Which of the files WeChat keeps of an image (#194): `Thumb`, the thumbnail a chat shows (`<md5>_t.dat`); `Normal`,
+/// the image opened (`<md5>.dat`); `Hd`, the original WeChat downloads on View original (`<md5>_h.dat`); `Best`, the
+/// best of them on this computer. `Normal` falls back to the best there is, `Hd` to nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageVariant {
+    Best,
+    Thumb,
+    Normal,
+    Hd,
+}
+
+/// The `.dat` file of each rendition of an image, where there is one.
+#[derive(Default, Debug)]
+struct DatFiles {
+    hd: Option<String>,
+    base: Option<String>,
+    thumb: Option<String>,
+}
+
+/// A `not_found` failure (HTTP 404), as the image routes report a missing file.
+fn not_found(message: &str) -> AppError {
+    let mut err = AppError::runtime(message);
+    err.details = Some(json!({ "failureKind": "not_found" }));
+    err
+}
+
 #[derive(Default, Clone, Debug)]
 pub struct ImagePayload {
     pub session_id: Option<String>,
@@ -1294,6 +1320,136 @@ impl ServiceHub {
         }
     }
 
+    /// The image of a message in one of the renditions WeChat keeps: [`ImageVariant`].
+    pub fn image_variant_for_message(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+        variant: ImageVariant,
+    ) -> AppResult<Vec<u8>> {
+        match variant {
+            ImageVariant::Best => self.image_data_for_message(session_id, msg_id, create_time),
+            ImageVariant::Thumb => {
+                self.image_thumbnail_for_message(session_id, msg_id, create_time)
+            }
+            ImageVariant::Normal | ImageVariant::Hd => {
+                let payload = self.image_payload_for_message(session_id, msg_id, create_time)?;
+                let files = self.dat_files(&payload).unwrap_or_default();
+                let hd_payload = ImagePayload {
+                    force: true,
+                    ..payload.clone()
+                };
+                match (variant, &files.hd, &files.base) {
+                    // the HD file through the usual path, which keeps the HD rendition in the cache
+                    (ImageVariant::Hd, Some(_), _) => self.image_data_for_payload(&hd_payload),
+                    (ImageVariant::Hd, None, _) => Err(not_found(
+                        "the HD original of this image is not on this computer: open the image in WeChat and choose View original",
+                    )),
+                    // with no HD file the usual path already gives the image itself (or the thumbnail without it);
+                    // beside an HD file, which the usual path prefers, the image itself is decrypted here
+                    (_, None, _) => self.image_data_for_payload(&payload),
+                    (_, Some(_), Some(base)) => self.decrypt_dat_bytes(Path::new(base), &payload),
+                    (_, Some(_), None) => self.image_data_for_payload(&hd_payload),
+                }
+            }
+        }
+    }
+
+    /// Which renditions of a message's image are on this computer (#194), and the sizes WeChat gives for the image
+    /// and its HD original (bytes; the HD one is there even when it has not been downloaded).
+    pub fn image_info_for_message(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+    ) -> AppResult<Value> {
+        let (payload, content) = self.image_payload_and_content(session_id, msg_id, create_time)?;
+        let files = self.dat_files(&payload).unwrap_or_default();
+        let attr = |name: &str| -> Option<u64> {
+            let re = regex::Regex::new(&format!(r#"\s{name}\s*=\s*"(\d+)""#)).ok()?;
+            re.captures(&content)?
+                .get(1)?
+                .as_str()
+                .parse()
+                .ok()
+                .filter(|n| *n > 0)
+        };
+        let size = |path: &Option<String>| {
+            path.as_ref()
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len())
+        };
+        Ok(json!({
+            "thumb": files.thumb.is_some(),
+            "normal": files.base.is_some(),
+            "hd": files.hd.is_some(),
+            "normalBytes": attr("length").or(size(&files.base)),
+            "hdBytes": attr("hdlength").or(size(&files.hd)),
+        }))
+    }
+
+    /// The `.dat` files of each rendition of `p`'s image, chosen as [`Self::select_best_dat`] chooses among them.
+    fn dat_files(&self, p: &ImagePayload) -> Option<DatFiles> {
+        let account_dir = self.account_dir_only().ok()?;
+        let bases = lookup_bases(
+            p.image_md5.as_deref(),
+            p.image_dat_name.as_deref(),
+            p.allow_cache_index != Some(false),
+        );
+        for base in &bases {
+            let candidates: Vec<String> = self
+                .collect_dat_candidates(&account_dir, base, p.session_id.as_deref(), p.create_time)
+                .into_iter()
+                .filter(|c| Path::new(c).exists() && c.to_lowercase().ends_with(".dat"))
+                .collect();
+            if candidates.is_empty() {
+                continue;
+            }
+            let in_img: Vec<String> = candidates
+                .iter()
+                .filter(|c| img::is_img_scoped_dat_path(c))
+                .cloned()
+                .collect();
+            let of = |list: &[String], f: &dyn Fn(&str) -> bool| {
+                pick_largest(&list.iter().filter(|c| f(c)).cloned().collect::<Vec<_>>())
+            };
+            let is_base = |c: &str| img::is_base_dat_path(c, base);
+            let is_t = |c: &str| img::is_t_variant_dat(c);
+            return Some(DatFiles {
+                hd: of(&in_img, &|c| img::is_hd_dat_path(c)),
+                base: of(&in_img, &is_base).or_else(|| of(&candidates, &is_base)),
+                thumb: of(&in_img, &is_t).or_else(|| of(&candidates, &is_t)),
+            });
+        }
+        None
+    }
+
+    /// One `.dat` decrypted in memory, an HEVC image (WXGF) converted, without touching the image cache.
+    fn decrypt_dat_bytes(&self, dat: &Path, p: &ImagePayload) -> AppResult<Vec<u8>> {
+        let (xor_key, aes_key) = self.image_keys();
+        let xor_key =
+            xor_key.ok_or_else(|| AppError::runtime("image decrypt key is not configured"))?;
+        let decrypted =
+            crate::decrypt::decrypt_file(dat, xor_key, aes_key.as_ref()).map_err(|e| {
+                AppError::runtime(format!(
+                    "native decrypt failed, check the image keys: {}",
+                    e.message
+                ))
+            })?;
+        let (data, failure) = img::unwrap_wxgf(decrypted.data);
+        if failure == Some(img::HevcError::FfmpegMissing) {
+            return Err(AppError::runtime(ffmpeg_missing_message(&MissingImage {
+                session: p.session_id.clone(),
+                create_time: p.create_time,
+            })));
+        }
+        if img::detect_image_extension(&data).is_none() {
+            return Err(AppError::runtime("decrypted data is not a valid image"));
+        }
+        Ok(data)
+    }
+
     /// The `_t.dat` beside the image file of `p`, decrypted, when it is an image a page can show.
     fn thumbnail_bytes(&self, p: &ImagePayload) -> Option<Vec<u8>> {
         let account_dir = self.account_dir_only().ok()?;
@@ -1331,6 +1487,18 @@ impl ServiceHub {
         msg_id: &str,
         create_time: Option<i64>,
     ) -> AppResult<ImagePayload> {
+        Ok(self
+            .image_payload_and_content(session_id, msg_id, create_time)?
+            .0)
+    }
+
+    /// [`Self::image_payload_for_message`], and the message as WeChat keeps it (its XML).
+    fn image_payload_and_content(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+        create_time: Option<i64>,
+    ) -> AppResult<(ImagePayload, String)> {
         let local_id = crate::api::js_parse_int(msg_id)
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
@@ -1353,7 +1521,7 @@ impl ServiceHub {
                 "image has no md5 / datName, cannot locate the original file",
             ));
         }
-        Ok(ImagePayload {
+        let payload = ImagePayload {
             session_id: Some(session_id.to_string()),
             image_md5: raw_md5,
             image_dat_name: dat_name,
@@ -1361,7 +1529,8 @@ impl ServiceHub {
             prefer_file_path: true,
             hardlink_only: true,
             ..Default::default()
-        })
+        };
+        Ok((payload, msg.raw_content))
     }
 
     fn image_data_for_payload(&self, payload: &ImagePayload) -> AppResult<Vec<u8>> {

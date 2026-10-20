@@ -1,7 +1,7 @@
 // One message of the chat window (#198), drawn by its kind on the surfaces of #220: received bubbles raised,
 // sent ones inset; cards (links, files, records…) are bubbles too.
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode, Ref } from 'react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
 import {
   Article, ChatsCircle, CurrencyCny, File, FilePdf, FileText, Gift, Image as ImageIcon, MapPin, Pause, Phone, Play,
   UserSquare, VideoCamera, Warning,
@@ -11,9 +11,34 @@ import { appLabel, formatDuration, formatFileSize, kindOf, withoutLabel } from '
 import { ZoomImage, type ZoomControls } from './ZoomImage';
 
 export type Preview =
-  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void }
-  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void }
+  | { type: 'image'; src: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb; hd?: PreviewHd }
+  | { type: 'video'; src: string; poster?: string; title: string; gallery?: Gallery; locate?: () => void; thumb?: PreviewThumb }
   | { type: 'file'; title: string };
+
+/** The original WeChat downloads on View original (`_h.dat`) of a picture the preview shows as opened (`.dat`), to
+ * show instead once it is on this computer (#194); `shown` once asked for, `loading` until it has come. */
+export interface PreviewHd { src: string; sessionId: string; localId: number; createTime: number; shown?: boolean; loading?: boolean }
+
+/** A picture message as the preview opens it: the image WeChat shows when it is opened, with its original beside. */
+export function imagePreview(sessionId: string, message: ParsedMessage, title: string): Extract<Preview, { type: 'image' }> {
+  return {
+    type: 'image', src: mediaUrl('image-data', sessionId, message, { variant: 'normal' }), title,
+    hd: { src: mediaUrl('image-data', sessionId, message, { variant: 'hd' }), sessionId, localId: message.localId, createTime: message.createTime },
+  };
+}
+
+/** The thumbnail a preview opened from (#194): the preview takes its shape at once and shows it until the picture
+ * comes, so the picture that flies in from it has a place to land and does not move again when it loads. */
+export interface PreviewThumb { src: string; aspect: number }
+
+/** The size of a picture of that shape in the preview: as wide as fits, as the preview's own rules allow. */
+export function previewSize(thumb: PreviewThumb): CSSProperties {
+  return {
+    width: 'min(960px, 100vw - 32px, (100dvh - 120px) * ' + thumb.aspect.toFixed(4) + ')',
+    aspectRatio: String(thumb.aspect),
+    background: 'url(' + JSON.stringify(thumb.src) + ') center / contain no-repeat',
+  };
+}
 
 /** The pictures and videos of the conversation read so far, the one shown at `index` (#194). */
 export interface Gallery { items: Preview[]; index: number }
@@ -21,7 +46,7 @@ export interface Gallery { items: Preview[]; index: number }
 /** What a picture or video message opens in the preview; null for other messages. */
 export function mediaPreview(sessionId: string, message: ParsedMessage): Preview | null {
   const kind = kindOf(message);
-  if (kind === 'image') return { type: 'image', src: mediaUrl('image-data', sessionId, message), title: '图片' };
+  if (kind === 'image') return imagePreview(sessionId, message, '图片');
   if (kind === 'video') return { type: 'video', src: mediaUrl('video-data', sessionId, message), poster: mediaUrl('video-data', sessionId, message, { thumb: true }), title: '视频' };
   return null;
 }
@@ -193,16 +218,18 @@ function MediaError({ src, what }: { src: string; what: string }) {
   return <div className="file-preview"><Warning size={40} /><h3>{what}无法显示</h3><p>{reason || '正在查找原因…'}</p></div>;
 }
 
-export function PreviewImage({ src, title, controls }: { src: string; title: string; controls?: Ref<ZoomControls> }) {
+export function PreviewImage({ src, title, controls, thumb, onSettled }: { src: string; title: string; controls?: Ref<ZoomControls>; thumb?: PreviewThumb; onSettled?(): void }) {
   const [failed, setFailed] = useState(false);
-  return failed ? <MediaError src={src} what="图片" /> : <ZoomImage ref={controls} src={src} alt={title} onError={() => setFailed(true)} />;
+  return failed
+    ? <MediaError src={src} what="图片" />
+    : <ZoomImage ref={controls} src={src} alt={title} onLoad={onSettled} onError={() => { setFailed(true); onSettled?.(); }} sized={thumb && previewSize(thumb)} />;
 }
 
-export function PreviewVideo({ src, poster }: { src: string; poster?: string }) {
+export function PreviewVideo({ src, poster, thumb }: { src: string; poster?: string; thumb?: PreviewThumb }) {
   const [failed, setFailed] = useState(false);
   return failed
     ? <MediaError src={src} what="视频" />
-    : <video className="preview-video" src={src} poster={poster} controls autoPlay playsInline onError={() => setFailed(true)} />;
+    : <video className="preview-video" src={src} poster={poster} controls autoPlay playsInline onError={() => setFailed(true)} style={thumb && previewSize(thumb)} />;
 }
 
 /** A thumbnail from the server; when it cannot be decoded, a placeholder that says so instead of a broken image. */

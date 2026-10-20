@@ -26,7 +26,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ./weflow chat      sessions | messages | latest | search | contacts | contact | update-message | delete-message
                  anti-revoke | message | dates | date-counts | counts | statuses | detail | mark-read | tab-counts
                  export-stats | group-hint | resources | images | voice-messages | media-stream | transfer-names
-                 voice | voice-data | voice-cache | voice-preload | image-data | video-data | emoji
+                 voice | voice-data | voice-cache | voice-preload | image-data | image-info | video-data | emoji
 ./weflow export    sessions | contacts | footprint | media | messages   （messages 支持：chatlab、chatlab-jsonl、json、
                  arkme-json、html、txt、excel、weclone、sql）
 ./weflow analytics overall | rankings | time | excluded | exclude-candidates

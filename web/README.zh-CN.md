@@ -12,30 +12,29 @@
 
 ## 开发
 
-需要 Node.js 20.19+ 和 npm，CI 用的是 24。先启动 `weflow serve`，再启动开发服务器，两边使用同一个令牌：
+需要 Node.js 20.19+（CI 用 24）、npm，以及仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`）：
 
 ```sh
-export WEFLOW_HTTP_TOKEN=dev-token        # PowerShell：$env:WEFLOW_HTTP_TOKEN = "dev-token"
-weflow serve                              # 或：cargo run -p weflow-cli -- serve
-
 cd web
 npm ci
 npm run dev                               # http://localhost:5173/ui/
 ```
 
-开发服务器自己处理 `/ui/`。其他路径都转发给 `weflow serve`，包括 `/chat/sessions`、`/api/…`、`/jobs`、`/health`、`/openapi.json`。转发时加上 `Authorization: Bearer $WEFLOW_HTTP_TOKEN`。令牌只留在代理里，不会编译进网页。这两个变量也可以写在 `web/.env.local` 里（不提交）：
+`npm run dev`（`scripts/dev.mjs`，#333）会启动两样东西：
+
+- **网页**：Vite 直接提供这些源码，和 `npm run build` 做出来的是同一个网页，不加任何只在开发时才有的代码；
+- **后端**：一个读合成账号的 `weflow serve`（调试版，先自动 `cargo build`），监听 127.0.0.1 上的一个空闲端口，令牌每次随机生成。合成账号由 `crates/weflow-cli/examples/dev_account.rs` 生成在 `target/dev-account/` 里，第一次约 20 秒，之后只在生成器改了时才重建。里面有假的好友、一个群、几条朋友圈，还有「图片测试」：一张图片一种情况，对应微信保存的图片文件（缩略图 `_t.dat`、图片 `.dat`、高清原图 `_h.dat`，各自有或没有），每张图上写着它是哪个文件和尺寸。不读任何真实微信账号。
+
+Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs`、`/health`、`/openapi.json`）都转发给这个后端，并带上它的令牌，网页里不用填。停止 `npm run dev` 时两样一起停。
+
+要连别的 `weflow serve`（例如真实账号）时，在终端或 `web/.env.local`（不提交）里设置下面的变量，这时只启动 Vite：
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `WEFLOW_SERVE_URL` | `http://127.0.0.1:18108` | `weflow serve` 的地址，例如用了 `serve --port 8080` 时 |
-| `WEFLOW_HTTP_TOKEN` | 无 | 代理加上的令牌 |
+| `WEFLOW_SERVE_URL` | 合成账号 | 那个 `weflow serve` 的地址，例如 `http://127.0.0.1:18108` |
+| `WEFLOW_HTTP_TOKEN` | 无 | 它的令牌，由代理加上 |
 
-**只调整界面时**：先运行一次 `npm ci`，之后运行 `npm run dev` 就够了，不需要 `weflow serve`。这时：
-- 界面显示示例记录；
-- 连接状态显示「未连接」；
-- 每次尝试连接 `/health/events`（按 1、2、4 …… 最长 30 秒的间隔重试），终端都会打印一条代理错误，可以忽略。
-
-要从另一台电脑打开开发服务器，运行 `npm run dev -- --host`，再打开 `http://<这台机器的地址>:5173/ui/`。这时不要设置 `WEFLOW_HTTP_TOKEN`。否则，代理会把令牌交给任何能访问这个端口的人，他们就能运行任何 `weflow` 命令。
+要从另一台电脑或手机打开开发服务器，运行 `npm run dev -- --host`，再打开 `http://<这台机器的地址>:5173/ui/`。用合成账号时这样做是安全的。设置了 `WEFLOW_SERVE_URL` 和 `WEFLOW_HTTP_TOKEN` 时不要这样做：代理会把令牌交给任何能访问这个端口的人，他们就能对那个账号运行任何 `weflow` 命令。
 
 运行 `npm run build` 后用 `weflow serve --ui-dir web/dist` 打开网页时，网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
 

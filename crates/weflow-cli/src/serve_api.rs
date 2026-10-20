@@ -160,6 +160,7 @@ const METHODS: &[(&str, Rule)] = &[
     ("chat voice", Rule::Fixed(Post)),
     ("chat voice-data", Rule::Fixed(Post)),
     ("chat image-data", Rule::Fixed(Post)),
+    ("chat image-info", Rule::Fixed(Get)),
     ("chat video-data", Rule::Fixed(Post)),
     ("chat voice-cache", Rule::Fixed(Get)),
     ("chat voice-preload", Rule::Fixed(Post)),

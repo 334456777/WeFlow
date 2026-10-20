@@ -8,27 +8,29 @@ The screens come from the #130 prototype and still show sample records (`src/moc
 
 ## Development
 
-Needs Node.js 20.19+ (CI uses 24) and npm. Start `weflow serve`, then the dev server, with the same token in both:
+Needs Node.js 20.19+ (CI uses 24), npm and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`):
 
 ```sh
-export WEFLOW_HTTP_TOKEN=dev-token        # PowerShell: $env:WEFLOW_HTTP_TOKEN = "dev-token"
-weflow serve                              # or: cargo run -p weflow-cli -- serve
-
 cd web
 npm ci
 npm run dev                               # http://localhost:5173/ui/
 ```
 
-The dev server answers `/ui/` itself and passes every other path (`/chat/sessions`, `/api/…`, `/jobs`, `/health`, `/openapi.json`) to `weflow serve`, adding `Authorization: Bearer $WEFLOW_HTTP_TOKEN`. The token stays in the proxy and is never compiled into the app. Settings can also go in `web/.env.local` (not committed):
+`npm run dev` (`scripts/dev.mjs`, #333) starts two things:
+
+- **the page**: Vite serves these sources as they are, the same page `npm run build` makes, nothing added for development;
+- **the server**: a `weflow serve` (debug build, `cargo build` first) of a synthetic account, on a free port of 127.0.0.1 and with a random token of its own. The account is made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time, again only when the generator changes): made-up friends, a group, Moments and 「图片测试」, a chat of one picture per case of the files WeChat keeps of a picture (thumbnail `_t.dat`, image `.dat`, HD original `_h.dat`, each there or not), every picture written with its file and size. Nothing of a real WeChat account is read.
+
+Vite answers `/ui/` itself and passes every other path (`/chat/sessions`, `/api/…`, `/jobs`, `/health`, `/openapi.json`) to that server, adding its token; the page asks for none. Stopping `npm run dev` stops both.
+
+To work against another `weflow serve`, a real account for instance, set it in the shell or `web/.env.local` (not committed); then only Vite starts:
 
 | Variable | Default | |
 |---|---|---|
-| `WEFLOW_SERVE_URL` | `http://127.0.0.1:18108` | Where `weflow serve` listens, for example after `serve --port 8080` |
-| `WEFLOW_HTTP_TOKEN` | none | The token the proxy adds |
+| `WEFLOW_SERVE_URL` | the synthetic account | Where that `weflow serve` listens, for example `http://127.0.0.1:18108` |
+| `WEFLOW_HTTP_TOKEN` | none | Its token, which the proxy adds |
 
-**Working on the screens only**: `npm ci` once, then `npm run dev` is enough; `weflow serve` is not needed. The screens show the sample records, the connection state says "未连接", and the terminal reports a proxy error for each try to connect to `/health/events` (after 1, 2, 4 … at most 30 s), which can be ignored.
-
-To open the dev server from another computer, run `npm run dev -- --host` and open `http://<this machine's address>:5173/ui/`. Do it without `WEFLOW_HTTP_TOKEN`: with it, the proxy hands the token to everyone who can reach the port, and with it every `weflow` command.
+To open the dev server from another computer or a phone, run `npm run dev -- --host` and open `http://<this machine's address>:5173/ui/`. On the synthetic account that is safe. With `WEFLOW_SERVE_URL` and `WEFLOW_HTTP_TOKEN`, do not: the proxy hands the token to everyone who can reach the port, and with it every `weflow` command on that account.
 
 Opened by `weflow serve --ui-dir web/dist` (after `npm run build`), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
 

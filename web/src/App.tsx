@@ -1,10 +1,11 @@
 // The workspace from the #130 prototype: navigation on the left, records in the middle, the operations
 // console on the right as in Claude.ai (#130).
 // Records are still sample data (src/mock); the connection state is the real `weflow serve`.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { FormEvent } from 'react';
 import {
-  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowLeft, ArrowSquareOut, CalendarBlank,
+  AddressBook, Aperture, Archive, ArrowClockwise, CalendarStar, ChartBar, Footprints, Lightbulb, ArrowSquareOut, CalendarBlank,
   CaretLeft, CaretRight, ChatCircleDots, Check, CheckCircle, CircleNotch,
   DownloadSimple, Export, FilePdf, Gear, Images, MagnifyingGlass, Plugs, SidebarSimple, Wallet, X,
 } from '@phosphor-icons/react';
@@ -31,6 +32,9 @@ import { useSearch } from './chat/useSearch';
 import { parseDay } from './calendar/dates';
 import type { SearchHit } from './api/messages';
 import { PreviewImage, PreviewVideo, type Preview } from './chat/MessageView';
+import { canFly, fly, frameFlight, inSight, thumbnailOf } from './chat/previewMotion';
+import { OriginalButton } from './chat/OriginalButton';
+import { MobileBar, MobileNav } from './MobileNav';
 import type { ZoomControls } from './chat/ZoomImage';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from './mock/data';
 import { FEEDBACK_MS, usePresence } from './motion';
@@ -90,7 +94,7 @@ const navigation = [
   { id: 'moments', label: '朋友圈', icon: Aperture },
   { id: 'payments', label: '微信支付', icon: Wallet },
   { id: 'contacts', label: '通讯录', icon: AddressBook },
-  { id: 'resources', label: '资源浏览', icon: Images },
+  { id: 'resources', label: '资源浏览', icon: Images, short: '资源' },
   { id: 'analytics', label: '聊天分析', icon: ChartBar },
   { id: 'reports', label: '年度报告', icon: CalendarStar },
   { id: 'footprint', label: '我的足迹', icon: Footprints },
@@ -100,6 +104,9 @@ const navigation = [
   { id: 'settings', label: '设置', icon: Gear },
 ] as const;
 
+
+/** The pages on a phone's tab bar; the others are under 「更多」 (#335). */
+const MOBILE_TABS = ['chat', 'contacts', 'moments', 'resources'] as const;
 
 const backendLabels: Record<Backend['state'], string> = {
   checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容', unauthorized: '需要令牌',
@@ -221,6 +228,9 @@ export function App() {
   useEffect(() => onAuth(event => { if (event === 'token') setTokenSaved(Boolean(token())); }), []);
   const steady = useSteadyConnection(backend.state);
   const narrow = useMediaQuery('(max-width: 1100px)');
+  // a phone: the tab bar takes the sidebar's place (#335)
+  const phone = useMediaQuery('(max-width: 640px)');
+  const [navSheet, setNavSheet] = useState(false);
   const [sidebarFolded, setSidebarFolded] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'folded'; } catch { return false; } });
   const folded = narrow || sidebarFolded;
   const toggleSidebar = () => {
@@ -421,12 +431,67 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [highlighted, reducedMotion]);
 
-  // The dialog stays in the top layer until its exit animation has played.
-  useEffect(() => {
+  // The dialog stays in the top layer until its exit animation has played. Opened as the preview is rendered, so that
+  // a picture flying in from its thumbnail (#194) finds it open; one that flew back closed it already.
+  useLayoutEffect(() => {
     const dialog = dialogRef.current;
-    if (shownPreview && dialog && !dialog.open) dialog.showModal?.();
+    if (shownPreview && !shownPreview.closing && dialog && !dialog.open) dialog.showModal?.();
     else if (!shownPreview && dialog?.open) dialog.close();
   }, [shownPreview]);
+
+  // The picture or video of a preview flies out of the thumbnail it was opened from and back into it (#194): the one
+  // focused or last pressed. Back only while the preview shows that same one and its thumbnail is on screen.
+  const pressed = useRef<Element | null>(null);
+  useEffect(() => {
+    const down = (event: PointerEvent) => { pressed.current = event.target as Element; };
+    window.addEventListener('pointerdown', down, true);
+    return () => window.removeEventListener('pointerdown', down, true);
+  }, []);
+  // the thumbnail opened from, and the picture it showed then: the image, or its original once shown instead
+  const opened = useRef<{ thumb: HTMLImageElement; src: string; hd?: string } | null>(null);
+  const previewMedia = () => dialogRef.current?.querySelector<HTMLElement>('.zoom-frame img, .preview-video');
+  const openPreview = (next: Preview) => {
+    const thumb = next.type === 'file' ? null : thumbnailOf(document.activeElement, pressed.current);
+    if (!thumb || next.type === 'file') { opened.current = null; setPreview(next); return; }
+    const shown: Preview = { ...next, thumb: { src: thumb.currentSrc || thumb.src, aspect: thumb.naturalWidth / thumb.naturalHeight } };
+    opened.current = { thumb, src: next.src, hd: next.type === 'image' ? next.hd?.src : undefined };
+    if (!canFly(prefersReducedMotion(reducedMotion))) { setPreview(shown); return; }
+    // the dialog's own fade and growth stay off while it is open: switched back on, they would play from the start
+    dialogRef.current?.setAttribute('data-flown', '');
+    const from = thumb.getBoundingClientRect();
+    let done = () => {};
+    const frame = () => dialogRef.current?.querySelector<HTMLElement>('.preview-content');
+    void fly(thumb, () => flushSync(() => setPreview(shown)), previewMedia, media => {
+      const f = frame();
+      if (f) done = frameFlight('open', f, media, from);
+    }).then(() => done());
+  };
+  // the original instead of the image opened (#194), in the same place: the image stays under it until it comes
+  const showOriginal = () => {
+    if (!preview || preview.type !== 'image' || !preview.hd) return;
+    const img = previewMedia();
+    const under = img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0
+      ? { src: img.currentSrc || img.src, aspect: preview.thumb?.aspect ?? img.naturalWidth / img.naturalHeight } : preview.thumb;
+    setPreview({ ...preview, src: preview.hd.src, thumb: under, hd: { ...preview.hd, shown: true, loading: true } });
+  };
+  // the original has come (or failed): 「原图」 stops spinning
+  const originalSettled = () => setPreview(p => (p?.type === 'image' && p.hd?.loading ? { ...p, hd: { ...p.hd, loading: false } } : p));
+  const closePreview = () => {
+    const back = opened.current;
+    opened.current = null;
+    const media = previewMedia();
+    const dialog = dialogRef.current;
+    const same = preview && preview.type !== 'file' && (preview.src === back?.src || preview.src === back?.hd);
+    if (back && media && same && inSight(back.thumb) && canFly(prefersReducedMotion(reducedMotion))) {
+      dialog?.setAttribute('data-flown', '');
+      const frame = dialog?.querySelector<HTMLElement>('.preview-content');
+      const done = frame ? frameFlight('close', frame, media, back.thumb.getBoundingClientRect()) : () => {};
+      void fly(media, () => { flushSync(() => setPreview(null)); dialog?.close(); }, () => back.thumb).then(() => { done(); dialog?.removeAttribute('data-flown'); });
+    } else {
+      dialog?.removeAttribute('data-flown');
+      setPreview(null);
+    }
+  };
 
   useEffect(() => {
     const dialog = setupRef.current;
@@ -581,7 +646,7 @@ export function App() {
       id: 'media', title: '媒体文件', summary: selected.live ? '图片、视频与文件' : media.length + ' 个',
       content: selected.live
         ? (open: boolean) => liveSession ? <MediaPanel key={scope + ':' + liveSession.username} sessionId={liveSession.username} active={open} onOpen={item => openMedia(liveSession.username, item)} /> : null
-        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? setPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
+        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? openPreview({ type: 'image', src: message.asset, title: message.text }) : setPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
     },
     {
       id: 'moments-filter', title: '筛选朋友圈', summary: filterSummary(momentFilter),
@@ -658,6 +723,8 @@ export function App() {
             : chatCards.filter(id => !(selected.live && !liveSession && (id === 'info' || id === 'media')));
   const hiddenCards = cards.map(card => card.id).filter(id => !shownCards.includes(id));
 
+  const connection = <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{connected && realtime ? '实时' : backendLabels[backend.state]}</span></div>;
+
   return <main className={'workspace' + (folded ? ' sidebar-collapsed' : '')}>
     <aside className="sidebar">
       <nav aria-label="主导航" data-roving="vertical" data-roving-items=".nav-item"><HoverTrack items=".nav-item" />
@@ -671,9 +738,10 @@ export function App() {
       </nav>
       <div className="sidebar-footer">
         {!narrow && <button type="button" className="icon-button sidebar-toggle" aria-label={folded ? '展开侧边栏' : '收起侧边栏'} title={folded ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!folded} onClick={toggleSidebar}><SidebarSimple size={18} /></button>}
-        <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}><span className="connection-dot" /><span className="connection-label">{connected && realtime ? '实时' : backendLabels[backend.state]}</span></div>
+        {connection}
       </div>
     </aside>
+    {phone && <MobileNav items={navigation} tabs={MOBILE_TABS} current={section} onSelect={selectSection} status={connection} open={navSheet} onOpen={setNavSheet} />}
 
     <div className="main-area">
       {section === 'settings' ? <><section ref={settingsRef} className="panel browser-panel settings-panel scroll-area" aria-label="设置">
@@ -723,9 +791,9 @@ export function App() {
             ? <TokenPrompt />
             : <MomentPeople state={people} total={null} selected={momentFilter.username} onRetry={reloadPeople}
               onSelect={username => { setMomentFilter(filter => ({ ...filter, username })); setMobileDetail(true); }} />}
+          <MobileBar label="返回发布者列表" title="朋友圈" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="朋友圈时间线">
-            <button type="button" className="mobile-back icon-button" aria-label="返回发布者列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
-            {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={setPreview} />}
+            {momentsLive && <MomentsFeed key={scope + ':' + JSON.stringify(momentFilter)} filter={momentFilter} scroller={paneRef} onPreview={openPreview} />}
           </div>
           <Scrollbar target={paneRef} />
         </section>
@@ -751,7 +819,7 @@ export function App() {
         ? <><section ref={resourcesRef} className="panel browser-panel settings-panel scroll-area" aria-label="资源浏览">
           <div className="settings-heading"><Images size={20} /><h1>资源浏览</h1></div>
           {backend.state === 'unauthorized' ? <TokenPrompt /> : connected
-            ? <ResourcesPage key={scope} filter={resourceFilter} onPreview={setPreview} onOpen={openResource} />
+            ? <ResourcesPage key={scope} filter={resourceFilter} onPreview={openPreview} onOpen={openResource} />
             : <p className="settings-footnote">连接 weflow serve 后，可以在这里浏览所有会话的图片、视频、语音和文件。</p>}
         </section><Scrollbar target={resourcesRef} /></>
         : section === 'footprint'
@@ -788,8 +856,8 @@ export function App() {
                 keyword={insightFilter.keyword} onKeyword={keyword => setInsightFilter(f => ({ ...f, keyword }))}
                 onSelect={session => { setInsightFilter(f => ({ ...f, session })); setMobileDetail(true); }} />
               : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里查看 AI 见解。</p></div>}
+          <MobileBar label="返回联系人" title="见解" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="见解">
-            <button type="button" className="mobile-back icon-button" aria-label="返回联系人" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {connected && <InsightList state={insights.state} narrowed={Boolean(insightFilter.keyword || insightFilter.session)} onRead={readInsight} onMore={insights.more}
               canChat={session => sessionList.some(s => s.username === session)}
               onChat={session => { selectSection('chat'); setLiveId(session); setMobileDetail(true); }} />}
@@ -804,8 +872,8 @@ export function App() {
               ? <ContactList state={contactsState} kind={contactKind} onKind={setContactKind} selected={contactId} onRetry={reloadContacts}
                 onSelect={username => { setContactId(username); setMobileDetail(true); }} />
               : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里查看通讯录。</p></div>}
+          <MobileBar label="返回联系人列表" title={contact?.displayName ?? '联系人资料'} onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="联系人资料">
-            <button type="button" className="mobile-back icon-button" aria-label="返回联系人列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {connected && (contact
               ? <ContactDetail key={contact.username} contact={contact} canChat={sessionList.some(s => s.username === contact.username)}
                 onChat={() => { selectSection('chat'); setLiveId(contact.username); setMobileDetail(true); }} />
@@ -820,8 +888,8 @@ export function App() {
             : connected
               ? <ExportPicker state={liveSessions} picked={picked} onChange={setPicked} onRetry={reloadSessions} />
               : <div className="session-pane"><p className="session-message">连接 weflow serve 后，可以在这里选择会话批量导出。</p></div>}
+          <MobileBar label="返回会话列表" title="已选的会话" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="已选的会话">
-            <button type="button" className="mobile-back icon-button" aria-label="返回会话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {connected && <PickedList picked={pickedSessions} onRemove={id => setPicked(old => { const next = new Set(old); next.delete(id); return next; })} />}
           </div>
           <Scrollbar target={paneRef} />
@@ -832,8 +900,8 @@ export function App() {
             ? <TokenPrompt />
             : <PaymentMerchants state={payState} merchants={merchants} selected={payFilter.merchant} onRetry={reloadPayments}
               onSelect={merchant => { setPayFilter(filter => ({ ...filter, merchant })); setMobileDetail(true); }} />}
+          <MobileBar label="返回商户列表" title="支付记录" onBack={() => setMobileDetail(false)} />
           <div ref={paneRef} className="message-pane scroll-area" aria-label="支付记录">
-            <button type="button" className="mobile-back icon-button" aria-label="返回商户列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
             {paymentsLive && (chosenPayments
               ? <PaymentList key={scope + ':' + JSON.stringify(payFilter)} payments={chosenPayments} scroller={paneRef} narrowed={Boolean(payFilter.merchant || payFilter.from || payFilter.to)} />
               : payState.status === 'loading' && <PaymentsSkeleton label="正在读取支付记录" />)}
@@ -855,19 +923,19 @@ export function App() {
             </span>
           </button>)}
         </div><Scrollbar target={listRef} /></>}
+        <MobileBar label="返回对话列表" title={selected.live ? liveSession?.displayName ?? '' : selected.name} onBack={() => setMobileDetail(false)} />
         <div ref={paneRef} className="message-pane scroll-area" aria-label={selected.name + '的记录'}>
-          <button type="button" className="mobile-back icon-button" aria-label="返回对话列表" onClick={() => setMobileDetail(false)}><ArrowLeft size={18} /></button>
           {selected.live && (liveSession
             ? kindOf(liveSession.username) === 'official'
               ? <BizPushes key={scope + ':' + liveSession.username} session={liveSession} />
-              : <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={setPreview} />
+              : <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={openPreview} />
             : <div className="pane-message">{liveSessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>)}
           {!selected.live && <div className="messages">
             {selected.messages.map((message, index) => <div key={message.id}>
               {(index === 0 || selected.messages[index - 1].date !== message.date) && <div className="date-separator">{formatDay(message.date)}</div>}
               <div id={'message-' + message.id} className={'message-row ' + message.direction + (highlighted === message.id ? ' highlighted' : '')}>
                 {message.kind === 'image' && message.asset
-                  ? <button type="button" className="photo-button" aria-label={'预览' + message.text} onClick={() => setPreview({ type: 'image', src: message.asset!, title: message.text })}><img className="message-photo" src={message.asset} alt={message.text} /></button>
+                  ? <button type="button" className="photo-button" aria-label={'预览' + message.text} onClick={() => openPreview({ type: 'image', src: message.asset!, title: message.text })}><img className="message-photo" src={message.asset} alt={message.text} /></button>
                   : message.kind === 'file'
                     ? <button className="message-bubble file-bubble" type="button" onClick={() => setPreview({ type: 'file', title: message.fileName || message.text })}><FilePdf size={28} /><span>{message.fileName}<small>示例文件</small></span></button>
                     : <div className="message-bubble">{message.text}</div>}
@@ -886,18 +954,19 @@ export function App() {
     </div>
 
     <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
-      onCancel={event => { event.preventDefault(); setPreview(null); }} onClick={event => { if (event.target === event.currentTarget) setPreview(null); }} onKeyDown={previewKeys}>
+      onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (event.target === event.currentTarget) closePreview(); }} onKeyDown={previewKeys}>
       {shownPreview && <div className="preview-content"><header><strong>{shownPreview.value.title}{gallery && <small className="num"> {gallery.index + 1} / {gallery.items.length}</small>}</strong>
-        <span className="preview-tools">{gallery && <>
+        <span className="preview-tools">{shownPreview.value.type === 'image' && shownPreview.value.hd && <OriginalButton key={shownPreview.value.hd.src} hd={shownPreview.value.hd} onShow={showOriginal} />}{gallery && <>
           <button type="button" className="icon-button" aria-label="上一个" title="上一个（←）" disabled={gallery.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={18} /></button>
           <button type="button" className="icon-button" aria-label="下一个" title="下一个（→）" disabled={gallery.index === gallery.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={18} /></button></>}
           {shownPreview.value.type !== 'file' && shownPreview.value.locate && <button type="button" className="icon-button" aria-label="在会话中定位" title="在会话中定位"
-            onClick={() => { const locate = shownPreview.value.type !== 'file' ? shownPreview.value.locate : undefined; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
-          <button type="button" className="icon-button" aria-label="关闭预览" onClick={() => setPreview(null)}><X size={18} /></button></span></header>
+            onClick={() => { const locate = shownPreview.value.type !== 'file' ? shownPreview.value.locate : undefined; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
+          <button type="button" className="icon-button" aria-label="关闭预览" onClick={closePreview}><X size={18} /></button></span></header>
         {shownPreview.value.type === 'image'
-          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} />
+          ? <PreviewImage key={shownPreview.value.src} src={shownPreview.value.src} title={shownPreview.value.title} controls={zoom} thumb={shownPreview.value.thumb}
+            onSettled={shownPreview.value.hd?.loading ? originalSettled : undefined} />
           : shownPreview.value.type === 'video'
-            ? <PreviewVideo key={shownPreview.value.src} src={shownPreview.value.src} poster={shownPreview.value.poster} />
+            ? <PreviewVideo key={shownPreview.value.src} src={shownPreview.value.src} poster={shownPreview.value.poster} thumb={shownPreview.value.thumb} />
             : <div className="file-preview"><FilePdf size={56} /><h3>{shownPreview.value.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>}</div>}
     </dialog>
     <dialog className="setup-dialog" ref={setupRef} aria-label="账号配置" data-state={shownSetup?.closing ? 'closing' : 'open'}

@@ -645,11 +645,24 @@ enum ChatSubcommand {
         #[arg(long)]
         create_time: Option<i64>,
         /// WeChat's own thumbnail of the image (a few KB, for lists), or the image when there is none
-        #[arg(long)]
+        #[arg(long, conflicts_with = "variant")]
         thumb: bool,
+        /// Which file of the image: best (the best on this computer), thumb (the thumbnail of a chat), normal (the image as opened), hd (the original WeChat downloads on View original; only when it has)
+        #[arg(long, value_parser = ["best", "thumb", "normal", "hd"], default_value = "best")]
+        variant: String,
         /// Output file
         #[arg(long)]
         out: PathBuf,
+    },
+    /// Which files of a message's image are on this computer (thumbnail, image, HD original) and their sizes
+    ImageInfo {
+        /// Conversation id: the other party's wxid, or xxx@chatroom for a group
+        session_id: String,
+        /// Local message id
+        msg_id: String,
+        /// Message create time (seconds): tells apart messages of different message databases that share the local id
+        #[arg(long)]
+        create_time: Option<i64>,
     },
     /// Copy the video of one message (as WeChat keeps it, MP4) to a file
     VideoData {
@@ -1561,6 +1574,17 @@ fn video_file(files: &weflow_core::video::VideoFiles, thumb: bool) -> AppResult<
 
 /// Commands the command API may also run in its own process (`/api/…`, issue #140): reads that print nothing
 /// but their result, so running them on a hub that stays open answers what the child process would.
+/// The file of an image `chat image-data` asks for: `--thumb`, or `--variant`.
+pub(crate) fn image_variant(thumb: bool, variant: &str) -> weflow_core::services::ImageVariant {
+    use weflow_core::services::ImageVariant;
+    match (thumb, variant) {
+        (true, _) | (_, "thumb") => ImageVariant::Thumb,
+        (_, "normal") => ImageVariant::Normal,
+        (_, "hd") => ImageVariant::Hd,
+        _ => ImageVariant::Best,
+    }
+}
+
 fn runs_in_process(command: &Commands) -> bool {
     match command {
         Commands::Chat(c) => matches!(
@@ -1576,6 +1600,7 @@ fn runs_in_process(command: &Commands) -> bool {
                 | ChatSubcommand::Dates { .. }
                 | ChatSubcommand::DateCounts { .. }
                 | ChatSubcommand::Resources { .. }
+                | ChatSubcommand::ImageInfo { .. }
                 | ChatSubcommand::Detail {
                     fast: true,
                     extra: false,
@@ -2519,13 +2544,15 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             msg_id,
             create_time,
             thumb,
+            variant,
             out,
         } => {
-            let bytes = if *thumb {
-                hub.image_thumbnail_for_message(session_id, msg_id, *create_time)?
-            } else {
-                hub.image_data_for_message(session_id, msg_id, *create_time)?
-            };
+            let bytes = hub.image_variant_for_message(
+                session_id,
+                msg_id,
+                *create_time,
+                image_variant(*thumb, variant),
+            )?;
             if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     AppError::runtime(format!("failed to create {}: {e}", parent.display()))
@@ -2538,6 +2565,11 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
                 serde_json::json!({ "success": true, "path": out.to_string_lossy(), "bytes": bytes.len() }),
             )
         }
+        ChatSubcommand::ImageInfo {
+            session_id,
+            msg_id,
+            create_time,
+        } => hub.image_info_for_message(session_id, msg_id, *create_time),
         ChatSubcommand::VideoData {
             session_id,
             msg_id,
