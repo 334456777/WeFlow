@@ -1,3 +1,7 @@
 [test]
 # a DOM and the defines Vite would add (#361)
 preload = ["./test/setup.ts"]
+
+[install]
+# only releases three days old or more (#371): a release is most often pulled or found bad in its first days
+minimumReleaseAge = 259200
