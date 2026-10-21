@@ -392,6 +392,8 @@ fn overall_statistics_count_private_chats_by_type_and_direction() {
         s["totalMessages"], 5,
         "only private chats count: the group is excluded"
     );
+    // the five are on four days (T0 twice, then 1, 3 and 4 days later), not 20 a month (#307)
+    assert_eq!(s["activeDays"], 4);
     assert_eq!(
         (s["textMessages"].as_i64(), s["imageMessages"].as_i64()),
         (Some(4), Some(1))
