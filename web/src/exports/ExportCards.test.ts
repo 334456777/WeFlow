@@ -2,10 +2,11 @@ import { describe, expect, it } from '#test';
 import { DEFAULT_BATCH, exportParams, packed, toggleFormat } from './ExportCards';
 
 describe('the export formats, several at once (#342)', () => {
-  it('puts formats on in the list order, and takes them off but the last', () => {
+  it('puts formats on in the list order, and takes them off, the last too (#353)', () => {
     expect(toggleFormat(['txt'], 'html')).toEqual(['html', 'txt']);
     expect(toggleFormat(['html', 'txt'], 'html')).toEqual(['txt']);
-    expect(toggleFormat(['txt'], 'txt')).toEqual(['txt']);
+    expect(toggleFormat(['txt'], 'txt')).toEqual([]);
+    expect(toggleFormat([], 'txt')).toEqual(['txt']);
   });
 
   it('takes one of two formats writing the same extension', () => {

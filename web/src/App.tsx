@@ -186,17 +186,22 @@ function liveConversation(session: ChatSession | undefined): Conversation {
   };
 }
 
-/** The export button; while exporting it grows a cancel button, when done it offers the file and another run. */
-function ExportControl({ stage, result, onStart, onCancel }: {
-  stage: ExportStage; result: ExportResult | null; onStart: () => void; onCancel: () => void;
+/**
+ * The export button; while exporting it grows a cancel button, when done it offers the file and another run. Without
+ * a format (`ready` false) it cannot be pressed and asks for one (#353).
+ */
+function ExportControl({ stage, result, ready, onStart, onCancel }: {
+  stage: ExportStage; result: ExportResult | null; ready: boolean; onStart: () => void; onCancel: () => void;
 }) {
   const expanded = stage === 'exporting' || (stage === 'done' && result !== null);
+  const waiting = !ready && stage !== 'exporting';
   return <div className={'export-control' + (expanded ? ' expanded' : '')}>
     {stage === 'done' && result
       ? <a className="primary-button large" href={result.downloadUrl} download={result.fileName}><span className="morph-label" key="done"><DownloadSimple size={18} />下载文件</span></a>
-      : <button type="button" className="primary-button large" aria-disabled={stage === 'exporting'} onClick={() => { if (stage !== 'exporting') onStart(); }}>
-        <span className="morph-label" key={stage}>{stage === 'exporting'
+      : <button type="button" className="primary-button large" disabled={waiting} aria-disabled={stage === 'exporting'} onClick={() => { if (stage !== 'exporting') onStart(); }}>
+        <span className="morph-label" key={waiting ? 'waiting' : stage}>{stage === 'exporting'
           ? <><CircleNotch size={18} className="spin" />正在导出</>
+          : waiting ? <><DownloadSimple size={18} />选择导出格式</>
           : <><DownloadSimple size={18} />{stage === 'error' ? '重新导出' : '开始导出'}</>}</span>
       </button>}
     <button type="button" className="export-side" inert={!expanded} aria-label={stage === 'done' ? '再次导出' : '取消导出'} title={stage === 'done' ? '再次导出' : '取消导出'} onClick={stage === 'done' ? onStart : onCancel}>
@@ -569,7 +574,7 @@ export function App() {
   };
 
   const exportRecords = async () => {
-    if (!liveSession) return;
+    if (!liveSession || !formats.length) return;
     setExportError(''); setExportJobId(null);
     try {
       const job = await runJob('导出 ' + selected.name + ' · ' + formatsLabel(formats), 'POST', 'export/messages', {
@@ -593,7 +598,7 @@ export function App() {
 
   const cards: Card[] = [
     {
-      id: 'export', title: '导出', summary: formatsLabel(formats) + (includeMedia ? ' · 含媒体' : ''),
+      id: 'export', title: '导出', summary: (formats.length ? formatsLabel(formats) : '未选择格式') + (includeMedia ? ' · 含媒体' : ''),
       content: <>
         <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
         <div className="form-row"><span className="field-label">时间范围</span>{selected.live
@@ -604,7 +609,7 @@ export function App() {
           <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>{MEDIA_NOTE}</small></span></label>
         </div>
         {selected.live && liveSession
-          ? <><ExportControl stage={stage} result={exportResult} onStart={exportRecords} onCancel={cancelExport} />
+          ? <><ExportControl stage={stage} result={exportResult} ready={formats.length > 0} onStart={exportRecords} onCancel={cancelExport} />
             {stage === 'error' && <p className="card-note" role="alert">{exportJob ? jobDetail(exportJob) : exportError}</p>}
             {stage === 'exporting' && exportJob && <p className="card-note" aria-live="polite">{exportJob.status === 'queued' ? '排队中：前面的任务完成后开始。' : jobDetail(exportJob)}</p>}
             {stage === 'done' && packed(formats, includeMedia) && <p className="card-note">{formats.length > 1 ? '各个格式的文件' : '导出文件'}{includeMedia ? '和 media 文件夹' : ''}打包在这个 zip 里。</p>}</>
