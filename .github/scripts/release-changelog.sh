@@ -5,7 +5,9 @@
 #
 # It compares <commit> with the previous release: a stable tag (vX.Y.Z) with the previous stable release, a
 # pre-release with the previous release of any kind. Pull requests come from the merge commits in between
-# ("Merge pull request #N" or a squash merge's "(#N)"). It lists:
+# ("Merge pull request #N" or a squash merge's "(#N)"), with the layers below each that came in by the same merge:
+# `gh stack merge` leaves main one merge commit, the top's, and every layer of the stack has it as its merge commit;
+# a layer's base is the head branch of the one below (#382). It lists:
 # - the issues those pull requests closed, grouped by label (增强/优化, bug/反常, everything else);
 # - the pull requests that closed no issue;
 # - the issues opened since the previous release that are still open.
@@ -30,8 +32,26 @@ fi
 PREV="$(jq -r .tagName <<< "$PREV_JSON")"
 PREV_DATE="$(jq -r .publishedAt <<< "$PREV_JSON")"
 
-PRS="$(git log --format=%s "$PREV..$SHA" |
-  sed -nE 's/^Merge pull request #([0-9]+).*/\1/p; s/.*\(#([0-9]+)\)$/\1/p' | sort -un)"
+MERGES="$(git log --format=%s "$PREV..$SHA" |
+  sed -nE 's/^Merge pull request #([0-9]+).*/\1/p; s/.*\(#([0-9]+)\)$/\1/p')"
+
+DEFAULT="$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)"
+
+# The layers below pull request $1 in its stack: down its base branches, the merged pull request whose head that
+# branch is and whose merge commit is the same, until a base is the default branch
+below() {
+  local base merge next
+  read -r base merge <<< "$(gh pr view "$1" --repo "$REPO" --json baseRefName,mergeCommit \
+    --jq '"\(.baseRefName) \(.mergeCommit.oid)"')"
+  while [ "$base" != "$DEFAULT" ]; do
+    read -r next base <<< "$(gh pr list --repo "$REPO" --state merged --head "$base" --json number,baseRefName,mergeCommit \
+      --jq ".[] | select(.mergeCommit.oid == \"$merge\") | \"\(.number) \(.baseRefName)\"")"
+    [ -n "$next" ] || break
+    echo "$next"
+  done
+}
+
+PRS="$(for n in $MERGES; do echo "$n"; below "$n"; done | sort -un)"
 
 PR_JSON="$(for n in $PRS; do
   gh api graphql -f owner="${REPO%/*}" -f name="${REPO#*/}" -F number="$n" -f query='
