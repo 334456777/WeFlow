@@ -166,13 +166,15 @@ fn temp_store(tag: &str) -> WebStore {
     WebStore::new(dir)
 }
 
-/// Names in the store's folder (the versions, `current`, and any download left behind).
+/// Names in the store's folder (the versions, `current`, and any download left behind), but the install locks,
+/// which stay (`WebStore::installing`).
 fn entries(store: &WebStore) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(store.root())
         .into_iter()
         .flatten()
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.starts_with(".install-"))
         .collect();
     names.sort();
     names
@@ -243,6 +245,35 @@ async fn a_version_is_downloaded_checked_and_kept() {
         .await
         .unwrap_err();
     assert_eq!(err.code, "invalid_arguments");
+}
+
+#[tokio::test]
+async fn installs_of_one_version_at_once_download_it_once() {
+    let reg = Arc::new(Registry_::default());
+    publish(
+        &reg,
+        "0.1.0",
+        package("0.1.0", "1", "5.0.0-rc.5", &[]),
+        "1",
+        "5.0.0-rc.5",
+    );
+    let base = serve(reg.clone()).await;
+    let registry = Registry::new(&base, REPO).unwrap();
+    let store = temp_store("at-once");
+    // two stores on one folder: their locks are two files open, as in two processes (#332)
+    let other = WebStore::new(store.root().to_path_buf());
+
+    let (a, b) = tokio::join!(
+        webui::install(&store, &registry, "0.1.0", BACKEND, QUIET),
+        webui::install(&other, &registry, "0.1.0", BACKEND, QUIET),
+    );
+    assert_eq!(a.unwrap().version, "0.1.0");
+    assert_eq!(b.unwrap().version, "0.1.0");
+    assert_eq!(reg.blobs.load(Ordering::SeqCst), 1);
+    assert_eq!(entries(&store), ["0.1.0"]);
+    // removed, it takes its install lock along
+    assert!(store.remove("0.1.0").unwrap());
+    assert!(std::fs::read_dir(store.root()).unwrap().next().is_none());
 }
 
 #[tokio::test]

@@ -230,7 +230,29 @@ impl WebStore {
             let _ = std::fs::remove_file(self.root.join("current"));
         }
         let _ = std::fs::remove_file(self.lock_path(version));
+        // no install of it is under way: one starts only for a version not kept
+        let _ = std::fs::remove_file(self.install_lock_path(version));
         Ok(true)
+    }
+
+    /// One install of `version` at a time in this store, across processes (#332): an exclusive lock on
+    /// `.install-<version>`, waited for, until the guard returned is dropped. The file stays: removed while another
+    /// process waits on it, it would be "delete pending" on Windows, and a third could not open it.
+    pub async fn installing(&self, version: &str) -> AppResult<std::fs::File> {
+        let path = self.install_lock_path(version);
+        let file = self.open_lock(&path)?;
+        tokio::task::spawn_blocking(move || file.lock().map(|()| file))
+            .await
+            .map_err(|e| {
+                AppError::runtime(format!(
+                    "cannot wait for the install of WebUI {version}: {e}"
+                ))
+            })?
+            .map_err(|e| AppError::runtime(format!("cannot lock {}: {e}", path.display())))
+    }
+
+    fn install_lock_path(&self, version: &str) -> PathBuf {
+        self.root.join(format!(".install-{version}"))
     }
 
     /// Keeps a version from being removed while the file returned is open: a shared lock on `.lock-<version>`
@@ -249,14 +271,17 @@ impl WebStore {
     }
 
     fn lock_file(&self, version: &str) -> AppResult<std::fs::File> {
-        let path = self.lock_path(version);
+        self.open_lock(&self.lock_path(version))
+    }
+
+    fn open_lock(&self, path: &std::path::Path) -> AppResult<std::fs::File> {
         std::fs::create_dir_all(&self.root)
             .and_then(|()| {
                 std::fs::OpenOptions::new()
                     .create(true)
                     .truncate(false)
                     .write(true)
-                    .open(&path)
+                    .open(path)
             })
             .map_err(|e| AppError::runtime(format!("cannot open {}: {e}", path.display())))
     }
@@ -594,6 +619,11 @@ pub async fn install(
     progress: &(dyn Fn(u64, u64) + Send + Sync),
 ) -> AppResult<WebMeta> {
     let version = checked_version(version)?;
+    if let Some(meta) = kept(store, version, backend)? {
+        return Ok(meta);
+    }
+    // another weflow installing the same version first: wait for it, and take what it kept (#332)
+    let _installing = store.installing(version).await?;
     if let Some(meta) = kept(store, version, backend)? {
         return Ok(meta);
     }
