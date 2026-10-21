@@ -59,6 +59,8 @@ describe('the original of a picture (#194)', () => {
   });
 
   it('spins while the original is on its way', () => {
+    // what is on this computer does not matter here: the question is never answered
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     const hd = imagePreview('wxid_a', message, '图片').hd!;
     const { rerender } = render(<OriginalButton hd={{ ...hd, shown: true, loading: true }} onToggle={vi.fn()} />);
     expect(screen.getByTitle(/^正在载入高清原图/).querySelector('.spin')).not.toBeNull();

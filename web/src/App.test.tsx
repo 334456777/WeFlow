@@ -463,7 +463,7 @@ describe('App', () => {
     expect(opened[opened.length - 1].url).toContain('access_token=right');
     expect(screen.getByRole('status').textContent).toBe('实时');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐']);
-    setToken(null);
+    act(() => setToken(null));
   });
 
   it('says in the settings what the server is, whether it suits the page, and what to do when not (#214)', async () => {
@@ -512,6 +512,8 @@ describe('App', () => {
     await renderWith(HEALTH);
     expect(dialog()?.textContent).toBe('');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    // the settings read what they show as they open
+    await act(async () => {});
     expect(screen.getByRole('region', { name: '账号' }).textContent).toContain('default当前wxid_aD:/x已配置，没有图片密钥');
   });
 
@@ -583,6 +585,7 @@ describe('App', () => {
   it('switches the colour theme from the settings and remembers it (#252)', async () => {
     await renderWith(HEALTH);
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    await act(async () => {});
     const themes = screen.getByRole('group', { name: '颜色主题' });
     expect(within(themes).getByRole('button', { name: '跟随系统' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(within(themes).getByRole('button', { name: '深色' }));
