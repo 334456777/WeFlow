@@ -32,7 +32,7 @@ weflow-assets = { path = "../weflow-assets" }
 [dev-dependencies]
 brotli-decompressor = "5"
 flate2.workspace = true
-# examples/dev_account.rs draws the pictures of the account `npm run dev` serves
+# examples/dev_account.rs draws the pictures of the account `bun run dev` serves
 jpeg-encoder.workspace = true
 # tests/serve_api.rs names Moments media the way the cache does
 md-5.workspace = true

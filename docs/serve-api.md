@@ -54,7 +54,7 @@ With a WebUI, the startup message gives its address with the token, `http://127.
 
 ### Versions of the WebUI
 
-The WebUI is published apart from `weflow`, as OCI artifacts on GHCR (`ghcr.io/334456777/weflow-web:<version>`, by `.github/workflows/web-release.yml`), and `weflow` downloads them itself: no Docker, ORAS, Node.js or npm is needed, and the CLI and the API work without any of it.
+The WebUI is published apart from `weflow`, as OCI artifacts on GHCR (`ghcr.io/334456777/weflow-web:<version>`, by `.github/workflows/web-release.yml`), and `weflow` downloads them itself: no Docker, ORAS, Bun or Node.js is needed, and the CLI and the API work without any of it.
 
 | Command | What it does |
 |---|---|

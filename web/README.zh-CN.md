@@ -12,20 +12,20 @@
 
 ## 开发
 
-需要 Node.js 20.19+（CI 用 24）、npm，以及仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`）：
+需要 Bun 1.4.2+（版本写在 `package.json` 的 `packageManager` 里）、跑测试用的 Node.js 20.19+，以及仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`）。Bun 按 `bun.lock` 安装依赖并运行脚本，Vite 和 `tsc` 也在 Bun 上运行；Vitest 仍在 Node.js 上运行，因为 jsdom 目前不能在 Bun 上运行：
 
 ```sh
 cd web
-npm ci
-npm run dev                               # http://localhost:5173/ui/
+bun install --frozen-lockfile
+bun run dev                               # http://localhost:5173/ui/
 ```
 
-`npm run dev`（`scripts/dev.mjs`，#333）会启动两样东西：
+`bun run dev`（`scripts/dev.mjs`，#333）会启动两样东西：
 
-- **网页**：Vite 直接提供这些源码，和 `npm run build` 做出来的是同一个网页，不加任何只在开发时才有的代码；
+- **网页**：Vite 直接提供这些源码，和 `bun run build` 做出来的是同一个网页，不加任何只在开发时才有的代码；
 - **后端**：一个读合成账号的 `weflow serve`（调试版，先自动 `cargo build`），监听 127.0.0.1 上的一个空闲端口，令牌每次随机生成。合成账号由 `crates/weflow-cli/examples/dev_account.rs` 生成在 `target/dev-account/` 里，第一次约 20 秒，之后只在生成器改了时才重建。里面有假的好友、一个群、几条朋友圈，还有「图片测试」：一张图片一种情况，对应微信保存的图片文件（缩略图 `_t.dat`、图片 `.dat`、高清原图 `_h.dat`，各自有或没有），每张图上写着它是哪个文件和尺寸。不读任何真实微信账号。
 
-Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs`、`/health`、`/openapi.json`）都转发给这个后端，并带上它的令牌，网页里不用填。停止 `npm run dev` 时两样一起停。
+Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs`、`/health`、`/openapi.json`）都转发给这个后端，并带上它的令牌，网页里不用填。停止 `bun run dev` 时两样一起停。
 
 要连别的 `weflow serve`（例如真实账号）时，在终端或 `web/.env.local`（不提交）里设置下面的变量，这时只启动 Vite：
 
@@ -34,9 +34,9 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 | `WEFLOW_SERVE_URL` | 合成账号 | 那个 `weflow serve` 的地址，例如 `http://127.0.0.1:18108` |
 | `WEFLOW_HTTP_TOKEN` | 无 | 它的令牌，由代理加上 |
 
-要从另一台电脑或手机打开开发服务器，运行 `npm run dev -- --host`，再打开 `http://<这台机器的地址>:5173/ui/`。用合成账号时这样做是安全的。设置了 `WEFLOW_SERVE_URL` 和 `WEFLOW_HTTP_TOKEN` 时不要这样做：代理会把令牌交给任何能访问这个端口的人，他们就能对那个账号运行任何 `weflow` 命令。
+要从另一台电脑或手机打开开发服务器，运行 `bun run dev --host`，再打开 `http://<这台机器的地址>:5173/ui/`。用合成账号时这样做是安全的。设置了 `WEFLOW_SERVE_URL` 和 `WEFLOW_HTTP_TOKEN` 时不要这样做：代理会把令牌交给任何能访问这个端口的人，他们就能对那个账号运行任何 `weflow` 命令。
 
-运行 `npm run build` 后用 `weflow serve --ui-dir web/dist` 打开网页时，网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
+运行 `bun run build` 后用 `weflow serve --ui-dir web/dist` 打开网页时，网页从地址里取令牌（`/ui/?token=…`）。令牌存在当前标签页的 `sessionStorage` 里，同时从地址栏去掉。
 
 令牌被拒绝（HTTP 401）时，网页提示输入令牌后重新连接。也可以在设置里更换或清除当前标签页的令牌；令牌不写入 `localStorage` 或构建产物。设置同时显示服务端与 API 版本、兼容性和处理建议，以及 `/health` 或状态流的 `hello` 提供的任务、读取、媒体限额和灵感引擎状态（#214）。
 
@@ -44,12 +44,14 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 
 | 脚本 | 说明 |
 |---|---|
-| `npm run dev` | 开发服务器，支持热更新 |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest（jsdom） |
-| `npm run build` | 类型检查后构建到 `dist/` |
-| `npm run preview` | 用同样的代理预览 `dist/` |
-| `npm run check` | 类型检查、测试和构建，与 CI 相同 |
+| `bun run dev` | 开发服务器，支持热更新 |
+| `bun run typecheck` | `tsc --noEmit` |
+| `bun run test` | Vitest（jsdom），在 Node.js 上运行 |
+| `bun run build` | 类型检查后构建到 `dist/` |
+| `bun run preview` | 用同样的代理预览 `dist/` |
+| `bun run check` | 类型检查、测试和构建，与 CI 相同 |
+
+`bun test`（不带 `run`）是 Bun 自带的测试运行器，跑的不是本项目的测试。
 
 `web/` 下有改动时，`.github/workflows/web.yml` 会运行 `typecheck`、`test` 和 `build`，并上传 `dist/`。
 
