@@ -18,6 +18,9 @@ fn weflow(home: &Path) -> Command {
         .env("WEFLOW_LANG", "en")
         // the fake AI server of `jobs_are_cancelled_and_limited` is on this machine
         .env("NO_PROXY", "127.0.0.1,localhost")
+        // no registry: `serve` would download the WebUI it comes with from GHCR, and `/` would turn into a
+        // redirect once it had (a test that wants a registry sets its own)
+        .env("WEFLOW_WEB_REGISTRY", "http://127.0.0.1:9")
         .env_remove("WEFLOW_HTTP_TOKEN")
         .stdin(Stdio::null());
     cmd
