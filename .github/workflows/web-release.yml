@@ -36,11 +36,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # as in web.yml: Bun for the packages, the scripts and the build, Node.js for Vitest
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: web/package.json
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
       - name: Check the version
         id: meta
@@ -48,24 +51,24 @@ jobs:
           ASKED: ${{ inputs.version }}
         run: |
           want="${ASKED:-${GITHUB_REF_NAME#web-v}}"
-          have=$(node -p "require('./web/package.json').version")
+          have=$(bun -p "require('./web/package.json').version")
           if [ "$want" != "$have" ]; then
             echo "::error::asked for $want, but web/package.json is $have"
             exit 1
           fi
           {
             echo "version=$have"
-            echo "api=$(node -p "require('./web/package.json').weflow.apiVersion")"
-            echo "min=$(node -p "require('./web/package.json').weflow.minBackendVersion")"
+            echo "api=$(bun -p "require('./web/package.json').weflow.apiVersion")"
+            echo "min=$(bun -p "require('./web/package.json').weflow.minBackendVersion")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Type-check, test and build
         working-directory: web
         run: |
-          npm ci
-          npm run typecheck
-          npm test
-          npm run build
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run test
+          bun run build
 
       - name: Pack
         run: |

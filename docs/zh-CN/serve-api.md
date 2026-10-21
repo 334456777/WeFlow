@@ -54,7 +54,7 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 
 ### 网页的版本
 
-网页和 `weflow` 分开发布，作为 OCI artifact 发布在 GHCR 上（`ghcr.io/334456777/weflow-web:<版本>`，由 `.github/workflows/web-release.yml` 发布），由 `weflow` 自己下载：不需要 Docker、ORAS、Node.js 或 npm，没有网页时 CLI 和 API 照常使用。
+网页和 `weflow` 分开发布，作为 OCI artifact 发布在 GHCR 上（`ghcr.io/334456777/weflow-web:<版本>`，由 `.github/workflows/web-release.yml` 发布），由 `weflow` 自己下载：不需要 Docker、ORAS、Bun 或 Node.js，没有网页时 CLI 和 API 照常使用。
 
 | 命令 | 作用 |
 |---|---|

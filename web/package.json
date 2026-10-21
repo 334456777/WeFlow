@@ -9,16 +9,18 @@
     "apiVersion": "1",
     "minBackendVersion": "5.0.0"
   },
+  "packageManager": "bun@1.4.2",
   "engines": {
+    "bun": ">=1.4.2",
     "node": ">=20.19"
   },
   "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "dev": "bun scripts/dev.mjs",
+    "build": "bun --bun tsc --noEmit && bun --bun vite build",
+    "preview": "bun --bun vite preview",
+    "typecheck": "bun --bun tsc --noEmit",
     "test": "vitest run",
-    "check": "tsc --noEmit && vitest run && vite build"
+    "check": "bun run typecheck && bun run test && bun --bun vite build"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",

@@ -1,8 +1,8 @@
-// `npm run dev` (#333): the page Vite serves from these sources, the same as `npm run build` makes it, over a
+// `bun run dev` (#333): the page Vite serves from these sources, the same as `bun run build` makes it, over a
 // `weflow serve` of a synthetic account (crates/weflow-cli/examples/dev_account.rs) on a free port with a token of
 // its own, which the proxy adds. Nothing of a real WeChat account is read. With WEFLOW_SERVE_URL set (in the shell or
 // web/.env.local) the proxy goes to that server instead, with WEFLOW_HTTP_TOKEN, and nothing else is started.
-// Arguments go on to Vite: `npm run dev -- --host`.
+// Arguments go on to Vite: `bun run dev --host`. Vite runs on the runtime running this script (Bun).
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';

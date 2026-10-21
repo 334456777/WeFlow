@@ -8,20 +8,20 @@ The screens come from the #130 prototype and still show sample records (`src/moc
 
 ## Development
 
-Needs Node.js 20.19+ (CI uses 24), npm and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`):
+Needs Bun 1.4.2+ (the version is pinned in `packageManager` of `package.json`), Node.js 20.19+ for the tests and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`). Bun installs the packages from `bun.lock` and runs the scripts, and Vite and `tsc` run on Bun; Vitest stays on Node.js, as jsdom does not run on Bun yet:
 
 ```sh
 cd web
-npm ci
-npm run dev                               # http://localhost:5173/ui/
+bun install --frozen-lockfile
+bun run dev                               # http://localhost:5173/ui/
 ```
 
-`npm run dev` (`scripts/dev.mjs`, #333) starts two things:
+`bun run dev` (`scripts/dev.mjs`, #333) starts two things:
 
-- **the page**: Vite serves these sources as they are, the same page `npm run build` makes, nothing added for development;
+- **the page**: Vite serves these sources as they are, the same page `bun run build` makes, nothing added for development;
 - **the server**: a `weflow serve` (debug build, `cargo build` first) of a synthetic account, on a free port of 127.0.0.1 and with a random token of its own. The account is made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time, again only when the generator changes): made-up friends, a group, Moments and 「图片测试」, a chat of one picture per case of the files WeChat keeps of a picture (thumbnail `_t.dat`, image `.dat`, HD original `_h.dat`, each there or not), every picture written with its file and size. Nothing of a real WeChat account is read.
 
-Vite answers `/ui/` itself and passes every other path (`/chat/sessions`, `/api/…`, `/jobs`, `/health`, `/openapi.json`) to that server, adding its token; the page asks for none. Stopping `npm run dev` stops both.
+Vite answers `/ui/` itself and passes every other path (`/chat/sessions`, `/api/…`, `/jobs`, `/health`, `/openapi.json`) to that server, adding its token; the page asks for none. Stopping `bun run dev` stops both.
 
 To work against another `weflow serve`, a real account for instance, set it in the shell or `web/.env.local` (not committed); then only Vite starts:
 
@@ -30,9 +30,9 @@ To work against another `weflow serve`, a real account for instance, set it in t
 | `WEFLOW_SERVE_URL` | the synthetic account | Where that `weflow serve` listens, for example `http://127.0.0.1:18108` |
 | `WEFLOW_HTTP_TOKEN` | none | Its token, which the proxy adds |
 
-To open the dev server from another computer or a phone, run `npm run dev -- --host` and open `http://<this machine's address>:5173/ui/`. On the synthetic account that is safe. With `WEFLOW_SERVE_URL` and `WEFLOW_HTTP_TOKEN`, do not: the proxy hands the token to everyone who can reach the port, and with it every `weflow` command on that account.
+To open the dev server from another computer or a phone, run `bun run dev --host` and open `http://<this machine's address>:5173/ui/`. On the synthetic account that is safe. With `WEFLOW_SERVE_URL` and `WEFLOW_HTTP_TOKEN`, do not: the proxy hands the token to everyone who can reach the port, and with it every `weflow` command on that account.
 
-Opened by `weflow serve --ui-dir web/dist` (after `npm run build`), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
+Opened by `weflow serve --ui-dir web/dist` (after `bun run build`), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
 
 A refused token (HTTP 401) shows an input to reconnect. Settings can replace or clear the tab's token; it never goes into `localStorage` or the build. Settings also show the server and API versions, compatibility advice, and the server's task/read/media limits and insight status when provided by `/health` or the stream's `hello` (#214).
 
@@ -40,12 +40,14 @@ A refused token (HTTP 401) shows an input to reconnect. Settings can replace or 
 
 | Script | |
 |---|---|
-| `npm run dev` | Dev server with hot reload |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest (jsdom) |
-| `npm run build` | Type-check, then build into `dist/` |
-| `npm run preview` | Serve `dist/` with the same proxy |
-| `npm run check` | Type-check, test and build, as CI does |
+| `bun run dev` | Dev server with hot reload |
+| `bun run typecheck` | `tsc --noEmit` |
+| `bun run test` | Vitest (jsdom), on Node.js |
+| `bun run build` | Type-check, then build into `dist/` |
+| `bun run preview` | Serve `dist/` with the same proxy |
+| `bun run check` | Type-check, test and build, as CI does |
+
+`bun test` (without `run`) is Bun's own test runner, not this project's tests.
 
 `.github/workflows/web.yml` runs `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
 
