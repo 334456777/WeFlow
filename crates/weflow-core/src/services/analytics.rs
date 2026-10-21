@@ -509,14 +509,15 @@ impl ServiceHub {
             type_count(47),
         );
         let other = (total - text - image - voice - video - emoji).max(0);
-        let active_months = d["monthly"].as_object().map_or(0, |m| m.len()) as i64;
+        // the days with a message, which the aggregate counts one by one (the desktop app guesses 20 a month, #307)
+        let active_days = d["daily"].as_object().map_or(0, |m| m.len()) as i64;
         let opt = |v: i64| if v != 0 { json!(v) } else { Value::Null };
         Ok(json!({
             "totalMessages": total, "textMessages": text, "imageMessages": image, "voiceMessages": voice,
             "videoMessages": video, "emojiMessages": emoji, "otherMessages": other,
             "sentMessages": num(&d["sent"]), "receivedMessages": num(&d["received"]),
             "firstMessageTime": opt(num(&d["firstTime"])), "lastMessageTime": opt(num(&d["lastTime"])),
-            "activeDays": active_months * 20,
+            "activeDays": active_days,
             "messageTypeCounts": d["typeCounts"]
         }))
     }
