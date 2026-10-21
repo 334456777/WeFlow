@@ -34,7 +34,7 @@ async fn start(tag: &str, token: Option<&str>, push: bool) -> Server {
         base: format!("http://{addr}"),
         broker,
         hub,
-        client: reqwest::Client::new(),
+        client: weflow_core::http_client::builder().build().unwrap(),
         _root: root,
     }
 }

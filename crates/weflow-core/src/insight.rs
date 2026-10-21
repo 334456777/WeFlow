@@ -347,7 +347,7 @@ pub async fn call_api(
         "temperature": API_TEMPERATURE,
         "stream": false
     });
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .timeout(std::time::Duration::from_millis(timeout_ms))
         .build()
         .map_err(|e| e.to_string())?;
@@ -395,7 +395,7 @@ pub async fn call_api(
 
 /// Telegram Bot API `sendMessage` (HTML parse mode, 15 s timeout).
 pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(), String> {
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;

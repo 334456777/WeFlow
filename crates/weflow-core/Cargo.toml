@@ -26,6 +26,8 @@ mime_guess.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 rust_xlsxwriter.workspace = true
+# the TLS provider of the HTTP clients (src/http_client.rs)
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

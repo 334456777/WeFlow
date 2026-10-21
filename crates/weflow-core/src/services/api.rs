@@ -1600,7 +1600,7 @@ impl ServiceHub {
                 return Ok(p);
             }
         }
-        let client = reqwest::Client::builder()
+        let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
             .map_err(|e| AppError::runtime(e.to_string()))?;

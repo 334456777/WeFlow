@@ -223,7 +223,7 @@ pub async fn install_build(
         return Ok(json!({ "path": target, "release": RELEASE_TAG, "downloaded": false }));
     }
     let base = format!("{}/{RELEASE_TAG}", base_url.trim_end_matches('/'));
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .connect_timeout(Duration::from_secs(30))
         .read_timeout(Duration::from_secs(60))
         .no_gzip()

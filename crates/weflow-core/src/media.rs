@@ -264,7 +264,7 @@ pub async fn download_emojis(
     fs::create_dir_all(cache_dir)
         .with_context(|| format!("create emoji cache dir {}", cache_dir.display()))?;
 
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .context("build reqwest client")?;

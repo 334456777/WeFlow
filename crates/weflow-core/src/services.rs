@@ -439,7 +439,7 @@ impl ServiceHub {
     }
 
     pub async fn sns_download_image(&self, url: &str, out: Option<&Path>) -> AppResult<Value> {
-        let client = reqwest::Client::builder()
+        let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|err| AppError::runtime(format!("failed to create HTTP client: {err}")))?;
