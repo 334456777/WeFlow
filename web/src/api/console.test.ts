@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import { commandsOf, formProblems, paramsOf, shellLine } from './console';
 import { DOC } from './console.fixture';
 

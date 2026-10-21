@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from '#test';
 import { getDetailExtra } from './details';
 
 const noExtra = { firstMessageTime: null, latestMessageTime: null, messageTables: [] };

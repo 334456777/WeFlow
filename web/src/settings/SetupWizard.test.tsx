@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import type { Profile } from '../api/setup';
 import { useJobs } from '../jobs/useJobs';
 import { SetupWizard } from './SetupWizard';

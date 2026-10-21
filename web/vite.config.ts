@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
@@ -55,6 +54,5 @@ export default defineConfig(({ mode }) => {
     build: { chunkSizeWarningLimit: BUDGET.js / 1000 },
     server: { proxy },
     preview: { proxy },
-    test: { environment: 'jsdom' },
   };
 });

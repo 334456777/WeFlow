@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from '#test';
 import { step, useRovingFocus, useSearchKey } from './roving';
 
 afterEach(cleanup);
@@ -65,7 +65,7 @@ describe('roving focus', () => {
     await act(async () => { await new Promise(r => requestAnimationFrame(() => r(null))); });
     expect(tabStops(container, 'nav button').slice(0, 3)).toEqual([-1, -1, 0]);
     const search = container.querySelector('input')!;
-    // jsdom lays nothing out: offsetParent is null, so count the field as showing
+    // happy-dom lays nothing out: offsetParent is null, so count the field as showing
     Object.defineProperty(search, 'offsetParent', { configurable: true, get: () => document.body });
     fireEvent.keyDown(document.body, { key: '/' });
     expect(document.activeElement).toBe(search);

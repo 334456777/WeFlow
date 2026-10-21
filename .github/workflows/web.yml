@@ -32,15 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Bun (the version in packageManager of web/package.json) installs the packages and runs the scripts, Vite and
-      # tsc; Vitest runs on Node.js, as jsdom does not run on Bun
+      # Bun (the version in packageManager of web/package.json) installs the packages and runs everything: the
+      # scripts, tsc, Vite and the tests (bun test, #361)
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: web/package.json
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
 
       - run: bun install --frozen-lockfile
 

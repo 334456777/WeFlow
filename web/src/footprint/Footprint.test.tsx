@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { presetRanges, timeline, type Footprint } from '../api/footprint';
 import type { Contact } from '../api/contacts';
 import { FootprintAi, FootprintExport, FootprintPage, FootprintView, mentionText } from './Footprint';

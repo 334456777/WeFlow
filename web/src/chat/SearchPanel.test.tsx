@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
 import type { ChatSession } from '../api/chat';
 import type { SearchHit } from '../api/messages';
 import { SearchPanel, secondsOf } from './SearchPanel';

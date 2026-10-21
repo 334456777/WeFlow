@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from '#test';
 import type { ParsedMessage } from '../api/messages';
 import { withGallery } from './MessageView';
 import { FIT, keep, zoomAt, ZoomImage } from './ZoomImage';
@@ -9,7 +9,7 @@ afterEach(cleanup);
 const message = (n: number, localType: number): ParsedMessage =>
   ({ _cursor: 'c' + n, localId: n, localType, createTime: 1_700_000_000 + n, isSend: 0, senderUsername: 'wxid_a', parsedContent: '' }) as ParsedMessage;
 
-// jsdom has no layout: the picture is 400 × 300 at 1×
+// happy-dom has no layout: the picture is 400 × 300 at 1×
 function sized() {
   const proto = HTMLElement.prototype;
   const saved = [Object.getOwnPropertyDescriptor(proto, 'offsetWidth'), Object.getOwnPropertyDescriptor(proto, 'offsetHeight')];

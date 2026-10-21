@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import { fenOf, formatYuan, paymentOf, type PayRecord } from './pay';
 
 const record = (title: string, description: string, more: Partial<PayRecord> = {}): PayRecord =>

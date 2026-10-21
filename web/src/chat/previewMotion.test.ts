@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { previewSize } from './MessageView';
 import { canFly, fly, frameVars, MEDIA_NAME, thumbnailOf } from './previewMotion';
 
 afterEach(() => { document.body.innerHTML = ''; Reflect.deleteProperty(document, 'startViewTransition'); });
 
-// jsdom loads no pictures: one that has, as the browser would say
+// happy-dom loads no pictures: one that has, as the browser would say
 function loaded(img: HTMLImageElement, width: number, height: number) {
   Object.defineProperty(img, 'complete', { value: true });
   Object.defineProperty(img, 'naturalWidth', { value: width });

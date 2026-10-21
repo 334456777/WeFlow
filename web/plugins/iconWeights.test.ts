@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import { dropWeights, ICON_WEIGHTS } from './iconWeights';
 
 const web = join(__dirname, '..');

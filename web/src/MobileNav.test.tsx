@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { AddressBook, ChatCircleDots, Gear, Wallet } from '@phosphor-icons/react';
 import { MobileBar, MobileNav } from './MobileNav';
 
@@ -31,9 +31,6 @@ describe('the navigation on a phone (#335)', () => {
   });
 
   it('opens the other pages from 「更多」, and names the one chosen there on the tab', () => {
-    // jsdom has no modal dialogs
-    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) { this.open = true; };
-    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) { this.open = false; };
     const onSelect = vi.fn();
     render(<Nav onSelect={onSelect} />);
     fireEvent.click(screen.getByRole('button', { name: '更多' }));

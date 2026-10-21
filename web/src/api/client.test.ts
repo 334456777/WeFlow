@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { adoptToken, ApiError, apiUrl, call, checkToken, onAuth, setToken, token } from './client';
 
 function answer(status: number, body: unknown): Response {

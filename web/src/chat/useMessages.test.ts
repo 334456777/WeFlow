@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { emitLive } from '../api/live';
 import { forgetMessages, useMessages, type Jump } from './useMessages';
 

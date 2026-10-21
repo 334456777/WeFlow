@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { useRef } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { SCROLL_INTENT, Scrollbar } from './Scrollbar';
 
 afterEach(cleanup);
@@ -10,7 +10,7 @@ function Area() {
   return <><div ref={ref} className="scroll-area" data-testid="area"><p>content</p></div><Scrollbar target={ref} /></>;
 }
 
-// jsdom has no layout: give the area a size before the bar measures it.
+// happy-dom has no layout: give the area a size before the bar measures it.
 function sized(height: number, content: number) {
   const proto = HTMLElement.prototype;
   const saved = [Object.getOwnPropertyDescriptor(proto, 'clientHeight'), Object.getOwnPropertyDescriptor(proto, 'scrollHeight')];

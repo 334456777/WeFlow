@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import type { Group } from '../api/groups';
 import { GroupExport, GroupPicker, GroupStats, MemberView } from './GroupAnalytics';
 

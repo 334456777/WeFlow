@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import { contactLine } from '../contacts/ContactList';
 import { countKinds, matchContacts, type Contact } from './contacts';
 

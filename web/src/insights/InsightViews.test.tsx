@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import type { InsightPage } from '../api/insights';
 import { InsightClear, InsightContacts, InsightList, InsightTrigger } from './InsightViews';
 import type { InsightsState } from './useInsights';

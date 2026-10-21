@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { NO_FILTER, SNS_PAGE, type SnsPost } from '../api/sns';
 import { MomentsFeed } from './MomentsFeed';
 import { peopleOf } from './useMomentPeople';

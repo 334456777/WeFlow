@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { setToken } from './client';
 import { getTimeline, isVideo, isWechatMedia, NO_FILTER, snsMediaUrl } from './sns';
 

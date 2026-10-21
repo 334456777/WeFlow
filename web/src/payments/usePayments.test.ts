@@ -1,5 +1,5 @@
 import { strFromU8, unzipSync } from 'fflate';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import type { Payment } from '../api/pay';
 import { exportPayments } from './payExport';
 import { ALL_PAYMENTS, matches, merchantsOf, totalsOf, withinDays } from './usePayments';

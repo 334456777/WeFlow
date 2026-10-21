@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { hourBars, monthBars, typeBars, weekdayBars, type Overall, type TimeSpread } from '../api/analytics';
 import { ExcludedPeople, PrivateAnalytics, yearStarts } from './AnalyticsViews';
 import { useAnalytics, type AnalyticsState } from './useAnalytics';
