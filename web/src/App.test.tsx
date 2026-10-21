@@ -200,6 +200,14 @@ describe('App', () => {
     fireEvent.click(exportCard.getByRole('button', { name: 'HTML' }));
     expect(exportCard.getByRole('button', { name: 'TXT' }).getAttribute('aria-pressed')).toBe('true');
     expect(exportCard.getByRole('button', { name: 'HTML' }).getAttribute('aria-pressed')).toBe('false');
+    // the last format taken off too: the button asks for one, and starts nothing (#353)
+    fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
+    expect(screen.getByRole('button', { name: '选择导出格式' })).toHaveProperty('disabled', true);
+    expect(document.querySelector('[data-card="export"] .card-summary')?.textContent).toBe('未选择格式');
+    fireEvent.click(screen.getByRole('button', { name: '选择导出格式' }));
+    await act(async () => {});
+    expect(started).toEqual([]);
+    fireEvent.click(exportCard.getByRole('button', { name: 'TXT' }));
     // the media off unless asked for (#342)
     expect((exportCard.getByRole('checkbox', { name: '附带媒体文件' }) as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '开始导出' }));
@@ -331,6 +339,10 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '不导出同学群' }));
     fireEvent.click(screen.getByRole('button', { name: '全部' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '导出林沐' }));
+    // no format: nothing to export until one is picked (#353)
+    fireEvent.click(screen.getByRole('button', { name: 'HTML' }));
+    expect(screen.getByRole('button', { name: '选择导出格式' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'HTML' }));
     // Excel too, with the compact columns, by remark: two formats, packed into a zip (#342)
     fireEvent.click(screen.getByRole('button', { name: 'Excel' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Excel 精简列' }));

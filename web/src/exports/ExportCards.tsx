@@ -24,7 +24,8 @@ const CLASHES: readonly MessageFormat[][] = [['json', 'arkme-json']];
  * list's order, instead of one writing the same extension.
  */
 export function toggleFormat(formats: readonly MessageFormat[], value: MessageFormat): MessageFormat[] {
-  if (formats.includes(value)) return formats.length > 1 ? formats.filter(f => f !== value) : [...formats];
+  // the last one too: the export then waits for a format (#353)
+  if (formats.includes(value)) return formats.filter(f => f !== value);
   const clash = CLASHES.find(c => c.includes(value)) ?? [];
   const next = new Set([...formats.filter(f => !clash.includes(f)), value]);
   return MESSAGE_FORMATS.map(f => f.value).filter(f => next.has(f));
@@ -113,7 +114,7 @@ export function BatchExport({ picked, options, onChange }: {
     </div>
     <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={options.media} onChange={event => set({ media: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>{MEDIA_NOTE}</small></span></label>
     {options.formats.includes('excel') && <label className="checkbox"><input type="checkbox" aria-label="Excel 精简列" checked={options.compact} onChange={event => set({ compact: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>精简列 <small>时间、发送者、类型、内容</small></span></label>}
-    <button type="button" className="primary-button large export-pending" disabled={!picked.length || busy} onClick={start}><DownloadSimple size={18} />{picked.length ? '导出 ' + picked.length + ' 个会话' : '先在左侧选择会话'}</button>
+    <button type="button" className="primary-button large export-pending" disabled={!options.formats.length || !picked.length || busy} onClick={start}><DownloadSimple size={18} />{!options.formats.length ? '选择导出格式' : picked.length ? '导出 ' + picked.length + ' 个会话' : '先在左侧选择会话'}</button>
     {note && <p className="card-note" role={note.error ? 'alert' : 'status'}>{note.text}</p>}
     <p className="card-note">每个会话一个任务，在服务端依次运行；完成后在任务中心下载。</p>
   </>;
