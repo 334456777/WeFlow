@@ -12,9 +12,9 @@
     "apiVersion": "1",
     "minBackendVersion": "5.0.0"
   },
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.3",
   "engines": {
-    "bun": ">=1.4.2"
+    "bun": ">=1.4.3"
   },
   "scripts": {
     "dev": "bun scripts/dev.mjs",

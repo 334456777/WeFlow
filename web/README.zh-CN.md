@@ -12,7 +12,7 @@
 
 ## 开发
 
-需要 Bun 1.4.2+（版本写在 `package.json` 的 `packageManager` 里）和仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`），不需要 Node.js。Bun 按 `bun.lock` 安装依赖，脚本、`tsc`、Vite 和测试也都由它运行：
+需要 Bun 1.4.3+（版本写在 `package.json` 的 `packageManager` 里）和仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`），不需要 Node.js。Bun 按 `bun.lock` 安装依赖，脚本、`tsc`、Vite 和测试也都由它运行：
 
 ```sh
 cd web

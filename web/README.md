@@ -8,7 +8,7 @@ The screens come from the #130 prototype and still show sample records (`src/moc
 
 ## Development
 
-Needs Bun 1.4.2+ (the version is pinned in `packageManager` of `package.json`) and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`); no Node.js. Bun installs the packages from `bun.lock` and runs everything: the scripts, `tsc`, Vite and the tests:
+Needs Bun 1.4.3+ (the version is pinned in `packageManager` of `package.json`) and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`); no Node.js. Bun installs the packages from `bun.lock` and runs everything: the scripts, `tsc`, Vite and the tests:
 
 ```sh
 cd web
