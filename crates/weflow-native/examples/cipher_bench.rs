@@ -31,7 +31,9 @@ fn main() {
 
         let t = Instant::now();
         for (i, page) in encrypted.iter().enumerate() {
-            cipher.decrypt_page(i as u32 + 2, page, &mut out).expect("decrypt");
+            cipher
+                .decrypt_page(i as u32 + 2, page, &mut out)
+                .expect("decrypt");
             black_box(&out);
         }
         decrypt.push(t.elapsed().as_secs_f64());
@@ -42,7 +44,10 @@ fn main() {
     };
     let mb = pages as f64 * PAGE_SIZE as f64 / 1e6;
     let d = median(&mut decrypt);
-    println!("key derivation: {:.1} ms (median of {rounds})", median(&mut derive));
+    println!(
+        "key derivation: {:.1} ms (median of {rounds})",
+        median(&mut derive)
+    );
     println!(
         "page decryption: {:.0} MB/s, {:.2} us/page ({pages} pages, median of {rounds})",
         mb / d,
