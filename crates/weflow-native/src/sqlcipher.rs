@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use aes::Aes256;
 use anyhow::{anyhow, bail, Result};
-use cbc::cipher::{block_padding::NoPadding, BlockDecryptMut, KeyIvInit};
-use hmac::{Hmac, Mac};
+use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, KeyIvInit};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
 pub const PAGE_SIZE: usize = 4096;
@@ -73,7 +73,7 @@ impl PageCipher {
         let mut mac_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(&enc_key, &mac_salt, 2, &mut mac_key);
         let mac =
-            <HmacSha512 as Mac>::new_from_slice(&mac_key).expect("hmac accepts any key length");
+            <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
         Self {
             enc_key,
             mac_key,
@@ -109,9 +109,12 @@ impl PageCipher {
         }
         let body = &mut out[start..body_end];
         body.copy_from_slice(&page[start..body_end]);
-        Aes256CbcDec::new(&self.enc_key.into(), iv.into())
-            .decrypt_padded_mut::<NoPadding>(body)
-            .map_err(|_| anyhow!("AES decrypt failed for page {pgno}"))?;
+        Aes256CbcDec::new(
+            &self.enc_key.into(),
+            iv.try_into().expect("the IV is 16 bytes"),
+        )
+        .decrypt_padded::<NoPadding>(body)
+        .map_err(|_| anyhow!("AES decrypt failed for page {pgno}"))?;
         // Keep the reserve area (IV/HMAC slot) zeroed: SQLite treats it as unused.
         Ok(())
     }
@@ -427,7 +430,7 @@ pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> R
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod testutil {
     use super::*;
-    use aes::cipher::BlockEncryptMut;
+    use aes::cipher::BlockModeEncrypt;
     use rusqlite::Connection;
 
     type Aes256CbcEnc = cbc::Encryptor<Aes256>;
@@ -443,14 +446,14 @@ pub mod testutil {
         let mut body = plain[start..body_end].to_vec();
         let len = body.len();
         Aes256CbcEnc::new(&cipher.enc_key.into(), &iv.into())
-            .encrypt_padded_mut::<NoPadding>(&mut body, len)
+            .encrypt_padded::<NoPadding>(&mut body, len)
             .unwrap();
         page[start..body_end].copy_from_slice(&body);
         if pgno == 1 {
             page[..SALT_LEN].copy_from_slice(&SALT);
         }
         page[body_end..body_end + IV_LEN].copy_from_slice(&iv);
-        let mut mac = <HmacSha512 as Mac>::new_from_slice(&cipher.mac_key).unwrap();
+        let mut mac = <HmacSha512 as KeyInit>::new_from_slice(&cipher.mac_key).unwrap();
         mac.update(&page[start..body_end + IV_LEN]);
         mac.update(&pgno.to_le_bytes());
         page[body_end + IV_LEN..].copy_from_slice(&mac.finalize().into_bytes());

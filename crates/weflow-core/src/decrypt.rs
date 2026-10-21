@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use aes::cipher::{BlockDecryptMut, KeyInit};
+use aes::cipher::{BlockModeDecrypt, KeyInit};
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 
@@ -138,12 +138,11 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
     let plain_aes = if aes_data.is_empty() {
         Vec::new()
     } else {
-        use aes::cipher::generic_array::GenericArray;
         let mut cipher = Aes128EcbDec::new(aes_key.into());
         let mut decrypted = Vec::with_capacity(aes_data.len());
         for chunk in aes_data.chunks(16) {
-            let mut block = GenericArray::clone_from_slice(chunk);
-            cipher.decrypt_block_mut(&mut block);
+            let mut block = aes::cipher::Array::try_from(chunk).expect("a 16-byte block");
+            cipher.decrypt_block(&mut block);
             decrypted.extend_from_slice(&block);
         }
         strict_remove_pkcs7(decrypted)?
@@ -269,7 +268,7 @@ mod tests {
         key: &[u8; 16],
         xor_key: u8,
     ) -> Vec<u8> {
-        use aes::cipher::{generic_array::GenericArray, BlockEncryptMut, KeyInit};
+        use aes::cipher::{BlockModeEncrypt, KeyInit};
         let aes_part = &plain[..aes_len];
         let xor_part = &plain[plain.len() - xor_len..];
         let raw_part = &plain[aes_len..plain.len() - xor_len];
@@ -279,8 +278,8 @@ mod tests {
         let mut enc = ecb::Encryptor::<aes::Aes128>::new(key.into());
         let mut cipher = Vec::new();
         for chunk in padded.chunks(16) {
-            let mut block = GenericArray::clone_from_slice(chunk);
-            enc.encrypt_block_mut(&mut block);
+            let mut block = aes::cipher::Array::try_from(chunk).expect("a 16-byte block");
+            enc.encrypt_block(&mut block);
             cipher.extend_from_slice(&block);
         }
         let mut out = sig.to_vec();

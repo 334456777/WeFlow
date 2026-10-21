@@ -34,7 +34,7 @@ fn cursor_digest(account: &NativeAccount, cursor: i64) -> Result<(usize, String)
     })();
     account.close_message_cursor(cursor)?;
     result?;
-    Ok((count, format!("{:x}", hash.finalize())))
+    Ok((count, weflow_native::native_db::hex(&hash.finalize())))
 }
 
 fn measure_cursors(

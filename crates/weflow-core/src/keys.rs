@@ -3,7 +3,7 @@
 //! depends on the account's wxid, so candidate wxids are verified against a `_t.dat` template.
 use std::path::{Path, PathBuf};
 
-use aes::cipher::{generic_array::GenericArray, BlockDecrypt, KeyInit};
+use aes::cipher::{Array, BlockCipherDecrypt, KeyInit};
 
 const V2_MAGIC: [u8; 6] = [0x07, 0x08, 0x56, 0x32, 0x08, 0x07];
 
@@ -33,8 +33,8 @@ pub fn verify_derived_aes_key(aes_key: &str, ciphertext: &[u8]) -> bool {
     if aes_key.len() < 16 || ciphertext.len() != 16 || !aes_key.is_ascii() {
         return false;
     }
-    let cipher = aes::Aes128::new(GenericArray::from_slice(&aes_key.as_bytes()[..16]));
-    let mut block = GenericArray::clone_from_slice(ciphertext);
+    let cipher = aes::Aes128::new_from_slice(&aes_key.as_bytes()[..16]).expect("a 16-byte key");
+    let mut block = Array::try_from(ciphertext).expect("a 16-byte block");
     cipher.decrypt_block(&mut block);
     let d = block.as_slice();
     (d[0] == 0xff && d[1] == 0xd8 && d[2] == 0xff)
@@ -221,7 +221,7 @@ pub fn collect_wxid_candidates(manual_dir: Option<&str>, wxid: Option<&str>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes::cipher::BlockEncrypt;
+    use aes::cipher::BlockCipherEncrypt;
 
     #[test]
     fn wxid_is_cut_at_the_second_underscore() {
@@ -244,8 +244,8 @@ mod tests {
             (xor, aes.clone()),
             derive_image_keys(0x1234_5a5a, "wxid_abc")
         );
-        let cipher = aes::Aes128::new(GenericArray::from_slice(aes.as_bytes()));
-        let mut block = GenericArray::clone_from_slice(&[
+        let cipher = aes::Aes128::new_from_slice(aes.as_bytes()).unwrap();
+        let mut block = Array::from([
             0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
         ]);
         cipher.encrypt_block(&mut block);

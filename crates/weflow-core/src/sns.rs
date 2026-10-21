@@ -4,7 +4,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyInit, KeyIvInit};
+use aes::cipher::{block_padding::Pkcs7, BlockModeDecrypt, KeyInit, KeyIvInit};
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes128Gcm, Aes256Gcm, Nonce};
 use md5::{Digest, Md5};
@@ -1217,9 +1217,8 @@ fn inflate_variants(data: &[u8]) -> Vec<Vec<u8>> {
 }
 
 fn try_gcm_decrypt(key: &[u8], nonce: &[u8], ciphertext: &[u8], tag: &[u8]) -> Option<Vec<u8>> {
-    if nonce.len() != 12 {
-        return None;
-    }
+    // not a 12-byte nonce: not this layout
+    let n = &Nonce::try_from(nonce).ok()?;
     let mut joined = Vec::with_capacity(ciphertext.len() + tag.len());
     joined.extend_from_slice(ciphertext);
     joined.extend_from_slice(tag);
@@ -1227,7 +1226,6 @@ fn try_gcm_decrypt(key: &[u8], nonce: &[u8], ciphertext: &[u8], tag: &[u8]) -> O
         msg: &joined,
         aad: &[],
     };
-    let n = Nonce::from_slice(nonce);
     let decrypted = match key.len() {
         16 => Aes128Gcm::new_from_slice(key)
             .ok()?
@@ -1337,7 +1335,7 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
         if n >= 16 && n.is_multiple_of(16) {
             let mut buf = enc.to_vec();
             if let Ok(dec) = CbcDec::new_from_slices(key, key) {
-                if let Ok(plain) = dec.decrypt_padded_mut::<Pkcs7>(&mut buf) {
+                if let Ok(plain) = dec.decrypt_padded::<Pkcs7>(&mut buf) {
                     if is_valid_image_buffer(plain) {
                         return Some(plain.to_vec());
                     }
@@ -1353,7 +1351,7 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
             let mut buf = enc[16..].to_vec();
             if buf.len().is_multiple_of(16) {
                 if let Ok(dec) = CbcDec::new_from_slices(key, &enc[..16]) {
-                    if let Ok(plain) = dec.decrypt_padded_mut::<Pkcs7>(&mut buf) {
+                    if let Ok(plain) = dec.decrypt_padded::<Pkcs7>(&mut buf) {
                         if is_valid_image_buffer(plain) {
                             return Some(plain.to_vec());
                         }
@@ -1364,7 +1362,7 @@ pub fn decrypt_emoji_aes(enc: &[u8], aes_key: &str) -> Option<Vec<u8>> {
         if n.is_multiple_of(16) {
             let mut buf = enc.to_vec();
             if let Ok(Ok(plain)) =
-                EcbDec::new_from_slice(key).map(|d| d.decrypt_padded_mut::<Pkcs7>(&mut buf))
+                EcbDec::new_from_slice(key).map(|d| d.decrypt_padded::<Pkcs7>(&mut buf))
             {
                 if is_valid_image_buffer(plain) {
                     return Some(plain.to_vec());
@@ -1543,7 +1541,7 @@ mod tests {
             .collect();
         let cipher = Aes128Gcm::new_from_slice(&key)
             .unwrap()
-            .encrypt(Nonce::from_slice(&nonce), plain.as_slice())
+            .encrypt(&Nonce::from(nonce), plain.as_slice())
             .unwrap();
         let (ct, tag) = cipher.split_at(cipher.len() - 16);
         let mut enc = ct.to_vec();

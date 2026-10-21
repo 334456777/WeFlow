@@ -1594,7 +1594,7 @@ fn moments_media_come_from_the_cache_and_only_from_wechat() {
         .expect("the Moments cache folder");
     std::fs::create_dir_all(&folder).unwrap();
     let cached = |url: &str, ext: &str, bytes: &[u8]| {
-        let name = format!("{:x}{ext}", Md5::digest(url.as_bytes()));
+        let name = weflow_native::native_db::hex(&Md5::digest(url.as_bytes())) + ext;
         std::fs::write(folder.join(name), bytes).unwrap();
     };
     let image_url = "https://shmmsns.qpic.cn/mmsns/abc/0?token=T&idx=1";

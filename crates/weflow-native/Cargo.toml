@@ -8,10 +8,10 @@ license.workspace = true
 aes.workspace = true
 anyhow.workspace = true
 cbc.workspace = true
-hmac = "0.12"
+hmac = "0.13"
 libloading.workspace = true
 md-5.workspace = true
-pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 regex.workspace = true
 rusqlite = { version = "0.40", features = ["bundled", "serialize"] }
 serde.workspace = true
