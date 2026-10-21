@@ -188,6 +188,14 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
+      # the checks as this workflow has them: the release's commit may be older than the script (an existing tag)
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: workflow
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v8
         with:
           name: weflow-${{ matrix.name }}
@@ -201,7 +209,7 @@ jobs:
         env:
           WEFLOW_HOME: ${{ runner.temp }}/weflow-home
         # checksums, the files of the package, --version against the tag: in the script, as above
-        run: bash ../.github/scripts/release-check.sh package "$TAG" "${{ matrix.name }}" "${{ matrix.ext }}"
+        run: bash ../workflow/.github/scripts/release-check.sh package "$TAG" "${{ matrix.name }}" "${{ matrix.ext }}"
 
       - name: Install Rust (version from rust-toolchain.toml)
         shell: bash
