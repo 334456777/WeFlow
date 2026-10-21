@@ -30,3 +30,7 @@ test-fixtures = []
 [[example]]
 name = "refresh_probe"
 required-features = ["test-fixtures"]
+
+[[example]]
+name = "cipher_bench"
+required-features = ["test-fixtures"]
