@@ -1,7 +1,7 @@
 use std::ffi::{c_void, CStr, CString};
 use std::path::Path;
 
-use aes::cipher::{generic_array::GenericArray, BlockEncrypt, KeyInit};
+use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use weflow_wcdb::{wcdb_free_string, weflow_get_image_keys, STATUS_BAD_ARGUMENT, STATUS_OK};
 
 fn sample(account: &Path, code: u32, identity: &str, xor_len: usize) {
@@ -11,15 +11,15 @@ fn sample(account: &Path, code: u32, identity: &str, xor_len: usize) {
         .encode(&pixels, 32, 32, jpeg_encoder::ColorType::Rgb)
         .unwrap();
     let (xor, aes) = weflow_core::keys::derive_image_keys(code.into(), identity);
-    let cipher = aes::Aes128::new(GenericArray::from_slice(aes.as_bytes()));
+    let cipher = aes::Aes128::new_from_slice(aes.as_bytes()).unwrap();
     let mut encrypted = vec![7, 8, 0x56, 0x32, 8, 7];
     encrypted.extend_from_slice(&16i32.to_le_bytes());
     encrypted.extend_from_slice(&(xor_len as i32).to_le_bytes());
     encrypted.push(1);
-    let mut first = GenericArray::clone_from_slice(&plain[..16]);
+    let mut first = Array::try_from(&plain[..16]).unwrap();
     cipher.encrypt_block(&mut first);
     encrypted.extend_from_slice(&first);
-    let mut padding = GenericArray::clone_from_slice(&[16; 16]);
+    let mut padding = Array::from([16; 16]);
     cipher.encrypt_block(&mut padding);
     encrypted.extend_from_slice(&padding);
     encrypted.extend_from_slice(&plain[16..plain.len() - xor_len]);

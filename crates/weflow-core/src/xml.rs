@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn random_snippets_match_the_regexes() {
-        use rand::{rngs::StdRng, Rng, SeedableRng};
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
         const TOKENS: &[&str] = &[
             "<title>",
             "</title>",
@@ -198,8 +198,8 @@ mod tests {
         let refer = Regex::new(r"(?is)<refermsg.*?</refermsg>").unwrap();
         let mut rng = StdRng::seed_from_u64(7);
         for _ in 0..20_000 {
-            let s: String = (0..rng.gen_range(0..14))
-                .map(|_| TOKENS[rng.gen_range(0..TOKENS.len())])
+            let s: String = (0..rng.random_range(0..14))
+                .map(|_| TOKENS[rng.random_range(0..TOKENS.len())])
                 .collect();
             assert_eq!(
                 tag_inner(&s, "title"),

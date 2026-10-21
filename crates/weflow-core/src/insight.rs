@@ -293,9 +293,7 @@ impl RecordStore {
 }
 
 fn uuid_v4() -> String {
-    use rand::RngCore;
-    let mut b = [0u8; 16];
-    rand::thread_rng().fill_bytes(&mut b);
+    let mut b: [u8; 16] = rand::random();
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
     let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
@@ -349,7 +347,7 @@ pub async fn call_api(
         "temperature": API_TEMPERATURE,
         "stream": false
     });
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .timeout(std::time::Duration::from_millis(timeout_ms))
         .build()
         .map_err(|e| e.to_string())?;
@@ -397,7 +395,7 @@ pub async fn call_api(
 
 /// Telegram Bot API `sendMessage` (HTML parse mode, 15 s timeout).
 pub async fn send_telegram(token: &str, chat_id: &str, text: &str) -> Result<(), String> {
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;

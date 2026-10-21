@@ -600,7 +600,7 @@ impl ServiceHub {
                 return Ok(client);
             }
         }
-        let client = reqwest::Client::builder()
+        let client = crate::http_client::builder()
             .timeout(Duration::from_secs(15))
             .danger_accept_invalid_certs(insecure)
             .build()

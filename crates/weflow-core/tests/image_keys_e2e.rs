@@ -4,7 +4,7 @@ use std::fs::{self, FileTimes};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use aes::cipher::{generic_array::GenericArray, BlockEncrypt, KeyInit};
+use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use weflow_core::image_keys::{account_identities, acquire_image_keys, collect_codes};
 use weflow_core::keys::{derive_image_keys, scan_templates};
 
@@ -19,15 +19,15 @@ fn jpeg() -> Vec<u8> {
 
 fn encrypt(plain: &[u8], code: u32, identity: &str, xor_len: usize) -> Vec<u8> {
     let (xor, aes) = derive_image_keys(code.into(), identity);
-    let cipher = aes::Aes128::new(GenericArray::from_slice(aes.as_bytes()));
+    let cipher = aes::Aes128::new_from_slice(aes.as_bytes()).unwrap();
     let mut output = vec![7, 8, 0x56, 0x32, 8, 7];
     output.extend_from_slice(&16i32.to_le_bytes());
     output.extend_from_slice(&(xor_len as i32).to_le_bytes());
     output.push(1);
-    let mut block = GenericArray::clone_from_slice(&plain[..16]);
+    let mut block = Array::try_from(&plain[..16]).unwrap();
     cipher.encrypt_block(&mut block);
     output.extend_from_slice(&block);
-    let mut padding = GenericArray::clone_from_slice(&[16; 16]);
+    let mut padding = Array::from([16; 16]);
     cipher.encrypt_block(&mut padding);
     output.extend_from_slice(&padding);
     output.extend_from_slice(&plain[16..plain.len() - xor_len]);

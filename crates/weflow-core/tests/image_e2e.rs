@@ -1,6 +1,6 @@
 mod common;
 
-use aes::cipher::{generic_array::GenericArray, BlockEncryptMut, KeyInit};
+use aes::cipher::{Array, BlockModeEncrypt, KeyInit};
 use md5::{Digest, Md5};
 use weflow_core::services::ImagePayload;
 
@@ -26,8 +26,8 @@ fn encrypt_v2(plain: &[u8], key: &[u8; 16], xor: u8) -> Vec<u8> {
     out.extend_from_slice(&(xor_len as i32).to_le_bytes());
     out.push(1);
     for chunk in padded.chunks(16) {
-        let mut b = GenericArray::clone_from_slice(chunk);
-        enc.encrypt_block_mut(&mut b);
+        let mut b = Array::try_from(chunk).unwrap();
+        enc.encrypt_block(&mut b);
         out.extend_from_slice(&b);
     }
     out.extend_from_slice(&plain[aes_len..plain.len() - xor_len]);

@@ -324,7 +324,7 @@ pub struct Registry {
 
 impl Registry {
     pub fn new(base: &str, repository: &str) -> AppResult<Self> {
-        let client = reqwest::Client::builder()
+        let client = crate::http_client::builder()
             .connect_timeout(Duration::from_secs(20))
             .read_timeout(Duration::from_secs(60))
             .user_agent(concat!("weflow/", env!("CARGO_PKG_VERSION")))

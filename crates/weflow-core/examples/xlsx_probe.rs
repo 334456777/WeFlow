@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
         std::fs::remove_file(&marker)?;
     }
     let mut workbook = Workbook::new();
-    let sheet = workbook.add_worksheet_with_constant_memory();
+    let sheet = workbook.add_worksheet_with_constant_memory()?;
     for row in 0..rows {
         sheet.write_number(row, 0, row as f64)?;
         sheet.write_string(row, 1, "synthetic fixture")?;

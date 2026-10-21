@@ -142,7 +142,7 @@ async fn request_json(
     referer: &str,
     user_agent: &str,
 ) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .timeout(TIMEOUT)
         .build()
         .map_err(|e| e.to_string())?;
