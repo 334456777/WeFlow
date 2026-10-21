@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import type { ChatSession } from '../api/chat';
 import type { Resource } from '../api/details';
 import type { Preview } from '../chat/MessageView';

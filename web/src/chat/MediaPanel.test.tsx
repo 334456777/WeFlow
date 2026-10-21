@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from '#test';
 import { emitLive, LIVE_COMMAND_MS } from '../api/live';
 import { MediaPanel } from './MediaPanel';
 

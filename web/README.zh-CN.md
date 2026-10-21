@@ -12,7 +12,7 @@
 
 ## 开发
 
-需要 Bun 1.4.2+（版本写在 `package.json` 的 `packageManager` 里）、跑测试用的 Node.js 20.19+，以及仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`）。Bun 按 `bun.lock` 安装依赖并运行脚本，Vite 和 `tsc` 也在 Bun 上运行；Vitest 仍在 Node.js 上运行，因为 jsdom 目前不能在 Bun 上运行：
+需要 Bun 1.4.2+（版本写在 `package.json` 的 `packageManager` 里）和仓库指定的 Rust 工具链（`rustup`，见 `rust-toolchain.toml`），不需要 Node.js。Bun 按 `bun.lock` 安装依赖，脚本、`tsc`、Vite 和测试也都由它运行：
 
 ```sh
 cd web
@@ -46,12 +46,12 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 |---|---|
 | `bun run dev` | 开发服务器，支持热更新 |
 | `bun run typecheck` | `tsc --noEmit` |
-| `bun run test` | Vitest（jsdom），在 Node.js 上运行 |
+| `bun test` | 运行测试（`bun:test`，DOM 由 happy-dom 提供） |
 | `bun run build` | 类型检查后构建到 `dist/` |
 | `bun run preview` | 用同样的代理预览 `dist/` |
 | `bun run check` | 类型检查、测试和构建，与 CI 相同 |
 
-`bun test`（不带 `run`）是 Bun 自带的测试运行器，跑的不是本项目的测试。
+测试从 `#test`（`test/index.ts`）导入测试 API：其中是 `bun:test` 的内容，外加一个 `vi`，补上了测试里用到、而 Bun 没有的 Vitest 方法（`stubGlobal`、`unstubAllGlobals`、`setSystemTime`、`advanceTimersByTimeAsync`、`waitFor`，以及只伪造 `Date` 的假计时器）。`test/setup.ts` 由 `bunfig.toml` 指定为最先加载的文件，它注册 happy-dom，并把 happy-dom 调整成原来按 jsdom 写测试时的样子：窗口够宽，`fetch` 用运行时自带的，`WheelEvent` 继承自 `MouseEvent`，inline 元素的 `display` 是 `inline`，DOM 节点出现在失败信息里时只打印简短的标签。Bun 在同一个进程里运行所有测试文件，所以测试结束时不能留下改过的全局状态：在 `afterEach` 里调用 `vi.unstubAllGlobals()`、`vi.useRealTimers()` 和 `cleanup()`。
 
 `web/` 下有改动时，`.github/workflows/web.yml` 会运行 `typecheck`、`test` 和 `build`，并上传 `dist/`。
 

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import type { ChatSession } from '../api/chat';
 import { SessionList } from './SessionList';
 import type { SessionsState } from './useSessions';
@@ -72,6 +72,6 @@ describe('SessionList', () => {
     render(<Harness state={{ status: 'error', message: '读取会话失败' }} onRetry={retry} />);
     expect(screen.getByRole('alert').textContent).toContain('读取会话失败');
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
-    expect(retry).toHaveBeenCalledOnce();
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 });

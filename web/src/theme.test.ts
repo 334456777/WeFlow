@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
 import { savedTheme, THEME_KEY, themeOf, useTheme } from './theme';
 
 /** A system in light or dark mode, which can switch while the page is open. */

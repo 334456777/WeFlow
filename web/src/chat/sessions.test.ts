@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import type { ChatSession } from '../api/chat';
 import { FOLDED_ID, formatSessionTime, kindOf, previewOf, sessionRows } from './sessions';
 

@@ -1,7 +1,7 @@
 // My footprint (#209): over a range of days, how many people I talked with and replied to and how often I was
 // @-mentioned, the chats and mentions in the order they happened (each opening the message), and the groups that
 // mentioned me; the console cards write the AI's summary and export the statistics.
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { ArrowSquareOut, At, CircleNotch, DownloadSimple, MagnifyingGlass, Sparkle } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
@@ -84,25 +84,25 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
           if (e.kind === 'chat') {
             const g = e.segment;
             const who = names(g.session_id);
-            return [head, <li key={'c' + g.session_id + g.segment_index} className="footprint-event">
+            return <Fragment key={'c' + g.session_id + g.segment_index}>{head}<li className="footprint-event">
               <Avatar name={who?.displayName ?? g.session_id} url={who?.avatarUrl} />
               <span className="rank-copy">
                 <span className="rank-line"><strong>{name(g.session_id)}</strong><span className="num cache-text">{clock(g.start_ts)}{g.end_ts > g.start_ts ? '–' + clock(g.end_ts) : ''}</span></span>
                 <span className="cache-text">收到 {n(g.incoming_count)} · 发出 {n(g.outgoing_count)} · {lasted(g.end_ts - g.start_ts)}{g.incoming_count > 0 && (g.replied ? ' · 已回复' : ' · 没有回复')}</span>
               </span>
               <button type="button" className="icon-button" aria-label={'打开和' + name(g.session_id) + '的这段聊天'} title="打开聊天" onClick={() => onOpen(g.session_id, g.anchor_local_id, g.anchor_create_time)}><ArrowSquareOut size={14} /></button>
-            </li>];
+            </li></Fragment>;
           }
           const m = e.mention;
           const sender = names(m.sender_username)?.displayName;
-          return [head, <li key={'m' + m.session_id + m.local_id} className="footprint-event mention">
+          return <Fragment key={'m' + m.session_id + m.local_id}>{head}<li className="footprint-event mention">
             <span className="avatar avatar-initial" aria-hidden="true"><At size={18} /></span>
             <span className="rank-copy">
               <span className="rank-line"><strong>{name(m.session_id)}</strong><span className="num cache-text">{clock(m.create_time)}</span></span>
               <span className="cache-text clamp-2">{sender ? sender + '：' : ''}{mentionText(m.message_content)}</span>
             </span>
             <button type="button" className="icon-button" aria-label={'打开' + name(m.session_id) + '里的这条消息'} title="打开聊天" onClick={() => onOpen(m.session_id, m.local_id, m.create_time)}><ArrowSquareOut size={14} /></button>
-          </li>];
+          </li></Fragment>;
         })}</ol>
         : <p className="muted">{words ? '没有符合的联络。' : '这段时间没有私聊，也没有人 @我。'}</p>}
     </section>

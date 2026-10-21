@@ -1,6 +1,6 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { createRef } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from '#test';
 import { VirtualList, type VirtualListHandle } from './VirtualList';
 
 afterEach(cleanup);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import type { ParsedMessage } from '../api/messages';
 import { appLabel, baseType, formatDayHeading, formatDuration, formatFileSize, kindOf, withoutLabel } from './messages';
 

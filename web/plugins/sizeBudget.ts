@@ -1,7 +1,8 @@
 // The most JavaScript the page loads before it shows (#159): the entry chunk and what it imports at once. The build
 // fails above it, so a change that makes the page heavier says so and raises the budget on purpose.
-import { gzipSync } from 'node:zlib';
 import type { Plugin } from 'vite';
+
+const utf8 = new TextEncoder();
 
 export interface Budget {
   /** Bytes, minified. */
@@ -33,8 +34,10 @@ export function sizeBudget(budget: Budget = BUDGET): Plugin {
       let gzip = 0;
       for (const name of initial) {
         const code = chunks.get(name)?.code ?? '';
-        js += Buffer.byteLength(code);
-        gzip += gzipSync(code, { level: 9 }).length;
+        const bytes = utf8.encode(code);
+        js += bytes.length;
+        // Bun's zlib, which the budget has counted with since the build runs on Bun (#357); Node's makes ~0.3% more
+        gzip += Bun.gzipSync(bytes, { level: 9 }).length;
       }
       const sizes = 'the page loads ' + kb(js) + ' of JavaScript (' + kb(gzip) + ' gzip) before it shows';
       if (js > budget.js || gzip > budget.gzip) {

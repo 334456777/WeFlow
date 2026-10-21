@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from '#test';
 import { placeOf, visibleBox } from './Popover';
 
 const viewport = (width: number, height: number) => {

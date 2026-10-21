@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { backupParams, backupParts } from '../api/backup';
 import type { Job } from '../api/jobs';
 import type { JobsState } from '../jobs/useJobs';

@@ -8,7 +8,7 @@ The screens come from the #130 prototype and still show sample records (`src/moc
 
 ## Development
 
-Needs Bun 1.4.2+ (the version is pinned in `packageManager` of `package.json`), Node.js 20.19+ for the tests and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`). Bun installs the packages from `bun.lock` and runs the scripts, and Vite and `tsc` run on Bun; Vitest stays on Node.js, as jsdom does not run on Bun yet:
+Needs Bun 1.4.2+ (the version is pinned in `packageManager` of `package.json`) and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`); no Node.js. Bun installs the packages from `bun.lock` and runs everything: the scripts, `tsc`, Vite and the tests:
 
 ```sh
 cd web
@@ -42,12 +42,12 @@ A refused token (HTTP 401) shows an input to reconnect. Settings can replace or 
 |---|---|
 | `bun run dev` | Dev server with hot reload |
 | `bun run typecheck` | `tsc --noEmit` |
-| `bun run test` | Vitest (jsdom), on Node.js |
+| `bun test` | The tests (`bun:test`, with a DOM from happy-dom) |
 | `bun run build` | Type-check, then build into `dist/` |
 | `bun run preview` | Serve `dist/` with the same proxy |
 | `bun run check` | Type-check, test and build, as CI does |
 
-`bun test` (without `run`) is Bun's own test runner, not this project's tests.
+The tests import their API from `#test` (`test/index.ts`): `bun:test`, and a `vi` with what they use of Vitest's that Bun's lacks (`stubGlobal`, `unstubAllGlobals`, `setSystemTime`, `advanceTimersByTimeAsync`, `waitFor`, fake timers for `Date` alone). `test/setup.ts`, loaded first (`bunfig.toml`), registers happy-dom and keeps it to what the tests were written for under jsdom: a wide window, the runtime's own `fetch`, a `WheelEvent` that is a `MouseEvent`, `display: inline` for inline elements, and short failure messages for DOM nodes. Bun runs every test file in one process, so a test leaves no global behind: `vi.unstubAllGlobals()`, `vi.useRealTimers()` and `cleanup()` in `afterEach`.
 
 `.github/workflows/web.yml` runs `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
 

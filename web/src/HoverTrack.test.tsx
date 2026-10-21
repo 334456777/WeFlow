@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from '#test';
 import { HoverTrack } from './HoverTrack';
 
 afterEach(cleanup);

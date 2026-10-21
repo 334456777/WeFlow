@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from '#test';
 import { loadMembers, memberName } from '../chat/LiveMessages';
 import { forgetMessages, useMessages } from '../chat/useMessages';
 import { useDateCounts } from '../chat/useDateCounts';

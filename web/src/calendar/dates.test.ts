@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import { addDays, addMonths, dayLabel, endOfWeek, monthGrid, ordered, startOfWeek, weekdayOf } from './dates';
 
 describe('dates', () => {

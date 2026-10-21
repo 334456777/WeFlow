@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import { describeCommand, type Job } from '../api/jobs';
 import { formatSize, jobDetail, jobsSummary } from './TaskCenter';
 

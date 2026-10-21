@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '#test';
 import { DEFAULT_BATCH, exportParams, packed, toggleFormat } from './ExportCards';
 
 describe('the export formats, several at once (#342)', () => {
