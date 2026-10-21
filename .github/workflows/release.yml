@@ -342,3 +342,6 @@ jobs:
             --verify-tag \
             --notes-file release-notes.md \
             "${FLAGS[@]}"
+          # the summary said "not published yet" when the run started
+          URL="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url -q .url || echo "$TAG")"
+          echo "Published: $URL, the annotated tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"

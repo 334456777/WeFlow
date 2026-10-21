@@ -18,8 +18,9 @@ case "${1:-}" in
     if [ -z "$REFS" ]; then
       NEW=true
       SHA="$GITHUB_SHA"
-      echo "$TAG does not exist yet: it is created as an annotated tag at $SHA"
-      echo "Releasing $TAG at $SHA ($GITHUB_REF_NAME); the annotated tag is created before the release is published" >> "$GITHUB_STEP_SUMMARY"
+      # what will happen, not what has: the tag and the release come last, once every build and test has passed
+      echo "$TAG does not exist yet; once every build and test has passed, it is created as an annotated tag at $SHA"
+      echo "Not published yet: $TAG at $SHA ($GITHUB_REF_NAME). Once every build and test has passed, the annotated tag and the release are created; if any fails, nothing is." >> "$GITHUB_STEP_SUMMARY"
     else
       NEW=false
       SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1 || true)"
@@ -28,7 +29,7 @@ case "${1:-}" in
         exit 1
       fi
       echo "$TAG is an annotated tag at $SHA"
-      echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
+      echo "Not published yet: the existing tag $TAG at $SHA. Once every build and test has passed, the release is created; if any fails, nothing is." >> "$GITHUB_STEP_SUMMARY"
     fi
     {
       echo "tag=$TAG"
