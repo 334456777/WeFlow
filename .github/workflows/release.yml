@@ -24,6 +24,11 @@ on:
         description: "Optional text shown above the generated changelog (更新日志)"
         required: false
         type: string
+      dry_run:
+        description: "Build and test on every platform, then stop: no tag, no release (to try the workflow with a test tag)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -51,30 +56,11 @@ jobs:
         shell: bash
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
-        run: |
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::'$TAG' is not a release tag such as v1.2.3 or v1.2.3-beta.1"
-            exit 1
-          fi
-          # Releases use annotated tags only. An existing one keeps its commit, the `<tag>^{}` line (the line without
-          # it is the tag object); a lightweight tag has no such line and is refused.
-          REFS="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
-          if [ -z "$REFS" ]; then
-            NEW=true
-            SHA="$GITHUB_SHA"
-            echo "Releasing $TAG at $SHA ($GITHUB_REF_NAME); the annotated tag is created before the release is published" >> "$GITHUB_STEP_SUMMARY"
-          else
-            NEW=false
-            SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1 || true)"
-            if [ -z "$SHA" ]; then
-              echo "::error::$TAG is a lightweight tag; releases use annotated tags (git tag -a $TAG -m \"WeFlow $TAG\" <commit>)"
-              exit 1
-            fi
-            echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          # `inputs` is null on a tag push, and null == false: only a manual run can be a dry run
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        # the checks (a release tag, annotated) and their messages are in the script, which Actions does not print
+        # as it does a step's own lines
+        run: bash .github/scripts/release-check.sh tag "$TAG"
 
   build:
     name: Build ${{ matrix.target }}
@@ -209,6 +195,14 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
+      # the checks as this workflow has them: the release's commit may be older than the script (an existing tag)
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: workflow
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v8
         with:
           name: weflow-${{ matrix.name }}
@@ -221,21 +215,8 @@ jobs:
         working-directory: dist
         env:
           WEFLOW_HOME: ${{ runner.temp }}/weflow-home
-        run: |
-          DIR="weflow-${TAG}-${{ matrix.name }}"
-          if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
-          if [ "${{ runner.os }}" = "Windows" ]; then 7z x -y "$DIR.zip" > /dev/null; else tar -xzf "$DIR.tar.gz"; fi
-          for f in "weflow${{ matrix.ext }}" README.md README.zh-CN.md LICENSE; do
-            [ -f "$DIR/$f" ] || { echo "::error::$f is missing from the package"; exit 1; }
-          done
-          BIN="$DIR/weflow${{ matrix.ext }}"
-          OUT="$("$BIN" --version)"
-          echo "$OUT"
-          if [[ "$OUT" != "weflow ${TAG#v} ("* ]]; then
-            echo "::error::weflow --version does not match the tag $TAG"
-            exit 1
-          fi
-          "$BIN" config path
+        # checksums, the files of the package, --version against the tag: in the script, as above
+        run: bash ../workflow/.github/scripts/release-check.sh package "$TAG" "${{ matrix.name }}" "${{ matrix.ext }}"
 
       - name: Install Rust (version from rust-toolchain.toml)
         shell: bash
@@ -266,6 +247,7 @@ jobs:
   release:
     name: Publish release
     needs: [prepare, build, test]
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
@@ -368,3 +350,5 @@ jobs:
             --verify-tag \
             --notes-file release-notes.md \
             "${FLAGS[@]}"
+          # the summary said "not published yet" when the run started
+          echo "Published: $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url -q .url), the annotated tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
