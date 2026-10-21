@@ -1,8 +1,10 @@
 // Loaded before the tests (bunfig.toml, #361): a DOM from happy-dom where Vitest had jsdom, at jsdom's default
 // address, and what Vite would have defined for the app (plugins/webMeta.ts). Where happy-dom does what jsdom did not,
 // it is brought back to what the tests were written for.
+import { afterEach } from 'bun:test';
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { WEB_META } from '../plugins/webMeta.ts';
+import { newScope } from '../src/api/scope.ts';
 
 const { fetch, Request, Response, Headers } = globalThis;
 // jsdom has no matchMedia, so the app took the screen for a wide one; happy-dom's answers for a 1024px window, which
@@ -61,3 +63,9 @@ Object.defineProperty(Node.prototype, Symbol.for('nodejs.util.inspect.custom'), 
 });
 
 Object.assign(globalThis, { __WEFLOW_WEB__: WEB_META });
+
+// Bun runs every test file in one process, where Vitest gave each file modules of its own: what the page keeps
+// between views (group members, messages, the days with messages) would be left by one test for the next, in any
+// file, and a test would pass or fail by the order the files ran in. Each test starts as the page does with a new
+// account (src/api/scope.ts).
+afterEach(() => newScope());
