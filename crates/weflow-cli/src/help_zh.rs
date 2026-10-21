@@ -244,6 +244,7 @@ const HELP: &[(&str, &str)] = &[
     ("Export the session list", "导出会话列表"),
     ("Only these conversations (repeatable; default: all)", "只导出这些会话（可重复；默认：全部）"),
     ("Export format (default: json)", "导出格式（默认：json）"),
+    ("Export format: json (default), or csv or excel for the timeline (a row for each private chat and each @ of you)", "导出格式：json（默认），或者 csv、excel 导出时间线（每段私聊、每条 @我 的消息各一行）"),
     ("Export the contact list", "导出联系人列表"),
     ("Export the footprint statistics", "导出足迹统计"),
     ("Number of contacts", "联系人数量"),
