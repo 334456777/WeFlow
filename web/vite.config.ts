@@ -1,28 +1,8 @@
-import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
+import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
 import { iconWeights } from './plugins/iconWeights.ts';
 import { BUDGET, sizeBudget } from './plugins/sizeBudget.ts';
-
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
-
-// What the build says about itself: compiled into the app, and written to dist/weflow-web.json for
-// `weflow web` to check before it installs or picks this build (#148)
-const meta = {
-  name: pkg.name as string,
-  version: pkg.version as string,
-  apiVersion: pkg.weflow.apiVersion as string,
-  minBackendVersion: pkg.weflow.minBackendVersion as string,
-};
-
-function webMeta(): Plugin {
-  return {
-    name: 'weflow-web-meta',
-    generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'weflow-web.json', source: JSON.stringify(meta, null, 2) + '\n' });
-    },
-  };
-}
+import { WEB_META, webMeta } from './plugins/webMeta.ts';
 
 export default defineConfig(({ mode }) => {
   // WEFLOW_* from the shell or web/.env.local; `weflow serve` reads the same WEFLOW_HTTP_TOKEN
@@ -48,7 +28,7 @@ export default defineConfig(({ mode }) => {
   return {
     // weflow serve hosts the WebUI under /ui/ (#146)
     base: '/ui/',
-    define: { __WEFLOW_WEB__: JSON.stringify(meta) },
+    define: { __WEFLOW_WEB__: JSON.stringify(WEB_META) },
     plugins: [react(), iconWeights(), webMeta(), sizeBudget()],
     // Vite's own warning at the same size as the budget (#159)
     build: { chunkSizeWarningLimit: BUDGET.js / 1000 },

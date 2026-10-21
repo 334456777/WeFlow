@@ -1,8 +1,8 @@
 // Loaded before the tests (bunfig.toml, #361): a DOM from happy-dom where Vitest had jsdom, at jsdom's default
-// address, and what Vite would have defined for the app (vite.config.ts). Where happy-dom does what jsdom did not, it
-// is brought back to what the tests were written for.
+// address, and what Vite would have defined for the app (plugins/webMeta.ts). Where happy-dom does what jsdom did not,
+// it is brought back to what the tests were written for.
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
-import pkg from '../package.json';
+import { WEB_META } from '../plugins/webMeta.ts';
 
 const { fetch, Request, Response, Headers } = globalThis;
 // jsdom has no matchMedia, so the app took the screen for a wide one; happy-dom's answers for a 1024px window, which
@@ -60,11 +60,4 @@ Object.defineProperty(Node.prototype, Symbol.for('nodejs.util.inspect.custom'), 
   },
 });
 
-Object.assign(globalThis, {
-  __WEFLOW_WEB__: {
-    name: pkg.name,
-    version: pkg.version,
-    apiVersion: pkg.weflow.apiVersion,
-    minBackendVersion: pkg.weflow.minBackendVersion,
-  },
-});
+Object.assign(globalThis, { __WEFLOW_WEB__: WEB_META });
