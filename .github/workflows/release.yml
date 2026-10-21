@@ -51,30 +51,9 @@ jobs:
         shell: bash
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
-        run: |
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::'$TAG' is not a release tag such as v1.2.3 or v1.2.3-beta.1"
-            exit 1
-          fi
-          # Releases use annotated tags only. An existing one keeps its commit, the `<tag>^{}` line (the line without
-          # it is the tag object); a lightweight tag has no such line and is refused.
-          REFS="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
-          if [ -z "$REFS" ]; then
-            NEW=true
-            SHA="$GITHUB_SHA"
-            echo "Releasing $TAG at $SHA ($GITHUB_REF_NAME); the annotated tag is created before the release is published" >> "$GITHUB_STEP_SUMMARY"
-          else
-            NEW=false
-            SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1 || true)"
-            if [ -z "$SHA" ]; then
-              echo "::error::$TAG is a lightweight tag; releases use annotated tags (git tag -a $TAG -m \"WeFlow $TAG\" <commit>)"
-              exit 1
-            fi
-            echo "Releasing the existing tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+        # the checks (a release tag, annotated) and their messages are in the script, which Actions does not print
+        # as it does a step's own lines
+        run: bash .github/scripts/release-check.sh tag "$TAG"
 
   build:
     name: Build ${{ matrix.target }}
@@ -221,21 +200,8 @@ jobs:
         working-directory: dist
         env:
           WEFLOW_HOME: ${{ runner.temp }}/weflow-home
-        run: |
-          DIR="weflow-${TAG}-${{ matrix.name }}"
-          if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
-          if [ "${{ runner.os }}" = "Windows" ]; then 7z x -y "$DIR.zip" > /dev/null; else tar -xzf "$DIR.tar.gz"; fi
-          for f in "weflow${{ matrix.ext }}" README.md README.zh-CN.md LICENSE; do
-            [ -f "$DIR/$f" ] || { echo "::error::$f is missing from the package"; exit 1; }
-          done
-          BIN="$DIR/weflow${{ matrix.ext }}"
-          OUT="$("$BIN" --version)"
-          echo "$OUT"
-          if [[ "$OUT" != "weflow ${TAG#v} ("* ]]; then
-            echo "::error::weflow --version does not match the tag $TAG"
-            exit 1
-          fi
-          "$BIN" config path
+        # checksums, the files of the package, --version against the tag: in the script, as above
+        run: bash ../.github/scripts/release-check.sh package "$TAG" "${{ matrix.name }}" "${{ matrix.ext }}"
 
       - name: Install Rust (version from rust-toolchain.toml)
         shell: bash

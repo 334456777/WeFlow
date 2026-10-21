@@ -45,18 +45,8 @@ jobs:
         id: meta
         env:
           ASKED: ${{ inputs.version }}
-        run: |
-          want="${ASKED:-${GITHUB_REF_NAME#web-v}}"
-          have=$(bun -p "require('./web/package.json').version")
-          if [ "$want" != "$have" ]; then
-            echo "::error::asked for $want, but web/package.json is $have"
-            exit 1
-          fi
-          {
-            echo "version=$have"
-            echo "api=$(bun -p "require('./web/package.json').weflow.apiVersion")"
-            echo "min=$(bun -p "require('./web/package.json').weflow.minBackendVersion")"
-          } >> "$GITHUB_OUTPUT"
+        # the checks' messages are in the script, which Actions does not print as it does a step's own lines
+        run: bash .github/scripts/web-release-check.sh version "$ASKED"
 
       - name: Type-check, test and build
         working-directory: web
@@ -80,12 +70,8 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Refuse a version already published
-        run: |
-          if oras manifest fetch "$IMAGE:${{ steps.meta.outputs.version }}" > /dev/null 2>&1; then
-            echo "::error::$IMAGE:${{ steps.meta.outputs.version }} is published already; raise the version in web/package.json"
-            exit 1
-          fi
+      - name: Check that the version is not published yet
+        run: bash .github/scripts/web-release-check.sh unpublished "$IMAGE:${{ steps.meta.outputs.version }}"
 
       - name: Publish
         run: |
@@ -99,15 +85,7 @@ jobs:
             weflow-web.zip:application/vnd.weflow.web.layer.v1+zip
 
       - name: Check an anonymous download
-        run: |
-          oras logout ghcr.io
-          mkdir pulled
-          if oras pull "$IMAGE:${{ steps.meta.outputs.version }}" -o pulled; then
-            cmp pulled/weflow-web.zip weflow-web.zip
-            echo "anonymous download: ok"
-          else
-            echo "::warning::$IMAGE cannot be downloaded without a login; make the package public once (Package settings → Change visibility)"
-          fi
+        run: bash .github/scripts/web-release-check.sh anonymous "$IMAGE:${{ steps.meta.outputs.version }}" weflow-web.zip
 
       - name: Summary
         run: |
