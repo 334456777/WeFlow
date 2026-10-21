@@ -1820,7 +1820,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let include_group_col = !compact && is_group;
         let mut workbook = Workbook::new();
         let ws = if big {
-            workbook.add_worksheet_with_constant_memory()
+            workbook.add_worksheet_with_constant_memory()?
         } else {
             workbook.add_worksheet()
         };
