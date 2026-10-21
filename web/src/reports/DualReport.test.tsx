@@ -72,8 +72,8 @@ describe('dual report', () => {
 
   it('reads the dual report of the year with the friend picked', async () => {
     const urls: string[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      urls.push(url);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push((init?.method ?? 'GET') + ' ' + url + (init?.body ? ' ' + init.body : ''));
       return json({ success: true, data: url.startsWith('/report/annual/years') ? { years: [2025] } : REPORT });
     }));
     const { rerender } = render(<ReportsPage mode="dual" year={null} onYear={() => {}} friend={null} onFriend={() => {}} />);
@@ -81,7 +81,7 @@ describe('dual report', () => {
     expect(screen.getByText('选一位好友，生成你们两个人的报告。')).toBeTruthy();
     rerender(<ReportsPage mode="dual" year={null} onYear={() => {}} friend={{ username: 'wxid_a', displayName: '林沐' }} onFriend={() => {}} />);
     await act(async () => {});
-    expect(urls).toEqual(['/report/annual/years', '/report/dual/generate?friend=wxid_a&year=2025']);
+    expect(urls).toEqual(['GET /report/annual/years', 'POST /report/dual/generate {"friend":"wxid_a","year":2025}']);
     expect(screen.getByRole('article').getAttribute('aria-label')).toBe('我自己和林沐的 2025 年双人报告');
   });
 });

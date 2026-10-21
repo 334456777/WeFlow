@@ -1,5 +1,5 @@
 // The annual report (#208): `report annual years` and `report annual generate`, over one year or all of them.
-import { get } from './client';
+import { call, get } from './client';
 
 export interface Person { username?: string; displayName: string; avatarUrl?: string }
 
@@ -31,7 +31,8 @@ export interface AnnualReport {
 }
 
 export const getReportYears = (signal?: AbortSignal) => get<{ years: number[] }>('report/annual/years', {}, signal);
-export const getAnnualReport = (year: number, signal?: AbortSignal) => get<AnnualReport>('report/annual/generate', { year }, signal);
+// a report is generated, which the command API takes as a POST (#336)
+export const getAnnualReport = (year: number, signal?: AbortSignal) => call<AnnualReport>('POST', 'report/annual/generate', { year }, signal);
 
 /** A wait in seconds, as people say it. */
 export function formatWait(seconds: number): string {
@@ -79,7 +80,7 @@ export interface DualReport {
   streak?: { days: number; startDate: string; endDate: string };
 }
 
-export const getDualReport = (friend: string, year: number, signal?: AbortSignal) => get<DualReport>('report/dual/generate', { friend, year }, signal);
+export const getDualReport = (friend: string, year: number, signal?: AbortSignal) => call<DualReport>('POST', 'report/dual/generate', { friend, year }, signal);
 
 const KINDS: Record<number, string> = { 3: '[图片]', 34: '[语音]', 43: '[视频]', 47: '[表情]', 48: '[位置]', 49: '[链接或文件]', 50: '[通话]', 244813135921: '[引用回复]' };
 
