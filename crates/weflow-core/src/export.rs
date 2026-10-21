@@ -119,6 +119,129 @@ pub fn export_excel(messages: &Value, out: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The footprint (`export footprint`) as a timeline, for CSV and Excel (#315): the column names, and a row for each
+/// private-chat segment and each message that @-mentions me, oldest first. `names` gives conversations' and senders'
+/// names by username.
+pub fn footprint_timeline(
+    data: &Value,
+    names: &std::collections::HashMap<String, String>,
+) -> (Vec<&'static str>, Vec<Vec<Value>>) {
+    let zh = locale::current() == Lang::Zh;
+    let columns: [&'static str; 9] = if zh {
+        [
+            "时间",
+            "类型",
+            "会话",
+            "发送者",
+            "收到",
+            "发出",
+            "已回复",
+            "内容",
+            "会话 ID",
+        ]
+    } else {
+        [
+            "Time",
+            "Kind",
+            "Conversation",
+            "Sender",
+            "Received",
+            "Sent",
+            "Replied",
+            "Content",
+            "Conversation ID",
+        ]
+    };
+    let name = |id: &str| {
+        names
+            .get(id)
+            .filter(|n| !n.is_empty())
+            .cloned()
+            .unwrap_or_else(|| id.to_string())
+    };
+    let row = |values: [Value; 9]| -> Vec<Value> { values.into() };
+    let text = |v: &Value, key: &str| v[key].as_str().unwrap_or("").to_string();
+    let mut rows: Vec<(i64, Vec<Value>)> = Vec::new();
+    for s in data["private_segments"].as_array().into_iter().flatten() {
+        let id = text(s, "session_id");
+        let at = s["start_ts"].as_i64().unwrap_or(0);
+        let yes = s["replied"].as_bool().unwrap_or(false);
+        let yes = match (zh, yes) {
+            (true, true) => "是",
+            (true, false) => "否",
+            (false, true) => "yes",
+            (false, false) => "no",
+        };
+        rows.push((
+            at,
+            row([
+                json!(format_timestamp(at)),
+                json!(if zh { "私聊" } else { "private chat" }),
+                json!(name(&id)),
+                json!(""),
+                s["incoming_count"].clone(),
+                s["outgoing_count"].clone(),
+                json!(yes),
+                json!(""),
+                json!(id),
+            ]),
+        ));
+    }
+    for m in data["mentions"].as_array().into_iter().flatten() {
+        let id = text(m, "session_id");
+        let from = text(m, "sender_username");
+        let at = m["create_time"].as_i64().unwrap_or(0);
+        // a group message is stored as "<sender>:\n<text>"
+        let body = text(m, "message_content");
+        let body = body
+            .strip_prefix(&format!("{from}:\n"))
+            .unwrap_or(&body)
+            .to_string();
+        rows.push((
+            at,
+            row([
+                json!(format_timestamp(at)),
+                json!(if zh { "@我" } else { "mention" }),
+                json!(name(&id)),
+                json!(name(&from)),
+                json!(""),
+                json!(""),
+                json!(""),
+                json!(body),
+                json!(id),
+            ]),
+        ));
+    }
+    rows.sort_by_key(|(at, _)| *at);
+    (
+        columns.to_vec(),
+        rows.into_iter().map(|(_, row)| row).collect(),
+    )
+}
+
+/// A table as a worksheet: the bold header, then a line for each row.
+pub fn export_table_excel(headers: &[&str], rows: &[Vec<Value>], out: &Path) -> Result<()> {
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    let bold = rust_xlsxwriter::Format::new().set_bold();
+    for (col, header) in headers.iter().enumerate() {
+        worksheet.write_string_with_format(0, col as u16, *header, &bold)?;
+    }
+    for (r, row) in rows.iter().enumerate() {
+        for (col, value) in row.iter().enumerate() {
+            let (r, col) = (r as u32 + 1, col as u16);
+            match value {
+                Value::Number(n) => worksheet.write_number(r, col, n.as_f64().unwrap_or(0.0))?,
+                Value::String(s) => worksheet.write_string(r, col, s)?,
+                Value::Null => worksheet,
+                other => worksheet.write_string(r, col, other.to_string())?,
+            };
+        }
+    }
+    workbook.save(out)?;
+    Ok(())
+}
+
 pub fn export_sql(table_name: &str, messages: &Value, out: &Path) -> Result<()> {
     let items = messages.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
     let mut sql = String::new();
@@ -457,6 +580,42 @@ mod tests {
     #[test]
     fn sql_escapes() {
         assert_eq!(sql_escape("it's"), "it''s");
+    }
+
+    #[test]
+    fn the_footprint_timeline_has_a_row_per_segment_and_mention_oldest_first() {
+        let data = json!({
+            "private_segments": [
+                { "session_id": "wxid_bob", "start_ts": 1_700_000_300, "incoming_count": 2, "outgoing_count": 0, "replied": false },
+                { "session_id": "wxid_bob", "start_ts": 1_700_000_000, "incoming_count": 1, "outgoing_count": 1, "replied": true },
+            ],
+            "mentions": [
+                { "session_id": "room@chatroom", "sender_username": "wxid_amy", "create_time": 1_700_000_100,
+                  "message_content": "wxid_amy:\n@me look" },
+            ],
+        });
+        let names = std::collections::HashMap::from([
+            ("wxid_bob".to_string(), "Bob".to_string()),
+            ("room@chatroom".to_string(), "The room".to_string()),
+        ]);
+        let (columns, rows) = footprint_timeline(&data, &names);
+        assert_eq!(columns.len(), 9);
+        assert!(rows.iter().all(|r| r.len() == columns.len()));
+        // oldest first: the replied segment, the mention, the later segment
+        let at: Vec<&str> = rows.iter().map(|r| r[8].as_str().unwrap()).collect();
+        assert_eq!(at, ["wxid_bob", "room@chatroom", "wxid_bob"]);
+        assert_eq!(
+            (&rows[0][2], &rows[0][4], &rows[0][5]),
+            (&json!("Bob"), &json!(1), &json!(1))
+        );
+        assert!(["是", "yes"].contains(&rows[0][6].as_str().unwrap()));
+        assert!(["否", "no"].contains(&rows[2][6].as_str().unwrap()));
+        // the mention: the group's and the sender's names (the sender unknown here: the username), the text alone
+        assert_eq!(
+            (&rows[1][2], &rows[1][3], &rows[1][7]),
+            (&json!("The room"), &json!("wxid_amy"), &json!("@me look"))
+        );
+        assert_eq!(rows[1][4], json!(""));
     }
 
     #[test]

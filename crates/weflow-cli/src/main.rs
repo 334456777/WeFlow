@@ -786,7 +786,7 @@ enum ExportSubcommand {
     },
     /// Export the footprint statistics
     Footprint {
-        /// Export format (default: json)
+        /// Export format: json (default), or csv or excel for the timeline (a row for each private chat and each @ of you)
         #[arg(long)]
         format: Option<String>,
         /// Output file
@@ -2719,9 +2719,46 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             start,
             end,
         } => {
+            // the footprint is a summary with lists in it: JSON as it is, CSV and Excel as its timeline; the other
+            // formats are for messages, and are refused before anything is read (#315)
+            let format = format.as_deref().unwrap_or("json").to_ascii_lowercase();
+            let extension = match format.as_str() {
+                "json" => "json",
+                "csv" => "csv",
+                "excel" | "xlsx" => "xlsx",
+                other => {
+                    return Err(AppError::usage(format!(
+                        "export footprint writes json, csv or excel, not {other}"
+                    )))
+                }
+            };
             let (b, e) = day_span(start, end)?;
             let data = hub.footprint(b, e)?;
-            write_export("footprint", format.as_deref(), out, &data)
+            if extension == "json" {
+                return write_export("footprint", Some("json"), out, &data);
+            }
+            let (headers, rows) = hub.footprint_timeline(&data)?;
+            let path = export_path(out, &format!("footprint.{extension}"));
+            make_parent(&path)?;
+            if extension == "csv" {
+                let cell = |v: &Value| {
+                    csv_escape(&v.as_str().map_or_else(|| v.to_string(), str::to_string))
+                };
+                let mut csv = headers
+                    .iter()
+                    .map(|h| csv_escape(h))
+                    .collect::<Vec<_>>()
+                    .join(",")
+                    + "\n";
+                for row in &rows {
+                    csv += &(row.iter().map(cell).collect::<Vec<_>>().join(",") + "\n");
+                }
+                write_text_file(&path, &csv)?;
+            } else {
+                weflow_core::export::export_table_excel(&headers, &rows, &path)
+                    .map_err(|err| AppError::runtime(err.to_string()))?;
+            }
+            Ok(json!({ "out": path, "format": format }))
         }
         ExportSubcommand::Media {
             out,
@@ -3967,6 +4004,7 @@ fn write_export(name: &str, format: Option<&str>, out: &Path, value: &Value) -> 
         }
     };
     let path = export_path(out, &format!("{name}.{extension}"));
+    make_parent(&path)?;
     match format.as_str() {
         "json" => write_json_file(&path, value)?,
         "csv" => write_csv_file(&path, value)?,
@@ -3994,12 +4032,18 @@ fn export_path(out: &Path, default_name: &str) -> PathBuf {
     }
 }
 
-fn write_text_file(path: &Path, text: &str) -> AppResult<()> {
+/// The folder `path` goes into, made when it is not there: the writers of xlsx, HTML and SQL do not make it.
+fn make_parent(path: &Path) -> AppResult<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|err| {
             AppError::runtime(format!("failed to create {}: {err}", parent.display()))
         })?;
     }
+    Ok(())
+}
+
+fn write_text_file(path: &Path, text: &str) -> AppResult<()> {
+    make_parent(path)?;
     std::fs::write(path, text)
         .map_err(|err| AppError::runtime(format!("failed to write {}: {err}", path.display())))
 }

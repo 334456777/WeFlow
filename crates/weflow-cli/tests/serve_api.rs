@@ -2488,3 +2488,76 @@ fn jobs_are_cancelled_and_limited() {
     drop(stream);
     assert_eq!(ai.recv_timeout(Duration::from_secs(5)), Ok("closed"));
 }
+
+/// `export footprint` (#315): JSON as it is, CSV and Excel as the timeline; the formats for messages refused before
+/// anything is read.
+#[test]
+fn the_footprint_is_exported_as_json_or_as_a_timeline() {
+    let root = temp_root("footprint");
+    let home = account_home(&root);
+    let export = |format: &str| {
+        let out = root.join("out").join(format);
+        let (code, stdout, stderr) = run_cli(
+            &home,
+            &[
+                "--json",
+                "export",
+                "footprint",
+                "--format",
+                format,
+                "--out",
+                out.to_str().unwrap(),
+            ],
+        );
+        (
+            code,
+            serde_json::from_str::<Value>(&stdout).unwrap_or(Value::Null),
+            stderr,
+        )
+    };
+
+    // CSV: a row for each of the four segments with Bob, by the name shown for him (his remark)
+    let (code, v, stderr) = export("csv");
+    assert_eq!(code, 0, "{stderr}");
+    let csv = std::fs::read_to_string(v["data"]["out"].as_str().unwrap()).unwrap();
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(
+        lines[0],
+        "Time,Kind,Conversation,Sender,Received,Sent,Replied,Content,Conversation ID"
+    );
+    assert_eq!(lines.len(), 5, "{csv}");
+    assert!(
+        lines[1..]
+            .iter()
+            .all(|l| l.contains(",private chat,Bobby,,") && l.ends_with(",wxid_bob")),
+        "{csv}"
+    );
+    assert!(lines[1].contains(",1,1,yes,"), "{csv}");
+
+    // Excel: the same table in a workbook
+    let (code, v, stderr) = export("excel");
+    assert_eq!(code, 0, "{stderr}");
+    let xlsx = std::fs::read(v["data"]["out"].as_str().unwrap()).unwrap();
+    assert!(xlsx.starts_with(b"PK"), "an xlsx is a zip");
+
+    // JSON as before
+    let (code, v, _) = export("json");
+    assert_eq!(code, 0);
+    let json: Value =
+        serde_json::from_str(&std::fs::read_to_string(v["data"]["out"].as_str().unwrap()).unwrap())
+            .unwrap();
+    assert_eq!(json["private_segments"].as_array().map(Vec::len), Some(4));
+
+    // a format for messages: refused, nothing written
+    let (code, v, _) = export("html");
+    assert_eq!(code, 2);
+    assert_eq!(v["error"]["code"], "invalid_arguments");
+    assert!(
+        v["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("json, csv or excel"),
+        "{v}"
+    );
+    assert!(!root.join("out").join("html").exists());
+}
