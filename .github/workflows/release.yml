@@ -24,11 +24,6 @@ on:
         description: "Optional text shown above the generated changelog (更新日志)"
         required: false
         type: string
-      dry_run:
-        description: "Build and test on every platform, then stop: no tag, no release (to try the workflow with a test tag)"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -56,8 +51,6 @@ jobs:
         shell: bash
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
-          # `inputs` is null on a tag push, and null == false: only a manual run can be a dry run
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         # the checks (a release tag, annotated) and their messages are in the script, which Actions does not print
         # as it does a step's own lines
         run: bash .github/scripts/release-check.sh tag "$TAG"
@@ -247,7 +240,6 @@ jobs:
   release:
     name: Publish release
     needs: [prepare, build, test]
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.prepare.outputs.tag }}

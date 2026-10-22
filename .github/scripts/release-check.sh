@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # The checks of release.yml. They are kept here, not in the workflow, because Actions prints each step's script
 # before it runs it: a refusal written in the step showed in every log, as if it had happened.
-# usage: release-check.sh tag <tag>                  (in a clone with `origin`; writes tag/sha/new to GITHUB_OUTPUT;
-#                                                   DRY_RUN=true: built and tested only)
+# usage: release-check.sh tag <tag>                  (in a clone with `origin`; writes tag/sha/new to GITHUB_OUTPUT)
 #        release-check.sh package <tag> <name> <ext>  (in the folder holding the downloaded package)
 set -euo pipefail
 
 case "${1:-}" in
   tag)
-    TAG="$2" DRY="${DRY_RUN:-false}"
+    TAG="$2"
     if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
       echo "::error::'$TAG' is not a release tag such as v1.2.3 or v1.2.3-beta.1"
       exit 1
@@ -19,14 +18,8 @@ case "${1:-}" in
     if [ -z "$REFS" ]; then
       NEW=true
       SHA="$GITHUB_SHA"
-      # what will happen, not what has: the tag and the release come last, once every build and test has passed
-      if [ "$DRY" = true ]; then
-        echo "$TAG does not exist yet; a dry run builds and tests $SHA, and creates no tag"
-        echo "Dry run: $TAG at $SHA ($GITHUB_REF_NAME) is built and tested on every platform; no tag and no release are made." >> "$GITHUB_STEP_SUMMARY"
-      else
-        echo "$TAG does not exist yet; once every build and test has passed, it is created as an annotated tag at $SHA"
-        echo "Not published yet: $TAG at $SHA ($GITHUB_REF_NAME). Once every build and test has passed, the annotated tag and the release are created; if any fails, nothing is." >> "$GITHUB_STEP_SUMMARY"
-      fi
+      echo "$TAG: new, will be tagged at $SHA"
+      echo "$TAG · new tag from $GITHUB_REF_NAME @ $SHA" >> "$GITHUB_STEP_SUMMARY"
     else
       NEW=false
       SHA="$(grep -F "refs/tags/$TAG^{}" <<< "$REFS" | cut -f1 || true)"
@@ -34,12 +27,8 @@ case "${1:-}" in
         echo "::error::$TAG is a lightweight tag; releases use annotated tags (git tag -a $TAG -m \"WeFlow $TAG\" <commit>)"
         exit 1
       fi
-      echo "$TAG is an annotated tag at $SHA"
-      if [ "$DRY" = true ]; then
-        echo "Dry run: the existing tag $TAG at $SHA is built and tested on every platform; no release is made." >> "$GITHUB_STEP_SUMMARY"
-      else
-        echo "Not published yet: the existing tag $TAG at $SHA. Once every build and test has passed, the release is created; if any fails, nothing is." >> "$GITHUB_STEP_SUMMARY"
-      fi
+      echo "$TAG: annotated tag at $SHA"
+      echo "$TAG · existing tag @ $SHA" >> "$GITHUB_STEP_SUMMARY"
     fi
     {
       echo "tag=$TAG"
