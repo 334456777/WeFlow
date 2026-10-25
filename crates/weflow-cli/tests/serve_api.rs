@@ -2561,3 +2561,238 @@ fn the_footprint_is_exported_as_json_or_as_a_timeline() {
     );
     assert!(!root.join("out").join("html").exists());
 }
+
+// The regression matrix of the refactoring in #391 (#403): behaviour the shared business entry point (#397) and the
+// job and HTTP layers (#398) must keep. See docs/refactor-baseline.md.
+
+/// A failed read answers the same through `/api/` as through the child process: status, body and error headers, for
+/// the ways a request goes wrong before, while and after its command runs.
+#[test]
+fn reads_fail_the_same_in_process_and_in_a_child() {
+    let root = temp_root("errors");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let same = |method: &str, target: &str, headers: &[(&str, &str)]| {
+        let child = server.request(method, target, headers, "");
+        let own = server.request(method, &format!("/api{target}"), headers, "");
+        assert_eq!(
+            (own.status, &own.body),
+            (child.status, &child.body),
+            "{method} {target}"
+        );
+        for h in ["x-weflow-exit-code", "x-weflow-error-code", "allow"] {
+            assert_eq!(
+                own.headers.get(h),
+                child.headers.get(h),
+                "{method} {target} {h}"
+            );
+        }
+        own
+    };
+    let auth = format!("Bearer {TOKEN}");
+    let with_token: &[(&str, &str)] = &[("Authorization", &auth)];
+    for target in [
+        // the command line is refused: a required argument missing, a value of the wrong type, arguments that
+        // exclude each other
+        "/chat/messages",
+        "/chat/messages?session-id=wxid_bob&limit=many",
+        "/chat/messages?session-id=wxid_bob&offset=1&before=1",
+        // the server refuses a name the command does not have, and a switch that is neither true nor false
+        "/chat/messages?session-id=wxid_bob&bogus=1",
+        "/chat/sessions?parsed=maybe",
+        // the command itself refuses
+        "/chat/message?session-id=wxid_bob",
+        "/chat/resources?before=1.2.3",
+    ] {
+        let r = same("GET", target, with_token);
+        assert_eq!(r.status, 400, "{target}: {}", r.body);
+        assert_eq!(r.json()["success"], false, "{target}");
+        assert_eq!(r.json()["error"]["code"], "invalid_arguments", "{target}");
+    }
+    // nothing found is a success with nothing in it
+    for target in [
+        "/chat/messages?session-id=wxid_nobody",
+        "/chat/search?keyword=qzxwvk",
+        "/chat/date-counts?session-id=wxid_nobody",
+    ] {
+        let r = same("GET", target, with_token);
+        assert_eq!(r.status, 200, "{target}: {}", r.body);
+    }
+    // the method, and the token: refused before any command runs
+    let r = same("POST", "/chat/sessions", with_token);
+    assert_eq!((r.status, r.headers["allow"].as_str()), (405, "GET"));
+    for headers in [&[][..], &[("Authorization", "Bearer wrong")][..]] {
+        let r = same("GET", "/chat/sessions", headers);
+        assert_eq!(r.status, 401);
+        assert_eq!(r.json()["error"]["code"], "unauthorized");
+        let r = server.request(
+            "GET",
+            "/api/chat/image-data?session-id=wxid_bob&msg-id=1",
+            headers,
+            "",
+        );
+        assert_eq!(r.status, 401);
+    }
+    // what `/api/` does not take
+    for target in [
+        "/api/chat/sessions?std=in",
+        "/api/chat/sessions?return=file",
+    ] {
+        assert_eq!(server.call("GET", target, "").status, 400, "{target}");
+    }
+    let r = server.request(
+        "GET",
+        "/api/chat/sessions",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        "",
+    );
+    assert_eq!(r.status, 400);
+    let r = server.call("GET", "/api/config/path", "");
+    assert_eq!(r.status, 404);
+    assert!(r.json()["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("/config/path"));
+}
+
+/// Another profile, another account: the reads of both routes answer from the account the config names now, right
+/// after it changed, also when the names of the profiles are as long as each other (the hub tells a changed config by
+/// the time and size of its file).
+#[test]
+fn reads_follow_the_profile_right_after_it_changes() {
+    use weflow_native::fixture::{MsgSpec, SessionSpec, T0};
+    let root = temp_root("profiles");
+    let (home, first) = account(&root);
+    // the second account: Carol only
+    let other = Fixture::standard(&root.join("data-b"));
+    other.session_db(&[SessionSpec {
+        username: "wxid_carol",
+        summary: "from b",
+        last_timestamp: T0,
+        unread: 0,
+        last_msg_type: 1,
+    }]);
+    other.message_shard(
+        0,
+        &[(
+            "wxid_carol",
+            vec![MsgSpec::text(1, "wxid_carol", T0, "only in b")],
+        )],
+    );
+    let profile = |name: &str, account: &Fixture| {
+        for (key, value) in [
+            ("current_profile", name.to_string()),
+            ("db_path", account.account_dir.to_string_lossy().to_string()),
+            ("wxid", "wxid_me_ab12".to_string()),
+            ("decrypt_key", account.key_hex()),
+        ] {
+            let (exit, _, stderr) = run_cli(&home, &["config", "set", key, &value]);
+            assert_eq!(exit, 0, "{stderr}");
+        }
+    };
+    profile("pb", &other);
+    // the first account again, under a name as long as the second's
+    profile("pa", &first);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let sessions = |route: &str| -> Vec<String> {
+        let r = server.call("GET", &format!("{route}/chat/sessions"), "");
+        assert_eq!(r.status, 200, "{}", r.body);
+        r.json()["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["username"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let start_list = sessions("/api");
+    assert!(start_list.iter().any(|s| s == "wxid_bob"), "{start_list:?}");
+    assert_eq!(sessions(""), start_list);
+    for round in 0..4 {
+        let (name, in_b) = if round % 2 == 0 {
+            ("pb", true)
+        } else {
+            ("pa", false)
+        };
+        let r = server.call(
+            "PUT",
+            "/config/set",
+            &json!({ "key": "current_profile", "value": name }).to_string(),
+        );
+        assert_eq!(r.status, 200, "{}", r.body);
+        // at once, without waiting for anything
+        let own = sessions("/api");
+        assert_eq!(
+            own.iter().any(|s| s == "wxid_carol"),
+            in_b,
+            "round {round} ({name}): {own:?}"
+        );
+        assert_eq!(own.iter().any(|s| s == "wxid_bob"), !in_b, "round {round}");
+        assert_eq!(sessions(""), own, "round {round}");
+        let r = server.call("GET", "/api/chat/messages?session-id=wxid_carol", "");
+        let found = r.json()["data"].as_array().map_or(0, Vec::len);
+        assert_eq!(found > 0, in_b, "round {round}: {}", r.body);
+    }
+}
+
+/// Cancelling a job twice: the first time cancels it, the second forgets it; neither changes how it ended.
+#[test]
+fn a_job_is_cancelled_once_and_then_forgotten() {
+    use std::time::Duration;
+    let root = temp_root("cancel-twice");
+    let (url, ai) = silent_ai_server();
+    for (key, value) in [
+        ("ai_model_api_base_url", url.as_str()),
+        ("ai_model_api_key", "k"),
+    ] {
+        let (exit, _, stderr) = run_cli(&root, &["config", "set", key, value]);
+        assert_eq!(exit, 0, "{stderr}");
+    }
+    let server = start(&root, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+    let r = server.request(
+        "POST",
+        "/insight/test",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        "",
+    );
+    assert_eq!(r.status, 202, "{}", r.body);
+    let id = r.json()["data"]["id"].as_str().unwrap().to_string();
+    assert_eq!(ai.recv_timeout(Duration::from_secs(30)), Ok("open"));
+
+    let r = server.call("DELETE", &format!("/jobs/{id}"), "");
+    assert_eq!(r.status, 200);
+    let cancelled = r.json()["data"].clone();
+    assert_eq!(cancelled["status"], "cancelled", "{cancelled}");
+    assert_eq!(ai.recv_timeout(Duration::from_secs(5)), Ok("closed"));
+    // its events end with the result, once
+    let events = sse_events(&server.call("GET", &format!("/jobs/{id}/events"), "").body);
+    let results: Vec<&Value> = events
+        .iter()
+        .filter(|(n, _)| n == "result")
+        .map(|(_, d)| d)
+        .collect();
+    assert_eq!(results.len(), 1, "{events:?}");
+    assert_eq!(results[0]["status"], "cancelled");
+    assert_eq!(events.last().unwrap().0, "result");
+
+    let r = server.call("DELETE", &format!("/jobs/{id}"), "");
+    assert_eq!(r.status, 200);
+    let forgotten = r.json()["data"].clone();
+    assert_eq!(
+        (
+            &forgotten["status"],
+            &forgotten["finishedAt"],
+            &forgotten["result"]
+        ),
+        (
+            &cancelled["status"],
+            &cancelled["finishedAt"],
+            &cancelled["result"]
+        )
+    );
+    assert_eq!(server.call("GET", &format!("/jobs/{id}"), "").status, 404);
+    assert_eq!(
+        server.call("DELETE", &format!("/jobs/{id}"), "").status,
+        404
+    );
+}

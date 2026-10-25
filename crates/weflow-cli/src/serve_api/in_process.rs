@@ -370,6 +370,44 @@ mod tests {
         }
     }
 
+    /// What an `/api/` read spends on its command line before it runs (#403): writing it from the parameters,
+    /// cloning the command tree and parsing it. A measurement, not a check; run it in a release build with
+    /// `cargo test --release -p weflow-cli --bin weflow clap_round_trip -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn clap_round_trip() {
+        const RUNS: u32 = 2000;
+        let endpoints = super::super::Endpoints::new();
+        let ep = endpoints.0.get("chat messages").unwrap();
+        let mut params = super::super::Params::new();
+        for (k, v) in [
+            ("session-id", "wxid_bob"),
+            ("limit", "50"),
+            ("before", "1:2:3"),
+            ("parsed", "true"),
+        ] {
+            params.insert(k.into(), vec![Value::String(v.into())]);
+        }
+        assert!(parse(&ep.argv(&params).unwrap()).is_some());
+        for round in 1..=3 {
+            let begin = std::time::Instant::now();
+            for _ in 0..RUNS {
+                std::hint::black_box(command_tree());
+            }
+            let clone = begin.elapsed() / RUNS;
+            let begin = std::time::Instant::now();
+            for _ in 0..RUNS {
+                let cli = parse(&ep.argv(std::hint::black_box(&params)).unwrap()).unwrap();
+                std::hint::black_box(crate::runs_in_process(&cli.command));
+            }
+            let all = begin.elapsed() / RUNS;
+            eprintln!(
+                "round {round}: clone of the command tree {clone:?}, command line + clone + parse {all:?} \
+                 (mean of {RUNS})"
+            );
+        }
+    }
+
     #[test]
     fn the_push_route_is_not_a_command() {
         // `/api/push/messages` is the event stream
