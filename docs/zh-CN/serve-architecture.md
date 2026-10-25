@@ -171,7 +171,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:18108/chat/messages?
 
 ## 交给其他任务
 
-**#403（基线与回归矩阵）**：上面的测试缺口，以及这些可测量场景：
+**#403（基线与回归矩阵）**，结果见 [refactor-baseline.md](refactor-baseline.md)：上面的测试缺口，以及这些可测量场景：
 
 - `/api/` 每个请求里 clap 往返的耗时（初测约 0.1 ms，见[附录](#附录clap-往返的耗时)），做成可以在改动前后重复运行的基准。
 - 18 个 `/api/` 读的冷、热延迟分布，以及上面那些还走子进程的 WebUI 读。

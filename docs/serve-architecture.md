@@ -171,7 +171,7 @@ These keep running in a child process; a migration PR says why:
 
 ## Handed to other tasks
 
-**#403 (baseline and regression matrix)**: the gaps above, and these measurable scenarios:
+**#403 (baseline and regression matrix)**, now in [refactor-baseline.md](refactor-baseline.md): the gaps above, and these measurable scenarios:
 
 - The clap round trip of each `/api/` request (about 0.1 ms in a first measurement, see the [appendix](#appendix-cost-of-the-clap-round-trip)), as a benchmark that can be run again before and after a change.
 - Cold and warm latency distributions of the 18 `/api/` reads, and of the WebUI reads above that still start a process.

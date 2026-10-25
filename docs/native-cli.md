@@ -252,8 +252,8 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
   Any failed check fails the run.
 - The real account of `--home` measures the speed (use a copy of the configuration). First, once each: the server's start, the first
   read of the conversation list, and the first page of the conversation on top, as a page asks for them right after the start. Then the same reads go through both routes, `--runs`
-  times each (default 10), and the median and 95th percentile are printed, followed by the server's CPU time per second while the push is
-  listened to. The first page of messages and the contacts are also asked for compressed (gzip, br) and cut to the `fields` a page uses, to
+  times each (default 10), and the median, 95th percentile, fastest, slowest and number of runs are printed, followed by the server's CPU time per second while the push is
+  listened to, and the CPU time and peak memory of the server process over the whole run (see [refactor-baseline.md](refactor-baseline.md)). The first page of messages and the contacts are also asked for compressed (gzip, br) and cut to the `fields` a page uses, to
   show what each saves. Videos are read as a player reads them: the first megabyte, then one from the middle. The same page is also asked for many times at once (up to 64), to show how the limits hold. The conversations are picked by message count, and only
   aggregate numbers are printed. `--compare base.json` adds the ratio to an earlier run and fails when a median is more than `--tolerance`
   times (default 2) and more than 20 ms slower.
