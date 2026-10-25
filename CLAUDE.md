@@ -19,7 +19,7 @@
 - `weflow-assets`：构建期把静态资源嵌入二进制
 - 测试：`crates/weflow-core/tests/*_e2e.rs` 为端到端测试（共享 `tests/common`，用 `weflow-native` 的 `test-fixtures` 合成加密账号）；各 crate 的 `examples/*_probe.rs` 是调研用探针
 
-### Electron 桌面端
+### Electron 桌面端（原 WeFlow 项目 Fork，只是备份不做改动）
 - `electron/`：主进程。`main.ts` 入口，`preload.ts` 暴露 IPC，`services/` 为各功能服务，`*Worker.ts` 为后台 worker；`services/wcdbCore.ts` 通过 koffi 加载 `resources/native-db/` 下的 `weflow_wcdb`
 - `src/`：渲染进程（React + Vite + Zustand）。`pages/` 页面、`components/` 组件、`stores/` 状态、`services/ipc.ts` 调用主进程、`i18n/` 多语言
 - `resources/`：随包分发的原生库与辅助程序（密钥/图片解密 helper、旧版 `wcdb` 库、字体等）；`public/` 为前端静态资源
