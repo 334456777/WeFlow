@@ -13,7 +13,7 @@ use weflow_core::error::{AppError, AppResult};
 use weflow_core::services::ServiceHub;
 
 /// The commands with an `/api/` route; `tests::the_list_matches_the_cli` keeps it in step with
-/// `runs_in_process`.
+/// `read_of`.
 pub(super) const COMMANDS: &[&str] = &[
     "chat sessions",
     "chat messages",
@@ -138,19 +138,18 @@ fn parse(argv: &[String]) -> Option<crate::Cli> {
         .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
 }
 
-/// The `--json` document and exit code of `weflow --json <argv>`, run in this process; `None` when the command
-/// line does not parse, so the request goes to a child process, which reports that as the terminal does.
+/// The `--json` document and exit code of `weflow --json <argv>`, run in this process as the [`Read`] it is; `None`
+/// when the command line does not parse or is no read, so the request goes to a child process, which reports that as
+/// the terminal does.
+///
+/// [`Read`]: weflow_core::reads::Read
 pub(super) async fn run(hub: &Hub, argv: &[String]) -> Option<(Value, u8)> {
-    let cli = parse(argv).filter(|cli| crate::runs_in_process(&cli.command))?;
+    let read = parse(argv).and_then(|cli| crate::read_of(&cli.command))?;
     let hub = match hub.get() {
         Ok(hub) => hub,
         Err(err) => return Some(crate::json_document(Err(err))),
     };
-    let handle = tokio::runtime::Handle::current();
-    let done = tokio::task::spawn_blocking(move || {
-        crate::json_document(handle.block_on(crate::run_in_process(&cli, &hub)))
-    })
-    .await;
+    let done = tokio::task::spawn_blocking(move || crate::json_document(read.run(&hub))).await;
     Some(done.unwrap_or_else(|err| {
         crate::json_document(Err(AppError::runtime(format!("the command failed: {err}"))))
     }))
@@ -166,34 +165,15 @@ pub(super) const MEDIA: &[&str] = &[
     "sns media",
 ];
 
-/// A media file and its content type.
-pub(super) struct MediaFile {
-    pub body: MediaBody,
-    pub mime: &'static str,
-}
+pub(super) use weflow_core::reads::{image_mime, MediaBody, MediaFile};
 
-/// What a media file is made of: bytes decoded in memory, or a file on disk, sent as it is read (a video).
-pub(super) enum MediaBody {
-    Bytes(Vec<u8>),
-    File(std::path::PathBuf),
-}
-
-/// The content type of an image, from its first bytes.
-fn image_mime(bytes: &[u8]) -> &'static str {
-    let ext = weflow_core::decrypt::detect_image_extension(bytes);
-    mime_guess::from_ext(ext.trim_start_matches('.'))
-        .first_raw()
-        .filter(|m| m.starts_with("image/"))
-        .unwrap_or("application/octet-stream")
-}
-
-/// The file a [`MEDIA`] command would write, read in this process: the decrypted image or the decoded WAV, or the
-/// `--json` failure document and exit code. `None` when the command line does not parse.
+/// The file a [`MEDIA`] command would write, read in this process: the decrypted image, the decoded WAV or the video,
+/// or the `--json` failure document and exit code. `None` when the command line does not parse.
 pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile, (Value, u8)>> {
-    use crate::{ChatSubcommand, Commands};
+    use crate::Commands;
     let cli = parse(argv)?;
-    let chat = match cli.command {
-        Commands::Chat(chat) => chat,
+    let read = match cli.command {
+        Commands::Chat(chat) => crate::media_of(&chat.command)?,
         Commands::Sns(sns) => return Some(sns_media(hub, sns.command).await),
         _ => return None,
     };
@@ -201,75 +181,11 @@ pub(super) async fn media(hub: &Hub, argv: &[String]) -> Option<Result<MediaFile
         Ok(hub) => hub,
         Err(err) => return Some(Err(crate::json_document(Err(err)))),
     };
-    let done = tokio::task::spawn_blocking(move || match &chat.command {
-        ChatSubcommand::ImageData {
-            session_id,
-            msg_id,
-            create_time,
-            thumb,
-            variant,
-            ..
-        } => hub
-            .image_variant_for_message(
-                session_id,
-                msg_id,
-                *create_time,
-                crate::image_variant(*thumb, variant),
-            )
-            .map(|bytes| MediaFile {
-                mime: image_mime(&bytes),
-                body: MediaBody::Bytes(bytes),
-            }),
-        ChatSubcommand::VoiceData {
-            session_id,
-            msg_id,
-            create_time,
-            server_id,
-            sender,
-            ..
-        } => hub
-            .voice_data(
-                session_id,
-                msg_id,
-                *create_time,
-                server_id.as_deref(),
-                sender.as_deref(),
-            )
-            .map(|bytes| MediaFile {
-                body: MediaBody::Bytes(bytes),
-                mime: "audio/wav",
-            }),
-        ChatSubcommand::VideoData {
-            session_id,
-            msg_id,
-            create_time,
-            thumb,
-            ..
-        } => hub
-            .video_files_for_message(session_id, msg_id, *create_time)
-            .and_then(|files| {
-                let path = crate::video_file(&files, *thumb)?;
-                if !*thumb {
-                    return Ok(MediaFile {
-                        body: MediaBody::File(path.to_path_buf()),
-                        mime: "video/mp4",
-                    });
-                }
-                // a poster is small: read, to tell its type
-                let bytes = std::fs::read(path).map_err(|e| {
-                    AppError::runtime(format!("failed to read {}: {e}", path.display()))
-                })?;
-                Ok(MediaFile {
-                    mime: image_mime(&bytes),
-                    body: MediaBody::Bytes(bytes),
-                })
-            }),
-        _ => Err(AppError::runtime("this command has no media route")),
-    })
-    .await;
-    let outcome =
-        done.unwrap_or_else(|err| Err(AppError::runtime(format!("the command failed: {err}"))));
-    Some(outcome.map_err(|err| crate::json_document(Err(err))))
+    Some(
+        read.fetch(hub)
+            .await
+            .map_err(|err| crate::json_document(Err(err))),
+    )
 }
 
 /// `sns media` for a page (issue #202): an image or a video of a Moments post, fetched from WeChat's servers,
@@ -364,7 +280,7 @@ mod tests {
                 .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
                 .unwrap_or_else(|| panic!("{name} does not parse"));
             assert!(
-                crate::runs_in_process(&cli.command),
+                crate::read_of(&cli.command).is_some(),
                 "{name} does not run in process"
             );
         }
@@ -398,7 +314,7 @@ mod tests {
             let begin = std::time::Instant::now();
             for _ in 0..RUNS {
                 let cli = parse(&ep.argv(std::hint::black_box(&params)).unwrap()).unwrap();
-                std::hint::black_box(crate::runs_in_process(&cli.command));
+                std::hint::black_box(crate::read_of(&cli.command));
             }
             let all = begin.elapsed() / RUNS;
             eprintln!(
