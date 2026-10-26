@@ -1,4 +1,4 @@
-// Sample records for the prototype screens, until the pages read from `weflow serve` (#130).
+// Sample records the screens show while no `weflow serve` is connected (#130).
 import type { ChatSession } from '../api/chat';
 import type { Category, Conversation, Message } from '../types';
 import photo from './street.svg';

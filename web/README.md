@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 The web interface of `weflow serve` (#130): React + TypeScript, built with Vite into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148). The API it talks to is described in [docs/serve-api.md](../docs/serve-api.md).
 
-The screens come from the #130 prototype and still show sample records (`src/mock/`); only the connection state reads the real server so far.
+The screens read the real server once it is connected. Until then (no server, not while the token is wrong or the connection is still being checked) the chat, Moments and payments lists and the console show sample records (`src/mock/`), marked as such, so the page can be looked at without a server.
 
 ## Development
 
@@ -86,7 +86,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/chat/` | The chat page (#196): the conversation list with search, filters, folded groups and arrow keys (#197); the messages of each kind, paged back as the window scrolls up (#198); the search card and the jump to a day or a search hit, with newer pages loaded below (#199) |
 | `src/App.tsx`, `src/app.css` | The workspace (#401): navigation on the left, a page in the middle, the operations console on the right; it holds what the pages share (the connection, the account, the conversation list, the jobs), opens one page from another and gathers the pages' cards into the console |
 | `src/shell/` | What every page is in: the sidebar with the connection indicator, the media preview, the preferences of the whole page (live messages, media in exports, reduced motion), the two shapes of a page (`ScrollPage`, `BrowserPanel`), and `page.ts`, what a page is given (`Shell`) and gives back (`Page`) |
-| `src/mock/` | Sample records, until the screens read the API |
+| `src/mock/` | Sample records shown while no server is connected, with the console's default range of days for them |
 | `src/api/jobs.ts`, `src/jobs/` | Jobs (#211): commands started with `Prefer: respond-async` (`?return=file` for an export), the list of `/jobs`, the running one followed through `/jobs/<id>/events`, cancelled or forgotten with `DELETE`, its file saved from `/jobs/<id>/file`; the task centre shows them all, and the console exports the open conversation with `export messages` |
 | `src/exports/` | The export page (#211): conversations picked from the list (by kind, all those shown at once), exported one job each with `export messages` in any of its 9 formats, days, sender names, media and Excel's compact columns; and the list itself with `export sessions` |
 | `src/files.ts` | Files the page saves: an .xlsx of rows, any bytes as a download |
