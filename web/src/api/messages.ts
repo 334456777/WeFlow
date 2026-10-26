@@ -67,7 +67,7 @@ export interface GroupMember {
 }
 
 export async function getMembers(chatroomId: string, signal?: AbortSignal): Promise<GroupMember[]> {
-  const data = await get<{ members?: GroupMember[] }>('api/group/members', { 'chatroom-id': chatroomId }, signal);
+  const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId }, signal);
   return data?.members ?? [];
 }
 

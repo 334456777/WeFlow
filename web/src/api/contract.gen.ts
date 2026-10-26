@@ -316,6 +316,207 @@ export interface ImageInfo {
   hdBytes: number | null;
 }
 
+/** A group chat of `group list`, the largest first. */
+export interface GroupChat {
+  /** The group's id, `…@chatroom`. */
+  username: string;
+  /** Its name, else its id. */
+  displayName: string;
+  memberCount: number;
+  avatarUrl?: string;
+}
+
+/**
+ * The members of a group (`group members`), as the members panel of the desktop app lists them: the owner first,
+ * then friends, then by how many messages they sent.
+ */
+export interface GroupMembers {
+  chatroomId: string;
+  count: number;
+  /** Whether the panel was kept from a request a short while before (`refresh=true` builds it again). */
+  fromCache: boolean;
+  /** When the panel was built, in Unix milliseconds. */
+  updatedAt: number;
+  members: GroupMember[];
+}
+
+/** A member of a group's members panel. */
+export interface GroupMember {
+  username: string;
+  /** Their name as WeChat shows it in the group. */
+  displayName: string;
+  /** The fields of their contact; empty when they are not a contact. */
+  nickname: string;
+  alias: string;
+  remark: string;
+  /** The name they gave themselves in this group; empty when none. */
+  groupNickname: string;
+  avatarUrl?: string;
+  isOwner: boolean;
+  isFriend: boolean;
+  /** How many messages they sent in the group; 0 unless `counts=true`. */
+  messageCount: number;
+}
+
+/** Who sent how many messages in a group (`group ranking`), the most first. */
+export interface GroupRank {
+  member: RankedMember;
+  messageCount: number;
+}
+
+/** A member of a ranking. */
+export interface RankedMember {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+/** How many messages a group has in each hour of the day (`group hours`). */
+export interface GroupHours {
+  /** By the hour, `"0"` to `"23"`, in the server's time zone. */
+  hourlyDistribution: Record<string, number>;
+}
+
+/** How many messages of each kind a group has (`group media`), the most first. */
+export interface GroupMedia {
+  typeCounts: MediaCount[];
+  total: number;
+}
+
+/** One kind of message and how many there are. */
+export interface MediaCount {
+  /** WeChat's type of the message, as `localType`; -1 for all the others together. */
+  type: number;
+  /** Its name as the desktop app shows it, in Chinese. */
+  name: string;
+  count: number;
+}
+
+/** What one member of a group sent (`group member`). */
+export interface MemberAnalytics {
+  statistics: MemberStatistics;
+  /** By the hour, `"0"` to `"23"`, in the server's time zone. */
+  timeDistribution: Record<string, number>;
+  /** What they said most, the most first, up to 10. */
+  commonPhrases: PhraseCount[];
+  commonEmojis: EmojiCount[];
+}
+
+/** The numbers of a member's messages. */
+export interface MemberStatistics {
+  totalMessages: number;
+  textMessages: number;
+  imageMessages: number;
+  voiceMessages: number;
+  videoMessages: number;
+  emojiMessages: number;
+  otherMessages: number;
+  sentMessages: number;
+  /** Always 0: a member's messages are all sent by them. */
+  receivedMessages: number;
+  /** The time of their first message; null when they sent none. */
+  firstMessageTime: number | null;
+  lastMessageTime: number | null;
+  activeDays: number;
+  /** By WeChat's type of the message, as `localType`. */
+  messageTypeCounts: Record<string, number>;
+}
+
+/** A phrase and how often it was said. */
+export interface PhraseCount {
+  phrase: string;
+  count: number;
+}
+
+/** An emoji and how often it was sent. */
+export interface EmojiCount {
+  emoji: string;
+  count: number;
+}
+
+/** A page of a member's messages in a group (`group member-messages`), newest first. */
+export interface MemberMessages {
+  messages: ChatMessage[];
+  hasMore: boolean;
+  /** Pass it as `cursor` for the next page. */
+  nextCursor: number;
+}
+
+/**
+ * A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399): its text and the
+ * keys of its media, links, cards and so on, parsed from the row. An optional field is left out when the message has
+ * none; times are Unix seconds.
+ */
+export interface ChatMessage {
+  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
+  localId: number;
+  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  serverId: string;
+  /** WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…). */
+  localType: number;
+  createTime: number;
+  /** WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little. */
+  sortSeq: number;
+  /** 1 when I sent it, 0 when I received it; null when the row does not say. */
+  isSend: number | null;
+  /** Who sent it; null when the row does not say. */
+  senderUsername: string | null;
+  /** The text the chat window shows. */
+  parsedContent: string;
+  /** The message as WeChat keeps it (often XML). */
+  rawContent: string;
+  emojiCdnUrl?: string;
+  emojiMd5?: string;
+  quotedContent?: string;
+  quotedSender?: string;
+  imageMd5?: string;
+  imageDatName?: string;
+  videoMd5?: string;
+  voiceDurationSeconds?: number;
+  aesKey?: string;
+  encrypVer?: number;
+  cdnThumbUrl?: string;
+  cardUsername?: string;
+  cardNickname?: string;
+  cardAvatarUrl?: string;
+  locationLat?: number;
+  locationLng?: number;
+  locationPoiname?: string;
+  locationLabel?: string;
+  xmlType?: string;
+  linkTitle?: string;
+  linkUrl?: string;
+  linkThumb?: string;
+  appMsgKind?: string;
+  appMsgDesc?: string;
+  appMsgAppName?: string;
+  appMsgSourceName?: string;
+  appMsgSourceUsername?: string;
+  appMsgThumbUrl?: string;
+  appMsgMusicUrl?: string;
+  appMsgDataUrl?: string;
+  appMsgLocationLabel?: string;
+  finderNickname?: string;
+  finderUsername?: string;
+  finderCoverUrl?: string;
+  finderAvatar?: string;
+  finderDuration?: number;
+  musicAlbumUrl?: string;
+  musicUrl?: string;
+  giftImageUrl?: string;
+  giftWish?: string;
+  giftPrice?: string;
+  fileName?: string;
+  fileSize?: number;
+  fileExt?: string;
+  fileMd5?: string;
+  transferPayerUsername?: string;
+  transferReceiverUsername?: string;
+  chatRecordTitle?: string;
+  /** The message's key as the desktop app builds it. */
+  messageKey: string;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -388,4 +589,11 @@ export interface Answers {
   /** Each username asked for, with whether its conversation is folded and muted */
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
+  "group hours": GroupHours;
+  "group list": GroupChat[];
+  "group media": GroupMedia;
+  "group member": MemberAnalytics;
+  "group member-messages": MemberMessages;
+  "group members": GroupMembers;
+  "group ranking": GroupRank[];
 }

@@ -459,7 +459,8 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            ChatStatus, Contact, ImageInfo, MessageLookup, ParsedMessage, ResourcePage, Session,
+            ChatStatus, Contact, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
+            MemberAnalytics, MemberMessages, MessageLookup, ParsedMessage, ResourcePage, Session,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
         };
         let mut generator = SchemaSettings::draft2020_12()
@@ -532,6 +533,13 @@ pub(super) fn contract() -> &'static Contract {
             }),
         );
         data.insert("chat image-info", of(generator.subschema_for::<ImageInfo>()));
+        data.insert("group list", of(generator.subschema_for::<Vec<GroupChat>>()));
+        data.insert("group members", of(generator.subschema_for::<GroupMembers>()));
+        data.insert("group ranking", of(generator.subschema_for::<Vec<GroupRank>>()));
+        data.insert("group hours", of(generator.subschema_for::<GroupHours>()));
+        data.insert("group media", of(generator.subschema_for::<GroupMedia>()));
+        data.insert("group member", of(generator.subschema_for::<MemberAnalytics>()));
+        data.insert("group member-messages", of(generator.subschema_for::<MemberMessages>()));
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();

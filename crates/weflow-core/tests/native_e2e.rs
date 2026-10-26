@@ -460,25 +460,20 @@ fn group_ranking_hours_and_media_mix() {
         .group_message_ranking("room1@chatroom", 10, 0, 0)
         .unwrap();
     assert_eq!(ranking.len(), 3);
-    assert!(ranking.iter().all(|r| r["messageCount"] == 1));
+    assert!(ranking.iter().all(|r| r.message_count == 1));
     let names: Vec<&str> = ranking
         .iter()
-        .map(|r| r["member"]["displayName"].as_str().unwrap())
+        .map(|r| r.member.display_name.as_str())
         .collect();
     for n in ["Bobby", "Me Nick", "Quiet"] {
         assert!(names.contains(&n), "{n} missing from {names:?}");
     }
     let hours = hub.group_active_hours("room1@chatroom", 0, 0).unwrap();
-    let total: i64 = hours["hourlyDistribution"]
-        .as_object()
-        .unwrap()
-        .values()
-        .map(|n| n.as_i64().unwrap())
-        .sum();
+    let total: i64 = hours.hourly_distribution.values().sum();
     assert_eq!(total, 3);
     let media = hub.group_media_stats("room1@chatroom", 0, 0).unwrap();
-    assert_eq!(media["total"], 3);
-    assert_eq!(media["typeCounts"][0]["type"], 1);
+    assert_eq!(media.total, 3);
+    assert_eq!(media.type_counts[0].kind, 1);
 }
 
 #[test]

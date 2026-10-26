@@ -7,7 +7,10 @@ fn members_panel_is_sorted_and_enriched() {
         .group_members_panel("room1@chatroom", false, true)
         .unwrap();
     assert!(!from_cache);
+    let entries = serde_json::to_value(entries).unwrap();
     let names: Vec<&str> = entries
+        .as_array()
+        .unwrap()
         .iter()
         .map(|e| e["username"].as_str().unwrap())
         .collect();
@@ -35,7 +38,7 @@ fn members_panel_is_sorted_and_enriched() {
     let (without_counts, _, _) = hub
         .group_members_panel("room1@chatroom", true, false)
         .unwrap();
-    assert_eq!(without_counts[0]["messageCount"], 0);
+    assert_eq!(without_counts[0].message_count, 0);
     // the panel stored my own count as a hint
     assert_eq!(hub.get_group_hint("room1@chatroom").unwrap()["count"], 1);
 }
@@ -45,9 +48,9 @@ fn group_chats_and_full_members() {
     let (hub, _root) = common::mock_hub("group-list");
     let groups = hub.group_chats().unwrap();
     assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0]["username"], "room1@chatroom");
-    assert_eq!(groups[0]["displayName"], "Project Room");
-    assert_eq!(groups[0]["memberCount"], 3);
+    assert_eq!(groups[0].username, "room1@chatroom");
+    assert_eq!(groups[0].display_name, "Project Room");
+    assert_eq!(groups[0].member_count, 3);
     let members = hub.group_members_full("room1@chatroom").unwrap();
     assert_eq!(members.len(), 3);
     let bob = members
@@ -62,9 +65,11 @@ fn group_chats_and_full_members() {
 #[test]
 fn member_analytics_and_exports() {
     let (hub, root) = common::mock_hub("group-export");
-    let a = hub
-        .group_member_analytics("room1@chatroom", "wxid_bob", 0, 0)
-        .unwrap();
+    let a = serde_json::to_value(
+        hub.group_member_analytics("room1@chatroom", "wxid_bob", 0, 0)
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         a["statistics"]["totalMessages"], 1,
         "only Bob's message in the room counts"
@@ -77,9 +82,11 @@ fn member_analytics_and_exports() {
         a["commonPhrases"][0]["phrase"], "welcome",
         "the sender prefix and the line break are stripped"
     );
-    let me = hub
-        .group_member_analytics("room1@chatroom", "wxid_me", 0, 0)
-        .unwrap();
+    let me = serde_json::to_value(
+        hub.group_member_analytics("room1@chatroom", "wxid_me", 0, 0)
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         me["statistics"]["totalMessages"], 1,
         "my own messages are matched through is_send"
@@ -122,9 +129,11 @@ fn member_analytics_and_exports() {
         csv_text.contains("wxid_bob") && csv_text.contains("文本") && csv_text.contains("welcome"),
         "{csv_text}"
     );
-    let page = hub
-        .group_member_messages("room1@chatroom", "wxid_bob", 0, 0, 20, 0)
-        .unwrap();
+    let page = serde_json::to_value(
+        hub.group_member_messages("room1@chatroom", "wxid_bob", 0, 0, 20, 0)
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(page["hasMore"], false);
     assert_eq!(page["messages"].as_array().unwrap().len(), 1);
     assert_eq!(page["messages"][0]["parsedContent"], "welcome");

@@ -344,9 +344,13 @@ impl Read {
             } => {
                 let (members, from_cache, updated_at) =
                     hub.group_members_panel(chatroom_id, *refresh, *counts)?;
-                Ok(
-                    json!({ "chatroomId": chatroom_id, "count": members.len(), "fromCache": from_cache, "updatedAt": updated_at, "members": members }),
-                )
+                Ok(json!(crate::contract::GroupMembers {
+                    chatroom_id: chatroom_id.clone(),
+                    count: members.len(),
+                    from_cache,
+                    updated_at,
+                    members,
+                }))
             }
             Read::SnsTimeline {
                 limit,
@@ -395,7 +399,7 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_active_hours(chatroom_id, b, e)
+                Ok(json!(hub.group_active_hours(chatroom_id, b, e)?))
             }
             Read::GroupMedia {
                 chatroom_id,
@@ -403,7 +407,7 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_media_stats(chatroom_id, b, e)
+                Ok(json!(hub.group_media_stats(chatroom_id, b, e)?))
             }
             Read::GroupMember {
                 chatroom_id,
@@ -412,7 +416,12 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_member_analytics(chatroom_id, username, b, e)
+                Ok(json!(hub.group_member_analytics(
+                    chatroom_id,
+                    username,
+                    b,
+                    e
+                )?))
             }
             Read::GroupMemberMessages {
                 chatroom_id,
@@ -423,7 +432,14 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_member_messages(chatroom_id, username, b, e, *limit, *cursor)
+                Ok(json!(hub.group_member_messages(
+                    chatroom_id,
+                    username,
+                    b,
+                    e,
+                    *limit,
+                    *cursor
+                )?))
             }
             Read::AnalyticsOverall { force } => hub.analytics_overall_statistics(*force),
             Read::AnalyticsRankings { limit, start, end } => {

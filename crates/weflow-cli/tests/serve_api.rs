@@ -3103,12 +3103,24 @@ fn answers_fit_the_contract() {
             "/api/chat/image-info?session-id=wxid_bob&msg-id=3&create-time={}",
             T0 + DAY
         ),
+        "/api/group/members?chatroom-id=room1%40chatroom&counts=true",
+        "/api/group/hours?chatroom-id=room1%40chatroom",
+        "/api/group/media?chatroom-id=room1%40chatroom",
+        "/api/group/member?chatroom-id=room1%40chatroom&username=wxid_bob",
+        "/api/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob",
     ] {
         let data = read(target, None);
         assert!(
             data.as_object().is_some_and(|o| !o.is_empty()),
             "{target}: {data}"
         );
+    }
+    for target in [
+        "/api/group/list",
+        "/api/group/ranking?chatroom-id=room1%40chatroom",
+    ] {
+        let data = read(target, None);
+        assert!(!data.as_array().unwrap().is_empty(), "{target}: {data}");
     }
     for target in [
         "/api/chat/messages?session-id=wxid_bob&limit=100",
