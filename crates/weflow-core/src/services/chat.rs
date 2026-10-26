@@ -1,12 +1,15 @@
 //! Chat queries beyond the basics: message lookup, per-day statistics, session details,
 //! export statistics, resource listings and cached hints.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde_json::{json, Map, Value};
 
 use super::{clean_account_dir_name, ServiceHub};
-use crate::contract::{MessageLookup, MessageView, Resource, ResourceKind, ResourcePage};
+use crate::contract::{
+    ChatStatus, MessageLookup, MessageTable, MessageView, Resource, ResourceKind, ResourcePage,
+    SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
+};
 use crate::error::{AppError, AppResult};
 use crate::message::{
     collect_messages, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
@@ -210,18 +213,25 @@ impl ServiceHub {
 
     // ── per-day statistics ──
 
-    pub fn chat_dates(&self, session_id: &str) -> AppResult<Value> {
+    pub fn chat_dates(&self, session_id: &str) -> AppResult<SessionDates> {
         let wcdb = self.open_wcdb()?;
-        let dates = wcdb.message_dates(session_id).unwrap_or_else(|_| json!([]));
-        Ok(json!({ "sessionId": session_id, "dates": dates }))
+        let dates = wcdb
+            .message_dates(session_id)
+            .ok()
+            .and_then(|d| serde_json::from_value(d).ok())
+            .unwrap_or_default();
+        Ok(SessionDates {
+            session_id: session_id.to_string(),
+            dates,
+        })
     }
 
-    pub fn chat_date_counts(&self, session_id: &str) -> AppResult<Value> {
+    pub fn chat_date_counts(&self, session_id: &str) -> AppResult<SessionDateCounts> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
             .session_message_date_counts(session_id)
             .map_err(native)?;
-        let mut counts = Map::new();
+        let mut counts = BTreeMap::new();
         if let Some(obj) = raw.as_object() {
             for (date, value) in obj {
                 let n = value
@@ -229,48 +239,58 @@ impl ServiceHub {
                     .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
                     .unwrap_or(0.0);
                 if !date.is_empty() && n.is_finite() && n > 0.0 {
-                    counts.insert(date.clone(), json!(n.floor() as i64));
+                    counts.insert(date.clone(), n.floor() as i64);
                 }
             }
         }
-        Ok(json!({ "sessionId": session_id, "counts": counts }))
+        Ok(SessionDateCounts {
+            session_id: session_id.to_string(),
+            counts,
+        })
     }
 
-    pub fn chat_counts(&self, session_ids: &[String]) -> AppResult<Value> {
+    /// How many messages each conversation asked for has, by its id.
+    pub fn chat_counts(&self, session_ids: &[String]) -> AppResult<BTreeMap<String, i64>> {
         let ids = uniq(session_ids);
         if ids.is_empty() {
-            return Ok(json!({}));
+            return Ok(BTreeMap::new());
         }
         let wcdb = self.open_wcdb()?;
         let raw = wcdb.session_message_counts(&ids).map_err(native)?;
-        let mut counts = Map::new();
-        for id in &ids {
-            counts.insert(id.clone(), json!(num(&raw, id)));
-        }
-        Ok(Value::Object(counts))
+        Ok(ids
+            .into_iter()
+            .map(|id| {
+                let n = num(&raw, &id);
+                (id, n)
+            })
+            .collect())
     }
 
-    pub fn chat_statuses(&self, usernames: &[String]) -> AppResult<Value> {
+    pub fn chat_statuses(&self, usernames: &[String]) -> AppResult<BTreeMap<String, ChatStatus>> {
         let ids = uniq(usernames);
         if ids.is_empty() {
-            return Ok(json!({}));
+            return Ok(BTreeMap::new());
         }
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
             .contact_status(&serde_json::to_string(&ids).unwrap())
             .map_err(native)?;
-        let mut out = Map::new();
-        for id in &ids {
-            let state = raw.get(id).cloned().unwrap_or(Value::Null);
-            out.insert(
-                id.clone(),
-                json!({
-                    "isFolded": state.get("isFolded").and_then(Value::as_bool).unwrap_or(false),
-                    "isMuted": state.get("isMuted").and_then(Value::as_bool).unwrap_or(false)
-                }),
-            );
-        }
-        Ok(Value::Object(out))
+        Ok(ids
+            .into_iter()
+            .map(|id| {
+                let flag = |k: &str| {
+                    raw.get(&id)
+                        .and_then(|s| s.get(k))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                };
+                let status = ChatStatus {
+                    is_folded: flag("isFolded"),
+                    is_muted: flag("isMuted"),
+                };
+                (id, status)
+            })
+            .collect())
     }
 
     pub fn chat_mark_all_read(&self) -> AppResult<Value> {
@@ -299,7 +319,7 @@ impl ServiceHub {
 
     // ── session detail ──
 
-    pub fn chat_detail_fast(&self, session_id: &str) -> AppResult<Value> {
+    pub fn chat_detail_fast(&self, session_id: &str) -> AppResult<SessionFacts> {
         let id = session_id.trim();
         if id.is_empty() {
             return Err(AppError::usage("session id cannot be empty"));
@@ -332,42 +352,38 @@ impl ServiceHub {
             .and_then(|m| m.get(id).and_then(Value::as_str).map(str::to_string))
             .filter(|u| u.starts_with("http") || u.starts_with("data:"));
         let count = wcdb.message_count(id).map(|c| c.max(0)).unwrap_or(0);
-        let mut o = Map::new();
-        o.insert("wxid".into(), json!(id));
-        o.insert("displayName".into(), json!(display));
-        if let Some(v) = remark {
-            o.insert("remark".into(), json!(v));
-        }
-        if let Some(v) = nick {
-            o.insert("nickName".into(), json!(v));
-        }
-        if let Some(v) = alias {
-            o.insert("alias".into(), json!(v));
-        }
-        if let Some(v) = avatar {
-            o.insert("avatarUrl".into(), json!(v));
-        }
-        o.insert("messageCount".into(), json!(count));
-        Ok(Value::Object(o))
+        Ok(SessionFacts {
+            wxid: id.to_string(),
+            display_name: display,
+            remark,
+            nick_name: nick,
+            alias,
+            avatar_url: avatar,
+            message_count: count.into(),
+        })
     }
 
-    pub fn chat_detail_extra(&self, session_id: &str) -> AppResult<Value> {
+    pub fn chat_detail_extra(&self, session_id: &str) -> AppResult<SessionTables> {
         let id = session_id.trim();
         if id.is_empty() {
             return Err(AppError::usage("session id cannot be empty"));
         }
         let wcdb = self.open_wcdb()?;
         let stats = wcdb.message_table_stats(id).unwrap_or_else(|_| json!([]));
-        let mut tables: Vec<Value> = Vec::new();
+        let mut tables = Vec::new();
         let mut first: Option<i64> = None;
         let mut last: Option<i64> = None;
         for row in stats.as_array().into_iter().flatten() {
             let db_path = row.get("db_path").and_then(Value::as_str).unwrap_or("");
-            tables.push(json!({
-                "dbName": basename(db_path),
-                "tableName": row.get("table_name").and_then(Value::as_str).unwrap_or(""),
-                "count": num(row, "count")
-            }));
+            tables.push(MessageTable {
+                db_name: basename(db_path),
+                table_name: row
+                    .get("table_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                count: num(row, "count"),
+            });
             let pick = |keys: &[&str]| {
                 keys.iter()
                     .map(|k| num(row, k))
@@ -397,26 +413,25 @@ impl ServiceHub {
                 last = Some(l);
             }
         }
-        Ok(json!({ "firstMessageTime": first, "latestMessageTime": last, "messageTables": tables }))
+        Ok(SessionTables {
+            first_message_time: first,
+            latest_message_time: last,
+            message_tables: tables,
+        })
     }
 
-    pub fn chat_detail(&self, session_id: &str) -> AppResult<Value> {
-        let mut detail = self.chat_detail_fast(session_id)?;
-        let extra = self
-            .chat_detail_extra(session_id)
-            .unwrap_or_else(|_| json!({ "messageTables": [] }));
-        if let (Some(d), Some(e)) = (detail.as_object_mut(), extra.as_object()) {
-            for (k, v) in e {
-                d.insert(k.clone(), v.clone());
-            }
-        }
-        Ok(detail)
+    pub fn chat_detail(&self, session_id: &str) -> AppResult<SessionDetail> {
+        Ok(SessionDetail {
+            facts: self.chat_detail_fast(session_id)?,
+            tables: self.chat_detail_extra(session_id).unwrap_or_default(),
+        })
     }
 
     // ── export statistics ──
 
-    pub fn chat_tab_counts(&self) -> AppResult<Value> {
-        self.contact_type_counts()
+    pub fn chat_tab_counts(&self) -> AppResult<TabCounts> {
+        serde_json::from_value(self.contact_type_counts()?)
+            .map_err(|err| AppError::native(err.to_string()))
     }
 
     fn friend_identities(&self, wcdb: &weflow_native::wcdb::Wcdb) -> HashSet<String> {

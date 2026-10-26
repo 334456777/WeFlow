@@ -7,8 +7,10 @@
 //! one is `null`. The rows of WeChat's own tables (`chat messages` without `parsed`, `chat contacts` without
 //! `parsed`…) have the columns of those tables and are not described further.
 
+use std::collections::BTreeMap;
+
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use crate::chat_msg::{ChatMessage, Type49Info};
 use crate::message::{extract_arkme_app_message_meta, parse_message_content, ExportMsg};
@@ -248,6 +250,107 @@ pub struct ResourcePage {
     pub has_more: bool,
     /// The `_cursor` of the last item, to pass as `before` for the next page; null on the last page.
     pub next_cursor: Option<String>,
+}
+
+/// Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatStatus {
+    pub is_folded: bool,
+    pub is_muted: bool,
+}
+
+/// How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct TabCounts {
+    #[serde(default)]
+    pub private: i64,
+    #[serde(default)]
+    pub group: i64,
+    #[serde(default)]
+    pub official: i64,
+    #[serde(default)]
+    pub former_friend: i64,
+}
+
+/// The days a conversation has messages on (`chat dates`), as `YYYY-MM-DD` in the server's time zone, oldest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDates {
+    pub session_id: String,
+    pub dates: Vec<String>,
+}
+
+/// How many messages a conversation has on each day it has any (`chat date-counts`), by `YYYY-MM-DD`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDateCounts {
+    pub session_id: String,
+    pub counts: BTreeMap<String, i64>,
+}
+
+/// Who a conversation is with and how many messages it has (`chat detail --fast`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionFacts {
+    /// The conversation's username.
+    pub wxid: String,
+    /// The remark, else the nickname, else the alias, else the username.
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nick_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    pub message_count: i64,
+}
+
+/// A conversation's details (`chat detail`): its facts, and where its messages are kept.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SessionDetail {
+    #[serde(flatten)]
+    pub facts: SessionFacts,
+    #[serde(flatten)]
+    pub tables: SessionTables,
+}
+
+/// Where a conversation's messages are kept (`chat detail --extra`, and `chat detail` without `fast`).
+#[derive(Clone, Debug, Default, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTables {
+    /// The time of its first message; null when its tables do not say.
+    pub first_message_time: Option<i64>,
+    pub latest_message_time: Option<i64>,
+    pub message_tables: Vec<MessageTable>,
+}
+
+/// One of WeChat's tables that holds messages of a conversation.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageTable {
+    /// The database's file name, such as `message_0.db`.
+    pub db_name: String,
+    pub table_name: String,
+    pub count: i64,
+}
+
+/// Which files of a message's image are on this computer (`chat image-info`), and the sizes the message gives.
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageInfo {
+    /// The thumbnail a chat shows.
+    pub thumb: bool,
+    /// The image shown when it is opened.
+    pub normal: bool,
+    /// The original, once View original downloaded it.
+    pub hd: bool,
+    /// Bytes of the image; null when neither the message nor its file says.
+    pub normal_bytes: Option<u64>,
+    /// Bytes of the original, as the message gives them even before it is downloaded.
+    pub hd_bytes: Option<u64>,
 }
 
 #[cfg(test)]

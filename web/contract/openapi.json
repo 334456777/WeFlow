@@ -60,6 +60,221 @@
         }
       }
     },
+    "/api/chat/counts": {
+      "get": {
+        "operationId": "api_chat_counts",
+        "x-weflow-command": "chat counts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "Each conversation asked for, with how many messages it has",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/date-counts": {
+      "get": {
+        "operationId": "api_chat_date_counts",
+        "x-weflow-command": "chat date-counts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SessionDateCounts"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/dates": {
+      "get": {
+        "operationId": "api_chat_dates",
+        "x-weflow-command": "chat dates",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SessionDates"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/detail": {
+      "get": {
+        "operationId": "api_chat_detail",
+        "x-weflow-command": "chat detail",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/SessionDetail"
+                        },
+                        {
+                          "$ref": "#/components/schemas/SessionFacts"
+                        },
+                        {
+                          "$ref": "#/components/schemas/SessionTables"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/image-info": {
+      "get": {
+        "operationId": "api_chat_image_info",
+        "x-weflow-command": "chat image-info",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageInfo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/latest": {
       "get": {
         "operationId": "api_chat_latest",
@@ -323,6 +538,90 @@
                       "items": {
                         "$ref": "#/components/schemas/Session"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/statuses": {
+      "get": {
+        "operationId": "api_chat_statuses",
+        "x-weflow-command": "chat statuses",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "Each username asked for, with whether its conversation is folded and muted",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ChatStatus"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/tab-counts": {
+      "get": {
+        "operationId": "api_chat_tab_counts",
+        "x-weflow-command": "chat tab-counts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TabCounts"
                     }
                   }
                 }
@@ -1028,6 +1327,284 @@
           "file"
         ],
         "description": "What a message of `chat resources` holds."
+      },
+      "ChatStatus": {
+        "type": "object",
+        "properties": {
+          "isFolded": {
+            "type": "boolean"
+          },
+          "isMuted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "isFolded",
+          "isMuted"
+        ],
+        "description": "Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for."
+      },
+      "TabCounts": {
+        "type": "object",
+        "properties": {
+          "private": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0
+          },
+          "group": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0
+          },
+          "official": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0
+          },
+          "former_friend": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0
+          }
+        },
+        "required": [
+          "private",
+          "group",
+          "official",
+          "former_friend"
+        ],
+        "description": "How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them."
+      },
+      "SessionDates": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "dates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "sessionId",
+          "dates"
+        ],
+        "description": "The days a conversation has messages on (`chat dates`), as `YYYY-MM-DD` in the server's time zone, oldest first."
+      },
+      "SessionDateCounts": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        },
+        "required": [
+          "sessionId",
+          "counts"
+        ],
+        "description": "How many messages a conversation has on each day it has any (`chat date-counts`), by `YYYY-MM-DD`."
+      },
+      "SessionDetail": {
+        "type": "object",
+        "properties": {
+          "wxid": {
+            "type": "string",
+            "description": "The conversation's username."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The remark, else the nickname, else the alias, else the username."
+          },
+          "remark": {
+            "type": "string"
+          },
+          "nickName": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "messageCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "firstMessageTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The time of its first message; null when its tables do not say."
+          },
+          "latestMessageTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "messageTables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageTable"
+            }
+          }
+        },
+        "required": [
+          "wxid",
+          "displayName",
+          "messageCount",
+          "firstMessageTime",
+          "latestMessageTime",
+          "messageTables"
+        ],
+        "description": "A conversation's details (`chat detail`): its facts, and where its messages are kept."
+      },
+      "MessageTable": {
+        "type": "object",
+        "properties": {
+          "dbName": {
+            "type": "string",
+            "description": "The database's file name, such as `message_0.db`."
+          },
+          "tableName": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "dbName",
+          "tableName",
+          "count"
+        ],
+        "description": "One of WeChat's tables that holds messages of a conversation."
+      },
+      "SessionFacts": {
+        "type": "object",
+        "properties": {
+          "wxid": {
+            "type": "string",
+            "description": "The conversation's username."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The remark, else the nickname, else the alias, else the username."
+          },
+          "remark": {
+            "type": "string"
+          },
+          "nickName": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "messageCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "wxid",
+          "displayName",
+          "messageCount"
+        ],
+        "description": "Who a conversation is with and how many messages it has (`chat detail --fast`)."
+      },
+      "SessionTables": {
+        "type": "object",
+        "properties": {
+          "firstMessageTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The time of its first message; null when its tables do not say."
+          },
+          "latestMessageTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "messageTables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageTable"
+            }
+          }
+        },
+        "required": [
+          "firstMessageTime",
+          "latestMessageTime",
+          "messageTables"
+        ],
+        "description": "Where a conversation's messages are kept (`chat detail --extra`, and `chat detail` without `fast`)."
+      },
+      "ImageInfo": {
+        "type": "object",
+        "properties": {
+          "thumb": {
+            "type": "boolean",
+            "description": "The thumbnail a chat shows."
+          },
+          "normal": {
+            "type": "boolean",
+            "description": "The image shown when it is opened."
+          },
+          "hd": {
+            "type": "boolean",
+            "description": "The original, once View original downloaded it."
+          },
+          "normalBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Bytes of the image; null when neither the message nor its file says."
+          },
+          "hdBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Bytes of the original, as the message gives them even before it is downloaded."
+          }
+        },
+        "required": [
+          "thumb",
+          "normal",
+          "hd",
+          "normalBytes",
+          "hdBytes"
+        ],
+        "description": "Which files of a message's image are on this computer (`chat image-info`), and the sizes the message gives."
       },
       "Job": {
         "type": "object",

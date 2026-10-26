@@ -3089,6 +3089,27 @@ fn answers_fit_the_contract() {
 
     let sessions = read("/api/chat/sessions", None);
     assert!(sessions.as_array().unwrap().len() >= 3, "{sessions}");
+    // the reads typed since (#430), each answering the shape its route says
+    for target in [
+        "/api/chat/statuses?usernames=wxid_bob&usernames=room1%40chatroom",
+        "/api/chat/counts?sessions=wxid_bob&sessions=room1%40chatroom",
+        "/api/chat/tab-counts",
+        "/api/chat/dates?session-id=wxid_bob",
+        "/api/chat/date-counts?session-id=wxid_bob",
+        "/api/chat/detail?session-id=wxid_bob&fast=true",
+        "/api/chat/detail?session-id=wxid_bob",
+        "/api/chat/detail?session-id=wxid_bob&extra=true",
+        &format!(
+            "/api/chat/image-info?session-id=wxid_bob&msg-id=3&create-time={}",
+            T0 + DAY
+        ),
+    ] {
+        let data = read(target, None);
+        assert!(
+            data.as_object().is_some_and(|o| !o.is_empty()),
+            "{target}: {data}"
+        );
+    }
     for target in [
         "/api/chat/messages?session-id=wxid_bob&limit=100",
         "/api/chat/messages?session-id=room1%40chatroom",

@@ -3,10 +3,8 @@
 import { ApiError, get } from './client';
 import type * as Contract from './contract.gen';
 
-export interface SessionStatus {
-  isFolded: boolean;
-  isMuted: boolean;
-}
+/** Whether a conversation is folded and muted (the contract's `ChatStatus`, #430). */
+export type SessionStatus = Contract.ChatStatus;
 
 const SESSION_KEYS = [
   'username', 'displayName', 'summary', 'unreadCount', 'sortTimestamp', 'lastTimestamp', 'lastMsgType',
@@ -39,7 +37,7 @@ export async function getStatuses(usernames: readonly string[], signal?: AbortSi
     const batch = usernames.slice(i, i + STATUS_BATCH);
     for (let attempt = 0; ; attempt++) {
       try {
-        Object.assign(all, await get<Record<string, SessionStatus>>('api/chat/statuses', { usernames: batch }, signal));
+        Object.assign(all, await get<Contract.Answers['chat statuses']>('api/chat/statuses', { usernames: batch }, signal));
         break;
       } catch (problem) {
         if (!(problem instanceof ApiError && problem.code === 'busy') || attempt >= 2) throw problem;

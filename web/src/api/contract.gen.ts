@@ -230,6 +230,92 @@ export interface Resource {
 /** What a message of `chat resources` holds. */
 export type ResourceKind = "image" | "video" | "voice" | "file";
 
+/** Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for. */
+export interface ChatStatus {
+  isFolded: boolean;
+  isMuted: boolean;
+}
+
+/** How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them. */
+export interface TabCounts {
+  private: number;
+  group: number;
+  official: number;
+  former_friend: number;
+}
+
+/** The days a conversation has messages on (`chat dates`), as `YYYY-MM-DD` in the server's time zone, oldest first. */
+export interface SessionDates {
+  sessionId: string;
+  dates: string[];
+}
+
+/** How many messages a conversation has on each day it has any (`chat date-counts`), by `YYYY-MM-DD`. */
+export interface SessionDateCounts {
+  sessionId: string;
+  counts: Record<string, number>;
+}
+
+/** A conversation's details (`chat detail`): its facts, and where its messages are kept. */
+export interface SessionDetail {
+  /** The conversation's username. */
+  wxid: string;
+  /** The remark, else the nickname, else the alias, else the username. */
+  displayName: string;
+  remark?: string;
+  nickName?: string;
+  alias?: string;
+  avatarUrl?: string;
+  messageCount: number;
+  /** The time of its first message; null when its tables do not say. */
+  firstMessageTime: number | null;
+  latestMessageTime: number | null;
+  messageTables: MessageTable[];
+}
+
+/** One of WeChat's tables that holds messages of a conversation. */
+export interface MessageTable {
+  /** The database's file name, such as `message_0.db`. */
+  dbName: string;
+  tableName: string;
+  count: number;
+}
+
+/** Who a conversation is with and how many messages it has (`chat detail --fast`). */
+export interface SessionFacts {
+  /** The conversation's username. */
+  wxid: string;
+  /** The remark, else the nickname, else the alias, else the username. */
+  displayName: string;
+  remark?: string;
+  nickName?: string;
+  alias?: string;
+  avatarUrl?: string;
+  messageCount: number;
+}
+
+/** Where a conversation's messages are kept (`chat detail --extra`, and `chat detail` without `fast`). */
+export interface SessionTables {
+  /** The time of its first message; null when its tables do not say. */
+  firstMessageTime: number | null;
+  latestMessageTime: number | null;
+  messageTables: MessageTable[];
+}
+
+/** Which files of a message's image are on this computer (`chat image-info`), and the sizes the message gives. */
+export interface ImageInfo {
+  /** The thumbnail a chat shows. */
+  thumb: boolean;
+  /** The image shown when it is opened. */
+  normal: boolean;
+  /** The original, once View original downloaded it. */
+  hd: boolean;
+  /** Bytes of the image; null when neither the message nor its file says. */
+  normalBytes: number | null;
+  /** Bytes of the original, as the message gives them even before it is downloaded. */
+  hdBytes: number | null;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -283,6 +369,13 @@ export interface Failure {
 export interface Answers {
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
+  /** Each conversation asked for, with how many messages it has */
+  "chat counts": Record<string, number>;
+  "chat date-counts": SessionDateCounts;
+  "chat dates": SessionDates;
+  /** The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept */
+  "chat detail": SessionDetail | SessionFacts | SessionTables;
+  "chat image-info": ImageInfo;
   "chat latest": Row[];
   /** With `parsed=true`, the message as the chat window shows it; else its row and the message as the query commands list it */
   "chat message": ParsedMessage | MessageLookup;
@@ -292,4 +385,7 @@ export interface Answers {
   /** With `parsed=true`, the hits, each with its `_session_id`, as the chat window shows them; else the rows of WeChat's table, each with its `_cursor` */
   "chat search": ParsedMessage[] | Row[];
   "chat sessions": Session[];
+  /** Each username asked for, with whether its conversation is folded and muted */
+  "chat statuses": Record<string, ChatStatus>;
+  "chat tab-counts": TabCounts;
 }

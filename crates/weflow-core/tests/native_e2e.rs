@@ -178,7 +178,7 @@ fn a_local_id_shared_by_two_message_databases_is_told_apart() {
 #[test]
 fn dates_counts_statuses_and_tab_counts() {
     let (hub, _root) = common::mock_hub("n-dates");
-    let dates = hub.chat_dates("wxid_bob").unwrap();
+    let dates = json!(hub.chat_dates("wxid_bob").unwrap());
     let dates = dates["dates"].as_array().unwrap();
     assert_eq!(
         dates.len(),
@@ -186,7 +186,7 @@ fn dates_counts_statuses_and_tab_counts() {
         "five messages on four distinct days: {dates:?}"
     );
 
-    let per_day = hub.chat_date_counts("wxid_bob").unwrap();
+    let per_day = json!(hub.chat_date_counts("wxid_bob").unwrap());
     let total: i64 = per_day["counts"]
         .as_object()
         .unwrap()
@@ -200,23 +200,23 @@ fn dates_counts_statuses_and_tab_counts() {
         .unwrap();
     assert_eq!(
         (
-            counts["wxid_bob"].as_i64(),
-            counts["room1@chatroom"].as_i64(),
-            counts["nobody"].as_i64()
+            counts["wxid_bob"],
+            counts["room1@chatroom"],
+            counts["nobody"]
         ),
-        (Some(5), Some(3), Some(0))
+        (5, 3, 0)
     );
 
-    let st = hub
+    let st = json!(hub
         .chat_statuses(&strs(&["room1@chatroom", "wxid_bob"]))
-        .unwrap();
+        .unwrap());
     assert_eq!(
         st["room1@chatroom"],
         json!({"isFolded": true, "isMuted": true})
     );
     assert_eq!(st["wxid_bob"], json!({"isFolded": false, "isMuted": false}));
 
-    let tabs = hub.chat_tab_counts().unwrap();
+    let tabs = json!(hub.chat_tab_counts().unwrap());
     assert_eq!(tabs["group"], 1);
 }
 
@@ -408,7 +408,7 @@ fn overall_statistics_count_private_chats_by_type_and_direction() {
 #[test]
 fn chat_detail_lists_shard_tables_with_counts_and_times() {
     let (hub, _root) = common::mock_hub("n-detail");
-    let d = hub.chat_detail("wxid_bob").unwrap();
+    let d = json!(hub.chat_detail("wxid_bob").unwrap());
     assert_eq!(d["displayName"], "Bobby");
     assert_eq!(d["avatarUrl"], "https://example.com/bob.png");
     assert_eq!(d["messageCount"], 5);

@@ -28,23 +28,11 @@ function commandRead<T>(path: string, params: Params, signal?: AbortSignal): Pro
   return next;
 }
 
-/** `chat detail --fast`: who it is and how many messages (in the server's process). */
-export interface SessionDetail {
-  wxid: string;
-  displayName: string;
-  remark?: string;
-  nickName?: string;
-  alias?: string;
-  avatarUrl?: string;
-  messageCount: number;
-}
+/** `chat detail --fast`: who it is and how many messages (in the server's process; the contract's, #430). */
+export type SessionDetail = Contract.SessionFacts;
 
 /** `chat detail --extra`: the first and latest message, in Unix seconds, and where the messages are kept. */
-export interface SessionDetailExtra {
-  firstMessageTime: number | null;
-  latestMessageTime: number | null;
-  messageTables: { dbName: string; tableName: string; count: number }[];
-}
+export type SessionDetailExtra = Contract.SessionTables;
 
 export async function getDetail(sessionId: string, signal?: AbortSignal): Promise<SessionDetail> {
   const data = await get<SessionDetail | null>('api/chat/detail', { 'session-id': sessionId, fast: true }, signal);

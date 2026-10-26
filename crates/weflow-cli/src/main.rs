@@ -2579,8 +2579,8 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             fast,
             extra,
         } => match (fast, extra) {
-            (false, true) => hub.chat_detail_extra(session_id),
-            _ => hub.chat_detail(session_id),
+            (false, true) => hub.chat_detail_extra(session_id).map(|t| json!(t)),
+            _ => hub.chat_detail(session_id).map(|d| json!(d)),
         },
         ChatSubcommand::MarkRead => hub.chat_mark_all_read(),
         ChatSubcommand::ExportStats {

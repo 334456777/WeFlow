@@ -283,7 +283,7 @@ impl Read {
             Read::ChatContact { username } => hub.contact(username),
             Read::ChatContacts { parsed: false } => hub.contacts(),
             Read::ChatContacts { parsed: true } => Ok(json!(hub.chat_contacts_parsed()?)),
-            Read::ChatCounts { sessions } => hub.chat_counts(sessions),
+            Read::ChatCounts { sessions } => Ok(json!(hub.chat_counts(sessions)?)),
             Read::ChatSearch {
                 keyword,
                 session_id,
@@ -307,9 +307,9 @@ impl Read {
                     hits
                 })
             }
-            Read::ChatDates { session_id } => hub.chat_dates(session_id),
-            Read::ChatDateCounts { session_id } => hub.chat_date_counts(session_id),
-            Read::ChatDetailFast { session_id } => hub.chat_detail_fast(session_id),
+            Read::ChatDates { session_id } => Ok(json!(hub.chat_dates(session_id)?)),
+            Read::ChatDateCounts { session_id } => Ok(json!(hub.chat_date_counts(session_id)?)),
+            Read::ChatDetailFast { session_id } => Ok(json!(hub.chat_detail_fast(session_id)?)),
             Read::ChatResources {
                 session,
                 types,
@@ -332,7 +332,11 @@ impl Read {
                 session_id,
                 msg_id,
                 create_time,
-            } => hub.image_info_for_message(session_id, msg_id, *create_time),
+            } => Ok(json!(hub.image_info_for_message(
+                session_id,
+                msg_id,
+                *create_time
+            )?)),
             Read::GroupMembers {
                 chatroom_id,
                 counts,
@@ -368,8 +372,8 @@ impl Read {
                 Some(u) => hub.sns_user_post_stats(u),
                 None => Ok(json!(hub.sns_user_post_counts(*prefer_cache)?)),
             },
-            Read::ChatStatuses { usernames } => hub.chat_statuses(usernames),
-            Read::ChatTabCounts => hub.chat_tab_counts(),
+            Read::ChatStatuses { usernames } => Ok(json!(hub.chat_statuses(usernames)?)),
+            Read::ChatTabCounts => Ok(json!(hub.chat_tab_counts()?)),
             Read::GroupList => Ok(json!(hub.group_chats()?)),
             Read::GroupRanking {
                 chatroom_id,
