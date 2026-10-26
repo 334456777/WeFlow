@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{json, Map, Value};
 
 use super::{clean_account_dir_name, ServiceHub};
-use crate::contract::{MessageView, Resource, ResourceKind, ResourcePage};
+use crate::contract::{MessageLookup, MessageView, Resource, ResourceKind, ResourcePage};
 use crate::error::{AppError, AppResult};
 use crate::message::{
     collect_messages, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
@@ -204,8 +204,8 @@ impl ServiceHub {
             .normalize_row(std::slice::from_ref(&row), session_id)
             .into_iter()
             .next()
-            .map(|m| m.to_json(&my));
-        Ok(json!({ "row": row, "message": message }))
+            .map(|m| MessageView::of(&m, &my));
+        Ok(json!(MessageLookup { row, message }))
     }
 
     // ── per-day statistics ──

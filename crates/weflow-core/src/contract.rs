@@ -207,6 +207,15 @@ impl MessageView {
     }
 }
 
+/// `chat message` without `parsed`: the row of WeChat's table, and the message as the query commands list it.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct MessageLookup {
+    /// The row, with its columns.
+    pub row: serde_json::Value,
+    /// Null when the row could not be read as a message.
+    pub message: Option<MessageView>,
+}
+
 /// What a message of `chat resources` holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
