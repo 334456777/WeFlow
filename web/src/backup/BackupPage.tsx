@@ -8,6 +8,8 @@ import { backupParams, backupParts, inspectBackup, type BackupManifest } from '.
 import { jobFileUrl, type Job } from '../api/jobs';
 import { formatSize, jobLine } from '../jobs/TaskCenter';
 import { runJob, type JobsState } from '../jobs/useJobs';
+import type { Page, Shell } from '../shell/page';
+import { Connected, ScrollPage } from '../shell/panels';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || (problem instanceof Error && problem.message) || fallback;
 type Note = { text: string; error?: boolean } | null;
@@ -117,4 +119,12 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
       <NoteLine note={lookNote} />
     </section>
   </div>;
+}
+
+/** The page in the workspace: the task centre beside it shows the backup running. */
+export function backupPage(shell: Shell): Page {
+  const view = <ScrollPage label="数据库备份" icon={Archive}>
+    <Connected backend={shell.backend} offline="连接 weflow serve 后，可以在这里备份和恢复数据库。"><BackupPage jobs={shell.jobs} /></Connected>
+  </ScrollPage>;
+  return { view, shown: ['tasks'] };
 }

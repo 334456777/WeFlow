@@ -1,7 +1,7 @@
 // The requests the page makes in the flows people go through most (#403): the baseline that #402 changes on
 // purpose. Each step lists what the page asked the server for, in order (`fields` left out, as it only picks
 // columns); a change of these lists is a change of the page's requests, to be explained in its PR (see #403).
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { App } from './App';
 
@@ -10,6 +10,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
   streams.length = 0;
+  long = false;
 });
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
@@ -22,6 +23,8 @@ const ACCOUNTS: Record<string, { username: string; displayName: string }[]> = {
 
 let account = 'a';
 let log: string[] = [];
+/** Whether the first page of a conversation is a full one, so that older pages are left to read. */
+let long = false;
 const streams: FakeEventSource[] = [];
 
 class FakeEventSource {
@@ -60,10 +63,25 @@ function answer(url: string): Response {
       return json({ success: true, data: ACCOUNTS[account].map((s, i) => ({ ...s, summary: '', unreadCount: 0, sortTimestamp: 1760000000 - i, lastTimestamp: 1760000000 - i, lastMsgType: 1 })) });
     case '/chat/statuses':
       return json({ success: true, data: {} });
-    case '/api/chat/messages':
-      return json({ success: true, data: [message(params.get('session-id') ?? '', 2), message(params.get('session-id') ?? '', 1)] });
-    case '/api/chat/search':
+    case '/api/chat/messages': {
+      const session = params.get('session-id') ?? '';
+      const count = long && !params.has('before') ? 50 : 2;
+      const from = params.has('before') ? 0 : 50;
+      return json({ success: true, data: Array.from({ length: count }, (_, i) => message(session, from + count - i)) });
+    }
+    case '/api/chat/contacts':
+      return json({ success: true, data: ACCOUNTS[account].map(s => ({ ...s, type: 'friend' })) });
+    case '/insight/footprint':
+      return json({ success: true, data: { summary: { private_inbound_people: 0, private_replied_people: 0, private_outbound_people: 0, private_reply_rate: 0, mention_count: 0, mention_group_count: 0 }, private_sessions: [], private_segments: [], mentions: [], mention_groups: [], diagnostics: { truncated: false } } });
+    case '/api/sns/timeline':
       return json({ success: true, data: [] });
+    case '/api/sns/stats':
+    case '/api/sns/post-counts':
+      return json({ success: true, data: {} });
+    case '/api/chat/search': {
+      const keyword = params.get('keyword') ?? '';
+      return json({ success: true, data: [{ ...message(params.get('session-id') ?? '', 1), _session_id: params.get('session-id'), _cursor: 'hit.' + keyword, parsedContent: '说到' + keyword }] });
+    }
   }
   throw new TypeError('unexpected ' + url);
 }
@@ -104,6 +122,7 @@ function switchAccount(next: string) {
   for (const stream of streams.filter(s => !s.closed && !s.url.startsWith('/jobs/'))) stream.emit('heartbeat', { data: next });
 }
 
+const hits = () => Array.from(document.querySelectorAll('.search-result'), hit => hit.textContent ?? '');
 const conversations = () => Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent);
 const messages = () => Array.from(document.querySelectorAll('.message-pane .message-row'), row => row.textContent ?? '');
 const PAGE = 'limit=50&parsed=true';
@@ -132,9 +151,8 @@ describe('requests of the chat page', () => {
       fireEvent.click(screen.getByRole('button', { name: '搜索' }));
     })).toEqual([`GET /api/chat/search?keyword=消息&session-id=wxid_lin&limit=20&offset=0&parsed=true`]);
 
+    // nothing of the account before is asked of the new one: no conversation is open until its list is read (#402)
     expect(await requestsOf(() => switchAccount('b'))).toEqual([
-      // the conversation open before, asked of the new account before its list is read (for #402)
-      `GET /api/chat/messages?session-id=wxid_lin&${PAGE}`,
       'GET /jobs',
       'GET /config/profiles',
       'GET /api/chat/sessions',
@@ -157,5 +175,91 @@ describe('requests of the chat page', () => {
     expect(conversations()).toEqual(['秦川']);
     expect(messages().length).toBeGreaterThan(0);
     expect(messages().every(text => text.startsWith('b 的消息'))).toBe(true);
+  });
+
+  it('reads a conversation kept again once a live message came to it, and only that one', async () => {
+    account = 'a';
+    serve();
+    await requestsOf(() => { render(<App />); });
+    await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); });
+    await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择林沐' })); });
+    const pages = (requests: string[]) => requests.filter(request => request.startsWith('GET /api/chat/messages'));
+    // a message comes to 周舟, kept but not open: nothing is read for it until it is opened
+    expect(pages(await requestsOf(() => streams.find(s => s.url.startsWith('/api/push/messages'))!.emit('message.new', { sessionId: 'wxid_zhou' })))).toEqual([]);
+    expect(pages(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); }))).toEqual([
+      `GET /api/chat/messages?session-id=wxid_zhou&${PAGE}`,
+    ]);
+    expect(pages(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择林沐' })); }))).toEqual([]);
+  });
+
+  it('ends on the account switched back to when the answers of the one between come late', async () => {
+    account = 'a';
+    const server = serve(() => account === 'b');
+    await requestsOf(() => { render(<App />); });
+    await requestsOf(() => switchAccount('b'));
+    await requestsOf(() => switchAccount('a'));
+    expect(conversations()).toEqual(['林沐', '周舟']);
+    // account b's list and messages come back now
+    await requestsOf(() => server.release());
+    expect(conversations()).toEqual(['林沐', '周舟']);
+    expect(messages().length).toBeGreaterThan(0);
+    expect(messages().every(text => text.startsWith('a 的消息'))).toBe(true);
+  });
+
+  it('shows the hits of the last search when an earlier one answers after it', async () => {
+    account = 'a';
+    const server = serve(url => url.includes('keyword=%E4%B8%80'));
+    await requestsOf(() => { render(<App />); });
+    const box = screen.getByRole('searchbox', { name: '搜索此会话的消息' });
+    for (const keyword of ['一', '二']) {
+      await requestsOf(() => {
+        fireEvent.change(box, { target: { value: keyword } });
+        fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+      });
+    }
+    expect(hits()).toHaveLength(1);
+    await requestsOf(() => server.release());
+    expect(hits()).toHaveLength(1);
+    expect(hits()[0]).toContain('说到二');
+  });
+
+  it('keeps an older page of the account before out of the new one', async () => {
+    account = 'a';
+    long = true;
+    const server = serve(url => url.includes('before='));
+    await requestsOf(() => { render(<App />); });
+    expect(messages()).toHaveLength(50);
+    // scrolled to the top: the page before is asked for, and comes after the account changed
+    expect(await requestsOf(() => { fireEvent.scroll(document.querySelector('.message-pane')!); })).toEqual([
+      `GET /api/chat/messages?session-id=wxid_lin&limit=50&before=wxid_lin.51&parsed=true`,
+    ]);
+    long = false;
+    await requestsOf(() => switchAccount('b'));
+    await requestsOf(() => server.release());
+    expect(conversations()).toEqual(['秦川']);
+    expect(messages().length).toBeGreaterThan(0);
+    expect(messages().every(text => text.startsWith('b 的消息'))).toBe(true);
+  });
+});
+
+describe('requests of the pages that name people (#402)', () => {
+  const open = (page: string) => () => { fireEvent.click(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('button', { name: page })); };
+  const contacts = (requests: string[]) => requests.filter(request => request.startsWith('GET /api/chat/contacts'));
+
+  it('read the contact list once for the account, and again for another', async () => {
+    account = 'a';
+    serve();
+    await requestsOf(() => { render(<App />); });
+    // the footprint names people in its page and in its AI card: one request for both
+    expect(contacts(await requestsOf(open('我的足迹')))).toEqual(['GET /api/chat/contacts?parsed=true']);
+    expect(contacts(await requestsOf(open('通讯录')))).toEqual([]);
+    // Moments names its posters from the whole table, read once too
+    expect(contacts(await requestsOf(open('朋友圈')))).toEqual(['GET /api/chat/contacts']);
+    expect(contacts(await requestsOf(open('我的足迹')))).toEqual([]);
+    expect(contacts(await requestsOf(open('朋友圈')))).toEqual([]);
+    // another account: Moments, open, names its posters from the new table at once, and the list is read again
+    expect(contacts(await requestsOf(() => switchAccount('b')))).toEqual(['GET /api/chat/contacts']);
+    expect(contacts(await requestsOf(open('通讯录')))).toEqual(['GET /api/chat/contacts?parsed=true']);
+    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['秦川']);
   });
 });

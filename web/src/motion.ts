@@ -17,6 +17,11 @@ export const springs = {
 /** How long a success mark, a notice or a located message stays marked. Kept with reduced motion. */
 export const FEEDBACK_MS = 2500;
 
+/** Whether motion is to be left out: the 「减少动画」 setting, or the system's `prefers-reduced-motion`. */
+export function prefersReducedMotion(setting: boolean): boolean {
+  return setting || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+}
+
 /** Reads a duration token such as `--duration-exit` in milliseconds; 0 when it is missing. */
 export function durationMs(token: string, element: Element = document.documentElement): number {
   const value = getComputedStyle(element).getPropertyValue(token).trim();

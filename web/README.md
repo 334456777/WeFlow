@@ -84,8 +84,27 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/calendar/` | The page's own calendar (#224): `Calendar.tsx` (a month in the ARIA grid pattern, Monday first, month and year views), `DateRange.tsx` (a range picked in one calendar), `DateField.tsx` (one day), `dates.ts` (days as `YYYY-MM-DD` in local time) |
 | `src/api/messages.ts` | Messages of a conversation as the server parses them (`chat messages --parsed`, cursor pages), group members, and media addresses for `<img>`, `<audio>`, `<video>` |
 | `src/chat/` | The chat page (#196): the conversation list with search, filters, folded groups and arrow keys (#197); the messages of each kind, paged back as the window scrolls up (#198); the search card and the jump to a day or a search hit, with newer pages loaded below (#199) |
-| `src/App.tsx`, `src/app.css` | The workspace: navigation on the left, records in the middle, the operations console on the right |
+| `src/App.tsx`, `src/app.css` | The workspace (#401): navigation on the left, a page in the middle, the operations console on the right; it holds what the pages share (the connection, the account, the conversation list, the jobs), opens one page from another and gathers the pages' cards into the console |
+| `src/shell/` | What every page is in: the sidebar with the connection indicator, the media preview, the preferences of the whole page (live messages, media in exports, reduced motion), the two shapes of a page (`ScrollPage`, `BrowserPanel`), and `page.ts`, what a page is given (`Shell`) and gives back (`Page`) |
 | `src/mock/` | Sample records, until the screens read the API |
 | `src/api/jobs.ts`, `src/jobs/` | Jobs (#211): commands started with `Prefer: respond-async` (`?return=file` for an export), the list of `/jobs`, the running one followed through `/jobs/<id>/events`, cancelled or forgotten with `DELETE`, its file saved from `/jobs/<id>/file`; the task centre shows them all, and the console exports the open conversation with `export messages` |
 | `src/exports/` | The export page (#211): conversations picked from the list (by kind, all those shown at once), exported one job each with `export messages` in any of its 9 formats, days, sender names, media and Excel's compact columns; and the list itself with `export sessions` |
 | `src/files.ts` | Files the page saves: an .xlsx of rows, any bytes as a download |
+
+Each page is a hook in its own folder, `use…Page` (`src/chat/useChatPage.tsx`, `src/contacts/useContactsPage.tsx`, …): it keeps the page's state and returns what the page shows, its cards of the console and the cards it shows. App calls them all on every render, so a page is as it was left when it is opened again, while each reads its records only when open. State sits where it is used: a page's filters and picks in its hook; what several pages use (the conversation list, the jobs, the profiles) in App, which hands it to them in `Shell`; what one component alone needs in that component. One page opens another only through App (`chatWith`, `openInChat`).
+
+## Requests and what is kept
+
+What the page reads belongs to one server and one account, its scope (`src/api/scope.ts`). A new scope starts when the `data` of `/health/events` changes (another account or configuration, or the server started again) and when the server comes back after it was gone: everything kept is forgotten, and an answer to a request of the scope before is not shown (#198, #402).
+
+| Kept | Where | For | Read again on |
+|---|---|---|---|
+| The conversation list and its states | `chat/useSessions.ts`, held by App | the scope; none is shown in another, so nothing of the account before is asked of the new one | a new scope; live messages (quietly); retry |
+| The messages of up to 20 conversations (#159) | `chat/useMessages.ts` | the scope and the conversation; only threads that reach the newest message | a new scope; a live message of the conversation; a reconnection (all of them) |
+| The contact lists, parsed and whole | `api/kept.ts`: `contactList` (contacts page, footprint), the posters of Moments | the scope and the list | a new scope; retry |
+| Private chat analytics, the group list | `analytics/useAnalytics.ts` in the page's hook | the scope | a new scope; 「重新统计」; the people left out changed |
+| The rest: the Moments timeline, payments, resources, insights, the footprint, the reports' years, the settings | the component that shows them | — | each time the page or card is opened, as they grow |
+
+A read that several views share goes through `keptRead`: views asking at the same time share one request. A view that is left lets its answers go (`useRead` and the hooks drop an answer that comes after their effect was cleaned up), and a new search or page cancels the one before. `src/requests.test.tsx` holds the requests of the usual flows, late answers among them; a change of those lists is explained in its PR.
+
+With the pages of the workspace (#401), the hooks that read are called with `(enabled, scope)`: those whose records several pages use in App, the others in the page's hook; what is kept between views sits under them, in `src/api/`, so a page does not change for it.

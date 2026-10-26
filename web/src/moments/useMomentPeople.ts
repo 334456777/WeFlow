@@ -1,7 +1,9 @@
 // Who posts in Moments and how often (#202), for the list beside the timeline: the counts of `sns post-counts`,
-// named from the contacts. Read once per server or account (scope.ts).
+// named from the contacts. The counts are read each time the page is opened, the contacts once per server and account
+// (`keptRead`): the whole table, as some who post are in no list of `chat contacts --parsed`.
 import { useEffect, useState } from 'react';
 import { ApiError, get } from '../api/client';
+import { keptRead } from '../api/kept';
 import { getPostCounts } from '../api/sns';
 
 export interface MomentPerson {
@@ -45,8 +47,8 @@ export function useMomentPeople(enabled: boolean, scope: number, self?: string):
     if (!enabled) return;
     const controller = new AbortController();
     setState(old => (old?.scope === scope && old.value.status === 'ready' ? old : { scope, value: { status: 'loading' } }));
-    Promise.all([getPostCounts(controller.signal), get<Record<string, unknown>[]>('api/chat/contacts', {}, controller.signal)]).then(
-      ([counts, contacts]) => setState({ scope, value: { status: 'ready', people: peopleOf(counts, Array.isArray(contacts) ? contacts : [], self) } }),
+    Promise.all([getPostCounts(controller.signal), keptRead('contacts:all', () => get<Record<string, unknown>[]>('api/chat/contacts', {}))]).then(
+      ([counts, contacts]) => { if (!controller.signal.aborted) setState({ scope, value: { status: 'ready', people: peopleOf(counts, Array.isArray(contacts) ? contacts : [], self) } }); },
       problem => {
         if (controller.signal.aborted) return;
         setState({ scope, value: { status: 'error', message: (problem instanceof ApiError && problem.message) || '读取朋友圈的发布者失败' } });
