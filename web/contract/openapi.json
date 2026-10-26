@@ -1043,7 +1043,7 @@
             "items": {
               "type": "string"
             },
-            "description": "The command line, without `weflow`."
+            "description": "The command line it runs, `weflow` first (`weflow --json --progress export messages …`)."
           },
           "createdAt": {
             "type": "integer",

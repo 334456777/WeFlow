@@ -237,7 +237,7 @@ export type ResourceKind = "image" | "video" | "voice" | "file";
 export interface Job {
   id: string;
   status: JobStatus;
-  /** The command line, without `weflow`. */
+  /** The command line it runs, `weflow` first (`weflow --json --progress export messages …`). */
   command: string[];
   createdAt: number;
   startedAt: number | null;
