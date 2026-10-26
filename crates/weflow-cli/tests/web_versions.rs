@@ -1,5 +1,5 @@
 //! `weflow web` and the WebUI of `weflow serve` (issue #148), with a registry of the test's own
-//! (`WEFLOW_WEB_REGISTRY`): the version this weflow comes with downloaded beside the server, a restart without the
+//! (`WEFLOW_WEB_REGISTRY`): the default version of this weflow downloaded beside the server, a restart without the
 //! network, the API alone, and versions installed, picked and pruned.
 
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 const TOKEN: &str = "t0k-for-tests";
 const REPO: &str = "334456777/weflow-web";
-/// The version this weflow comes with: web/package.json's.
+/// The default version of this weflow: web/package.json's.
 fn built_in() -> String {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -349,7 +349,7 @@ fn versions_are_installed_picked_and_pruned() {
     assert_eq!(server.started["uiVersion"], "0.0.8");
     drop(server);
 
-    // prune keeps the version picked and the one this weflow comes with
+    // prune keeps the version picked and the default one of this weflow
     cli(&home, &reg, &["web", "install", &version]);
     let pruned = cli(&home, &reg, &["web", "prune"]);
     assert_eq!(pruned["removed"], json!(["0.0.8"]));

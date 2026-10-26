@@ -120,7 +120,7 @@ struct WebCommand {
 
 #[derive(Subcommand, Debug)]
 enum WebSubcommand {
-    /// The WebUI `serve` shows: the version in use, the one picked, the one this weflow comes with, and where they are kept
+    /// The WebUI `serve` shows: the version in use, the one picked, the default one of this weflow, and where they are kept
     Info,
     /// WebUI versions kept on this machine, or published ones (--remote) and whether they suit this weflow
     List {
@@ -140,7 +140,7 @@ enum WebSubcommand {
     },
     /// Download and pick the newest published WebUI version that suits this weflow
     Update,
-    /// Remove the WebUI versions kept here that are neither picked nor the one this weflow comes with, nor shown by a
+    /// Remove the WebUI versions kept here that are neither picked nor the default one of this weflow, nor shown by a
     /// running serve
     Prune,
 }
@@ -3328,7 +3328,8 @@ fn config_whitelist(hub: &ServiceHub) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The WebUI version this build comes with (web/package.json at build time).
+/// The WebUI version this build defaults to (web/package.json at build time): only the version number is in the
+/// binary, the page itself is downloaded.
 const WEB_VERSION: &str = env!("WEFLOW_WEB_VERSION");
 
 /// What a WebUI has to suit: this command API and this weflow.
@@ -3340,7 +3341,7 @@ fn web_backend() -> weflow_core::webui::Backend<'static> {
 }
 
 /// The version `serve` shows without `--ui-dir` and `--web-version`: the one picked with `weflow web use`, else the
-/// one this weflow comes with.
+/// default version of this weflow.
 fn web_wanted(store: &weflow_core::webui::WebStore) -> Option<String> {
     store
         .chosen()
