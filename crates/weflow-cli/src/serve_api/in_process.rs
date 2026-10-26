@@ -375,6 +375,25 @@ pub(super) enum Media {
     Sns { url: String, key: Option<String> },
 }
 
+/// The places of an `/api/` request in its [`Line`](super::Line): admitted, and running.
+pub(super) type Place = (
+    tokio::sync::OwnedSemaphorePermit,
+    tokio::sync::OwnedSemaphorePermit,
+);
+
+/// Runs `work` holding `place` until it ends, also when the request goes away first (#396, risk 2): a read cannot be
+/// stopped halfway, so its place stays taken while it runs, and `--max-reads` counts every read still running.
+pub(super) async fn held<T: Send + 'static>(
+    place: Place,
+    work: impl std::future::Future<Output = T> + Send + 'static,
+) -> Result<T, tokio::task::JoinError> {
+    tokio::spawn(async move {
+        let _place = place;
+        work.await
+    })
+    .await
+}
+
 /// The `--json` document and exit code of a [`Read`] run in this process, as a child process would print them.
 pub(super) async fn run(hub: &Hub, read: Read) -> (Value, u8) {
     let hub = match hub.get() {

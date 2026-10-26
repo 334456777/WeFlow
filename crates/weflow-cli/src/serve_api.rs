@@ -9,6 +9,7 @@
 
 mod files;
 mod in_process;
+mod job_routes;
 mod jobs;
 mod openapi;
 mod push;
@@ -1068,7 +1069,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             .get("last-event-id")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.trim().parse().ok());
-        return jobs::route(&st.jobs, &parts.method, &segments, last_event_id).await;
+        return job_routes::route(&st.jobs, &parts.method, &segments, last_event_id).await;
     }
     // `/api/<command path>`: the same command, run in this process (in_process)
     let in_process = segments.first().is_some_and(|s| s == "api");
@@ -1234,23 +1235,31 @@ async fn route(st: &AppState, req: Request) -> Response {
             return busy_line(media);
         };
         timing.stage("wait", Some("in line for a place"), waited);
-        place = Some(entered);
         let given = in_process::Given::new(endpoint, &params);
         let ran = std::time::Instant::now();
+        let hub = st.hub.clone();
         if media {
             if let Ok(asked) = given.media(&command) {
-                let done = in_process::media(&st.hub, asked).await;
+                let done =
+                    in_process::held(entered, async move { in_process::media(&hub, asked).await })
+                        .await;
                 timing.stage("cmd", Some("in process"), ran);
                 return timing.on(match done {
-                    Ok(file) => media_response(&parts.headers, file),
-                    Err((doc, exit)) => in_process_document(&doc, exit, None),
+                    Ok(Ok(file)) => media_response(&parts.headers, file),
+                    Ok(Err((doc, exit))) => in_process_document(&doc, exit, None),
+                    Err(err) => failed_in_process(&err),
                 });
             }
         } else if let Ok(read) = given.read(&command) {
-            let (doc, exit) = in_process::run(&st.hub, read).await;
+            let done =
+                in_process::held(entered, async move { in_process::run(&hub, read).await }).await;
             timing.stage("cmd", Some("in process"), ran);
-            return timing.on(in_process_document(&doc, exit, fields.as_deref()));
+            return timing.on(match done {
+                Ok((doc, exit)) => in_process_document(&doc, exit, fields.as_deref()),
+                Err(err) => failed_in_process(&err),
+            });
         }
+        place = Some(entered);
     }
     if media {
         // satisfies the command line of the child process; nothing is written there
@@ -1298,7 +1307,7 @@ async fn route(st: &AppState, req: Request) -> Response {
         let job = st
             .jobs
             .start(st.cfg.exe.clone(), full, lang, limit.clone(), file_out);
-        return jobs::accepted(&job);
+        return job_routes::accepted(&job);
     }
     let (_permit, _running) = match place {
         Some((admitted, running)) => (admitted, Some(running)),
@@ -1387,6 +1396,15 @@ async fn route(st: &AppState, req: Request) -> Response {
         HeaderValue::from_str(&exit.to_string()).unwrap(),
     );
     timing.on(resp)
+}
+
+/// A read run in this process that did not end (it panicked).
+fn failed_in_process(err: &tokio::task::JoinError) -> Response {
+    error_response(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "runtime_error",
+        &format!("the command failed: {err}"),
+    )
 }
 
 /// The `--json` document of a command run in this process, answered as the child process prints it.
@@ -2109,5 +2127,28 @@ mod tests {
         assert!(limit.enter(Duration::from_secs(10)).await.is_none());
         drop((line, decoding));
         assert!(limit.enter(Duration::ZERO).await.is_some());
+    }
+
+    /// A read whose client went away keeps its place until it ends (#396, risk 2), so the reads running at once stay
+    /// within the limit.
+    #[tokio::test]
+    async fn a_read_keeps_its_place_after_its_client_is_gone() {
+        use std::time::Duration;
+        let limit = Line::new(Arc::new(Semaphore::new(1)), 1);
+        let place = limit.enter(Duration::ZERO).await.expect("a free place");
+        let (end, ended) = tokio::sync::oneshot::channel::<()>();
+        // the request, which its client gives up on while the read runs
+        let request = tokio::spawn(in_process::held(place, async move {
+            let _ = ended.await;
+        }));
+        tokio::task::yield_now().await;
+        request.abort();
+        let _ = request.await;
+        assert!(
+            limit.enter(Duration::from_millis(50)).await.is_none(),
+            "the place was given back while the read ran"
+        );
+        end.send(()).unwrap();
+        assert!(limit.enter(Duration::from_secs(10)).await.is_some());
     }
 }
