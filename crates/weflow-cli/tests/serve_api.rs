@@ -1126,6 +1126,40 @@ fn answers_are_compressed_when_asked_and_cut_to_fields() {
     assert_eq!(r.status, 400);
 }
 
+/// An `/api/` request with parameters the command line refuses gets clap's error from the server's process, the one
+/// the route without `/api/` answers from a child process, without starting one (#432).
+#[test]
+fn usage_errors_are_answered_in_process() {
+    let root = temp_root("usage-errors");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    for target in [
+        "/chat/messages",
+        "/chat/messages?session-id=wxid_bob&limit=many",
+        "/chat/messages?session-id=wxid_bob&limit=1&limit=2",
+        "/sns/timeline?limit=x",
+        "/group/members",
+    ] {
+        let own = server.call("GET", &format!("/api{target}"), "");
+        let child = server.call("GET", target, "");
+        assert_eq!(
+            (own.status, &own.body),
+            (child.status, &child.body),
+            "{target}"
+        );
+        assert_eq!(own.status, 400, "{target}: {}", own.body);
+        assert_eq!(own.json()["error"]["code"], "invalid_arguments");
+        for h in ["x-weflow-exit-code", "x-weflow-error-code"] {
+            assert_eq!(own.headers.get(h), child.headers.get(h), "{target} {h}");
+        }
+        let timing = &own.headers["server-timing"];
+        assert!(
+            timing.contains("cmd;desc=\"refused in process\""),
+            "{target}: {timing}"
+        );
+    }
+}
+
 #[test]
 fn answers_tell_where_the_time_went() {
     let root = temp_root("timing");
@@ -2650,7 +2684,7 @@ fn reads_fail_the_same_in_process_and_in_a_child() {
         "/chat/messages?session-id=wxid_bob&bogus=1",
         "/chat/sessions?parsed=maybe",
         // the command itself refuses
-        "/chat/message?session-id=wxid_bob",
+        "/sns/timeline?limit=x",
         "/chat/resources?before=1.2.3",
     ] {
         let r = same("GET", target, with_token);

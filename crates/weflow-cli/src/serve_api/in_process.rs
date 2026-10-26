@@ -217,8 +217,9 @@ impl Hub {
 /// A request's parameters by the argument of the command they set, as the texts its command line would carry
 /// ([`Endpoint::argv`] writes the same ones): read into a [`Read`] or a [`MediaRead`] here, without writing a command
 /// line or parsing one (#397). They take only what the command line takes, and read it as clap does; anything else is
-/// [`Refused`], and the request goes to a child process, which answers it as the terminal does. The parameters have
-/// passed [`Endpoint::check`].
+/// [`Refused`]: the server then parses its command line with clap and answers clap's error, as the terminal prints
+/// it (#432), or, when clap takes it, sends the request to a child process. The parameters have passed
+/// [`Endpoint::check`].
 pub(super) struct Given {
     /// The texts of each argument by its name; a switch has one per time it is set.
     texts: BTreeMap<String, Vec<String>>,
