@@ -566,7 +566,7 @@ struct AppState {
     api_reads: Line,
     media: Line,
     /// `/openapi.json` in English and in Chinese, built when first asked for.
-    openapi: [OnceLock<String>; 2],
+    openapi: OnceLock<String>,
     /// The hub of the `/api/` routes.
     hub: Arc<in_process::Hub>,
     /// `/api/push/messages`.
@@ -806,9 +806,7 @@ fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
         );
         h.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static(
-                "Content-Type, Authorization, Accept-Language, Prefer, Last-Event-ID",
-            ),
+            HeaderValue::from_static("Content-Type, Authorization, Prefer, Last-Event-ID"),
         );
         h.insert(
             header::ACCESS_CONTROL_EXPOSE_HEADERS,
@@ -1031,11 +1029,11 @@ async fn route(st: &AppState, req: Request) -> Response {
         if parts.method != Method::GET {
             return method_not_allowed(&[Get]);
         }
-        let zh = match request_lang(&parts.headers) {
-            Some(lang) => lang == "zh",
-            None => weflow_core::locale::current() == weflow_core::locale::Lang::Zh,
-        };
-        let doc = st.openapi[zh as usize].get_or_init(|| openapi::document(zh).to_string());
+        // in the server's language, as every answer (#433)
+        let doc = st.openapi.get_or_init(|| {
+            openapi::document(weflow_core::locale::current() == weflow_core::locale::Lang::Zh)
+                .to_string()
+        });
         return json_body(StatusCode::OK, doc.clone());
     }
     if path == "/api/push/messages" {
@@ -1305,7 +1303,9 @@ async fn route(st: &AppState, req: Request) -> Response {
             }
         }
     }
-    let lang = request_lang(&parts.headers);
+    // the child answers in the server's language, as a read in process does, whatever the request's
+    // `Accept-Language` and whatever `weflow lang` was set to since the server started (#433)
+    let lang = Some(server_lang());
     let limit = st.limit(verb);
     // the folder the server chose for the file, made once the command is sure to run
     let make_folder =
@@ -1660,18 +1660,12 @@ fn document_response(doc: &Value, status: StatusCode, body: impl Into<Body>) -> 
     resp
 }
 
-/// `zh` or `en` from `Accept-Language`; `None` leaves the command to its usual language detection.
-fn request_lang(headers: &HeaderMap) -> Option<&'static str> {
-    let value = headers.get(header::ACCEPT_LANGUAGE)?.to_str().ok()?.trim();
-    let first = value.split([',', ';']).next()?.trim();
-    if first.is_empty() || first == "*" {
-        return None;
+/// The server's language as `WEFLOW_LANG` names it, for its child processes.
+fn server_lang() -> &'static str {
+    match weflow_core::locale::current() {
+        weflow_core::locale::Lang::Zh => "zh",
+        weflow_core::locale::Lang::En => "en",
     }
-    Some(if first.to_ascii_lowercase().starts_with("zh") {
-        "zh"
-    } else {
-        "en"
-    })
 }
 
 /// `weflow <args>` with no stdin and both outputs captured.
@@ -2114,19 +2108,6 @@ mod tests {
             &Uri::from_static("http://evil.example/health"),
             &HeaderMap::new()
         ));
-    }
-
-    #[test]
-    fn language_comes_from_accept_language() {
-        let lang = |v: &'static str| {
-            let mut h = HeaderMap::new();
-            h.insert(header::ACCEPT_LANGUAGE, HeaderValue::from_static(v));
-            request_lang(&h)
-        };
-        assert_eq!(lang("zh-CN,zh;q=0.9,en;q=0.8"), Some("zh"));
-        assert_eq!(lang("en-US"), Some("en"));
-        assert_eq!(lang("*"), None);
-        assert_eq!(request_lang(&HeaderMap::new()), None);
     }
 
     #[test]

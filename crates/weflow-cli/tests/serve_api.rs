@@ -289,10 +289,53 @@ fn the_api_describes_itself() {
         assert!(en["paths"][path].is_object(), "{path} is missing");
     }
     assert!(en["paths"]["/serve"].is_null());
-    let zh = get("zh-CN");
+    // in the server's language, whatever the request asks for (#433)
+    assert_eq!(get("zh-CN"), en);
+    assert_eq!(server.call("POST", "/openapi.json", "").status, 405);
+    let zh_root = temp_root("openapi-zh");
+    let zh_server = start_env(&zh_root, &["--api-token", TOKEN], &[("WEFLOW_LANG", "zh")]);
+    let zh = zh_server
+        .request(
+            "GET",
+            "/openapi.json",
+            &[("Authorization", &auth), ("Accept-Language", "en")],
+            "",
+        )
+        .json();
     let summary = |d: &Value| d["paths"]["/chat/sessions"]["get"]["summary"].clone();
     assert_ne!(summary(&en), summary(&zh));
-    assert_eq!(server.call("POST", "/openapi.json", "").status, 405);
+}
+
+/// Every answer is in the server's language, from its process or a child's, whatever the request's
+/// `Accept-Language` (#433).
+#[test]
+fn answers_are_in_the_server_s_language() {
+    let root = temp_root("language");
+    let home = account_home(&root);
+    let server = start_env(&home, &["--api-token", TOKEN], &[("WEFLOW_LANG", "zh")]);
+    let auth = format!("Bearer {TOKEN}");
+    let chinese = |text: &str| text.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c));
+    let mut seen = Vec::new();
+    // a usage error, and an error of the read itself
+    for target in ["/chat/messages", "/chat/message?session-id=wxid_bob"] {
+        for route in [target.to_string(), format!("/api{target}")] {
+            for lang in ["en", "zh-CN"] {
+                let r = server.request(
+                    "GET",
+                    &route,
+                    &[("Authorization", &auth), ("Accept-Language", lang)],
+                    "",
+                );
+                assert_eq!(r.status, 400, "{route}: {}", r.body);
+                let message = r.json()["error"]["message"].as_str().unwrap().to_string();
+                assert!(chinese(&message), "{route} {lang}: {message}");
+                seen.push((target, message));
+            }
+        }
+    }
+    // one message for each, with or without `/api/`
+    seen.dedup();
+    assert_eq!(seen.len(), 2, "{seen:#?}");
 }
 
 #[test]
