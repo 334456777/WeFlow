@@ -4,9 +4,9 @@
 //! #397), without a command line; only the language is the server's, as it is set once per process.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use serde_json::Value;
 use weflow_core::error::{AppError, AppResult};
@@ -53,18 +53,71 @@ pub(super) const IN_PART: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// When a file was last written, as far as telling a change goes.
-type Stamp = Option<(SystemTime, u64)>;
+/// How long two writes of a file can leave it the same time: a tick of the coarsest clock of a common file system
+/// (2 s on FAT), and a margin.
+const COARSE_TICK: Duration = Duration::from_secs(3);
 
-fn stamp(path: &std::path::Path) -> Stamp {
-    let meta = std::fs::metadata(path).ok()?;
-    Some((meta.modified().ok()?, meta.len()))
+/// What tells a change of the config file (#402): its time and size, and, while that time may still be shared by a
+/// later write, its content. Two writes within one tick of a coarse clock leave the same time, and a switch between
+/// two profiles whose names are as long the same size; once a tick has gone by, a write changes the time.
+struct Stamp {
+    modified: SystemTime,
+    len: u64,
+    content: u64,
+    /// The content was found the same after a tick had gone by: the time and size tell from now on.
+    settled: bool,
+}
+
+fn digest(bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Whether `modified` is older than a tick.
+fn past_a_tick(modified: SystemTime) -> bool {
+    SystemTime::now()
+        .duration_since(modified)
+        .is_ok_and(|age| age >= COARSE_TICK)
+}
+
+impl Stamp {
+    fn of(path: &Path) -> Option<Self> {
+        let meta = std::fs::metadata(path).ok()?;
+        let modified = meta.modified().ok()?;
+        let content = digest(&std::fs::read(path).ok()?);
+        Some(Self {
+            modified,
+            len: meta.len(),
+            content,
+            settled: past_a_tick(modified),
+        })
+    }
+
+    /// Whether the file at `path` is still the one stamped. Its content is read only until it has settled.
+    fn holds(&mut self, path: &Path) -> bool {
+        let Some(meta) = std::fs::metadata(path).ok() else {
+            return false;
+        };
+        if meta.modified().ok() != Some(self.modified) || meta.len() != self.len {
+            return false;
+        }
+        if self.settled {
+            return true;
+        }
+        // the time is read before the content: a tick gone by then has gone by for what is read after
+        let past = past_a_tick(self.modified);
+        let same = std::fs::read(path).is_ok_and(|bytes| digest(&bytes) == self.content);
+        self.settled = same && past;
+        same
+    }
 }
 
 struct Open {
     hub: ServiceHub,
     config: PathBuf,
-    stamp: Stamp,
+    stamp: Option<Stamp>,
     /// Counts the hubs built, so a user of [`Hub::get_counted`] tells a new hub from the one it had.
     generation: u64,
 }
@@ -93,13 +146,16 @@ impl Hub {
     /// The hub, and which one it is: the number changes when the hub is built again.
     pub(super) fn get_counted(&self) -> AppResult<(ServiceHub, u64)> {
         let mut open = self.open.lock().unwrap();
-        let before = match open.as_ref() {
+        let before = match open.as_mut() {
             Some(o) => {
-                let now = stamp(&o.config);
-                if now == o.stamp {
+                let holds = match o.stamp.as_mut() {
+                    Some(stamp) => stamp.holds(&o.config),
+                    None => std::fs::metadata(&o.config).is_err(),
+                };
+                if holds {
                     return Ok((o.hub.clone(), o.generation));
                 }
-                now
+                Stamp::of(&o.config)
             }
             None => None,
         };
@@ -108,7 +164,7 @@ impl Hub {
         let stamp = if open.is_some() {
             before
         } else {
-            stamp(&config)
+            Stamp::of(&config)
         };
         let generation = open.as_ref().map_or(0, |o| o.generation + 1);
         // the databases of a chat page, opened in the background: the first reads would wait for their keys
@@ -463,6 +519,40 @@ async fn sns_media(hub: &Hub, url: &str, key: Option<&str>) -> AppResult<MediaFi
 mod tests {
     use super::*;
     use clap::{Command, FromArgMatches};
+
+    #[test]
+    fn a_config_written_twice_within_a_tick_of_a_coarse_clock_is_told_changed() {
+        let dir = std::env::temp_dir().join(format!("weflow-stamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        std::fs::write(&path, r#"{"profile":"aaaa"}"#).unwrap();
+        let time = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let mut stamp = Stamp::of(&path).unwrap();
+        assert!(stamp.holds(&path));
+        // another profile of a name as long, written within the same tick: the same time and size
+        std::fs::write(&path, r#"{"profile":"bbbb"}"#).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(time)
+            .unwrap();
+        assert!(!stamp.holds(&path));
+
+        // written long ago and stamped since: the time and size tell, the content is not read again
+        let old = SystemTime::now() - Duration::from_secs(60);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let mut stamp = Stamp::of(&path).unwrap();
+        assert!(stamp.settled && stamp.holds(&path));
+        std::fs::write(&path, r#"{"profile":"cccc"}"#).unwrap();
+        assert!(!stamp.holds(&path));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn command_tree() -> Command {
         static TREE: std::sync::OnceLock<Command> = std::sync::OnceLock::new();
