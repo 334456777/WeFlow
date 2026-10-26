@@ -1,38 +1,27 @@
 // The chat reads of `weflow serve` (docs/serve-api.md): the conversation list and the folded and muted states, read in
 // the server's process (`/api/`).
 import { ApiError, get } from './client';
-
-/** A row of `chat sessions`, newest first. */
-export interface ChatSession {
-  /** The other party's wxid, `xxx@chatroom` for a group, `gh_…` for an official account. */
-  username: string;
-  displayName: string;
-  summary: string;
-  unreadCount: number;
-  /** Unix seconds; 0 for an official account WeChat lists without a conversation. */
-  sortTimestamp: number;
-  lastTimestamp: number;
-  lastMsgType: number;
-  avatarUrl?: string;
-  /** In a group: who sent the last message. */
-  lastMsgSender?: string;
-  lastSenderDisplayName?: string;
-  messageCountHint?: number;
-  selfWxid?: string;
-}
+import type * as Contract from './contract.gen';
 
 export interface SessionStatus {
   isFolded: boolean;
   isMuted: boolean;
 }
 
-const SESSION_FIELDS = [
+const SESSION_KEYS = [
   'username', 'displayName', 'summary', 'unreadCount', 'sortTimestamp', 'lastTimestamp', 'lastMsgType',
   'avatarUrl', 'lastMsgSender', 'lastSenderDisplayName', 'messageCountHint', 'selfWxid',
-];
+] as const satisfies readonly (keyof Contract.Session)[];
+
+/**
+ * A row of `chat sessions` (the contract's, #399), newest first; only the keys the list uses are asked for. The page
+ * makes rows of its own too (the samples, official accounts without a conversation), without `selfWxid`.
+ */
+export type ChatSession = Pick<Contract.Session, Exclude<(typeof SESSION_KEYS)[number], 'selfWxid'>> &
+  Partial<Pick<Contract.Session, 'selfWxid'>>;
 
 export async function getSessions(signal?: AbortSignal): Promise<ChatSession[]> {
-  const data = await get<unknown>('api/chat/sessions', { fields: SESSION_FIELDS.join(',') }, signal);
+  const data = await get<unknown>('api/chat/sessions', { fields: SESSION_KEYS.join(',') }, signal);
   if (!Array.isArray(data)) throw new ApiError(200, 'bad_response', '会话列表的格式不对');
   return data as ChatSession[];
 }

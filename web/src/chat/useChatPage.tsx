@@ -92,7 +92,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
   const exportJob = findJob(shell.jobs, exportJobId);
   const stage = stageOf(exportJob, exportError);
   const exportResult: ExportResult | null = exportJob?.status === 'succeeded' && exportJob.file
-    ? { fileName: exportJob.file.name, count: 0, downloadUrl: jobFileUrl(exportJob.id) } : null;
+    ? { fileName: exportJob.file.name ?? '', count: 0, downloadUrl: jobFileUrl(exportJob.id) } : null;
   const [liveId, setLiveId] = useState<string | null>(null);
   // the message a jump looks up (#200, #209): let go of when another page, conversation or account is opened (#415)
   const mediaLookup = useRef<AbortController | null>(null);

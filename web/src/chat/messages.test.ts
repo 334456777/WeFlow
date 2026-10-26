@@ -3,7 +3,7 @@ import type { ParsedMessage } from '../api/messages';
 import { appLabel, baseType, formatDayHeading, formatDuration, formatFileSize, kindOf, withoutLabel } from './messages';
 
 const message = (localType: number, extra: Partial<ParsedMessage> = {}): ParsedMessage =>
-  ({ _cursor: 'c', localId: 1, localType, createTime: 0, isSend: 0, senderUsername: 'a', parsedContent: '', ...extra });
+  ({ _cursor: 'c', localId: 1, serverId: '1', localType, createTime: 0, isSend: 0, senderUsername: 'a', parsedContent: '', ...extra });
 const app = (sub: number, kind: string, extra: Partial<ParsedMessage> = {}) => message(sub * 4_294_967_296 + 49, { appMsgKind: kind, ...extra });
 
 describe('kindOf', () => {

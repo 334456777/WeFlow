@@ -40,6 +40,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # src/api/contract.gen.ts is generated from contract/openapi.json, which a test of weflow-cli keeps equal to
+      # what the server answers with (#399): a contract changed without regenerating the types fails here
+      - name: Types of the contract
+        run: bun run contract --check
+
       - name: Type-check
         run: bun run typecheck
 

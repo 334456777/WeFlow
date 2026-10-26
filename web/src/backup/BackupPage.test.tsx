@@ -10,7 +10,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const job = (over: Partial<Job>): Job => ({
   id: 'j1', status: 'succeeded', command: ['weflow', '--json', '--progress', 'backup', 'create'], createdAt: Date.UTC(2026, 9, 19, 12),
-  startedAt: null, finishedAt: null, exitCode: 0, httpStatus: 200, progress: null, ...over,
+  startedAt: null, finishedAt: null, exitCode: 0, httpStatus: 200, progress: null, file: null, ...over,
 });
 const NONE: JobsState = { jobs: [], labels: {} };
 

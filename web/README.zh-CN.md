@@ -49,13 +49,26 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 | `bun test` | 运行测试（`bun:test`，DOM 由 happy-dom 提供） |
 | `bun run build` | 类型检查后构建到 `dist/` |
 | `bun run preview` | 用同样的代理预览 `dist/` |
-| `bun run check` | 类型检查、测试和构建，与 CI 相同 |
+| `bun run contract` | 由 `contract/openapi.json` 生成 `src/api/contract.gen.ts`（见下文）；带 `--check` 时只检查 |
+| `bun run check` | 检查契约类型，再做类型检查、测试和构建，与 CI 相同 |
 
 测试从 `#test`（`test/index.ts`）导入测试 API：其中是 `bun:test` 的内容，外加一个 `vi`，补上了测试里用到、而 Bun 没有的 Vitest 方法（`stubGlobal`、`unstubAllGlobals`、`setSystemTime`、`advanceTimersByTimeAsync`、`waitFor`，以及只伪造 `Date` 的假计时器）。`test/setup.ts` 由 `bunfig.toml` 指定为最先加载的文件，它注册 happy-dom，并把 happy-dom 调整成原来按 jsdom 写测试时的样子：窗口够宽，`fetch` 用运行时自带的，`WheelEvent` 继承自 `MouseEvent`，inline 元素的 `display` 是 `inline`，DOM 节点出现在失败信息里时只打印简短的标签。Bun 在同一个进程里运行所有测试文件，所以测试结束时不能留下改过的全局状态：在 `afterEach` 里调用 `vi.unstubAllGlobals()`、`vi.useRealTimers()` 和 `cleanup()`。
 
-`web/` 下有改动时，`.github/workflows/web.yml` 会运行 `typecheck`、`test` 和 `build`，并上传 `dist/`。
+`web/` 下有改动时，`.github/workflows/web.yml` 会运行 `contract --check`、`typecheck`、`test` 和 `build`，并上传 `dist/`。
 
 网页显示前要加载的 JavaScript 超过 `plugins/sizeBudget.ts` 里的上限时，构建会失败（#159）；确实需要更多时，在那里有意地调高。图标只保留网页用到的粗细（`plugins/iconWeights.ts`：regular、fill、bold）；代码用到其他粗细时，测试会失败。
+
+## API 的类型
+
+网页最常读的回复（会话、消息、搜索结果、通讯录、资源、任务和错误）的类型在 `src/api/contract.gen.ts` 里，由 `contract/openapi.json` 生成（#399）。这个文件就是 `weflow serve` 回复所依据的契约：其中的 schema 来自回复所用的 Rust 类型（`weflow_core::contract`），它不是最新时 weflow-cli 的测试会失败，所以网页的类型总跟着服务端。`src/api/` 在它的基础上定义自己的类型：用 `Pick` 取出请求用 `fields` 要的那些键，并用 `satisfies` 核对这些键在契约里存在。
+
+`scripts/contract.ts` 不依赖任何包来生成类型：它只认 schemars 会写出的那几种 JSON Schema，遇到其他写法就报错。回复的类型改了以后：
+
+1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot` 重新生成 `contract/openapi.json`（带同一个变量运行 `cargo test -p weflow-core --lib contract` 会重新生成 `contract/samples.json`：每种类型一个回复样本，供 #400 的边界测试使用）；
+2. `bun run contract` 重新生成 `src/api/contract.gen.ts`；
+3. `bun run typecheck` 显示网页需要跟着改的地方。
+
+API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。
 
 ## 版本
 
@@ -71,6 +84,7 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 
 | 路径 | 说明 |
 |---|---|
+| `src/api/contract.gen.ts`、`scripts/contract.ts`、`contract/` | 由契约生成的回复类型（#399），见「API 的类型」 |
 | `src/api/client.ts` | 调用 `weflow serve`：负责查询参数或 JSON 请求体，带上令牌，出错时抛出带服务端错误码的 `ApiError` |
 | `src/TokenForm.tsx` | 令牌输入与重新连接提示（#214） |
 | `src/api/backend.ts` | 连接状态：保持 `/health/events` 长连接，加上看门狗和退避重连（#221）；打开实时消息时改为 `/api/push/messages`（#201）；检查版本，提供 `useBackend` |

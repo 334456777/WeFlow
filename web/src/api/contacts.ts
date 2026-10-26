@@ -2,27 +2,12 @@
 import { get } from './client';
 import { keptRead } from './kept';
 
-export type ContactKind = 'friend' | 'group' | 'official' | 'former_friend';
+export type { Contact, ContactKind } from './contract.gen';
+import type { Contact, ContactKind } from './contract.gen';
 
 export const CONTACT_KINDS: ContactKind[] = ['friend', 'group', 'official', 'former_friend'];
 export const contactKindLabels: Record<ContactKind, string> = { friend: '好友', group: '群聊', official: '公众号', former_friend: '曾经的好友' };
 
-/** A row of `chat contacts --parsed`, the most recent conversation first. */
-export interface Contact {
-  username: string;
-  /** The remark, else the nickname, else the WeChat ID, else the username. */
-  displayName: string;
-  type: ContactKind;
-  remark?: string;
-  nickname?: string;
-  /** The WeChat ID the person chose. */
-  alias?: string;
-  labels?: string[];
-  region?: string;
-  /** The signature. */
-  detailDescription?: string;
-  avatarUrl?: string;
-}
 
 export async function getContacts(signal?: AbortSignal): Promise<Contact[]> {
   const data = await get<unknown>('api/chat/contacts', { parsed: true }, signal);

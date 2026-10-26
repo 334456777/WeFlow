@@ -1,0 +1,151 @@
+{
+  "ParsedMessage": [
+    {
+      "localId": 1,
+      "serverId": "9007199254740993",
+      "localType": 1,
+      "createTime": 1700000000,
+      "sortSeq": 1700000000000,
+      "isSend": 0,
+      "senderUsername": "wxid_bob",
+      "parsedContent": "hello",
+      "rawContent": "hello",
+      "messageKey": "server:9007199254740993:1700000000:1700000000000:1:wxid_bob:1",
+      "_cursor": "1700000000000.1700000000.1.1",
+      "_session_id": "wxid_bob"
+    },
+    {
+      "localId": 2,
+      "serverId": "18446744073709551615",
+      "localType": 49,
+      "createTime": 1700000060,
+      "sortSeq": 1700000060000,
+      "isSend": 1,
+      "senderUsername": null,
+      "parsedContent": "[文件] report.pdf",
+      "rawContent": "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen><fileext>pdf</fileext></appattach></appmsg></msg>",
+      "xmlType": "6",
+      "linkTitle": "report.pdf",
+      "appMsgKind": "file",
+      "fileName": "report.pdf",
+      "fileSize": 2048,
+      "fileExt": "pdf",
+      "messageKey": "fallback::1700000060:1700000060000:2::49",
+      "_cursor": "1700000100000.1700000000.2.1"
+    },
+    {
+      "localId": 3,
+      "serverId": "0",
+      "localType": 49,
+      "createTime": 1700000120,
+      "sortSeq": 1700000120000,
+      "isSend": 0,
+      "senderUsername": "wxid_bob",
+      "parsedContent": "yes",
+      "rawContent": "<msg><appmsg><type>57</type><title>yes</title><refermsg><type>1</type><displayname>Me</displayname><content>are you there?</content></refermsg></appmsg></msg>",
+      "quotedContent": "are you there?",
+      "quotedSender": "Me",
+      "xmlType": "57",
+      "linkTitle": "yes",
+      "appMsgKind": "quote",
+      "messageKey": "fallback::1700000120:1700000120000:3:wxid_bob:49",
+      "_cursor": "1700000200000.1700000000.3.1"
+    }
+  ],
+  "Session": [
+    {
+      "username": "wxid_bob",
+      "type": 1,
+      "unreadCount": 2,
+      "summary": "hello",
+      "sortTimestamp": 1700000120,
+      "lastTimestamp": 1700000120,
+      "lastMsgType": 1,
+      "messageCountHint": 3,
+      "displayName": "Bob",
+      "selfWxid": "wxid_me",
+      "avatarUrl": "https://example.com/bob.png"
+    },
+    {
+      "username": "gh_news",
+      "type": 0,
+      "unreadCount": 0,
+      "summary": "查看公众号历史消息",
+      "sortTimestamp": 0,
+      "lastTimestamp": 0,
+      "lastMsgType": 0,
+      "displayName": "News",
+      "selfWxid": "wxid_me"
+    }
+  ],
+  "Contact": [
+    {
+      "username": "wxid_bob",
+      "displayName": "Bobby",
+      "remark": "Bobby",
+      "nickname": "Bob",
+      "alias": "bobby_id",
+      "labels": [
+        "Family"
+      ],
+      "region": "广东 深圳",
+      "type": "friend"
+    }
+  ],
+  "ResourcePage": [
+    {
+      "items": [
+        {
+          "localId": 4,
+          "serverId": "9007199254740995",
+          "createTime": 1700000180,
+          "localType": 3,
+          "isSend": 0,
+          "senderUsername": "wxid_bob",
+          "content": "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
+          "text": "[图片]",
+          "imageMd5": "aabbccddeeff00112233445566778899",
+          "appMsgKind": "card",
+          "_cursor": "1700000180000.1700000180.4.1:wxid_bob",
+          "sessionDisplayName": "Bob",
+          "sessionId": "wxid_bob",
+          "resourceType": "image"
+        }
+      ],
+      "hasMore": false,
+      "nextCursor": null
+    }
+  ],
+  "MessageLookup": [
+    {
+      "row": {
+        "local_id": 1,
+        "server_id": "9007199254740993",
+        "create_time": 1700000000,
+        "local_type": 1,
+        "sort_seq": 1700000000000,
+        "is_send": 0,
+        "sender_username": "wxid_bob",
+        "message_content": "hello"
+      },
+      "message": {
+        "localId": 4,
+        "serverId": "9007199254740995",
+        "createTime": 1700000180,
+        "localType": 3,
+        "isSend": 0,
+        "senderUsername": "wxid_bob",
+        "content": "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
+        "text": "[图片]",
+        "imageMd5": "aabbccddeeff00112233445566778899",
+        "appMsgKind": "card"
+      }
+    }
+  ],
+  "Error": [
+    {
+      "code": "invalid_arguments",
+      "message": "`chat messages` needs `session-id`"
+    }
+  ]
+}

@@ -3,7 +3,7 @@ import { describeCommand, type Job } from '../api/jobs';
 import { formatSize, jobDetail, jobsSummary } from './TaskCenter';
 
 const job = (status: Job['status'], more: Partial<Job> = {}): Job =>
-  ({ id: 'j', status, command: ['weflow', '--json', '--progress', 'export', 'messages', '--format', 'html', 'wxid_a'], createdAt: 0, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null, ...more });
+  ({ id: 'j', status, command: ['weflow', '--json', '--progress', 'export', 'messages', '--format', 'html', 'wxid_a'], createdAt: 0, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null, file: null, ...more });
 
 describe('task centre', () => {
   it('names a job by its command, and by the conversation it exports when known', () => {

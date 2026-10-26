@@ -281,4 +281,115 @@ mod tests {
         assert!(doc["isSend"].is_null() || doc["isSend"].is_number());
         assert!(doc.as_object().unwrap().contains_key("senderUsername"));
     }
+
+    /// One answer of each type of the contract, from fixed rows, for the boundary tests of #399 and #400 and for a
+    /// reader of `web/contract/openapi.json`: `web/contract/samples.json` keeps them, and this checks it is current.
+    /// Rewrite it with `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-core --lib contract`.
+    #[test]
+    fn contract_samples_are_current() {
+        let rows = [
+            json!({ "local_id": 1, "server_id": "9007199254740993", "create_time": 1700000000, "local_type": 1,
+                "sort_seq": 1700000000000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content": "hello" }),
+            json!({ "local_id": 2, "server_id": "18446744073709551615", "create_time": 1700000060, "local_type": 49,
+                "sort_seq": 1700000060000i64, "is_send": 1, "message_content":
+                "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen>\
+                 <fileext>pdf</fileext></appattach></appmsg></msg>" }),
+            json!({ "local_id": 3, "server_id": "0", "create_time": 1700000120, "local_type": 49,
+                "sort_seq": 1700000120000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content":
+                "<msg><appmsg><type>57</type><title>yes</title><refermsg><type>1</type>\
+                 <displayname>Me</displayname><content>are you there?</content></refermsg></appmsg></msg>" }),
+        ];
+        let parsed: Vec<ParsedMessage> = crate::chat_msg::map_rows(&rows, "wxid_me")
+            .into_iter()
+            .enumerate()
+            .map(|(i, message)| ParsedMessage {
+                message,
+                cursor: Some(format!("1700000{i}00000.1700000000.{}.1", i + 1)),
+                session_id: (i == 0).then(|| "wxid_bob".to_string()),
+            })
+            .collect();
+        let session = Session {
+            username: "wxid_bob".into(),
+            kind: 1,
+            unread_count: 2,
+            summary: "hello".into(),
+            sort_timestamp: 1700000120,
+            last_timestamp: 1700000120,
+            last_msg_type: 1,
+            message_count_hint: Some(3),
+            display_name: "Bob".into(),
+            self_wxid: "wxid_me".into(),
+            avatar_url: Some("https://example.com/bob.png".into()),
+            ..Session::default()
+        };
+        let official = Session {
+            username: "gh_news".into(),
+            summary: "查看公众号历史消息".into(),
+            display_name: "News".into(),
+            self_wxid: "wxid_me".into(),
+            ..Session::default()
+        };
+        let contact = Contact {
+            username: "wxid_bob".into(),
+            display_name: "Bobby".into(),
+            remark: Some("Bobby".into()),
+            nickname: Some("Bob".into()),
+            alias: Some("bobby_id".into()),
+            labels: Some(vec!["Family".into()]),
+            detail_description: None,
+            region: Some("广东 深圳".into()),
+            kind: ContactKind::Friend,
+            avatar_url: None,
+        };
+        let image = ExportMsg {
+            local_id: 4,
+            server_id_raw: Some("9007199254740995".into()),
+            create_time: 1700000180,
+            local_type: 3,
+            content: "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>".into(),
+            sender_username: "wxid_bob".into(),
+            image_md5: Some("aabbccddeeff00112233445566778899".into()),
+            ..ExportMsg::default()
+        };
+        let view = MessageView::of(&image, "wxid_me");
+        let page = ResourcePage {
+            items: vec![Resource {
+                message: view.clone(),
+                cursor: "1700000180000.1700000180.4.1:wxid_bob".into(),
+                session_display_name: "Bob".into(),
+                session_id: "wxid_bob".into(),
+                resource_type: ResourceKind::Image,
+            }],
+            has_more: false,
+            next_cursor: None,
+        };
+        let samples = json!({
+            "ParsedMessage": parsed,
+            "Session": [session, official],
+            "Contact": [contact],
+            "ResourcePage": [page],
+            "MessageLookup": [MessageLookup { row: rows[0].clone(), message: Some(view) }],
+            "Error": [crate::error::ErrorPayload {
+                code: "invalid_arguments".into(),
+                message: "`chat messages` needs `session-id`".into(),
+                details: None,
+            }],
+        });
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../web/contract/samples.json");
+        let now = serde_json::to_string_pretty(&samples).unwrap() + "\n";
+        if std::env::var_os("WEFLOW_UPDATE_CONTRACT").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, now).unwrap();
+            return;
+        }
+        let kept = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert!(
+            kept == now,
+            "web/contract/samples.json is not what the contract's types answer; rewrite it with \
+             `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-core --lib contract`"
+        );
+    }
 }

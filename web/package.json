@@ -22,7 +22,8 @@
     "preview": "bun --bun vite preview",
     "typecheck": "bun --bun tsc --noEmit",
     "test": "bun test",
-    "check": "bun run typecheck && bun test && bun --bun vite build"
+    "contract": "bun scripts/contract.ts",
+    "check": "bun scripts/contract.ts --check && bun run typecheck && bun test && bun --bun vite build"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",

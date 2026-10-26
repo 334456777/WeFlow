@@ -1,5 +1,6 @@
 // The console's conversation details, members and media (#200).
 import { ApiError, get, type Params } from './client';
+import type * as Contract from './contract.gen';
 import type { GroupMember, ParsedMessage } from './messages';
 
 // `chat detail --extra` starts a command, and unlike the `/api/` reads it does not wait for a place: with the server's
@@ -92,39 +93,16 @@ export interface MemberStats {
 export const getMemberStats = (chatroomId: string, username: string, signal?: AbortSignal) =>
   get<MemberStats>('api/group/member', { 'chatroom-id': chatroomId, username }, signal);
 
-export type ResourceType = 'image' | 'video' | 'voice' | 'file';
+/** What a message of `chat resources` holds. */
+export type ResourceType = Contract.ResourceKind;
 
-/** A message of `chat resources`: its `_cursor` is its place in the listing, not in its conversation; `lookupMessage` finds that. */
-export interface Resource {
-  _cursor?: string;
-  localId: number;
-  createTime: number;
-  localType: number;
-  resourceType: ResourceType;
-  serverId?: string;
-  /** The message as WeChat keeps it: a voice's length is in its XML. */
-  content?: string;
-  senderUsername?: string | null;
-  isSend?: number | null;
-  imageMd5?: string;
-  videoMd5?: string;
-  fileName?: string;
-  fileSize?: number;
-  fileExt?: string;
-  parsedContent?: string;
-  /** Of the listing across conversations. */
-  sessionId?: string;
-  sessionDisplayName?: string;
-}
+/** A message of `chat resources` (the contract's, #399): its `_cursor` is its place in the listing, not in its
+ * conversation; `lookupMessage` finds that. */
+export type Resource = Contract.Resource;
+
+export type ResourcePage = Contract.ResourcePage;
 
 export const RESOURCE_PAGE = 60;
-
-export interface ResourcePage {
-  items: Resource[];
-  hasMore: boolean;
-  /** Where the next page starts (#178). */
-  nextCursor: string | null;
-}
 
 /** The conversation's images, videos and files, newest first: from the newest, or from the `nextCursor` of a page. */
 export function getResources(sessionId: string, types: readonly ResourceType[], before: string | null, signal?: AbortSignal): Promise<ResourcePage> {

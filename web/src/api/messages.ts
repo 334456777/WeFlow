@@ -1,54 +1,20 @@
 // Messages, people and media of a conversation (docs/serve-api.md, "In-process reads"). Messages come parsed by the
 // server as the desktop app parses them (`chat messages --parsed`), so the page reads no WeChat XML.
 import { apiUrl, get, token, type Params } from './client';
+import type * as Contract from './contract.gen';
 
-/** A message of `chat messages --parsed`; only the keys the chat window uses are asked for. */
-export interface ParsedMessage {
-  _cursor: string;
-  localId: number;
-  /** The server id as text: it does not fit in a JavaScript number. */
-  serverId?: string;
-  /** WeChat's type; an app message carries its kind in the high bits and is named by `appMsgKind`. */
-  localType: number;
-  createTime: number;
-  isSend: number | null;
-  senderUsername: string | null;
-  parsedContent: string;
-  appMsgKind?: string;
-  quotedContent?: string;
-  quotedSender?: string;
-  linkTitle?: string;
-  linkUrl?: string;
-  linkThumb?: string;
-  appMsgDesc?: string;
-  appMsgAppName?: string;
-  appMsgSourceName?: string;
-  appMsgThumbUrl?: string;
-  fileName?: string;
-  fileSize?: number;
-  fileExt?: string;
-  voiceDurationSeconds?: number;
-  emojiCdnUrl?: string;
-  imageMd5?: string;
-  videoMd5?: string;
-  cardNickname?: string;
-  cardUsername?: string;
-  cardAvatarUrl?: string;
-  locationPoiname?: string;
-  locationLabel?: string;
-  finderNickname?: string;
-  finderCoverUrl?: string;
-  finderDuration?: number;
-  chatRecordTitle?: string;
-}
-
-const MESSAGE_FIELDS = [
-  '_cursor', 'localId', 'serverId', 'localType', 'createTime', 'isSend', 'senderUsername', 'parsedContent', 'appMsgKind',
+const MESSAGE_KEYS = [
+  'localId', 'serverId', 'localType', 'createTime', 'isSend', 'senderUsername', 'parsedContent', 'appMsgKind',
   'quotedContent', 'quotedSender', 'linkTitle', 'linkUrl', 'linkThumb', 'appMsgDesc', 'appMsgAppName', 'appMsgSourceName',
   'appMsgThumbUrl', 'fileName', 'fileSize', 'fileExt', 'voiceDurationSeconds', 'emojiCdnUrl', 'imageMd5', 'videoMd5',
   'cardNickname', 'cardUsername', 'cardAvatarUrl', 'locationPoiname', 'locationLabel', 'finderNickname', 'finderCoverUrl',
   'finderDuration', 'chatRecordTitle',
-].join(',');
+] as const satisfies readonly (keyof Contract.ParsedMessage)[];
+
+/** A message of `chat messages --parsed` (the contract's, #399); only the keys the chat window uses are asked for. */
+export type ParsedMessage = Pick<Contract.ParsedMessage, (typeof MESSAGE_KEYS)[number]> & { _cursor: string };
+
+const MESSAGE_FIELDS = ['_cursor', ...MESSAGE_KEYS].join(',');
 
 export const PAGE_SIZE = 50;
 
@@ -66,9 +32,7 @@ export function getMessages(sessionId: string, from: PageFrom, signal?: AbortSig
 }
 
 /** A hit of `chat search --parsed`: the message, and the conversation it is in. */
-export interface SearchHit extends ParsedMessage {
-  _session_id: string;
-}
+export type SearchHit = ParsedMessage & { _session_id: string };
 
 export interface SearchQuery {
   keyword: string;
