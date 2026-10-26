@@ -31,6 +31,7 @@ flate2 = "1"
 futures = "0.3"
 # HEVC still-picture decoder for WXGF images (pure Rust, no unsafe); the thread pool feature is not needed
 heic-rs = { version = "0.1", default-features = false, features = ["std"] }
+indexmap = { version = "2.14.2", features = ["serde"] }
 jpeg-encoder = "0.7"
 icu_collator = "2.3"
 icu_locale_core = "2.3"
@@ -43,7 +44,7 @@ regex = "1"
 reqwest = { version = "0.13", features = ["json", "query", "rustls-no-provider", "gzip", "deflate", "brotli", "stream"], default-features = false }
 rust_xlsxwriter = { version = "0.100", features = ["constant_memory"] }
 # the JSON Schema of the command API's answers (#399), in /openapi.json
-schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
+schemars = { version = "1.2.3", default-features = false, features = ["derive", "indexmap2", "std"] }
 serde = { version = "1.0.219", features = ["derive"] }
 sha1 = "0.10"
 terminal_size = "0.4"

@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
 use super::{clean_account_dir_name, ServiceHub};
@@ -249,11 +250,11 @@ impl ServiceHub {
         })
     }
 
-    /// How many messages each conversation asked for has, by its id.
-    pub fn chat_counts(&self, session_ids: &[String]) -> AppResult<BTreeMap<String, i64>> {
+    /// How many messages each conversation asked for has, by its id, in the order asked.
+    pub fn chat_counts(&self, session_ids: &[String]) -> AppResult<IndexMap<String, i64>> {
         let ids = uniq(session_ids);
         if ids.is_empty() {
-            return Ok(BTreeMap::new());
+            return Ok(IndexMap::new());
         }
         let wcdb = self.open_wcdb()?;
         let raw = wcdb.session_message_counts(&ids).map_err(native)?;
@@ -266,10 +267,10 @@ impl ServiceHub {
             .collect())
     }
 
-    pub fn chat_statuses(&self, usernames: &[String]) -> AppResult<BTreeMap<String, ChatStatus>> {
+    pub fn chat_statuses(&self, usernames: &[String]) -> AppResult<IndexMap<String, ChatStatus>> {
         let ids = uniq(usernames);
         if ids.is_empty() {
-            return Ok(BTreeMap::new());
+            return Ok(IndexMap::new());
         }
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
