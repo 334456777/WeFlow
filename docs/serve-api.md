@@ -264,9 +264,9 @@ With 「实时消息」 on (the default, in the settings), the WebUI holds `/api
 
 ## How it runs
 
-Each request runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. A client that closes the connection before the answer ends its command; so does cancelling a job.
+A command route (a path without `/api/`, run at once or as a job) runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. A client that closes the connection before the answer ends its command; so does cancelling a job.
 
-The price is paid on every request: starting the process and reading the configuration take about 20 ms, and each request opens the databases again with cold caches. On a large account (Windows, release build) the conversation list takes about 37 ms this way and a page of messages about 31 ms. For the reads a chat client makes all the time, use [`/api/`](#in-process-reads).
+The price is paid on every such request: starting the process and reading the configuration take about 20 ms, and each request opens the databases again with cold caches. On a large account (Windows, release build) the conversation list takes about 37 ms this way and a page of messages about 31 ms. For the reads a chat client makes all the time, use [`/api/`](#in-process-reads).
 
 Opening a database first derives its key from the one in the configuration (about 0.1 s). The server hands the keys it has derived (those of a chat page's databases, see the warm-up below) to each command it runs, through the command's stdin, so the command does not derive them again; without this, the two reads above took about 500 ms and 175 ms. A key that does not open its file is derived again.
 
