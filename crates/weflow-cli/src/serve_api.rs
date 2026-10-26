@@ -9,6 +9,7 @@
 
 mod files;
 mod in_process;
+mod job_routes;
 mod jobs;
 mod openapi;
 mod push;
@@ -443,12 +444,9 @@ impl Endpoint {
         }
     }
 
-    /// The command line (after `weflow` and the global options) for these parameters. Options are written as
-    /// `--name=value` and positional arguments after `--`, so values starting with `-` stay values. The command
-    /// itself checks the result, exactly as on a terminal.
-    fn argv(&self, params: &Params) -> Result<Vec<String>, String> {
-        let mut options = Vec::new();
-        let mut positionals: Vec<(usize, Vec<String>)> = Vec::new();
+    /// Refuses what the command does not take: a name it has no parameter of, or a switch that is neither true nor
+    /// false. The command itself checks the rest, or the typed reads of `/api/` (#397) do as it would.
+    fn check(&self, params: &Params) -> Result<(), String> {
         for (key, values) in params {
             let Some(param) = find_param(self, key) else {
                 let known: Vec<&str> = self.params.iter().map(|p| p.name.as_str()).collect();
@@ -465,41 +463,42 @@ impl Endpoint {
                     )
                 });
             };
-            let texts = || -> Vec<String> {
-                values
-                    .iter()
-                    .flat_map(|v| match v {
-                        Value::Array(items) if param.kind != Kind::Single => {
-                            items.iter().map(text_of).collect()
-                        }
-                        other => vec![text_of(other)],
-                    })
-                    .collect()
-            };
+            if param.kind == Kind::Flag && values.iter().any(|v| flag_value(v).is_none()) {
+                return Err(format!(
+                    "parameter `{}` is a switch: pass true or false",
+                    param.name
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The command line (after `weflow` and the global options) for these parameters. Options are written as
+    /// `--name=value` and positional arguments after `--`, so values starting with `-` stay values. The command
+    /// itself checks the result, exactly as on a terminal.
+    fn argv(&self, params: &Params) -> Result<Vec<String>, String> {
+        self.check(params)?;
+        let mut options = Vec::new();
+        let mut positionals: Vec<(usize, Vec<String>)> = Vec::new();
+        for (key, values) in params {
+            let param = find_param(self, key).expect("checked");
             if let Some(index) = param.index {
-                positionals.push((index, texts()));
+                positionals.push((index, texts(param, values)));
                 continue;
             }
             match param.kind {
                 Kind::Flag => {
                     for v in values {
-                        match flag_value(v) {
-                            Some(true) => options.push(format!("--{}", param.name)),
-                            Some(false) => {}
-                            None => {
-                                return Err(format!(
-                                    "parameter `{}` is a switch: pass true or false",
-                                    param.name
-                                ))
-                            }
+                        if flag_value(v) == Some(true) {
+                            options.push(format!("--{}", param.name));
                         }
                     }
                 }
-                Kind::MultiOrBare if texts().iter().all(String::is_empty) => {
+                Kind::MultiOrBare if texts(param, values).iter().all(String::is_empty) => {
                     options.push(format!("--{}", param.name));
                 }
                 _ => {
-                    for text in texts() {
+                    for text in texts(param, values) {
                         options.push(format!("--{}={text}", param.name));
                     }
                 }
@@ -514,6 +513,20 @@ impl Endpoint {
         }
         Ok(argv)
     }
+}
+
+/// The values of a parameter that is not a switch, as the command line carries them: each value as text, and the
+/// items of a JSON array one by one where the parameter takes more than one.
+fn texts(param: &Param, values: &[Value]) -> Vec<String> {
+    values
+        .iter()
+        .flat_map(|v| match v {
+            Value::Array(items) if param.kind != Kind::Single => {
+                items.iter().map(text_of).collect()
+            }
+            other => vec![text_of(other)],
+        })
+        .collect()
 }
 
 pub struct ApiConfig {
@@ -1056,7 +1069,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             .get("last-event-id")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.trim().parse().ok());
-        return jobs::route(&st.jobs, &parts.method, &segments, last_event_id).await;
+        return job_routes::route(&st.jobs, &parts.method, &segments, last_event_id).await;
     }
     // `/api/<command path>`: the same command, run in this process (in_process)
     let in_process = segments.first().is_some_and(|s| s == "api");
@@ -1201,16 +1214,55 @@ async fn route(st: &AppState, req: Request) -> Response {
         });
     }
 
-    if media {
-        if params
+    if media
+        && params
             .keys()
             .any(|k| find_param(endpoint, k).is_some_and(|p| p.name == "out"))
-        {
-            return bad_request(
-                "an /api/ media route answers with the file itself: leave out `out`",
-            );
+    {
+        return bad_request("an /api/ media route answers with the file itself: leave out `out`");
+    }
+    if let Err(message) = endpoint.check(&params) {
+        return bad_request(&message);
+    }
+    let mut timing = Timing::default();
+    // `/api/`: the typed read of the request, run in this process (#397). A request it does not take goes to a child
+    // process, which answers it as the terminal does, in the place the request waited for.
+    let mut place = None;
+    if in_process {
+        let line = if media { &st.media } else { &st.api_reads };
+        let waited = std::time::Instant::now();
+        let Some(entered) = line.enter(WAIT).await else {
+            return busy_line(media);
+        };
+        timing.stage("wait", Some("in line for a place"), waited);
+        let given = in_process::Given::new(endpoint, &params);
+        let ran = std::time::Instant::now();
+        let hub = st.hub.clone();
+        if media {
+            if let Ok(asked) = given.media(&command) {
+                let done =
+                    in_process::held(entered, async move { in_process::media(&hub, asked).await })
+                        .await;
+                timing.stage("cmd", Some("in process"), ran);
+                return timing.on(match done {
+                    Ok(Ok(file)) => media_response(&parts.headers, file),
+                    Ok(Err((doc, exit))) => in_process_document(&doc, exit, None),
+                    Err(err) => failed_in_process(&err),
+                });
+            }
+        } else if let Ok(read) = given.read(&command) {
+            let done =
+                in_process::held(entered, async move { in_process::run(&hub, read).await }).await;
+            timing.stage("cmd", Some("in process"), ran);
+            return timing.on(match done {
+                Ok((doc, exit)) => in_process_document(&doc, exit, fields.as_deref()),
+                Err(err) => failed_in_process(&err),
+            });
         }
-        // satisfies the command line; nothing is written there
+        place = Some(entered);
+    }
+    if media {
+        // satisfies the command line of the child process; nothing is written there
         params.insert("out".into(), vec![Value::String("-".into())]);
     }
     let argv = match endpoint.argv(&params) {
@@ -1255,40 +1307,17 @@ async fn route(st: &AppState, req: Request) -> Response {
         let job = st
             .jobs
             .start(st.cfg.exe.clone(), full, lang, limit.clone(), file_out);
-        return jobs::accepted(&job);
+        return job_routes::accepted(&job);
     }
-    let mut timing = Timing::default();
-    let (_permit, _running) = if in_process {
-        let line = if media { &st.media } else { &st.api_reads };
-        let waited = std::time::Instant::now();
-        let Some((admitted, running)) = line.enter(WAIT).await else {
-            return busy_line(media);
-        };
-        timing.stage("wait", Some("in line for a place"), waited);
-        (admitted, Some(running))
-    } else {
-        let Ok(permit) = limit.clone().try_acquire_owned() else {
-            return busy(verb == Some(Post));
-        };
-        (permit, None)
+    let (_permit, _running) = match place {
+        Some((admitted, running)) => (admitted, Some(running)),
+        None => {
+            let Ok(permit) = limit.clone().try_acquire_owned() else {
+                return busy(verb == Some(Post));
+            };
+            (permit, None)
+        }
     };
-    let ran = std::time::Instant::now();
-    if media {
-        let done = in_process::media(&st.hub, &argv).await;
-        timing.stage("cmd", Some("in process"), ran);
-        match done {
-            Some(Ok(file)) => return timing.on(media_response(&parts.headers, file)),
-            Some(Err((doc, exit))) => return timing.on(in_process_document(&doc, exit, None)),
-            // the child process reports the command line error; with `out` set to `-` and the command line
-            // refused, it writes nothing
-            None => {}
-        }
-    } else if in_process {
-        if let Some((doc, exit)) = in_process::run(&st.hub, &argv).await {
-            timing.stage("cmd", Some("in process"), ran);
-            return timing.on(in_process_document(&doc, exit, fields.as_deref()));
-        }
-    }
     if let Some(failed) = make_folder(&file_out) {
         return failed;
     }
@@ -1367,6 +1396,15 @@ async fn route(st: &AppState, req: Request) -> Response {
         HeaderValue::from_str(&exit.to_string()).unwrap(),
     );
     timing.on(resp)
+}
+
+/// A read run in this process that did not end (it panicked).
+fn failed_in_process(err: &tokio::task::JoinError) -> Response {
+    error_response(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "runtime_error",
+        &format!("the command failed: {err}"),
+    )
 }
 
 /// The `--json` document of a command run in this process, answered as the child process prints it.
@@ -2089,5 +2127,28 @@ mod tests {
         assert!(limit.enter(Duration::from_secs(10)).await.is_none());
         drop((line, decoding));
         assert!(limit.enter(Duration::ZERO).await.is_some());
+    }
+
+    /// A read whose client went away keeps its place until it ends (#396, risk 2), so the reads running at once stay
+    /// within the limit.
+    #[tokio::test]
+    async fn a_read_keeps_its_place_after_its_client_is_gone() {
+        use std::time::Duration;
+        let limit = Line::new(Arc::new(Semaphore::new(1)), 1);
+        let place = limit.enter(Duration::ZERO).await.expect("a free place");
+        let (end, ended) = tokio::sync::oneshot::channel::<()>();
+        // the request, which its client gives up on while the read runs
+        let request = tokio::spawn(in_process::held(place, async move {
+            let _ = ended.await;
+        }));
+        tokio::task::yield_now().await;
+        request.abort();
+        let _ = request.await;
+        assert!(
+            limit.enter(Duration::from_millis(50)).await.is_none(),
+            "the place was given back while the read ran"
+        );
+        end.send(()).unwrap();
+        assert!(limit.enter(Duration::from_secs(10)).await.is_some());
     }
 }

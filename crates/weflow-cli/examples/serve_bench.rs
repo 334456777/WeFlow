@@ -24,10 +24,11 @@
 //! The real account is the one of `--home`, used as it is: point it at a copy of a real account's configuration. Its
 //! conversations are picked by message count (the biggest of the 60 latest, a group, a private chat) and only
 //! aggregate numbers are printed, never a conversation id, a name or a message. Each read is timed `--runs` times
-//! (default 10) through both routes; the table shows the median and the 95th percentile in milliseconds as the client
-//! sees them (connection included) and the size of the answer. A last row gives the server's CPU time per second
-//! while `/api/push/messages` is listened to (the engine looks for new messages every second), next to the idle
-//! one. Both accounts also time the reads that had no `/api/` route (issue #175), in a table of their own on the
+//! (default 10) through both routes; the table shows the median, the 95th percentile, the fastest and the slowest in
+//! milliseconds as the client sees them (connection included), how many were timed, and the size of the answer. A
+//! last row gives the server's CPU time per second while `/api/push/messages` is listened to (the engine looks for
+//! new messages every second), next to the idle one; below the table, the CPU time and the peak memory of the server
+//! process over all of these reads (the commands it runs as child processes are not counted). Both accounts also time the reads that had no `/api/` route (issue #175), in a table of their own on the
 //! synthetic one. `--save` writes the numbers to a JSON file;
 //! `--compare` reads such a file, adds a column with the ratio to it and fails when a median is more than
 //! `--tolerance` times (default 2) and more than 20 ms slower.
@@ -503,6 +504,56 @@ fn check_push(addr: &str, data: &Path, args: &Args) -> Result<f64> {
         "the message was pushed more than once"
     );
     Ok(ms)
+}
+
+/// The most memory the process has held so far (its peak resident set, or peak working set on Windows), in MiB; `None`
+/// where that cannot be read (macOS gives only the current size).
+fn peak_memory_mib(pid: u32) -> Option<f64> {
+    if cfg!(target_os = "linux") {
+        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+        let kib: f64 = status
+            .lines()
+            .find_map(|l| l.strip_prefix("VmHWM:"))?
+            .trim()
+            .trim_end_matches("kB")
+            .trim()
+            .parse()
+            .ok()?;
+        Some(kib / 1024.0)
+    } else if cfg!(windows) {
+        let out = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!("(Get-Process -Id {pid}).PeakWorkingSet64"),
+            ])
+            .output()
+            .ok()?;
+        let bytes: f64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
+        Some(bytes / (1024.0 * 1024.0))
+    } else {
+        None
+    }
+}
+
+/// What the server process itself used over the timed reads of the real account: the commands it ran as child
+/// processes are not counted.
+struct Resources {
+    cpu_ms: Option<f64>,
+    peak_memory_mib: Option<f64>,
+}
+
+impl Resources {
+    fn of(pid: u32, cpu_begin: Option<f64>) -> Self {
+        Self {
+            cpu_ms: cpu_begin.zip(cpu_ms(pid)).map(|(begin, end)| end - begin),
+            peak_memory_mib: peak_memory_mib(pid),
+        }
+    }
+
+    fn to_json(&self) -> Value {
+        json!({ "serverCpuMs": self.cpu_ms, "serverPeakMemoryMiB": self.peak_memory_mib })
+    }
 }
 
 /// CPU time the process has used so far, in milliseconds.
@@ -1084,22 +1135,45 @@ fn number(v: Option<&Value>) -> Option<i64> {
 struct Row {
     op: String,
     route: &'static str,
-    median: f64,
-    p95: f64,
+    spread: Spread,
     bytes: Option<usize>,
     note: String,
 }
 
-fn median_p95(mut ms: Vec<f64>) -> (f64, f64) {
-    ms.sort_by(f64::total_cmp);
-    let n = ms.len();
-    let median = if n % 2 == 1 {
-        ms[n / 2]
-    } else {
-        (ms[n / 2 - 1] + ms[n / 2]) / 2.0
-    };
-    let p95 = ms[((n as f64 * 0.95).ceil() as usize).clamp(1, n) - 1];
-    (median, p95)
+/// How the times of one read spread (#16, #257): the median and 95th percentile, the fastest and slowest, and how
+/// many were timed.
+#[derive(Clone, Copy)]
+struct Spread {
+    median: f64,
+    p95: f64,
+    min: f64,
+    max: f64,
+    n: usize,
+}
+
+impl Spread {
+    fn of(mut ms: Vec<f64>) -> Self {
+        ms.sort_by(f64::total_cmp);
+        let n = ms.len();
+        let median = if n % 2 == 1 {
+            ms[n / 2]
+        } else {
+            (ms[n / 2 - 1] + ms[n / 2]) / 2.0
+        };
+        let p95 = ms[((n as f64 * 0.95).ceil() as usize).clamp(1, n) - 1];
+        Self {
+            median,
+            p95,
+            min: ms[0],
+            max: ms[n - 1],
+            n,
+        }
+    }
+
+    /// A number measured once.
+    fn once(ms: f64) -> Self {
+        Self::of(vec![ms])
+    }
 }
 
 /// The conversations the reads are about.
@@ -1227,7 +1301,7 @@ impl Bench<'_> {
     fn push(&mut self, row: Row) {
         eprintln!(
             "{:<45} {:<3} median {:>8.1} ms  {}",
-            row.op, row.route, row.median, row.note
+            row.op, row.route, row.spread.median, row.note
         );
         self.rows.push(row);
     }
@@ -1272,7 +1346,7 @@ impl Bench<'_> {
             bytes = r.body.len();
             *statuses.entry(r.status).or_default() += 1;
         }
-        let (median, p95) = median_p95(ms);
+        let spread = Spread::of(ms);
         let mut note = if statuses.keys().eq([200].iter()) {
             String::new()
         } else {
@@ -1284,8 +1358,7 @@ impl Bench<'_> {
         self.push(Row {
             op: op.into(),
             route,
-            median,
-            p95,
+            spread,
             bytes: Some(bytes),
             note,
         });
@@ -1420,12 +1493,11 @@ impl Bench<'_> {
             walls.push(begin.elapsed().as_secs_f64() * 1000.0);
             failed += statuses.iter().filter(|s| **s != 200).count();
         }
-        let (median, p95) = median_p95(walls);
+        let spread = Spread::of(walls);
         self.push(Row {
             op: format!("{AT_ONCE} pages at once (all of them)"),
             route,
-            median,
-            p95,
+            spread,
             bytes: None,
             note: if failed > 0 {
                 format!("{failed} of {} not 200", self.runs * AT_ONCE as usize)
@@ -1458,10 +1530,10 @@ impl Bench<'_> {
             busy += statuses.iter().filter(|s| **s == 429).count();
             failed += statuses.iter().filter(|s| **s != 200 && **s != 429).count();
         }
-        let (median, p95) = median_p95(walls);
+        let spread = Spread::of(walls);
         let all = self.runs * n;
         let answered = (all - busy - failed) as f64 / self.runs as f64;
-        let mut note = format!("{:.0} answered a second", answered * 1000.0 / median);
+        let mut note = format!("{:.0} answered a second", answered * 1000.0 / spread.median);
         if busy > 0 {
             note.push_str(&format!("; {busy} of {all} refused (429)"));
         }
@@ -1471,8 +1543,7 @@ impl Bench<'_> {
         self.push(Row {
             op: format!("{op}, {n} at once (all of them)"),
             route,
-            median,
-            p95,
+            spread,
             bytes: None,
             note,
         });
@@ -1500,8 +1571,7 @@ impl Bench<'_> {
         self.push(Row {
             op: "push engine, CPU ms per second while listened to".into(),
             route: "api",
-            median: listening,
-            p95: listening,
+            spread: Spread::once(listening),
             bytes: None,
             note: format!(
                 "idle {idle:.1}; {pushed} events in {} s",
@@ -1528,12 +1598,11 @@ impl Bench<'_> {
             }
             // the mean size of one
             let bytes = bytes / ok.max(1);
-            let (median, p95) = median_p95(ms);
+            let spread = Spread::of(ms);
             this.push(Row {
                 op: op.into(),
                 route,
-                median,
-                p95,
+                spread,
                 bytes: Some(bytes),
                 note: format!("{ok}/{} ok", images.len()),
             });
@@ -1561,12 +1630,11 @@ impl Bench<'_> {
             walls.push(begin.elapsed().as_secs_f64() * 1000.0);
             ok += statuses.iter().filter(|s| **s == 200).count();
         }
-        let (median, p95) = median_p95(walls);
+        let spread = Spread::of(walls);
         self.push(Row {
             op: format!("{} images at once (all of them)", images.len()),
             route,
-            median,
-            p95,
+            spread,
             bytes: None,
             note: format!("{ok}/{} ok", self.runs * images.len()),
         });
@@ -1631,18 +1699,25 @@ impl Bench<'_> {
             ("video, 1 MB from its middle (each)", middle),
             ("thumbnail of the video (each)", thumbs),
         ] {
-            let (median, p95) = median_p95(ms);
+            let spread = Spread::of(ms);
             self.push(Row {
                 op: op.into(),
                 route: "api",
-                median,
-                p95,
+                spread,
                 bytes: None,
                 note: note.clone(),
             });
         }
         Ok(())
     }
+}
+
+/// The median, p95, min, max and n columns of a table row.
+fn spread_cells(s: &Spread) -> String {
+    format!(
+        "{:.1} | {:.1} | {:.1} | {:.1} | {}",
+        s.median, s.p95, s.min, s.max, s.n
+    )
 }
 
 fn key(row: &Row) -> String {
@@ -1719,6 +1794,7 @@ fn main() -> Result<()> {
         opened.status
     );
     let t = targets(addr)?;
+    let cpu_begin = cpu_ms(server.child.id());
 
     let mut bench = Bench {
         addr,
@@ -1727,24 +1803,21 @@ fn main() -> Result<()> {
             Row {
                 op: "server start (until it listens)".into(),
                 route: "-",
-                median: start_ms,
-                p95: start_ms,
+                spread: Spread::once(start_ms),
                 bytes: None,
                 note: "once".into(),
             },
             Row {
                 op: "first read after start (sessions, 50)".into(),
                 route: "api",
-                median: first.ms,
-                p95: first.ms,
+                spread: Spread::once(first.ms),
                 bytes: Some(first.body.len()),
                 note: "once".into(),
             },
             Row {
                 op: "first conversation opened after start (first page)".into(),
                 route: "api",
-                median: opened.ms,
-                p95: opened.ms,
+                spread: Spread::once(opened.ms),
                 bytes: Some(opened.body.len()),
                 note: "once".into(),
             },
@@ -1858,6 +1931,7 @@ fn main() -> Result<()> {
     }
     bench.videos(&t.videos)?;
     bench.push_cost(server.child.id())?;
+    let resources = Resources::of(server.child.id(), cpu_begin);
     drop(server);
 
     let baseline = match &args.compare {
@@ -1895,15 +1969,14 @@ fn main() -> Result<()> {
         args.runs
     );
     println!();
-    println!("| read | route | median | p95 | bytes | note |");
-    println!("|---|---|---:|---:|---:|---|");
+    println!("| read | route | median | p95 | min | max | n | bytes | note |");
+    println!("|---|---|---:|---:|---:|---:|---:|---:|---|");
     for row in &synthetic_candidates {
         println!(
-            "| {} | {} | {:.1} | {:.1} | {} | {} |",
+            "| {} | {} | {} | {} | {} |",
             row.op,
             row.route,
-            row.median,
-            row.p95,
+            spread_cells(&row.spread),
             row.bytes.map_or_else(|| "-".into(), |b| b.to_string()),
             row.note
         );
@@ -1920,12 +1993,12 @@ fn main() -> Result<()> {
         t.images.len()
     );
     println!();
-    print!("| read | route | median | p95 | bytes |");
+    print!("| read | route | median | p95 | min | max | n | bytes |");
     if baseline.is_some() {
         print!(" vs baseline |");
     }
     println!(" note |");
-    print!("|---|---|---:|---:|---:|");
+    print!("|---|---|---:|---:|---:|---:|---:|---:|");
     if baseline.is_some() {
         print!("---:|");
     }
@@ -1933,20 +2006,23 @@ fn main() -> Result<()> {
     let mut slower = Vec::new();
     for row in &bench.rows {
         print!(
-            "| {} | {} | {:.1} | {:.1} | {} |",
+            "| {} | {} | {} | {} |",
             row.op,
             row.route,
-            row.median,
-            row.p95,
+            spread_cells(&row.spread),
             row.bytes.map_or_else(|| "-".into(), |b| b.to_string())
         );
         if let Some(base) = &baseline {
             match base[key(row)]["median"].as_f64() {
                 Some(before) if before > 0.0 => {
-                    let ratio = row.median / before;
+                    let ratio = row.spread.median / before;
                     print!(" {ratio:.2}× |");
-                    if ratio > args.tolerance && row.median - before > NOISE_MS {
-                        slower.push(format!("{}: {before:.1} → {:.1} ms", key(row), row.median));
+                    if ratio > args.tolerance && row.spread.median - before > NOISE_MS {
+                        slower.push(format!(
+                            "{}: {before:.1} → {:.1} ms",
+                            key(row),
+                            row.spread.median
+                        ));
                     }
                 }
                 _ => print!(" - |"),
@@ -1955,6 +2031,16 @@ fn main() -> Result<()> {
         println!(" {} |", row.note);
     }
 
+    println!();
+    let shown = |v: Option<f64>, unit: &str| {
+        v.map_or_else(|| "-".to_string(), |v| format!("{v:.0} {unit}"))
+    };
+    println!(
+        "the server process over these reads (its child processes not counted): CPU {}, peak memory {}",
+        shown(resources.cpu_ms, "ms"),
+        shown(resources.peak_memory_mib, "MiB")
+    );
+
     if let Some(path) = &args.save {
         let results: serde_json::Map<String, Value> = bench
             .rows
@@ -1962,7 +2048,15 @@ fn main() -> Result<()> {
             .map(|r| {
                 (
                     key(r),
-                    json!({ "median": r.median, "p95": r.p95, "bytes": r.bytes, "note": r.note }),
+                    json!({
+                        "median": r.spread.median,
+                        "p95": r.spread.p95,
+                        "min": r.spread.min,
+                        "max": r.spread.max,
+                        "n": r.spread.n,
+                        "bytes": r.bytes,
+                        "note": r.note,
+                    }),
                 )
             })
             .collect();
@@ -1972,6 +2066,7 @@ fn main() -> Result<()> {
             "arch": std::env::consts::ARCH,
             "account": "real",
             "runs": args.runs,
+            "resources": resources.to_json(),
             "results": results,
         });
         std::fs::write(path, serde_json::to_vec_pretty(&doc)?)?;

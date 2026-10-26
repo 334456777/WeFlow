@@ -4,7 +4,7 @@
 
 `weflow serve` 把每条 CLI 命令都提供为 HTTP 接口。路径就是命令路径，参数就是命令的选项，返回的就是终端看到的内容：`GET /config/list` 返回的正是 `weflow --json config list` 的输出。设计与计划见 issue #131。
 
-桌面端的 HTTP API（`/api/v1/*`、SSE 推送）是另一个服务，用 `weflow serve --desktop` 启动，见 [HTTP-API.md](HTTP-API.md)。请求在服务内部各层如何执行，见 [serve-architecture.md](serve-architecture.md)。
+桌面端的 HTTP API（`/api/v1/*`、SSE 推送）是另一个服务，用 `weflow serve --desktop` 启动，见 [HTTP-API.md](HTTP-API.md)。
 
 ## 启动
 
@@ -213,7 +213,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 
 为了不让机器卡住，有两个上限：任务（`POST` 命令：导出、取钥、备份、报告等）一次只运行一个（`--max-tasks`），其他命令最多同时运行与 CPU 核数相同的数量（`--max-reads`）。不带 `/api/` 的路由每个请求都要启动一个进程，超出上限的直接请求不会排队等待，而是返回 `429`，错误码为 `busy`，并带 `Retry-After`（任务为 5 秒，其他为 1 秒）。超出上限的作业在队列里等待（`queued`），有空位时开始运行。
 
-[`/api/` 的读取](#进程内读取)和它们共用 `--max-reads`，但超出上限时会排队等位置：网页会同时发出好几个请求，而每个只要几毫秒。只有已有 256 个请求在排队，或者一个请求已经等了 10 秒，才返回 `429`（`busy`，`Retry-After: 1`）。`/api/` 的媒体路由有自己的上限和队列（`--max-media`，见[媒体](#媒体)），所以一屏图片不会挡住读取。
+[`/api/` 的读取](#进程内读取)和它们共用 `--max-reads`，但超出上限时会排队等位置：网页会同时发出好几个请求，而每个只要几毫秒。只有已有 256 个请求在排队，或者一个请求已经等了 10 秒，才返回 `429`（`busy`，`Retry-After: 1`）。`/api/` 的媒体路由有自己的上限和队列（`--max-media`，见[媒体](#媒体)），所以一屏图片不会挡住读取。客户端在回复前断开时，读取无法中途停下，会一直运行到结束，并在此之前一直占着位置，所以上限统计的是所有仍在运行的读取。
 
 | 同时请求同一项读取（消息第一页，大账号，16 核） | `/api/<路径>` | `/<路径>` |
 |---|---:|---:|
@@ -282,7 +282,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 ## 进程内读取
 
-`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`chat resources`、`chat image-info`、`group members`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（同一套解析、同一个处理函数，有测试逐字节比较），只是更快：
+`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`chat resources`、`chat image-info`、`group members`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（请求不经命令行，直接读成命令执行的同一个类型化读取；有测试逐字节比较两者，还有测试核对参数的读法与命令一致；命令会拒绝的请求按不带 `/api/` 的路由执行，所以报错与终端相同），只是更快：
 
 | 读取（大账号，Windows） | `/<路径>` | `/api/<路径>` |
 |---|---|---|

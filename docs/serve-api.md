@@ -4,7 +4,7 @@
 
 `weflow serve` makes every CLI command available over HTTP. The path is the command path, the parameters are the command's options, and the answer is what the terminal gets: `GET /config/list` returns exactly what `weflow --json config list` prints. Design and plans: issue #131.
 
-The desktop app's HTTP API (`/api/v1/*`, SSE push) is a separate server started with `weflow serve --desktop`; see [HTTP-API.md](HTTP-API.md). How requests run inside the server, layer by layer: [serve-architecture.md](serve-architecture.md).
+The desktop app's HTTP API (`/api/v1/*`, SSE push) is a separate server started with `weflow serve --desktop`; see [HTTP-API.md](HTTP-API.md).
 
 ## Starting
 
@@ -213,7 +213,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 
 Two limits keep the machine responsive: tasks (`POST` commands: exports, keys, backups, reports, …) run one at a time (`--max-tasks`), other commands up to one per CPU at once (`--max-reads`). A direct request over the limit through a route without `/api/`, which starts a process, is not kept waiting: it answers `429` with the error code `busy` and `Retry-After` (5 seconds for tasks, 1 otherwise). A job over the limit waits in the queue (`queued`) and starts when a place is free.
 
-The [`/api/` reads](#in-process-reads) share `--max-reads` with them, but a request over it waits in line for a place: a page asks for several at once, and each takes a few milliseconds. Only when 256 are already waiting, or one has waited 10 seconds, does it answer `429` (`busy`, `Retry-After: 1`). The `/api/` media routes have a limit and a line of their own (`--max-media`, see [Media](#media)), so a screen of images does not hold up the reads.
+The [`/api/` reads](#in-process-reads) share `--max-reads` with them, but a request over it waits in line for a place: a page asks for several at once, and each takes a few milliseconds. Only when 256 are already waiting, or one has waited 10 seconds, does it answer `429` (`busy`, `Retry-After: 1`). The `/api/` media routes have a limit and a line of their own (`--max-media`, see [Media](#media)), so a screen of images does not hold up the reads. A read whose client goes away before the answer runs to its end, as it cannot be stopped halfway, and keeps its place until then: the limits count every read still running.
 
 | The same read asked for at once (first page of messages, large account, 16 CPUs) | `/api/<path>` | `/<path>` |
 |---|---:|---:|
@@ -282,7 +282,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 ## In-process reads
 
-`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `chat dates`, `chat date-counts`, `chat detail` (with `fast=true`), `chat resources`, `chat image-info`, `group members`, `sns timeline` (without `with-media`), `sns users`, `sns stats`, `sns post-counts`. Parameters, answer, status code and headers are those of the same path without `/api/` (the same parsing and the same handler; a test compares them byte for byte), only faster:
+`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `chat dates`, `chat date-counts`, `chat detail` (with `fast=true`), `chat resources`, `chat image-info`, `group members`, `sns timeline` (without `with-media`), `sns users`, `sns stats`, `sns post-counts`. Parameters, answer, status code and headers are those of the same path without `/api/` (the request is read into the same typed read the command runs, without a command line; a test compares them byte for byte, another that the parameters are read as the command reads them; a request the command would refuse runs as the route without `/api/` does, so its error is the terminal's), only faster:
 
 | Read (large account, Windows) | `/<path>` | `/api/<path>` |
 |---|---|---|
