@@ -1068,9 +1068,403 @@ mod tests {
         assert!(
             kept == now,
             "web/contract/openapi.json is not the contract the code answers with; rewrite it with \
-             `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot`, then \
+             `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_`, then \
              `bun run contract` in web/"
         );
+    }
+
+    /// One answer or more of each type of the contract, from fixed rows: what `web/contract/samples.json` keeps for
+    /// the WebUI's tests (#400), which hand them to the page's own code. Each says something a client may get wrong:
+    /// an id past 2^53 or past i64, a row that does not say who sent it, a day that turns at midnight, a page that
+    /// ends or goes on, an optional field left out, a job in each state.
+    fn samples() -> Value {
+        use weflow_core::contract::*;
+        use weflow_native::native_msg::MsgPos;
+
+        let rows = [
+            json!({ "local_id": 1, "server_id": "9007199254740993", "create_time": 1700000000, "local_type": 1,
+                "sort_seq": 1700000000000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content": "hello",
+                "db_name": "message_0" }),
+            json!({ "local_id": 2, "server_id": "18446744073709551615", "create_time": 1700000060, "local_type": 49,
+                "sort_seq": 1700000060000i64, "is_send": 1, "message_content":
+                "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen>\
+                 <fileext>pdf</fileext></appattach></appmsg></msg>", "db_name": "message_0" }),
+            json!({ "local_id": 3, "server_id": "0", "create_time": 1700000120, "local_type": 49,
+                "sort_seq": 1700000120000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content":
+                "<msg><appmsg><type>57</type><title>yes</title><refermsg><type>1</type>\
+                 <displayname>Me</displayname><content>are you there?</content></refermsg></appmsg></msg>",
+                "db_name": "message_0" }),
+            // the last second of 2023 in UTC, and a row that says neither who sent it nor whether I did
+            json!({ "local_id": 4, "server_id": "0", "create_time": 1704067199, "local_type": 10000,
+                "sort_seq": 1704067199000i64, "message_content": "\"Bob\" 撤回了一条消息", "db_name": "message_1" }),
+            // the next second, in another database, with the same sort_seq as the row before
+            json!({ "local_id": 1, "server_id": "9007199254740995", "create_time": 1704067200, "local_type": 3,
+                "sort_seq": 1704067199000i64, "is_send": 1, "sender_username": "wxid_me", "message_content":
+                "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>", "db_name": "message_2" }),
+        ];
+        let cursor = |row: &Value| MsgPos::of_row(row).unwrap().token();
+        let parsed: Vec<ParsedMessage> = weflow_core::chat_msg::map_rows(&rows, "wxid_me")
+            .into_iter()
+            .zip(&rows)
+            .enumerate()
+            .map(|(i, (message, row))| ParsedMessage {
+                message,
+                cursor: Some(cursor(row)),
+                // the first is a hit of `chat search`
+                session_id: (i == 0).then(|| "wxid_bob".to_string()),
+            })
+            .collect();
+
+        let session = Session {
+            username: "wxid_bob".into(),
+            kind: 1,
+            unread_count: 2,
+            summary: "hello".into(),
+            sort_timestamp: 1700000120,
+            last_timestamp: 1700000120,
+            last_msg_type: 1,
+            message_count_hint: Some(3),
+            display_name: "Bob".into(),
+            self_wxid: "wxid_me".into(),
+            avatar_url: Some("https://example.com/bob.png".into()),
+            ..Session::default()
+        };
+        let group = Session {
+            username: "room1@chatroom".into(),
+            kind: 2,
+            summary: "ok".into(),
+            sort_timestamp: 1704067200,
+            last_timestamp: 1704067200,
+            last_msg_type: 1,
+            display_name: "Project Room".into(),
+            last_msg_sender: Some("wxid_bob".into()),
+            last_sender_display_name: Some("Bob in room".into()),
+            self_wxid: "wxid_me".into(),
+            ..Session::default()
+        };
+        // an official account WeChat lists without a conversation
+        let official = Session {
+            username: "gh_news".into(),
+            summary: "查看公众号历史消息".into(),
+            display_name: "News".into(),
+            self_wxid: "wxid_me".into(),
+            ..Session::default()
+        };
+
+        let contact = |username: &str, display_name: &str, kind| Contact {
+            username: username.into(),
+            display_name: display_name.into(),
+            remark: None,
+            nickname: None,
+            alias: None,
+            labels: None,
+            detail_description: None,
+            region: None,
+            kind,
+            avatar_url: None,
+        };
+        let contacts = [
+            Contact {
+                remark: Some("Bobby".into()),
+                nickname: Some("Bob".into()),
+                alias: Some("bobby_id".into()),
+                labels: Some(vec!["Family".into()]),
+                region: Some("广东 深圳".into()),
+                ..contact("wxid_bob", "Bobby", ContactKind::Friend)
+            },
+            contact("room1@chatroom", "Project Room", ContactKind::Group),
+            contact("wxid_gone", "wxid_gone", ContactKind::FormerFriend),
+        ];
+
+        let image = weflow_core::message::ExportMsg {
+            local_id: 4,
+            server_id_raw: Some("9007199254740995".into()),
+            create_time: 1700000180,
+            local_type: 3,
+            content: "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>".into(),
+            sender_username: "wxid_bob".into(),
+            image_md5: Some("aabbccddeeff00112233445566778899".into()),
+            ..Default::default()
+        };
+        let file = weflow_core::message::ExportMsg {
+            local_id: 2,
+            server_id_raw: Some("18446744073709551615".into()),
+            create_time: 1700000060,
+            local_type: 49,
+            content: rows[1]["message_content"].as_str().unwrap().into(),
+            sender_username: "wxid_me".into(),
+            is_send: true,
+            file_name: Some("report.pdf".into()),
+            file_ext: Some("pdf".into()),
+            file_size: Some(2048),
+            ..Default::default()
+        };
+        let resource = |m: &weflow_core::message::ExportMsg, sort_seq: i64, kind| Resource {
+            message: MessageView::of(m, "wxid_me"),
+            cursor: format!(
+                "{}:wxid_bob",
+                MsgPos {
+                    sort_seq,
+                    create_time: m.create_time,
+                    local_id: m.local_id,
+                    shard: 0,
+                }
+                .token()
+            ),
+            session_display_name: "Bob".into(),
+            session_id: "wxid_bob".into(),
+            resource_type: kind,
+        };
+        let newest = resource(&image, 1700000180000, ResourceKind::Image);
+        let next_cursor = Some(newest.cursor.clone());
+        let pages = [
+            // the first page of one, more to come
+            ResourcePage {
+                items: vec![newest],
+                has_more: true,
+                next_cursor,
+            },
+            // the last page
+            ResourcePage {
+                items: vec![resource(&file, 1700000060000, ResourceKind::File)],
+                has_more: false,
+                next_cursor: None,
+            },
+            ResourcePage {
+                items: vec![],
+                has_more: false,
+                next_cursor: None,
+            },
+        ];
+        let lookups = [
+            MessageLookup {
+                row: rows[0].clone(),
+                message: Some(MessageView::of(&image, "wxid_me")),
+            },
+            MessageLookup {
+                row: json!({ "local_id": 9, "local_type": 1 }),
+                message: None,
+            },
+        ];
+
+        let error = |code: &str, message: &str, details| weflow_core::error::ErrorPayload {
+            code: code.into(),
+            message: message.into(),
+            details,
+        };
+        let errors = [
+            error(
+                "invalid_arguments",
+                "`chat messages` needs `session-id`",
+                Some(json!({ "usage": "weflow chat messages --session-id <SESSION_ID>" })),
+            ),
+            error(
+                "runtime_error",
+                "the video has no thumbnail or cover",
+                Some(json!({ "failureKind": "not_found" })),
+            ),
+            error("busy", "too many reads at once", None),
+        ];
+
+        use super::super::jobs::{JobFile, JobView, Status};
+        let job = |id: &str, status| JobView {
+            id: id.into(),
+            status,
+            command: [
+                "weflow",
+                "--json",
+                "--progress",
+                "export",
+                "messages",
+                "--session-id",
+                "wxid_bob",
+            ]
+            .map(String::from)
+            .into(),
+            // milliseconds, unlike the times of messages
+            created_at: 1700000000000,
+            started_at: None,
+            finished_at: None,
+            exit_code: None,
+            http_status: None,
+            progress: None,
+            file: None,
+            result: None,
+        };
+        let jobs = [
+            job("a1b2c3d4e5f60001", Status::Queued),
+            JobView {
+                started_at: Some(1700000000500),
+                progress: Some(
+                    json!({ "type": "progress", "stage": "messages", "current": 1, "total": 3 }),
+                ),
+                ..job("a1b2c3d4e5f60002", Status::Running)
+            },
+            JobView {
+                started_at: Some(1700000000500),
+                finished_at: Some(1700000003000),
+                exit_code: Some(0),
+                http_status: Some(200),
+                progress: Some(
+                    json!({ "type": "progress", "stage": "messages", "current": 3, "total": 3 }),
+                ),
+                // a path without a file name
+                file: Some(JobFile {
+                    name: None,
+                    size: Some(5120),
+                }),
+                result: Some(json!({ "success": true, "data": { "count": 3 } })),
+                ..job("a1b2c3d4e5f60003", Status::Succeeded)
+            },
+            JobView {
+                started_at: Some(1700000000500),
+                finished_at: Some(1700000001000),
+                exit_code: Some(4),
+                http_status: Some(501),
+                result: Some(json!({ "success": false, "error": errors[2] })),
+                ..job("a1b2c3d4e5f60004", Status::Failed)
+            },
+            // cancelled while it waited for a place
+            JobView {
+                finished_at: Some(1700000000200),
+                http_status: Some(499),
+                result: Some(super::super::jobs::cancelled_result()),
+                ..job("a1b2c3d4e5f60005", Status::Cancelled)
+            },
+        ];
+
+        json!({
+            "ParsedMessage": parsed,
+            "Session": [session, group, official],
+            "Contact": contacts,
+            "ResourcePage": pages,
+            "MessageLookup": lookups,
+            "Error": errors,
+            "Job": jobs,
+        })
+    }
+
+    /// `web/contract/samples.json` is what [`samples`] answers. Rewrite it with
+    /// `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_`.
+    #[test]
+    fn contract_samples_are_current() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../web/contract/samples.json");
+        let now = serde_json::to_string_pretty(&samples()).unwrap() + "\n";
+        if std::env::var_os("WEFLOW_UPDATE_CONTRACT").is_some() {
+            std::fs::write(&path, now).unwrap();
+            return;
+        }
+        let kept = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert!(
+            kept == now,
+            "web/contract/samples.json is not what the contract's types answer; rewrite it with \
+             `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_`"
+        );
+    }
+
+    /// The errors of `value` against the schema `name` of the contract's components, as `path: error`.
+    fn misfits(name: &str, value: &Value) -> Vec<String> {
+        let root = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": format!("#/components/schemas/{name}"),
+            "components": contract_document()["components"],
+        });
+        let validator = jsonschema::validator_for(&root).unwrap();
+        validator
+            .iter_errors(value)
+            .map(|e| format!("{}: {e}", e.instance_path()))
+            .collect()
+    }
+
+    /// Each sample fits its schema, and breaking what a client relies on makes it not fit: the contract's schemas
+    /// say enough to catch a change of the answers (#400).
+    #[test]
+    fn the_samples_fit_the_contract_and_broken_ones_do_not() {
+        let samples = samples();
+        for (name, values) in samples.as_object().unwrap() {
+            for value in values.as_array().unwrap() {
+                assert_eq!(
+                    misfits(name, value),
+                    Vec::<String>::new(),
+                    "{name}: {value}"
+                );
+            }
+        }
+        let broken = |name: &str, i: usize, change: &dyn Fn(&mut Value)| {
+            let mut value = samples[name][i].clone();
+            change(&mut value);
+            let errors = misfits(name, &value);
+            assert!(!errors.is_empty(), "{name} fits when broken: {value}");
+        };
+        // an id as a number would lose its last digits in JavaScript
+        broken("ParsedMessage", 0, &|v| {
+            v["serverId"] = json!(9007199254740993u64)
+        });
+        // the cursor of a page is what the next page is asked from
+        broken("ParsedMessage", 0, &|v| v["_cursor"] = json!(1));
+        broken("ParsedMessage", 1, &|v| {
+            v.as_object_mut().unwrap().remove("messageKey");
+        });
+        // an optional field is left out, never null; a nullable one is there
+        broken("ParsedMessage", 1, &|v| v["fileName"] = Value::Null);
+        broken("ParsedMessage", 3, &|v| {
+            v.as_object_mut().unwrap().remove("isSend");
+        });
+        broken("ParsedMessage", 0, &|v| v["isSend"] = json!(false));
+        // times are whole seconds
+        broken("ParsedMessage", 0, &|v| {
+            v["createTime"] = json!("2023-11-14")
+        });
+        broken("ParsedMessage", 0, &|v| {
+            v["createTime"] = json!(1700000000.5)
+        });
+        broken("Session", 0, &|v| v["avatarUrl"] = Value::Null);
+        broken("Session", 2, &|v| {
+            v.as_object_mut().unwrap().remove("sortTimestamp");
+        });
+        broken("Contact", 0, &|v| v["type"] = json!("stranger"));
+        broken("Contact", 0, &|v| v["labels"] = json!("Family"));
+        // a page says whether more follow and where they start
+        broken("ResourcePage", 1, &|v| {
+            v.as_object_mut().unwrap().remove("nextCursor");
+        });
+        broken("ResourcePage", 0, &|v| v["hasMore"] = json!(1));
+        broken("ResourcePage", 0, &|v| {
+            v["items"][0]["resourceType"] = json!("emoji")
+        });
+        broken("ResourcePage", 0, &|v| {
+            v["items"][0].as_object_mut().unwrap().remove("_cursor");
+        });
+        broken("ResourcePage", 0, &|v| {
+            v["items"][0]["serverId"] = json!(9007199254740995u64)
+        });
+        broken("MessageLookup", 1, &|v| {
+            v.as_object_mut().unwrap().remove("message");
+        });
+        broken("Error", 0, &|v| {
+            v.as_object_mut().unwrap().remove("code");
+        });
+        broken("Job", 0, &|v| v["status"] = json!("done"));
+        broken("Job", 0, &|v| {
+            v.as_object_mut().unwrap().remove("file");
+        });
+        broken("Job", 2, &|v| v["file"]["size"] = json!(-1));
+        broken("Job", 2, &|v| v["finishedAt"] = json!("1700000003000"));
+    }
+
+    /// The WebUI asks for the API the server answers with, and its types are those of this API's contract.
+    #[test]
+    fn the_webui_and_the_contract_have_the_server_s_api_version() {
+        let text = |path: &str| {
+            std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
+                .unwrap()
+        };
+        let package: Value = serde_json::from_str(&text("../../web/package.json")).unwrap();
+        assert_eq!(package["weflow"]["apiVersion"], API_VERSION);
+        assert_eq!(contract_document()["info"]["version"], API_VERSION);
     }
 
     #[test]

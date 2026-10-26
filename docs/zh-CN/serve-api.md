@@ -233,14 +233,15 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 - 会写入微信数据库、因而总被命令以 `501` 拒绝的操作（`chat update-message`、`chat delete-message`、`chat anti-revoke install/uninstall`、带 `install` 或 `uninstall` 的 `sns block-delete`、`sns delete`）带有 `"x-weflow-refused": true`，客户端可以不提供它们。
 - `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
 - 响应描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`。WebUI 常用的几个读取还描述了 `data` 的结构（#399）：`chat sessions`、`chat messages`、`chat search`、`chat latest`、`chat message`、`chat contacts` 和 `chat resources`，类型放在 `components/schemas` 下（`Session`、`ParsedMessage`、`Contact`、`ResourcePage` 等），`Job` 和 `Error` 也一样。这些类型就是命令回复所用的 Rust 结构体（`weflow_core::contract`），所以描述不会和回复脱节。类型的说明是英文的。时间除非字段另有说明，都是 Unix 秒；可能超过 2^53 的微信 ID 用字符串；没有内容的可选字段直接省略，可为空的字段则为 `null`。微信自己的表的原始行（不带 `parsed` 时）是 `Row`，一个列由微信决定的对象。其他命令的 `data` 暂不描述。
-- `web/contract/openapi.json` 只保存这些类型，不含帮助文字，也不含任何与构建相关的内容；WebUI 的类型由它生成（见 web/README.zh-CN.md）。它与代码的回复不一致时，有测试会失败；改了类型之后，用 `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot` 重新生成。
+- `web/contract/openapi.json` 只保存这些类型，不含帮助文字，也不含任何与构建相关的内容；WebUI 的类型由它生成（见 web/README.zh-CN.md）。它与代码的回复不一致时，有测试会失败；改了类型之后，用 `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_` 重新生成，同时会重新生成 `web/contract/samples.json`。
+- 契约从两边测试（#400）。`web/contract/samples.json` 里是 weflow-cli 用固定的行构造的各类回复样本，每个都带着客户端可能读错的边界：超过 2^53 和超过 i64 的 ID、没写发送者的行、跨过午夜的日期、两个数据库里相同的 `sort_seq`、还有下一页和已到最后一页的分页、各种状态的任务；WebUI 的测试把它们交给网页自己的代码处理。weflow-cli 有测试拿快照的 schema 校验这些样本，并确认改坏它们（ID 写成数字、可选字段写成 `null`、去掉游标、未知的状态）后校验会失败。`answers_fit_the_contract`（tests/serve_api.rs）在消息分布于三个数据库的账号上，校验运行中的服务端在进程内和子进程里给出的回复；从游标向前、向后翻完消息和资源，确认每条只出现一次；并用 `Failure` 校验失败的回复，用 `Job` 校验任务。契约描述的是完整的回复：`fields` 会去掉没要的键；带不带 `parsed` 的回复也都符合 `Row`，所以测试单独校验解析后的结构。
 - `/health`、`/health/events`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `2`（解析过的消息的 `serverId` 改为字符串之前是 `1`，#399）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
+客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `2`（解析过的消息的 `serverId` 改为字符串之前是 `1`，#399）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
 
 ```json
 {"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41",
@@ -273,7 +274,7 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 
 ### 时间花在哪里
 
-每个响应都带 `Server-Timing` 头，浏览器的开发者工具会在请求旁边显示：`cmd` 是执行命令的时间，`desc="in process"` 表示在服务进程内执行，`desc="child process"` 表示在子进程执行；`wait` 是 `/api/` 请求排队等位置的时间（见[并发限制](#并发限制)）；`total` 是请求在服务端的全部时间，从收到请求到发出响应头（事件流则到它开始）。从 `localhost` 打开的网页还会收到 `Timing-Allow-Origin`，脚本可以在 `performance.getEntriesByType("resource")` 里读到这些阶段。
+每个响应都带 `Server-Timing` 头，浏览器的开发者工具会在请求旁边显示：`cmd` 是执行命令的时间，`desc="in process"` 表示在服务进程内执行，`desc="child process"` 表示在子进程执行，`desc="refused in process"` 表示命令行不接受这些参数、由服务进程直接报错（见[进程内读取](#进程内读取)）；`wait` 是 `/api/` 请求排队等位置的时间（见[并发限制](#并发限制)）；`total` 是请求在服务端的全部时间，从收到请求到发出响应头（事件流则到它开始）。从 `localhost` 打开的网页还会收到 `Timing-Allow-Origin`，脚本可以在 `performance.getEntriesByType("resource")` 里读到这些阶段。
 
 ```text
 Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";dur=3.1, total;dur=3.4
@@ -310,6 +311,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - `chat contacts` 带 `parsed=true`（`--parsed`）时，按桌面应用的样子返回通讯录，而不是数据库的原始行：只含好友、群聊、公众号和曾经的好友，每一项带 `type`（`friend`、`group`、`official`、`former_friend`）、`displayName`（备注，没有则昵称，再没有则微信号）、`remark`、`nickname`、`alias`、`labels`、`region`、`detailDescription`（签名）和 `avatarUrl`，最近聊过的排在前面。`export contacts` 也接受 `parsed=true`，导出这份列表而不是原始行；再加 `kind`（可重复：`friend`、`group`、`official`、`former_friend`）可以只导出这几类。
 - `chat search` 的每条结果都带上所在消息的 `_cursor`（`_session_id` 照旧）：拿它传 `before` 和 `after`，就能读到这条结果前后的消息。带 `parsed=true`（`--parsed`）时，结果按 `chat messages` 的方式解析。
 - 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
+- 命令行不接受的参数（缺少必填项、该是数字的不是数字、同一个参数给了两次等）由服务进程直接回复终端会打印的那条错误（`invalid_arguments`，`400`），与不带 `/api/` 的路由回复的相同，但不起子进程：约 0.3 ms，原来约 30 ms（#432）。命令行接受、进程内读取却不接受的请求（少见的位置参数顺序）按不带 `/api/` 的路由在子进程里执行。
 - 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。
 - 配置文件变化后（`PUT /config/set`、切换配置档案、用 `config_path` 换一个配置文件），下一个请求会重新读取。判断是否变化看文件的修改时间和大小；写入后的几秒内还会比对内容，因为在时间精度较粗的文件系统上（FAT 是 2 秒），两次写入的修改时间可能相同，而两个名字一样长的档案，文件大小也相同。
 - 服务刚启动时，以及配置变化之后，会在后台同时打开聊天页面要用的数据库：会话、联系人、头像、图片链接、搜索索引、消息和语音。每个数据库第一次打开都要先派生密钥（约 0.1 秒），否则最初的几次读取要等它们用到的每个库。在大账号上，预热半秒内完成；之后第一次读取会话列表约 12 ms，原来约 440 ms；如果启动后立即请求，约 240 ms。
@@ -329,7 +331,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 ```
 
 - 加上 `thumb=true`（即命令的 `--thumb`）时，返回微信自己保存的图片缩略图，只有几 KB，适合列表；没有缩略图时返回原图。在大账号上，一张缩略图约 2 ms，大小约为原图的五分之一。
-- 一张图片微信最多保存三个文件：聊天里显示的缩略图（`<md5>_t.dat`），点开时显示的图片（`<md5>.dat`），以及点「查看原图」后下载的原图（`<md5>_h.dat`）。用 `variant` 选择其中一个：`best`（默认，本机现有的最好的一个）、`thumb`（与 `thumb=true` 相同）、`normal`（点开时的图片，没有时取现有最好的）、`hd`（原图，微信没下载时返回 `404`，`failureKind: not_found`）。`GET /api/chat/image-info`（`chat image-info`）给出本机有哪几个（`thumb`、`normal`、`hd`），以及消息里记录的大小（`normalBytes`、`hdBytes`，单位字节；原图没下载时也有），供网页判断能不能显示原图。
+- 一张图片微信最多保存三个文件：聊天里显示的缩略图（`<md5>_t.dat`），点开时显示的图片（`<md5>.dat`），以及点「查看原图」后下载的原图（`<md5>_h.dat`）。用 `variant` 选择其中一个：`best`（默认，本机现有的最好的一个）、`thumb`（与 `thumb=true` 相同）、`normal`（点开时的图片，没有时取现有最好的）、`hd`（原图，微信没下载时返回 `404`，`failureKind: not_found`）。本机一个文件都没有的图片，不论选哪个都返回 `404`（`failureKind: not_found`）。`GET /api/chat/image-info`（`chat image-info`）给出本机有哪几个（`thumb`、`normal`、`hd`），以及消息里记录的大小（`normalBytes`、`hdBytes`，单位字节；原图没下载时也有），供网页判断能不能显示原图。
 - 视频加上 `thumb=true` 时，返回微信保存的视频缩略图，没有时返回封面。视频不解码：边从微信的视频文件夹读边发送，只读请求的那一段，所以再长的视频也不占内存，播放器拖动进度时能立即开始：在大账号上，视频的第一个 1 MB 约 4.5 ms，从中间取 1 MB 约 3.5 ms。微信还没下载的视频返回 `404`（`failureKind: not_found`），要先在微信里打开它。
 - 回复带 `ETag`（视频的 `ETag` 由文件的大小和修改时间得出）和 `Cache-Control: private, max-age=3600`。带 `If-None-Match` 再次请求时，如果内容没变，返回 `304`，不带文件。
 - 可以用 `Range: bytes=…` 只取文件的一部分，`<audio>` 播放器就是这样请求的：返回 `206` 并带 `Content-Range`；起点超出文件末尾时返回 `416`。请求多个区间，或 `If-Range` 指的是文件的另一个版本时，返回整个文件。

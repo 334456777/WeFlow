@@ -1171,6 +1171,40 @@ fn key_db_ends_by_itself_when_its_stdin_ends() {
     assert_eq!(status.code(), Some(130));
 }
 
+/// An `/api/` request with parameters the command line refuses gets clap's error from the server's process, the one
+/// the route without `/api/` answers from a child process, without starting one (#432).
+#[test]
+fn usage_errors_are_answered_in_process() {
+    let root = temp_root("usage-errors");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    for target in [
+        "/chat/messages",
+        "/chat/messages?session-id=wxid_bob&limit=many",
+        "/chat/messages?session-id=wxid_bob&limit=1&limit=2",
+        "/sns/timeline?limit=x",
+        "/group/members",
+    ] {
+        let own = server.call("GET", &format!("/api{target}"), "");
+        let child = server.call("GET", target, "");
+        assert_eq!(
+            (own.status, &own.body),
+            (child.status, &child.body),
+            "{target}"
+        );
+        assert_eq!(own.status, 400, "{target}: {}", own.body);
+        assert_eq!(own.json()["error"]["code"], "invalid_arguments");
+        for h in ["x-weflow-exit-code", "x-weflow-error-code"] {
+            assert_eq!(own.headers.get(h), child.headers.get(h), "{target} {h}");
+        }
+        let timing = &own.headers["server-timing"];
+        assert!(
+            timing.contains("cmd;desc=\"refused in process\""),
+            "{target}: {timing}"
+        );
+    }
+}
+
 #[test]
 fn answers_tell_where_the_time_went() {
     let root = temp_root("timing");
@@ -2695,7 +2729,7 @@ fn reads_fail_the_same_in_process_and_in_a_child() {
         "/chat/messages?session-id=wxid_bob&bogus=1",
         "/chat/sessions?parsed=maybe",
         // the command itself refuses
-        "/chat/message?session-id=wxid_bob",
+        "/sns/timeline?limit=x",
         "/chat/resources?before=1.2.3",
     ] {
         let r = same("GET", target, with_token);
@@ -2921,4 +2955,250 @@ fn a_job_is_cancelled_once_and_then_forgotten() {
         server.call("DELETE", &format!("/jobs/{id}"), "").status,
         404
     );
+}
+
+/// The contract the WebUI is built against (#399).
+fn contract() -> Value {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../web/contract/openapi.json"
+    ))
+    .unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
+/// The errors of `value` against `schema`, whose `$ref`s point into the contract's components, as `path: error`.
+fn misfits(contract: &Value, schema: &Value, value: &Value) -> Vec<String> {
+    let mut root = schema.clone();
+    root["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
+    root["components"] = contract["components"].clone();
+    let validator = jsonschema::validator_for(&root).unwrap();
+    validator
+        .iter_errors(value)
+        .map(|e| format!("{}: {e}", e.instance_path()))
+        .collect()
+}
+
+/// The answers of the routes the contract describes fit it as the server sends them, from its own process and from a
+/// child, over an account whose messages lie in three databases with keys that tie; pages walked from their cursors
+/// list each message once; failures fit `Failure` and jobs `Job` (#400).
+#[test]
+fn answers_fit_the_contract() {
+    use weflow_native::fixture::{MsgSpec, DAY, T0};
+    let root = temp_root("contract");
+    let home = account_home_with(&root, |f| {
+        f.message_shard(
+            2,
+            &[(
+                "wxid_bob",
+                vec![
+                    // the very time of the second database's message 5
+                    MsgSpec::text(6, "wxid_bob", T0 + 4 * DAY, "same time"),
+                    MsgSpec::text(
+                        7,
+                        "wxid_me",
+                        T0 + 5 * DAY,
+                        "<msg><appmsg><type>6</type><title>plan.pdf</title><appattach><totallen>2048</totallen>\
+                         <fileext>pdf</fileext></appattach></appmsg></msg>",
+                    )
+                    .of_type(49),
+                    // a row that does not say who sent it
+                    MsgSpec::text(8, "", T0 + 5 * DAY + 1, "\"Bob\" recalled a message")
+                        .of_type(10000),
+                ],
+            )],
+        );
+    });
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let component = |name: &str| json!({ "$ref": format!("#/components/schemas/{name}") });
+    let list_of = |name: &str| json!({ "type": "array", "items": component(name) });
+    let answer_schema = |route: &str, status: &str| {
+        let schema = contract["paths"][route]["get"]["responses"][status]["content"]
+            ["application/json"]["schema"]
+            .clone();
+        assert!(
+            schema.is_object(),
+            "{route} {status} is not in the contract"
+        );
+        schema
+    };
+    let check = |what: &str, schema: &Value, value: &Value| {
+        let errors = misfits(&contract, schema, value);
+        assert!(errors.is_empty(), "{what}: {errors:#?}\n{value}");
+    };
+    // the `data` of `target`, in the process and from a child, both fitting the route's answer and, where the route
+    // answers one of several shapes, `shape`: a parsed message fits `Row` too
+    let read = |target: &str, shape: Option<Value>| -> Value {
+        let route = target.split('?').next().unwrap();
+        let ok = answer_schema(route, "200");
+        let own = server.call("GET", target, "");
+        let child = server.call("GET", target.strip_prefix("/api").unwrap(), "");
+        for r in [&own, &child] {
+            assert_eq!(r.status, 200, "{target}: {}", r.body);
+            check(target, &ok, &r.json());
+            if let Some(shape) = &shape {
+                check(target, shape, &r.json()["data"]);
+            }
+        }
+        own.json()["data"].clone()
+    };
+
+    let sessions = read("/api/chat/sessions", None);
+    assert!(sessions.as_array().unwrap().len() >= 3, "{sessions}");
+    for target in [
+        "/api/chat/messages?session-id=wxid_bob&limit=100",
+        "/api/chat/messages?session-id=room1%40chatroom",
+        "/api/chat/latest?session-id=wxid_bob&limit=2",
+        "/api/chat/search?keyword=hello",
+        "/api/chat/contacts",
+    ] {
+        let rows = read(target, Some(list_of("Row")));
+        assert!(!rows.as_array().unwrap().is_empty(), "{target}");
+    }
+    for target in [
+        "/api/chat/messages?session-id=room1%40chatroom&parsed=true",
+        "/api/chat/search?keyword=hello&parsed=true",
+    ] {
+        let messages = read(target, Some(list_of("ParsedMessage")));
+        assert!(!messages.as_array().unwrap().is_empty(), "{target}");
+    }
+    let contacts = read("/api/chat/contacts?parsed=true", Some(list_of("Contact")));
+    assert!(contacts.as_array().unwrap().len() >= 5, "{contacts}");
+    read(
+        "/api/chat/message?session-id=wxid_bob&local-id=2",
+        Some(component("MessageLookup")),
+    );
+    let message = read(
+        "/api/chat/message?session-id=wxid_bob&local-id=8&parsed=true",
+        Some(component("ParsedMessage")),
+    );
+    assert_eq!(message["senderUsername"], Value::Null, "{message}");
+
+    // pages of 2, older and older from the cursor of each page's last message, list every message once and in the
+    // order of the whole list; so do pages of newer ones from the first message of each
+    let parsed = Some(list_of("ParsedMessage"));
+    let page = |from: &str| {
+        read(
+            &format!("/api/chat/messages?session-id=wxid_bob&parsed=true&limit=2{from}"),
+            parsed.clone(),
+        )
+    };
+    let cursors = |page: &Value| -> Vec<String> {
+        page.as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["_cursor"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let all = cursors(&read(
+        "/api/chat/messages?session-id=wxid_bob&parsed=true&limit=100",
+        parsed.clone(),
+    ));
+    assert_eq!(all.len(), 8, "{all:?}");
+    let mut seen = std::collections::HashSet::new();
+    assert!(
+        all.iter().all(|c| seen.insert(c)),
+        "a cursor twice: {all:?}"
+    );
+    let mut walked = cursors(&page(""));
+    loop {
+        let next = cursors(&page(&format!(
+            "&before={}",
+            percent(walked.last().unwrap())
+        )));
+        if next.is_empty() {
+            break;
+        }
+        walked.extend(next);
+    }
+    assert_eq!(walked, all);
+    let mut forward = vec![all.last().unwrap().clone()];
+    loop {
+        let next = cursors(&page(&format!("&after={}", percent(&forward[0]))));
+        if next.is_empty() {
+            break;
+        }
+        forward.splice(0..0, next);
+    }
+    assert_eq!(forward, all);
+
+    // the resources of every conversation, a page of one at a time, until a page says no more follow
+    let resources = Some(component("ResourcePage"));
+    let whole = read("/api/chat/resources?limit=100", resources.clone());
+    let keys = |page: &Value| -> Vec<String> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["_cursor"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(keys(&whole).len() >= 2, "{whole}");
+    assert_eq!(whole["nextCursor"], Value::Null);
+    let mut listed = Vec::new();
+    let mut before = String::new();
+    loop {
+        let page = read(
+            &format!("/api/chat/resources?limit=1{before}"),
+            resources.clone(),
+        );
+        listed.extend(keys(&page));
+        if page["hasMore"] == false {
+            assert_eq!(page["nextCursor"], Value::Null);
+            break;
+        }
+        assert_eq!(
+            page["nextCursor"].as_str(),
+            keys(&page).last().map(String::as_str)
+        );
+        before = format!("&before={}", percent(page["nextCursor"].as_str().unwrap()));
+    }
+    assert_eq!(listed, keys(&whole));
+
+    // failures: a missing argument, a cursor of nothing, an image not on this computer (whose route without `/api/`
+    // writes a file, by POST)
+    let failure = answer_schema("/api/chat/messages", "default");
+    let image = format!(
+        "/api/chat/image-data?session-id=wxid_bob&msg-id=3&create-time={}",
+        T0 + DAY
+    );
+    for (target, status) in [
+        ("/api/chat/messages", 400),
+        ("/api/chat/messages?session-id=wxid_bob&before=1.2.3", 400),
+        ("/chat/messages", 400),
+        ("/chat/messages?session-id=wxid_bob&before=1.2.3", 400),
+        (image.as_str(), 404),
+    ] {
+        let r = server.call("GET", target, "");
+        assert_eq!(r.status, status, "{target}: {}", r.body);
+        check(target, &failure, &r.json());
+    }
+    let r = server.call("GET", &image, "");
+    assert_eq!(r.json()["error"]["details"]["failureKind"], "not_found");
+
+    // a job, while it runs and once it has ended, and the list of jobs
+    let auth = format!("Bearer {TOKEN}");
+    let r = server.request(
+        "GET",
+        "/chat/sessions",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        "",
+    );
+    assert_eq!(r.status, 202, "{}", r.body);
+    let job_answer = answer_schema("/jobs/{id}", "200");
+    check("the job started", &job_answer, &r.json());
+    let id = r.json()["data"]["id"].as_str().unwrap().to_string();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let r = server.call("GET", &format!("/jobs/{id}"), "");
+        check("the job", &job_answer, &r.json());
+        if r.json()["data"]["status"] == "succeeded" {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "{}", r.body);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let jobs = server.call("GET", "/jobs", "").json();
+    check("the jobs", &list_of("Job"), &jobs["data"]);
 }

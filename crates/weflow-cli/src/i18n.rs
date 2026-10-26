@@ -266,15 +266,75 @@ fn inline_notes(line: &str) -> String {
 /// Parse the command line; help and parse errors are printed in the active language.
 pub fn parse<T: CommandFactory + FromArgMatches>() -> T {
     prescan_lang();
-    let mut cmd = build_command::<T>();
-    if locale::current() == Lang::Zh {
-        cmd = localize_command(cmd);
-    }
-    let parsed = cmd.try_get_matches().and_then(|m| T::from_arg_matches(&m));
+    let parsed = command_of::<T>()
+        .try_get_matches()
+        .and_then(|m| T::from_arg_matches(&m));
     match parsed {
         Ok(value) => value,
         Err(err) => exit_with(err),
     }
+}
+
+/// The command tree in the active language.
+fn command_of<T: CommandFactory>() -> Command {
+    let cmd = build_command::<T>();
+    if locale::current() == Lang::Zh {
+        localize_command(cmd)
+    } else {
+        cmd
+    }
+}
+
+/// Parses `args` (from the program's name on) as [`parse`] does, in the active language, without printing or
+/// exiting: the command API reads a request's command line in its own process with it (#432).
+pub fn try_parse_from<T: CommandFactory + FromArgMatches>(args: &[String]) -> Result<T, Error> {
+    command_of::<T>()
+        .try_get_matches_from(args)
+        .and_then(|m| T::from_arg_matches(&m))
+}
+
+/// What clap says of `err`, in the active language, the options last in a usage line.
+fn rendered(err: &Error) -> String {
+    let text = options_last(&err.to_string());
+    if locale::current() == Lang::Zh {
+        localize_rendered(&text)
+    } else {
+        text
+    }
+}
+
+/// The `--json` document of a parse error and its exit code, as `--json` prints them; `None` for help and the
+/// version, which are no errors.
+pub fn json_failure(err: &Error) -> Option<(serde_json::Value, i32)> {
+    use clap::error::ErrorKind;
+    if matches!(
+        err.kind(),
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+    ) {
+        return None;
+    }
+    let text = rendered(err);
+    let message = if err.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand {
+        locale::tr(
+            "a subcommand or argument is missing; see --help",
+            "缺少子命令或参数；请查看 --help",
+        )
+        .to_string()
+    } else {
+        parse_error_message(&text)
+    };
+    let mut failure = weflow_core::error::AppError::usage(message);
+    if let Some(usage) = text
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("Usage:") || line.starts_with("用法："))
+    {
+        failure.details = Some(serde_json::json!({ "usage": usage }));
+    }
+    Some((
+        serde_json::to_value(weflow_core::output::failure(failure.payload())).unwrap(),
+        err.exit_code(),
+    ))
 }
 
 /// In every usage line the options come last (`weflow config set <KEY> <VALUE> [OPTIONS]`).
@@ -296,36 +356,13 @@ fn options_last(text: &str) -> String {
 
 fn exit_with(err: Error) -> ! {
     use clap::error::ErrorKind;
-    let mut text = options_last(&err.to_string());
-    if locale::current() == Lang::Zh {
-        text = localize_rendered(&text);
-    }
-    let is_help = matches!(
-        err.kind(),
-        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-    );
-    if !is_help && json_requested() {
-        let message = if err.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand {
-            locale::tr(
-                "a subcommand or argument is missing; see --help",
-                "缺少子命令或参数；请查看 --help",
-            )
-            .to_string()
-        } else {
-            parse_error_message(&text)
-        };
-        let mut failure = weflow_core::error::AppError::usage(message);
-        if let Some(usage) = text
-            .lines()
-            .map(str::trim)
-            .find(|line| line.starts_with("Usage:") || line.starts_with("用法："))
-        {
-            failure.details = Some(serde_json::json!({ "usage": usage }));
+    if json_requested() {
+        if let Some((doc, exit)) = json_failure(&err) {
+            println!("{}", serde_json::to_string(&doc).unwrap());
+            std::process::exit(exit);
         }
-        let response = weflow_core::output::failure(failure.payload());
-        println!("{}", serde_json::to_string(&response).unwrap());
-        std::process::exit(err.exit_code());
     }
+    let text = rendered(&err);
     match err.kind() {
         ErrorKind::DisplayHelp
         | ErrorKind::DisplayVersion
