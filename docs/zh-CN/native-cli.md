@@ -137,8 +137,8 @@ AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及�
 
 | Crate | 作用 |
 |---|---|
-| `crates/weflow-cli` | 命令入口、参数解析、输出 |
-| `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、HTTP API |
+| `crates/weflow-cli` | 命令入口、参数解析、输出；`weflow serve` 的命令 API（`src/serve_api/`，见 [serve-api.md](serve-api.md)） |
+| `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、CLI 与命令 API 共用的类型化读取（`reads`）、命令 API 的契约（`contract`）、桌面端的 HTTP API |
 | `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、ISAAC-64 密钥流(移植自厂商 WASM)、平台封装 |
 | `crates/weflow-wcdb-ffi` | 把 `weflow-native` 导出为与 `wcdb_api` 接口兼容的 C ABI 动态库 `weflow_wcdb`，供桌面端加载(见 [desktop-rust-layer.md](desktop-rust-layer.md)) |
 | `crates/weflow-wxkey` | Windows x64 `wx_key.dll` 兼容接口，与 Rust 数据库密钥捕获共用实现 |

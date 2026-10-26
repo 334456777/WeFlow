@@ -185,8 +185,8 @@ Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, 
 
 | Crate | Role |
 |---|---|
-| `crates/weflow-cli` | Command entry, argument parsing, output |
-| `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, HTTP API |
+| `crates/weflow-cli` | Command entry, argument parsing, output; the command API of `weflow serve` (`src/serve_api/`, see [serve-api.md](serve-api.md)) |
+| `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, the typed reads the CLI and the command API share (`reads`), the command API's contract (`contract`), the desktop app's HTTP API |
 | `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, ISAAC-64 keystream (ported from the vendor WASM), platform wrappers |
 | `crates/weflow-wcdb-ffi` | C-ABI shared library `weflow_wcdb` that exports `weflow-native` with the same interface as `wcdb_api`; loaded by the desktop app (see [desktop-rust-layer.md](desktop-rust-layer.md)) |
 | `crates/weflow-wxkey` | Windows x64 `wx_key.dll` compatibility ABI, built from the Rust database-key capture code |
