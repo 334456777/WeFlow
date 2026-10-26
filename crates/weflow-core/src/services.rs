@@ -1399,6 +1399,9 @@ fn report_wait(event: WaitEvent) {
 
 /// Waits until WeChat has been quit (when it is running now) and started again; returns the new process id, or
 /// `None` once `timeout_secs` have passed. Time and process list are passed in so the logic can be tested.
+///
+/// WeChat has quit once none of the processes running at first is left, whether or not a new one is there by
+/// then: quit and opened again between two looks at the process list, it never has none (#127).
 fn wait_for_fresh_wechat(
     list: &mut dyn FnMut() -> Vec<u32>,
     sleep: &mut dyn FnMut(),
@@ -1411,9 +1414,10 @@ fn wait_for_fresh_wechat(
         report(WaitEvent::AskOpen { was_running: false });
         Wait::Open
     } else {
-        report(WaitEvent::AskQuit(running));
+        report(WaitEvent::AskQuit(running.clone()));
         Wait::Quit
     };
+    let fresh = |pids: &[u32]| pids.iter().copied().find(|p| !running.contains(p));
     loop {
         let used = elapsed();
         if used >= timeout_secs {
@@ -1421,12 +1425,19 @@ fn wait_for_fresh_wechat(
         }
         let pids = list();
         match phase {
-            Wait::Quit if pids.is_empty() => {
+            Wait::Quit if !pids.iter().any(|p| running.contains(p)) => {
                 phase = Wait::Open;
                 report(WaitEvent::AskOpen { was_running: true });
+                if let Some(pid) = fresh(&pids) {
+                    return Some(pid);
+                }
                 continue;
             }
-            Wait::Open if !pids.is_empty() => return pids.first().copied(),
+            Wait::Open => {
+                if let Some(pid) = fresh(&pids) {
+                    return Some(pid);
+                }
+            }
             _ => {}
         }
         report(WaitEvent::Tick {
@@ -1829,6 +1840,25 @@ mod export_tests {
                 "tick_open"
             ]
         );
+    }
+
+    #[test]
+    fn a_wechat_quit_and_opened_between_two_looks_is_the_new_one() {
+        // the old process gone and a new one there at the same look (#127)
+        let (found, events, _) = run_wait(vec![vec![10, 11], vec![10, 11], vec![42]], 180);
+        assert_eq!(found, Some(42));
+        assert_eq!(events, ["ask_quit", "tick_quit", "ask_open_after_quit"]);
+        // a new process before the old one is gone: still waiting for the old one
+        let (found, events, _) =
+            run_wait(vec![vec![10], vec![10, 42], vec![10, 42], vec![42]], 180);
+        assert_eq!(found, Some(42));
+        assert_eq!(
+            events,
+            ["ask_quit", "tick_quit", "tick_quit", "ask_open_after_quit"]
+        );
+        // a process left of the old WeChat is not taken for the new one
+        let (found, _, _) = run_wait(vec![vec![10], vec![], vec![10, 42]], 180);
+        assert_eq!(found, Some(42));
     }
 
     #[test]
