@@ -72,6 +72,8 @@ function type(s: Schema | boolean, where: string, indent = ''): string {
 
 function object(s: Schema, where: string, indent: string): string {
   const properties = (s.properties ?? {}) as Record<string, Schema>;
+  // a map (`HashMap<String, T>`) says the type of its values here: not read yet (#430)
+  if (typeof s.additionalProperties === 'object') fail(where, 'cannot read `additionalProperties` with a schema');
   if (!Object.keys(properties).length) {
     if (s.additionalProperties === false) return 'Record<string, never>';
     // a row of WeChat's table: its columns are WeChat's
