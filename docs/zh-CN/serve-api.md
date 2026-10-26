@@ -282,7 +282,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 ## 进程内读取
 
-`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`chat resources`、`chat image-info`、`group members`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（同一套解析、同一个处理函数，有测试逐字节比较），只是更快：
+`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`chat resources`、`chat image-info`、`group members`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（请求不经命令行，直接读成命令执行的同一个类型化读取；有测试逐字节比较两者，还有测试核对参数的读法与命令一致；命令会拒绝的请求按不带 `/api/` 的路由执行，所以报错与终端相同），只是更快：
 
 | 读取（大账号，Windows） | `/<路径>` | `/api/<路径>` |
 |---|---|---|

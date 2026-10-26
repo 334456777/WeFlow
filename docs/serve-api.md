@@ -282,7 +282,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 ## In-process reads
 
-`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `chat dates`, `chat date-counts`, `chat detail` (with `fast=true`), `chat resources`, `chat image-info`, `group members`, `sns timeline` (without `with-media`), `sns users`, `sns stats`, `sns post-counts`. Parameters, answer, status code and headers are those of the same path without `/api/` (the same parsing and the same handler; a test compares them byte for byte), only faster:
+`GET /api/<command path>` runs one of a few reads inside the server, on databases it keeps open between requests: `chat sessions`, `chat messages`, `chat latest`, `chat message`, `chat contact`, `chat contacts`, `chat counts`, `chat search`, `chat dates`, `chat date-counts`, `chat detail` (with `fast=true`), `chat resources`, `chat image-info`, `group members`, `sns timeline` (without `with-media`), `sns users`, `sns stats`, `sns post-counts`. Parameters, answer, status code and headers are those of the same path without `/api/` (the request is read into the same typed read the command runs, without a command line; a test compares them byte for byte, another that the parameters are read as the command reads them; a request the command would refuse runs as the route without `/api/` does, so its error is the terminal's), only faster:
 
 | Read (large account, Windows) | `/<path>` | `/api/<path>` |
 |---|---|---|
