@@ -56,7 +56,7 @@ The build fails when the JavaScript the page loads before it shows is over the b
 
 ## Types of the API
 
-The answers the page reads most (the conversations and their states and details, messages, the days with messages, search hits, contacts, resources, the files of an image, jobs and errors) have their types in `src/api/contract.gen.ts`, generated from `contract/openapi.json` (#399). That file is the contract `weflow serve` answers with: its schemas come from the Rust types of the answers (`weflow_core::contract`), and a test of weflow-cli fails when it is not current, so the page's types follow the server's. `src/api/` builds its own types on them: a `Pick` of the keys a request asks for with `fields`, checked against the contract's keys with `satisfies`.
+The answers the page reads most (the conversations and their states and details, messages, the days with messages, search hits, contacts, resources, the files of an image, the group analytics and members, jobs and errors) have their types in `src/api/contract.gen.ts`, generated from `contract/openapi.json` (#399). That file is the contract `weflow serve` answers with: its schemas come from the Rust types of the answers (`weflow_core::contract`), and a test of weflow-cli fails when it is not current, so the page's types follow the server's. `src/api/` builds its own types on them: a `Pick` of the keys a request asks for with `fields`, checked against the contract's keys with `satisfies`.
 
 `scripts/contract.ts` writes the types without a dependency: it reads the few kinds of JSON Schema that schemars writes and refuses the rest. When a type of the answers changes:
 

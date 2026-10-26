@@ -60,7 +60,7 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 
 ## API 的类型
 
-网页最常读的回复（会话及其状态和详情、消息、有消息的日期、搜索结果、通讯录、资源、图片的文件、任务和错误）的类型在 `src/api/contract.gen.ts` 里，由 `contract/openapi.json` 生成（#399）。这个文件就是 `weflow serve` 回复所依据的契约：其中的 schema 来自回复所用的 Rust 类型（`weflow_core::contract`），它不是最新时 weflow-cli 的测试会失败，所以网页的类型总跟着服务端。`src/api/` 在它的基础上定义自己的类型：用 `Pick` 取出请求用 `fields` 要的那些键，并用 `satisfies` 核对这些键在契约里存在。
+网页最常读的回复（会话及其状态和详情、消息、有消息的日期、搜索结果、通讯录、资源、图片的文件、群聊分析和群成员、任务和错误）的类型在 `src/api/contract.gen.ts` 里，由 `contract/openapi.json` 生成（#399）。这个文件就是 `weflow serve` 回复所依据的契约：其中的 schema 来自回复所用的 Rust 类型（`weflow_core::contract`），它不是最新时 weflow-cli 的测试会失败，所以网页的类型总跟着服务端。`src/api/` 在它的基础上定义自己的类型：用 `Pick` 取出请求用 `fields` 要的那些键，并用 `satisfies` 核对这些键在契约里存在。
 
 `scripts/contract.ts` 不依赖任何包来生成类型：它只认 schemars 会写出的那几种 JSON Schema，遇到其他写法就报错。回复的类型改了以后：
 
