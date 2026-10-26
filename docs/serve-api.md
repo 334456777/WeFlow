@@ -295,6 +295,10 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `chat detail --fast` | 55 ms | 2 ms |
 | `chat resources`, a page of 300 | 109 ms | 42 ms |
 | `sns timeline`, 20 posts | 235 ms | 6 ms |
+| `chat statuses`, 60 conversations | 24 ms | 2 ms |
+| `group list` | 28 ms | 4 ms |
+| `analytics overall`, the aggregate kept | 25 ms | 2 ms |
+| `report annual years` | 97 ms | 34 ms |
 | 16 pages of messages at once (in all) | 156 ms | 140 ms |
 
 (Medians measured by `serve_bench`, as the client sees them; see [native-cli.md](native-cli.md).) A search in a conversation first reads its newest messages and stops once a page is found, so a common word takes about 5 ms; after a few thousand messages (or 15 ms) it turns to WeChat's own index (see [cli-unsupported.md](cli-unsupported.md)), so a word found nowhere takes about 60 ms in a conversation of 210,000 messages instead of reading them all. Pages deep into a long conversation are slow with `offset` (about 1.4 s in the middle of 210,000 messages) but not from a cursor: pass the `_cursor` of the last message shown as `before` (`after` for newer ones), and the same page takes about 3 ms.

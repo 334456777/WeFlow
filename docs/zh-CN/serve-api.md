@@ -295,6 +295,10 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `chat detail --fast` | 55 ms | 2 ms |
 | `chat resources`，一页 300 条 | 109 ms | 42 ms |
 | `sns timeline`，20 条 | 235 ms | 6 ms |
+| `chat statuses`，60 个会话 | 24 ms | 2 ms |
+| `group list` | 28 ms | 4 ms |
+| `analytics overall`，读上次留下的统计结果 | 25 ms | 2 ms |
+| `report annual years` | 97 ms | 34 ms |
 | 同时请求 16 页消息（总耗时） | 156 ms | 140 ms |
 
 （这些是 `serve_bench` 测得的中位数，即客户端看到的耗时，见 [native-cli.md](native-cli.md)。）在会话里搜索时，先从最新的消息往前读，找够一页就停，所以常见的词约 5 ms；读了几千条（或 15 ms）还不够，就改查微信自己的索引（见 [cli-unsupported.md](cli-unsupported.md)），所以在有 21 万条消息的会话里，哪里都没有的词约 60 ms，不必读完所有消息。长会话里很靠后的消息页用 `offset` 取会很慢（21 万条消息的中间一页约 1.4 秒），用游标则不会：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
