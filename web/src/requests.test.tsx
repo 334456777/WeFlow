@@ -1,7 +1,6 @@
 // The requests the page makes in the flows people go through most (#403): the baseline that #402 changes on
 // purpose. Each step lists what the page asked the server for, in order (`fields` left out, as it only picks
-// columns); a change of these lists is a change of the page's requests, to be explained in its PR
-// (docs/refactor-baseline.md).
+// columns); a change of these lists is a change of the page's requests, to be explained in its PR (see #403).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { App } from './App';

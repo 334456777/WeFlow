@@ -2563,7 +2563,7 @@ fn the_footprint_is_exported_as_json_or_as_a_timeline() {
 }
 
 // The regression matrix of the refactoring in #391 (#403): behaviour the shared business entry point (#397) and the
-// job and HTTP layers (#398) must keep. See docs/refactor-baseline.md.
+// job and HTTP layers (#398) must keep; the scenarios and the baseline are in #403.
 
 /// A failed read answers the same through `/api/` as through the child process: status, body and error headers, for
 /// the ways a request goes wrong before, while and after its command runs.

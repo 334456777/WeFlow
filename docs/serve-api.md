@@ -4,7 +4,7 @@
 
 `weflow serve` makes every CLI command available over HTTP. The path is the command path, the parameters are the command's options, and the answer is what the terminal gets: `GET /config/list` returns exactly what `weflow --json config list` prints. Design and plans: issue #131.
 
-The desktop app's HTTP API (`/api/v1/*`, SSE push) is a separate server started with `weflow serve --desktop`; see [HTTP-API.md](HTTP-API.md). How requests run inside the server, layer by layer: [serve-architecture.md](serve-architecture.md).
+The desktop app's HTTP API (`/api/v1/*`, SSE push) is a separate server started with `weflow serve --desktop`; see [HTTP-API.md](HTTP-API.md).
 
 ## Starting
 
