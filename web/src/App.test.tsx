@@ -667,6 +667,34 @@ describe('App', () => {
     expect(document.querySelector('.message-pane')!.textContent).toContain('旅行计划.pdf');
   });
 
+  it('opens a chat of the footprint at its message in the chat page (#415)', async () => {
+    const calls: string[] = [];
+    serve(HEALTH);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      if (url.startsWith('/api/chat/sessions')) return json({ success: true, data: [{ username: 'wxid_a', displayName: '林沐', summary: '', unreadCount: 0, sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1 }] });
+      if (url.startsWith('/insight/footprint')) {
+        return json({ success: true, data: {
+          summary: { private_inbound_people: 1, private_replied_people: 1, private_outbound_people: 1, private_reply_rate: 1, mention_count: 0, mention_group_count: 0 },
+          private_sessions: [], mentions: [], mention_groups: [], diagnostics: { truncated: false },
+          private_segments: [{ session_id: 'wxid_a', segment_index: 0, start_ts: 1760000000, end_ts: 1760000100, incoming_count: 1, outgoing_count: 1, message_count: 2, replied: true, anchor_local_id: 7, anchor_create_time: 1760000000 }],
+        } });
+      }
+      if (url.startsWith('/api/chat/message?')) return json({ success: true, data: { _cursor: 'c.7', localId: 7, localType: 1, createTime: 1760000000, isSend: 0, senderUsername: 'wxid_a', parsedContent: '那天的话' } });
+      return json({ success: true, data: [] });
+    }));
+    render(<App />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '我的足迹' }));
+    fireEvent.click(await vi.waitFor(() => screen.getByRole('button', { name: /^打开和.*的这段聊天$/ })));
+    await act(async () => {});
+    await act(async () => {});
+    // turning to the chat page does not let go of the lookup: the conversation opens around the message
+    expect(calls).toContain('/api/chat/message?session-id=wxid_a&local-id=7&create-time=1760000000&parsed=true');
+    expect(calls.some(url => url.startsWith('/api/chat/messages') && url.includes('before=c.7'))).toBe(true);
+    expect(document.querySelector('.message-pane')!.textContent).toContain('那天的话');
+  });
+
   it('folds the sidebar from its bottom-left button and remembers it', async () => {
     await renderWith(null);
     fireEvent.click(screen.getByRole('button', { name: '收起侧边栏' }));

@@ -328,8 +328,9 @@ export function App() {
     ? { fileName: exportJob.file.name, count: 0, downloadUrl: jobFileUrl(exportJob.id) } : null;
   const [liveSessions, reloadSessions] = useSessions(connected, scope);
   const [liveId, setLiveId] = useState<string | null>(null);
+  // the message a jump looks up (#200, #209): let go of when another page, conversation or account is opened (#415)
   const mediaLookup = useRef<AbortController | null>(null);
-  useEffect(() => () => { mediaLookup.current?.abort(); }, [scope, liveId, section]);
+  useEffect(() => () => { mediaLookup.current?.abort(); }, [scope]);
   const sessionList = liveSessions.status === 'ready' ? liveSessions.sessions : [];
   // the official accounts followed without a conversation, once the 「公众号」 filter is first chosen (#203)
   const [officialsWanted, setOfficialsWanted] = useState(false);
@@ -512,11 +513,13 @@ export function App() {
   const resetExport = () => { setExportJobId(null); setExportError(''); };
 
   const selectSection = (value: Navigation) => {
+    mediaLookup.current?.abort();
     setSection(value); setMobileDetail(false);
     if (value !== 'settings') { setActiveCategory(value === 'export' || value === 'contacts' || value === 'resources' || value === 'analytics' || value === 'reports' || value === 'footprint' || value === 'insights' || value === 'backup' ? 'chat' : value); resetExport(); setSubmittedQuery(null); setQuery(''); }
   };
 
   const selectConversation = (id: string) => {
+    mediaLookup.current?.abort();
     if (live) {
       setLiveId(id);
       // a search of the conversation left behind is over; one of all conversations still holds
