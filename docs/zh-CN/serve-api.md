@@ -282,7 +282,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 ## 进程内读取
 
-`GET /api/<命令路径>` 在服务进程内执行少数几条读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`chat resources`、`chat image-info`、`group members`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（请求不经命令行，直接读成命令执行的同一个类型化读取；有测试逐字节比较两者，还有测试核对参数的读法与命令一致；命令会拒绝的请求按不带 `/api/` 的路由执行，所以报错与终端相同），只是更快：
+`GET /api/<命令路径>` 在服务进程内执行读命令，数据库在请求之间保持打开：`chat sessions`、`chat messages`、`chat latest`、`chat message`、`chat contact`、`chat contacts`、`chat counts`、`chat search`、`chat dates`、`chat date-counts`、`chat detail`（带 `fast=true`）、`chat resources`、`chat image-info`、`chat statuses`、`chat tab-counts`、`group list`、`group members`、`group ranking`、`group hours`、`group media`、`group member`、`group member-messages`、`sns timeline`（不带 `with-media`）、`sns users`、`sns stats`、`sns post-counts`、`analytics overall`、`analytics rankings`、`analytics time`、`analytics excluded`（不带 `set`）、`analytics exclude-candidates`、`biz accounts`、`biz messages`、`biz pay-records`、`insight footprint`、`insight get`、`report annual years`、`cache list`、`config get`、`config profiles`、`runtime info`、`db detect`、`db test`、`db wxid`。参数、回复、状态码和响应头都与不带 `/api/` 的同一路径相同（请求不经命令行，直接读成命令执行的同一个类型化读取；有测试逐字节比较两者，还有测试核对参数的读法与命令一致；命令会拒绝的请求按不带 `/api/` 的路由执行，所以报错与终端相同），只是更快：
 
 | 读取（大账号，Windows） | `/<路径>` | `/api/<路径>` |
 |---|---|---|
@@ -306,10 +306,12 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - `chat search` 的每条结果都带上所在消息的 `_cursor`（`_session_id` 照旧）：拿它传 `before` 和 `after`，就能读到这条结果前后的消息。带 `parsed=true`（`--parsed`）时，结果按 `chat messages` 的方式解析。
 - 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
 - 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。
-- 配置文件变化后（`PUT /config/set`、切换配置档案），下一个请求会重新读取。判断是否变化看文件的修改时间和大小；写入后的几秒内还会比对内容，因为在时间精度较粗的文件系统上（FAT 是 2 秒），两次写入的修改时间可能相同，而两个名字一样长的档案，文件大小也相同。
+- 配置文件变化后（`PUT /config/set`、切换配置档案、用 `config_path` 换一个配置文件），下一个请求会重新读取。判断是否变化看文件的修改时间和大小；写入后的几秒内还会比对内容，因为在时间精度较粗的文件系统上（FAT 是 2 秒），两次写入的修改时间可能相同，而两个名字一样长的档案，文件大小也相同。
 - 服务刚启动时，以及配置变化之后，会在后台同时打开聊天页面要用的数据库：会话、联系人、头像、图片链接、搜索索引、消息和语音。每个数据库第一次打开都要先派生密钥（约 0.1 秒），否则最初的几次读取要等它们用到的每个库。在大账号上，预热半秒内完成；之后第一次读取会话列表约 12 ms，原来约 440 ms；如果启动后立即请求，约 240 ms。
 - `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。
-- 不带 `fast=true` 的 `chat detail` 和带 `with-media=true` 的 `sns timeline` 按不带 `/api/` 的路由执行：其余的详情（数据表、最早和最新时间）读起来慢，时间线的媒体要下载。
+- 不带 `fast=true` 的 `chat detail`、带 `with-media=true` 的 `sns timeline` 和带 `set` 的 `analytics excluded` 按不带 `/api/` 的路由执行：其余的详情（数据表、最早和最新时间）读起来慢，时间线的媒体要下载，`set` 会保存名单。
+- `analytics overall`、`rankings` 和 `time` 与命令一样，返回上次留下的统计结果（`force=true` 时重新读所有聊天）。服务端还会在内存里保留它 5 分钟，所以这段时间内由命令路由重新算出的结果，要过了这段时间才会显示。
+- 其余命令只有命令路由：长任务和导出（取消时靠结束它们的进程来停止）；密钥命令（要附加到微信进程）；需要在终端上询问、或要设置自身进程输出方式的命令；以及会写入的命令。
 - 带 `fast=true` 的 `sns stats` 和带 `prefer-cache=true` 的 `sns post-counts` 和桌面端一样，把数字保留 5 分钟：新动态要过了这段时间才计入，不带这两个开关则立即计入。
 - 这些读取计入 `--max-reads` 的上限，超出时排队等位置，而不是返回 `429`（见[并发限制](#并发限制)）。
 

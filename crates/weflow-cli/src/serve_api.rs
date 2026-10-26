@@ -691,6 +691,8 @@ pub fn default_max_reads() -> usize {
 
 /// Serves the API on an already-bound listener until the future is dropped.
 pub async fn serve(cfg: ApiConfig, listener: tokio::net::TcpListener) -> std::io::Result<()> {
+    // a read run in process (`analytics overall`) reports progress, which is no request's: the server draws no bar
+    weflow_core::output::set_progress_mode(weflow_core::output::ProgressMode::Off);
     axum::serve(listener, router(cfg)).await
 }
 

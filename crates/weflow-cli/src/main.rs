@@ -1654,9 +1654,14 @@ fn read_of(command: &Commands) -> Option<Read> {
                 msg_id: msg_id.clone(),
                 create_time: *create_time,
             },
+            ChatSubcommand::Statuses { usernames } => Read::ChatStatuses {
+                usernames: usernames.clone(),
+            },
+            ChatSubcommand::TabCounts => Read::ChatTabCounts,
             _ => return None,
         },
         Commands::Group(c) => match &c.command {
+            GroupSubcommand::List => Read::GroupList,
             GroupSubcommand::Members {
                 chatroom_id,
                 counts,
@@ -1666,6 +1671,123 @@ fn read_of(command: &Commands) -> Option<Read> {
                 counts: *counts,
                 refresh: *refresh,
             },
+            GroupSubcommand::Ranking {
+                chatroom_id,
+                limit,
+                start,
+                end,
+            } => Read::GroupRanking {
+                chatroom_id: chatroom_id.clone(),
+                limit: *limit,
+                start: start.clone(),
+                end: end.clone(),
+            },
+            GroupSubcommand::Hours {
+                chatroom_id,
+                start,
+                end,
+            } => Read::GroupHours {
+                chatroom_id: chatroom_id.clone(),
+                start: start.clone(),
+                end: end.clone(),
+            },
+            GroupSubcommand::Media {
+                chatroom_id,
+                start,
+                end,
+            } => Read::GroupMedia {
+                chatroom_id: chatroom_id.clone(),
+                start: start.clone(),
+                end: end.clone(),
+            },
+            GroupSubcommand::Member {
+                chatroom_id,
+                username,
+                start,
+                end,
+            } => Read::GroupMember {
+                chatroom_id: chatroom_id.clone(),
+                username: username.clone(),
+                start: start.clone(),
+                end: end.clone(),
+            },
+            GroupSubcommand::MemberMessages {
+                chatroom_id,
+                username,
+                limit,
+                cursor,
+                start,
+                end,
+            } => Read::GroupMemberMessages {
+                chatroom_id: chatroom_id.clone(),
+                username: username.clone(),
+                limit: *limit,
+                cursor: *cursor,
+                start: start.clone(),
+                end: end.clone(),
+            },
+            _ => return None,
+        },
+        Commands::Analytics(c) => match &c.command {
+            AnalyticsSubcommand::Overall { force } => Read::AnalyticsOverall { force: *force },
+            AnalyticsSubcommand::Rankings { limit, start, end } => Read::AnalyticsRankings {
+                limit: *limit,
+                start: start.clone(),
+                end: end.clone(),
+            },
+            AnalyticsSubcommand::Time => Read::AnalyticsTime,
+            // `--set` saves the list
+            AnalyticsSubcommand::Excluded { set: None } => Read::AnalyticsExcluded,
+            AnalyticsSubcommand::ExcludeCandidates => Read::AnalyticsExcludeCandidates,
+            _ => return None,
+        },
+        Commands::Biz(c) => match &c.command {
+            BizSubcommand::Accounts => Read::BizAccounts,
+            BizSubcommand::Messages {
+                username,
+                limit,
+                offset,
+            } => Read::BizMessages {
+                username: username.clone(),
+                limit: *limit,
+                offset: *offset,
+            },
+            BizSubcommand::PayRecords { limit, offset } => Read::BizPayRecords {
+                limit: *limit,
+                offset: *offset,
+            },
+        },
+        Commands::Insight(c) => match &c.command {
+            InsightSubcommand::Footprint { start, end } => Read::InsightFootprint {
+                start: start.clone(),
+                end: end.clone(),
+            },
+            InsightSubcommand::Get { id } => Read::InsightGet { id: id.clone() },
+            _ => return None,
+        },
+        Commands::Report(c) => match &c.command {
+            ReportSubcommand::Annual {
+                command: AnnualSubcommand::Years,
+            } => Read::ReportAnnualYears,
+            _ => return None,
+        },
+        Commands::Cache(c) => match &c.command {
+            CacheSubcommand::List => Read::CacheList,
+            _ => return None,
+        },
+        Commands::Config(c) => match &c.command {
+            ConfigSubcommand::Get { key } => Read::ConfigGet { key: key.clone() },
+            ConfigSubcommand::Profiles => Read::ConfigProfiles,
+            _ => return None,
+        },
+        Commands::Runtime(c) => match &c.command {
+            RuntimeSubcommand::Info => Read::RuntimeInfo,
+            _ => return None,
+        },
+        Commands::Db(c) => match &c.command {
+            DbSubcommand::Detect => Read::DbDetect,
+            DbSubcommand::Test | DbSubcommand::Open => Read::DbTest,
+            DbSubcommand::Wxid { root } => Read::DbWxid { root: root.clone() },
             _ => return None,
         },
         Commands::Sns(c) => match &c.command {
@@ -1766,6 +1888,9 @@ async fn run(cli: &Cli) -> AppResult<Value> {
     apply_progress_settings(&config, cli);
     weflow_core::ffmpeg::set_home(&ctx.home_dir);
 
+    if let Some(read) = read_of(&cli.command) {
+        return read.run(&ServiceHub::new(ctx, config, None, None, None, None));
+    }
     match &cli.command {
         Commands::Config(command) => return handle_config(command, &ctx, &mut config),
         Commands::Lang { lang } => {
@@ -1787,10 +1912,6 @@ async fn run(cli: &Cli) -> AppResult<Value> {
 
     let config_path = ctx.config_path.clone();
     let hub = ServiceHub::new(ctx, config, None, None, None, None);
-    if let Some(read) = read_of(&cli.command) {
-        return read.run(&hub);
-    }
-
     match &cli.command {
         Commands::Db(command) => handle_db(command, &hub),
         Commands::Chat(command) => handle_chat(command, &hub).await,
@@ -1800,7 +1921,6 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         Commands::Group(command) => handle_group(command, &hub),
         Commands::Report(command) => handle_report(command, &hub),
         Commands::Sns(command) => handle_sns(command, &hub).await,
-        Commands::Biz(command) => handle_biz(command, &hub),
         Commands::Insight(command) => handle_insight(command, &hub).await,
         Commands::Image(ImageCommand {
             command: ImageSubcommand::AutoDownload { command },
@@ -1872,6 +1992,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
         Commands::Serve(command) => handle_serve(command, &hub).await,
         Commands::Web(command) => handle_web(command, &hub).await,
         Commands::Backup(command) => handle_backup(command, &hub),
+        Commands::Biz(_) => unreachable!("a read"),
         Commands::Runtime(_)
         | Commands::Ffmpeg(_)
         | Commands::Cache(_)
@@ -1891,7 +2012,7 @@ fn handle_cache(
 
     let hub = ServiceHub::new(ctx.clone(), config.clone(), None, None, None, None);
     match &command.command {
-        CacheSubcommand::List => Ok(hub.cache_list()),
+        CacheSubcommand::List => unreachable!("a read"),
         CacheSubcommand::Clear(args) => {
             let parts = args.parts();
             if parts.is_empty() {
@@ -2285,30 +2406,6 @@ fn apply_progress_settings(config: &ConfigStore, cli: &Cli) {
     }
 }
 
-/// `config profiles` (#215, #216): what each profile is set up with, the keys only as whether they are set, so a
-/// client can tell which account is ready without reading a key. `complete`: enough to open the database.
-fn profiles_summary(config: &ConfigStore) -> Value {
-    let set = |value: &Option<String>| value.as_deref().is_some_and(|v| !v.trim().is_empty());
-    let profiles = config
-        .profiles
-        .iter()
-        .map(|(name, p)| {
-            json!({
-                "name": name,
-                "current": *name == config.current_profile,
-                "wxid": p.wxid,
-                "dbPath": p.db_path,
-                "decryptKey": set(&p.decrypt_key),
-                "imageKeys": p.image_xor_key.is_some() && set(&p.image_aes_key),
-                // the key of the AI model API (#213), as the database keys: whether it is set
-                "aiKey": set(&p.ai_model_api_key),
-                "complete": set(&p.db_path) && set(&p.decrypt_key),
-            })
-        })
-        .collect();
-    Value::Array(profiles)
-}
-
 fn handle_config(
     command: &ConfigCommand,
     ctx: &AppContext,
@@ -2317,17 +2414,7 @@ fn handle_config(
     match &command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
         ConfigSubcommand::List => Ok(serde_json::to_value(config).unwrap()),
-        ConfigSubcommand::Profiles => Ok(profiles_summary(config)),
-        ConfigSubcommand::Get { key } => {
-            if matches!(key.as_deref(), Some("config_path" | "configPath")) {
-                return Ok(json!(ctx.config_path.to_string_lossy()));
-            }
-            if let Some(key) = key {
-                Ok(config.get_key(None, key))
-            } else {
-                Ok(serde_json::to_value(config.profile(None)).unwrap())
-            }
-        }
+        ConfigSubcommand::Profiles | ConfigSubcommand::Get { .. } => unreachable!("a read"),
         ConfigSubcommand::Set { key, value } => {
             if matches!(key.as_str(), "config_path" | "configPath") {
                 let path = std::path::absolute(value)
@@ -2435,13 +2522,7 @@ async fn handle_ffmpeg(
 
 fn handle_runtime(command: &RuntimeCommand, ctx: &AppContext) -> AppResult<Value> {
     match command.command {
-        RuntimeSubcommand::Info => Ok(json!({
-            "homeDir": ctx.home_dir,
-            "configPath": ctx.config_path,
-            "runtimeDir": ctx.runtime_dir,
-            "version": ctx.version,
-            "target": weflow_assets::target_triple()
-        })),
+        RuntimeSubcommand::Info => unreachable!("a read"),
         RuntimeSubcommand::Manifest => {
             Ok(serde_json::to_value(weflow_assets::manifest(&ctx.version)).unwrap())
         }
@@ -2450,10 +2531,11 @@ fn handle_runtime(command: &RuntimeCommand, ctx: &AppContext) -> AppResult<Value
 
 fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        DbSubcommand::Detect => Ok(hub.db_detect()),
         DbSubcommand::Scan { root } => Ok(hub.db_scan(root)),
-        DbSubcommand::Test | DbSubcommand::Open => hub.db_test(),
-        DbSubcommand::Wxid { root } => hub.db_wxid(root.as_deref()),
+        DbSubcommand::Detect
+        | DbSubcommand::Test
+        | DbSubcommand::Open
+        | DbSubcommand::Wxid { .. } => unreachable!("a read"),
     }
 }
 
@@ -2471,7 +2553,9 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         | ChatSubcommand::DateCounts { .. }
         | ChatSubcommand::Counts { .. }
         | ChatSubcommand::Resources { .. }
-        | ChatSubcommand::ImageInfo { .. } => unreachable!("a read"),
+        | ChatSubcommand::ImageInfo { .. }
+        | ChatSubcommand::Statuses { .. }
+        | ChatSubcommand::TabCounts => unreachable!("a read"),
         ChatSubcommand::UpdateMessage {
             session_id,
             local_id,
@@ -2490,7 +2574,6 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             AntiRevokeSubcommand::Install { sessions } => hub.anti_revoke("install", sessions),
             AntiRevokeSubcommand::Uninstall { sessions } => hub.anti_revoke("uninstall", sessions),
         },
-        ChatSubcommand::Statuses { usernames } => hub.chat_statuses(usernames),
         ChatSubcommand::Detail {
             session_id,
             fast,
@@ -2500,7 +2583,6 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             _ => hub.chat_detail(session_id),
         },
         ChatSubcommand::MarkRead => hub.chat_mark_all_read(),
-        ChatSubcommand::TabCounts => hub.chat_tab_counts(),
         ChatSubcommand::ExportStats {
             sessions,
             start,
@@ -2950,90 +3032,31 @@ fn parse_media_selection(values: &[String]) -> Result<weflow_core::api::ApiMedia
 
 fn handle_analytics(command: &AnalyticsCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        AnalyticsSubcommand::Overall { force } => hub.analytics_overall_statistics(*force),
-        AnalyticsSubcommand::Rankings { limit, start, end } => {
-            let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-            Ok(json!(hub.analytics_contact_rankings(
-                *limit,
-                b.unwrap_or(0),
-                e.map(|e| e - 1).unwrap_or(0)
-            )?))
-        }
-        AnalyticsSubcommand::Time => hub.analytics_time_distribution(),
-        AnalyticsSubcommand::Excluded { set } => match set {
-            Some(list) => Ok(json!(hub.analytics_set_excluded_usernames(
+        AnalyticsSubcommand::Excluded { set: Some(list) } => Ok(json!(hub
+            .analytics_set_excluded_usernames(
                 &list
                     .iter()
                     .filter(|s| !s.is_empty())
                     .cloned()
                     .collect::<Vec<_>>()
             )?)),
-            None => Ok(json!(hub.analytics_excluded_usernames()?)),
-        },
-        AnalyticsSubcommand::ExcludeCandidates => Ok(json!(hub.analytics_exclude_candidates()?)),
+        _ => unreachable!("a read"),
     }
 }
 
-/// `--start` / `--end` as Unix seconds, both inclusive (the end is the last second of its day); 0 for no bound.
 fn day_span(start: &Option<String>, end: &Option<String>) -> AppResult<(i64, i64)> {
-    let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-    Ok((b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0)))
+    weflow_core::reads::day_span(start.as_deref(), end.as_deref())
 }
 
 fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        GroupSubcommand::List => Ok(json!(hub.group_chats()?)),
-        GroupSubcommand::Members { .. } => unreachable!("a read"),
-        GroupSubcommand::Ranking {
-            chatroom_id,
-            limit,
-            start,
-            end,
-        } => {
-            let (b, e) = day_span(start, end)?;
-            Ok(json!(hub.group_message_ranking(
-                chatroom_id,
-                *limit,
-                b,
-                e
-            )?))
-        }
-        GroupSubcommand::Hours {
-            chatroom_id,
-            start,
-            end,
-        } => {
-            let (b, e) = day_span(start, end)?;
-            hub.group_active_hours(chatroom_id, b, e)
-        }
-        GroupSubcommand::Media {
-            chatroom_id,
-            start,
-            end,
-        } => {
-            let (b, e) = day_span(start, end)?;
-            hub.group_media_stats(chatroom_id, b, e)
-        }
-        GroupSubcommand::Member {
-            chatroom_id,
-            username,
-            start,
-            end,
-        } => {
-            let (b, e) = day_span(start, end)?;
-            hub.group_member_analytics(chatroom_id, username, b, e)
-        }
-        GroupSubcommand::MemberMessages {
-            chatroom_id,
-            username,
-            limit,
-            cursor,
-            start,
-            end,
-        } => {
-            let (b, e) = day_span(start, end)?;
-            hub.group_member_messages(chatroom_id, username, b, e, *limit, *cursor)
-        }
+        GroupSubcommand::List
+        | GroupSubcommand::Members { .. }
+        | GroupSubcommand::Ranking { .. }
+        | GroupSubcommand::Hours { .. }
+        | GroupSubcommand::Media { .. }
+        | GroupSubcommand::Member { .. }
+        | GroupSubcommand::MemberMessages { .. } => unreachable!("a read"),
         GroupSubcommand::ExportMemberMessages {
             chatroom_id,
             username,
@@ -3053,7 +3076,7 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
 fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
         ReportSubcommand::Annual { command } => match command {
-            AnnualSubcommand::Years => hub.report_available_years(),
+            AnnualSubcommand::Years => unreachable!("a read"),
             AnnualSubcommand::Generate { year } => hub.report_annual(*year),
         },
         ReportSubcommand::Dual { command } => match command {
@@ -3165,18 +3188,6 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
     }
 }
 
-fn handle_biz(command: &BizCommand, hub: &ServiceHub) -> AppResult<Value> {
-    match &command.command {
-        BizSubcommand::Accounts => hub.biz_accounts(),
-        BizSubcommand::Messages {
-            username,
-            limit,
-            offset,
-        } => hub.biz_messages(username, *limit, *offset),
-        BizSubcommand::PayRecords { limit, offset } => hub.biz_pay_records(*limit, *offset),
-    }
-}
-
 fn insight_filters(
     session: &Option<String>,
     keyword: &Option<String>,
@@ -3230,7 +3241,6 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
         } => Ok(hub.insight_list_records(&insight_filters(
             session, keyword, start, end, limit, offset,
         ))),
-        InsightSubcommand::Get { id } => Ok(hub.insight_get_record(id)),
         InsightSubcommand::MarkRead { id } => Ok(hub.insight_mark_record_read(id)),
         InsightSubcommand::Clear {
             session,
@@ -3251,9 +3261,8 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
                 .await;
             Ok(json!({ "generated": n, "records": found }))
         }
-        InsightSubcommand::Footprint { start, end } => {
-            let (b, e) = day_span(start, end)?;
-            hub.insight_footprint(b, e)
+        InsightSubcommand::Get { .. } | InsightSubcommand::Footprint { .. } => {
+            unreachable!("a read")
         }
         InsightSubcommand::FootprintSummary { payload_json } => {
             let payload: Value = serde_json::from_str(payload_json)
@@ -4255,36 +4264,6 @@ mod tests {
         ] {
             assert!(reported_failure(&ok).is_none(), "{ok}");
         }
-    }
-
-    #[test]
-    fn profiles_say_whether_keys_are_set_but_not_what_they_are() {
-        let mut config = ConfigStore::default();
-        config.set_key(None, "db_path", json!("/data")).unwrap();
-        config
-            .set_key(None, "decrypt_key", json!("ab".repeat(32)))
-            .unwrap();
-        config
-            .set_key(None, "image_aes_key", json!("0123456789abcdef"))
-            .unwrap();
-        config
-            .set_key(Some("work"), "wxid", json!("wxid_w"))
-            .unwrap();
-        config
-            .set_key(Some("work"), "ai_model_api_key", json!("sk-secret"))
-            .unwrap();
-        let summary = profiles_summary(&config);
-        assert_eq!(
-            summary,
-            json!([
-                { "name": "default", "current": true, "wxid": null, "dbPath": "/data",
-                  "decryptKey": true, "imageKeys": false, "aiKey": false, "complete": true },
-                { "name": "work", "current": false, "wxid": "wxid_w", "dbPath": null,
-                  "decryptKey": false, "imageKeys": false, "aiKey": true, "complete": false },
-            ])
-        );
-        assert!(!summary.to_string().contains("abab"));
-        assert!(!summary.to_string().contains("sk-secret"));
     }
 
     #[test]

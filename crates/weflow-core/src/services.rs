@@ -72,6 +72,11 @@ impl ServiceHub {
         &self.ctx.config_path
     }
 
+    /// Where this hub keeps its files, and its version.
+    pub fn context(&self) -> &AppContext {
+        &self.ctx
+    }
+
     /// The WebUI versions kept on this machine (issue #148): with WeFlow's other caches, in
     /// `<home>/cache/web/<version>/`, the one picked with `weflow web use` named in `<home>/cache/web/current`.
     pub fn web_store(&self) -> crate::webui::WebStore {

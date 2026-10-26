@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use serde_json::{json, Value};
 
+use crate::config::ConfigStore;
 use crate::error::{AppError, AppResult};
 use crate::services::{ImageVariant, ResourceQuery, ServiceHub, SnsTimelineQuery};
 
@@ -108,6 +109,122 @@ pub enum Read {
         user: Option<String>,
         prefer_cache: bool,
     },
+    /// Whether each conversation is folded and muted.
+    ChatStatuses {
+        usernames: Vec<String>,
+    },
+    ChatTabCounts,
+    GroupList,
+    /// `group ranking`; like every `start` and `end` below, local dates (`YYYY-MM-DD`), both included.
+    GroupRanking {
+        chatroom_id: String,
+        limit: usize,
+        start: Option<String>,
+        end: Option<String>,
+    },
+    GroupHours {
+        chatroom_id: String,
+        start: Option<String>,
+        end: Option<String>,
+    },
+    GroupMedia {
+        chatroom_id: String,
+        start: Option<String>,
+        end: Option<String>,
+    },
+    GroupMember {
+        chatroom_id: String,
+        username: String,
+        start: Option<String>,
+        end: Option<String>,
+    },
+    GroupMemberMessages {
+        chatroom_id: String,
+        username: String,
+        limit: usize,
+        cursor: usize,
+        start: Option<String>,
+        end: Option<String>,
+    },
+    /// `analytics overall`; `force` reads every chat again rather than the aggregate kept.
+    AnalyticsOverall {
+        force: bool,
+    },
+    AnalyticsRankings {
+        limit: usize,
+        start: Option<String>,
+        end: Option<String>,
+    },
+    AnalyticsTime,
+    /// `analytics excluded` without `--set`, which saves the list.
+    AnalyticsExcluded,
+    AnalyticsExcludeCandidates,
+    BizAccounts,
+    BizMessages {
+        username: String,
+        limit: i32,
+        offset: i32,
+    },
+    BizPayRecords {
+        limit: i32,
+        offset: i32,
+    },
+    InsightFootprint {
+        start: Option<String>,
+        end: Option<String>,
+    },
+    InsightGet {
+        id: String,
+    },
+    ReportAnnualYears,
+    CacheList,
+    /// `config get`: a key of the current profile, or the whole profile; read from the file, as the CLI does.
+    ConfigGet {
+        key: Option<String>,
+    },
+    ConfigProfiles,
+    RuntimeInfo,
+    DbDetect,
+    /// `db test` (and `db open`): opens the configured account with its key.
+    DbTest,
+    DbWxid {
+        root: Option<String>,
+    },
+}
+
+/// `--start` / `--end` as Unix seconds, both inclusive (the end is the last second of its day); 0 for no bound.
+pub fn day_span(start: Option<&str>, end: Option<&str>) -> AppResult<(i64, i64)> {
+    let (b, e) = crate::dates::date_range_args(start, end)?;
+    Ok((b.unwrap_or(0), e.map(|e| e - 1).unwrap_or(0)))
+}
+
+/// `config profiles` (#215, #216): what each profile is set up with, the keys only as whether they are set, so a
+/// client can tell which account is ready without reading a key. `complete`: enough to open the database.
+pub fn profiles_summary(config: &ConfigStore) -> Value {
+    let set = |value: &Option<String>| value.as_deref().is_some_and(|v| !v.trim().is_empty());
+    let profiles = config
+        .profiles
+        .iter()
+        .map(|(name, p)| {
+            json!({
+                "name": name,
+                "current": *name == config.current_profile,
+                "wxid": p.wxid,
+                "dbPath": p.db_path,
+                "decryptKey": set(&p.decrypt_key),
+                "imageKeys": p.image_xor_key.is_some() && set(&p.image_aes_key),
+                // the key of the AI model API (#213), as the database keys: whether it is set
+                "aiKey": set(&p.ai_model_api_key),
+                "complete": set(&p.db_path) && set(&p.decrypt_key),
+            })
+        })
+        .collect();
+    Value::Array(profiles)
+}
+
+/// The config file of `hub`, read again: a config read answers what the file holds now.
+fn config_of(hub: &ServiceHub) -> AppResult<ConfigStore> {
+    ConfigStore::load(hub.config_path()).map_err(|err| AppError::config(err.to_string()))
 }
 
 impl Read {
@@ -251,6 +368,105 @@ impl Read {
                 Some(u) => hub.sns_user_post_stats(u),
                 None => Ok(json!(hub.sns_user_post_counts(*prefer_cache)?)),
             },
+            Read::ChatStatuses { usernames } => hub.chat_statuses(usernames),
+            Read::ChatTabCounts => hub.chat_tab_counts(),
+            Read::GroupList => Ok(json!(hub.group_chats()?)),
+            Read::GroupRanking {
+                chatroom_id,
+                limit,
+                start,
+                end,
+            } => {
+                let (b, e) = day_span(start.as_deref(), end.as_deref())?;
+                Ok(json!(hub.group_message_ranking(
+                    chatroom_id,
+                    *limit,
+                    b,
+                    e
+                )?))
+            }
+            Read::GroupHours {
+                chatroom_id,
+                start,
+                end,
+            } => {
+                let (b, e) = day_span(start.as_deref(), end.as_deref())?;
+                hub.group_active_hours(chatroom_id, b, e)
+            }
+            Read::GroupMedia {
+                chatroom_id,
+                start,
+                end,
+            } => {
+                let (b, e) = day_span(start.as_deref(), end.as_deref())?;
+                hub.group_media_stats(chatroom_id, b, e)
+            }
+            Read::GroupMember {
+                chatroom_id,
+                username,
+                start,
+                end,
+            } => {
+                let (b, e) = day_span(start.as_deref(), end.as_deref())?;
+                hub.group_member_analytics(chatroom_id, username, b, e)
+            }
+            Read::GroupMemberMessages {
+                chatroom_id,
+                username,
+                limit,
+                cursor,
+                start,
+                end,
+            } => {
+                let (b, e) = day_span(start.as_deref(), end.as_deref())?;
+                hub.group_member_messages(chatroom_id, username, b, e, *limit, *cursor)
+            }
+            Read::AnalyticsOverall { force } => hub.analytics_overall_statistics(*force),
+            Read::AnalyticsRankings { limit, start, end } => {
+                let (b, e) = day_span(start.as_deref(), end.as_deref())?;
+                Ok(json!(hub.analytics_contact_rankings(*limit, b, e)?))
+            }
+            Read::AnalyticsTime => hub.analytics_time_distribution(),
+            Read::AnalyticsExcluded => Ok(json!(hub.analytics_excluded_usernames()?)),
+            Read::AnalyticsExcludeCandidates => Ok(json!(hub.analytics_exclude_candidates()?)),
+            Read::BizAccounts => hub.biz_accounts(),
+            Read::BizMessages {
+                username,
+                limit,
+                offset,
+            } => hub.biz_messages(username, *limit, *offset),
+            Read::BizPayRecords { limit, offset } => hub.biz_pay_records(*limit, *offset),
+            Read::InsightFootprint { start, end } => {
+                let (b, e) = day_span(start.as_deref(), end.as_deref())?;
+                hub.insight_footprint(b, e)
+            }
+            Read::InsightGet { id } => Ok(hub.insight_get_record(id)),
+            Read::ReportAnnualYears => hub.report_available_years(),
+            Read::CacheList => Ok(hub.cache_list()),
+            Read::ConfigGet { key } => {
+                if matches!(key.as_deref(), Some("config_path" | "configPath")) {
+                    return Ok(json!(hub.config_path().to_string_lossy()));
+                }
+                let config = config_of(hub)?;
+                Ok(match key {
+                    Some(key) => config.get_key(None, key),
+                    None => serde_json::to_value(config.profile(None)).unwrap(),
+                })
+            }
+            Read::ConfigProfiles => Ok(profiles_summary(&config_of(hub)?)),
+            Read::RuntimeInfo => {
+                let ctx = hub.context();
+                Ok(json!({
+                    "homeDir": ctx.home_dir,
+                    "configPath": ctx.config_path,
+                    "runtimeDir": ctx.runtime_dir,
+                    "version": ctx.version,
+                    "target": weflow_assets::target_triple()
+                }))
+            }
+            Read::DbDetect => Ok(hub.db_detect()),
+            Read::DbTest => hub.db_test(),
+            Read::DbWxid { root } => hub.db_wxid(root.as_deref()),
         }
     }
 }
@@ -395,4 +611,39 @@ fn video_file(files: &crate::video::VideoFiles, thumb: bool) -> AppResult<&std::
             AppError::runtime("the video has no thumbnail or cover")
                 .with_details(json!({ "failureKind": "not_found" }))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profiles_say_whether_keys_are_set_but_not_what_they_are() {
+        let mut config = ConfigStore::default();
+        config.set_key(None, "db_path", json!("/data")).unwrap();
+        config
+            .set_key(None, "decrypt_key", json!("ab".repeat(32)))
+            .unwrap();
+        config
+            .set_key(None, "image_aes_key", json!("0123456789abcdef"))
+            .unwrap();
+        config
+            .set_key(Some("work"), "wxid", json!("wxid_w"))
+            .unwrap();
+        config
+            .set_key(Some("work"), "ai_model_api_key", json!("sk-secret"))
+            .unwrap();
+        let summary = profiles_summary(&config);
+        assert_eq!(
+            summary,
+            json!([
+                { "name": "default", "current": true, "wxid": null, "dbPath": "/data",
+                  "decryptKey": true, "imageKeys": false, "aiKey": false, "complete": true },
+                { "name": "work", "current": false, "wxid": "wxid_w", "dbPath": null,
+                  "decryptKey": false, "imageKeys": false, "aiKey": true, "complete": false },
+            ])
+        );
+        assert!(!summary.to_string().contains("abab"));
+        assert!(!summary.to_string().contains("sk-secret"));
+    }
 }
