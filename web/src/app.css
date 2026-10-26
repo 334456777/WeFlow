@@ -696,7 +696,10 @@ a.card-bubble:hover .card-bubble-title { text-decoration: underline; text-underl
 .card.collapsed .card-summary { opacity: 1; }
 .card-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--duration-panel) var(--ease-snap); }
 .card.collapsed .card-body { grid-template-rows: 0fr; }
-.card-inner { min-height: 0; overflow: hidden; }
+/* The body clips only while it folds and once folded: open, the raised controls in it cast their light past its
+   edges, which a clip would cut square (#354). Opening, it clips until it has opened all the way. */
+.card-inner { min-height: 0; overflow: visible; transition: overflow 0s var(--duration-panel) allow-discrete; }
+.card.collapsed .card-inner { overflow: hidden; transition-delay: 0s; }
 /* The body clips while it folds, so the content keeps 4px above it: room for the focus ring of a field at the top. */
 .card-content { container-type: inline-size; padding: var(--space-1) var(--space-4) var(--space-4); }
 .card-lead { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-bottom: var(--space-3); color: var(--fg-muted); font-size: var(--text-xs); }
