@@ -1,5 +1,6 @@
 // The AI insights (#210): the records the insight engine of `serve --insight` (or `insight trigger`) wrote, through
-// the command routes. The records of the current account only, newest first.
+// the command routes; one record's log is read in the server's process (`/api/`). The records of the current account
+// only, newest first.
 import { call, get } from './client';
 
 /** A record as `insight records` lists it. */
@@ -50,7 +51,7 @@ export async function getInsights(filter: { keyword?: string; session?: string |
 }
 
 export async function getInsightLog(id: string, signal?: AbortSignal): Promise<InsightLog | null> {
-  const found = await get<{ record?: { log?: InsightLog } }>('insight/get', { id }, signal);
+  const found = await get<{ record?: { log?: InsightLog } }>('api/insight/get', { id }, signal);
   return found.record?.log ?? null;
 }
 

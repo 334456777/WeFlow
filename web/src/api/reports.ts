@@ -30,7 +30,7 @@ export interface AnnualReport {
   lostFriend: (Person & { earlyCount: number; lateCount: number; periodDesc: string }) | null;
 }
 
-export const getReportYears = (signal?: AbortSignal) => get<{ years: number[] }>('report/annual/years', {}, signal);
+export const getReportYears = (signal?: AbortSignal) => get<{ years: number[] }>('api/report/annual/years', {}, signal);
 // a report is generated, which the command API takes as a POST (#336)
 export const getAnnualReport = (year: number, signal?: AbortSignal) => call<AnnualReport>('POST', 'report/annual/generate', { year }, signal);
 

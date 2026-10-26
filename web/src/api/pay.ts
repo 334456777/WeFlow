@@ -1,5 +1,5 @@
-// WeChat Pay (#204): the notices of the WeChat Pay account (`biz pay-records`), read through the command routes
-// (docs/serve-api.md), and what the page makes of their text: the amount, how it was paid, its state, the payee.
+// WeChat Pay (#204): the notices of the WeChat Pay account (`biz pay-records`), read in the server's process
+// (`/api/`, docs/serve-api.md), and what the page makes of their text: the amount, how it was paid, its state, the payee.
 import { get } from './client';
 
 /** A notice as `biz pay-records` gives it. */
@@ -42,7 +42,7 @@ export const PAY_PAGE = 500;
 
 /** A page of notices, newest first, from the `offset`-th message of the account on. */
 export async function getPayRecords(offset: number, signal?: AbortSignal): Promise<{ records: PayRecord[]; hasMore: boolean }> {
-  const data = await get<{ records?: PayRecord[]; hasMore?: boolean }>('biz/pay-records', { limit: PAY_PAGE, offset }, signal);
+  const data = await get<{ records?: PayRecord[]; hasMore?: boolean }>('api/biz/pay-records', { limit: PAY_PAGE, offset }, signal);
   const records = data?.records ?? [];
   // a server before rc.6 does not say; a full page may have more
   return { records, hasMore: data?.hasMore ?? records.length >= PAY_PAGE };

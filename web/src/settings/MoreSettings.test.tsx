@@ -22,7 +22,7 @@ const PROFILE: Profile = { name: 'default', current: true, wxid: 'wxid_a', dbPat
 
 describe('settings', () => {
   it('saves the output language, and follows the system again by unsetting it', async () => {
-    const calls = serve((_method, url) => (url === '/config/get?key=lang' ? ok('zh') : undefined));
+    const calls = serve((_method, url) => (url === '/api/config/get?key=lang' ? ok('zh') : undefined));
     render(<LanguageSetting />);
     await act(async () => {});
     expect(screen.getByRole('button', { name: '中文' }).getAttribute('aria-pressed')).toBe('true');
@@ -40,7 +40,7 @@ describe('settings', () => {
     const values: Record<string, unknown> = { ai_model_api_base_url: 'https://api.example.com/v1', ai_model_api_model: 'm1', ai_model_api_max_tokens: null, ai_insight_enabled: true };
     const calls = serve((_method, url) => {
       const key = new URL(url, 'http://x').searchParams.get('key');
-      if (url.startsWith('/config/get')) return ok(values[key!] ?? null);
+      if (url.startsWith('/api/config/get')) return ok(values[key!] ?? null);
       if (url === '/insight/test') return json({ success: false, error: { code: 'runtime_error', message: 'HTTP 401 from the model API' } }, 500);
     });
     const onSaved = vi.fn();
@@ -72,7 +72,7 @@ describe('settings', () => {
   it('lists the cache by part, and clears one after showing what goes', async () => {
     let images = 3 * 1024 * 1024;
     const calls = serve((_method, url) => {
-      if (url === '/cache/list') return ok([{ part: 'images', paths: ['C:/c/Images'], bytes: images, files: 12 }, { part: 'voices', paths: ['C:/c/Voices'], bytes: 0, files: 0 }]);
+      if (url === '/api/cache/list') return ok([{ part: 'images', paths: ['C:/c/Images'], bytes: images, files: 12 }, { part: 'voices', paths: ['C:/c/Voices'], bytes: 0, files: 0 }]);
       if (url === '/cache/clear?images=true&dry-run=true') return ok({ dryRun: true, paths: [{ path: 'C:/c/Images', bytes: images }], bytes: images, profileKeys: [] });
       if (url === '/cache/clear?images=true&yes=true') { images = 0; return ok({ removedPaths: ['C:/c/Images'], freedBytes: 3 }); }
     });

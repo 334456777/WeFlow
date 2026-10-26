@@ -60,14 +60,14 @@ describe('annual report', () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       urls.push((init?.method ?? 'GET') + ' ' + url + (init?.body ? ' ' + init.body : ''));
-      return json({ success: true, data: url.startsWith('/report/annual/years') ? { years: [2024, 2025] } : { ...REPORT, year: JSON.parse(String(init?.body)).year } });
+      return json({ success: true, data: url.startsWith('/api/report/annual/years') ? { years: [2024, 2025] } : { ...REPORT, year: JSON.parse(String(init?.body)).year } });
     }));
     const onYear = vi.fn();
     const { rerender } = render(<ReportsPage mode="annual" year={null} onYear={onYear} friend={null} onFriend={() => {}} />);
     await act(async () => {});
     await act(async () => {});
     // generating takes a POST (#336)
-    expect(urls).toEqual(['GET /report/annual/years', 'POST /report/annual/generate {"year":2025}']);
+    expect(urls).toEqual(['GET /api/report/annual/years', 'POST /report/annual/generate {"year":2025}']);
     expect(Array.from(screen.getByRole('group', { name: '报告的年份' }).querySelectorAll('button'), b => b.textContent)).toEqual(['2025 年', '2024 年', '全部年份']);
     expect(screen.getByRole('button', { name: '2025 年' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: '全部年份' }));

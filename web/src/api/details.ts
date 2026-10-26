@@ -2,10 +2,10 @@
 import { ApiError, get, type Params } from './client';
 import type { GroupMember, ParsedMessage } from './messages';
 
-// These routes each start a command, and unlike the `/api/` reads they do not wait for a place: with the server's
-// reads (`--max-reads`, one per processor by default) all taken, they answer `busy` (429) at once. Read them one at
-// a time, so that the open cards do not crowd each other out; other tabs may still take the places, so retry `busy`
-// briefly.
+// `chat detail --extra` starts a command, and unlike the `/api/` reads it does not wait for a place: with the server's
+// reads (`--max-reads`, one per processor by default) all taken, it answers `busy` (429) at once. Read such routes one
+// at a time, so that the open cards do not crowd each other out; other tabs may still take the places, so retry
+// `busy` briefly.
 let commands: Promise<unknown> = Promise.resolve();
 function commandRead<T>(path: string, params: Params, signal?: AbortSignal): Promise<T> {
   const next = commands.then(async () => {
@@ -89,9 +89,8 @@ export interface MemberStats {
   commonEmojis: { emoji: string; count: number }[];
 }
 
-export function getMemberStats(chatroomId: string, username: string, signal?: AbortSignal): Promise<MemberStats> {
-  return commandRead<MemberStats>('group/member', { 'chatroom-id': chatroomId, username }, signal);
-}
+export const getMemberStats = (chatroomId: string, username: string, signal?: AbortSignal) =>
+  get<MemberStats>('api/group/member', { 'chatroom-id': chatroomId, username }, signal);
 
 export type ResourceType = 'image' | 'video' | 'voice' | 'file';
 

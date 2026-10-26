@@ -54,8 +54,8 @@ function Wizard({ profile, onChanged = () => {}, onDone = () => {} }: { profile:
 describe('SetupWizard', () => {
   it('saves the data directory and the account it finds there', async () => {
     const calls = serve({
-      'GET /db/detect': () => ok({ candidates: [{ path: 'D:/xwechat_files', exists: true }, { path: 'C:/gone', exists: false }] }),
-      'GET /db/wxid': () => ok({ accounts: [{ wxid: 'wxid_a', path: 'D:/xwechat_files/wxid_a_1f2e' }] }),
+      'GET /api/db/detect': () => ok({ candidates: [{ path: 'D:/xwechat_files', exists: true }, { path: 'C:/gone', exists: false }] }),
+      'GET /api/db/wxid': () => ok({ accounts: [{ wxid: 'wxid_a', path: 'D:/xwechat_files/wxid_a_1f2e' }] }),
       'PUT /config/set': () => ok({}),
     });
     const onChanged = vi.fn();
@@ -64,7 +64,7 @@ describe('SetupWizard', () => {
     // the one directory that exists, and its one account, are chosen already
     expect(screen.getByRole('button', { name: 'D:/xwechat_files' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText('C:/gone')).toBeNull();
-    expect(calls.find(c => c.url.startsWith('/db/wxid'))?.url).toBe('/db/wxid?root=D%3A%2Fxwechat_files');
+    expect(calls.find(c => c.url.startsWith('/api/db/wxid'))?.url).toBe('/api/db/wxid?root=D%3A%2Fxwechat_files');
     expect(screen.getByRole('button', { name: /wxid_a/ }).getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: '保存并继续' }));
@@ -76,8 +76,8 @@ describe('SetupWizard', () => {
 
   it('says why a folder has no account', async () => {
     serve({
-      'GET /db/detect': () => ok({ candidates: [] }),
-      'GET /db/wxid': () => json({ success: false, error: { code: 'runtime_error', message: 'no WeChat account directory found in E:/x' } }, 500),
+      'GET /api/db/detect': () => ok({ candidates: [] }),
+      'GET /api/db/wxid': () => json({ success: false, error: { code: 'runtime_error', message: 'no WeChat account directory found in E:/x' } }, 500),
     });
     render(<Wizard profile={PROFILE} />);
     await act(async () => {});
@@ -136,7 +136,7 @@ describe('SetupWizard', () => {
   });
 
   it('tests the database last, and says where to go back to when it fails', async () => {
-    serve({ 'GET /db/test': () => json({ success: false, error: { code: 'config_error', message: 'missing decrypt_key; run config set decrypt_key' } }, 409) });
+    serve({ 'GET /api/db/test': () => json({ success: false, error: { code: 'config_error', message: 'missing decrypt_key; run config set decrypt_key' } }, 409) });
     render(<Wizard profile={{ ...PROFILE, dbPath: 'D:/x', wxid: 'wxid_a', decryptKey: true }} />);
     await act(async () => {});
     fireEvent.click(screen.getByRole('button', { name: '4验证' }));

@@ -30,7 +30,7 @@ describe('BizPushes (#203)', () => {
     }));
     render(<BizPushes session={session} />);
     await screen.findByRole('heading', { name: '每日新闻' });
-    expect(calls[0]).toContain('/biz/messages?username=gh_news&limit=20&offset=0');
+    expect(calls[0]).toContain('/api/biz/messages?username=gh_news&limit=20&offset=0');
     const cards = document.querySelectorAll('.biz-push');
     expect(cards).toHaveLength(20);
     // the lead links to its article; the other article of the push follows as a row, the lead not twice

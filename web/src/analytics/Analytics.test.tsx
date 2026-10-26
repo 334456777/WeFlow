@@ -50,17 +50,17 @@ describe('chat analytics', () => {
     const first = new Promise<void>(resolve => { release = resolve; });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       urls.push(url);
-      if (url.startsWith('/analytics/overall')) { await first; return json({ success: true, data: OVERALL }); }
-      return json({ success: true, data: url.startsWith('/analytics/rankings') ? READY.rankings : SPREAD });
+      if (url.startsWith('/api/analytics/overall')) { await first; return json({ success: true, data: OVERALL }); }
+      return json({ success: true, data: url.startsWith('/api/analytics/rankings') ? READY.rankings : SPREAD });
     }));
     const { result } = renderHook(() => useAnalytics(true, 0));
     await act(async () => {});
-    expect(urls).toEqual(['/analytics/overall']);
+    expect(urls).toEqual(['/api/analytics/overall']);
     await act(async () => { release(); });
-    expect(urls).toEqual(['/analytics/overall', '/analytics/rankings?limit=20', '/analytics/time']);
+    expect(urls).toEqual(['/api/analytics/overall', '/api/analytics/rankings?limit=20', '/api/analytics/time']);
     expect(result.current[0].status).toBe('ready');
     await act(async () => { result.current[1](true); });
-    expect(urls[3]).toBe('/analytics/overall?force=true');
+    expect(urls[3]).toBe('/api/analytics/overall?force=true');
   });
 
   it('shows the numbers, the charts and who the chats are with', () => {
@@ -92,7 +92,7 @@ describe('chat analytics', () => {
 
   it('lists everyone left out but only a few others, the rest found by searching', async () => {
     const people = Array.from({ length: 20 }, (_, i) => ({ username: 'wxid_' + i, displayName: '朋友' + i }));
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => json({ success: true, data: url === '/analytics/excluded' ? ['wxid_15', 'wxid_19'] : people })));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => json({ success: true, data: url === '/api/analytics/excluded' ? ['wxid_15', 'wxid_19'] : people })));
     render(<ExcludedPeople onSaved={() => {}} />);
     await act(async () => {});
     const names = Array.from(screen.getByRole('group', { name: '不统计的好友' }).querySelectorAll('label'), l => l.textContent);
@@ -107,7 +107,7 @@ describe('chat analytics', () => {
       const method = init?.method ?? 'GET';
       calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (method === 'PUT') { const set = JSON.parse(String(init!.body)).set; saved = set === '' ? [] : set; return json({ success: true, data: saved }); }
-      return json({ success: true, data: url === '/analytics/excluded' ? saved : [
+      return json({ success: true, data: url === '/api/analytics/excluded' ? saved : [
         { username: 'wxid_a', displayName: '林沐' }, { username: 'wxid_b', displayName: '陈屿', wechatId: 'chenyu' }, { username: 'wxid_c', displayName: '文件传输助手' },
       ] });
     }));

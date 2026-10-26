@@ -50,7 +50,7 @@ export interface Footprint {
 export interface FootprintRange { from: string; to: string; label: string }
 
 export const getFootprint = (range: FootprintRange, signal?: AbortSignal) =>
-  get<Footprint>('insight/footprint', { start: range.from || undefined, end: range.to || undefined }, signal);
+  get<Footprint>('api/insight/footprint', { start: range.from || undefined, end: range.to || undefined }, signal);
 
 export const footprintExport = (range: FootprintRange) => ({ format: 'json', start: range.from || undefined, end: range.to || undefined });
 

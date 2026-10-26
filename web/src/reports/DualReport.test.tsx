@@ -54,7 +54,7 @@ describe('dual report', () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       urls.push(url);
-      return json({ success: true, data: url.startsWith('/analytics/rankings')
+      return json({ success: true, data: url.startsWith('/api/analytics/rankings')
         ? [{ username: 'wxid_b', displayName: '陈屿', messageCount: 9, sentCount: 4, receivedCount: 5, lastMessageTime: 0 }]
         : [{ username: 'wxid_a', displayName: '林沐', wechatId: 'linmu' }, { username: 'wxid_b', displayName: '陈屿' }] });
     }));
@@ -63,7 +63,7 @@ describe('dual report', () => {
     expect(urls).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: /选择一位好友/ }));
     await act(async () => {});
-    expect(urls).toEqual(['/analytics/rankings?limit=20', '/analytics/exclude-candidates']);
+    expect(urls).toEqual(['/api/analytics/rankings?limit=20', '/api/analytics/exclude-candidates']);
     expect(screen.getAllByRole('option').map(o => o.textContent)).toEqual(['陈陈屿', '林林沐']);
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索好友' }), { target: { value: 'LINMU' } });
     fireEvent.click(screen.getByRole('option'));
@@ -74,14 +74,14 @@ describe('dual report', () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       urls.push((init?.method ?? 'GET') + ' ' + url + (init?.body ? ' ' + init.body : ''));
-      return json({ success: true, data: url.startsWith('/report/annual/years') ? { years: [2025] } : REPORT });
+      return json({ success: true, data: url.startsWith('/api/report/annual/years') ? { years: [2025] } : REPORT });
     }));
     const { rerender } = render(<ReportsPage mode="dual" year={null} onYear={() => {}} friend={null} onFriend={() => {}} />);
     await act(async () => {});
     expect(screen.getByText('选一位好友，生成你们两个人的报告。')).toBeTruthy();
     rerender(<ReportsPage mode="dual" year={null} onYear={() => {}} friend={{ username: 'wxid_a', displayName: '林沐' }} onFriend={() => {}} />);
     await act(async () => {});
-    expect(urls).toEqual(['GET /report/annual/years', 'POST /report/dual/generate {"friend":"wxid_a","year":2025}']);
+    expect(urls).toEqual(['GET /api/report/annual/years', 'POST /report/dual/generate {"friend":"wxid_a","year":2025}']);
     expect(screen.getByRole('article').getAttribute('aria-label')).toBe('我自己和林沐的 2025 年双人报告');
   });
 });

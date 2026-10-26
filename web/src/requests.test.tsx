@@ -57,11 +57,11 @@ function answer(url: string): Response {
   switch (path) {
     case '/jobs':
       return json({ success: true, data: [] });
-    case '/config/profiles':
+    case '/api/config/profiles':
       return json({ success: true, data: [{ name: 'default', current: true, complete: true }] });
     case '/api/chat/sessions':
       return json({ success: true, data: ACCOUNTS[account].map((s, i) => ({ ...s, summary: '', unreadCount: 0, sortTimestamp: 1760000000 - i, lastTimestamp: 1760000000 - i, lastMsgType: 1 })) });
-    case '/chat/statuses':
+    case '/api/chat/statuses':
       return json({ success: true, data: {} });
     case '/api/chat/messages': {
       const session = params.get('session-id') ?? '';
@@ -71,7 +71,7 @@ function answer(url: string): Response {
     }
     case '/api/chat/contacts':
       return json({ success: true, data: ACCOUNTS[account].map(s => ({ ...s, type: 'friend' })) });
-    case '/insight/footprint':
+    case '/api/insight/footprint':
       return json({ success: true, data: { summary: { private_inbound_people: 0, private_replied_people: 0, private_outbound_people: 0, private_reply_rate: 0, mention_count: 0, mention_group_count: 0 }, private_sessions: [], private_segments: [], mentions: [], mention_groups: [], diagnostics: { truncated: false } } });
     case '/api/sns/timeline':
       return json({ success: true, data: [] });
@@ -136,9 +136,9 @@ describe('requests of the chat page', () => {
       'stream /api/push/messages',
       // the token check, and whether the account is set up
       'GET /jobs',
-      'GET /config/profiles',
+      'GET /api/config/profiles',
       'GET /api/chat/sessions',
-      'GET /chat/statuses?usernames=wxid_lin&usernames=wxid_zhou',
+      'GET /api/chat/statuses?usernames=wxid_lin&usernames=wxid_zhou',
       `GET /api/chat/messages?session-id=wxid_lin&${PAGE}`,
     ]);
     expect(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); })).toEqual([
@@ -154,9 +154,9 @@ describe('requests of the chat page', () => {
     // nothing of the account before is asked of the new one: no conversation is open until its list is read (#402)
     expect(await requestsOf(() => switchAccount('b'))).toEqual([
       'GET /jobs',
-      'GET /config/profiles',
+      'GET /api/config/profiles',
       'GET /api/chat/sessions',
-      'GET /chat/statuses?usernames=wxid_qin',
+      'GET /api/chat/statuses?usernames=wxid_qin',
       `GET /api/chat/messages?session-id=wxid_qin&${PAGE}`,
     ]);
     expect(conversations()).toEqual(['秦川']);
