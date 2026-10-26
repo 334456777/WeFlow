@@ -59,6 +59,10 @@ jobs:
           fi
           bun scripts/contract-compat.ts "$RUNNER_TEMP/contract-base.json"
 
+      # every text the page passes through t() has its English (#439)
+      - name: English of the page
+        run: bun run i18n --check
+
       - name: Type-check
         run: bun run typecheck
 

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, type ComponentType, type ReactNode } from 'react';
 import { ArrowLeft, DotsThreeOutline, type IconProps } from '@phosphor-icons/react';
 import { usePresence } from './motion';
+import { t } from './i18n';
 
 export interface NavItem<Id extends string> {
   id: Id;
@@ -26,17 +27,17 @@ export function MobileNav<Id extends string>({ items, tabs, current, onSelect, s
   const more = items.filter(item => !tabs.includes(item.id));
   const chosen = more.find(item => item.id === current);
   return <>
-    <nav className="mobile-nav" aria-label="主导航">
+    <nav className="mobile-nav" aria-label={t('主导航')}>
       {tabs.map(id => {
         const item = items.find(i => i.id === id)!;
         const Icon = item.icon;
         const selected = id === current;
         return <button key={id} type="button" className="mobile-tab" aria-current={selected ? 'page' : undefined} onClick={() => onSelect(id)}>
-          <Icon size={22} weight={selected ? 'fill' : 'regular'} aria-hidden="true" /><span>{item.short ?? item.label}</span>
+          <Icon size={22} weight={selected ? 'fill' : 'regular'} aria-hidden="true" /><span>{t(item.short ?? item.label)}</span>
         </button>;
       })}
       <button type="button" className="mobile-tab" aria-current={chosen ? 'page' : undefined} aria-haspopup="dialog" aria-expanded={open} onClick={() => onOpen(!open)}>
-        <DotsThreeOutline size={22} weight={chosen ? 'fill' : 'regular'} aria-hidden="true" /><span>{chosen ? chosen.short ?? chosen.label : '更多'}</span>
+        <DotsThreeOutline size={22} weight={chosen ? 'fill' : 'regular'} aria-hidden="true" /><span>{chosen ? t(chosen.short ?? chosen.label) : t('更多')}</span>
       </button>
     </nav>
     <NavSheet items={more} current={current} open={open} status={status} onSelect={id => { onOpen(false); onSelect(id); }} onClose={() => onOpen(false)} />
@@ -56,14 +57,14 @@ function NavSheet<Id extends string>({ items, current, open, status, onSelect, o
     if (!presence) ref.current?.close();
   }, [presence]);
   if (!presence) return null;
-  return <dialog ref={ref} className="nav-sheet" aria-label="更多页面" data-state={presence.closing ? 'closing' : 'open'}
+  return <dialog ref={ref} className="nav-sheet" aria-label={t('更多页面')} data-state={presence.closing ? 'closing' : 'open'}
     onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="nav-sheet-grid">
       {items.map(item => {
         const Icon = item.icon;
         const selected = item.id === current;
         return <button key={item.id} type="button" className={'nav-sheet-item' + (selected ? ' selected' : '')} aria-current={selected ? 'page' : undefined} onClick={() => onSelect(item.id)}>
-          <Icon size={24} weight={selected ? 'fill' : 'regular'} aria-hidden="true" /><span>{item.label}</span>
+          <Icon size={24} weight={selected ? 'fill' : 'regular'} aria-hidden="true" /><span>{t(item.label)}</span>
         </button>;
       })}
     </div>

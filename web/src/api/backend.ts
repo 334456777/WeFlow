@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiUrl, checkToken, onAuth, token } from './client';
 import { emitLive } from './live';
+import { setLang, t } from '../i18n';
 
 export interface Health {
   status: string;
@@ -15,6 +16,8 @@ export interface Health {
   limits?: { maxTasks?: number; maxReads?: number; maxMedia?: number };
   /** Whether the insight engine runs beside (`--insight`). */
   insight?: boolean;
+  /** The language of the server's answers (#439), which the page shows itself in; older servers do not say. */
+  lang?: 'zh' | 'en';
 }
 
 export type Backend =
@@ -75,11 +78,11 @@ function compareTags(a: string, b: string): number {
 /** Why this build cannot use the server, or null when it can. */
 export function incompatibility(health: Health, web = WEB): string | null {
   if (health.apiVersion !== web.apiVersion) {
-    return '网页需要 API 版本 ' + web.apiVersion + '，weflow 提供的是 ' + health.apiVersion;
+    return t('网页需要 API 版本 {want}，weflow 提供的是 {have}', { want: web.apiVersion, have: health.apiVersion });
   }
   const order = compareVersions(health.version, web.minBackendVersion);
   if (Number.isNaN(order) || order < 0) {
-    return '网页需要 weflow ' + web.minBackendVersion + ' 或更新的版本，当前是 ' + health.version;
+    return t('网页需要 weflow {want} 或更新的版本，当前是 {have}', { want: web.minBackendVersion, have: health.version });
   }
   return null;
 }
@@ -92,9 +95,9 @@ export function adviceFor(health: Health, web = WEB): string {
   const ours = Number(web.apiVersion);
   const theirs = Number(health.apiVersion);
   if (health.apiVersion !== web.apiVersion && Number.isFinite(ours) && Number.isFinite(theirs) && theirs > ours) {
-    return '这个网页比 weflow 旧：在终端运行 weflow web update，换成适用的最新网页版本，再重新打开。';
+    return t('这个网页比 weflow 旧：在终端运行 weflow web update，换成适用的最新网页版本，再重新打开。');
   }
-  return '请把 weflow 升级到 ' + web.minBackendVersion + ' 或更新的版本；或运行 weflow web list --remote 找一个适用于当前 weflow 的网页版本，再用 weflow web use <版本> 换上。';
+  return t('请把 weflow 升级到 {want} 或更新的版本；或运行 weflow web list --remote 找一个适用于当前 weflow 的网页版本，再用 weflow web use <版本> 换上。', { want: web.minBackendVersion });
 }
 
 function stateOf(health: Health): Backend {
@@ -241,6 +244,8 @@ export class Connection {
       || ('health' in now && 'health' in next && JSON.stringify(now.health) === JSON.stringify(next.health)));
     if (same) return;
     this.state = next;
+    // the page speaks the server's language (#439)
+    if ('health' in next) setLang(next.health.lang);
     this.onChange(next);
   }
 

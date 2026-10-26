@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { CaretDown } from '@phosphor-icons/react';
 import { durationMs } from './motion';
+import { t } from './i18n';
 
 export interface Card {
   id: string;
@@ -188,7 +189,7 @@ export function CardStack({ cards, storageKey, defaultClosed, label, hidden = []
       return <section key={id} role="listitem" data-card={id} className={'card' + (open ? '' : ' collapsed') + (dragging === id ? ' dragging' : '')} aria-labelledby={'card-' + id}>
         <h2 className="card-heading">
           <button type="button" id={'card-' + id} className="card-header" aria-expanded={open} aria-controls={'card-body-' + id}
-            aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title="点击展开或收起；拖动，或按 Alt+↑ / Alt+↓ 调整顺序"
+            aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title={t('点击展开或收起；拖动，或按 Alt+↑ / Alt+↓ 调整顺序')}
             onPointerDown={event => startDrag(event, id)} onKeyDown={event => moveWithKeys(event, id)}
             onClick={() => { if (swallowClick.current) swallowClick.current = false; else toggle(id); }}>
             <span className="card-title">{card.title}</span><CaretDown size={14} className="card-caret" aria-hidden="true" />

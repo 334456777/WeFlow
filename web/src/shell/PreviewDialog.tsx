@@ -10,6 +10,7 @@ import { PreviewDownload } from '../chat/PreviewDownload';
 import { canFly, fly, frameFlight, inSight, thumbnailOf } from '../chat/previewMotion';
 import type { ZoomControls } from '../chat/ZoomImage';
 import { prefersReducedMotion, usePresence } from '../motion';
+import { t } from '../i18n';
 
 export interface PreviewControl {
   open(preview: Preview): void;
@@ -112,7 +113,7 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
     }
   };
 
-  const dialog = <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || '媒体预览'} data-state={shownPreview?.closing ? 'closing' : 'open'}
+  const dialog = <dialog className="preview-dialog" ref={dialogRef} aria-label={shownPreview?.value.title || t('媒体预览')} data-state={shownPreview?.closing ? 'closing' : 'open'}
     onCancel={event => { event.preventDefault(); closePreview(); }} onClick={event => { if (event.target === event.currentTarget) closePreview(); }} onKeyDown={previewKeys}>
     {shownPreview && (() => {
       const shown = shownPreview.value;
@@ -120,11 +121,11 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
       const steps = shown.type !== 'file' ? shown.gallery : undefined;
       return <div className="preview-content"><header><strong>{shown.title}{steps && <small className="num"> {steps.index + 1} / {steps.items.length}</small>}</strong>
         <span className="preview-tools">
-          {shown.type !== 'file' && shown.locate && <button type="button" className="icon-button" aria-label="在会话中定位" title="在会话中定位"
+          {shown.type !== 'file' && shown.locate && <button type="button" className="icon-button" aria-label={t('在会话中定位')} title={t('在会话中定位')}
             onClick={() => { const locate = shown.locate; dialogRef.current?.removeAttribute('data-flown'); opened.current = null; setPreview(null); locate?.(); }}><ArrowSquareOut size={18} /></button>}
-          <button type="button" className="icon-button" aria-label="关闭预览" onClick={closePreview}><X size={18} /></button></span></header>
+          <button type="button" className="icon-button" aria-label={t('关闭预览')} onClick={closePreview}><X size={18} /></button></span></header>
         {shown.type === 'file'
-          ? <div className="file-preview"><FilePdf size={56} /><h3>{shown.title}</h3><p>示例文件记录，可查看名称与记录时间。</p></div>
+          ? <div className="file-preview"><FilePdf size={56} /><h3>{shown.title}</h3><p>{t('示例文件记录，可查看名称与记录时间。')}</p></div>
           : <>
             {/* the picture sunk in a hollow of the frame (#341) */}
             <div className="preview-stage">{shown.type === 'image'
@@ -134,8 +135,8 @@ export function usePreview(reducedMotion: boolean): PreviewControl {
             <footer className="preview-foot">
               <span className="preview-foot-side">{shown.type === 'image' && shown.hd && <OriginalButton key={shown.hd.src} hd={shown.hd} onToggle={toggleOriginal} />}</span>
               {steps && <span className="preview-steps">
-                <button type="button" className="preview-step" aria-label="上一个" title="上一个（←）" disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
-                <button type="button" className="preview-step" aria-label="下一个" title="下一个（→）" disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>
+                <button type="button" className="preview-step" aria-label={t('上一个')} title={t('上一个（←）')} disabled={steps.index === 0} onClick={() => stepPreview(-1)}><CaretLeft size={16} /></button>
+                <button type="button" className="preview-step" aria-label={t('下一个')} title={t('下一个（→）')} disabled={steps.index === steps.items.length - 1} onClick={() => stepPreview(1)}><CaretRight size={16} /></button>
               </span>}
               <span className="preview-foot-side end">{(shown.type === 'video' || /\/api\/chat\/image-data/.test(shown.src)) &&
                 <PreviewDownload key={shown.src} src={shown.src} kind={shown.type} original={shown.type === 'image' && Boolean(shown.hd?.shown)} />}</span>

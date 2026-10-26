@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { useAnalyticsPage } from './analytics/useAnalyticsPage';
 import { useBackend } from './api/backend';
+import { t, useLang } from './i18n';
 import { useScope } from './api/scope';
 import { currentProfile } from './api/setup';
 import { backupPage } from './backup/BackupPage';
@@ -43,6 +44,8 @@ export function App() {
   useSearchKey();
   const prefs = usePreferences();
   const [backend, recheckBackend] = useBackend(prefs.realtime);
+  // the server's language, once it said (#439): the pages are drawn again in it
+  const language = useLang();
   const connected = backend.state === 'ready';
   const fold = useSidebarFold();
   const [section, setSection] = useState<Navigation>('chat');
@@ -93,10 +96,10 @@ export function App() {
     moments: useMomentsPage(shell, category === 'moments'),
     payments: usePaymentsPage(shell, category === 'payments'),
     contacts: useContactsPage(shell, section === 'contacts', chatWith),
-    resources: useResourcesPage(shell, openInChat('这条消息所在的会话不在会话列表里。')),
+    resources: useResourcesPage(shell, openInChat(t('这条消息所在的会话不在会话列表里。'))),
     analytics: useAnalyticsPage(shell, section === 'analytics', chatWith),
     reports: useReportsPage(shell),
-    footprint: useFootprintPage(shell, openInChat('这段聊天所在的会话不在会话列表里。')),
+    footprint: useFootprintPage(shell, openInChat(t('这段聊天所在的会话不在会话列表里。'))),
     insights: useInsightsPage(shell, section === 'insights', chatWith),
     export: useExportPage(shell),
     backup: backupPage(shell),
@@ -105,9 +108,9 @@ export function App() {
   // a page not connected to show (Moments, WeChat Pay) shows the sample in the chat page's browser
   const page = pages[section];
   const tasks: Card = {
-    id: 'tasks', title: '任务中心',
-    summary: connected ? jobsSummary(jobs) : '未连接',
-    content: connected ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">连接 weflow serve 后，导出等任务会显示在这里。</p>,
+    id: 'tasks', title: t('任务中心'),
+    summary: connected ? jobsSummary(jobs) : t('未连接'),
+    content: connected ? <TaskCenter jobs={jobs} names={sessionNames} /> : <p className="empty-text">{t('连接 weflow serve 后，导出等任务会显示在这里。')}</p>,
   };
   // every card in its first order, the task centre after the open conversation's export; the console keeps each
   // viewer's own order and shows those of the page, or of the records browsed while the settings are open
@@ -116,12 +119,12 @@ export function App() {
   const shownCards = (section === 'settings' ? pages[category] : page).shown ?? chat.shown;
   const hiddenCards = cards.map(card => card.id).filter(id => !shownCards.includes(id));
 
-  return <main className={'workspace' + (fold.folded ? ' sidebar-collapsed' : '')}>
+  return <main key={language} className={'workspace' + (fold.folded ? ' sidebar-collapsed' : '')}>
     <Sidebar section={section} onSelect={selectSection} fold={fold} backend={backend} realtime={prefs.realtime} />
     <div className="main-area">
       {page.view ?? chat.view}
-      <section ref={consoleRef} className="console scroll-area" aria-label="操作控制台">
-        <CardStack cards={cards} hidden={hiddenCards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label="操作控制台" />
+      <section ref={consoleRef} className="console scroll-area" aria-label={t('操作控制台')}>
+        <CardStack cards={cards} hidden={hiddenCards} storageKey="weflow.console" defaultClosed={['search', 'info', 'media']} label={t('操作控制台')} />
       </section>
       <Scrollbar target={consoleRef} />
     </div>
