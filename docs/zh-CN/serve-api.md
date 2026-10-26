@@ -241,7 +241,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `2`（解析过的消息的 `serverId` 改为字符串之前是 `1`，#399）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
+客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `2`（解析过的消息的 `serverId` 改为字符串（#399）、`messageKey` 不再带数据库的路径（#443）之前是 `1`）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
 
 ```json
 {"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41",
@@ -305,7 +305,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 
 （这些是 `serve_bench` 测得的中位数，即客户端看到的耗时，见 [native-cli.md](native-cli.md)。）在会话里搜索时，先从最新的消息往前读，找够一页就停，所以常见的词约 5 ms；读了几千条（或 15 ms）还不够，就改查微信自己的索引（见 [cli-unsupported.md](cli-unsupported.md)），所以在有 21 万条消息的会话里，哪里都没有的词约 60 ms，不必读完所有消息。长会话里很靠后的消息页用 `offset` 取会很慢（21 万条消息的中间一页约 1.4 秒），用游标则不会：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
 
-- `chat messages` 带 `parsed=true`（`--parsed`）时，每条消息按桌面端的方式解析后返回，而不是数据库的原始行：`localType`、`parsedContent`、引用（`quotedContent`、`quotedSender`）、媒体的标识（`imageMd5`、`videoMd5`、`voiceDurationSeconds`、`emojiCdnUrl`）、链接、文件、名片、位置、视频号、聊天记录（应用消息的种类见 `appMsgKind`），`_cursor` 照旧。`serverId` 是十进制字符串：微信的 ID 会超过 2^53，超过后 JavaScript 的数字会丢掉末尾几位。这样聊天窗口不必自己解析 XML。在大账号上，一页 50 条，服务端多花约 1 ms（中位数 1.9 → 2.8 ms），回复比原始行还小；用 `fields` 可以去掉 `rawContent`，即解析前的 XML。
+- `chat messages` 带 `parsed=true`（`--parsed`）时，每条消息按桌面端的方式解析后返回，而不是数据库的原始行：`localType`、`parsedContent`、引用（`quotedContent`、`quotedSender`）、媒体的标识（`imageMd5`、`videoMd5`、`voiceDurationSeconds`、`emojiCdnUrl`）、链接、文件、名片、位置、视频号、聊天记录（应用消息的种类见 `appMsgKind`），`_cursor` 照旧。`serverId` 是十进制字符串：微信的 ID 会超过 2^53，超过后 JavaScript 的数字会丢掉末尾几位。同一条消息的 `messageKey` 在任何机器上都一样：它只写数据库的名字（`message_0`），不写数据库在哪里。这样聊天窗口不必自己解析 XML。在大账号上，一页 50 条，服务端多花约 1 ms（中位数 1.9 → 2.8 ms），回复比原始行还小；用 `fields` 可以去掉 `rawContent`，即解析前的 XML。
 - `chat messages` 带 `since=<Unix 秒>`（`--since`）时，返回从这个时间在聊天顺序中的位置开始最早的若干条消息，仍按最新在前排列，每条都带 `_cursor`：聊天窗口跳到某一天时传那天零点，再用 `before` 和 `after` 往两边翻。这里的顺序就是微信自己的顺序（`sort_seq`，即发送时间的毫秒数再加上一点），也是聊天窗口显示的顺序。个别消息的排序位置和发送时间相差一两秒，这时以排序位置为准：在这个时间之前一点发送的消息可能出现在这一页开头，而恰好在这个时间发送的消息可能紧挨在这一页上面，往前翻一页（`before`）就能看到。这样换来的是前后各页首尾相接，不漏也不重复。它和游标走同一个索引，一样快（大账号上，debug 版读一页 50 条并解析约 22 ms）。
 - `chat message` 带 `parsed=true`（`--parsed`）时，只返回这条消息，结构与 `chat messages --parsed` 一致，并带上 `_cursor`。媒体列表可以用 `local-id` 和 `create-time` 找到消息，再用 `before` 和 `after` 翻到它前后的消息。不传 `parsed` 时，保持原来的查询回复。
 - `chat contacts` 带 `parsed=true`（`--parsed`）时，按桌面应用的样子返回通讯录，而不是数据库的原始行：只含好友、群聊、公众号和曾经的好友，每一项带 `type`（`friend`、`group`、`official`、`former_friend`）、`displayName`（备注，没有则昵称，再没有则微信号）、`remark`、`nickname`、`alias`、`labels`、`region`、`detailDescription`（签名）和 `avatarUrl`，最近聊过的排在前面。`export contacts` 也接受 `parsed=true`，导出这份列表而不是原始行；再加 `kind`（可重复：`friend`、`group`、`official`、`former_friend`）可以只导出这几类。

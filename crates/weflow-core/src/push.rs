@@ -809,7 +809,7 @@ impl PushEngine {
         }
         let wcdb = self.hub.open_wcdb_pub().ok()?;
         let my = self.hub.my_wxid_pub();
-        let source = parse_message_key_source(&revoke.message_key);
+        let source = revoke.db_path.clone().zip(revoke.table_name.clone());
         let tables: Vec<(String, String)> = match source {
             Some(s) => vec![s],
             None => self
@@ -1251,30 +1251,6 @@ struct PushPayload<'a> {
     timestamp: i64,
 }
 
-/// `parseMessageKeySource`: (db path, table) out of a `db:table:localId` key.
-pub fn parse_message_key_source(key: &str) -> Option<(String, String)> {
-    let raw = key.trim();
-    if raw.is_empty() {
-        return None;
-    }
-    let mut parts: Vec<&str> = raw.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    parts.pop();
-    let table = parts.pop()?.trim().to_string();
-    let encoded = parts.join(":");
-    if table.is_empty() || encoded.is_empty() {
-        return None;
-    }
-    let decoded = percent_decode(&encoded);
-    (!decoded.is_empty()).then_some((decoded, table))
-}
-
-fn percent_decode(s: &str) -> String {
-    String::from_utf8(crate::message::percent_decode_bytes(s)).unwrap_or_else(|_| s.to_string())
-}
-
 /// SSE fan-out with a replay buffer (`broadcastMessagePush` of the HTTP service):
 /// every payload gets an increasing id, is kept for 10 minutes / 1000 events and can be
 /// replayed to clients that reconnect with `Last-Event-ID`.
@@ -1413,8 +1389,8 @@ mod tests {
             1
         );
         assert_eq!(
-            parse_message_key_source(&m[0].message_key),
-            Some(("/m.db".into(), "Msg_x".into()))
+            m[0].db_path.as_deref().zip(m[0].table_name.as_deref()),
+            Some(("/m.db", "Msg_x"))
         );
     }
 
