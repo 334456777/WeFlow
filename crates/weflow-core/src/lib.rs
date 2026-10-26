@@ -5,6 +5,7 @@ pub mod chat_msg;
 pub mod collate;
 pub mod config;
 pub mod contact_extra;
+pub mod contract;
 pub mod dates;
 pub mod decrypt;
 pub mod error;

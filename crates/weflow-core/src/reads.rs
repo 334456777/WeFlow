@@ -236,7 +236,7 @@ impl Read {
                 if *limit > 0 {
                     sessions.truncate(*limit);
                 }
-                Ok(Value::Array(sessions))
+                Ok(json!(sessions))
             }
             Read::ChatMessages(page) => {
                 let found = match page.since {
@@ -282,7 +282,7 @@ impl Read {
             }
             Read::ChatContact { username } => hub.contact(username),
             Read::ChatContacts { parsed: false } => hub.contacts(),
-            Read::ChatContacts { parsed: true } => Ok(Value::Array(hub.chat_contacts_parsed()?)),
+            Read::ChatContacts { parsed: true } => Ok(json!(hub.chat_contacts_parsed()?)),
             Read::ChatCounts { sessions } => hub.chat_counts(sessions),
             Read::ChatSearch {
                 keyword,

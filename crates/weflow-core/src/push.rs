@@ -63,17 +63,16 @@ struct Session {
 }
 
 impl Session {
-    fn from_value(v: &Value) -> Self {
-        let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    fn from_listed(s: &crate::contract::Session) -> Self {
         Self {
-            username: s("username").unwrap_or_default().trim().to_string(),
-            last_timestamp: v.get("lastTimestamp").and_then(Value::as_i64).unwrap_or(0),
-            unread_count: v.get("unreadCount").and_then(Value::as_i64).unwrap_or(0),
-            last_msg_type: v.get("lastMsgType").and_then(Value::as_i64).unwrap_or(0),
-            summary: s("summary").unwrap_or_default(),
-            display_name: s("displayName").unwrap_or_default(),
-            avatar_url: s("avatarUrl").filter(|a| !a.is_empty()),
-            last_sender_display_name: s("lastSenderDisplayName").filter(|a| !a.is_empty()),
+            username: s.username.trim().to_string(),
+            last_timestamp: s.last_timestamp,
+            unread_count: s.unread_count,
+            last_msg_type: s.last_msg_type,
+            summary: s.summary.clone(),
+            display_name: s.display_name.clone(),
+            avatar_url: s.avatar_url.clone().filter(|a| !a.is_empty()),
+            last_sender_display_name: s.last_sender_display_name.clone().filter(|a| !a.is_empty()),
         }
     }
 }
@@ -299,7 +298,7 @@ impl PushEngine {
         self.hub
             .chat_sessions_list()
             .ok()
-            .map(|s| s.iter().map(Session::from_value).collect())
+            .map(|s| s.iter().map(Session::from_listed).collect())
     }
 
     fn set_baseline(&mut self, sessions: &[Session]) {

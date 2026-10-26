@@ -7,7 +7,7 @@ export interface ParsedMessage {
   _cursor: string;
   localId: number;
   /** The server id as text: it does not fit in a JavaScript number. */
-  serverIdRaw?: string;
+  serverId?: string;
   /** WeChat's type; an app message carries its kind in the high bits and is named by `appMsgKind`. */
   localType: number;
   createTime: number;
@@ -43,7 +43,7 @@ export interface ParsedMessage {
 }
 
 const MESSAGE_FIELDS = [
-  '_cursor', 'localId', 'serverIdRaw', 'localType', 'createTime', 'isSend', 'senderUsername', 'parsedContent', 'appMsgKind',
+  '_cursor', 'localId', 'serverId', 'localType', 'createTime', 'isSend', 'senderUsername', 'parsedContent', 'appMsgKind',
   'quotedContent', 'quotedSender', 'linkTitle', 'linkUrl', 'linkThumb', 'appMsgDesc', 'appMsgAppName', 'appMsgSourceName',
   'appMsgThumbUrl', 'fileName', 'fileSize', 'fileExt', 'voiceDurationSeconds', 'emojiCdnUrl', 'imageMd5', 'videoMd5',
   'cardNickname', 'cardUsername', 'cardAvatarUrl', 'locationPoiname', 'locationLabel', 'finderNickname', 'finderCoverUrl',

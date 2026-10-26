@@ -1394,9 +1394,7 @@ impl ServiceHub {
         })();
         let _ = wcdb.close_message_cursor(db_cursor);
         result?;
-        Ok(
-            json!({ "messages": matched.iter().map(|m| m.to_json()).collect::<Vec<_>>(), "hasMore": has_more, "nextCursor": cursor }),
-        )
+        Ok(json!({ "messages": matched, "hasMore": has_more, "nextCursor": cursor }))
     }
 
     /// `exportGroupMemberMessages`: CSV (BOM) or XLSX depending on the extension.

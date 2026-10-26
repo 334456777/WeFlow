@@ -8,6 +8,7 @@ use chrono::{Local, TimeZone, Timelike};
 use serde_json::{json, Value};
 
 use super::*;
+use crate::contract::Session;
 use crate::insight::{self as ins, fill, RecordFilters, RecordStore};
 use crate::locale::tr;
 
@@ -17,7 +18,7 @@ pub struct InsightState {
     today_date: i64,
     last_activity: HashMap<String, i64>,
     last_seen: HashMap<String, i64>,
-    session_cache: Option<(Vec<Value>, std::time::Instant)>,
+    session_cache: Option<(Vec<Session>, std::time::Instant)>,
 }
 
 struct AiConfig {
@@ -395,7 +396,7 @@ impl ServiceHub {
 
     // ── sessions ──
 
-    fn insight_sessions(&self, force: bool) -> Vec<Value> {
+    fn insight_sessions(&self, force: bool) -> Vec<Session> {
         {
             let st = self.insight_state.lock().unwrap();
             if let (false, Some((s, at))) = (force, &st.session_cache) {
@@ -427,8 +428,8 @@ impl ServiceHub {
             return fb.to_string();
         }
         for s in self.insight_sessions(false) {
-            if s["username"].as_str().map(str::trim) == Some(session_id) {
-                let n = s["displayName"].as_str().unwrap_or("").trim();
+            if s.username.trim() == session_id {
+                let n = s.display_name.trim();
                 if !n.is_empty() && !ins::looks_like_wxid(n) {
                     return n.to_string();
                 }
@@ -816,7 +817,7 @@ impl ServiceHub {
             return json!({ "success": false, "message": tr("No conversations found. Please make sure the database is connected correctly", "未找到任何会话，请确认数据库已正确连接") });
         }
         let Some(session) = sessions.iter().find(|s| {
-            let id = s["username"].as_str().unwrap_or("").trim();
+            let id = s.username.trim();
             !id.is_empty()
                 && !id.ends_with("@chatroom")
                 && !id.to_lowercase().contains("placeholder")
@@ -824,13 +825,8 @@ impl ServiceHub {
         }) else {
             return json!({ "success": false, "message": tr("No private chat that can be triggered was found (check the allowlist/blocklist mode and the selection list)", "未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）") });
         };
-        let id = session["username"]
-            .as_str()
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let name = session["displayName"]
-            .as_str()
+        let id = session.username.trim().to_string();
+        let name = Some(session.display_name.as_str())
             .filter(|s| !s.is_empty())
             .unwrap_or(&id)
             .to_string();
@@ -874,7 +870,7 @@ impl ServiceHub {
             if !self.insight_enabled() {
                 return generated;
             }
-            let id = s["username"].as_str().unwrap_or("").trim().to_string();
+            let id = s.username.trim().to_string();
             if id.is_empty()
                 || id.ends_with("@chatroom")
                 || id.to_lowercase().contains("placeholder")
@@ -882,12 +878,12 @@ impl ServiceHub {
             {
                 continue;
             }
-            let last = s["lastTimestamp"].as_f64().unwrap_or(0.0) * 1000.0;
+            let last = s.last_timestamp as f64 * 1000.0;
             if last <= 0.0 || now - last < threshold_ms {
                 continue;
             }
             let silent = ((now - last) / 86_400_000.0).floor() as i64;
-            let name = s["displayName"].as_str().unwrap_or(&id).to_string();
+            let name = s.display_name.clone();
             if let Some(r) = self
                 .insight_generate(&id, &name, Trigger::Silence, Some(silent))
                 .await
@@ -955,10 +951,10 @@ impl ServiceHub {
             return;
         }
         let sessions = self.insight_sessions(false);
-        let candidates: Vec<&Value> = sessions
+        let candidates: Vec<&Session> = sessions
             .iter()
             .filter(|s| {
-                let id = s["username"].as_str().unwrap_or("").trim();
+                let id = s.username.trim();
                 !id.is_empty()
                     && !id.to_lowercase().contains("placeholder")
                     && self.insight_allowed(id)
@@ -966,8 +962,8 @@ impl ServiceHub {
             .take(10)
             .collect();
         for s in candidates {
-            let sid = s["username"].as_str().unwrap_or("").trim().to_string();
-            let ts = s["lastTimestamp"].as_i64().unwrap_or(0);
+            let sid = s.username.trim().to_string();
+            let ts = s.last_timestamp;
             {
                 let mut st = self.insight_state.lock().unwrap();
                 if ts <= st.last_seen.get(&sid).copied().unwrap_or(0) {
@@ -983,7 +979,7 @@ impl ServiceHub {
                 .unwrap()
                 .last_activity
                 .insert(sid.clone(), now);
-            let name = s["displayName"].as_str().unwrap_or(&sid).to_string();
+            let name = s.display_name.clone();
             if let Some(r) = self
                 .insight_generate(&sid, &name, Trigger::Activity, None)
                 .await

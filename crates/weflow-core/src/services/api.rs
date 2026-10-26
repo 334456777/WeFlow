@@ -8,6 +8,7 @@ use serde_json::{json, Map, Value};
 use super::*;
 use crate::api::{self, ApiError, ApiExportedMedia, ApiMediaOptions, Params};
 use crate::chat_msg::{self, ChatMessage};
+use crate::contract::{Contact, ContactKind, Session};
 use crate::message::{row_field, row_int, rx};
 
 const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =
@@ -273,31 +274,26 @@ impl ServiceHub {
     }
 
     /// `chat messages --parsed` (and `chat search --parsed`): each raw row of a [`message_page`](Self::message_page)
-    /// as the desktop app parses it ([`ChatMessage::to_json`]: type, text, quote, media, link, file, card, location,
-    /// transfer, …), keeping its `_cursor` (and a search hit's `_session_id`), so a client pages the same way without
-    /// parsing WeChat's XML itself.
+    /// as the desktop app parses it ([`crate::contract::ParsedMessage`]: type, text, quote, media, link, file, card,
+    /// location, transfer, …), keeping its `_cursor` (and a search hit's `_session_id`), so a client pages the same way
+    /// without parsing WeChat's XML itself.
     pub fn parsed_message_page(&self, page: Value) -> Value {
-        let my = self.wmy();
         let rows = match page {
             Value::Array(rows) => rows,
             other => return other,
         };
+        let text = |row: &Value, key: &str| row.get(key).and_then(Value::as_str).map(String::from);
+        let messages = chat_msg::map_rows(&rows, &self.wmy());
         Value::Array(
-            rows.into_iter()
-                .map(|row| {
-                    let mut message = chat_msg::map_rows(std::slice::from_ref(&row), &my)
-                        .into_iter()
-                        .next()
-                        .map(|m| m.to_json())
-                        .unwrap_or_else(|| json!({}));
-                    if let Some(object) = message.as_object_mut() {
-                        for key in ["_cursor", "_session_id"] {
-                            if let Some(value) = row.get(key) {
-                                object.insert(key.into(), value.clone());
-                            }
-                        }
-                    }
-                    message
+            messages
+                .into_iter()
+                .zip(&rows)
+                .map(|(message, row)| {
+                    json!(crate::contract::ParsedMessage {
+                        message,
+                        cursor: text(row, "_cursor"),
+                        session_id: text(row, "_session_id"),
+                    })
                 })
                 .collect(),
         )
@@ -305,12 +301,12 @@ impl ServiceHub {
 
     /// `getSessions`: filtered, typed session list. Display names come from WCDB when the
     /// desktop contact cache has none.
-    pub fn chat_sessions_list(&self) -> AppResult<Vec<Value>> {
+    pub fn chat_sessions_list(&self) -> AppResult<Vec<Session>> {
         let wcdb = self.open_wcdb()?;
         self.sessions_with(&wcdb)
     }
 
-    fn sessions_with(&self, wcdb: &weflow_native::wcdb::Wcdb) -> AppResult<Vec<Value>> {
+    fn sessions_with(&self, wcdb: &weflow_native::wcdb::Wcdb) -> AppResult<Vec<Session>> {
         let raw = wcdb
             .sessions()
             .map_err(|e| AppError::native(e.to_string()))?;
@@ -354,7 +350,7 @@ impl ServiceHub {
             }
         }
         let my = self.wmy();
-        let mut sessions: Vec<Map<String, Value>> = Vec::new();
+        let mut sessions: Vec<Session> = Vec::new();
         for row in &rows {
             let username = first_str(row, &username_keys);
             let mut local_type = session_local_type(row);
@@ -416,52 +412,36 @@ impl ServiceHub {
                 .filter(|n: &f64| n.is_finite() && *n >= 0.0)
                 .map(|n| n.floor() as i64);
 
-            let mut o = Map::new();
-            o.insert("username".into(), json!(username));
-            o.insert(
-                "type".into(),
-                json!(js_int(row.get("type").filter(|v| truthy(v))).unwrap_or(0)),
-            );
-            o.insert(
-                "unreadCount".into(),
-                json!(js_int(
+            let text = |key: &str| row.get(key).and_then(Value::as_str).map(str::to_string);
+            sessions.push(Session {
+                display_name: username.clone(),
+                username,
+                kind: js_int(row.get("type").filter(|v| truthy(v))).unwrap_or(0),
+                unread_count: js_int(
                     ["unread_count", "unreadCount", "unreadcount"]
                         .iter()
                         .filter_map(|k| row.get(*k))
-                        .find(|v| truthy(v))
+                        .find(|v| truthy(v)),
                 )
-                .unwrap_or(0)),
-            );
-            o.insert(
-                "summary".into(),
-                json!(if summary.is_empty() {
+                .unwrap_or(0),
+                summary: if summary.is_empty() {
                     message_label(last_msg_type).to_string()
                 } else {
                     summary
-                }),
-            );
-            o.insert("sortTimestamp".into(), json!(sort_ts));
-            o.insert("lastTimestamp".into(), json!(last_ts));
-            o.insert("lastMsgType".into(), json!(last_msg_type));
-            if let Some(h) = hint {
-                o.insert("messageCountHint".into(), json!(h));
-            }
-            o.insert("displayName".into(), json!(username));
-            if let Some(v) = row.get("last_msg_sender").filter(|v| !v.is_null()) {
-                o.insert("lastMsgSender".into(), v.clone());
-            }
-            if let Some(v) = row.get("last_sender_display_name").filter(|v| !v.is_null()) {
-                o.insert("lastSenderDisplayName".into(), v.clone());
-            }
-            o.insert("selfWxid".into(), json!(my));
-            sessions.push(o);
+                },
+                sort_timestamp: sort_ts,
+                last_timestamp: last_ts,
+                last_msg_type,
+                message_count_hint: hint,
+                last_msg_sender: text("last_msg_sender"),
+                last_sender_display_name: text("last_sender_display_name"),
+                self_wxid: my.clone(),
+                avatar_url: None,
+            });
         }
 
         // addMissingOfficialSessions
-        let existing: HashSet<String> = sessions
-            .iter()
-            .filter_map(|s| s["username"].as_str().map(str::to_string))
-            .collect();
+        let existing: HashSet<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let mut existing = existing;
         if let Ok(Value::Array(contacts)) = wcdb.contacts() {
             for row in contacts {
@@ -484,35 +464,28 @@ impl ServiceHub {
                     .map(|k| first_str(&row, &[k]))
                     .find(|s| !s.is_empty())
                     .unwrap_or_else(|| username.clone());
-                let mut o = Map::new();
-                o.insert("username".into(), json!(username));
-                o.insert("type".into(), json!(0));
-                o.insert("unreadCount".into(), json!(0));
-                o.insert(
-                    "summary".into(),
-                    json!(if is_official {
+                existing.insert(username.clone());
+                sessions.push(Session {
+                    username,
+                    summary: if is_official {
                         "查看公众号历史消息"
                     } else {
                         "暂无会话记录"
-                    }),
-                );
-                o.insert("sortTimestamp".into(), json!(0));
-                o.insert("lastTimestamp".into(), json!(0));
-                o.insert("lastMsgType".into(), json!(0));
-                o.insert("displayName".into(), json!(display));
-                o.insert("selfWxid".into(), json!(my));
-                existing.insert(username);
-                sessions.push(o);
+                    }
+                    .to_string(),
+                    display_name: display,
+                    self_wxid: my.clone(),
+                    ..Session::default()
+                });
             }
         }
 
         // applySyntheticUnreadCounts (official accounts have no unread column)
-        for s in sessions.iter_mut().filter(|s| {
-            s["username"]
-                .as_str()
-                .is_some_and(|u| u.trim().starts_with("gh_"))
-        }) {
-            let name = s["username"].as_str().unwrap_or("").to_string();
+        for s in sessions
+            .iter_mut()
+            .filter(|s| s.username.trim().starts_with("gh_"))
+        {
+            let name = s.username.clone();
             let (mut total, mut latest_snapshot) = (0i64, 0i64);
             if let Ok(Value::Array(tables)) = wcdb.message_table_stats(&name) {
                 for t in tables {
@@ -547,23 +520,13 @@ impl ServiceHub {
                     }
                 }
             }
-            let latest = s["lastTimestamp"]
-                .as_i64()
-                .unwrap_or(0)
-                .max(s["sortTimestamp"].as_i64().unwrap_or(0))
-                .max(latest_snapshot);
+            let latest = s.last_timestamp.max(s.sort_timestamp).max(latest_snapshot);
             if latest > 0 {
-                s.insert("lastTimestamp".into(), json!(latest));
-                let sort = s["sortTimestamp"].as_i64().unwrap_or(0).max(latest);
-                s.insert("sortTimestamp".into(), json!(sort));
+                s.last_timestamp = latest;
+                s.sort_timestamp = s.sort_timestamp.max(latest);
             }
             if total > 0 {
-                let hint = s
-                    .get("messageCountHint")
-                    .and_then(Value::as_i64)
-                    .unwrap_or(0)
-                    .max(total);
-                s.insert("messageCountHint".into(), json!(hint));
+                s.message_count_hint = Some(s.message_count_hint.unwrap_or(0).max(total));
             }
             let mut unread = 0i64;
             let mut latest_msg: Option<ChatMessage> = None;
@@ -579,47 +542,38 @@ impl ServiceHub {
                 }
             }
             if let Some(m) = latest_msg {
-                let summary = summary_from_message(&m);
-                s.insert("summary".into(), json!(summary));
-                s.insert("lastMsgType".into(), json!(m.local_type));
+                s.summary = summary_from_message(&m);
+                s.last_msg_type = m.local_type;
             }
-            let cur = s["unreadCount"].as_i64().unwrap_or(0);
-            s.insert("unreadCount".into(), json!(cur.max(unread)));
+            s.unread_count = s.unread_count.max(unread);
         }
         sessions.sort_by(|a, b| {
-            let key = |s: &Map<String, Value>| {
-                let sort = s["sortTimestamp"].as_i64().unwrap_or(0);
-                if sort != 0 {
-                    sort
+            let key = |s: &Session| {
+                if s.sort_timestamp != 0 {
+                    s.sort_timestamp
                 } else {
-                    s["lastTimestamp"].as_i64().unwrap_or(0)
+                    s.last_timestamp
                 }
             };
             key(b).cmp(&key(a))
         });
 
         // resolve names / avatars (the desktop app fills these from its contact cache)
-        let names: Vec<String> = sessions
-            .iter()
-            .filter_map(|s| s["username"].as_str().map(str::to_string))
-            .collect();
+        let names: Vec<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let book = self.contact_book(wcdb, &names);
         for s in sessions.iter_mut() {
-            let u = s["username"].as_str().unwrap_or("").to_string();
-            if let Some(c) = book.get(&u) {
-                if s["displayName"].as_str() == Some(u.as_str()) {
+            if let Some(c) = book.get(&s.username) {
+                if s.display_name == s.username {
                     if let Some(n) = c.display_name.clone().filter(|n| !n.is_empty()) {
-                        s.insert("displayName".into(), json!(n));
+                        s.display_name = n;
                     }
                 }
                 if let Some(a) = c.avatar_url.clone() {
-                    let summary_pos = s.get("displayName").cloned();
-                    let _ = summary_pos;
-                    s.insert("avatarUrl".into(), json!(a));
+                    s.avatar_url = Some(a);
                 }
             }
         }
-        Ok(sessions.into_iter().map(Value::Object).collect())
+        Ok(sessions)
     }
 
     /// `getContactLabelNameMap`: label id → name from the contact database (empty when it has no labels).
@@ -679,17 +633,17 @@ impl ServiceHub {
     }
 
     /// `getContacts`: friends / groups / official accounts / former friends, newest contact first.
-    pub fn chat_contacts_list(&self) -> AppResult<Vec<Value>> {
+    pub fn chat_contacts_list(&self) -> AppResult<Vec<Contact>> {
         self.contacts_list(false)
     }
 
     /// `chat contacts --parsed` (#205): [`Self::chat_contacts_list`] with each contact's `avatarUrl`, for a contact
     /// list that shows the faces without asking for them one by one.
-    pub fn chat_contacts_parsed(&self) -> AppResult<Vec<Value>> {
+    pub fn chat_contacts_parsed(&self) -> AppResult<Vec<Contact>> {
         self.contacts_list(true)
     }
 
-    fn contacts_list(&self, with_avatar: bool) -> AppResult<Vec<Value>> {
+    fn contacts_list(&self, with_avatar: bool) -> AppResult<Vec<Contact>> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
             .contacts()
@@ -712,7 +666,7 @@ impl ServiceHub {
             }
         }
         let label_names = self.contact_label_names(&wcdb);
-        let mut contacts: Vec<(Value, i64)> = Vec::new();
+        let mut contacts: Vec<(Contact, i64)> = Vec::new();
         for row in &rows {
             let username = first_str(row, &["username"]).trim().to_string();
             if username.is_empty() {
@@ -729,16 +683,16 @@ impl ServiceHub {
             }
             let visible_weixin = lowered.starts_with("weixin") && lowered != "weixin";
             let kind = if username.ends_with("@chatroom") {
-                "group"
+                ContactKind::Group
             } else if username.starts_with("gh_") {
-                "official"
+                ContactKind::Official
             } else if openim
                 || visible_weixin
                 || (local_type == 1 && !FRIEND_EXCLUDE_USERNAMES.contains(&username.as_str()))
             {
-                "friend"
+                ContactKind::Friend
             } else if local_type == 0 && !quan_pin.is_empty() {
-                "former_friend"
+                ContactKind::FormerFriend
             } else {
                 continue;
             };
@@ -750,38 +704,24 @@ impl ServiceHub {
                 .find(|s| !s.is_empty())
                 .cloned()
                 .unwrap_or_else(|| username.clone());
-            let mut o = Map::new();
-            o.insert("username".into(), json!(username));
-            o.insert("displayName".into(), json!(display));
-            for (k, v) in [("remark", &remark), ("nickname", &nick), ("alias", &alias)] {
-                if !v.is_empty() {
-                    o.insert(k.into(), json!(v));
-                }
-            }
+            let set = |text: String| Some(text).filter(|t| !t.is_empty());
             let labels = crate::contact_extra::contact_labels(row, &label_names);
-            if !labels.is_empty() {
-                o.insert("labels".into(), json!(labels));
-            }
-            for (key, value) in [
-                (
-                    "detailDescription",
-                    crate::contact_extra::contact_signature(row),
-                ),
-                ("region", crate::contact_extra::contact_region(row)),
-            ] {
-                if !value.is_empty() {
-                    o.insert(key.into(), json!(value));
-                }
-            }
-            o.insert("type".into(), json!(kind));
-            if with_avatar {
-                let avatar = first_str(row, &["big_head_url", "small_head_url"]);
-                if !avatar.is_empty() {
-                    o.insert("avatarUrl".into(), json!(avatar));
-                }
-            }
             let t = last_contact.get(&username).copied().unwrap_or(0);
-            contacts.push((Value::Object(o), t));
+            let contact = Contact {
+                display_name: display,
+                remark: set(remark),
+                nickname: set(nick),
+                alias: set(alias),
+                labels: Some(labels).filter(|l| !l.is_empty()),
+                detail_description: set(crate::contact_extra::contact_signature(row)),
+                region: set(crate::contact_extra::contact_region(row)),
+                kind,
+                avatar_url: with_avatar
+                    .then(|| first_str(row, &["big_head_url", "small_head_url"]))
+                    .and_then(set),
+                username,
+            };
+            contacts.push((contact, t));
         }
         contacts.sort_by(|a, b| {
             let (ta, tb) = (a.1, b.1);
@@ -794,10 +734,7 @@ impl ServiceHub {
             if tb != 0 {
                 return std::cmp::Ordering::Greater;
             }
-            crate::collate::compare_zh(
-                a.0["displayName"].as_str().unwrap_or(""),
-                b.0["displayName"].as_str().unwrap_or(""),
-            )
+            crate::collate::compare_zh(&a.0.display_name, &b.0.display_name)
         });
         Ok(contacts.into_iter().map(|c| c.0).collect())
     }
@@ -819,7 +756,7 @@ impl ServiceHub {
         let sessions = self
             .chat_sessions_list()
             .map_err(|e| ApiError::new(500, e.into_message()))?;
-        let mut filtered: Vec<Value> = sessions;
+        let mut filtered: Vec<Value> = sessions.into_iter().map(|s| json!(s)).collect();
         if !keyword.is_empty() {
             let k = keyword.to_lowercase();
             filtered.retain(|s| {
@@ -887,7 +824,7 @@ impl ServiceHub {
         let contacts = self
             .chat_contacts_list()
             .map_err(|e| ApiError::new(500, e.into_message()))?;
-        let mut filtered = contacts;
+        let mut filtered: Vec<Value> = contacts.into_iter().map(|c| json!(c)).collect();
         if !keyword.is_empty() {
             filtered.retain(|c| {
                 ["username", "nickname", "remark", "displayName"]
@@ -2171,8 +2108,8 @@ impl ServiceHub {
             Some(s) => vec![s.to_string()],
             None => self
                 .sessions_with(&wcdb)?
-                .iter()
-                .filter_map(|s| s["username"].as_str().map(str::to_string))
+                .into_iter()
+                .map(|s| s.username)
                 .collect(),
         };
         let opts = ApiMediaOptions {

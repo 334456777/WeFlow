@@ -3,7 +3,7 @@
 //! The exporter has its own (slightly different) model in `message.rs`; this one backs the
 //! HTTP API, the chat commands and the analytics code.
 
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 
 use crate::message::{
     decode_message_content, extract_image_dat_name_from_row, extract_xml_value,
@@ -378,43 +378,88 @@ pub fn parse_message_content(content: &str, local_type: i64) -> String {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+/// What the XML of an app message (type 49) and a few others say, as the chat window shows it. Only what is found
+/// is serialized.
+#[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Type49Info {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub xml_type: Option<String>,
+    /// The message's own, serialized by [`ChatMessage`].
+    #[serde(skip)]
     pub quoted_content: Option<String>,
+    /// The message's own, serialized by [`ChatMessage`].
+    #[serde(skip)]
     pub quoted_sender: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub link_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub link_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub link_thumb: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_desc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_app_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_source_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_source_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_thumb_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_music_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_data_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub app_msg_location_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_nickname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_cover_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_avatar: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finder_duration: Option<i64>,
+    /// The message's own, serialized by [`ChatMessage`].
+    #[serde(skip)]
     pub location_lat: Option<f64>,
+    /// The message's own, serialized by [`ChatMessage`].
+    #[serde(skip)]
     pub location_lng: Option<f64>,
+    /// The message's own, serialized by [`ChatMessage`].
+    #[serde(skip)]
     pub location_poiname: Option<String>,
+    /// The message's own, serialized by [`ChatMessage`].
+    #[serde(skip)]
     pub location_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub music_album_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub music_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_wish: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gift_price: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub file_size: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub file_ext: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub file_md5: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_payer_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_receiver_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_record_title: Option<String>,
 }
 
@@ -965,39 +1010,75 @@ fn parse_emoji_info(content: &str) -> EmojiInfo {
 
 // ───────────────────────── the model ─────────────────────────
 
-#[derive(Default, Clone, Debug)]
+/// A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399): its text and the
+/// keys of its media, links, cards and so on, parsed from the row. An optional field is left out when the message has
+/// none; times are Unix seconds.
+#[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
+    /// The message's id in its conversation's table; with `createTime`, the key of `chat message`.
     pub local_id: i64,
+    #[serde(skip)]
     pub server_id: i64,
+    /// WeChat's id of the message, in decimal: a string, as it may pass 2^53.
+    #[serde(rename = "serverId")]
     pub server_id_raw: String,
+    /// WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…).
     pub local_type: i64,
     pub create_time: i64,
+    /// WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little.
     pub sort_seq: i64,
+    /// 1 when I sent it, 0 when I received it; null when the row does not say.
     pub is_send: Option<i64>,
+    /// Who sent it; null when the row does not say.
     pub sender_username: Option<String>,
+    /// The text the chat window shows.
     pub parsed_content: String,
+    /// The message as WeChat keeps it (often XML).
     pub raw_content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_cdn_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji_md5: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub quoted_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub quoted_sender: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image_md5: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image_dat_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub video_md5: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_duration_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub aes_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encryp_ver: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cdn_thumb_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub card_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub card_nickname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub card_avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub location_lat: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub location_lng: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub location_poiname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub location_label: Option<String>,
+    #[serde(flatten)]
     pub t49: Type49Info,
+    /// The message's key as the desktop app builds it.
     pub message_key: String,
+    #[serde(skip)]
     pub db_path: Option<String>,
+    #[serde(skip)]
     pub table_name: Option<String>,
 }
 
@@ -1013,102 +1094,6 @@ impl ChatMessage {
     }
     pub fn app_msg_kind(&self) -> Option<&str> {
         self.t49.app_msg_kind.as_deref()
-    }
-
-    /// Full JSON view (camelCase, `undefined` fields omitted).
-    pub fn to_json(&self) -> Value {
-        let mut o = Map::new();
-        o.insert("messageKey".into(), json!(self.message_key));
-        o.insert("localId".into(), json!(self.local_id));
-        o.insert("serverId".into(), json!(self.server_id));
-        o.insert("serverIdRaw".into(), json!(self.server_id_raw));
-        o.insert("localType".into(), json!(self.local_type));
-        o.insert("createTime".into(), json!(self.create_time));
-        o.insert("sortSeq".into(), json!(self.sort_seq));
-        o.insert(
-            "isSend".into(),
-            self.is_send.map(Value::from).unwrap_or(Value::Null),
-        );
-        o.insert(
-            "senderUsername".into(),
-            self.sender_username
-                .clone()
-                .map(Value::from)
-                .unwrap_or(Value::Null),
-        );
-        o.insert("parsedContent".into(), json!(self.parsed_content));
-        o.insert("rawContent".into(), json!(self.raw_content));
-        let t = &self.t49;
-        let strs: [(&str, &Option<String>); 41] = [
-            ("emojiCdnUrl", &self.emoji_cdn_url),
-            ("emojiMd5", &self.emoji_md5),
-            ("quotedContent", &self.quoted_content),
-            ("quotedSender", &self.quoted_sender),
-            ("imageMd5", &self.image_md5),
-            ("imageDatName", &self.image_dat_name),
-            ("videoMd5", &self.video_md5),
-            ("aesKey", &self.aes_key),
-            ("cdnThumbUrl", &self.cdn_thumb_url),
-            ("linkTitle", &t.link_title),
-            ("linkUrl", &t.link_url),
-            ("linkThumb", &t.link_thumb),
-            ("fileName", &t.file_name),
-            ("fileExt", &t.file_ext),
-            ("fileMd5", &t.file_md5),
-            ("xmlType", &t.xml_type),
-            ("appMsgKind", &t.app_msg_kind),
-            ("appMsgDesc", &t.app_msg_desc),
-            ("appMsgAppName", &t.app_msg_app_name),
-            ("appMsgSourceName", &t.app_msg_source_name),
-            ("appMsgSourceUsername", &t.app_msg_source_username),
-            ("appMsgThumbUrl", &t.app_msg_thumb_url),
-            ("appMsgMusicUrl", &t.app_msg_music_url),
-            ("appMsgDataUrl", &t.app_msg_data_url),
-            ("appMsgLocationLabel", &t.app_msg_location_label),
-            ("finderNickname", &t.finder_nickname),
-            ("finderUsername", &t.finder_username),
-            ("finderCoverUrl", &t.finder_cover_url),
-            ("finderAvatar", &t.finder_avatar),
-            ("locationPoiname", &self.location_poiname),
-            ("locationLabel", &self.location_label),
-            ("musicAlbumUrl", &t.music_album_url),
-            ("musicUrl", &t.music_url),
-            ("giftImageUrl", &t.gift_image_url),
-            ("giftWish", &t.gift_wish),
-            ("giftPrice", &t.gift_price),
-            ("cardUsername", &self.card_username),
-            ("cardNickname", &self.card_nickname),
-            ("cardAvatarUrl", &self.card_avatar_url),
-            ("transferPayerUsername", &t.transfer_payer_username),
-            ("transferReceiverUsername", &t.transfer_receiver_username),
-        ];
-        for (k, v) in strs {
-            if let Some(v) = v {
-                o.insert(k.into(), json!(v));
-            }
-        }
-        for (k, v) in [
-            ("voiceDurationSeconds", self.voice_duration_seconds),
-            ("encrypVer", self.encryp_ver),
-            ("fileSize", t.file_size),
-            ("finderDuration", t.finder_duration),
-        ] {
-            if let Some(v) = v {
-                o.insert(k.into(), json!(v));
-            }
-        }
-        for (k, v) in [
-            ("locationLat", self.location_lat),
-            ("locationLng", self.location_lng),
-        ] {
-            if let Some(v) = v {
-                o.insert(k.into(), json!(v));
-            }
-        }
-        if let Some(v) = &t.chat_record_title {
-            o.insert("chatRecordTitle".into(), json!(v));
-        }
-        Value::Object(o)
     }
 }
 
@@ -1534,6 +1519,7 @@ pub fn map_rows(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn sender_prefix_variants() {

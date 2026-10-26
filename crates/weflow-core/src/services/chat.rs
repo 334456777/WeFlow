@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{json, Map, Value};
 
 use super::{clean_account_dir_name, ServiceHub};
+use crate::contract::{MessageView, Resource, ResourceKind, ResourcePage};
 use crate::error::{AppError, AppResult};
 use crate::message::{
     collect_messages, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
@@ -689,11 +690,11 @@ impl ServiceHub {
 
     // ── resources ──
 
-    fn resource_type(msg: &ExportMsg) -> Option<&'static str> {
+    fn resource_type(msg: &ExportMsg) -> Option<ResourceKind> {
         match msg.local_type {
-            3 => Some("image"),
-            43 => Some("video"),
-            34 => Some("voice"),
+            3 => Some(ResourceKind::Image),
+            43 => Some(ResourceKind::Video),
+            34 => Some(ResourceKind::Voice),
             // every file app type is a file; a type-49 app message only when it says so (the metadata parse is
             // the expensive part, so it comes last)
             t if FILE_APP_TYPES.contains(&t) => {
@@ -702,7 +703,7 @@ impl ServiceHub {
                     || extract_arkme_app_message_meta(&msg.content, t).is_some_and(|m| {
                         m.get("appMsgKind").and_then(Value::as_str) == Some("file")
                     });
-                is_file.then_some("file")
+                is_file.then_some(ResourceKind::File)
             }
             _ => None,
         }
@@ -807,7 +808,7 @@ impl ServiceHub {
         let my = self.my_wxid_cleaned();
         let place = |p: &MsgPos| (p.sort_seq, p.create_time, p.local_id);
         // (place, conversation, message, kind), in the order of the listing
-        let mut items: Vec<(MsgPos, String, ExportMsg, &'static str)> = Vec::new();
+        let mut items: Vec<(MsgPos, String, ExportMsg, ResourceKind)> = Vec::new();
         let tables = wcdb.message_tables_by_name().map_err(native)?;
         for (sid, last) in &sessions {
             let floor = (items.len() >= want).then(|| items[want - 1].0.sort_seq);
@@ -888,29 +889,26 @@ impl ServiceHub {
             .into_iter()
             .collect();
         let names = self.session_display_names(&wcdb, &ids);
-        let mut next = Value::Null;
-        let page: Vec<Value> = items
+        let page: Vec<Resource> = items
             .into_iter()
-            .map(|(pos, sid, m, kind)| {
-                let cursor = format!("{}:{sid}", pos.token());
-                next = json!(cursor);
-                let mut j = m.to_json(&my);
-                if let Some(o) = j.as_object_mut() {
-                    o.insert("_cursor".into(), json!(cursor));
-                    o.insert(
-                        "sessionDisplayName".into(),
-                        json!(names.get(&sid).cloned().unwrap_or_else(|| sid.clone())),
-                    );
-                    o.insert("sessionId".into(), json!(sid));
-                    o.insert("resourceType".into(), json!(kind));
-                }
-                j
+            .map(|(pos, sid, m, kind)| Resource {
+                message: MessageView::of(&m, &my),
+                cursor: format!("{}:{sid}", pos.token()),
+                session_display_name: names.get(&sid).cloned().unwrap_or_else(|| sid.clone()),
+                session_id: sid,
+                resource_type: kind,
             })
             .collect();
-        if !more {
-            next = Value::Null;
-        }
-        Ok(json!({ "items": page, "hasMore": more, "nextCursor": next }))
+        let next_cursor = if more {
+            page.last().map(|r| r.cursor.clone())
+        } else {
+            None
+        };
+        Ok(json!(ResourcePage {
+            items: page,
+            has_more: more,
+            next_cursor,
+        }))
     }
 
     /// `getAllImageMessages`: de-duplicated image identifiers of a session, newest first.

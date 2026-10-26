@@ -82,7 +82,7 @@ export function Voice({ sessionId, message, className = 'message-bubble voice-bu
     if (state === 'playing' || state === 'loading') { audio.current?.pause(); setState('idle'); return; }
     playing?.stop();
     const sound = audio.current ?? new Audio(mediaUrl('voice-data', sessionId, message, {
-      'server-id': message.serverIdRaw, sender: message.senderUsername ?? undefined,
+      'server-id': message.serverId, sender: message.senderUsername ?? undefined,
     }));
     audio.current = sound;
     sound.onended = () => setState('idle');
