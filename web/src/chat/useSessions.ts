@@ -25,6 +25,9 @@ function messageOf(problem: unknown): string {
  */
 export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => void] {
   const [state, setState] = useState<SessionsState>({ status: 'idle' });
+  // The scope the list shown was read in. Until the list of a new scope is read, none is shown: a conversation of the
+  // account before would otherwise be opened, and read, in the new one (#402).
+  const [stateScope, setStateScope] = useState(scope);
   const [round, setRound] = useState(0);
   const reload = useCallback(() => setRound(n => n + 1), []);
   const shownScope = useRef(scope);
@@ -41,6 +44,7 @@ export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => 
   useEffect(() => () => clearTimeout(pending.current), []);
 
   useEffect(() => {
+    setStateScope(scope);
     if (!enabled) { setState({ status: 'idle' }); return; }
     const controller = new AbortController();
     const fresh = shownScope.current !== scope;
@@ -72,8 +76,10 @@ export function useSessions(enabled: boolean, scope = 0): [SessionsState, () => 
     return () => controller.abort();
   }, [enabled, round, scope]);
 
-  return [state, reload];
+  return [enabled && stateScope !== scope ? LOADING : state, reload];
 }
+
+const LOADING: SessionsState = { status: 'loading' };
 
 /** How long live messages wait for more before the list is read again. */
 const LIVE_DELAY_MS = 500;
