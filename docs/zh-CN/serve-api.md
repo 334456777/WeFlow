@@ -274,7 +274,7 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 
 ### 时间花在哪里
 
-每个响应都带 `Server-Timing` 头，浏览器的开发者工具会在请求旁边显示：`cmd` 是执行命令的时间，`desc="in process"` 表示在服务进程内执行，`desc="child process"` 表示在子进程执行；`wait` 是 `/api/` 请求排队等位置的时间（见[并发限制](#并发限制)）；`total` 是请求在服务端的全部时间，从收到请求到发出响应头（事件流则到它开始）。从 `localhost` 打开的网页还会收到 `Timing-Allow-Origin`，脚本可以在 `performance.getEntriesByType("resource")` 里读到这些阶段。
+每个响应都带 `Server-Timing` 头，浏览器的开发者工具会在请求旁边显示：`cmd` 是执行命令的时间，`desc="in process"` 表示在服务进程内执行，`desc="child process"` 表示在子进程执行，`desc="refused in process"` 表示命令行不接受这些参数、由服务进程直接报错（见[进程内读取](#进程内读取)）；`wait` 是 `/api/` 请求排队等位置的时间（见[并发限制](#并发限制)）；`total` 是请求在服务端的全部时间，从收到请求到发出响应头（事件流则到它开始）。从 `localhost` 打开的网页还会收到 `Timing-Allow-Origin`，脚本可以在 `performance.getEntriesByType("resource")` 里读到这些阶段。
 
 ```text
 Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";dur=3.1, total;dur=3.4
@@ -311,6 +311,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - `chat contacts` 带 `parsed=true`（`--parsed`）时，按桌面应用的样子返回通讯录，而不是数据库的原始行：只含好友、群聊、公众号和曾经的好友，每一项带 `type`（`friend`、`group`、`official`、`former_friend`）、`displayName`（备注，没有则昵称，再没有则微信号）、`remark`、`nickname`、`alias`、`labels`、`region`、`detailDescription`（签名）和 `avatarUrl`，最近聊过的排在前面。`export contacts` 也接受 `parsed=true`，导出这份列表而不是原始行；再加 `kind`（可重复：`friend`、`group`、`official`、`former_friend`）可以只导出这几类。
 - `chat search` 的每条结果都带上所在消息的 `_cursor`（`_session_id` 照旧）：拿它传 `before` 和 `after`，就能读到这条结果前后的消息。带 `parsed=true`（`--parsed`）时，结果按 `chat messages` 的方式解析。
 - 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
+- 命令行不接受的参数（缺少必填项、该是数字的不是数字、同一个参数给了两次等）由服务进程直接回复终端会打印的那条错误（`invalid_arguments`，`400`），与不带 `/api/` 的路由回复的相同，但不起子进程：约 0.3 ms，原来约 30 ms（#432）。命令行接受、进程内读取却不接受的请求（少见的位置参数顺序）按不带 `/api/` 的路由在子进程里执行。
 - 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。
 - 配置文件变化后（`PUT /config/set`、切换配置档案、用 `config_path` 换一个配置文件），下一个请求会重新读取。判断是否变化看文件的修改时间和大小；写入后的几秒内还会比对内容，因为在时间精度较粗的文件系统上（FAT 是 2 秒），两次写入的修改时间可能相同，而两个名字一样长的档案，文件大小也相同。
 - 服务刚启动时，以及配置变化之后，会在后台同时打开聊天页面要用的数据库：会话、联系人、头像、图片链接、搜索索引、消息和语音。每个数据库第一次打开都要先派生密钥（约 0.1 秒），否则最初的几次读取要等它们用到的每个库。在大账号上，预热半秒内完成；之后第一次读取会话列表约 12 ms，原来约 440 ms；如果启动后立即请求，约 240 ms。
