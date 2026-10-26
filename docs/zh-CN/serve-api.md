@@ -232,7 +232,8 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 - 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
 - 会写入微信数据库、因而总被命令以 `501` 拒绝的操作（`chat update-message`、`chat delete-message`、`chat anti-revoke install/uninstall`、带 `install` 或 `uninstall` 的 `sns block-delete`、`sns delete`）带有 `"x-weflow-refused": true`，客户端可以不提供它们。
 - `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
-- 响应只描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`；不描述每条命令 `data` 的结构。
+- 响应描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`。WebUI 常用的几个读取还描述了 `data` 的结构（#399）：`chat sessions`、`chat messages`、`chat search`、`chat latest`、`chat message`、`chat contacts` 和 `chat resources`，类型放在 `components/schemas` 下（`Session`、`ParsedMessage`、`Contact`、`ResourcePage` 等），`Job` 和 `Error` 也一样。这些类型就是命令回复所用的 Rust 结构体（`weflow_core::contract`），所以描述不会和回复脱节。类型的说明是英文的。时间除非字段另有说明，都是 Unix 秒；可能超过 2^53 的微信 ID 用字符串；没有内容的可选字段直接省略，可为空的字段则为 `null`。微信自己的表的原始行（不带 `parsed` 时）是 `Row`，一个列由微信决定的对象。其他命令的 `data` 暂不描述。
+- `web/contract/openapi.json` 只保存这些类型，不含帮助文字，也不含任何与构建相关的内容；WebUI 的类型由它生成（见 web/README.zh-CN.md）。它与代码的回复不一致时，有测试会失败；改了类型之后，用 `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot` 重新生成。
 - `/health`、`/health/events`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
 
 ```sh
