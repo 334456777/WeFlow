@@ -60,7 +60,7 @@ The answers the page reads most (the conversations, messages, search hits, conta
 
 `scripts/contract.ts` writes the types without a dependency: it reads the few kinds of JSON Schema that schemars writes and refuses the rest. When a type of the answers changes:
 
-1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot` rewrites `contract/openapi.json` (and `cargo test -p weflow-core --lib contract`, with the same variable, `contract/samples.json`: an answer of each type, for the boundary tests of #400);
+1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_` rewrites `contract/openapi.json` and `contract/samples.json` (answers of each type, for the boundary tests of #400);
 2. `bun run contract` rewrites `src/api/contract.gen.ts`;
 3. `bun run typecheck` shows what the page has to change.
 

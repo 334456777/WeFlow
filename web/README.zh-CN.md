@@ -64,7 +64,7 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 
 `scripts/contract.ts` 不依赖任何包来生成类型：它只认 schemars 会写出的那几种 JSON Schema，遇到其他写法就报错。回复的类型改了以后：
 
-1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot` 重新生成 `contract/openapi.json`（带同一个变量运行 `cargo test -p weflow-core --lib contract` 会重新生成 `contract/samples.json`：每种类型一个回复样本，供 #400 的边界测试使用）；
+1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_` 重新生成 `contract/openapi.json` 和 `contract/samples.json`（各类回复的样本，供 #400 的边界测试使用）；
 2. `bun run contract` 重新生成 `src/api/contract.gen.ts`；
 3. `bun run typecheck` 显示网页需要跟着改的地方。
 

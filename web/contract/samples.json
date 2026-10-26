@@ -10,8 +10,8 @@
       "senderUsername": "wxid_bob",
       "parsedContent": "hello",
       "rawContent": "hello",
-      "messageKey": "server:9007199254740993:1700000000:1700000000000:1:wxid_bob:1",
-      "_cursor": "1700000000000.1700000000.1.1",
+      "messageKey": "local:message_0:1:1700000000:1700000000000:wxid_bob:1",
+      "_cursor": "1700000000000.1700000000.1.0",
       "_session_id": "wxid_bob"
     },
     {
@@ -30,8 +30,8 @@
       "fileName": "report.pdf",
       "fileSize": 2048,
       "fileExt": "pdf",
-      "messageKey": "fallback::1700000060:1700000060000:2::49",
-      "_cursor": "1700000100000.1700000000.2.1"
+      "messageKey": "local:message_0:2:1700000060:1700000060000::49",
+      "_cursor": "1700000060000.1700000060.2.0"
     },
     {
       "localId": 3,
@@ -48,8 +48,35 @@
       "xmlType": "57",
       "linkTitle": "yes",
       "appMsgKind": "quote",
-      "messageKey": "fallback::1700000120:1700000120000:3:wxid_bob:49",
-      "_cursor": "1700000200000.1700000000.3.1"
+      "messageKey": "local:message_0:3:1700000120:1700000120000:wxid_bob:49",
+      "_cursor": "1700000120000.1700000120.3.0"
+    },
+    {
+      "localId": 4,
+      "serverId": "0",
+      "localType": 10000,
+      "createTime": 1704067199,
+      "sortSeq": 1704067199000,
+      "isSend": null,
+      "senderUsername": null,
+      "parsedContent": "\"Bob\" 撤回了一条消息",
+      "rawContent": "\"Bob\" 撤回了一条消息",
+      "messageKey": "local:message_1:4:1704067199:1704067199000::10000",
+      "_cursor": "1704067199000.1704067199.4.1"
+    },
+    {
+      "localId": 1,
+      "serverId": "9007199254740995",
+      "localType": 3,
+      "createTime": 1704067200,
+      "sortSeq": 1704067199000,
+      "isSend": 1,
+      "senderUsername": "wxid_me",
+      "parsedContent": "[图片]",
+      "rawContent": "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
+      "imageMd5": "aabbccddeeff00112233445566778899",
+      "messageKey": "local:message_2:1:1704067200:1704067199000:wxid_me:3",
+      "_cursor": "1704067199000.1704067200.1.2"
     }
   ],
   "Session": [
@@ -65,6 +92,19 @@
       "displayName": "Bob",
       "selfWxid": "wxid_me",
       "avatarUrl": "https://example.com/bob.png"
+    },
+    {
+      "username": "room1@chatroom",
+      "type": 2,
+      "unreadCount": 0,
+      "summary": "ok",
+      "sortTimestamp": 1704067200,
+      "lastTimestamp": 1704067200,
+      "lastMsgType": 1,
+      "displayName": "Project Room",
+      "lastMsgSender": "wxid_bob",
+      "lastSenderDisplayName": "Bob in room",
+      "selfWxid": "wxid_me"
     },
     {
       "username": "gh_news",
@@ -90,6 +130,16 @@
       ],
       "region": "广东 深圳",
       "type": "friend"
+    },
+    {
+      "username": "room1@chatroom",
+      "displayName": "Project Room",
+      "type": "group"
+    },
+    {
+      "username": "wxid_gone",
+      "displayName": "wxid_gone",
+      "type": "former_friend"
     }
   ],
   "ResourcePage": [
@@ -106,12 +156,41 @@
           "text": "[图片]",
           "imageMd5": "aabbccddeeff00112233445566778899",
           "appMsgKind": "card",
-          "_cursor": "1700000180000.1700000180.4.1:wxid_bob",
+          "_cursor": "1700000180000.1700000180.4.0:wxid_bob",
           "sessionDisplayName": "Bob",
           "sessionId": "wxid_bob",
           "resourceType": "image"
         }
       ],
+      "hasMore": true,
+      "nextCursor": "1700000180000.1700000180.4.0:wxid_bob"
+    },
+    {
+      "items": [
+        {
+          "localId": 2,
+          "serverId": "18446744073709551615",
+          "createTime": 1700000060,
+          "localType": 49,
+          "isSend": 1,
+          "senderUsername": "wxid_me",
+          "content": "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen><fileext>pdf</fileext></appattach></appmsg></msg>",
+          "text": "[文件] report.pdf",
+          "fileName": "report.pdf",
+          "fileExt": "pdf",
+          "fileSize": 2048,
+          "appMsgKind": "file",
+          "_cursor": "1700000060000.1700000060.2.0:wxid_bob",
+          "sessionDisplayName": "Bob",
+          "sessionId": "wxid_bob",
+          "resourceType": "file"
+        }
+      ],
+      "hasMore": false,
+      "nextCursor": null
+    },
+    {
+      "items": [],
       "hasMore": false,
       "nextCursor": null
     }
@@ -126,7 +205,8 @@
         "sort_seq": 1700000000000,
         "is_send": 0,
         "sender_username": "wxid_bob",
-        "message_content": "hello"
+        "message_content": "hello",
+        "db_name": "message_0"
       },
       "message": {
         "localId": 4,
@@ -140,12 +220,168 @@
         "imageMd5": "aabbccddeeff00112233445566778899",
         "appMsgKind": "card"
       }
+    },
+    {
+      "row": {
+        "local_id": 9,
+        "local_type": 1
+      },
+      "message": null
     }
   ],
   "Error": [
     {
       "code": "invalid_arguments",
-      "message": "`chat messages` needs `session-id`"
+      "message": "`chat messages` needs `session-id`",
+      "details": {
+        "usage": "weflow chat messages --session-id <SESSION_ID>"
+      }
+    },
+    {
+      "code": "runtime_error",
+      "message": "the video has no thumbnail or cover",
+      "details": {
+        "failureKind": "not_found"
+      }
+    },
+    {
+      "code": "busy",
+      "message": "too many reads at once"
+    }
+  ],
+  "Job": [
+    {
+      "id": "a1b2c3d4e5f60001",
+      "status": "queued",
+      "command": [
+        "weflow",
+        "--json",
+        "--progress",
+        "export",
+        "messages",
+        "--session-id",
+        "wxid_bob"
+      ],
+      "createdAt": 1700000000000,
+      "startedAt": null,
+      "finishedAt": null,
+      "exitCode": null,
+      "httpStatus": null,
+      "progress": null,
+      "file": null
+    },
+    {
+      "id": "a1b2c3d4e5f60002",
+      "status": "running",
+      "command": [
+        "weflow",
+        "--json",
+        "--progress",
+        "export",
+        "messages",
+        "--session-id",
+        "wxid_bob"
+      ],
+      "createdAt": 1700000000000,
+      "startedAt": 1700000000500,
+      "finishedAt": null,
+      "exitCode": null,
+      "httpStatus": null,
+      "progress": {
+        "type": "progress",
+        "stage": "messages",
+        "current": 1,
+        "total": 3
+      },
+      "file": null
+    },
+    {
+      "id": "a1b2c3d4e5f60003",
+      "status": "succeeded",
+      "command": [
+        "weflow",
+        "--json",
+        "--progress",
+        "export",
+        "messages",
+        "--session-id",
+        "wxid_bob"
+      ],
+      "createdAt": 1700000000000,
+      "startedAt": 1700000000500,
+      "finishedAt": 1700000003000,
+      "exitCode": 0,
+      "httpStatus": 200,
+      "progress": {
+        "type": "progress",
+        "stage": "messages",
+        "current": 3,
+        "total": 3
+      },
+      "file": {
+        "name": null,
+        "size": 5120
+      },
+      "result": {
+        "success": true,
+        "data": {
+          "count": 3
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4e5f60004",
+      "status": "failed",
+      "command": [
+        "weflow",
+        "--json",
+        "--progress",
+        "export",
+        "messages",
+        "--session-id",
+        "wxid_bob"
+      ],
+      "createdAt": 1700000000000,
+      "startedAt": 1700000000500,
+      "finishedAt": 1700000001000,
+      "exitCode": 4,
+      "httpStatus": 501,
+      "progress": null,
+      "file": null,
+      "result": {
+        "success": false,
+        "error": {
+          "code": "busy",
+          "message": "too many reads at once"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4e5f60005",
+      "status": "cancelled",
+      "command": [
+        "weflow",
+        "--json",
+        "--progress",
+        "export",
+        "messages",
+        "--session-id",
+        "wxid_bob"
+      ],
+      "createdAt": 1700000000000,
+      "startedAt": null,
+      "finishedAt": 1700000000200,
+      "exitCode": null,
+      "httpStatus": 499,
+      "progress": null,
+      "file": null,
+      "result": {
+        "success": false,
+        "error": {
+          "code": "user_interrupt",
+          "message": "the job was cancelled"
+        }
+      }
     }
   ]
 }
