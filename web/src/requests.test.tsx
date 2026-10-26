@@ -177,6 +177,21 @@ describe('requests of the chat page', () => {
     expect(messages().every(text => text.startsWith('b 的消息'))).toBe(true);
   });
 
+  it('reads a conversation kept again once a live message came to it, and only that one', async () => {
+    account = 'a';
+    serve();
+    await requestsOf(() => { render(<App />); });
+    await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); });
+    await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择林沐' })); });
+    const pages = (requests: string[]) => requests.filter(request => request.startsWith('GET /api/chat/messages'));
+    // a message comes to 周舟, kept but not open: nothing is read for it until it is opened
+    expect(pages(await requestsOf(() => streams.find(s => s.url.startsWith('/api/push/messages'))!.emit('message.new', { sessionId: 'wxid_zhou' })))).toEqual([]);
+    expect(pages(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择周舟' })); }))).toEqual([
+      `GET /api/chat/messages?session-id=wxid_zhou&${PAGE}`,
+    ]);
+    expect(pages(await requestsOf(() => { fireEvent.click(screen.getByRole('button', { name: '选择林沐' })); }))).toEqual([]);
+  });
+
   it('ends on the account switched back to when the answers of the one between come late', async () => {
     account = 'a';
     const server = serve(() => account === 'b');
