@@ -2698,9 +2698,25 @@ fn save_keys(config_path: &Path, mut data: Value, names: &[&str]) -> AppResult<V
     Ok(data)
 }
 
+/// `key db` run by `weflow serve`, which cannot send it Ctrl+C: the end of stdin (the job cancelled, the request or
+/// the server gone) interrupts it as Ctrl+C would, so a hook it set is taken out of WeChat before it ends (#287).
+fn interrupt_when_stdin_ends() {
+    std::thread::spawn(|| {
+        let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink());
+        // a hook may be about to be set: interrupt it too, until the command has ended
+        loop {
+            weflow_core::services::interrupt_key_db();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
+}
+
 fn handle_key(command: &KeyCommand, hub: &ServiceHub, config_path: &Path) -> AppResult<Value> {
     match &command.command {
         KeySubcommand::Db { pid, timeout, save } => {
+            if std::env::var_os(serve_api::CANCEL_ON_STDIN).is_some() {
+                interrupt_when_stdin_ends();
+            }
             let data = hub.key_db(*pid, *timeout)?;
             if *save {
                 save_keys(config_path, data, &["decrypt_key"])

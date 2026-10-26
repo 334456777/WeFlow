@@ -245,13 +245,20 @@ unsafe extern "system" fn console_interrupt(event: u32) -> i32 {
     if event != CTRL_C_EVENT && event != CTRL_BREAK_EVENT {
         return 0;
     }
+    i32::from(interrupt())
+}
+
+/// Stops every hook running, as Ctrl+C does: each restores the debug registers it set and detaches before it
+/// fails with `interrupted by user`. For a process that cannot get Ctrl+C, such as a job of `weflow serve` (#287).
+/// Whether there was a hook to stop.
+pub fn interrupt() -> bool {
     let active = interrupts().lock().unwrap_or_else(|e| e.into_inner());
     let mut handled = false;
     for cancel in active.iter().filter_map(Weak::upgrade) {
         cancel.store(true, Ordering::Release);
         handled = true;
     }
-    i32::from(handled)
+    handled
 }
 
 struct InterruptGuard(Arc<AtomicBool>);

@@ -187,7 +187,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18
 | `GET /jobs` | `{"success": true, "data": [<作业>, …]}`，从旧到新，不含结果 |
 | `GET /jobs/<id>` | 作业及其 `result` |
 | `GET /jobs/<id>/events` | 服务器推送事件（SSE），直到作业结束（见下文） |
-| `DELETE /jobs/<id>` | 排队中或运行中的作业被取消（终止其命令），返回取消后的作业；已结束的作业则从列表中删除 |
+| `DELETE /jobs/<id>` | 排队中或运行中的作业被取消（终止其命令；`key db` 会先被通知自行结束，10 秒后仍未结束才终止，见下文），返回取消后的作业；已结束的作业则从列表中删除 |
 | `GET /jobs/<id>/file` | 以 `?return=file` 启动的作业成功后写出的文件（见[返回文件](#返回文件)）；否则返回 `404` |
 
 作业的格式为 `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "exitCode", "httpStatus", "progress", "file", "result"}`：`status` 为 `queued`、`running`、`succeeded`、`failed` 或 `cancelled`；`command` 是实际运行的命令行（总是带 `--json --progress`）；时间为 Unix 毫秒；`httpStatus` 是直接请求时会返回的状态码；`progress` 是最后一个进度事件；`file` 是以 `?return=file` 启动并已成功的作业写出的文件（`{"name", "size"}`），否则为 `null`；`result` 是 `--json` 文档，与直接请求的响应相同。被取消的作业 `httpStatus` 为 `499`，错误码为 `user_interrupt`。
@@ -265,7 +265,7 @@ curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.js
 
 ## 执行方式
 
-命令路由（不带 `/api/` 的路径，无论直接运行还是作为作业）都以子进程再运行一次 `weflow`，使用同一份配置，所以输出和退出码与终端一致，单条命令出错也不会拖垮服务。客户端在响应完成前断开连接时，它的命令随之终止；取消作业也一样。
+命令路由（不带 `/api/` 的路径，无论直接运行还是作为作业）都以子进程再运行一次 `weflow`，使用同一份配置，所以输出和退出码与终端一致，单条命令出错也不会拖垮服务。客户端在响应完成前断开连接时，它的命令随之终止；取消作业也一样。`key db` 不会被直接终止，而是让它自行结束（#287）：运行期间它的 stdin 一直保持打开，一旦关闭（作业被取消、连接断开或服务端退出），命令就像按了 Ctrl+C 一样结束：先把硬件断点从微信里撤掉、解除连接，再以 `user_interrupt` 结束。取消的 `key db` 作业 10 秒内还没结束才会被终止。
 
 代价是每个这样的请求都要付出：启动进程和读取配置约 20 ms，而且每次都要重新打开数据库，缓存都是冷的。在一个大账号上（Windows，release 构建），这样取会话列表约 37 ms，取一页消息约 31 ms。聊天客户端频繁使用的读取请改用 [`/api/`](#进程内读取)。
 

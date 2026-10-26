@@ -7,4 +7,4 @@ mod locator;
 #[cfg(all(windows, target_arch = "x86_64"))]
 mod platform;
 #[cfg(all(windows, target_arch = "x86_64"))]
-pub use platform::{CaptureDiagnostics, Hook, KeyLocation};
+pub use platform::{interrupt, CaptureDiagnostics, Hook, KeyLocation};

@@ -23,6 +23,9 @@ const KEEP_FINISHED: usize = 100;
 /// Events kept per job for clients that subscribe late or reconnect.
 const KEEP_EVENTS: usize = 1000;
 
+/// How long a cancelled command that ends by itself (`key db`) has to, before it is killed.
+const CLEAN_UP: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 #[schemars(rename = "JobStatus")]
@@ -510,7 +513,12 @@ async fn run_child(
         _ = cancelled.wait_for(|c| *c) => None,
     };
     let Some(status) = waited else {
-        let _ = child.kill().await;
+        // a command that ends by itself is asked to (#287), and killed only when it has not within a while
+        if child.stdin.take().is_none()
+            || tokio::time::timeout(CLEAN_UP, child.wait()).await.is_err()
+        {
+            let _ = child.kill().await;
+        }
         job.finish(Status::Cancelled, None, 499, cancelled_result());
         return;
     };
