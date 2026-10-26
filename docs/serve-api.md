@@ -111,7 +111,7 @@ curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:18108/chat/latest?sessi
 curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"true"}' http://127.0.0.1:18108/config/set
 ```
 
-`Accept-Language` picks the language of messages (`zh…` is Chinese, anything else English); without it the command follows its usual rules (`WEFLOW_LANG`, `weflow lang`, the system).
+Every answer is in the server's language, the one `weflow serve` was started in (`WEFLOW_LANG`, else `weflow lang`, else the system's), whether it comes from the server's process or a child, and whatever the request's `Accept-Language` (#433). So a route answers the same with or without `/api/`, and a page reads the server's texts in one language. A change of `weflow lang` applies once the server starts again.
 
 ## Answers
 
@@ -227,7 +227,7 @@ A browser sends at most 6 requests at once to one server (HTTP/1.1), and an open
 
 ## OpenAPI description
 
-`GET /openapi.json` (with the token) answers an OpenAPI 3.1 description of the API. It is built from the command tree and the method table of the running `weflow`, so it always matches it; summaries and parameter descriptions are the commands' help, in the language of `Accept-Language` (else the server's).
+`GET /openapi.json` (with the token) answers an OpenAPI 3.1 description of the API. It is built from the command tree and the method table of the running `weflow`, so it always matches it; summaries and parameter descriptions are the commands' help, in the server's language.
 
 - Each command is one operation per method, with `x-weflow-command` naming the command. `operationId` is the command path with `_` (`chat_sessions`); a command whose method follows an argument has one operation per method (`analytics_excluded_get`, `analytics_excluded_put`).
 - An operation that would write WeChat's databases, which the command always refuses with `501` (`chat update-message`, `chat delete-message`, `chat anti-revoke install/uninstall`, `sns block-delete` with `install` or `uninstall`, `sns delete`), has `"x-weflow-refused": true`, so a client need not offer it.
@@ -237,7 +237,7 @@ A browser sends at most 6 requests at once to one server (HTTP/1.1), and an open
 - `/health`, `/health/events`, `/openapi.json`, `/jobs` and `/api/push/messages` are described under the tag `server`; the [in-process reads](#in-process-reads) have their own operations, `api_chat_sessions` and so on.
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:18108/openapi.json
+curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
 Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `2` (it was `1` until a parsed message's `serverId` became a string, #399). It is raised only by a change that breaks existing clients, not by new commands or options. `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
@@ -310,7 +310,6 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - `chat contacts` with `parsed=true` (`--parsed`) answers the contact list as the desktop app shows it instead of the database rows: the friends, groups, official accounts and former friends only, each with its `type` (`friend`, `group`, `official`, `former_friend`), `displayName` (remark, else nickname, else WeChat ID), `remark`, `nickname`, `alias`, `labels`, `region`, `detailDescription` (the signature) and `avatarUrl`, the most recent conversation first. `export contacts` takes `parsed=true` too, to write that list instead of the rows, and `kind` (repeatable: `friend`, `group`, `official`, `former_friend`) to keep only those kinds.
 - `chat search` gives each hit the `_cursor` of its message (and `_session_id`, as before): `before` and `after` with it read the messages around a hit. With `parsed=true` (`--parsed`) the hits are parsed as `chat messages` parses them.
 - `?std`, `?return=file` and `Prefer: respond-async` are not available (`400`); other commands answer `404`.
-- The answer is in the server's language: `Accept-Language` does not apply, as the language is set once per process.
 - A changed config file (`PUT /config/set`, another profile, another file chosen with `config_path`) is read again on the next request. A change is told by the file's time and size, and for a few seconds after a write by its content too: two writes within one tick of a coarse clock (2 s on FAT) leave the same time, and two profiles whose names are as long the same size.
 - Right after the start, and again after the config changed, the server opens the databases of a chat page in the background, all at once: conversations, contacts, avatars, image links, the search index, messages and voices. Opening a database first derives its key (about 0.1 s), so the first reads would otherwise wait for every database they touch. On a large account the warm-up is over within half a second; the conversation list then first takes about 12 ms instead of about 440 ms, and about 240 ms when asked for right at the start.
 - `group members` keeps a member panel for a while, as the desktop app does: within that time it answers `"fromCache": true`; pass `refresh=true` to build it again.

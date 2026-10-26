@@ -111,7 +111,7 @@ curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:18108/chat/latest?sessi
 curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"true"}' http://127.0.0.1:18108/config/set
 ```
 
-`Accept-Language` 决定消息的语言（`zh…` 为中文，其他为英文）；没有这个头时，命令按平常的规则决定（`WEFLOW_LANG`、`weflow lang`、系统语言）。
+所有回复都使用服务端的语言，即启动 `weflow serve` 时的语言（`WEFLOW_LANG`，没有时 `weflow lang`，再没有时系统语言）。不论回复来自服务进程还是子进程，也不论请求的 `Accept-Language` 是什么（#433）。所以同一个路由带不带 `/api/` 回复都一样，网页读到的服务端文字也只有一种语言。改了 `weflow lang` 要重启服务端才生效。
 
 ## 响应
 
@@ -227,7 +227,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 
 ## OpenAPI 描述
 
-`GET /openapi.json`（需要令牌）返回 API 的 OpenAPI 3.1 描述。它由正在运行的 `weflow` 的命令树和方法表生成，所以总是与之一致；摘要和参数说明来自命令的帮助文字，语言按 `Accept-Language` 决定（没有时用服务端的语言）。
+`GET /openapi.json`（需要令牌）返回 API 的 OpenAPI 3.1 描述。它由正在运行的 `weflow` 的命令树和方法表生成，所以总是与之一致；摘要和参数说明来自命令的帮助文字，使用服务端的语言。
 
 - 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
 - 会写入微信数据库、因而总被命令以 `501` 拒绝的操作（`chat update-message`、`chat delete-message`、`chat anti-revoke install/uninstall`、带 `install` 或 `uninstall` 的 `sns block-delete`、`sns delete`）带有 `"x-weflow-refused": true`，客户端可以不提供它们。
@@ -237,7 +237,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 - `/health`、`/health/events`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:18108/openapi.json
+curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
 客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `2`（解析过的消息的 `serverId` 改为字符串之前是 `1`，#399）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
@@ -310,7 +310,6 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - `chat contacts` 带 `parsed=true`（`--parsed`）时，按桌面应用的样子返回通讯录，而不是数据库的原始行：只含好友、群聊、公众号和曾经的好友，每一项带 `type`（`friend`、`group`、`official`、`former_friend`）、`displayName`（备注，没有则昵称，再没有则微信号）、`remark`、`nickname`、`alias`、`labels`、`region`、`detailDescription`（签名）和 `avatarUrl`，最近聊过的排在前面。`export contacts` 也接受 `parsed=true`，导出这份列表而不是原始行；再加 `kind`（可重复：`friend`、`group`、`official`、`former_friend`）可以只导出这几类。
 - `chat search` 的每条结果都带上所在消息的 `_cursor`（`_session_id` 照旧）：拿它传 `before` 和 `after`，就能读到这条结果前后的消息。带 `parsed=true`（`--parsed`）时，结果按 `chat messages` 的方式解析。
 - 不支持 `?std`、`?return=file` 和 `Prefer: respond-async`（返回 `400`）；其他命令返回 `404`。
-- 回复使用服务端的语言：`Accept-Language` 不起作用，因为语言是整个进程统一设置的。
 - 配置文件变化后（`PUT /config/set`、切换配置档案、用 `config_path` 换一个配置文件），下一个请求会重新读取。判断是否变化看文件的修改时间和大小；写入后的几秒内还会比对内容，因为在时间精度较粗的文件系统上（FAT 是 2 秒），两次写入的修改时间可能相同，而两个名字一样长的档案，文件大小也相同。
 - 服务刚启动时，以及配置变化之后，会在后台同时打开聊天页面要用的数据库：会话、联系人、头像、图片链接、搜索索引、消息和语音。每个数据库第一次打开都要先派生密钥（约 0.1 秒），否则最初的几次读取要等它们用到的每个库。在大账号上，预热半秒内完成；之后第一次读取会话列表约 12 ms，原来约 440 ms；如果启动后立即请求，约 240 ms。
 - `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。

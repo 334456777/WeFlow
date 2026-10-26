@@ -82,10 +82,13 @@ export function commandsOf(doc: unknown): ConsoleCommand[] {
   return out.sort((a, b) => a.command.localeCompare(b.command) || METHODS.indexOf(a.method) - METHODS.indexOf(b.method));
 }
 
-/** `/openapi.json` in Chinese; it needs the token, and is no `{success, data}` document. */
+/**
+ * `/openapi.json`, in the server's language as every answer is (#433); it needs the token, and is no
+ * `{success, data}` document.
+ */
 export async function getOpenApi(signal?: AbortSignal): Promise<ConsoleCommand[]> {
   const bearer = token();
-  const response = await fetch('/openapi.json', { headers: { Accept: 'application/json', 'Accept-Language': 'zh-CN', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) }, signal });
+  const response = await fetch('/openapi.json', { headers: { Accept: 'application/json', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) }, signal });
   if (!response.ok) throw new Error(response.status === 401 ? '令牌不对，读不到命令列表。' : '读不到命令列表（HTTP ' + response.status + '）。');
   return commandsOf(await response.json());
 }
