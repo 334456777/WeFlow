@@ -331,7 +331,7 @@ fn operation(
         "summary": text(cmd.get_about()),
         "x-weflow-command": name,
         "parameters": parameters,
-        "responses": command_responses(file, zh),
+        "responses": command_responses(&name, file, zh),
     });
     let description: Vec<String> = [text(cmd.get_long_about())]
         .into_iter()
@@ -416,7 +416,14 @@ fn schema_of(arg: &Arg, kind: Kind) -> Value {
     schema
 }
 
-fn command_responses(file: bool, zh: bool) -> Value {
+fn command_responses(name: &str, file: bool, zh: bool) -> Value {
+    // the contract (#399) says what `data` holds for the commands it describes
+    let schema = match contract().data.get(name) {
+        Some(data) => {
+            json!({ "oneOf": [success_of(data.clone()), { "$ref": "#/components/schemas/Failure" }] })
+        }
+        None => json!({ "$ref": "#/components/schemas/Result" }),
+    };
     let mut ok = json!({
         "description": pick(
             zh,
@@ -424,7 +431,7 @@ fn command_responses(file: bool, zh: bool) -> Value {
             "命令的 `--json` 文档（`std` 可以要求其他形式）",
         ),
         "headers": { "X-WeFlow-Exit-Code": { "$ref": "#/components/headers/ExitCode" } },
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Result" } } },
+        "content": { "application/json": { "schema": schema } },
     });
     if file {
         ok["content"]["multipart/form-data"] = json!({
@@ -437,6 +444,167 @@ fn command_responses(file: bool, zh: bool) -> Value {
         "202": { "$ref": "#/components/responses/Accepted" },
         "4XX": { "$ref": "#/components/responses/Error" },
         "5XX": { "$ref": "#/components/responses/Error" },
+    })
+}
+
+/// The contract (#399): what `data` holds for the commands it describes, and the types those schemas refer to, for
+/// `components/schemas`. The types are those of `weflow_core::contract`, which the commands answer with.
+pub(super) struct Contract {
+    pub data: std::collections::BTreeMap<&'static str, Value>,
+    pub schemas: Map<String, Value>,
+}
+
+pub(super) fn contract() -> &'static Contract {
+    static CONTRACT: std::sync::OnceLock<Contract> = std::sync::OnceLock::new();
+    CONTRACT.get_or_init(|| {
+        use schemars::generate::SchemaSettings;
+        use weflow_core::contract::{Contact, MessageLookup, ParsedMessage, ResourcePage, Session};
+        let mut generator = SchemaSettings::draft2020_12()
+            .for_serialize()
+            .with(|s| s.definitions_path = "/components/schemas".into())
+            .into_generator();
+        let of = |schema: schemars::Schema| schema.to_value();
+        let rows = json!({ "type": "array", "items": { "$ref": "#/components/schemas/Row" } });
+        let parsed_or_rows = |parsed: Value, what: &str| {
+            json!({
+                "description": format!("With `parsed=true`, {what} as the chat window shows them; else the rows of WeChat's table, each with its `_cursor`"),
+                "anyOf": [parsed, rows.clone()],
+            })
+        };
+        let mut data = std::collections::BTreeMap::new();
+        data.insert("chat sessions", of(generator.subschema_for::<Vec<Session>>()));
+        let messages = of(generator.subschema_for::<Vec<ParsedMessage>>());
+        data.insert("chat messages", parsed_or_rows(messages.clone(), "the messages"));
+        data.insert("chat search", parsed_or_rows(messages, "the hits, each with its `_session_id`,"));
+        data.insert("chat latest", rows.clone());
+        data.insert(
+            "chat message",
+            json!({
+                "description": "With `parsed=true`, the message as the chat window shows it; else its row and the message as the query commands list it",
+                "anyOf": [
+                    of(generator.subschema_for::<ParsedMessage>()),
+                    of(generator.subschema_for::<MessageLookup>()),
+                ],
+            }),
+        );
+        let contacts = of(generator.subschema_for::<Vec<Contact>>());
+        data.insert(
+            "chat contacts",
+            json!({
+                "description": "With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table",
+                "anyOf": [contacts, rows],
+            }),
+        );
+        data.insert("chat resources", of(generator.subschema_for::<ResourcePage>()));
+        // referred to by the server's own routes and by Failure
+        generator.subschema_for::<super::jobs::JobView>();
+        generator.subschema_for::<weflow_core::error::ErrorPayload>();
+        let mut schemas = generator.take_definitions(true);
+        for schema in schemas.values_mut() {
+            left_out_not_null(schema);
+        }
+        schemas.insert(
+            "Row".into(),
+            json!({
+                "type": "object",
+                "description": "A row of one of WeChat's tables, with its columns; not described further, as WeChat decides them",
+            }),
+        );
+        Contract { data, schemas }
+    })
+}
+
+/// An optional field of the contract is left out when it has no value (`skip_serializing_if`), never `null`; schemars
+/// writes the `null` of its `Option` all the same, which is taken out here.
+fn left_out_not_null(schema: &mut Value) {
+    let required: Vec<String> = schema["required"]
+        .as_array()
+        .map(|r| {
+            r.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) else {
+        return;
+    };
+    for (name, property) in properties.iter_mut() {
+        if required.contains(name) {
+            continue;
+        }
+        if let Some(kinds) = property.get_mut("type").and_then(Value::as_array_mut) {
+            kinds.retain(|k| k != "null");
+            if let [one] = kinds.as_slice() {
+                property["type"] = one.clone();
+            }
+        }
+        if let Some(any) = property.get_mut("anyOf").and_then(Value::as_array_mut) {
+            any.retain(|s| s != &json!({ "type": "null" }));
+            if let [one] = any.as_slice() {
+                let one = one.clone();
+                let object = property.as_object_mut().unwrap();
+                object.remove("anyOf");
+                for (k, v) in one.as_object().into_iter().flatten() {
+                    object.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+}
+
+/// The contract alone (#399), as `web/contract/openapi.json` keeps it for the WebUI's types: the `/api/` routes it
+/// describes and their types. It has no help texts nor anything of the build, so it changes only with the contract.
+#[cfg(test)]
+fn contract_document() -> Value {
+    let c = contract();
+    let mut paths = Map::new();
+    for (name, data) in &c.data {
+        let path = name.replace(' ', "/");
+        let route = if in_process::COMMANDS.contains(name) {
+            format!("/api/{path}")
+        } else {
+            format!("/{path}")
+        };
+        paths.insert(
+            route,
+            json!({ "get": {
+                "operationId": format!("api_{}", name.replace([' ', '-'], "_")),
+                "x-weflow-command": name,
+                "responses": {
+                    "200": { "description": "Its `--json` document", "content": json_content(success_of(data.clone())) },
+                    "default": {
+                        "description": "A failure",
+                        "content": json_content(json!({ "$ref": "#/components/schemas/Failure" })),
+                    },
+                },
+            } }),
+        );
+    }
+    paths.insert(
+        "/jobs/{id}".into(),
+        json!({ "get": {
+            "operationId": "job",
+            "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": {
+                "200": { "description": "The job", "content": json_content(success_of(json!({ "$ref": "#/components/schemas/Job" }))) },
+            },
+        } }),
+    );
+    let mut schemas = c.schemas.clone();
+    schemas.insert(
+        "Failure".into(),
+        components(false)["schemas"]["Failure"].clone(),
+    );
+    json!({
+        "openapi": "3.1.0",
+        "info": {
+            "title": "WeFlow command API contract",
+            "version": API_VERSION,
+            "description": "The types of the answers of the command API that the WeFlow WebUI reads (#399); `/openapi.json` of `weflow serve` describes every route. Generated by a test of weflow-cli, see docs/serve-api.md.",
+        },
+        "paths": paths,
+        "components": { "schemas": schemas },
     })
 }
 
@@ -724,7 +892,7 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
 }
 
 fn components(zh: bool) -> Value {
-    json!({
+    let mut components = json!({
         "securitySchemes": {
             "bearer": {
                 "type": "http",
@@ -802,22 +970,6 @@ fn components(zh: bool) -> Value {
             },
         },
         "schemas": {
-            "Error": {
-                "type": "object",
-                "required": ["code", "message"],
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "examples": [
-                            "invalid_arguments", "unauthorized", "invalid_host", "not_found",
-                            "method_not_allowed", "config_error", "busy", "user_interrupt",
-                            "runtime_error", "native_error", "unsupported",
-                        ],
-                    },
-                    "message": { "type": "string" },
-                    "details": {},
-                },
-            },
             "Failure": {
                 "type": "object",
                 "required": ["success", "error"],
@@ -841,51 +993,6 @@ fn components(zh: bool) -> Value {
                     "file": { "type": "string", "contentMediaType": "application/octet-stream" },
                 },
             },
-            "Job": {
-                "type": "object",
-                "required": ["id", "status", "command", "createdAt"],
-                "properties": {
-                    "id": { "type": "string" },
-                    "status": {
-                        "type": "string",
-                        "enum": ["queued", "running", "succeeded", "failed", "cancelled"],
-                    },
-                    "command": { "type": "array", "items": { "type": "string" } },
-                    "createdAt": { "type": "integer", "description": pick(zh, "Unix time in ms", "Unix 时间（毫秒）") },
-                    "startedAt": { "type": ["integer", "null"] },
-                    "finishedAt": { "type": ["integer", "null"] },
-                    "exitCode": { "type": ["integer", "null"] },
-                    "httpStatus": {
-                        "type": ["integer", "null"],
-                        "description": pick(
-                            zh,
-                            "The status a synchronous request would have got",
-                            "同步请求会得到的 HTTP 状态码",
-                        ),
-                    },
-                    "progress": { "description": pick(zh, "The last `progress` event", "最近一次 `progress` 事件") },
-                    "file": {
-                        "type": ["object", "null"],
-                        "properties": {
-                            "name": { "type": "string" },
-                            "size": { "type": ["integer", "null"] },
-                        },
-                        "description": pick(
-                            zh,
-                            "The file of a job started with `return=file` once it has succeeded: `GET /jobs/{id}/file`",
-                            "以 `return=file` 启动的作业成功后写出的文件：用 `GET /jobs/{id}/file` 取回",
-                        ),
-                    },
-                    "result": {
-                        "$ref": "#/components/schemas/Result",
-                        "description": pick(
-                            zh,
-                            "The command's `--json` document; only in `GET /jobs/{id}`",
-                            "命令的 `--json` 文档；只出现在 `GET /jobs/{id}` 里",
-                        ),
-                    },
-                },
-            },
         },
         "responses": {
             "Error": {
@@ -907,7 +1014,11 @@ fn components(zh: bool) -> Value {
                 "content": json_content(success_of(json!({ "$ref": "#/components/schemas/Job" }))),
             },
         },
-    })
+    });
+    // the types of the contract, Error and Job among them
+    let schemas = components["schemas"].as_object_mut().unwrap();
+    schemas.extend(contract().schemas.clone());
+    components
 }
 
 #[cfg(test)]
@@ -936,6 +1047,71 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// `web/contract/openapi.json` is the contract the code answers with (#399), from which the WebUI's types are
+    /// generated.
+    #[test]
+    fn contract_snapshot_is_current() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../web/contract/openapi.json");
+        let now = serde_json::to_string_pretty(&contract_document()).unwrap() + "\n";
+        if std::env::var_os("WEFLOW_UPDATE_CONTRACT").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, now).unwrap();
+            return;
+        }
+        // a checkout may have turned its line ends into CRLF
+        let kept = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert!(
+            kept == now,
+            "web/contract/openapi.json is not the contract the code answers with; rewrite it with \
+             `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot`, then \
+             `bun run contract` in web/"
+        );
+    }
+
+    #[test]
+    fn the_answers_of_the_contract_are_described() {
+        let doc = document(false);
+        let ok = |path: &str| {
+            doc["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+                .clone()
+        };
+        for path in ["/chat/sessions", "/api/chat/sessions"] {
+            assert_eq!(
+                ok(path)["oneOf"][0]["properties"]["data"]["items"]["$ref"],
+                "#/components/schemas/Session",
+                "{path}"
+            );
+        }
+        let schemas = &doc["components"]["schemas"];
+        for name in [
+            "Session",
+            "ParsedMessage",
+            "Contact",
+            "ResourcePage",
+            "Job",
+            "Error",
+            "Row",
+            "Failure",
+        ] {
+            assert!(schemas[name].is_object(), "{name}");
+        }
+        // a big id is a string, a page's cursor nullable
+        assert_eq!(
+            schemas["ParsedMessage"]["properties"]["serverId"]["type"],
+            "string"
+        );
+        assert!(schemas["ResourcePage"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r == "nextCursor"));
+        // other commands keep the generic answer
+        assert_eq!(ok("/sns/users")["$ref"], "#/components/schemas/Result");
     }
 
     #[test]

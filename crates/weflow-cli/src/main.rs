@@ -2763,16 +2763,12 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             let data = if *parsed {
                 let mut contacts = hub.chat_contacts_parsed()?;
                 if !kind.is_empty() {
-                    contacts.retain(|c| {
-                        c["type"]
-                            .as_str()
-                            .is_some_and(|t| kind.iter().any(|k| k == t))
-                    });
+                    contacts.retain(|c| kind.iter().any(|k| k == c.kind.name()));
                 }
                 if contacts.is_empty() {
                     return Err(AppError::runtime("no contacts of the kinds asked for"));
                 }
-                Value::Array(contacts)
+                json!(contacts)
             } else {
                 hub.contacts()?
             };

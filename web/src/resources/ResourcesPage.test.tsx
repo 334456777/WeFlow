@@ -13,7 +13,7 @@ const json = (data: unknown) => new Response(JSON.stringify({ success: true, dat
 const OCT = new Date(2025, 9, 3, 12).getTime() / 1000;
 const SEP = new Date(2025, 8, 20, 12).getTime() / 1000;
 const item = (n: number, resourceType: Resource['resourceType'], createTime: number, extra: Partial<Resource> = {}): Resource => ({
-  _cursor: 'c' + n, localId: n, createTime, localType: 3, resourceType, sessionId: 'wxid_a', sessionDisplayName: '林沐', ...extra,
+  _cursor: 'c' + n, localId: n, serverId: String(n), createTime, localType: 3, isSend: 0, senderUsername: 'wxid_a', content: '', text: null, resourceType, sessionId: 'wxid_a', sessionDisplayName: '林沐', ...extra,
 });
 const sessions = [
   { username: 'wxid_a', displayName: '林沐', sortTimestamp: OCT },

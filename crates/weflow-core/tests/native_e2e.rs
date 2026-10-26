@@ -72,15 +72,12 @@ fn a_wrong_key_is_reported_as_a_native_error() {
 fn session_list_is_filtered_sorted_and_carries_unread_counts() {
     let (hub, _root) = common::mock_hub("n-sessions");
     let sessions = hub.chat_sessions_list().unwrap();
-    let names: Vec<&str> = sessions
-        .iter()
-        .map(|s| s["username"].as_str().unwrap())
-        .collect();
+    let names: Vec<&str> = sessions.iter().map(|s| s.username.as_str()).collect();
     // official accounts are not real conversations: their session row is replaced by the history placeholder
     assert_eq!(names, ["wxid_bob", "room1@chatroom", "gh_news"]);
-    assert_eq!(sessions[0]["unreadCount"], 2);
-    assert_eq!(sessions[0]["summary"], "see you");
-    assert_ne!(sessions[2]["summary"], "daily");
+    assert_eq!(sessions[0].unread_count, 2);
+    assert_eq!(sessions[0].summary, "see you");
+    assert_ne!(sessions[2].summary, "daily");
 }
 
 #[test]
@@ -251,7 +248,8 @@ fn contacts_and_groups_resolve_names_owner_and_nicknames() {
 #[test]
 fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
     let (hub, _root) = common::mock_hub("n-contacts-parsed");
-    let contacts = hub.chat_contacts_parsed().unwrap();
+    let contacts = json!(hub.chat_contacts_parsed().unwrap());
+    let contacts = contacts.as_array().unwrap();
     let rows: Vec<String> = contacts
         .iter()
         .map(|c| {
@@ -288,7 +286,7 @@ fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
         .chat_contacts_list()
         .unwrap()
         .iter()
-        .all(|c| c.get("avatarUrl").is_none()));
+        .all(|c| c.avatar_url.is_none()));
 }
 
 #[test]
@@ -784,7 +782,8 @@ fn contacts_carry_labels_signature_and_region_and_sort_by_pinyin() {
             &[(1, "Family"), (3, "Gym")],
         );
     });
-    let list = hub.chat_contacts_list().unwrap();
+    let list = json!(hub.chat_contacts_list().unwrap());
+    let list = list.as_array().unwrap();
     let names: Vec<&str> = list
         .iter()
         .map(|c| c["displayName"].as_str().unwrap())

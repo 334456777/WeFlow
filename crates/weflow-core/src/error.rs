@@ -2,8 +2,15 @@ use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Serialize)]
+/// What went wrong (`error` of a failed answer): `code` names the kind of failure, `message` says it for a person,
+/// `details` adds what some codes have to say.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[schemars(rename = "Error")]
 pub struct ErrorPayload {
+    #[schemars(extend("examples" = [
+        "invalid_arguments", "unauthorized", "invalid_host", "not_found", "method_not_allowed",
+        "config_error", "busy", "user_interrupt", "runtime_error", "native_error", "unsupported"
+    ]))]
     pub code: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]

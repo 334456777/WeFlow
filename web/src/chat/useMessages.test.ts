@@ -13,7 +13,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 const NEWEST = 1_760_000_000;
 const message = (total: number, n: number) =>
-  ({ _cursor: 'c.' + n, localId: total - n, localType: 1, createTime: NEWEST - n * 60, isSend: 0, senderUsername: 'wxid_a', parsedContent: 'm' + n });
+  ({ _cursor: 'c.' + n, localId: total - n, serverId: String(total - n), localType: 1, createTime: NEWEST - n * 60, isSend: 0, senderUsername: 'wxid_a', parsedContent: 'm' + n });
 
 /**
  * A conversation of `total` messages a minute apart, served newest first in pages, with cursors `c.<n>` (0 is the

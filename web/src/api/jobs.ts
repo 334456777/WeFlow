@@ -1,8 +1,9 @@
 // Jobs (#211): commands run in the background with `Prefer: respond-async` — exports above all — their progress
 // as server-sent events, cancelling them, and the file a `return=file` job wrote (docs/serve-api.md, "Jobs").
 import { apiUrl, call, get, token, type Params } from './client';
+import type * as Contract from './contract.gen';
 
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type JobStatus = Contract.JobStatus;
 
 /** A command's `--progress` event. */
 export interface JobProgress {
@@ -13,23 +14,12 @@ export interface JobProgress {
   percent?: number;
 }
 
-export interface Job {
-  id: string;
-  status: JobStatus;
-  /** The command line it runs, `weflow --json --progress …`. */
-  command: string[];
-  /** Unix milliseconds. */
-  createdAt: number;
-  startedAt: number | null;
-  finishedAt: number | null;
-  exitCode: number | null;
-  httpStatus: number | null;
+/** A job (the contract's, #399), with what the page reads of its last progress event and of its result. */
+export type Job = Omit<Contract.Job, 'progress' | 'result'> & {
   progress: JobProgress | null;
-  /** The file of a `return=file` job that succeeded. */
-  file?: { name: string; size: number | null } | null;
   /** The command's `--json` document; only from `GET /jobs/<id>` and the `result` event. */
   result?: { success?: boolean; data?: Record<string, unknown>; error?: { code?: string; message?: string } } | null;
-}
+};
 
 export const isFinished = (status: JobStatus) => status === 'succeeded' || status === 'failed' || status === 'cancelled';
 

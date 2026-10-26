@@ -15,6 +15,8 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - "Makefile"
+      # the contract the tests keep equal to the answers (#399)
+      - "web/contract/**"
       - ".github/workflows/ci.yml"
   push:
     branches: [main]
@@ -24,6 +26,8 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - "Makefile"
+      # the contract the tests keep equal to the answers (#399)
+      - "web/contract/**"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
 

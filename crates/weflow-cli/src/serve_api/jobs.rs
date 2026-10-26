@@ -23,7 +23,9 @@ const KEEP_FINISHED: usize = 100;
 /// Events kept per job for clients that subscribe late or reconnect.
 const KEEP_EVENTS: usize = 1000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[schemars(rename = "JobStatus")]
 pub(super) enum Status {
     Queued,
     Running,
@@ -33,19 +35,41 @@ pub(super) enum Status {
 }
 
 impl Status {
-    fn name(self) -> &'static str {
-        match self {
-            Status::Queued => "queued",
-            Status::Running => "running",
-            Status::Succeeded => "succeeded",
-            Status::Failed => "failed",
-            Status::Cancelled => "cancelled",
-        }
-    }
-
     pub(super) fn finished(self) -> bool {
         matches!(self, Status::Succeeded | Status::Failed | Status::Cancelled)
     }
+}
+
+/// A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
+/// Times are Unix milliseconds.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[schemars(rename = "Job")]
+pub(super) struct JobView {
+    id: String,
+    status: Status,
+    /// The command line, without `weflow`.
+    command: Vec<String>,
+    created_at: u64,
+    started_at: Option<u64>,
+    finished_at: Option<u64>,
+    exit_code: Option<i32>,
+    /// The status a synchronous request would have got.
+    http_status: Option<u16>,
+    /// The last `progress` event.
+    progress: Option<Value>,
+    /// The file of a job started with `return=file`, once it has succeeded: `GET /jobs/{id}/file`.
+    file: Option<JobFile>,
+    /// The command's `--json` document; only in `GET /jobs/{id}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<Value>,
+}
+
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub(super) struct JobFile {
+    name: Option<String>,
+    /// In bytes.
+    size: Option<u64>,
 }
 
 /// One event of a job: its sequence number (the SSE `id`), name and JSON data.
@@ -136,25 +160,22 @@ impl Job {
     }
 
     fn json_of(&self, st: &State, full: bool) -> Value {
-        let mut out = json!({
-            "id": self.id,
-            "status": st.status.name(),
-            "command": self.command,
-            "createdAt": self.created,
-            "startedAt": st.started,
-            "finishedAt": st.finished,
-            "exitCode": st.exit_code,
-            "httpStatus": st.http_status,
-            "progress": st.progress,
-            "file": st.file.as_ref().map(|path| json!({
-                "name": path.file_name().map(|n| n.to_string_lossy()),
-                "size": std::fs::metadata(path).map(|m| m.len()).ok(),
-            })),
-        });
-        if full {
-            out["result"] = st.result.clone().unwrap_or(Value::Null);
-        }
-        out
+        json!(JobView {
+            id: self.id.clone(),
+            status: st.status,
+            command: self.command.clone(),
+            created_at: self.created,
+            started_at: st.started,
+            finished_at: st.finished,
+            exit_code: st.exit_code,
+            http_status: st.http_status,
+            progress: st.progress.clone(),
+            file: st.file.as_ref().map(|path| JobFile {
+                name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
+                size: std::fs::metadata(path).map(|m| m.len()).ok(),
+            }),
+            result: full.then(|| st.result.clone().unwrap_or(Value::Null)),
+        })
     }
 
     pub(super) fn status(&self) -> Status {

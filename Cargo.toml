@@ -42,6 +42,8 @@ mime_guess = "2.0.5"
 regex = "1"
 reqwest = { version = "0.13", features = ["json", "query", "rustls-no-provider", "gzip", "deflate", "brotli", "stream"], default-features = false }
 rust_xlsxwriter = { version = "0.100", features = ["constant_memory"] }
+# the JSON Schema of the command API's answers (#399), in /openapi.json
+schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
 serde = { version = "1.0.219", features = ["derive"] }
 sha1 = "0.10"
 terminal_size = "0.4"

@@ -19,7 +19,7 @@ export function jobDetail(job: Job): string {
     return [p?.message, count, p?.percent !== undefined ? Math.round(p.percent) + '%' : ''].filter(Boolean).join(' · ') || '正在运行';
   }
   if (job.status === 'failed') return job.result?.error?.message || '命令没有完成' + (job.httpStatus ? '（HTTP ' + job.httpStatus + '）' : '');
-  if (job.status === 'succeeded' && job.file) return job.file.name + (job.file.size !== null ? ' · ' + formatSize(job.file.size) : '');
+  if (job.status === 'succeeded' && job.file) return (job.file.name ?? '文件') + (job.file.size !== null ? ' · ' + formatSize(job.file.size) : '');
   return STATUS[job.status];
 }
 
@@ -43,7 +43,7 @@ function JobRow({ job, label }: { job: Job; label: string }) {
       {percent !== null && <span className="job-bar" role="progressbar" aria-label={label + '的进度'} aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: percent + '%' }} /></span>}
       {problem && <small role="alert">{problem}</small>}
       <span className="job-actions">
-        {job.status === 'succeeded' && job.file && <a className="download-link" href={jobFileUrl(job.id)} download={job.file.name}><DownloadSimple size={12} />下载文件</a>}
+        {job.status === 'succeeded' && job.file && <a className="download-link" href={jobFileUrl(job.id)} download={job.file.name ?? undefined}><DownloadSimple size={12} />下载文件</a>}
         <button type="button" className="text-button" disabled={busy} onClick={remove} title={done ? (job.file ? '删除这个任务和它在服务端的文件' : '删除这个任务') : '取消这个任务'}>{done ? '删除' : '取消'}</button>
       </span>
     </div>

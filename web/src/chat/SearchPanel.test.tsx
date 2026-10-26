@@ -14,7 +14,7 @@ const sessions = [
 ] as ChatSession[];
 
 const hit = (n: number, session = 'wxid_a', extra: Partial<SearchHit> = {}): SearchHit => ({
-  _cursor: 'c.' + n, _session_id: session, localId: n, localType: 1, createTime: at(10), isSend: 0,
+  _cursor: 'c.' + n, _session_id: session, localId: n, serverId: String(n), localType: 1, createTime: at(10), isSend: 0,
   senderUsername: session === 'wxid_a' ? 'wxid_a' : 'wxid_c', parsedContent: '旅行计划 Trip ' + n, ...extra,
 });
 

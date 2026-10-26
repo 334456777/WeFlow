@@ -25,7 +25,7 @@ function account(name: string, calls: string[], gate?: Promise<void>) {
   }));
 }
 
-const ready = (data?: string): Backend => ({ state: 'ready', health: { status: 'ok', apiVersion: '1', version: '5.0.0', data } });
+const ready = (data?: string): Backend => ({ state: 'ready', health: { status: 'ok', apiVersion: '2', version: '5.0.0', data } });
 
 describe('scopes (#198)', () => {
   it('starts a new one when the data changes or the server comes back', () => {

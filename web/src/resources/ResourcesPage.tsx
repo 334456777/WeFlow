@@ -88,7 +88,7 @@ function usePages(query: ResourceQuery): [Pages, () => void, () => void] {
   return [state, more, () => setRound(r => r + 1)];
 }
 
-const asMessage = (item: Resource) => ({ ...item, serverIdRaw: item.serverId, voiceDurationSeconds: voiceSeconds(item) }) as unknown as ParsedMessage;
+const asMessage = (item: Resource) => ({ ...item, voiceDurationSeconds: voiceSeconds(item) }) as unknown as ParsedMessage;
 const sessionOf = (item: Resource) => item.sessionId ?? '';
 const nameOf = (item: Resource) => item.sessionDisplayName || item.sessionId || '';
 const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
