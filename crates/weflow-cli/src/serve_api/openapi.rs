@@ -1,6 +1,6 @@
 //! `GET /openapi.json`: an OpenAPI 3.1 description of the API, built from the command tree and [`METHODS`] the
-//! same way the routes are, so it always matches the running binary. Help texts are in the language of the
-//! request (`Accept-Language`), else the server's.
+//! same way the routes are, so it always matches the running binary. Help texts are in the server's language, as
+//! every answer is (#433).
 
 use std::any::TypeId;
 
@@ -108,7 +108,7 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
 }
 
 /// The `/api/` twin of a command's path item: the same parameters and answer, without what only a child process
-/// does (`std`, `return=file`, jobs, `Accept-Language`).
+/// does (`std`, `return=file`, jobs).
 fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
     let mut item = item.clone();
     for op in item.as_object_mut().unwrap().values_mut() {
@@ -116,8 +116,8 @@ fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
         let mut note = pick(
             zh,
             "Runs in the server's process on databases it keeps open: much faster than the route without \
-             `/api/`, with the same parameters and answer, in the server's language.",
-            "在服务进程内执行，数据库保持打开：比不带 `/api/` 的路由快得多，参数和回复相同，语言为服务端的语言。",
+             `/api/`, with the same parameters and answer.",
+            "在服务进程内执行，数据库保持打开：比不带 `/api/` 的路由快得多，参数和回复相同。",
         );
         if let Some((_, en, cn)) = in_process::IN_PART.iter().find(|(n, ..)| *n == name) {
             note = format!("{note}{}{}", if zh { "" } else { " " }, pick(zh, en, cn));
@@ -314,7 +314,7 @@ fn operation(
         }
     }
     let file = files::file_command(&name).is_some();
-    for common in ["std", "fields", "Prefer", "Accept-Language"] {
+    for common in ["std", "fields", "Prefer"] {
         parameters.push(json!({ "$ref": format!("#/components/parameters/{common}") }));
     }
     if file {
@@ -715,7 +715,6 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
             "operationId": "openapi",
             "tags": ["server"],
             "summary": pick(zh, "This description", "本描述文档"),
-            "parameters": [{ "$ref": "#/components/parameters/Accept-Language" }],
             "responses": {
                 "200": {
                     "description": pick(zh, "An OpenAPI 3.1 document", "OpenAPI 3.1 文档"),
@@ -951,12 +950,6 @@ fn components(zh: bool) -> Value {
                     "`respond-async`: run the command as a job and answer 202 with its `Location`",
                     "`respond-async`：把命令作为作业运行，回复 202 和它的 `Location`",
                 ),
-            },
-            "Accept-Language": {
-                "name": "Accept-Language",
-                "in": "header",
-                "schema": { "type": "string", "examples": ["zh-CN", "en"] },
-                "description": pick(zh, "Language of messages: zh or en", "消息的语言：zh 或 en"),
             },
         },
         "headers": {
