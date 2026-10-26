@@ -35,7 +35,7 @@ class FakeEventSource {
     streams.push(this);
     log.push('stream ' + url.split('?')[0]);
     queueMicrotask(() => {
-      if (!this.closed && !url.startsWith('/jobs/')) this.emit('hello', { status: 'ok', apiVersion: '1', version: '5.0.1', data: account });
+      if (!this.closed && !url.startsWith('/jobs/')) this.emit('hello', { status: 'ok', apiVersion: '2', version: '5.0.1', data: account });
     });
   }
   addEventListener(type: string, listener: (event: MessageEvent) => void) {

@@ -9,7 +9,7 @@
   "description": "WebUI for weflow serve",
   "license": "CC-BY-NC-SA-4.0",
   "weflow": {
-    "apiVersion": "1",
+    "apiVersion": "2",
     "minBackendVersion": "5.0.0"
   },
   "packageManager": "bun@1.4.3",

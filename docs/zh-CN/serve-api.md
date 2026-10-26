@@ -239,10 +239,10 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: zh-CN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `1`。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
+客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `2`（解析过的消息的 `serverId` 改为字符串之前是 `1`，#399）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
 
 ```json
-{"status": "ok", "apiVersion": "1", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41",
+{"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41",
  "limits": {"maxTasks": 1, "maxReads": 4, "maxMedia": 4}, "insight": false}
 ```
 

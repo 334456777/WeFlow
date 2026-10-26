@@ -49,7 +49,7 @@ async function renderWith(health: object | null) {
 }
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
-const HEALTH = { status: 'ok', apiVersion: '1', version: '5.0.0', data: 'a' };
+const HEALTH = { status: 'ok', apiVersion: '2', version: '5.0.0', data: 'a' };
 
 describe('App', () => {
   it('shows the workspace with the sample records while no backend is connected', async () => {
@@ -153,7 +153,7 @@ describe('App', () => {
     await renderWith(null);
     expect(screen.getByRole('status').textContent).toBe('未连接');
     cleanup();
-    await renderWith({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.3', data: 'a' });
+    await renderWith({ status: 'ok', apiVersion: '2', version: '5.0.0-rc.3', data: 'a' });
     expect(screen.getByRole('status').textContent).toBe('版本不兼容');
   });
 
@@ -482,12 +482,12 @@ describe('App', () => {
     await renderWith({ ...HEALTH, limits: { maxTasks: 1, maxReads: 4, maxMedia: 4 }, insight: true });
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     const text = () => screen.getByRole('region', { name: '设置' }).textContent ?? '';
-    expect(text()).toContain('weflow 5.0.0 · API 1');
+    expect(text()).toContain('weflow 5.0.0 · API 2');
     expect(text()).toContain('适用于这个网页');
     expect(text()).toContain('同时运行任务 1 个 · 读取 4 个 · 媒体解码 4 个 · 灵感引擎已开启');
     expect(text()).toContain('没有保存令牌');
     cleanup();
-    await renderWith({ status: 'ok', apiVersion: '1', version: '5.0.0-rc.3', data: 'a' });
+    await renderWith({ status: 'ok', apiVersion: '2', version: '5.0.0-rc.3', data: 'a' });
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(text()).toContain('不适用于这个网页');
     expect(text()).toContain('weflow web use');

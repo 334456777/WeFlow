@@ -194,7 +194,7 @@ fn health_needs_no_token_and_everything_else_does() {
     let r = server.request("GET", "/health", &[], "");
     assert_eq!(r.status, 200);
     assert_eq!(r.json()["status"], "ok");
-    assert_eq!(r.json()["apiVersion"], "1");
+    assert_eq!(r.json()["apiVersion"], "2");
     // how it runs, for the settings (#214)
     assert_eq!(r.json()["limits"]["maxTasks"], 1);
     assert!(r.json()["limits"]["maxReads"].as_u64().unwrap() >= 1);
