@@ -1,7 +1,7 @@
 // The requests the page makes in the flows people go through most (#403): the baseline that #402 changes on
 // purpose. Each step lists what the page asked the server for, in order (`fields` left out, as it only picks
 // columns); a change of these lists is a change of the page's requests, to be explained in its PR (see #403).
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { App } from './App';
 
@@ -69,6 +69,15 @@ function answer(url: string): Response {
       const from = params.has('before') ? 0 : 50;
       return json({ success: true, data: Array.from({ length: count }, (_, i) => message(session, from + count - i)) });
     }
+    case '/api/chat/contacts':
+      return json({ success: true, data: ACCOUNTS[account].map(s => ({ ...s, type: 'friend' })) });
+    case '/insight/footprint':
+      return json({ success: true, data: { summary: { private_inbound_people: 0, private_replied_people: 0, private_outbound_people: 0, private_reply_rate: 0, mention_count: 0, mention_group_count: 0 }, private_sessions: [], private_segments: [], mentions: [], mention_groups: [], diagnostics: { truncated: false } } });
+    case '/api/sns/timeline':
+      return json({ success: true, data: [] });
+    case '/api/sns/stats':
+    case '/api/sns/post-counts':
+      return json({ success: true, data: {} });
     case '/api/chat/search': {
       const keyword = params.get('keyword') ?? '';
       return json({ success: true, data: [{ ...message(params.get('session-id') ?? '', 1), _session_id: params.get('session-id'), _cursor: 'hit.' + keyword, parsedContent: '说到' + keyword }] });
@@ -215,5 +224,27 @@ describe('requests of the chat page', () => {
     expect(conversations()).toEqual(['秦川']);
     expect(messages().length).toBeGreaterThan(0);
     expect(messages().every(text => text.startsWith('b 的消息'))).toBe(true);
+  });
+});
+
+describe('requests of the pages that name people (#402)', () => {
+  const open = (page: string) => () => { fireEvent.click(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('button', { name: page })); };
+  const contacts = (requests: string[]) => requests.filter(request => request.startsWith('GET /api/chat/contacts'));
+
+  it('read the contact list once for the account, and again for another', async () => {
+    account = 'a';
+    serve();
+    await requestsOf(() => { render(<App />); });
+    // the footprint names people in its page and in its AI card: one request for both
+    expect(contacts(await requestsOf(open('我的足迹')))).toEqual(['GET /api/chat/contacts?parsed=true']);
+    expect(contacts(await requestsOf(open('通讯录')))).toEqual([]);
+    // Moments names its posters from the whole table, read once too
+    expect(contacts(await requestsOf(open('朋友圈')))).toEqual(['GET /api/chat/contacts']);
+    expect(contacts(await requestsOf(open('我的足迹')))).toEqual([]);
+    expect(contacts(await requestsOf(open('朋友圈')))).toEqual([]);
+    // another account: Moments, open, names its posters from the new table at once, and the list is read again
+    expect(contacts(await requestsOf(() => switchAccount('b')))).toEqual(['GET /api/chat/contacts']);
+    expect(contacts(await requestsOf(open('通讯录')))).toEqual(['GET /api/chat/contacts?parsed=true']);
+    expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['秦川']);
   });
 });

@@ -1,5 +1,6 @@
 // The contacts (#205): `chat contacts --parsed`, the list as the desktop app shows it, read in process (`/api/`).
 import { get } from './client';
+import { keptRead } from './kept';
 
 export type ContactKind = 'friend' | 'group' | 'official' | 'former_friend';
 
@@ -27,6 +28,12 @@ export async function getContacts(signal?: AbortSignal): Promise<Contact[]> {
   const data = await get<unknown>('api/chat/contacts', { parsed: true }, signal);
   return Array.isArray(data) ? data.filter((c): c is Contact => typeof c?.username === 'string' && typeof c?.type === 'string') : [];
 }
+
+/**
+ * The parsed contact list for every page that names people by it, the contacts page and the footprint (#402): read once
+ * for the server and account (`keptRead`); `fresh` reads it again, as a retry does.
+ */
+export const contactList = (fresh = false) => keptRead('contacts', () => getContacts(), fresh);
 
 /** The contacts whose names, WeChat ID or username hold `query`, ignoring case. */
 export function matchContacts(contacts: readonly Contact[], query: string): Contact[] {

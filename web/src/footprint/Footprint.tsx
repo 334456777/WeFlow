@@ -5,7 +5,8 @@ import { Fragment, useMemo, useState } from 'react';
 import { ArrowSquareOut, At, CircleNotch, DownloadSimple, MagnifyingGlass, Sparkle } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
-import { getContacts, type Contact } from '../api/contacts';
+import { contactList, type Contact } from '../api/contacts';
+import { currentScope } from '../api/scope';
 import { footprintExport, getFootprint, presetRanges, summarizeFootprint, timeline, type Footprint, type FootprintRange } from '../api/footprint';
 import { setSetting } from '../api/settings';
 import { n } from '../analytics/AnalyticsViews';
@@ -22,7 +23,7 @@ const lasted = (seconds: number) => (seconds < 60 ? '不到 1 分钟' : seconds 
 
 /** Names and avatars of people and groups, from the contact list. */
 export function useNames(): (username: string) => Contact | undefined {
-  const [contacts] = useRead('contacts', signal => getContacts(signal));
+  const [contacts] = useRead('contacts:' + currentScope(), () => contactList());
   return useMemo(() => {
     const byName = new Map((contacts.status === 'ready' ? contacts.value : []).map(c => [c.username, c]));
     return (username: string) => byName.get(username);

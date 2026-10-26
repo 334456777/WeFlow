@@ -92,3 +92,19 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/files.ts` | Files the page saves: an .xlsx of rows, any bytes as a download |
 
 Each page is a hook in its own folder, `use…Page` (`src/chat/useChatPage.tsx`, `src/contacts/useContactsPage.tsx`, …): it keeps the page's state and returns what the page shows, its cards of the console and the cards it shows. App calls them all on every render, so a page is as it was left when it is opened again, while each reads its records only when open. State sits where it is used: a page's filters and picks in its hook; what several pages use (the conversation list, the jobs, the profiles) in App, which hands it to them in `Shell`; what one component alone needs in that component. One page opens another only through App (`chatWith`, `openInChat`).
+
+## Requests and what is kept
+
+What the page reads belongs to one server and one account, its scope (`src/api/scope.ts`). A new scope starts when the `data` of `/health/events` changes (another account or configuration, or the server started again) and when the server comes back after it was gone: everything kept is forgotten, and an answer to a request of the scope before is not shown (#198, #402).
+
+| Kept | Where | For | Read again on |
+|---|---|---|---|
+| The conversation list and its states | `chat/useSessions.ts`, held by App | the scope; none is shown in another, so nothing of the account before is asked of the new one | a new scope; live messages (quietly); retry |
+| The messages of up to 20 conversations (#159) | `chat/useMessages.ts` | the scope and the conversation; only threads that reach the newest message | a new scope; a live message of the conversation; a reconnection (all of them) |
+| The contact lists, parsed and whole | `api/kept.ts`: `contactList` (contacts page, footprint), the posters of Moments | the scope and the list | a new scope; retry |
+| Private chat analytics, the group list | `analytics/useAnalytics.ts` in the page's hook | the scope | a new scope; 「重新统计」; the people left out changed |
+| The rest: the Moments timeline, payments, resources, insights, the footprint, the reports' years, the settings | the component that shows them | — | each time the page or card is opened, as they grow |
+
+A read that several views share goes through `keptRead`: views asking at the same time share one request. A view that is left lets its answers go (`useRead` and the hooks drop an answer that comes after their effect was cleaned up), and a new search or page cancels the one before. `src/requests.test.tsx` holds the requests of the usual flows, late answers among them; a change of those lists is explained in its PR.
+
+With the pages of the workspace (#401), the hooks that read are called with `(enabled, scope)`: those whose records several pages use in App, the others in the page's hook; what is kept between views sits under them, in `src/api/`, so a page does not change for it.
