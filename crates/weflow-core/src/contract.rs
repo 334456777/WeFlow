@@ -43,7 +43,7 @@ pub struct Session {
     /// What the list is ordered by; 0 for an official account WeChat lists without a conversation.
     pub sort_timestamp: i64,
     pub last_timestamp: i64,
-    /// WeChat's type of the last message (see [`ChatMessage::local_type`]).
+    /// WeChat's type of the last message, as a message's `localType`.
     pub last_msg_type: i64,
     /// About how many messages the conversation has, when WeChat's row or its tables say.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,7 +122,7 @@ pub struct MessageView {
     /// WeChat's id of the message, in decimal: a string, as it may pass 2^53.
     pub server_id: String,
     pub create_time: i64,
-    /// WeChat's type of the message (see [`ChatMessage::local_type`]).
+    /// WeChat's type of the message, as a parsed message's `localType`.
     pub local_type: i64,
     /// 1 when I sent it, else 0.
     pub is_send: i64,
