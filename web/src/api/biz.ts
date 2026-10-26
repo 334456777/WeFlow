@@ -1,5 +1,5 @@
 // Official accounts (#203): the ones followed (`biz accounts`), and an account's pushes as articles
-// (`biz messages`), both through the command routes (docs/serve-api.md).
+// (`biz messages`), both read in the server's process (`/api/`, docs/serve-api.md).
 import { get } from './client';
 
 export interface BizAccount {
@@ -41,7 +41,7 @@ const text = (row: Record<string, unknown>, ...keys: string[]) => {
 };
 
 export async function getBizAccounts(signal?: AbortSignal): Promise<BizAccount[]> {
-  const data = await get<{ accounts?: Record<string, unknown>[] }>('biz/accounts', {}, signal);
+  const data = await get<{ accounts?: Record<string, unknown>[] }>('api/biz/accounts', {}, signal);
   return (data?.accounts ?? []).flatMap(row => {
     const username = text(row, 'username', 'userName');
     if (!username) return [];
@@ -57,6 +57,6 @@ export async function getBizAccounts(signal?: AbortSignal): Promise<BizAccount[]
 
 /** Pushes of `username`, newest first, from `offset` on. */
 export async function getBizPushes(username: string, offset: number, signal?: AbortSignal): Promise<BizPush[]> {
-  const data = await get<{ messages?: BizPush[] }>('biz/messages', { username, limit: BIZ_PAGE, offset }, signal);
+  const data = await get<{ messages?: BizPush[] }>('api/biz/messages', { username, limit: BIZ_PAGE, offset }, signal);
   return data?.messages ?? [];
 }

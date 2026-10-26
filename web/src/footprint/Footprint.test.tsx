@@ -74,7 +74,7 @@ describe('my footprint', () => {
     const onData = vi.fn();
     render(<FootprintPage range={{ label: '本周', from: '2026-10-19', to: '2026-10-21' }} onRange={onRange} keyword="" onKeyword={() => {}} onOpen={() => {}} onData={onData} />);
     await act(async () => {});
-    expect(urls).toContain('/insight/footprint?start=2026-10-19&end=2026-10-21');
+    expect(urls).toContain('/api/insight/footprint?start=2026-10-19&end=2026-10-21');
     expect(onData).toHaveBeenLastCalledWith(DATA);
     fireEvent.click(screen.getByRole('button', { name: '自定义' }));
     expect(onRange).toHaveBeenCalledWith({ label: '2026-10-19 至 2026-10-21', from: '2026-10-19', to: '2026-10-21' });

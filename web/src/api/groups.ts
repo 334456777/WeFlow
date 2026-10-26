@@ -27,17 +27,17 @@ export interface DayRange { from: string; to: string }
 
 const span = (range: DayRange) => ({ start: range.from || undefined, end: range.to || undefined });
 
-export const getGroups = (signal?: AbortSignal) => get<Group[]>('group/list', {}, signal);
+export const getGroups = (signal?: AbortSignal) => get<Group[]>('api/group/list', {}, signal);
 export const getGroupRanking = (group: string, range: DayRange, signal?: AbortSignal) =>
-  get<GroupRanked[]>('group/ranking', { 'chatroom-id': group, limit: 20, ...span(range) }, signal);
+  get<GroupRanked[]>('api/group/ranking', { 'chatroom-id': group, limit: 20, ...span(range) }, signal);
 export const getGroupHours = (group: string, range: DayRange, signal?: AbortSignal) =>
-  get<{ hourlyDistribution: Record<string, number> }>('group/hours', { 'chatroom-id': group, ...span(range) }, signal);
+  get<{ hourlyDistribution: Record<string, number> }>('api/group/hours', { 'chatroom-id': group, ...span(range) }, signal);
 export const getGroupMedia = (group: string, range: DayRange, signal?: AbortSignal) =>
-  get<GroupMedia>('group/media', { 'chatroom-id': group, ...span(range) }, signal);
+  get<GroupMedia>('api/group/media', { 'chatroom-id': group, ...span(range) }, signal);
 export const getMember = (group: string, member: string, range: DayRange, signal?: AbortSignal) =>
-  get<MemberStats>('group/member', { 'chatroom-id': group, username: member, ...span(range) }, signal);
+  get<MemberStats>('api/group/member', { 'chatroom-id': group, username: member, ...span(range) }, signal);
 export const getMemberMessages = (group: string, member: string, range: DayRange, cursor: number, signal?: AbortSignal) =>
-  get<MemberPage>('group/member-messages', { 'chatroom-id': group, username: member, limit: 50, cursor: cursor || undefined, ...span(range) }, signal);
+  get<MemberPage>('api/group/member-messages', { 'chatroom-id': group, username: member, limit: 50, cursor: cursor || undefined, ...span(range) }, signal);
 
 /** The parameters of `group export-members` and `export-member-messages`, kept on the server as jobs. */
 export const membersExport = (group: string) => ({ 'chatroom-id': group });

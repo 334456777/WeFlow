@@ -1,9 +1,10 @@
-// The rest of the settings (#213): the output language, the AI model API and the cache, through the command routes.
+// The rest of the settings (#213): the output language, the AI model API and the cache: read in the server's
+// process (`/api/`), changed through the command routes.
 import { call, get } from './client';
 
 /** `config get <key>` of the current profile (or the config file, for `lang`); null when it is not set. */
 export async function getSetting(key: string, signal?: AbortSignal): Promise<string | null> {
-  const value = await get<unknown>('config/get', { key }, signal);
+  const value = await get<unknown>('api/config/get', { key }, signal);
   return value === null || value === undefined || value === '' ? null : String(value);
 }
 
@@ -38,7 +39,7 @@ export const CACHE_LABELS: Record<CachePartName, { title: string; text: string }
   web: { title: '网页版本', text: '下载过的网页版本；正在用的版本需要时会重新下载。' },
 };
 
-export const listCache = (signal?: AbortSignal) => get<CachePart[]>('cache/list', {}, signal);
+export const listCache = (signal?: AbortSignal) => get<CachePart[]>('api/cache/list', {}, signal);
 
 /** What `cache clear --<part>` would remove, removing nothing. */
 export const planClearCache = (part: CachePartName) =>

@@ -67,12 +67,12 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/TokenForm.tsx` | Token input and reconnection prompt (#214) |
 | `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), or `/api/push/messages` with live messages on (#201); version checks, `useBackend` |
 | `src/api/live.ts` | Live message events, handed to the conversation list and the open conversation (#201) |
-| `src/api/biz.ts` | Official accounts: the ones followed (`/biz/accounts`) and their pushes (`/biz/messages`) (#203) |
+| `src/api/biz.ts` | Official accounts: the ones followed (`/api/biz/accounts`) and their pushes (`/api/biz/messages`) (#203) |
 | `src/api/sns.ts`, `src/moments/` | Moments (#202): the timeline, who posts and how often, the totals (`/api/sns/timeline`, `post-counts`, `stats`), and the pictures and videos of a post through `/api/sns/media`; the page beside the timeline lists the posters, the console narrows it by words and days |
-| `src/api/pay.ts`, `src/payments/` | WeChat Pay (#204): every notice of the WeChat Pay account, read a page after another (`/biz/pay-records`), with the amount, method, state and payee taken from its lines; the list beside them sums up each payee, the console narrows them by days, adds them up and exports them as HTML, JSON or Excel |
-| `src/api/details.ts` | Conversation details, group member statistics, media and parsed message lookups; serializes command reads (#200) |
+| `src/api/pay.ts`, `src/payments/` | WeChat Pay (#204): every notice of the WeChat Pay account, read a page after another (`/api/biz/pay-records`), with the amount, method, state and payee taken from its lines; the list beside them sums up each payee, the console narrows them by days, adds them up and exports them as HTML, JSON or Excel |
+| `src/api/details.ts` | Conversation details, group member statistics, media and parsed message lookups; reads the one route that runs a command (`chat detail --extra`) one at a time (#200) |
 | `src/chat/SessionInfo.tsx`, `src/chat/MediaPanel.tsx` | Console cards loaded while open: conversation facts, virtualized group members, and media that open at their message (#200) |
-| `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/chat/statuses`, in batches of 100) |
+| `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/api/chat/statuses`, in batches of 100) |
 | `src/styles/tokens.css` | Design tokens: type, control heights, radii, colours (with dark mode), the five neumorphic surfaces (#220), motion durations and curves (#192, #193). Page styles use only these variables |
 | `src/motion.ts` | Spring presets; `usePresence` keeps popovers, dialogs and notices until their exit has played |
 | `src/theme.ts` | The colour theme chosen in the settings: follow the system (default), light or dark, kept in `localStorage`; sets `data-theme` on `<html>`, which `index.html` already sets before the first paint (#252) |

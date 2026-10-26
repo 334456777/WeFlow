@@ -36,6 +36,32 @@ pub(super) const COMMANDS: &[&str] = &[
     "sns users",
     "sns stats",
     "sns post-counts",
+    "chat statuses",
+    "chat tab-counts",
+    "group list",
+    "group ranking",
+    "group hours",
+    "group media",
+    "group member",
+    "group member-messages",
+    "analytics overall",
+    "analytics rankings",
+    "analytics time",
+    "analytics excluded",
+    "analytics exclude-candidates",
+    "biz accounts",
+    "biz messages",
+    "biz pay-records",
+    "insight footprint",
+    "insight get",
+    "report annual years",
+    "cache list",
+    "config get",
+    "config profiles",
+    "runtime info",
+    "db detect",
+    "db test",
+    "db wxid",
 ];
 
 /// Commands of [`COMMANDS`] that run in process only in part, and which part (English, Chinese); the rest runs as
@@ -50,6 +76,11 @@ pub(super) const IN_PART: &[(&str, &str, &str)] = &[
         "sns timeline",
         "`with-media=true`, which downloads the media, runs as the route without `/api/`.",
         "`with-media=true` 要下载媒体，按不带 `/api/` 的路由执行。",
+    ),
+    (
+        "analytics excluded",
+        "`set`, which saves the list, runs as the route without `/api/`.",
+        "`set` 会保存名单，按不带 `/api/` 的路由执行。",
     ),
 ];
 
@@ -146,22 +177,25 @@ impl Hub {
     /// The hub, and which one it is: the number changes when the hub is built again.
     pub(super) fn get_counted(&self) -> AppResult<(ServiceHub, u64)> {
         let mut open = self.open.lock().unwrap();
+        // another config file chosen (`config set config_path`) is a change too
+        let in_use = weflow_core::config::default_config_path();
         let before = match open.as_mut() {
             Some(o) => {
-                let holds = match o.stamp.as_mut() {
-                    Some(stamp) => stamp.holds(&o.config),
-                    None => std::fs::metadata(&o.config).is_err(),
-                };
+                let holds = in_use.as_ref() == Some(&o.config)
+                    && match o.stamp.as_mut() {
+                        Some(stamp) => stamp.holds(&o.config),
+                        None => std::fs::metadata(&o.config).is_err(),
+                    };
                 if holds {
                     return Ok((o.hub.clone(), o.generation));
                 }
-                Stamp::of(&o.config)
+                in_use.as_deref().and_then(Stamp::of)
             }
             None => None,
         };
         let (hub, config) = crate::open_hub()?;
         // a change while the config was read is caught by the next request
-        let stamp = if open.is_some() {
+        let stamp = if open.is_some() && in_use.as_ref() == Some(&config) {
             before
         } else {
             Stamp::of(&config)
@@ -381,6 +415,87 @@ impl Given {
                 user: self.text("user")?,
                 prefer_cache: self.switch("prefer-cache")?,
             },
+            "chat statuses" => Read::ChatStatuses {
+                usernames: self.list("usernames"),
+            },
+            "chat tab-counts" => Read::ChatTabCounts,
+            "group list" => Read::GroupList,
+            "group ranking" => Read::GroupRanking {
+                chatroom_id: self.required("chatroom-id")?,
+                limit: self.number_or("limit", 20)?,
+                start: self.text("start")?,
+                end: self.text("end")?,
+            },
+            "group hours" => Read::GroupHours {
+                chatroom_id: self.required("chatroom-id")?,
+                start: self.text("start")?,
+                end: self.text("end")?,
+            },
+            "group media" => Read::GroupMedia {
+                chatroom_id: self.required("chatroom-id")?,
+                start: self.text("start")?,
+                end: self.text("end")?,
+            },
+            "group member" => Read::GroupMember {
+                chatroom_id: self.required("chatroom-id")?,
+                username: self.required("username")?,
+                start: self.text("start")?,
+                end: self.text("end")?,
+            },
+            "group member-messages" => Read::GroupMemberMessages {
+                chatroom_id: self.required("chatroom-id")?,
+                username: self.required("username")?,
+                limit: self.number_or("limit", 50)?,
+                cursor: self.number_or("cursor", 0)?,
+                start: self.text("start")?,
+                end: self.text("end")?,
+            },
+            "analytics overall" => Read::AnalyticsOverall {
+                force: self.switch("force")?,
+            },
+            "analytics rankings" => Read::AnalyticsRankings {
+                limit: self.number_or("limit", 20)?,
+                start: self.text("start")?,
+                end: self.text("end")?,
+            },
+            "analytics time" => Read::AnalyticsTime,
+            "analytics excluded" => {
+                // the list is saved: in a child process
+                if self.given("set") {
+                    return Err(Refused);
+                }
+                Read::AnalyticsExcluded
+            }
+            "analytics exclude-candidates" => Read::AnalyticsExcludeCandidates,
+            "biz accounts" => Read::BizAccounts,
+            "biz messages" => Read::BizMessages {
+                username: self.required("username")?,
+                limit: self.number_or("limit", 50)?,
+                offset: self.number_or("offset", 0)?,
+            },
+            "biz pay-records" => Read::BizPayRecords {
+                limit: self.number_or("limit", 50)?,
+                offset: self.number_or("offset", 0)?,
+            },
+            "insight footprint" => Read::InsightFootprint {
+                start: self.text("start")?,
+                end: self.text("end")?,
+            },
+            "insight get" => Read::InsightGet {
+                id: self.required("id")?,
+            },
+            "report annual years" => Read::ReportAnnualYears,
+            "cache list" => Read::CacheList,
+            "config get" => Read::ConfigGet {
+                key: self.text("key")?,
+            },
+            "config profiles" => Read::ConfigProfiles,
+            "runtime info" => Read::RuntimeInfo,
+            "db detect" => Read::DbDetect,
+            "db test" => Read::DbTest,
+            "db wxid" => Read::DbWxid {
+                root: self.text("root")?,
+            },
             _ => return Err(Refused),
         })
     }
@@ -586,9 +701,12 @@ mod tests {
                 .0
                 .get(*name)
                 .unwrap_or_else(|| panic!("{name} is not a command"));
-            assert_eq!(
-                ep.verbs(),
-                [super::super::Verb::Get],
+            // a command that also writes (`analytics excluded --set`) runs in process only in part
+            let verbs = ep.verbs();
+            assert!(
+                verbs == [super::super::Verb::Get]
+                    || (verbs[0] == super::super::Verb::Get
+                        && IN_PART.iter().any(|(n, ..)| n == name)),
                 "{name} is not a read"
             );
             // the command with every required argument filled in

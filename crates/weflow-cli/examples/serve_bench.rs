@@ -28,7 +28,7 @@
 //! milliseconds as the client sees them (connection included), how many were timed, and the size of the answer. A
 //! last row gives the server's CPU time per second while `/api/push/messages` is listened to (the engine looks for
 //! new messages every second), next to the idle one; below the table, the CPU time and the peak memory of the server
-//! process over all of these reads (the commands it runs as child processes are not counted). Both accounts also time the reads that had no `/api/` route (issue #175), in a table of their own on the
+//! process over all of these reads (the commands it runs as child processes are not counted). Both accounts also time the reads that had no `/api/` route (issues #175, #413), in a table of their own on the
 //! synthetic one. `--save` writes the numbers to a JSON file;
 //! `--compare` reads such a file, adds a column with the ratio to it and fails when a median is more than
 //! `--tolerance` times (default 2) and more than 20 ms slower.
@@ -70,14 +70,6 @@ const PUSHED_AT: i64 = 1;
 const ABSENT: &str = "qzxwvk";
 /// The newest messages of the group that WeChat's index does not hold yet, so a search scans them.
 const UNINDEXED: i64 = 50;
-/// The reads of [`Bench::candidates`] given an `/api/` route since, by the start of their path.
-const IN_API: &[&str] = &[
-    "/chat/dates?",
-    "/chat/date-counts?",
-    "/chat/detail?",
-    "/chat/resources",
-    "/sns/",
-];
 /// Moments of the synthetic account, from its friends in turn.
 const SNS_POSTS: i64 = 2000;
 /// How long the push engine's CPU time is measured on the real account, idle and with a listener.
@@ -1370,8 +1362,7 @@ impl Bench<'_> {
         self.read(op, "api", target)
     }
 
-    /// The reads that had no `/api/` route (issue #175): through the child process route, to tell whether one is
-    /// worth adding, and through both for those added.
+    /// The reads that had no `/api/` route (issues #175, #413), through both routes.
     fn candidates(&mut self, t: &Targets) -> Result<()> {
         let big = encode(&t.big);
         let statuses: Vec<String> = t
@@ -1417,6 +1408,11 @@ impl Bench<'_> {
                 "sns post-counts --prefer-cache".into(),
                 "/sns/post-counts?prefer-cache=true".into(),
             ),
+            ("biz pay-records".into(), "/biz/pay-records".into()),
+            ("report annual years".into(), "/report/annual/years".into()),
+            ("config profiles".into(), "/config/profiles".into()),
+            ("cache list".into(), "/cache/list".into()),
+            ("db test".into(), "/db/test".into()),
         ];
         for kind in ["image", "video", "voice", "file"] {
             reads.push((
@@ -1450,23 +1446,21 @@ impl Bench<'_> {
             ));
         }
         for (op, target) in &reads {
-            if IN_API.iter().any(|p| target.starts_with(p)) {
-                self.both(op, target)?;
-            } else {
-                self.read(op, "sub", target)?;
-            }
+            self.both(op, target)?;
         }
         // the aggregate of the statistics: computed once, then read from its cache
-        self.read_n(
-            "analytics overall --force",
-            "sub",
-            "/analytics/overall?force=true",
-            1,
-            "",
-        )?;
-        self.read("analytics overall (cached)", "sub", "/analytics/overall")?;
-        self.read("analytics rankings (cached)", "sub", "/analytics/rankings")?;
-        self.read("analytics time (cached)", "sub", "/analytics/time")
+        for route in ["sub", "api"] {
+            self.read_n(
+                "analytics overall --force",
+                route,
+                "/analytics/overall?force=true",
+                1,
+                "",
+            )?;
+        }
+        self.both("analytics overall (cached)", "/analytics/overall")?;
+        self.both("analytics rankings (cached)", "/analytics/rankings")?;
+        self.both("analytics time (cached)", "/analytics/time")
     }
 
     /// `AT_ONCE` pages of the big conversation requested at the same time: the wall time of all of them.

@@ -895,10 +895,45 @@ fn reads_run_in_process_with_the_same_answers() {
         "/sns/post-counts",
         "/sns/post-counts?prefer-cache=true",
         "/sns/post-counts?user=wxid_bob",
+        // #413: the other reads the WebUI asks for
+        "/chat/statuses?usernames=wxid_bob&usernames=room1%40chatroom",
+        "/chat/statuses",
+        "/chat/tab-counts",
+        "/group/list",
+        "/group/ranking?chatroom-id=room1%40chatroom",
+        "/group/ranking?chatroom-id=room1%40chatroom&limit=1&start=2020-01-01&end=2099-12-31",
+        "/group/hours?chatroom-id=room1%40chatroom",
+        "/group/media?chatroom-id=room1%40chatroom",
+        "/group/member?chatroom-id=room1%40chatroom&username=wxid_bob",
+        "/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob&limit=1",
+        "/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob&cursor=1",
+        // the aggregate the child process keeps in its file, then read again
+        "/analytics/overall",
+        "/analytics/overall?force=true",
+        "/analytics/rankings",
+        "/analytics/rankings?limit=1&start=2020-01-01",
+        "/analytics/time",
+        "/analytics/excluded",
+        "/analytics/exclude-candidates",
+        "/biz/accounts",
+        "/biz/messages?username=wxid_bob&limit=2",
+        "/biz/pay-records",
+        "/report/annual/years",
+        "/cache/list",
+        "/config/get",
+        "/config/get?key=wxid",
+        "/config/get?key=config_path",
+        "/config/profiles",
+        "/runtime/info",
+        "/db/detect",
+        "/db/test",
+        "/db/wxid",
     ] {
         let r = same(target);
         assert_eq!(r.status, 200, "{target}: {}", r.body);
     }
+    // an insight record that is not there: the command's own failure
+    assert_eq!(same("/insight/get?id=none").status, 500);
     // a cursor that is not one fails the same way
     assert_eq!(same("/chat/resources?before=1.2.3").status, 400);
     // A media list lookup has exactly the parsed shape and cursor of the conversation page.
@@ -936,6 +971,20 @@ fn reads_run_in_process_with_the_same_answers() {
             .status,
             400
         );
+    }
+    // the footprint says how long it took
+    for target in [
+        "/insight/footprint",
+        "/insight/footprint?start=2020-01-01&end=2099-12-31",
+    ] {
+        let timed = |path: &str| {
+            let r = server.call("GET", path, "");
+            assert_eq!(r.status, 200, "{path}: {}", r.body);
+            let mut doc = r.json();
+            assert!(doc["data"]["diagnostics"]["elapsed_ms"].take().is_number());
+            doc
+        };
+        assert_eq!(timed(&format!("/api{target}")), timed(target), "{target}");
     }
     // the member panel carries the time it was made, and the open hub keeps it for a while
     let target = "/group/members?chatroom-id=room1%40chatroom";
@@ -2732,6 +2781,38 @@ fn reads_follow_the_profile_right_after_it_changes() {
         let found = r.json()["data"].as_array().map_or(0, Vec::len);
         assert_eq!(found > 0, in_b, "round {round}: {}", r.body);
     }
+
+    // another config file chosen (#413): its profile at once, and the config reads say so
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string(home.join("config.json")).unwrap()).unwrap();
+    let mut moved = config.clone();
+    moved["current_profile"] = json!("pb");
+    let other = root.join("other").join("config.json");
+    std::fs::create_dir_all(other.parent().unwrap()).unwrap();
+    std::fs::write(&other, moved.to_string()).unwrap();
+    let path = other.to_string_lossy().to_string();
+    let r = server.call(
+        "PUT",
+        "/config/set",
+        &json!({ "key": "config_path", "value": path }).to_string(),
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    let own = sessions("/api");
+    assert!(own.iter().any(|s| s == "wxid_carol"), "{own:?}");
+    assert_eq!(sessions(""), own);
+    for route in ["/api", ""] {
+        let r = server.call("GET", &format!("{route}/config/get?key=config_path"), "");
+        assert_eq!(r.json()["data"], path.as_str(), "{route}");
+    }
+    let r = server.call(
+        "DELETE",
+        "/config/unset",
+        &json!({ "key": "config_path" }).to_string(),
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    let own = sessions("/api");
+    assert!(own.iter().any(|s| s == "wxid_bob"), "{own:?}");
+    assert_eq!(sessions(""), own);
 }
 
 /// Cancelling a job twice: the first time cancels it, the second forgets it; neither changes how it ended.

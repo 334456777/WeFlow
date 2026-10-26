@@ -75,12 +75,12 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 | `src/TokenForm.tsx` | 令牌输入与重新连接提示（#214） |
 | `src/api/backend.ts` | 连接状态：保持 `/health/events` 长连接，加上看门狗和退避重连（#221）；打开实时消息时改为 `/api/push/messages`（#201）；检查版本，提供 `useBackend` |
 | `src/api/live.ts` | 实时消息事件，分发给会话列表和打开的会话（#201） |
-| `src/api/biz.ts` | 公众号：关注的公众号（`/biz/accounts`）和它们的推送（`/biz/messages`）（#203） |
+| `src/api/biz.ts` | 公众号：关注的公众号（`/api/biz/accounts`）和它们的推送（`/api/biz/messages`）（#203） |
 | `src/api/sns.ts`、`src/moments/` | 朋友圈（#202）：时间线、发布者及其条数、总数（`/api/sns/timeline`、`post-counts`、`stats`），以及通过 `/api/sns/media` 读取的图片和视频；时间线旁列出发布者，控制台按文字和日期筛选 |
-| `src/api/pay.ts`、`src/payments/` | 微信支付（#204）：逐页读取「微信支付」公众号的全部通知（`/biz/pay-records`），从各行文字里拆出金额、方式、状态和收款方；旁边的列表按商户合计，控制台按日期筛选、汇总，并导出为 HTML、JSON 或 Excel |
-| `src/api/details.ts` | 会话资料、群成员统计、媒体及解析后的单条消息查询；串行执行子进程读取（#200） |
+| `src/api/pay.ts`、`src/payments/` | 微信支付（#204）：逐页读取「微信支付」公众号的全部通知（`/api/biz/pay-records`），从各行文字里拆出金额、方式、状态和收款方；旁边的列表按商户合计，控制台按日期筛选、汇总，并导出为 HTML、JSON 或 Excel |
+| `src/api/details.ts` | 会话资料、群成员统计、媒体及解析后的单条消息查询；唯一要起子进程的读取（`chat detail --extra`）逐个执行（#200） |
 | `src/chat/SessionInfo.tsx`、`src/chat/MediaPanel.tsx` | 展开时读取的控制台卡片：会话资料、虚拟化的群成员列表，以及可定位到原消息的媒体文件（#200） |
-| `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/chat/statuses`，每次 100 个） |
+| `src/api/chat.ts` | 聊天的读取：会话列表（`/api/chat/sessions`），折叠和免打扰状态（`/api/chat/statuses`，每次 100 个） |
 | `src/styles/tokens.css` | 设计令牌：字号、控件高度、圆角、颜色（含深色模式）、新拟态的五种表面（#220）、动效时长和缓动（#192、#193）。页面样式只引用这些变量 |
 | `src/motion.ts` | 弹簧预设，`usePresence` 让浮层、对话框和提示播完退出动画再移除 |
 | `src/theme.ts` | 设置里选择的颜色主题：跟随系统（默认）、浅色或深色，保存在 `localStorage`；把生效的主题写到 `<html>` 的 `data-theme`。`index.html` 在首次绘制前已经设好，页面不会先闪一下另一种主题（#252） |

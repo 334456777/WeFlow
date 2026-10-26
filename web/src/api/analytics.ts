@@ -41,11 +41,11 @@ export interface TimeSpread {
 export interface Candidate { username: string; displayName: string; avatarUrl?: string; wechatId?: string }
 
 /** With `force`, read every chat again rather than the aggregate kept from last time. */
-export const getOverall = (force: boolean, signal?: AbortSignal) => get<Overall>('analytics/overall', { force: force || undefined }, signal);
-export const getRankings = (limit: number, signal?: AbortSignal) => get<Ranked[]>('analytics/rankings', { limit }, signal);
-export const getTimeSpread = (signal?: AbortSignal) => get<TimeSpread>('analytics/time', {}, signal);
-export const getExcluded = (signal?: AbortSignal) => get<string[]>('analytics/excluded', {}, signal);
-export const getExcludeCandidates = (signal?: AbortSignal) => get<Candidate[]>('analytics/exclude-candidates', {}, signal);
+export const getOverall = (force: boolean, signal?: AbortSignal) => get<Overall>('api/analytics/overall', { force: force || undefined }, signal);
+export const getRankings = (limit: number, signal?: AbortSignal) => get<Ranked[]>('api/analytics/rankings', { limit }, signal);
+export const getTimeSpread = (signal?: AbortSignal) => get<TimeSpread>('api/analytics/time', {}, signal);
+export const getExcluded = (signal?: AbortSignal) => get<string[]>('api/analytics/excluded', {}, signal);
+export const getExcludeCandidates = (signal?: AbortSignal) => get<Candidate[]>('api/analytics/exclude-candidates', {}, signal);
 /** Replaces the people left out; an empty `--set` clears them. Answers the list as saved. */
 export const setExcluded = (usernames: string[]) => call<string[]>('PUT', 'analytics/excluded', { set: usernames.length ? usernames : '' });
 

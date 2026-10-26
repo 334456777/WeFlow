@@ -30,17 +30,17 @@ describe('group analytics', () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       urls.push(url);
-      if (url.startsWith('/group/media')) return ok({ typeCounts: [{ type: 1, name: '文本', count: 90 }, { type: 3, name: '图片', count: 10 }], total: 100 });
-      if (url.startsWith('/group/hours')) return ok({ hourlyDistribution: { 20: 70, 8: 30 } });
+      if (url.startsWith('/api/group/media')) return ok({ typeCounts: [{ type: 1, name: '文本', count: 90 }, { type: 3, name: '图片', count: 10 }], total: 100 });
+      if (url.startsWith('/api/group/hours')) return ok({ hourlyDistribution: { 20: 70, 8: 30 } });
       return ok([{ member: BOB, messageCount: 60 }, { member: { username: 'wxid_lin', displayName: '林沐' }, messageCount: 40 }]);
     }));
     const onMember = vi.fn();
     render(<GroupStats group={GROUP} range={{ from: '2026-01-01', to: '' }} onMember={onMember} />);
     await act(async () => {});
     expect(urls.sort()).toEqual([
-      '/group/hours?chatroom-id=room1%40chatroom&start=2026-01-01',
-      '/group/media?chatroom-id=room1%40chatroom&start=2026-01-01',
-      '/group/ranking?chatroom-id=room1%40chatroom&limit=20&start=2026-01-01',
+      '/api/group/hours?chatroom-id=room1%40chatroom&start=2026-01-01',
+      '/api/group/media?chatroom-id=room1%40chatroom&start=2026-01-01',
+      '/api/group/ranking?chatroom-id=room1%40chatroom&limit=20&start=2026-01-01',
     ]);
     expect(screen.getByLabelText('各类消息的条数').textContent).toContain('文本9090%');
     expect(screen.getByRole('img', { name: '每小时的消息：最多的是20 点，70 条' })).toBeTruthy();
@@ -52,7 +52,7 @@ describe('group analytics', () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       urls.push(url);
-      if (url.startsWith('/group/member-messages')) {
+      if (url.startsWith('/api/group/member-messages')) {
         const later = url.includes('cursor=50');
         return ok({ messages: [{ messageKey: later ? 'k2' : 'k1', localType: 1, createTime: later ? 1_700_000_000 : 1_760_000_000, parsedContent: later ? '早些的' : '周六出发' }], hasMore: !later, nextCursor: 50 });
       }
@@ -71,7 +71,7 @@ describe('group analytics', () => {
     expect(texts()).toEqual(['周六出发']);
     fireEvent.click(screen.getByRole('button', { name: '显示更早的消息' }));
     await act(async () => {});
-    expect(urls.at(-1)).toBe('/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob&limit=50&cursor=50');
+    expect(urls.at(-1)).toBe('/api/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob&limit=50&cursor=50');
     expect(texts()).toEqual(['周六出发', '早些的']);
     expect(screen.queryByRole('button', { name: '显示更早的消息' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '返回「周末徒步群」的统计' }));

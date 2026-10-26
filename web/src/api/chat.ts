@@ -1,5 +1,5 @@
-// The chat reads of `weflow serve` (docs/serve-api.md): the conversation list runs in process (`/api/`); the folded
-// and muted states go through the command route, as `chat statuses` has no `/api/` route yet.
+// The chat reads of `weflow serve` (docs/serve-api.md): the conversation list and the folded and muted states, read in
+// the server's process (`/api/`).
 import { ApiError, get } from './client';
 
 /** A row of `chat sessions`, newest first. */
@@ -41,8 +41,8 @@ export async function getSessions(signal?: AbortSignal): Promise<ChatSession[]> 
 const STATUS_BATCH = 100;
 
 /**
- * The folded and muted state of every session. The command route starts a process per request and answers `busy`
- * when the server is full rather than waiting, so the batches go one after another and a busy one is tried again.
+ * The folded and muted state of every session, a batch after another. An `/api/` read waits in line for a place,
+ * and answers `busy` only when it waited too long: such a batch is tried again.
  */
 export async function getStatuses(usernames: readonly string[], signal?: AbortSignal): Promise<Record<string, SessionStatus>> {
   const all: Record<string, SessionStatus> = {};
@@ -50,7 +50,7 @@ export async function getStatuses(usernames: readonly string[], signal?: AbortSi
     const batch = usernames.slice(i, i + STATUS_BATCH);
     for (let attempt = 0; ; attempt++) {
       try {
-        Object.assign(all, await get<Record<string, SessionStatus>>('chat/statuses', { usernames: batch }, signal));
+        Object.assign(all, await get<Record<string, SessionStatus>>('api/chat/statuses', { usernames: batch }, signal));
         break;
       } catch (problem) {
         if (!(problem instanceof ApiError && problem.code === 'busy') || attempt >= 2) throw problem;

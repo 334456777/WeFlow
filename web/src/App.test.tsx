@@ -95,7 +95,7 @@ describe('App', () => {
           { username: 'g@chatroom', displayName: '家人群', summary: '晚饭', unreadCount: 0, sortTimestamp: 1750000000, lastTimestamp: 1750000000, lastMsgType: 1 },
         ] });
       }
-      if (url.startsWith('/chat/statuses')) return json({ success: true, data: { 'g@chatroom': { isFolded: true, isMuted: true } } });
+      if (url.startsWith('/api/chat/statuses')) return json({ success: true, data: { 'g@chatroom': { isFolded: true, isMuted: true } } });
       if (url.startsWith('/api/chat/messages')) {
         return json({ success: true, data: [
           { _cursor: 'c.0', localId: 3, localType: 25769803825, appMsgKind: 'file', createTime: 1760000000, isSend: 1, senderUsername: 'wxid_me', parsedContent: '[文件] 计划.pdf', fileName: '计划.pdf', fileSize: 2048 },
@@ -110,7 +110,7 @@ describe('App', () => {
     // live messages are on unless turned off
     expect(screen.getByRole('status').textContent).toBe('实时');
     expect(Array.from(document.querySelectorAll('.conversation-name'), name => name.textContent)).toEqual(['林沐', '折叠的群聊']);
-    expect(calls).toContain('/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
+    expect(calls).toContain('/api/chat/statuses?usernames=wxid_a&usernames=g%40chatroom');
     // The first conversation is opened; its details and media are read only once their cards open (#200).
     expect(screen.getByRole('button', { name: '选择林沐' }).getAttribute('aria-pressed')).toBe('true');
     expect(Array.from(document.querySelectorAll('.card-title'), title => title.textContent)).toEqual(['导出', '任务中心', '搜索', '会话资料', '媒体文件']);
@@ -404,7 +404,7 @@ describe('App', () => {
           { username: 'wxid_a', displayName: '林沐', summary: 'm' + (newest - 1760000000), sortTimestamp: newest, lastTimestamp: newest, lastMsgType: 1 },
         ].sort((x, y) => y.sortTimestamp - x.sortTimestamp) });
       }
-      if (url.startsWith('/chat/statuses')) return json({ success: true, data: {} });
+      if (url.startsWith('/api/chat/statuses')) return json({ success: true, data: {} });
       if (url.startsWith('/api/chat/messages')) {
         const after = new URL(url, 'http://x').searchParams.get('after');
         const last = newest - 1760000000;
@@ -497,8 +497,8 @@ describe('App', () => {
     let complete = false;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/config/profiles') return json({ success: true, data: [{ name: 'default', current: true, wxid: complete ? 'wxid_a' : null, dbPath: complete ? 'D:/x' : null, decryptKey: complete, imageKeys: false, complete }] });
-      if (url === '/db/detect') return json({ success: true, data: { candidates: [] } });
+      if (url === '/api/config/profiles') return json({ success: true, data: [{ name: 'default', current: true, wxid: complete ? 'wxid_a' : null, dbPath: complete ? 'D:/x' : null, decryptKey: complete, imageKeys: false, complete }] });
+      if (url === '/api/db/detect') return json({ success: true, data: { candidates: [] } });
       return json({ success: true, data: [] });
     }));
     await renderWith(HEALTH);
@@ -570,7 +570,7 @@ describe('App', () => {
     serve(HEALTH);
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       asked.push(url);
-      if (url.startsWith('/biz/pay-records')) {
+      if (url.startsWith('/api/biz/pay-records')) {
         const offset = Number(new URL(url, 'http://x').searchParams.get('offset'));
         return json({ success: true, data: offset === 0
           ? { records: [record(3, '微信支付凭证', '付款金额¥28.00\n支付方式零钱\n交易状态支付成功', '街角咖啡', 12)], hasMore: true }
@@ -583,7 +583,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '微信支付' }));
     await act(async () => {});
     // both pages were read
-    expect(asked.filter(u => u.startsWith('/biz/pay-records'))).toHaveLength(2);
+    expect(asked.filter(u => u.startsWith('/api/biz/pay-records'))).toHaveLength(2);
     const list = screen.getByRole('region', { name: '微信支付浏览' });
     expect(Array.from(list.querySelectorAll('.conversation-name'), n => n.textContent)).toEqual(['全部商户', '街角咖啡', '出行服务']);
     expect(Array.from(document.querySelectorAll('.pay-amount'), n => n.textContent)).toEqual(['-28.00', '+5.00', '-12.50']);
@@ -616,7 +616,7 @@ describe('App', () => {
       calls.push(url);
       const path = url.split('?')[0];
       if (path === '/api/chat/sessions') return json({ success: true, data: [{ username: 'g@chatroom', displayName: '家人群', summary: '晚饭', sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1 }] });
-      if (path === '/chat/statuses') return json({ success: true, data: {} });
+      if (path === '/api/chat/statuses') return json({ success: true, data: {} });
       if (path === '/api/chat/messages') {
         const around = url.includes('after=') || url.includes('before=');
         return json({ success: true, data: around ? [] : [{ _cursor: 'c.9', localId: 9, localType: 1, createTime: 1760000000, isSend: 0, senderUsername: 'wxid_m1', parsedContent: '晚饭' }] });
@@ -624,7 +624,7 @@ describe('App', () => {
       if (path === '/api/chat/detail') return json({ success: true, data: { wxid: 'g@chatroom', displayName: '家人群', messageCount: 12345 } });
       if (path === '/chat/detail') return json({ success: true, data: { firstMessageTime: 1600000000, latestMessageTime: 1760000000, messageTables: [] } });
       if (path === '/api/group/members') return json({ success: true, data: { members } });
-      if (path === '/group/member') {
+      if (path === '/api/group/member') {
         return json({ success: true, data: { statistics: { totalMessages: 321, textMessages: 300, imageMessages: 21, voiceMessages: 0, videoMessages: 0, emojiMessages: 0, otherMessages: 0, firstMessageTime: 1600000000, lastMessageTime: 1760000000, activeDays: 42 }, timeDistribution: { 21: 50 }, commonPhrases: [{ phrase: '好的', count: 9 }], commonEmojis: [] } });
       }
       if (path === '/api/chat/resources') {
@@ -648,7 +648,7 @@ describe('App', () => {
     expect(Array.from(document.querySelectorAll('.member-row'), row => row.getAttribute('aria-label'))).toEqual(['小七，好友']);
     fireEvent.click(screen.getByRole('button', { name: '小七，好友' }));
     await act(async () => {});
-    expect(calls).toContain('/group/member?chatroom-id=g%40chatroom&username=wxid_m8');
+    expect(calls).toContain('/api/group/member?chatroom-id=g%40chatroom&username=wxid_m8');
     const stats = screen.getByRole('region', { name: '小七的群内统计' });
     expect(stats.textContent).toContain('321 条');
     expect(stats.textContent).toContain('21:00 – 22:00');
@@ -673,7 +673,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       calls.push(url);
       if (url.startsWith('/api/chat/sessions')) return json({ success: true, data: [{ username: 'wxid_a', displayName: '林沐', summary: '', unreadCount: 0, sortTimestamp: 1760000000, lastTimestamp: 1760000000, lastMsgType: 1 }] });
-      if (url.startsWith('/insight/footprint')) {
+      if (url.startsWith('/api/insight/footprint')) {
         return json({ success: true, data: {
           summary: { private_inbound_people: 1, private_replied_people: 1, private_outbound_people: 1, private_reply_rate: 1, mention_count: 0, mention_group_count: 0 },
           private_sessions: [], mentions: [], mention_groups: [], diagnostics: { truncated: false },
