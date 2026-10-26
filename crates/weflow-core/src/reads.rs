@@ -441,12 +441,14 @@ impl Read {
                     *cursor
                 )?))
             }
-            Read::AnalyticsOverall { force } => hub.analytics_overall_statistics(*force),
+            Read::AnalyticsOverall { force } => {
+                Ok(json!(hub.analytics_overall_statistics(*force)?))
+            }
             Read::AnalyticsRankings { limit, start, end } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
                 Ok(json!(hub.analytics_contact_rankings(*limit, b, e)?))
             }
-            Read::AnalyticsTime => hub.analytics_time_distribution(),
+            Read::AnalyticsTime => Ok(json!(hub.analytics_time_distribution()?)),
             Read::AnalyticsExcluded => Ok(json!(hub.analytics_excluded_usernames()?)),
             Read::AnalyticsExcludeCandidates => Ok(json!(hub.analytics_exclude_candidates()?)),
             Read::BizAccounts => hub.biz_accounts(),

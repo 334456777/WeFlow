@@ -5,9 +5,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
 use super::*;
+use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
 
 const AGGREGATE_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -76,6 +78,15 @@ fn num(v: &Value) -> i64 {
         .or_else(|| v.as_f64().map(|f| f as i64))
         .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
         .unwrap_or(0)
+}
+
+/// The counts of an aggregate's object (`{"1": 5, …}`), in its order; nothing for anything else.
+fn counts_of(v: &Value) -> IndexMap<String, i64> {
+    v.as_object()
+        .into_iter()
+        .flatten()
+        .map(|(k, n)| (k.clone(), num(n)))
+        .collect()
 }
 
 fn map_get<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
@@ -445,7 +456,7 @@ impl ServiceHub {
     }
 
     /// `getExcludeCandidates`
-    pub fn analytics_exclude_candidates(&self) -> AppResult<Vec<Value>> {
+    pub fn analytics_exclude_candidates(&self) -> AppResult<Vec<ExcludeCandidate>> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let excluded: HashSet<String> = self.excluded_list().into_iter().collect();
         let mut usernames: Vec<String> =
@@ -471,27 +482,22 @@ impl ServiceHub {
                 } else {
                     String::new()
                 };
-                let mut o = Map::new();
-                o.insert("username".into(), json!(u));
-                o.insert(
-                    "displayName".into(),
-                    json!(names
+                ExcludeCandidate {
+                    username: u.clone(),
+                    display_name: names
                         .get(u)
                         .filter(|n| !n.is_empty())
                         .cloned()
-                        .unwrap_or_else(|| u.clone())),
-                );
-                if let Some(a) = avatars.get(u) {
-                    o.insert("avatarUrl".into(), json!(a));
+                        .unwrap_or_else(|| u.clone()),
+                    avatar_url: avatars.get(u).cloned(),
+                    wechat_id,
                 }
-                o.insert("wechatId".into(), json!(wechat_id));
-                Value::Object(o)
             })
             .collect())
     }
 
     /// `getOverallStatistics`
-    pub fn analytics_overall_statistics(&self, force: bool) -> AppResult<Value> {
+    pub fn analytics_overall_statistics(&self, force: bool) -> AppResult<OverallStatistics> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
@@ -511,15 +517,22 @@ impl ServiceHub {
         let other = (total - text - image - voice - video - emoji).max(0);
         // the days with a message, which the aggregate counts one by one (the desktop app guesses 20 a month, #307)
         let active_days = d["daily"].as_object().map_or(0, |m| m.len()) as i64;
-        let opt = |v: i64| if v != 0 { json!(v) } else { Value::Null };
-        Ok(json!({
-            "totalMessages": total, "textMessages": text, "imageMessages": image, "voiceMessages": voice,
-            "videoMessages": video, "emojiMessages": emoji, "otherMessages": other,
-            "sentMessages": num(&d["sent"]), "receivedMessages": num(&d["received"]),
-            "firstMessageTime": opt(num(&d["firstTime"])), "lastMessageTime": opt(num(&d["lastTime"])),
-            "activeDays": active_days,
-            "messageTypeCounts": d["typeCounts"]
-        }))
+        let opt = |v: i64| (v != 0).then_some(v);
+        Ok(OverallStatistics {
+            total_messages: total,
+            text_messages: text,
+            image_messages: image,
+            voice_messages: voice,
+            video_messages: video,
+            emoji_messages: emoji,
+            other_messages: other,
+            sent_messages: num(&d["sent"]),
+            received_messages: num(&d["received"]),
+            first_message_time: opt(num(&d["firstTime"])),
+            last_message_time: opt(num(&d["lastTime"])),
+            active_days,
+            message_type_counts: counts_of(&d["typeCounts"]),
+        })
     }
 
     /// `getContactRankings`
@@ -528,7 +541,7 @@ impl ServiceHub {
         limit: usize,
         begin: i64,
         end: i64,
-    ) -> AppResult<Vec<Value>> {
+    ) -> AppResult<Vec<ContactRank>> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
@@ -564,7 +577,7 @@ impl ServiceHub {
         let names: Vec<String> = sessions.keys().cloned().collect();
         let (display, avatars) = self.names_and_avatars_pub(&wcdb, &names);
         let aliases = self.alias_map(&wcdb, &names);
-        let mut rankings: Vec<(i64, Value)> = names
+        let mut rankings: Vec<ContactRank> = names
             .iter()
             .map(|u| {
                 let stat = &sessions[u];
@@ -576,38 +589,30 @@ impl ServiceHub {
                 } else {
                     String::new()
                 };
-                let mut o = Map::new();
-                o.insert("username".into(), json!(u));
-                o.insert(
-                    "displayName".into(),
-                    json!(display
+                let last = num(&stat["lastTime"]);
+                ContactRank {
+                    username: u.clone(),
+                    display_name: display
                         .get(u)
                         .filter(|n| !n.is_empty())
                         .cloned()
-                        .unwrap_or_else(|| u.clone())),
-                );
-                if let Some(a) = avatars.get(u) {
-                    o.insert("avatarUrl".into(), json!(a));
+                        .unwrap_or_else(|| u.clone()),
+                    avatar_url: avatars.get(u).cloned(),
+                    wechat_id,
+                    message_count: num(&stat["total"]),
+                    sent_count: num(&stat["sent"]),
+                    received_count: num(&stat["received"]),
+                    last_message_time: (last != 0).then_some(last),
                 }
-                o.insert("wechatId".into(), json!(wechat_id));
-                o.insert("messageCount".into(), json!(num(&stat["total"])));
-                o.insert("sentCount".into(), json!(num(&stat["sent"])));
-                o.insert("receivedCount".into(), json!(num(&stat["received"])));
-                let last = num(&stat["lastTime"]);
-                o.insert(
-                    "lastMessageTime".into(),
-                    if last != 0 { json!(last) } else { Value::Null },
-                );
-                (num(&stat["total"]), Value::Object(o))
             })
             .collect();
-        rankings.sort_by_key(|a| std::cmp::Reverse(a.0));
+        rankings.sort_by_key(|r| std::cmp::Reverse(r.message_count));
         rankings.truncate(limit);
-        Ok(rankings.into_iter().map(|r| r.1).collect())
+        Ok(rankings)
     }
 
     /// `getTimeDistribution`
-    pub fn analytics_time_distribution(&self) -> AppResult<Value> {
+    pub fn analytics_time_distribution(&self) -> AppResult<TimeDistribution> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
@@ -615,22 +620,23 @@ impl ServiceHub {
         }
         let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0, false)?;
         // native: 0 = Sunday … 6 = Saturday; the UI wants 1 = Monday … 7 = Sunday
-        let mut weekday = Map::new();
-        if let Some(w) = d.get("weekday").and_then(Value::as_object) {
-            for (k, v) in w {
-                let n: i64 = crate::api::js_parse_int(k).unwrap_or(0);
-                weekday.insert((if n == 0 { 7 } else { n }).to_string(), v.clone());
-            }
-        }
-        let mut hourly = Map::new();
-        for i in 0..24 {
-            hourly.insert(
-                i.to_string(),
-                json!(map_get(&d["hourly"], &i.to_string()).map(num).unwrap_or(0)),
-            );
-        }
-        Ok(
-            json!({ "hourlyDistribution": hourly, "weekdayDistribution": weekday, "monthlyDistribution": d["monthly"] }),
-        )
+        let weekday = counts_of(&d["weekday"])
+            .into_iter()
+            .map(|(k, v)| {
+                let n: i64 = crate::api::js_parse_int(&k).unwrap_or(0);
+                ((if n == 0 { 7 } else { n }).to_string(), v)
+            })
+            .collect();
+        let hourly = (0..24)
+            .map(|i| {
+                let n = map_get(&d["hourly"], &i.to_string()).map(num).unwrap_or(0);
+                (i.to_string(), n)
+            })
+            .collect();
+        Ok(TimeDistribution {
+            hourly_distribution: hourly,
+            weekday_distribution: weekday,
+            monthly_distribution: counts_of(&d["monthly"]),
+        })
     }
 }

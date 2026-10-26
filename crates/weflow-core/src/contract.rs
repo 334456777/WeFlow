@@ -505,6 +505,70 @@ pub struct MemberMessages {
     pub next_cursor: usize,
 }
 
+/// The private chats counted together (`analytics overall`), but for the people left out.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OverallStatistics {
+    pub total_messages: i64,
+    pub text_messages: i64,
+    pub image_messages: i64,
+    pub voice_messages: i64,
+    pub video_messages: i64,
+    pub emoji_messages: i64,
+    pub other_messages: i64,
+    pub sent_messages: i64,
+    pub received_messages: i64,
+    /// The time of the first message; null without messages.
+    pub first_message_time: Option<i64>,
+    pub last_message_time: Option<i64>,
+    /// The days with a message.
+    pub active_days: i64,
+    /// By WeChat's type of the message, as `localType`.
+    pub message_type_counts: IndexMap<String, i64>,
+}
+
+/// A private chat of `analytics rankings`, the one with the most messages first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactRank {
+    pub username: String,
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    /// The WeChat ID they chose, else the username when it is not a `wxid_…`; else empty.
+    pub wechat_id: String,
+    pub message_count: i64,
+    pub sent_count: i64,
+    pub received_count: i64,
+    /// The time of the last message; null without messages.
+    pub last_message_time: Option<i64>,
+}
+
+/// When the private chats' messages were sent (`analytics time`), in the server's time zone.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeDistribution {
+    /// By the hour, `"0"` to `"23"`.
+    pub hourly_distribution: IndexMap<String, i64>,
+    /// By the day of the week, `"1"` (Monday) to `"7"` (Sunday).
+    pub weekday_distribution: IndexMap<String, i64>,
+    /// By the month, `YYYY-MM`.
+    pub monthly_distribution: IndexMap<String, i64>,
+}
+
+/// Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left
+/// out already.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExcludeCandidate {
+    pub username: String,
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    /// As in a ranking.
+    pub wechat_id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

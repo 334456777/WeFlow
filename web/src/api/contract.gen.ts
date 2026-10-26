@@ -517,6 +517,62 @@ export interface ChatMessage {
   messageKey: string;
 }
 
+/** The private chats counted together (`analytics overall`), but for the people left out. */
+export interface OverallStatistics {
+  totalMessages: number;
+  textMessages: number;
+  imageMessages: number;
+  voiceMessages: number;
+  videoMessages: number;
+  emojiMessages: number;
+  otherMessages: number;
+  sentMessages: number;
+  receivedMessages: number;
+  /** The time of the first message; null without messages. */
+  firstMessageTime: number | null;
+  lastMessageTime: number | null;
+  /** The days with a message. */
+  activeDays: number;
+  /** By WeChat's type of the message, as `localType`. */
+  messageTypeCounts: Record<string, number>;
+}
+
+/** A private chat of `analytics rankings`, the one with the most messages first. */
+export interface ContactRank {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  /** The WeChat ID they chose, else the username when it is not a `wxid_…`; else empty. */
+  wechatId: string;
+  messageCount: number;
+  sentCount: number;
+  receivedCount: number;
+  /** The time of the last message; null without messages. */
+  lastMessageTime: number | null;
+}
+
+/** When the private chats' messages were sent (`analytics time`), in the server's time zone. */
+export interface TimeDistribution {
+  /** By the hour, `"0"` to `"23"`. */
+  hourlyDistribution: Record<string, number>;
+  /** By the day of the week, `"1"` (Monday) to `"7"` (Sunday). */
+  weekdayDistribution: Record<string, number>;
+  /** By the month, `YYYY-MM`. */
+  monthlyDistribution: Record<string, number>;
+}
+
+/**
+ * Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left
+ * out already.
+ */
+export interface ExcludeCandidate {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  /** As in a ranking. */
+  wechatId: string;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -568,6 +624,12 @@ export interface Failure {
 
 /** The `data` of the answer of each command the contract describes. */
 export interface Answers {
+  "analytics exclude-candidates": ExcludeCandidate[];
+  /** The usernames left out of the analytics, as saved */
+  "analytics excluded": string[];
+  "analytics overall": OverallStatistics;
+  "analytics rankings": ContactRank[];
+  "analytics time": TimeDistribution;
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
   /** Each conversation asked for, with how many messages it has */

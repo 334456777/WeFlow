@@ -459,9 +459,10 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            ChatStatus, Contact, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
-            MemberAnalytics, MemberMessages, MessageLookup, ParsedMessage, ResourcePage, Session,
+            ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
+            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, ResourcePage, Session,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
+            TimeDistribution,
         };
         let mut generator = SchemaSettings::draft2020_12()
             .for_serialize()
@@ -540,6 +541,21 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("group media", of(generator.subschema_for::<GroupMedia>()));
         data.insert("group member", of(generator.subschema_for::<MemberAnalytics>()));
         data.insert("group member-messages", of(generator.subschema_for::<MemberMessages>()));
+        data.insert("analytics overall", of(generator.subschema_for::<OverallStatistics>()));
+        data.insert("analytics rankings", of(generator.subschema_for::<Vec<ContactRank>>()));
+        data.insert("analytics time", of(generator.subschema_for::<TimeDistribution>()));
+        data.insert(
+            "analytics excluded",
+            json!({
+                "description": "The usernames left out of the analytics, as saved",
+                "type": "array",
+                "items": { "type": "string" },
+            }),
+        );
+        data.insert(
+            "analytics exclude-candidates",
+            of(generator.subschema_for::<Vec<ExcludeCandidate>>()),
+        );
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();

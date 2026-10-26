@@ -13,9 +13,9 @@ fn sum(v: &Value) -> i64 {
 #[test]
 fn rankings_and_time_distribution() {
     let (hub, _root) = common::mock_hub("an-rank");
-    let r = hub.analytics_contact_rankings(10, 0, 0).unwrap();
+    let r = json!(hub.analytics_contact_rankings(10, 0, 0).unwrap());
     assert_eq!(
-        r.len(),
+        r.as_array().unwrap().len(),
         1,
         "only private chats with messages are ranked: bob"
     );
@@ -30,7 +30,7 @@ fn rankings_and_time_distribution() {
         "a limit of 0 returns nothing"
     );
 
-    let t = hub.analytics_time_distribution().unwrap();
+    let t = json!(hub.analytics_time_distribution().unwrap());
     // hours and weekdays are local time, so check totals and shape instead of a particular hour
     assert_eq!(t["hourlyDistribution"].as_object().unwrap().len(), 24);
     assert_eq!(sum(&t["hourlyDistribution"]), 5);
@@ -48,10 +48,10 @@ fn exclusion_list_roundtrip_and_candidates() {
     let (hub, root) = common::mock_hub("an-exclude");
     assert!(hub.analytics_excluded_usernames().unwrap().is_empty());
     let cand = hub.analytics_exclude_candidates().unwrap();
-    assert!(cand.iter().any(|c| c["username"] == "wxid_bob"
-        && c["displayName"] == "Bobby"
-        && c["wechatId"] == "bobby_id"));
-    assert!(!cand.iter().any(|c| c["username"] == "room1@chatroom"));
+    assert!(cand.iter().any(|c| c.username == "wxid_bob"
+        && c.display_name == "Bobby"
+        && c.wechat_id == "bobby_id"));
+    assert!(!cand.iter().any(|c| c.username == "room1@chatroom"));
 
     let saved = hub
         .analytics_set_excluded_usernames(&[
@@ -74,14 +74,16 @@ fn exclusion_list_roundtrip_and_candidates() {
         err.message
     );
     let cand = hub.analytics_exclude_candidates().unwrap();
-    assert!(cand.iter().any(|c| c["username"] == "ghost"));
-    assert!(cand.iter().any(|c| c["username"] == "wxid_bob"));
+    assert!(cand.iter().any(|c| c.username == "ghost"));
+    assert!(cand.iter().any(|c| c.username == "wxid_bob"));
     assert_eq!(
         hub.analytics_set_excluded_usernames(&[]).unwrap(),
         Vec::<String>::new()
     );
     assert_eq!(
-        hub.analytics_overall_statistics(true).unwrap()["totalMessages"],
-        json!(5)
+        hub.analytics_overall_statistics(true)
+            .unwrap()
+            .total_messages,
+        5
     );
 }

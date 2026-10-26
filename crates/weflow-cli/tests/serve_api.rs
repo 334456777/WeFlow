@@ -3108,6 +3108,8 @@ fn answers_fit_the_contract() {
         "/api/group/media?chatroom-id=room1%40chatroom",
         "/api/group/member?chatroom-id=room1%40chatroom&username=wxid_bob",
         "/api/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob",
+        "/api/analytics/overall",
+        "/api/analytics/time",
     ] {
         let data = read(target, None);
         assert!(
@@ -3118,10 +3120,13 @@ fn answers_fit_the_contract() {
     for target in [
         "/api/group/list",
         "/api/group/ranking?chatroom-id=room1%40chatroom",
+        "/api/analytics/rankings",
+        "/api/analytics/exclude-candidates",
     ] {
         let data = read(target, None);
         assert!(!data.as_array().unwrap().is_empty(), "{target}: {data}");
     }
+    read("/api/analytics/excluded", None);
     for target in [
         "/api/chat/messages?session-id=wxid_bob&limit=100",
         "/api/chat/messages?session-id=room1%40chatroom",
