@@ -1539,11 +1539,16 @@ impl ServiceHub {
             .local_path
             .filter(|_| result.success)
             .ok_or_else(|| {
-                AppError::runtime(
+                let err = AppError::runtime(
                     result
                         .error
                         .unwrap_or_else(|| "image decrypt failed".into()),
-                )
+                );
+                // what went wrong, as `chat image` says it: `not_found` is a 404 of the command API
+                match result.failure_kind {
+                    Some(kind) => err.with_details(json!({ "failureKind": kind })),
+                    None => err,
+                }
             })?;
         std::fs::read(&path).map_err(|e| AppError::runtime(format!("failed to read {path}: {e}")))
     }

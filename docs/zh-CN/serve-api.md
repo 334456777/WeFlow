@@ -329,7 +329,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 ```
 
 - 加上 `thumb=true`（即命令的 `--thumb`）时，返回微信自己保存的图片缩略图，只有几 KB，适合列表；没有缩略图时返回原图。在大账号上，一张缩略图约 2 ms，大小约为原图的五分之一。
-- 一张图片微信最多保存三个文件：聊天里显示的缩略图（`<md5>_t.dat`），点开时显示的图片（`<md5>.dat`），以及点「查看原图」后下载的原图（`<md5>_h.dat`）。用 `variant` 选择其中一个：`best`（默认，本机现有的最好的一个）、`thumb`（与 `thumb=true` 相同）、`normal`（点开时的图片，没有时取现有最好的）、`hd`（原图，微信没下载时返回 `404`，`failureKind: not_found`）。`GET /api/chat/image-info`（`chat image-info`）给出本机有哪几个（`thumb`、`normal`、`hd`），以及消息里记录的大小（`normalBytes`、`hdBytes`，单位字节；原图没下载时也有），供网页判断能不能显示原图。
+- 一张图片微信最多保存三个文件：聊天里显示的缩略图（`<md5>_t.dat`），点开时显示的图片（`<md5>.dat`），以及点「查看原图」后下载的原图（`<md5>_h.dat`）。用 `variant` 选择其中一个：`best`（默认，本机现有的最好的一个）、`thumb`（与 `thumb=true` 相同）、`normal`（点开时的图片，没有时取现有最好的）、`hd`（原图，微信没下载时返回 `404`，`failureKind: not_found`）。本机一个文件都没有的图片，不论选哪个都返回 `404`（`failureKind: not_found`）。`GET /api/chat/image-info`（`chat image-info`）给出本机有哪几个（`thumb`、`normal`、`hd`），以及消息里记录的大小（`normalBytes`、`hdBytes`，单位字节；原图没下载时也有），供网页判断能不能显示原图。
 - 视频加上 `thumb=true` 时，返回微信保存的视频缩略图，没有时返回封面。视频不解码：边从微信的视频文件夹读边发送，只读请求的那一段，所以再长的视频也不占内存，播放器拖动进度时能立即开始：在大账号上，视频的第一个 1 MB 约 4.5 ms，从中间取 1 MB 约 3.5 ms。微信还没下载的视频返回 `404`（`failureKind: not_found`），要先在微信里打开它。
 - 回复带 `ETag`（视频的 `ETag` 由文件的大小和修改时间得出）和 `Cache-Control: private, max-age=3600`。带 `If-None-Match` 再次请求时，如果内容没变，返回 `304`，不带文件。
 - 可以用 `Range: bytes=…` 只取文件的一部分，`<audio>` 播放器就是这样请求的：返回 `206` 并带 `Content-Range`；起点超出文件末尾时返回 `416`。请求多个区间，或 `If-Range` 指的是文件的另一个版本时，返回整个文件。
