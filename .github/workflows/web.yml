@@ -45,6 +45,20 @@ jobs:
       - name: Types of the contract
         run: bun run contract --check
 
+      # a change of the contract its clients would read wrong raises the API version (#400): compared with the
+      # contract of the commit the change is based on (the pull request's base, or the push's previous commit)
+      - name: Compatibility of the contract
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
+            || ! git fetch --quiet --depth=1 origin "$BASE" \
+            || ! git show "$BASE:web/contract/openapi.json" > "$RUNNER_TEMP/contract-base.json" 2>/dev/null; then
+            echo "no earlier contract to compare with"
+            exit 0
+          fi
+          bun scripts/contract-compat.ts "$RUNNER_TEMP/contract-base.json"
+
       - name: Type-check
         run: bun run typecheck
 

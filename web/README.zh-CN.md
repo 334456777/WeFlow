@@ -54,7 +54,7 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 
 测试从 `#test`（`test/index.ts`）导入测试 API：其中是 `bun:test` 的内容，外加一个 `vi`，补上了测试里用到、而 Bun 没有的 Vitest 方法（`stubGlobal`、`unstubAllGlobals`、`setSystemTime`、`advanceTimersByTimeAsync`、`waitFor`，以及只伪造 `Date` 的假计时器）。`test/setup.ts` 由 `bunfig.toml` 指定为最先加载的文件，它注册 happy-dom，并把 happy-dom 调整成原来按 jsdom 写测试时的样子：窗口够宽，`fetch` 用运行时自带的，`WheelEvent` 继承自 `MouseEvent`，inline 元素的 `display` 是 `inline`，DOM 节点出现在失败信息里时只打印简短的标签。Bun 在同一个进程里运行所有测试文件，所以测试结束时不能留下改过的全局状态：在 `afterEach` 里调用 `vi.unstubAllGlobals()`、`vi.useRealTimers()` 和 `cleanup()`。
 
-`web/` 下有改动时，`.github/workflows/web.yml` 会运行 `contract --check`、`typecheck`、`test` 和 `build`，并上传 `dist/`。
+`web/` 下有改动时，`.github/workflows/web.yml` 会运行 `contract --check`、契约的兼容性检查（见下文）、`typecheck`、`test` 和 `build`，并上传 `dist/`。
 
 网页显示前要加载的 JavaScript 超过 `plugins/sizeBudget.ts` 里的上限时，构建会失败（#159）；确实需要更多时，在那里有意地调高。图标只保留网页用到的粗细（`plugins/iconWeights.ts`：regular、fill、bold）；代码用到其他粗细时，测试会失败。
 
@@ -68,7 +68,9 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 2. `bun run contract` 重新生成 `src/api/contract.gen.ts`；
 3. `bun run typecheck` 显示网页需要跟着改的地方。
 
-API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。
+API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。`scripts/contract-compat.ts` 用来发现这类改动：`bun scripts/contract-compat.ts <之前的 openapi.json>` 列出按之前的契约写的客户端在现在的回复里可能读错的地方（字段可能省略或变为可为空、出现原来没有的类型或取值、路由不再描述），有这类改动而 `info.version` 没变时失败。`web.yml` 拿改动所基于的提交的契约运行它。新增字段或路由不算这类改动。
+
+`src/api/contract.test.ts` 把 weflow-cli 生成的 `contract/samples.json` 交给网页自己的代码：先经过 `src/api/` 的读取，再交给聊天窗口、会话列表、通讯录、资源浏览和任务中心处理。weflow-cli 有测试拿契约校验同一份样本和运行中的服务端的回复（docs/zh-CN/serve-api.md，「OpenAPI 描述」），所以网页测的是服务端真正的回复，而不是网页自己的夹具。
 
 ## 版本
 
@@ -85,6 +87,7 @@ API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。
 | 路径 | 说明 |
 |---|---|
 | `src/api/contract.gen.ts`、`scripts/contract.ts`、`contract/` | 由契约生成的回复类型（#399），见「API 的类型」 |
+| `scripts/contract-compat.ts`、`src/api/contract.test.ts` | 契约的改动会不会让客户端读错，以及网页代码处理契约样本的测试（#400） |
 | `src/api/client.ts` | 调用 `weflow serve`：负责查询参数或 JSON 请求体，带上令牌，出错时抛出带服务端错误码的 `ApiError` |
 | `src/TokenForm.tsx` | 令牌输入与重新连接提示（#214） |
 | `src/api/backend.ts` | 连接状态：保持 `/health/events` 长连接，加上看门狗和退避重连（#221）；打开实时消息时改为 `/api/push/messages`（#201）；检查版本，提供 `useBackend` |

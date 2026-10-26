@@ -241,7 +241,7 @@ A browser sends at most 6 requests at once to one server (HTTP/1.1), and an open
 curl -H "Authorization: Bearer $TOKEN" -H "Accept-Language: en" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `2` (it was `1` until a parsed message's `serverId` became a string, #399). It is raised only by a change that breaks existing clients, not by new commands or options. `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
+Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `2` (it was `1` until a parsed message's `serverId` became a string, #399). It is raised only by a change that breaks existing clients, not by new commands or options. For the answers `web/contract/openapi.json` describes, CI tells such a change: `web/scripts/contract-compat.ts` compares the contract with that of the change's base and fails when a client of it could read the new answers wrong and `apiVersion` is the same (see web/README.md). `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
 
 ```json
 {"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41",
