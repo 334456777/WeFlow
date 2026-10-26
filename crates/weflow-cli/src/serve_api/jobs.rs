@@ -46,30 +46,30 @@ impl Status {
 #[serde(rename_all = "camelCase")]
 #[schemars(rename = "Job")]
 pub(super) struct JobView {
-    id: String,
-    status: Status,
-    /// The command line, without `weflow`.
-    command: Vec<String>,
-    created_at: u64,
-    started_at: Option<u64>,
-    finished_at: Option<u64>,
-    exit_code: Option<i32>,
+    pub(super) id: String,
+    pub(super) status: Status,
+    /// The command line it runs, `weflow` first (`weflow --json --progress export messages …`).
+    pub(super) command: Vec<String>,
+    pub(super) created_at: u64,
+    pub(super) started_at: Option<u64>,
+    pub(super) finished_at: Option<u64>,
+    pub(super) exit_code: Option<i32>,
     /// The status a synchronous request would have got.
-    http_status: Option<u16>,
+    pub(super) http_status: Option<u16>,
     /// The last `progress` event.
-    progress: Option<Value>,
+    pub(super) progress: Option<Value>,
     /// The file of a job started with `return=file`, once it has succeeded: `GET /jobs/{id}/file`.
-    file: Option<JobFile>,
+    pub(super) file: Option<JobFile>,
     /// The command's `--json` document; only in `GET /jobs/{id}`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<Value>,
+    pub(super) result: Option<Value>,
 }
 
 #[derive(serde::Serialize, schemars::JsonSchema)]
 pub(super) struct JobFile {
-    name: Option<String>,
+    pub(super) name: Option<String>,
     /// In bytes.
-    size: Option<u64>,
+    pub(super) size: Option<u64>,
 }
 
 /// One event of a job: its sequence number (the SSE `id`), name and JSON data.
@@ -420,7 +420,7 @@ impl Jobs {
     }
 }
 
-fn cancelled_result() -> Value {
+pub(super) fn cancelled_result() -> Value {
     json!({
         "success": false,
         "error": { "code": "user_interrupt", "message": "the job was cancelled" }

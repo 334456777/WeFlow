@@ -50,7 +50,7 @@ A refused token (HTTP 401) shows an input to reconnect. Settings can replace or 
 
 The tests import their API from `#test` (`test/index.ts`): `bun:test`, and a `vi` with what they use of Vitest's that Bun's lacks (`stubGlobal`, `unstubAllGlobals`, `setSystemTime`, `advanceTimersByTimeAsync`, `waitFor`, fake timers for `Date` alone). `test/setup.ts`, loaded first (`bunfig.toml`), registers happy-dom and keeps it to what the tests were written for under jsdom: a wide window, the runtime's own `fetch`, a `WheelEvent` that is a `MouseEvent`, `display: inline` for inline elements, and short failure messages for DOM nodes. Bun runs every test file in one process, so a test leaves no global behind: `vi.unstubAllGlobals()`, `vi.useRealTimers()` and `cleanup()` in `afterEach`.
 
-`.github/workflows/web.yml` runs `contract --check`, `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
+`.github/workflows/web.yml` runs `contract --check`, the compatibility of the contract (see below), `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
 
 The build fails when the JavaScript the page loads before it shows is over the budget in `plugins/sizeBudget.ts` (#159); raise it there on purpose when a change needs more. Icons keep only the weights the app draws (`plugins/iconWeights.ts`: regular, fill, bold); a test fails when the code asks for another.
 
@@ -60,11 +60,13 @@ The answers the page reads most (the conversations, messages, search hits, conta
 
 `scripts/contract.ts` writes the types without a dependency: it reads the few kinds of JSON Schema that schemars writes and refuses the rest. When a type of the answers changes:
 
-1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_snapshot` rewrites `contract/openapi.json` (and `cargo test -p weflow-core --lib contract`, with the same variable, `contract/samples.json`: an answer of each type, for the boundary tests of #400);
+1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_` rewrites `contract/openapi.json` and `contract/samples.json` (answers of each type, for the boundary tests of #400);
 2. `bun run contract` rewrites `src/api/contract.gen.ts`;
 3. `bun run typecheck` shows what the page has to change.
 
-A change the clients of the API would not read the same raises `apiVersion` (see Versions).
+A change the clients of the API would not read the same raises `apiVersion` (see Versions). `scripts/contract-compat.ts` tells such a change: `bun scripts/contract-compat.ts <earlier openapi.json>` lists what a client of the earlier contract could read wrong in the current one's answers (a field left out or turned nullable, a type or a value it did not have, a route no longer described) and fails when there is something and `info.version` is the same. `web.yml` runs it against the contract of the change's base. Adding a field or a route is no such change.
+
+`src/api/contract.test.ts` hands `contract/samples.json`, which weflow-cli builds, to the page's own code: the reads of `src/api/`, then what the chat window, the conversation list, the contacts, the resource browser and the task centre make of them. A test of weflow-cli checks the same samples, and a running server's answers, against the contract (docs/serve-api.md, "OpenAPI description"), so the page is tested on what the server answers rather than on a fixture of its own.
 
 ## Versions
 
@@ -77,6 +79,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | Path | |
 |---|---|
 | `src/api/contract.gen.ts`, `scripts/contract.ts`, `contract/` | The types of the answers, generated from the contract (#399); see Types of the API |
+| `scripts/contract-compat.ts`, `src/api/contract.test.ts` | Whether a change of the contract breaks its clients, and the page's code on the contract's samples (#400) |
 | `src/api/client.ts` | Calls to `weflow serve`: query or JSON body, token, `ApiError` with the server's error code |
 | `src/TokenForm.tsx` | Token input and reconnection prompt (#214) |
 | `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), or `/api/push/messages` with live messages on (#201); version checks, `useBackend` |

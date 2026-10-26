@@ -1281,6 +1281,28 @@ async fn route(st: &AppState, req: Request) -> Response {
             json!({ "argv": shown, "stdin": Value::Null }).to_string(),
         );
     }
+    // an `/api/` request its typed read did not take and clap refuses too: answered here with clap's error, as the
+    // child process would print it, without starting one (#432)
+    if place.is_some() && !background {
+        let ran = std::time::Instant::now();
+        // the program's name as the child's would be, which its usage line shows (`weflow.exe` on Windows)
+        let program = std::env::current_exe()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| "weflow".into());
+        let line: Vec<String> = std::iter::once(program)
+            .chain(full.iter().cloned())
+            .collect();
+        if let Err(err) = crate::i18n::try_parse_from::<crate::Cli>(&line) {
+            if let Some((doc, exit)) = crate::i18n::json_failure(&err) {
+                timing.stage("cmd", Some("refused in process"), ran);
+                return timing.on(in_process_document(
+                    &doc,
+                    u8::try_from(exit).unwrap_or(1),
+                    None,
+                ));
+            }
+        }
+    }
     // the child answers in the server's language, as a read in process does, whatever the request's
     // `Accept-Language` and whatever `weflow lang` was set to since the server started (#433)
     let lang = Some(server_lang());
