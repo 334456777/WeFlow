@@ -6,7 +6,7 @@ Windows x64 `key db` 使用 `weflow-native/src/windows_db_key/` 中的 Rust 实�
 
 定位按原二进制的三段版本范围选择一个特征：4.1.4 之前、4.1.4–4.1.6.14、4.1.6.14 之后。最新范围复用较旧的字节特征，但捕获偏移不同。仅扫描已加载的 `.text` 段，要求唯一匹配，并用 [AMD64 异常目录](https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64) 检查捕获点与特征所在范围。远程读取前检查头部和区间边界，扫描使用带重叠的 1 MiB 分块。只保留一条定位路径，不设置兜底方法。
 
-捕获通过公开的 [Windows 调试 API](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-debugactiveprocess) 连接进程，在已有和新建线程的空闲硬件断点槽位设置执行断点。保留其他槽位，转交无关异常，只读取 32 字节密钥，并在输出密钥前恢复寄存器、[解除连接](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-debugactiveprocessstop)。不分配可执行内存，不修改客户端指令。超时、显式清理、Ctrl+C 和进程退出均由同一工作线程处理。
+捕获通过公开的 [Windows 调试 API](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-debugactiveprocess) 连接进程，在已有和新建线程的空闲硬件断点槽位设置执行断点。保留其他槽位，转交无关异常，只读取 32 字节密钥，并在输出密钥前恢复寄存器、[解除连接](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-debugactiveprocessstop)。不分配可执行内存，不修改客户端指令。超时、显式清理、Ctrl+C 和进程退出均由同一工作线程处理。由 `weflow serve` 运行时无法发送 Ctrl+C，`key db` 把 stdin 的结束当作 Ctrl+C（#287），所以取消作业不会把断点留在微信里。
 
 仅支持 x64 微信 4.x。原二进制以 `4.1.6.14` 为界的特征表不同于早期备份源码，已补充边界回归测试。其通用 Cipher 定位在 4.1.13.65 上不满足 256 字节对齐条件，因此此处没有采用该策略。未来版本仍需实测确认特征与参数结构。Windows ARM64 构建不会加载 x64 DLL 代替。
 

@@ -1686,6 +1686,17 @@ fn command(exe: &std::path::Path, args: &[String], lang: Option<&str>) -> tokio:
 /// Set for a command whose stdin carries the database keys the server derived (see [`spawn`]).
 pub const KEYS_ON_STDIN: &str = "WEFLOW_KEYS_ON_STDIN";
 
+/// Set for a command that ends by itself once its stdin ends (see [`ends_by_itself`]).
+pub const CANCEL_ON_STDIN: &str = "WEFLOW_CANCEL_ON_STDIN";
+
+/// Whether the command `args` runs must be let to end by itself rather than killed: `key db`, whose hook would be
+/// left in WeChat (#287). Its stdin stays open while it runs; once it ends (the job cancelled, the request or the
+/// server gone), the command takes its hook out of WeChat and ends with `user_interrupt`.
+pub(super) fn ends_by_itself(args: &[String]) -> bool {
+    let mut words = args.iter().filter(|a| !a.starts_with('-'));
+    words.next().is_some_and(|w| w == "key") && words.next().is_some_and(|w| w == "db")
+}
+
 /// [`command`], started, with the database keys this server derived written to its stdin
 /// ([`weflow_core::page_keys::export_keys`]): opening a database derives its key first (about 0.1 s), and the
 /// command does not have to do it again. The keys go through the pipe only, never to a file or the environment.
@@ -1694,8 +1705,15 @@ pub(super) async fn spawn(
     args: &[String],
     lang: Option<&str>,
 ) -> std::io::Result<tokio::process::Child> {
-    let keys = weflow_core::page_keys::export_keys();
     let mut cmd = command(exe, args, lang);
+    if ends_by_itself(args) {
+        // not killed when dropped: dropping its stdin ends it, once its hook is out of WeChat
+        cmd.stdin(std::process::Stdio::piped())
+            .env(CANCEL_ON_STDIN, "1")
+            .kill_on_drop(false);
+        return cmd.spawn();
+    }
+    let keys = weflow_core::page_keys::export_keys();
     if !keys.is_empty() {
         cmd.stdin(std::process::Stdio::piped())
             .env(KEYS_ON_STDIN, "1");
@@ -1713,7 +1731,13 @@ async fn run(
     args: &[String],
     lang: Option<&str>,
 ) -> std::io::Result<std::process::Output> {
-    spawn(exe, args, lang).await?.wait_with_output().await
+    let mut child = spawn(exe, args, lang).await?;
+    // `wait_with_output` closes stdin first, which would end a command that ends by itself (see [`spawn`]); it
+    // is held until the command ends, or dropped with the request
+    let stdin = child.stdin.take();
+    let output = child.wait_with_output().await;
+    drop(stdin);
+    output
 }
 
 /// The HTTP status of a `--json` document: by its error code first, then by the exit code.
@@ -2084,6 +2108,15 @@ mod tests {
             &Uri::from_static("http://evil.example/health"),
             &HeaderMap::new()
         ));
+    }
+
+    #[test]
+    fn only_key_db_is_let_to_end_by_itself() {
+        let line = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
+        assert!(ends_by_itself(&line("--json --progress key db --save")));
+        assert!(ends_by_itself(&line("--json key db --timeout 60")));
+        assert!(!ends_by_itself(&line("--json key image")));
+        assert!(!ends_by_itself(&line("--json chat messages db")));
     }
 
     #[test]

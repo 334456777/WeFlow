@@ -1169,6 +1169,51 @@ fn answers_are_compressed_when_asked_and_cut_to_fields() {
     assert_eq!(r.status, 400);
 }
 
+/// `key db` run as the server runs it ends by itself once its stdin ends, with `user_interrupt`, as on Ctrl+C: a
+/// hook it had set would be out of WeChat first (#287). It is ended here while it waits for WeChat, before any hook.
+#[cfg(all(windows, target_arch = "x86_64"))]
+#[test]
+fn key_db_ends_by_itself_when_its_stdin_ends() {
+    let root = temp_root("key-db-stdin");
+    let mut child = weflow(&root)
+        .env("WEFLOW_CANCEL_ON_STDIN", "1")
+        .args(["--json", "key", "db", "--timeout", "60"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // waiting for WeChat to quit or to start, whichever this machine needs
+    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+    let phase = loop {
+        let line = lines
+            .next()
+            .expect("key db ended before it waited")
+            .unwrap();
+        if let Ok(event) = serde_json::from_str::<Value>(&line) {
+            if event["type"] == "key_phase" {
+                break event["phase"].clone();
+            }
+        }
+    };
+    assert!(phase == "quit_wechat" || phase == "open_wechat", "{phase}");
+    let ended = std::time::Instant::now();
+    drop(child.stdin.take());
+    std::thread::spawn(move || lines.for_each(drop));
+    let status = child.wait().unwrap();
+    assert!(ended.elapsed() < std::time::Duration::from_secs(5));
+    let mut out = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
+    let doc: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(doc["error"]["code"], "user_interrupt", "{out}");
+    assert_eq!(status.code(), Some(130));
+}
+
 /// An `/api/` request with parameters the command line refuses gets clap's error from the server's process, the one
 /// the route without `/api/` answers from a child process, without starting one (#432).
 #[test]

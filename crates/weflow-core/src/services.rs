@@ -611,17 +611,31 @@ impl ServiceHub {
             ))
         };
 
+        let interrupted = || {
+            end_status_line();
+            AppError::new("user_interrupt", "interrupted by user", 130)
+        };
         let pid = match pid_override {
             Some(pid) => pid,
             None if cfg!(windows) => {
                 let found = wait_for_fresh_wechat(
                     &mut wechat_pids,
                     &mut || std::thread::sleep(std::time::Duration::from_secs(1)),
-                    &mut || started.elapsed().as_secs(),
+                    // an interruption ends the wait as its timeout would
+                    &mut || {
+                        if key_db_interrupted() {
+                            u64::MAX
+                        } else {
+                            started.elapsed().as_secs()
+                        }
+                    },
                     timeout_secs,
                     &mut |event| report_wait(event),
                 );
                 end_status_line();
+                if key_db_interrupted() {
+                    return Err(interrupted());
+                }
                 found.ok_or_else(timeout_error)?
             }
             None => find_wechat_pid().ok_or_else(|| {
@@ -643,6 +657,9 @@ impl ServiceHub {
         }
 
         let key = loop {
+            if key_db_interrupted() {
+                return Err(interrupted());
+            }
             if remaining() == 0 {
                 end_status_line();
                 return Err(timeout_error());
@@ -677,10 +694,7 @@ impl ServiceHub {
                     end_status_line();
                     return Err(timeout_error());
                 }
-                Err(DbKeyError::Interrupted) => {
-                    end_status_line();
-                    return Err(AppError::new("user_interrupt", "interrupted by user", 130));
-                }
+                Err(DbKeyError::Interrupted) => return Err(interrupted()),
                 // the process may not be ready to be hooked right after it started: try again
                 Err(DbKeyError::NotReady(_)) if remaining() > 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1395,6 +1409,22 @@ fn report_wait(event: WaitEvent) {
             crate::output::status_line(&wait_text(phase, remaining))
         }
     }
+}
+
+static KEY_DB_INTERRUPTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Ends `key db` as Ctrl+C does, from another thread: while it waits for WeChat it stops waiting, and a hook it has
+/// set restores WeChat's debug registers and detaches first, so nothing of it is left in WeChat (#287). It ends
+/// with `user_interrupt`. A hook may be about to be set when this is called: call it again until the command ends.
+pub fn interrupt_key_db() {
+    KEY_DB_INTERRUPTED.store(true, std::sync::atomic::Ordering::Release);
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    weflow_native::windows_db_key::interrupt();
+}
+
+fn key_db_interrupted() -> bool {
+    KEY_DB_INTERRUPTED.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// Waits until WeChat has been quit (when it is running now) and started again; returns the new process id, or

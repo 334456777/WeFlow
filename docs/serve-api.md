@@ -187,7 +187,7 @@ A long command (an export, `key db`, `backup create`) need not hold a request op
 | `GET /jobs` | `{"success": true, "data": [<job>, …]}`, oldest first, without results |
 | `GET /jobs/<id>` | The job with its `result` |
 | `GET /jobs/<id>/events` | Server-sent events until the job ends (below) |
-| `DELETE /jobs/<id>` | A queued or running job is cancelled (its command is killed) and the answer is the cancelled job; a finished job is forgotten |
+| `DELETE /jobs/<id>` | A queued or running job is cancelled (its command is killed; `key db` is asked to end and killed only after 10 s, see below) and the answer is the cancelled job; a finished job is forgotten |
 | `GET /jobs/<id>/file` | The file of a job started with `?return=file`, once it has succeeded (see [Files](#files)); `404` otherwise |
 
 A job is `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "exitCode", "httpStatus", "progress", "file", "result"}`: `status` is `queued`, `running`, `succeeded`, `failed` or `cancelled`; `command` the command line it runs (always `--json --progress`); times in Unix milliseconds; `httpStatus` the status a direct request would have answered; `progress` the last progress event; `file` the file of a `?return=file` job that succeeded (`{"name", "size"}`), else `null`; `result` the `--json` document, as a direct request would have answered. A cancelled job has `httpStatus` `499` and the error code `user_interrupt`.
@@ -266,7 +266,7 @@ With 「实时消息」 on (the default, in the settings), the WebUI holds `/api
 
 ## How it runs
 
-A command route (a path without `/api/`, run at once or as a job) runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. A client that closes the connection before the answer ends its command; so does cancelling a job.
+A command route (a path without `/api/`, run at once or as a job) runs `weflow` again as a child process with the same configuration, so output and exit code are those of the terminal and a failing command cannot take the server down. A client that closes the connection before the answer ends its command; so does cancelling a job. `key db` is not killed but let to end by itself (#287): its stdin stays open while it runs, and once it closes (the job cancelled, the connection or the server gone) the command ends as on Ctrl+C, taking its hardware breakpoints out of WeChat and detaching first, with `user_interrupt`. A cancelled `key db` job is killed only when it has not ended within 10 s.
 
 The price is paid on every such request: starting the process and reading the configuration take about 20 ms, and each request opens the databases again with cold caches. On a large account (Windows, release build) the conversation list takes about 37 ms this way and a page of messages about 31 ms. For the reads a chat client makes all the time, use [`/api/`](#in-process-reads).
 
