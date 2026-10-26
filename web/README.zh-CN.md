@@ -92,8 +92,11 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 | `src/calendar/` | 网页自己的日历（#224）：`Calendar.tsx`（按 ARIA grid 模式排的一个月，周一开头，可切换到按月、按年选择），`DateRange.tsx`（在一个日历里选时间范围），`DateField.tsx`（选一天），`dates.ts`（用本地时间的 `YYYY-MM-DD` 表示日期） |
 | `src/api/messages.ts` | 会话的消息（服务端解析好的 `chat messages --parsed`，按游标翻页）、群成员，以及给 `<img>`、`<audio>`、`<video>` 用的媒体地址 |
 | `src/chat/` | 聊天页（#196）：会话列表，含搜索、筛选、折叠的群聊和方向键切换（#197）；按类型显示消息，往上滚动时加载更早的消息（#198）；搜索卡片，以及跳到某一天或某条搜索结果，之后往下滚动时加载更新的消息（#199） |
-| `src/App.tsx`、`src/app.css` | 工作台界面：左侧导航，中间是记录，右侧是操作控制台 |
+| `src/App.tsx`、`src/app.css` | 工作台（#401）：左侧导航，中间是页面，右侧是操作控制台；持有各页面共用的东西（连接、账号、会话列表、任务），负责从一个页面打开另一个页面，并把各页面的卡片汇集到控制台 |
+| `src/shell/` | 所有页面共用的外壳：侧边栏与连接状态、媒体预览、整个网页的偏好（实时消息、导出附带媒体、减少动画）、页面的两种形状（`ScrollPage`、`BrowserPanel`），以及 `page.ts`：页面拿到什么（`Shell`）、交回什么（`Page`） |
 | `src/mock/` | 示例记录，界面接入 API 后删除 |
 | `src/api/jobs.ts`、`src/jobs/` | 作业（#211）：用 `Prefer: respond-async` 启动命令（导出时带 `?return=file`），读取 `/jobs` 列表，通过 `/jobs/<id>/events` 跟踪正在运行的作业，用 `DELETE` 取消或删除，从 `/jobs/<id>/file` 保存文件；任务中心列出全部作业，控制台用 `export messages` 导出打开的会话 |
 | `src/exports/` | 导出页（#211）：从会话列表里勾选（可按类型筛选、一次全选当前列出的），每个会话一个作业，用 `export messages` 导出，可选 9 种格式、日期范围、发送者名称、媒体文件和 Excel 精简列；也可以用 `export sessions` 导出会话列表本身 |
 | `src/files.ts` | 网页保存的文件：把多行数据生成 .xlsx，或把任意内容交给浏览器下载 |
+
+每个页面是它自己目录下的一个 hook，`use…Page`（`src/chat/useChatPage.tsx`、`src/contacts/useContactsPage.tsx` 等）：它保存页面的状态，交回页面显示的内容、它在控制台的卡片，以及要显示哪些卡片。App 每次渲染都调用全部页面，所以重新打开一个页面时，它保持离开时的样子；而每个页面只在打开时才读取记录。状态放在用到它的地方：页面的筛选和选择放在页面的 hook 里；几个页面共用的（会话列表、任务、配置档案）放在 App，通过 `Shell` 交给它们；只有一个组件用到的放在那个组件里。一个页面只能通过 App 打开另一个页面（`chatWith`、`openInChat`）。
