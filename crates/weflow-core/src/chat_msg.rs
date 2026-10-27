@@ -1074,7 +1074,7 @@ pub struct ChatMessage {
     pub location_label: Option<String>,
     #[serde(flatten)]
     pub t49: Type49Info,
-    /// The message's key as the desktop app builds it.
+    /// The message's key: the same message has the same key on every machine. It is opaque; only compare it.
     pub message_key: String,
     #[serde(skip)]
     pub db_path: Option<String>,
@@ -1159,7 +1159,7 @@ fn db_base_name(path: &str) -> String {
     }
 }
 
-/// `buildMessageKey`
+/// `buildMessageKey`, scoped by the database's name (`message_0`) instead of its path.
 pub fn build_message_key(
     local_id: i64,
     server_id: i64,
@@ -1176,15 +1176,12 @@ pub fn build_message_key(
         sort_seq.max(0),
     );
     let sender = encode_uri_component(sender.unwrap_or(""));
-    let db_name = if src.db_name.is_empty() {
+    // The database's name, not its path as the desktop app has it: the path would tell the client this
+    // machine's directories and change the key on another one (#443).
+    let scope = if src.db_name.is_empty() {
         db_base_name(&src.db_path)
     } else {
         src.db_name.clone()
-    };
-    let scope = if !src.db_path.is_empty() {
-        src.db_path.clone()
-    } else {
-        db_name
     };
     if local_id > 0 && !scope.is_empty() && !src.table_name.is_empty() {
         return format!(
@@ -1589,17 +1586,16 @@ mod tests {
     }
 
     #[test]
-    fn message_keys_follow_the_desktop_format() {
+    fn message_keys_name_the_database_without_its_path() {
         let rows = vec![
             json!({"local_id": "5", "create_time": "10", "local_type": "1", "message_content": "x", "_db_path": "/a b/message_0.db", "table_name": "Msg_abc"}),
             json!({"local_id": "6", "create_time": "11", "local_type": "1", "message_content": "x", "_db_path": "/a/message_1.db"}),
             json!({"local_id": "0", "server_id": "77", "create_time": "12", "local_type": "1", "message_content": "x"}),
         ];
         let m = map_rows(&rows, "wxid_me");
-        assert_eq!(m[0].message_key, "%2Fa%20b%2Fmessage_0.db:Msg_abc:5");
+        assert_eq!(m[0].message_key, "message_0:Msg_abc:5");
         assert!(
-            m[1].message_key
-                .starts_with("local:%2Fa%2Fmessage_1.db:6:11:11:"),
+            m[1].message_key.starts_with("local:message_1:6:11:11:"),
             "{}",
             m[1].message_key
         );

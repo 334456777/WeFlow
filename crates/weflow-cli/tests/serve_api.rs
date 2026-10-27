@@ -3105,6 +3105,14 @@ fn answers_fit_the_contract() {
     ] {
         let messages = read(target, Some(list_of("ParsedMessage")));
         assert!(!messages.as_array().unwrap().is_empty(), "{target}");
+        // a key names the database, not where it is on this machine (#443)
+        for m in messages.as_array().unwrap() {
+            let key = m["messageKey"].as_str().unwrap();
+            assert!(
+                key.contains("message_") && !key.contains("%2F") && !key.contains("%5C"),
+                "{key}"
+            );
+        }
     }
     let contacts = read("/api/chat/contacts?parsed=true", Some(list_of("Contact")));
     assert!(contacts.as_array().unwrap().len() >= 5, "{contacts}");

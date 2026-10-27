@@ -100,7 +100,7 @@ export interface ParsedMessage {
   transferPayerUsername?: string;
   transferReceiverUsername?: string;
   chatRecordTitle?: string;
-  /** The message's key as the desktop app builds it. */
+  /** The message's key: the same message has the same key on every machine. It is opaque; only compare it. */
   messageKey: string;
   /**
    * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.

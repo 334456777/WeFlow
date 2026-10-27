@@ -656,7 +656,7 @@
           },
           "messageKey": {
             "type": "string",
-            "description": "The message's key as the desktop app builds it."
+            "description": "The message's key: the same message has the same key on every machine. It is opaque; only compare it."
           },
           "_cursor": {
             "type": "string",
