@@ -1475,6 +1475,86 @@
         }
       }
     },
+    "/api/insight/footprint": {
+      "get": {
+        "operationId": "api_insight_footprint",
+        "x-weflow-command": "insight footprint",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Footprint"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/insight/get": {
+      "get": {
+        "operationId": "api_insight_get",
+        "x-weflow-command": "insight get",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightLookup"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/report/annual/years": {
       "get": {
         "operationId": "api_report_annual_years",
@@ -4251,6 +4331,474 @@
           "connected"
         ],
         "description": "That the databases open with the configured key (`db test`); a failure is an error instead."
+      },
+      "Footprint": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/FootprintSummary"
+          },
+          "private_sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FootprintSession"
+            },
+            "description": "The private chats with a message in the range, the latest first."
+          },
+          "private_segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FootprintSegment"
+            },
+            "description": "The stretches of each private chat, in time order: a new one begins after a long pause."
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FootprintMention"
+            },
+            "description": "The group messages that @-mention me, the latest first."
+          },
+          "mention_groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionGroup"
+            },
+            "description": "The groups of those, the one with the most first."
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/FootprintDiagnostics"
+          }
+        },
+        "required": [
+          "summary",
+          "private_sessions",
+          "private_segments",
+          "mentions",
+          "mention_groups",
+          "diagnostics"
+        ],
+        "description": "My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was\n@-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none."
+      },
+      "FootprintSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "private_inbound_people": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "The people who wrote to me."
+          },
+          "private_replied_people": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Those of them I answered."
+          },
+          "private_outbound_people": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "The people I wrote to."
+          },
+          "private_reply_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Replied over inbound, from 0 to 1."
+          },
+          "mention_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "mention_group_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "private_inbound_people",
+          "private_replied_people",
+          "private_outbound_people",
+          "private_reply_rate",
+          "mention_count",
+          "mention_group_count"
+        ]
+      },
+      "FootprintSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "incoming_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outgoing_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "replied": {
+            "type": "boolean"
+          },
+          "first_incoming_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "first_reply_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latest_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "anchor_local_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The message to open the chat at, by its local id and time."
+          },
+          "anchor_create_time": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "session_id",
+          "incoming_count",
+          "outgoing_count",
+          "replied",
+          "first_incoming_ts",
+          "first_reply_ts",
+          "latest_ts",
+          "anchor_local_id",
+          "anchor_create_time"
+        ],
+        "description": "A private chat of the footprint."
+      },
+      "FootprintSegment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "segment_index": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "start_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "end_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "duration_sec": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "incoming_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outgoing_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "replied": {
+            "type": "boolean"
+          },
+          "first_incoming_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "first_reply_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latest_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "anchor_local_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "anchor_create_time": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "session_id",
+          "segment_index",
+          "start_ts",
+          "end_ts",
+          "duration_sec",
+          "incoming_count",
+          "outgoing_count",
+          "message_count",
+          "replied",
+          "first_incoming_ts",
+          "first_reply_ts",
+          "latest_ts",
+          "anchor_local_id",
+          "anchor_create_time"
+        ],
+        "description": "A stretch of a private chat."
+      },
+      "FootprintMention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "local_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "create_time": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sender_username": {
+            "type": "string"
+          },
+          "message_content": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "The message's `source` XML, which lists who it mentions."
+          }
+        },
+        "required": [
+          "session_id",
+          "local_id",
+          "create_time",
+          "sender_username",
+          "message_content",
+          "source"
+        ],
+        "description": "A group message that @-mentions me."
+      },
+      "MentionGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latest_ts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "session_id",
+          "count",
+          "latest_ts"
+        ],
+        "description": "A group I was @-mentioned in."
+      },
+      "FootprintDiagnostics": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether a list was cut at its limit."
+          },
+          "private_truncated": {
+            "type": "boolean"
+          },
+          "mention_truncated": {
+            "type": "boolean"
+          },
+          "scanned_dbs": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "private_session_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "group_session_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "fallback_used": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "truncated",
+          "private_truncated",
+          "mention_truncated",
+          "scanned_dbs",
+          "elapsed_ms",
+          "private_session_count",
+          "group_session_count",
+          "fallback_used"
+        ],
+        "description": "How the footprint was read."
+      },
+      "InsightLookup": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "record": {
+            "$ref": "#/components/schemas/InsightRecord"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "description": "One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a\nfailure of the command instead, so an answer that succeeds holds `success: true` and the record."
+      },
+      "InsightRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountScope": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "triggerReason": {
+            "type": "string"
+          },
+          "insight": {
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "log": {
+            "$ref": "#/components/schemas/InsightRecordLog"
+          }
+        },
+        "required": [
+          "id",
+          "accountScope",
+          "createdAt",
+          "sessionId",
+          "displayName",
+          "triggerReason",
+          "insight",
+          "read",
+          "log"
+        ],
+        "description": "An insight the engine wrote about a conversation."
+      },
+      "InsightRecordLog": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "maxTokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "temperature": {
+            "type": "number",
+            "format": "double"
+          },
+          "triggerReason": {
+            "type": "string"
+          },
+          "allowContext": {
+            "type": "boolean"
+          },
+          "contextCount": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "systemPrompt": {
+            "type": "string"
+          },
+          "userPrompt": {
+            "type": "string"
+          },
+          "rawOutput": {
+            "type": "string"
+          },
+          "finalInsight": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "endpoint",
+          "model",
+          "maxTokens",
+          "temperature",
+          "triggerReason",
+          "allowContext",
+          "contextCount",
+          "systemPrompt",
+          "userPrompt",
+          "rawOutput",
+          "finalInsight",
+          "durationMs",
+          "createdAt"
+        ],
+        "description": "What was asked of the AI model for a record, and what it answered."
       },
       "Job": {
         "type": "object",

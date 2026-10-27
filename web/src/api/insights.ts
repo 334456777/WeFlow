@@ -2,6 +2,7 @@
 // the command routes; one record's log is read in the server's process (`/api/`). The records of the current account
 // only, newest first.
 import { call, get } from './client';
+import type * as Contract from './contract.gen';
 
 /** A record as `insight records` lists it. */
 export interface InsightRecord {
@@ -17,18 +18,8 @@ export interface InsightRecord {
   read: boolean;
 }
 
-/** How a record came to be: the request to the model and its answer (`insight get`). */
-export interface InsightLog {
-  endpoint: string;
-  model: string;
-  maxTokens: number;
-  triggerReason: string;
-  contextCount: number;
-  systemPrompt: string;
-  userPrompt: string;
-  rawOutput: string;
-  durationMs: number;
-}
+/** How a record came to be: the request to the model and its answer (`insight get`, the contract's, #430). */
+export type InsightLog = Contract.InsightRecordLog;
 
 export interface InsightContact { sessionId: string; displayName: string; avatarUrl?: string; count: number }
 
@@ -51,7 +42,7 @@ export async function getInsights(filter: { keyword?: string; session?: string |
 }
 
 export async function getInsightLog(id: string, signal?: AbortSignal): Promise<InsightLog | null> {
-  const found = await get<{ record?: { log?: InsightLog } }>('api/insight/get', { id }, signal);
+  const found = await get<Contract.InsightLookup>('api/insight/get', { id }, signal);
   return found.record?.log ?? null;
 }
 

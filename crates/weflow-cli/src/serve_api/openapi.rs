@@ -459,7 +459,7 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
+            BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightLookup,
             MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
             ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
@@ -588,6 +588,8 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("db detect", of(generator.subschema_for::<DbCandidates>()));
         data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));
         data.insert("db test", of(generator.subschema_for::<DbConnection>()));
+        data.insert("insight footprint", of(generator.subschema_for::<Footprint>()));
+        data.insert("insight get", of(generator.subschema_for::<InsightLookup>()));
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();

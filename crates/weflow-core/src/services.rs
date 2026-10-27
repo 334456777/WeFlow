@@ -576,8 +576,8 @@ impl ServiceHub {
     }
 
     /// `insight footprint`: the same statistics as [`Self::footprint`].
-    pub fn insight_footprint(&self, begin: i64, end: i64) -> AppResult<Value> {
-        self.footprint(begin, end)
+    pub fn insight_footprint(&self, begin: i64, end: i64) -> AppResult<crate::contract::Footprint> {
+        crate::contract::Footprint::of(self.footprint(begin, end)?)
     }
 
     /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases, so the command

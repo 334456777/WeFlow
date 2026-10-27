@@ -698,10 +698,17 @@ fn footprint_reports_private_chats_segments_and_mentions() {
     assert_eq!(f["private_segments"].as_array().unwrap().len(), 4);
     assert_eq!(f["private_segments"][0]["message_count"], 2);
     assert_eq!(f["diagnostics"]["truncated"], false);
+    // read into the contract's types and written back out the same, every field of it (#430)
     assert_eq!(
-        hub.insight_footprint(0, 0).unwrap()["summary"]["private_inbound_people"],
+        hub.insight_footprint(0, 0)
+            .unwrap()
+            .summary
+            .private_inbound_people,
         1
     );
+    let typed = weflow_core::contract::Footprint::of(f.clone()).unwrap();
+    assert!(!typed.private_segments.is_empty());
+    assert_eq!(serde_json::to_value(&typed).unwrap(), f);
     // from the second day through the fourth (inclusive): messages 3 (Bob's) and 4 (mine), a segment each
     let d = hub.footprint(1_700_086_400, 1_700_259_200).unwrap();
     assert_eq!(

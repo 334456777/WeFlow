@@ -462,9 +462,9 @@ impl Read {
             }
             Read::InsightFootprint { start, end } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.insight_footprint(b, e)
+                Ok(json!(hub.insight_footprint(b, e)?))
             }
-            Read::InsightGet { id } => Ok(hub.insight_get_record(id)),
+            Read::InsightGet { id } => Ok(json!(hub.insight_get_record(id))),
             Read::ReportAnnualYears => Ok(json!(hub.report_available_years()?)),
             Read::CacheList => Ok(json!(hub.cache_list())),
             Read::ConfigGet { key } => {

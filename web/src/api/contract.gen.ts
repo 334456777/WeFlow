@@ -831,6 +831,140 @@ export interface DbConnection {
 }
 
 /**
+ * My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was
+ * @-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none.
+ */
+export interface Footprint {
+  summary: FootprintSummary;
+  /** The private chats with a message in the range, the latest first. */
+  private_sessions: FootprintSession[];
+  /** The stretches of each private chat, in time order: a new one begins after a long pause. */
+  private_segments: FootprintSegment[];
+  /** The group messages that @-mention me, the latest first. */
+  mentions: FootprintMention[];
+  /** The groups of those, the one with the most first. */
+  mention_groups: MentionGroup[];
+  diagnostics: FootprintDiagnostics;
+}
+
+export interface FootprintSummary {
+  /** The people who wrote to me. */
+  private_inbound_people: number;
+  /** Those of them I answered. */
+  private_replied_people: number;
+  /** The people I wrote to. */
+  private_outbound_people: number;
+  /** Replied over inbound, from 0 to 1. */
+  private_reply_rate: number;
+  mention_count: number;
+  mention_group_count: number;
+}
+
+/** A private chat of the footprint. */
+export interface FootprintSession {
+  session_id: string;
+  incoming_count: number;
+  outgoing_count: number;
+  replied: boolean;
+  first_incoming_ts: number;
+  first_reply_ts: number;
+  latest_ts: number;
+  /** The message to open the chat at, by its local id and time. */
+  anchor_local_id: number;
+  anchor_create_time: number;
+}
+
+/** A stretch of a private chat. */
+export interface FootprintSegment {
+  session_id: string;
+  segment_index: number;
+  start_ts: number;
+  end_ts: number;
+  duration_sec: number;
+  incoming_count: number;
+  outgoing_count: number;
+  message_count: number;
+  replied: boolean;
+  first_incoming_ts: number;
+  first_reply_ts: number;
+  latest_ts: number;
+  anchor_local_id: number;
+  anchor_create_time: number;
+}
+
+/** A group message that @-mentions me. */
+export interface FootprintMention {
+  session_id: string;
+  local_id: number;
+  create_time: number;
+  sender_username: string;
+  message_content: string;
+  /** The message's `source` XML, which lists who it mentions. */
+  source: string;
+}
+
+/** A group I was @-mentioned in. */
+export interface MentionGroup {
+  session_id: string;
+  count: number;
+  latest_ts: number;
+}
+
+/** How the footprint was read. */
+export interface FootprintDiagnostics {
+  /** Whether a list was cut at its limit. */
+  truncated: boolean;
+  private_truncated: boolean;
+  mention_truncated: boolean;
+  scanned_dbs: number;
+  elapsed_ms: number;
+  private_session_count: number;
+  group_session_count: number;
+  fallback_used: boolean;
+}
+
+/**
+ * One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a
+ * failure of the command instead, so an answer that succeeds holds `success: true` and the record.
+ */
+export interface InsightLookup {
+  success: boolean;
+  record?: InsightRecord;
+  error?: string;
+}
+
+/** An insight the engine wrote about a conversation. */
+export interface InsightRecord {
+  id: string;
+  accountScope: string;
+  createdAt: number;
+  sessionId: string;
+  displayName: string;
+  avatarUrl?: string;
+  triggerReason: string;
+  insight: string;
+  read: boolean;
+  log: InsightRecordLog;
+}
+
+/** What was asked of the AI model for a record, and what it answered. */
+export interface InsightRecordLog {
+  endpoint: string;
+  model: string;
+  maxTokens: number;
+  temperature: number;
+  triggerReason: string;
+  allowContext: boolean;
+  contextCount: number;
+  systemPrompt: string;
+  userPrompt: string;
+  rawOutput: string;
+  finalInsight: string;
+  durationMs: number;
+  createdAt: number;
+}
+
+/**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
  */
@@ -926,6 +1060,8 @@ export interface Answers {
   "group member-messages": MemberMessages;
   "group members": GroupMembers;
   "group ranking": GroupRank[];
+  "insight footprint": Footprint;
+  "insight get": InsightLookup;
   "report annual years": ReportYears;
   "runtime info": RuntimeInfo;
   /** How many posts each poster has, by username; with `user`, that one's */

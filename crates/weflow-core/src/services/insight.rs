@@ -156,7 +156,7 @@ impl ServiceHub {
         self.record_store().list(&self.insight_scope(), f)
     }
 
-    pub fn insight_get_record(&self, id: &str) -> Value {
+    pub fn insight_get_record(&self, id: &str) -> crate::contract::InsightLookup {
         self.record_store().get(&self.insight_scope(), id)
     }
 

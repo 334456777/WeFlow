@@ -3164,6 +3164,7 @@ fn answers_fit_the_contract() {
         "/api/db/detect",
         "/api/db/wxid",
         "/api/db/test",
+        "/api/insight/footprint",
     ] {
         read(target, None);
     }
