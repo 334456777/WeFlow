@@ -16,14 +16,17 @@ use crate::message::{decode_message_content, row_int, rx};
 
 const CONVERSATION_GAP: i64 = 3600;
 
-/// A part of the native layer's answer, read into the contract's type: absent and null are `None`, and a field the
-/// type does not know fails here rather than leave the answer unseen.
-fn native<T: serde::de::DeserializeOwned>(part: Option<Value>, what: &str) -> AppResult<Option<T>> {
-    match part {
+/// Takes `key` out of the native layer's answer and reads it into the contract's type: absent and null are `None`,
+/// and a field the type does not know fails here rather than leave the answer unseen.
+fn from_native<T: serde::de::DeserializeOwned>(
+    answer: &mut Value,
+    key: &str,
+) -> AppResult<Option<T>> {
+    match answer.get_mut(key).map(Value::take) {
         None | Some(Value::Null) => Ok(None),
         Some(v) => serde_json::from_value(v)
             .map(Some)
-            .map_err(|e| AppError::runtime(format!("the native {what}: {e}"))),
+            .map_err(|e| AppError::runtime(format!("the native {key}: {e}"))),
     }
 }
 
@@ -615,7 +618,7 @@ impl ServiceHub {
             normalize_timestamp(peak_begin),
             normalize_timestamp(peak_end),
         );
-        if let Ok(ex) = extras {
+        if let Ok(mut ex) = extras {
             if let Some(hm) = ex
                 .get("heatmap")
                 .and_then(Value::as_array)
@@ -639,7 +642,10 @@ impl ServiceHub {
                     conversation.insert(sid.clone(), (num(&st["initiated"]), num(&st["received"])));
                 }
             }
-            response_sql = ex.get("response").and_then(Value::as_object).cloned();
+            response_sql = match ex.get_mut("response").map(Value::take) {
+                Some(Value::Object(m)) => Some(m),
+                _ => None,
+            };
             if let (false, Some(p)) = (
                 peak_day_key.is_empty(),
                 ex.get("peakDay").and_then(Value::as_object),
@@ -649,16 +655,8 @@ impl ServiceHub {
                     daily_contact.insert(peak_day_key.clone(), m);
                 }
             }
-            if let Some(p) = ex
-                .get("topPhrases")
-                .and_then(Value::as_array)
-                .filter(|p| !p.is_empty())
-            {
-                top_phrases_sql = Some(
-                    serde_json::from_value(Value::Array(p.clone()))
-                        .map_err(|e| AppError::runtime(format!("a native phrase: {e}")))?,
-                );
-            }
+            top_phrases_sql =
+                from_native::<Vec<PhraseCount>>(&mut ex, "topPhrases")?.filter(|p| !p.is_empty());
             if let Some(s) = ex.get("streak") {
                 let sid = s.get("sessionId").and_then(Value::as_str).unwrap_or("");
                 let days = num(&s["days"]);
@@ -1505,10 +1503,13 @@ impl ServiceHub {
 
         self.emit_progress("dual-report", "chat statistics…", 30, 100);
         let (b, e) = normalize_range(start, end);
-        let cpp = wcdb.dual_report_stats(friend, b, e).map_err(|err| {
+        let mut cpp = wcdb.dual_report_stats(friend, b, e).map_err(|err| {
             AppError::native(format!("failed to get dual-report statistics: {err}"))
         })?;
-        let counts = cpp.get("counts").cloned().unwrap_or_else(|| json!({}));
+        let counts = cpp
+            .get_mut("counts")
+            .map(Value::take)
+            .unwrap_or_else(|| json!({}));
         let emoji_count = num(&counts["emoji"]);
 
         let (mut my_md5, mut my_url, mut my_count) = (None::<String>, None::<String>, -1i64);
@@ -1668,8 +1669,8 @@ impl ServiceHub {
         };
 
         let exclude: HashSet<&str> = exclude_words.iter().map(String::as_str).collect();
-        let filter = |key: &str| -> AppResult<Vec<PhraseCount>> {
-            let list: Vec<PhraseCount> = native(cpp.get(key).cloned(), key)?.unwrap_or_default();
+        let mut filter = |key: &str| -> AppResult<Vec<PhraseCount>> {
+            let list: Vec<PhraseCount> = from_native(&mut cpp, key)?.unwrap_or_default();
             Ok(list
                 .into_iter()
                 .filter(|p| !exclude.contains(p.phrase.as_str()))
@@ -1713,7 +1714,6 @@ impl ServiceHub {
         let my_excl = exclusive(&my_map, &fr_map);
         let fr_excl = exclusive(&fr_map, &my_map);
 
-        let part = |key: &str| cpp.get(key).cloned();
         let report = DualReport {
             year: report_year,
             self_name: my_name,
@@ -1728,11 +1728,11 @@ impl ServiceHub {
             top_phrases,
             my_exclusive_phrases: my_excl,
             friend_exclusive_phrases: fr_excl,
-            heatmap: native(part("heatmap"), "heatmap")?,
-            initiative: native(part("initiative"), "initiative")?,
-            response: native(part("response"), "response")?,
-            monthly: native(part("monthly"), "monthly")?,
-            streak: native(part("streak"), "streak")?,
+            heatmap: from_native(&mut cpp, "heatmap")?,
+            initiative: from_native(&mut cpp, "initiative")?,
+            response: from_native(&mut cpp, "response")?,
+            monthly: from_native(&mut cpp, "monthly")?,
+            streak: from_native(&mut cpp, "streak")?,
         };
         self.emit_progress("dual-report", "done", 100, 100);
         Ok(report)
