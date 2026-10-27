@@ -95,7 +95,7 @@ fn member_analytics_and_exports() {
 
     let csv = root.join("members.csv");
     let res = hub.group_export_members("room1@chatroom", &csv).unwrap();
-    assert_eq!(res["count"], 3);
+    assert_eq!(res.count, 3);
     let text = std::fs::read_to_string(&csv).unwrap();
     assert!(text.starts_with('\u{feff}'));
     assert!(
@@ -119,7 +119,7 @@ fn member_analytics_and_exports() {
     let res = hub
         .group_export_member_messages("room1@chatroom", "wxid_bob", &msgs, 0, 0)
         .unwrap();
-    assert_eq!(res["count"], 1);
+    assert_eq!(res.count, 1);
     let csv_text = std::fs::read_to_string(&msgs).unwrap();
     assert!(
         csv_text.contains("序号,时间,发送者wxid,消息类型,内容"),

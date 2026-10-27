@@ -1732,6 +1732,206 @@
         }
       }
     },
+    "/export/contacts": {
+      "get": {
+        "operationId": "api_export_contacts",
+        "x-weflow-command": "export contacts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExportWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/footprint": {
+      "get": {
+        "operationId": "api_export_footprint",
+        "x-weflow-command": "export footprint",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExportWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/sessions": {
+      "get": {
+        "operationId": "api_export_sessions",
+        "x-weflow-command": "export sessions",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExportWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/group/export-member-messages": {
+      "get": {
+        "operationId": "api_group_export_member_messages",
+        "x-weflow-command": "group export-member-messages",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/GroupExported"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/group/export-members": {
+      "get": {
+        "operationId": "api_group_export_members",
+        "x-weflow-command": "group export-members",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/GroupExported"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/group/hours": {
       "get": {
         "operationId": "api_group_hours",
@@ -2602,6 +2802,46 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/RuntimeInfo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sns/export": {
+      "get": {
+        "operationId": "api_sns_export",
+        "x-weflow-command": "sns export",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsExported"
                     }
                   }
                 }
@@ -6426,6 +6666,74 @@
           "lang"
         ],
         "description": "The language `weflow lang` saved: `en` or `zh`."
+      },
+      "ExportWritten": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "description": "The format it was written in: `json`, `csv`, `excel`, …"
+          }
+        },
+        "required": [
+          "out",
+          "format"
+        ],
+        "description": "The file an export wrote (`export sessions`, `contacts`, `footprint`)."
+      },
+      "GroupExported": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The members, or the messages, written."
+          }
+        },
+        "required": [
+          "success",
+          "count"
+        ],
+        "description": "What `group export-members` or `export-member-messages` wrote."
+      },
+      "SnsExported": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Empty when no post matched, and nothing was written."
+          },
+          "postCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "mediaCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The media files copied beside it."
+          }
+        },
+        "required": [
+          "success",
+          "filePath",
+          "postCount",
+          "mediaCount"
+        ],
+        "description": "What `sns export` wrote."
       },
       "BackupCreated": {
         "type": "object",

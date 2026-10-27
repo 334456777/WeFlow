@@ -498,7 +498,7 @@ async fn sns_export(hub: &Arc<ServiceHub>, params: &Params) -> Response {
         end: api::parse_time_param(params.get("end").map(String::as_str), true),
     };
     match hub.sns_export_timeline(&opts).await {
-        Ok(v) => send_json(&v),
+        Ok(v) => send_json(&json!(v)),
         Err(e) => send_error(500, &e.message),
     }
 }

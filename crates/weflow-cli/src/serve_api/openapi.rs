@@ -617,7 +617,16 @@ pub(super) fn contract() -> &'static Contract {
                 json!({ "description": "Where the config file is", "type": "string" }),
             );
             data.insert("lang", of(generator.subschema_for::<LangSaved>()));
-            use weflow_core::contract::{BackupCreated, BackupRestored};
+            use weflow_core::contract::{
+                BackupCreated, BackupRestored, ExportWritten, GroupExported, SnsExported,
+            };
+            for command in ["export sessions", "export contacts", "export footprint"] {
+                data.insert(command, of(generator.subschema_for::<ExportWritten>()));
+            }
+            for command in ["group export-members", "group export-member-messages"] {
+                data.insert(command, of(generator.subschema_for::<GroupExported>()));
+            }
+            data.insert("sns export", of(generator.subschema_for::<SnsExported>()));
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",

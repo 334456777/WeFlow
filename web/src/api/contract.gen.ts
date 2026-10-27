@@ -1128,6 +1128,32 @@ export interface LangSaved {
   lang: string;
 }
 
+/** The file an export wrote (`export sessions`, `contacts`, `footprint`). */
+export interface ExportWritten {
+  out: string;
+  /** The format it was written in: `json`, `csv`, `excel`, … */
+  format: string;
+}
+
+/** What `group export-members` or `export-member-messages` wrote. */
+export interface GroupExported {
+  /** Always true. */
+  success: boolean;
+  /** The members, or the messages, written. */
+  count: number;
+}
+
+/** What `sns export` wrote. */
+export interface SnsExported {
+  /** Always true. */
+  success: boolean;
+  /** Empty when no post matched, and nothing was written. */
+  filePath: string;
+  postCount: number;
+  /** The media files copied beside it. */
+  mediaCount: number;
+}
+
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
   out: string;
@@ -1549,6 +1575,11 @@ export interface Answers {
   "db detect": DbCandidates;
   "db test": DbConnection;
   "db wxid": DbAccounts;
+  "export contacts": ExportWritten;
+  "export footprint": ExportWritten;
+  "export sessions": ExportWritten;
+  "group export-member-messages": GroupExported;
+  "group export-members": GroupExported;
   "group hours": GroupHours;
   "group list": GroupChat[];
   "group media": GroupMedia;
@@ -1571,6 +1602,7 @@ export interface Answers {
   "report annual years": ReportYears;
   "report dual generate": DualReport;
   "runtime info": RuntimeInfo;
+  "sns export": SnsExported;
   /** How many posts each poster has, by username; with `user`, that one's */
   "sns post-counts": Record<string, number> | UserPosts;
   "sns stats": SnsStats;

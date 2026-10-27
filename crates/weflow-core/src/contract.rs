@@ -1337,6 +1337,36 @@ pub struct InsightLookup {
     pub error: Option<String>,
 }
 
+/// The file an export wrote (`export sessions`, `contacts`, `footprint`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct ExportWritten {
+    pub out: PathBuf,
+    /// The format it was written in: `json`, `csv`, `excel`, …
+    pub format: String,
+}
+
+/// What `group export-members` or `export-member-messages` wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct GroupExported {
+    /// Always true.
+    pub success: bool,
+    /// The members, or the messages, written.
+    pub count: usize,
+}
+
+/// What `sns export` wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SnsExported {
+    /// Always true.
+    pub success: bool,
+    /// Empty when no post matched, and nothing was written.
+    pub file_path: PathBuf,
+    pub post_count: usize,
+    /// The media files copied beside it.
+    pub media_count: usize,
+}
+
 /// The backup `backup create` wrote.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

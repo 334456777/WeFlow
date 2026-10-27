@@ -8,7 +8,7 @@ mod serve_api;
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
-use weflow_core::contract::{PlannedRemoval, RemovalPlan};
+use weflow_core::contract::{ExportWritten, PlannedRemoval, RemovalPlan};
 use weflow_core::dates::date_range_args;
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::output::{failure, success};
@@ -2790,7 +2790,12 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             if !sessions.is_empty() {
                 data = filter_named_items(data, sessions);
             }
-            write_export("sessions", format.as_deref(), out, &data)
+            Ok(json!(write_export(
+                "sessions",
+                format.as_deref(),
+                out,
+                &data
+            )?))
         }
         ExportSubcommand::Contacts {
             format,
@@ -2810,7 +2815,12 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             } else {
                 hub.contacts()?
             };
-            write_export("contacts", format.as_deref(), out, &data)
+            Ok(json!(write_export(
+                "contacts",
+                format.as_deref(),
+                out,
+                &data
+            )?))
         }
         ExportSubcommand::Footprint {
             format,
@@ -2834,7 +2844,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             let (b, e) = day_span(start, end)?;
             let data = hub.footprint(b, e)?;
             if extension == "json" {
-                return write_export("footprint", Some("json"), out, &data);
+                return Ok(json!(write_export("footprint", Some("json"), out, &data)?));
             }
             let (headers, rows) = hub.footprint_timeline(&data)?;
             let path = export_path(out, &format!("footprint.{extension}"));
@@ -2857,7 +2867,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 weflow_core::export::export_table_excel(&headers, &rows, &path)
                     .map_err(|err| AppError::runtime(err.to_string()))?;
             }
-            Ok(json!({ "out": path, "format": format }))
+            Ok(json!(ExportWritten { out: path, format }))
         }
         ExportSubcommand::Media {
             out,
@@ -3099,10 +3109,16 @@ fn handle_group(command: &GroupCommand, hub: &ServiceHub) -> AppResult<Value> {
             end,
         } => {
             let (b, e) = day_span(start, end)?;
-            hub.group_export_member_messages(chatroom_id, username, out, b, e)
+            Ok(json!(hub.group_export_member_messages(
+                chatroom_id,
+                username,
+                out,
+                b,
+                e
+            )?))
         }
         GroupSubcommand::ExportMembers { chatroom_id, out } => {
-            hub.group_export_members(chatroom_id, out)
+            Ok(json!(hub.group_export_members(chatroom_id, out)?))
         }
     }
 }
@@ -3168,17 +3184,19 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
             end,
             media,
         } => {
-            hub.sns_export_timeline(&SnsExportOptions {
-                output_dir: out.clone(),
-                format: format.clone(),
-                usernames: users.clone(),
-                keyword: keyword.clone(),
-                export_media: *media,
-                start: *start,
-                end: *end,
-                ..Default::default()
-            })
-            .await
+            let exported = hub
+                .sns_export_timeline(&SnsExportOptions {
+                    output_dir: out.clone(),
+                    format: format.clone(),
+                    usernames: users.clone(),
+                    keyword: keyword.clone(),
+                    export_media: *media,
+                    start: *start,
+                    end: *end,
+                    ..Default::default()
+                })
+                .await?;
+            Ok(json!(exported))
         }
         SnsSubcommand::Media { url, key, out } => {
             let fetched = hub.sns_fetch_media(url, key.as_deref()).await?;
@@ -3923,7 +3941,12 @@ fn write_json_file(path: &Path, value: &Value) -> AppResult<()> {
         .map_err(|err| AppError::runtime(format!("failed to write {}: {err}", path.display())))
 }
 
-fn write_export(name: &str, format: Option<&str>, out: &Path, value: &Value) -> AppResult<Value> {
+fn write_export(
+    name: &str,
+    format: Option<&str>,
+    out: &Path,
+    value: &Value,
+) -> AppResult<ExportWritten> {
     let format = format.unwrap_or("json").to_ascii_lowercase();
     let extension = match format.as_str() {
         "json" => "json",
@@ -3958,7 +3981,7 @@ fn write_export(name: &str, format: Option<&str>, out: &Path, value: &Value) -> 
             .map_err(|err| AppError::runtime(err.to_string()))?,
         _ => unreachable!(),
     }
-    Ok(json!({ "out": path, "format": format }))
+    Ok(ExportWritten { out: path, format })
 }
 
 fn export_path(out: &Path, default_name: &str) -> PathBuf {
