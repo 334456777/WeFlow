@@ -755,9 +755,8 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.list("wxid:me", &f)["total"], 1);
-        assert_eq!(
-            s.get("wxid:other", &a.id).success,
-            false,
+        assert!(
+            !s.get("wxid:other", &a.id).success,
             "records of other accounts are invisible"
         );
         assert_eq!(s.mark_read("wxid:me", &a.id)["success"], true);
