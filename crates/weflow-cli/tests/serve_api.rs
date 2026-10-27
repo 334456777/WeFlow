@@ -2181,6 +2181,47 @@ fn file_exports_fit_the_contract() {
 }
 
 #[test]
+fn tool_answers_fit_the_contract() {
+    let root = temp_root("tools-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    // what needs no network: the downloads (`ffmpeg install`, `web install`, `use`, `update`, `list --remote`) are
+    // left out
+    for (verb, route, body, schema) in [
+        ("GET", "/ffmpeg/path", "", "FfmpegPath"),
+        (
+            "PUT",
+            "/ffmpeg/set/baseurl",
+            r#"{"url": "https://mirror.example.com/ffmpeg"}"#,
+            "FfmpegBaseUrl",
+        ),
+        ("DELETE", "/ffmpeg/unset/baseurl", "", "FfmpegBaseUrl"),
+        ("GET", "/runtime/manifest", "", "RuntimeManifest"),
+        ("GET", "/web/info", "", "WebInfo"),
+        ("DELETE", "/web/prune", "", "WebPruned"),
+    ] {
+        let r = server.call(verb, route, body);
+        assert_eq!(r.status, 200, "{verb} {route} {body}: {}", r.body);
+        let data = &r.json()["data"];
+        let misfit = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            data,
+        );
+        assert!(misfit.is_empty(), "{route}: {misfit:#?}\n{data}");
+    }
+    let r = server.call("GET", "/web/list", "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let misfit = misfits(
+        &contract,
+        &json!({ "type": "array", "items": { "$ref": "#/components/schemas/WebInstalled" } }),
+        &r.json()["data"],
+    );
+    assert!(misfit.is_empty(), "{misfit:#?}");
+}
+
+#[test]
 fn image_and_video_answers_fit_the_contract() {
     use weflow_native::fixture::{DAY, T0};
     let root = temp_root("image-contract");

@@ -15,14 +15,17 @@ pub struct EmbeddedAsset {
 
 include!(concat!(env!("OUT_DIR"), "/assets_generated.rs"));
 
-#[derive(Debug, Clone, Serialize)]
+/// A file built into the binary.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct AssetManifestEntry {
     pub path: String,
+    /// Bytes.
     pub size: usize,
     pub sha256: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// What the binary carries (`runtime manifest`): its version, target and built-in files.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct RuntimeManifest {
     pub version: String,
     pub target: String,

@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::contract::{FfmpegDownload, FfmpegFound, FfmpegInstalled};
 use crate::error::{AppError, AppResult};
 
 /// The `ffmpeg-static` release the desktop app's `ffmpeg-static` 5.3.0 downloads (`binary-release-tag`).
@@ -215,12 +215,17 @@ pub async fn install_build(
     build: Build<'_>,
     force: bool,
     progress: &dyn Fn(usize, usize),
-) -> AppResult<Value> {
+) -> AppResult<FfmpegDownload> {
     let target = dir.join(executable_name());
     let license = dir.join("LICENSE");
     let intact = |p: &Path, sha: &str| std::fs::read(p).is_ok_and(|b| sha256_hex(&b) == sha);
     if !force && intact(&target, build.binary_sha256) && intact(&license, build.license_sha256) {
-        return Ok(json!({ "path": target, "release": RELEASE_TAG, "downloaded": false }));
+        return Ok(FfmpegDownload {
+            path: target,
+            release: RELEASE_TAG.into(),
+            downloaded: false,
+            source: None,
+        });
     }
     let base = format!("{}/{RELEASE_TAG}", base_url.trim_end_matches('/'));
     let client = crate::http_client::builder()
@@ -264,11 +269,20 @@ pub async fn install_build(
         return Err(e);
     }
     std::fs::write(&license, &license_text).map_err(|e| io(&license, e))?;
-    Ok(json!({ "path": target, "release": RELEASE_TAG, "downloaded": true, "source": gz_url }))
+    Ok(FfmpegDownload {
+        path: target,
+        release: RELEASE_TAG.into(),
+        downloaded: true,
+        source: Some(gz_url),
+    })
 }
 
 /// `weflow ffmpeg install`: the build for this computer into [`install_dir`], then a check that it starts.
-pub async fn install(home: &Path, base_url: Option<&str>, force: bool) -> AppResult<Value> {
+pub async fn install(
+    home: &Path,
+    base_url: Option<&str>,
+    force: bool,
+) -> AppResult<FfmpegInstalled> {
     let (os, arch) = (std::env::consts::OS, std::env::consts::ARCH);
     let build = build_for(os, arch).ok_or_else(|| {
         AppError::runtime(format!("no ffmpeg build of {RELEASE_TAG} for {os}-{arch}"))
@@ -276,7 +290,7 @@ pub async fn install(home: &Path, base_url: Option<&str>, force: bool) -> AppRes
     let progress = |done: usize, total: usize| {
         crate::output::progress("ffmpeg", "downloading ffmpeg", done, total);
     };
-    let mut out = install_build(
+    let download = install_build(
         &install_dir(home),
         base_url.unwrap_or(DEFAULT_BASE_URL),
         build,
@@ -299,16 +313,15 @@ pub async fn install(home: &Path, base_url: Option<&str>, force: bool) -> AppRes
         .next()
         .unwrap_or_default()
         .to_string();
-    out["version"] = json!(first_line);
-    let removed = remove_other_releases(home);
-    if !removed.is_empty() {
-        out["removedReleases"] = json!(removed);
-    }
+    let removed_releases = remove_other_releases(home);
     // which one WXGF images will use: an ffmpeg on PATH or in FFMPEG_PATH comes first
     *FOUND.lock().unwrap() = None;
-    let (used, source) = locate();
-    out["used"] = json!({ "path": used, "source": source });
-    Ok(out)
+    Ok(FfmpegInstalled {
+        download,
+        version: first_line,
+        removed_releases,
+        used: status(),
+    })
 }
 
 /// Removes the folders of other releases under `<home>/ffmpeg/` (left by an install of an earlier pinned release);
@@ -328,9 +341,12 @@ fn remove_other_releases(home: &Path) -> Vec<String> {
 }
 
 /// `weflow ffmpeg path`: the ffmpeg WXGF images use and where it was found.
-pub fn status() -> Value {
+pub fn status() -> FfmpegFound {
     let (path, source) = locate();
-    json!({ "path": path, "source": source })
+    FfmpegFound {
+        path,
+        source: source.into(),
+    }
 }
 
 #[cfg(test)]
@@ -439,7 +455,7 @@ mod tests {
         let out = install_build(&dir, &base, build(&r), false, &|_, _| {})
             .await
             .unwrap();
-        assert_eq!(out["downloaded"], true);
+        assert!(out.downloaded);
         let target = dir.join(executable_name());
         assert_eq!(std::fs::read(&target).unwrap(), binary);
         assert_eq!(std::fs::read(dir.join("LICENSE")).unwrap(), b"GPL");
@@ -457,7 +473,7 @@ mod tests {
         let again = install_build(&dir, &base, build(&r), false, &|_, _| {})
             .await
             .unwrap();
-        assert_eq!(again["downloaded"], false);
+        assert!(!again.downloaded);
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), requests);
 
         // damaged, or forced: downloaded again
@@ -465,12 +481,12 @@ mod tests {
         let repaired = install_build(&dir, &base, build(&r), false, &|_, _| {})
             .await
             .unwrap();
-        assert_eq!(repaired["downloaded"], true);
+        assert!(repaired.downloaded);
         assert_eq!(std::fs::read(&target).unwrap(), binary);
         let forced = install_build(&dir, &base, build(&r), true, &|_, _| {})
             .await
             .unwrap();
-        assert_eq!(forced["downloaded"], true);
+        assert!(forced.downloaded);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
