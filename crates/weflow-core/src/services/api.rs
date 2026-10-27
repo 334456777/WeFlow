@@ -1715,7 +1715,7 @@ impl ServiceHub {
                             opts,
                             Some(&written),
                         );
-                        found.lock().unwrap().push((k, r));
+                        found.lock().expect("lock poisoned").push((k, r));
                         let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         self.emit_progress("export", "copying media", done, total);
                     });
@@ -2171,7 +2171,7 @@ impl ServiceHub {
                         let dir = out.join(&safe);
                         let r =
                             self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&written));
-                        results.lock().unwrap().push((i, r));
+                        results.lock().expect("lock poisoned").push((i, r));
                         let n = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         self.emit_progress(
                             "media",

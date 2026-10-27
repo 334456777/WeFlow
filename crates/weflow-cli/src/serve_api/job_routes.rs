@@ -25,7 +25,9 @@ pub(super) fn accepted(job: &Job) -> Response {
     let mut resp = success(StatusCode::ACCEPTED, job.to_json(false));
     resp.headers_mut().insert(
         header::LOCATION,
-        format!("/jobs/{}", job.id).parse().unwrap(),
+        format!("/jobs/{}", job.id)
+            .parse()
+            .expect("a job id is a valid header value"),
     );
     resp
 }
@@ -150,5 +152,5 @@ fn event_stream(job: Arc<Job>, after: u64) -> Response {
         .header(header::CACHE_CONTROL, "no-cache, no-transform")
         .header("X-Accel-Buffering", "no")
         .body(Body::from_stream(stream))
-        .unwrap()
+        .expect("the event stream's headers are valid")
 }

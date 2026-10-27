@@ -344,7 +344,10 @@ fn operation(
     if refused(&name, verb) {
         op["x-weflow-refused"] = true.into();
         // it never succeeds: there is no answer to describe
-        op["responses"].as_object_mut().unwrap().remove("200");
+        op["responses"]
+            .as_object_mut()
+            .expect("an operation has its responses")
+            .remove("200");
     }
     if in_body && !properties.is_empty() {
         let mut schema = json!({
@@ -806,7 +809,9 @@ fn left_out_not_null(schema: &mut Value) {
             any.retain(|s| s != &json!({ "type": "null" }));
             if let [one] = any.as_slice() {
                 let one = one.clone();
-                let object = property.as_object_mut().unwrap();
+                let object = property
+                    .as_object_mut()
+                    .expect("a property with anyOf is an object");
                 object.remove("anyOf");
                 for (k, v) in one.as_object().into_iter().flatten() {
                     object.insert(k.clone(), v.clone());

@@ -1539,7 +1539,10 @@ async fn main() -> ExitCode {
     weflow_core::output::finish_progress();
     if cli.json {
         let (doc, exit) = json_document(outcome);
-        println!("{}", serde_json::to_string(&doc).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string(&doc).expect("a JSON document serializes")
+        );
         return ExitCode::from(exit);
     }
     match checked(outcome) {
@@ -2437,7 +2440,7 @@ fn handle_config(
     let written = |config_path: Option<PathBuf>| json!(ConfigWritten { config_path });
     match &command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
-        ConfigSubcommand::List => Ok(serde_json::to_value(config).unwrap()),
+        ConfigSubcommand::List => Ok(serde_json::to_value(config).expect("the config serializes")),
         ConfigSubcommand::Profiles | ConfigSubcommand::Get { .. } => unreachable!("a read"),
         ConfigSubcommand::Set { key, value } => {
             if matches!(key.as_str(), "config_path" | "configPath") {
@@ -2553,7 +2556,8 @@ fn handle_runtime(command: &RuntimeCommand, ctx: &AppContext) -> AppResult<Value
     match command.command {
         RuntimeSubcommand::Info => unreachable!("a read"),
         RuntimeSubcommand::Manifest => {
-            Ok(serde_json::to_value(weflow_assets::manifest(&ctx.version)).unwrap())
+            Ok(serde_json::to_value(weflow_assets::manifest(&ctx.version))
+                .expect("the runtime manifest serializes"))
         }
     }
 }
@@ -3852,7 +3856,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     // only its version: a clone of the page kept here would hold its version after the page is replaced
     let shown = ui
         .read()
-        .unwrap()
+        .expect("lock poisoned")
         .as_ref()
         .map(|ui| ui.version().map(str::to_string));
     if !command.desktop {
@@ -3891,7 +3895,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             };
             match installed.map(|meta| serve_api::ui::UiDir::open_version(&store, &meta.version)) {
                 Ok(Some(dir)) => {
-                    *ui.write().unwrap() = Some(dir);
+                    *ui.write().expect("lock poisoned") = Some(dir);
                     weflow_core::output::event(
                         json!({ "type": "webui_ready", "version": version, "uiUrl": page_url }),
                     );
@@ -4013,7 +4017,10 @@ fn write_export(
     match format.as_str() {
         "json" => write_json_file(&path, value)?,
         "csv" => write_csv_file(&path, value)?,
-        "txt" => write_text_file(&path, &serde_json::to_string_pretty(value).unwrap())?,
+        "txt" => write_text_file(
+            &path,
+            &serde_json::to_string_pretty(value).expect("a JSON value serializes"),
+        )?,
         "html" => weflow_core::export::export_html(name, value, &json!([]), &path)
             .map_err(|err| AppError::runtime(err.to_string()))?,
         "excel" | "xlsx" => weflow_core::export::export_excel(value, &path)
@@ -4169,9 +4176,12 @@ fn checked(outcome: AppResult<Value>) -> AppResult<Value> {
 /// with it too, so they match the child process byte for byte.
 fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
     let (mut doc, exit) = match checked(outcome) {
-        Ok(value) => (serde_json::to_value(success(value)).unwrap(), 0),
+        Ok(value) => (
+            serde_json::to_value(success(value)).expect("a success document serializes"),
+            0,
+        ),
         Err(err) => (
-            serde_json::to_value(failure(err.payload())).unwrap(),
+            serde_json::to_value(failure(err.payload())).expect("a failure document serializes"),
             err.exit_code as u8,
         ),
     };
@@ -4181,7 +4191,7 @@ fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
 
 /// The human-readable output: the payload itself, without the {success, data} envelope.
 fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
-    let mut value = serde_json::to_value(response).unwrap();
+    let mut value = serde_json::to_value(response).expect("a response serializes");
     weflow_core::locale::localize_json(&mut value);
     let data = value.get("data").cloned().unwrap_or(Value::Null);
     match key_summary(&cli.command, &data) {

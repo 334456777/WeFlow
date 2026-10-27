@@ -332,7 +332,8 @@ pub fn json_failure(err: &Error) -> Option<(serde_json::Value, i32)> {
         failure.details = Some(serde_json::json!({ "usage": usage }));
     }
     Some((
-        serde_json::to_value(weflow_core::output::failure(failure.payload())).unwrap(),
+        serde_json::to_value(weflow_core::output::failure(failure.payload()))
+            .expect("a failure document serializes"),
         err.exit_code(),
     ))
 }
@@ -358,7 +359,10 @@ fn exit_with(err: Error) -> ! {
     use clap::error::ErrorKind;
     if json_requested() {
         if let Some((doc, exit)) = json_failure(&err) {
-            println!("{}", serde_json::to_string(&doc).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string(&doc).expect("a JSON document serializes")
+            );
             std::process::exit(exit);
         }
     }

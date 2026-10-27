@@ -310,7 +310,7 @@ impl ServiceHub {
             remove_path(path, &mut removed, &mut warnings);
         }
         if clear_cache {
-            *self.group_state.lock().unwrap() = Default::default();
+            *self.group_state.lock().expect("lock poisoned") = Default::default();
             self.sns_clear_memory_cache();
             self.image_forget_cached();
             let _ = self.analytics_clear_cache();

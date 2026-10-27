@@ -176,7 +176,7 @@ impl Hub {
 
     /// The hub, and which one it is: the number changes when the hub is built again.
     pub(super) fn get_counted(&self) -> AppResult<(ServiceHub, u64)> {
-        let mut open = self.open.lock().unwrap();
+        let mut open = self.open.lock().expect("lock poisoned");
         // another config file chosen (`config set config_path`) is a change too
         let in_use = weflow_core::config::default_config_path();
         let before = match open.as_mut() {
