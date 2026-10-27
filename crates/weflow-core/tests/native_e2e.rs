@@ -678,6 +678,49 @@ fn annual_report_uses_native_extras_and_native_moments() {
 }
 
 #[test]
+fn annual_report_breaks_ties_the_same_way_every_time() {
+    use chrono::TimeZone;
+    use weflow_native::fixture::{MsgSpec, SessionSpec};
+    // 1:00 local time, so the messages are midnight ones wherever the test runs
+    let night = chrono::Local
+        .with_ymd_and_hms(2023, 11, 14, 1, 0, 0)
+        .unwrap()
+        .timestamp();
+    let (hub, _root, _f) = common::custom_hub("n-annual-ties", |f| {
+        let session = |username| SessionSpec {
+            username,
+            summary: "",
+            last_timestamp: night,
+            unread: 0,
+            last_msg_type: 1,
+        };
+        f.session_db(&[session("wxid_ann"), session("wxid_cat")]);
+        // the same number of messages with each, the same night: a tie for the peak day and the midnight king
+        let two = |who: &'static str, first: i64| {
+            (
+                who,
+                vec![
+                    MsgSpec::text(first, who, night, "hi"),
+                    MsgSpec::text(first + 1, who, night + 60, "there"),
+                ],
+            )
+        };
+        f.message_shard(0, &[two("wxid_ann", 1), two("wxid_cat", 3)]);
+    });
+    let picks = |a: weflow_core::contract::AnnualReport| {
+        (
+            a.peak_day.unwrap().top_friend,
+            a.midnight_king.unwrap().display_name,
+        )
+    };
+    let first = picks(hub.report_annual(2023).unwrap());
+    assert_eq!(first.0, first.1, "{first:?}");
+    for _ in 0..8 {
+        assert_eq!(picks(hub.report_annual(2023).unwrap()), first);
+    }
+}
+
+#[test]
 fn footprint_reports_private_chats_segments_and_mentions() {
     let (hub, _root) = common::mock_hub("n-footprint");
     let f = hub.footprint(0, 0).unwrap();

@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{Datelike, Local, NaiveDate, TimeZone, Timelike};
+use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
 use super::*;
@@ -588,9 +589,9 @@ impl ServiceHub {
             }
         }
         let mut heatmap = vec![vec![0i64; 24]; 7];
-        let mut midnight_stats: HashMap<String, i64> = HashMap::new();
-        let mut daily_contact: HashMap<String, HashMap<String, i64>> = HashMap::new();
-        let mut conversation: HashMap<String, (i64, i64)> = HashMap::new();
+        let mut midnight_stats: IndexMap<String, i64> = IndexMap::new();
+        let mut daily_contact: HashMap<String, IndexMap<String, i64>> = HashMap::new();
+        let mut conversation: IndexMap<String, (i64, i64)> = IndexMap::new();
         let mut response_sql: Option<Map<String, Value>> = None;
         let mut top_phrases_sql: Option<Vec<PhraseCount>> = None;
         let (mut streak_sid, mut streak_days) = (String::new(), 0i64);
@@ -650,7 +651,7 @@ impl ServiceHub {
                 peak_day_key.is_empty(),
                 ex.get("peakDay").and_then(Value::as_object),
             ) {
-                let m: HashMap<String, i64> = p.iter().map(|(k, v)| (k.clone(), num(v))).collect();
+                let m: IndexMap<String, i64> = p.iter().map(|(k, v)| (k.clone(), num(v))).collect();
                 if !m.is_empty() {
                     daily_contact.insert(peak_day_key.clone(), m);
                 }
@@ -680,7 +681,7 @@ impl ServiceHub {
         }
 
         // conversation / response / phrase state for the cursor fallback
-        let mut response_times: HashMap<String, Vec<i64>> = HashMap::new();
+        let mut response_times: IndexMap<String, Vec<i64>> = IndexMap::new();
         let mut phrase_count: HashMap<String, i64> = HashMap::new();
         let mut phrase_order: Vec<String> = Vec::new();
         if !use_sql_extras {
