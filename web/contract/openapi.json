@@ -1980,6 +1980,166 @@
         }
       }
     },
+    "/ffmpeg/install": {
+      "get": {
+        "operationId": "api_ffmpeg_install",
+        "x-weflow-command": "ffmpeg install",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FfmpegInstalled"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ffmpeg/path": {
+      "get": {
+        "operationId": "api_ffmpeg_path",
+        "x-weflow-command": "ffmpeg path",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FfmpegPath"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ffmpeg/set/baseurl": {
+      "get": {
+        "operationId": "api_ffmpeg_set_baseurl",
+        "x-weflow-command": "ffmpeg set baseurl",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FfmpegBaseUrl"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ffmpeg/unset/baseurl": {
+      "get": {
+        "operationId": "api_ffmpeg_unset_baseurl",
+        "x-weflow-command": "ffmpeg unset baseurl",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FfmpegBaseUrl"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/group/export-member-messages": {
       "get": {
         "operationId": "api_group_export_member_messages",
@@ -2327,6 +2487,206 @@
                       "items": {
                         "$ref": "#/components/schemas/GroupRank"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/auto-download/start": {
+      "get": {
+        "operationId": "api_image_auto_download_start",
+        "x-weflow-command": "image auto-download start",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AutoDownloadStopped"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/auto-download/status": {
+      "get": {
+        "operationId": "api_image_auto_download_status",
+        "x-weflow-command": "image auto-download status",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AutoDownloadStatus"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/decrypt": {
+      "get": {
+        "operationId": "api_image_decrypt",
+        "x-weflow-command": "image decrypt",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/resolve-batch": {
+      "get": {
+        "operationId": "api_image_resolve_batch",
+        "x-weflow-command": "image resolve-batch",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageBatch"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/resolve-cache": {
+      "get": {
+        "operationId": "api_image_resolve_cache",
+        "x-weflow-command": "image resolve-cache",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageResult"
                     }
                   }
                 }
@@ -2949,6 +3309,46 @@
         }
       }
     },
+    "/runtime/manifest": {
+      "get": {
+        "operationId": "api_runtime_manifest",
+        "x-weflow-command": "runtime manifest",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RuntimeManifest"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/sns/export": {
       "get": {
         "operationId": "api_sns_export",
@@ -3142,6 +3542,340 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/SnsUsers"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/info": {
+      "get": {
+        "operationId": "api_video_info",
+        "x-weflow-command": "video info",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VideoInfo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/parse-md5": {
+      "get": {
+        "operationId": "api_video_parse_md5",
+        "x-weflow-command": "video parse-md5",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VideoMd5"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/web/info": {
+      "get": {
+        "operationId": "api_web_info",
+        "x-weflow-command": "web info",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WebInfo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/web/install": {
+      "get": {
+        "operationId": "api_web_install",
+        "x-weflow-command": "web install",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WebInstalled"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/web/list": {
+      "get": {
+        "operationId": "api_web_list",
+        "x-weflow-command": "web list",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "The versions downloaded; with `remote`, the ones published",
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/WebInstalled"
+                          }
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/WebPublished"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/web/prune": {
+      "get": {
+        "operationId": "api_web_prune",
+        "x-weflow-command": "web prune",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WebPruned"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/web/update": {
+      "get": {
+        "operationId": "api_web_update",
+        "x-weflow-command": "web update",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WebUpdated"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/web/use": {
+      "get": {
+        "operationId": "api_web_use",
+        "x-weflow-command": "web use",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WebChosen"
                     }
                   }
                 }
@@ -7160,6 +7894,494 @@
           "createTime"
         ],
         "description": "A media file `export media` wrote."
+      },
+      "ImageResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "localPath": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "failureKind": {
+            "type": "string",
+            "description": "Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, …"
+          },
+          "isThumb": {
+            "type": "boolean",
+            "description": "The file is only the thumbnail: the original is not on disk."
+          },
+          "hasUpdate": {
+            "type": "boolean",
+            "description": "A thumbnail whose original has since been downloaded."
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "description": "Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead."
+      },
+      "ImageBatch": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true; each row says how it went."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageResult"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "rows"
+        ],
+        "description": "What `image resolve-batch` answers: one result per payload, in their order."
+      },
+      "AutoDownloadStopped": {
+        "type": "object",
+        "properties": {
+          "stopped": {
+            "type": "boolean",
+            "description": "Always true."
+          }
+        },
+        "required": [
+          "stopped"
+        ],
+        "description": "What `image auto-download start` answers once stopped (Ctrl+C)."
+      },
+      "AutoDownloadStatus": {
+        "type": "object",
+        "properties": {
+          "isHooked": {
+            "type": "boolean",
+            "description": "Always false."
+          },
+          "pid": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Always null."
+          },
+          "supported": {
+            "type": "boolean",
+            "description": "Whether this computer can download WeChat's images on its own."
+          }
+        },
+        "required": [
+          "isHooked",
+          "pid",
+          "supported"
+        ],
+        "description": "What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow."
+      },
+      "VideoInfo": {
+        "type": "object",
+        "properties": {
+          "videoUrl": {
+            "type": "string"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "A `data:` URL, or a `file://` one with `file-url`."
+          },
+          "thumbUrl": {
+            "type": "string"
+          },
+          "exists": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "exists"
+        ],
+        "description": "Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's\n`VideoInfo`, when there is nothing."
+      },
+      "VideoMd5": {
+        "type": "object",
+        "properties": {
+          "md5": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "md5"
+        ],
+        "description": "The MD5 a video message names (`video parse-md5`); null when its XML has none."
+      },
+      "FfmpegInstalled": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "release": {
+            "type": "string",
+            "description": "The pinned release."
+          },
+          "downloaded": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "description": "Where it was downloaded from; left out when nothing was."
+          },
+          "version": {
+            "type": "string",
+            "description": "The first line of its `-version`."
+          },
+          "removedReleases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The folders of other releases taken away."
+          },
+          "used": {
+            "$ref": "#/components/schemas/FfmpegFound",
+            "description": "The ffmpeg WXGF images will use: one on `PATH` or in `FFMPEG_PATH` comes first."
+          }
+        },
+        "required": [
+          "path",
+          "release",
+          "downloaded",
+          "version",
+          "used"
+        ],
+        "description": "What `ffmpeg install` answers."
+      },
+      "FfmpegFound": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "`FFMPEG_PATH`, `PATH`, `installed` or `missing`."
+          }
+        },
+        "required": [
+          "path",
+          "source"
+        ],
+        "description": "The ffmpeg WXGF images use, and where it was found."
+      },
+      "FfmpegPath": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "`FFMPEG_PATH`, `PATH`, `installed` or `missing`."
+          },
+          "baseUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "source",
+          "baseUrl"
+        ],
+        "description": "What `ffmpeg path` answers: the ffmpeg in use, and the mirror `ffmpeg install` downloads from."
+      },
+      "FfmpegBaseUrl": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseUrl"
+        ],
+        "description": "The mirror `ffmpeg set baseurl` / `unset baseurl` left."
+      },
+      "RuntimeManifest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetManifestEntry"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "target",
+          "commit",
+          "entries"
+        ],
+        "description": "What the binary carries (`runtime manifest`): its version, target and built-in files."
+      },
+      "AssetManifestEntry": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "Bytes."
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "size",
+          "sha256"
+        ],
+        "description": "A file built into the binary."
+      },
+      "WebInfo": {
+        "type": "object",
+        "properties": {
+          "inUse": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The version `serve` shows; null when none is downloaded."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "picked": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The version chosen with `web use`."
+          },
+          "builtIn": {
+            "type": "string",
+            "description": "The version this weflow was built for."
+          },
+          "wanted": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The version `serve` would show."
+          },
+          "downloaded": {
+            "type": "boolean"
+          },
+          "store": {
+            "type": "string",
+            "description": "Where the versions are kept."
+          },
+          "installed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "inUse",
+          "path",
+          "picked",
+          "builtIn",
+          "wanted",
+          "downloaded",
+          "store",
+          "installed"
+        ],
+        "description": "What `web info` answers: the WebUI `serve` shows, and the versions downloaded."
+      },
+      "WebInstalled": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "minBackendVersion": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "inUse": {
+            "type": "boolean",
+            "description": "The one `serve` shows."
+          },
+          "picked": {
+            "type": "boolean",
+            "description": "The one chosen with `web use`."
+          },
+          "suits": {
+            "type": "boolean",
+            "description": "Whether it suits this weflow."
+          }
+        },
+        "required": [
+          "version",
+          "apiVersion",
+          "minBackendVersion",
+          "path",
+          "inUse",
+          "picked",
+          "suits"
+        ],
+        "description": "A downloaded WebUI version (`web list`, `web install`)."
+      },
+      "WebPublished": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Bytes."
+          },
+          "apiVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "minBackendVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suits": {
+            "type": "boolean"
+          },
+          "why": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it does not suit; null when it does."
+          },
+          "downloaded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "version",
+          "size",
+          "apiVersion",
+          "minBackendVersion",
+          "suits",
+          "why",
+          "downloaded"
+        ],
+        "description": "A published WebUI version (`web list --remote`)."
+      },
+      "WebChosen": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "path"
+        ],
+        "description": "The WebUI version `web use` chose."
+      },
+      "WebUpdated": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The version wanted before; null when there was none."
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "before",
+          "path"
+        ],
+        "description": "The WebUI version `web update` moved to."
+      },
+      "WebPruned": {
+        "type": "object",
+        "properties": {
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kept": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "shown": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Versions a running `serve` shows, kept until it stops."
+          }
+        },
+        "required": [
+          "removed",
+          "kept",
+          "shown"
+        ],
+        "description": "What `web prune` did."
       },
       "BackupCreated": {
         "type": "object",

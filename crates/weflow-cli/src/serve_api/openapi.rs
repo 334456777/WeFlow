@@ -641,6 +641,53 @@ pub(super) fn contract() -> &'static Contract {
             for command in ["export media", "chat voice"] {
                 data.insert(command, of(generator.subschema_for::<MediaExport>()));
             }
+            use weflow_core::contract::{AutoDownloadStatus, AutoDownloadStopped, VideoMd5};
+            use weflow_core::services::{ImageBatch, ImageResult};
+            for command in ["image decrypt", "image resolve-cache"] {
+                data.insert(command, of(generator.subschema_for::<ImageResult>()));
+            }
+            data.insert("image resolve-batch", of(generator.subschema_for::<ImageBatch>()));
+            data.insert(
+                "image auto-download start",
+                of(generator.subschema_for::<AutoDownloadStopped>()),
+            );
+            data.insert(
+                "image auto-download status",
+                of(generator.subschema_for::<AutoDownloadStatus>()),
+            );
+            data.insert(
+                "video info",
+                of(generator.subschema_for::<weflow_core::video::VideoInfo>()),
+            );
+            data.insert("video parse-md5", of(generator.subschema_for::<VideoMd5>()));
+            use weflow_core::contract::{
+                FfmpegBaseUrl, FfmpegInstalled, FfmpegPath, WebChosen, WebInfo, WebInstalled, WebPruned,
+                WebPublished, WebUpdated,
+            };
+            data.insert("ffmpeg install", of(generator.subschema_for::<FfmpegInstalled>()));
+            data.insert("ffmpeg path", of(generator.subschema_for::<FfmpegPath>()));
+            for command in ["ffmpeg set baseurl", "ffmpeg unset baseurl"] {
+                data.insert(command, of(generator.subschema_for::<FfmpegBaseUrl>()));
+            }
+            data.insert(
+                "runtime manifest",
+                of(generator.subschema_for::<weflow_assets::RuntimeManifest>()),
+            );
+            data.insert("web info", of(generator.subschema_for::<WebInfo>()));
+            data.insert(
+                "web list",
+                json!({
+                    "description": "The versions downloaded; with `remote`, the ones published",
+                    "anyOf": [
+                        of(generator.subschema_for::<Vec<WebInstalled>>()),
+                        of(generator.subschema_for::<Vec<WebPublished>>()),
+                    ],
+                }),
+            );
+            data.insert("web install", of(generator.subschema_for::<WebInstalled>()));
+            data.insert("web use", of(generator.subschema_for::<WebChosen>()));
+            data.insert("web update", of(generator.subschema_for::<WebUpdated>()));
+            data.insert("web prune", of(generator.subschema_for::<WebPruned>()));
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",

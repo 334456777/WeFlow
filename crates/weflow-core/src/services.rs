@@ -14,7 +14,7 @@ pub use cleanup::{disk_usage, normalize_account_id, CachePart};
 mod group;
 mod image;
 mod insight;
-pub use image::{ImagePayload, ImageResult, ImageVariant};
+pub use image::{ImageBatch, ImagePayload, ImageResult, ImageVariant};
 pub use insight::Trigger as InsightTrigger;
 mod reports;
 mod sns;
@@ -362,15 +362,14 @@ impl ServiceHub {
         md5: &str,
         include_poster: bool,
         format: crate::video::PosterFormat,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::video::VideoInfo> {
         let account_dir = self.account_dir_only()?;
         Ok(crate::video::video_info(
             &account_dir.join("msg").join("video"),
             md5,
             include_poster,
             format,
-        )
-        .to_json())
+        ))
     }
 
     /// The files WeChat keeps of a message's video (`msg/video/<yyyy-mm>/<md5>.mp4`, its cover and thumbnail),

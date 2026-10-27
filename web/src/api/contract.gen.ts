@@ -1245,6 +1245,177 @@ export interface MediaFileExported {
   isThumb?: boolean;
 }
 
+/** Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead. */
+export interface ImageResult {
+  success: boolean;
+  localPath?: string;
+  error?: string;
+  /** Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, … */
+  failureKind?: string;
+  /** The file is only the thumbnail: the original is not on disk. */
+  isThumb?: boolean;
+  /** A thumbnail whose original has since been downloaded. */
+  hasUpdate?: boolean;
+}
+
+/** What `image resolve-batch` answers: one result per payload, in their order. */
+export interface ImageBatch {
+  /** Always true; each row says how it went. */
+  success: boolean;
+  rows: ImageResult[];
+}
+
+/** What `image auto-download start` answers once stopped (Ctrl+C). */
+export interface AutoDownloadStopped {
+  /** Always true. */
+  stopped: boolean;
+}
+
+/** What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow. */
+export interface AutoDownloadStatus {
+  /** Always false. */
+  isHooked: boolean;
+  /** Always null. */
+  pid: number | null;
+  /** Whether this computer can download WeChat's images on its own. */
+  supported: boolean;
+}
+
+/**
+ * Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's
+ * `VideoInfo`, when there is nothing.
+ */
+export interface VideoInfo {
+  videoUrl?: string;
+  /** A `data:` URL, or a `file://` one with `file-url`. */
+  coverUrl?: string;
+  thumbUrl?: string;
+  exists: boolean;
+}
+
+/** The MD5 a video message names (`video parse-md5`); null when its XML has none. */
+export interface VideoMd5 {
+  md5: string | null;
+}
+
+/** What `ffmpeg install` answers. */
+export interface FfmpegInstalled {
+  path: string;
+  /** The pinned release. */
+  release: string;
+  downloaded: boolean;
+  /** Where it was downloaded from; left out when nothing was. */
+  source?: string;
+  /** The first line of its `-version`. */
+  version: string;
+  /** The folders of other releases taken away. */
+  removedReleases?: string[];
+  /** The ffmpeg WXGF images will use: one on `PATH` or in `FFMPEG_PATH` comes first. */
+  used: FfmpegFound;
+}
+
+/** The ffmpeg WXGF images use, and where it was found. */
+export interface FfmpegFound {
+  path: string;
+  /** `FFMPEG_PATH`, `PATH`, `installed` or `missing`. */
+  source: string;
+}
+
+/** What `ffmpeg path` answers: the ffmpeg in use, and the mirror `ffmpeg install` downloads from. */
+export interface FfmpegPath {
+  path: string;
+  /** `FFMPEG_PATH`, `PATH`, `installed` or `missing`. */
+  source: string;
+  baseUrl: string;
+}
+
+/** The mirror `ffmpeg set baseurl` / `unset baseurl` left. */
+export interface FfmpegBaseUrl {
+  baseUrl: string;
+}
+
+/** What the binary carries (`runtime manifest`): its version, target and built-in files. */
+export interface RuntimeManifest {
+  version: string;
+  target: string;
+  commit: string;
+  entries: AssetManifestEntry[];
+}
+
+/** A file built into the binary. */
+export interface AssetManifestEntry {
+  path: string;
+  /** Bytes. */
+  size: number;
+  sha256: string;
+}
+
+/** What `web info` answers: the WebUI `serve` shows, and the versions downloaded. */
+export interface WebInfo {
+  /** The version `serve` shows; null when none is downloaded. */
+  inUse: string | null;
+  path: string | null;
+  /** The version chosen with `web use`. */
+  picked: string | null;
+  /** The version this weflow was built for. */
+  builtIn: string;
+  /** The version `serve` would show. */
+  wanted: string | null;
+  downloaded: boolean;
+  /** Where the versions are kept. */
+  store: string;
+  installed: string[];
+}
+
+/** A downloaded WebUI version (`web list`, `web install`). */
+export interface WebInstalled {
+  version: string;
+  apiVersion: string;
+  minBackendVersion: string;
+  path: string;
+  /** The one `serve` shows. */
+  inUse: boolean;
+  /** The one chosen with `web use`. */
+  picked: boolean;
+  /** Whether it suits this weflow. */
+  suits: boolean;
+}
+
+/** A published WebUI version (`web list --remote`). */
+export interface WebPublished {
+  version: string;
+  /** Bytes. */
+  size: number;
+  apiVersion: string | null;
+  minBackendVersion: string | null;
+  suits: boolean;
+  /** Why it does not suit; null when it does. */
+  why: string | null;
+  downloaded: boolean;
+}
+
+/** The WebUI version `web use` chose. */
+export interface WebChosen {
+  version: string;
+  path: string;
+}
+
+/** The WebUI version `web update` moved to. */
+export interface WebUpdated {
+  version: string;
+  /** The version wanted before; null when there was none. */
+  before: string | null;
+  path: string;
+}
+
+/** What `web prune` did. */
+export interface WebPruned {
+  removed: string[];
+  kept: string[];
+  /** Versions a running `serve` shows, kept until it stops. */
+  shown: string[];
+}
+
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
   out: string;
@@ -1673,6 +1844,10 @@ export interface Answers {
   /** The file written; with several formats or `zip`, the folder or zip and each format's file */
   "export messages": MessagesExported | MessagesBundle;
   "export sessions": ExportWritten;
+  "ffmpeg install": FfmpegInstalled;
+  "ffmpeg path": FfmpegPath;
+  "ffmpeg set baseurl": FfmpegBaseUrl;
+  "ffmpeg unset baseurl": FfmpegBaseUrl;
   "group export-member-messages": GroupExported;
   "group export-members": GroupExported;
   "group hours": GroupHours;
@@ -1682,6 +1857,11 @@ export interface Answers {
   "group member-messages": MemberMessages;
   "group members": GroupMembers;
   "group ranking": GroupRank[];
+  "image auto-download start": AutoDownloadStopped;
+  "image auto-download status": AutoDownloadStatus;
+  "image decrypt": ImageResult;
+  "image resolve-batch": ImageBatch;
+  "image resolve-cache": ImageResult;
   "insight clear": InsightCleared;
   "insight footprint": Footprint;
   "insight footprint-summary": InsightReply;
@@ -1697,10 +1877,20 @@ export interface Answers {
   "report annual years": ReportYears;
   "report dual generate": DualReport;
   "runtime info": RuntimeInfo;
+  "runtime manifest": RuntimeManifest;
   "sns export": SnsExported;
   /** How many posts each poster has, by username; with `user`, that one's */
   "sns post-counts": Record<string, number> | UserPosts;
   "sns stats": SnsStats;
   "sns timeline": SnsTimeline;
   "sns users": SnsUsers;
+  "video info": VideoInfo;
+  "video parse-md5": VideoMd5;
+  "web info": WebInfo;
+  "web install": WebInstalled;
+  /** The versions downloaded; with `remote`, the ones published */
+  "web list": WebInstalled[] | WebPublished[];
+  "web prune": WebPruned;
+  "web update": WebUpdated;
+  "web use": WebChosen;
 }

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use base64::Engine;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use super::*;
 use crate::image::{self as img};
@@ -226,14 +226,32 @@ impl ImagePayload {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+/// Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead.
+#[derive(Default, Clone, Debug, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageResult {
     pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub local_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, …
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_kind: Option<&'static str>,
+    /// The file is only the thumbnail: the original is not on disk.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub is_thumb: Option<bool>,
+    /// A thumbnail whose original has since been downloaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub has_update: Option<bool>,
+}
+
+/// What `image resolve-batch` answers: one result per payload, in their order.
+#[derive(Clone, Debug, serde::Serialize, schemars::JsonSchema)]
+pub struct ImageBatch {
+    /// Always true; each row says how it went.
+    pub success: bool,
+    pub rows: Vec<ImageResult>,
 }
 
 impl ImageResult {
@@ -252,26 +270,6 @@ impl ImageResult {
             failure_kind: Some(kind),
             ..Default::default()
         }
-    }
-    pub fn to_json(&self) -> Value {
-        let mut o = Map::new();
-        o.insert("success".into(), json!(self.success));
-        if let Some(v) = &self.local_path {
-            o.insert("localPath".into(), json!(v));
-        }
-        if let Some(v) = &self.error {
-            o.insert("error".into(), json!(v));
-        }
-        if let Some(v) = self.failure_kind {
-            o.insert("failureKind".into(), json!(v));
-        }
-        if let Some(v) = self.is_thumb {
-            o.insert("isThumb".into(), json!(v));
-        }
-        if let Some(v) = self.has_update {
-            o.insert("hasUpdate".into(), json!(v));
-        }
-        Value::Object(o)
     }
 }
 
@@ -1262,9 +1260,9 @@ impl ServiceHub {
     }
 
     /// `image:resolveCacheBatch`: one result row per payload (duplicates are resolved once).
-    pub fn image_resolve_cache_batch(&self, payloads: &[ImagePayload]) -> Value {
-        let mut memo: HashMap<String, Value> = HashMap::new();
-        let rows: Vec<Value> = payloads
+    pub fn image_resolve_cache_batch(&self, payloads: &[ImagePayload]) -> ImageBatch {
+        let mut memo: HashMap<String, ImageResult> = HashMap::new();
+        let rows: Vec<ImageResult> = payloads
             .iter()
             .map(|p| {
                 let key = format!(
@@ -1281,11 +1279,14 @@ impl ServiceHub {
                     p.hardlink_only
                 );
                 memo.entry(key)
-                    .or_insert_with(|| self.image_resolve_cache(p).to_json())
+                    .or_insert_with(|| self.image_resolve_cache(p))
                     .clone()
             })
             .collect();
-        json!({ "success": true, "rows": rows })
+        ImageBatch {
+            success: true,
+            rows,
+        }
     }
 
     /// `chat:getImageData`: the decrypted image of a message as bytes.
@@ -1767,11 +1768,11 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            ok.to_json(),
+            serde_json::to_value(&ok).unwrap(),
             json!({ "success": true, "localPath": "/x.jpg", "isThumb": false, "hasUpdate": false })
         );
         assert_eq!(
-            ImageResult::fail("nope", "not_found").to_json(),
+            serde_json::to_value(ImageResult::fail("nope", "not_found")).unwrap(),
             json!({ "success": false, "error": "nope", "failureKind": "not_found" })
         );
     }

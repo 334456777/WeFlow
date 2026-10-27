@@ -1951,19 +1951,25 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 );
                 let _ = tokio::signal::ctrl_c().await;
                 svc.stop();
-                Ok(json!({ "stopped": true }))
+                Ok(json!(weflow_core::contract::AutoDownloadStopped {
+                    stopped: true
+                }))
             }
-            AutoDownloadSubcommand::Status => Ok(
-                json!({ "isHooked": false, "pid": null, "supported": weflow_core::image_download::supported() }),
-            ),
+            AutoDownloadSubcommand::Status => {
+                Ok(json!(weflow_core::contract::AutoDownloadStatus {
+                    is_hooked: false,
+                    pid: None,
+                    supported: weflow_core::image_download::supported(),
+                }))
+            }
         },
         Commands::Image(command) => Ok(match &command.command {
             ImageSubcommand::AutoDownload { .. } => unreachable!("handled above"),
             ImageSubcommand::Decrypt { target, force } => {
-                hub.image_decrypt(&target.payload(*force)).to_json()
+                json!(hub.image_decrypt(&target.payload(*force)))
             }
             ImageSubcommand::ResolveCache { target } => {
-                hub.image_resolve_cache(&target.payload(false)).to_json()
+                json!(hub.image_resolve_cache(&target.payload(false)))
             }
             ImageSubcommand::ResolveBatch { payloads_json } => {
                 let list: Vec<Value> = serde_json::from_str(payloads_json).map_err(|e| {
@@ -1973,7 +1979,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                     .iter()
                     .map(weflow_core::services::ImagePayload::from_json)
                     .collect();
-                hub.image_resolve_cache_batch(&payloads)
+                json!(hub.image_resolve_cache_batch(&payloads))
             }
         }),
         Commands::Video(command) => match &command.command {
@@ -1981,7 +1987,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 md5,
                 no_poster,
                 file_url,
-            } => hub.video_info(
+            } => Ok(json!(hub.video_info(
                 md5,
                 !*no_poster,
                 if *file_url {
@@ -1989,10 +1995,10 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 } else {
                     weflow_core::video::PosterFormat::DataUrl
                 },
-            ),
-            VideoSubcommand::ParseMd5 { content } => {
-                Ok(serde_json::json!({ "md5": weflow_core::video::parse_video_md5(content) }))
-            }
+            )?)),
+            VideoSubcommand::ParseMd5 { content } => Ok(json!(weflow_core::contract::VideoMd5 {
+                md5: weflow_core::video::parse_video_md5(content),
+            })),
         },
         Commands::Serve(command) => handle_serve(command, &hub).await,
         Commands::Web(command) => handle_web(command, &hub).await,
@@ -2505,19 +2511,20 @@ async fn handle_ffmpeg(
     ctx: &AppContext,
     config: &mut ConfigStore,
 ) -> AppResult<Value> {
+    use weflow_core::contract::FfmpegBaseUrl;
     match &command.command {
-        FfmpegSubcommand::Install { force } => {
+        FfmpegSubcommand::Install { force } => Ok(json!(
             weflow_core::ffmpeg::install(&ctx.home_dir, config.ffmpeg_base_url.as_deref(), *force)
-                .await
-        }
-        FfmpegSubcommand::Path => {
-            let mut found = weflow_core::ffmpeg::status();
-            found["baseUrl"] = json!(config
+                .await?
+        )),
+        FfmpegSubcommand::Path => Ok(json!(weflow_core::contract::FfmpegPath {
+            found: weflow_core::ffmpeg::status(),
+            base_url: config
                 .ffmpeg_base_url
                 .as_deref()
-                .unwrap_or(weflow_core::ffmpeg::DEFAULT_BASE_URL));
-            Ok(found)
-        }
+                .unwrap_or(weflow_core::ffmpeg::DEFAULT_BASE_URL)
+                .to_string(),
+        })),
         FfmpegSubcommand::Set {
             setting: FfmpegSetting::Baseurl { url },
         } => {
@@ -2526,7 +2533,7 @@ async fn handle_ffmpeg(
                 config.ffmpeg_base_url = Some(url.clone());
                 Ok(())
             })?;
-            Ok(json!({ "baseUrl": url }))
+            Ok(json!(FfmpegBaseUrl { base_url: url }))
         }
         FfmpegSubcommand::Unset {
             setting: FfmpegUnsetting::Baseurl,
@@ -2535,7 +2542,9 @@ async fn handle_ffmpeg(
                 config.ffmpeg_base_url = None;
                 Ok(())
             })?;
-            Ok(json!({ "baseUrl": weflow_core::ffmpeg::DEFAULT_BASE_URL }))
+            Ok(json!(FfmpegBaseUrl {
+                base_url: weflow_core::ffmpeg::DEFAULT_BASE_URL.to_string()
+            }))
         }
     }
 }
@@ -3493,21 +3502,24 @@ async fn serve_webui(
 
 /// `weflow web …`: the WebUI versions kept here and published (issue #148).
 async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> {
+    use weflow_core::contract::{
+        WebChosen, WebInfo, WebInstalled, WebPruned, WebPublished, WebUpdated,
+    };
     use weflow_core::webui::{self, Registry, WebMeta};
     let store = hub.web_store();
     let backend = web_backend();
     let chosen = store.chosen();
     let wanted = web_wanted(&store);
-    let entry = |m: &WebMeta| {
-        json!({
-            "version": m.version,
-            "apiVersion": m.api_version,
-            "minBackendVersion": m.min_backend_version,
-            "path": store.dir(&m.version),
-            "inUse": wanted.as_deref() == Some(m.version.as_str()),
-            "picked": chosen.as_deref() == Some(m.version.as_str()),
-            "suits": backend.refusal(&m.api_version, &m.min_backend_version).is_none(),
-        })
+    let entry = |m: &WebMeta| WebInstalled {
+        version: m.version.clone(),
+        api_version: m.api_version.clone(),
+        min_backend_version: m.min_backend_version.clone(),
+        path: store.dir(&m.version),
+        in_use: wanted.as_deref() == Some(m.version.as_str()),
+        picked: chosen.as_deref() == Some(m.version.as_str()),
+        suits: backend
+            .refusal(&m.api_version, &m.min_backend_version)
+            .is_none(),
     };
     let progress = |done: u64, total: u64| {
         weflow_core::output::progress(
@@ -3520,20 +3532,22 @@ async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> 
     match &command.command {
         WebSubcommand::Info => {
             let in_use = wanted.as_deref().and_then(|v| store.meta(v));
-            Ok(json!({
-                "inUse": in_use.as_ref().map(|m| m.version.clone()),
-                "path": in_use.as_ref().map(|m| store.dir(&m.version)),
-                "picked": chosen,
-                "builtIn": WEB_VERSION,
-                "wanted": wanted,
-                "downloaded": in_use.is_some(),
-                "store": store.root(),
-                "installed": store.installed().iter().map(|m| m.version.clone()).collect::<Vec<_>>(),
+            Ok(json!(WebInfo {
+                in_use: in_use.as_ref().map(|m| m.version.clone()),
+                path: in_use.as_ref().map(|m| store.dir(&m.version)),
+                picked: chosen.clone(),
+                built_in: WEB_VERSION.to_string(),
+                wanted: wanted.clone(),
+                downloaded: in_use.is_some(),
+                store: store.root().to_path_buf(),
+                installed: store.installed().into_iter().map(|m| m.version).collect(),
             }))
         }
-        WebSubcommand::List { remote: false } => {
-            Ok(Value::Array(store.installed().iter().map(entry).collect()))
-        }
+        WebSubcommand::List { remote: false } => Ok(json!(store
+            .installed()
+            .iter()
+            .map(entry)
+            .collect::<Vec<_>>())),
         WebSubcommand::List { remote: true } => {
             let registry = Registry::default_registry()?;
             let mut out = Vec::new();
@@ -3543,28 +3557,31 @@ async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> 
                     (Some(api), Some(min)) => backend.refusal(api, min),
                     _ => None,
                 };
-                out.push(json!({
-                    "version": version,
-                    "size": published.size,
-                    "apiVersion": published.api_version,
-                    "minBackendVersion": published.min_backend_version,
-                    "suits": refusal.is_none(),
-                    "why": refusal,
-                    "downloaded": store.meta(&version).is_some(),
-                }));
+                out.push(WebPublished {
+                    size: published.size,
+                    api_version: published.api_version,
+                    min_backend_version: published.min_backend_version,
+                    suits: refusal.is_none(),
+                    why: refusal,
+                    downloaded: store.meta(&version).is_some(),
+                    version,
+                });
             }
-            Ok(Value::Array(out))
+            Ok(json!(out))
         }
         WebSubcommand::Install { version } => {
             let registry = Registry::default_registry()?;
             let meta = webui::install(&store, &registry, version, backend, &progress).await?;
-            Ok(entry(&meta))
+            Ok(json!(entry(&meta)))
         }
         WebSubcommand::Use { version } => {
             let registry = Registry::default_registry()?;
             let meta = webui::install(&store, &registry, version, backend, &progress).await?;
             store.choose(&meta.version)?;
-            Ok(json!({ "version": meta.version, "path": store.dir(&meta.version) }))
+            Ok(json!(WebChosen {
+                path: store.dir(&meta.version),
+                version: meta.version,
+            }))
         }
         WebSubcommand::Update => {
             let registry = Registry::default_registry()?;
@@ -3595,9 +3612,11 @@ async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> 
             let before = wanted.clone();
             let meta = webui::install(&store, &registry, &newest, backend, &progress).await?;
             store.choose(&meta.version)?;
-            Ok(
-                json!({ "version": meta.version, "before": before, "path": store.dir(&meta.version) }),
-            )
+            Ok(json!(WebUpdated {
+                path: store.dir(&meta.version),
+                version: meta.version,
+                before,
+            }))
         }
         WebSubcommand::Prune => {
             let (mut removed, mut shown) = (Vec::new(), Vec::new());
@@ -3616,7 +3635,11 @@ async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> 
                 }
             }
             let kept: Vec<String> = store.installed().into_iter().map(|m| m.version).collect();
-            Ok(json!({ "removed": removed, "kept": kept, "shown": shown }))
+            Ok(json!(WebPruned {
+                removed,
+                kept,
+                shown
+            }))
         }
     }
 }
