@@ -343,6 +343,8 @@ fn operation(
     }
     if refused(&name, verb) {
         op["x-weflow-refused"] = true.into();
+        // it never succeeds: there is no answer to describe
+        op["responses"].as_object_mut().unwrap().remove("200");
     }
     if in_body && !properties.is_empty() {
         let mut schema = json!({
@@ -728,6 +730,10 @@ pub(super) fn contract() -> &'static Contract {
                 }),
             );
             data.insert("sns media", of(generator.subschema_for::<SnsMediaFetched>()));
+            use weflow_core::contract::{SnsEmojiSaved, SnsImageDownload, SnsResourceProbe};
+            data.insert("sns debug-resource", of(generator.subschema_for::<SnsResourceProbe>()));
+            data.insert("sns download-emoji", of(generator.subschema_for::<SnsEmojiSaved>()));
+            data.insert("sns download-image", of(generator.subschema_for::<SnsImageDownload>()));
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",
@@ -1297,6 +1303,22 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Every command that can succeed says what its `data` holds (#430), but two whose answer is any value.
+    #[test]
+    fn every_answer_is_described() {
+        let undescribed: Vec<String> = super::super::Endpoints::new()
+            .0
+            .iter()
+            .filter(|(name, ep)| {
+                !contract().data.contains_key(name.as_str())
+                    && !ep.verbs().iter().all(|verb| refused(name, *verb))
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        // a contact's row of WeChat's table, and the value of any key of the config
+        assert_eq!(undescribed, ["chat contact", "config get"]);
     }
 
     /// `web/contract/openapi.json` is the contract the code answers with (#399), from which the WebUI's types are

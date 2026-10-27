@@ -846,7 +846,9 @@ fn refused_commands_are_marked_and_refused() {
             "DELETE /chat/delete-message",
             "DELETE /sns/block-delete",
             "DELETE /sns/delete",
+            "GET /sns/block-delete",
             "PATCH /chat/update-message",
+            "POST /chat/mark-read",
             "PUT /chat/anti-revoke/install",
             "PUT /sns/block-delete",
         ]
@@ -2282,6 +2284,77 @@ fn chat_media_answers_fit_the_contract() {
         &sessions.json()["data"],
     );
     assert!(misfit.is_empty(), "{misfit:#?}");
+}
+
+/// A media server that answers every request with `body` as a PNG, with the headers WeChat's servers send.
+fn png_server(body: Vec<u8>) -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let mut request = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while request.read_line(&mut line).is_ok_and(|n| n > 2) {
+                line.clear();
+            }
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nx-enc: 1\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(&body);
+        }
+    });
+    url
+}
+
+#[test]
+fn sns_downloads_fit_the_contract() {
+    let root = temp_root("sns-downloads-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    png.extend((0..200u8).map(|i| i | 1));
+    let base = png_server(png);
+    let out = root.join("out").join("image.png");
+    let debug = format!(
+        "/sns/debug-resource?url={}",
+        percent(&format!("{base}/res"))
+    );
+    for (verb, route, body, schema) in [
+        ("GET", debug.as_str(), String::new(), "SnsResourceProbe"),
+        (
+            "POST",
+            "/sns/download-emoji",
+            json!({ "url": format!("{base}/emoji") }).to_string(),
+            "SnsEmojiSaved",
+        ),
+        (
+            "POST",
+            "/sns/download-image",
+            json!({ "url": format!("{base}/a") }).to_string(),
+            "SnsImageInline",
+        ),
+        (
+            "POST",
+            "/sns/download-image",
+            json!({ "url": format!("{base}/b"), "out": out }).to_string(),
+            "SnsImageSaved",
+        ),
+    ] {
+        let r = server.call(verb, route, &body);
+        assert_eq!(r.status, 200, "{verb} {route} {body}: {}", r.body);
+        let data = &r.json()["data"];
+        let misfit = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            data,
+        );
+        assert!(misfit.is_empty(), "{route}: {misfit:#?}\n{data}");
+    }
+    assert!(out.is_file());
 }
 
 #[test]

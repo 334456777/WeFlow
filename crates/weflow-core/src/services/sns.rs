@@ -9,7 +9,9 @@ use md5::{Digest, Md5};
 use serde_json::{json, Map, Value};
 
 use super::*;
-use crate::contract::{SnsExported, SnsStats, UserPosts};
+use crate::contract::{
+    SnsEmojiSaved, SnsExported, SnsResourceHeaders, SnsResourceProbe, SnsStats, UserPosts,
+};
 use crate::isaac64;
 use crate::sns::{self, CachedContact};
 
@@ -568,34 +570,37 @@ impl ServiceHub {
 
     /// `sns:debugResource`: asks the server for the first bytes of a Moments resource the way WeChat does and
     /// reports the status and the headers that matter for decryption (`x-enc`, `x-time`, length, type).
-    pub async fn sns_debug_resource(&self, url: &str) -> Value {
+    pub async fn sns_debug_resource(&self, url: &str) -> AppResult<SnsResourceProbe> {
         if url.trim().is_empty() {
-            return json!({ "success": false, "error": "url must not be empty" });
+            return Err(AppError::runtime("url must not be empty"));
         }
-        let client = match self.sns_http_client(false) {
-            Ok(c) => c,
-            Err(e) => return json!({ "success": false, "error": e.message }),
-        };
+        let client = self.sns_http_client(false)?;
         let req = client
             .get(url.trim())
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090719) XWEB/8351")
             .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
             .header("Accept-Language", "zh-CN,zh;q=0.9")
             .header("Range", "bytes=0-10");
-        match req.send().await {
-            Ok(res) => {
-                let h = |k: &str| {
-                    res.headers()
-                        .get(k)
-                        .and_then(|v| v.to_str().ok())
-                        .map(|v| json!(v))
-                        .unwrap_or(Value::Null)
-                };
-                let headers = json!({ "x-enc": h("x-enc"), "x-time": h("x-time"), "content-length": h("content-length"), "content-type": h("content-type") });
-                json!({ "success": true, "status": res.status().as_u16(), "headers": headers })
-            }
-            Err(e) => json!({ "success": false, "error": e.to_string() }),
-        }
+        let res = req
+            .send()
+            .await
+            .map_err(|e| AppError::runtime(e.to_string()))?;
+        let header = |k: &str| {
+            res.headers()
+                .get(k)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string)
+        };
+        Ok(SnsResourceProbe {
+            success: true,
+            status: res.status().as_u16(),
+            headers: SnsResourceHeaders {
+                x_enc: header("x-enc"),
+                x_time: header("x-time"),
+                content_length: header("content-length"),
+                content_type: header("content-type"),
+            },
+        })
     }
 
     // ── media download / decrypt ──
@@ -863,7 +868,7 @@ impl ServiceHub {
         url: &str,
         encrypt_url: Option<&str>,
         aes_key: Option<&str>,
-    ) -> AppResult<Value> {
+    ) -> AppResult<SnsEmojiSaved> {
         let encrypt_url = encrypt_url.filter(|u| !u.is_empty());
         let aes_key = aes_key.filter(|k| !k.is_empty());
         if url.is_empty() && encrypt_url.is_none() {
@@ -881,7 +886,7 @@ impl ServiceHub {
         for ext in [".gif", ".png", ".webp", ".jpg", ".jpeg"] {
             let p = dir.join(format!("{cache_key}{ext}"));
             if p.exists() {
-                return Ok(json!({ "success": true, "localPath": p }));
+                return Ok(SnsEmojiSaved::at(p));
             }
         }
         let save_decrypted = |buf: &[u8]| -> Option<PathBuf> {
@@ -905,15 +910,15 @@ impl ServiceHub {
                             dir.join(format!("{cache_key}{}", sns::image_ext_from_buffer(&enc)));
                         if std::fs::write(&p, &enc).is_ok() {
                             let _ = std::fs::remove_file(&enc_path);
-                            return Ok(json!({ "success": true, "localPath": p }));
+                            return Ok(SnsEmojiSaved::at(p));
                         }
                     }
                     if let Some(dec) = sns::decrypt_emoji_aes(&enc, key) {
                         let _ = std::fs::remove_file(&enc_path);
                         if let Some(p) = save_decrypted(&dec) {
-                            return Ok(json!({ "success": true, "localPath": p }));
+                            return Ok(SnsEmojiSaved::at(p));
                         }
-                        return Ok(json!({ "success": false }));
+                        return Err(AppError::runtime("failed to save the decrypted emoji"));
                     }
                 }
                 let _ = std::fs::remove_file(&enc_path);
@@ -923,15 +928,15 @@ impl ServiceHub {
             if let Some(path) = self.download_raw(url, &cache_key, &dir).await {
                 if let Ok(buf) = std::fs::read(&path) {
                     if sns::is_valid_image_buffer(&buf) {
-                        return Ok(json!({ "success": true, "localPath": path }));
+                        return Ok(SnsEmojiSaved::at(path));
                     }
                     if let Some(key) = aes_key {
                         if let Some(dec) = sns::decrypt_emoji_aes(&buf, key) {
                             let _ = std::fs::remove_file(&path);
                             if let Some(p) = save_decrypted(&dec) {
-                                return Ok(json!({ "success": true, "localPath": p }));
+                                return Ok(SnsEmojiSaved::at(p));
                             }
-                            return Ok(json!({ "success": false }));
+                            return Err(AppError::runtime("failed to save the decrypted emoji"));
                         }
                     }
                 }

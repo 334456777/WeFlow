@@ -1489,6 +1489,75 @@ pub struct SnsMediaFetched {
     pub cache_path: Option<PathBuf>,
 }
 
+/// What WeChat's media server answered `sns debug-resource` for the first bytes of a resource.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SnsResourceProbe {
+    /// Always true.
+    pub success: bool,
+    /// The HTTP status.
+    pub status: u16,
+    pub headers: SnsResourceHeaders,
+}
+
+/// The answer headers that matter for decrypting a Moments resource; null when the server left one out.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub struct SnsResourceHeaders {
+    pub x_enc: Option<String>,
+    pub x_time: Option<String>,
+    pub content_length: Option<String>,
+    pub content_type: Option<String>,
+}
+
+/// The Moments sticker `sns download-emoji` saved (or found already saved).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SnsEmojiSaved {
+    /// Always true.
+    pub success: bool,
+    pub local_path: PathBuf,
+}
+
+impl SnsEmojiSaved {
+    pub fn at(local_path: PathBuf) -> Self {
+        Self {
+            success: true,
+            local_path,
+        }
+    }
+}
+
+/// The image `sns download-image` downloaded (and decrypted when it was a .dat payload).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum SnsImageDownload {
+    Saved(SnsImageSaved),
+    Inline(SnsImageInline),
+}
+
+/// The image written to `out`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SnsImageSaved {
+    pub url: String,
+    pub out: PathBuf,
+    /// The image's extension, with its dot.
+    pub ext: String,
+    /// Its size in bytes.
+    pub size: usize,
+}
+
+/// The image in base64, without `out`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SnsImageInline {
+    pub url: String,
+    /// The image's extension, with its dot.
+    pub ext: String,
+    /// Its size in bytes.
+    pub size: usize,
+    /// A `data:image/...;base64,` URL.
+    pub data: String,
+}
+
 /// The accounts `db scan` found under a folder: those with a `db_storage` or `FileStorage/Image` folder.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbScan {

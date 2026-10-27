@@ -4041,6 +4041,126 @@
         }
       }
     },
+    "/sns/debug-resource": {
+      "get": {
+        "operationId": "api_sns_debug_resource",
+        "x-weflow-command": "sns debug-resource",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsResourceProbe"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sns/download-emoji": {
+      "get": {
+        "operationId": "api_sns_download_emoji",
+        "x-weflow-command": "sns download-emoji",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsEmojiSaved"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sns/download-image": {
+      "get": {
+        "operationId": "api_sns_download_image",
+        "x-weflow-command": "sns download-image",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsImageDownload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/sns/export": {
       "get": {
         "operationId": "api_sns_export",
@@ -9698,6 +9818,152 @@
           "cachePath"
         ],
         "description": "A Moments image or video `sns media` fetched."
+      },
+      "SnsResourceProbe": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "status": {
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "The HTTP status."
+          },
+          "headers": {
+            "$ref": "#/components/schemas/SnsResourceHeaders"
+          }
+        },
+        "required": [
+          "success",
+          "status",
+          "headers"
+        ],
+        "description": "What WeChat's media server answered `sns debug-resource` for the first bytes of a resource."
+      },
+      "SnsResourceHeaders": {
+        "type": "object",
+        "properties": {
+          "x-enc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "x-time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content-length": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content-type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "x-enc",
+          "x-time",
+          "content-length",
+          "content-type"
+        ],
+        "description": "The answer headers that matter for decrypting a Moments resource; null when the server left one out."
+      },
+      "SnsEmojiSaved": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "localPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "localPath"
+        ],
+        "description": "The Moments sticker `sns download-emoji` saved (or found already saved)."
+      },
+      "SnsImageDownload": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SnsImageSaved"
+          },
+          {
+            "$ref": "#/components/schemas/SnsImageInline"
+          }
+        ],
+        "description": "The image `sns download-image` downloaded (and decrypted when it was a .dat payload)."
+      },
+      "SnsImageSaved": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "out": {
+            "type": "string"
+          },
+          "ext": {
+            "type": "string",
+            "description": "The image's extension, with its dot."
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "Its size in bytes."
+          }
+        },
+        "required": [
+          "url",
+          "out",
+          "ext",
+          "size"
+        ],
+        "description": "The image written to `out`."
+      },
+      "SnsImageInline": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "ext": {
+            "type": "string",
+            "description": "The image's extension, with its dot."
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "Its size in bytes."
+          },
+          "data": {
+            "type": "string",
+            "description": "A `data:image/...;base64,` URL."
+          }
+        },
+        "required": [
+          "url",
+          "ext",
+          "size",
+          "data"
+        ],
+        "description": "The image in base64, without `out`."
       },
       "BackupCreated": {
         "type": "object",
