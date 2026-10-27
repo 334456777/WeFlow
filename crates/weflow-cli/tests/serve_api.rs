@@ -2181,6 +2181,110 @@ fn file_exports_fit_the_contract() {
 }
 
 #[test]
+fn chat_media_answers_fit_the_contract() {
+    use weflow_native::fixture::{DAY, T0};
+    let root = temp_root("chat-media-contract");
+    let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    jpeg.extend((0..3000u32).map(|i| (i as u8).wrapping_mul(7) | 1));
+    let home = account_home_with(&root, |f| {
+        // the image of `wxid_bob`'s message 3, an old-style .dat: the whole file XOR-ed
+        let img = f
+            .account_dir
+            .join("msg/attach")
+            .join(weflow_core::image::session_dir_for_storage(
+                "wxid_bob",
+                |s| s.to_string(),
+            ))
+            .join(weflow_core::image::year_month_from_create_time(Some(
+                T0 + DAY,
+            )))
+            .join("Img");
+        std::fs::create_dir_all(&img).unwrap();
+        std::fs::write(
+            img.join("aabbccddeeff00112233445566778899.dat"),
+            jpeg.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
+        )
+        .unwrap();
+    });
+    let (exit, _, stderr) = run_cli(&home, &["config", "set", "image_xor_key", "90"]);
+    assert_eq!(exit, 0, "{stderr}");
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let image_out = root.join("out").join("image.jpg");
+    let preload = json!({
+        "session-id": "wxid_bob",
+        "messages-json": json!([{ "localId": 9, "createTime": T0, "serverId": "77" }]).to_string(),
+    });
+    for (verb, route, body, schema) in [
+        ("GET", "/chat/images?session-id=wxid_bob".to_string(), String::new(), "ChatImages"),
+        (
+            "GET",
+            "/chat/voice-messages?session-id=wxid_bob".into(),
+            String::new(),
+            "VoiceMessages",
+        ),
+        ("GET", "/chat/media-stream?limit=10".into(), String::new(), "MediaStream"),
+        (
+            "GET",
+            "/chat/voice-cache?session-id=wxid_bob&msg-id=5".into(),
+            String::new(),
+            "VoiceCache",
+        ),
+        ("POST", "/chat/voice-preload".into(), preload.to_string(), "VoicesPrepared"),
+        (
+            "POST",
+            "/chat/emoji".into(),
+            json!({ "session-id": "wxid_bob", "out": root.join("emoji") }).to_string(),
+            "EmojisDownloaded",
+        ),
+        (
+            "GET",
+            "/chat/group-hint?chatroom-id=room1%40chatroom".into(),
+            String::new(),
+            "GroupHint",
+        ),
+        (
+            "PUT",
+            "/chat/group-hint".into(),
+            json!({ "chatroom-id": "room1@chatroom", "set": 4 }).to_string(),
+            "GroupHint",
+        ),
+        (
+            "GET",
+            "/chat/group-hint?chatroom-id=room1%40chatroom".into(),
+            String::new(),
+            "GroupHint",
+        ),
+        ("GET", "/chat/anti-revoke/check".into(), String::new(), "AntiRevokeResults"),
+        (
+            "POST",
+            "/chat/image-data".into(),
+            json!({ "session-id": "wxid_bob", "msg-id": "3", "create-time": T0 + DAY, "out": image_out })
+                .to_string(),
+            "MediaWritten",
+        ),
+    ] {
+        let r = server.call(verb, &route, &body);
+        assert_eq!(r.status, 200, "{verb} {route} {body}: {}", r.body);
+        let data = &r.json()["data"];
+        let misfit = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            data,
+        );
+        assert!(misfit.is_empty(), "{route}: {misfit:#?}\n{data}");
+    }
+    let sessions = server.call("GET", "/chat/anti-revoke/sessions", "");
+    assert_eq!(sessions.status, 200, "{}", sessions.body);
+    let misfit = misfits(
+        &contract,
+        &json!({ "type": "array", "items": { "$ref": "#/components/schemas/Row" } }),
+        &sessions.json()["data"],
+    );
+    assert!(misfit.is_empty(), "{misfit:#?}");
+}
+
+#[test]
 fn db_scan_and_open_fit_the_contract() {
     let root = temp_root("db-contract");
     let home = account_home(&root);

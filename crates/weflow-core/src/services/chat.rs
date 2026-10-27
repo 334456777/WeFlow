@@ -8,9 +8,10 @@ use serde_json::{json, Map, Value};
 
 use super::{clean_account_dir_name, ServiceHub};
 use crate::contract::{
-    ChatStatus, ExportStats, MessageLookup, MessageTable, MessageView, Resource, ResourceKind,
-    ResourcePage, SessionDateCounts, SessionDates, SessionDetail, SessionExportStats, SessionFacts,
-    SessionTables, TabCounts, TransferNames,
+    ChatImages, ChatStatus, ExportStats, GroupHint, ImageRef, MediaStream, MediaStreamItem,
+    MessageLookup, MessageTable, MessageView, Resource, ResourceKind, ResourcePage,
+    SessionDateCounts, SessionDates, SessionDetail, SessionExportStats, SessionFacts,
+    SessionTables, TabCounts, TransferNames, VoiceMessages,
 };
 use crate::error::{AppError, AppResult};
 use crate::message::{
@@ -648,7 +649,7 @@ impl ServiceHub {
             .unwrap_or_default()
     }
 
-    pub fn set_group_hint(&self, chatroom_id: &str, count: i64) -> AppResult<Value> {
+    pub fn set_group_hint(&self, chatroom_id: &str, count: i64) -> AppResult<GroupHint> {
         if !chatroom_id.trim().ends_with("@chatroom") {
             return Err(AppError::usage("invalid group chat id"));
         }
@@ -672,18 +673,28 @@ impl ServiceHub {
             serde_json::to_vec_pretty(&Value::Object(hints)).unwrap(),
         )
         .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
-        Ok(json!({ "updatedAt": now }))
+        Ok(GroupHint {
+            count: None,
+            updated_at: Some(now),
+            source: None,
+        })
     }
 
-    pub fn get_group_hint(&self, chatroom_id: &str) -> AppResult<Value> {
+    pub fn get_group_hint(&self, chatroom_id: &str) -> AppResult<GroupHint> {
         if !chatroom_id.trim().ends_with("@chatroom") {
             return Err(AppError::usage("invalid group chat id"));
         }
         Ok(match self.read_hints().get(chatroom_id.trim()) {
-            Some(entry) => {
-                json!({ "count": entry["messageCount"], "updatedAt": entry["updatedAt"], "source": "disk" })
-            }
-            None => json!({}),
+            Some(entry) => GroupHint {
+                count: entry["messageCount"].as_i64(),
+                updated_at: entry["updatedAt"].as_i64(),
+                source: Some("disk".into()),
+            },
+            None => GroupHint {
+                count: None,
+                updated_at: None,
+                source: None,
+            },
         })
     }
 
@@ -911,7 +922,7 @@ impl ServiceHub {
     }
 
     /// `getAllImageMessages`: de-duplicated image identifiers of a session, newest first.
-    pub fn chat_all_images(&self, session_id: &str) -> AppResult<Value> {
+    pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
             .messages_by_type(session_id, 3, false, 0, 0)
@@ -920,30 +931,40 @@ impl ServiceHub {
             rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
             session_id,
         );
-        let mut images: Vec<(i64, Value)> = msgs
+        let mut images: Vec<(i64, ImageRef)> = msgs
             .into_iter()
             .filter(|m| m.local_type == 3 && (m.image_md5.is_some() || m.image_dat_name.is_some()))
-            .map(|m| (m.create_time, json!({ "imageMd5": m.image_md5, "imageDatName": m.image_dat_name, "createTime": if m.create_time > 0 { json!(m.create_time) } else { Value::Null } })))
+            .map(|m| {
+                (
+                    m.create_time,
+                    ImageRef {
+                        image_md5: m.image_md5,
+                        image_dat_name: m.image_dat_name,
+                        create_time: (m.create_time > 0).then_some(m.create_time),
+                    },
+                )
+            })
             .collect();
         images.sort_by_key(|a| std::cmp::Reverse(a.0));
         let mut seen = HashSet::new();
-        let images: Vec<Value> = images
+        let images: Vec<ImageRef> = images
             .into_iter()
-            .filter(|(_, v)| {
-                let key = v["imageMd5"]
-                    .as_str()
-                    .or_else(|| v["imageDatName"].as_str())
+            .filter(|(_, image)| {
+                let key = image
+                    .image_md5
+                    .as_deref()
+                    .or(image.image_dat_name.as_deref())
                     .unwrap_or("")
                     .to_string();
                 !key.is_empty() && seen.insert(key)
             })
-            .map(|(_, v)| v)
+            .map(|(_, image)| image)
             .collect();
-        Ok(json!({ "images": images }))
+        Ok(ChatImages { images })
     }
 
     /// `getAllVoiceMessages`
-    pub fn chat_all_voices(&self, session_id: &str) -> AppResult<Value> {
+    pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
             .messages_by_type(session_id, 34, false, 0, 0)
@@ -955,12 +976,12 @@ impl ServiceHub {
         );
         msgs.sort_by_key(|a| std::cmp::Reverse(a.create_time));
         let mut seen = HashSet::new();
-        let list: Vec<Value> = msgs
+        let messages: Vec<MessageView> = msgs
             .into_iter()
             .filter(|m| seen.insert(format!("{}-{}-{}", m.server_id, m.local_id, m.create_time)))
-            .map(|m| m.to_json(&my))
+            .map(|m| MessageView::of(&m, &my))
             .collect();
-        Ok(json!({ "messages": list }))
+        Ok(VoiceMessages { messages })
     }
 
     /// `getMediaStream`: image/video messages across sessions, paged by the native scanner.
@@ -972,7 +993,7 @@ impl ServiceHub {
         end: i64,
         limit: i32,
         offset: i32,
-    ) -> AppResult<Value> {
+    ) -> AppResult<MediaStream> {
         let wcdb = self.open_wcdb()?;
         let ids: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
@@ -995,7 +1016,7 @@ impl ServiceHub {
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
         let names = self.session_display_names(&wcdb, &ids);
-        let mut items: Vec<Value> = Vec::new();
+        let mut items: Vec<MediaStreamItem> = Vec::new();
         for row in rows.as_array().into_iter().flatten() {
             let sid = ["session_id", "sessionId", "username", "talker"]
                 .iter()
@@ -1016,20 +1037,18 @@ impl ServiceHub {
                 continue;
             };
             let kind = if m.local_type == 43 { "video" } else { "image" };
-            let mut j = m.to_json(&my);
-            if let Some(o) = j.as_object_mut() {
-                o.insert("sessionId".into(), json!(sid));
-                o.insert(
-                    "sessionDisplayName".into(),
-                    json!(names.get(&sid).cloned().unwrap_or_else(|| sid.clone())),
-                );
-                o.insert("mediaType".into(), json!(kind));
-            }
-            items.push(j);
+            items.push(MediaStreamItem {
+                message: MessageView::of(&m, &my),
+                session_display_name: names.get(&sid).cloned().unwrap_or_else(|| sid.clone()),
+                session_id: sid,
+                media_type: kind.into(),
+            });
         }
-        Ok(
-            json!({ "items": items, "hasMore": has_more, "nextOffset": offset as usize + items.len() }),
-        )
+        Ok(MediaStream {
+            next_offset: offset as usize + items.len(),
+            items,
+            has_more,
+        })
     }
 
     /// `resolveTransferDisplayNames`

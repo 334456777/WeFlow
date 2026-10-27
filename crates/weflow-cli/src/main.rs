@@ -2569,6 +2569,7 @@ fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
 }
 
 async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value> {
+    use weflow_core::contract::MediaWritten;
     match &command.command {
         // run as a `Read` by `run`
         ChatSubcommand::Sessions { .. }
@@ -2599,9 +2600,15 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         } => hub.delete_message(session_id, *local_id, *create_time, db_path_hint.as_deref()),
         ChatSubcommand::AntiRevoke { command } => match command {
             AntiRevokeSubcommand::Sessions => hub.chat_anti_revoke_sessions(),
-            AntiRevokeSubcommand::Check { sessions } => hub.anti_revoke("check", sessions),
-            AntiRevokeSubcommand::Install { sessions } => hub.anti_revoke("install", sessions),
-            AntiRevokeSubcommand::Uninstall { sessions } => hub.anti_revoke("uninstall", sessions),
+            AntiRevokeSubcommand::Check { sessions } => {
+                Ok(json!(hub.anti_revoke("check", sessions)?))
+            }
+            AntiRevokeSubcommand::Install { sessions } => {
+                Ok(json!(hub.anti_revoke("install", sessions)?))
+            }
+            AntiRevokeSubcommand::Uninstall { sessions } => {
+                Ok(json!(hub.anti_revoke("uninstall", sessions)?))
+            }
         },
         ChatSubcommand::Detail {
             session_id,
@@ -2626,12 +2633,12 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
                 !no_relations,
             )?))
         }
-        ChatSubcommand::GroupHint { chatroom_id, set } => match set {
-            Some(count) => hub.set_group_hint(chatroom_id, *count),
-            None => hub.get_group_hint(chatroom_id),
-        },
-        ChatSubcommand::Images { session_id } => hub.chat_all_images(session_id),
-        ChatSubcommand::VoiceMessages { session_id } => hub.chat_all_voices(session_id),
+        ChatSubcommand::GroupHint { chatroom_id, set } => Ok(json!(match set {
+            Some(count) => hub.set_group_hint(chatroom_id, *count)?,
+            None => hub.get_group_hint(chatroom_id)?,
+        })),
+        ChatSubcommand::Images { session_id } => Ok(json!(hub.chat_all_images(session_id)?)),
+        ChatSubcommand::VoiceMessages { session_id } => Ok(json!(hub.chat_all_voices(session_id)?)),
         ChatSubcommand::MediaStream {
             session,
             media_type,
@@ -2641,14 +2648,14 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             offset,
         } => {
             let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-            hub.chat_media_stream(
+            Ok(json!(hub.chat_media_stream(
                 session.as_deref(),
                 media_type,
                 b.unwrap_or(0),
                 e.map(|x| x - 1).unwrap_or(0),
                 *limit,
                 *offset,
-            )
+            )?))
         }
         ChatSubcommand::TransferNames {
             chatroom_id,
@@ -2672,30 +2679,35 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             match out {
                 Some(path) => {
                     let bytes = write_media(file, path)?;
-                    Ok(
-                        serde_json::json!({ "success": true, "path": path.to_string_lossy(), "bytes": bytes }),
-                    )
+                    Ok(json!(MediaWritten {
+                        success: true,
+                        path: path.to_string_lossy().into_owned(),
+                        bytes,
+                    }))
                 }
                 None => {
                     use base64::Engine;
                     let MediaBody::Bytes(wav) = file.body else {
                         unreachable!("a voice is decoded in memory")
                     };
-                    Ok(
-                        serde_json::json!({ "success": true, "data": base64::engine::general_purpose::STANDARD.encode(&wav) }),
-                    )
+                    Ok(json!(weflow_core::contract::VoiceData {
+                        success: true,
+                        data: base64::engine::general_purpose::STANDARD.encode(&wav),
+                    }))
                 }
             }
         }
         ChatSubcommand::ImageData { out, .. } | ChatSubcommand::VideoData { out, .. } => {
             let read = media_of(&command.command).expect("a media command");
             let bytes = write_media(read.fetch(hub.clone()).await?, out)?;
-            Ok(
-                serde_json::json!({ "success": true, "path": out.to_string_lossy(), "bytes": bytes }),
-            )
+            Ok(json!(MediaWritten {
+                success: true,
+                path: out.to_string_lossy().into_owned(),
+                bytes,
+            }))
         }
         ChatSubcommand::VoiceCache { session_id, msg_id } => {
-            Ok(hub.voice_resolve_cache(session_id, msg_id))
+            Ok(json!(hub.voice_resolve_cache(session_id, msg_id)))
         }
         ChatSubcommand::VoicePreload {
             session_id,
@@ -2703,9 +2715,11 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         } => {
             let messages: Vec<Value> = serde_json::from_str(messages_json)
                 .map_err(|e| AppError::usage(format!("messages_json must be a JSON array: {e}")))?;
-            hub.voice_preload(session_id, &messages)
+            Ok(json!(hub.voice_preload(session_id, &messages)?))
         }
-        ChatSubcommand::Emoji { session_id, out } => hub.emoji_download(session_id, out).await,
+        ChatSubcommand::Emoji { session_id, out } => {
+            Ok(json!(hub.emoji_download(session_id, out).await?))
+        }
     }
 }
 
@@ -3230,13 +3244,19 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
                     std::fs::write(path, &data).map_err(|e| {
                         AppError::runtime(format!("failed to write {}: {e}", path.display()))
                     })?;
-                    Ok(
-                        json!({ "out": path.to_string_lossy(), "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path }),
-                    )
+                    Ok(json!(weflow_core::contract::SnsMediaFetched {
+                        out: Some(path.to_string_lossy().into_owned()),
+                        content_type: fetched.content_type,
+                        bytes: data.len(),
+                        cache_path: fetched.cache_path,
+                    }))
                 }
-                None => Ok(
-                    json!({ "contentType": fetched.content_type, "bytes": data.len(), "cachePath": fetched.cache_path }),
-                ),
+                None => Ok(json!(weflow_core::contract::SnsMediaFetched {
+                    out: None,
+                    content_type: fetched.content_type,
+                    bytes: data.len(),
+                    cache_path: fetched.cache_path,
+                })),
             }
         }
         SnsSubcommand::DownloadEmoji {

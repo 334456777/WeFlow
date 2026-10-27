@@ -613,6 +613,90 @@
         }
       }
     },
+    "/chat/anti-revoke/check": {
+      "get": {
+        "operationId": "api_chat_anti_revoke_check",
+        "x-weflow-command": "chat anti-revoke check",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AntiRevokeResults"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/anti-revoke/sessions": {
+      "get": {
+        "operationId": "api_chat_anti_revoke_sessions",
+        "x-weflow-command": "chat anti-revoke sessions",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "The conversations but official accounts: the rows of WeChat's session table",
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Row"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/contacts": {
       "get": {
         "operationId": "api_chat_contacts",
@@ -842,6 +926,46 @@
         }
       }
     },
+    "/chat/emoji": {
+      "get": {
+        "operationId": "api_chat_emoji",
+        "x-weflow-command": "chat emoji",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/EmojisDownloaded"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/chat/export-stats": {
       "get": {
         "operationId": "api_chat_export_stats",
@@ -863,6 +987,86 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/ExportStats"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/group-hint": {
+      "get": {
+        "operationId": "api_chat_group_hint",
+        "x-weflow-command": "chat group-hint",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/GroupHint"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/image-data": {
+      "get": {
+        "operationId": "api_chat_image_data",
+        "x-weflow-command": "chat image-data",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MediaWritten"
                     }
                   }
                 }
@@ -922,6 +1126,46 @@
         }
       }
     },
+    "/chat/images": {
+      "get": {
+        "operationId": "api_chat_images",
+        "x-weflow-command": "chat images",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ChatImages"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/latest": {
       "get": {
         "operationId": "api_chat_latest",
@@ -946,6 +1190,46 @@
                       "items": {
                         "$ref": "#/components/schemas/Row"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/media-stream": {
+      "get": {
+        "operationId": "api_chat_media_stream",
+        "x-weflow-command": "chat media-stream",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MediaStream"
                     }
                   }
                 }
@@ -1328,6 +1612,46 @@
         }
       }
     },
+    "/chat/video-data": {
+      "get": {
+        "operationId": "api_chat_video_data",
+        "x-weflow-command": "chat video-data",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MediaWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/chat/voice": {
       "get": {
         "operationId": "api_chat_voice",
@@ -1349,6 +1673,174 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/MediaExport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/voice-cache": {
+      "get": {
+        "operationId": "api_chat_voice_cache",
+        "x-weflow-command": "chat voice-cache",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VoiceCache"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/voice-data": {
+      "get": {
+        "operationId": "api_chat_voice_data",
+        "x-weflow-command": "chat voice-data",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "The WAV written to `out`; without it, the WAV in base64",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MediaWritten"
+                        },
+                        {
+                          "$ref": "#/components/schemas/VoiceData"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/voice-messages": {
+      "get": {
+        "operationId": "api_chat_voice_messages",
+        "x-weflow-command": "chat voice-messages",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VoiceMessages"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/voice-preload": {
+      "get": {
+        "operationId": "api_chat_voice_preload",
+        "x-weflow-command": "chat voice-preload",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VoicesPrepared"
                     }
                   }
                 }
@@ -3570,6 +4062,46 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/SnsExported"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sns/media": {
+      "get": {
+        "operationId": "api_sns_media",
+        "x-weflow-command": "sns media",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsMediaFetched"
                     }
                   }
                 }
@@ -8743,6 +9275,429 @@
           "userDir"
         ],
         "description": "What `key scan-image` (macOS) answers: the helper's own result."
+      },
+      "ChatImages": {
+        "type": "object",
+        "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageRef"
+            }
+          }
+        },
+        "required": [
+          "images"
+        ],
+        "description": "The images of a conversation (`chat images`), the newest first, each once."
+      },
+      "ImageRef": {
+        "type": "object",
+        "properties": {
+          "imageMd5": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageDatName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null when the message has no time."
+          }
+        },
+        "required": [
+          "imageMd5",
+          "imageDatName",
+          "createTime"
+        ],
+        "description": "What names an image message's file."
+      },
+      "VoiceMessages": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageView"
+            }
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "description": "The voice messages of a conversation (`chat voice-messages`), the newest first."
+      },
+      "MediaStream": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaStreamItem"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextOffset": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The `offset` of the next page."
+          }
+        },
+        "required": [
+          "items",
+          "hasMore",
+          "nextOffset"
+        ],
+        "description": "A page of image and video messages across conversations (`chat media-stream`), the newest first."
+      },
+      "MediaStreamItem": {
+        "type": "object",
+        "properties": {
+          "localId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "serverId": {
+            "type": "string",
+            "description": "WeChat's id of the message, in decimal: a string, as it may pass 2^53."
+          },
+          "createTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "localType": {
+            "type": "integer",
+            "format": "int64",
+            "description": "WeChat's type of the message, as a parsed message's `localType`."
+          },
+          "isSend": {
+            "type": "integer",
+            "format": "int64",
+            "description": "1 when I sent it, else 0."
+          },
+          "senderUsername": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "The message as WeChat keeps it (often XML)."
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its text as the chat window shows it; null when it has none."
+          },
+          "imageMd5": {
+            "type": "string"
+          },
+          "imageDatName": {
+            "type": "string"
+          },
+          "videoMd5": {
+            "type": "string"
+          },
+          "emojiMd5": {
+            "type": "string"
+          },
+          "emojiCdnUrl": {
+            "type": "string"
+          },
+          "xmlType": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "fileExt": {
+            "type": "string"
+          },
+          "fileMd5": {
+            "type": "string"
+          },
+          "fileSize": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In bytes."
+          },
+          "locationLat": {
+            "type": "number",
+            "format": "double"
+          },
+          "locationLng": {
+            "type": "number",
+            "format": "double"
+          },
+          "locationPoiname": {
+            "type": "string"
+          },
+          "locationLabel": {
+            "type": "string"
+          },
+          "appMsgKind": {
+            "type": "string",
+            "description": "The kind of an app message (`link`, `file`, `music`…)."
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "sessionDisplayName": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "`image` or `video`."
+          }
+        },
+        "required": [
+          "localId",
+          "serverId",
+          "createTime",
+          "localType",
+          "isSend",
+          "senderUsername",
+          "content",
+          "text",
+          "sessionId",
+          "sessionDisplayName",
+          "mediaType"
+        ],
+        "description": "A message of `chat media-stream`."
+      },
+      "VoiceCache": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "hasCache": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "string",
+            "description": "The WAV, in base64; left out without one."
+          }
+        },
+        "required": [
+          "success",
+          "hasCache"
+        ],
+        "description": "A voice already decoded (`chat voice-cache`)."
+      },
+      "VoicesPrepared": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "prepared": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "success",
+          "prepared"
+        ],
+        "description": "The voices `chat voice-preload` decoded ahead."
+      },
+      "EmojisDownloaded": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The sticker messages found."
+          },
+          "downloaded": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The ones downloaded now, not already there."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmojiFile"
+            },
+            "description": "Left out when none was found."
+          }
+        },
+        "required": [
+          "found",
+          "downloaded"
+        ],
+        "description": "The stickers `chat emoji` downloaded."
+      },
+      "EmojiFile": {
+        "type": "object",
+        "properties": {
+          "md5": {
+            "type": "string"
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "Already there before."
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "Bytes downloaded; left out for one already there."
+          }
+        },
+        "required": [
+          "md5",
+          "cached",
+          "path"
+        ],
+        "description": "A sticker `chat emoji` has on disk."
+      },
+      "GroupHint": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "My messages in the group."
+          },
+          "updatedAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix milliseconds."
+          },
+          "source": {
+            "type": "string",
+            "description": "`disk`."
+          }
+        },
+        "description": "A group's own message count, as `chat group-hint` saved it (all left out when there is none); with `set`, only\nwhen it was saved."
+      },
+      "AntiRevokeResults": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AntiRevokeResult"
+            }
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "description": "What `chat anti-revoke check` answers for each conversation asked for."
+      },
+      "AntiRevokeResult": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "data": true,
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "success"
+        ],
+        "description": "One conversation's anti-revoke check."
+      },
+      "MediaWritten": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "path": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "success",
+          "path",
+          "bytes"
+        ],
+        "description": "A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`)."
+      },
+      "VoiceData": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "data": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "description": "A voice as WAV in base64 (`chat voice-data` without `out`)."
+      },
+      "SnsMediaFetched": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string",
+            "description": "The file it was written to, with `out`."
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "cachePath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where WeFlow keeps it; null when it was not kept."
+          }
+        },
+        "required": [
+          "contentType",
+          "bytes",
+          "cachePath"
+        ],
+        "description": "A Moments image or video `sns media` fetched."
       },
       "BackupCreated": {
         "type": "object",

@@ -218,24 +218,43 @@ impl ServiceHub {
 
     /// `chat:resolveVoiceCache`: the desktop app only consults its in-memory cache here; the CLI has
     /// no long-lived memory, so a hit means a cached WAV for the key without a timestamp exists.
-    pub fn voice_resolve_cache(&self, session_id: &str, msg_id: &str) -> Value {
+    pub fn voice_resolve_cache(
+        &self,
+        session_id: &str,
+        msg_id: &str,
+    ) -> crate::contract::VoiceCache {
         let file = self
             .voice_cache_dir()
             .join(format!("{}.wav", voice_cache_key(session_id, msg_id, None)));
         match std::fs::read(&file) {
             Ok(bytes) if !bytes.is_empty() => {
                 use base64::Engine;
-                json!({ "success": true, "hasCache": true, "data": base64::engine::general_purpose::STANDARD.encode(bytes) })
+                crate::contract::VoiceCache {
+                    success: true,
+                    has_cache: true,
+                    data: Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
+                }
             }
-            _ => json!({ "success": true, "hasCache": false }),
+            _ => crate::contract::VoiceCache {
+                success: true,
+                has_cache: false,
+                data: None,
+            },
         }
     }
 
     /// `chat:preloadVoiceDataBatch`: decodes and caches a list of voice messages in chunks.
-    pub fn voice_preload(&self, session_id: &str, messages: &[Value]) -> AppResult<Value> {
+    pub fn voice_preload(
+        &self,
+        session_id: &str,
+        messages: &[Value],
+    ) -> AppResult<crate::contract::VoicesPrepared> {
         let session_id = session_id.trim();
         if session_id.is_empty() || messages.is_empty() {
-            return Ok(json!({ "success": true, "prepared": 0 }));
+            return Ok(crate::contract::VoicesPrepared {
+                success: true,
+                prepared: 0,
+            });
         }
         let wcdb = self.open_wcdb()?;
         let dir = self.voice_cache_dir();
@@ -310,7 +329,10 @@ impl ServiceHub {
                 }
             }
         }
-        Ok(json!({ "success": true, "prepared": prepared }))
+        Ok(crate::contract::VoicesPrepared {
+            success: true,
+            prepared,
+        })
     }
 }
 
