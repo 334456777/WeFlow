@@ -459,7 +459,7 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightLookup,
+            AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightLookup,
             MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
             ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
@@ -571,6 +571,8 @@ pub(super) fn contract() -> &'static Contract {
             }),
         );
         data.insert("report annual years", of(generator.subschema_for::<ReportYears>()));
+        data.insert("report annual generate", of(generator.subschema_for::<AnnualReport>()));
+        data.insert("report dual generate", of(generator.subschema_for::<DualReport>()));
         data.insert(
             "biz accounts",
             json!({

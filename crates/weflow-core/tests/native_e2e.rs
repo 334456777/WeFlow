@@ -581,7 +581,7 @@ fn operations_that_modify_wechat_databases_are_refused_clearly() {
 #[test]
 fn dual_report_combines_native_counts_with_service_side_details() {
     let (hub, _root) = common::mock_hub("n-dual");
-    let d = hub.report_dual("wxid_bob", 0, &[]).unwrap();
+    let d = serde_json::to_value(hub.report_dual("wxid_bob", 0, &[]).unwrap()).unwrap();
     assert_eq!(
         (d["friendName"].as_str(), d["selfName"].as_str()),
         (Some("Bobby"), Some("Me Nick"))
@@ -634,7 +634,7 @@ fn dual_report_combines_native_counts_with_service_side_details() {
 #[test]
 fn annual_report_uses_native_extras_and_native_moments() {
     let (hub, _root) = common::mock_hub("n-annual");
-    let a = hub.report_annual(2023).unwrap();
+    let a = serde_json::to_value(hub.report_annual(2023).unwrap()).unwrap();
     assert_eq!(
         (a["totalMessages"].as_i64(), a["totalFriends"].as_i64()),
         (Some(5), Some(1)),
@@ -674,7 +674,7 @@ fn annual_report_uses_native_extras_and_native_moments() {
     );
     assert_eq!(a["snsStats"]["topLikers"][0]["username"], "wxid_bob");
     // a year without messages is an empty report, not an error; year 0 covers everything
-    assert_eq!(hub.report_annual(0).unwrap()["totalMessages"], 5);
+    assert_eq!(hub.report_annual(0).unwrap().total_messages, 5);
 }
 
 #[test]

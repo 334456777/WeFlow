@@ -2083,6 +2083,52 @@ fn wechat_pay_records_come_in_pages_that_say_whether_more_follow() {
     assert_eq!(all["data"]["hasMore"], false);
 }
 
+#[test]
+fn reports_fit_the_contract() {
+    let root = temp_root("reports");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    // the year of the account's messages, and all the years
+    for (route, body, schema) in [
+        (
+            "/report/annual/generate",
+            r#"{"year": 2023}"#,
+            "AnnualReport",
+        ),
+        ("/report/annual/generate", r#"{"year": 0}"#, "AnnualReport"),
+        (
+            "/report/dual/generate",
+            r#"{"friend": "wxid_bob", "year": 2023}"#,
+            "DualReport",
+        ),
+        (
+            "/report/dual/generate",
+            r#"{"friend": "wxid_bob", "year": 0}"#,
+            "DualReport",
+        ),
+    ] {
+        let r = server.call("POST", route, body);
+        assert_eq!(r.status, 200, "{route} {body}: {}", r.body);
+        let data = &r.json()["data"];
+        let fits = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            data,
+        );
+        assert!(fits.is_empty(), "{route} {body}: {fits:#?}\n{data}");
+        assert!(data["year"].is_i64(), "{data}");
+    }
+    let dual = server.call(
+        "POST",
+        "/report/dual/generate",
+        r#"{"friend": "wxid_bob", "year": 2023}"#,
+    );
+    let dual = &dual.json()["data"];
+    assert!(dual["yearFirstChat"].is_object(), "{dual}");
+    assert!(dual["firstChat"]["senderUsername"].is_string(), "{dual}");
+}
+
 // Ctrl+C as a signal; Windows has no way to send one to another process alone
 #[cfg(unix)]
 #[test]

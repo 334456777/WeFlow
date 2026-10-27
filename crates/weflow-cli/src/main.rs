@@ -3089,14 +3089,14 @@ fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> 
     match &command.command {
         ReportSubcommand::Annual { command } => match command {
             AnnualSubcommand::Years => unreachable!("a read"),
-            AnnualSubcommand::Generate { year } => hub.report_annual(*year),
+            AnnualSubcommand::Generate { year } => Ok(json!(hub.report_annual(*year)?)),
         },
         ReportSubcommand::Dual { command } => match command {
             DualSubcommand::Generate {
                 friend,
                 year,
                 exclude_words,
-            } => hub.report_dual(friend, *year, exclude_words),
+            } => Ok(json!(hub.report_dual(friend, *year, exclude_words)?)),
         },
     }
 }

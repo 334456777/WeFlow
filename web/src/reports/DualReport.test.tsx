@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
-import { messageText, type DualReport } from '../api/reports';
+import { messageText, type DualMessage, type DualReport } from '../api/reports';
 import { DualReportView, FriendPicker } from './DualReport';
 import { ReportsPage } from './ReportsPage';
 
@@ -8,14 +8,13 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const at = (y: number, m: number, d: number, h = 9) => new Date(y, m - 1, d, h, 30).getTime();
+const message = (content: string, isSentByMe: boolean, createTime: number, localType = 1): DualMessage =>
+  ({ content, isSentByMe, createTime, createTimeStr: '', localType });
 const REPORT: DualReport = {
   year: 2025, selfName: '我自己', friendUsername: 'wxid_a', friendName: '林沐',
-  firstChat: { content: '你好', isSentByMe: false, createTime: at(2019, 5, 5) },
-  firstChatMessages: [
-    { content: '你好', isSentByMe: false, createTime: at(2019, 5, 5), localType: 1 },
-    { content: '<msg><img md5="x"/></msg>', isSentByMe: true, createTime: at(2019, 5, 5, 10), localType: 3 },
-  ],
-  yearFirstChat: { content: '新年好', isSentByMe: true, createTime: at(2025, 1, 1, 0), localType: 1, firstThreeMessages: [{ content: '新年好', isSentByMe: true, createTime: at(2025, 1, 1, 0), localType: 1 }] },
+  firstChat: message('你好', false, at(2019, 5, 5)),
+  firstChatMessages: [message('你好', false, at(2019, 5, 5)), message('<msg><img md5="x"/></msg>', true, at(2019, 5, 5, 10), 3)],
+  yearFirstChat: { ...message('新年好', true, at(2025, 1, 1, 0)), friendName: '林沐', firstThreeMessages: [message('新年好', true, at(2025, 1, 1, 0))] },
   stats: { totalMessages: 3200, totalWords: 41000, imageCount: 120, voiceCount: 30, emojiCount: 410 },
   topPhrases: [{ phrase: '哈哈', count: 90 }], myExclusivePhrases: [{ phrase: '好嘞', count: 20 }], friendExclusivePhrases: [],
   heatmap: Array.from({ length: 7 }, (_, w) => Array.from({ length: 24 }, (_, h) => (w === 2 && h === 22 ? 50 : 1))),
@@ -27,10 +26,10 @@ const REPORT: DualReport = {
 
 describe('dual report', () => {
   it('names what a message is when it is not text', () => {
-    expect(messageText({ content: 'hi', isSentByMe: true, createTime: 0, localType: 1 })).toBe('hi');
-    expect(messageText({ content: '<msg/>', isSentByMe: true, createTime: 0, localType: 47 })).toBe('[表情]');
-    expect(messageText({ content: '<msg/>', isSentByMe: true, createTime: 0, localType: 244813135921 })).toBe('[引用回复]');
-    expect(messageText({ content: '<msg/>', isSentByMe: true, createTime: 0, localType: 10000 })).toBe('[消息]');
+    expect(messageText(message('hi', true, 0))).toBe('hi');
+    expect(messageText(message('<msg/>', true, 0, 47))).toBe('[表情]');
+    expect(messageText(message('<msg/>', true, 0, 244813135921))).toBe('[引用回复]');
+    expect(messageText(message('<msg/>', true, 0, 10000))).toBe('[消息]');
   });
 
   it('tells the two of us: how it began, the year, the moments and the words', () => {
