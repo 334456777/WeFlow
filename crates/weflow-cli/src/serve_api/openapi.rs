@@ -587,6 +587,37 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("config profiles", of(generator.subschema_for::<Vec<ProfileSummary>>()));
         data.insert("runtime info", of(generator.subschema_for::<RuntimeInfo>()));
         data.insert("cache list", of(generator.subschema_for::<Vec<CacheUsage>>()));
+        {
+            use weflow_core::contract::{
+                AccountCleared, CacheCleared, Cancelled, ConfigImported, ConfigWritten, LangSaved, RemovalPlan,
+            };
+            let plan = of(generator.subschema_for::<RemovalPlan>());
+            let cancelled = of(generator.subschema_for::<Cancelled>());
+            data.insert(
+                "cache clear",
+                json!({
+                    "description": "What was removed; with `dry-run`, what would be",
+                    "anyOf": [of(generator.subschema_for::<CacheCleared>()), plan.clone(), cancelled.clone()],
+                }),
+            );
+            data.insert(
+                "cache clear-account",
+                json!({
+                    "description": "What was removed; with `dry-run`, what would be",
+                    "anyOf": [of(generator.subschema_for::<AccountCleared>()), plan, cancelled],
+                }),
+            );
+            for command in ["config set", "config unset", "config clear"] {
+                data.insert(command, of(generator.subschema_for::<ConfigWritten>()));
+            }
+            data.insert("config import", of(generator.subschema_for::<ConfigImported>()));
+            data.insert("config list", of(generator.subschema_for::<weflow_core::config::ConfigStore>()));
+            data.insert(
+                "config path",
+                json!({ "description": "Where the config file is", "type": "string" }),
+            );
+            data.insert("lang", of(generator.subschema_for::<LangSaved>()));
+        }
         data.insert("db detect", of(generator.subschema_for::<DbCandidates>()));
         data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));
         data.insert("db test", of(generator.subschema_for::<DbConnection>()));

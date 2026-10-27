@@ -4,7 +4,6 @@
 
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
 use walkdir::WalkDir;
 
 use super::*;
@@ -213,7 +212,7 @@ impl ServiceHub {
     }
 
     /// `weflow cache clear`: removes the files of `parts` and forgets what is held in memory about them.
-    pub fn cache_clear(&self, parts: &[CachePart]) -> Value {
+    pub fn cache_clear(&self, parts: &[CachePart]) -> crate::contract::CacheCleared {
         let (mut removed, mut warnings) = (Vec::new(), Vec::new());
         let mut freed = 0u64;
         for &part in parts {
@@ -232,11 +231,11 @@ impl ServiceHub {
                 _ => {}
             }
         }
-        let mut out = json!({ "removedPaths": removed, "freedBytes": freed });
-        if !warnings.is_empty() {
-            out["warnings"] = json!(warnings);
+        crate::contract::CacheCleared {
+            removed_paths: removed,
+            freed_bytes: freed,
+            warnings,
         }
-        out
     }
 
     /// What [`Self::clear_current_account_data`] removes (only what exists). `clear_cache` takes WeFlow's caches of
@@ -304,7 +303,7 @@ impl ServiceHub {
         &self,
         clear_cache: bool,
         export_dirs: &[PathBuf],
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::AccountCleared> {
         let paths = self.account_data_paths(clear_cache, export_dirs)?;
         let (mut removed, mut warnings) = (Vec::new(), Vec::new());
         for path in &paths {
@@ -316,11 +315,11 @@ impl ServiceHub {
             self.image_forget_cached();
             let _ = self.analytics_clear_cache();
         }
-        let mut out = json!({ "removedPaths": removed, "profileReset": clear_cache });
-        if !warnings.is_empty() {
-            out["warnings"] = json!(warnings);
-        }
-        Ok(out)
+        Ok(crate::contract::AccountCleared {
+            removed_paths: removed,
+            profile_reset: clear_cache,
+            warnings,
+        })
     }
 }
 
