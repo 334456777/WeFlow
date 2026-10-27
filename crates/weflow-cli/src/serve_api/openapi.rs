@@ -693,6 +693,41 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("key db", of(generator.subschema_for::<DbKey>()));
             data.insert("key image", of(generator.subschema_for::<ImageKeys>()));
             data.insert("key scan-image", of(generator.subschema_for::<ScannedImageKeys>()));
+            use weflow_core::contract::{
+                AntiRevokeResults, ChatImages, EmojisDownloaded, GroupHint, MediaStream, MediaWritten,
+                SnsMediaFetched, VoiceCache, VoiceData, VoiceMessages, VoicesPrepared,
+            };
+            data.insert("chat images", of(generator.subschema_for::<ChatImages>()));
+            data.insert("chat voice-messages", of(generator.subschema_for::<VoiceMessages>()));
+            data.insert("chat media-stream", of(generator.subschema_for::<MediaStream>()));
+            data.insert("chat voice-cache", of(generator.subschema_for::<VoiceCache>()));
+            data.insert("chat voice-preload", of(generator.subschema_for::<VoicesPrepared>()));
+            data.insert("chat emoji", of(generator.subschema_for::<EmojisDownloaded>()));
+            data.insert("chat group-hint", of(generator.subschema_for::<GroupHint>()));
+            data.insert("chat anti-revoke check", of(generator.subschema_for::<AntiRevokeResults>()));
+            data.insert(
+                "chat anti-revoke sessions",
+                json!({
+                    "description": "The conversations but official accounts: the rows of WeChat's session table",
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/Row" },
+                }),
+            );
+            // the command routes of the media: the `/api/` routes answer the file itself
+            for command in ["chat image-data", "chat video-data"] {
+                data.insert(command, of(generator.subschema_for::<MediaWritten>()));
+            }
+            data.insert(
+                "chat voice-data",
+                json!({
+                    "description": "The WAV written to `out`; without it, the WAV in base64",
+                    "anyOf": [
+                        of(generator.subschema_for::<MediaWritten>()),
+                        of(generator.subschema_for::<VoiceData>()),
+                    ],
+                }),
+            );
+            data.insert("sns media", of(generator.subschema_for::<SnsMediaFetched>()));
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",

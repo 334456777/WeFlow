@@ -260,7 +260,7 @@ pub async fn download_emojis(
     metas: &[EmojiMeta],
     cache_dir: &Path,
     progress_cb: &dyn Fn(usize, usize),
-) -> Result<Vec<Value>> {
+) -> Result<Vec<crate::contract::EmojiFile>> {
     fs::create_dir_all(cache_dir)
         .with_context(|| format!("create emoji cache dir {}", cache_dir.display()))?;
 
@@ -276,7 +276,12 @@ pub async fn download_emojis(
         // Skip if already cached (any extension)
         let existing = find_cached_emoji(cache_dir, &meta.md5);
         if let Some(p) = existing {
-            results.push(json!({ "md5": meta.md5, "cached": true, "path": p.to_string_lossy() }));
+            results.push(crate::contract::EmojiFile {
+                md5: meta.md5.clone(),
+                cached: true,
+                path: p.to_string_lossy().into_owned(),
+                size: None,
+            });
             continue;
         }
         match client.get(&meta.cdn_url).send().await {
@@ -288,12 +293,12 @@ pub async fn download_emojis(
                 let ext = guess_image_ext(&bytes);
                 let out_path = cache_dir.join(format!("{}{}", meta.md5, ext));
                 if fs::write(&out_path, &bytes).is_ok() {
-                    results.push(json!({
-                        "md5": meta.md5,
-                        "cached": false,
-                        "path": out_path.to_string_lossy(),
-                        "size": bytes.len()
-                    }));
+                    results.push(crate::contract::EmojiFile {
+                        md5: meta.md5.clone(),
+                        cached: false,
+                        path: out_path.to_string_lossy().into_owned(),
+                        size: Some(bytes.len()),
+                    });
                 }
             }
             _ => continue,

@@ -1337,6 +1337,158 @@ pub struct InsightLookup {
     pub error: Option<String>,
 }
 
+/// The images of a conversation (`chat images`), the newest first, each once.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct ChatImages {
+    pub images: Vec<ImageRef>,
+}
+
+/// What names an image message's file.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageRef {
+    pub image_md5: Option<String>,
+    pub image_dat_name: Option<String>,
+    /// Null when the message has no time.
+    pub create_time: Option<i64>,
+}
+
+/// The voice messages of a conversation (`chat voice-messages`), the newest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct VoiceMessages {
+    pub messages: Vec<MessageView>,
+}
+
+/// A page of image and video messages across conversations (`chat media-stream`), the newest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaStream {
+    pub items: Vec<MediaStreamItem>,
+    pub has_more: bool,
+    /// The `offset` of the next page.
+    pub next_offset: usize,
+}
+
+/// A message of `chat media-stream`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaStreamItem {
+    #[serde(flatten)]
+    pub message: MessageView,
+    pub session_id: String,
+    pub session_display_name: String,
+    /// `image` or `video`.
+    pub media_type: String,
+}
+
+/// A voice already decoded (`chat voice-cache`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceCache {
+    /// Always true.
+    pub success: bool,
+    pub has_cache: bool,
+    /// The WAV, in base64; left out without one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+}
+
+/// The voices `chat voice-preload` decoded ahead.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct VoicesPrepared {
+    /// Always true.
+    pub success: bool,
+    pub prepared: usize,
+}
+
+/// The stickers `chat emoji` downloaded.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct EmojisDownloaded {
+    /// The sticker messages found.
+    pub found: usize,
+    /// The ones downloaded now, not already there.
+    pub downloaded: usize,
+    /// Left out when none was found.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<EmojiFile>>,
+}
+
+/// A sticker `chat emoji` has on disk.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct EmojiFile {
+    pub md5: String,
+    /// Already there before.
+    pub cached: bool,
+    pub path: String,
+    /// Bytes downloaded; left out for one already there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<usize>,
+}
+
+/// A group's own message count, as `chat group-hint` saved it (all left out when there is none); with `set`, only
+/// when it was saved.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupHint {
+    /// My messages in the group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
+    /// Unix milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
+    /// `disk`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+/// What `chat anti-revoke check` answers for each conversation asked for.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct AntiRevokeResults {
+    pub results: Vec<AntiRevokeResult>,
+}
+
+/// One conversation's anti-revoke check.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AntiRevokeResult {
+    pub session_id: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct MediaWritten {
+    /// Always true.
+    pub success: bool,
+    pub path: String,
+    pub bytes: u64,
+}
+
+/// A voice as WAV in base64 (`chat voice-data` without `out`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct VoiceData {
+    /// Always true.
+    pub success: bool,
+    pub data: String,
+}
+
+/// A Moments image or video `sns media` fetched.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SnsMediaFetched {
+    /// The file it was written to, with `out`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub out: Option<String>,
+    pub content_type: String,
+    pub bytes: usize,
+    /// Where WeFlow keeps it; null when it was not kept.
+    pub cache_path: Option<PathBuf>,
+}
+
 /// The accounts `db scan` found under a folder: those with a `db_storage` or `FileStorage/Image` folder.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct DbScan {

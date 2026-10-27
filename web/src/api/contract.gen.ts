@@ -1476,6 +1476,157 @@ export interface ScannedImageKeys {
   userDir: string;
 }
 
+/** The images of a conversation (`chat images`), the newest first, each once. */
+export interface ChatImages {
+  images: ImageRef[];
+}
+
+/** What names an image message's file. */
+export interface ImageRef {
+  imageMd5: string | null;
+  imageDatName: string | null;
+  /** Null when the message has no time. */
+  createTime: number | null;
+}
+
+/** The voice messages of a conversation (`chat voice-messages`), the newest first. */
+export interface VoiceMessages {
+  messages: MessageView[];
+}
+
+/** A page of image and video messages across conversations (`chat media-stream`), the newest first. */
+export interface MediaStream {
+  items: MediaStreamItem[];
+  hasMore: boolean;
+  /** The `offset` of the next page. */
+  nextOffset: number;
+}
+
+/** A message of `chat media-stream`. */
+export interface MediaStreamItem {
+  localId: number;
+  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  serverId: string;
+  createTime: number;
+  /** WeChat's type of the message, as a parsed message's `localType`. */
+  localType: number;
+  /** 1 when I sent it, else 0. */
+  isSend: number;
+  senderUsername: string;
+  /** The message as WeChat keeps it (often XML). */
+  content: string;
+  /** Its text as the chat window shows it; null when it has none. */
+  text: string | null;
+  imageMd5?: string;
+  imageDatName?: string;
+  videoMd5?: string;
+  emojiMd5?: string;
+  emojiCdnUrl?: string;
+  xmlType?: string;
+  fileName?: string;
+  fileExt?: string;
+  fileMd5?: string;
+  /** In bytes. */
+  fileSize?: number;
+  locationLat?: number;
+  locationLng?: number;
+  locationPoiname?: string;
+  locationLabel?: string;
+  /** The kind of an app message (`link`, `file`, `music`…). */
+  appMsgKind?: string;
+  sessionId: string;
+  sessionDisplayName: string;
+  /** `image` or `video`. */
+  mediaType: string;
+}
+
+/** A voice already decoded (`chat voice-cache`). */
+export interface VoiceCache {
+  /** Always true. */
+  success: boolean;
+  hasCache: boolean;
+  /** The WAV, in base64; left out without one. */
+  data?: string;
+}
+
+/** The voices `chat voice-preload` decoded ahead. */
+export interface VoicesPrepared {
+  /** Always true. */
+  success: boolean;
+  prepared: number;
+}
+
+/** The stickers `chat emoji` downloaded. */
+export interface EmojisDownloaded {
+  /** The sticker messages found. */
+  found: number;
+  /** The ones downloaded now, not already there. */
+  downloaded: number;
+  /** Left out when none was found. */
+  files?: EmojiFile[];
+}
+
+/** A sticker `chat emoji` has on disk. */
+export interface EmojiFile {
+  md5: string;
+  /** Already there before. */
+  cached: boolean;
+  path: string;
+  /** Bytes downloaded; left out for one already there. */
+  size?: number;
+}
+
+/**
+ * A group's own message count, as `chat group-hint` saved it (all left out when there is none); with `set`, only
+ * when it was saved.
+ */
+export interface GroupHint {
+  /** My messages in the group. */
+  count?: number;
+  /** Unix milliseconds. */
+  updatedAt?: number;
+  /** `disk`. */
+  source?: string;
+}
+
+/** What `chat anti-revoke check` answers for each conversation asked for. */
+export interface AntiRevokeResults {
+  results: AntiRevokeResult[];
+}
+
+/** One conversation's anti-revoke check. */
+export interface AntiRevokeResult {
+  sessionId: string;
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+/** A media file a command wrote (`chat image-data`, `video-data`, `voice-data` with `out`). */
+export interface MediaWritten {
+  /** Always true. */
+  success: boolean;
+  path: string;
+  bytes: number;
+}
+
+/** A voice as WAV in base64 (`chat voice-data` without `out`). */
+export interface VoiceData {
+  /** Always true. */
+  success: boolean;
+  data: string;
+}
+
+/** A Moments image or video `sns media` fetched. */
+export interface SnsMediaFetched {
+  /** The file it was written to, with `out`. */
+  out?: string;
+  contentType: string;
+  bytes: number;
+  /** Where WeFlow keeps it; null when it was not kept. */
+  cachePath: string | null;
+}
+
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
   out: string;
@@ -1863,6 +2014,9 @@ export interface Answers {
   /** What was removed; with `dry-run`, what would be */
   "cache clear-account": AccountCleared | RemovalPlan | Cancelled;
   "cache list": CacheUsage[];
+  "chat anti-revoke check": AntiRevokeResults;
+  /** The conversations but official accounts: the rows of WeChat's session table */
+  "chat anti-revoke sessions": Row[];
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
   /** Each conversation asked for, with how many messages it has */
@@ -1871,9 +2025,14 @@ export interface Answers {
   "chat dates": SessionDates;
   /** The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept */
   "chat detail": SessionDetail | SessionFacts | SessionTables;
+  "chat emoji": EmojisDownloaded;
   "chat export-stats": ExportStats;
+  "chat group-hint": GroupHint;
+  "chat image-data": MediaWritten;
   "chat image-info": ImageInfo;
+  "chat images": ChatImages;
   "chat latest": Row[];
+  "chat media-stream": MediaStream;
   /** With `parsed=true`, the message as the chat window shows it; else its row and the message as the query commands list it */
   "chat message": ParsedMessage | MessageLookup;
   /** With `parsed=true`, the messages as the chat window shows them; else the rows of WeChat's table, each with its `_cursor` */
@@ -1886,7 +2045,13 @@ export interface Answers {
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
   "chat transfer-names": TransferNames;
+  "chat video-data": MediaWritten;
   "chat voice": MediaExport;
+  "chat voice-cache": VoiceCache;
+  /** The WAV written to `out`; without it, the WAV in base64 */
+  "chat voice-data": MediaWritten | VoiceData;
+  "chat voice-messages": VoiceMessages;
+  "chat voice-preload": VoicesPrepared;
   "config clear": ConfigWritten;
   "config import": ConfigImported;
   "config list": ConfigStore;
@@ -1944,6 +2109,7 @@ export interface Answers {
   "runtime info": RuntimeInfo;
   "runtime manifest": RuntimeManifest;
   "sns export": SnsExported;
+  "sns media": SnsMediaFetched;
   /** How many posts each poster has, by username; with `user`, that one's */
   "sns post-counts": Record<string, number> | UserPosts;
   "sns stats": SnsStats;

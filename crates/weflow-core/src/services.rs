@@ -305,7 +305,11 @@ impl ServiceHub {
             .map_err(AppError::from_native)
     }
 
-    pub fn anti_revoke(&self, action: &str, sessions: &[String]) -> AppResult<Value> {
+    pub fn anti_revoke(
+        &self,
+        action: &str,
+        sessions: &[String],
+    ) -> AppResult<crate::contract::AntiRevokeResults> {
         let wcdb = self.open_wcdb()?;
         let mut results = Vec::new();
         let mut first_error = None;
@@ -317,25 +321,31 @@ impl ServiceHub {
                 _ => Err(anyhow::anyhow!("unknown anti revoke action")),
             };
             match result {
-                Ok(data) => {
-                    results.push(json!({ "sessionId": session_id, "success": true, "data": data }))
-                }
+                Ok(data) => results.push(crate::contract::AntiRevokeResult {
+                    session_id: session_id.clone(),
+                    success: true,
+                    data: Some(data),
+                    error: None,
+                }),
                 Err(err) => {
-                    results.push(
-                        json!({ "sessionId": session_id, "success": false, "error": err.to_string() }),
-                    );
+                    results.push(crate::contract::AntiRevokeResult {
+                        session_id: session_id.clone(),
+                        success: false,
+                        data: None,
+                        error: Some(err.to_string()),
+                    });
                     first_error.get_or_insert(err);
                 }
             }
         }
         // Per-session results are kept for partial failures, but when every session failed the command itself failed
         // (otherwise a script reading only `success` would treat a refused operation as done).
-        if !results.is_empty() && results.iter().all(|r| r["success"] == false) {
+        if !results.is_empty() && results.iter().all(|r| !r.success) {
             return Err(AppError::from_native(
                 first_error.unwrap_or_else(|| anyhow::anyhow!("anti-revoke failed")),
             ));
         }
-        Ok(json!({ "results": results }))
+        Ok(crate::contract::AntiRevokeResults { results })
     }
 
     pub fn contact_type_counts(&self) -> AppResult<Value> {
@@ -1111,12 +1121,20 @@ impl ServiceHub {
 
     // ── Media export ─────────────────────────────────────────────────────────
 
-    pub async fn emoji_download(&self, session_id: &str, out: &Path) -> AppResult<Value> {
+    pub async fn emoji_download(
+        &self,
+        session_id: &str,
+        out: &Path,
+    ) -> AppResult<crate::contract::EmojisDownloaded> {
         let messages = self.messages(session_id, 500, 0)?;
         let metas = crate::media::extract_emoji_urls(&messages);
         let total = metas.len();
         if total == 0 {
-            return Ok(json!({ "found": 0, "downloaded": 0 }));
+            return Ok(crate::contract::EmojisDownloaded {
+                found: 0,
+                downloaded: 0,
+                files: None,
+            });
         }
         std::fs::create_dir_all(out)
             .map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
@@ -1126,11 +1144,12 @@ impl ServiceHub {
         })
         .await
         .map_err(|e| AppError::runtime(e.to_string()))?;
-        let downloaded = results
-            .iter()
-            .filter(|v| v["cached"].as_bool() != Some(true))
-            .count();
-        Ok(json!({ "found": total, "downloaded": downloaded, "files": results }))
+        let downloaded = results.iter().filter(|f| !f.cached).count();
+        Ok(crate::contract::EmojisDownloaded {
+            found: total,
+            downloaded,
+            files: Some(results),
+        })
     }
 
     // ── Backup ────────────────────────────────────────────────────────────────

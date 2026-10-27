@@ -47,7 +47,7 @@ fn images_world(f: &Fixture) {
 #[test]
 fn resources_and_images_are_deduplicated() {
     let (hub, _root, _f) = common::custom_hub("chat-res", images_world);
-    let images = hub.chat_all_images("wxid_bob").unwrap();
+    let images = serde_json::to_value(hub.chat_all_images("wxid_bob").unwrap()).unwrap();
     let list = images["images"].as_array().unwrap();
     assert_eq!(
         list.len(),
@@ -247,11 +247,13 @@ fn anti_revoke_sessions_skip_official_accounts() {
 #[test]
 fn group_hint_roundtrip_and_transfer_names() {
     let (hub, _root) = common::mock_hub("chat-hint");
-    assert_eq!(hub.get_group_hint("room1@chatroom").unwrap(), json!({}));
+    assert_eq!(
+        serde_json::to_value(hub.get_group_hint("room1@chatroom").unwrap()).unwrap(),
+        json!({})
+    );
     hub.set_group_hint("room1@chatroom", 9).unwrap();
     let h = hub.get_group_hint("room1@chatroom").unwrap();
-    assert_eq!(h["count"], 9);
-    assert_eq!(h["source"], "disk");
+    assert_eq!((h.count, h.source.as_deref()), (Some(9), Some("disk")));
     let t = hub
         .chat_transfer_names("room1@chatroom", "wxid_bob", "wxid_me")
         .unwrap();
@@ -318,7 +320,7 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
     );
 
     // the key without a timestamp is what `resolveVoiceCache` looks at
-    assert_eq!(hub.voice_resolve_cache("wxid_bob", "5")["hasCache"], false);
+    assert!(!hub.voice_resolve_cache("wxid_bob", "5").has_cache);
     assert!(hub.voice_data("wxid_bob", "abc", None, None, None).is_err());
     // a voice that is not in the media database is an error that explains what to do
     let missing = hub
@@ -342,7 +344,7 @@ fn voice_messages_decode_from_silk_to_a_cached_wav() {
             &[json!({"localId": 9, "createTime": 1700000300, "serverId": "77"})],
         )
         .unwrap();
-    assert_eq!(prepared["success"], true);
+    assert!(prepared.success);
 }
 
 #[test]
