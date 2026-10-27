@@ -3,47 +3,12 @@
 import { apiUrl, get, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 
-/** An image or video of a post, as the timeline gives it: addresses on WeChat's servers and the key to them. */
-export interface SnsMedia {
-  url: string;
-  thumb?: string;
-  key?: string;
-  md5?: string;
-  livePhoto?: { url: string; thumb?: string; key?: string };
-}
-
-export interface SnsComment {
-  id?: string;
-  username?: string;
-  nickname: string;
-  content: string;
-  /** The comment answered, and who wrote it. */
-  refCommentId?: string;
-  refNickname?: string;
-}
-
-export interface SnsLocation {
-  poiName?: string;
-  poiAddress?: string;
-  city?: string;
-  country?: string;
-}
-
-export interface SnsPost {
-  id: string;
-  username: string;
-  nickname: string;
-  avatarUrl?: string;
-  /** Unix seconds. */
-  createTime: number;
-  /** WeChat's kind of post: 1 pictures, 2 text, 15 a video, 7 media that need no key, … */
-  type: number;
-  contentDesc?: string;
-  media?: SnsMedia[];
-  likes?: string[];
-  comments?: SnsComment[];
-  location?: SnsLocation | null;
-}
+/** A post, its pictures and videos (addresses on WeChat's servers and the key to them), its comments and where it
+ * was made: the contract's types (#430). */
+export type SnsPost = Contract.SnsPost;
+export type SnsMedia = Contract.SnsMedia;
+export type SnsComment = Contract.SnsComment;
+export type SnsLocation = Contract.SnsLocation;
 
 /** What the timeline is narrowed to. */
 export interface SnsFilter {
@@ -66,7 +31,7 @@ export async function getTimeline(filter: SnsFilter, offset: number, signal?: Ab
   if (filter.keyword.trim()) params.keyword = filter.keyword.trim();
   if (filter.start) params.start = filter.start;
   if (filter.end) params.end = filter.end;
-  const data = await get<{ timeline?: SnsPost[] }>('api/sns/timeline', params, signal);
+  const data = await get<Contract.SnsTimeline | null>('api/sns/timeline', params, signal);
   return data?.timeline ?? [];
 }
 

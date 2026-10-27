@@ -7,7 +7,10 @@ import { peopleOf } from './useMomentPeople';
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const T = 1760000000;
-const post = (id: number, more: Partial<SnsPost> = {}): SnsPost => ({ id: String(id), username: 'wxid_a', nickname: '林沐', createTime: T - id * 3600, type: 2, contentDesc: '第 ' + id + ' 条', ...more });
+const post = (id: number, more: Partial<SnsPost> = {}): SnsPost => ({
+  id: String(id), tid: String(id), username: 'wxid_a', nickname: '林沐', createTime: T - id * 3600, type: 2, contentDesc: '第 ' + id + ' 条',
+  rawXml: '', media: [], likes: [], comments: [], ...more,
+});
 const page = (posts: SnsPost[]) => new Response(JSON.stringify({ success: true, data: { timeline: posts } }));
 const scroller = { current: null };
 
@@ -30,7 +33,7 @@ describe('the Moments timeline (#202)', () => {
       media: [{ url: image, thumb: image, key: '11' }, { url: video, thumb: 'https://a.video.qq.com/cover', key: '22' }],
       location: { poiName: '外滩', city: '上海' },
       likes: ['小周', '阿杰'],
-      comments: [{ nickname: '小周', content: '好看' }, { nickname: '林沐', content: '谢谢', refNickname: '小周' }],
+      comments: [{ id: '1', nickname: '小周', content: '好看', refCommentId: '' }, { id: '2', nickname: '林沐', content: '谢谢', refCommentId: '1', refNickname: '小周' }],
     })]);
     const card = screen.getByRole('article');
     expect(card.textContent).toContain('林沐');

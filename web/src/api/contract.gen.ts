@@ -573,6 +573,111 @@ export interface ExcludeCandidate {
   wechatId: string;
 }
 
+/** A page of Moments posts (`sns timeline`), the newest first. */
+export interface SnsTimeline {
+  timeline: SnsPost[];
+}
+
+/** A Moments post. */
+export interface SnsPost {
+  /** WeChat's id of the post. */
+  id: string;
+  /** The row's id in WeChat's table, in decimal. */
+  tid: string;
+  username: string;
+  /** The poster's name: the post's own, else the contact's, else the username. */
+  nickname: string;
+  createTime: number;
+  /** The text of the post. */
+  contentDesc: string;
+  /** WeChat's type of the post: 1 pictures, 15 a video, others links and such. */
+  type: number;
+  /** The post's XML as WeChat keeps it. */
+  rawXml: string;
+  media: SnsMedia[];
+  /** The names of those who liked it. */
+  likes: string[];
+  comments: SnsComment[];
+  /** The key of the post's video, which opens its cover too. */
+  videoKey?: string;
+  avatarUrl?: string;
+  location?: SnsLocation;
+}
+
+/** A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`. */
+export interface SnsMedia {
+  url: string;
+  thumb: string;
+  md5?: string;
+  token?: string;
+  key?: string;
+  encIdx?: string;
+  /**
+   * With `with-media`: the server's addresses, `url` and `thumb` being those of the files it fetched, and where
+   * it fetched them or a proxy of the server serves them.
+   */
+  rawUrl?: string;
+  rawThumb?: string;
+  resolvedUrl?: string;
+  resolvedThumbUrl?: string;
+  proxyUrl?: string;
+  proxyThumbUrl?: string;
+  /** The moving part of a live photo. */
+  livePhoto?: SnsLivePhoto;
+}
+
+/** The video of a live photo. */
+export interface SnsLivePhoto {
+  url: string;
+  thumb: string;
+  token?: string;
+  key?: string;
+  md5?: string;
+  encIdx?: string;
+  /** With `with-media`: as for the picture it moves. */
+  rawUrl?: string;
+  rawThumb?: string;
+  resolvedUrl?: string;
+  resolvedThumbUrl?: string;
+  proxyUrl?: string;
+  proxyThumbUrl?: string;
+}
+
+/** A comment on a post. */
+export interface SnsComment {
+  id: string;
+  nickname: string;
+  username?: string;
+  content: string;
+  /** The comment it answers; empty when none. */
+  refCommentId: string;
+  refUsername?: string;
+  refNickname?: string;
+  emojis?: SnsEmoji[];
+}
+
+/** A sticker in a comment. */
+export interface SnsEmoji {
+  url: string;
+  md5: string;
+  width: number | null;
+  height: number | null;
+  encryptUrl?: string;
+  aesKey?: string;
+}
+
+/** Where a post was made, as much as it says. */
+export interface SnsLocation {
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+  country?: string;
+  poiName?: string;
+  poiAddress?: string;
+  poiAddressName?: string;
+  label?: string;
+}
+
 /** Who has posts in Moments (`sns users`), the one who posted last first. */
 export interface SnsUsers {
   usernames: string[];
@@ -692,5 +797,6 @@ export interface Answers {
   /** How many posts each poster has, by username; with `user`, that one's */
   "sns post-counts": Record<string, number> | UserPosts;
   "sns stats": SnsStats;
+  "sns timeline": SnsTimeline;
   "sns users": SnsUsers;
 }

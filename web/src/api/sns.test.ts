@@ -15,9 +15,9 @@ describe('Moments media (#202)', () => {
   });
 
   it('knows a video by its address, not by the cover of one', () => {
-    expect(isVideo({ url: 'https://a.video.qq.com/102/snsvideodownload?m=1' })).toBe(true);
-    expect(isVideo({ url: 'https://vweixinthumb.tc.qq.com/150/x' })).toBe(false);
-    expect(isVideo({ url: 'https://a.qpic.cn/mmsns/x/0' })).toBe(false);
+    expect(isVideo({ url: 'https://a.video.qq.com/102/snsvideodownload?m=1', thumb: '' })).toBe(true);
+    expect(isVideo({ url: 'https://vweixinthumb.tc.qq.com/150/x', thumb: '' })).toBe(false);
+    expect(isVideo({ url: 'https://a.qpic.cn/mmsns/x/0', thumb: '' })).toBe(false);
   });
 
   it('asks the server for a medium with its key and the tab token; posts of type 7 need no key', () => {

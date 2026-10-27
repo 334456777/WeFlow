@@ -3135,6 +3135,7 @@ fn answers_fit_the_contract() {
     }
     read("/api/analytics/excluded", None);
     for target in [
+        "/api/sns/timeline?limit=20",
         "/api/sns/users",
         "/api/sns/stats",
         "/api/sns/post-counts",

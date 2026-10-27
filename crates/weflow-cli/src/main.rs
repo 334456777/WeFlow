@@ -3132,7 +3132,7 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
                 end: *end,
             })?;
             let posts = hub.sns_enrich_timeline_media(posts, "", true, true).await;
-            Ok(json!({ "timeline": posts }))
+            Ok(json!(weflow_core::contract::SnsTimeline::of(posts)?))
         }
         SnsSubcommand::Users | SnsSubcommand::Stats { .. } | SnsSubcommand::PostCounts { .. } => {
             unreachable!("a read")

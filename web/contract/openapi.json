@@ -1269,6 +1269,46 @@
         }
       }
     },
+    "/api/sns/timeline": {
+      "get": {
+        "operationId": "api_sns_timeline",
+        "x-weflow-command": "sns timeline",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsTimeline"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sns/users": {
       "get": {
         "operationId": "api_sns_users",
@@ -3076,6 +3116,313 @@
           "wechatId"
         ],
         "description": "Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left\nout already."
+      },
+      "SnsTimeline": {
+        "type": "object",
+        "properties": {
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsPost"
+            }
+          }
+        },
+        "required": [
+          "timeline"
+        ],
+        "description": "A page of Moments posts (`sns timeline`), the newest first."
+      },
+      "SnsPost": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "WeChat's id of the post."
+          },
+          "tid": {
+            "type": "string",
+            "description": "The row's id in WeChat's table, in decimal."
+          },
+          "username": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "The poster's name: the post's own, else the contact's, else the username."
+          },
+          "createTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "contentDesc": {
+            "type": "string",
+            "description": "The text of the post."
+          },
+          "type": {
+            "type": "integer",
+            "format": "int64",
+            "description": "WeChat's type of the post: 1 pictures, 15 a video, others links and such."
+          },
+          "rawXml": {
+            "type": "string",
+            "description": "The post's XML as WeChat keeps it."
+          },
+          "media": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsMedia"
+            }
+          },
+          "likes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The names of those who liked it."
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsComment"
+            }
+          },
+          "videoKey": {
+            "type": "string",
+            "description": "The key of the post's video, which opens its cover too."
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/SnsLocation"
+          }
+        },
+        "required": [
+          "id",
+          "tid",
+          "username",
+          "nickname",
+          "createTime",
+          "contentDesc",
+          "type",
+          "rawXml",
+          "media",
+          "likes",
+          "comments"
+        ],
+        "description": "A Moments post."
+      },
+      "SnsMedia": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "thumb": {
+            "type": "string"
+          },
+          "md5": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "encIdx": {
+            "type": "string"
+          },
+          "rawUrl": {
+            "type": "string",
+            "description": "With `with-media`: the server's addresses, `url` and `thumb` being those of the files it fetched, and where\nit fetched them or a proxy of the server serves them."
+          },
+          "rawThumb": {
+            "type": "string"
+          },
+          "resolvedUrl": {
+            "type": "string"
+          },
+          "resolvedThumbUrl": {
+            "type": "string"
+          },
+          "proxyUrl": {
+            "type": "string"
+          },
+          "proxyThumbUrl": {
+            "type": "string"
+          },
+          "livePhoto": {
+            "description": "The moving part of a live photo.",
+            "$ref": "#/components/schemas/SnsLivePhoto"
+          }
+        },
+        "required": [
+          "url",
+          "thumb"
+        ],
+        "description": "A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`."
+      },
+      "SnsLivePhoto": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "thumb": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "md5": {
+            "type": "string"
+          },
+          "encIdx": {
+            "type": "string"
+          },
+          "rawUrl": {
+            "type": "string",
+            "description": "With `with-media`: as for the picture it moves."
+          },
+          "rawThumb": {
+            "type": "string"
+          },
+          "resolvedUrl": {
+            "type": "string"
+          },
+          "resolvedThumbUrl": {
+            "type": "string"
+          },
+          "proxyUrl": {
+            "type": "string"
+          },
+          "proxyThumbUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "thumb"
+        ],
+        "description": "The video of a live photo."
+      },
+      "SnsComment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "refCommentId": {
+            "type": "string",
+            "description": "The comment it answers; empty when none."
+          },
+          "refUsername": {
+            "type": "string"
+          },
+          "refNickname": {
+            "type": "string"
+          },
+          "emojis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsEmoji"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "nickname",
+          "content",
+          "refCommentId"
+        ],
+        "description": "A comment on a post."
+      },
+      "SnsEmoji": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "md5": {
+            "type": "string"
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "encryptUrl": {
+            "type": "string"
+          },
+          "aesKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "md5",
+          "width",
+          "height"
+        ],
+        "description": "A sticker in a comment."
+      },
+      "SnsLocation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "poiName": {
+            "type": "string"
+          },
+          "poiAddress": {
+            "type": "string"
+          },
+          "poiAddressName": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "description": "Where a post was made, as much as it says."
       },
       "SnsUsers": {
         "type": "object",

@@ -461,7 +461,7 @@ pub(super) fn contract() -> &'static Contract {
         use weflow_core::contract::{
             ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
             MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, ReportYears,
-            ResourcePage, Session, SnsStats, SnsUsers, UserPosts,
+            ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
         };
@@ -557,6 +557,7 @@ pub(super) fn contract() -> &'static Contract {
             "analytics exclude-candidates",
             of(generator.subschema_for::<Vec<ExcludeCandidate>>()),
         );
+        data.insert("sns timeline", of(generator.subschema_for::<SnsTimeline>()));
         data.insert("sns users", of(generator.subschema_for::<SnsUsers>()));
         data.insert("sns stats", of(generator.subschema_for::<SnsStats>()));
         data.insert(
