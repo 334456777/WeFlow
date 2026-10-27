@@ -72,11 +72,8 @@ async fn connection_test_uses_chat_completions_without_adding_v1() {
     let (base, seen) = fake_ai("connection successful");
     let hub = hub_with_ai("ins-test", base, &[]);
     let r = hub.insight_test_connection().await;
-    assert_eq!(r["success"], true, "{r}");
-    assert!(r["message"]
-        .as_str()
-        .unwrap()
-        .contains("connection successful"));
+    assert!(r.success, "{r:?}");
+    assert!(r.message.unwrap().contains("connection successful"));
     let req = seen.lock().unwrap()[0].clone();
     assert!(req.starts_with("POST /v1/chat/completions "), "{req}");
     assert!(req.to_lowercase().contains("authorization: bearer sk-test"));
@@ -88,7 +85,7 @@ async fn trigger_test_builds_context_and_stores_a_record() {
     let (base, seen) = fake_ai("Ask about the weekend plans.");
     let hub = hub_with_ai("ins-trigger", base, &["wxid_bob"]);
     let r = hub.insight_trigger_test().await;
-    assert_eq!(r["success"], true, "{r}");
+    assert!(r.success, "{r:?}");
     let req = seen.lock().unwrap()[0].clone();
     assert!(
         req.contains("Recent chat history"),
@@ -98,27 +95,27 @@ async fn trigger_test_builds_context_and_stores_a_record() {
     assert!(req.contains("Current system time"), "{req}");
 
     let list = hub.insight_list_records(&RecordFilters::default());
-    assert_eq!(list["total"], 1);
-    assert_eq!(list["unreadCount"], 1);
-    let rec = &list["records"][0];
-    assert_eq!(rec["sessionId"], "wxid_bob");
-    assert_eq!(rec["triggerReason"], "test");
-    assert_eq!(rec["insight"], "Ask about the weekend plans.");
-    let id = rec["id"].as_str().unwrap().to_string();
+    assert_eq!((list.total, list.unread_count), (1, 1));
+    let rec = &list.records[0];
+    assert_eq!(rec.session_id, "wxid_bob");
+    assert_eq!(rec.trigger_reason, "test");
+    assert_eq!(rec.insight, "Ask about the weekend plans.");
+    let id = rec.id.clone();
     let full = serde_json::to_value(hub.insight_get_record(&id)).unwrap();
     assert_eq!(full["record"]["log"]["model"], "test-model");
     assert!(full["record"]["log"]["endpoint"]
         .as_str()
         .unwrap()
         .ends_with("/v1/chat/completions"));
-    assert_eq!(hub.insight_mark_record_read(&id)["success"], true);
+    assert!(hub.insight_mark_record_read(&id).success);
     assert_eq!(
-        hub.insight_list_records(&RecordFilters::default())["unreadCount"],
+        hub.insight_list_records(&RecordFilters::default())
+            .unread_count,
         0
     );
-    assert_eq!(hub.insight_today_stats().as_array().unwrap().len(), 1);
+    assert_eq!(hub.insight_today_stats().len(), 1);
     assert_eq!(
-        hub.insight_clear_records(&RecordFilters::default())["removed"],
+        hub.insight_clear_records(&RecordFilters::default()).removed,
         1
     );
 }
@@ -137,7 +134,7 @@ async fn silence_scan_and_skip_answers() {
     let hub2 = hub_with_ai("ins-skip", base2, &["wxid_bob"]);
     assert_eq!(hub2.insight_silence_scan(&mut |_| {}).await, 0);
     assert_eq!(
-        hub2.insight_list_records(&RecordFilters::default())["total"],
+        hub2.insight_list_records(&RecordFilters::default()).total,
         0,
         "SKIP answers are dropped"
     );
@@ -154,8 +151,11 @@ async fn footprint_summary_formats_the_prompt() {
         "mentionGroups": [{ "displayName": "Team", "count": 2 }]
     });
     let r = hub.insight_footprint_summary(&payload).await;
-    assert_eq!(r["success"], true, "{r}");
-    assert_eq!(r["insight"], "You chatted a lot. Reply to Bob sooner.");
+    assert!(r.success, "{r:?}");
+    assert_eq!(
+        r.insight.as_deref(),
+        Some("You chatted a lot. Reply to Bob sooner.")
+    );
     let req = seen.lock().unwrap()[0].clone();
     assert!(req.contains("Reply rate: 80.0%"), "{req}");
     assert!(req.contains("1. Bob (in 3/out 2/total 5/replied)"), "{req}");

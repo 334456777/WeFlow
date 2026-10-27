@@ -1336,6 +1336,119 @@ pub struct InsightLookup {
     pub error: Option<String>,
 }
 
+/// An insight record as lists and events name it, without its log.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightSummary {
+    pub id: String,
+    /// Unix milliseconds.
+    pub created_at: i64,
+    pub session_id: String,
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    /// Why it was written: `activity`, `silence`, `test`, …
+    pub trigger_reason: String,
+    pub insight: String,
+    pub read: bool,
+}
+
+/// A page of the account's insight records (`insight records`), the newest first, with counts over all of them.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightRecords {
+    /// Always true: the desktop app's shape.
+    pub success: bool,
+    pub records: Vec<InsightSummary>,
+    /// The records the filters match.
+    pub total: usize,
+    /// The account's records written today.
+    pub today_count: usize,
+    pub unread_count: usize,
+    /// Everyone with a record, the most records first.
+    pub contacts: Vec<InsightContact>,
+}
+
+/// A conversation with insight records.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightContact {
+    pub session_id: String,
+    pub display_name: String,
+    /// Its records.
+    pub count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
+/// How often the engine wrote about a conversation today (`insight today-stats`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightTodayStat {
+    pub session_id: String,
+    pub count: usize,
+    /// When, `HH:MM` local time.
+    pub times: Vec<String>,
+}
+
+/// What `insight mark-read` answers; a record not found is a failure of the command.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct InsightMarked {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// What `insight clear` answers.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct InsightCleared {
+    /// Always true.
+    pub success: bool,
+    /// The records removed.
+    pub removed: usize,
+}
+
+/// What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
+/// command fails with `message` instead.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct InsightReply {
+    pub success: bool,
+    /// What happened, in the server's language.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// The record written (`trigger`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record: Option<InsightSummary>,
+    /// The summary written (`footprint-summary`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub insight: Option<String>,
+}
+
+impl InsightReply {
+    pub fn done(message: String) -> Self {
+        Self {
+            success: true,
+            message: Some(message),
+            record: None,
+            insight: None,
+        }
+    }
+
+    pub fn failed(message: String) -> Self {
+        Self {
+            success: false,
+            ..Self::done(message)
+        }
+    }
+}
+
+/// What `insight scan` answers: the insights the silence scan wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct InsightScan {
+    pub generated: usize,
+    pub records: Vec<InsightSummary>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

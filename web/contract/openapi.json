@@ -1475,6 +1475,46 @@
         }
       }
     },
+    "/insight/clear": {
+      "get": {
+        "operationId": "api_insight_clear",
+        "x-weflow-command": "insight clear",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightCleared"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/insight/footprint": {
       "get": {
         "operationId": "api_insight_footprint",
@@ -1515,6 +1555,46 @@
         }
       }
     },
+    "/insight/footprint-summary": {
+      "get": {
+        "operationId": "api_insight_footprint_summary",
+        "x-weflow-command": "insight footprint-summary",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightReply"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/insight/get": {
       "get": {
         "operationId": "api_insight_get",
@@ -1536,6 +1616,249 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/InsightLookup"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/insight/mark-read": {
+      "get": {
+        "operationId": "api_insight_mark_read",
+        "x-weflow-command": "insight mark-read",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightMarked"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/insight/records": {
+      "get": {
+        "operationId": "api_insight_records",
+        "x-weflow-command": "insight records",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightRecords"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/insight/scan": {
+      "get": {
+        "operationId": "api_insight_scan",
+        "x-weflow-command": "insight scan",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightScan"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/insight/test": {
+      "get": {
+        "operationId": "api_insight_test",
+        "x-weflow-command": "insight test",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightReply"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/insight/today-stats": {
+      "get": {
+        "operationId": "api_insight_today_stats",
+        "x-weflow-command": "insight today-stats",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/InsightTodayStat"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/insight/trigger": {
+      "get": {
+        "operationId": "api_insight_trigger",
+        "x-weflow-command": "insight trigger",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightReply"
                     }
                   }
                 }
@@ -5694,6 +6017,228 @@
           "createdAt"
         ],
         "description": "What was asked of the AI model for a record, and what it answered."
+      },
+      "InsightRecords": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true: the desktop app's shape."
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InsightSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The records the filters match."
+          },
+          "todayCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The account's records written today."
+          },
+          "unreadCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InsightContact"
+            },
+            "description": "Everyone with a record, the most records first."
+          }
+        },
+        "required": [
+          "success",
+          "records",
+          "total",
+          "todayCount",
+          "unreadCount",
+          "contacts"
+        ],
+        "description": "A page of the account's insight records (`insight records`), the newest first, with counts over all of them."
+      },
+      "InsightSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix milliseconds."
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "triggerReason": {
+            "type": "string",
+            "description": "Why it was written: `activity`, `silence`, `test`, …"
+          },
+          "insight": {
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "sessionId",
+          "displayName",
+          "triggerReason",
+          "insight",
+          "read"
+        ],
+        "description": "An insight record as lists and events name it, without its log."
+      },
+      "InsightContact": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "Its records."
+          },
+          "avatarUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "displayName",
+          "count"
+        ],
+        "description": "A conversation with insight records."
+      },
+      "InsightTodayStat": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "times": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "When, `HH:MM` local time."
+          }
+        },
+        "required": [
+          "sessionId",
+          "count",
+          "times"
+        ],
+        "description": "How often the engine wrote about a conversation today (`insight today-stats`)."
+      },
+      "InsightMarked": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "description": "What `insight mark-read` answers; a record not found is a failure of the command."
+      },
+      "InsightCleared": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "removed": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The records removed."
+          }
+        },
+        "required": [
+          "success",
+          "removed"
+        ],
+        "description": "What `insight clear` answers."
+      },
+      "InsightScan": {
+        "type": "object",
+        "properties": {
+          "generated": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InsightSummary"
+            }
+          }
+        },
+        "required": [
+          "generated",
+          "records"
+        ],
+        "description": "What `insight scan` answers: the insights the silence scan wrote."
+      },
+      "InsightReply": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "description": "What happened, in the server's language."
+          },
+          "record": {
+            "description": "The record written (`trigger`).",
+            "$ref": "#/components/schemas/InsightSummary"
+          },
+          "insight": {
+            "type": "string",
+            "description": "The summary written (`footprint-summary`)."
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "description": "What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the\ncommand fails with `message` instead."
       },
       "Job": {
         "type": "object",

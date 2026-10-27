@@ -72,19 +72,17 @@ pub struct InsightRecord {
 }
 
 impl InsightRecord {
-    pub fn summary(&self) -> Value {
-        let mut o = serde_json::Map::new();
-        o.insert("id".into(), json!(self.id));
-        o.insert("createdAt".into(), json!(self.created_at));
-        o.insert("sessionId".into(), json!(self.session_id));
-        o.insert("displayName".into(), json!(self.display_name));
-        if let Some(a) = &self.avatar_url {
-            o.insert("avatarUrl".into(), json!(a));
+    pub fn summary(&self) -> crate::contract::InsightSummary {
+        crate::contract::InsightSummary {
+            id: self.id.clone(),
+            created_at: self.created_at,
+            session_id: self.session_id.clone(),
+            display_name: self.display_name.clone(),
+            avatar_url: self.avatar_url.clone(),
+            trigger_reason: self.trigger_reason.clone(),
+            insight: self.insight.clone(),
+            read: self.read,
         }
-        o.insert("triggerReason".into(), json!(self.trigger_reason));
-        o.insert("insight".into(), json!(self.insight));
-        o.insert("read".into(), json!(self.read));
-        Value::Object(o)
     }
 }
 
@@ -200,10 +198,10 @@ impl RecordStore {
         record
     }
 
-    pub fn list(&self, scope: &str, f: &RecordFilters) -> Value {
+    pub fn list(&self, scope: &str, f: &RecordFilters) -> crate::contract::InsightRecords {
         let all: Vec<&InsightRecord> = self.scoped(scope).collect();
         let today = start_of_today_ms();
-        let mut contacts: Vec<(String, String, Option<String>, i64)> = Vec::new();
+        let mut contacts: Vec<(String, String, Option<String>, usize)> = Vec::new();
         for r in &all {
             match contacts.iter_mut().find(|c| c.0 == r.session_id) {
                 Some(c) => c.3 += 1,
@@ -233,14 +231,29 @@ impl RecordStore {
             })
             .collect();
         filtered.sort_by_key(|a| std::cmp::Reverse(a.created_at));
-        json!({
-            "success": true,
-            "records": filtered.iter().skip(offset).take(limit).map(|r| r.summary()).collect::<Vec<_>>(),
-            "total": filtered.len(),
-            "todayCount": all.iter().filter(|r| r.created_at >= today).count(),
-            "unreadCount": all.iter().filter(|r| !r.read).count(),
-            "contacts": contacts.iter().map(|(s, n, a, c)| { let mut o = json!({ "sessionId": s, "displayName": n, "count": c }); if let Some(a) = a { o["avatarUrl"] = json!(a); } o }).collect::<Vec<_>>()
-        })
+        crate::contract::InsightRecords {
+            success: true,
+            records: filtered
+                .iter()
+                .skip(offset)
+                .take(limit)
+                .map(|r| r.summary())
+                .collect(),
+            total: filtered.len(),
+            today_count: all.iter().filter(|r| r.created_at >= today).count(),
+            unread_count: all.iter().filter(|r| !r.read).count(),
+            contacts: contacts
+                .into_iter()
+                .map(|(session_id, display_name, avatar_url, count)| {
+                    crate::contract::InsightContact {
+                        session_id,
+                        display_name,
+                        count,
+                        avatar_url,
+                    }
+                })
+                .collect(),
+        }
     }
 
     pub fn get(&self, scope: &str, id: &str) -> crate::contract::InsightLookup {
@@ -263,27 +276,31 @@ impl RecordStore {
         }
     }
 
-    pub fn mark_read(&mut self, scope: &str, id: &str) -> Value {
+    pub fn mark_read(&mut self, scope: &str, id: &str) -> crate::contract::InsightMarked {
         let id = id.trim();
         match self
             .records
             .iter_mut()
             .find(|r| r.id == id && r.account_scope == scope)
         {
-            None => {
-                json!({ "success": false, "error": tr("insight record not found", "未找到该见解记录") })
-            }
+            None => crate::contract::InsightMarked {
+                success: false,
+                error: Some(tr("insight record not found", "未找到该见解记录").to_string()),
+            },
             Some(r) => {
                 if !r.read {
                     r.read = true;
                     self.persist();
                 }
-                json!({ "success": true })
+                crate::contract::InsightMarked {
+                    success: true,
+                    error: None,
+                }
             }
         }
     }
 
-    pub fn clear(&mut self, scope: &str, f: &RecordFilters) -> Value {
+    pub fn clear(&mut self, scope: &str, f: &RecordFilters) -> crate::contract::InsightCleared {
         let mut removed = 0;
         self.records.retain(|r| {
             if r.account_scope != scope
@@ -297,7 +314,10 @@ impl RecordStore {
             false
         });
         self.persist();
-        json!({ "success": true, "removed": removed })
+        crate::contract::InsightCleared {
+            success: true,
+            removed,
+        }
     }
 }
 
@@ -747,41 +767,37 @@ mod tests {
             InsightRecordLog::default(),
         );
         let list = s.list("wxid:me", &RecordFilters::default());
-        assert_eq!(list["total"], 2);
-        assert_eq!(list["unreadCount"], 2);
-        assert_eq!(list["contacts"].as_array().unwrap().len(), 2);
+        assert_eq!(list.total, 2);
+        assert_eq!(list.unread_count, 2);
+        assert_eq!(list.contacts.len(), 2);
         let f = RecordFilters {
             keyword: "CALL".into(),
             ..Default::default()
         };
-        assert_eq!(s.list("wxid:me", &f)["total"], 1);
+        assert_eq!(s.list("wxid:me", &f).total, 1);
         assert!(
             !s.get("wxid:other", &a.id).success,
             "records of other accounts are invisible"
         );
-        assert_eq!(s.mark_read("wxid:me", &a.id)["success"], true);
-        assert_eq!(
-            s.list("wxid:me", &RecordFilters::default())["unreadCount"],
-            1
-        );
+        assert!(s.mark_read("wxid:me", &a.id).success);
+        assert_eq!(s.list("wxid:me", &RecordFilters::default()).unread_count, 1);
         // persisted and reloadable
         let again = RecordStore::load(&dir);
-        assert_eq!(again.list("wxid:me", &RecordFilters::default())["total"], 2);
+        assert_eq!(again.list("wxid:me", &RecordFilters::default()).total, 2);
         let mut again = again;
         assert_eq!(
-            again.clear(
-                "wxid:me",
-                &RecordFilters {
-                    session_id: "wxid_a".into(),
-                    ..Default::default()
-                }
-            )["removed"],
+            again
+                .clear(
+                    "wxid:me",
+                    &RecordFilters {
+                        session_id: "wxid_a".into(),
+                        ..Default::default()
+                    }
+                )
+                .removed,
             1
         );
-        assert_eq!(
-            again.list("wxid:other", &RecordFilters::default())["total"],
-            1
-        );
+        assert_eq!(again.list("wxid:other", &RecordFilters::default()).total, 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

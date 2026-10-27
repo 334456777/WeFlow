@@ -3223,24 +3223,31 @@ fn print_insight(r: &weflow_core::insight::InsightRecord) {
 }
 
 async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
+    use weflow_core::contract::{InsightReply, InsightScan};
     match &command.command {
-        InsightSubcommand::Test => Ok(hub.insight_test_connection().await),
+        InsightSubcommand::Test => Ok(json!(hub.insight_test_connection().await)),
         InsightSubcommand::Trigger { session_id } => match session_id {
-            None => Ok(hub.insight_trigger_test().await),
+            None => Ok(json!(hub.insight_trigger_test().await)),
             Some(id) => {
                 let name = hub
                     .chat_contact_avatar(id)
                     .map(|(_, n)| n)
                     .unwrap_or_else(|| id.clone());
-                match hub
+                let reply = match hub
                     .insight_generate(id, &name, weflow_core::services::InsightTrigger::Test, None)
                     .await
                 {
-                    Some(r) => Ok(json!({ "success": true, "record": r.summary() })),
-                    None => Ok(
-                        json!({ "success": false, "message": "no insight was generated (AI not configured, request failed, or the model answered SKIP)" }),
+                    Some(r) => InsightReply {
+                        success: true,
+                        message: None,
+                        record: Some(r.summary()),
+                        insight: None,
+                    },
+                    None => InsightReply::failed(
+                        "no insight was generated (AI not configured, request failed, or the model answered SKIP)".into(),
                     ),
-                }
+                };
+                Ok(json!(reply))
             }
         },
         InsightSubcommand::Records {
@@ -3250,28 +3257,27 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
             end,
             limit,
             offset,
-        } => Ok(hub.insight_list_records(&insight_filters(
+        } => Ok(json!(hub.insight_list_records(&insight_filters(
             session, keyword, start, end, limit, offset,
-        ))),
-        InsightSubcommand::MarkRead { id } => Ok(hub.insight_mark_record_read(id)),
+        )))),
+        InsightSubcommand::MarkRead { id } => Ok(json!(hub.insight_mark_record_read(id))),
         InsightSubcommand::Clear {
             session,
             start,
             end,
-        } => {
-            Ok(hub
-                .insight_clear_records(&insight_filters(session, &None, start, end, &None, &None)))
-        }
-        InsightSubcommand::TodayStats => Ok(hub.insight_today_stats()),
+        } => Ok(json!(hub.insight_clear_records(&insight_filters(
+            session, &None, start, end, &None, &None
+        )))),
+        InsightSubcommand::TodayStats => Ok(json!(hub.insight_today_stats())),
         InsightSubcommand::Scan => {
-            let mut found = Vec::new();
-            let n = hub
+            let mut records = Vec::new();
+            let generated = hub
                 .insight_silence_scan(&mut |r| {
                     print_insight(r);
-                    found.push(r.summary());
+                    records.push(r.summary());
                 })
                 .await;
-            Ok(json!({ "generated": n, "records": found }))
+            Ok(json!(InsightScan { generated, records }))
         }
         InsightSubcommand::Get { .. } | InsightSubcommand::Footprint { .. } => {
             unreachable!("a read")
@@ -3279,7 +3285,7 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
         InsightSubcommand::FootprintSummary { payload_json } => {
             let payload: Value = serde_json::from_str(payload_json)
                 .map_err(|e| AppError::usage(format!("payload_json must be JSON: {e}")))?;
-            Ok(hub.insight_footprint_summary(&payload).await)
+            Ok(json!(hub.insight_footprint_summary(&payload).await))
         }
     }
 }

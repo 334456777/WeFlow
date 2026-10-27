@@ -1202,6 +1202,85 @@ export interface InsightRecordLog {
   createdAt: number;
 }
 
+/** A page of the account's insight records (`insight records`), the newest first, with counts over all of them. */
+export interface InsightRecords {
+  /** Always true: the desktop app's shape. */
+  success: boolean;
+  records: InsightSummary[];
+  /** The records the filters match. */
+  total: number;
+  /** The account's records written today. */
+  todayCount: number;
+  unreadCount: number;
+  /** Everyone with a record, the most records first. */
+  contacts: InsightContact[];
+}
+
+/** An insight record as lists and events name it, without its log. */
+export interface InsightSummary {
+  id: string;
+  /** Unix milliseconds. */
+  createdAt: number;
+  sessionId: string;
+  displayName: string;
+  avatarUrl?: string;
+  /** Why it was written: `activity`, `silence`, `test`, … */
+  triggerReason: string;
+  insight: string;
+  read: boolean;
+}
+
+/** A conversation with insight records. */
+export interface InsightContact {
+  sessionId: string;
+  displayName: string;
+  /** Its records. */
+  count: number;
+  avatarUrl?: string;
+}
+
+/** How often the engine wrote about a conversation today (`insight today-stats`). */
+export interface InsightTodayStat {
+  sessionId: string;
+  count: number;
+  /** When, `HH:MM` local time. */
+  times: string[];
+}
+
+/** What `insight mark-read` answers; a record not found is a failure of the command. */
+export interface InsightMarked {
+  success: boolean;
+  error?: string;
+}
+
+/** What `insight clear` answers. */
+export interface InsightCleared {
+  /** Always true. */
+  success: boolean;
+  /** The records removed. */
+  removed: number;
+}
+
+/** What `insight scan` answers: the insights the silence scan wrote. */
+export interface InsightScan {
+  generated: number;
+  records: InsightSummary[];
+}
+
+/**
+ * What `insight test`, `trigger` and `footprint-summary` answer; when the AI is not set up or answers nothing, the
+ * command fails with `message` instead.
+ */
+export interface InsightReply {
+  success: boolean;
+  /** What happened, in the server's language. */
+  message?: string;
+  /** The record written (`trigger`). */
+  record?: InsightSummary;
+  /** The summary written (`footprint-summary`). */
+  insight?: string;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -1298,8 +1377,16 @@ export interface Answers {
   "group member-messages": MemberMessages;
   "group members": GroupMembers;
   "group ranking": GroupRank[];
+  "insight clear": InsightCleared;
   "insight footprint": Footprint;
+  "insight footprint-summary": InsightReply;
   "insight get": InsightLookup;
+  "insight mark-read": InsightMarked;
+  "insight records": InsightRecords;
+  "insight scan": InsightScan;
+  "insight test": InsightReply;
+  "insight today-stats": InsightTodayStat[];
+  "insight trigger": InsightReply;
   "report annual generate": AnnualReport;
   "report annual years": ReportYears;
   "report dual generate": DualReport;

@@ -2129,6 +2129,46 @@ fn reports_fit_the_contract() {
     assert!(dual["firstChat"]["senderUsername"].is_string(), "{dual}");
 }
 
+#[test]
+fn insight_answers_fit_the_contract() {
+    let root = temp_root("insight-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    // without an AI set up: no records, and a scan that writes none
+    for (verb, route, schema) in [
+        (
+            "GET",
+            "/insight/records?limit=10",
+            json!({ "$ref": "#/components/schemas/InsightRecords" }),
+        ),
+        (
+            "GET",
+            "/insight/today-stats",
+            json!({ "type": "array", "items": { "$ref": "#/components/schemas/InsightTodayStat" } }),
+        ),
+        (
+            "DELETE",
+            "/insight/clear",
+            json!({ "$ref": "#/components/schemas/InsightCleared" }),
+        ),
+        (
+            "POST",
+            "/insight/scan",
+            json!({ "$ref": "#/components/schemas/InsightScan" }),
+        ),
+    ] {
+        let r = server.call(verb, route, "");
+        assert_eq!(r.status, 200, "{verb} {route}: {}", r.body);
+        let data = &r.json()["data"];
+        let fits = misfits(&contract, &schema, data);
+        assert!(fits.is_empty(), "{route}: {fits:#?}\n{data}");
+    }
+    // a record that is not there is the command's failure, as the contract leaves it
+    let r = server.call("PUT", "/insight/mark-read", r#"{"id": "nothing-here"}"#);
+    assert_ne!(r.status, 200, "{}", r.body);
+}
+
 // Ctrl+C as a signal; Windows has no way to send one to another process alone
 #[cfg(unix)]
 #[test]
