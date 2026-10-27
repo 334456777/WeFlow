@@ -111,6 +111,15 @@ API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。
 | `src/chat/` | 聊天页（#196）：会话列表，含搜索、筛选、折叠的群聊和方向键切换（#197）；按类型显示消息，往上滚动时加载更早的消息（#198）；搜索卡片，以及跳到某一天或某条搜索结果，之后往下滚动时加载更新的消息（#199） |
 | `src/App.tsx`、`src/app.css` | 工作台（#401）：左侧导航，中间是页面，右侧是操作控制台；持有各页面共用的东西（连接、账号、会话列表、任务），负责从一个页面打开另一个页面，并把各页面的卡片汇集到控制台 |
 | `src/shell/` | 所有页面共用的外壳：侧边栏与连接状态、媒体预览、整个网页的偏好（实时消息、导出附带媒体、减少动画）、页面的两种形状（`ScrollPage`、`BrowserPanel`），以及 `page.ts`：页面拿到什么（`Shell`）、交回什么（`Page`） |
+| `src/contacts/`、`src/api/contacts.ts` | 通讯录页（#205）：按类别或跨类别搜索的联系人列表，旁边显示一位联系人；在控制台统计和导出 |
+| `src/analytics/`、`src/api/analytics.ts`、`src/api/groups.ts` | 聊天分析（#207）：私聊的统计和不计入统计的人；一个群在一段日期内的统计，以及其中一位成员 |
+| `src/resources/` | 资源浏览（#206）：所有会话的图片、视频、语音和文件，按月排成网格，可按类型、会话和日期筛选 |
+| `src/footprint/`、`src/api/footprint.ts` | 我的足迹（#209）：一段日期内和谁聊过、回复过谁、在哪里被 @，以及它的导出和 AI 总结 |
+| `src/insights/`、`src/api/insights.ts` | AI 见解（#210）：所有人或一个会话的记录，可按文字查找；在控制台生成和清除 |
+| `src/reports/`、`src/api/reports.ts` | 报告（#208）：一年（或全部年份）的年度报告，以及和一位好友的双人报告，可存为图片或单独的网页 |
+| `src/settings/`、`src/api/settings.ts`、`src/api/setup.ts`、`src/api/console.ts` | 设置（#213–#217）：连接、账号及其配置向导、输出语言、AI 模型、缓存；CLI 自带的工具和基于 `/openapi.json` 的命令控制台 |
+| `src/backup/`、`src/api/backup.ts` | 数据库备份（#212）：作为任务创建并从浏览器保存；查看或还原服务端电脑上的备份 |
+| `src/api/scope.ts`、`src/api/kept.ts`、`src/useRead.ts` | 网页持有的是谁的记录、多个视图共用的读取，以及一个视图显示的一次读取（见「请求与缓存」） |
 | `src/mock/` | 未连接服务时显示的示例记录，以及控制台对示例默认使用的日期范围 |
 | `src/api/jobs.ts`、`src/jobs/` | 作业（#211）：用 `Prefer: respond-async` 启动命令（导出时带 `?return=file`），读取 `/jobs` 列表，通过 `/jobs/<id>/events` 跟踪正在运行的作业，用 `DELETE` 取消或删除，从 `/jobs/<id>/file` 保存文件；任务中心列出全部作业，控制台用 `export messages` 导出打开的会话 |
 | `src/exports/` | 导出页（#211）：从会话列表里勾选（可按类型筛选、一次全选当前列出的），每个会话一个作业，用 `export messages` 导出，可选 9 种格式、日期范围、发送者名称、媒体文件和 Excel 精简列；也可以用 `export sessions` 导出会话列表本身 |

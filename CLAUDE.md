@@ -11,8 +11,8 @@
 ### Rust workspace（`crates/`）
 依赖方向：`weflow-cli` → `weflow-core` → `weflow-native` / `weflow-silk` / `weflow-assets`；`weflow-wcdb-ffi` → `weflow-native`
 - `weflow-native`：纯 Rust + 内置 SQLite 的只读数据库层，替代闭源 `wcdb_api`。`cipher_vfs`/`sqlcipher` 负责按页解密，`native_*` 按领域（消息、联系人、朋友圈、媒体、统计、报告）查询，`wcdb.rs` 是给上层用的门面，`wxkey` 处理密钥；未移植的调用返回 "not implemented"，必须同步登记到 `docs/cli-unsupported.md`（`make docs-check` 校验；它还会检查文档的相对链接和锚点是否有效、`docs/` 与 `docs/zh-CN/` 是否成对、`native-cli.md` 的 crate 表是否完整、汉字旁的逗号是否为中文逗号（只报告，不自动修改））
-- `weflow-core`：业务层。`services/` 下按功能划分（chat、group、analytics、sns、image、voice、insight、reports、cleanup、api），外加导出（`export*`）、HTTP API（`http_server`）、消息推送（`push`）、配置（`config`）、图片/视频/语音解密等
-- `weflow-cli`：命令行入口（clap），生成二进制 `weflow`；`help_zh.rs`/`i18n.rs` 为中文帮助与本地化
+- `weflow-core`：业务层。`services/` 下按功能划分（chat、group、analytics、sns、image、voice、insight、reports、cleanup、api），外加 CLI 与命令 API 共用的类型化读取（`reads`，#397）、命令 API 的契约类型（`contract`，#399）、导出（`export*`）、桌面端的 HTTP API（`http_server`）、消息推送（`push`）、配置（`config`）、图片/视频/语音解密等
+- `weflow-cli`：命令行入口（clap），生成二进制 `weflow`；`help_zh.rs`/`i18n.rs` 为中文帮助与本地化；`serve_api.rs` 与 `serve_api/` 是 `weflow serve` 的命令 API：路由和 `/openapi.json` 由 clap 命令树生成，`in_process` 在服务进程内执行 `/api/` 读取，`jobs`（生命周期，不依赖 axum）与 `job_routes`（HTTP 层）是后台任务（#398），其余路由在子进程里运行命令（见 `docs/serve-api.md`「How it runs」）
 - `weflow-wcdb-ffi`：把 `weflow-native` 导出为与 `wcdb_api` 兼容的 C ABI 动态库（`weflow_wcdb`），供桌面端加载，详见 `docs/desktop-rust-layer.md`
 - `weflow-wxkey`：Windows x64 的 Rust 数据库取钥兼容 DLL；CLI 直接调用 `weflow-native/windows_db_key`，桌面端从同一实现构建 `wx_key.dll`，不加载旧厂商 DLL。按客户端版本选择唯一特征与偏移，再验证 PE 函数范围，不提供备用定位方法
 - `weflow-silk`：内置 Skype SILK SDK 的语音解码器（`vendor/` 为第三方 C 源码，勿改）
@@ -27,7 +27,7 @@
 
 ### WebUI（`web/`）
 `weflow serve` 的网页界面（#130），独立的 React + TypeScript + Vite 项目，有自己的 `package.json`，不依赖根目录的 Electron 工程。构建产物 `dist/` 由 `serve` 托管在 `/ui/`（#146），与二进制分开发布（#148）。
-- `src/api/` 调用命令 API，用 `/health/events` 长连接显示连接状态并检查版本（#221），`src/mock/` 是暂用的示例数据
+- `src/api/` 调用命令 API，用 `/health/events` 长连接显示连接状态并检查版本（#221）；`src/mock/` 是未连接服务时显示的示例记录（会话列表、记录浏览和控制台的默认日期范围），不是暂用的数据
 - `bun run dev`（`scripts/dev.mjs`，#333；依赖由 Bun 按 `bun.lock` 安装；测试用 `bun test` 加 happy-dom，`test/` 下是测试 API 和 preload，不需要 Node.js）同时启动 Vite 和一个读合成账号的 `weflow serve`（`crates/weflow-cli/examples/dev_account.rs` 生成在 `target/dev-account/`，含「图片测试」会话），随机令牌由代理加上，不编进网页；设了 `WEFLOW_SERVE_URL` 时只启动 Vite，转给那个 serve
 - `package.json` 的 `weflow.apiVersion` / `minBackendVersion` 声明需要的 API，构建时写入 `dist/weflow-web.json`
 
