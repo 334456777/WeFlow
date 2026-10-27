@@ -4,12 +4,32 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{Datelike, Local, NaiveDate, TimeZone, Timelike};
+use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
 use super::*;
+use crate::contract::{
+    ActivityHeatmap, AnnualReport, AnnualSnsStats, CoreFriend, DualMessage, DualReport, DualStats,
+    FriendCount, LongestStreak, LostFriend, MidnightKing, MonthlyTopFriend, MutualFriend, PeakDay,
+    PhraseCount, ResponseSpeed, SocialInitiative, YearFirstChat,
+};
 use crate::message::{decode_message_content, row_int, rx};
 
 const CONVERSATION_GAP: i64 = 3600;
+
+/// Takes `key` out of the native layer's answer and reads it into the contract's type: absent and null are `None`,
+/// and a field the type does not know fails here rather than leave the answer unseen.
+fn from_native<T: serde::de::DeserializeOwned>(
+    answer: &mut Value,
+    key: &str,
+) -> AppResult<Option<T>> {
+    match answer.get_mut(key).map(Value::take) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => serde_json::from_value(v)
+            .map(Some)
+            .map_err(|e| AppError::runtime(format!("the native {key}: {e}"))),
+    }
+}
 
 fn num(v: &Value) -> i64 {
     v.as_i64()
@@ -513,7 +533,7 @@ impl ServiceHub {
     }
 
     /// `annualReport:generateReport`
-    pub fn report_annual(&self, year: i32) -> AppResult<Value> {
+    pub fn report_annual(&self, year: i32) -> AppResult<AnnualReport> {
         self.emit_progress("annual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
         let sessions = self.report_private_sessions(&wcdb, &cleaned);
@@ -569,11 +589,11 @@ impl ServiceHub {
             }
         }
         let mut heatmap = vec![vec![0i64; 24]; 7];
-        let mut midnight_stats: HashMap<String, i64> = HashMap::new();
-        let mut daily_contact: HashMap<String, HashMap<String, i64>> = HashMap::new();
-        let mut conversation: HashMap<String, (i64, i64)> = HashMap::new();
+        let mut midnight_stats: IndexMap<String, i64> = IndexMap::new();
+        let mut daily_contact: HashMap<String, IndexMap<String, i64>> = HashMap::new();
+        let mut conversation: IndexMap<String, (i64, i64)> = IndexMap::new();
         let mut response_sql: Option<Map<String, Value>> = None;
-        let mut top_phrases_sql: Option<Vec<Value>> = None;
+        let mut top_phrases_sql: Option<Vec<PhraseCount>> = None;
         let (mut streak_sid, mut streak_days) = (String::new(), 0i64);
         let (mut streak_start, mut streak_end): (
             Option<chrono::DateTime<Local>>,
@@ -599,7 +619,7 @@ impl ServiceHub {
             normalize_timestamp(peak_begin),
             normalize_timestamp(peak_end),
         );
-        if let Ok(ex) = extras {
+        if let Ok(mut ex) = extras {
             if let Some(hm) = ex
                 .get("heatmap")
                 .and_then(Value::as_array)
@@ -623,23 +643,21 @@ impl ServiceHub {
                     conversation.insert(sid.clone(), (num(&st["initiated"]), num(&st["received"])));
                 }
             }
-            response_sql = ex.get("response").and_then(Value::as_object).cloned();
+            response_sql = match ex.get_mut("response").map(Value::take) {
+                Some(Value::Object(m)) => Some(m),
+                _ => None,
+            };
             if let (false, Some(p)) = (
                 peak_day_key.is_empty(),
                 ex.get("peakDay").and_then(Value::as_object),
             ) {
-                let m: HashMap<String, i64> = p.iter().map(|(k, v)| (k.clone(), num(v))).collect();
+                let m: IndexMap<String, i64> = p.iter().map(|(k, v)| (k.clone(), num(v))).collect();
                 if !m.is_empty() {
                     daily_contact.insert(peak_day_key.clone(), m);
                 }
             }
-            if let Some(p) = ex
-                .get("topPhrases")
-                .and_then(Value::as_array)
-                .filter(|p| !p.is_empty())
-            {
-                top_phrases_sql = Some(p.clone());
-            }
+            top_phrases_sql =
+                from_native::<Vec<PhraseCount>>(&mut ex, "topPhrases")?.filter(|p| !p.is_empty());
             if let Some(s) = ex.get("streak") {
                 let sid = s.get("sessionId").and_then(Value::as_str).unwrap_or("");
                 let days = num(&s["days"]);
@@ -663,7 +681,7 @@ impl ServiceHub {
         }
 
         // conversation / response / phrase state for the cursor fallback
-        let mut response_times: HashMap<String, Vec<i64>> = HashMap::new();
+        let mut response_times: IndexMap<String, Vec<i64>> = IndexMap::new();
         let mut phrase_count: HashMap<String, i64> = HashMap::new();
         let mut phrase_order: Vec<String> = Vec::new();
         if !use_sql_extras {
@@ -883,7 +901,7 @@ impl ServiceHub {
 
         // Moments
         self.emit_progress("annual-report", "analysing Moments…", 75, 100);
-        let mut sns_stats: Option<Value> = None;
+        let mut sns_stats: Option<AnnualSnsStats> = None;
         let (sb, se) = if is_all {
             (0, now.timestamp())
         } else {
@@ -894,93 +912,69 @@ impl ServiceHub {
             se.clamp(0, i32::MAX as i64) as i32,
         ) {
             if sd.is_object() {
-                let mut users: Vec<String> = Vec::new();
-                for key in ["topLikers", "topLiked"] {
-                    for u in sd
-                        .get(key)
-                        .and_then(Value::as_array)
-                        .map(|a| a.as_slice())
-                        .unwrap_or(&[])
-                    {
-                        if let Some(n) = u.get("username").and_then(Value::as_str) {
-                            if !users.contains(&n.to_string()) {
-                                users.push(n.to_string());
-                            }
-                        }
-                    }
-                }
-                let (names, avatars) = self.names_and_avatars_pub(&wcdb, &users);
-                let enrich = |key: &str| -> Vec<Value> {
+                let listed = |key: &str| -> Vec<(String, i64)> {
                     sd.get(key)
                         .and_then(Value::as_array)
                         .map(|a| a.as_slice())
                         .unwrap_or(&[])
                         .iter()
                         .map(|u| {
-                            let mut o = u.as_object().cloned().unwrap_or_default();
                             let name = u.get("username").and_then(Value::as_str).unwrap_or("");
-                            o.insert(
-                                "displayName".into(),
-                                json!(names
-                                    .get(name)
-                                    .filter(|n| !n.is_empty())
-                                    .cloned()
-                                    .unwrap_or_else(|| name.to_string())),
-                            );
-                            match avatars.get(name) {
-                                Some(a) => {
-                                    o.insert("avatarUrl".into(), json!(a));
-                                }
-                                None => {
-                                    o.shift_remove("avatarUrl");
-                                }
-                            }
-                            Value::Object(o)
+                            (name.to_string(), num(&u["count"]))
                         })
                         .collect()
                 };
-                let mut o = Map::new();
-                o.insert("totalPosts".into(), json!(num(&sd["totalPosts"])));
-                if let Some(t) = sd.get("typeCounts").filter(|v| !v.is_null()) {
-                    o.insert("typeCounts".into(), t.clone());
+                let (likers, liked) = (listed("topLikers"), listed("topLiked"));
+                let mut users: Vec<String> = Vec::new();
+                for (n, _) in likers.iter().chain(&liked) {
+                    if !n.is_empty() && !users.contains(n) {
+                        users.push(n.clone());
+                    }
                 }
-                o.insert("topLikers".into(), json!(enrich("topLikers")));
-                o.insert("topLiked".into(), json!(enrich("topLiked")));
-                sns_stats = Some(Value::Object(o));
+                let (names, avatars) = self.names_and_avatars_pub(&wcdb, &users);
+                let enrich = |list: Vec<(String, i64)>| -> Vec<FriendCount> {
+                    list.into_iter()
+                        .map(|(username, count)| FriendCount {
+                            display_name: names
+                                .get(&username)
+                                .filter(|n| !n.is_empty())
+                                .cloned()
+                                .unwrap_or_else(|| username.clone()),
+                            avatar_url: avatars.get(&username).cloned(),
+                            username,
+                            count,
+                        })
+                        .collect()
+                };
+                let type_counts = sd
+                    .get("typeCounts")
+                    .and_then(Value::as_object)
+                    .map(|t| t.iter().map(|(k, v)| (k.clone(), num(v))).collect());
+                sns_stats = Some(AnnualSnsStats {
+                    total_posts: num(&sd["totalPosts"]),
+                    type_counts,
+                    top_likers: enrich(likers),
+                    top_liked: enrich(liked),
+                });
             }
         }
-        if is_all
-            && sns_stats
-                .as_ref()
-                .is_none_or(|s| num(&s["totalPosts"]) <= 0)
-        {
+        if is_all && sns_stats.as_ref().is_none_or(|s| s.total_posts <= 0) {
             let id = if cleaned.is_empty() {
                 raw_wxid.clone()
             } else {
                 cleaned.clone()
             };
             if let Ok(st) = wcdb.sns_export_stats(Some(&id)) {
-                let total = num(&st["total_posts"]).max(0);
-                let mut o = Map::new();
-                o.insert("totalPosts".into(), json!(total));
-                if let Some(t) = sns_stats.as_ref().and_then(|s| s.get("typeCounts")) {
-                    o.insert("typeCounts".into(), t.clone());
-                }
-                o.insert(
-                    "topLikers".into(),
-                    sns_stats
-                        .as_ref()
-                        .and_then(|s| s.get("topLikers").cloned())
-                        .unwrap_or_else(|| json!([])),
-                );
-                o.insert(
-                    "topLiked".into(),
-                    sns_stats
-                        .as_ref()
-                        .and_then(|s| s.get("topLiked").cloned())
-                        .unwrap_or_else(|| json!([])),
-                );
-                sns_stats = Some(Value::Object(o));
+                let total_posts = num(&st["total_posts"]).max(0);
+                sns_stats = Some(match sns_stats {
+                    Some(s) => AnnualSnsStats { total_posts, ..s },
+                    None => AnnualSnsStats {
+                        total_posts,
+                        type_counts: None,
+                        top_likers: Vec::new(),
+                        top_liked: Vec::new(),
+                    },
+                });
             }
         }
 
@@ -1012,25 +1006,23 @@ impl ServiceHub {
 
         let mut core: Vec<(String, i64, i64)> = contact_stats.clone();
         core.sort_by_key(|a| std::cmp::Reverse(a.1 + a.2));
-        let core_friends: Vec<Value> = core
+        let core_friends: Vec<CoreFriend> = core
             .iter()
             .take(3)
             .map(|(sid, sent, recv)| {
-                let (name, avatar) = info(sid);
-                let mut o = Map::new();
-                o.insert("username".into(), json!(sid));
-                o.insert("displayName".into(), json!(name));
-                if let Some(a) = avatar {
-                    o.insert("avatarUrl".into(), json!(a));
+                let (display_name, avatar_url) = info(sid);
+                CoreFriend {
+                    username: sid.clone(),
+                    display_name,
+                    avatar_url,
+                    message_count: sent + recv,
+                    sent_count: *sent,
+                    received_count: *recv,
                 }
-                o.insert("messageCount".into(), json!(sent + recv));
-                o.insert("sentCount".into(), json!(sent));
-                o.insert("receivedCount".into(), json!(recv));
-                Value::Object(o)
             })
             .collect();
 
-        let monthly_top: Vec<Value> = (1..=12i64)
+        let monthly_top: Vec<MonthlyTopFriend> = (1..=12i64)
             .map(|month| {
                 let (mut max_count, mut top) = (0i64, String::new());
                 for (sid, m) in &monthly_stats {
@@ -1040,23 +1032,21 @@ impl ServiceHub {
                         top = sid.clone();
                     }
                 }
-                let (name, avatar) = if top.is_empty() {
+                let (display_name, avatar_url) = if top.is_empty() {
                     ("暂无".to_string(), None)
                 } else {
                     info(&top)
                 };
-                let mut o = Map::new();
-                o.insert("month".into(), json!(month));
-                o.insert("displayName".into(), json!(name));
-                if let Some(a) = avatar {
-                    o.insert("avatarUrl".into(), json!(a));
+                MonthlyTopFriend {
+                    month,
+                    display_name,
+                    avatar_url,
+                    message_count: max_count,
                 }
-                o.insert("messageCount".into(), json!(max_count));
-                Value::Object(o)
             })
             .collect();
 
-        let mut peak_day = Value::Null;
+        let mut peak_day = None;
         let mut max_day = 0i64;
         for (day, count) in &daily_stats {
             if *count > max_day {
@@ -1070,7 +1060,12 @@ impl ServiceHub {
                         }
                     }
                 }
-                peak_day = json!({ "date": day, "messageCount": count, "topFriend": top_friend, "topFriendCount": top_count });
+                peak_day = Some(PeakDay {
+                    date: day.clone(),
+                    message_count: *count,
+                    top_friend,
+                    top_friend_count: top_count,
+                });
             }
         }
 
@@ -1083,9 +1078,13 @@ impl ServiceHub {
                     sid = s.clone();
                 }
             }
-            json!({ "displayName": info(&sid).0, "count": max_m, "percentage": round1(max_m as f64 / total_midnight as f64 * 100.0) })
+            Some(MidnightKing {
+                display_name: info(&sid).0,
+                count: max_m,
+                percentage: round1(max_m as f64 / total_midnight as f64 * 100.0),
+            })
         } else {
-            Value::Null
+            None
         };
 
         let longest_streak = match (
@@ -1094,13 +1093,16 @@ impl ServiceHub {
             streak_start,
             streak_end,
         ) {
-            (false, true, Some(s), Some(e)) => {
-                json!({ "friendName": info(&streak_sid).0, "days": streak_days, "startDate": ymd(s), "endDate": ymd(e) })
-            }
-            _ => Value::Null,
+            (false, true, Some(s), Some(e)) => Some(LongestStreak {
+                friend_name: info(&streak_sid).0,
+                days: streak_days,
+                start_date: ymd(s),
+                end_date: ymd(e),
+            }),
+            _ => None,
         };
 
-        let mut mutual = Value::Null;
+        let mut mutual = None;
         let mut best_diff = f64::INFINITY;
         for (sid, sent, recv) in &contact_stats {
             if *sent >= 50 && *recv >= 50 {
@@ -1108,16 +1110,14 @@ impl ServiceHub {
                 let diff = (ratio - 1.0).abs();
                 if diff < best_diff {
                     best_diff = diff;
-                    let (name, avatar) = info(sid);
-                    let mut o = Map::new();
-                    o.insert("displayName".into(), json!(name));
-                    if let Some(a) = avatar {
-                        o.insert("avatarUrl".into(), json!(a));
-                    }
-                    o.insert("sentCount".into(), json!(sent));
-                    o.insert("receivedCount".into(), json!(recv));
-                    o.insert("ratio".into(), json!((ratio * 100.0).round() / 100.0));
-                    mutual = Value::Object(o);
+                    let (display_name, avatar_url) = info(sid);
+                    mutual = Some(MutualFriend {
+                        display_name,
+                        avatar_url,
+                        sent_count: *sent,
+                        received_count: *recv,
+                        ratio: (ratio * 100.0).round() / 100.0,
+                    });
                 }
             }
         }
@@ -1133,22 +1133,13 @@ impl ServiceHub {
             }
         }
         let total_conv = total_init + total_recv;
-        let social = if total_conv > 0 {
-            let mut o = Map::new();
-            o.insert("initiatedChats".into(), json!(total_init));
-            o.insert("receivedChats".into(), json!(total_recv));
-            o.insert(
-                "initiativeRate".into(),
-                json!(round1(total_init as f64 / total_conv as f64 * 100.0)),
-            );
-            if top_init > 0 {
-                o.insert("topInitiatedFriend".into(), json!(info(&top_init_sid).0));
-                o.insert("topInitiatedCount".into(), json!(top_init));
-            }
-            Value::Object(o)
-        } else {
-            Value::Null
-        };
+        let social = (total_conv > 0).then(|| SocialInitiative {
+            initiated_chats: total_init,
+            received_chats: total_recv,
+            initiative_rate: round1(total_init as f64 / total_conv as f64 * 100.0),
+            top_initiated_friend: (top_init > 0).then(|| info(&top_init_sid).0),
+            top_initiated_count: (top_init > 0).then_some(top_init),
+        });
 
         self.emit_progress("annual-report", "building report…", 95, 100);
         let response_speed = if let Some(resp) = response_sql.as_ref().filter(|r| !r.is_empty()) {
@@ -1166,11 +1157,11 @@ impl ServiceHub {
                     fastest_id = sid.clone();
                 }
             }
-            if cnt > 0.0 {
-                json!({ "avgResponseTime": (sum / cnt).round() as i64, "fastestFriend": info(&fastest_id).0, "fastestTime": fastest.round() as i64 })
-            } else {
-                Value::Null
-            }
+            (cnt > 0.0).then(|| ResponseSpeed {
+                avg_response_time: (sum / cnt).round() as i64,
+                fastest_friend: info(&fastest_id).0,
+                fastest_time: fastest.round() as i64,
+            })
         } else {
             let (mut all, mut fastest_id, mut fastest) =
                 (Vec::<i64>::new(), String::new(), f64::INFINITY);
@@ -1184,15 +1175,15 @@ impl ServiceHub {
                     }
                 }
             }
-            if all.is_empty() {
-                Value::Null
-            } else {
-                let avg = all.iter().sum::<i64>() as f64 / all.len() as f64;
-                json!({ "avgResponseTime": avg.round() as i64, "fastestFriend": info(&fastest_id).0, "fastestTime": fastest.round() as i64 })
-            }
+            (!all.is_empty()).then(|| ResponseSpeed {
+                avg_response_time: (all.iter().sum::<i64>() as f64 / all.len() as f64).round()
+                    as i64,
+                fastest_friend: info(&fastest_id).0,
+                fastest_time: fastest.round() as i64,
+            })
         };
 
-        let top_phrases: Vec<Value> = match top_phrases_sql {
+        let top_phrases: Vec<PhraseCount> = match top_phrases_sql {
             Some(p) if !p.is_empty() => p,
             _ => {
                 let mut v: Vec<(String, i64)> = phrase_order
@@ -1203,13 +1194,13 @@ impl ServiceHub {
                 v.sort_by_key(|a| std::cmp::Reverse(a.1));
                 v.truncate(32);
                 v.into_iter()
-                    .map(|(p, c)| json!({ "phrase": p, "count": c }))
+                    .map(|(phrase, count)| PhraseCount { phrase, count })
                     .collect()
             }
         };
 
         // "once close friend"
-        let mut lost = Value::Null;
+        let mut lost = None;
         let (mut max_early, mut best_early, mut best_late, mut best_sid, mut best_desc) =
             (80i64, 0i64, 0i64, String::new(), String::new());
         let current_year = now.year();
@@ -1291,7 +1282,7 @@ impl ServiceHub {
             }
         }
         if !best_sid.is_empty() {
-            let (name, avatar) = if contact_ids.contains(&best_sid) {
+            let (display_name, avatar_url) = if contact_ids.contains(&best_sid) {
                 info(&best_sid)
             } else {
                 let (n, a) = self.names_and_avatars_pub(&wcdb, std::slice::from_ref(&best_sid));
@@ -1303,40 +1294,34 @@ impl ServiceHub {
                     a.get(&best_sid).cloned(),
                 )
             };
-            let mut o = Map::new();
-            o.insert("username".into(), json!(best_sid));
-            o.insert("displayName".into(), json!(name));
-            if let Some(a) = avatar {
-                o.insert("avatarUrl".into(), json!(a));
-            }
-            o.insert("earlyCount".into(), json!(best_early));
-            o.insert("lateCount".into(), json!(best_late));
-            o.insert("periodDesc".into(), json!(best_desc));
-            lost = Value::Object(o);
+            lost = Some(LostFriend {
+                username: best_sid,
+                display_name,
+                avatar_url,
+                early_count: best_early,
+                late_count: best_late,
+                period_desc: best_desc,
+            });
         }
 
-        let mut report = Map::new();
-        report.insert("year".into(), json!(report_year));
-        report.insert("totalMessages".into(), json!(total_messages));
-        report.insert("totalFriends".into(), json!(contact_stats.len()));
-        report.insert("coreFriends".into(), json!(core_friends));
-        report.insert("monthlyTopFriends".into(), json!(monthly_top));
-        report.insert("peakDay".into(), peak_day);
-        report.insert("longestStreak".into(), longest_streak);
-        report.insert("activityHeatmap".into(), json!({ "data": heatmap }));
-        report.insert("midnightKing".into(), midnight_king);
-        if let Some(a) = self_avatar {
-            report.insert("selfAvatarUrl".into(), json!(a));
-        }
-        report.insert("mutualFriend".into(), mutual);
-        report.insert("socialInitiative".into(), social);
-        report.insert("responseSpeed".into(), response_speed);
-        report.insert("topPhrases".into(), json!(top_phrases));
-        if let Some(s) = sns_stats {
-            report.insert("snsStats".into(), s);
-        }
-        report.insert("lostFriend".into(), lost);
-        Ok(Value::Object(report))
+        Ok(AnnualReport {
+            year: report_year,
+            total_messages,
+            total_friends: contact_stats.len(),
+            core_friends,
+            monthly_top_friends: monthly_top,
+            peak_day,
+            longest_streak,
+            activity_heatmap: ActivityHeatmap { data: heatmap },
+            midnight_king,
+            self_avatar_url: self_avatar,
+            mutual_friend: mutual,
+            social_initiative: social,
+            response_speed,
+            top_phrases,
+            sns_stats,
+            lost_friend: lost,
+        })
     }
 
     fn aggregate_for_reports(
@@ -1408,7 +1393,7 @@ impl ServiceHub {
         friend: &str,
         year: i32,
         exclude_words: &[String],
-    ) -> AppResult<Value> {
+    ) -> AppResult<DualReport> {
         self.emit_progress("dual-report", "connecting…", 5, 100);
         let (wcdb, cleaned, raw_wxid) = self.report_connect()?;
         let report_year = year.max(0);
@@ -1452,7 +1437,7 @@ impl ServiceHub {
         let self_avatar = av(&raw_wxid).or_else(|| av(&cleaned));
         let friend_avatar = av(friend);
 
-        let message_view = |row: &Value| -> Value {
+        let message_view = |row: &Value| -> DualMessage {
             let create_ms = num(&row["create_time"]) * 1000;
             let raw_content = decode_message_content(row);
             let local_type = row_int(
@@ -1474,86 +1459,58 @@ impl ServiceHub {
                 )))
                 .or_else(|| extract_emoji_url(&stripped));
             }
-            let mut o = Map::new();
-            o.insert("content".into(), json!(raw_content));
-            o.insert(
-                "isSentByMe".into(),
-                json!(resolve_is_sent(row, &raw_wxid, &cleaned)),
-            );
-            o.insert("createTime".into(), json!(create_ms));
-            o.insert("createTimeStr".into(), json!(format_date_time(create_ms)));
-            o.insert("localType".into(), json!(local_type));
-            if let Some(m) = md5 {
-                o.insert("emojiMd5".into(), json!(m));
+            DualMessage {
+                content: raw_content,
+                is_sent_by_me: resolve_is_sent(row, &raw_wxid, &cleaned),
+                sender_username: None,
+                create_time: create_ms,
+                create_time_str: format_date_time(create_ms),
+                local_type,
+                emoji_md5: md5,
+                emoji_cdn_url: url,
             }
-            if let Some(u) = url {
-                o.insert("emojiCdnUrl".into(), json!(u));
-            }
-            Value::Object(o)
         };
 
         self.emit_progress("dual-report", "first messages…", 15, 100);
         let first_rows = self.first_messages(&wcdb, friend, 10, 0, 0);
-        let first_chat = first_rows.first().map(|row| {
-            let mut v = message_view(row);
-            let o = v.as_object_mut().unwrap();
-            if let Some(s) = ["sender_username", "sender"]
+        let first_chat = first_rows.first().map(|row| DualMessage {
+            sender_username: ["sender_username", "sender"]
                 .iter()
                 .filter_map(|k| row.get(*k))
                 .find(|v| !v.is_null())
-            {
-                // `senderUsername` sits after isSentByMe in the desktop object
-                let mut rebuilt = Map::new();
-                for (k, val) in o.iter() {
-                    rebuilt.insert(k.clone(), val.clone());
-                    if k == "isSentByMe" {
-                        rebuilt.insert("senderUsername".into(), s.clone());
-                    }
-                }
-                return Value::Object(rebuilt);
-            }
-            v
+                .map(|v| coerce_string(Some(v))),
+            ..message_view(row)
         });
-        let first_chat_messages: Vec<Value> = first_rows.iter().map(&message_view).collect();
+        let first_chat_messages: Vec<DualMessage> = first_rows.iter().map(&message_view).collect();
 
-        let mut year_first_chat = Value::Null;
+        let mut year_first_chat = None;
         if !is_all {
             let rows = self.first_messages(&wcdb, friend, 10, start, end);
             if let Some(first) = rows.first() {
                 let view = message_view(first);
-                let create_ms = num(&first["create_time"]) * 1000;
-                let mut o = Map::new();
-                o.insert("createTime".into(), json!(create_ms));
-                o.insert("createTimeStr".into(), json!(format_date_time(create_ms)));
-                o.insert("content".into(), view["content"].clone());
-                o.insert("isSentByMe".into(), view["isSentByMe"].clone());
-                o.insert("friendName".into(), json!(friend_name));
-                o.insert(
-                    "firstThreeMessages".into(),
-                    json!(rows.iter().map(&message_view).collect::<Vec<_>>()),
-                );
-                o.insert("localType".into(), view["localType"].clone());
-                for k in ["emojiMd5", "emojiCdnUrl"] {
-                    if let Some(v) = view.get(k) {
-                        o.insert(k.into(), v.clone());
-                    }
-                }
-                year_first_chat = Value::Object(o);
+                year_first_chat = Some(YearFirstChat {
+                    create_time: view.create_time,
+                    create_time_str: view.create_time_str,
+                    content: view.content,
+                    is_sent_by_me: view.is_sent_by_me,
+                    friend_name: friend_name.clone(),
+                    first_three_messages: rows.iter().map(&message_view).collect(),
+                    local_type: view.local_type,
+                    emoji_md5: view.emoji_md5,
+                    emoji_cdn_url: view.emoji_cdn_url,
+                });
             }
         }
 
         self.emit_progress("dual-report", "chat statistics…", 30, 100);
         let (b, e) = normalize_range(start, end);
-        let cpp = wcdb.dual_report_stats(friend, b, e).map_err(|err| {
+        let mut cpp = wcdb.dual_report_stats(friend, b, e).map_err(|err| {
             AppError::native(format!("failed to get dual-report statistics: {err}"))
         })?;
-        let counts = cpp.get("counts").cloned().unwrap_or_else(|| json!({}));
-        let mut stats = Map::new();
-        stats.insert("totalMessages".into(), json!(num(&counts["total"])));
-        stats.insert("totalWords".into(), json!(num(&counts["words"])));
-        stats.insert("imageCount".into(), json!(num(&counts["image"])));
-        stats.insert("voiceCount".into(), json!(num(&counts["voice"])));
-        stats.insert("emojiCount".into(), json!(num(&counts["emoji"])));
+        let counts = cpp
+            .get_mut("counts")
+            .map(Value::take)
+            .unwrap_or_else(|| json!({}));
         let emoji_count = num(&counts["emoji"]);
 
         let (mut my_md5, mut my_url, mut my_count) = (None::<String>, None::<String>, -1i64);
@@ -1698,52 +1655,35 @@ impl ServiceHub {
                 }
             }
         }
-        for (k, v) in [
-            ("myTopEmojiMd5", &my_md5),
-            ("myTopEmojiUrl", &my_url),
-            ("friendTopEmojiMd5", &fr_md5),
-            ("friendTopEmojiUrl", &fr_url),
-        ] {
-            if let Some(v) = v {
-                stats.insert(k.into(), json!(v));
-            }
-        }
-        if my_count >= 0 {
-            stats.insert("myTopEmojiCount".into(), json!(my_count));
-        }
-        if fr_count >= 0 {
-            stats.insert("friendTopEmojiCount".into(), json!(fr_count));
-        }
+        let stats = DualStats {
+            total_messages: num(&counts["total"]),
+            total_words: num(&counts["words"]),
+            image_count: num(&counts["image"]),
+            voice_count: num(&counts["voice"]),
+            emoji_count,
+            my_top_emoji_md5: my_md5,
+            my_top_emoji_url: my_url,
+            friend_top_emoji_md5: fr_md5,
+            friend_top_emoji_url: fr_url,
+            my_top_emoji_count: (my_count >= 0).then_some(my_count),
+            friend_top_emoji_count: (fr_count >= 0).then_some(fr_count),
+        };
 
         let exclude: HashSet<&str> = exclude_words.iter().map(String::as_str).collect();
-        let filter = |key: &str| -> Vec<Value> {
-            cpp.get(key)
-                .and_then(Value::as_array)
-                .map(|a| a.as_slice())
-                .unwrap_or(&[])
-                .iter()
-                .filter(|p| !exclude.contains(p["phrase"].as_str().unwrap_or("")))
-                .cloned()
-                .collect()
+        let mut filter = |key: &str| -> AppResult<Vec<PhraseCount>> {
+            let list: Vec<PhraseCount> = from_native(&mut cpp, key)?.unwrap_or_default();
+            Ok(list
+                .into_iter()
+                .filter(|p| !exclude.contains(p.phrase.as_str()))
+                .collect())
         };
-        let (clean, clean_my, clean_fr) = (
-            filter("phrases"),
-            filter("myPhrases"),
-            filter("friendPhrases"),
+        let (top_phrases, clean_my, clean_fr) = (
+            filter("phrases")?,
+            filter("myPhrases")?,
+            filter("friendPhrases")?,
         );
-        let top_phrases: Vec<Value> = clean
-            .iter()
-            .map(|p| json!({ "phrase": p["phrase"], "count": p["count"] }))
-            .collect();
-        let phrase_map = |list: &[Value]| -> Vec<(String, i64)> {
-            list.iter()
-                .map(|p| {
-                    (
-                        p["phrase"].as_str().unwrap_or("").to_string(),
-                        num(&p["count"]),
-                    )
-                })
-                .collect()
+        let phrase_map = |list: &[PhraseCount]| -> Vec<(String, i64)> {
+            list.iter().map(|p| (p.phrase.clone(), p.count)).collect()
         };
         let (my_map, fr_map) = (phrase_map(&clean_my), phrase_map(&clean_fr));
         let lookup = |m: &[(String, i64)], k: &str| {
@@ -1753,7 +1693,7 @@ impl ServiceHub {
                 .map(|(_, c)| *c)
                 .unwrap_or(0)
         };
-        let exclusive = |own: &[(String, i64)], other: &[(String, i64)]| -> Vec<Value> {
+        let exclusive = |own: &[(String, i64)], other: &[(String, i64)]| -> Vec<PhraseCount> {
             let mut seen = HashSet::new();
             let mut v: Vec<(String, i64)> = Vec::new();
             for (phrase, _) in own {
@@ -1769,42 +1709,33 @@ impl ServiceHub {
             v.sort_by_key(|a| std::cmp::Reverse(a.1));
             v.truncate(20);
             v.into_iter()
-                .map(|(p, c)| json!({ "phrase": p, "count": c }))
+                .map(|(phrase, count)| PhraseCount { phrase, count })
                 .collect()
         };
         let my_excl = exclusive(&my_map, &fr_map);
         let fr_excl = exclusive(&fr_map, &my_map);
 
-        let mut report = Map::new();
-        report.insert("year".into(), json!(report_year));
-        report.insert("selfName".into(), json!(my_name));
-        if let Some(a) = self_avatar {
-            report.insert("selfAvatarUrl".into(), json!(a));
-        }
-        report.insert("friendUsername".into(), json!(friend));
-        report.insert("friendName".into(), json!(friend_name));
-        if let Some(a) = friend_avatar {
-            report.insert("friendAvatarUrl".into(), json!(a));
-        }
-        report.insert("firstChat".into(), first_chat.unwrap_or(Value::Null));
-        report.insert("firstChatMessages".into(), json!(first_chat_messages));
-        report.insert("yearFirstChat".into(), year_first_chat);
-        report.insert("stats".into(), Value::Object(stats));
-        report.insert("topPhrases".into(), json!(top_phrases));
-        report.insert("myExclusivePhrases".into(), json!(my_excl));
-        report.insert("friendExclusivePhrases".into(), json!(fr_excl));
-        for (k, src) in [
-            ("heatmap", "heatmap"),
-            ("initiative", "initiative"),
-            ("response", "response"),
-            ("monthly", "monthly"),
-            ("streak", "streak"),
-        ] {
-            if let Some(v) = cpp.get(src).filter(|v| !v.is_null()) {
-                report.insert(k.into(), v.clone());
-            }
-        }
+        let report = DualReport {
+            year: report_year,
+            self_name: my_name,
+            self_avatar_url: self_avatar,
+            friend_username: friend.to_string(),
+            friend_name,
+            friend_avatar_url: friend_avatar,
+            first_chat,
+            first_chat_messages,
+            year_first_chat,
+            stats,
+            top_phrases,
+            my_exclusive_phrases: my_excl,
+            friend_exclusive_phrases: fr_excl,
+            heatmap: from_native(&mut cpp, "heatmap")?,
+            initiative: from_native(&mut cpp, "initiative")?,
+            response: from_native(&mut cpp, "response")?,
+            monthly: from_native(&mut cpp, "monthly")?,
+            streak: from_native(&mut cpp, "streak")?,
+        };
         self.emit_progress("dual-report", "done", 100, 100);
-        Ok(Value::Object(report))
+        Ok(report)
     }
 }

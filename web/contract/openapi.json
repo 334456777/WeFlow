@@ -1555,6 +1555,46 @@
         }
       }
     },
+    "/report/annual/generate": {
+      "get": {
+        "operationId": "api_report_annual_generate",
+        "x-weflow-command": "report annual generate",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AnnualReport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/report/annual/years": {
       "get": {
         "operationId": "api_report_annual_years",
@@ -1576,6 +1616,46 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/ReportYears"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/report/dual/generate": {
+      "get": {
+        "operationId": "api_report_dual_generate",
+        "x-weflow-command": "report dual generate",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DualReport"
                     }
                   }
                 }
@@ -3107,6 +3187,7 @@
       },
       "PhraseCount": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "phrase": {
             "type": "string"
@@ -3962,6 +4043,820 @@
           "strategy"
         ],
         "description": "The years with private messages (`report annual years`), the latest first."
+      },
+      "AnnualReport": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "description": "0 for all the years."
+          },
+          "totalMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalFriends": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The private chats with messages."
+          },
+          "coreFriends": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoreFriend"
+            },
+            "description": "The three private chats with the most messages."
+          },
+          "monthlyTopFriends": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthlyTopFriend"
+            },
+            "description": "Months 1–12."
+          },
+          "peakDay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeakDay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "longestStreak": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LongestStreak"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "activityHeatmap": {
+            "$ref": "#/components/schemas/ActivityHeatmap"
+          },
+          "midnightKing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MidnightKing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selfAvatarUrl": {
+            "type": "string"
+          },
+          "mutualFriend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MutualFriend"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "socialInitiative": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SocialInitiative"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "responseSpeed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseSpeed"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "topPhrases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhraseCount"
+            },
+            "description": "My phrases said at least twice, the most said first."
+          },
+          "snsStats": {
+            "$ref": "#/components/schemas/AnnualSnsStats"
+          },
+          "lostFriend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LostFriend"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "year",
+          "totalMessages",
+          "totalFriends",
+          "coreFriends",
+          "monthlyTopFriends",
+          "peakDay",
+          "longestStreak",
+          "activityHeatmap",
+          "midnightKing",
+          "mutualFriend",
+          "socialInitiative",
+          "responseSpeed",
+          "topPhrases",
+          "lostFriend"
+        ],
+        "description": "The annual report (`report annual generate`) over the private chats of one year, or of all of them."
+      },
+      "CoreFriend": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "messageCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sentCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "receivedCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "username",
+          "displayName",
+          "messageCount",
+          "sentCount",
+          "receivedCount"
+        ],
+        "description": "One of the three private chats with the most messages."
+      },
+      "MonthlyTopFriend": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "integer",
+            "format": "int64",
+            "description": "1–12."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "「暂无」 for a month without messages."
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "messageCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "month",
+          "displayName",
+          "messageCount"
+        ],
+        "description": "Who a month's most messages are with."
+      },
+      "PeakDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "messageCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "topFriend": {
+            "type": "string"
+          },
+          "topFriendCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "date",
+          "messageCount",
+          "topFriend",
+          "topFriendCount"
+        ],
+        "description": "The day with the most messages, and who most of them are with."
+      },
+      "LongestStreak": {
+        "type": "object",
+        "properties": {
+          "friendName": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`."
+          }
+        },
+        "required": [
+          "friendName",
+          "days",
+          "startDate",
+          "endDate"
+        ],
+        "description": "The most days in a row talked with one friend."
+      },
+      "ActivityHeatmap": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int64"
+              }
+            },
+            "description": "Seven rows, Monday first, of 24 hours each."
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "description": "Messages by weekday and hour."
+      },
+      "MidnightKing": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "percentage": {
+            "type": "number",
+            "format": "double",
+            "description": "Of all the messages between 0:00 and 6:00, to one decimal."
+          }
+        },
+        "required": [
+          "displayName",
+          "count",
+          "percentage"
+        ],
+        "description": "Who the most messages between 0:00 and 6:00 are with."
+      },
+      "MutualFriend": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "sentCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "receivedCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ratio": {
+            "type": "number",
+            "format": "double",
+            "description": "Sent ÷ received, to two decimals."
+          }
+        },
+        "required": [
+          "displayName",
+          "sentCount",
+          "receivedCount",
+          "ratio"
+        ],
+        "description": "The friend whose sent and received messages, 50 or more each, are closest to even."
+      },
+      "SocialInitiative": {
+        "type": "object",
+        "properties": {
+          "initiatedChats": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "receivedChats": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "initiativeRate": {
+            "type": "number",
+            "format": "double",
+            "description": "The share opened by me, in percent to one decimal."
+          },
+          "topInitiatedFriend": {
+            "type": "string",
+            "description": "Whom I opened the most conversations with; left out when I opened none."
+          },
+          "topInitiatedCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "initiatedChats",
+          "receivedChats",
+          "initiativeRate"
+        ],
+        "description": "Conversations opened by me or by them."
+      },
+      "ResponseSpeed": {
+        "type": "object",
+        "properties": {
+          "avgResponseTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fastestFriend": {
+            "type": "string"
+          },
+          "fastestTime": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "avgResponseTime",
+          "fastestFriend",
+          "fastestTime"
+        ],
+        "description": "How fast I answer, in seconds."
+      },
+      "AnnualSnsStats": {
+        "type": "object",
+        "properties": {
+          "totalPosts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "typeCounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "My posts by WeChat's post type."
+          },
+          "topLikers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FriendCount"
+            },
+            "description": "Who liked my posts the most."
+          },
+          "topLiked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FriendCount"
+            },
+            "description": "Whose posts I liked the most."
+          }
+        },
+        "required": [
+          "totalPosts",
+          "topLikers",
+          "topLiked"
+        ],
+        "description": "My Moments in the annual report."
+      },
+      "FriendCount": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "count",
+          "displayName"
+        ],
+        "description": "A friend and a count."
+      },
+      "LostFriend": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "earlyCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lateCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "periodDesc": {
+            "type": "string",
+            "description": "The earlier period, as the report says it: 「去年的这个时候」 and the like."
+          }
+        },
+        "required": [
+          "username",
+          "displayName",
+          "earlyCount",
+          "lateCount",
+          "periodDesc"
+        ],
+        "description": "A friend talked to much more in an earlier period than later."
+      },
+      "DualReport": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "description": "0 for all the years."
+          },
+          "selfName": {
+            "type": "string"
+          },
+          "selfAvatarUrl": {
+            "type": "string"
+          },
+          "friendUsername": {
+            "type": "string"
+          },
+          "friendName": {
+            "type": "string"
+          },
+          "friendAvatarUrl": {
+            "type": "string"
+          },
+          "firstChat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DualMessage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first message ever between the two."
+          },
+          "firstChatMessages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DualMessage"
+            },
+            "description": "The first messages ever between the two, at most 10."
+          },
+          "yearFirstChat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/YearFirstChat"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first message of the year; null for all the years."
+          },
+          "stats": {
+            "$ref": "#/components/schemas/DualStats"
+          },
+          "topPhrases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhraseCount"
+            },
+            "description": "Phrases said at least twice by either, the most said first."
+          },
+          "myExclusivePhrases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhraseCount"
+            },
+            "description": "Phrases three quarters or more of which are mine."
+          },
+          "friendExclusivePhrases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhraseCount"
+            },
+            "description": "Phrases three quarters or more of which are the friend's."
+          },
+          "heatmap": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int64"
+              }
+            },
+            "description": "Seven rows, Monday first, of 24 hours each."
+          },
+          "initiative": {
+            "$ref": "#/components/schemas/DualInitiative"
+          },
+          "response": {
+            "$ref": "#/components/schemas/DualResponse"
+          },
+          "monthly": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Messages by month, `YYYY-MM`."
+          },
+          "streak": {
+            "$ref": "#/components/schemas/DualStreak"
+          }
+        },
+        "required": [
+          "year",
+          "selfName",
+          "friendUsername",
+          "friendName",
+          "firstChat",
+          "firstChatMessages",
+          "yearFirstChat",
+          "stats",
+          "topPhrases",
+          "myExclusivePhrases",
+          "friendExclusivePhrases"
+        ],
+        "description": "The dual report (`report dual generate`): me and one friend, over one year or all of them."
+      },
+      "DualMessage": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Its text; raw for anything but text."
+          },
+          "isSentByMe": {
+            "type": "boolean"
+          },
+          "senderUsername": {
+            "type": "string",
+            "description": "Who sent it; only on `firstChat`, where the row says."
+          },
+          "createTime": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Milliseconds."
+          },
+          "createTimeStr": {
+            "type": "string",
+            "description": "`YYYY-MM-DD HH:MM:SS`, local time."
+          },
+          "localType": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "emojiMd5": {
+            "type": "string",
+            "description": "A sticker's MD5."
+          },
+          "emojiCdnUrl": {
+            "type": "string",
+            "description": "A sticker's address."
+          }
+        },
+        "required": [
+          "content",
+          "isSentByMe",
+          "createTime",
+          "createTimeStr",
+          "localType"
+        ],
+        "description": "A message of the dual report."
+      },
+      "YearFirstChat": {
+        "type": "object",
+        "properties": {
+          "createTime": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Milliseconds."
+          },
+          "createTimeStr": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "isSentByMe": {
+            "type": "boolean"
+          },
+          "friendName": {
+            "type": "string"
+          },
+          "firstThreeMessages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DualMessage"
+            },
+            "description": "The year's first messages, at most 10."
+          },
+          "localType": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "emojiMd5": {
+            "type": "string"
+          },
+          "emojiCdnUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createTime",
+          "createTimeStr",
+          "content",
+          "isSentByMe",
+          "friendName",
+          "firstThreeMessages",
+          "localType"
+        ],
+        "description": "The first message of the year, with the first messages that follow it."
+      },
+      "DualStats": {
+        "type": "object",
+        "properties": {
+          "totalMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalWords": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The characters of the text messages."
+          },
+          "imageCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "voiceCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "emojiCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "myTopEmojiMd5": {
+            "type": "string"
+          },
+          "myTopEmojiUrl": {
+            "type": "string"
+          },
+          "friendTopEmojiMd5": {
+            "type": "string"
+          },
+          "friendTopEmojiUrl": {
+            "type": "string"
+          },
+          "myTopEmojiCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "friendTopEmojiCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "totalMessages",
+          "totalWords",
+          "imageCount",
+          "voiceCount",
+          "emojiCount"
+        ],
+        "description": "The counts of the dual report, and each one's most sent sticker."
+      },
+      "DualInitiative": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "initiated": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "received": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "initiated",
+          "received"
+        ],
+        "description": "Conversations opened by me, or by them."
+      },
+      "DualResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "avg": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fastest": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "slowest": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The answers counted."
+          }
+        },
+        "required": [
+          "avg",
+          "fastest",
+          "slowest",
+          "count"
+        ],
+        "description": "How fast I answer the friend, in seconds."
+      },
+      "DualStreak": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "days",
+          "startDate",
+          "endDate"
+        ],
+        "description": "The most days in a row the two talked."
       },
       "BizMessages": {
         "type": "object",

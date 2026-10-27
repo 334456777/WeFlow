@@ -708,6 +708,244 @@ export interface ReportYears {
   strategy: string;
 }
 
+/** The annual report (`report annual generate`) over the private chats of one year, or of all of them. */
+export interface AnnualReport {
+  /** 0 for all the years. */
+  year: number;
+  totalMessages: number;
+  /** The private chats with messages. */
+  totalFriends: number;
+  /** The three private chats with the most messages. */
+  coreFriends: CoreFriend[];
+  /** Months 1–12. */
+  monthlyTopFriends: MonthlyTopFriend[];
+  peakDay: PeakDay | null;
+  longestStreak: LongestStreak | null;
+  activityHeatmap: ActivityHeatmap;
+  midnightKing: MidnightKing | null;
+  selfAvatarUrl?: string;
+  mutualFriend: MutualFriend | null;
+  socialInitiative: SocialInitiative | null;
+  responseSpeed: ResponseSpeed | null;
+  /** My phrases said at least twice, the most said first. */
+  topPhrases: PhraseCount[];
+  snsStats?: AnnualSnsStats;
+  lostFriend: LostFriend | null;
+}
+
+/** One of the three private chats with the most messages. */
+export interface CoreFriend {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  messageCount: number;
+  sentCount: number;
+  receivedCount: number;
+}
+
+/** Who a month's most messages are with. */
+export interface MonthlyTopFriend {
+  /** 1–12. */
+  month: number;
+  /** 「暂无」 for a month without messages. */
+  displayName: string;
+  avatarUrl?: string;
+  messageCount: number;
+}
+
+/** The day with the most messages, and who most of them are with. */
+export interface PeakDay {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  messageCount: number;
+  topFriend: string;
+  topFriendCount: number;
+}
+
+/** The most days in a row talked with one friend. */
+export interface LongestStreak {
+  friendName: string;
+  days: number;
+  /** `YYYY-MM-DD`. */
+  startDate: string;
+  /** `YYYY-MM-DD`. */
+  endDate: string;
+}
+
+/** Messages by weekday and hour. */
+export interface ActivityHeatmap {
+  /** Seven rows, Monday first, of 24 hours each. */
+  data: number[][];
+}
+
+/** Who the most messages between 0:00 and 6:00 are with. */
+export interface MidnightKing {
+  displayName: string;
+  count: number;
+  /** Of all the messages between 0:00 and 6:00, to one decimal. */
+  percentage: number;
+}
+
+/** The friend whose sent and received messages, 50 or more each, are closest to even. */
+export interface MutualFriend {
+  displayName: string;
+  avatarUrl?: string;
+  sentCount: number;
+  receivedCount: number;
+  /** Sent ÷ received, to two decimals. */
+  ratio: number;
+}
+
+/** Conversations opened by me or by them. */
+export interface SocialInitiative {
+  initiatedChats: number;
+  receivedChats: number;
+  /** The share opened by me, in percent to one decimal. */
+  initiativeRate: number;
+  /** Whom I opened the most conversations with; left out when I opened none. */
+  topInitiatedFriend?: string;
+  topInitiatedCount?: number;
+}
+
+/** How fast I answer, in seconds. */
+export interface ResponseSpeed {
+  avgResponseTime: number;
+  fastestFriend: string;
+  fastestTime: number;
+}
+
+/** My Moments in the annual report. */
+export interface AnnualSnsStats {
+  totalPosts: number;
+  /** My posts by WeChat's post type. */
+  typeCounts?: Record<string, number>;
+  /** Who liked my posts the most. */
+  topLikers: FriendCount[];
+  /** Whose posts I liked the most. */
+  topLiked: FriendCount[];
+}
+
+/** A friend and a count. */
+export interface FriendCount {
+  username: string;
+  count: number;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+/** A friend talked to much more in an earlier period than later. */
+export interface LostFriend {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  earlyCount: number;
+  lateCount: number;
+  /** The earlier period, as the report says it: 「去年的这个时候」 and the like. */
+  periodDesc: string;
+}
+
+/** The dual report (`report dual generate`): me and one friend, over one year or all of them. */
+export interface DualReport {
+  /** 0 for all the years. */
+  year: number;
+  selfName: string;
+  selfAvatarUrl?: string;
+  friendUsername: string;
+  friendName: string;
+  friendAvatarUrl?: string;
+  /** The first message ever between the two. */
+  firstChat: DualMessage | null;
+  /** The first messages ever between the two, at most 10. */
+  firstChatMessages: DualMessage[];
+  /** The first message of the year; null for all the years. */
+  yearFirstChat: YearFirstChat | null;
+  stats: DualStats;
+  /** Phrases said at least twice by either, the most said first. */
+  topPhrases: PhraseCount[];
+  /** Phrases three quarters or more of which are mine. */
+  myExclusivePhrases: PhraseCount[];
+  /** Phrases three quarters or more of which are the friend's. */
+  friendExclusivePhrases: PhraseCount[];
+  /** Seven rows, Monday first, of 24 hours each. */
+  heatmap?: number[][];
+  initiative?: DualInitiative;
+  response?: DualResponse;
+  /** Messages by month, `YYYY-MM`. */
+  monthly?: Record<string, number>;
+  streak?: DualStreak;
+}
+
+/** A message of the dual report. */
+export interface DualMessage {
+  /** Its text; raw for anything but text. */
+  content: string;
+  isSentByMe: boolean;
+  /** Who sent it; only on `firstChat`, where the row says. */
+  senderUsername?: string;
+  /** Milliseconds. */
+  createTime: number;
+  /** `YYYY-MM-DD HH:MM:SS`, local time. */
+  createTimeStr: string;
+  localType: number;
+  /** A sticker's MD5. */
+  emojiMd5?: string;
+  /** A sticker's address. */
+  emojiCdnUrl?: string;
+}
+
+/** The first message of the year, with the first messages that follow it. */
+export interface YearFirstChat {
+  /** Milliseconds. */
+  createTime: number;
+  createTimeStr: string;
+  content: string;
+  isSentByMe: boolean;
+  friendName: string;
+  /** The year's first messages, at most 10. */
+  firstThreeMessages: DualMessage[];
+  localType: number;
+  emojiMd5?: string;
+  emojiCdnUrl?: string;
+}
+
+/** The counts of the dual report, and each one's most sent sticker. */
+export interface DualStats {
+  totalMessages: number;
+  /** The characters of the text messages. */
+  totalWords: number;
+  imageCount: number;
+  voiceCount: number;
+  emojiCount: number;
+  myTopEmojiMd5?: string;
+  myTopEmojiUrl?: string;
+  friendTopEmojiMd5?: string;
+  friendTopEmojiUrl?: string;
+  myTopEmojiCount?: number;
+  friendTopEmojiCount?: number;
+}
+
+/** Conversations opened by me, or by them. */
+export interface DualInitiative {
+  initiated: number;
+  received: number;
+}
+
+/** How fast I answer the friend, in seconds. */
+export interface DualResponse {
+  avg: number;
+  fastest: number;
+  slowest: number;
+  /** The answers counted. */
+  count: number;
+}
+
+/** The most days in a row the two talked. */
+export interface DualStreak {
+  days: number;
+  startDate: string;
+  endDate: string;
+}
+
 /** The pushes of an official account (`biz messages`), as the desktop app lists them. */
 export interface BizMessages {
   username: string;
@@ -1062,7 +1300,9 @@ export interface Answers {
   "group ranking": GroupRank[];
   "insight footprint": Footprint;
   "insight get": InsightLookup;
+  "report annual generate": AnnualReport;
   "report annual years": ReportYears;
+  "report dual generate": DualReport;
   "runtime info": RuntimeInfo;
   /** How many posts each poster has, by username; with `user`, that one's */
   "sns post-counts": Record<string, number> | UserPosts;
