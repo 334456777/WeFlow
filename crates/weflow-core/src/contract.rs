@@ -1337,6 +1337,25 @@ pub struct InsightLookup {
     pub error: Option<String>,
 }
 
+/// The backup `backup create` wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupCreated {
+    pub out: PathBuf,
+    /// The files in it.
+    pub entries: usize,
+    pub wxid: String,
+    /// Unix seconds.
+    pub created_at: u64,
+}
+
+/// Where `backup restore` put the files.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupRestored {
+    pub restored_to: PathBuf,
+}
+
 /// What `cache clear` removed.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

@@ -2130,6 +2130,50 @@ fn reports_fit_the_contract() {
 }
 
 #[test]
+fn backup_answers_fit_the_contract() {
+    let root = temp_root("backup-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let fits = |verb: &str, route: &str, body: String, schema: &str| -> Value {
+        let r = server.call(verb, route, &body);
+        assert_eq!(r.status, 200, "{verb} {route} {body}: {}", r.body);
+        let data = r.json()["data"].clone();
+        let misfit = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            &data,
+        );
+        assert!(misfit.is_empty(), "{route}: {misfit:#?}\n{data}");
+        data
+    };
+    let out = root.join("backup.zip");
+    let created = fits(
+        "POST",
+        "/backup/create",
+        json!({ "out": out }).to_string(),
+        "BackupCreated",
+    );
+    let manifest = fits(
+        "GET",
+        &format!("/backup/inspect?path={}", percent(&out.to_string_lossy())),
+        String::new(),
+        "BackupManifest",
+    );
+    assert_eq!(
+        manifest["entries"].as_array().unwrap().len() as i64,
+        created["entries"].as_i64().unwrap(),
+        "{manifest}"
+    );
+    fits(
+        "POST",
+        "/backup/restore",
+        json!({ "path": out, "target": root.join("restored") }).to_string(),
+        "BackupRestored",
+    );
+}
+
+#[test]
 fn settings_changes_fit_the_contract() {
     let root = temp_root("settings-contract");
     let home = account_home(&root);

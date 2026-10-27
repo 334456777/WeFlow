@@ -1,19 +1,12 @@
 // Database backups (#212): `backup create` as a job that keeps the backup for the browser, `backup inspect` and
 // `backup restore`, which read a backup on the server's computer (the browser cannot hand one over yet).
 import { get } from './client';
+import type * as Contract from './contract.gen';
 
-export interface BackupEntry { path: string; sha256: string; size: number }
+export type BackupEntry = Contract.BackupEntry;
 
-/** What `backup inspect` reads from a backup. */
-export interface BackupManifest {
-  /** The format of the backup. */
-  version: string;
-  /** Unix seconds. */
-  created_at: number;
-  wxid: string;
-  weflow_version: string;
-  entries: BackupEntry[];
-}
+/** What `backup inspect` reads from a backup (the contract's, #430). */
+export type BackupManifest = Contract.BackupManifest;
 
 export const inspectBackup = (path: string, signal?: AbortSignal) => get<BackupManifest>('backup/inspect', { path }, signal);
 

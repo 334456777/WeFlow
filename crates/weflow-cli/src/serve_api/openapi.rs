@@ -617,6 +617,13 @@ pub(super) fn contract() -> &'static Contract {
                 json!({ "description": "Where the config file is", "type": "string" }),
             );
             data.insert("lang", of(generator.subschema_for::<LangSaved>()));
+            use weflow_core::contract::{BackupCreated, BackupRestored};
+            data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
+            data.insert(
+                "backup inspect",
+                of(generator.subschema_for::<weflow_core::backup::BackupManifest>()),
+            );
+            data.insert("backup restore", of(generator.subschema_for::<BackupRestored>()));
         }
         data.insert("db detect", of(generator.subschema_for::<DbCandidates>()));
         data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));

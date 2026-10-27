@@ -4074,11 +4074,13 @@ fn handle_backup(command: &BackupCommand, hub: &ServiceHub) -> AppResult<Value> 
             no_images,
             no_voice,
             no_emojis,
-        } => hub.backup_create(out, !no_images, !no_voice, !no_emojis),
-        BackupSubcommand::Inspect { path } => hub.backup_inspect(path),
+        } => Ok(json!(
+            hub.backup_create(out, !no_images, !no_voice, !no_emojis)?
+        )),
+        BackupSubcommand::Inspect { path } => Ok(json!(hub.backup_inspect(path)?)),
         BackupSubcommand::Restore { path, target } => {
             let target_dir = target.as_deref().unwrap_or_else(|| Path::new("."));
-            hub.backup_restore(path, target_dir)
+            Ok(json!(hub.backup_restore(path, target_dir)?))
         }
     }
 }

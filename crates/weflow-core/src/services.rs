@@ -1103,7 +1103,7 @@ impl ServiceHub {
         include_images: bool,
         include_voice: bool,
         include_emojis: bool,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::BackupCreated> {
         let (account_dir, _, _) = self.connection_inputs()?;
         let options = crate::backup::BackupOptions {
             include_images,
@@ -1120,27 +1120,31 @@ impl ServiceHub {
             &|current, total| hub.emit_progress("backup", "creating backup", current, total),
         )
         .map_err(|e| AppError::runtime(e.to_string()))?;
-        Ok(json!({
-            "out": out,
-            "entries": manifest.entries.len(),
-            "wxid": manifest.wxid,
-            "createdAt": manifest.created_at
-        }))
+        Ok(crate::contract::BackupCreated {
+            out: out.to_path_buf(),
+            entries: manifest.entries.len(),
+            wxid: manifest.wxid,
+            created_at: manifest.created_at,
+        })
     }
 
-    pub fn backup_inspect(&self, path: &Path) -> AppResult<Value> {
-        let manifest =
-            crate::backup::inspect_backup(path).map_err(|e| AppError::runtime(e.to_string()))?;
-        Ok(serde_json::to_value(manifest).unwrap_or(Value::Null))
+    pub fn backup_inspect(&self, path: &Path) -> AppResult<crate::backup::BackupManifest> {
+        crate::backup::inspect_backup(path).map_err(|e| AppError::runtime(e.to_string()))
     }
 
-    pub fn backup_restore(&self, path: &Path, target_dir: &Path) -> AppResult<Value> {
+    pub fn backup_restore(
+        &self,
+        path: &Path,
+        target_dir: &Path,
+    ) -> AppResult<crate::contract::BackupRestored> {
         let hub = self.clone();
         crate::backup::restore_backup(path, target_dir, &|current, total| {
             hub.emit_progress("restore", "restoring backup", current, total)
         })
         .map_err(|e| AppError::runtime(e.to_string()))?;
-        Ok(json!({ "restoredTo": target_dir }))
+        Ok(crate::contract::BackupRestored {
+            restored_to: target_dir.to_path_buf(),
+        })
     }
 
     pub fn unsupported(&self, feature: &str) -> AppResult<Value> {

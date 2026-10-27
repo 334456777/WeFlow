@@ -1128,6 +1128,42 @@ export interface LangSaved {
   lang: string;
 }
 
+/** The backup `backup create` wrote. */
+export interface BackupCreated {
+  out: string;
+  /** The files in it. */
+  entries: number;
+  wxid: string;
+  /** Unix seconds. */
+  createdAt: number;
+}
+
+/** What a backup holds (`backup inspect`): the manifest stored in the archive. */
+export interface BackupManifest {
+  /** The manifest's own format. */
+  version: string;
+  /** Unix seconds. */
+  created_at: number;
+  wxid: string;
+  /** The WeFlow that wrote it. */
+  weflow_version: string;
+  entries: BackupEntry[];
+}
+
+/** A file in a backup. */
+export interface BackupEntry {
+  /** Its path in the backup: `db_storage/…`, `FileStorage/…` or `emojis/…`. */
+  path: string;
+  sha256: string;
+  /** Bytes. */
+  size: number;
+}
+
+/** Where `backup restore` put the files. */
+export interface BackupRestored {
+  restoredTo: string;
+}
+
 /** The default places of WeChat's data directory (`db detect`). */
 export interface DbCandidates {
   candidates: DbCandidate[];
@@ -1465,6 +1501,9 @@ export interface Answers {
   "analytics overall": OverallStatistics;
   "analytics rankings": ContactRank[];
   "analytics time": TimeDistribution;
+  "backup create": BackupCreated;
+  "backup inspect": BackupManifest;
+  "backup restore": BackupRestored;
   /** The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one) */
   "biz accounts": {
     accounts: Row[];

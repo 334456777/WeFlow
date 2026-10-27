@@ -216,6 +216,126 @@
         }
       }
     },
+    "/backup/create": {
+      "get": {
+        "operationId": "api_backup_create",
+        "x-weflow-command": "backup create",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BackupCreated"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/backup/inspect": {
+      "get": {
+        "operationId": "api_backup_inspect",
+        "x-weflow-command": "backup inspect",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BackupManifest"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/backup/restore": {
+      "get": {
+        "operationId": "api_backup_restore",
+        "x-weflow-command": "backup restore",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BackupRestored"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/biz/accounts": {
       "get": {
         "operationId": "api_biz_accounts",
@@ -6306,6 +6426,108 @@
           "lang"
         ],
         "description": "The language `weflow lang` saved: `en` or `zh`."
+      },
+      "BackupCreated": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The files in it."
+          },
+          "wxid": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Unix seconds."
+          }
+        },
+        "required": [
+          "out",
+          "entries",
+          "wxid",
+          "createdAt"
+        ],
+        "description": "The backup `backup create` wrote."
+      },
+      "BackupManifest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "The manifest's own format."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Unix seconds."
+          },
+          "wxid": {
+            "type": "string"
+          },
+          "weflow_version": {
+            "type": "string",
+            "description": "The WeFlow that wrote it."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupEntry"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "created_at",
+          "wxid",
+          "weflow_version",
+          "entries"
+        ],
+        "description": "What a backup holds (`backup inspect`): the manifest stored in the archive."
+      },
+      "BackupEntry": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Its path in the backup: `db_storage/…`, `FileStorage/…` or `emojis/…`."
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Bytes."
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "size"
+        ],
+        "description": "A file in a backup."
+      },
+      "BackupRestored": {
+        "type": "object",
+        "properties": {
+          "restoredTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "restoredTo"
+        ],
+        "description": "Where `backup restore` put the files."
       },
       "DbCandidates": {
         "type": "object",

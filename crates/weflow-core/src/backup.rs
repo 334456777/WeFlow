@@ -20,18 +20,25 @@ pub struct BackupOptions {
     pub include_emojis: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A file in a backup.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BackupEntry {
+    /// Its path in the backup: `db_storage/…`, `FileStorage/…` or `emojis/…`.
     pub path: String,
     pub sha256: String,
+    /// Bytes.
     pub size: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// What a backup holds (`backup inspect`): the manifest stored in the archive.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BackupManifest {
+    /// The manifest's own format.
     pub version: String,
+    /// Unix seconds.
     pub created_at: u64,
     pub wxid: String,
+    /// The WeFlow that wrote it.
     pub weflow_version: String,
     pub entries: Vec<BackupEntry>,
 }
