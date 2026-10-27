@@ -748,7 +748,7 @@ mod tests {
                 .and_then(|m| crate::Cli::from_arg_matches(&m).ok())
                 .unwrap_or_else(|| panic!("{name} does not parse"));
             assert!(
-                crate::read_of(&cli.command).is_some(),
+                crate::read_of(cli.command).is_ok(),
                 "{name} does not run in process"
             );
         }
@@ -782,7 +782,7 @@ mod tests {
             let begin = std::time::Instant::now();
             for _ in 0..RUNS {
                 let cli = parse(&ep.argv(std::hint::black_box(&params)).unwrap()).unwrap();
-                std::hint::black_box(crate::read_of(&cli.command));
+                let _ = std::hint::black_box(crate::read_of(cli.command));
             }
             let all = begin.elapsed() / RUNS;
             // what `/api/` does instead since #397
@@ -815,12 +815,12 @@ mod tests {
         }
         let cli = parse(&ep.argv(&params).ok()?)?;
         if !media {
-            return crate::read_of(&cli.command).map(Asked::Read);
+            return crate::read_of(cli.command).ok().map(Asked::Read);
         }
         match cli.command {
-            crate::Commands::Chat(chat) => {
-                crate::media_of(&chat.command).map(|m| Asked::Media(Media::Chat(m)))
-            }
+            crate::Commands::Chat(chat) => crate::media_of(chat.command)
+                .ok()
+                .map(|(m, _)| Asked::Media(Media::Chat(m))),
             crate::Commands::Sns(sns) => match sns.command {
                 crate::SnsSubcommand::Media { url, key, .. } => {
                     Some(Asked::Media(Media::Sns { url, key }))
