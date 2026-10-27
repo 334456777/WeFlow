@@ -826,6 +826,85 @@ pub struct PayRecord {
     pub create_time: Option<i64>,
 }
 
+/// A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSummary {
+    pub name: String,
+    /// Whether the commands read it.
+    pub current: bool,
+    pub wxid: Option<String>,
+    /// The WeChat data directory.
+    pub db_path: Option<String>,
+    /// Whether the database key is set.
+    pub decrypt_key: bool,
+    /// Whether both image keys are set.
+    pub image_keys: bool,
+    /// Whether the key of the AI model API is set.
+    pub ai_key: bool,
+    /// Whether it can open the databases: the data directory and the database key are set.
+    pub complete: bool,
+}
+
+/// Where `weflow` keeps its files and what it is (`runtime info`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeInfo {
+    pub home_dir: std::path::PathBuf,
+    pub config_path: std::path::PathBuf,
+    pub runtime_dir: std::path::PathBuf,
+    pub version: String,
+    /// The target it was built for, such as `x86_64-pc-windows-msvc`.
+    pub target: String,
+}
+
+/// One part of WeFlow's cache (`cache list`), and how much of the disk it takes.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct CacheUsage {
+    /// Its name, as `cache clear` takes it.
+    pub part: crate::services::CachePart,
+    pub paths: Vec<std::path::PathBuf>,
+    pub bytes: u64,
+    pub files: u64,
+}
+
+/// The default places of WeChat's data directory (`db detect`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbCandidates {
+    pub candidates: Vec<DbCandidate>,
+}
+
+/// A place WeChat's data directory may be.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbCandidate {
+    pub path: std::path::PathBuf,
+    pub exists: bool,
+}
+
+/// The accounts in WeChat's data directory (`db wxid`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbAccounts {
+    pub accounts: Vec<DbAccount>,
+}
+
+/// An account of WeChat's data directory.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbAccount {
+    /// As `config set wxid` takes it, without the suffix of its folder's name.
+    pub wxid: String,
+    /// Its folder.
+    pub path: std::path::PathBuf,
+}
+
+/// That the databases open with the configured key (`db test`); a failure is an error instead.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DbConnection {
+    pub account_dir: std::path::PathBuf,
+    /// Always true.
+    pub connected: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

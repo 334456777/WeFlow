@@ -759,6 +759,77 @@ export interface PayRecord {
   createTime: number | null;
 }
 
+/** A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys. */
+export interface ProfileSummary {
+  name: string;
+  /** Whether the commands read it. */
+  current: boolean;
+  wxid: string | null;
+  /** The WeChat data directory. */
+  dbPath: string | null;
+  /** Whether the database key is set. */
+  decryptKey: boolean;
+  /** Whether both image keys are set. */
+  imageKeys: boolean;
+  /** Whether the key of the AI model API is set. */
+  aiKey: boolean;
+  /** Whether it can open the databases: the data directory and the database key are set. */
+  complete: boolean;
+}
+
+/** Where `weflow` keeps its files and what it is (`runtime info`). */
+export interface RuntimeInfo {
+  homeDir: string;
+  configPath: string;
+  runtimeDir: string;
+  version: string;
+  /** The target it was built for, such as `x86_64-pc-windows-msvc`. */
+  target: string;
+}
+
+/** One part of WeFlow's cache (`cache list`), and how much of the disk it takes. */
+export interface CacheUsage {
+  /** Its name, as `cache clear` takes it. */
+  part: CachePart;
+  paths: string[];
+  bytes: number;
+  files: number;
+}
+
+/** A part of WeFlow's cache that is listed and cleared on its own. */
+export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "runtime" | "web";
+
+/** The default places of WeChat's data directory (`db detect`). */
+export interface DbCandidates {
+  candidates: DbCandidate[];
+}
+
+/** A place WeChat's data directory may be. */
+export interface DbCandidate {
+  path: string;
+  exists: boolean;
+}
+
+/** The accounts in WeChat's data directory (`db wxid`). */
+export interface DbAccounts {
+  accounts: DbAccount[];
+}
+
+/** An account of WeChat's data directory. */
+export interface DbAccount {
+  /** As `config set wxid` takes it, without the suffix of its folder's name. */
+  wxid: string;
+  /** Its folder. */
+  path: string;
+}
+
+/** That the databases open with the configured key (`db test`); a failure is an error instead. */
+export interface DbConnection {
+  accountDir: string;
+  /** Always true. */
+  connected: boolean;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -822,6 +893,7 @@ export interface Answers {
   };
   "biz messages": BizMessages;
   "biz pay-records": PayRecords;
+  "cache list": CacheUsage[];
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
   /** Each conversation asked for, with how many messages it has */
@@ -843,6 +915,10 @@ export interface Answers {
   /** Each username asked for, with whether its conversation is folded and muted */
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
+  "config profiles": ProfileSummary[];
+  "db detect": DbCandidates;
+  "db test": DbConnection;
+  "db wxid": DbAccounts;
   "group hours": GroupHours;
   "group list": GroupChat[];
   "group media": GroupMedia;
@@ -851,6 +927,7 @@ export interface Answers {
   "group members": GroupMembers;
   "group ranking": GroupRank[];
   "report annual years": ReportYears;
+  "runtime info": RuntimeInfo;
   /** How many posts each poster has, by username; with `user`, that one's */
   "sns post-counts": Record<string, number> | UserPosts;
   "sns stats": SnsStats;

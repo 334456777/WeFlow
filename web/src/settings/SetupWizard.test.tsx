@@ -28,7 +28,7 @@ class FakeEventSource {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const ok = (data: unknown) => json({ success: true, data });
 const currentStep = () => document.querySelector('.setup-step[aria-current="step"]')?.textContent;
-const PROFILE: Profile = { name: 'default', current: true, wxid: null, dbPath: null, decryptKey: false, imageKeys: false, complete: false };
+const PROFILE: Profile = { name: 'default', current: true, wxid: null, dbPath: null, decryptKey: false, imageKeys: false, aiKey: false, complete: false };
 
 interface Call { method: string; url: string; body?: Record<string, unknown>; prefer?: string }
 

@@ -26,8 +26,7 @@ fn request(session: &str, format: &str) -> MessageExportRequest {
 #[test]
 fn connection_opens_the_encrypted_account() {
     let (hub, _root) = common::mock_hub("n-conn");
-    let v = hub.db_test().unwrap();
-    assert_eq!(v["connected"], true);
+    assert!(hub.db_test().unwrap().connected);
 }
 
 #[test]
@@ -873,7 +872,7 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     let current = put(hub.runtime_root().join("test/t/manifest.json"));
     let older = put(hub.runtime_root().join("2.0.0/t/manifest.json"));
 
-    let list = hub.cache_list();
+    let list = json!(hub.cache_list());
     let entry = |name: &str| {
         list.as_array()
             .unwrap()

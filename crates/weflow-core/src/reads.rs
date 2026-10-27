@@ -200,26 +200,24 @@ pub fn day_span(start: Option<&str>, end: Option<&str>) -> AppResult<(i64, i64)>
 
 /// `config profiles` (#215, #216): what each profile is set up with, the keys only as whether they are set, so a
 /// client can tell which account is ready without reading a key. `complete`: enough to open the database.
-pub fn profiles_summary(config: &ConfigStore) -> Value {
+pub fn profiles_summary(config: &ConfigStore) -> Vec<crate::contract::ProfileSummary> {
     let set = |value: &Option<String>| value.as_deref().is_some_and(|v| !v.trim().is_empty());
     let profiles = config
         .profiles
         .iter()
-        .map(|(name, p)| {
-            json!({
-                "name": name,
-                "current": *name == config.current_profile,
-                "wxid": p.wxid,
-                "dbPath": p.db_path,
-                "decryptKey": set(&p.decrypt_key),
-                "imageKeys": p.image_xor_key.is_some() && set(&p.image_aes_key),
-                // the key of the AI model API (#213), as the database keys: whether it is set
-                "aiKey": set(&p.ai_model_api_key),
-                "complete": set(&p.db_path) && set(&p.decrypt_key),
-            })
+        .map(|(name, p)| crate::contract::ProfileSummary {
+            name: name.clone(),
+            current: *name == config.current_profile,
+            wxid: p.wxid.clone(),
+            db_path: p.db_path.clone(),
+            decrypt_key: set(&p.decrypt_key),
+            image_keys: p.image_xor_key.is_some() && set(&p.image_aes_key),
+            // the key of the AI model API (#213), as the database keys: whether it is set
+            ai_key: set(&p.ai_model_api_key),
+            complete: set(&p.db_path) && set(&p.decrypt_key),
         })
         .collect();
-    Value::Array(profiles)
+    profiles
 }
 
 /// The config file of `hub`, read again: a config read answers what the file holds now.
@@ -468,7 +466,7 @@ impl Read {
             }
             Read::InsightGet { id } => Ok(hub.insight_get_record(id)),
             Read::ReportAnnualYears => Ok(json!(hub.report_available_years()?)),
-            Read::CacheList => Ok(hub.cache_list()),
+            Read::CacheList => Ok(json!(hub.cache_list())),
             Read::ConfigGet { key } => {
                 if matches!(key.as_deref(), Some("config_path" | "configPath")) {
                     return Ok(json!(hub.config_path().to_string_lossy()));
@@ -479,20 +477,20 @@ impl Read {
                     None => serde_json::to_value(config.profile(None)).unwrap(),
                 })
             }
-            Read::ConfigProfiles => Ok(profiles_summary(&config_of(hub)?)),
+            Read::ConfigProfiles => Ok(json!(profiles_summary(&config_of(hub)?))),
             Read::RuntimeInfo => {
                 let ctx = hub.context();
-                Ok(json!({
-                    "homeDir": ctx.home_dir,
-                    "configPath": ctx.config_path,
-                    "runtimeDir": ctx.runtime_dir,
-                    "version": ctx.version,
-                    "target": weflow_assets::target_triple()
+                Ok(json!(crate::contract::RuntimeInfo {
+                    home_dir: ctx.home_dir.clone(),
+                    config_path: ctx.config_path.clone(),
+                    runtime_dir: ctx.runtime_dir.clone(),
+                    version: ctx.version.clone(),
+                    target: weflow_assets::target_triple().to_string(),
                 }))
             }
-            Read::DbDetect => Ok(hub.db_detect()),
-            Read::DbTest => hub.db_test(),
-            Read::DbWxid { root } => hub.db_wxid(root.as_deref()),
+            Read::DbDetect => Ok(json!(hub.db_detect())),
+            Read::DbTest => Ok(json!(hub.db_test()?)),
+            Read::DbWxid { root } => Ok(json!(hub.db_wxid(root.as_deref())?)),
         }
     }
 }
@@ -659,7 +657,7 @@ mod tests {
         config
             .set_key(Some("work"), "ai_model_api_key", json!("sk-secret"))
             .unwrap();
-        let summary = profiles_summary(&config);
+        let summary = json!(profiles_summary(&config));
         assert_eq!(
             summary,
             json!([

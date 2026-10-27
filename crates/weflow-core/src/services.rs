@@ -94,12 +94,15 @@ impl ServiceHub {
         })
     }
 
-    pub fn db_detect(&self) -> Value {
+    pub fn db_detect(&self) -> crate::contract::DbCandidates {
         let candidates = default_db_candidates()
             .into_iter()
-            .map(|path| json!({ "path": path, "exists": path.exists() }))
-            .collect::<Vec<_>>();
-        json!({ "candidates": candidates })
+            .map(|path| crate::contract::DbCandidate {
+                exists: path.exists(),
+                path,
+            })
+            .collect();
+        crate::contract::DbCandidates { candidates }
     }
 
     pub fn db_scan(&self, root: &str) -> Value {
@@ -125,7 +128,7 @@ impl ServiceHub {
 
     /// The wxid of every account found in the data directory (`root`, else the configured `db_path`, else the
     /// default locations), as `config set wxid` expects it (without the `_ab12` suffix of the folder name).
-    pub fn db_wxid(&self, root: Option<&str>) -> AppResult<Value> {
+    pub fn db_wxid(&self, root: Option<&str>) -> AppResult<crate::contract::DbAccounts> {
         let configured = root
             .map(str::to_string)
             .or_else(|| self.db_path_override.clone())
@@ -145,7 +148,7 @@ impl ServiceHub {
         let mut accounts = Vec::new();
         for root in &roots {
             for (wxid, path) in find_accounts(root) {
-                accounts.push(json!({ "wxid": wxid, "path": path }));
+                accounts.push(crate::contract::DbAccount { wxid, path });
             }
         }
         if accounts.is_empty() {
@@ -154,15 +157,18 @@ impl ServiceHub {
                 roots[0].display()
             )));
         }
-        Ok(json!({ "accounts": accounts }))
+        Ok(crate::contract::DbAccounts { accounts })
     }
 
-    pub fn db_test(&self) -> AppResult<Value> {
+    pub fn db_test(&self) -> AppResult<crate::contract::DbConnection> {
         let (account_dir, key, _) = self.connection_inputs()?;
         let mut wcdb = weflow_native::wcdb::Wcdb::new();
         wcdb.test_connection(&account_dir, &key)
             .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(json!({ "accountDir": account_dir, "connected": true }))
+        Ok(crate::contract::DbConnection {
+            account_dir,
+            connected: true,
+        })
     }
 
     pub fn sessions(&self) -> AppResult<Value> {

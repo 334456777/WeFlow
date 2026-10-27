@@ -459,8 +459,8 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            BizMessages, ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
-            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ReportYears,
+            BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
+            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
             ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
@@ -582,6 +582,12 @@ pub(super) fn contract() -> &'static Contract {
         );
         data.insert("biz messages", of(generator.subschema_for::<BizMessages>()));
         data.insert("biz pay-records", of(generator.subschema_for::<PayRecords>()));
+        data.insert("config profiles", of(generator.subschema_for::<Vec<ProfileSummary>>()));
+        data.insert("runtime info", of(generator.subschema_for::<RuntimeInfo>()));
+        data.insert("cache list", of(generator.subschema_for::<Vec<CacheUsage>>()));
+        data.insert("db detect", of(generator.subschema_for::<DbCandidates>()));
+        data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));
+        data.insert("db test", of(generator.subschema_for::<DbConnection>()));
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();
@@ -1584,7 +1590,8 @@ mod tests {
             .iter()
             .any(|r| r == "nextCursor"));
         // other commands keep the generic answer
-        assert_eq!(ok("/cache/list")["$ref"], "#/components/schemas/Result");
+        // `config get` answers the value of any key
+        assert_eq!(ok("/config/get")["$ref"], "#/components/schemas/Result");
     }
 
     #[test]

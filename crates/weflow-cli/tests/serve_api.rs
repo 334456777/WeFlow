@@ -3158,6 +3158,12 @@ fn answers_fit_the_contract() {
         "/api/biz/accounts",
         "/api/biz/messages?username=gh_news",
         "/api/biz/pay-records",
+        "/api/config/profiles",
+        "/api/runtime/info",
+        "/api/cache/list",
+        "/api/db/detect",
+        "/api/db/wxid",
+        "/api/db/test",
     ] {
         read(target, None);
     }

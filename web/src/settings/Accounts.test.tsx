@@ -7,8 +7,8 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const PROFILES: Profile[] = [
-  { name: 'default', current: true, wxid: 'wxid_a', dbPath: 'D:/xwechat_files', decryptKey: true, imageKeys: true, complete: true },
-  { name: 'work', current: false, wxid: 'wxid_w', dbPath: null, decryptKey: false, imageKeys: false, complete: false },
+  { name: 'default', current: true, wxid: 'wxid_a', dbPath: 'D:/xwechat_files', decryptKey: true, imageKeys: true, aiKey: false, complete: true },
+  { name: 'work', current: false, wxid: 'wxid_w', dbPath: null, decryptKey: false, imageKeys: false, aiKey: false, complete: false },
 ];
 
 function serve() {

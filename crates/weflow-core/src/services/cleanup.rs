@@ -10,7 +10,8 @@ use walkdir::WalkDir;
 use super::*;
 
 /// A part of WeFlow's cache that is listed and cleared on its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum CachePart {
     Images,
     Voices,
@@ -192,20 +193,23 @@ impl ServiceHub {
     }
 
     /// `weflow cache list`: every part with its paths, size and number of files.
-    pub fn cache_list(&self) -> Value {
-        Value::Array(
-            CachePart::ALL
-                .iter()
-                .map(|&part| {
-                    let paths = self.cache_part_paths(part);
-                    let (bytes, files) = paths
-                        .iter()
-                        .map(|p| disk_usage(p))
-                        .fold((0, 0), |(b, f), (pb, pf)| (b + pb, f + pf));
-                    json!({ "part": part.name(), "paths": paths, "bytes": bytes, "files": files })
-                })
-                .collect(),
-        )
+    pub fn cache_list(&self) -> Vec<crate::contract::CacheUsage> {
+        CachePart::ALL
+            .iter()
+            .map(|&part| {
+                let paths = self.cache_part_paths(part);
+                let (bytes, files) = paths
+                    .iter()
+                    .map(|p| disk_usage(p))
+                    .fold((0, 0), |(b, f), (pb, pf)| (b + pb, f + pf));
+                crate::contract::CacheUsage {
+                    part,
+                    paths,
+                    bytes,
+                    files,
+                }
+            })
+            .collect()
     }
 
     /// `weflow cache clear`: removes the files of `parts` and forgets what is held in memory about them.
@@ -323,6 +327,13 @@ impl ServiceHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cache_part_is_written_by_the_name_cache_clear_takes() {
+        for part in CachePart::ALL {
+            assert_eq!(serde_json::to_value(part).unwrap(), part.name());
+        }
+    }
 
     #[test]
     fn account_ids_lose_their_directory_suffix() {

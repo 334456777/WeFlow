@@ -348,6 +348,49 @@
         }
       }
     },
+    "/api/cache/list": {
+      "get": {
+        "operationId": "api_cache_list",
+        "x-weflow-command": "cache list",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CacheUsage"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/contacts": {
       "get": {
         "operationId": "api_chat_contacts",
@@ -983,6 +1026,169 @@
         }
       }
     },
+    "/api/config/profiles": {
+      "get": {
+        "operationId": "api_config_profiles",
+        "x-weflow-command": "config profiles",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ProfileSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db/detect": {
+      "get": {
+        "operationId": "api_db_detect",
+        "x-weflow-command": "db detect",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbCandidates"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db/test": {
+      "get": {
+        "operationId": "api_db_test",
+        "x-weflow-command": "db test",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbConnection"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db/wxid": {
+      "get": {
+        "operationId": "api_db_wxid",
+        "x-weflow-command": "db wxid",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbAccounts"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/group/hours": {
       "get": {
         "operationId": "api_group_hours",
@@ -1290,6 +1496,46 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/ReportYears"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runtime/info": {
+      "get": {
+        "operationId": "api_runtime_info",
+        "x-weflow-command": "runtime info",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RuntimeInfo"
                     }
                   }
                 }
@@ -3796,6 +4042,215 @@
           "createTime"
         ],
         "description": "A WeChat Pay notice."
+      },
+      "ProfileSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether the commands read it."
+          },
+          "wxid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dbPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The WeChat data directory."
+          },
+          "decryptKey": {
+            "type": "boolean",
+            "description": "Whether the database key is set."
+          },
+          "imageKeys": {
+            "type": "boolean",
+            "description": "Whether both image keys are set."
+          },
+          "aiKey": {
+            "type": "boolean",
+            "description": "Whether the key of the AI model API is set."
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "Whether it can open the databases: the data directory and the database key are set."
+          }
+        },
+        "required": [
+          "name",
+          "current",
+          "wxid",
+          "dbPath",
+          "decryptKey",
+          "imageKeys",
+          "aiKey",
+          "complete"
+        ],
+        "description": "A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys."
+      },
+      "RuntimeInfo": {
+        "type": "object",
+        "properties": {
+          "homeDir": {
+            "type": "string"
+          },
+          "configPath": {
+            "type": "string"
+          },
+          "runtimeDir": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "The target it was built for, such as `x86_64-pc-windows-msvc`."
+          }
+        },
+        "required": [
+          "homeDir",
+          "configPath",
+          "runtimeDir",
+          "version",
+          "target"
+        ],
+        "description": "Where `weflow` keeps its files and what it is (`runtime info`)."
+      },
+      "CacheUsage": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "$ref": "#/components/schemas/CachePart",
+            "description": "Its name, as `cache clear` takes it."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "files": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "part",
+          "paths",
+          "bytes",
+          "files"
+        ],
+        "description": "One part of WeFlow's cache (`cache list`), and how much of the disk it takes."
+      },
+      "CachePart": {
+        "type": "string",
+        "enum": [
+          "images",
+          "voices",
+          "emojis",
+          "sns",
+          "analytics",
+          "api",
+          "keys",
+          "runtime",
+          "web"
+        ],
+        "description": "A part of WeFlow's cache that is listed and cleared on its own."
+      },
+      "DbCandidates": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DbCandidate"
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ],
+        "description": "The default places of WeChat's data directory (`db detect`)."
+      },
+      "DbCandidate": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "exists": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "exists"
+        ],
+        "description": "A place WeChat's data directory may be."
+      },
+      "DbAccounts": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DbAccount"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "description": "The accounts in WeChat's data directory (`db wxid`)."
+      },
+      "DbAccount": {
+        "type": "object",
+        "properties": {
+          "wxid": {
+            "type": "string",
+            "description": "As `config set wxid` takes it, without the suffix of its folder's name."
+          },
+          "path": {
+            "type": "string",
+            "description": "Its folder."
+          }
+        },
+        "required": [
+          "wxid",
+          "path"
+        ],
+        "description": "An account of WeChat's data directory."
+      },
+      "DbConnection": {
+        "type": "object",
+        "properties": {
+          "accountDir": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "Always true."
+          }
+        },
+        "required": [
+          "accountDir",
+          "connected"
+        ],
+        "description": "That the databases open with the configured key (`db test`); a failure is an error instead."
       },
       "Job": {
         "type": "object",
