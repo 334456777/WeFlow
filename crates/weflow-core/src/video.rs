@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
-use serde_json::{json, Map, Value};
 
 use crate::chat_msg::normalize_video_file_token;
 use crate::message::rx;
@@ -33,30 +32,19 @@ struct IndexEntry {
     thumb: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Default)]
+/// Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's
+/// `VideoInfo`, when there is nothing.
+#[derive(Debug, Clone, Default, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub video_url: Option<String>,
+    /// A `data:` URL, or a `file://` one with `file-url`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cover_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub thumb_url: Option<String>,
     pub exists: bool,
-}
-
-impl VideoInfo {
-    /// Same key order / omitted-undefined behaviour as the desktop `VideoInfo` object.
-    pub fn to_json(&self) -> Value {
-        let mut o = Map::new();
-        if let Some(v) = &self.video_url {
-            o.insert("videoUrl".into(), json!(v));
-        }
-        if let Some(v) = &self.cover_url {
-            o.insert("coverUrl".into(), json!(v));
-        }
-        if let Some(v) = &self.thumb_url {
-            o.insert("thumbUrl".into(), json!(v));
-        }
-        o.insert("exists".into(), json!(self.exists));
-        Value::Object(o)
-    }
 }
 
 /// Year-month directories, newest first (`b.localeCompare(a)` on ASCII names).
@@ -402,7 +390,7 @@ mod tests {
 
         let info = video_info(&base, &md5.to_uppercase(), false, PosterFormat::DataUrl);
         assert!(info.exists && info.cover_url.is_none() && info.thumb_url.is_none());
-        let json = info.to_json();
+        let json = serde_json::to_value(&info).unwrap();
         assert!(json.get("coverUrl").is_none());
         assert_eq!(json["exists"], true);
 

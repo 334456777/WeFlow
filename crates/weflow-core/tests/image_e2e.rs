@@ -144,14 +144,15 @@ fn decrypts_the_hd_variant_and_caches_it() {
         .starts_with("data:image/jpeg;base64,"));
 
     // batch: one row per payload, duplicates answered identically
-    let batch = hub.image_resolve_cache_batch(&[
+    let batch = serde_json::to_value(hub.image_resolve_cache_batch(&[
         p.clone(),
         p.clone(),
         ImagePayload {
             image_md5: Some("f".repeat(32)),
             ..Default::default()
         },
-    ]);
+    ]))
+    .unwrap();
     assert_eq!(batch["rows"].as_array().unwrap().len(), 3);
     assert_eq!(batch["rows"][0], batch["rows"][1]);
     assert_eq!(batch["rows"][2]["success"], false);

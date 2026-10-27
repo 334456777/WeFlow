@@ -1337,6 +1337,31 @@ pub struct InsightLookup {
     pub error: Option<String>,
 }
 
+/// What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoDownloadStatus {
+    /// Always false.
+    pub is_hooked: bool,
+    /// Always null.
+    pub pid: Option<u32>,
+    /// Whether this computer can download WeChat's images on its own.
+    pub supported: bool,
+}
+
+/// What `image auto-download start` answers once stopped (Ctrl+C).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct AutoDownloadStopped {
+    /// Always true.
+    pub stopped: bool,
+}
+
+/// The MD5 a video message names (`video parse-md5`); null when its XML has none.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct VideoMd5 {
+    pub md5: Option<String>,
+}
+
 /// A conversation's messages written in one format (`export messages`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct MessagesExported {

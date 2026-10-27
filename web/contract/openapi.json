@@ -2346,6 +2346,206 @@
         }
       }
     },
+    "/image/auto-download/start": {
+      "get": {
+        "operationId": "api_image_auto_download_start",
+        "x-weflow-command": "image auto-download start",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AutoDownloadStopped"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/auto-download/status": {
+      "get": {
+        "operationId": "api_image_auto_download_status",
+        "x-weflow-command": "image auto-download status",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AutoDownloadStatus"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/decrypt": {
+      "get": {
+        "operationId": "api_image_decrypt",
+        "x-weflow-command": "image decrypt",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/resolve-batch": {
+      "get": {
+        "operationId": "api_image_resolve_batch",
+        "x-weflow-command": "image resolve-batch",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageBatch"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/image/resolve-cache": {
+      "get": {
+        "operationId": "api_image_resolve_cache",
+        "x-weflow-command": "image resolve-cache",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/insight/clear": {
       "get": {
         "operationId": "api_insight_clear",
@@ -3142,6 +3342,86 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/SnsUsers"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/info": {
+      "get": {
+        "operationId": "api_video_info",
+        "x-weflow-command": "video info",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VideoInfo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video/parse-md5": {
+      "get": {
+        "operationId": "api_video_parse_md5",
+        "x-weflow-command": "video parse-md5",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VideoMd5"
                     }
                   }
                 }
@@ -7160,6 +7440,134 @@
           "createTime"
         ],
         "description": "A media file `export media` wrote."
+      },
+      "ImageResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "localPath": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "failureKind": {
+            "type": "string",
+            "description": "Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, …"
+          },
+          "isThumb": {
+            "type": "boolean",
+            "description": "The file is only the thumbnail: the original is not on disk."
+          },
+          "hasUpdate": {
+            "type": "boolean",
+            "description": "A thumbnail whose original has since been downloaded."
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "description": "Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead."
+      },
+      "ImageBatch": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true; each row says how it went."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageResult"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "rows"
+        ],
+        "description": "What `image resolve-batch` answers: one result per payload, in their order."
+      },
+      "AutoDownloadStopped": {
+        "type": "object",
+        "properties": {
+          "stopped": {
+            "type": "boolean",
+            "description": "Always true."
+          }
+        },
+        "required": [
+          "stopped"
+        ],
+        "description": "What `image auto-download start` answers once stopped (Ctrl+C)."
+      },
+      "AutoDownloadStatus": {
+        "type": "object",
+        "properties": {
+          "isHooked": {
+            "type": "boolean",
+            "description": "Always false."
+          },
+          "pid": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "Always null."
+          },
+          "supported": {
+            "type": "boolean",
+            "description": "Whether this computer can download WeChat's images on its own."
+          }
+        },
+        "required": [
+          "isHooked",
+          "pid",
+          "supported"
+        ],
+        "description": "What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow."
+      },
+      "VideoInfo": {
+        "type": "object",
+        "properties": {
+          "videoUrl": {
+            "type": "string"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "A `data:` URL, or a `file://` one with `file-url`."
+          },
+          "thumbUrl": {
+            "type": "string"
+          },
+          "exists": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "exists"
+        ],
+        "description": "Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's\n`VideoInfo`, when there is nothing."
+      },
+      "VideoMd5": {
+        "type": "object",
+        "properties": {
+          "md5": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "md5"
+        ],
+        "description": "The MD5 a video message names (`video parse-md5`); null when its XML has none."
       },
       "BackupCreated": {
         "type": "object",

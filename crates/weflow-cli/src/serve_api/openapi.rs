@@ -641,6 +641,25 @@ pub(super) fn contract() -> &'static Contract {
             for command in ["export media", "chat voice"] {
                 data.insert(command, of(generator.subschema_for::<MediaExport>()));
             }
+            use weflow_core::contract::{AutoDownloadStatus, AutoDownloadStopped, VideoMd5};
+            use weflow_core::services::{ImageBatch, ImageResult};
+            for command in ["image decrypt", "image resolve-cache"] {
+                data.insert(command, of(generator.subschema_for::<ImageResult>()));
+            }
+            data.insert("image resolve-batch", of(generator.subschema_for::<ImageBatch>()));
+            data.insert(
+                "image auto-download start",
+                of(generator.subschema_for::<AutoDownloadStopped>()),
+            );
+            data.insert(
+                "image auto-download status",
+                of(generator.subschema_for::<AutoDownloadStatus>()),
+            );
+            data.insert(
+                "video info",
+                of(generator.subschema_for::<weflow_core::video::VideoInfo>()),
+            );
+            data.insert("video parse-md5", of(generator.subschema_for::<VideoMd5>()));
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",

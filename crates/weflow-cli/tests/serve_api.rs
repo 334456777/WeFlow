@@ -2181,6 +2181,90 @@ fn file_exports_fit_the_contract() {
 }
 
 #[test]
+fn image_and_video_answers_fit_the_contract() {
+    use weflow_native::fixture::{DAY, T0};
+    let root = temp_root("image-contract");
+    let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    jpeg.extend((0..3000u32).map(|i| (i as u8).wrapping_mul(7) | 1));
+    let home = account_home_with(&root, |f| {
+        // the image of `wxid_bob`'s message 3, an old-style .dat: the whole file XOR-ed
+        let img = f
+            .account_dir
+            .join("msg/attach")
+            .join(weflow_core::image::session_dir_for_storage(
+                "wxid_bob",
+                |s| s.to_string(),
+            ))
+            .join(weflow_core::image::year_month_from_create_time(Some(
+                T0 + DAY,
+            )))
+            .join("Img");
+        std::fs::create_dir_all(&img).unwrap();
+        std::fs::write(
+            img.join("aabbccddeeff00112233445566778899.dat"),
+            jpeg.iter().map(|b| b ^ 0x5a).collect::<Vec<u8>>(),
+        )
+        .unwrap();
+    });
+    let (exit, _, stderr) = run_cli(&home, &["config", "set", "image_xor_key", "90"]);
+    assert_eq!(exit, 0, "{stderr}");
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let image = json!({
+        "session": "wxid_bob",
+        "md5": "aabbccddeeff00112233445566778899",
+        "create-time": T0 + DAY,
+        "prefer-file-path": true,
+    });
+    let payload = json!({
+        "sessionId": "wxid_bob",
+        "imageMd5": "aabbccddeeff00112233445566778899",
+        "createTime": T0 + DAY,
+    });
+    let resolve = format!(
+        "/image/resolve-cache?session=wxid_bob&md5=aabbccddeeff00112233445566778899&create-time={}&prefer-file-path=true",
+        T0 + DAY
+    );
+    let parse = format!(
+        "/video/parse-md5?content={}",
+        percent("<msg><videomsg md5=\"abc\"/></msg>")
+    );
+    for (verb, route, body, schema) in [
+        ("POST", "/image/decrypt", image.to_string(), "ImageResult"),
+        ("GET", resolve.as_str(), String::new(), "ImageResult"),
+        (
+            "POST",
+            "/image/resolve-batch",
+            json!({ "payloads-json": json!([payload, payload]).to_string() }).to_string(),
+            "ImageBatch",
+        ),
+        (
+            "GET",
+            "/image/auto-download/status",
+            String::new(),
+            "AutoDownloadStatus",
+        ),
+        (
+            "GET",
+            &format!("/video/info?md5={}", "0".repeat(32)),
+            String::new(),
+            "VideoInfo",
+        ),
+        ("GET", parse.as_str(), String::new(), "VideoMd5"),
+    ] {
+        let r = server.call(verb, route, &body);
+        assert_eq!(r.status, 200, "{verb} {route} {body}: {}", r.body);
+        let data = &r.json()["data"];
+        let misfit = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            data,
+        );
+        assert!(misfit.is_empty(), "{route}: {misfit:#?}\n{data}");
+    }
+}
+
+#[test]
 fn message_and_media_exports_fit_the_contract() {
     let root = temp_root("message-exports-contract");
     let home = account_home(&root);

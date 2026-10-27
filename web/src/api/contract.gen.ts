@@ -1245,6 +1245,59 @@ export interface MediaFileExported {
   isThumb?: boolean;
 }
 
+/** Where a message's image is decrypted (`image decrypt`, `resolve-cache`); a failure says why instead. */
+export interface ImageResult {
+  success: boolean;
+  localPath?: string;
+  error?: string;
+  /** Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, … */
+  failureKind?: string;
+  /** The file is only the thumbnail: the original is not on disk. */
+  isThumb?: boolean;
+  /** A thumbnail whose original has since been downloaded. */
+  hasUpdate?: boolean;
+}
+
+/** What `image resolve-batch` answers: one result per payload, in their order. */
+export interface ImageBatch {
+  /** Always true; each row says how it went. */
+  success: boolean;
+  rows: ImageResult[];
+}
+
+/** What `image auto-download start` answers once stopped (Ctrl+C). */
+export interface AutoDownloadStopped {
+  /** Always true. */
+  stopped: boolean;
+}
+
+/** What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow. */
+export interface AutoDownloadStatus {
+  /** Always false. */
+  isHooked: boolean;
+  /** Always null. */
+  pid: number | null;
+  /** Whether this computer can download WeChat's images on its own. */
+  supported: boolean;
+}
+
+/**
+ * Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's
+ * `VideoInfo`, when there is nothing.
+ */
+export interface VideoInfo {
+  videoUrl?: string;
+  /** A `data:` URL, or a `file://` one with `file-url`. */
+  coverUrl?: string;
+  thumbUrl?: string;
+  exists: boolean;
+}
+
+/** The MD5 a video message names (`video parse-md5`); null when its XML has none. */
+export interface VideoMd5 {
+  md5: string | null;
+}
+
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
   out: string;
@@ -1682,6 +1735,11 @@ export interface Answers {
   "group member-messages": MemberMessages;
   "group members": GroupMembers;
   "group ranking": GroupRank[];
+  "image auto-download start": AutoDownloadStopped;
+  "image auto-download status": AutoDownloadStatus;
+  "image decrypt": ImageResult;
+  "image resolve-batch": ImageBatch;
+  "image resolve-cache": ImageResult;
   "insight clear": InsightCleared;
   "insight footprint": Footprint;
   "insight footprint-summary": InsightReply;
@@ -1703,4 +1761,6 @@ export interface Answers {
   "sns stats": SnsStats;
   "sns timeline": SnsTimeline;
   "sns users": SnsUsers;
+  "video info": VideoInfo;
+  "video parse-md5": VideoMd5;
 }

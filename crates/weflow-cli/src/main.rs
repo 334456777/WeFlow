@@ -1951,19 +1951,25 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 );
                 let _ = tokio::signal::ctrl_c().await;
                 svc.stop();
-                Ok(json!({ "stopped": true }))
+                Ok(json!(weflow_core::contract::AutoDownloadStopped {
+                    stopped: true
+                }))
             }
-            AutoDownloadSubcommand::Status => Ok(
-                json!({ "isHooked": false, "pid": null, "supported": weflow_core::image_download::supported() }),
-            ),
+            AutoDownloadSubcommand::Status => {
+                Ok(json!(weflow_core::contract::AutoDownloadStatus {
+                    is_hooked: false,
+                    pid: None,
+                    supported: weflow_core::image_download::supported(),
+                }))
+            }
         },
         Commands::Image(command) => Ok(match &command.command {
             ImageSubcommand::AutoDownload { .. } => unreachable!("handled above"),
             ImageSubcommand::Decrypt { target, force } => {
-                hub.image_decrypt(&target.payload(*force)).to_json()
+                json!(hub.image_decrypt(&target.payload(*force)))
             }
             ImageSubcommand::ResolveCache { target } => {
-                hub.image_resolve_cache(&target.payload(false)).to_json()
+                json!(hub.image_resolve_cache(&target.payload(false)))
             }
             ImageSubcommand::ResolveBatch { payloads_json } => {
                 let list: Vec<Value> = serde_json::from_str(payloads_json).map_err(|e| {
@@ -1973,7 +1979,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                     .iter()
                     .map(weflow_core::services::ImagePayload::from_json)
                     .collect();
-                hub.image_resolve_cache_batch(&payloads)
+                json!(hub.image_resolve_cache_batch(&payloads))
             }
         }),
         Commands::Video(command) => match &command.command {
@@ -1981,7 +1987,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 md5,
                 no_poster,
                 file_url,
-            } => hub.video_info(
+            } => Ok(json!(hub.video_info(
                 md5,
                 !*no_poster,
                 if *file_url {
@@ -1989,10 +1995,10 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 } else {
                     weflow_core::video::PosterFormat::DataUrl
                 },
-            ),
-            VideoSubcommand::ParseMd5 { content } => {
-                Ok(serde_json::json!({ "md5": weflow_core::video::parse_video_md5(content) }))
-            }
+            )?)),
+            VideoSubcommand::ParseMd5 { content } => Ok(json!(weflow_core::contract::VideoMd5 {
+                md5: weflow_core::video::parse_video_md5(content),
+            })),
         },
         Commands::Serve(command) => handle_serve(command, &hub).await,
         Commands::Web(command) => handle_web(command, &hub).await,
