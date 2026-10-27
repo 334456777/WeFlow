@@ -1154,6 +1154,97 @@ export interface SnsExported {
   mediaCount: number;
 }
 
+/** A conversation's messages written in one format (`export messages`). */
+export interface MessagesExported {
+  /** The file; in a zip of several formats, its name inside the zip. */
+  out: string;
+  /** The messages written. */
+  count: number;
+  session: string;
+  format: string;
+  /** The media copied beside it, with `media`. */
+  media?: MediaCopied;
+}
+
+/** The media an export of messages copied to its `media/` folder. */
+export interface MediaCopied {
+  /** The media messages asked for. */
+  requested: number;
+  exported: number;
+  /** The ones whose file is not on disk, or could not be read. */
+  missing: number;
+  dir: string;
+  ffmpegMissing?: number;
+  ffmpegMissingImages?: MissingImage[];
+  /** What to do, with the dates of the first ones. */
+  hint?: string;
+}
+
+/** An image left out for lack of ffmpeg: where to find it in WeChat. */
+export interface MissingImage {
+  session?: string;
+  createTime?: number;
+  /** The message's local time; `?` without one. */
+  time: string;
+}
+
+/** One conversation in several formats (`export messages` with several `format`s), or packed (`zip`). */
+export type MessagesBundle = MessagesFolder | MessagesZip;
+
+/** The formats of one conversation, each written to its file in one folder. */
+export interface MessagesFolder {
+  /** The folder. */
+  out: string;
+  formats: string[];
+  files: MessagesExported[];
+}
+
+/** The formats of one conversation packed into a zip, with their media. */
+export interface MessagesZip {
+  /** The zip. */
+  out: string;
+  formats: string[];
+  /** Each format's file, named as it is inside the zip. */
+  files: MessagesExported[];
+  /** The media packed with them; null without `media`. */
+  media: MediaCopied | null;
+}
+
+/** What `export media` (and `chat voice`) copied. */
+export interface MediaExport {
+  exported: number;
+  /** The media messages found. */
+  found: number;
+  missing: number;
+  /** The missing ones by kind: `image`, `voice`, `video`, `emoji`. */
+  missingByKind: Record<string, number>;
+  /** The exported images that are only the thumbnail. */
+  thumbOnly: number;
+  /** What `missing` and `thumbOnly` mean, in English. */
+  note: string;
+  /** The conversations looked through. */
+  sessions: number;
+  out: string;
+  files: MediaFileExported[];
+  ffmpegMissing?: number;
+  ffmpegMissingImages?: MissingImage[];
+  /** What to do, with the dates of the first ones. */
+  hint?: string;
+}
+
+/** A media file `export media` wrote. */
+export interface MediaFileExported {
+  session: string;
+  /** `image`, `voice`, `video` or `emoji`. */
+  kind: string;
+  fileName: string;
+  path: string;
+  localId: number;
+  createTime: number;
+  /** An image's: the file is only its thumbnail. */
+  isThumb?: boolean;
+}
+
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
   out: string;
@@ -1564,6 +1655,7 @@ export interface Answers {
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
   "chat transfer-names": TransferNames;
+  "chat voice": MediaExport;
   "config clear": ConfigWritten;
   "config import": ConfigImported;
   "config list": ConfigStore;
@@ -1577,6 +1669,9 @@ export interface Answers {
   "db wxid": DbAccounts;
   "export contacts": ExportWritten;
   "export footprint": ExportWritten;
+  "export media": MediaExport;
+  /** The file written; with several formats or `zip`, the folder or zip and each format's file */
+  "export messages": MessagesExported | MessagesBundle;
   "export sessions": ExportWritten;
   "group export-member-messages": GroupExported;
   "group export-members": GroupExported;

@@ -1646,7 +1646,7 @@ impl ServiceHub {
         session_id: &str,
         out: &Path,
         opts: &ApiMediaOptions,
-    ) -> Value {
+    ) -> crate::contract::MediaCopied {
         use crate::message::MediaRef;
         let out_dir = out
             .parent()
@@ -1772,20 +1772,24 @@ impl ServiceHub {
             });
             exported += 1;
         }
-        let mut result = json!({ "requested": total, "exported": exported, "missing": total - exported, "dir": session_dir });
-        self.add_ffmpeg_missing(&mut result);
-        result
+        crate::contract::MediaCopied {
+            requested: total,
+            exported,
+            missing: total - exported,
+            dir: session_dir,
+            ffmpeg: self.ffmpeg_missing(),
+        }
     }
 
-    /// Tells a result that images were skipped for lack of ffmpeg: how many, the conversation and date of each, and
-    /// what to do (once per export).
-    fn add_ffmpeg_missing(&self, result: &mut Value) {
+    /// The images skipped for lack of ffmpeg: how many, the conversation and date of each, and what to do (once per
+    /// export); `None` when there were none.
+    fn ffmpeg_missing(&self) -> Option<crate::contract::FfmpegMissing> {
         let images = self.images_missing_ffmpeg();
-        if !images.is_empty() {
-            result["ffmpegMissing"] = json!(images.len());
-            result["ffmpegMissingImages"] = images.iter().map(|i| i.to_json()).collect();
-            result["hint"] = json!(super::image::ffmpeg_missing_hint(&images));
-        }
+        (!images.is_empty()).then(|| crate::contract::FfmpegMissing {
+            ffmpeg_missing: images.len(),
+            ffmpeg_missing_images: images.iter().map(|i| i.to_contract()).collect(),
+            hint: super::image::ffmpeg_missing_hint(&images),
+        })
     }
 
     /// Images, voices and videos: everything that needs no network, so it can run on several threads (with the
@@ -2080,7 +2084,7 @@ impl ServiceHub {
         media_type: &str,
         start: Option<i64>,
         end: Option<i64>,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::MediaExport> {
         let wanted = |k: &str| media_type == "all" || media_type == k;
         if !["image", "voice", "video", "emoji", "all"].contains(&media_type) {
             return Err(AppError::usage(format!(
@@ -2141,7 +2145,7 @@ impl ServiceHub {
 
         // pass 2: export
         let total = work.len();
-        let mut files: Vec<Value> = Vec::new();
+        let mut files: Vec<crate::contract::MediaFileExported> = Vec::new();
         let mut missing_by_kind: BTreeMap<&str, usize> = BTreeMap::new();
         let mut thumb_only = 0usize;
         // Images (WXGF needs an ffmpeg process each), voices and videos have no network step: run them on a few
@@ -2208,11 +2212,15 @@ impl ServiceHub {
                     if m.thumbnail {
                         thumb_only += 1;
                     }
-                    let mut entry = json!({ "session": sid, "kind": m.kind, "fileName": m.file_name, "path": m.full_path, "localId": msg.local_id, "createTime": msg.create_time });
-                    if m.kind == "image" {
-                        entry["isThumb"] = json!(m.thumbnail);
-                    }
-                    files.push(entry)
+                    files.push(crate::contract::MediaFileExported {
+                        session: sid.clone(),
+                        kind: m.kind.to_string(),
+                        is_thumb: (m.kind == "image").then_some(m.thumbnail),
+                        file_name: m.file_name,
+                        path: m.full_path,
+                        local_id: msg.local_id,
+                        create_time: msg.create_time,
+                    })
                 }
                 None => *missing_by_kind.entry(kind).or_default() += 1,
             }
@@ -2226,9 +2234,21 @@ impl ServiceHub {
             }
         }
         let missing: usize = missing_by_kind.values().sum();
-        let mut result = json!({ "exported": files.len(), "found": total, "missing": missing, "missingByKind": missing_by_kind, "thumbOnly": thumb_only, "note": "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)", "sessions": sessions.len(), "out": out, "files": files });
-        self.add_ffmpeg_missing(&mut result);
-        Ok(result)
+        Ok(crate::contract::MediaExport {
+            exported: files.len(),
+            found: total,
+            missing,
+            missing_by_kind: missing_by_kind
+                .into_iter()
+                .map(|(k, n)| (k.to_string(), n))
+                .collect(),
+            thumb_only,
+            note: "missing = media messages whose file is not on disk (not downloaded in WeChat) or could not be resolved; stickers need network access. thumbOnly = exported images that are only the thumbnail (open the original in WeChat, then export again for the HD image)".into(),
+            sessions: sessions.len(),
+            out: out.to_path_buf(),
+            files,
+            ffmpeg: self.ffmpeg_missing(),
+        })
     }
 }
 

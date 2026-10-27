@@ -369,10 +369,12 @@ async fn export_media_copies_images_of_a_conversation() {
     .unwrap();
 
     let out = root.join("media-out");
-    let r = hub
-        .export_media(Some("wxid_bob"), &out, "image", None, None)
-        .await
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &out, "image", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(r["exported"], 1, "{r}");
     assert_eq!(r["found"], 2, "two image messages, one has no file on disk");
     assert_eq!(r["missing"], 1);
@@ -453,10 +455,12 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
     // the order the two messages are looked at in is up to the threads: run it a few times
     for round in 0..5 {
         let (hub, root, plain) = shared_image_world(&format!("img-shared-{round}"));
-        let r = hub
-            .export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
-            .await
-            .unwrap();
+        let r = serde_json::to_value(
+            hub.export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             (r["exported"].as_i64(), r["missing"].as_i64()),
             (Some(2), Some(0)),
@@ -478,10 +482,12 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
         };
         let dir = root.join("exp");
         std::fs::create_dir_all(&dir).unwrap();
-        let r = hub
-            .export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
-            .await
-            .unwrap();
+        let r = serde_json::to_value(
+            hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             (
                 r["media"]["exported"].as_i64(),
@@ -542,10 +548,12 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
     );
 
     // an export: one image skipped for lack of ffmpeg, said once; the other image has no file at all
-    let r = hub
-        .export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
-        .await
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         (r["exported"].as_i64(), r["missing"].as_i64()),
         (Some(0), Some(2)),
@@ -573,10 +581,12 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
     };
     let dir = root.join("exp");
     std::fs::create_dir_all(&dir).unwrap();
-    let r = hub
-        .export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
-        .await
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(r["media"]["ffmpegMissing"], 1, "{r}");
     assert_eq!(r["media"]["ffmpegMissingImages"], listed, "{r}");
     assert!(r["media"]["hint"]
@@ -591,10 +601,12 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         encrypt_v2(&jpeg(3000, 7), KEY.as_bytes().try_into().unwrap(), 0x5a),
     )
     .unwrap();
-    let r = hub
-        .export_media(Some("wxid_bob"), &root2.join("media"), "image", None, None)
-        .await
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &root2.join("media"), "image", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert!(
         r.get("ffmpegMissing").is_none()
             && r.get("ffmpegMissingImages").is_none()
@@ -619,10 +631,12 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
     decoder.read_info().unwrap();
     let info = decoder.info().unwrap();
     assert_eq!((info.width, info.height), (70, 46));
-    let r = hub
-        .export_media(Some("wxid_bob"), &root3.join("media"), "image", None, None)
-        .await
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &root3.join("media"), "image", None, None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         (r["exported"].as_i64(), r["missing"].as_i64()),
         (Some(1), Some(1)),
@@ -645,8 +659,8 @@ async fn export_media_reports_thumbnail_only_images() {
         encrypt_v2(&thumb, KEY.as_bytes().try_into().unwrap(), 0x5a),
     )
     .unwrap();
-    let r = hub
-        .export_media(
+    let r = serde_json::to_value(
+        hub.export_media(
             Some("wxid_bob"),
             &root.join("media-thumb"),
             "image",
@@ -654,7 +668,9 @@ async fn export_media_reports_thumbnail_only_images() {
             None,
         )
         .await
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         (r["exported"].as_i64(), r["thumbOnly"].as_i64()),
         (Some(1), Some(1)),
@@ -677,13 +693,15 @@ async fn export_media_honours_the_date_range_and_reports_missing_by_kind() {
     let (hub, root, _img_dir) = export_world("img-export-range");
     let out = root.join("media-range");
     // both image messages are from 2023-11-14; a later window matches nothing
-    let none = hub
-        .export_media(Some("wxid_bob"), &out, "image", Some(1_800_000_000), None)
-        .await
-        .unwrap();
+    let none = serde_json::to_value(
+        hub.export_media(Some("wxid_bob"), &out, "image", Some(1_800_000_000), None)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(none["found"], 0);
-    let all = hub
-        .export_media(
+    let all = serde_json::to_value(
+        hub.export_media(
             Some("wxid_bob"),
             &out,
             "image",
@@ -691,7 +709,9 @@ async fn export_media_honours_the_date_range_and_reports_missing_by_kind() {
             Some(1_800_000_000),
         )
         .await
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(all["found"], 2);
     assert_eq!(all["missing"], 2, "no .dat files exist");
     assert_eq!(all["missingByKind"]["image"], 2);
@@ -795,10 +815,12 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
     let image_rel = "media/chat/images/aabbccddeeff00112233445566778899.jpg";
     let voice_rel = "media/chat/voices/voice_4.wav";
 
-    let r = hub
-        .export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
-        .await
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         (
             r["media"]["requested"].as_i64(),
@@ -926,11 +948,13 @@ async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
     .iter()
     .map(|(f, name)| (f.to_string(), dir.join(name)))
     .collect();
-    let results = hub
-        .export_messages_formats(&media_request("json"), &outs, &opts)
-        .await
-        .unwrap();
-    assert_eq!(results.len(), 3);
+    let results = serde_json::to_value(
+        hub.export_messages_formats(&media_request("json"), &outs, &opts)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(results.as_array().unwrap().len(), 3);
     let image_rel = "media/chat/images/aabbccddeeff00112233445566778899.jpg";
     assert!(dir.join(image_rel).exists());
     for (_, path) in &outs {

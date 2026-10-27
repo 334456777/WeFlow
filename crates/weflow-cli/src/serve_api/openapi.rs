@@ -627,6 +627,20 @@ pub(super) fn contract() -> &'static Contract {
                 data.insert(command, of(generator.subschema_for::<GroupExported>()));
             }
             data.insert("sns export", of(generator.subschema_for::<SnsExported>()));
+            use weflow_core::contract::{MediaExport, MessagesBundle, MessagesExported};
+            data.insert(
+                "export messages",
+                json!({
+                    "description": "The file written; with several formats or `zip`, the folder or zip and each format's file",
+                    "anyOf": [
+                        of(generator.subschema_for::<MessagesExported>()),
+                        of(generator.subschema_for::<MessagesBundle>()),
+                    ],
+                }),
+            );
+            for command in ["export media", "chat voice"] {
+                data.insert(command, of(generator.subschema_for::<MediaExport>()));
+            }
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",

@@ -8,7 +8,9 @@ mod serve_api;
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
-use weflow_core::contract::{ExportWritten, PlannedRemoval, RemovalPlan};
+use weflow_core::contract::{
+    ExportWritten, MessagesBundle, MessagesFolder, MessagesZip, PlannedRemoval, RemovalPlan,
+};
 use weflow_core::dates::date_range_args;
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::output::{failure, success};
@@ -2650,8 +2652,10 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         )?)),
         ChatSubcommand::Voice { session_id, out } => {
             let out_path = out.as_deref().unwrap_or(Path::new("."));
-            hub.export_media(Some(session_id), out_path, "voice", None, None)
-                .await
+            Ok(json!(
+                hub.export_media(Some(session_id), out_path, "voice", None, None)
+                    .await?
+            ))
         }
         ChatSubcommand::VoiceData { out, .. } => {
             let read = media_of(&command.command).expect("a media command");
@@ -2877,8 +2881,10 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             end,
         } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
-            hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts)
-                .await
+            Ok(json!(
+                hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts)
+                    .await?
+            ))
         }
         ExportSubcommand::Messages {
             session_id,
@@ -2963,14 +2969,15 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 excel_compact: *excel_compact,
             };
             if formats.len() == 1 && !*zip {
-                return if media_opts.enabled {
+                let exported = if media_opts.enabled {
                     hub.export_messages_with_media(&request, &target, &media_opts)
-                        .await
+                        .await?
                 } else {
-                    hub.export_messages(&request, &target)
+                    hub.export_messages(&request, &target)?
                 };
+                return Ok(json!(exported));
             }
-            export_messages_bundle(
+            let bundle = export_messages_bundle(
                 hub,
                 &request,
                 &formats,
@@ -2980,7 +2987,8 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 *zip,
                 &media_opts,
             )
-            .await
+            .await?;
+            Ok(json!(bundle))
         }
     }
 }
@@ -2998,7 +3006,7 @@ async fn export_messages_bundle(
     out: &Path,
     zip: bool,
     media: &weflow_core::api::ApiMediaOptions,
-) -> AppResult<Value> {
+) -> AppResult<MessagesBundle> {
     let zip_path = zip.then(|| export_path(out, &format!("{safe_name}.zip")));
     let folder = match &zip_path {
         Some(z) => z.with_file_name(format!(
@@ -3025,8 +3033,11 @@ async fn export_messages_bundle(
         .collect();
     let written = hub.export_messages_formats(request, &outs, media).await;
     let Some(zip_path) = zip_path else {
-        let files = written?;
-        return Ok(json!({ "out": folder, "formats": formats, "files": files }));
+        return Ok(MessagesBundle::Folder(MessagesFolder {
+            out: folder,
+            formats: formats.to_vec(),
+            files: written?,
+        }));
     };
     let packed = written.and_then(|mut files| {
         weflow_core::export::zip_folder(&folder, &zip_path).map_err(|err| {
@@ -3034,17 +3045,19 @@ async fn export_messages_bundle(
         })?;
         // the files are inside the zip now: their names there
         for (file, (_, path)) in files.iter_mut().zip(&outs) {
-            file["out"] = json!(path.file_name().map(|n| n.to_string_lossy().to_string()));
+            file.out = path.file_name().map(PathBuf::from).unwrap_or_default();
         }
         Ok(files)
     });
     let _ = std::fs::remove_dir_all(&folder);
     let files = packed?;
-    let media = files
-        .first()
-        .map(|f| f["media"].clone())
-        .unwrap_or(Value::Null);
-    Ok(json!({ "out": zip_path, "formats": formats, "files": files, "media": media }))
+    let media = files.first().and_then(|f| f.media.clone());
+    Ok(MessagesBundle::Zip(MessagesZip {
+        out: zip_path,
+        formats: formats.to_vec(),
+        files,
+        media,
+    }))
 }
 
 /// `--media image,voice` / `--media all` → the media kinds to copy next to a message export.

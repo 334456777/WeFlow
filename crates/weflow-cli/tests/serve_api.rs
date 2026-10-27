@@ -2181,6 +2181,57 @@ fn file_exports_fit_the_contract() {
 }
 
 #[test]
+fn message_and_media_exports_fit_the_contract() {
+    let root = temp_root("message-exports-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let out = root.join("out");
+    for (route, body, schema) in [
+        (
+            "/export/messages",
+            json!({ "session-id": "wxid_bob", "out": out.join("bob.json"), "format": "json" }),
+            "MessagesExported",
+        ),
+        (
+            "/export/messages",
+            json!({ "session-id": "wxid_bob", "out": out.join("media.json"), "format": "json", "media": "image" }),
+            "MessagesExported",
+        ),
+        (
+            "/export/messages",
+            json!({ "session-id": "wxid_bob", "out": out.join("both"), "format": ["json", "txt"] }),
+            "MessagesBundle",
+        ),
+        (
+            "/export/messages",
+            json!({ "session-id": "wxid_bob", "out": out.join("packed"), "format": ["json", "txt"], "zip": true }),
+            "MessagesBundle",
+        ),
+        (
+            "/export/media",
+            json!({ "out": out.join("media") }),
+            "MediaExport",
+        ),
+        (
+            "/chat/voice",
+            json!({ "session-id": "wxid_bob", "out": out.join("voice") }),
+            "MediaExport",
+        ),
+    ] {
+        let r = server.call("POST", route, &body.to_string());
+        assert_eq!(r.status, 200, "{route} {body}: {}", r.body);
+        let data = &r.json()["data"];
+        let misfit = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            data,
+        );
+        assert!(misfit.is_empty(), "{route} {body}: {misfit:#?}\n{data}");
+    }
+}
+
+#[test]
 fn backup_answers_fit_the_contract() {
     let root = temp_root("backup-contract");
     let home = account_home(&root);
