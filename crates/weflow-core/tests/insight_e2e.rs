@@ -105,7 +105,7 @@ async fn trigger_test_builds_context_and_stores_a_record() {
     assert_eq!(rec["triggerReason"], "test");
     assert_eq!(rec["insight"], "Ask about the weekend plans.");
     let id = rec["id"].as_str().unwrap().to_string();
-    let full = hub.insight_get_record(&id);
+    let full = serde_json::to_value(hub.insight_get_record(&id)).unwrap();
     assert_eq!(full["record"]["log"]["model"], "test-model");
     assert!(full["record"]["log"]["endpoint"]
         .as_str()
