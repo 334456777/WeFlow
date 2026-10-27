@@ -8,8 +8,9 @@ use serde_json::{json, Map, Value};
 
 use super::{clean_account_dir_name, ServiceHub};
 use crate::contract::{
-    ChatStatus, MessageLookup, MessageTable, MessageView, Resource, ResourceKind, ResourcePage,
-    SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
+    ChatStatus, ExportStats, MessageLookup, MessageTable, MessageView, Resource, ResourceKind,
+    ResourcePage, SessionDateCounts, SessionDates, SessionDetail, SessionExportStats, SessionFacts,
+    SessionTables, TabCounts, TransferNames,
 };
 use crate::error::{AppError, AppResult};
 use crate::message::{
@@ -499,10 +500,12 @@ impl ServiceHub {
         begin: i64,
         end: i64,
         include_relations: bool,
-    ) -> AppResult<Value> {
+    ) -> AppResult<ExportStats> {
         let ids = uniq(session_ids);
         if ids.is_empty() {
-            return Ok(json!({ "data": {} }));
+            return Ok(ExportStats {
+                data: IndexMap::new(),
+            });
         }
         let wcdb = self.open_wcdb()?;
         let begin = crate::message::normalize_timestamp_seconds(begin as f64);
@@ -587,58 +590,38 @@ impl ServiceHub {
             }
         }
 
-        let mut data = Map::new();
+        let mut data = IndexMap::new();
         for id in &ids {
-            let row = native_rows.get(id).cloned().unwrap_or(Value::Null);
-            let mut o = Map::new();
-            o.insert("totalMessages".into(), json!(num(&row, "total_messages")));
-            o.insert("voiceMessages".into(), json!(num(&row, "voice_messages")));
-            o.insert("imageMessages".into(), json!(num(&row, "image_messages")));
-            o.insert("videoMessages".into(), json!(num(&row, "video_messages")));
-            o.insert("emojiMessages".into(), json!(num(&row, "emoji_messages")));
-            o.insert(
-                "transferMessages".into(),
-                json!(num(&row, "transfer_messages")),
-            );
-            o.insert(
-                "redPacketMessages".into(),
-                json!(num(&row, "red_packet_messages")),
-            );
-            o.insert("callMessages".into(), json!(num(&row, "call_messages")));
-            let first = num(&row, "first_timestamp");
-            let last = num(&row, "last_timestamp");
-            if first > 0 {
-                o.insert("firstTimestamp".into(), json!(first));
+            let row = native_rows.get(id).unwrap_or(&Value::Null);
+            let positive = |key: &str| Some(num(row, key)).filter(|n| *n > 0);
+            let is_group = id.ends_with("@chatroom");
+            let group = |n: i64| is_group.then_some(n);
+            let my = num(row, "group_my_messages");
+            if is_group && begin <= 0 && end <= 0 {
+                let _ = self.set_group_hint(id, my);
             }
-            if last > 0 {
-                o.insert("lastTimestamp".into(), json!(last));
-            }
-            if id.ends_with("@chatroom") {
-                let my = num(&row, "group_my_messages");
-                o.insert("groupMyMessages".into(), json!(my));
-                o.insert(
-                    "groupActiveSpeakers".into(),
-                    json!(num(&row, "group_sender_count")),
-                );
-                o.insert("groupMemberCount".into(), json!(num(&member_counts, id)));
-                if include_relations {
-                    o.insert(
-                        "groupMutualFriends".into(),
-                        json!(group_mutual.get(id).copied().unwrap_or(0)),
-                    );
-                }
-                if begin <= 0 && end <= 0 {
-                    let _ = self.set_group_hint(id, my);
-                }
-            } else if include_relations {
-                o.insert(
-                    "privateMutualGroups".into(),
-                    json!(private_mutual.get(id).copied().unwrap_or(0)),
-                );
-            }
-            data.insert(id.clone(), Value::Object(o));
+            let stats = SessionExportStats {
+                total_messages: num(row, "total_messages"),
+                voice_messages: num(row, "voice_messages"),
+                image_messages: num(row, "image_messages"),
+                video_messages: num(row, "video_messages"),
+                emoji_messages: num(row, "emoji_messages"),
+                transfer_messages: num(row, "transfer_messages"),
+                red_packet_messages: num(row, "red_packet_messages"),
+                call_messages: num(row, "call_messages"),
+                first_timestamp: positive("first_timestamp"),
+                last_timestamp: positive("last_timestamp"),
+                group_my_messages: group(my),
+                group_active_speakers: group(num(row, "group_sender_count")),
+                group_member_count: group(num(&member_counts, id)),
+                group_mutual_friends: (is_group && include_relations)
+                    .then(|| group_mutual.get(id).copied().unwrap_or(0)),
+                private_mutual_groups: (!is_group && include_relations)
+                    .then(|| private_mutual.get(id).copied().unwrap_or(0)),
+            };
+            data.insert(id.clone(), stats);
         }
-        Ok(json!({ "data": data }))
+        Ok(ExportStats { data })
     }
 
     // ── group "my message count" hint (persisted) ──
@@ -1055,7 +1038,7 @@ impl ServiceHub {
         chatroom_id: &str,
         payer: &str,
         receiver: &str,
-    ) -> AppResult<Value> {
+    ) -> AppResult<TransferNames> {
         use crate::export_msg::{build_trusted_group_nicknames, resolve_group_nickname};
         let wcdb = self.open_wcdb()?;
         let nicks = if chatroom_id.ends_with("@chatroom") {
@@ -1106,7 +1089,10 @@ impl ServiceHub {
                 None => username.to_string(),
             }
         };
-        Ok(json!({ "payerName": resolve(payer), "receiverName": resolve(receiver) }))
+        Ok(TransferNames {
+            payer_name: resolve(payer),
+            receiver_name: resolve(receiver),
+        })
     }
 
     /// Whether two account identifiers refer to the same user.

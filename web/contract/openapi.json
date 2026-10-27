@@ -620,6 +620,46 @@
         }
       }
     },
+    "/chat/export-stats": {
+      "get": {
+        "operationId": "api_chat_export_stats",
+        "x-weflow-command": "chat export-stats",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExportStats"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/image-info": {
       "get": {
         "operationId": "api_chat_image_info",
@@ -1007,6 +1047,46 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/TabCounts"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/transfer-names": {
+      "get": {
+        "operationId": "api_chat_transfer_names",
+        "x-weflow-command": "chat transfer-names",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TransferNames"
                     }
                   }
                 }
@@ -5884,6 +5964,119 @@
           "fallback_used"
         ],
         "description": "How the footprint was read."
+      },
+      "ExportStats": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SessionExportStats"
+            },
+            "description": "By username, in the order asked for."
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "description": "What the export window shows of each conversation asked for (`chat export-stats`)."
+      },
+      "SessionExportStats": {
+        "type": "object",
+        "properties": {
+          "totalMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "voiceMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "imageMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "videoMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "emojiMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "transferMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "redPacketMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "callMessages": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "firstTimestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Left out without messages."
+          },
+          "lastTimestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "groupMyMessages": {
+            "type": "integer",
+            "format": "int64",
+            "description": "A group's: my messages in it."
+          },
+          "groupActiveSpeakers": {
+            "type": "integer",
+            "format": "int64",
+            "description": "A group's: the members who said something."
+          },
+          "groupMemberCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "groupMutualFriends": {
+            "type": "integer",
+            "format": "int64",
+            "description": "A group's, with relations: its members who are my friends."
+          },
+          "privateMutualGroups": {
+            "type": "integer",
+            "format": "int64",
+            "description": "A private chat's, with relations: the groups we are both in."
+          }
+        },
+        "required": [
+          "totalMessages",
+          "voiceMessages",
+          "imageMessages",
+          "videoMessages",
+          "emojiMessages",
+          "transferMessages",
+          "redPacketMessages",
+          "callMessages"
+        ],
+        "description": "One conversation's messages by type, within the range asked for, and its relations."
+      },
+      "TransferNames": {
+        "type": "object",
+        "properties": {
+          "payerName": {
+            "type": "string"
+          },
+          "receiverName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payerName",
+          "receiverName"
+        ],
+        "description": "The names a group's transfer message shows for its two sides (`chat transfer-names`)."
       },
       "InsightLookup": {
         "type": "object",

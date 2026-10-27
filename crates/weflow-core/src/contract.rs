@@ -1336,6 +1336,54 @@ pub struct InsightLookup {
     pub error: Option<String>,
 }
 
+/// What the export window shows of each conversation asked for (`chat export-stats`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct ExportStats {
+    /// By username, in the order asked for.
+    pub data: IndexMap<String, SessionExportStats>,
+}
+
+/// One conversation's messages by type, within the range asked for, and its relations.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionExportStats {
+    pub total_messages: i64,
+    pub voice_messages: i64,
+    pub image_messages: i64,
+    pub video_messages: i64,
+    pub emoji_messages: i64,
+    pub transfer_messages: i64,
+    pub red_packet_messages: i64,
+    pub call_messages: i64,
+    /// Left out without messages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_timestamp: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_timestamp: Option<i64>,
+    /// A group's: my messages in it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_my_messages: Option<i64>,
+    /// A group's: the members who said something.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_active_speakers: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_member_count: Option<i64>,
+    /// A group's, with relations: its members who are my friends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_mutual_friends: Option<i64>,
+    /// A private chat's, with relations: the groups we are both in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_mutual_groups: Option<i64>,
+}
+
+/// The names a group's transfer message shows for its two sides (`chat transfer-names`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferNames {
+    pub payer_name: String,
+    pub receiver_name: String,
+}
+
 /// An insight record as lists and events name it, without its log.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

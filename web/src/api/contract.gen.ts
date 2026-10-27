@@ -1161,6 +1161,42 @@ export interface FootprintDiagnostics {
   fallback_used: boolean;
 }
 
+/** What the export window shows of each conversation asked for (`chat export-stats`). */
+export interface ExportStats {
+  /** By username, in the order asked for. */
+  data: Record<string, SessionExportStats>;
+}
+
+/** One conversation's messages by type, within the range asked for, and its relations. */
+export interface SessionExportStats {
+  totalMessages: number;
+  voiceMessages: number;
+  imageMessages: number;
+  videoMessages: number;
+  emojiMessages: number;
+  transferMessages: number;
+  redPacketMessages: number;
+  callMessages: number;
+  /** Left out without messages. */
+  firstTimestamp?: number;
+  lastTimestamp?: number;
+  /** A group's: my messages in it. */
+  groupMyMessages?: number;
+  /** A group's: the members who said something. */
+  groupActiveSpeakers?: number;
+  groupMemberCount?: number;
+  /** A group's, with relations: its members who are my friends. */
+  groupMutualFriends?: number;
+  /** A private chat's, with relations: the groups we are both in. */
+  privateMutualGroups?: number;
+}
+
+/** The names a group's transfer message shows for its two sides (`chat transfer-names`). */
+export interface TransferNames {
+  payerName: string;
+  receiverName: string;
+}
+
 /**
  * One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a
  * failure of the command instead, so an answer that succeeds holds `success: true` and the record.
@@ -1353,6 +1389,7 @@ export interface Answers {
   "chat dates": SessionDates;
   /** The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept */
   "chat detail": SessionDetail | SessionFacts | SessionTables;
+  "chat export-stats": ExportStats;
   "chat image-info": ImageInfo;
   "chat latest": Row[];
   /** With `parsed=true`, the message as the chat window shows it; else its row and the message as the query commands list it */
@@ -1366,6 +1403,7 @@ export interface Answers {
   /** Each username asked for, with whether its conversation is folded and muted */
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
+  "chat transfer-names": TransferNames;
   "config profiles": ProfileSummary[];
   "db detect": DbCandidates;
   "db test": DbConnection;

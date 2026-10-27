@@ -2590,12 +2590,12 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             no_relations,
         } => {
             let (b, e) = date_range_args(start.as_deref(), end.as_deref())?;
-            hub.chat_export_stats(
+            Ok(json!(hub.chat_export_stats(
                 sessions,
                 b.unwrap_or(0),
                 e.map(|x| x - 1).unwrap_or(0),
                 !no_relations,
-            )
+            )?))
         }
         ChatSubcommand::GroupHint { chatroom_id, set } => match set {
             Some(count) => hub.set_group_hint(chatroom_id, *count),
@@ -2625,7 +2625,11 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
             chatroom_id,
             payer,
             receiver,
-        } => hub.chat_transfer_names(chatroom_id, payer, receiver),
+        } => Ok(json!(hub.chat_transfer_names(
+            chatroom_id,
+            payer,
+            receiver
+        )?)),
         ChatSubcommand::Voice { session_id, out } => {
             let out_path = out.as_deref().unwrap_or(Path::new("."));
             hub.export_media(Some(session_id), out_path, "voice", None, None)

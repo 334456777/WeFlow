@@ -2130,6 +2130,49 @@ fn reports_fit_the_contract() {
 }
 
 #[test]
+fn chat_stats_fit_the_contract() {
+    let root = temp_root("chat-stats-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let check = |route: &str, schema: &str| -> Value {
+        let r = server.call("GET", route, "");
+        assert_eq!(r.status, 200, "{route}: {}", r.body);
+        let data = r.json()["data"].clone();
+        let fits = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            &data,
+        );
+        assert!(fits.is_empty(), "{route}: {fits:#?}\n{data}");
+        data
+    };
+    let stats = check(
+        "/chat/export-stats?sessions=wxid_bob&sessions=room1%40chatroom",
+        "ExportStats",
+    );
+    // a private chat's relations and a group's, in the order asked for
+    let ids: Vec<&String> = stats["data"].as_object().unwrap().keys().collect();
+    assert_eq!(ids, ["wxid_bob", "room1@chatroom"]);
+    assert!(
+        stats["data"]["wxid_bob"]["privateMutualGroups"].is_i64(),
+        "{stats}"
+    );
+    assert!(
+        stats["data"]["room1@chatroom"]["groupMemberCount"].is_i64(),
+        "{stats}"
+    );
+    check(
+        "/chat/export-stats?sessions=wxid_bob&no-relations=true",
+        "ExportStats",
+    );
+    check(
+        "/chat/transfer-names?chatroom-id=room1%40chatroom&payer=wxid_bob&receiver=wxid_me",
+        "TransferNames",
+    );
+}
+
+#[test]
 fn insight_answers_fit_the_contract() {
     let root = temp_root("insight-contract");
     let home = account_home(&root);

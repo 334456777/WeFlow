@@ -428,9 +428,11 @@ fn chat_detail_lists_shard_tables_with_counts_and_times() {
 #[test]
 fn export_stats_report_type_counts_and_group_relations() {
     let (hub, _root) = common::mock_hub("n-exportstats");
-    let s = hub
-        .chat_export_stats(&strs(&["wxid_bob", "room1@chatroom"]), 0, 0, true)
-        .unwrap();
+    let s = serde_json::to_value(
+        hub.chat_export_stats(&strs(&["wxid_bob", "room1@chatroom"]), 0, 0, true)
+            .unwrap(),
+    )
+    .unwrap();
     let bob = &s["data"]["wxid_bob"];
     assert_eq!(
         (
