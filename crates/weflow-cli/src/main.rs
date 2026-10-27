@@ -8,6 +8,7 @@ mod serve_api;
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
 use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
+use weflow_core::contract::{PlannedRemoval, RemovalPlan};
 use weflow_core::dates::date_range_args;
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::output::{failure, success};
@@ -1902,7 +1903,9 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 config.lang = Some(code.to_string());
                 Ok(())
             })?;
-            return Ok(json!({ "lang": code }));
+            return Ok(json!(weflow_core::contract::LangSaved {
+                lang: code.to_string()
+            }));
         }
         Commands::Runtime(command) => return handle_runtime(command, &ctx),
         Commands::Ffmpeg(command) => return handle_ffmpeg(command, &ctx, &mut config).await,
@@ -2007,6 +2010,7 @@ fn handle_cache(
     ctx: &AppContext,
     config: &mut ConfigStore,
 ) -> AppResult<Value> {
+    use weflow_core::contract::{CacheCleared, Cancelled};
     use weflow_core::locale::tr;
     use weflow_core::services::disk_usage;
 
@@ -2040,15 +2044,19 @@ fn handle_cache(
                 })
                 .collect();
             if args.dry_run {
-                return Ok(removal_plan(&targets, &[]));
+                return Ok(json!(removal_plan(targets, &[])));
             }
             if targets.is_empty() {
-                return Ok(json!({ "removedPaths": [], "freedBytes": 0 }));
+                return Ok(json!(CacheCleared {
+                    removed_paths: Vec::new(),
+                    freed_bytes: 0,
+                    warnings: Vec::new(),
+                }));
             }
             if !confirm_removal(tr("About to remove:", "将要清理："), &targets, args.yes)? {
-                return Ok(json!({ "cancelled": true }));
+                return Ok(json!(Cancelled { cancelled: true }));
             }
-            Ok(hub.cache_clear(&parts))
+            Ok(json!(hub.cache_clear(&parts)))
         }
         CacheSubcommand::ClearAccount {
             exports_dir,
@@ -2065,14 +2073,14 @@ fn handle_cache(
                 })
                 .collect();
             if *dry_run {
-                return Ok(removal_plan(&targets, &ACCOUNT_KEYS));
+                return Ok(json!(removal_plan(targets, &ACCOUNT_KEYS)));
             }
             let heading = tr(
                 "About to remove these files and take the account out of the profile (db_path, wxid, decrypt_key and the image keys):",
                 "将要删除以下文件，并把当前账号移出配置档案（db_path、wxid、decrypt_key 和图片密钥）：",
             );
             if !confirm_removal(heading, &targets, *yes)? {
-                return Ok(json!({ "cancelled": true }));
+                return Ok(json!(Cancelled { cancelled: true }));
             }
             let result = hub.clear_current_account_data(true, exports_dir)?;
             // like the desktop app: the account is signed out of this profile
@@ -2082,7 +2090,7 @@ fn handle_cache(
                 }
                 Ok(())
             })?;
-            Ok(result)
+            Ok(json!(result))
         }
     }
 }
@@ -2098,13 +2106,19 @@ const ACCOUNT_KEYS: [&str; 5] = [
 
 /// `--dry-run` (#215): what `cache clear` / `cache clear-account` would remove, and the profile keys it would unset,
 /// for a page that asks before it removes anything.
-fn removal_plan(targets: &[RemovalTarget], keys: &[&str]) -> Value {
-    json!({
-        "dryRun": true,
-        "paths": targets.iter().map(|t| json!({ "path": t.path, "bytes": t.bytes })).collect::<Vec<_>>(),
-        "bytes": targets.iter().map(|t| t.bytes).sum::<u64>(),
-        "profileKeys": keys,
-    })
+fn removal_plan(targets: Vec<RemovalTarget>, keys: &[&str]) -> RemovalPlan {
+    RemovalPlan {
+        dry_run: true,
+        bytes: targets.iter().map(|t| t.bytes).sum(),
+        paths: targets
+            .into_iter()
+            .map(|t| PlannedRemoval {
+                path: t.path,
+                bytes: t.bytes,
+            })
+            .collect(),
+        profile_keys: keys.iter().map(|k| k.to_string()).collect(),
+    }
 }
 
 /// A file or folder `cache clear` / `cache clear-account` is about to remove.
@@ -2411,6 +2425,8 @@ fn handle_config(
     ctx: &AppContext,
     config: &mut ConfigStore,
 ) -> AppResult<Value> {
+    use weflow_core::contract::{ConfigImported, ConfigWritten};
+    let written = |config_path: Option<PathBuf>| json!(ConfigWritten { config_path });
     match &command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
         ConfigSubcommand::List => Ok(serde_json::to_value(config).unwrap()),
@@ -2426,7 +2442,7 @@ fn handle_config(
                     )));
                 }
                 weflow_core::config::set_saved_config_path(&path)?;
-                return Ok(json!({ "configPath": path }));
+                return Ok(written(Some(path)));
             }
             if matches!(
                 key.as_str(),
@@ -2439,25 +2455,25 @@ fn handle_config(
             }
             let value = parse_config_value(value);
             ConfigStore::update(&ctx.config_path, |config| config.set_key(None, key, value))?;
-            Ok(json!({ "configPath": ctx.config_path }))
+            Ok(written(Some(ctx.config_path.clone())))
         }
         ConfigSubcommand::Unset { key } => {
             if matches!(key.as_str(), "config_path" | "configPath") {
                 weflow_core::config::clear_saved_config_path()?;
-                return Ok(json!({ "configPath": weflow_core::config::default_config_path() }));
+                return Ok(written(weflow_core::config::default_config_path()));
             }
             ConfigStore::update(&ctx.config_path, |config| {
                 config.unset_key(None, key);
                 Ok(())
             })?;
-            Ok(json!({ "configPath": ctx.config_path }))
+            Ok(written(Some(ctx.config_path.clone())))
         }
         ConfigSubcommand::Clear => {
             ConfigStore::update(&ctx.config_path, |config| {
                 *config = ConfigStore::default();
                 Ok(())
             })?;
-            Ok(json!({ "configPath": ctx.config_path }))
+            Ok(written(Some(ctx.config_path.clone())))
         }
         ConfigSubcommand::Import { path } => {
             let path = path.clone().or_else(|| {
@@ -2473,9 +2489,11 @@ fn handle_config(
                     .import_electron_config(&path, None)
                     .map_err(|err| AppError::config(err.to_string()))
             })?;
-            Ok(
-                json!({ "importedFrom": path, "configPath": ctx.config_path, "skippedEncryptedKeys": skipped }),
-            )
+            Ok(json!(ConfigImported {
+                imported_from: path,
+                config_path: ctx.config_path.clone(),
+                skipped_encrypted_keys: skipped,
+            }))
         }
     }
 }
@@ -4056,11 +4074,13 @@ fn handle_backup(command: &BackupCommand, hub: &ServiceHub) -> AppResult<Value> 
             no_images,
             no_voice,
             no_emojis,
-        } => hub.backup_create(out, !no_images, !no_voice, !no_emojis),
-        BackupSubcommand::Inspect { path } => hub.backup_inspect(path),
+        } => Ok(json!(
+            hub.backup_create(out, !no_images, !no_voice, !no_emojis)?
+        )),
+        BackupSubcommand::Inspect { path } => Ok(json!(hub.backup_inspect(path)?)),
         BackupSubcommand::Restore { path, target } => {
             let target_dir = target.as_deref().unwrap_or_else(|| Path::new("."));
-            hub.backup_restore(path, target_dir)
+            Ok(json!(hub.backup_restore(path, target_dir)?))
         }
     }
 }

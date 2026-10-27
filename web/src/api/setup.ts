@@ -27,7 +27,7 @@ export async function findAccounts(root: string, signal?: AbortSignal): Promise<
 }
 
 /** `config set <key> <value>` for the current profile. */
-export const setConfig = (key: string, value: string) => call<unknown>('PUT', 'config/set', { key, value });
+export const setConfig = (key: string, value: string) => call<Contract.ConfigWritten>('PUT', 'config/set', { key, value });
 
 /** `db test`: opens the configured database with its key. */
 export const testDatabase = (signal?: AbortSignal) => get<Partial<Contract.DbConnection>>('api/db/test', {}, signal);
@@ -49,17 +49,13 @@ export const isDatabaseKey = (value: string) => /^[0-9a-fA-F]{64}$/.test(value.t
 export const switchProfile = (name: string) => setConfig('current_profile', name);
 
 /** What `cache clear-account` removes: WeFlow's files of the account, and the keys it takes out of the profile. */
-export interface ClearPlan {
-  paths: { path: string; bytes: number }[];
-  bytes: number;
-  profileKeys: string[];
-}
+export type ClearPlan = Contract.RemovalPlan;
 
 /** `cache clear-account --dry-run`: what clearing the current account would remove, removing nothing. */
 export const planClearAccount = () => call<ClearPlan>('DELETE', 'cache/clear-account', { 'dry-run': true });
 
 /** `cache clear-account --yes`: removes it. */
-export const clearAccount = () => call<{ removedPaths?: string[]; freedBytes?: number }>('DELETE', 'cache/clear-account', { yes: true });
+export const clearAccount = () => call<Contract.AccountCleared>('DELETE', 'cache/clear-account', { yes: true });
 
 /** A name `config set current_profile` takes for a new profile: letters, digits, `-` and `_`, and not one in use. */
 export function profileNameProblem(name: string, profiles: readonly Profile[]): string | null {

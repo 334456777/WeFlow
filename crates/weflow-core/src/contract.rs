@@ -8,6 +8,7 @@
 //! `parsed`…) have the columns of those tables and are not described further.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use indexmap::IndexMap;
 use schemars::JsonSchema;
@@ -1334,6 +1335,100 @@ pub struct InsightLookup {
     pub record: Option<crate::insight::InsightRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// The backup `backup create` wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupCreated {
+    pub out: PathBuf,
+    /// The files in it.
+    pub entries: usize,
+    pub wxid: String,
+    /// Unix seconds.
+    pub created_at: u64,
+}
+
+/// Where `backup restore` put the files.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupRestored {
+    pub restored_to: PathBuf,
+}
+
+/// What `cache clear` removed.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheCleared {
+    pub removed_paths: Vec<String>,
+    /// What the removed files took on disk.
+    pub freed_bytes: u64,
+    /// What could not be removed, and why; left out when everything was.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+/// What `cache clear-account` removed.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountCleared {
+    pub removed_paths: Vec<String>,
+    /// Whether the account was taken out of the profile (`db_path`, `wxid`, the keys).
+    pub profile_reset: bool,
+    /// What could not be removed, and why; left out when everything was.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+/// What `cache clear` or `clear-account` would remove (`--dry-run`), for a page that asks first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovalPlan {
+    /// Always true.
+    pub dry_run: bool,
+    pub paths: Vec<PlannedRemoval>,
+    /// What they all take on disk.
+    pub bytes: u64,
+    /// The profile keys it would unset (`clear-account`).
+    pub profile_keys: Vec<String>,
+}
+
+/// A file or folder a removal would take.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct PlannedRemoval {
+    pub path: PathBuf,
+    pub bytes: u64,
+}
+
+/// A removal the terminal was asked to confirm and was not.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct Cancelled {
+    /// Always true.
+    pub cancelled: bool,
+}
+
+/// The config file a `config` change was written to.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigWritten {
+    /// Null when `config unset config_path` finds no default place for it.
+    pub config_path: Option<PathBuf>,
+}
+
+/// What `config import` took from the desktop app's config.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigImported {
+    pub imported_from: PathBuf,
+    pub config_path: PathBuf,
+    /// The keys left out because the desktop app keeps them encrypted.
+    pub skipped_encrypted_keys: Vec<String>,
+}
+
+/// The language `weflow lang` saved: `en` or `zh`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct LangSaved {
+    pub lang: String,
 }
 
 /// What the export window shows of each conversation asked for (`chat export-stats`).

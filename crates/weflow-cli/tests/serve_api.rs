@@ -2130,6 +2130,103 @@ fn reports_fit_the_contract() {
 }
 
 #[test]
+fn backup_answers_fit_the_contract() {
+    let root = temp_root("backup-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let fits = |verb: &str, route: &str, body: String, schema: &str| -> Value {
+        let r = server.call(verb, route, &body);
+        assert_eq!(r.status, 200, "{verb} {route} {body}: {}", r.body);
+        let data = r.json()["data"].clone();
+        let misfit = misfits(
+            &contract,
+            &json!({ "$ref": format!("#/components/schemas/{schema}") }),
+            &data,
+        );
+        assert!(misfit.is_empty(), "{route}: {misfit:#?}\n{data}");
+        data
+    };
+    let out = root.join("backup.zip");
+    let created = fits(
+        "POST",
+        "/backup/create",
+        json!({ "out": out }).to_string(),
+        "BackupCreated",
+    );
+    let manifest = fits(
+        "GET",
+        &format!("/backup/inspect?path={}", percent(&out.to_string_lossy())),
+        String::new(),
+        "BackupManifest",
+    );
+    assert_eq!(
+        manifest["entries"].as_array().unwrap().len() as i64,
+        created["entries"].as_i64().unwrap(),
+        "{manifest}"
+    );
+    fits(
+        "POST",
+        "/backup/restore",
+        json!({ "path": out, "target": root.join("restored") }).to_string(),
+        "BackupRestored",
+    );
+}
+
+#[test]
+fn settings_changes_fit_the_contract() {
+    let root = temp_root("settings-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    let fits = |verb: &str, route: &str, body: &str, schema: Value| -> Value {
+        let r = server.call(verb, route, body);
+        assert_eq!(r.status, 200, "{verb} {route} {body}: {}", r.body);
+        let data = r.json()["data"].clone();
+        let misfit = misfits(&contract, &schema, &data);
+        assert!(misfit.is_empty(), "{route} {body}: {misfit:#?}\n{data}");
+        data
+    };
+    let component = |name: &str| json!({ "$ref": format!("#/components/schemas/{name}") });
+    let plan = fits(
+        "DELETE",
+        "/cache/clear",
+        r#"{"images": true, "dry-run": true}"#,
+        component("RemovalPlan"),
+    );
+    assert_eq!(plan["dryRun"], true, "{plan}");
+    fits(
+        "DELETE",
+        "/cache/clear",
+        r#"{"images": true, "yes": true}"#,
+        component("CacheCleared"),
+    );
+    fits(
+        "DELETE",
+        "/cache/clear-account",
+        r#"{"dry-run": true}"#,
+        component("RemovalPlan"),
+    );
+    fits(
+        "PUT",
+        "/config/set",
+        r#"{"key": "progress_delay_seconds", "value": "0"}"#,
+        component("ConfigWritten"),
+    );
+    fits(
+        "DELETE",
+        "/config/unset",
+        r#"{"key": "progress_delay_seconds"}"#,
+        component("ConfigWritten"),
+    );
+    fits("GET", "/config/list", "", component("ConfigStore"));
+    fits("GET", "/config/path", "", json!({ "type": "string" }));
+    fits("PUT", "/lang", r#"{"lang": "en"}"#, component("LangSaved"));
+    // last: the account goes with the rest of the config
+    fits("DELETE", "/config/clear", "", component("ConfigWritten"));
+}
+
+#[test]
 fn chat_stats_fit_the_contract() {
     let root = temp_root("chat-stats-contract");
     let home = account_home(&root);

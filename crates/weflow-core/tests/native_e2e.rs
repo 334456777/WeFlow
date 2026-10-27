@@ -883,9 +883,13 @@ fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
     let r = hub
         .clear_current_account_data(true, std::slice::from_ref(&exports))
         .unwrap();
-    assert_eq!(r["profileReset"], true);
-    assert_eq!(r["removedPaths"], json!(shown), "{r}");
-    assert!(mine.iter().all(|p| !p.exists()), "{r}");
+    assert!(r.profile_reset);
+    let shown: Vec<String> = shown
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(r.removed_paths, shown, "{r:?}");
+    assert!(mine.iter().all(|p| !p.exists()), "{r:?}");
     assert!(!mine_export.exists());
     assert!(
         other.exists() && other_export.exists(),
@@ -895,7 +899,7 @@ fn clearing_account_data_removes_only_that_account_and_needs_a_scope() {
     // exports only: caches stay, the profile is not reset
     let again = put(base.join("Images/wxid_me/b.jpg"));
     let r = hub.clear_current_account_data(false, &[exports]).unwrap();
-    assert_eq!(r["profileReset"], false);
+    assert!(!r.profile_reset);
     assert!(again.exists());
 }
 
@@ -948,14 +952,14 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     );
 
     let r = hub.cache_clear(&[CachePart::Images]);
-    assert_eq!(r["freedBytes"], 3, "{r}");
+    assert_eq!(r.freed_bytes, 3, "{r:?}");
     assert!(!image.exists());
     assert!(rest.iter().all(|p| p.exists()) && older.exists());
 
     let r = hub.cache_clear(&CachePart::ALL);
-    assert!(r.get("warnings").is_none(), "{r}");
-    assert_eq!(r["freedBytes"], 3 * (rest.len() + 1), "{r}");
-    assert!(rest.iter().all(|p| !p.exists()), "{r}");
+    assert!(r.warnings.is_empty(), "{r:?}");
+    assert_eq!(r.freed_bytes, 3 * (rest.len() as u64 + 1), "{r:?}");
+    assert!(rest.iter().all(|p| !p.exists()), "{r:?}");
     assert!(!older.exists());
     assert!(current.exists());
 }

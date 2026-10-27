@@ -9,8 +9,8 @@ export async function getSetting(key: string, signal?: AbortSignal): Promise<str
   return value === null || value === undefined || value === '' ? null : String(value);
 }
 
-export const setSetting = (key: string, value: string) => call<unknown>('PUT', 'config/set', { key, value });
-export const unsetSetting = (key: string) => call<unknown>('DELETE', 'config/unset', { key });
+export const setSetting = (key: string, value: string) => call<Contract.ConfigWritten>('PUT', 'config/set', { key, value });
+export const unsetSetting = (key: string) => call<Contract.ConfigWritten>('DELETE', 'config/unset', { key });
 
 /** `insight test`: asks the AI model API something small with the settings saved. */
 export const testAi = () => call<unknown>('POST', 'insight/test', {});
@@ -40,6 +40,6 @@ export const listCache = (signal?: AbortSignal) => get<CachePart[]>('api/cache/l
 
 /** What `cache clear --<part>` would remove, removing nothing. */
 export const planClearCache = (part: CachePartName) =>
-  call<{ paths: { path: string; bytes: number }[]; bytes: number }>('DELETE', 'cache/clear', { [part]: true, 'dry-run': true });
+  call<Contract.RemovalPlan>('DELETE', 'cache/clear', { [part]: true, 'dry-run': true });
 
-export const clearCache = (part: CachePartName) => call<unknown>('DELETE', 'cache/clear', { [part]: true, yes: true });
+export const clearCache = (part: CachePartName) => call<Contract.CacheCleared>('DELETE', 'cache/clear', { [part]: true, yes: true });

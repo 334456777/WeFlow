@@ -216,6 +216,126 @@
         }
       }
     },
+    "/backup/create": {
+      "get": {
+        "operationId": "api_backup_create",
+        "x-weflow-command": "backup create",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BackupCreated"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/backup/inspect": {
+      "get": {
+        "operationId": "api_backup_inspect",
+        "x-weflow-command": "backup inspect",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BackupManifest"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/backup/restore": {
+      "get": {
+        "operationId": "api_backup_restore",
+        "x-weflow-command": "backup restore",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BackupRestored"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/biz/accounts": {
       "get": {
         "operationId": "api_biz_accounts",
@@ -329,6 +449,108 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/PayRecords"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cache/clear": {
+      "get": {
+        "operationId": "api_cache_clear",
+        "x-weflow-command": "cache clear",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "What was removed; with `dry-run`, what would be",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/CacheCleared"
+                        },
+                        {
+                          "$ref": "#/components/schemas/RemovalPlan"
+                        },
+                        {
+                          "$ref": "#/components/schemas/Cancelled"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cache/clear-account": {
+      "get": {
+        "operationId": "api_cache_clear_account",
+        "x-weflow-command": "cache clear-account",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "What was removed; with `dry-run`, what would be",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/AccountCleared"
+                        },
+                        {
+                          "$ref": "#/components/schemas/RemovalPlan"
+                        },
+                        {
+                          "$ref": "#/components/schemas/Cancelled"
+                        }
+                      ]
                     }
                   }
                 }
@@ -1106,6 +1328,167 @@
         }
       }
     },
+    "/config/clear": {
+      "get": {
+        "operationId": "api_config_clear",
+        "x-weflow-command": "config clear",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfigWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/import": {
+      "get": {
+        "operationId": "api_config_import",
+        "x-weflow-command": "config import",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfigImported"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/list": {
+      "get": {
+        "operationId": "api_config_list",
+        "x-weflow-command": "config list",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfigStore"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/path": {
+      "get": {
+        "operationId": "api_config_path",
+        "x-weflow-command": "config path",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "Where the config file is",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/config/profiles": {
       "get": {
         "operationId": "api_config_profiles",
@@ -1130,6 +1513,86 @@
                       "items": {
                         "$ref": "#/components/schemas/ProfileSummary"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/set": {
+      "get": {
+        "operationId": "api_config_set",
+        "x-weflow-command": "config set",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfigWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/unset": {
+      "get": {
+        "operationId": "api_config_unset",
+        "x-weflow-command": "config unset",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ConfigWritten"
                     }
                   }
                 }
@@ -1939,6 +2402,46 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/InsightReply"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lang": {
+      "get": {
+        "operationId": "api_lang",
+        "x-weflow-command": "lang",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/LangSaved"
                     }
                   }
                 }
@@ -5548,6 +6051,483 @@
           "web"
         ],
         "description": "A part of WeFlow's cache that is listed and cleared on its own."
+      },
+      "RemovalPlan": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlannedRemoval"
+            }
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "What they all take on disk."
+          },
+          "profileKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The profile keys it would unset (`clear-account`)."
+          }
+        },
+        "required": [
+          "dryRun",
+          "paths",
+          "bytes",
+          "profileKeys"
+        ],
+        "description": "What `cache clear` or `clear-account` would remove (`--dry-run`), for a page that asks first."
+      },
+      "PlannedRemoval": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "path",
+          "bytes"
+        ],
+        "description": "A file or folder a removal would take."
+      },
+      "Cancelled": {
+        "type": "object",
+        "properties": {
+          "cancelled": {
+            "type": "boolean",
+            "description": "Always true."
+          }
+        },
+        "required": [
+          "cancelled"
+        ],
+        "description": "A removal the terminal was asked to confirm and was not."
+      },
+      "CacheCleared": {
+        "type": "object",
+        "properties": {
+          "removedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "freedBytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "What the removed files took on disk."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What could not be removed, and why; left out when everything was."
+          }
+        },
+        "required": [
+          "removedPaths",
+          "freedBytes"
+        ],
+        "description": "What `cache clear` removed."
+      },
+      "AccountCleared": {
+        "type": "object",
+        "properties": {
+          "removedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "profileReset": {
+            "type": "boolean",
+            "description": "Whether the account was taken out of the profile (`db_path`, `wxid`, the keys)."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What could not be removed, and why; left out when everything was."
+          }
+        },
+        "required": [
+          "removedPaths",
+          "profileReset"
+        ],
+        "description": "What `cache clear-account` removed."
+      },
+      "ConfigWritten": {
+        "type": "object",
+        "properties": {
+          "configPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null when `config unset config_path` finds no default place for it."
+          }
+        },
+        "required": [
+          "configPath"
+        ],
+        "description": "The config file a `config` change was written to."
+      },
+      "ConfigImported": {
+        "type": "object",
+        "properties": {
+          "importedFrom": {
+            "type": "string"
+          },
+          "configPath": {
+            "type": "string"
+          },
+          "skippedEncryptedKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The keys left out because the desktop app keeps them encrypted."
+          }
+        },
+        "required": [
+          "importedFrom",
+          "configPath",
+          "skippedEncryptedKeys"
+        ],
+        "description": "What `config import` took from the desktop app's config."
+      },
+      "ConfigStore": {
+        "type": "object",
+        "properties": {
+          "current_profile": {
+            "type": "string",
+            "default": "default"
+          },
+          "lang": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Output language chosen with `weflow lang en|zh` (`None` = follow the system).",
+            "default": null
+          },
+          "ffmpeg_base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Mirror of the ffmpeg-static releases `weflow ffmpeg install` downloads from (`None` = GitHub).",
+            "default": null
+          },
+          "profiles": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProfileConfig"
+            },
+            "default": {
+              "default": {
+                "db_path": null,
+                "decrypt_key": null,
+                "wxid": null,
+                "image_xor_key": null,
+                "image_aes_key": null,
+                "cache_path": null,
+                "log_enabled": false,
+                "http_api_token": null,
+                "http_api_host": null,
+                "http_api_port": null,
+                "ai_model_api_base_url": null,
+                "ai_model_api_key": null,
+                "ai_model_api_model": null,
+                "ai_model_api_max_tokens": null,
+                "ai_insight_enabled": null,
+                "extra": {}
+              }
+            }
+          },
+          "extra": {
+            "type": "object",
+            "additionalProperties": true,
+            "default": {}
+          }
+        },
+        "required": [
+          "current_profile",
+          "lang",
+          "ffmpeg_base_url",
+          "profiles",
+          "extra"
+        ],
+        "description": "WeFlow's config file (`config list`): the profiles and the settings shared by all of them."
+      },
+      "ProfileConfig": {
+        "type": "object",
+        "properties": {
+          "db_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "decrypt_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "wxid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "image_xor_key": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "image_aes_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cache_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "log_enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "http_api_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "http_api_host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "http_api_port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535,
+            "default": null
+          },
+          "ai_model_api_base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "ai_model_api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "ai_model_api_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "ai_model_api_max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "default": null
+          },
+          "ai_insight_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "extra": {
+            "type": "object",
+            "additionalProperties": true,
+            "default": {}
+          }
+        },
+        "required": [
+          "db_path",
+          "decrypt_key",
+          "wxid",
+          "image_xor_key",
+          "image_aes_key",
+          "cache_path",
+          "log_enabled",
+          "http_api_token",
+          "http_api_host",
+          "http_api_port",
+          "ai_model_api_base_url",
+          "ai_model_api_key",
+          "ai_model_api_model",
+          "ai_model_api_max_tokens",
+          "ai_insight_enabled",
+          "extra"
+        ],
+        "description": "One profile of the config file: an account and its settings."
+      },
+      "LangSaved": {
+        "type": "object",
+        "properties": {
+          "lang": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lang"
+        ],
+        "description": "The language `weflow lang` saved: `en` or `zh`."
+      },
+      "BackupCreated": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The files in it."
+          },
+          "wxid": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Unix seconds."
+          }
+        },
+        "required": [
+          "out",
+          "entries",
+          "wxid",
+          "createdAt"
+        ],
+        "description": "The backup `backup create` wrote."
+      },
+      "BackupManifest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "The manifest's own format."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Unix seconds."
+          },
+          "wxid": {
+            "type": "string"
+          },
+          "weflow_version": {
+            "type": "string",
+            "description": "The WeFlow that wrote it."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupEntry"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "created_at",
+          "wxid",
+          "weflow_version",
+          "entries"
+        ],
+        "description": "What a backup holds (`backup inspect`): the manifest stored in the archive."
+      },
+      "BackupEntry": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Its path in the backup: `db_storage/…`, `FileStorage/…` or `emojis/…`."
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Bytes."
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "size"
+        ],
+        "description": "A file in a backup."
+      },
+      "BackupRestored": {
+        "type": "object",
+        "properties": {
+          "restoredTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "restoredTo"
+        ],
+        "description": "Where `backup restore` put the files."
       },
       "DbCandidates": {
         "type": "object",

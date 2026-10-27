@@ -1037,6 +1037,133 @@ export interface CacheUsage {
 /** A part of WeFlow's cache that is listed and cleared on its own. */
 export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "runtime" | "web";
 
+/** What `cache clear` or `clear-account` would remove (`--dry-run`), for a page that asks first. */
+export interface RemovalPlan {
+  /** Always true. */
+  dryRun: boolean;
+  paths: PlannedRemoval[];
+  /** What they all take on disk. */
+  bytes: number;
+  /** The profile keys it would unset (`clear-account`). */
+  profileKeys: string[];
+}
+
+/** A file or folder a removal would take. */
+export interface PlannedRemoval {
+  path: string;
+  bytes: number;
+}
+
+/** A removal the terminal was asked to confirm and was not. */
+export interface Cancelled {
+  /** Always true. */
+  cancelled: boolean;
+}
+
+/** What `cache clear` removed. */
+export interface CacheCleared {
+  removedPaths: string[];
+  /** What the removed files took on disk. */
+  freedBytes: number;
+  /** What could not be removed, and why; left out when everything was. */
+  warnings?: string[];
+}
+
+/** What `cache clear-account` removed. */
+export interface AccountCleared {
+  removedPaths: string[];
+  /** Whether the account was taken out of the profile (`db_path`, `wxid`, the keys). */
+  profileReset: boolean;
+  /** What could not be removed, and why; left out when everything was. */
+  warnings?: string[];
+}
+
+/** The config file a `config` change was written to. */
+export interface ConfigWritten {
+  /** Null when `config unset config_path` finds no default place for it. */
+  configPath: string | null;
+}
+
+/** What `config import` took from the desktop app's config. */
+export interface ConfigImported {
+  importedFrom: string;
+  configPath: string;
+  /** The keys left out because the desktop app keeps them encrypted. */
+  skippedEncryptedKeys: string[];
+}
+
+/** WeFlow's config file (`config list`): the profiles and the settings shared by all of them. */
+export interface ConfigStore {
+  current_profile: string;
+  /** Output language chosen with `weflow lang en|zh` (`None` = follow the system). */
+  lang: string | null;
+  /** Mirror of the ffmpeg-static releases `weflow ffmpeg install` downloads from (`None` = GitHub). */
+  ffmpeg_base_url: string | null;
+  profiles: Record<string, ProfileConfig>;
+  extra: Record<string, unknown>;
+}
+
+/** One profile of the config file: an account and its settings. */
+export interface ProfileConfig {
+  db_path: string | null;
+  decrypt_key: string | null;
+  wxid: string | null;
+  image_xor_key: number | null;
+  image_aes_key: string | null;
+  cache_path: string | null;
+  log_enabled: boolean;
+  http_api_token: string | null;
+  http_api_host: string | null;
+  http_api_port: number | null;
+  ai_model_api_base_url: string | null;
+  ai_model_api_key: string | null;
+  ai_model_api_model: string | null;
+  ai_model_api_max_tokens: number | null;
+  ai_insight_enabled: boolean | null;
+  extra: Record<string, unknown>;
+}
+
+/** The language `weflow lang` saved: `en` or `zh`. */
+export interface LangSaved {
+  lang: string;
+}
+
+/** The backup `backup create` wrote. */
+export interface BackupCreated {
+  out: string;
+  /** The files in it. */
+  entries: number;
+  wxid: string;
+  /** Unix seconds. */
+  createdAt: number;
+}
+
+/** What a backup holds (`backup inspect`): the manifest stored in the archive. */
+export interface BackupManifest {
+  /** The manifest's own format. */
+  version: string;
+  /** Unix seconds. */
+  created_at: number;
+  wxid: string;
+  /** The WeFlow that wrote it. */
+  weflow_version: string;
+  entries: BackupEntry[];
+}
+
+/** A file in a backup. */
+export interface BackupEntry {
+  /** Its path in the backup: `db_storage/…`, `FileStorage/…` or `emojis/…`. */
+  path: string;
+  sha256: string;
+  /** Bytes. */
+  size: number;
+}
+
+/** Where `backup restore` put the files. */
+export interface BackupRestored {
+  restoredTo: string;
+}
+
 /** The default places of WeChat's data directory (`db detect`). */
 export interface DbCandidates {
   candidates: DbCandidate[];
@@ -1374,12 +1501,19 @@ export interface Answers {
   "analytics overall": OverallStatistics;
   "analytics rankings": ContactRank[];
   "analytics time": TimeDistribution;
+  "backup create": BackupCreated;
+  "backup inspect": BackupManifest;
+  "backup restore": BackupRestored;
   /** The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one) */
   "biz accounts": {
     accounts: Row[];
   };
   "biz messages": BizMessages;
   "biz pay-records": PayRecords;
+  /** What was removed; with `dry-run`, what would be */
+  "cache clear": CacheCleared | RemovalPlan | Cancelled;
+  /** What was removed; with `dry-run`, what would be */
+  "cache clear-account": AccountCleared | RemovalPlan | Cancelled;
   "cache list": CacheUsage[];
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
@@ -1404,7 +1538,14 @@ export interface Answers {
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
   "chat transfer-names": TransferNames;
+  "config clear": ConfigWritten;
+  "config import": ConfigImported;
+  "config list": ConfigStore;
+  /** Where the config file is */
+  "config path": string;
   "config profiles": ProfileSummary[];
+  "config set": ConfigWritten;
+  "config unset": ConfigWritten;
   "db detect": DbCandidates;
   "db test": DbConnection;
   "db wxid": DbAccounts;
@@ -1425,6 +1566,7 @@ export interface Answers {
   "insight test": InsightReply;
   "insight today-stats": InsightTodayStat[];
   "insight trigger": InsightReply;
+  "lang": LangSaved;
   "report annual generate": AnnualReport;
   "report annual years": ReportYears;
   "report dual generate": DualReport;

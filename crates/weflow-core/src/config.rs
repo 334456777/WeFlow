@@ -53,7 +53,8 @@ impl AppContext {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// WeFlow's config file (`config list`): the profiles and the settings shared by all of them.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ConfigStore {
     pub current_profile: String,
@@ -65,7 +66,8 @@ pub struct ConfigStore {
     pub extra: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// One profile of the config file: an account and its settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct ProfileConfig {
     pub db_path: Option<String>,
