@@ -1425,16 +1425,18 @@ pub struct InsightReply {
 }
 
 impl InsightReply {
-    pub fn done(message: String) -> Self {
+    /// A success that says `message`.
+    pub fn done(message: impl Into<String>) -> Self {
         Self {
             success: true,
-            message: Some(message),
+            message: Some(message.into()),
             record: None,
             insight: None,
         }
     }
 
-    pub fn failed(message: String) -> Self {
+    /// A failure that says `message`; the command reports it as its error.
+    pub fn failed(message: impl Into<String>) -> Self {
         Self {
             success: false,
             ..Self::done(message)

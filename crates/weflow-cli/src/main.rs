@@ -3244,7 +3244,7 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
                         insight: None,
                     },
                     None => InsightReply::failed(
-                        "no insight was generated (AI not configured, request failed, or the model answered SKIP)".into(),
+                        "no insight was generated (AI not configured, request failed, or the model answered SKIP)",
                     ),
                 };
                 Ok(json!(reply))

@@ -207,13 +207,10 @@ impl ServiceHub {
     pub async fn insight_test_connection(&self) -> InsightReply {
         let ai = self.ai_config();
         if ai.base.is_empty() || ai.key.is_empty() {
-            return InsightReply::failed(
-                tr(
-                    "Please enter the API address and API Key first",
-                    "请先填写 API 地址和 API Key",
-                )
-                .into(),
-            );
+            return InsightReply::failed(tr(
+                "Please enter the API address and API Key first",
+                "请先填写 API 地址和 API Key",
+            ));
         }
         let prompt = tr(
             "Please reply with the four characters \"connection successful\".",
@@ -248,23 +245,17 @@ impl ServiceHub {
         let c = self.insight_cfg();
         let p = &self.profile_name;
         if c.get_key(Some(p), "aiFootprintEnabled") != Value::Bool(true) {
-            return InsightReply::failed(
-                tr(
-                    "Please turn on \"AI Footprint summary\" in Settings first",
-                    "请先在设置中开启「AI 足迹总结」",
-                )
-                .into(),
-            );
+            return InsightReply::failed(tr(
+                "Please turn on \"AI Footprint summary\" in Settings first",
+                "请先在设置中开启「AI 足迹总结」",
+            ));
         }
         let ai = self.ai_config();
         if ai.base.is_empty() || ai.key.is_empty() {
-            return InsightReply::failed(
-                tr(
-                    "Please fill in the shared AI model settings first (API address and Key)",
-                    "请先填写通用 AI 模型配置（API 地址和 Key）",
-                )
-                .into(),
-            );
+            return InsightReply::failed(tr(
+                "Please fill in the shared AI model settings first (API address and Key)",
+                "请先填写通用 AI 模型配置（API 地址和 Key）",
+            ));
         }
         let num = |v: Option<&Value>| {
             v.and_then(|v| {
@@ -408,11 +399,11 @@ impl ServiceHub {
         .await
         {
             Ok(r) if r.trim().is_empty() => {
-                InsightReply::failed(tr("The model returned nothing", "模型返回为空").into())
+                InsightReply::failed(tr("The model returned nothing", "模型返回为空"))
             }
             Ok(r) => InsightReply {
                 insight: Some(r.trim().to_string()),
-                ..InsightReply::done(tr("Generated successfully", "生成成功").into())
+                ..InsightReply::done(tr("Generated successfully", "生成成功"))
             },
             Err(e) => InsightReply::failed(fill(
                 tr("Generation failed: {message}", "生成失败：{message}"),
@@ -832,30 +823,24 @@ impl ServiceHub {
     pub async fn insight_trigger_test(&self) -> InsightReply {
         let ai = self.ai_config();
         if ai.base.is_empty() || ai.key.is_empty() {
-            return InsightReply::failed(
-                tr(
-                    "Please enter the API address and Key first",
-                    "请先填写 API 地址和 Key",
-                )
-                .into(),
-            );
+            return InsightReply::failed(tr(
+                "Please enter the API address and Key first",
+                "请先填写 API 地址和 Key",
+            ));
         }
         let sessions = match self.chat_sessions_list() {
             Ok(s) => s,
             Err(_) => {
                 return InsightReply::failed(
-                    tr("Database connection failed. Please finish the setup on the \"Database connection\" page first", "数据库连接失败，请先在\"数据库连接\"页完成配置").into(),
+                    tr("Database connection failed. Please finish the setup on the \"Database connection\" page first", "数据库连接失败，请先在\"数据库连接\"页完成配置"),
                 )
             }
         };
         if sessions.is_empty() {
-            return InsightReply::failed(
-                tr(
-                    "No conversations found. Please make sure the database is connected correctly",
-                    "未找到任何会话，请确认数据库已正确连接",
-                )
-                .into(),
-            );
+            return InsightReply::failed(tr(
+                "No conversations found. Please make sure the database is connected correctly",
+                "未找到任何会话，请确认数据库已正确连接",
+            ));
         }
         let Some(session) = sessions.iter().find(|s| {
             let id = s.username.trim();
@@ -865,7 +850,7 @@ impl ServiceHub {
                 && self.insight_allowed(id)
         }) else {
             return InsightReply::failed(
-                tr("No private chat that can be triggered was found (check the allowlist/blocklist mode and the selection list)", "未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）").into(),
+                tr("No private chat that can be triggered was found (check the allowlist/blocklist mode and the selection list)", "未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）"),
             );
         };
         let id = session.username.trim().to_string();
