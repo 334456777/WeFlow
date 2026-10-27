@@ -28,11 +28,11 @@ fn main() -> anyhow::Result<()> {
     println!(
         "{}",
         serde_json::json!({
-            "candidate_codes": result["collection"]["candidate_codes"],
-            "scan": result["scan"],
-            "aes_verified": result["aes_verified"],
-            "xor_verified": result["xor_verified"],
-            "verified": result["verified"],
+            "candidate_codes": result.collection["candidate_codes"],
+            "scan": result.scan,
+            "aes_verified": result.aes_verified,
+            "xor_verified": result.xor_verified,
+            "verified": result.verified,
         })
     );
     Ok(())

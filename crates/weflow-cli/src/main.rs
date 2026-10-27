@@ -2560,7 +2560,7 @@ fn handle_runtime(command: &RuntimeCommand, ctx: &AppContext) -> AppResult<Value
 
 fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
     match &command.command {
-        DbSubcommand::Scan { root } => Ok(hub.db_scan(root)),
+        DbSubcommand::Scan { root } => Ok(json!(hub.db_scan(root))),
         DbSubcommand::Detect
         | DbSubcommand::Test
         | DbSubcommand::Open
@@ -2711,26 +2711,13 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
 
 /// `--save` (#216): writes the keys a `key` command found to the active profile and leaves them out of its result, so
 /// they go from WeChat to the config file without being printed, nor reaching a WebUI through `serve`.
-fn save_keys(config_path: &Path, mut data: Value, names: &[&str]) -> AppResult<Value> {
-    let fields = data
-        .as_object_mut()
-        .ok_or_else(|| AppError::runtime("no keys to save"))?;
-    let keys = names
-        .iter()
-        .map(|name| {
-            fields
-                .remove(*name)
-                .filter(|v| !v.is_null())
-                .map(|v| (*name, v))
-                .ok_or_else(|| AppError::runtime(format!("no {name} to save")))
-        })
-        .collect::<AppResult<Vec<_>>>()?;
+/// Writes `keys` to the current profile; answers their names, for the result's `saved`.
+fn save_keys(config_path: &Path, keys: &[(&str, Value)]) -> AppResult<Vec<String>> {
     ConfigStore::update(config_path, |config| {
-        keys.into_iter()
-            .try_for_each(|(name, value)| config.set_key(None, name, value))
+        keys.iter()
+            .try_for_each(|(name, value)| config.set_key(None, name, value.clone()))
     })?;
-    fields.insert("saved".into(), json!(names));
-    Ok(data)
+    Ok(keys.iter().map(|(name, _)| name.to_string()).collect())
 }
 
 /// `key db` run by `weflow serve`, which cannot send it Ctrl+C: the end of stdin (the job cancelled, the request or
@@ -2752,12 +2739,15 @@ fn handle_key(command: &KeyCommand, hub: &ServiceHub, config_path: &Path) -> App
             if std::env::var_os(serve_api::CANCEL_ON_STDIN).is_some() {
                 interrupt_when_stdin_ends();
             }
-            let data = hub.key_db(*pid, *timeout)?;
+            let mut data = hub.key_db(*pid, *timeout)?;
             if *save {
-                save_keys(config_path, data, &["decrypt_key"])
-            } else {
-                Ok(data)
+                let key = data
+                    .decrypt_key
+                    .take()
+                    .ok_or_else(|| AppError::runtime("no decrypt_key to save"))?;
+                data.saved = save_keys(config_path, &[("decrypt_key", json!(key))])?;
             }
+            Ok(json!(data))
         }
         KeySubcommand::Image {
             user_dir,
@@ -2777,18 +2767,25 @@ fn handle_key(command: &KeyCommand, hub: &ServiceHub, config_path: &Path) -> App
             if directories.is_empty() {
                 directories = weflow_core::image_keys::default_kvcomm_dirs();
             }
-            let data = hub.key_image(
+            let mut data = hub.key_image(
                 user_dir.as_deref(),
                 &directories,
                 scan_budget.unwrap_or(weflow_core::image_keys::DEFAULT_SCAN_BUDGET),
             )?;
             if *save {
-                save_keys(config_path, data, &["image_xor_key", "image_aes_key"])
-            } else {
-                Ok(data)
+                let (xor, aes) = data
+                    .image_xor_key
+                    .take()
+                    .zip(data.image_aes_key.take())
+                    .ok_or_else(|| AppError::runtime("no image keys to save"))?;
+                data.saved = save_keys(
+                    config_path,
+                    &[("image_xor_key", json!(xor)), ("image_aes_key", json!(aes))],
+                )?;
             }
+            Ok(json!(data))
         }
-        KeySubcommand::ScanImage { user_dir } => hub.key_scan_image(user_dir),
+        KeySubcommand::ScanImage { user_dir } => Ok(json!(hub.key_scan_image(user_dir)?)),
     }
 }
 
@@ -4369,32 +4366,23 @@ mod tests {
     }
 
     #[test]
-    fn saved_keys_go_to_the_profile_and_not_to_the_result() {
+    fn saved_keys_go_to_the_profile() {
         let dir = std::env::temp_dir().join(format!("weflow-key-save-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.json");
-        let found =
-            json!({ "image_xor_key": 83, "image_aes_key": "0123456789abcdef", "verified": true });
-        let shown = save_keys(&path, found, &["image_xor_key", "image_aes_key"]).unwrap();
-        assert_eq!(
-            shown,
-            json!({ "verified": true, "saved": ["image_xor_key", "image_aes_key"] })
-        );
+        let saved = save_keys(
+            &path,
+            &[
+                ("image_xor_key", json!(83)),
+                ("image_aes_key", json!("0123456789abcdef")),
+            ],
+        )
+        .unwrap();
+        assert_eq!(saved, ["image_xor_key", "image_aes_key"]);
         let config = ConfigStore::load(&path).unwrap();
         let profile = config.profile(None).unwrap();
         assert_eq!(profile.image_xor_key, Some(83));
         assert_eq!(profile.image_aes_key.as_deref(), Some("0123456789abcdef"));
-
-        let err = save_keys(&path, json!({ "method": "wx_key" }), &["decrypt_key"]).unwrap_err();
-        assert!(err.message.contains("decrypt_key"), "{}", err.message);
-        assert_eq!(
-            ConfigStore::load(&path)
-                .unwrap()
-                .profile(None)
-                .unwrap()
-                .decrypt_key,
-            None
-        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1692,6 +1692,86 @@
         }
       }
     },
+    "/db/open": {
+      "get": {
+        "operationId": "api_db_open",
+        "x-weflow-command": "db open",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbConnection"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/db/scan": {
+      "get": {
+        "operationId": "api_db_scan",
+        "x-weflow-command": "db scan",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbScan"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/db/test": {
       "get": {
         "operationId": "api_db_test",
@@ -3090,6 +3170,126 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/InsightReply"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/key/db": {
+      "get": {
+        "operationId": "api_key_db",
+        "x-weflow-command": "key db",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbKey"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/key/image": {
+      "get": {
+        "operationId": "api_key_image",
+        "x-weflow-command": "key image",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImageKeys"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/key/scan-image": {
+      "get": {
+        "operationId": "api_key_scan_image",
+        "x-weflow-command": "key scan-image",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ScannedImageKeys"
                     }
                   }
                 }
@@ -8382,6 +8582,167 @@
           "shown"
         ],
         "description": "What `web prune` did."
+      },
+      "DbScan": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScannedAccount"
+            }
+          }
+        },
+        "required": [
+          "root",
+          "accounts"
+        ],
+        "description": "The accounts `db scan` found under a folder: those with a `db_storage` or `FileStorage/Image` folder."
+      },
+      "ScannedAccount": {
+        "type": "object",
+        "properties": {
+          "wxid": {
+            "type": "string",
+            "description": "The folder's name."
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "wxid",
+          "path"
+        ],
+        "description": "An account folder `db scan` found."
+      },
+      "DbKey": {
+        "type": "object",
+        "properties": {
+          "decrypt_key": {
+            "type": "string",
+            "description": "Left out with `save`: it went to the profile instead."
+          },
+          "method": {
+            "type": "string",
+            "description": "`wx_key` (WeChat hooked) or `key_helper`."
+          },
+          "pid": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The WeChat process hooked (`wx_key`)."
+          },
+          "saved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "With `save`: the profile keys written."
+          }
+        },
+        "required": [
+          "method"
+        ],
+        "description": "The database key `key db` read from WeChat."
+      },
+      "ImageKeys": {
+        "type": "object",
+        "properties": {
+          "image_xor_key": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "Left out with `save`, as `image_aes_key`: they went to the profile instead."
+          },
+          "image_aes_key": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "Both keys were checked: the AES key on an image header and the XOR key on a whole image."
+          },
+          "aes_verified": {
+            "type": "boolean"
+          },
+          "xor_verified": {
+            "type": "boolean"
+          },
+          "verification": {
+            "type": "string",
+            "description": "How: `jpeg_decode_and_xor_tail` or `aes_header_only`."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateSource"
+            },
+            "description": "The `kvcomm` files the keys came from."
+          },
+          "collection": {
+            "description": "What was read of the `kvcomm` folders."
+          },
+          "scan": {
+            "description": "What was read of the account's images."
+          },
+          "saved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "With `save`: the profile keys written."
+          }
+        },
+        "required": [
+          "verified",
+          "aes_verified",
+          "xor_verified",
+          "verification",
+          "sources",
+          "collection",
+          "scan"
+        ],
+        "description": "The image keys `key image` derived from the `kvcomm` cache and checked against the account's images."
+      },
+      "CandidateSource": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "parsing": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "parsing"
+        ],
+        "description": "A `kvcomm` file a code was read from, and how its name was read."
+      },
+      "ScannedImageKeys": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "description": "The helper's answer; `{\"raw\": …}` when it is not JSON."
+          },
+          "method": {
+            "type": "string"
+          },
+          "userDir": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "result",
+          "method",
+          "userDir"
+        ],
+        "description": "What `key scan-image` (macOS) answers: the helper's own result."
       },
       "BackupCreated": {
         "type": "object",

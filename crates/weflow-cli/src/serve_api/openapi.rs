@@ -688,6 +688,11 @@ pub(super) fn contract() -> &'static Contract {
             data.insert("web use", of(generator.subschema_for::<WebChosen>()));
             data.insert("web update", of(generator.subschema_for::<WebUpdated>()));
             data.insert("web prune", of(generator.subschema_for::<WebPruned>()));
+            use weflow_core::contract::{DbKey, DbScan, ImageKeys, ScannedImageKeys};
+            data.insert("db scan", of(generator.subschema_for::<DbScan>()));
+            data.insert("key db", of(generator.subschema_for::<DbKey>()));
+            data.insert("key image", of(generator.subschema_for::<ImageKeys>()));
+            data.insert("key scan-image", of(generator.subschema_for::<ScannedImageKeys>()));
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",
@@ -697,7 +702,10 @@ pub(super) fn contract() -> &'static Contract {
         }
         data.insert("db detect", of(generator.subschema_for::<DbCandidates>()));
         data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));
-        data.insert("db test", of(generator.subschema_for::<DbConnection>()));
+        // `db open` is the read `db test` is
+        for command in ["db test", "db open"] {
+            data.insert(command, of(generator.subschema_for::<DbConnection>()));
+        }
         data.insert("insight footprint", of(generator.subschema_for::<Footprint>()));
         data.insert("chat export-stats", of(generator.subschema_for::<ExportStats>()));
         data.insert("chat transfer-names", of(generator.subschema_for::<TransferNames>()));

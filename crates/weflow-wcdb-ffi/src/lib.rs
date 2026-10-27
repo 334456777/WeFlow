@@ -51,30 +51,32 @@ pub unsafe extern "C" fn weflow_get_image_keys(
         return STATUS_BAD_ARGUMENT;
     }
     *out = std::ptr::null_mut();
-    let result = catch_unwind(AssertUnwindSafe(|| -> Result<Value> {
-        let account = text(account_dir);
-        if account.trim().is_empty() {
-            return Err(anyhow!(
-                "Select an account directory before acquiring image keys"
-            ));
-        }
-        let identity = text(wxid);
-        let dirs: Vec<PathBuf> = if directories_json.is_null() {
-            weflow_core::image_keys::default_kvcomm_dirs()
-        } else {
-            serde_json::from_str(&text(directories_json))?
-        };
-        weflow_core::image_keys::acquire_image_keys(
-            &dirs,
-            Path::new(&account),
-            (!identity.trim().is_empty()).then_some(identity.as_str()),
-            weflow_core::image_keys::DEFAULT_SCAN_BUDGET,
-        )
-        .map_err(|error| anyhow!(error.into_message()))
-    }));
+    let result = catch_unwind(AssertUnwindSafe(
+        || -> Result<weflow_core::contract::ImageKeys> {
+            let account = text(account_dir);
+            if account.trim().is_empty() {
+                return Err(anyhow!(
+                    "Select an account directory before acquiring image keys"
+                ));
+            }
+            let identity = text(wxid);
+            let dirs: Vec<PathBuf> = if directories_json.is_null() {
+                weflow_core::image_keys::default_kvcomm_dirs()
+            } else {
+                serde_json::from_str(&text(directories_json))?
+            };
+            weflow_core::image_keys::acquire_image_keys(
+                &dirs,
+                Path::new(&account),
+                (!identity.trim().is_empty()).then_some(identity.as_str()),
+                weflow_core::image_keys::DEFAULT_SCAN_BUDGET,
+            )
+            .map_err(|error| anyhow!(error.into_message()))
+        },
+    ));
     match result {
-        Ok(Ok(value)) => {
-            put(out, &value.to_string());
+        Ok(Ok(keys)) => {
+            put(out, &serde_json::to_string(&keys).unwrap_or_default());
             STATUS_OK
         }
         Ok(Err(error)) => {

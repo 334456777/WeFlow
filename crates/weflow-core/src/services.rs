@@ -105,7 +105,7 @@ impl ServiceHub {
         crate::contract::DbCandidates { candidates }
     }
 
-    pub fn db_scan(&self, root: &str) -> Value {
+    pub fn db_scan(&self, root: &str) -> crate::contract::DbScan {
         let root = crate::config::expand_home(root);
         let mut wxids = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&root) {
@@ -119,11 +119,14 @@ impl ServiceHub {
                     || path.join("FileStorage/Image").exists()
                     || path.join("FileStorage/Image2").exists()
                 {
-                    wxids.push(json!({ "wxid": name, "path": path }));
+                    wxids.push(crate::contract::ScannedAccount { wxid: name, path });
                 }
             }
         }
-        json!({ "root": root, "accounts": wxids })
+        crate::contract::DbScan {
+            root,
+            accounts: wxids,
+        }
     }
 
     /// The wxid of every account found in the data directory (`root`, else the configured `db_path`, else the
@@ -582,7 +585,11 @@ impl ServiceHub {
     /// `key:autoGetDbKey`. On Windows WeChat only produces the key while it opens its databases, so the command
     /// asks the user to quit and reopen WeChat, hooks the new process and waits (default 180 s in total) for the
     /// user to click "Enter WeChat".
-    pub fn key_db(&self, pid_override: Option<u32>, timeout_secs: u64) -> AppResult<Value> {
+    pub fn key_db(
+        &self,
+        pid_override: Option<u32>,
+        timeout_secs: u64,
+    ) -> AppResult<crate::contract::DbKey> {
         if cfg!(windows) && !cfg!(target_arch = "x86_64") {
             return Err(AppError::native(
                 "Windows database-key extraction requires x64",
@@ -603,7 +610,12 @@ impl ServiceHub {
             let result = weflow_native::wxkey::run_key_helper(&self.ctx.runtime_dir, &["--db-key"])
                 .map_err(|err| AppError::native(err.to_string()))?;
             let key = result.trim().to_string();
-            Ok(json!({ "decrypt_key": key, "method": "key_helper" }))
+            Ok(crate::contract::DbKey {
+                decrypt_key: Some(key),
+                method: "key_helper".into(),
+                pid: None,
+                saved: Vec::new(),
+            })
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
@@ -619,7 +631,7 @@ impl ServiceHub {
         wxkey: &weflow_native::wxkey::WxKey,
         pid_override: Option<u32>,
         timeout_secs: u64,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::DbKey> {
         use crate::output::{end_status_line, status_line};
         use weflow_native::wxkey::DbKeyError;
         let started = std::time::Instant::now();
@@ -728,7 +740,12 @@ impl ServiceHub {
             }
         };
         end_status_line();
-        Ok(json!({ "decrypt_key": key, "method": "wx_key", "pid": pid }))
+        Ok(crate::contract::DbKey {
+            decrypt_key: Some(key),
+            method: "wx_key".into(),
+            pid: Some(pid),
+            saved: Vec::new(),
+        })
     }
 
     /// Image keys from the `kvcomm` cache, verified against samples of the account; independent of stored image keys.
@@ -737,7 +754,7 @@ impl ServiceHub {
         user_dir: Option<&str>,
         kvcomm_dirs: &[PathBuf],
         scan_budget: usize,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::ImageKeys> {
         let account = match user_dir {
             Some(dir) => crate::config::expand_home(dir),
             None => self.account_dir_only()?,
@@ -750,7 +767,7 @@ impl ServiceHub {
     }
 
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-    pub fn key_scan_image(&self, user_dir: &str) -> AppResult<Value> {
+    pub fn key_scan_image(&self, user_dir: &str) -> AppResult<crate::contract::ScannedImageKeys> {
         #[cfg(target_os = "macos")]
         let expanded = crate::config::expand_home(user_dir);
         #[cfg(target_os = "macos")]
@@ -761,7 +778,11 @@ impl ServiceHub {
             )
             .map_err(|err| AppError::native(err.to_string()))?;
             let parsed: Value = serde_json::from_str(&result).unwrap_or(json!({ "raw": result }));
-            Ok(json!({ "result": parsed, "method": "image_scan_helper", "userDir": user_dir }))
+            Ok(crate::contract::ScannedImageKeys {
+                result: parsed,
+                method: "image_scan_helper".into(),
+                user_dir: user_dir.to_string(),
+            })
         }
         #[cfg(not(target_os = "macos"))]
         {
