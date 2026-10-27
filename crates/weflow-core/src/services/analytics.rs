@@ -498,13 +498,17 @@ impl ServiceHub {
     }
 
     /// `getOverallStatistics`
-    pub fn analytics_overall_statistics(&self, force: bool) -> AppResult<OverallStatistics> {
+    pub fn analytics_overall_statistics(
+        &self,
+        freshness: Freshness,
+    ) -> AppResult<OverallStatistics> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
         self.emit_progress("analytics", "aggregating…", 30, 100);
+        let force = freshness == Freshness::Fresh;
         let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0, force)?;
         let type_count = |t: i64| d["typeCounts"].get(t.to_string()).map(num).unwrap_or(0);
         let total = num(&d["total"]);

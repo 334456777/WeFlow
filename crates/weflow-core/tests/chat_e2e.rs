@@ -248,11 +248,11 @@ fn anti_revoke_sessions_skip_official_accounts() {
 fn group_hint_roundtrip_and_transfer_names() {
     let (hub, _root) = common::mock_hub("chat-hint");
     assert_eq!(
-        serde_json::to_value(hub.get_group_hint("room1@chatroom").unwrap()).unwrap(),
+        serde_json::to_value(hub.group_hint("room1@chatroom").unwrap()).unwrap(),
         json!({})
     );
     hub.set_group_hint("room1@chatroom", 9).unwrap();
-    let h = hub.get_group_hint("room1@chatroom").unwrap();
+    let h = hub.group_hint("room1@chatroom").unwrap();
     assert_eq!((h.count, h.source.as_deref()), (Some(9), Some("disk")));
     let t = hub
         .chat_transfer_names("room1@chatroom", "wxid_bob", "wxid_me")

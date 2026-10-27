@@ -242,7 +242,7 @@ async fn route(
             }
             let fast = api::parse_bool_param(&params, &["fast"], false);
             match blocking(move || {
-                hub.sns_export_stats(fast)
+                hub.sns_export_stats(crate::services::Freshness::cached_if(fast))
                     .map_err(|e| ApiError::new(500, e.into_message()))
             })
             .await

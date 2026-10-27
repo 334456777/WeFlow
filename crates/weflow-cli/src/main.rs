@@ -1840,7 +1840,7 @@ fn media_of(command: &ChatSubcommand) -> Option<MediaRead> {
             session_id: session_id.clone(),
             msg_id: msg_id.clone(),
             create_time: *create_time,
-            variant: image_variant(*thumb, variant),
+            variant: image_variant(if *thumb { "thumb" } else { variant }),
         },
         ChatSubcommand::VoiceData {
             session_id,
@@ -2639,7 +2639,7 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
         }
         ChatSubcommand::GroupHint { chatroom_id, set } => Ok(json!(match set {
             Some(count) => hub.set_group_hint(chatroom_id, *count)?,
-            None => hub.get_group_hint(chatroom_id)?,
+            None => hub.group_hint(chatroom_id)?,
         })),
         ChatSubcommand::Images { session_id } => Ok(json!(hub.chat_all_images(session_id)?)),
         ChatSubcommand::VoiceMessages { session_id } => Ok(json!(hub.chat_all_voices(session_id)?)),

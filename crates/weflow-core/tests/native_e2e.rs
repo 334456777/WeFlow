@@ -5,7 +5,7 @@ mod common;
 
 use serde_json::{json, Value};
 use weflow_core::export_msg::DisplayPref;
-use weflow_core::services::MessageExportRequest;
+use weflow_core::services::{Freshness, MessageExportRequest};
 
 fn strs(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
@@ -384,7 +384,7 @@ fn date_range_and_sender_filters_apply() {
 #[test]
 fn overall_statistics_count_private_chats_by_type_and_direction() {
     let (hub, _root) = common::mock_hub("n-overall");
-    let s = json!(hub.analytics_overall_statistics(false).unwrap());
+    let s = json!(hub.analytics_overall_statistics(Freshness::Cached).unwrap());
     assert_eq!(
         s["totalMessages"], 5,
         "only private chats count: the group is excluded"
@@ -553,7 +553,7 @@ fn moments_users_and_export_stats() {
         hub.sns_usernames_list().unwrap(),
         ["wxid_bob", "wxid_carol", "wxid_me"]
     );
-    let s = hub.sns_export_stats(false).unwrap();
+    let s = hub.sns_export_stats(Freshness::Fresh).unwrap();
     assert_eq!(
         (Some(s.total_posts), Some(s.total_friends), s.my_posts),
         (Some(5), Some(3), Some(2))

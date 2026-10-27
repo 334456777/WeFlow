@@ -419,9 +419,11 @@ impl ServiceHub {
         Ok((total, users.len() as i64, my_wxid.map(|_| mine)))
     }
 
-    /// `getExportStats` / `getExportStatsFast`: returns `{totalPosts, totalFriends, myPosts}`.
-    pub fn sns_export_stats(&self, fast: bool) -> AppResult<SnsStats> {
-        let (allow_fallback, prefer_cache) = if fast { (false, true) } else { (true, false) };
+    /// `getExportStats` / `getExportStatsFast`: returns `{totalPosts, totalFriends, myPosts}`. With
+    /// [`Freshness::Cached`] (`--fast`), what was kept will do, and the slow fallback over the timeline is skipped.
+    pub fn sns_export_stats(&self, freshness: Freshness) -> AppResult<SnsStats> {
+        let prefer_cache = freshness == Freshness::Cached;
+        let allow_fallback = !prefer_cache;
         let my_wxid = Some(self.my_wxid_cleaned()).filter(|w| !w.trim().is_empty());
         let cached = self.sns_state.lock().expect("lock poisoned").export_stats;
         if prefer_cache {
@@ -490,8 +492,8 @@ impl ServiceHub {
     }
 
     /// Posts per username, in the order of the usernames.
-    pub fn sns_user_post_counts(&self, prefer_cache: bool) -> AppResult<BTreeMap<String, i64>> {
-        if prefer_cache {
+    pub fn sns_user_post_counts(&self, freshness: Freshness) -> AppResult<BTreeMap<String, i64>> {
+        if freshness == Freshness::Cached {
             if let Some((c, at)) = &self.sns_state.lock().expect("lock poisoned").user_counts {
                 if at.elapsed() <= USER_COUNTS_TTL {
                     return Ok(c.clone());
@@ -524,7 +526,7 @@ impl ServiceHub {
         if username.is_empty() {
             return Err(AppError::usage("username must not be empty"));
         }
-        let counts = self.sns_user_post_counts(true)?;
+        let counts = self.sns_user_post_counts(Freshness::Cached)?;
         Ok(UserPosts {
             username: username.to_string(),
             total_posts: counts.get(username).copied().unwrap_or(0).max(0),

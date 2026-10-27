@@ -22,7 +22,7 @@ fn success(status: StatusCode, data: Value) -> Response {
 
 /// The `202 Accepted` answer to a request that started `job`.
 pub(super) fn accepted(job: &Job) -> Response {
-    let mut resp = success(StatusCode::ACCEPTED, job.to_json(false));
+    let mut resp = success(StatusCode::ACCEPTED, job.to_json());
     resp.headers_mut().insert(
         header::LOCATION,
         format!("/jobs/{}", job.id)
@@ -41,7 +41,7 @@ pub(super) async fn route(
 ) -> Response {
     match segments {
         [_] if method == Method::GET => {
-            let list: Vec<Value> = jobs.all().iter().map(|j| j.to_json(false)).collect();
+            let list: Vec<Value> = jobs.all().iter().map(|j| j.to_json()).collect();
             success(StatusCode::OK, Value::Array(list))
         }
         [_] => method_not_allowed(&[Verb::Get]),
@@ -50,11 +50,11 @@ pub(super) async fn route(
                 return not_found();
             };
             if method == Method::GET {
-                success(StatusCode::OK, job.to_json(true))
+                success(StatusCode::OK, job.to_json_with_result())
             } else if method == Method::DELETE {
                 // cancelled, or forgotten when it had ended: either way the job as it ended
                 let _ = jobs.cancel_or_forget(&job).await;
-                success(StatusCode::OK, job.to_json(true))
+                success(StatusCode::OK, job.to_json_with_result())
             } else {
                 method_not_allowed(&[Verb::Get, Verb::Delete])
             }

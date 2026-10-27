@@ -40,7 +40,7 @@ fn members_panel_is_sorted_and_enriched() {
         .unwrap();
     assert_eq!(without_counts[0].message_count, 0);
     // the panel stored my own count as a hint
-    assert_eq!(hub.get_group_hint("room1@chatroom").unwrap().count, Some(1));
+    assert_eq!(hub.group_hint("room1@chatroom").unwrap().count, Some(1));
 }
 
 #[test]

@@ -680,7 +680,7 @@ impl ServiceHub {
         })
     }
 
-    pub fn get_group_hint(&self, chatroom_id: &str) -> AppResult<GroupHint> {
+    pub fn group_hint(&self, chatroom_id: &str) -> AppResult<GroupHint> {
         if !chatroom_id.trim().ends_with("@chatroom") {
             return Err(AppError::usage("invalid group chat id"));
         }

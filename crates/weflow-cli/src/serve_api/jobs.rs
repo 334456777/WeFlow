@@ -157,9 +157,14 @@ impl Job {
         }
     }
 
-    /// The job as JSON; `full` adds the command's result.
-    pub(super) fn to_json(&self, full: bool) -> Value {
-        self.json_of(&self.state.lock().expect("lock poisoned"), full)
+    /// The job as JSON, without the command's result.
+    pub(super) fn to_json(&self) -> Value {
+        self.json_of(&self.state.lock().expect("lock poisoned"), false)
+    }
+
+    /// The job as JSON, with the command's result once it has one.
+    pub(super) fn to_json_with_result(&self) -> Value {
+        self.json_of(&self.state.lock().expect("lock poisoned"), true)
     }
 
     fn json_of(&self, st: &State, full: bool) -> Value {
@@ -611,10 +616,10 @@ mod tests {
     fn a_finished_job_reports_its_result() {
         let job = job();
         assert!(job.finish(Status::Succeeded, Some(0), 200, succeeded(1)));
-        let doc = job.to_json(true);
+        let doc = job.to_json_with_result();
         assert_eq!(doc["status"], "succeeded");
         assert_eq!(doc["result"]["data"], 1);
-        assert!(job.to_json(false).get("result").is_none());
+        assert!(job.to_json().get("result").is_none());
         let st = job.state.lock().unwrap();
         let last = st.events.back().unwrap();
         assert!(last.is_result());
@@ -630,14 +635,14 @@ mod tests {
         let job = job();
         job.stderr_line(r#"{"type":"progress","current":1}"#);
         assert!(job.finish(Status::Succeeded, Some(0), 200, succeeded(1)));
-        let ended = job.to_json(true);
+        let ended = job.to_json_with_result();
         let events = job.state.lock().unwrap().events.len();
         assert!(!job.finish(Status::Cancelled, None, 499, cancelled_result()));
         assert!(!job.finish(Status::Failed, Some(1), 500, succeeded(2)));
         job.stderr_line(r#"{"type":"progress","current":2}"#);
         job.stderr_line("late text");
         assert!(!job.set_running());
-        assert_eq!(job.to_json(true), ended);
+        assert_eq!(job.to_json_with_result(), ended);
         assert_eq!(job.state.lock().unwrap().events.len(), events);
     }
 
@@ -701,7 +706,7 @@ mod tests {
             jobs.cancel_or_forget(&job).await,
             Ended::Cancelled
         ));
-        let doc = job.to_json(true);
+        let doc = job.to_json_with_result();
         assert_eq!(doc["status"], "cancelled");
         assert_eq!(doc["httpStatus"], 499);
         assert_eq!(doc["startedAt"], Value::Null);
@@ -710,7 +715,7 @@ mod tests {
             Ended::Forgotten
         ));
         assert!(jobs.get(&job.id).is_none());
-        assert_eq!(job.to_json(true), doc);
+        assert_eq!(job.to_json_with_result(), doc);
     }
 
     #[tokio::test]
@@ -732,7 +737,7 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_secs(10), ended)
             .await
             .expect("the job ends");
-        let doc = job.to_json(true);
+        let doc = job.to_json_with_result();
         assert_eq!(doc["status"], "failed");
         assert_eq!(doc["result"]["error"]["code"], "runtime_error");
     }

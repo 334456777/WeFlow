@@ -135,7 +135,7 @@ impl Push {
                     }
                 }
                 // not configured yet, or the account cannot be read: try again on the next round
-                if let Ok((current, generation)) = hub.get_counted() {
+                if let Ok((current, generation)) = hub.hub_and_generation() {
                     match &mut watcher {
                         Some(w) if w.generation == generation => {
                             for payload in w.round() {

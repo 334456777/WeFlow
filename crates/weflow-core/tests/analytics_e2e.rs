@@ -1,6 +1,7 @@
 mod common;
 
 use serde_json::{json, Value};
+use weflow_core::services::Freshness;
 
 fn sum(v: &Value) -> i64 {
     v.as_object()
@@ -67,7 +68,9 @@ fn exclusion_list_roundtrip_and_candidates() {
     assert!(persisted.contains("analyticsExcludedUsernames"));
 
     // excluded sessions vanish from the aggregate, but stay selectable as candidates
-    let err = hub.analytics_overall_statistics(true).unwrap_err();
+    let err = hub
+        .analytics_overall_statistics(Freshness::Fresh)
+        .unwrap_err();
     assert!(
         err.message.contains("no message sessions"),
         "{}",
@@ -81,7 +84,7 @@ fn exclusion_list_roundtrip_and_candidates() {
         Vec::<String>::new()
     );
     assert_eq!(
-        hub.analytics_overall_statistics(true)
+        hub.analytics_overall_statistics(Freshness::Fresh)
             .unwrap()
             .total_messages,
         5
