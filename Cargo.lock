@@ -3224,6 +3224,7 @@ name = "weflow-assets"
 version = "5.0.1"
 dependencies = [
  "anyhow",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
