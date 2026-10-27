@@ -1518,7 +1518,11 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
-    let cli: Cli = i18n::parse();
+    let Cli {
+        json,
+        progress,
+        command,
+    } = i18n::parse();
     // a command run by `serve` gets the database keys the server already derived on stdin (see `serve_api::spawn`)
     if std::env::var_os(serve_api::KEYS_ON_STDIN).is_some() {
         let mut stdin = std::io::stdin();
@@ -1529,15 +1533,17 @@ async fn main() -> ExitCode {
             weflow_core::page_keys::import_keys(&keys);
         }
     }
-    weflow_core::output::set_json_output(cli.json);
-    weflow_core::output::set_progress_mode(if cli.progress {
+    weflow_core::output::set_json_output(json);
+    let progress = if progress {
         weflow_core::output::ProgressMode::Ndjson
     } else {
         weflow_core::output::ProgressMode::Auto
-    });
-    let outcome = run(&cli).await;
+    };
+    weflow_core::output::set_progress_mode(progress);
+    let summary = Summary::of(&command);
+    let outcome = run(command, progress).await;
     weflow_core::output::finish_progress();
-    if cli.json {
+    if json {
         let (doc, exit) = json_document(outcome);
         println!(
             "{}",
@@ -1547,7 +1553,7 @@ async fn main() -> ExitCode {
     }
     match checked(outcome) {
         Ok(value) => {
-            print_response(&success(value), &cli);
+            print_response(&success(value), summary);
             ExitCode::SUCCESS
         }
         Err(err) => {
@@ -1568,24 +1574,25 @@ fn open_hub() -> AppResult<(ServiceHub, PathBuf)> {
 }
 
 /// The commands that are a [`Read`] of `weflow_core::reads` (#397): the CLI runs them as such, and the command API's
-/// in-process routes (`/api/…`, issue #140) answer the same on a hub that stays open.
-fn read_of(command: &Commands) -> Option<Read> {
-    Some(match command {
-        Commands::Chat(c) => match &c.command {
-            ChatSubcommand::Sessions { limit } => Read::ChatSessions { limit: *limit },
+/// in-process routes (`/api/…`, issue #140) answer the same on a hub that stays open. Any other command is handed back.
+#[expect(
+    clippy::result_large_err,
+    reason = "the Err is the command handed back to run as something else, not an error passed up with `?`"
+)]
+fn read_of(command: Commands) -> Result<Read, Commands> {
+    Ok(match command {
+        Commands::Chat(c) => match c.command {
+            ChatSubcommand::Sessions { limit } => Read::ChatSessions { limit },
             ChatSubcommand::Messages(a) => Read::ChatMessages(MessagePage {
-                session_id: a.session_id.clone(),
+                session_id: a.session_id,
                 limit: a.limit,
                 offset: a.offset,
-                before: a.before.clone(),
-                after: a.after.clone(),
+                before: a.before,
+                after: a.after,
                 since: a.since,
                 parsed: a.parsed,
             }),
-            ChatSubcommand::Latest { session_id, limit } => Read::ChatLatest {
-                session_id: session_id.clone(),
-                limit: *limit,
-            },
+            ChatSubcommand::Latest { session_id, limit } => Read::ChatLatest { session_id, limit },
             ChatSubcommand::Message {
                 session_id,
                 local_id,
@@ -1593,19 +1600,15 @@ fn read_of(command: &Commands) -> Option<Read> {
                 create_time,
                 parsed,
             } => Read::ChatMessage {
-                session_id: session_id.clone(),
-                local_id: *local_id,
-                server_id: server_id.clone(),
-                create_time: *create_time,
-                parsed: *parsed,
+                session_id,
+                local_id,
+                server_id,
+                create_time,
+                parsed,
             },
-            ChatSubcommand::Contact { username } => Read::ChatContact {
-                username: username.clone(),
-            },
-            ChatSubcommand::Contacts { parsed } => Read::ChatContacts { parsed: *parsed },
-            ChatSubcommand::Counts { sessions } => Read::ChatCounts {
-                sessions: sessions.clone(),
-            },
+            ChatSubcommand::Contact { username } => Read::ChatContact { username },
+            ChatSubcommand::Contacts { parsed } => Read::ChatContacts { parsed },
+            ChatSubcommand::Counts { sessions } => Read::ChatCounts { sessions },
             ChatSubcommand::Search {
                 keyword,
                 session_id,
@@ -1615,27 +1618,21 @@ fn read_of(command: &Commands) -> Option<Read> {
                 end,
                 parsed,
             } => Read::ChatSearch {
-                keyword: keyword.clone(),
-                session_id: session_id.clone(),
-                limit: *limit,
-                offset: *offset,
-                start: *start,
-                end: *end,
-                parsed: *parsed,
+                keyword,
+                session_id,
+                limit,
+                offset,
+                start,
+                end,
+                parsed,
             },
-            ChatSubcommand::Dates { session_id } => Read::ChatDates {
-                session_id: session_id.clone(),
-            },
-            ChatSubcommand::DateCounts { session_id } => Read::ChatDateCounts {
-                session_id: session_id.clone(),
-            },
+            ChatSubcommand::Dates { session_id } => Read::ChatDates { session_id },
+            ChatSubcommand::DateCounts { session_id } => Read::ChatDateCounts { session_id },
             ChatSubcommand::Detail {
                 session_id,
                 fast: true,
                 extra: false,
-            } => Read::ChatDetailFast {
-                session_id: session_id.clone(),
-            },
+            } => Read::ChatDetailFast { session_id },
             ChatSubcommand::Resources {
                 session,
                 types,
@@ -1644,38 +1641,36 @@ fn read_of(command: &Commands) -> Option<Read> {
                 limit,
                 before,
             } => Read::ChatResources {
-                session: session.clone(),
-                types: types.clone(),
-                start: start.clone(),
-                end: end.clone(),
-                limit: *limit,
-                before: before.clone(),
+                session,
+                types,
+                start,
+                end,
+                limit,
+                before,
             },
             ChatSubcommand::ImageInfo {
                 session_id,
                 msg_id,
                 create_time,
             } => Read::ChatImageInfo {
-                session_id: session_id.clone(),
-                msg_id: msg_id.clone(),
-                create_time: *create_time,
+                session_id,
+                msg_id,
+                create_time,
             },
-            ChatSubcommand::Statuses { usernames } => Read::ChatStatuses {
-                usernames: usernames.clone(),
-            },
+            ChatSubcommand::Statuses { usernames } => Read::ChatStatuses { usernames },
             ChatSubcommand::TabCounts => Read::ChatTabCounts,
-            _ => return None,
+            command => return Err(Commands::Chat(ChatCommand { command })),
         },
-        Commands::Group(c) => match &c.command {
+        Commands::Group(c) => match c.command {
             GroupSubcommand::List => Read::GroupList,
             GroupSubcommand::Members {
                 chatroom_id,
                 counts,
                 refresh,
             } => Read::GroupMembers {
-                chatroom_id: chatroom_id.clone(),
-                counts: *counts,
-                refresh: *refresh,
+                chatroom_id,
+                counts,
+                refresh,
             },
             GroupSubcommand::Ranking {
                 chatroom_id,
@@ -1683,28 +1678,28 @@ fn read_of(command: &Commands) -> Option<Read> {
                 start,
                 end,
             } => Read::GroupRanking {
-                chatroom_id: chatroom_id.clone(),
-                limit: *limit,
-                start: start.clone(),
-                end: end.clone(),
+                chatroom_id,
+                limit,
+                start,
+                end,
             },
             GroupSubcommand::Hours {
                 chatroom_id,
                 start,
                 end,
             } => Read::GroupHours {
-                chatroom_id: chatroom_id.clone(),
-                start: start.clone(),
-                end: end.clone(),
+                chatroom_id,
+                start,
+                end,
             },
             GroupSubcommand::Media {
                 chatroom_id,
                 start,
                 end,
             } => Read::GroupMedia {
-                chatroom_id: chatroom_id.clone(),
-                start: start.clone(),
-                end: end.clone(),
+                chatroom_id,
+                start,
+                end,
             },
             GroupSubcommand::Member {
                 chatroom_id,
@@ -1712,10 +1707,10 @@ fn read_of(command: &Commands) -> Option<Read> {
                 start,
                 end,
             } => Read::GroupMember {
-                chatroom_id: chatroom_id.clone(),
-                username: username.clone(),
-                start: start.clone(),
-                end: end.clone(),
+                chatroom_id,
+                username,
+                start,
+                end,
             },
             GroupSubcommand::MemberMessages {
                 chatroom_id,
@@ -1725,78 +1720,70 @@ fn read_of(command: &Commands) -> Option<Read> {
                 start,
                 end,
             } => Read::GroupMemberMessages {
-                chatroom_id: chatroom_id.clone(),
-                username: username.clone(),
-                limit: *limit,
-                cursor: *cursor,
-                start: start.clone(),
-                end: end.clone(),
+                chatroom_id,
+                username,
+                limit,
+                cursor,
+                start,
+                end,
             },
-            _ => return None,
+            command => return Err(Commands::Group(GroupCommand { command })),
         },
-        Commands::Analytics(c) => match &c.command {
-            AnalyticsSubcommand::Overall { force } => Read::AnalyticsOverall { force: *force },
-            AnalyticsSubcommand::Rankings { limit, start, end } => Read::AnalyticsRankings {
-                limit: *limit,
-                start: start.clone(),
-                end: end.clone(),
-            },
+        Commands::Analytics(c) => match c.command {
+            AnalyticsSubcommand::Overall { force } => Read::AnalyticsOverall { force },
+            AnalyticsSubcommand::Rankings { limit, start, end } => {
+                Read::AnalyticsRankings { limit, start, end }
+            }
             AnalyticsSubcommand::Time => Read::AnalyticsTime,
             // `--set` saves the list
             AnalyticsSubcommand::Excluded { set: None } => Read::AnalyticsExcluded,
             AnalyticsSubcommand::ExcludeCandidates => Read::AnalyticsExcludeCandidates,
-            _ => return None,
+            command => return Err(Commands::Analytics(AnalyticsCommand { command })),
         },
-        Commands::Biz(c) => match &c.command {
+        Commands::Biz(c) => match c.command {
             BizSubcommand::Accounts => Read::BizAccounts,
             BizSubcommand::Messages {
                 username,
                 limit,
                 offset,
             } => Read::BizMessages {
-                username: username.clone(),
-                limit: *limit,
-                offset: *offset,
+                username,
+                limit,
+                offset,
             },
-            BizSubcommand::PayRecords { limit, offset } => Read::BizPayRecords {
-                limit: *limit,
-                offset: *offset,
-            },
+            BizSubcommand::PayRecords { limit, offset } => Read::BizPayRecords { limit, offset },
         },
-        Commands::Insight(c) => match &c.command {
-            InsightSubcommand::Footprint { start, end } => Read::InsightFootprint {
-                start: start.clone(),
-                end: end.clone(),
-            },
-            InsightSubcommand::Get { id } => Read::InsightGet { id: id.clone() },
-            _ => return None,
+        Commands::Insight(c) => match c.command {
+            InsightSubcommand::Footprint { start, end } => Read::InsightFootprint { start, end },
+            InsightSubcommand::Get { id } => Read::InsightGet { id },
+            command => return Err(Commands::Insight(InsightCommand { command })),
         },
-        Commands::Report(c) => match &c.command {
+        Commands::Report(c) => match c.command {
             ReportSubcommand::Annual {
                 command: AnnualSubcommand::Years,
             } => Read::ReportAnnualYears,
-            _ => return None,
+            command => return Err(Commands::Report(ReportCommand { command })),
         },
-        Commands::Cache(c) => match &c.command {
+        Commands::Cache(c) => match c.command {
             CacheSubcommand::List => Read::CacheList,
-            _ => return None,
+            command => return Err(Commands::Cache(CacheCommand { command })),
         },
-        Commands::Config(c) => match &c.command {
-            ConfigSubcommand::Get { key } => Read::ConfigGet { key: key.clone() },
+        Commands::Config(c) => match c.command {
+            ConfigSubcommand::Get { key } => Read::ConfigGet { key },
             ConfigSubcommand::Profiles => Read::ConfigProfiles,
-            _ => return None,
+            command => return Err(Commands::Config(ConfigCommand { command })),
         },
-        Commands::Runtime(c) => match &c.command {
+        Commands::Runtime(c) => match c.command {
             RuntimeSubcommand::Info => Read::RuntimeInfo,
-            _ => return None,
+            command => return Err(Commands::Runtime(RuntimeCommand { command })),
         },
-        Commands::Db(c) => match &c.command {
+        Commands::Db(c) => match c.command {
             DbSubcommand::Detect => Read::DbDetect,
             DbSubcommand::Test | DbSubcommand::Open => Read::DbTest,
-            DbSubcommand::Wxid { root } => Read::DbWxid { root: root.clone() },
-            _ => return None,
+            DbSubcommand::Wxid { root } => Read::DbWxid { root },
+            command => return Err(Commands::Db(DbCommand { command })),
         },
-        Commands::Sns(c) => match &c.command {
+        Commands::Sns(c) => match c.command {
             // the timeline without its media, which are downloaded
             SnsSubcommand::Timeline {
                 limit,
@@ -1807,68 +1794,81 @@ fn read_of(command: &Commands) -> Option<Read> {
                 end,
                 with_media: false,
             } => Read::SnsTimeline {
-                limit: *limit,
-                offset: *offset,
-                users: users.clone(),
-                keyword: keyword.clone(),
-                start: *start,
-                end: *end,
+                limit,
+                offset,
+                users,
+                keyword,
+                start,
+                end,
             },
             SnsSubcommand::Users => Read::SnsUsers,
-            SnsSubcommand::Stats { fast } => Read::SnsStats { fast: *fast },
-            SnsSubcommand::PostCounts { user, prefer_cache } => Read::SnsPostCounts {
-                user: user.clone(),
-                prefer_cache: *prefer_cache,
-            },
-            _ => return None,
+            SnsSubcommand::Stats { fast } => Read::SnsStats { fast },
+            SnsSubcommand::PostCounts { user, prefer_cache } => {
+                Read::SnsPostCounts { user, prefer_cache }
+            }
+            command => return Err(Commands::Sns(SnsCommand { command })),
         },
-        _ => return None,
+        command => return Err(command),
     })
 }
 
-/// The commands that write a message's file, as a [`MediaRead`]: the `/api/` media routes answer the file itself.
-fn media_of(command: &ChatSubcommand) -> Option<MediaRead> {
-    Some(match command {
+/// The commands that write a message's file, as a [`MediaRead`], with the file to write (`--out`; image-data and
+/// video-data require it): the `/api/` media routes answer the file itself. Any other command is handed back.
+#[expect(
+    clippy::result_large_err,
+    reason = "the Err is the command handed back to run as something else, not an error passed up with `?`"
+)]
+fn media_of(command: ChatSubcommand) -> Result<(MediaRead, Option<PathBuf>), ChatSubcommand> {
+    Ok(match command {
         ChatSubcommand::ImageData {
             session_id,
             msg_id,
             create_time,
             thumb,
             variant,
-            ..
-        } => MediaRead::ChatImage {
-            session_id: session_id.clone(),
-            msg_id: msg_id.clone(),
-            create_time: *create_time,
-            variant: image_variant(if *thumb { "thumb" } else { variant }),
-        },
+            out,
+        } => (
+            MediaRead::ChatImage {
+                session_id,
+                msg_id,
+                create_time,
+                variant: image_variant(if thumb { "thumb" } else { &variant }),
+            },
+            Some(out),
+        ),
         ChatSubcommand::VoiceData {
             session_id,
             msg_id,
             create_time,
             server_id,
             sender,
-            ..
-        } => MediaRead::ChatVoice {
-            session_id: session_id.clone(),
-            msg_id: msg_id.clone(),
-            create_time: *create_time,
-            server_id: server_id.clone(),
-            sender: sender.clone(),
-        },
+            out,
+        } => (
+            MediaRead::ChatVoice {
+                session_id,
+                msg_id,
+                create_time,
+                server_id,
+                sender,
+            },
+            out,
+        ),
         ChatSubcommand::VideoData {
             session_id,
             msg_id,
             create_time,
             thumb,
-            ..
-        } => MediaRead::ChatVideo {
-            session_id: session_id.clone(),
-            msg_id: msg_id.clone(),
-            create_time: *create_time,
-            thumb: *thumb,
-        },
-        _ => return None,
+            out,
+        } => (
+            MediaRead::ChatVideo {
+                session_id,
+                msg_id,
+                create_time,
+                thumb,
+            },
+            Some(out),
+        ),
+        command => return Err(command),
     })
 }
 
@@ -1886,18 +1886,19 @@ fn write_media(file: MediaFile, out: &Path) -> AppResult<u64> {
     written.map_err(|e| AppError::runtime(format!("failed to write {}: {e}", out.display())))
 }
 
-async fn run(cli: &Cli) -> AppResult<Value> {
+async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> AppResult<Value> {
     let ctx = AppContext::new(None, VERSION)?;
     let mut config =
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
 
-    apply_progress_settings(&config, cli);
+    apply_progress_settings(&config, progress);
     weflow_core::ffmpeg::set_home(&ctx.home_dir);
 
-    if let Some(read) = read_of(&cli.command) {
-        return read.run(&ServiceHub::new(ctx, config, None, None, None, None));
-    }
-    match &cli.command {
+    let command = match read_of(command) {
+        Ok(read) => return read.run(&ServiceHub::new(ctx, config, None, None, None, None)),
+        Err(command) => command,
+    };
+    let command = match command {
         Commands::Config(command) => return handle_config(command, &ctx, &mut config),
         Commands::Lang { lang } => {
             let code = match lang {
@@ -1912,22 +1913,22 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 lang: code.to_string()
             }));
         }
-        Commands::Runtime(command) => return handle_runtime(command, &ctx),
+        Commands::Runtime(command) => return handle_runtime(&command, &ctx),
         Commands::Ffmpeg(command) => return handle_ffmpeg(command, &ctx, &mut config).await,
-        Commands::Cache(command) => return handle_cache(command, &ctx, &mut config),
-        _ => {}
-    }
+        Commands::Cache(command) => return handle_cache(&command, &ctx, &mut config),
+        command => command,
+    };
 
     let config_path = ctx.config_path.clone();
     let hub = ServiceHub::new(ctx, config, None, None, None, None);
-    match &cli.command {
-        Commands::Db(command) => handle_db(command, &hub),
+    match command {
+        Commands::Db(command) => handle_db(&command, &hub),
         Commands::Chat(command) => handle_chat(command, &hub).await,
-        Commands::Key(command) => handle_key(command, &hub, &config_path),
+        Commands::Key(command) => handle_key(&command, &hub, &config_path),
         Commands::Export(command) => handle_export(command, &hub).await,
-        Commands::Analytics(command) => handle_analytics(command, &hub),
-        Commands::Group(command) => handle_group(command, &hub),
-        Commands::Report(command) => handle_report(command, &hub),
+        Commands::Analytics(command) => handle_analytics(&command, &hub),
+        Commands::Group(command) => handle_group(&command, &hub),
+        Commands::Report(command) => handle_report(&command, &hub),
         Commands::Sns(command) => handle_sns(command, &hub).await,
         Commands::Insight(command) => handle_insight(command, &hub).await,
         Commands::Image(ImageCommand {
@@ -1938,7 +1939,7 @@ async fn run(cli: &Cli) -> AppResult<Value> {
                 let list = if whitelist.is_empty() {
                     config_whitelist(&hub)
                 } else {
-                    whitelist.clone()
+                    whitelist
                 };
                 let started = svc.start(list);
                 if started["success"] != true {
@@ -2004,8 +2005,8 @@ async fn run(cli: &Cli) -> AppResult<Value> {
             })),
         },
         Commands::Serve(command) => handle_serve(command, &hub).await,
-        Commands::Web(command) => handle_web(command, &hub).await,
-        Commands::Backup(command) => handle_backup(command, &hub),
+        Commands::Web(command) => handle_web(&command, &hub).await,
+        Commands::Backup(command) => handle_backup(&command, &hub),
         Commands::Biz(_) => unreachable!("a read"),
         Commands::Runtime(_)
         | Commands::Ffmpeg(_)
@@ -2289,10 +2290,10 @@ fn enable_ansi() -> bool {
 }
 
 /// `cache list` as a table under a green header; `cache clear` / `clear-account`: what was removed.
-fn cache_summary(command: &CacheSubcommand, data: &Value) -> Option<String> {
+fn cache_summary(shown: CacheShown, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
-    match command {
-        CacheSubcommand::List => {
+    match shown {
+        CacheShown::List => {
             let header = [
                 tr("Part", "部分"),
                 tr("Option", "选项"),
@@ -2323,7 +2324,7 @@ fn cache_summary(command: &CacheSubcommand, data: &Value) -> Option<String> {
             lines.for_each(|l| out.push_str(&format!("{l}\n")));
             Some(out)
         }
-        CacheSubcommand::Clear(_) | CacheSubcommand::ClearAccount { .. } => {
+        CacheShown::Cleared => {
             if data["dryRun"] == true {
                 let paths = data["paths"].as_array()?;
                 let mut out = String::from(if paths.is_empty() {
@@ -2408,8 +2409,8 @@ fn cache_summary(command: &CacheSubcommand, data: &Value) -> Option<String> {
 
 /// Progress bar settings from the config (`no_progress`, `progress_delay_seconds`) and `WEFLOW_PROGRESS_DELAY`;
 /// `--progress` keeps NDJSON events whatever the config says.
-fn apply_progress_settings(config: &ConfigStore, cli: &Cli) {
-    if !cli.progress {
+fn apply_progress_settings(config: &ConfigStore, progress: weflow_core::output::ProgressMode) {
+    if progress == weflow_core::output::ProgressMode::Auto {
         let off = config.get_key(None, "no_progress");
         if off
             .as_bool()
@@ -2432,19 +2433,19 @@ fn apply_progress_settings(config: &ConfigStore, cli: &Cli) {
 }
 
 fn handle_config(
-    command: &ConfigCommand,
+    command: ConfigCommand,
     ctx: &AppContext,
     config: &mut ConfigStore,
 ) -> AppResult<Value> {
     use weflow_core::contract::{ConfigImported, ConfigWritten};
     let written = |config_path: Option<PathBuf>| json!(ConfigWritten { config_path });
-    match &command.command {
+    match command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
         ConfigSubcommand::List => Ok(serde_json::to_value(config).expect("the config serializes")),
         ConfigSubcommand::Profiles | ConfigSubcommand::Get { .. } => unreachable!("a read"),
         ConfigSubcommand::Set { key, value } => {
             if matches!(key.as_str(), "config_path" | "configPath") {
-                let path = std::path::absolute(value)
+                let path = std::path::absolute(&value)
                     .map_err(|err| AppError::usage(format!("invalid path {value}: {err}")))?;
                 if path.is_dir() {
                     return Err(AppError::usage(format!(
@@ -2458,14 +2459,14 @@ fn handle_config(
             if matches!(
                 key.as_str(),
                 "progress_delay_seconds" | "progressDelaySeconds"
-            ) && weflow_core::output::parse_delay(value).is_none()
+            ) && weflow_core::output::parse_delay(&value).is_none()
             {
                 return Err(AppError::usage(format!(
                     "invalid value '{value}' for {key}; use a whole number of seconds (0 or more)"
                 )));
             }
-            let value = parse_config_value(value);
-            ConfigStore::update(&ctx.config_path, |config| config.set_key(None, key, value))?;
+            let value = parse_config_value(&value);
+            ConfigStore::update(&ctx.config_path, |config| config.set_key(None, &key, value))?;
             Ok(written(Some(ctx.config_path.clone())))
         }
         ConfigSubcommand::Unset { key } => {
@@ -2474,7 +2475,7 @@ fn handle_config(
                 return Ok(written(weflow_core::config::default_config_path()));
             }
             ConfigStore::update(&ctx.config_path, |config| {
-                config.unset_key(None, key);
+                config.unset_key(None, &key);
                 Ok(())
             })?;
             Ok(written(Some(ctx.config_path.clone())))
@@ -2487,7 +2488,7 @@ fn handle_config(
             Ok(written(Some(ctx.config_path.clone())))
         }
         ConfigSubcommand::Import { path } => {
-            let path = path.clone().or_else(|| {
+            let path = path.or_else(|| {
                 old_electron_config_candidates()
                     .into_iter()
                     .find(|candidate| candidate.exists())
@@ -2510,14 +2511,14 @@ fn handle_config(
 }
 
 async fn handle_ffmpeg(
-    command: &FfmpegCommand,
+    command: FfmpegCommand,
     ctx: &AppContext,
     config: &mut ConfigStore,
 ) -> AppResult<Value> {
     use weflow_core::contract::FfmpegBaseUrl;
-    match &command.command {
+    match command.command {
         FfmpegSubcommand::Install { force } => Ok(json!(
-            weflow_core::ffmpeg::install(&ctx.home_dir, config.ffmpeg_base_url.as_deref(), *force)
+            weflow_core::ffmpeg::install(&ctx.home_dir, config.ffmpeg_base_url.as_deref(), force)
                 .await?
         )),
         FfmpegSubcommand::Path => Ok(json!(weflow_core::contract::FfmpegPath {
@@ -2531,7 +2532,7 @@ async fn handle_ffmpeg(
         FfmpegSubcommand::Set {
             setting: FfmpegSetting::Baseurl { url },
         } => {
-            let url = weflow_core::ffmpeg::check_base_url(url)?;
+            let url = weflow_core::ffmpeg::check_base_url(&url)?;
             ConfigStore::update(&ctx.config_path, |config| {
                 config.ffmpeg_base_url = Some(url.clone());
                 Ok(())
@@ -2572,9 +2573,36 @@ fn handle_db(command: &DbCommand, hub: &ServiceHub) -> AppResult<Value> {
     }
 }
 
-async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value> {
+async fn handle_chat(command: ChatCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::contract::MediaWritten;
-    match &command.command {
+    let command = match media_of(command.command) {
+        Ok((read, out)) => {
+            let file = read.fetch(hub.clone()).await?;
+            let Some(path) = out else {
+                // only `voice-data` goes without `--out`: the WAV in base64
+                use base64::Engine;
+                let MediaBody::Bytes(wav) = file.body else {
+                    unreachable!("a voice is decoded in memory")
+                };
+                return Ok(json!(weflow_core::contract::VoiceData {
+                    success: true,
+                    data: base64::engine::general_purpose::STANDARD.encode(&wav),
+                }));
+            };
+            let bytes = write_media(file, &path)?;
+            return Ok(json!(MediaWritten {
+                success: true,
+                path: path.to_string_lossy().into_owned(),
+                bytes,
+            }));
+        }
+        Err(command) => command,
+    };
+    match &command {
+        // taken by `media_of` above
+        ChatSubcommand::VoiceData { .. }
+        | ChatSubcommand::ImageData { .. }
+        | ChatSubcommand::VideoData { .. } => unreachable!("a media command"),
         // run as a `Read` by `run`
         ChatSubcommand::Sessions { .. }
         | ChatSubcommand::Messages(_)
@@ -2677,39 +2705,6 @@ async fn handle_chat(command: &ChatCommand, hub: &ServiceHub) -> AppResult<Value
                     .await?
             ))
         }
-        ChatSubcommand::VoiceData { out, .. } => {
-            let read = media_of(&command.command).expect("a media command");
-            let file = read.fetch(hub.clone()).await?;
-            match out {
-                Some(path) => {
-                    let bytes = write_media(file, path)?;
-                    Ok(json!(MediaWritten {
-                        success: true,
-                        path: path.to_string_lossy().into_owned(),
-                        bytes,
-                    }))
-                }
-                None => {
-                    use base64::Engine;
-                    let MediaBody::Bytes(wav) = file.body else {
-                        unreachable!("a voice is decoded in memory")
-                    };
-                    Ok(json!(weflow_core::contract::VoiceData {
-                        success: true,
-                        data: base64::engine::general_purpose::STANDARD.encode(&wav),
-                    }))
-                }
-            }
-        }
-        ChatSubcommand::ImageData { out, .. } | ChatSubcommand::VideoData { out, .. } => {
-            let read = media_of(&command.command).expect("a media command");
-            let bytes = write_media(read.fetch(hub.clone()).await?, out)?;
-            Ok(json!(MediaWritten {
-                success: true,
-                path: out.to_string_lossy().into_owned(),
-                bytes,
-            }))
-        }
         ChatSubcommand::VoiceCache { session_id, msg_id } => {
             Ok(json!(hub.voice_resolve_cache(session_id, msg_id)))
         }
@@ -2807,8 +2802,8 @@ fn handle_key(command: &KeyCommand, hub: &ServiceHub, config_path: &Path) -> App
     }
 }
 
-async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<Value> {
-    match &command.command {
+async fn handle_export(command: ExportCommand, hub: &ServiceHub) -> AppResult<Value> {
+    match command.command {
         ExportSubcommand::Sessions {
             sessions,
             format,
@@ -2816,12 +2811,12 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
         } => {
             let mut data = hub.sessions()?;
             if !sessions.is_empty() {
-                data = filter_named_items(data, sessions);
+                data = filter_named_items(data, &sessions);
             }
             Ok(json!(write_export(
                 "sessions",
                 format.as_deref(),
-                out,
+                &out,
                 &data
             )?))
         }
@@ -2831,7 +2826,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             parsed,
             kind,
         } => {
-            let data = if *parsed {
+            let data = if parsed {
                 let mut contacts = hub.chat_contacts_parsed()?;
                 if !kind.is_empty() {
                     contacts.retain(|c| kind.iter().any(|k| k == c.kind.name()));
@@ -2846,7 +2841,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
             Ok(json!(write_export(
                 "contacts",
                 format.as_deref(),
-                out,
+                &out,
                 &data
             )?))
         }
@@ -2869,13 +2864,13 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                     )))
                 }
             };
-            let (b, e) = day_span(start, end)?;
+            let (b, e) = day_span(&start, &end)?;
             let data = hub.footprint(b, e)?;
             if extension == "json" {
-                return Ok(json!(write_export("footprint", Some("json"), out, &data)?));
+                return Ok(json!(write_export("footprint", Some("json"), &out, &data)?));
             }
             let (headers, rows) = hub.footprint_timeline(&data)?;
-            let path = export_path(out, &format!("footprint.{extension}"));
+            let path = export_path(&out, &format!("footprint.{extension}"));
             make_parent(&path)?;
             if extension == "csv" {
                 let cell = |v: &Value| {
@@ -2906,7 +2901,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
         } => {
             let (start_ts, end_ts) = date_range_args(start.as_deref(), end.as_deref())?;
             Ok(json!(
-                hub.export_media(session.as_deref(), out, r#type, start_ts, end_ts)
+                hub.export_media(session.as_deref(), &out, &r#type, start_ts, end_ts)
                     .await?
             ))
         }
@@ -2934,7 +2929,7 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 }
             }
             let fmt = formats.first().cloned().unwrap_or_else(|| "txt".into());
-            let media_opts = parse_media_selection(media)?;
+            let media_opts = parse_media_selection(&media)?;
             let parse_display = |s: &str| {
                 weflow_core::export_msg::DisplayPref::parse(s).ok_or_else(|| {
                     AppError::usage("--display-name must be group-nickname, remark or nickname")
@@ -2981,18 +2976,18 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                     }
                 })
                 .collect();
-            let target = export_path(out, &format!("{safe_name}.{ext}"));
+            let target = export_path(&out, &format!("{safe_name}.{ext}"));
             let request = weflow_core::services::MessageExportRequest {
-                session_id: session_id.clone(),
+                session_id,
                 format: fmt,
                 // the end is inclusive seconds
                 start: start_ts,
                 end: end_ts.map(|e| e - 1),
-                sender: sender.clone(),
+                sender,
                 display_pref,
-                excel_compact: *excel_compact,
+                excel_compact,
             };
-            if formats.len() == 1 && !*zip {
+            if formats.len() == 1 && !zip {
                 let exported = if media_opts.enabled {
                     hub.export_messages_with_media(&request, &target, &media_opts)
                         .await?
@@ -3007,8 +3002,8 @@ async fn handle_export(command: &ExportCommand, hub: &ServiceHub) -> AppResult<V
                 &formats,
                 &exts,
                 &safe_name,
-                out,
-                *zip,
+                &out,
+                zip,
                 &media_opts,
             )
             .await?;
@@ -3176,10 +3171,10 @@ fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> 
     }
 }
 
-async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
+async fn handle_sns(command: SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::services::{SnsExportOptions, SnsTimelineQuery};
-    match &command.command {
-        SnsSubcommand::DebugResource { url } => Ok(json!(hub.sns_debug_resource(url).await?)),
+    match command.command {
+        SnsSubcommand::DebugResource { url } => Ok(json!(hub.sns_debug_resource(&url).await?)),
         // with its media: without them the timeline is a read
         SnsSubcommand::Timeline {
             limit,
@@ -3191,12 +3186,12 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
             with_media: _,
         } => {
             let posts = hub.sns_timeline_query(&SnsTimelineQuery {
-                limit: *limit,
-                offset: *offset,
-                usernames: users.clone(),
-                keyword: keyword.clone(),
-                start: *start,
-                end: *end,
+                limit,
+                offset,
+                usernames: users,
+                keyword,
+                start,
+                end,
             })?;
             let posts = hub.sns_enrich_timeline_media(posts, "", true, true).await;
             Ok(json!(weflow_core::contract::SnsTimeline::of(posts)?))
@@ -3215,21 +3210,21 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
         } => {
             let exported = hub
                 .sns_export_timeline(&SnsExportOptions {
-                    output_dir: out.clone(),
-                    format: format.clone(),
-                    usernames: users.clone(),
-                    keyword: keyword.clone(),
-                    export_media: *media,
-                    start: *start,
-                    end: *end,
+                    output_dir: out,
+                    format,
+                    usernames: users,
+                    keyword,
+                    export_media: media,
+                    start,
+                    end,
                     ..Default::default()
                 })
                 .await?;
             Ok(json!(exported))
         }
         SnsSubcommand::Media { url, key, out } => {
-            let fetched = hub.sns_fetch_media(url, key.as_deref()).await?;
-            let data = fetched.data.clone().unwrap_or_default();
+            let fetched = hub.sns_fetch_media(&url, key.as_deref()).await?;
+            let data = fetched.data.unwrap_or_default();
             match out {
                 Some(path) => {
                     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -3237,7 +3232,7 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
                             AppError::runtime(format!("failed to create {}: {e}", parent.display()))
                         })?;
                     }
-                    std::fs::write(path, &data).map_err(|e| {
+                    std::fs::write(&path, &data).map_err(|e| {
                         AppError::runtime(format!("failed to write {}: {e}", path.display()))
                     })?;
                     Ok(json!(weflow_core::contract::SnsMediaFetched {
@@ -3260,36 +3255,36 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
             encrypt_url,
             aes_key,
         } => Ok(json!(
-            hub.sns_download_emoji(url, encrypt_url.as_deref(), aes_key.as_deref())
+            hub.sns_download_emoji(&url, encrypt_url.as_deref(), aes_key.as_deref())
                 .await?
         )),
         SnsSubcommand::DownloadImage { url, out } => {
-            Ok(json!(hub.sns_download_image(url, out.as_deref()).await?))
+            Ok(json!(hub.sns_download_image(&url, out.as_deref()).await?))
         }
         SnsSubcommand::BlockDelete { action } => match action {
             TriggerAction::Check => hub.sns_block_delete_status(),
             TriggerAction::Install => hub.sns_block_delete_install(),
             TriggerAction::Uninstall => hub.sns_block_delete_uninstall(),
         },
-        SnsSubcommand::Delete { post_id } => hub.sns_delete_post(post_id),
+        SnsSubcommand::Delete { post_id } => hub.sns_delete_post(&post_id),
     }
 }
 
 fn insight_filters(
-    session: &Option<String>,
-    keyword: &Option<String>,
-    start: &Option<i64>,
-    end: &Option<i64>,
-    limit: &Option<i64>,
-    offset: &Option<i64>,
+    session: Option<String>,
+    keyword: Option<String>,
+    start: Option<i64>,
+    end: Option<i64>,
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> weflow_core::insight::RecordFilters {
     weflow_core::insight::RecordFilters {
-        keyword: keyword.clone().unwrap_or_default(),
-        session_id: session.clone().unwrap_or_default(),
+        keyword: keyword.unwrap_or_default(),
+        session_id: session.unwrap_or_default(),
         start_time: start.unwrap_or(0),
         end_time: end.unwrap_or(0),
-        limit: *limit,
-        offset: *offset,
+        limit,
+        offset,
     }
 }
 
@@ -3297,19 +3292,19 @@ fn print_insight(r: &weflow_core::insight::InsightRecord) {
     weflow_core::output::event(json!({ "type": "insight", "record": r.summary() }));
 }
 
-async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
+async fn handle_insight(command: InsightCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::contract::{InsightReply, InsightScan};
-    match &command.command {
+    match command.command {
         InsightSubcommand::Test => Ok(json!(hub.insight_test_connection().await)),
         InsightSubcommand::Trigger { session_id } => match session_id {
             None => Ok(json!(hub.insight_trigger_test().await)),
             Some(id) => {
                 let name = hub
-                    .chat_contact_avatar(id)
+                    .chat_contact_avatar(&id)
                     .map(|(_, n)| n)
                     .unwrap_or_else(|| id.clone());
                 let reply = match hub
-                    .insight_generate(id, &name, weflow_core::services::InsightTrigger::Test, None)
+                    .insight_generate(&id, &name, weflow_core::services::InsightTrigger::Test, None)
                     .await
                 {
                     Some(r) => InsightReply {
@@ -3335,13 +3330,13 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
         } => Ok(json!(hub.insight_list_records(&insight_filters(
             session, keyword, start, end, limit, offset,
         )))),
-        InsightSubcommand::MarkRead { id } => Ok(json!(hub.insight_mark_record_read(id))),
+        InsightSubcommand::MarkRead { id } => Ok(json!(hub.insight_mark_record_read(&id))),
         InsightSubcommand::Clear {
             session,
             start,
             end,
         } => Ok(json!(hub.insight_clear_records(&insight_filters(
-            session, &None, start, end, &None, &None
+            session, None, start, end, None, None
         )))),
         InsightSubcommand::TodayStats => Ok(json!(hub.insight_today_stats())),
         InsightSubcommand::Scan => {
@@ -3358,7 +3353,7 @@ async fn handle_insight(command: &InsightCommand, hub: &ServiceHub) -> AppResult
             unreachable!("a read")
         }
         InsightSubcommand::FootprintSummary { payload_json } => {
-            let payload: Value = serde_json::from_str(payload_json)
+            let payload: Value = serde_json::from_str(&payload_json)
                 .map_err(|e| AppError::usage(format!("payload_json must be JSON: {e}")))?;
             Ok(json!(hub.insight_footprint_summary(&payload).await))
         }
@@ -3695,7 +3690,7 @@ fn open_in_browser(url: &str) {
 
 /// `serve` runs the command API (every CLI command over HTTP, see `serve_api`) or, with `--desktop`, the desktop
 /// app's HTTP API, next to the optional insight and image auto-download services.
-async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
+async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
     if command.message_push && !command.desktop {
         return Err(AppError::usage("--message-push needs --desktop"));
     }
@@ -3716,7 +3711,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
     let (ui, fetch) = if command.desktop {
         (None, None)
     } else {
-        serve_webui(command, hub).await?
+        serve_webui(&command, hub).await?
     };
     let ui = std::sync::Arc::new(std::sync::RwLock::new(ui));
 
@@ -3727,7 +3722,7 @@ async fn handle_serve(command: &ServeCommand, hub: &ServiceHub) -> AppResult<Val
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    let host = command.host.clone().unwrap_or_else(|| {
+    let host = command.host.unwrap_or_else(|| {
         if command.desktop {
             cfg_str("httpApiHost").unwrap_or_else(|| "127.0.0.1".into())
         } else {
@@ -4190,11 +4185,11 @@ fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
 }
 
 /// The human-readable output: the payload itself, without the {success, data} envelope.
-fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
+fn print_response<T: serde::Serialize>(response: &T, summary: Option<Summary>) {
     let mut value = serde_json::to_value(response).expect("a response serializes");
     weflow_core::locale::localize_json(&mut value);
     let data = value.get("data").cloned().unwrap_or(Value::Null);
-    match key_summary(&cli.command, &data) {
+    match summary.and_then(|summary| key_summary(summary, &data)) {
         Some(text) => print!("{text}"),
         None => print!("{}", weflow_core::render::render(&data)),
     }
@@ -4204,71 +4199,118 @@ fn print_response<T: serde::Serialize>(response: &T, cli: &Cli) {
 }
 
 /// `key db` / `key image` print the keys under the names `config set` expects, so they can be copied over.
-fn key_summary(command: &Commands, data: &Value) -> Option<String> {
+/// The commands whose answer the terminal shows in words of its own, and which words: chosen before the command
+/// runs, which takes the command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Summary {
+    Cache(CacheShown),
+    /// `config set`, `unset` and `clear`, which succeed silently: the config file path is not news.
+    ConfigSaved,
+    ConfigImported,
+    DbDetect,
+    DbWxid,
+    Key(KeyShown),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CacheShown {
+    List,
+    Cleared,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KeyShown {
+    Db,
+    Image,
+    ScanImage,
+}
+
+impl Summary {
+    fn of(command: &Commands) -> Option<Self> {
+        Some(match command {
+            Commands::Cache(CacheCommand { command }) => Self::Cache(match command {
+                CacheSubcommand::List => CacheShown::List,
+                CacheSubcommand::Clear(_) | CacheSubcommand::ClearAccount { .. } => {
+                    CacheShown::Cleared
+                }
+            }),
+            Commands::Config(ConfigCommand { command }) => match command {
+                ConfigSubcommand::Set { .. }
+                | ConfigSubcommand::Unset { .. }
+                | ConfigSubcommand::Clear => Self::ConfigSaved,
+                ConfigSubcommand::Import { .. } => Self::ConfigImported,
+                _ => return None,
+            },
+            Commands::Db(DbCommand { command }) => match command {
+                DbSubcommand::Detect => Self::DbDetect,
+                DbSubcommand::Wxid { .. } => Self::DbWxid,
+                _ => return None,
+            },
+            Commands::Key(KeyCommand { command }) => Self::Key(match command {
+                KeySubcommand::Db { .. } => KeyShown::Db,
+                KeySubcommand::Image { .. } => KeyShown::Image,
+                KeySubcommand::ScanImage { .. } => KeyShown::ScanImage,
+            }),
+            _ => return None,
+        })
+    }
+}
+
+/// The answer of `summary`'s command in words, or `None` to show it as it is.
+fn key_summary(summary: Summary, data: &Value) -> Option<String> {
     use weflow_core::locale::tr;
-    if let Commands::Cache(CacheCommand { command }) = command {
-        return cache_summary(command, data);
-    }
-    if let Commands::Config(ConfigCommand { command }) = command {
-        return match command {
-            // saving a setting succeeds silently; the config file path is not news
-            ConfigSubcommand::Set { .. }
-            | ConfigSubcommand::Unset { .. }
-            | ConfigSubcommand::Clear => Some(String::new()),
-            ConfigSubcommand::Import { .. } => {
-                let mut shown = data.clone();
-                shown.as_object_mut()?.remove("configPath");
-                Some(weflow_core::render::render(&shown))
-            }
-            _ => None,
-        };
-    }
-    if let Commands::Db(DbCommand {
-        command: DbSubcommand::Detect,
-    }) = command
-    {
-        // only the directories that exist, named like the setting that takes them
-        let found: Vec<&str> = data["candidates"]
-            .as_array()?
-            .iter()
-            .filter(|c| c["exists"] == true)
-            .filter_map(|c| c["path"].as_str())
-            .collect();
-        return Some(if found.is_empty() {
-            format!(
-                "{}\n",
-                tr("No WeChat data directory found", "未找到微信数据目录")
-            )
-        } else {
-            found.iter().map(|p| format!("db_path: {p}\n")).collect()
-        });
-    }
-    if let Commands::Db(DbCommand {
-        command: DbSubcommand::Wxid { .. },
-    }) = command
-    {
-        let accounts = data["accounts"].as_array()?;
-        return Some(match accounts.as_slice() {
-            [one] => format!("wxid: {}\n", one["wxid"].as_str()?),
-            many => many
+    match summary {
+        Summary::Cache(shown) => cache_summary(shown, data),
+        Summary::ConfigSaved => Some(String::new()),
+        Summary::ConfigImported => {
+            let mut shown = data.clone();
+            shown.as_object_mut()?.remove("configPath");
+            Some(weflow_core::render::render(&shown))
+        }
+        Summary::DbDetect => {
+            // only the directories that exist, named like the setting that takes them
+            let found: Vec<&str> = data["candidates"]
+                .as_array()?
                 .iter()
-                .map(|a| {
-                    format!(
-                        "wxid: {}  {}\n",
-                        a["wxid"].as_str().unwrap_or(""),
-                        a["path"].as_str().unwrap_or("")
-                    )
-                })
-                .collect(),
-        });
+                .filter(|c| c["exists"] == true)
+                .filter_map(|c| c["path"].as_str())
+                .collect();
+            Some(if found.is_empty() {
+                format!(
+                    "{}\n",
+                    tr("No WeChat data directory found", "未找到微信数据目录")
+                )
+            } else {
+                found.iter().map(|p| format!("db_path: {p}\n")).collect()
+            })
+        }
+        Summary::DbWxid => {
+            let accounts = data["accounts"].as_array()?;
+            Some(match accounts.as_slice() {
+                [one] => format!("wxid: {}\n", one["wxid"].as_str()?),
+                many => many
+                    .iter()
+                    .map(|a| {
+                        format!(
+                            "wxid: {}  {}\n",
+                            a["wxid"].as_str().unwrap_or(""),
+                            a["path"].as_str().unwrap_or("")
+                        )
+                    })
+                    .collect(),
+            })
+        }
+        Summary::Key(shown) => keys_summary(shown, data),
     }
-    let Commands::Key(KeyCommand { command }) = command else {
-        return None;
-    };
+}
+
+/// `key db`, `image` and `scan-image`: the keys, or that they were saved.
+fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
+    use weflow_core::locale::tr;
     if data.get("saved").is_some() {
-        let what = match command {
-            KeySubcommand::Db { .. } => tr("Database key", "数据库密钥"),
-            _ => tr("Image keys", "图片密钥"),
+        let what = match shown {
+            KeyShown::Db => tr("Database key", "数据库密钥"),
+            KeyShown::Image | KeyShown::ScanImage => tr("Image keys", "图片密钥"),
         };
         let mut text = format!(
             "{}
@@ -4289,15 +4331,15 @@ fn key_summary(command: &Commands, data: &Value) -> Option<String> {
         }
         return Some(text);
     }
-    match command {
-        KeySubcommand::Db { .. } => {
+    match shown {
+        KeyShown::Db => {
             let key = data["decrypt_key"].as_str()?;
             Some(format!(
                 "{}\ndecrypt_key: {key}\n",
                 tr("Database key obtained", "已获取数据库密钥")
             ))
         }
-        KeySubcommand::Image { .. } => {
+        KeyShown::Image => {
             let xor = &data["image_xor_key"];
             let aes = data["image_aes_key"].as_str()?;
             let mut text = format!(
@@ -4314,7 +4356,7 @@ fn key_summary(command: &Commands, data: &Value) -> Option<String> {
             }
             Some(text)
         }
-        KeySubcommand::ScanImage { .. } => None,
+        KeyShown::ScanImage => None,
     }
 }
 
@@ -4458,7 +4500,7 @@ mod tests {
             .unwrap()
             .command;
         let summary = key_summary(
-            &command,
+            Summary::of(&command).unwrap(),
             &json!({
                 "image_xor_key": 123, "image_aes_key": "0123456789abcdef",
                 "verified": false, "scan": {"truncated": true},
