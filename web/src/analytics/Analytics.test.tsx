@@ -10,19 +10,20 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const OVERALL: Overall = {
   totalMessages: 1000, textMessages: 700, imageMessages: 200, voiceMessages: 0, videoMessages: 0, emojiMessages: 60, otherMessages: 40,
   sentMessages: 400, receivedMessages: 600, firstMessageTime: 1_700_000_000, lastMessageTime: 1_760_000_000, activeDays: 60,
+  messageTypeCounts: { 1: 700, 3: 200, 47: 60 },
 };
 const SPREAD: TimeSpread = {
   hourlyDistribution: { 9: 100, 21: 600, 23: 300 },
   weekdayDistribution: { 1: 10, 7: 990 },
   monthlyDistribution: { '2024-11': 400, '2025-02': 600 },
 };
-const READY: AnalyticsState = {
+const READY = {
   status: 'ready', overall: OVERALL, spread: SPREAD,
   rankings: [
-    { username: 'wxid_a', displayName: '林沐', messageCount: 600, sentCount: 250, receivedCount: 350, lastMessageTime: 1_760_000_000 },
-    { username: 'wxid_b', displayName: '陈屿', messageCount: 400, sentCount: 150, receivedCount: 250, lastMessageTime: 1_750_000_000 },
+    { username: 'wxid_a', displayName: '林沐', wechatId: '', messageCount: 600, sentCount: 250, receivedCount: 350, lastMessageTime: 1_760_000_000 },
+    { username: 'wxid_b', displayName: '陈屿', wechatId: '', messageCount: 400, sentCount: 150, receivedCount: 250, lastMessageTime: 1_750_000_000 },
   ],
-};
+} satisfies AnalyticsState;
 
 describe('chat analytics', () => {
   it('lays out the hours, the weekdays from Monday, every month between the first and last, and the kinds there are', () => {

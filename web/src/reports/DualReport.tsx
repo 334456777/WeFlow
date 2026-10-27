@@ -26,7 +26,7 @@ export function FriendPicker({ selected, onSelect }: { selected: Friend | null; 
   const [people, retry] = useRead('friends:' + asked, async signal => {
     if (!asked) return [];
     const [ranked, all] = await Promise.all([getRankings(20, signal), getExcludeCandidates(signal)]);
-    const first = ranked.map<Candidate>(r => ({ username: r.username, displayName: r.displayName, avatarUrl: r.avatarUrl }));
+    const first = ranked.map<Candidate>(r => ({ username: r.username, displayName: r.displayName, avatarUrl: r.avatarUrl, wechatId: r.wechatId }));
     const seen = new Set(first.map(p => p.username));
     return [...first, ...all.filter(p => !seen.has(p.username))];
   });

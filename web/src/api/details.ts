@@ -1,7 +1,7 @@
 // The console's conversation details, members and media (#200).
 import { ApiError, get, type Params } from './client';
 import type * as Contract from './contract.gen';
-import type { GroupMember, ParsedMessage } from './messages';
+import type { ParsedMessage } from './messages';
 
 // `chat detail --extra` starts a command, and unlike the `/api/` reads it does not wait for a place: with the server's
 // reads (`--max-reads`, one per processor by default) all taken, it answers `busy` (429) at once. Read such routes one
@@ -28,23 +28,11 @@ function commandRead<T>(path: string, params: Params, signal?: AbortSignal): Pro
   return next;
 }
 
-/** `chat detail --fast`: who it is and how many messages (in the server's process). */
-export interface SessionDetail {
-  wxid: string;
-  displayName: string;
-  remark?: string;
-  nickName?: string;
-  alias?: string;
-  avatarUrl?: string;
-  messageCount: number;
-}
+/** `chat detail --fast`: who it is and how many messages (in the server's process; the contract's, #430). */
+export type SessionDetail = Contract.SessionFacts;
 
 /** `chat detail --extra`: the first and latest message, in Unix seconds, and where the messages are kept. */
-export interface SessionDetailExtra {
-  firstMessageTime: number | null;
-  latestMessageTime: number | null;
-  messageTables: { dbName: string; tableName: string; count: number }[];
-}
+export type SessionDetailExtra = Contract.SessionTables;
 
 export async function getDetail(sessionId: string, signal?: AbortSignal): Promise<SessionDetail> {
   const data = await get<SessionDetail | null>('api/chat/detail', { 'session-id': sessionId, fast: true }, signal);
@@ -57,38 +45,16 @@ export async function getDetailExtra(sessionId: string, signal?: AbortSignal): P
   return { firstMessageTime: null, latestMessageTime: null, messageTables: [], ...data };
 }
 
-/** A member of the members panel (`group members`). */
-export interface PanelMember extends GroupMember {
-  nickname?: string;
-  remark?: string;
-  alias?: string;
-  isOwner?: boolean;
-  isFriend?: boolean;
-}
+/** A member of the members panel (`group members`, the contract's). */
+export type PanelMember = Contract.GroupMember;
 
 export async function getPanel(chatroomId: string, signal?: AbortSignal): Promise<PanelMember[]> {
-  const data = await get<{ members?: PanelMember[] }>('api/group/members', { 'chatroom-id': chatroomId }, signal);
+  const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId }, signal);
   return data?.members ?? [];
 }
 
 /** `group member`: one member's messages in the group. */
-export interface MemberStats {
-  statistics: {
-    totalMessages: number;
-    textMessages: number;
-    imageMessages: number;
-    voiceMessages: number;
-    videoMessages: number;
-    emojiMessages: number;
-    otherMessages: number;
-    firstMessageTime: number | null;
-    lastMessageTime: number | null;
-    activeDays: number;
-  };
-  timeDistribution: Record<string, number>;
-  commonPhrases: { phrase: string; count: number }[];
-  commonEmojis: { emoji: string; count: number }[];
-}
+export type MemberStats = Contract.MemberAnalytics;
 
 export const getMemberStats = (chatroomId: string, username: string, signal?: AbortSignal) =>
   get<MemberStats>('api/group/member', { 'chatroom-id': chatroomId, username }, signal);

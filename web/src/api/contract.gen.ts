@@ -230,6 +230,349 @@ export interface Resource {
 /** What a message of `chat resources` holds. */
 export type ResourceKind = "image" | "video" | "voice" | "file";
 
+/** Whether a conversation is folded and muted, of `chat statuses`, which answers one for each username asked for. */
+export interface ChatStatus {
+  isFolded: boolean;
+  isMuted: boolean;
+}
+
+/** How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them. */
+export interface TabCounts {
+  private: number;
+  group: number;
+  official: number;
+  former_friend: number;
+}
+
+/** The days a conversation has messages on (`chat dates`), as `YYYY-MM-DD` in the server's time zone, oldest first. */
+export interface SessionDates {
+  sessionId: string;
+  dates: string[];
+}
+
+/** How many messages a conversation has on each day it has any (`chat date-counts`), by `YYYY-MM-DD`. */
+export interface SessionDateCounts {
+  sessionId: string;
+  counts: Record<string, number>;
+}
+
+/** A conversation's details (`chat detail`): its facts, and where its messages are kept. */
+export interface SessionDetail {
+  /** The conversation's username. */
+  wxid: string;
+  /** The remark, else the nickname, else the alias, else the username. */
+  displayName: string;
+  remark?: string;
+  nickName?: string;
+  alias?: string;
+  avatarUrl?: string;
+  messageCount: number;
+  /** The time of its first message; null when its tables do not say. */
+  firstMessageTime: number | null;
+  latestMessageTime: number | null;
+  messageTables: MessageTable[];
+}
+
+/** One of WeChat's tables that holds messages of a conversation. */
+export interface MessageTable {
+  /** The database's file name, such as `message_0.db`. */
+  dbName: string;
+  tableName: string;
+  count: number;
+}
+
+/** Who a conversation is with and how many messages it has (`chat detail --fast`). */
+export interface SessionFacts {
+  /** The conversation's username. */
+  wxid: string;
+  /** The remark, else the nickname, else the alias, else the username. */
+  displayName: string;
+  remark?: string;
+  nickName?: string;
+  alias?: string;
+  avatarUrl?: string;
+  messageCount: number;
+}
+
+/** Where a conversation's messages are kept (`chat detail --extra`, and `chat detail` without `fast`). */
+export interface SessionTables {
+  /** The time of its first message; null when its tables do not say. */
+  firstMessageTime: number | null;
+  latestMessageTime: number | null;
+  messageTables: MessageTable[];
+}
+
+/** Which files of a message's image are on this computer (`chat image-info`), and the sizes the message gives. */
+export interface ImageInfo {
+  /** The thumbnail a chat shows. */
+  thumb: boolean;
+  /** The image shown when it is opened. */
+  normal: boolean;
+  /** The original, once View original downloaded it. */
+  hd: boolean;
+  /** Bytes of the image; null when neither the message nor its file says. */
+  normalBytes: number | null;
+  /** Bytes of the original, as the message gives them even before it is downloaded. */
+  hdBytes: number | null;
+}
+
+/** A group chat of `group list`, the largest first. */
+export interface GroupChat {
+  /** The group's id, `…@chatroom`. */
+  username: string;
+  /** Its name, else its id. */
+  displayName: string;
+  memberCount: number;
+  avatarUrl?: string;
+}
+
+/**
+ * The members of a group (`group members`), as the members panel of the desktop app lists them: the owner first,
+ * then friends, then by how many messages they sent.
+ */
+export interface GroupMembers {
+  chatroomId: string;
+  count: number;
+  /** Whether the panel was kept from a request a short while before (`refresh=true` builds it again). */
+  fromCache: boolean;
+  /** When the panel was built, in Unix milliseconds. */
+  updatedAt: number;
+  members: GroupMember[];
+}
+
+/** A member of a group's members panel. */
+export interface GroupMember {
+  username: string;
+  /** Their name as WeChat shows it in the group. */
+  displayName: string;
+  /** The fields of their contact; empty when they are not a contact. */
+  nickname: string;
+  alias: string;
+  remark: string;
+  /** The name they gave themselves in this group; empty when none. */
+  groupNickname: string;
+  avatarUrl?: string;
+  isOwner: boolean;
+  isFriend: boolean;
+  /** How many messages they sent in the group; 0 unless `counts=true`. */
+  messageCount: number;
+}
+
+/** Who sent how many messages in a group (`group ranking`), the most first. */
+export interface GroupRank {
+  member: RankedMember;
+  messageCount: number;
+}
+
+/** A member of a ranking. */
+export interface RankedMember {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+/** How many messages a group has in each hour of the day (`group hours`). */
+export interface GroupHours {
+  /** By the hour, `"0"` to `"23"`, in the server's time zone. */
+  hourlyDistribution: Record<string, number>;
+}
+
+/** How many messages of each kind a group has (`group media`), the most first. */
+export interface GroupMedia {
+  typeCounts: MediaCount[];
+  total: number;
+}
+
+/** One kind of message and how many there are. */
+export interface MediaCount {
+  /** WeChat's type of the message, as `localType`; -1 for all the others together. */
+  type: number;
+  /** Its name as the desktop app shows it, in Chinese. */
+  name: string;
+  count: number;
+}
+
+/** What one member of a group sent (`group member`). */
+export interface MemberAnalytics {
+  statistics: MemberStatistics;
+  /** By the hour, `"0"` to `"23"`, in the server's time zone. */
+  timeDistribution: Record<string, number>;
+  /** What they said most, the most first, up to 10. */
+  commonPhrases: PhraseCount[];
+  commonEmojis: EmojiCount[];
+}
+
+/** The numbers of a member's messages. */
+export interface MemberStatistics {
+  totalMessages: number;
+  textMessages: number;
+  imageMessages: number;
+  voiceMessages: number;
+  videoMessages: number;
+  emojiMessages: number;
+  otherMessages: number;
+  sentMessages: number;
+  /** Always 0: a member's messages are all sent by them. */
+  receivedMessages: number;
+  /** The time of their first message; null when they sent none. */
+  firstMessageTime: number | null;
+  lastMessageTime: number | null;
+  activeDays: number;
+  /** By WeChat's type of the message, as `localType`. */
+  messageTypeCounts: Record<string, number>;
+}
+
+/** A phrase and how often it was said. */
+export interface PhraseCount {
+  phrase: string;
+  count: number;
+}
+
+/** An emoji and how often it was sent. */
+export interface EmojiCount {
+  emoji: string;
+  count: number;
+}
+
+/** A page of a member's messages in a group (`group member-messages`), newest first. */
+export interface MemberMessages {
+  messages: ChatMessage[];
+  hasMore: boolean;
+  /** Pass it as `cursor` for the next page. */
+  nextCursor: number;
+}
+
+/**
+ * A message as the chat window shows it (`chat messages --parsed` and the other parsed reads, #399): its text and the
+ * keys of its media, links, cards and so on, parsed from the row. An optional field is left out when the message has
+ * none; times are Unix seconds.
+ */
+export interface ChatMessage {
+  /** The message's id in its conversation's table; with `createTime`, the key of `chat message`. */
+  localId: number;
+  /** WeChat's id of the message, in decimal: a string, as it may pass 2^53. */
+  serverId: string;
+  /** WeChat's type of the message (1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message, 10000 system…). */
+  localType: number;
+  createTime: number;
+  /** WeChat's order of the messages of a conversation: the send time in milliseconds, plus a little. */
+  sortSeq: number;
+  /** 1 when I sent it, 0 when I received it; null when the row does not say. */
+  isSend: number | null;
+  /** Who sent it; null when the row does not say. */
+  senderUsername: string | null;
+  /** The text the chat window shows. */
+  parsedContent: string;
+  /** The message as WeChat keeps it (often XML). */
+  rawContent: string;
+  emojiCdnUrl?: string;
+  emojiMd5?: string;
+  quotedContent?: string;
+  quotedSender?: string;
+  imageMd5?: string;
+  imageDatName?: string;
+  videoMd5?: string;
+  voiceDurationSeconds?: number;
+  aesKey?: string;
+  encrypVer?: number;
+  cdnThumbUrl?: string;
+  cardUsername?: string;
+  cardNickname?: string;
+  cardAvatarUrl?: string;
+  locationLat?: number;
+  locationLng?: number;
+  locationPoiname?: string;
+  locationLabel?: string;
+  xmlType?: string;
+  linkTitle?: string;
+  linkUrl?: string;
+  linkThumb?: string;
+  appMsgKind?: string;
+  appMsgDesc?: string;
+  appMsgAppName?: string;
+  appMsgSourceName?: string;
+  appMsgSourceUsername?: string;
+  appMsgThumbUrl?: string;
+  appMsgMusicUrl?: string;
+  appMsgDataUrl?: string;
+  appMsgLocationLabel?: string;
+  finderNickname?: string;
+  finderUsername?: string;
+  finderCoverUrl?: string;
+  finderAvatar?: string;
+  finderDuration?: number;
+  musicAlbumUrl?: string;
+  musicUrl?: string;
+  giftImageUrl?: string;
+  giftWish?: string;
+  giftPrice?: string;
+  fileName?: string;
+  fileSize?: number;
+  fileExt?: string;
+  fileMd5?: string;
+  transferPayerUsername?: string;
+  transferReceiverUsername?: string;
+  chatRecordTitle?: string;
+  /** The message's key: the same message has the same key on every machine. It is opaque; only compare it. */
+  messageKey: string;
+}
+
+/** The private chats counted together (`analytics overall`), but for the people left out. */
+export interface OverallStatistics {
+  totalMessages: number;
+  textMessages: number;
+  imageMessages: number;
+  voiceMessages: number;
+  videoMessages: number;
+  emojiMessages: number;
+  otherMessages: number;
+  sentMessages: number;
+  receivedMessages: number;
+  /** The time of the first message; null without messages. */
+  firstMessageTime: number | null;
+  lastMessageTime: number | null;
+  /** The days with a message. */
+  activeDays: number;
+  /** By WeChat's type of the message, as `localType`. */
+  messageTypeCounts: Record<string, number>;
+}
+
+/** A private chat of `analytics rankings`, the one with the most messages first. */
+export interface ContactRank {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  /** The WeChat ID they chose, else the username when it is not a `wxid_…`; else empty. */
+  wechatId: string;
+  messageCount: number;
+  sentCount: number;
+  receivedCount: number;
+  /** The time of the last message; null without messages. */
+  lastMessageTime: number | null;
+}
+
+/** When the private chats' messages were sent (`analytics time`), in the server's time zone. */
+export interface TimeDistribution {
+  /** By the hour, `"0"` to `"23"`. */
+  hourlyDistribution: Record<string, number>;
+  /** By the day of the week, `"1"` (Monday) to `"7"` (Sunday). */
+  weekdayDistribution: Record<string, number>;
+  /** By the month, `YYYY-MM`. */
+  monthlyDistribution: Record<string, number>;
+}
+
+/**
+ * Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left
+ * out already.
+ */
+export interface ExcludeCandidate {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  /** As in a ranking. */
+  wechatId: string;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -281,8 +624,21 @@ export interface Failure {
 
 /** The `data` of the answer of each command the contract describes. */
 export interface Answers {
+  "analytics exclude-candidates": ExcludeCandidate[];
+  /** The usernames left out of the analytics, as saved */
+  "analytics excluded": string[];
+  "analytics overall": OverallStatistics;
+  "analytics rankings": ContactRank[];
+  "analytics time": TimeDistribution;
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
+  /** Each conversation asked for, with how many messages it has */
+  "chat counts": Record<string, number>;
+  "chat date-counts": SessionDateCounts;
+  "chat dates": SessionDates;
+  /** The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept */
+  "chat detail": SessionDetail | SessionFacts | SessionTables;
+  "chat image-info": ImageInfo;
   "chat latest": Row[];
   /** With `parsed=true`, the message as the chat window shows it; else its row and the message as the query commands list it */
   "chat message": ParsedMessage | MessageLookup;
@@ -292,4 +648,14 @@ export interface Answers {
   /** With `parsed=true`, the hits, each with its `_session_id`, as the chat window shows them; else the rows of WeChat's table, each with its `_cursor` */
   "chat search": ParsedMessage[] | Row[];
   "chat sessions": Session[];
+  /** Each username asked for, with whether its conversation is folded and muted */
+  "chat statuses": Record<string, ChatStatus>;
+  "chat tab-counts": TabCounts;
+  "group hours": GroupHours;
+  "group list": GroupChat[];
+  "group media": GroupMedia;
+  "group member": MemberAnalytics;
+  "group member-messages": MemberMessages;
+  "group members": GroupMembers;
+  "group ranking": GroupRank[];
 }

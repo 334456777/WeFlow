@@ -860,32 +860,19 @@ impl ServiceHub {
         let members: Vec<Value> = entries
             .iter()
             .map(|m| {
-                let s = |k: &str| m.get(k).and_then(Value::as_str).unwrap_or("").to_string();
                 let mut o = Map::new();
-                o.insert("wxid".into(), json!(s("username")));
-                o.insert(
-                    "displayName".into(),
-                    m.get("displayName").cloned().unwrap_or(Value::Null),
-                );
-                o.insert("nickname".into(), json!(s("nickname")));
-                o.insert("remark".into(), json!(s("remark")));
-                o.insert("alias".into(), json!(s("alias")));
-                o.insert("groupNickname".into(), json!(s("groupNickname")));
-                if let Some(a) = m.get("avatarUrl") {
-                    o.insert("avatarUrl".into(), a.clone());
+                o.insert("wxid".into(), json!(m.username));
+                o.insert("displayName".into(), json!(m.display_name));
+                o.insert("nickname".into(), json!(m.nickname));
+                o.insert("remark".into(), json!(m.remark));
+                o.insert("alias".into(), json!(m.alias));
+                o.insert("groupNickname".into(), json!(m.group_nickname));
+                if let Some(a) = &m.avatar_url {
+                    o.insert("avatarUrl".into(), json!(a));
                 }
-                o.insert(
-                    "isOwner".into(),
-                    json!(m.get("isOwner").and_then(Value::as_bool).unwrap_or(false)),
-                );
-                o.insert(
-                    "isFriend".into(),
-                    json!(m.get("isFriend").and_then(Value::as_bool).unwrap_or(false)),
-                );
-                o.insert(
-                    "messageCount".into(),
-                    json!(m.get("messageCount").and_then(Value::as_i64).unwrap_or(0)),
-                );
+                o.insert("isOwner".into(), json!(m.is_owner));
+                o.insert("isFriend".into(), json!(m.is_friend));
+                o.insert("messageCount".into(), json!(m.message_count));
                 Value::Object(o)
             })
             .collect();

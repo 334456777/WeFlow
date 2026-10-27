@@ -55,7 +55,7 @@ export function searchMessages(query: SearchQuery, offset: number, signal?: Abor
 
 /** How many messages each day of a conversation has (`YYYY-MM-DD` → count). */
 export async function getDateCounts(sessionId: string, signal?: AbortSignal): Promise<Record<string, number>> {
-  const data = await get<{ counts?: Record<string, number> }>('api/chat/date-counts', { 'session-id': sessionId }, signal);
+  const data = await get<Contract.SessionDateCounts | null>('api/chat/date-counts', { 'session-id': sessionId }, signal);
   return data?.counts ?? {};
 }
 
@@ -67,7 +67,7 @@ export interface GroupMember {
 }
 
 export async function getMembers(chatroomId: string, signal?: AbortSignal): Promise<GroupMember[]> {
-  const data = await get<{ members?: GroupMember[] }>('api/group/members', { 'chatroom-id': chatroomId }, signal);
+  const data = await get<Contract.GroupMembers | null>('api/group/members', { 'chatroom-id': chatroomId }, signal);
   return data?.members ?? [];
 }
 
@@ -81,7 +81,8 @@ export interface Contact {
 
 /** Which files WeChat keeps of a message's image are on this computer, and their sizes (bytes) as the message gives
  * them: the original's (`hd`) even before WeChat has downloaded it (#194). */
-export interface ImageInfo { thumb: boolean; normal: boolean; hd: boolean; normalBytes?: number | null; hdBytes?: number | null }
+/** Which files of an image are on the server's computer (the contract's, #430). */
+export type ImageInfo = Contract.ImageInfo;
 
 export function getImageInfo(sessionId: string, localId: number, createTime: number, signal?: AbortSignal): Promise<ImageInfo> {
   return get<ImageInfo>('api/chat/image-info', { 'session-id': sessionId, 'msg-id': localId, 'create-time': createTime }, signal);

@@ -178,7 +178,7 @@ fn a_local_id_shared_by_two_message_databases_is_told_apart() {
 #[test]
 fn dates_counts_statuses_and_tab_counts() {
     let (hub, _root) = common::mock_hub("n-dates");
-    let dates = hub.chat_dates("wxid_bob").unwrap();
+    let dates = json!(hub.chat_dates("wxid_bob").unwrap());
     let dates = dates["dates"].as_array().unwrap();
     assert_eq!(
         dates.len(),
@@ -186,7 +186,7 @@ fn dates_counts_statuses_and_tab_counts() {
         "five messages on four distinct days: {dates:?}"
     );
 
-    let per_day = hub.chat_date_counts("wxid_bob").unwrap();
+    let per_day = json!(hub.chat_date_counts("wxid_bob").unwrap());
     let total: i64 = per_day["counts"]
         .as_object()
         .unwrap()
@@ -200,23 +200,23 @@ fn dates_counts_statuses_and_tab_counts() {
         .unwrap();
     assert_eq!(
         (
-            counts["wxid_bob"].as_i64(),
-            counts["room1@chatroom"].as_i64(),
-            counts["nobody"].as_i64()
+            counts["wxid_bob"],
+            counts["room1@chatroom"],
+            counts["nobody"]
         ),
-        (Some(5), Some(3), Some(0))
+        (5, 3, 0)
     );
 
-    let st = hub
+    let st = json!(hub
         .chat_statuses(&strs(&["room1@chatroom", "wxid_bob"]))
-        .unwrap();
+        .unwrap());
     assert_eq!(
         st["room1@chatroom"],
         json!({"isFolded": true, "isMuted": true})
     );
     assert_eq!(st["wxid_bob"], json!({"isFolded": false, "isMuted": false}));
 
-    let tabs = hub.chat_tab_counts().unwrap();
+    let tabs = json!(hub.chat_tab_counts().unwrap());
     assert_eq!(tabs["group"], 1);
 }
 
@@ -385,7 +385,7 @@ fn date_range_and_sender_filters_apply() {
 #[test]
 fn overall_statistics_count_private_chats_by_type_and_direction() {
     let (hub, _root) = common::mock_hub("n-overall");
-    let s = hub.analytics_overall_statistics(false).unwrap();
+    let s = json!(hub.analytics_overall_statistics(false).unwrap());
     assert_eq!(
         s["totalMessages"], 5,
         "only private chats count: the group is excluded"
@@ -408,7 +408,7 @@ fn overall_statistics_count_private_chats_by_type_and_direction() {
 #[test]
 fn chat_detail_lists_shard_tables_with_counts_and_times() {
     let (hub, _root) = common::mock_hub("n-detail");
-    let d = hub.chat_detail("wxid_bob").unwrap();
+    let d = json!(hub.chat_detail("wxid_bob").unwrap());
     assert_eq!(d["displayName"], "Bobby");
     assert_eq!(d["avatarUrl"], "https://example.com/bob.png");
     assert_eq!(d["messageCount"], 5);
@@ -460,25 +460,20 @@ fn group_ranking_hours_and_media_mix() {
         .group_message_ranking("room1@chatroom", 10, 0, 0)
         .unwrap();
     assert_eq!(ranking.len(), 3);
-    assert!(ranking.iter().all(|r| r["messageCount"] == 1));
+    assert!(ranking.iter().all(|r| r.message_count == 1));
     let names: Vec<&str> = ranking
         .iter()
-        .map(|r| r["member"]["displayName"].as_str().unwrap())
+        .map(|r| r.member.display_name.as_str())
         .collect();
     for n in ["Bobby", "Me Nick", "Quiet"] {
         assert!(names.contains(&n), "{n} missing from {names:?}");
     }
     let hours = hub.group_active_hours("room1@chatroom", 0, 0).unwrap();
-    let total: i64 = hours["hourlyDistribution"]
-        .as_object()
-        .unwrap()
-        .values()
-        .map(|n| n.as_i64().unwrap())
-        .sum();
+    let total: i64 = hours.hourly_distribution.values().sum();
     assert_eq!(total, 3);
     let media = hub.group_media_stats("room1@chatroom", 0, 0).unwrap();
-    assert_eq!(media["total"], 3);
-    assert_eq!(media["typeCounts"][0]["type"], 1);
+    assert_eq!(media.total, 3);
+    assert_eq!(media.type_counts[0].kind, 1);
 }
 
 #[test]

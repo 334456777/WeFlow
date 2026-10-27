@@ -283,7 +283,7 @@ impl Read {
             Read::ChatContact { username } => hub.contact(username),
             Read::ChatContacts { parsed: false } => hub.contacts(),
             Read::ChatContacts { parsed: true } => Ok(json!(hub.chat_contacts_parsed()?)),
-            Read::ChatCounts { sessions } => hub.chat_counts(sessions),
+            Read::ChatCounts { sessions } => Ok(json!(hub.chat_counts(sessions)?)),
             Read::ChatSearch {
                 keyword,
                 session_id,
@@ -307,9 +307,9 @@ impl Read {
                     hits
                 })
             }
-            Read::ChatDates { session_id } => hub.chat_dates(session_id),
-            Read::ChatDateCounts { session_id } => hub.chat_date_counts(session_id),
-            Read::ChatDetailFast { session_id } => hub.chat_detail_fast(session_id),
+            Read::ChatDates { session_id } => Ok(json!(hub.chat_dates(session_id)?)),
+            Read::ChatDateCounts { session_id } => Ok(json!(hub.chat_date_counts(session_id)?)),
+            Read::ChatDetailFast { session_id } => Ok(json!(hub.chat_detail_fast(session_id)?)),
             Read::ChatResources {
                 session,
                 types,
@@ -332,7 +332,11 @@ impl Read {
                 session_id,
                 msg_id,
                 create_time,
-            } => hub.image_info_for_message(session_id, msg_id, *create_time),
+            } => Ok(json!(hub.image_info_for_message(
+                session_id,
+                msg_id,
+                *create_time
+            )?)),
             Read::GroupMembers {
                 chatroom_id,
                 counts,
@@ -340,9 +344,13 @@ impl Read {
             } => {
                 let (members, from_cache, updated_at) =
                     hub.group_members_panel(chatroom_id, *refresh, *counts)?;
-                Ok(
-                    json!({ "chatroomId": chatroom_id, "count": members.len(), "fromCache": from_cache, "updatedAt": updated_at, "members": members }),
-                )
+                Ok(json!(crate::contract::GroupMembers {
+                    chatroom_id: chatroom_id.clone(),
+                    count: members.len(),
+                    from_cache,
+                    updated_at,
+                    members,
+                }))
             }
             Read::SnsTimeline {
                 limit,
@@ -368,8 +376,8 @@ impl Read {
                 Some(u) => hub.sns_user_post_stats(u),
                 None => Ok(json!(hub.sns_user_post_counts(*prefer_cache)?)),
             },
-            Read::ChatStatuses { usernames } => hub.chat_statuses(usernames),
-            Read::ChatTabCounts => hub.chat_tab_counts(),
+            Read::ChatStatuses { usernames } => Ok(json!(hub.chat_statuses(usernames)?)),
+            Read::ChatTabCounts => Ok(json!(hub.chat_tab_counts()?)),
             Read::GroupList => Ok(json!(hub.group_chats()?)),
             Read::GroupRanking {
                 chatroom_id,
@@ -391,7 +399,7 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_active_hours(chatroom_id, b, e)
+                Ok(json!(hub.group_active_hours(chatroom_id, b, e)?))
             }
             Read::GroupMedia {
                 chatroom_id,
@@ -399,7 +407,7 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_media_stats(chatroom_id, b, e)
+                Ok(json!(hub.group_media_stats(chatroom_id, b, e)?))
             }
             Read::GroupMember {
                 chatroom_id,
@@ -408,7 +416,12 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_member_analytics(chatroom_id, username, b, e)
+                Ok(json!(hub.group_member_analytics(
+                    chatroom_id,
+                    username,
+                    b,
+                    e
+                )?))
             }
             Read::GroupMemberMessages {
                 chatroom_id,
@@ -419,14 +432,23 @@ impl Read {
                 end,
             } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
-                hub.group_member_messages(chatroom_id, username, b, e, *limit, *cursor)
+                Ok(json!(hub.group_member_messages(
+                    chatroom_id,
+                    username,
+                    b,
+                    e,
+                    *limit,
+                    *cursor
+                )?))
             }
-            Read::AnalyticsOverall { force } => hub.analytics_overall_statistics(*force),
+            Read::AnalyticsOverall { force } => {
+                Ok(json!(hub.analytics_overall_statistics(*force)?))
+            }
             Read::AnalyticsRankings { limit, start, end } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
                 Ok(json!(hub.analytics_contact_rankings(*limit, b, e)?))
             }
-            Read::AnalyticsTime => hub.analytics_time_distribution(),
+            Read::AnalyticsTime => Ok(json!(hub.analytics_time_distribution()?)),
             Read::AnalyticsExcluded => Ok(json!(hub.analytics_excluded_usernames()?)),
             Read::AnalyticsExcludeCandidates => Ok(json!(hub.analytics_exclude_candidates()?)),
             Read::BizAccounts => hub.biz_accounts(),

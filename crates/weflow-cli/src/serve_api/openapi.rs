@@ -458,7 +458,12 @@ pub(super) fn contract() -> &'static Contract {
     static CONTRACT: std::sync::OnceLock<Contract> = std::sync::OnceLock::new();
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
-        use weflow_core::contract::{Contact, MessageLookup, ParsedMessage, ResourcePage, Session};
+        use weflow_core::contract::{
+            ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
+            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, ResourcePage, Session,
+            SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
+            TimeDistribution,
+        };
         let mut generator = SchemaSettings::draft2020_12()
             .for_serialize()
             .with(|s| s.definitions_path = "/components/schemas".into())
@@ -496,6 +501,61 @@ pub(super) fn contract() -> &'static Contract {
             }),
         );
         data.insert("chat resources", of(generator.subschema_for::<ResourcePage>()));
+        // a map of the ids asked for
+        let by_id = |value: Value, what: &str| {
+            json!({ "type": "object", "description": what, "additionalProperties": value })
+        };
+        data.insert(
+            "chat statuses",
+            by_id(
+                of(generator.subschema_for::<ChatStatus>()),
+                "Each username asked for, with whether its conversation is folded and muted",
+            ),
+        );
+        data.insert(
+            "chat counts",
+            by_id(
+                json!({ "type": "integer" }),
+                "Each conversation asked for, with how many messages it has",
+            ),
+        );
+        data.insert("chat tab-counts", of(generator.subschema_for::<TabCounts>()));
+        data.insert("chat dates", of(generator.subschema_for::<SessionDates>()));
+        data.insert("chat date-counts", of(generator.subschema_for::<SessionDateCounts>()));
+        data.insert(
+            "chat detail",
+            json!({
+                "description": "The conversation's details; with `fast`, only its facts; with `extra` alone, only where its messages are kept",
+                "anyOf": [
+                    of(generator.subschema_for::<SessionDetail>()),
+                    of(generator.subschema_for::<SessionFacts>()),
+                    of(generator.subschema_for::<SessionTables>()),
+                ],
+            }),
+        );
+        data.insert("chat image-info", of(generator.subschema_for::<ImageInfo>()));
+        data.insert("group list", of(generator.subschema_for::<Vec<GroupChat>>()));
+        data.insert("group members", of(generator.subschema_for::<GroupMembers>()));
+        data.insert("group ranking", of(generator.subschema_for::<Vec<GroupRank>>()));
+        data.insert("group hours", of(generator.subschema_for::<GroupHours>()));
+        data.insert("group media", of(generator.subschema_for::<GroupMedia>()));
+        data.insert("group member", of(generator.subschema_for::<MemberAnalytics>()));
+        data.insert("group member-messages", of(generator.subschema_for::<MemberMessages>()));
+        data.insert("analytics overall", of(generator.subschema_for::<OverallStatistics>()));
+        data.insert("analytics rankings", of(generator.subschema_for::<Vec<ContactRank>>()));
+        data.insert("analytics time", of(generator.subschema_for::<TimeDistribution>()));
+        data.insert(
+            "analytics excluded",
+            json!({
+                "description": "The usernames left out of the analytics, as saved",
+                "type": "array",
+                "items": { "type": "string" },
+            }),
+        );
+        data.insert(
+            "analytics exclude-candidates",
+            of(generator.subschema_for::<Vec<ExcludeCandidate>>()),
+        );
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();

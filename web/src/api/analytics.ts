@@ -1,44 +1,14 @@
 // Chat analytics of the private chats (#207): `analytics overall`, `rankings`, `time`, and the people left out of them
 // (`analytics excluded`, `exclude-candidates`).
 import { call, get } from './client';
+import type * as Contract from './contract.gen';
 
-/** `analytics overall`: every private chat but those left out. */
-export interface Overall {
-  totalMessages: number;
-  textMessages: number;
-  imageMessages: number;
-  voiceMessages: number;
-  videoMessages: number;
-  emojiMessages: number;
-  otherMessages: number;
-  sentMessages: number;
-  receivedMessages: number;
-  /** Unix seconds; null without messages. */
-  firstMessageTime: number | null;
-  lastMessageTime: number | null;
-  /** Only an estimate, 20 for each month with messages, as the desktop app has it; not shown. */
-  activeDays: number;
-}
-
-export interface Ranked {
-  username: string;
-  displayName: string;
-  avatarUrl?: string;
-  messageCount: number;
-  sentCount: number;
-  receivedCount: number;
-  /** Unix seconds. */
-  lastMessageTime: number;
-}
-
+/** `analytics overall`: every private chat but those left out (the contract's types, #430). */
+export type Overall = Contract.OverallStatistics;
+export type Ranked = Contract.ContactRank;
 /** `analytics time`: the keys are hours 0–23, weekdays 1 (Monday) – 7 (Sunday) and months `YYYY-MM`. */
-export interface TimeSpread {
-  hourlyDistribution: Record<string, number>;
-  weekdayDistribution: Record<string, number>;
-  monthlyDistribution: Record<string, number>;
-}
-
-export interface Candidate { username: string; displayName: string; avatarUrl?: string; wechatId?: string }
+export type TimeSpread = Contract.TimeDistribution;
+export type Candidate = Contract.ExcludeCandidate;
 
 /** With `force`, read every chat again rather than the aggregate kept from last time. */
 export const getOverall = (force: boolean, signal?: AbortSignal) => get<Overall>('api/analytics/overall', { force: force || undefined }, signal);

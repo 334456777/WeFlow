@@ -5,10 +5,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
 use super::*;
 use crate::chat_msg;
+use crate::contract::{
+    EmojiCount, GroupChat, GroupHours, GroupMedia, GroupMember, GroupRank, MediaCount,
+    MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
+};
 use crate::message::rx;
 
 const PANEL_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
@@ -16,7 +21,7 @@ const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqma
 
 #[derive(Default)]
 pub(crate) struct GroupState {
-    panel: HashMap<String, (Instant, i64, Vec<Value>)>,
+    panel: HashMap<String, (Instant, i64, Vec<GroupMember>)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -501,7 +506,7 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         chatroom_id: &str,
         include_counts: bool,
-    ) -> AppResult<Vec<Value>> {
+    ) -> AppResult<Vec<GroupMember>> {
         let members = self.members_of(wcdb, chatroom_id)?;
         if members.is_empty() {
             return Ok(Vec::new());
@@ -561,7 +566,7 @@ impl ServiceHub {
                 .unwrap_or_default(),
         );
 
-        let mut data: Vec<(Value, bool, bool, i64, String)> = Vec::new();
+        let mut data: Vec<(GroupMember, String)> = Vec::new();
         for member in &members {
             let wxid = pick_str(member, &["username"]);
             if wxid.is_empty() {
@@ -609,33 +614,37 @@ impl ServiceHub {
                 .copied()
                 .max()
                 .unwrap_or(0);
-            let mut o = Map::new();
-            o.insert("username".into(), json!(wxid));
-            o.insert("displayName".into(), json!(display_name));
-            o.insert("nickname".into(), json!(nickname));
-            o.insert("alias".into(), json!(alias));
-            o.insert("remark".into(), json!(remark));
-            o.insert("groupNickname".into(), json!(group_nickname));
-            if let Some(a) = member.get("avatarUrl").filter(|v| !v.is_null()) {
-                o.insert("avatarUrl".into(), a.clone());
-            }
-            o.insert("isOwner".into(), json!(is_owner));
-            o.insert("isFriend".into(), json!(is_friend));
-            o.insert("messageCount".into(), json!(count));
-            data.push((Value::Object(o), is_owner, is_friend, count, display_name));
+            let entry = GroupMember {
+                username: wxid,
+                display_name: display_name.clone(),
+                nickname,
+                alias,
+                remark,
+                group_nickname,
+                avatar_url: member
+                    .get("avatarUrl")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                is_owner,
+                is_friend,
+                message_count: count,
+            };
+            data.push((entry, display_name));
         }
         if include_counts && !my_wxid.is_empty() {
-            if let Some((_, _, _, count, _)) = data.iter().find(|(v, ..)| {
-                clean_account_dir_name(v["username"].as_str().unwrap_or("")) == my_wxid
-            }) {
-                let _ = self.set_group_hint(chatroom_id, *count);
+            if let Some((m, _)) = data
+                .iter()
+                .find(|(m, _)| clean_account_dir_name(&m.username) == my_wxid)
+            {
+                let _ = self.set_group_hint(chatroom_id, m.message_count);
             }
         }
-        data.sort_by(|a, b| {
-            b.1.cmp(&a.1)
-                .then(b.2.cmp(&a.2))
-                .then(b.3.cmp(&a.3))
-                .then_with(|| crate::collate::compare_zh(&a.4, &b.4))
+        data.sort_by(|(a, an), (b, bn)| {
+            b.is_owner
+                .cmp(&a.is_owner)
+                .then(b.is_friend.cmp(&a.is_friend))
+                .then(b.message_count.cmp(&a.message_count))
+                .then_with(|| crate::collate::compare_zh(an, bn))
         });
         Ok(data.into_iter().map(|d| d.0).collect())
     }
@@ -646,7 +655,7 @@ impl ServiceHub {
         chatroom_id: &str,
         force_refresh: bool,
         include_counts: bool,
-    ) -> AppResult<(Vec<Value>, bool, i64)> {
+    ) -> AppResult<(Vec<GroupMember>, bool, i64)> {
         let chatroom_id = chatroom_id.trim();
         if chatroom_id.is_empty() {
             return Err(AppError::usage("chatroom id must not be empty"));
@@ -688,7 +697,7 @@ impl ServiceHub {
     }
 
     /// `getGroupChats`
-    pub fn group_chats(&self) -> AppResult<Vec<Value>> {
+    pub fn group_chats(&self) -> AppResult<Vec<GroupChat>> {
         let wcdb = self.open_wcdb()?;
         let sessions = self.wrap_native(wcdb.sessions())?;
         let ids: Vec<String> = sessions
@@ -705,7 +714,7 @@ impl ServiceHub {
             .and_then(|v| v.as_object().cloned())
             .unwrap_or_default();
         let book = self.contact_book(&wcdb, &ids);
-        let mut groups: Vec<(Value, i64)> = ids
+        let mut groups: Vec<GroupChat> = ids
             .iter()
             .map(|id| {
                 let c = book.get(id);
@@ -713,19 +722,16 @@ impl ServiceHub {
                     .and_then(|c| c.display_name.clone())
                     .filter(|d| !d.is_empty())
                     .unwrap_or_else(|| id.clone());
-                let count = counts.get(id).and_then(Value::as_i64).unwrap_or(0);
-                let mut o = Map::new();
-                o.insert("username".into(), json!(id));
-                o.insert("displayName".into(), json!(display));
-                o.insert("memberCount".into(), json!(count));
-                if let Some(a) = c.and_then(|c| c.avatar_url.clone()) {
-                    o.insert("avatarUrl".into(), json!(a));
+                GroupChat {
+                    username: id.clone(),
+                    display_name: display,
+                    member_count: counts.get(id).and_then(Value::as_i64).unwrap_or(0),
+                    avatar_url: c.and_then(|c| c.avatar_url.clone()),
                 }
-                (Value::Object(o), count)
             })
             .collect();
-        groups.sort_by_key(|a| std::cmp::Reverse(a.1));
-        Ok(groups.into_iter().map(|g| g.0).collect())
+        groups.sort_by_key(|g| std::cmp::Reverse(g.member_count));
+        Ok(groups)
     }
 
     /// `getGroupMembers` (full member records)
@@ -861,7 +867,7 @@ impl ServiceHub {
         limit: usize,
         start: i64,
         end: i64,
-    ) -> AppResult<Vec<Value>> {
+    ) -> AppResult<Vec<GroupRank>> {
         let wcdb = self.open_wcdb()?;
         let d = self.group_stats_data(&wcdb, chatroom_id, start, end)?;
         let Some(senders) = d
@@ -898,43 +904,51 @@ impl ServiceHub {
         let (names, avatars) = self.names_and_avatars(&wcdb, &names_in);
         Ok(rankings
             .into_iter()
-            .map(|(username, count)| {
-                let mut member = Map::new();
-                member.insert("username".into(), json!(username));
-                member.insert(
-                    "displayName".into(),
-                    json!(names
+            .map(|(username, count)| GroupRank {
+                member: RankedMember {
+                    display_name: names
                         .get(&username)
                         .filter(|n| !n.is_empty())
                         .cloned()
-                        .unwrap_or_else(|| username.clone())),
-                );
-                if let Some(a) = avatars.get(&username).filter(|a| !a.is_empty()) {
-                    member.insert("avatarUrl".into(), json!(a));
-                }
-                json!({ "member": member, "messageCount": count })
+                        .unwrap_or_else(|| username.clone()),
+                    avatar_url: avatars.get(&username).filter(|a| !a.is_empty()).cloned(),
+                    username,
+                },
+                message_count: count,
             })
             .collect())
     }
 
     /// `getGroupActiveHours`
-    pub fn group_active_hours(&self, chatroom_id: &str, start: i64, end: i64) -> AppResult<Value> {
+    pub fn group_active_hours(
+        &self,
+        chatroom_id: &str,
+        start: i64,
+        end: i64,
+    ) -> AppResult<GroupHours> {
         let wcdb = self.open_wcdb()?;
         let d = self.group_stats_data(&wcdb, chatroom_id, start, end)?;
         let hourly = d.get("hourly");
-        let mut dist = Map::new();
+        let mut dist = IndexMap::new();
         for i in 0..24 {
             let v = hourly
                 .and_then(|h| h.get(i.to_string()).or_else(|| h.get(i)))
                 .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
                 .unwrap_or(0);
-            dist.insert(i.to_string(), json!(v));
+            dist.insert(i.to_string(), v);
         }
-        Ok(json!({ "hourlyDistribution": dist }))
+        Ok(GroupHours {
+            hourly_distribution: dist,
+        })
     }
 
     /// `getGroupMediaStats`
-    pub fn group_media_stats(&self, chatroom_id: &str, start: i64, end: i64) -> AppResult<Value> {
+    pub fn group_media_stats(
+        &self,
+        chatroom_id: &str,
+        start: i64,
+        end: i64,
+    ) -> AppResult<GroupMedia> {
         let wcdb = self.open_wcdb()?;
         let d = self.group_stats_data(&wcdb, chatroom_id, start, end)?;
         let raw = d
@@ -984,9 +998,13 @@ impl ServiceHub {
         }
         media.sort_by_key(|a| std::cmp::Reverse(a.2));
         let total: i64 = media.iter().map(|m| m.2).sum();
-        Ok(
-            json!({ "typeCounts": media.iter().map(|(t, n, c)| json!({ "type": t, "name": n, "count": c })).collect::<Vec<_>>(), "total": total }),
-        )
+        Ok(GroupMedia {
+            type_counts: media
+                .into_iter()
+                .map(|(kind, name, count)| MediaCount { kind, name, count })
+                .collect(),
+            total,
+        })
     }
 
     fn row_sender(&self, row: &Value, my_wxid: &str) -> String {
@@ -1093,7 +1111,7 @@ impl ServiceHub {
         member: &str,
         start: i64,
         end: i64,
-    ) -> AppResult<Value> {
+    ) -> AppResult<MemberAnalytics> {
         use chrono::{Datelike, Local, TimeZone, Timelike};
         let wcdb = self.open_wcdb()?;
         let (chatroom_id, member) = (chatroom_id.trim(), member.trim());
@@ -1225,26 +1243,39 @@ impl ServiceHub {
                 v.truncate(n);
                 v
             };
-        let mut dist = Map::new();
-        for (i, c) in hourly.iter().enumerate() {
-            dist.insert(i.to_string(), json!(c));
-        }
-        let mut tc = Map::new();
-        for (k, v) in &type_counts {
-            tc.insert(k.to_string(), json!(v));
-        }
-        Ok(json!({
-            "statistics": {
-                "totalMessages": total, "textMessages": text, "imageMessages": image, "voiceMessages": voice,
-                "videoMessages": video, "emojiMessages": emoji, "otherMessages": other,
-                "sentMessages": sent, "receivedMessages": 0,
-                "firstMessageTime": first, "lastMessageTime": last,
-                "activeDays": days.len(), "messageTypeCounts": tc
+        Ok(MemberAnalytics {
+            statistics: MemberStatistics {
+                total_messages: total,
+                text_messages: text,
+                image_messages: image,
+                voice_messages: voice,
+                video_messages: video,
+                emoji_messages: emoji,
+                other_messages: other,
+                sent_messages: sent,
+                received_messages: 0,
+                first_message_time: first,
+                last_message_time: last,
+                active_days: days.len(),
+                message_type_counts: type_counts
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), *v))
+                    .collect(),
             },
-            "timeDistribution": dist,
-            "commonPhrases": top(&phrases, &phrase_order, 10).into_iter().map(|(p, c)| json!({ "phrase": p, "count": c })).collect::<Vec<_>>(),
-            "commonEmojis": top(&emojis, &emoji_order, 10).into_iter().map(|(e, c)| json!({ "emoji": e, "count": c })).collect::<Vec<_>>()
-        }))
+            time_distribution: hourly
+                .iter()
+                .enumerate()
+                .map(|(i, c)| (i.to_string(), *c))
+                .collect(),
+            common_phrases: top(&phrases, &phrase_order, 10)
+                .into_iter()
+                .map(|(phrase, count)| PhraseCount { phrase, count })
+                .collect(),
+            common_emojis: top(&emojis, &emoji_order, 10)
+                .into_iter()
+                .map(|(emoji, count)| EmojiCount { emoji, count })
+                .collect(),
+        })
     }
 
     fn collect_member_messages(
@@ -1308,7 +1339,7 @@ impl ServiceHub {
         end: i64,
         limit: usize,
         cursor_in: usize,
-    ) -> AppResult<Value> {
+    ) -> AppResult<MemberMessages> {
         let (chatroom_id, member) = (chatroom_id.trim(), member.trim());
         if chatroom_id.is_empty() {
             return Err(AppError::usage("chatroom id must not be empty"));
@@ -1394,7 +1425,11 @@ impl ServiceHub {
         })();
         let _ = wcdb.close_message_cursor(db_cursor);
         result?;
-        Ok(json!({ "messages": matched, "hasMore": has_more, "nextCursor": cursor }))
+        Ok(MemberMessages {
+            messages: matched,
+            has_more,
+            next_cursor: cursor,
+        })
     }
 
     /// `exportGroupMemberMessages`: CSV (BOM) or XLSX depending on the extension.

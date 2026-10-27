@@ -1363,7 +1363,7 @@ impl ServiceHub {
         session_id: &str,
         msg_id: &str,
         create_time: Option<i64>,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::ImageInfo> {
         let (payload, content) = self.image_payload_and_content(session_id, msg_id, create_time)?;
         let files = self.dat_files(&payload).unwrap_or_default();
         let attr = |name: &str| -> Option<u64> {
@@ -1380,13 +1380,13 @@ impl ServiceHub {
                 .and_then(|p| std::fs::metadata(p).ok())
                 .map(|m| m.len())
         };
-        Ok(json!({
-            "thumb": files.thumb.is_some(),
-            "normal": files.base.is_some(),
-            "hd": files.hd.is_some(),
-            "normalBytes": attr("length").or(size(&files.base)),
-            "hdBytes": attr("hdlength").or(size(&files.hd)),
-        }))
+        Ok(crate::contract::ImageInfo {
+            thumb: files.thumb.is_some(),
+            normal: files.base.is_some(),
+            hd: files.hd.is_some(),
+            normal_bytes: attr("length").or(size(&files.base)),
+            hd_bytes: attr("hdlength").or(size(&files.hd)),
+        })
     }
 
     /// The `.dat` files of each rendition of `p`'s image, chosen as [`Self::select_best_dat`] chooses among them.
