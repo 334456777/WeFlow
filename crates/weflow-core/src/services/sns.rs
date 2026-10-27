@@ -421,7 +421,7 @@ impl ServiceHub {
     pub fn sns_export_stats(&self, fast: bool) -> AppResult<SnsStats> {
         let (allow_fallback, prefer_cache) = if fast { (false, true) } else { (true, false) };
         let my_wxid = Some(self.my_wxid_cleaned()).filter(|w| !w.trim().is_empty());
-        let cached = self.sns_state.lock().unwrap().export_stats.clone();
+        let cached = self.sns_state.lock().unwrap().export_stats;
         if prefer_cache {
             if let Some((v, at)) = &cached {
                 if at.elapsed() <= EXPORT_STATS_TTL {
