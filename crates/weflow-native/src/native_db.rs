@@ -276,7 +276,7 @@ impl NativeAccount {
     pub(crate) fn snapshot_connections(&self, path: &Path) -> usize {
         self.cache
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .entries
             .get(path)
             .map_or(0, |s| s.conns.len())

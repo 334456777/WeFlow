@@ -1311,7 +1311,7 @@ impl PushBroker {
             .filter(|n| rx(r"^[a-zA-Z0-9._-]+$").is_match(n))
             .unwrap_or("message.new")
             .to_string();
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().expect("lock poisoned");
         inner.next_id += 1;
         let id = inner.next_id;
         let body = std::sync::Arc::new(format!(
@@ -1333,7 +1333,7 @@ impl PushBroker {
 
     /// Buffered events newer than `last_id` (everything when `last_id` is 0).
     pub fn replay_since(&self, last_id: u64) -> Vec<(u64, std::sync::Arc<String>)> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().expect("lock poisoned");
         Self::prune(&mut inner);
         inner
             .buffer

@@ -995,7 +995,7 @@ async fn route(st: &AppState, req: Request) -> Response {
         .strip_prefix("/ui")
         .filter(|r| r.is_empty() || r.starts_with('/'))
     {
-        let shown = st.cfg.ui.read().unwrap().clone();
+        let shown = st.cfg.ui.read().expect("lock poisoned").clone();
         return match &shown {
             Some(dir) => ui::serve(dir, &parts.method, rest, parts.uri.query()).await,
             None => error_response(
@@ -1005,7 +1005,10 @@ async fn route(st: &AppState, req: Request) -> Response {
             ),
         };
     }
-    if path == "/" && st.cfg.ui.read().unwrap().is_some() && parts.method == Method::GET {
+    if path == "/"
+        && st.cfg.ui.read().expect("lock poisoned").is_some()
+        && parts.method == Method::GET
+    {
         let to = format!(
             "/ui/{}",
             parts

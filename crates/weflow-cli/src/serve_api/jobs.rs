@@ -157,9 +157,14 @@ impl Job {
         }
     }
 
-    /// The job as JSON; `full` adds the command's result.
-    pub(super) fn to_json(&self, full: bool) -> Value {
-        self.json_of(&self.state.lock().unwrap(), full)
+    /// The job as JSON, without the command's result.
+    pub(super) fn to_json(&self) -> Value {
+        self.json_of(&self.state.lock().expect("lock poisoned"), false)
+    }
+
+    /// The job as JSON, with the command's result once it has one.
+    pub(super) fn to_json_with_result(&self) -> Value {
+        self.json_of(&self.state.lock().expect("lock poisoned"), true)
     }
 
     fn json_of(&self, st: &State, full: bool) -> Value {
@@ -182,12 +187,12 @@ impl Job {
     }
 
     pub(super) fn status(&self) -> Status {
-        self.state.lock().unwrap().status
+        self.state.lock().expect("lock poisoned").status
     }
 
     /// The file the job wrote, once it succeeded with one.
     pub(super) fn file(&self) -> Option<PathBuf> {
-        self.state.lock().unwrap().file.clone()
+        self.state.lock().expect("lock poisoned").file.clone()
     }
 
     /// Records an event and sends it to the subscribers, under the lock of `st`, so a subscriber sees each event
@@ -209,7 +214,7 @@ impl Job {
 
     /// Queued → running; a job cancelled meanwhile stays cancelled.
     fn set_running(&self) -> bool {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lock().expect("lock poisoned");
         if st.status != Status::Queued {
             return false;
         }
@@ -230,7 +235,7 @@ impl Job {
         if line.trim().is_empty() {
             return;
         }
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lock().expect("lock poisoned");
         if st.status.finished() {
             return;
         }
@@ -273,7 +278,7 @@ impl Job {
             }
             _ => None,
         };
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lock().expect("lock poisoned");
         if st.status.finished() {
             return false;
         }
@@ -293,7 +298,7 @@ impl Job {
 
     /// The events after `after` (an SSE `Last-Event-ID`), and the new ones.
     pub(super) fn subscribe(&self, after: u64) -> Subscription {
-        let st = self.state.lock().unwrap();
+        let st = self.state.lock().expect("lock poisoned");
         Subscription {
             replay: st
                 .events
@@ -308,7 +313,7 @@ impl Job {
 
     /// The events kept after `after`, for a subscriber that fell behind.
     pub(super) fn kept_after(&self, after: u64) -> Vec<Event> {
-        let st = self.state.lock().unwrap();
+        let st = self.state.lock().expect("lock poisoned");
         st.events
             .iter()
             .filter(|e| e.seq > after)
@@ -347,19 +352,24 @@ impl Jobs {
     pub(super) fn get(&self, id: &str) -> Option<Arc<Job>> {
         self.list
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .iter()
             .find(|j| j.id == id)
             .cloned()
     }
 
     pub(super) fn all(&self) -> Vec<Arc<Job>> {
-        self.list.lock().unwrap().iter().cloned().collect()
+        self.list
+            .lock()
+            .expect("lock poisoned")
+            .iter()
+            .cloned()
+            .collect()
     }
 
     /// Forgets the oldest finished jobs beyond [`KEEP_FINISHED`].
     fn prune(&self) {
-        let mut list = self.list.lock().unwrap();
+        let mut list = self.list.lock().expect("lock poisoned");
         let mut finished = list.iter().filter(|j| j.status().finished()).count();
         list.retain(|j| {
             if finished > KEEP_FINISHED && j.status().finished() {
@@ -386,7 +396,10 @@ impl Jobs {
             .chain(args.iter().cloned())
             .collect();
         let job = Arc::new(Job::new(command, file_out));
-        self.list.lock().unwrap().push_back(job.clone());
+        self.list
+            .lock()
+            .expect("lock poisoned")
+            .push_back(job.clone());
         let jobs = self.clone();
         let running = job.clone();
         let cancelled = job.cancel.subscribe();
@@ -404,7 +417,10 @@ impl Jobs {
     pub(super) async fn cancel_or_forget(&self, job: &Arc<Job>) -> Ended {
         let mut events = job.sender.subscribe();
         if job.status().finished() {
-            self.list.lock().unwrap().retain(|j| !Arc::ptr_eq(j, job));
+            self.list
+                .lock()
+                .expect("lock poisoned")
+                .retain(|j| !Arc::ptr_eq(j, job));
             job.remove_folder();
             return Ended::Forgotten;
         }
@@ -600,10 +616,10 @@ mod tests {
     fn a_finished_job_reports_its_result() {
         let job = job();
         assert!(job.finish(Status::Succeeded, Some(0), 200, succeeded(1)));
-        let doc = job.to_json(true);
+        let doc = job.to_json_with_result();
         assert_eq!(doc["status"], "succeeded");
         assert_eq!(doc["result"]["data"], 1);
-        assert!(job.to_json(false).get("result").is_none());
+        assert!(job.to_json().get("result").is_none());
         let st = job.state.lock().unwrap();
         let last = st.events.back().unwrap();
         assert!(last.is_result());
@@ -619,14 +635,14 @@ mod tests {
         let job = job();
         job.stderr_line(r#"{"type":"progress","current":1}"#);
         assert!(job.finish(Status::Succeeded, Some(0), 200, succeeded(1)));
-        let ended = job.to_json(true);
+        let ended = job.to_json_with_result();
         let events = job.state.lock().unwrap().events.len();
         assert!(!job.finish(Status::Cancelled, None, 499, cancelled_result()));
         assert!(!job.finish(Status::Failed, Some(1), 500, succeeded(2)));
         job.stderr_line(r#"{"type":"progress","current":2}"#);
         job.stderr_line("late text");
         assert!(!job.set_running());
-        assert_eq!(job.to_json(true), ended);
+        assert_eq!(job.to_json_with_result(), ended);
         assert_eq!(job.state.lock().unwrap().events.len(), events);
     }
 
@@ -690,7 +706,7 @@ mod tests {
             jobs.cancel_or_forget(&job).await,
             Ended::Cancelled
         ));
-        let doc = job.to_json(true);
+        let doc = job.to_json_with_result();
         assert_eq!(doc["status"], "cancelled");
         assert_eq!(doc["httpStatus"], 499);
         assert_eq!(doc["startedAt"], Value::Null);
@@ -699,7 +715,7 @@ mod tests {
             Ended::Forgotten
         ));
         assert!(jobs.get(&job.id).is_none());
-        assert_eq!(job.to_json(true), doc);
+        assert_eq!(job.to_json_with_result(), doc);
     }
 
     #[tokio::test]
@@ -721,7 +737,7 @@ mod tests {
         tokio::time::timeout(std::time::Duration::from_secs(10), ended)
             .await
             .expect("the job ends");
-        let doc = job.to_json(true);
+        let doc = job.to_json_with_result();
         assert_eq!(doc["status"], "failed");
         assert_eq!(doc["result"]["error"]["code"], "runtime_error");
     }

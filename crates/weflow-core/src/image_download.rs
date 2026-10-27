@@ -145,7 +145,7 @@ impl ImageAutoDownload {
 
     fn check_and_hook(&self, manual_start: bool) -> Value {
         let pid = find_main_wechat_pid();
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().expect("lock poisoned");
         let Some(pid) = pid else {
             if inner.hooked {
                 Self::unhook_locked(&mut inner);
@@ -194,7 +194,7 @@ impl ImageAutoDownload {
     /// `image:startAutoDownload`
     pub fn start(&self, whitelist: Vec<String>) -> Value {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock().expect("lock poisoned");
             if !self.ensure_loaded(&mut inner) {
                 return json!({ "success": false, "error": "core component initialization failed" });
             }
@@ -225,7 +225,7 @@ impl ImageAutoDownload {
 
     /// `image:stopAutoDownload`
     pub fn stop(&self) -> Value {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().expect("lock poisoned");
         if let Some(stop) = inner.poll_stop.take() {
             stop.store(true, Ordering::Relaxed);
         }
@@ -235,7 +235,7 @@ impl ImageAutoDownload {
 
     /// `image:getAutoDownloadStatus`
     pub fn status(&self) -> Value {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().expect("lock poisoned");
         json!({ "isHooked": inner.hooked, "pid": inner.pid, "supported": supported() })
     }
 }

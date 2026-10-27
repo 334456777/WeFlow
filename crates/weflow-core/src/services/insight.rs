@@ -172,7 +172,7 @@ impl ServiceHub {
 
     /// `getTodayStats`
     pub fn insight_today_stats(&self) -> Vec<InsightTodayStat> {
-        let mut st = self.insight_state.lock().unwrap();
+        let mut st = self.insight_state.lock().expect("lock poisoned");
         let today = start_of_day();
         if today > st.today_date {
             st.today_date = today;
@@ -416,7 +416,7 @@ impl ServiceHub {
 
     fn insight_sessions(&self, force: bool) -> Vec<Session> {
         {
-            let st = self.insight_state.lock().unwrap();
+            let st = self.insight_state.lock().expect("lock poisoned");
             if let (false, Some((s, at))) = (force, &st.session_cache) {
                 if at.elapsed() < std::time::Duration::from_secs(15 * 60) {
                     return s.clone();
@@ -425,14 +425,16 @@ impl ServiceHub {
         }
         match self.chat_sessions_list() {
             Ok(list) => {
-                self.insight_state.lock().unwrap().session_cache =
-                    Some((list.clone(), std::time::Instant::now()));
+                self.insight_state
+                    .lock()
+                    .expect("lock poisoned")
+                    .session_cache = Some((list.clone(), std::time::Instant::now()));
                 list
             }
             Err(_) => self
                 .insight_state
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .session_cache
                 .as_ref()
                 .map(|(s, _)| s.clone())
@@ -783,7 +785,7 @@ impl ServiceHub {
                 );
             }
         }
-        let mut st = self.insight_state.lock().unwrap();
+        let mut st = self.insight_state.lock().expect("lock poisoned");
         let today = start_of_day();
         if today > st.today_date {
             st.today_date = today;
@@ -946,7 +948,7 @@ impl ServiceHub {
                         - self
                             .insight_state
                             .lock()
-                            .unwrap()
+                            .expect("lock poisoned")
                             .last_activity
                             .get(sid)
                             .copied()
@@ -964,7 +966,7 @@ impl ServiceHub {
                 let Some(m) = latest.last() else { continue };
                 let ts = m.create_time;
                 {
-                    let mut st = self.insight_state.lock().unwrap();
+                    let mut st = self.insight_state.lock().expect("lock poisoned");
                     if ts <= st.last_seen.get(sid).copied().unwrap_or(0) {
                         continue;
                     }
@@ -996,7 +998,7 @@ impl ServiceHub {
             let sid = s.username.trim().to_string();
             let ts = s.last_timestamp;
             {
-                let mut st = self.insight_state.lock().unwrap();
+                let mut st = self.insight_state.lock().expect("lock poisoned");
                 if ts <= st.last_seen.get(&sid).copied().unwrap_or(0) {
                     continue;
                 }
@@ -1007,7 +1009,7 @@ impl ServiceHub {
             }
             self.insight_state
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .last_activity
                 .insert(sid.clone(), now);
             let name = s.display_name.clone();

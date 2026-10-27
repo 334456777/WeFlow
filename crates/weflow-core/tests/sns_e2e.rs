@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 use weflow_core::isaac64;
-use weflow_core::services::{SnsExportOptions, SnsProxyResult};
+use weflow_core::services::{Freshness, SnsExportOptions, SnsProxyResult};
 
 /// (path, extra headers, body)
 type Route = (&'static str, Vec<(&'static str, &'static str)>, Vec<u8>);
@@ -76,13 +76,13 @@ fn stats_usernames_and_caches() {
         hub.sns_usernames_list().unwrap(),
         vec!["wxid_bob", "wxid_carol", "wxid_me"]
     );
-    let stats = hub.sns_export_stats(false).unwrap();
+    let stats = hub.sns_export_stats(Freshness::Fresh).unwrap();
     assert_eq!(stats.total_posts, 5);
     assert_eq!(stats.total_friends, 3);
     assert_eq!(stats.my_posts, Some(2));
     // fast path serves the cached value
-    assert_eq!(hub.sns_export_stats(true).unwrap(), stats);
-    let counts = hub.sns_user_post_counts(false).unwrap();
+    assert_eq!(hub.sns_export_stats(Freshness::Cached).unwrap(), stats);
+    let counts = hub.sns_user_post_counts(Freshness::Fresh).unwrap();
     assert_eq!(
         (counts["wxid_bob"], counts["wxid_carol"], counts["wxid_me"]),
         (2, 1, 2)

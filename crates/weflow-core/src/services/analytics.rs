@@ -138,7 +138,7 @@ impl ServiceHub {
 
     /// `clearCache`
     pub fn analytics_clear_cache(&self) -> AppResult<()> {
-        self.analytics_state.lock().unwrap().cache = None;
+        self.analytics_state.lock().expect("lock poisoned").cache = None;
         let _ = std::fs::remove_file(self.analytics_cache_path());
         Ok(())
     }
@@ -390,10 +390,11 @@ impl ServiceHub {
     ) -> AppResult<(Value, &'static str)> {
         let key = Self::aggregate_key(ids, begin, end);
         if force {
-            self.analytics_state.lock().unwrap().cache = None;
+            self.analytics_state.lock().expect("lock poisoned").cache = None;
         }
         if !force {
-            if let Some((k, data, at)) = &self.analytics_state.lock().unwrap().cache {
+            if let Some((k, data, at)) = &self.analytics_state.lock().expect("lock poisoned").cache
+            {
                 if *k == key && at.elapsed() < AGGREGATE_TTL {
                     return Ok((data.clone(), "cache"));
                 }
@@ -402,7 +403,7 @@ impl ServiceHub {
                 if let Ok(v) = serde_json::from_str::<Value>(&raw) {
                     if v["key"].as_str() == Some(key.as_str()) && v.get("data").is_some() {
                         let data = v["data"].clone();
-                        self.analytics_state.lock().unwrap().cache =
+                        self.analytics_state.lock().expect("lock poisoned").cache =
                             Some((key.clone(), data.clone(), Instant::now()));
                         return Ok((data, "file-cache"));
                     }
@@ -413,7 +414,7 @@ impl ServiceHub {
             Ok(d) if num(&d["total"]) > 0 => (d, "dll"),
             _ => (self.aggregate_by_cursor(wcdb, ids, begin, end)?, "cursor"),
         };
-        self.analytics_state.lock().unwrap().cache =
+        self.analytics_state.lock().expect("lock poisoned").cache =
             Some((key.clone(), data.clone(), Instant::now()));
         let _ = std::fs::create_dir_all(self.cache_base());
         let _ = std::fs::write(self.analytics_cache_path(), serde_json::to_string(&json!({ "key": key, "data": data, "updatedAt": chrono::Utc::now().timestamp_millis() })).unwrap_or_default());
@@ -497,13 +498,17 @@ impl ServiceHub {
     }
 
     /// `getOverallStatistics`
-    pub fn analytics_overall_statistics(&self, force: bool) -> AppResult<OverallStatistics> {
+    pub fn analytics_overall_statistics(
+        &self,
+        freshness: Freshness,
+    ) -> AppResult<OverallStatistics> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
         self.emit_progress("analytics", "aggregating…", 30, 100);
+        let force = freshness == Freshness::Fresh;
         let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0, force)?;
         let type_count = |t: i64| d["typeCounts"].get(t.to_string()).map(num).unwrap_or(0);
         let total = num(&d["total"]);

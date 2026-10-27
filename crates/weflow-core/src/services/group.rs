@@ -672,7 +672,13 @@ impl ServiceHub {
             if include_counts { "full" } else { "members" }
         );
         if !force_refresh {
-            if let Some((at, updated, data)) = self.group_state.lock().unwrap().panel.get(&key) {
+            if let Some((at, updated, data)) = self
+                .group_state
+                .lock()
+                .expect("lock poisoned")
+                .panel
+                .get(&key)
+            {
                 if at.elapsed() < PANEL_CACHE_TTL {
                     return Ok((data.clone(), true, *updated));
                 }
@@ -681,7 +687,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let data = self.panel_fresh(&wcdb, chatroom_id, include_counts)?;
         let updated = chrono::Utc::now().timestamp_millis();
-        let mut st = self.group_state.lock().unwrap();
+        let mut st = self.group_state.lock().expect("lock poisoned");
         st.panel
             .insert(key, (Instant::now(), updated, data.clone()));
         if st.panel.len() > 80 {

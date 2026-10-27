@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::config::ConfigStore;
 use crate::error::{AppError, AppResult};
-use crate::services::{ImageVariant, ResourceQuery, ServiceHub, SnsTimelineQuery};
+use crate::services::{Freshness, ImageVariant, ResourceQuery, ServiceHub, SnsTimelineQuery};
 
 /// A page of a conversation's messages (`chat messages`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -371,10 +371,14 @@ impl Read {
             Read::SnsUsers => Ok(json!(crate::contract::SnsUsers {
                 usernames: hub.sns_usernames_list()?
             })),
-            Read::SnsStats { fast } => Ok(json!(hub.sns_export_stats(*fast)?)),
+            Read::SnsStats { fast } => {
+                Ok(json!(hub.sns_export_stats(Freshness::cached_if(*fast))?))
+            }
             Read::SnsPostCounts { user, prefer_cache } => match user {
                 Some(u) => Ok(json!(hub.sns_user_post_stats(u)?)),
-                None => Ok(json!(hub.sns_user_post_counts(*prefer_cache)?)),
+                None => Ok(json!(
+                    hub.sns_user_post_counts(Freshness::cached_if(*prefer_cache))?
+                )),
             },
             Read::ChatStatuses { usernames } => Ok(json!(hub.chat_statuses(usernames)?)),
             Read::ChatTabCounts => Ok(json!(hub.chat_tab_counts()?)),
@@ -441,9 +445,9 @@ impl Read {
                     *cursor
                 )?))
             }
-            Read::AnalyticsOverall { force } => {
-                Ok(json!(hub.analytics_overall_statistics(*force)?))
-            }
+            Read::AnalyticsOverall { force } => Ok(json!(
+                hub.analytics_overall_statistics(Freshness::cached_if(!*force))?
+            )),
             Read::AnalyticsRankings { limit, start, end } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
                 Ok(json!(hub.analytics_contact_rankings(*limit, b, e)?))
@@ -474,7 +478,9 @@ impl Read {
                 let config = config_of(hub)?;
                 Ok(match key {
                     Some(key) => config.get_key(None, key),
-                    None => serde_json::to_value(config.profile(None)).unwrap(),
+                    None => {
+                        serde_json::to_value(config.profile(None)).expect("a profile serializes")
+                    }
                 })
             }
             Read::ConfigProfiles => Ok(json!(profiles_summary(&config_of(hub)?))),
@@ -495,12 +501,12 @@ impl Read {
     }
 }
 
-/// The image file `chat image-data` asks for: `--thumb`, or `--variant` (`best`, `thumb`, `normal`, `hd`).
-pub fn image_variant(thumb: bool, variant: &str) -> ImageVariant {
-    match (thumb, variant) {
-        (true, _) | (_, "thumb") => ImageVariant::Thumb,
-        (_, "normal") => ImageVariant::Normal,
-        (_, "hd") => ImageVariant::Hd,
+/// The image file `chat image-data --variant` asks for (`best`, `thumb`, `normal`, `hd`); `--thumb` is `thumb`.
+pub fn image_variant(variant: &str) -> ImageVariant {
+    match variant {
+        "thumb" => ImageVariant::Thumb,
+        "normal" => ImageVariant::Normal,
+        "hd" => ImageVariant::Hd,
         _ => ImageVariant::Best,
     }
 }

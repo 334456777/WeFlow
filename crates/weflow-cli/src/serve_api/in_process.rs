@@ -161,22 +161,22 @@ pub(super) struct Hub {
 }
 
 impl Hub {
-    /// Builds the hub in the background, which opens the databases of a chat page (see [`get_counted`]), so the
-    /// first request finds them ready.
+    /// Builds the hub in the background, which opens the databases of a chat page (see [`hub_and_generation`]), so
+    /// the first request finds them ready.
     ///
-    /// [`get_counted`]: Self::get_counted
+    /// [`hub_and_generation`]: Self::hub_and_generation
     pub(super) fn warm(self: &std::sync::Arc<Self>) {
         let hub = self.clone();
         std::thread::spawn(move || hub.get());
     }
 
     fn get(&self) -> AppResult<ServiceHub> {
-        self.get_counted().map(|(hub, _)| hub)
+        self.hub_and_generation().map(|(hub, _)| hub)
     }
 
     /// The hub, and which one it is: the number changes when the hub is built again.
-    pub(super) fn get_counted(&self) -> AppResult<(ServiceHub, u64)> {
-        let mut open = self.open.lock().unwrap();
+    pub(super) fn hub_and_generation(&self) -> AppResult<(ServiceHub, u64)> {
+        let mut open = self.open.lock().expect("lock poisoned");
         // another config file chosen (`config set config_path`) is a change too
         let in_use = weflow_core::config::default_config_path();
         let before = match open.as_mut() {
@@ -515,7 +515,11 @@ impl Given {
                     session_id: self.required("session-id")?,
                     msg_id: self.required("msg-id")?,
                     create_time: self.number("create-time")?,
-                    variant: image_variant(self.switch("thumb")?, &variant),
+                    variant: image_variant(if self.switch("thumb")? {
+                        "thumb"
+                    } else {
+                        &variant
+                    }),
                 })
             }
             "chat voice-data" => Media::Chat(MediaRead::ChatVoice {

@@ -22,6 +22,27 @@ mod voice;
 pub use chat::ResourceQuery;
 pub use sns::{SnsExportOptions, SnsMediaFetch, SnsProxyResult, SnsTimelineQuery};
 
+/// Whether a read may answer with what WeFlow kept of an earlier answer, or must ask the databases again.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Freshness {
+    /// What was kept will do while it has not expired.
+    Cached,
+    /// Ask the databases again.
+    #[default]
+    Fresh,
+}
+
+impl Freshness {
+    /// [`Cached`](Self::Cached) when `cached`, as a switch such as `--prefer-cache` asks.
+    pub fn cached_if(cached: bool) -> Self {
+        if cached {
+            Self::Cached
+        } else {
+            Self::Fresh
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ServiceHub {
     ctx: AppContext,

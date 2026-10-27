@@ -31,7 +31,7 @@ fn cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
 }
 
 pub fn clear_cache() {
-    cache().lock().unwrap().clear();
+    cache().lock().expect("lock poisoned").clear();
 }
 
 /// `normalizeWeiboCookieInput`: a browser-exported JSON cookie array, or a raw `Cookie:` header.
@@ -324,7 +324,7 @@ pub async fn fetch_recent_posts(
     .map(|b| format!("{b:02x}"))
     .collect();
     let key = format!("{uid}:{count}:{cookie_hash}");
-    if let Some((at, posts)) = cache().lock().unwrap().get(&key) {
+    if let Some((at, posts)) = cache().lock().expect("lock poisoned").get(&key) {
         if at.elapsed() < CACHE_TTL {
             return Ok(posts.clone());
         }
@@ -375,7 +375,7 @@ pub async fn fetch_recent_posts(
     }
     cache()
         .lock()
-        .unwrap()
+        .expect("lock poisoned")
         .insert(key, (Instant::now(), posts.clone()));
     Ok(posts)
 }

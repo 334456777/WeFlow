@@ -261,7 +261,7 @@ fn bar_state() -> &'static std::sync::Mutex<BarState> {
 /// Selects the progress mode and starts the clock for the automatic bar.
 pub fn set_progress_mode(mode: ProgressMode) {
     use std::io::IsTerminal;
-    let mut st = bar_state().lock().unwrap();
+    let mut st = bar_state().lock().expect("lock poisoned");
     st.mode = mode;
     st.started = std::time::Instant::now();
     st.is_tty = std::io::stderr().is_terminal();
@@ -333,7 +333,7 @@ fn terminal_columns() -> usize {
 
 pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
     let message = &crate::locale::localize(message.to_string());
-    let mut st = bar_state().lock().unwrap();
+    let mut st = bar_state().lock().expect("lock poisoned");
     match st.mode {
         ProgressMode::Off => {}
         ProgressMode::Ndjson => {
@@ -418,7 +418,7 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
 
 /// Erases the automatic progress bar (call before printing the final result).
 pub fn finish_progress() {
-    let mut st = bar_state().lock().unwrap();
+    let mut st = bar_state().lock().expect("lock poisoned");
     if st.drawn {
         use std::io::Write;
         // blank the row once and return to its start so the next output begins on a clean line

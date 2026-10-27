@@ -507,15 +507,28 @@ impl ServiceHub {
     }
 
     fn image_state_get(&self, key: &str) -> Option<String> {
-        self.image_state.lock().unwrap().resolved.get(key).cloned()
+        self.image_state
+            .lock()
+            .expect("lock poisoned")
+            .resolved
+            .get(key)
+            .cloned()
     }
 
     fn image_state_set(&self, key: String, path: String) {
-        self.image_state.lock().unwrap().resolved.insert(key, path);
+        self.image_state
+            .lock()
+            .expect("lock poisoned")
+            .resolved
+            .insert(key, path);
     }
 
     fn image_state_remove(&self, key: &str) {
-        self.image_state.lock().unwrap().resolved.remove(key);
+        self.image_state
+            .lock()
+            .expect("lock poisoned")
+            .resolved
+            .remove(key);
     }
 
     /// `isUsableImageCacheFile`: a recognised extension, present, not empty and not a zeroed-out JPEG.
@@ -632,7 +645,7 @@ impl ServiceHub {
         let cached = self
             .image_state
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .dir_listings
             .get(dir)
             .cloned();
@@ -641,10 +654,14 @@ impl ServiceHub {
         }
         // read without holding the lock: the export's media threads search side by side
         let Some(listing) = DirListing::read(dir).map(Arc::new) else {
-            self.image_state.lock().unwrap().dir_listings.remove(dir);
+            self.image_state
+                .lock()
+                .expect("lock poisoned")
+                .dir_listings
+                .remove(dir);
             return None;
         };
-        let mut state = self.image_state.lock().unwrap();
+        let mut state = self.image_state.lock().expect("lock poisoned");
         if state.dir_listings.len() >= MAX_DIR_LISTINGS {
             state.dir_listings.clear();
         }
@@ -793,7 +810,7 @@ impl ServiceHub {
                 dirs.insert(dir, self.index_cache_dir(dir));
             }
         }
-        let state = self.image_state.lock().unwrap();
+        let state = self.image_state.lock().expect("lock poisoned");
         let listed = |c: &PathBuf| {
             let Some(dir) = c.parent() else {
                 return true;
@@ -820,11 +837,15 @@ impl ServiceHub {
     /// Brings the names of the cache folder `dir` up to date.
     fn index_cache_dir(&self, dir: &Path) -> CacheDir {
         let Some(modified) = modified_time(dir) else {
-            self.image_state.lock().unwrap().cache_dirs.remove(dir);
+            self.image_state
+                .lock()
+                .expect("lock poisoned")
+                .cache_dirs
+                .remove(dir);
             return CacheDir::Missing;
         };
         {
-            let state = self.image_state.lock().unwrap();
+            let state = self.image_state.lock().expect("lock poisoned");
             let recorded = state.cache_dirs.get(dir).map(|index| index.modified);
             // a file this process renamed into the folder in between is recorded under the lock (`write_cache_file`)
             if recorded.is_some() && (recorded == Some(modified) || recorded == modified_time(dir))
@@ -841,7 +862,7 @@ impl ServiceHub {
             .filter_map(Result::ok)
             .map(|e| e.file_name().to_string_lossy().to_lowercase())
             .collect();
-        let mut state = self.image_state.lock().unwrap();
+        let mut state = self.image_state.lock().expect("lock poisoned");
         if state.cache_dirs.len() >= MAX_DIR_LISTINGS && !state.cache_dirs.contains_key(dir) {
             state.cache_dirs.clear();
         }
@@ -869,7 +890,7 @@ impl ServiceHub {
         std::fs::create_dir_all(&partial)?;
         let tmp = temporary_sibling(&partial.join(&name));
         let written = std::fs::write(&tmp, bytes).and_then(|()| {
-            let mut state = self.image_state.lock().unwrap();
+            let mut state = self.image_state.lock().expect("lock poisoned");
             std::fs::rename(&tmp, path)?;
             let modified = modified_time(dir);
             if let (Some(index), Some(modified)) = (state.cache_dirs.get_mut(dir), modified) {
@@ -1196,7 +1217,7 @@ impl ServiceHub {
             };
             self.image_state
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .ffmpeg_missing
                 .entry(cache_key.to_string())
                 .and_modify(|seen| {
@@ -1552,7 +1573,11 @@ impl ServiceHub {
 
     /// Starts counting the images that cannot be converted for lack of ffmpeg (an export's summary).
     pub(super) fn start_counting_missing_ffmpeg(&self) {
-        self.image_state.lock().unwrap().ffmpeg_missing.clear();
+        self.image_state
+            .lock()
+            .expect("lock poisoned")
+            .ffmpeg_missing
+            .clear();
     }
 
     /// Images (not messages) that could not be converted for lack of ffmpeg since the count was started, oldest
@@ -1561,7 +1586,7 @@ impl ServiceHub {
         let mut images: Vec<MissingImage> = self
             .image_state
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .ffmpeg_missing
             .values()
             .cloned()
@@ -1578,7 +1603,7 @@ impl ServiceHub {
 
     /// Forgets what is known about the decrypted-image cache, for when its files are removed.
     pub(super) fn image_forget_cached(&self) {
-        let mut state = self.image_state.lock().unwrap();
+        let mut state = self.image_state.lock().expect("lock poisoned");
         state.resolved.clear();
         state.cache_dirs.clear();
     }
