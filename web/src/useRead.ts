@@ -1,6 +1,7 @@
 // One read of `weflow serve` that a view shows as it comes: loading, the answer, or why it failed.
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from './api/client';
+import { t } from './i18n';
 
 export type Read<T> = { status: 'loading' } | { status: 'ready'; value: T } | { status: 'error'; message: string };
 
@@ -15,7 +16,7 @@ export function useRead<T>(key: string, read: (signal: AbortSignal) => Promise<T
     setState({ status: 'loading' });
     // an answer for a key since left, as of a read shared with others that is not cancelled, is not shown
     latest.current(controller.signal).then(value => { if (!controller.signal.aborted) setState({ status: 'ready', value }); }, problem => {
-      if (!controller.signal.aborted) setState({ status: 'error', message: (problem instanceof ApiError && problem.message) || '读取失败' });
+      if (!controller.signal.aborted) setState({ status: 'error', message: (problem instanceof ApiError && problem.message) || t('读取失败') });
     });
     return () => controller.abort();
   }, [key, round]);

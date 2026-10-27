@@ -1,5 +1,6 @@
 // Calls to `weflow serve` (docs/serve-api.md). Answers are `{"success": true, "data": ...}` or
 // `{"success": false, "error": {"code", "message", "details"}}`; `call` returns the data or throws an ApiError.
+import { t } from '../i18n';
 
 export class ApiError extends Error {
   constructor(
@@ -127,7 +128,7 @@ export async function call<T>(method: Method, path: string, params: Params = {},
     });
   } catch (problem) {
     if (problem instanceof DOMException && problem.name === 'AbortError') throw problem;
-    throw new ApiError(0, 'offline', '无法连接 weflow serve');
+    throw new ApiError(0, 'offline', t('无法连接 weflow serve'));
   }
   // An old request may finish after the person has already supplied the right token.
   if (response.status === 401 && revision === tokenRevision && !signal?.aborted) tellAuth('unauthorized');
@@ -136,7 +137,7 @@ export async function call<T>(method: Method, path: string, params: Params = {},
   try {
     doc = await response.json();
   } catch {
-    throw new ApiError(response.status, 'bad_response', '回复不是 JSON（HTTP ' + response.status + '）');
+    throw new ApiError(response.status, 'bad_response', t('回复不是 JSON（HTTP {status}）', { status: response.status }));
   }
   if (response.ok && doc.success !== false) return doc.data as T;
   const error = doc.error ?? {};

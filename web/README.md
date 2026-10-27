@@ -46,11 +46,12 @@ A refused token (HTTP 401) shows an input to reconnect. Settings can replace or 
 | `bun run build` | Type-check, then build into `dist/` |
 | `bun run preview` | Serve `dist/` with the same proxy |
 | `bun run contract` | Write `src/api/contract.gen.ts` from `contract/openapi.json` (see below); `--check` only checks it |
-| `bun run check` | Check the types of the contract, type-check, test and build, as CI does |
+| `bun run i18n` | List the page's texts without their English, and the Chinese not passed through `t()` yet (see Language); `--check` fails on the first |
+| `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does |
 
 The tests import their API from `#test` (`test/index.ts`): `bun:test`, and a `vi` with what they use of Vitest's that Bun's lacks (`stubGlobal`, `unstubAllGlobals`, `setSystemTime`, `advanceTimersByTimeAsync`, `waitFor`, fake timers for `Date` alone). `test/setup.ts`, loaded first (`bunfig.toml`), registers happy-dom and keeps it to what the tests were written for under jsdom: a wide window, the runtime's own `fetch`, a `WheelEvent` that is a `MouseEvent`, `display: inline` for inline elements, and short failure messages for DOM nodes. Bun runs every test file in one process, so a test leaves no global behind: `vi.unstubAllGlobals()`, `vi.useRealTimers()` and `cleanup()` in `afterEach`.
 
-`.github/workflows/web.yml` runs `contract --check`, the compatibility of the contract (see below), `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
+`.github/workflows/web.yml` runs `contract --check`, the compatibility of the contract (see below), `i18n --check`, `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
 
 The build fails when the JavaScript the page loads before it shows is over the budget in `plugins/sizeBudget.ts` (#159); raise it there on purpose when a change needs more. Icons keep only the weights the app draws (`plugins/iconWeights.ts`: regular, fill, bold); a test fails when the code asks for another.
 
@@ -67,6 +68,12 @@ The answers the page reads most (the conversations and their states and details,
 A change the clients of the API would not read the same raises `apiVersion` (see Versions). `scripts/contract-compat.ts` tells such a change: `bun scripts/contract-compat.ts <earlier openapi.json>` lists what a client of the earlier contract could read wrong in the current one's answers (a field left out or turned nullable, a type or a value it did not have, a route no longer described) and fails when there is something and `info.version` is the same. `web.yml` runs it against the contract of the change's base. Adding a field or a route is no such change.
 
 `src/api/contract.test.ts` hands `contract/samples.json`, which weflow-cli builds, to the page's own code: the reads of `src/api/`, then what the chat window, the conversation list, the contacts, the resource browser and the task centre make of them. A test of weflow-cli checks the same samples, and a running server's answers, against the contract (docs/serve-api.md, "OpenAPI description"), so the page is tested on what the server answers rather than on a fixture of its own.
+
+## Language
+
+The page is in the language of the server it talks to (#439): `lang` of `/health` (docs/serve-api.md), the language of the machine `weflow serve` runs on, so the page and the server's own texts (errors, the commands' help) are in one language. Until a server has said, it is in the language of the last one it talked to, kept in `localStorage`, else in Chinese; `<html lang>` follows.
+
+The page is written in Chinese, and its texts are their own keys (`src/i18n/`): `t('正在读取消息')` is that text in Chinese and its English from `src/i18n/en.ts`, or the Chinese where `en.ts` has none; `t('共 {n} 个群聊', { n })` fills in `{n}`, which its English keeps. A text kept in a table and shown elsewhere is marked `msg('…')` where it is written and passed through `t()` where it is shown. `bun run i18n` lists what has no English and what Chinese is not passed through `t()` yet; the pages are being moved to it a few at a time. The tests run in Chinese.
 
 ## Versions
 
@@ -112,6 +119,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/settings/`, `src/api/settings.ts`, `src/api/setup.ts`, `src/api/console.ts` | Settings (#213–#217): the connection, the accounts and their setup, the output language, the AI model, the cache; the CLI's tools and the command console of `/openapi.json` |
 | `src/backup/`, `src/api/backup.ts` | Database backups (#212): made as a job and saved from the browser; a backup on the server's computer inspected or restored |
 | `src/api/scope.ts`, `src/api/kept.ts`, `src/useRead.ts` | Whose records the page holds, the reads several views share, and one read as a view shows it (see Requests and what is kept) |
+| `src/i18n/`, `scripts/i18n.ts` | The page's language, the server's (#439): `t()`, `msg()`, the English of the texts, and the check that each has it; see Language |
 | `src/mock/` | Sample records shown while no server is connected, with the console's default range of days for them |
 | `src/api/jobs.ts`, `src/jobs/` | Jobs (#211): commands started with `Prefer: respond-async` (`?return=file` for an export), the list of `/jobs`, the running one followed through `/jobs/<id>/events`, cancelled or forgotten with `DELETE`, its file saved from `/jobs/<id>/file`; the task centre shows them all, and the console exports the open conversation with `export messages` |
 | `src/exports/` | The export page (#211): conversations picked from the list (by kind, all those shown at once), exported one job each with `export messages` in any of its 9 formats, days, sender names, media and Excel's compact columns; and the list itself with `export sessions` |

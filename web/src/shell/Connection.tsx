@@ -2,18 +2,19 @@
 // a phone's tab bar, what it means on hover and in the settings.
 import { useEffect, useState } from 'react';
 import type { Backend } from '../api/backend';
+import { msg, t } from '../i18n';
 
 const labels: Record<Backend['state'], string> = {
-  checking: '正在连接', ready: '已连接', offline: '未连接', incompatible: '版本不兼容', unauthorized: '需要令牌',
+  checking: msg('正在连接'), ready: msg('已连接'), offline: msg('未连接'), incompatible: msg('版本不兼容'), unauthorized: msg('需要令牌'),
 };
 
 export function backendDetail(backend: Backend): string {
   switch (backend.state) {
-    case 'checking': return '正在检查 weflow serve。';
-    case 'offline': return '没有找到 weflow serve，请先运行 weflow serve。';
-    case 'incompatible': return backend.reason + '。';
-    case 'unauthorized': return 'weflow serve 在运行，但拒绝了这个标签页的令牌。';
-    case 'ready': return '已连接 weflow serve。';
+    case 'checking': return t('正在检查 weflow serve。');
+    case 'offline': return t('没有找到 weflow serve，请先运行 weflow serve。');
+    case 'incompatible': return t('{reason}。', { reason: backend.reason });
+    case 'unauthorized': return t('weflow serve 在运行，但拒绝了这个标签页的令牌。');
+    case 'ready': return t('已连接 weflow serve。');
   }
 }
 
@@ -36,6 +37,6 @@ function useSteadyConnection(state: Backend['state']): boolean {
 export function Connection({ backend, realtime }: { backend: Backend; realtime: boolean }) {
   const steady = useSteadyConnection(backend.state);
   return <div className={'connection ' + backend.state + (steady ? ' quiet' : '')} role="status" title={backendDetail(backend)}>
-    <span className="connection-dot" /><span className="connection-label">{backend.state === 'ready' && realtime ? '实时' : labels[backend.state]}</span>
+    <span className="connection-dot" /><span className="connection-label">{backend.state === 'ready' && realtime ? t('实时') : t(labels[backend.state])}</span>
   </div>;
 }
