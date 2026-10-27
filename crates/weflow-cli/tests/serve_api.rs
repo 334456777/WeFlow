@@ -1979,6 +1979,13 @@ fn official_accounts_and_their_pushes_as_the_webui_reads_them() {
         "",
     );
     assert_eq!(r.status, 200, "{}", r.body);
+    // as the contract says (#430)
+    let fits = misfits(
+        &contract(),
+        &json!({ "$ref": "#/components/schemas/BizMessages" }),
+        &r.json()["data"],
+    );
+    assert!(fits.is_empty(), "{fits:#?}");
     let pushes = r.json()["data"]["messages"].as_array().unwrap().clone();
     // newest first, the lead article and the others of the push
     let titles: Vec<&str> = pushes
@@ -2047,6 +2054,13 @@ fn wechat_pay_records_come_in_pages_that_say_whether_more_follow() {
             "",
         );
         assert_eq!(r.status, 200, "{}", r.body);
+        // as the contract says (#430)
+        let fits = misfits(
+            &contract(),
+            &json!({ "$ref": "#/components/schemas/PayRecords" }),
+            &r.json()["data"],
+        );
+        assert!(fits.is_empty(), "{fits:#?}");
         r.json()["data"].clone()
     };
     // newest first: the refund, then the message that is no notice
@@ -3134,6 +3148,26 @@ fn answers_fit_the_contract() {
         assert!(!data.as_array().unwrap().is_empty(), "{target}: {data}");
     }
     read("/api/analytics/excluded", None);
+    for target in [
+        "/api/sns/timeline?limit=20",
+        "/api/sns/users",
+        "/api/sns/stats",
+        "/api/sns/post-counts",
+        "/api/sns/post-counts?user=wxid_bob",
+        "/api/report/annual/years",
+        "/api/biz/accounts",
+        "/api/biz/messages?username=gh_news",
+        "/api/biz/pay-records",
+        "/api/config/profiles",
+        "/api/runtime/info",
+        "/api/cache/list",
+        "/api/db/detect",
+        "/api/db/wxid",
+        "/api/db/test",
+        "/api/insight/footprint",
+    ] {
+        read(target, None);
+    }
     for target in [
         "/api/chat/messages?session-id=wxid_bob&limit=100",
         "/api/chat/messages?session-id=room1%40chatroom",

@@ -569,10 +569,524 @@ pub struct ExcludeCandidate {
     pub wechat_id: String,
 }
 
+/// Who has posts in Moments (`sns users`), the one who posted last first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SnsUsers {
+    pub usernames: Vec<String>,
+}
+
+/// How many Moments posts there are (`sns stats`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SnsStats {
+    pub total_posts: i64,
+    /// How many people posted them.
+    pub total_friends: i64,
+    /// How many of them are the account's own; null when the account's wxid is not known.
+    pub my_posts: Option<i64>,
+}
+
+/// How many Moments posts one person has (`sns post-counts --user`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPosts {
+    pub username: String,
+    pub total_posts: i64,
+}
+
+/// The years with private messages (`report annual years`), the latest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct ReportYears {
+    pub years: Vec<i64>,
+    /// How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or
+    /// `edge-scan` (each chat's first and last message).
+    pub strategy: String,
+}
+
+/// A page of Moments posts (`sns timeline`), the newest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SnsTimeline {
+    pub timeline: Vec<SnsPost>,
+}
+
+impl SnsTimeline {
+    /// The posts as the service builds them (`sns::enrich_post`, with `with-media` `sns_enrich_timeline_media`), read
+    /// into the contract's types. A field they do not know fails here rather than leave the answer unseen; a test
+    /// reads every field back out the same.
+    pub fn of(posts: Vec<serde_json::Value>) -> crate::error::AppResult<Self> {
+        let timeline = serde_json::from_value(serde_json::Value::Array(posts))
+            .map_err(|err| crate::error::AppError::runtime(format!("a Moments post: {err}")))?;
+        Ok(Self { timeline })
+    }
+}
+
+/// A Moments post.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SnsPost {
+    /// WeChat's id of the post.
+    pub id: String,
+    /// The row's id in WeChat's table, in decimal.
+    pub tid: String,
+    pub username: String,
+    /// The poster's name: the post's own, else the contact's, else the username.
+    pub nickname: String,
+    pub create_time: i64,
+    /// The text of the post.
+    pub content_desc: String,
+    /// WeChat's type of the post: 1 pictures, 15 a video, others links and such.
+    #[serde(rename = "type")]
+    pub kind: i64,
+    /// The post's XML as WeChat keeps it.
+    pub raw_xml: String,
+    pub media: Vec<SnsMedia>,
+    /// The names of those who liked it.
+    pub likes: Vec<String>,
+    pub comments: Vec<SnsComment>,
+    /// The key of the post's video, which opens its cover too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<SnsLocation>,
+}
+
+/// A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SnsMedia {
+    pub url: String,
+    pub thumb: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub md5: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enc_idx: Option<String>,
+    /// With `with-media`: the server's addresses, `url` and `thumb` being those of the files it fetched, and where
+    /// it fetched them or a proxy of the server serves them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_thumb: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_thumb_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_thumb_url: Option<String>,
+    /// The moving part of a live photo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_photo: Option<SnsLivePhoto>,
+}
+
+/// The video of a live photo.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SnsLivePhoto {
+    pub url: String,
+    pub thumb: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub md5: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enc_idx: Option<String>,
+    /// With `with-media`: as for the picture it moves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_thumb: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_thumb_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_thumb_url: Option<String>,
+}
+
+/// A comment on a post.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SnsComment {
+    pub id: String,
+    pub nickname: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    pub content: String,
+    /// The comment it answers; empty when none.
+    pub ref_comment_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ref_username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ref_nickname: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emojis: Vec<SnsEmoji>,
+}
+
+/// A sticker in a comment.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SnsEmoji {
+    pub url: String,
+    pub md5: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypt_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aes_key: Option<String>,
+}
+
+/// Where a post was made, as much as it says.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SnsLocation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latitude: Option<serde_json::Number>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub longitude: Option<serde_json::Number>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub city: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poi_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poi_address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poi_address_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// The pushes of an official account (`biz messages`), as the desktop app lists them.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct BizMessages {
+    pub username: String,
+    pub messages: Vec<BizMessage>,
+}
+
+/// One push of an official account: its lead article and the others sent with it.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BizMessage {
+    /// The message's id in its table; null when its row does not say.
+    pub local_id: Option<i64>,
+    pub create_time: Option<i64>,
+    pub title: String,
+    pub description: String,
+    pub url: String,
+    pub cover: String,
+    /// The other articles of the push.
+    pub content_list: Vec<BizArticle>,
+}
+
+/// An article sent with a push.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct BizArticle {
+    pub title: String,
+    pub url: String,
+    pub cover: String,
+    pub summary: String,
+}
+
+/// A page of WeChat Pay notices (`biz pay-records`), newest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PayRecords {
+    pub records: Vec<PayRecord>,
+    /// Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as
+    /// its other messages are left out.
+    pub has_more: bool,
+}
+
+/// A WeChat Pay notice.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PayRecord {
+    pub title: String,
+    /// Its lines, as WeChat writes them (amount, method, state…).
+    pub description: String,
+    /// Who was paid; `WeChat Pay` (in the server's language) when the notice does not say.
+    pub merchant_name: String,
+    pub merchant_icon: String,
+    /// When it was published, in Unix seconds; 0 when the notice does not say.
+    pub timestamp: i64,
+    pub local_id: Option<i64>,
+    pub create_time: Option<i64>,
+}
+
+/// A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSummary {
+    pub name: String,
+    /// Whether the commands read it.
+    pub current: bool,
+    pub wxid: Option<String>,
+    /// The WeChat data directory.
+    pub db_path: Option<String>,
+    /// Whether the database key is set.
+    pub decrypt_key: bool,
+    /// Whether both image keys are set.
+    pub image_keys: bool,
+    /// Whether the key of the AI model API is set.
+    pub ai_key: bool,
+    /// Whether it can open the databases: the data directory and the database key are set.
+    pub complete: bool,
+}
+
+/// Where `weflow` keeps its files and what it is (`runtime info`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeInfo {
+    pub home_dir: std::path::PathBuf,
+    pub config_path: std::path::PathBuf,
+    pub runtime_dir: std::path::PathBuf,
+    pub version: String,
+    /// The target it was built for, such as `x86_64-pc-windows-msvc`.
+    pub target: String,
+}
+
+/// One part of WeFlow's cache (`cache list`), and how much of the disk it takes.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct CacheUsage {
+    /// Its name, as `cache clear` takes it.
+    pub part: crate::services::CachePart,
+    pub paths: Vec<std::path::PathBuf>,
+    pub bytes: u64,
+    pub files: u64,
+}
+
+/// The default places of WeChat's data directory (`db detect`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbCandidates {
+    pub candidates: Vec<DbCandidate>,
+}
+
+/// A place WeChat's data directory may be.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbCandidate {
+    pub path: std::path::PathBuf,
+    pub exists: bool,
+}
+
+/// The accounts in WeChat's data directory (`db wxid`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbAccounts {
+    pub accounts: Vec<DbAccount>,
+}
+
+/// An account of WeChat's data directory.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct DbAccount {
+    /// As `config set wxid` takes it, without the suffix of its folder's name.
+    pub wxid: String,
+    /// Its folder.
+    pub path: std::path::PathBuf,
+}
+
+/// That the databases open with the configured key (`db test`); a failure is an error instead.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DbConnection {
+    pub account_dir: std::path::PathBuf,
+    /// Always true.
+    pub connected: bool,
+}
+
+/// My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was
+/// @-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Footprint {
+    pub summary: FootprintSummary,
+    /// The private chats with a message in the range, the latest first.
+    pub private_sessions: Vec<FootprintSession>,
+    /// The stretches of each private chat, in time order: a new one begins after a long pause.
+    pub private_segments: Vec<FootprintSegment>,
+    /// The group messages that @-mention me, the latest first.
+    pub mentions: Vec<FootprintMention>,
+    /// The groups of those, the one with the most first.
+    pub mention_groups: Vec<MentionGroup>,
+    pub diagnostics: FootprintDiagnostics,
+}
+
+impl Footprint {
+    /// The native layer's answer, read into the contract's types: a field they do not know fails here rather than
+    /// leave the answer unseen.
+    pub fn of(value: serde_json::Value) -> crate::error::AppResult<Self> {
+        serde_json::from_value(value)
+            .map_err(|err| crate::error::AppError::runtime(format!("the footprint: {err}")))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintSummary {
+    /// The people who wrote to me.
+    pub private_inbound_people: u64,
+    /// Those of them I answered.
+    pub private_replied_people: u64,
+    /// The people I wrote to.
+    pub private_outbound_people: u64,
+    /// Replied over inbound, from 0 to 1.
+    pub private_reply_rate: f64,
+    pub mention_count: u64,
+    pub mention_group_count: u64,
+}
+
+/// A private chat of the footprint.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintSession {
+    pub session_id: String,
+    pub incoming_count: i64,
+    pub outgoing_count: i64,
+    pub replied: bool,
+    pub first_incoming_ts: i64,
+    pub first_reply_ts: i64,
+    pub latest_ts: i64,
+    /// The message to open the chat at, by its local id and time.
+    pub anchor_local_id: i64,
+    pub anchor_create_time: i64,
+}
+
+/// A stretch of a private chat.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintSegment {
+    pub session_id: String,
+    pub segment_index: i64,
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub duration_sec: i64,
+    pub incoming_count: i64,
+    pub outgoing_count: i64,
+    pub message_count: i64,
+    pub replied: bool,
+    pub first_incoming_ts: i64,
+    pub first_reply_ts: i64,
+    pub latest_ts: i64,
+    pub anchor_local_id: i64,
+    pub anchor_create_time: i64,
+}
+
+/// A group message that @-mentions me.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintMention {
+    pub session_id: String,
+    pub local_id: i64,
+    pub create_time: i64,
+    pub sender_username: String,
+    pub message_content: String,
+    /// The message's `source` XML, which lists who it mentions.
+    pub source: String,
+}
+
+/// A group I was @-mentioned in.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MentionGroup {
+    pub session_id: String,
+    pub count: i64,
+    pub latest_ts: i64,
+}
+
+/// How the footprint was read.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintDiagnostics {
+    /// Whether a list was cut at its limit.
+    pub truncated: bool,
+    pub private_truncated: bool,
+    pub mention_truncated: bool,
+    pub scanned_dbs: u64,
+    pub elapsed_ms: u64,
+    pub private_session_count: u64,
+    pub group_session_count: u64,
+    pub fallback_used: bool,
+}
+
+/// One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a
+/// failure of the command instead, so an answer that succeeds holds `success: true` and the record.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct InsightLookup {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record: Option<crate::insight::InsightRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// A post as `sns timeline` builds it reads into [`SnsPost`] and writes back out the same, every field of it: a
+    /// field `sns::enrich_post` gains or loses fails here before it is lost from the answer.
+    #[test]
+    fn a_moments_post_reads_into_the_contract_and_back_the_same() {
+        let xml = r#"<TimelineObject><id>1395</id><createTime>1700000000</createTime>
+            <contentDesc>at the river</contentDesc>
+            <location city="Shanghai" poiName="Bund" latitude="31.2" longitude="121"/>
+            <ContentObject><type>1</type><mediaList>
+            <media><url md5="aa11" token="t1" key="k1" enc_idx="1">http://mmsns.qpic.cn/a</url><thumb token="t1">http://mmsns.qpic.cn/a/150</thumb>
+              <livePhoto><url token="t2" key="k2" md5="bb22" enc_idx="1">http://mmsns.qpic.cn/v</url><thumb>http://mmsns.qpic.cn/v/150</thumb></livePhoto></media>
+            </mediaList></ContentObject><enc key="987"/>
+            <like_user_list><user_comment><nickname>Carol</nickname></user_comment></like_user_list>
+            <comment_user_list>
+              <user_comment><comment_id>1</comment_id><username>wxid_carol</username><nickname>Carol</nickname><content>nice</content><ref_comment_id>0</ref_comment_id></user_comment>
+              <user_comment><comment_id>2</comment_id><username>wxid_bob</username><nickname>Bob</nickname><content></content><ref_comment_id>1</ref_comment_id><ref_username>wxid_carol</ref_username>
+                <emojiinfo><url>http://emoji.qpic.cn/e</url><md5>cc33</md5><width>120</width></emojiinfo></user_comment>
+            </comment_user_list></TimelineObject>"#;
+        let contact = crate::sns::CachedContact {
+            display_name: Some("Bobby".into()),
+            avatar_url: Some("https://wx.qlogo.cn/b".into()),
+        };
+        let post = crate::sns::enrich_post(
+            &weflow_native::native_sns::parse_post(2001, "wxid_bob", xml),
+            Some(&contact),
+        );
+        let typed: SnsPost = serde_json::from_value(post.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&typed).unwrap(), post);
+        // the test has every kind of field to lose
+        assert!(typed.video_key.is_some() && typed.avatar_url.is_some());
+        let media = &typed.media[0];
+        assert!(media.key.is_some() && media.enc_idx.is_some() && media.live_photo.is_some());
+        let location = typed.location.as_ref().unwrap();
+        assert_eq!(location.longitude.as_ref().unwrap().as_i64(), Some(121));
+        assert_eq!(typed.comments.len(), 2);
+        assert!(
+            !typed.comments[1].emojis.is_empty() && typed.comments[1].emojis[0].height.is_none()
+        );
+        assert_eq!(typed.likes, ["Carol"]);
+        // what `with-media` adds to a picture and its live photo
+        let fetched = json!({
+            "url": "/sns/media/a", "thumb": "/sns/media/a.t", "key": "k1", "rawUrl": "http://mmsns.qpic.cn/a",
+            "rawThumb": "http://mmsns.qpic.cn/a/150", "resolvedUrl": "/sns/media/a", "proxyThumbUrl": "/p/a.t",
+            "livePhoto": { "url": "/sns/media/v", "thumb": "", "rawUrl": "http://mmsns.qpic.cn/v", "proxyUrl": "/p/v" },
+        });
+        let media: SnsMedia = serde_json::from_value(fetched.clone()).unwrap();
+        assert_eq!(serde_json::to_value(media).unwrap(), fetched);
+        // and a field none of them knows fails rather than goes missing from the answer
+        assert!(
+            serde_json::from_value::<SnsMedia>(json!({ "url": "", "thumb": "", "size": 1 }))
+                .is_err()
+        );
+    }
 
     #[test]
     fn a_server_id_past_2_53_keeps_every_digit_and_only_the_fields_of_the_contract_are_written() {

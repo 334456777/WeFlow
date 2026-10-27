@@ -1,6 +1,7 @@
 // The rest of the settings (#213): the output language, the AI model API and the cache: read in the server's
 // process (`/api/`), changed through the command routes.
 import { call, get } from './client';
+import type * as Contract from './contract.gen';
 
 /** `config get <key>` of the current profile (or the config file, for `lang`); null when it is not set. */
 export async function getSetting(key: string, signal?: AbortSignal): Promise<string | null> {
@@ -17,15 +18,11 @@ export const testAi = () => call<unknown>('POST', 'insight/test', {});
 /** The keys of the AI part, as `config set` names them; the API key is never read back (`config profiles` says it is set). */
 export const AI_KEYS = ['ai_model_api_base_url', 'ai_model_api_model', 'ai_model_api_max_tokens', 'ai_insight_enabled'] as const;
 
-export type CachePartName = 'images' | 'voices' | 'emojis' | 'sns' | 'analytics' | 'api' | 'keys' | 'runtime' | 'web';
+/** The parts of the cache, as `cache clear` takes them (the contract's, #430). */
+export type CachePartName = Contract.CachePart;
 
 /** A row of `cache list`. */
-export interface CachePart {
-  part: CachePartName;
-  paths: string[];
-  bytes: number;
-  files: number;
-}
+export type CachePart = Contract.CacheUsage;
 
 export const CACHE_LABELS: Record<CachePartName, { title: string; text: string }> = {
   images: { title: '图片', text: '解密过的聊天图片。' },

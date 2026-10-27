@@ -38,11 +38,13 @@ function ArticleLink({ article, className, children }: { article: Pick<BizArticl
 }
 
 function PushCard({ push }: { push: BizPush }) {
-  const time = new Date(push.createTime * 1000);
+  // a row that does not say when (the contract's null) shows as the start of 1970 rather than breaking the list
+  const seconds = push.createTime ?? 0;
+  const time = new Date(seconds * 1000);
   // the first article leads; the others of the same push follow as rows
   const more = push.contentList.filter((item, index) => !(index === 0 && item.url === push.url && item.title === push.title));
   return <article className="biz-push">
-    <time className="biz-push-time" dateTime={time.toISOString()}>{formatDayHeading(dayOf(push.createTime), new Date())} {formatClock(push.createTime)}</time>
+    <time className="biz-push-time" dateTime={time.toISOString()}>{formatDayHeading(dayOf(seconds), new Date())} {formatClock(seconds)}</time>
     <ArticleLink article={push} className="biz-lead">
       <Cover src={push.cover} className="biz-lead-cover" />
       <strong className="biz-lead-title clamp-2">{push.title || '无标题'}</strong>

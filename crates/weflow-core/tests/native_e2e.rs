@@ -26,8 +26,7 @@ fn request(session: &str, format: &str) -> MessageExportRequest {
 #[test]
 fn connection_opens_the_encrypted_account() {
     let (hub, _root) = common::mock_hub("n-conn");
-    let v = hub.db_test().unwrap();
-    assert_eq!(v["connected"], true);
+    assert!(hub.db_test().unwrap().connected);
 }
 
 #[test]
@@ -480,8 +479,8 @@ fn group_ranking_hours_and_media_mix() {
 fn report_years_come_from_the_data() {
     let (hub, _root) = common::mock_hub("n-years");
     let y = hub.report_available_years().unwrap();
-    assert_eq!(y["years"], json!([2023]));
-    assert_eq!(y["strategy"], "native");
+    assert_eq!(y.years, [2023]);
+    assert_eq!(y.strategy, "native");
 }
 
 // ── Moments ──
@@ -554,11 +553,7 @@ fn moments_users_and_export_stats() {
     );
     let s = hub.sns_export_stats(false).unwrap();
     assert_eq!(
-        (
-            s["totalPosts"].as_i64(),
-            s["totalFriends"].as_i64(),
-            s["myPosts"].as_i64()
-        ),
+        (Some(s.total_posts), Some(s.total_friends), s.my_posts),
         (Some(5), Some(3), Some(2))
     );
 }
@@ -703,10 +698,17 @@ fn footprint_reports_private_chats_segments_and_mentions() {
     assert_eq!(f["private_segments"].as_array().unwrap().len(), 4);
     assert_eq!(f["private_segments"][0]["message_count"], 2);
     assert_eq!(f["diagnostics"]["truncated"], false);
+    // read into the contract's types and written back out the same, every field of it (#430)
     assert_eq!(
-        hub.insight_footprint(0, 0).unwrap()["summary"]["private_inbound_people"],
+        hub.insight_footprint(0, 0)
+            .unwrap()
+            .summary
+            .private_inbound_people,
         1
     );
+    let typed = weflow_core::contract::Footprint::of(f.clone()).unwrap();
+    assert!(!typed.private_segments.is_empty());
+    assert_eq!(serde_json::to_value(&typed).unwrap(), f);
     // from the second day through the fourth (inclusive): messages 3 (Bob's) and 4 (mine), a segment each
     let d = hub.footprint(1_700_086_400, 1_700_259_200).unwrap();
     assert_eq!(
@@ -877,7 +879,7 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     let current = put(hub.runtime_root().join("test/t/manifest.json"));
     let older = put(hub.runtime_root().join("2.0.0/t/manifest.json"));
 
-    let list = hub.cache_list();
+    let list = json!(hub.cache_list());
     let entry = |name: &str| {
         list.as_array()
             .unwrap()

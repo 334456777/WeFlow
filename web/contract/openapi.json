@@ -216,6 +216,181 @@
         }
       }
     },
+    "/api/biz/accounts": {
+      "get": {
+        "operationId": "api_biz_accounts",
+        "x-weflow-command": "biz accounts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one)",
+                      "required": [
+                        "accounts"
+                      ],
+                      "properties": {
+                        "accounts": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Row"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/biz/messages": {
+      "get": {
+        "operationId": "api_biz_messages",
+        "x-weflow-command": "biz messages",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BizMessages"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/biz/pay-records": {
+      "get": {
+        "operationId": "api_biz_pay_records",
+        "x-weflow-command": "biz pay-records",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PayRecords"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cache/list": {
+      "get": {
+        "operationId": "api_cache_list",
+        "x-weflow-command": "cache list",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CacheUsage"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/contacts": {
       "get": {
         "operationId": "api_chat_contacts",
@@ -851,6 +1026,169 @@
         }
       }
     },
+    "/api/config/profiles": {
+      "get": {
+        "operationId": "api_config_profiles",
+        "x-weflow-command": "config profiles",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ProfileSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db/detect": {
+      "get": {
+        "operationId": "api_db_detect",
+        "x-weflow-command": "db detect",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbCandidates"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db/test": {
+      "get": {
+        "operationId": "api_db_test",
+        "x-weflow-command": "db test",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbConnection"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db/wxid": {
+      "get": {
+        "operationId": "api_db_wxid",
+        "x-weflow-command": "db wxid",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DbAccounts"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/group/hours": {
       "get": {
         "operationId": "api_group_hours",
@@ -1118,6 +1456,338 @@
                       "items": {
                         "$ref": "#/components/schemas/GroupRank"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/insight/footprint": {
+      "get": {
+        "operationId": "api_insight_footprint",
+        "x-weflow-command": "insight footprint",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Footprint"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/insight/get": {
+      "get": {
+        "operationId": "api_insight_get",
+        "x-weflow-command": "insight get",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InsightLookup"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/report/annual/years": {
+      "get": {
+        "operationId": "api_report_annual_years",
+        "x-weflow-command": "report annual years",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReportYears"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runtime/info": {
+      "get": {
+        "operationId": "api_runtime_info",
+        "x-weflow-command": "runtime info",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RuntimeInfo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sns/post-counts": {
+      "get": {
+        "operationId": "api_sns_post_counts",
+        "x-weflow-command": "sns post-counts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "How many posts each poster has, by username; with `user`, that one's",
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "description": "Each poster, with how many posts they have",
+                          "additionalProperties": {
+                            "type": "integer"
+                          }
+                        },
+                        {
+                          "$ref": "#/components/schemas/UserPosts"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sns/stats": {
+      "get": {
+        "operationId": "api_sns_stats",
+        "x-weflow-command": "sns stats",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsStats"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sns/timeline": {
+      "get": {
+        "operationId": "api_sns_timeline",
+        "x-weflow-command": "sns timeline",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsTimeline"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sns/users": {
+      "get": {
+        "operationId": "api_sns_users",
+        "x-weflow-command": "sns users",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsUsers"
                     }
                   }
                 }
@@ -2904,6 +3574,1231 @@
           "wechatId"
         ],
         "description": "Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left\nout already."
+      },
+      "SnsTimeline": {
+        "type": "object",
+        "properties": {
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsPost"
+            }
+          }
+        },
+        "required": [
+          "timeline"
+        ],
+        "description": "A page of Moments posts (`sns timeline`), the newest first."
+      },
+      "SnsPost": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "WeChat's id of the post."
+          },
+          "tid": {
+            "type": "string",
+            "description": "The row's id in WeChat's table, in decimal."
+          },
+          "username": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "The poster's name: the post's own, else the contact's, else the username."
+          },
+          "createTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "contentDesc": {
+            "type": "string",
+            "description": "The text of the post."
+          },
+          "type": {
+            "type": "integer",
+            "format": "int64",
+            "description": "WeChat's type of the post: 1 pictures, 15 a video, others links and such."
+          },
+          "rawXml": {
+            "type": "string",
+            "description": "The post's XML as WeChat keeps it."
+          },
+          "media": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsMedia"
+            }
+          },
+          "likes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The names of those who liked it."
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsComment"
+            }
+          },
+          "videoKey": {
+            "type": "string",
+            "description": "The key of the post's video, which opens its cover too."
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/SnsLocation"
+          }
+        },
+        "required": [
+          "id",
+          "tid",
+          "username",
+          "nickname",
+          "createTime",
+          "contentDesc",
+          "type",
+          "rawXml",
+          "media",
+          "likes",
+          "comments"
+        ],
+        "description": "A Moments post."
+      },
+      "SnsMedia": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "thumb": {
+            "type": "string"
+          },
+          "md5": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "encIdx": {
+            "type": "string"
+          },
+          "rawUrl": {
+            "type": "string",
+            "description": "With `with-media`: the server's addresses, `url` and `thumb` being those of the files it fetched, and where\nit fetched them or a proxy of the server serves them."
+          },
+          "rawThumb": {
+            "type": "string"
+          },
+          "resolvedUrl": {
+            "type": "string"
+          },
+          "resolvedThumbUrl": {
+            "type": "string"
+          },
+          "proxyUrl": {
+            "type": "string"
+          },
+          "proxyThumbUrl": {
+            "type": "string"
+          },
+          "livePhoto": {
+            "description": "The moving part of a live photo.",
+            "$ref": "#/components/schemas/SnsLivePhoto"
+          }
+        },
+        "required": [
+          "url",
+          "thumb"
+        ],
+        "description": "A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`."
+      },
+      "SnsLivePhoto": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "thumb": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "md5": {
+            "type": "string"
+          },
+          "encIdx": {
+            "type": "string"
+          },
+          "rawUrl": {
+            "type": "string",
+            "description": "With `with-media`: as for the picture it moves."
+          },
+          "rawThumb": {
+            "type": "string"
+          },
+          "resolvedUrl": {
+            "type": "string"
+          },
+          "resolvedThumbUrl": {
+            "type": "string"
+          },
+          "proxyUrl": {
+            "type": "string"
+          },
+          "proxyThumbUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "thumb"
+        ],
+        "description": "The video of a live photo."
+      },
+      "SnsComment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "refCommentId": {
+            "type": "string",
+            "description": "The comment it answers; empty when none."
+          },
+          "refUsername": {
+            "type": "string"
+          },
+          "refNickname": {
+            "type": "string"
+          },
+          "emojis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnsEmoji"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "nickname",
+          "content",
+          "refCommentId"
+        ],
+        "description": "A comment on a post."
+      },
+      "SnsEmoji": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "md5": {
+            "type": "string"
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "encryptUrl": {
+            "type": "string"
+          },
+          "aesKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "md5",
+          "width",
+          "height"
+        ],
+        "description": "A sticker in a comment."
+      },
+      "SnsLocation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "poiName": {
+            "type": "string"
+          },
+          "poiAddress": {
+            "type": "string"
+          },
+          "poiAddressName": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "description": "Where a post was made, as much as it says."
+      },
+      "SnsUsers": {
+        "type": "object",
+        "properties": {
+          "usernames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "usernames"
+        ],
+        "description": "Who has posts in Moments (`sns users`), the one who posted last first."
+      },
+      "SnsStats": {
+        "type": "object",
+        "properties": {
+          "totalPosts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalFriends": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many people posted them."
+          },
+          "myPosts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How many of them are the account's own; null when the account's wxid is not known."
+          }
+        },
+        "required": [
+          "totalPosts",
+          "totalFriends",
+          "myPosts"
+        ],
+        "description": "How many Moments posts there are (`sns stats`)."
+      },
+      "UserPosts": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "totalPosts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "username",
+          "totalPosts"
+        ],
+        "description": "How many Moments posts one person has (`sns post-counts --user`)."
+      },
+      "ReportYears": {
+        "type": "object",
+        "properties": {
+          "years": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "strategy": {
+            "type": "string",
+            "description": "How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or\n`edge-scan` (each chat's first and last message)."
+          }
+        },
+        "required": [
+          "years",
+          "strategy"
+        ],
+        "description": "The years with private messages (`report annual years`), the latest first."
+      },
+      "BizMessages": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BizMessage"
+            }
+          }
+        },
+        "required": [
+          "username",
+          "messages"
+        ],
+        "description": "The pushes of an official account (`biz messages`), as the desktop app lists them."
+      },
+      "BizMessage": {
+        "type": "object",
+        "properties": {
+          "localId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The message's id in its table; null when its row does not say."
+          },
+          "createTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "cover": {
+            "type": "string"
+          },
+          "contentList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BizArticle"
+            },
+            "description": "The other articles of the push."
+          }
+        },
+        "required": [
+          "localId",
+          "createTime",
+          "title",
+          "description",
+          "url",
+          "cover",
+          "contentList"
+        ],
+        "description": "One push of an official account: its lead article and the others sent with it."
+      },
+      "BizArticle": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "cover": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "url",
+          "cover",
+          "summary"
+        ],
+        "description": "An article sent with a push."
+      },
+      "PayRecords": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayRecord"
+            }
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as\nits other messages are left out."
+          }
+        },
+        "required": [
+          "records",
+          "hasMore"
+        ],
+        "description": "A page of WeChat Pay notices (`biz pay-records`), newest first."
+      },
+      "PayRecord": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Its lines, as WeChat writes them (amount, method, state…)."
+          },
+          "merchantName": {
+            "type": "string",
+            "description": "Who was paid; `WeChat Pay` (in the server's language) when the notice does not say."
+          },
+          "merchantIcon": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was published, in Unix seconds; 0 when the notice does not say."
+          },
+          "localId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "createTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "merchantName",
+          "merchantIcon",
+          "timestamp",
+          "localId",
+          "createTime"
+        ],
+        "description": "A WeChat Pay notice."
+      },
+      "ProfileSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether the commands read it."
+          },
+          "wxid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dbPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The WeChat data directory."
+          },
+          "decryptKey": {
+            "type": "boolean",
+            "description": "Whether the database key is set."
+          },
+          "imageKeys": {
+            "type": "boolean",
+            "description": "Whether both image keys are set."
+          },
+          "aiKey": {
+            "type": "boolean",
+            "description": "Whether the key of the AI model API is set."
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "Whether it can open the databases: the data directory and the database key are set."
+          }
+        },
+        "required": [
+          "name",
+          "current",
+          "wxid",
+          "dbPath",
+          "decryptKey",
+          "imageKeys",
+          "aiKey",
+          "complete"
+        ],
+        "description": "A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys."
+      },
+      "RuntimeInfo": {
+        "type": "object",
+        "properties": {
+          "homeDir": {
+            "type": "string"
+          },
+          "configPath": {
+            "type": "string"
+          },
+          "runtimeDir": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "The target it was built for, such as `x86_64-pc-windows-msvc`."
+          }
+        },
+        "required": [
+          "homeDir",
+          "configPath",
+          "runtimeDir",
+          "version",
+          "target"
+        ],
+        "description": "Where `weflow` keeps its files and what it is (`runtime info`)."
+      },
+      "CacheUsage": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "$ref": "#/components/schemas/CachePart",
+            "description": "Its name, as `cache clear` takes it."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "files": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "part",
+          "paths",
+          "bytes",
+          "files"
+        ],
+        "description": "One part of WeFlow's cache (`cache list`), and how much of the disk it takes."
+      },
+      "CachePart": {
+        "type": "string",
+        "enum": [
+          "images",
+          "voices",
+          "emojis",
+          "sns",
+          "analytics",
+          "api",
+          "keys",
+          "runtime",
+          "web"
+        ],
+        "description": "A part of WeFlow's cache that is listed and cleared on its own."
+      },
+      "DbCandidates": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DbCandidate"
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ],
+        "description": "The default places of WeChat's data directory (`db detect`)."
+      },
+      "DbCandidate": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "exists": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "exists"
+        ],
+        "description": "A place WeChat's data directory may be."
+      },
+      "DbAccounts": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DbAccount"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "description": "The accounts in WeChat's data directory (`db wxid`)."
+      },
+      "DbAccount": {
+        "type": "object",
+        "properties": {
+          "wxid": {
+            "type": "string",
+            "description": "As `config set wxid` takes it, without the suffix of its folder's name."
+          },
+          "path": {
+            "type": "string",
+            "description": "Its folder."
+          }
+        },
+        "required": [
+          "wxid",
+          "path"
+        ],
+        "description": "An account of WeChat's data directory."
+      },
+      "DbConnection": {
+        "type": "object",
+        "properties": {
+          "accountDir": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "Always true."
+          }
+        },
+        "required": [
+          "accountDir",
+          "connected"
+        ],
+        "description": "That the databases open with the configured key (`db test`); a failure is an error instead."
+      },
+      "Footprint": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/FootprintSummary"
+          },
+          "private_sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FootprintSession"
+            },
+            "description": "The private chats with a message in the range, the latest first."
+          },
+          "private_segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FootprintSegment"
+            },
+            "description": "The stretches of each private chat, in time order: a new one begins after a long pause."
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FootprintMention"
+            },
+            "description": "The group messages that @-mention me, the latest first."
+          },
+          "mention_groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionGroup"
+            },
+            "description": "The groups of those, the one with the most first."
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/FootprintDiagnostics"
+          }
+        },
+        "required": [
+          "summary",
+          "private_sessions",
+          "private_segments",
+          "mentions",
+          "mention_groups",
+          "diagnostics"
+        ],
+        "description": "My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was\n@-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none."
+      },
+      "FootprintSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "private_inbound_people": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "The people who wrote to me."
+          },
+          "private_replied_people": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Those of them I answered."
+          },
+          "private_outbound_people": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "The people I wrote to."
+          },
+          "private_reply_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Replied over inbound, from 0 to 1."
+          },
+          "mention_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "mention_group_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "private_inbound_people",
+          "private_replied_people",
+          "private_outbound_people",
+          "private_reply_rate",
+          "mention_count",
+          "mention_group_count"
+        ]
+      },
+      "FootprintSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "incoming_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outgoing_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "replied": {
+            "type": "boolean"
+          },
+          "first_incoming_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "first_reply_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latest_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "anchor_local_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The message to open the chat at, by its local id and time."
+          },
+          "anchor_create_time": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "session_id",
+          "incoming_count",
+          "outgoing_count",
+          "replied",
+          "first_incoming_ts",
+          "first_reply_ts",
+          "latest_ts",
+          "anchor_local_id",
+          "anchor_create_time"
+        ],
+        "description": "A private chat of the footprint."
+      },
+      "FootprintSegment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "segment_index": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "start_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "end_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "duration_sec": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "incoming_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outgoing_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "replied": {
+            "type": "boolean"
+          },
+          "first_incoming_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "first_reply_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latest_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "anchor_local_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "anchor_create_time": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "session_id",
+          "segment_index",
+          "start_ts",
+          "end_ts",
+          "duration_sec",
+          "incoming_count",
+          "outgoing_count",
+          "message_count",
+          "replied",
+          "first_incoming_ts",
+          "first_reply_ts",
+          "latest_ts",
+          "anchor_local_id",
+          "anchor_create_time"
+        ],
+        "description": "A stretch of a private chat."
+      },
+      "FootprintMention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "local_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "create_time": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sender_username": {
+            "type": "string"
+          },
+          "message_content": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "The message's `source` XML, which lists who it mentions."
+          }
+        },
+        "required": [
+          "session_id",
+          "local_id",
+          "create_time",
+          "sender_username",
+          "message_content",
+          "source"
+        ],
+        "description": "A group message that @-mentions me."
+      },
+      "MentionGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "latest_ts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "session_id",
+          "count",
+          "latest_ts"
+        ],
+        "description": "A group I was @-mentioned in."
+      },
+      "FootprintDiagnostics": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether a list was cut at its limit."
+          },
+          "private_truncated": {
+            "type": "boolean"
+          },
+          "mention_truncated": {
+            "type": "boolean"
+          },
+          "scanned_dbs": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "private_session_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "group_session_count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "fallback_used": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "truncated",
+          "private_truncated",
+          "mention_truncated",
+          "scanned_dbs",
+          "elapsed_ms",
+          "private_session_count",
+          "group_session_count",
+          "fallback_used"
+        ],
+        "description": "How the footprint was read."
+      },
+      "InsightLookup": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "record": {
+            "$ref": "#/components/schemas/InsightRecord"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "description": "One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a\nfailure of the command instead, so an answer that succeeds holds `success: true` and the record."
+      },
+      "InsightRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountScope": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "triggerReason": {
+            "type": "string"
+          },
+          "insight": {
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "log": {
+            "$ref": "#/components/schemas/InsightRecordLog"
+          }
+        },
+        "required": [
+          "id",
+          "accountScope",
+          "createdAt",
+          "sessionId",
+          "displayName",
+          "triggerReason",
+          "insight",
+          "read",
+          "log"
+        ],
+        "description": "An insight the engine wrote about a conversation."
+      },
+      "InsightRecordLog": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "maxTokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "temperature": {
+            "type": "number",
+            "format": "double"
+          },
+          "triggerReason": {
+            "type": "string"
+          },
+          "allowContext": {
+            "type": "boolean"
+          },
+          "contextCount": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "systemPrompt": {
+            "type": "string"
+          },
+          "userPrompt": {
+            "type": "string"
+          },
+          "rawOutput": {
+            "type": "string"
+          },
+          "finalInsight": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "endpoint",
+          "model",
+          "maxTokens",
+          "temperature",
+          "triggerReason",
+          "allowContext",
+          "contextCount",
+          "systemPrompt",
+          "userPrompt",
+          "rawOutput",
+          "finalInsight",
+          "durationMs",
+          "createdAt"
+        ],
+        "description": "What was asked of the AI model for a record, and what it answered."
       },
       "Job": {
         "type": "object",

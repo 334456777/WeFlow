@@ -1,5 +1,6 @@
 // The annual report (#208): `report annual years` and `report annual generate`, over one year or all of them.
 import { call, get } from './client';
+import type * as Contract from './contract.gen';
 
 export interface Person { username?: string; displayName: string; avatarUrl?: string }
 
@@ -30,7 +31,7 @@ export interface AnnualReport {
   lostFriend: (Person & { earlyCount: number; lateCount: number; periodDesc: string }) | null;
 }
 
-export const getReportYears = (signal?: AbortSignal) => get<{ years: number[] }>('api/report/annual/years', {}, signal);
+export const getReportYears = (signal?: AbortSignal) => get<Contract.ReportYears>('api/report/annual/years', {}, signal);
 // a report is generated, which the command API takes as a POST (#336)
 export const getAnnualReport = (year: number, signal?: AbortSignal) => call<AnnualReport>('POST', 'report/annual/generate', { year }, signal);
 

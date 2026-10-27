@@ -1,50 +1,15 @@
 // My footprint (#209): who I talked with and replied to, and where I was @-mentioned, over a range of days
 // (`insight footprint --start --end`); its export (`export footprint`) and its AI summary (`insight footprint-summary`).
 import { call, get } from './client';
+import type * as Contract from './contract.gen';
 import { dayOf } from '../chat/messages';
 
-export interface FootprintSummary {
-  /** People who wrote to me, those I replied to, and those I wrote to. */
-  private_inbound_people: number;
-  private_replied_people: number;
-  private_outbound_people: number;
-  /** replied ÷ inbound, 0–1. */
-  private_reply_rate: number;
-  mention_count: number;
-  mention_group_count: number;
-}
-
+/** The footprint and its parts, the contract's (#430): keys in snake_case, as the native layer writes them. */
+export type Footprint = Contract.Footprint;
+export type FootprintSummary = Contract.FootprintSummary;
 /** A stretch of one private chat without an hour's pause; seconds. */
-export interface FootprintSegment {
-  session_id: string;
-  segment_index: number;
-  start_ts: number;
-  end_ts: number;
-  incoming_count: number;
-  outgoing_count: number;
-  message_count: number;
-  replied: boolean;
-  /** The message to open it at. */
-  anchor_local_id: number;
-  anchor_create_time: number;
-}
-
-export interface FootprintMention {
-  session_id: string;
-  local_id: number;
-  create_time: number;
-  sender_username: string;
-  message_content: string;
-}
-
-export interface Footprint {
-  summary: FootprintSummary;
-  private_sessions: { session_id: string; incoming_count: number; outgoing_count: number; replied: boolean }[];
-  private_segments: FootprintSegment[];
-  mentions: FootprintMention[];
-  mention_groups: { session_id: string; count: number; latest_ts: number }[];
-  diagnostics: { truncated: boolean };
-}
+export type FootprintSegment = Contract.FootprintSegment;
+export type FootprintMention = Contract.FootprintMention;
 
 /** Days `YYYY-MM-DD`, both inclusive, and what to call them. */
 export interface FootprintRange { from: string; to: string; label: string }

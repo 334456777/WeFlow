@@ -459,8 +459,9 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
-            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, ResourcePage, Session,
+            BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightLookup,
+            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
+            ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
         };
@@ -556,6 +557,39 @@ pub(super) fn contract() -> &'static Contract {
             "analytics exclude-candidates",
             of(generator.subschema_for::<Vec<ExcludeCandidate>>()),
         );
+        data.insert("sns timeline", of(generator.subschema_for::<SnsTimeline>()));
+        data.insert("sns users", of(generator.subschema_for::<SnsUsers>()));
+        data.insert("sns stats", of(generator.subschema_for::<SnsStats>()));
+        data.insert(
+            "sns post-counts",
+            json!({
+                "description": "How many posts each poster has, by username; with `user`, that one's",
+                "anyOf": [
+                    by_id(json!({ "type": "integer" }), "Each poster, with how many posts they have"),
+                    of(generator.subschema_for::<UserPosts>()),
+                ],
+            }),
+        );
+        data.insert("report annual years", of(generator.subschema_for::<ReportYears>()));
+        data.insert(
+            "biz accounts",
+            json!({
+                "type": "object",
+                "description": "The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one)",
+                "required": ["accounts"],
+                "properties": { "accounts": rows.clone() },
+            }),
+        );
+        data.insert("biz messages", of(generator.subschema_for::<BizMessages>()));
+        data.insert("biz pay-records", of(generator.subschema_for::<PayRecords>()));
+        data.insert("config profiles", of(generator.subschema_for::<Vec<ProfileSummary>>()));
+        data.insert("runtime info", of(generator.subschema_for::<RuntimeInfo>()));
+        data.insert("cache list", of(generator.subschema_for::<Vec<CacheUsage>>()));
+        data.insert("db detect", of(generator.subschema_for::<DbCandidates>()));
+        data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));
+        data.insert("db test", of(generator.subschema_for::<DbConnection>()));
+        data.insert("insight footprint", of(generator.subschema_for::<Footprint>()));
+        data.insert("insight get", of(generator.subschema_for::<InsightLookup>()));
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();
@@ -1558,7 +1592,8 @@ mod tests {
             .iter()
             .any(|r| r == "nextCursor"));
         // other commands keep the generic answer
-        assert_eq!(ok("/sns/users")["$ref"], "#/components/schemas/Result");
+        // `config get` answers the value of any key
+        assert_eq!(ok("/config/get")["$ref"], "#/components/schemas/Result");
     }
 
     #[test]

@@ -10,14 +10,20 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const t = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime() / 1000;
 const DATA: Footprint = {
   summary: { private_inbound_people: 4, private_replied_people: 3, private_outbound_people: 5, private_reply_rate: 0.75, mention_count: 2, mention_group_count: 1 },
-  private_sessions: [{ session_id: 'wxid_a', incoming_count: 3, outgoing_count: 2, replied: true }],
+  private_sessions: [{
+    session_id: 'wxid_a', incoming_count: 3, outgoing_count: 2, replied: true, first_incoming_ts: t(20, 9), first_reply_ts: t(20, 9, 5),
+    latest_ts: t(20, 9, 30), anchor_local_id: 11, anchor_create_time: t(20, 9, 30),
+  }],
   private_segments: [
-    { session_id: 'wxid_a', segment_index: 1, start_ts: t(20, 9), end_ts: t(20, 9, 30), incoming_count: 3, outgoing_count: 2, message_count: 5, replied: true, anchor_local_id: 11, anchor_create_time: t(20, 9) },
-    { session_id: 'wxid_b', segment_index: 1, start_ts: t(19, 22), end_ts: t(19, 22), incoming_count: 1, outgoing_count: 0, message_count: 1, replied: false, anchor_local_id: 7, anchor_create_time: t(19, 22) },
+    { session_id: 'wxid_a', segment_index: 1, start_ts: t(20, 9), end_ts: t(20, 9, 30), duration_sec: 1800, incoming_count: 3, outgoing_count: 2, message_count: 5, replied: true, first_incoming_ts: t(20, 9), first_reply_ts: t(20, 9, 5), latest_ts: t(20, 9, 30), anchor_local_id: 11, anchor_create_time: t(20, 9) },
+    { session_id: 'wxid_b', segment_index: 1, start_ts: t(19, 22), end_ts: t(19, 22), duration_sec: 0, incoming_count: 1, outgoing_count: 0, message_count: 1, replied: false, first_incoming_ts: t(19, 22), first_reply_ts: 0, latest_ts: t(19, 22), anchor_local_id: 7, anchor_create_time: t(19, 22) },
   ],
-  mentions: [{ session_id: 'room@chatroom', local_id: 99, create_time: t(20, 8), sender_username: 'wxid_c', message_content: 'wxid_c:\n@我 周六几点集合？' }],
+  mentions: [{ session_id: 'room@chatroom', local_id: 99, create_time: t(20, 8), sender_username: 'wxid_c', message_content: 'wxid_c:\n@我 周六几点集合？', source: '' }],
   mention_groups: [{ session_id: 'room@chatroom', count: 2, latest_ts: t(20, 8) }],
-  diagnostics: { truncated: false },
+  diagnostics: {
+    truncated: false, private_truncated: false, mention_truncated: false, scanned_dbs: 2, elapsed_ms: 5, private_session_count: 2,
+    group_session_count: 1, fallback_used: false,
+  },
 };
 const CONTACTS: Record<string, Contact> = {
   wxid_a: { username: 'wxid_a', displayName: '林沐', type: 'friend' },

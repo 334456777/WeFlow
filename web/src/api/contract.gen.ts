@@ -573,6 +573,397 @@ export interface ExcludeCandidate {
   wechatId: string;
 }
 
+/** A page of Moments posts (`sns timeline`), the newest first. */
+export interface SnsTimeline {
+  timeline: SnsPost[];
+}
+
+/** A Moments post. */
+export interface SnsPost {
+  /** WeChat's id of the post. */
+  id: string;
+  /** The row's id in WeChat's table, in decimal. */
+  tid: string;
+  username: string;
+  /** The poster's name: the post's own, else the contact's, else the username. */
+  nickname: string;
+  createTime: number;
+  /** The text of the post. */
+  contentDesc: string;
+  /** WeChat's type of the post: 1 pictures, 15 a video, others links and such. */
+  type: number;
+  /** The post's XML as WeChat keeps it. */
+  rawXml: string;
+  media: SnsMedia[];
+  /** The names of those who liked it. */
+  likes: string[];
+  comments: SnsComment[];
+  /** The key of the post's video, which opens its cover too. */
+  videoKey?: string;
+  avatarUrl?: string;
+  location?: SnsLocation;
+}
+
+/** A picture or video of a post: addresses on WeChat's servers, fetched and decrypted by `sns media` with `key`. */
+export interface SnsMedia {
+  url: string;
+  thumb: string;
+  md5?: string;
+  token?: string;
+  key?: string;
+  encIdx?: string;
+  /**
+   * With `with-media`: the server's addresses, `url` and `thumb` being those of the files it fetched, and where
+   * it fetched them or a proxy of the server serves them.
+   */
+  rawUrl?: string;
+  rawThumb?: string;
+  resolvedUrl?: string;
+  resolvedThumbUrl?: string;
+  proxyUrl?: string;
+  proxyThumbUrl?: string;
+  /** The moving part of a live photo. */
+  livePhoto?: SnsLivePhoto;
+}
+
+/** The video of a live photo. */
+export interface SnsLivePhoto {
+  url: string;
+  thumb: string;
+  token?: string;
+  key?: string;
+  md5?: string;
+  encIdx?: string;
+  /** With `with-media`: as for the picture it moves. */
+  rawUrl?: string;
+  rawThumb?: string;
+  resolvedUrl?: string;
+  resolvedThumbUrl?: string;
+  proxyUrl?: string;
+  proxyThumbUrl?: string;
+}
+
+/** A comment on a post. */
+export interface SnsComment {
+  id: string;
+  nickname: string;
+  username?: string;
+  content: string;
+  /** The comment it answers; empty when none. */
+  refCommentId: string;
+  refUsername?: string;
+  refNickname?: string;
+  emojis?: SnsEmoji[];
+}
+
+/** A sticker in a comment. */
+export interface SnsEmoji {
+  url: string;
+  md5: string;
+  width: number | null;
+  height: number | null;
+  encryptUrl?: string;
+  aesKey?: string;
+}
+
+/** Where a post was made, as much as it says. */
+export interface SnsLocation {
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+  country?: string;
+  poiName?: string;
+  poiAddress?: string;
+  poiAddressName?: string;
+  label?: string;
+}
+
+/** Who has posts in Moments (`sns users`), the one who posted last first. */
+export interface SnsUsers {
+  usernames: string[];
+}
+
+/** How many Moments posts there are (`sns stats`). */
+export interface SnsStats {
+  totalPosts: number;
+  /** How many people posted them. */
+  totalFriends: number;
+  /** How many of them are the account's own; null when the account's wxid is not known. */
+  myPosts: number | null;
+}
+
+/** How many Moments posts one person has (`sns post-counts --user`). */
+export interface UserPosts {
+  username: string;
+  totalPosts: number;
+}
+
+/** The years with private messages (`report annual years`), the latest first. */
+export interface ReportYears {
+  years: number[];
+  /**
+   * How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or
+   * `edge-scan` (each chat's first and last message).
+   */
+  strategy: string;
+}
+
+/** The pushes of an official account (`biz messages`), as the desktop app lists them. */
+export interface BizMessages {
+  username: string;
+  messages: BizMessage[];
+}
+
+/** One push of an official account: its lead article and the others sent with it. */
+export interface BizMessage {
+  /** The message's id in its table; null when its row does not say. */
+  localId: number | null;
+  createTime: number | null;
+  title: string;
+  description: string;
+  url: string;
+  cover: string;
+  /** The other articles of the push. */
+  contentList: BizArticle[];
+}
+
+/** An article sent with a push. */
+export interface BizArticle {
+  title: string;
+  url: string;
+  cover: string;
+  summary: string;
+}
+
+/** A page of WeChat Pay notices (`biz pay-records`), newest first. */
+export interface PayRecords {
+  records: PayRecord[];
+  /**
+   * Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as
+   * its other messages are left out.
+   */
+  hasMore: boolean;
+}
+
+/** A WeChat Pay notice. */
+export interface PayRecord {
+  title: string;
+  /** Its lines, as WeChat writes them (amount, method, state…). */
+  description: string;
+  /** Who was paid; `WeChat Pay` (in the server's language) when the notice does not say. */
+  merchantName: string;
+  merchantIcon: string;
+  /** When it was published, in Unix seconds; 0 when the notice does not say. */
+  timestamp: number;
+  localId: number | null;
+  createTime: number | null;
+}
+
+/** A profile of the configuration (`config profiles`): its account and how far it is set up, without its keys. */
+export interface ProfileSummary {
+  name: string;
+  /** Whether the commands read it. */
+  current: boolean;
+  wxid: string | null;
+  /** The WeChat data directory. */
+  dbPath: string | null;
+  /** Whether the database key is set. */
+  decryptKey: boolean;
+  /** Whether both image keys are set. */
+  imageKeys: boolean;
+  /** Whether the key of the AI model API is set. */
+  aiKey: boolean;
+  /** Whether it can open the databases: the data directory and the database key are set. */
+  complete: boolean;
+}
+
+/** Where `weflow` keeps its files and what it is (`runtime info`). */
+export interface RuntimeInfo {
+  homeDir: string;
+  configPath: string;
+  runtimeDir: string;
+  version: string;
+  /** The target it was built for, such as `x86_64-pc-windows-msvc`. */
+  target: string;
+}
+
+/** One part of WeFlow's cache (`cache list`), and how much of the disk it takes. */
+export interface CacheUsage {
+  /** Its name, as `cache clear` takes it. */
+  part: CachePart;
+  paths: string[];
+  bytes: number;
+  files: number;
+}
+
+/** A part of WeFlow's cache that is listed and cleared on its own. */
+export type CachePart = "images" | "voices" | "emojis" | "sns" | "analytics" | "api" | "keys" | "runtime" | "web";
+
+/** The default places of WeChat's data directory (`db detect`). */
+export interface DbCandidates {
+  candidates: DbCandidate[];
+}
+
+/** A place WeChat's data directory may be. */
+export interface DbCandidate {
+  path: string;
+  exists: boolean;
+}
+
+/** The accounts in WeChat's data directory (`db wxid`). */
+export interface DbAccounts {
+  accounts: DbAccount[];
+}
+
+/** An account of WeChat's data directory. */
+export interface DbAccount {
+  /** As `config set wxid` takes it, without the suffix of its folder's name. */
+  wxid: string;
+  /** Its folder. */
+  path: string;
+}
+
+/** That the databases open with the configured key (`db test`); a failure is an error instead. */
+export interface DbConnection {
+  accountDir: string;
+  /** Always true. */
+  connected: boolean;
+}
+
+/**
+ * My footprint over a range of days (`insight footprint`): who I talked with and replied to, and where I was
+ * @-mentioned. Its keys are the native layer's, in snake_case. Times are Unix seconds, 0 where there is none.
+ */
+export interface Footprint {
+  summary: FootprintSummary;
+  /** The private chats with a message in the range, the latest first. */
+  private_sessions: FootprintSession[];
+  /** The stretches of each private chat, in time order: a new one begins after a long pause. */
+  private_segments: FootprintSegment[];
+  /** The group messages that @-mention me, the latest first. */
+  mentions: FootprintMention[];
+  /** The groups of those, the one with the most first. */
+  mention_groups: MentionGroup[];
+  diagnostics: FootprintDiagnostics;
+}
+
+export interface FootprintSummary {
+  /** The people who wrote to me. */
+  private_inbound_people: number;
+  /** Those of them I answered. */
+  private_replied_people: number;
+  /** The people I wrote to. */
+  private_outbound_people: number;
+  /** Replied over inbound, from 0 to 1. */
+  private_reply_rate: number;
+  mention_count: number;
+  mention_group_count: number;
+}
+
+/** A private chat of the footprint. */
+export interface FootprintSession {
+  session_id: string;
+  incoming_count: number;
+  outgoing_count: number;
+  replied: boolean;
+  first_incoming_ts: number;
+  first_reply_ts: number;
+  latest_ts: number;
+  /** The message to open the chat at, by its local id and time. */
+  anchor_local_id: number;
+  anchor_create_time: number;
+}
+
+/** A stretch of a private chat. */
+export interface FootprintSegment {
+  session_id: string;
+  segment_index: number;
+  start_ts: number;
+  end_ts: number;
+  duration_sec: number;
+  incoming_count: number;
+  outgoing_count: number;
+  message_count: number;
+  replied: boolean;
+  first_incoming_ts: number;
+  first_reply_ts: number;
+  latest_ts: number;
+  anchor_local_id: number;
+  anchor_create_time: number;
+}
+
+/** A group message that @-mentions me. */
+export interface FootprintMention {
+  session_id: string;
+  local_id: number;
+  create_time: number;
+  sender_username: string;
+  message_content: string;
+  /** The message's `source` XML, which lists who it mentions. */
+  source: string;
+}
+
+/** A group I was @-mentioned in. */
+export interface MentionGroup {
+  session_id: string;
+  count: number;
+  latest_ts: number;
+}
+
+/** How the footprint was read. */
+export interface FootprintDiagnostics {
+  /** Whether a list was cut at its limit. */
+  truncated: boolean;
+  private_truncated: boolean;
+  mention_truncated: boolean;
+  scanned_dbs: number;
+  elapsed_ms: number;
+  private_session_count: number;
+  group_session_count: number;
+  fallback_used: boolean;
+}
+
+/**
+ * One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a
+ * failure of the command instead, so an answer that succeeds holds `success: true` and the record.
+ */
+export interface InsightLookup {
+  success: boolean;
+  record?: InsightRecord;
+  error?: string;
+}
+
+/** An insight the engine wrote about a conversation. */
+export interface InsightRecord {
+  id: string;
+  accountScope: string;
+  createdAt: number;
+  sessionId: string;
+  displayName: string;
+  avatarUrl?: string;
+  triggerReason: string;
+  insight: string;
+  read: boolean;
+  log: InsightRecordLog;
+}
+
+/** What was asked of the AI model for a record, and what it answered. */
+export interface InsightRecordLog {
+  endpoint: string;
+  model: string;
+  maxTokens: number;
+  temperature: number;
+  triggerReason: string;
+  allowContext: boolean;
+  contextCount: number;
+  systemPrompt: string;
+  userPrompt: string;
+  rawOutput: string;
+  finalInsight: string;
+  durationMs: number;
+  createdAt: number;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -630,6 +1021,13 @@ export interface Answers {
   "analytics overall": OverallStatistics;
   "analytics rankings": ContactRank[];
   "analytics time": TimeDistribution;
+  /** The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one) */
+  "biz accounts": {
+    accounts: Row[];
+  };
+  "biz messages": BizMessages;
+  "biz pay-records": PayRecords;
+  "cache list": CacheUsage[];
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
   /** Each conversation asked for, with how many messages it has */
@@ -651,6 +1049,10 @@ export interface Answers {
   /** Each username asked for, with whether its conversation is folded and muted */
   "chat statuses": Record<string, ChatStatus>;
   "chat tab-counts": TabCounts;
+  "config profiles": ProfileSummary[];
+  "db detect": DbCandidates;
+  "db test": DbConnection;
+  "db wxid": DbAccounts;
   "group hours": GroupHours;
   "group list": GroupChat[];
   "group media": GroupMedia;
@@ -658,4 +1060,13 @@ export interface Answers {
   "group member-messages": MemberMessages;
   "group members": GroupMembers;
   "group ranking": GroupRank[];
+  "insight footprint": Footprint;
+  "insight get": InsightLookup;
+  "report annual years": ReportYears;
+  "runtime info": RuntimeInfo;
+  /** How many posts each poster has, by username; with `user`, that one's */
+  "sns post-counts": Record<string, number> | UserPosts;
+  "sns stats": SnsStats;
+  "sns timeline": SnsTimeline;
+  "sns users": SnsUsers;
 }

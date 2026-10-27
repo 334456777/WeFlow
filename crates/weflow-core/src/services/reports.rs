@@ -417,7 +417,7 @@ impl ServiceHub {
     }
 
     /// `getAvailableYears`: native query, then table time ranges, then first/last message.
-    pub fn report_available_years(&self) -> AppResult<Value> {
+    pub fn report_available_years(&self) -> AppResult<crate::contract::ReportYears> {
         let (wcdb, cleaned, _) = self.report_connect()?;
         let sessions = self.report_private_sessions(&wcdb, &cleaned);
         if sessions.is_empty() {
@@ -425,9 +425,10 @@ impl ServiceHub {
         }
         if let Ok(Value::Array(native)) = wcdb.available_years(&sessions) {
             if !native.is_empty() {
-                return Ok(
-                    json!({ "years": Self::normalize_years(native.iter().map(num)), "strategy": "native" }),
-                );
+                return Ok(crate::contract::ReportYears {
+                    years: Self::normalize_years(native.iter().map(num)),
+                    strategy: "native".into(),
+                });
             }
         }
         // table scan
@@ -505,9 +506,10 @@ impl ServiceHub {
                 Self::add_years_from_range(&mut years, edge(true), edge(false));
             }
         }
-        Ok(
-            json!({ "years": Self::normalize_years(years.into_iter().map(|y| y as i64)), "strategy": strategy }),
-        )
+        Ok(crate::contract::ReportYears {
+            years: Self::normalize_years(years.into_iter().map(|y| y as i64)),
+            strategy: strategy.into(),
+        })
     }
 
     /// `annualReport:generateReport`

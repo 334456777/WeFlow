@@ -35,7 +35,8 @@ pub fn fill(template: &str, vars: &[(&str, String)]) -> String {
 
 // ───────────────────────── records ─────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// What was asked of the AI model for a record, and what it answered.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRecordLog {
     pub endpoint: String,
@@ -53,7 +54,8 @@ pub struct InsightRecordLog {
     pub created_at: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// An insight the engine wrote about a conversation.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRecord {
     pub id: String,
@@ -241,16 +243,23 @@ impl RecordStore {
         })
     }
 
-    pub fn get(&self, scope: &str, id: &str) -> Value {
+    pub fn get(&self, scope: &str, id: &str) -> crate::contract::InsightLookup {
+        let failed = |error: &str| crate::contract::InsightLookup {
+            success: false,
+            record: None,
+            error: Some(error.to_string()),
+        };
         let id = id.trim();
         if id.is_empty() {
-            return json!({ "success": false, "error": tr("record id is empty", "记录 ID 为空") });
+            return failed(tr("record id is empty", "记录 ID 为空"));
         }
         match self.scoped(scope).find(|r| r.id == id) {
-            Some(r) => json!({ "success": true, "record": r }),
-            None => {
-                json!({ "success": false, "error": tr("insight record not found", "未找到该见解记录") })
-            }
+            Some(r) => crate::contract::InsightLookup {
+                success: true,
+                record: Some(r.clone()),
+                error: None,
+            },
+            None => failed(tr("insight record not found", "未找到该见解记录")),
         }
     }
 
@@ -746,9 +755,8 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.list("wxid:me", &f)["total"], 1);
-        assert_eq!(
-            s.get("wxid:other", &a.id)["success"],
-            false,
+        assert!(
+            !s.get("wxid:other", &a.id).success,
             "records of other accounts are invisible"
         );
         assert_eq!(s.mark_read("wxid:me", &a.id)["success"], true);

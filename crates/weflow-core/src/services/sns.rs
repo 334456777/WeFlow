@@ -9,6 +9,7 @@ use md5::{Digest, Md5};
 use serde_json::{json, Map, Value};
 
 use super::*;
+use crate::contract::{SnsStats, UserPosts};
 use crate::isaac64;
 use crate::sns::{self, CachedContact};
 
@@ -21,7 +22,7 @@ const VIDEO_HEADER_BYTES: usize = 131_072;
 
 #[derive(Default)]
 pub(crate) struct SnsState {
-    export_stats: Option<(Value, Instant)>,
+    export_stats: Option<(SnsStats, Instant)>,
     user_counts: Option<(BTreeMap<String, i64>, Instant)>,
     last_timeline_fallback: Option<Instant>,
     image_cache: HashMap<String, (String, Instant)>,
@@ -92,8 +93,12 @@ fn cached_is_image(path: &Path) -> bool {
     read.is_ok_and(|n| sns::detect_image_mime(&head[..n], "").starts_with("image/"))
 }
 
-fn export_stats_value(total_posts: i64, total_friends: i64, my_posts: Option<i64>) -> Value {
-    json!({ "totalPosts": total_posts, "totalFriends": total_friends, "myPosts": my_posts })
+fn export_stats_value(total_posts: i64, total_friends: i64, my_posts: Option<i64>) -> SnsStats {
+    SnsStats {
+        total_posts,
+        total_friends,
+        my_posts,
+    }
 }
 
 impl ServiceHub {
@@ -413,14 +418,14 @@ impl ServiceHub {
     }
 
     /// `getExportStats` / `getExportStatsFast`: returns `{totalPosts, totalFriends, myPosts}`.
-    pub fn sns_export_stats(&self, fast: bool) -> AppResult<Value> {
+    pub fn sns_export_stats(&self, fast: bool) -> AppResult<SnsStats> {
         let (allow_fallback, prefer_cache) = if fast { (false, true) } else { (true, false) };
         let my_wxid = Some(self.my_wxid_cleaned()).filter(|w| !w.trim().is_empty());
-        let cached = self.sns_state.lock().unwrap().export_stats.clone();
+        let cached = self.sns_state.lock().unwrap().export_stats;
         if prefer_cache {
             if let Some((v, at)) = &cached {
                 if at.elapsed() <= EXPORT_STATS_TTL {
-                    return Ok(v.clone());
+                    return Ok(*v);
                 }
             }
         }
@@ -463,9 +468,9 @@ impl ServiceHub {
             },
         );
         let has_data = total > 0 || friends > 0;
-        let cache_has_data = cached.as_ref().is_some_and(|(v, _)| {
-            v["totalPosts"].as_i64().unwrap_or(0) > 0 || v["totalFriends"].as_i64().unwrap_or(0) > 0
-        });
+        let cache_has_data = cached
+            .as_ref()
+            .is_some_and(|(v, _)| v.total_posts > 0 || v.total_friends > 0);
         if !has_data && cache_has_data {
             return Ok(cached.unwrap().0);
         }
@@ -474,7 +479,7 @@ impl ServiceHub {
                 return Err(AppError::native(e));
             }
         }
-        self.sns_state.lock().unwrap().export_stats = Some((normalized.clone(), Instant::now()));
+        self.sns_state.lock().unwrap().export_stats = Some((normalized, Instant::now()));
         Ok(normalized)
     }
 
@@ -507,15 +512,16 @@ impl ServiceHub {
         }
     }
 
-    pub fn sns_user_post_stats(&self, username: &str) -> AppResult<Value> {
+    pub fn sns_user_post_stats(&self, username: &str) -> AppResult<UserPosts> {
         let username = username.trim();
         if username.is_empty() {
             return Err(AppError::usage("username must not be empty"));
         }
         let counts = self.sns_user_post_counts(true)?;
-        Ok(
-            json!({ "username": username, "totalPosts": counts.get(username).copied().unwrap_or(0).max(0) }),
-        )
+        Ok(UserPosts {
+            username: username.to_string(),
+            total_posts: counts.get(username).copied().unwrap_or(0).max(0),
+        })
     }
 
     // ── block-delete trigger / delete ──
