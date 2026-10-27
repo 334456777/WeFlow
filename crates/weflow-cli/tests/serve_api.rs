@@ -336,6 +336,13 @@ fn answers_are_in_the_server_s_language() {
     // one message for each, with or without `/api/`
     seen.dedup();
     assert_eq!(seen.len(), 2, "{seen:#?}");
+    // and the server says which, for the WebUI to show itself in (#439)
+    let health = server.request("GET", "/health", &[("Accept-Language", "en")], "");
+    assert_eq!(health.json()["lang"], "zh");
+    drop(server);
+    let english = start_env(&home, &["--api-token", TOKEN], &[("WEFLOW_LANG", "en")]);
+    let health = english.request("GET", "/health", &[("Accept-Language", "zh-CN")], "");
+    assert_eq!(health.json()["lang"], "en");
 }
 
 #[test]

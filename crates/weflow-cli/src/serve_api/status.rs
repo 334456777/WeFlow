@@ -153,6 +153,8 @@ impl Status {
             "apiVersion": API_VERSION,
             "version": env!("WEFLOW_VERSION"),
             "data": self.data(),
+            // the language of the server's answers, which the WebUI shows itself in too (#439)
+            "lang": super::server_lang(),
         });
         if let (Some(body), Some(server)) = (body.as_object_mut(), self.server.as_object()) {
             body.extend(server.clone());

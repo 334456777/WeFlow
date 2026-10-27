@@ -244,13 +244,15 @@ curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/op
 Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `2` (it was `1` until a parsed message's `serverId` became a string, #399, and its `messageKey` stopped holding the database's path, #443). It is raised only by a change that breaks existing clients, not by new commands or options. For the answers `web/contract/openapi.json` describes, CI tells such a change: `web/scripts/contract-compat.ts` compares the contract with that of the change's base and fails when a client of it could read the new answers wrong and `apiVersion` is the same (see web/README.md). `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
 
 ```json
-{"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41",
+{"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41", "lang": "en",
  "limits": {"maxTasks": 1, "maxReads": 4, "maxMedia": 4}, "insight": false}
 ```
 
 `data` is an opaque value that changes with each start of the server and whenever its configuration changes, such as when another account is set up. Records a client read before it changed may be another account's: the WebUI forgets what it kept (messages, group members, the days with messages) and reads again. It is a keyed hash, drawn anew each run, and tells nothing of the configuration.
 
 `limits` is what may run at once (`--max-tasks`, `--max-reads`, `--max-media`, see [Limits](#limits)) and `insight` whether the insight engine runs beside (`--insight`); the WebUI shows them in its settings. They say how the server runs, nothing of the account.
+
+`lang` is the language of the server's answers, `zh` or `en` (see [Parameters](#parameters)); the WebUI shows itself in it too (#439).
 
 ### Staying connected
 
