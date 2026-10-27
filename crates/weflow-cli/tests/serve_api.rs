@@ -1979,6 +1979,13 @@ fn official_accounts_and_their_pushes_as_the_webui_reads_them() {
         "",
     );
     assert_eq!(r.status, 200, "{}", r.body);
+    // as the contract says (#430)
+    let fits = misfits(
+        &contract(),
+        &json!({ "$ref": "#/components/schemas/BizMessages" }),
+        &r.json()["data"],
+    );
+    assert!(fits.is_empty(), "{fits:#?}");
     let pushes = r.json()["data"]["messages"].as_array().unwrap().clone();
     // newest first, the lead article and the others of the push
     let titles: Vec<&str> = pushes
@@ -2047,6 +2054,13 @@ fn wechat_pay_records_come_in_pages_that_say_whether_more_follow() {
             "",
         );
         assert_eq!(r.status, 200, "{}", r.body);
+        // as the contract says (#430)
+        let fits = misfits(
+            &contract(),
+            &json!({ "$ref": "#/components/schemas/PayRecords" }),
+            &r.json()["data"],
+        );
+        assert!(fits.is_empty(), "{fits:#?}");
         r.json()["data"].clone()
     };
     // newest first: the refund, then the message that is no notice
