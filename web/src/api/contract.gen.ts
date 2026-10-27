@@ -573,6 +573,36 @@ export interface ExcludeCandidate {
   wechatId: string;
 }
 
+/** Who has posts in Moments (`sns users`), the one who posted last first. */
+export interface SnsUsers {
+  usernames: string[];
+}
+
+/** How many Moments posts there are (`sns stats`). */
+export interface SnsStats {
+  totalPosts: number;
+  /** How many people posted them. */
+  totalFriends: number;
+  /** How many of them are the account's own; null when the account's wxid is not known. */
+  myPosts: number | null;
+}
+
+/** How many Moments posts one person has (`sns post-counts --user`). */
+export interface UserPosts {
+  username: string;
+  totalPosts: number;
+}
+
+/** The years with private messages (`report annual years`), the latest first. */
+export interface ReportYears {
+  years: number[];
+  /**
+   * How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or
+   * `edge-scan` (each chat's first and last message).
+   */
+  strategy: string;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -658,4 +688,9 @@ export interface Answers {
   "group member-messages": MemberMessages;
   "group members": GroupMembers;
   "group ranking": GroupRank[];
+  "report annual years": ReportYears;
+  /** How many posts each poster has, by username; with `user`, that one's */
+  "sns post-counts": Record<string, number> | UserPosts;
+  "sns stats": SnsStats;
+  "sns users": SnsUsers;
 }

@@ -370,10 +370,12 @@ impl Read {
                 })?;
                 Ok(json!({ "timeline": posts }))
             }
-            Read::SnsUsers => Ok(json!({ "usernames": hub.sns_usernames_list()? })),
-            Read::SnsStats { fast } => hub.sns_export_stats(*fast),
+            Read::SnsUsers => Ok(json!(crate::contract::SnsUsers {
+                usernames: hub.sns_usernames_list()?
+            })),
+            Read::SnsStats { fast } => Ok(json!(hub.sns_export_stats(*fast)?)),
             Read::SnsPostCounts { user, prefer_cache } => match user {
-                Some(u) => hub.sns_user_post_stats(u),
+                Some(u) => Ok(json!(hub.sns_user_post_stats(u)?)),
                 None => Ok(json!(hub.sns_user_post_counts(*prefer_cache)?)),
             },
             Read::ChatStatuses { usernames } => Ok(json!(hub.chat_statuses(usernames)?)),
@@ -463,7 +465,7 @@ impl Read {
                 hub.insight_footprint(b, e)
             }
             Read::InsightGet { id } => Ok(hub.insight_get_record(id)),
-            Read::ReportAnnualYears => hub.report_available_years(),
+            Read::ReportAnnualYears => Ok(json!(hub.report_available_years()?)),
             Read::CacheList => Ok(hub.cache_list()),
             Read::ConfigGet { key } => {
                 if matches!(key.as_deref(), Some("config_path" | "configPath")) {

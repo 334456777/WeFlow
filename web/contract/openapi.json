@@ -1137,6 +1137,178 @@
         }
       }
     },
+    "/api/report/annual/years": {
+      "get": {
+        "operationId": "api_report_annual_years",
+        "x-weflow-command": "report annual years",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReportYears"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sns/post-counts": {
+      "get": {
+        "operationId": "api_sns_post_counts",
+        "x-weflow-command": "sns post-counts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "How many posts each poster has, by username; with `user`, that one's",
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "description": "Each poster, with how many posts they have",
+                          "additionalProperties": {
+                            "type": "integer"
+                          }
+                        },
+                        {
+                          "$ref": "#/components/schemas/UserPosts"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sns/stats": {
+      "get": {
+        "operationId": "api_sns_stats",
+        "x-weflow-command": "sns stats",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsStats"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sns/users": {
+      "get": {
+        "operationId": "api_sns_users",
+        "x-weflow-command": "sns users",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsUsers"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/jobs/{id}": {
       "get": {
         "operationId": "job",
@@ -2904,6 +3076,87 @@
           "wechatId"
         ],
         "description": "Someone who may be left out of the analytics (`analytics exclude-candidates`): the private chats, and those left\nout already."
+      },
+      "SnsUsers": {
+        "type": "object",
+        "properties": {
+          "usernames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "usernames"
+        ],
+        "description": "Who has posts in Moments (`sns users`), the one who posted last first."
+      },
+      "SnsStats": {
+        "type": "object",
+        "properties": {
+          "totalPosts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalFriends": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many people posted them."
+          },
+          "myPosts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How many of them are the account's own; null when the account's wxid is not known."
+          }
+        },
+        "required": [
+          "totalPosts",
+          "totalFriends",
+          "myPosts"
+        ],
+        "description": "How many Moments posts there are (`sns stats`)."
+      },
+      "UserPosts": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "totalPosts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "username",
+          "totalPosts"
+        ],
+        "description": "How many Moments posts one person has (`sns post-counts --user`)."
+      },
+      "ReportYears": {
+        "type": "object",
+        "properties": {
+          "years": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "strategy": {
+            "type": "string",
+            "description": "How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or\n`edge-scan` (each chat's first and last message)."
+          }
+        },
+        "required": [
+          "years",
+          "strategy"
+        ],
+        "description": "The years with private messages (`report annual years`), the latest first."
       },
       "Job": {
         "type": "object",

@@ -569,6 +569,40 @@ pub struct ExcludeCandidate {
     pub wechat_id: String,
 }
 
+/// Who has posts in Moments (`sns users`), the one who posted last first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct SnsUsers {
+    pub usernames: Vec<String>,
+}
+
+/// How many Moments posts there are (`sns stats`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SnsStats {
+    pub total_posts: i64,
+    /// How many people posted them.
+    pub total_friends: i64,
+    /// How many of them are the account's own; null when the account's wxid is not known.
+    pub my_posts: Option<i64>,
+}
+
+/// How many Moments posts one person has (`sns post-counts --user`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPosts {
+    pub username: String,
+    pub total_posts: i64,
+}
+
+/// The years with private messages (`report annual years`), the latest first.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct ReportYears {
+    pub years: Vec<i64>,
+    /// How they were found: `native` (WeChat's own index), `table-scan` (the time span of each table) or
+    /// `edge-scan` (each chat's first and last message).
+    pub strategy: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

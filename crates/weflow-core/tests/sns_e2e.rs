@@ -77,9 +77,9 @@ fn stats_usernames_and_caches() {
         vec!["wxid_bob", "wxid_carol", "wxid_me"]
     );
     let stats = hub.sns_export_stats(false).unwrap();
-    assert_eq!(stats["totalPosts"], 5);
-    assert_eq!(stats["totalFriends"], 3);
-    assert_eq!(stats["myPosts"], 2);
+    assert_eq!(stats.total_posts, 5);
+    assert_eq!(stats.total_friends, 3);
+    assert_eq!(stats.my_posts, Some(2));
     // fast path serves the cached value
     assert_eq!(hub.sns_export_stats(true).unwrap(), stats);
     let counts = hub.sns_user_post_counts(false).unwrap();
@@ -88,7 +88,7 @@ fn stats_usernames_and_caches() {
         (2, 1, 2)
     );
     assert_eq!(
-        hub.sns_user_post_stats("wxid_carol").unwrap()["totalPosts"],
+        hub.sns_user_post_stats("wxid_carol").unwrap().total_posts,
         1
     );
     assert!(hub.sns_user_post_stats("  ").is_err());

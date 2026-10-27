@@ -480,8 +480,8 @@ fn group_ranking_hours_and_media_mix() {
 fn report_years_come_from_the_data() {
     let (hub, _root) = common::mock_hub("n-years");
     let y = hub.report_available_years().unwrap();
-    assert_eq!(y["years"], json!([2023]));
-    assert_eq!(y["strategy"], "native");
+    assert_eq!(y.years, [2023]);
+    assert_eq!(y.strategy, "native");
 }
 
 // ── Moments ──
@@ -554,11 +554,7 @@ fn moments_users_and_export_stats() {
     );
     let s = hub.sns_export_stats(false).unwrap();
     assert_eq!(
-        (
-            s["totalPosts"].as_i64(),
-            s["totalFriends"].as_i64(),
-            s["myPosts"].as_i64()
-        ),
+        (Some(s.total_posts), Some(s.total_friends), s.my_posts),
         (Some(5), Some(3), Some(2))
     );
 }

@@ -460,7 +460,8 @@ pub(super) fn contract() -> &'static Contract {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
             ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
-            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, ResourcePage, Session,
+            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, ReportYears,
+            ResourcePage, Session, SnsStats, SnsUsers, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
         };
@@ -556,6 +557,19 @@ pub(super) fn contract() -> &'static Contract {
             "analytics exclude-candidates",
             of(generator.subschema_for::<Vec<ExcludeCandidate>>()),
         );
+        data.insert("sns users", of(generator.subschema_for::<SnsUsers>()));
+        data.insert("sns stats", of(generator.subschema_for::<SnsStats>()));
+        data.insert(
+            "sns post-counts",
+            json!({
+                "description": "How many posts each poster has, by username; with `user`, that one's",
+                "anyOf": [
+                    by_id(json!({ "type": "integer" }), "Each poster, with how many posts they have"),
+                    of(generator.subschema_for::<UserPosts>()),
+                ],
+            }),
+        );
+        data.insert("report annual years", of(generator.subschema_for::<ReportYears>()));
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();
@@ -1558,7 +1572,7 @@ mod tests {
             .iter()
             .any(|r| r == "nextCursor"));
         // other commands keep the generic answer
-        assert_eq!(ok("/sns/users")["$ref"], "#/components/schemas/Result");
+        assert_eq!(ok("/cache/list")["$ref"], "#/components/schemas/Result");
     }
 
     #[test]

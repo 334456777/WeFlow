@@ -3135,6 +3135,15 @@ fn answers_fit_the_contract() {
     }
     read("/api/analytics/excluded", None);
     for target in [
+        "/api/sns/users",
+        "/api/sns/stats",
+        "/api/sns/post-counts",
+        "/api/sns/post-counts?user=wxid_bob",
+        "/api/report/annual/years",
+    ] {
+        read(target, None);
+    }
+    for target in [
         "/api/chat/messages?session-id=wxid_bob&limit=100",
         "/api/chat/messages?session-id=room1%40chatroom",
         "/api/chat/latest?session-id=wxid_bob&limit=2",
