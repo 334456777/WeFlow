@@ -33,7 +33,7 @@ export const setConfig = (key: string, value: string) => call<Contract.ConfigWri
 export const testDatabase = (signal?: AbortSignal) => get<Partial<Contract.DbConnection>>('api/db/test', {}, signal);
 
 /** `key image --save` (Windows): the image keys from WeChat's cache, saved on the server. */
-export const saveImageKeys = () => call<{ saved?: string[]; verified?: boolean }>('POST', 'key/image', { save: true });
+export const saveImageKeys = () => call<Contract.ImageKeys>('POST', 'key/image', { save: true });
 
 /** `runtime info`: the server's target, to tell which ways of getting keys it has. */
 export async function serverPlatform(signal?: AbortSignal): Promise<'windows' | 'macos' | 'linux' | 'other'> {

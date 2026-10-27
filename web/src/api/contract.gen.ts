@@ -1416,6 +1416,66 @@ export interface WebPruned {
   shown: string[];
 }
 
+/** The accounts `db scan` found under a folder: those with a `db_storage` or `FileStorage/Image` folder. */
+export interface DbScan {
+  root: string;
+  accounts: ScannedAccount[];
+}
+
+/** An account folder `db scan` found. */
+export interface ScannedAccount {
+  /** The folder's name. */
+  wxid: string;
+  path: string;
+}
+
+/** The database key `key db` read from WeChat. */
+export interface DbKey {
+  /** Left out with `save`: it went to the profile instead. */
+  decrypt_key?: string;
+  /** `wx_key` (WeChat hooked) or `key_helper`. */
+  method: string;
+  /** The WeChat process hooked (`wx_key`). */
+  pid?: number;
+  /** With `save`: the profile keys written. */
+  saved?: string[];
+}
+
+/** The image keys `key image` derived from the `kvcomm` cache and checked against the account's images. */
+export interface ImageKeys {
+  /** Left out with `save`, as `image_aes_key`: they went to the profile instead. */
+  image_xor_key?: number;
+  image_aes_key?: string;
+  /** Both keys were checked: the AES key on an image header and the XOR key on a whole image. */
+  verified: boolean;
+  aes_verified: boolean;
+  xor_verified: boolean;
+  /** How: `jpeg_decode_and_xor_tail` or `aes_header_only`. */
+  verification: string;
+  /** The `kvcomm` files the keys came from. */
+  sources: CandidateSource[];
+  /** What was read of the `kvcomm` folders. */
+  collection: unknown;
+  /** What was read of the account's images. */
+  scan: unknown;
+  /** With `save`: the profile keys written. */
+  saved?: string[];
+}
+
+/** A `kvcomm` file a code was read from, and how its name was read. */
+export interface CandidateSource {
+  path: string;
+  parsing: string;
+}
+
+/** What `key scan-image` (macOS) answers: the helper's own result. */
+export interface ScannedImageKeys {
+  /** The helper's answer; `{"raw": …}` when it is not JSON. */
+  result: unknown;
+  method: string;
+  userDir: string;
+}
+
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
   out: string;
@@ -1836,6 +1896,8 @@ export interface Answers {
   "config set": ConfigWritten;
   "config unset": ConfigWritten;
   "db detect": DbCandidates;
+  "db open": DbConnection;
+  "db scan": DbScan;
   "db test": DbConnection;
   "db wxid": DbAccounts;
   "export contacts": ExportWritten;
@@ -1872,6 +1934,9 @@ export interface Answers {
   "insight test": InsightReply;
   "insight today-stats": InsightTodayStat[];
   "insight trigger": InsightReply;
+  "key db": DbKey;
+  "key image": ImageKeys;
+  "key scan-image": ScannedImageKeys;
   "lang": LangSaved;
   "report annual generate": AnnualReport;
   "report annual years": ReportYears;

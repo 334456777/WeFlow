@@ -156,7 +156,7 @@ fn service_acquires_and_decodes_without_native_helpers_or_saved_image_keys() {
         "wxid_me",
         64,
     );
-    let result = hub.key_image(None, &dirs, 1000).unwrap();
+    let result = serde_json::to_value(hub.key_image(None, &dirs, 1000).unwrap()).unwrap();
     let (xor, aes) = derive_image_keys(123, "wxid_me");
     assert_eq!(result["image_aes_key"], aes);
     assert_eq!(result["image_xor_key"], xor);
@@ -182,7 +182,9 @@ fn aes_header_alone_does_not_verify_xor_or_the_pair() {
     fs::write(dir.join("key_123_suffix"), []).unwrap();
     let account = root.join("wxid_me_suffix");
     sample(&account, "zero-tail_t.dat", 123, "wxid_me", 0);
-    let result = acquire_image_keys(&[dir], &account, Some("wxid_me"), 100).unwrap();
+    let result =
+        serde_json::to_value(acquire_image_keys(&[dir], &account, Some("wxid_me"), 100).unwrap())
+            .unwrap();
     assert_eq!(result["aes_verified"], true);
     assert_eq!(result["xor_verified"], false);
     assert_eq!(result["verified"], false);
@@ -205,8 +207,10 @@ fn corrupt_jpeg_or_wrong_xor_never_verifies_the_pair() {
         encrypt(&fake, 123, "wxid_me", 64),
     )
     .unwrap();
-    let result =
-        acquire_image_keys(std::slice::from_ref(&dir), &account, Some("wxid_me"), 100).unwrap();
+    let result = serde_json::to_value(
+        acquire_image_keys(std::slice::from_ref(&dir), &account, Some("wxid_me"), 100).unwrap(),
+    )
+    .unwrap();
     assert_eq!(result["aes_verified"], true);
     assert_eq!(result["verified"], false);
     let mut wrong = encrypt(&jpeg(), 123, "wxid_me", 64);
@@ -215,9 +219,10 @@ fn corrupt_jpeg_or_wrong_xor_never_verifies_the_pair() {
         *byte ^= 1;
     }
     fs::write(account.join("bad_t.dat"), wrong).unwrap();
-    assert_eq!(
-        acquire_image_keys(&[dir], &account, Some("wxid_me"), 100).unwrap()["verified"],
-        false
+    assert!(
+        !acquire_image_keys(&[dir], &account, Some("wxid_me"), 100)
+            .unwrap()
+            .verified
     );
     fs::remove_dir_all(root).unwrap();
 }
@@ -257,7 +262,9 @@ fn fully_verified_pair_outranks_an_aes_header_only_match() {
     let account = root.join("wxid_me_suffix");
     sample(&account, "full_t.dat", 123, "wxid_me", 64);
     sample(&account, "header_only_t.dat", 456, "wxid_me", 0);
-    let result = acquire_image_keys(&[dir], &account, Some("wxid_me"), 100).unwrap();
+    let result =
+        serde_json::to_value(acquire_image_keys(&[dir], &account, Some("wxid_me"), 100).unwrap())
+            .unwrap();
     let (xor, aes) = derive_image_keys(123, "wxid_me");
     assert_eq!(result["image_aes_key"], aes);
     assert_eq!(result["image_xor_key"], xor);

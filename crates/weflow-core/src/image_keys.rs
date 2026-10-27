@@ -12,7 +12,8 @@ pub const DEFAULT_SCAN_BUDGET: usize = 10_000;
 const TEMPLATE_LIMIT: usize = 32;
 const MAX_SAMPLE_BYTES: u64 = 16 * 1024 * 1024;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+/// A `kvcomm` file a code was read from, and how its name was read.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, schemars::JsonSchema)]
 pub struct CandidateSource {
     pub path: PathBuf,
     pub parsing: &'static str,
@@ -167,7 +168,7 @@ pub fn acquire_image_keys(
     account: &Path,
     wxid: Option<&str>,
     budget: usize,
-) -> AppResult<Value> {
+) -> AppResult<crate::contract::ImageKeys> {
     if directories.is_empty() || budget == 0 {
         return Err(AppError::usage(
             "Rust image-key acquisition needs kvcomm directories (none found; pass --kvcomm-dir) and a nonzero scan budget",
@@ -246,12 +247,23 @@ pub fn acquire_image_keys(
         ));
     }
     let ((xor, aes), (verified, sources)) = matches.into_iter().next().unwrap();
-    Ok(json!({
-        "image_xor_key": xor, "image_aes_key": aes,
-        "verified": verified, "aes_verified": true, "xor_verified": verified,
-        "verification": if verified { "jpeg_decode_and_xor_tail" } else { "aes_header_only" },
-        "sources": sources, "collection": collection_diagnostics, "scan": diagnostics,
-    }))
+    Ok(crate::contract::ImageKeys {
+        image_xor_key: Some(xor),
+        image_aes_key: Some(aes),
+        verified,
+        aes_verified: true,
+        xor_verified: verified,
+        verification: if verified {
+            "jpeg_decode_and_xor_tail"
+        } else {
+            "aes_header_only"
+        }
+        .into(),
+        sources: sources.into_iter().collect(),
+        collection: collection_diagnostics,
+        scan: diagnostics,
+        saved: Vec::new(),
+    })
 }
 
 /// Windows: the existing `%APPDATA%\Tencent\xwechat\net*\kvcomm` directories (`net`, `net_1`, ...).

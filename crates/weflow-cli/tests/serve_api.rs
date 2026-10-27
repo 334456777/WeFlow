@@ -2181,6 +2181,40 @@ fn file_exports_fit_the_contract() {
 }
 
 #[test]
+fn db_scan_and_open_fit_the_contract() {
+    let root = temp_root("db-contract");
+    let home = account_home(&root);
+    let server = start(&home, &["--api-token", TOKEN]);
+    let contract = contract();
+    // the folder the fixture account is in; `key db` and `key image` need WeChat itself, and are left out
+    let scan = server.call(
+        "GET",
+        &format!(
+            "/db/scan?root={}",
+            percent(&root.join("data").to_string_lossy())
+        ),
+        "",
+    );
+    assert_eq!(scan.status, 200, "{}", scan.body);
+    let data = &scan.json()["data"];
+    let misfit = misfits(
+        &contract,
+        &json!({ "$ref": "#/components/schemas/DbScan" }),
+        data,
+    );
+    assert!(misfit.is_empty(), "{misfit:#?}\n{data}");
+    assert_eq!(data["accounts"].as_array().unwrap().len(), 1, "{data}");
+    let open = server.call("GET", "/db/open", "");
+    assert_eq!(open.status, 200, "{}", open.body);
+    let misfit = misfits(
+        &contract,
+        &json!({ "$ref": "#/components/schemas/DbConnection" }),
+        &open.json()["data"],
+    );
+    assert!(misfit.is_empty(), "{misfit:#?}");
+}
+
+#[test]
 fn tool_answers_fit_the_contract() {
     let root = temp_root("tools-contract");
     let home = account_home(&root);
