@@ -459,9 +459,9 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightLookup,
+            AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, ExportStats, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightCleared, InsightLookup, InsightMarked, InsightRecords, InsightReply, InsightScan, InsightTodayStat,
             MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
-            ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, UserPosts,
+            ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
         };
@@ -591,7 +591,17 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("db wxid", of(generator.subschema_for::<DbAccounts>()));
         data.insert("db test", of(generator.subschema_for::<DbConnection>()));
         data.insert("insight footprint", of(generator.subschema_for::<Footprint>()));
+        data.insert("chat export-stats", of(generator.subschema_for::<ExportStats>()));
+        data.insert("chat transfer-names", of(generator.subschema_for::<TransferNames>()));
         data.insert("insight get", of(generator.subschema_for::<InsightLookup>()));
+        data.insert("insight records", of(generator.subschema_for::<InsightRecords>()));
+        data.insert("insight today-stats", of(generator.subschema_for::<Vec<InsightTodayStat>>()));
+        data.insert("insight mark-read", of(generator.subschema_for::<InsightMarked>()));
+        data.insert("insight clear", of(generator.subschema_for::<InsightCleared>()));
+        data.insert("insight scan", of(generator.subschema_for::<InsightScan>()));
+        for command in ["insight test", "insight trigger", "insight footprint-summary"] {
+            data.insert(command, of(generator.subschema_for::<InsightReply>()));
+        }
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();

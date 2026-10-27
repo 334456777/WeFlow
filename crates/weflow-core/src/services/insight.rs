@@ -8,7 +8,9 @@ use chrono::{Local, TimeZone, Timelike};
 use serde_json::{json, Value};
 
 use super::*;
-use crate::contract::Session;
+use crate::contract::{
+    InsightCleared, InsightMarked, InsightRecords, InsightReply, InsightTodayStat, Session,
+};
 use crate::insight::{self as ins, fill, RecordFilters, RecordStore};
 use crate::locale::tr;
 
@@ -152,7 +154,7 @@ impl ServiceHub {
 
     // ── records ──
 
-    pub fn insight_list_records(&self, f: &RecordFilters) -> Value {
+    pub fn insight_list_records(&self, f: &RecordFilters) -> InsightRecords {
         self.record_store().list(&self.insight_scope(), f)
     }
 
@@ -160,16 +162,16 @@ impl ServiceHub {
         self.record_store().get(&self.insight_scope(), id)
     }
 
-    pub fn insight_mark_record_read(&self, id: &str) -> Value {
+    pub fn insight_mark_record_read(&self, id: &str) -> InsightMarked {
         self.record_store().mark_read(&self.insight_scope(), id)
     }
 
-    pub fn insight_clear_records(&self, f: &RecordFilters) -> Value {
+    pub fn insight_clear_records(&self, f: &RecordFilters) -> InsightCleared {
         self.record_store().clear(&self.insight_scope(), f)
     }
 
     /// `getTodayStats`
-    pub fn insight_today_stats(&self) -> Value {
+    pub fn insight_today_stats(&self) -> Vec<InsightTodayStat> {
         let mut st = self.insight_state.lock().unwrap();
         let today = start_of_day();
         if today > st.today_date {
@@ -178,34 +180,37 @@ impl ServiceHub {
         }
         let mut rows: Vec<(&String, &Vec<i64>)> = st.today_triggers.iter().collect();
         rows.sort_by(|a, b| a.0.cmp(b.0));
-        Value::Array(
-            rows.into_iter()
-                .map(|(sid, ts)| {
-                    let times: Vec<String> = ts
-                        .iter()
-                        .map(|t| {
-                            Local
-                                .timestamp_millis_opt(*t)
-                                .single()
-                                .map(|d| {
-                                    format!("{:02}:{:02}", d.hour(), chrono::Timelike::minute(&d))
-                                })
-                                .unwrap_or_default()
-                        })
-                        .collect();
-                    json!({ "sessionId": sid, "count": ts.len(), "times": times })
-                })
-                .collect(),
-        )
+        rows.into_iter()
+            .map(|(sid, ts)| {
+                let times: Vec<String> = ts
+                    .iter()
+                    .map(|t| {
+                        Local
+                            .timestamp_millis_opt(*t)
+                            .single()
+                            .map(|d| format!("{:02}:{:02}", d.hour(), chrono::Timelike::minute(&d)))
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                InsightTodayStat {
+                    session_id: sid.clone(),
+                    count: ts.len(),
+                    times,
+                }
+            })
+            .collect()
     }
 
     // ── connection test / footprint ──
 
     /// `testConnection`
-    pub async fn insight_test_connection(&self) -> Value {
+    pub async fn insight_test_connection(&self) -> InsightReply {
         let ai = self.ai_config();
         if ai.base.is_empty() || ai.key.is_empty() {
-            return json!({ "success": false, "message": tr("Please enter the API address and API Key first", "请先填写 API 地址和 API Key") });
+            return InsightReply::failed(tr(
+                "Please enter the API address and API Key first",
+                "请先填写 API 地址和 API Key",
+            ));
         }
         let prompt = tr(
             "Please reply with the four characters \"connection successful\".",
@@ -221,25 +226,36 @@ impl ServiceHub {
         )
         .await
         {
-            Ok(r) => {
-                json!({ "success": true, "message": fill(tr("Connection successful. Model reply: {v0}", "连接成功，模型回复：{v0}"), &[("v0", r.chars().take(50).collect())]) })
-            }
-            Err(e) => {
-                json!({ "success": false, "message": fill(tr("Connection failed: {message}", "连接失败：{message}"), &[("message", e)]) })
-            }
+            Ok(r) => InsightReply::done(fill(
+                tr(
+                    "Connection successful. Model reply: {v0}",
+                    "连接成功，模型回复：{v0}",
+                ),
+                &[("v0", r.chars().take(50).collect())],
+            )),
+            Err(e) => InsightReply::failed(fill(
+                tr("Connection failed: {message}", "连接失败：{message}"),
+                &[("message", e)],
+            )),
         }
     }
 
     /// `generateFootprintInsight`
-    pub async fn insight_footprint_summary(&self, params: &Value) -> Value {
+    pub async fn insight_footprint_summary(&self, params: &Value) -> InsightReply {
         let c = self.insight_cfg();
         let p = &self.profile_name;
         if c.get_key(Some(p), "aiFootprintEnabled") != Value::Bool(true) {
-            return json!({ "success": false, "message": tr("Please turn on \"AI Footprint summary\" in Settings first", "请先在设置中开启「AI 足迹总结」") });
+            return InsightReply::failed(tr(
+                "Please turn on \"AI Footprint summary\" in Settings first",
+                "请先在设置中开启「AI 足迹总结」",
+            ));
         }
         let ai = self.ai_config();
         if ai.base.is_empty() || ai.key.is_empty() {
-            return json!({ "success": false, "message": tr("Please fill in the shared AI model settings first (API address and Key)", "请先填写通用 AI 模型配置（API 地址和 Key）") });
+            return InsightReply::failed(tr(
+                "Please fill in the shared AI model settings first (API address and Key)",
+                "请先填写通用 AI 模型配置（API 地址和 Key）",
+            ));
         }
         let num = |v: Option<&Value>| {
             v.and_then(|v| {
@@ -383,14 +399,16 @@ impl ServiceHub {
         .await
         {
             Ok(r) if r.trim().is_empty() => {
-                json!({ "success": false, "message": tr("The model returned nothing", "模型返回为空") })
+                InsightReply::failed(tr("The model returned nothing", "模型返回为空"))
             }
-            Ok(r) => {
-                json!({ "success": true, "message": tr("Generated successfully", "生成成功"), "insight": r.trim() })
-            }
-            Err(e) => {
-                json!({ "success": false, "message": fill(tr("Generation failed: {message}", "生成失败：{message}"), &[("message", e)]) })
-            }
+            Ok(r) => InsightReply {
+                insight: Some(r.trim().to_string()),
+                ..InsightReply::done(tr("Generated successfully", "生成成功"))
+            },
+            Err(e) => InsightReply::failed(fill(
+                tr("Generation failed: {message}", "生成失败：{message}"),
+                &[("message", e)],
+            )),
         }
     }
 
@@ -802,19 +820,27 @@ impl ServiceHub {
     }
 
     /// `triggerTest`: forces an insight for the first eligible private chat.
-    pub async fn insight_trigger_test(&self) -> Value {
+    pub async fn insight_trigger_test(&self) -> InsightReply {
         let ai = self.ai_config();
         if ai.base.is_empty() || ai.key.is_empty() {
-            return json!({ "success": false, "message": tr("Please enter the API address and Key first", "请先填写 API 地址和 Key") });
+            return InsightReply::failed(tr(
+                "Please enter the API address and Key first",
+                "请先填写 API 地址和 Key",
+            ));
         }
         let sessions = match self.chat_sessions_list() {
             Ok(s) => s,
             Err(_) => {
-                return json!({ "success": false, "message": tr("Database connection failed. Please finish the setup on the \"Database connection\" page first", "数据库连接失败，请先在\"数据库连接\"页完成配置") })
+                return InsightReply::failed(
+                    tr("Database connection failed. Please finish the setup on the \"Database connection\" page first", "数据库连接失败，请先在\"数据库连接\"页完成配置"),
+                )
             }
         };
         if sessions.is_empty() {
-            return json!({ "success": false, "message": tr("No conversations found. Please make sure the database is connected correctly", "未找到任何会话，请确认数据库已正确连接") });
+            return InsightReply::failed(tr(
+                "No conversations found. Please make sure the database is connected correctly",
+                "未找到任何会话，请确认数据库已正确连接",
+            ));
         }
         let Some(session) = sessions.iter().find(|s| {
             let id = s.username.trim();
@@ -823,7 +849,9 @@ impl ServiceHub {
                 && !id.to_lowercase().contains("placeholder")
                 && self.insight_allowed(id)
         }) else {
-            return json!({ "success": false, "message": tr("No private chat that can be triggered was found (check the allowlist/blocklist mode and the selection list)", "未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）") });
+            return InsightReply::failed(
+                tr("No private chat that can be triggered was found (check the allowlist/blocklist mode and the selection list)", "未找到任何可触发的私聊会话（请检查黑白名单模式与选择列表）"),
+            );
         };
         let id = session.username.trim().to_string();
         let name = Some(session.display_name.as_str())
@@ -834,18 +862,21 @@ impl ServiceHub {
         let c = self.insight_cfg();
         let notify = c.get_key(Some(&self.profile_name), "aiInsightNotificationEnabled")
             != Value::Bool(false);
-        let mut out = json!({
-            "success": true,
-            "message": if notify {
-                fill(tr("A test insight was sent for \"{displayName}\". Check the notification popup", "已向「{displayName}」发送测试见解，请查看通知弹窗"), &[("displayName", name.clone())])
-            } else {
-                fill(tr("A test insight was generated for \"{displayName}\", but AI insight notifications are currently off", "已生成「{displayName}」的测试见解，AI 见解消息通知当前已关闭"), &[("displayName", name.clone())])
-            }
-        });
-        if let Some(r) = record {
-            out["record"] = r.summary();
+        let message = if notify {
+            fill(
+                tr(
+                    "A test insight was sent for \"{displayName}\". Check the notification popup",
+                    "已向「{displayName}」发送测试见解，请查看通知弹窗",
+                ),
+                &[("displayName", name)],
+            )
+        } else {
+            fill(tr("A test insight was generated for \"{displayName}\", but AI insight notifications are currently off", "已生成「{displayName}」的测试见解，AI 见解消息通知当前已关闭"), &[("displayName", name)])
+        };
+        InsightReply {
+            record: record.map(|r| r.summary()),
+            ..InsightReply::done(message)
         }
-        out
     }
 
     /// `runSilenceScan`

@@ -255,7 +255,7 @@ fn group_hint_roundtrip_and_transfer_names() {
     let t = hub
         .chat_transfer_names("room1@chatroom", "wxid_bob", "wxid_me")
         .unwrap();
-    assert_eq!(t["payerName"], "Bob in room");
+    assert_eq!(t.payer_name, "Bob in room");
 }
 
 #[test]
