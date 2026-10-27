@@ -539,20 +539,34 @@ impl ServiceHub {
         Ok(json!({ "accounts": accounts }))
     }
 
-    pub fn biz_messages(&self, username: &str, limit: i32, offset: i32) -> AppResult<Value> {
+    pub fn biz_messages(
+        &self,
+        username: &str,
+        limit: i32,
+        offset: i32,
+    ) -> AppResult<crate::contract::BizMessages> {
         let messages = self.messages(username, limit, offset)?;
-        let parsed = crate::biz::parse_biz_messages(&messages);
-        Ok(json!({ "username": username, "messages": parsed }))
+        Ok(crate::contract::BizMessages {
+            username: username.to_string(),
+            messages: crate::biz::parse_biz_messages(&messages),
+        })
     }
 
     /// The WeChat Pay notices among `limit` messages of the WeChat Pay account, from `offset` on, newest first.
     /// Other messages of the account are left out, so a page may hold fewer records than `limit`: `hasMore`
     /// says whether the account has messages past this page.
-    pub fn biz_pay_records(&self, limit: i32, offset: i32) -> AppResult<Value> {
+    pub fn biz_pay_records(
+        &self,
+        limit: i32,
+        offset: i32,
+    ) -> AppResult<crate::contract::PayRecords> {
         let messages = self.messages("gh_3dfda90e39d6", limit, offset)?;
         let read = messages.as_array().map_or(0, Vec::len);
         let records = crate::biz::parse_pay_records(&messages);
-        Ok(json!({ "records": records, "hasMore": limit > 0 && read >= limit as usize }))
+        Ok(crate::contract::PayRecords {
+            records,
+            has_more: limit > 0 && read >= limit as usize,
+        })
     }
 
     /// `insight footprint`: the same statistics as [`Self::footprint`].

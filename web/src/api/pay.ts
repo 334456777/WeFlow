@@ -1,19 +1,11 @@
 // WeChat Pay (#204): the notices of the WeChat Pay account (`biz pay-records`), read in the server's process
 // (`/api/`, docs/serve-api.md), and what the page makes of their text: the amount, how it was paid, its state, the payee.
 import { get } from './client';
+import type * as Contract from './contract.gen';
 
-/** A notice as `biz pay-records` gives it. */
-export interface PayRecord {
-  localId: number;
-  createTime: number;
-  title: string;
-  /** The notice's lines, such as 「付款金额¥28.00」 and 「支付方式零钱」. */
-  description: string;
-  merchantName: string;
-  merchantIcon: string;
-  /** Unix seconds of the payment, 0 when the notice has none. */
-  timestamp: number;
-}
+/** A notice as `biz pay-records` gives it (the contract's, #430); its `description` holds lines such as 「付款金额¥28.00」
+ * and 「支付方式零钱」. */
+export type PayRecord = Contract.PayRecord;
 
 export interface PayLine {
   /** 「付款金额」, 「支付方式」, …; empty for a line without one. */
@@ -42,7 +34,7 @@ export const PAY_PAGE = 500;
 
 /** A page of notices, newest first, from the `offset`-th message of the account on. */
 export async function getPayRecords(offset: number, signal?: AbortSignal): Promise<{ records: PayRecord[]; hasMore: boolean }> {
-  const data = await get<{ records?: PayRecord[]; hasMore?: boolean }>('api/biz/pay-records', { limit: PAY_PAGE, offset }, signal);
+  const data = await get<Partial<Contract.PayRecords> | null>('api/biz/pay-records', { limit: PAY_PAGE, offset }, signal);
   const records = data?.records ?? [];
   // a server before rc.6 does not say; a full page may have more
   return { records, hasMore: data?.hasMore ?? records.length >= PAY_PAGE };
@@ -80,7 +72,7 @@ export function paymentOf(record: PayRecord): Payment {
   const refund = Boolean(amountLine?.label.startsWith('退款')) || /退款/.test(record.title);
   return {
     id: record.localId + ':' + record.createTime,
-    time: record.timestamp || record.createTime,
+    time: record.timestamp || (record.createTime ?? 0),
     title: record.title,
     merchant: find(PAYEE)?.value || record.merchantName || '微信支付',
     icon: record.merchantIcon || undefined,

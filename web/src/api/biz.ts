@@ -1,6 +1,7 @@
 // Official accounts (#203): the ones followed (`biz accounts`), and an account's pushes as articles
 // (`biz messages`), both read in the server's process (`/api/`, docs/serve-api.md).
 import { get } from './client';
+import type * as Contract from './contract.gen';
 
 export interface BizAccount {
   username: string;
@@ -10,24 +11,11 @@ export interface BizAccount {
   lastTime: number;
 }
 
-/** One article of a push: a push holds one or several. */
-export interface BizArticle {
-  title: string;
-  url: string;
-  cover: string;
-  summary: string;
-}
+/** One article of a push: a push holds one or several (the contract's, #430). */
+export type BizArticle = Contract.BizArticle;
 
 /** A push of an official account, its first article and the others (`contentList`). */
-export interface BizPush {
-  localId: number;
-  createTime: number;
-  title: string;
-  description: string;
-  url: string;
-  cover: string;
-  contentList: BizArticle[];
-}
+export type BizPush = Contract.BizMessage;
 
 /** Pushes per page. */
 export const BIZ_PAGE = 20;
@@ -57,6 +45,6 @@ export async function getBizAccounts(signal?: AbortSignal): Promise<BizAccount[]
 
 /** Pushes of `username`, newest first, from `offset` on. */
 export async function getBizPushes(username: string, offset: number, signal?: AbortSignal): Promise<BizPush[]> {
-  const data = await get<{ messages?: BizPush[] }>('api/biz/messages', { username, limit: BIZ_PAGE, offset }, signal);
+  const data = await get<Contract.BizMessages | null>('api/biz/messages', { username, limit: BIZ_PAGE, offset }, signal);
   return data?.messages ?? [];
 }

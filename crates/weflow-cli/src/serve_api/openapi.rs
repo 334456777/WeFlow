@@ -459,8 +459,8 @@ pub(super) fn contract() -> &'static Contract {
     CONTRACT.get_or_init(|| {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
-            ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
-            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, ReportYears,
+            BizMessages, ChatStatus, Contact, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo,
+            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ReportYears,
             ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
@@ -571,6 +571,17 @@ pub(super) fn contract() -> &'static Contract {
             }),
         );
         data.insert("report annual years", of(generator.subschema_for::<ReportYears>()));
+        data.insert(
+            "biz accounts",
+            json!({
+                "type": "object",
+                "description": "The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one)",
+                "required": ["accounts"],
+                "properties": { "accounts": rows.clone() },
+            }),
+        );
+        data.insert("biz messages", of(generator.subschema_for::<BizMessages>()));
+        data.insert("biz pay-records", of(generator.subschema_for::<PayRecords>()));
         // referred to by the server's own routes and by Failure
         generator.subschema_for::<super::jobs::JobView>();
         generator.subschema_for::<weflow_core::error::ErrorPayload>();

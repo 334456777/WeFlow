@@ -458,8 +458,10 @@ impl Read {
                 username,
                 limit,
                 offset,
-            } => hub.biz_messages(username, *limit, *offset),
-            Read::BizPayRecords { limit, offset } => hub.biz_pay_records(*limit, *offset),
+            } => Ok(json!(hub.biz_messages(username, *limit, *offset)?)),
+            Read::BizPayRecords { limit, offset } => {
+                Ok(json!(hub.biz_pay_records(*limit, *offset)?))
+            }
             Read::InsightFootprint { start, end } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
                 hub.insight_footprint(b, e)

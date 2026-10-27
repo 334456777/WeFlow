@@ -708,6 +708,57 @@ export interface ReportYears {
   strategy: string;
 }
 
+/** The pushes of an official account (`biz messages`), as the desktop app lists them. */
+export interface BizMessages {
+  username: string;
+  messages: BizMessage[];
+}
+
+/** One push of an official account: its lead article and the others sent with it. */
+export interface BizMessage {
+  /** The message's id in its table; null when its row does not say. */
+  localId: number | null;
+  createTime: number | null;
+  title: string;
+  description: string;
+  url: string;
+  cover: string;
+  /** The other articles of the push. */
+  contentList: BizArticle[];
+}
+
+/** An article sent with a push. */
+export interface BizArticle {
+  title: string;
+  url: string;
+  cover: string;
+  summary: string;
+}
+
+/** A page of WeChat Pay notices (`biz pay-records`), newest first. */
+export interface PayRecords {
+  records: PayRecord[];
+  /**
+   * Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as
+   * its other messages are left out.
+   */
+  hasMore: boolean;
+}
+
+/** A WeChat Pay notice. */
+export interface PayRecord {
+  title: string;
+  /** Its lines, as WeChat writes them (amount, method, state…). */
+  description: string;
+  /** Who was paid; `WeChat Pay` (in the server's language) when the notice does not say. */
+  merchantName: string;
+  merchantIcon: string;
+  /** When it was published, in Unix seconds; 0 when the notice does not say. */
+  timestamp: number;
+  localId: number | null;
+  createTime: number | null;
+}
+
 /**
  * A job as `/jobs` answers it (`Prefer: respond-async`, #398): the command it runs, how far it is and how it ended.
  * Times are Unix milliseconds.
@@ -765,6 +816,12 @@ export interface Answers {
   "analytics overall": OverallStatistics;
   "analytics rankings": ContactRank[];
   "analytics time": TimeDistribution;
+  /** The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one) */
+  "biz accounts": {
+    accounts: Row[];
+  };
+  "biz messages": BizMessages;
+  "biz pay-records": PayRecords;
   /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
   /** Each conversation asked for, with how many messages it has */

@@ -3141,6 +3141,9 @@ fn answers_fit_the_contract() {
         "/api/sns/post-counts",
         "/api/sns/post-counts?user=wxid_bob",
         "/api/report/annual/years",
+        "/api/biz/accounts",
+        "/api/biz/messages?username=gh_news",
+        "/api/biz/pay-records",
     ] {
         read(target, None);
     }

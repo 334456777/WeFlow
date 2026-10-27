@@ -216,6 +216,138 @@
         }
       }
     },
+    "/api/biz/accounts": {
+      "get": {
+        "operationId": "api_biz_accounts",
+        "x-weflow-command": "biz accounts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one)",
+                      "required": [
+                        "accounts"
+                      ],
+                      "properties": {
+                        "accounts": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Row"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/biz/messages": {
+      "get": {
+        "operationId": "api_biz_messages",
+        "x-weflow-command": "biz messages",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BizMessages"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/biz/pay-records": {
+      "get": {
+        "operationId": "api_biz_pay_records",
+        "x-weflow-command": "biz pay-records",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PayRecords"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/contacts": {
       "get": {
         "operationId": "api_chat_contacts",
@@ -3504,6 +3636,166 @@
           "strategy"
         ],
         "description": "The years with private messages (`report annual years`), the latest first."
+      },
+      "BizMessages": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BizMessage"
+            }
+          }
+        },
+        "required": [
+          "username",
+          "messages"
+        ],
+        "description": "The pushes of an official account (`biz messages`), as the desktop app lists them."
+      },
+      "BizMessage": {
+        "type": "object",
+        "properties": {
+          "localId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The message's id in its table; null when its row does not say."
+          },
+          "createTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "cover": {
+            "type": "string"
+          },
+          "contentList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BizArticle"
+            },
+            "description": "The other articles of the push."
+          }
+        },
+        "required": [
+          "localId",
+          "createTime",
+          "title",
+          "description",
+          "url",
+          "cover",
+          "contentList"
+        ],
+        "description": "One push of an official account: its lead article and the others sent with it."
+      },
+      "BizArticle": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "cover": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "url",
+          "cover",
+          "summary"
+        ],
+        "description": "An article sent with a push."
+      },
+      "PayRecords": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayRecord"
+            }
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether the WeChat Pay account has messages past this page; a page may hold fewer notices than `limit`, as\nits other messages are left out."
+          }
+        },
+        "required": [
+          "records",
+          "hasMore"
+        ],
+        "description": "A page of WeChat Pay notices (`biz pay-records`), newest first."
+      },
+      "PayRecord": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Its lines, as WeChat writes them (amount, method, state…)."
+          },
+          "merchantName": {
+            "type": "string",
+            "description": "Who was paid; `WeChat Pay` (in the server's language) when the notice does not say."
+          },
+          "merchantIcon": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was published, in Unix seconds; 0 when the notice does not say."
+          },
+          "localId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "createTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "merchantName",
+          "merchantIcon",
+          "timestamp",
+          "localId",
+          "createTime"
+        ],
+        "description": "A WeChat Pay notice."
       },
       "Job": {
         "type": "object",

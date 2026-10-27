@@ -1,4 +1,6 @@
-use serde_json::{json, Value};
+use serde_json::Value;
+
+use crate::contract::{BizArticle, BizMessage, PayRecord};
 
 pub fn extract_xml_value(xml: &str, tag_name: &str) -> String {
     let pattern = format!("<{}>", tag_name);
@@ -26,7 +28,7 @@ fn fallback_or_empty(primary: &str, extract_fn: impl FnOnce() -> String) -> Stri
     }
 }
 
-pub fn parse_biz_content_list(xml_str: &str) -> Vec<Value> {
+pub fn parse_biz_content_list(xml_str: &str) -> Vec<BizArticle> {
     if xml_str.is_empty() {
         return Vec::new();
     }
@@ -44,12 +46,12 @@ pub fn parse_biz_content_list(xml_str: &str) -> Vec<Value> {
                 let summary = fallback_or_empty(&extract_xml_value(item_xml, "summary"), || {
                     extract_xml_value(item_xml, "digest")
                 });
-                items.push(json!({
-                    "title": title,
-                    "url": extract_xml_value(item_xml, "url"),
-                    "cover": cover,
-                    "summary": summary,
-                }));
+                items.push(BizArticle {
+                    title,
+                    url: extract_xml_value(item_xml, "url"),
+                    cover,
+                    summary,
+                });
             }
             search_from = abs_start + end + 7;
         } else {
@@ -59,7 +61,8 @@ pub fn parse_biz_content_list(xml_str: &str) -> Vec<Value> {
     items
 }
 
-pub fn parse_pay_xml(xml_str: &str) -> Option<Value> {
+/// A notice, without the message's ids.
+pub fn parse_pay_xml(xml_str: &str) -> Option<PayRecord> {
     if xml_str.is_empty() {
         return None;
     }
@@ -78,13 +81,15 @@ pub fn parse_pay_xml(xml_str: &str) -> Option<Value> {
     };
     let pub_time_str = extract_xml_value(xml_str, "pub_time");
     let pub_time: i64 = pub_time_str.parse().unwrap_or(0);
-    Some(json!({
-        "title": title,
-        "description": description,
-        "merchantName": merchant_name,
-        "merchantIcon": extract_xml_value(xml_str, "icon_url"),
-        "timestamp": pub_time
-    }))
+    Some(PayRecord {
+        title,
+        description,
+        merchant_name,
+        merchant_icon: extract_xml_value(xml_str, "icon_url"),
+        timestamp: pub_time,
+        local_id: None,
+        create_time: None,
+    })
 }
 
 pub fn filter_official_contacts(contacts: &Value, sessions: &Value) -> Vec<Value> {
@@ -184,7 +189,13 @@ fn without_section(xml: &str, tag: &str) -> String {
     }
 }
 
-pub fn parse_biz_messages(messages: &Value) -> Vec<Value> {
+/// The local id and create time of a message, mapped or a native row.
+fn ids_of(msg: &Value) -> (Option<i64>, Option<i64>) {
+    let of = |a: &str, b: &str| msg.get(a).or_else(|| msg.get(b)).and_then(Value::as_i64);
+    (of("localId", "local_id"), of("createTime", "create_time"))
+}
+
+pub fn parse_biz_messages(messages: &Value) -> Vec<BizMessage> {
     let Some(items) = messages.as_array() else {
         return Vec::new();
     };
@@ -206,45 +217,33 @@ pub fn parse_biz_messages(messages: &Value) -> Vec<Value> {
         let content_list_str = extract_xml_value(content, "content_list");
         let content_list = parse_biz_content_list(&content_list_str);
 
-        result.push(json!({
-            "localId": msg.get("localId").or_else(|| msg.get("local_id")).unwrap_or(&Value::Null),
-            "createTime": msg.get("createTime").or_else(|| msg.get("create_time")).unwrap_or(&Value::Null),
-            "title": title,
-            "description": des,
-            "url": url,
-            "cover": cover,
-            "contentList": content_list,
-        }));
+        let (local_id, create_time) = ids_of(msg);
+        result.push(BizMessage {
+            local_id,
+            create_time,
+            title,
+            description: des,
+            url,
+            cover,
+            content_list,
+        });
     }
     result
 }
 
-pub fn parse_pay_records(messages: &Value) -> Vec<Value> {
+pub fn parse_pay_records(messages: &Value) -> Vec<PayRecord> {
     let Some(items) = messages.as_array() else {
         return Vec::new();
     };
     items
         .iter()
         .filter_map(|msg| {
-            let record = parse_pay_xml(&message_xml(msg))?;
-            let mut rec = record;
-            if let Some(obj) = rec.as_object_mut() {
-                obj.insert(
-                    "localId".to_string(),
-                    msg.get("localId")
-                        .or_else(|| msg.get("local_id"))
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                );
-                obj.insert(
-                    "createTime".to_string(),
-                    msg.get("createTime")
-                        .or_else(|| msg.get("create_time"))
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                );
-            }
-            Some(rec)
+            let (local_id, create_time) = ids_of(msg);
+            Some(PayRecord {
+                local_id,
+                create_time,
+                ..parse_pay_xml(&message_xml(msg))?
+            })
         })
         .collect()
 }
@@ -271,7 +270,7 @@ mod tests {
     #[test]
     fn parses_pay_xml() {
         let xml = r#"<xml><title>Payment</title><des>¥100</des><display_name>Shop</display_name><pub_time>1700000000</pub_time></xml>"#;
-        let result = parse_pay_xml(xml).unwrap();
+        let result = json!(parse_pay_xml(xml).unwrap());
         assert_eq!(result["title"], "Payment");
         assert_eq!(result["description"], "¥100");
         assert_eq!(result["merchantName"], "Shop");
@@ -306,8 +305,8 @@ mod tests {
             "local_id": 7, "create_time": 1700000000, "local_type": 49,
             "message_content": "<msg><appmsg><title>Paid</title><des>¥1.00</des><display_name>Shop</display_name><pub_time>1700000000</pub_time></appmsg></msg>"
         }]);
-        let records = parse_pay_records(&pay);
-        assert_eq!(records.len(), 1);
+        let records = json!(parse_pay_records(&pay));
+        assert_eq!(records.as_array().unwrap().len(), 1);
         assert_eq!(records[0]["title"], "Paid");
         assert_eq!(records[0]["localId"], 7);
         assert_eq!(records[0]["createTime"], 1700000000);
@@ -316,8 +315,8 @@ mod tests {
             "local_id": 8, "create_time": 1700000001,
             "message_content": "<msg><appmsg><title>Daily</title><des>Digest</des><url>http://n</url><content_list><item><title>A1</title><url>http://a1</url></item></content_list></appmsg></msg>"
         }]);
-        let parsed = parse_biz_messages(&news);
-        assert_eq!(parsed.len(), 1);
+        let parsed = json!(parse_biz_messages(&news));
+        assert_eq!(parsed.as_array().unwrap().len(), 1);
         assert_eq!(parsed[0]["title"], "Daily");
         assert_eq!(parsed[0]["description"], "Digest");
         assert_eq!(parsed[0]["contentList"][0]["title"], "A1");
@@ -345,8 +344,8 @@ mod tests {
     #[test]
     fn parses_biz_content_list() {
         let xml = r#"<content_list><item><title>A1</title><url>http://a1</url><cover>http://img</cover></item><item><title>A2</title><url>http://a2</url></item></content_list>"#;
-        let result = parse_biz_content_list(xml);
-        assert_eq!(result.len(), 2);
+        let result = json!(parse_biz_content_list(xml));
+        assert_eq!(result.as_array().unwrap().len(), 2);
         assert_eq!(result[0]["title"], "A1");
         assert_eq!(result[1]["title"], "A2");
     }
