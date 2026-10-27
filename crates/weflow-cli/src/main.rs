@@ -3175,15 +3175,7 @@ fn handle_report(command: &ReportCommand, hub: &ServiceHub) -> AppResult<Value> 
 async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::services::{SnsExportOptions, SnsTimelineQuery};
     match &command.command {
-        SnsSubcommand::DebugResource { url } => {
-            let r = hub.sns_debug_resource(url).await;
-            if r["success"] != true {
-                return Err(AppError::runtime(
-                    r["error"].as_str().unwrap_or("request failed").to_string(),
-                ));
-            }
-            Ok(r)
-        }
+        SnsSubcommand::DebugResource { url } => Ok(json!(hub.sns_debug_resource(url).await?)),
         // with its media: without them the timeline is a read
         SnsSubcommand::Timeline {
             limit,
@@ -3263,12 +3255,12 @@ async fn handle_sns(command: &SnsCommand, hub: &ServiceHub) -> AppResult<Value> 
             url,
             encrypt_url,
             aes_key,
-        } => {
+        } => Ok(json!(
             hub.sns_download_emoji(url, encrypt_url.as_deref(), aes_key.as_deref())
-                .await
-        }
+                .await?
+        )),
         SnsSubcommand::DownloadImage { url, out } => {
-            hub.sns_download_image(url, out.as_deref()).await
+            Ok(json!(hub.sns_download_image(url, out.as_deref()).await?))
         }
         SnsSubcommand::BlockDelete { action } => match action {
             TriggerAction::Check => hub.sns_block_delete_status(),

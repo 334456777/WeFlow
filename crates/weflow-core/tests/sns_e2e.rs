@@ -190,8 +190,8 @@ fn emoji_download_decrypts_with_aes_key() {
     let out = rt
         .block_on(hub.sns_download_emoji("", Some(&format!("{base}/emoji.enc")), Some(&hex)))
         .unwrap();
-    let path = out["localPath"].as_str().unwrap().to_string();
-    assert!(path.ends_with(".gif"));
+    let path = out.local_path;
+    assert_eq!(path.extension().and_then(|e| e.to_str()), Some("gif"));
     assert_eq!(std::fs::read(&path).unwrap(), gif);
     // second call hits the cache without any network
     let again = rt
@@ -312,7 +312,11 @@ fn debug_resource_reports_status_and_decryption_headers() {
         vec![1, 2, 3],
     )]);
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let r = rt.block_on(hub.sns_debug_resource(&format!("{base}/res")));
+    let r = serde_json::to_value(
+        rt.block_on(hub.sns_debug_resource(&format!("{base}/res")))
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(r["success"], true, "{r}");
     assert_eq!(r["status"], 200);
     assert_eq!(
@@ -324,14 +328,14 @@ fn debug_resource_reports_status_and_decryption_headers() {
         (json!("1"), json!("123"), json!("image/jpeg"))
     );
     assert_eq!(r["headers"]["content-length"], "3");
-    assert_eq!(
-        rt.block_on(hub.sns_debug_resource(&format!("{base}/missing")))["status"],
-        404
-    );
-    assert_eq!(rt.block_on(hub.sns_debug_resource(" "))["success"], false);
-    assert_eq!(
-        rt.block_on(hub.sns_debug_resource("http://127.0.0.1:9/x"))["success"],
-        false,
+    let missing = rt
+        .block_on(hub.sns_debug_resource(&format!("{base}/missing")))
+        .unwrap();
+    assert_eq!(missing.status, 404);
+    assert!(rt.block_on(hub.sns_debug_resource(" ")).is_err());
+    assert!(
+        rt.block_on(hub.sns_debug_resource("http://127.0.0.1:9/x"))
+            .is_err(),
         "connection refused"
     );
 }

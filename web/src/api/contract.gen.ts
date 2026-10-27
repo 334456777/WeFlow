@@ -1627,6 +1627,54 @@ export interface SnsMediaFetched {
   cachePath: string | null;
 }
 
+/** What WeChat's media server answered `sns debug-resource` for the first bytes of a resource. */
+export interface SnsResourceProbe {
+  /** Always true. */
+  success: boolean;
+  /** The HTTP status. */
+  status: number;
+  headers: SnsResourceHeaders;
+}
+
+/** The answer headers that matter for decrypting a Moments resource; null when the server left one out. */
+export interface SnsResourceHeaders {
+  "x-enc": string | null;
+  "x-time": string | null;
+  "content-length": string | null;
+  "content-type": string | null;
+}
+
+/** The Moments sticker `sns download-emoji` saved (or found already saved). */
+export interface SnsEmojiSaved {
+  /** Always true. */
+  success: boolean;
+  localPath: string;
+}
+
+/** The image `sns download-image` downloaded (and decrypted when it was a .dat payload). */
+export type SnsImageDownload = SnsImageSaved | SnsImageInline;
+
+/** The image written to `out`. */
+export interface SnsImageSaved {
+  url: string;
+  out: string;
+  /** The image's extension, with its dot. */
+  ext: string;
+  /** Its size in bytes. */
+  size: number;
+}
+
+/** The image in base64, without `out`. */
+export interface SnsImageInline {
+  url: string;
+  /** The image's extension, with its dot. */
+  ext: string;
+  /** Its size in bytes. */
+  size: number;
+  /** A `data:image/...;base64,` URL. */
+  data: string;
+}
+
 /** The backup `backup create` wrote. */
 export interface BackupCreated {
   out: string;
@@ -2108,6 +2156,9 @@ export interface Answers {
   "report dual generate": DualReport;
   "runtime info": RuntimeInfo;
   "runtime manifest": RuntimeManifest;
+  "sns debug-resource": SnsResourceProbe;
+  "sns download-emoji": SnsEmojiSaved;
+  "sns download-image": SnsImageDownload;
   "sns export": SnsExported;
   "sns media": SnsMediaFetched;
   /** How many posts each poster has, by username; with `user`, that one's */

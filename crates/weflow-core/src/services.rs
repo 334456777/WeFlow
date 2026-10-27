@@ -488,7 +488,12 @@ impl ServiceHub {
         wcdb.sns_delete_post(post_id).map_err(AppError::from_native)
     }
 
-    pub async fn sns_download_image(&self, url: &str, out: Option<&Path>) -> AppResult<Value> {
+    pub async fn sns_download_image(
+        &self,
+        url: &str,
+        out: Option<&Path>,
+    ) -> AppResult<crate::contract::SnsImageDownload> {
+        use crate::contract::{SnsImageDownload, SnsImageInline, SnsImageSaved};
         let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -539,14 +544,24 @@ impl ServiceHub {
             std::fs::write(out_path, &final_data).map_err(|err| {
                 AppError::runtime(format!("failed to write {}: {err}", out_path.display()))
             })?;
-            Ok(
-                json!({ "url": url, "out": out_path.to_string_lossy(), "ext": ext, "size": final_data.len() }),
-            )
+            Ok(SnsImageDownload::Saved(SnsImageSaved {
+                url: url.to_string(),
+                out: out_path.to_path_buf(),
+                ext,
+                size: final_data.len(),
+            }))
         } else {
-            let encoded = base64_encode(&final_data);
-            Ok(
-                json!({ "url": url, "ext": ext, "size": final_data.len(), "data": format!("data:image/{};base64,{}", ext.trim_start_matches('.'), encoded) }),
-            )
+            let data = format!(
+                "data:image/{};base64,{}",
+                ext.trim_start_matches('.'),
+                base64_encode(&final_data)
+            );
+            Ok(SnsImageDownload::Inline(SnsImageInline {
+                url: url.to_string(),
+                ext,
+                size: final_data.len(),
+                data,
+            }))
         }
     }
 

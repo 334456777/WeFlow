@@ -728,6 +728,10 @@ pub(super) fn contract() -> &'static Contract {
                 }),
             );
             data.insert("sns media", of(generator.subschema_for::<SnsMediaFetched>()));
+            use weflow_core::contract::{SnsEmojiSaved, SnsImageDownload, SnsResourceProbe};
+            data.insert("sns debug-resource", of(generator.subschema_for::<SnsResourceProbe>()));
+            data.insert("sns download-emoji", of(generator.subschema_for::<SnsEmojiSaved>()));
+            data.insert("sns download-image", of(generator.subschema_for::<SnsImageDownload>()));
             data.insert("backup create", of(generator.subschema_for::<BackupCreated>()));
             data.insert(
                 "backup inspect",
