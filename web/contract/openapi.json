@@ -1328,6 +1328,46 @@
         }
       }
     },
+    "/chat/voice": {
+      "get": {
+        "operationId": "api_chat_voice",
+        "x-weflow-command": "chat voice",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MediaExport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/clear": {
       "get": {
         "operationId": "api_config_clear",
@@ -1713,6 +1753,294 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/DbAccounts"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/contacts": {
+      "get": {
+        "operationId": "api_export_contacts",
+        "x-weflow-command": "export contacts",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExportWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/footprint": {
+      "get": {
+        "operationId": "api_export_footprint",
+        "x-weflow-command": "export footprint",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExportWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/media": {
+      "get": {
+        "operationId": "api_export_media",
+        "x-weflow-command": "export media",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MediaExport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/messages": {
+      "get": {
+        "operationId": "api_export_messages",
+        "x-weflow-command": "export messages",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "description": "The file written; with several formats or `zip`, the folder or zip and each format's file",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessagesExported"
+                        },
+                        {
+                          "$ref": "#/components/schemas/MessagesBundle"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/export/sessions": {
+      "get": {
+        "operationId": "api_export_sessions",
+        "x-weflow-command": "export sessions",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExportWritten"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/group/export-member-messages": {
+      "get": {
+        "operationId": "api_group_export_member_messages",
+        "x-weflow-command": "group export-member-messages",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/GroupExported"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/group/export-members": {
+      "get": {
+        "operationId": "api_group_export_members",
+        "x-weflow-command": "group export-members",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/GroupExported"
                     }
                   }
                 }
@@ -2602,6 +2930,46 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/RuntimeInfo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sns/export": {
+      "get": {
+        "operationId": "api_sns_export",
+        "x-weflow-command": "sns export",
+        "responses": {
+          "200": {
+            "description": "Its `--json` document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SnsExported"
                     }
                   }
                 }
@@ -6426,6 +6794,372 @@
           "lang"
         ],
         "description": "The language `weflow lang` saved: `en` or `zh`."
+      },
+      "ExportWritten": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "description": "The format it was written in: `json`, `csv`, `excel`, …"
+          }
+        },
+        "required": [
+          "out",
+          "format"
+        ],
+        "description": "The file an export wrote (`export sessions`, `contacts`, `footprint`)."
+      },
+      "GroupExported": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The members, or the messages, written."
+          }
+        },
+        "required": [
+          "success",
+          "count"
+        ],
+        "description": "What `group export-members` or `export-member-messages` wrote."
+      },
+      "SnsExported": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Always true."
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Empty when no post matched, and nothing was written."
+          },
+          "postCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "mediaCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The media files copied beside it."
+          }
+        },
+        "required": [
+          "success",
+          "filePath",
+          "postCount",
+          "mediaCount"
+        ],
+        "description": "What `sns export` wrote."
+      },
+      "MessagesExported": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string",
+            "description": "The file; in a zip of several formats, its name inside the zip."
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The messages written."
+          },
+          "session": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "media": {
+            "description": "The media copied beside it, with `media`.",
+            "$ref": "#/components/schemas/MediaCopied"
+          }
+        },
+        "required": [
+          "out",
+          "count",
+          "session",
+          "format"
+        ],
+        "description": "A conversation's messages written in one format (`export messages`)."
+      },
+      "MediaCopied": {
+        "type": "object",
+        "properties": {
+          "requested": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The media messages asked for."
+          },
+          "exported": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "missing": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The ones whose file is not on disk, or could not be read."
+          },
+          "dir": {
+            "type": "string"
+          },
+          "ffmpegMissing": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "ffmpegMissingImages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingImage"
+            }
+          },
+          "hint": {
+            "type": "string",
+            "description": "What to do, with the dates of the first ones."
+          }
+        },
+        "required": [
+          "requested",
+          "exported",
+          "missing",
+          "dir"
+        ],
+        "description": "The media an export of messages copied to its `media/` folder."
+      },
+      "MissingImage": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "type": "string"
+          },
+          "createTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "time": {
+            "type": "string",
+            "description": "The message's local time; `?` without one."
+          }
+        },
+        "required": [
+          "time"
+        ],
+        "description": "An image left out for lack of ffmpeg: where to find it in WeChat."
+      },
+      "MessagesBundle": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/MessagesFolder"
+          },
+          {
+            "$ref": "#/components/schemas/MessagesZip"
+          }
+        ],
+        "description": "One conversation in several formats (`export messages` with several `format`s), or packed (`zip`)."
+      },
+      "MessagesFolder": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string",
+            "description": "The folder."
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessagesExported"
+            }
+          }
+        },
+        "required": [
+          "out",
+          "formats",
+          "files"
+        ],
+        "description": "The formats of one conversation, each written to its file in one folder."
+      },
+      "MessagesZip": {
+        "type": "object",
+        "properties": {
+          "out": {
+            "type": "string",
+            "description": "The zip."
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessagesExported"
+            },
+            "description": "Each format's file, named as it is inside the zip."
+          },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaCopied"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The media packed with them; null without `media`."
+          }
+        },
+        "required": [
+          "out",
+          "formats",
+          "files",
+          "media"
+        ],
+        "description": "The formats of one conversation packed into a zip, with their media."
+      },
+      "MediaExport": {
+        "type": "object",
+        "properties": {
+          "exported": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "found": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The media messages found."
+          },
+          "missing": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "missingByKind": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "description": "The missing ones by kind: `image`, `voice`, `video`, `emoji`."
+          },
+          "thumbOnly": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The exported images that are only the thumbnail."
+          },
+          "note": {
+            "type": "string",
+            "description": "What `missing` and `thumbOnly` mean, in English."
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "description": "The conversations looked through."
+          },
+          "out": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaFileExported"
+            }
+          },
+          "ffmpegMissing": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "ffmpegMissingImages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingImage"
+            }
+          },
+          "hint": {
+            "type": "string",
+            "description": "What to do, with the dates of the first ones."
+          }
+        },
+        "required": [
+          "exported",
+          "found",
+          "missing",
+          "missingByKind",
+          "thumbOnly",
+          "note",
+          "sessions",
+          "out",
+          "files"
+        ],
+        "description": "What `export media` (and `chat voice`) copied."
+      },
+      "MediaFileExported": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`image`, `voice`, `video` or `emoji`."
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "localId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "isThumb": {
+            "type": "boolean",
+            "description": "An image's: the file is only its thumbnail."
+          }
+        },
+        "required": [
+          "session",
+          "kind",
+          "fileName",
+          "path",
+          "localId",
+          "createTime"
+        ],
+        "description": "A media file `export media` wrote."
       },
       "BackupCreated": {
         "type": "object",

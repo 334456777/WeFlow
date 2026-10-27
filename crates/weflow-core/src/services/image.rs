@@ -46,16 +46,12 @@ impl MissingImage {
             .unwrap_or_else(|| "?".into())
     }
 
-    pub fn to_json(&self) -> Value {
-        let mut o = Map::new();
-        if let Some(s) = &self.session {
-            o.insert("session".into(), json!(s));
+    pub fn to_contract(&self) -> crate::contract::MissingImage {
+        crate::contract::MissingImage {
+            session: self.session.clone(),
+            create_time: self.create_time,
+            time: self.time(),
         }
-        if let Some(t) = self.create_time {
-            o.insert("createTime".into(), json!(t));
-        }
-        o.insert("time".into(), json!(self.time()));
-        Value::Object(o)
     }
 }
 
@@ -1637,7 +1633,7 @@ mod tests {
             "{hint}"
         );
         assert_eq!(
-            image(Some(1_700_000_000)).to_json(),
+            serde_json::to_value(image(Some(1_700_000_000)).to_contract()).unwrap(),
             json!({ "session": "s", "createTime": 1_700_000_000, "time": date })
         );
     }

@@ -774,7 +774,11 @@ impl ServiceHub {
 
     /// Export a conversation's messages in one of the desktop app's formats
     /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
-    pub fn export_messages(&self, req: &MessageExportRequest, out: &Path) -> AppResult<Value> {
+    pub fn export_messages(
+        &self,
+        req: &MessageExportRequest,
+        out: &Path,
+    ) -> AppResult<crate::contract::MessagesExported> {
         let format = req.format.to_ascii_lowercase();
         if !MESSAGE_EXPORT_FORMATS
             .split(',')
@@ -794,7 +798,7 @@ impl ServiceHub {
         req: &MessageExportRequest,
         out: &Path,
         media: &crate::api::ApiMediaOptions,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::MessagesExported> {
         if !media.enabled {
             return self.export_messages(req, out);
         }
@@ -803,7 +807,7 @@ impl ServiceHub {
             .attach_export_media(&wcdb, &mut collected, &req.session_id, out, media)
             .await;
         let mut result = self.export_write(req, out, &wcdb, collected)?;
-        result["media"] = stats;
+        result.media = Some(stats);
         Ok(result)
     }
 
@@ -815,7 +819,7 @@ impl ServiceHub {
         req: &MessageExportRequest,
         outs: &[(String, PathBuf)],
         media: &crate::api::ApiMediaOptions,
-    ) -> AppResult<Vec<Value>> {
+    ) -> AppResult<Vec<crate::contract::MessagesExported>> {
         let request = |format: &str| MessageExportRequest {
             format: format.to_string(),
             ..req.clone()
@@ -837,7 +841,7 @@ impl ServiceHub {
             .map(|(format, out)| {
                 let mut result =
                     self.export_write(&request(format), out, &wcdb, collected.clone())?;
-                result["media"] = stats.clone();
+                result.media = Some(stats.clone());
                 Ok(result)
             })
             .collect()
@@ -875,7 +879,11 @@ impl ServiceHub {
 
     /// Export that writes the file while the messages are read, so memory stays flat whatever the size of the
     /// conversation. (An export that copies media reads everything first: see `export_collect`.)
-    fn export_streaming(&self, req: &MessageExportRequest, out: &Path) -> AppResult<Value> {
+    fn export_streaming(
+        &self,
+        req: &MessageExportRequest,
+        out: &Path,
+    ) -> AppResult<crate::contract::MessagesExported> {
         use crate::message::CollectOptions;
         let (_, _, wxid) = self.connection_inputs()?;
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
@@ -939,7 +947,13 @@ impl ServiceHub {
         if count == 0 {
             return Err(no_messages(req));
         }
-        Ok(json!({ "out": out, "count": count, "session": req.session_id, "format": format }))
+        Ok(crate::contract::MessagesExported {
+            out: out.to_path_buf(),
+            count,
+            session: req.session_id.clone(),
+            format,
+            media: None,
+        })
     }
 
     /// 按会话建好 [`Exporter`](crate::export_msg::Exporter)（联系人名、群昵称、自己的账号），再交给 `f` 使用。
@@ -1033,7 +1047,7 @@ impl ServiceHub {
         out: &Path,
         wcdb: &weflow_native::wcdb::Wcdb,
         collected: Vec<crate::message::ExportMsg>,
-    ) -> AppResult<Value> {
+    ) -> AppResult<crate::contract::MessagesExported> {
         let format = req.format.to_ascii_lowercase();
         let runtime = |e: anyhow::Error| AppError::runtime(e.to_string());
         let before = file_stamp(out);
@@ -1066,9 +1080,13 @@ impl ServiceHub {
             remove_if_written(out, before);
         }
         written??;
-        Ok(
-            json!({ "out": out, "count": collected.len(), "session": req.session_id, "format": format }),
-        )
+        Ok(crate::contract::MessagesExported {
+            out: out.to_path_buf(),
+            count: collected.len(),
+            session: req.session_id.clone(),
+            format,
+            media: None,
+        })
     }
 
     // ── Media export ─────────────────────────────────────────────────────────

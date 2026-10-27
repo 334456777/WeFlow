@@ -11,8 +11,8 @@ use serde_json::{json, Map, Value};
 use super::*;
 use crate::chat_msg;
 use crate::contract::{
-    EmojiCount, GroupChat, GroupHours, GroupMedia, GroupMember, GroupRank, MediaCount,
-    MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
+    EmojiCount, GroupChat, GroupExported, GroupHours, GroupMedia, GroupMember, GroupRank,
+    MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
 use crate::message::rx;
 
@@ -1440,7 +1440,7 @@ impl ServiceHub {
         out: &Path,
         start: i64,
         end: i64,
-    ) -> AppResult<Value> {
+    ) -> AppResult<GroupExported> {
         let (chatroom_id, member) = (chatroom_id.trim(), member.trim());
         if chatroom_id.is_empty() {
             return Err(AppError::usage("chatroom id must not be empty"));
@@ -1628,11 +1628,14 @@ impl ServiceHub {
             }
             wb.save(out).map_err(x)?;
         }
-        Ok(json!({ "success": true, "count": records.len() }))
+        Ok(GroupExported {
+            success: true,
+            count: records.len(),
+        })
     }
 
     /// `exportGroupMembers`
-    pub fn group_export_members(&self, chatroom_id: &str, out: &Path) -> AppResult<Value> {
+    pub fn group_export_members(&self, chatroom_id: &str, out: &Path) -> AppResult<GroupExported> {
         let wcdb = self.open_wcdb()?;
         let export_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let (names, _) = self.names_and_avatars(&wcdb, &[chatroom_id.to_string()]);
@@ -1820,7 +1823,10 @@ impl ServiceHub {
             }
             wb.save(out).map_err(x)?;
         }
-        Ok(json!({ "success": true, "count": members.len() }))
+        Ok(GroupExported {
+            success: true,
+            count: members.len(),
+        })
     }
 }
 

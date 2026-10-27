@@ -259,9 +259,8 @@ fn exports_json_html_and_arkmejson() {
             ..Default::default()
         };
         let res = rt.block_on(hub.sns_export_timeline(&opts)).unwrap();
-        assert_eq!(res["postCount"], 2);
-        assert_eq!(res["mediaCount"], 0);
-        let file = std::path::PathBuf::from(res["filePath"].as_str().unwrap());
+        assert_eq!((res.post_count, res.media_count), (2, 0));
+        let file = res.file_path;
         assert!(file.starts_with(&dir) && file.exists());
         outputs.push((fmt, std::fs::read_to_string(file).unwrap()));
     }

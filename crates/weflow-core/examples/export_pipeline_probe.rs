@@ -323,9 +323,9 @@ fn full(root: &Path, fixture: &Fixture, args: &Args) -> anyhow::Result<()> {
             )
         })?;
         anyhow::ensure!(
-            result["count"].as_i64() == Some(args.messages),
+            result.count as i64 == args.messages,
             "exported {} messages, expected {}",
-            result["count"],
+            result.count,
             args.messages
         );
     }

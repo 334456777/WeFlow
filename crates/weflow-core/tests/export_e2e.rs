@@ -220,12 +220,14 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
     };
 
     // default naming: group nickname, then remark, then nickname (no remark: the nickname, not the wxid)
-    let r = hub
-        .export_messages(
+    let r = serde_json::to_value(
+        hub.export_messages(
             &txt_request(None, DisplayPref::GroupNickname),
             &root.join("all.txt"),
         )
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(r["count"], 3);
     assert_eq!(headers(&read("all.txt")), ["Bob in room", "Quiet", "Me"]);
     assert!(
@@ -234,12 +236,14 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
     );
 
     // --sender keeps one person's messages
-    let r = hub
-        .export_messages(
+    let r = serde_json::to_value(
+        hub.export_messages(
             &txt_request(Some("wxid_quiet"), DisplayPref::GroupNickname),
             &root.join("quiet.txt"),
         )
-        .unwrap();
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(r["count"], 1);
     assert_eq!(headers(&read("quiet.txt")), ["Quiet"]);
 
@@ -256,9 +260,11 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
         format: "sql".into(),
         ..txt_request(sender, DisplayPref::GroupNickname)
     };
-    let r = hub
-        .export_messages(&sql_req(None), &root.join("all.sql"))
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_messages(&sql_req(None), &root.join("all.sql"))
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         (r["count"].as_i64(), r["format"].as_str()),
         (Some(3), Some("sql"))
@@ -267,9 +273,11 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
     assert!(sql.starts_with("CREATE TABLE IF NOT EXISTS \"messages\""));
     assert_eq!(sql.matches("INSERT INTO \"messages\"").count(), 3);
     assert!(sql.contains("'second'"));
-    let r = hub
-        .export_messages(&sql_req(Some("wxid_quiet")), &root.join("quiet.sql"))
-        .unwrap();
+    let r = serde_json::to_value(
+        hub.export_messages(&sql_req(Some("wxid_quiet")), &root.join("quiet.sql"))
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(r["count"], 1);
     assert_eq!(read("quiet.sql").matches("INSERT INTO").count(), 1);
 
@@ -302,7 +310,7 @@ fn txt_names_senders_and_honours_sender_and_display_name() {
             format: format.into(),
             ..txt_request(None, DisplayPref::GroupNickname)
         };
-        let r = hub.export_messages(&req, &out).unwrap();
+        let r = serde_json::to_value(hub.export_messages(&req, &out).unwrap()).unwrap();
         assert_eq!(r["count"], 3, "{format}");
         assert!(std::fs::metadata(&out).unwrap().len() > 0, "{format}");
         let mut none = req;

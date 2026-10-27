@@ -306,7 +306,7 @@ fn every_format_exports_five_messages_of_a_conversation() {
         let result = hub
             .export_messages(&request("wxid_bob", format), &out)
             .unwrap_or_else(|e| panic!("{format}: {e}"));
-        assert_eq!(result["count"], 5, "{format}");
+        assert_eq!(result.count, 5, "{format}");
         assert!(
             out.metadata().unwrap().len() > 100,
             "{format} output is empty"
@@ -370,7 +370,7 @@ fn date_range_and_sender_filters_apply() {
     let mut req = request("wxid_bob", "txt");
     req.sender = Some("wxid_me".into());
     let out = root.join("out/mine.txt");
-    let result = hub.export_messages(&req, &out).unwrap();
+    let result = serde_json::to_value(hub.export_messages(&req, &out).unwrap()).unwrap();
     assert_eq!(result["count"], 2, "only my two messages");
     let text = std::fs::read_to_string(&out).unwrap();
     assert!(

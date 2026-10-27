@@ -9,7 +9,7 @@ use md5::{Digest, Md5};
 use serde_json::{json, Map, Value};
 
 use super::*;
-use crate::contract::{SnsStats, UserPosts};
+use crate::contract::{SnsExported, SnsStats, UserPosts};
 use crate::isaac64;
 use crate::sns::{self, CachedContact};
 
@@ -944,7 +944,7 @@ impl ServiceHub {
     // ── export ──
 
     /// `exportTimeline`: json / html / arkmejson with optional media download.
-    pub async fn sns_export_timeline(&self, opts: &SnsExportOptions) -> AppResult<Value> {
+    pub async fn sns_export_timeline(&self, opts: &SnsExportOptions) -> AppResult<SnsExported> {
         use futures::StreamExt;
         let explicit = opts.export_images.is_some()
             || opts.export_live_photos.is_some()
@@ -1005,7 +1005,12 @@ impl ServiceHub {
             }
         }
         if posts.is_empty() {
-            return Ok(json!({ "success": true, "filePath": "", "postCount": 0, "mediaCount": 0 }));
+            return Ok(SnsExported {
+                success: true,
+                file_path: PathBuf::new(),
+                post_count: 0,
+                media_count: 0,
+            });
         }
 
         // 2. media
@@ -1282,9 +1287,12 @@ impl ServiceHub {
             }
         }
         self.emit_progress("sns", "export finished", posts.len(), posts.len());
-        Ok(
-            json!({ "success": true, "filePath": out_path, "postCount": posts.len(), "mediaCount": media_count }),
-        )
+        Ok(SnsExported {
+            success: true,
+            file_path: out_path,
+            post_count: posts.len(),
+            media_count,
+        })
     }
 
     /// `buildArkmeInteractionDetails`

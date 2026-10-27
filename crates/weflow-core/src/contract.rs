@@ -1337,6 +1337,152 @@ pub struct InsightLookup {
     pub error: Option<String>,
 }
 
+/// A conversation's messages written in one format (`export messages`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct MessagesExported {
+    /// The file; in a zip of several formats, its name inside the zip.
+    pub out: PathBuf,
+    /// The messages written.
+    pub count: usize,
+    pub session: String,
+    pub format: String,
+    /// The media copied beside it, with `media`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media: Option<MediaCopied>,
+}
+
+/// One conversation in several formats (`export messages` with several `format`s), or packed (`zip`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum MessagesBundle {
+    Folder(MessagesFolder),
+    Zip(MessagesZip),
+}
+
+/// The formats of one conversation, each written to its file in one folder.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct MessagesFolder {
+    /// The folder.
+    pub out: PathBuf,
+    pub formats: Vec<String>,
+    pub files: Vec<MessagesExported>,
+}
+
+/// The formats of one conversation packed into a zip, with their media.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct MessagesZip {
+    /// The zip.
+    pub out: PathBuf,
+    pub formats: Vec<String>,
+    /// Each format's file, named as it is inside the zip.
+    pub files: Vec<MessagesExported>,
+    /// The media packed with them; null without `media`.
+    pub media: Option<MediaCopied>,
+}
+
+/// The media an export of messages copied to its `media/` folder.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct MediaCopied {
+    /// The media messages asked for.
+    pub requested: usize,
+    pub exported: usize,
+    /// The ones whose file is not on disk, or could not be read.
+    pub missing: usize,
+    pub dir: PathBuf,
+    #[serde(flatten)]
+    pub ffmpeg: Option<FfmpegMissing>,
+}
+
+/// What `export media` (and `chat voice`) copied.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaExport {
+    pub exported: usize,
+    /// The media messages found.
+    pub found: usize,
+    pub missing: usize,
+    /// The missing ones by kind: `image`, `voice`, `video`, `emoji`.
+    pub missing_by_kind: BTreeMap<String, usize>,
+    /// The exported images that are only the thumbnail.
+    pub thumb_only: usize,
+    /// What `missing` and `thumbOnly` mean, in English.
+    pub note: String,
+    /// The conversations looked through.
+    pub sessions: usize,
+    pub out: PathBuf,
+    pub files: Vec<MediaFileExported>,
+    #[serde(flatten)]
+    pub ffmpeg: Option<FfmpegMissing>,
+}
+
+/// A media file `export media` wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaFileExported {
+    pub session: String,
+    /// `image`, `voice`, `video` or `emoji`.
+    pub kind: String,
+    pub file_name: String,
+    pub path: String,
+    pub local_id: i64,
+    pub create_time: i64,
+    /// An image's: the file is only its thumbnail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_thumb: Option<bool>,
+}
+
+/// The images an export left out because ffmpeg, which converts them, was not found.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FfmpegMissing {
+    pub ffmpeg_missing: usize,
+    pub ffmpeg_missing_images: Vec<MissingImage>,
+    /// What to do, with the dates of the first ones.
+    pub hint: String,
+}
+
+/// An image left out for lack of ffmpeg: where to find it in WeChat.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingImage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_time: Option<i64>,
+    /// The message's local time; `?` without one.
+    pub time: String,
+}
+
+/// The file an export wrote (`export sessions`, `contacts`, `footprint`).
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct ExportWritten {
+    pub out: PathBuf,
+    /// The format it was written in: `json`, `csv`, `excel`, …
+    pub format: String,
+}
+
+/// What `group export-members` or `export-member-messages` wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct GroupExported {
+    /// Always true.
+    pub success: bool,
+    /// The members, or the messages, written.
+    pub count: usize,
+}
+
+/// What `sns export` wrote.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SnsExported {
+    /// Always true.
+    pub success: bool,
+    /// Empty when no post matched, and nothing was written.
+    pub file_path: PathBuf,
+    pub post_count: usize,
+    /// The media files copied beside it.
+    pub media_count: usize,
+}
+
 /// The backup `backup create` wrote.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
