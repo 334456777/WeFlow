@@ -1,4 +1,4 @@
-<p align="right"><a href="#下载">>>前往下载<<</a></p>
+<p align="right"><a href="#user-content-weflow-download">>>前往下载<<</a></p>
 
 ## 更新日志
 
@@ -10,6 +10,7 @@
 
 {{CHANGELOG}}
 
+<a name="weflow-download"></a>
 ## 下载
 
 不知道选哪个？先看你的系统，再往下看对应的说明。**绝大多数 Windows 电脑选 x64 就对了。**
