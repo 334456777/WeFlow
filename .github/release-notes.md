@@ -4,12 +4,6 @@
 
 {{CHANGELOG}}
 
-## 下载
-
-## 更新日志
-
-{{CHANGELOG}}
-
 <a name="weflow-download"></a>
 ## 下载
 
