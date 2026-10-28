@@ -1,3 +1,11 @@
+<p align="right"><a href="#下载">>>前往下载<<</a></p>
+
+## 更新日志
+
+{{CHANGELOG}}
+
+## 下载
+
 ## 更新日志
 
 {{CHANGELOG}}
