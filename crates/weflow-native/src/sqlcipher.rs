@@ -466,6 +466,8 @@ pub mod testutil {
         conn.pragma_update(None, "page_size", 4096).unwrap();
         let mut reserve: std::os::raw::c_int = RESERVE as _;
         // SQLITE_FCNTL_RESERVE_BYTES = 38; only legal while the database is still empty.
+        // SAFETY: the connection is open, `main` is a NUL-terminated literal and `reserve` a live local;
+        // SQLITE_FCNTL_RESERVE_BYTES reads and writes one `c_int` through it.
         let rc = unsafe {
             rusqlite::ffi::sqlite3_file_control(
                 conn.handle(),

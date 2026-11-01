@@ -112,6 +112,9 @@ impl ImageAutoDownload {
         if !path.exists() {
             return false;
         }
+        // SAFETY: loading runs the initializers of WeFlow's own `img_helper.dll` from the runtime directory; its
+        // three exports are read with the types the DLL declares and kept in `Helper` next to the library, so none is
+        // called after it unloads.
         unsafe {
             let Ok(lib) = Library::new(&path) else {
                 return false;
@@ -136,6 +139,7 @@ impl ImageAutoDownload {
     fn unhook_locked(inner: &mut Inner) {
         if inner.hooked {
             if let Some(h) = &inner.helper {
+                // SAFETY: `uninstall` comes from the library `h` keeps loaded and takes no arguments.
                 unsafe { (h.uninstall)() };
             }
         }
@@ -162,6 +166,8 @@ impl ImageAutoDownload {
         let Some(helper) = &inner.helper else {
             return json!({ "success": false, "error": "core component initialization failed" });
         };
+        // SAFETY: `init` comes from the library `helper` keeps loaded; the whitelist is null or the NUL-separated,
+        // double-NUL-terminated buffer the DLL expects (see `whitelist_buffer`), alive for the call.
         let ok = unsafe {
             (helper.init)(
                 pid,
@@ -175,6 +181,8 @@ impl ImageAutoDownload {
             inner.pid = Some(pid);
             return json!({ "success": true });
         }
+        // SAFETY: `error` comes from the library `helper` keeps loaded and returns null or a NUL-terminated string,
+        // copied right away.
         let msg = unsafe {
             let p = (helper.error)();
             if p.is_null() {

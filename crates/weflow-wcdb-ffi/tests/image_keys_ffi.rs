@@ -33,6 +33,8 @@ fn call(account: &Path, identity: &str, dirs: &str) -> (i32, String) {
     let identity = CString::new(identity).unwrap();
     let dirs = CString::new(dirs).unwrap();
     let mut result: *mut c_void = std::ptr::null_mut();
+    // SAFETY: the three `CString`s outlive the block and `result` is a live out-pointer; the string returned through
+    // it is read once and freed once.
     unsafe {
         let code = weflow_get_image_keys(
             account.as_ptr(),
@@ -82,6 +84,7 @@ fn ffi_acquires_only_selected_account_and_reports_verification_strength() {
     assert_ne!(call(&account, "wxid_me", "not JSON").0, STATUS_OK);
     assert_ne!(call(Path::new(""), "", &dirs).0, STATUS_OK);
     assert_eq!(
+        // SAFETY: null arguments are what the export must reject without touching them.
         unsafe {
             weflow_get_image_keys(
                 std::ptr::null(),

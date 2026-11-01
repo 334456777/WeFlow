@@ -20,6 +20,7 @@ struct Handle(HANDLE);
 impl Drop for Handle {
     fn drop(&mut self) {
         if !self.0.is_null() && self.0 != INVALID_HANDLE_VALUE {
+            // SAFETY: this guard owns the handle, checked to be valid just above, and closes it exactly once.
             unsafe {
                 CloseHandle(self.0);
             }
@@ -39,6 +40,8 @@ fn win_error(operation: &str) -> anyhow::Error {
 
 fn read(process: HANDLE, address: usize, bytes: &mut [u8]) -> Result<()> {
     let mut count = 0;
+    // SAFETY: `bytes` is a live, writable buffer of `bytes.len()` bytes and `count` a live local; the remote address
+    // is only read by the kernel, which reports a bad one as a failure.
     if unsafe {
         ReadProcessMemory(
             process,
@@ -57,6 +60,7 @@ fn read(process: HANDLE, address: usize, bytes: &mut [u8]) -> Result<()> {
 
 fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
     let snapshot =
+        // SAFETY: takes plain integers; the returned handle is checked below and owned by `Handle`.
         Handle(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid) });
     if snapshot.0 == INVALID_HANDLE_VALUE {
         return Err(win_error("enumerate WeChat modules"));
@@ -66,6 +70,7 @@ fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
         ..Default::default()
     };
     let mut found = None;
+    // SAFETY: `entry` is a MODULEENTRY32W with `dwSize` set and the snapshot handle is open.
     let mut available = unsafe { Module32FirstW(snapshot.0, &mut entry) } != 0;
     while available {
         let length = entry
@@ -77,6 +82,7 @@ fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
             found = Some(entry);
             break;
         }
+        // SAFETY: as for `Module32FirstW` above: `entry` keeps its `dwSize` and the snapshot is still open.
         available = unsafe { Module32NextW(snapshot.0, &mut entry) } != 0;
     }
     found.with_context(|| format!("{name} is not loaded yet"))
@@ -84,8 +90,11 @@ fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
 
 fn remote_ntdll_symbol(pid: u32, name: &[u8]) -> Result<usize> {
     let local_name: Vec<_> = "ntdll.dll".encode_utf16().chain(Some(0)).collect();
+    // SAFETY: `local_name` is a NUL-terminated UTF-16 string that outlives the call.
     let local = unsafe { GetModuleHandleW(local_name.as_ptr()) };
     let symbol =
+        // SAFETY: `local` is ntdll's module handle, which stays loaded for the life of the process, and `name` is
+        // NUL-terminated (both callers pass byte literals ending in `\0`).
         unsafe { GetProcAddress(local, name.as_ptr()) }.context("ntdll debug symbol missing")?;
     let offset = (symbol as *const () as usize)
         .checked_sub(local as usize)
@@ -105,12 +114,14 @@ fn locate(pid: u32) -> Result<KeyLocation> {
     let version = file_version(&module.szExePath)?;
     let signature = locator::signature(version)?;
     let process =
+        // SAFETY: takes plain integers; the returned handle is checked below and owned by `Handle`.
         Handle(unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid) });
     if process.0.is_null() {
         return Err(win_error("open WeChat process"));
     }
     let mut machine = 0;
     let mut native_machine = 0;
+    // SAFETY: the process handle is open and both out-parameters are live locals.
     if unsafe { IsWow64Process2(process.0, &mut machine, &mut native_machine) } == 0 {
         return Err(win_error("IsWow64Process2"));
     }
@@ -160,17 +171,23 @@ fn locate(pid: u32) -> Result<KeyLocation> {
 
 fn file_version(path: &[u16]) -> Result<[u16; 4]> {
     let mut ignored = 0;
+    // SAFETY: `path` is the module path Windows filled into MODULEENTRY32W, NUL-terminated, and `ignored` a live
+    // local.
     let size = unsafe { GetFileVersionInfoSizeW(path.as_ptr(), &mut ignored) };
     if size == 0 {
         return Err(win_error("GetFileVersionInfoSizeW"));
     }
     // Vec<u32> keeps the returned VS_FIXEDFILEINFO aligned.
     let mut buffer = vec![0u32; (size as usize).div_ceil(4)];
+    // SAFETY: `buffer` holds at least `size` bytes (rounded up to whole `u32`s) and `path` is NUL-terminated, as
+    // above.
     if unsafe { GetFileVersionInfoW(path.as_ptr(), 0, size, buffer.as_mut_ptr().cast()) } == 0 {
         return Err(win_error("GetFileVersionInfoW"));
     }
     let mut value = std::ptr::null_mut();
     let mut length = 0;
+    // SAFETY: `buffer` holds the version resource just read, the sub-block name `\` is NUL-terminated, and both
+    // out-parameters are live locals.
     if unsafe {
         VerQueryValueW(
             buffer.as_ptr().cast(),
@@ -184,6 +201,8 @@ fn file_version(path: &[u16]) -> Result<[u16; 4]> {
     {
         bail!("invalid WeChat version resource");
     }
+    // SAFETY: `value` points into `buffer`, still alive, at no fewer than `size_of::<VS_FIXEDFILEINFO>()` bytes
+    // (checked above); `read_unaligned` needs no alignment.
     let info = unsafe { std::ptr::read_unaligned(value.cast::<VS_FIXEDFILEINFO>()) };
     if info.dwSignature != 0xfeef04bd {
         bail!("invalid WeChat version signature");
@@ -266,6 +285,8 @@ impl InterruptGuard {
     fn new() -> Result<Self> {
         let cancel = Arc::new(AtomicBool::new(false));
         let mut active = interrupts().lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: `console_interrupt` stays valid for the life of the process; it is added once, while the lock is
+        // held, when no hook had it.
         if active.is_empty() && unsafe { SetConsoleCtrlHandler(Some(console_interrupt), 1) } == 0 {
             return Err(win_error("SetConsoleCtrlHandler"));
         }
@@ -278,6 +299,8 @@ impl Drop for InterruptGuard {
         let mut active = interrupts().lock().unwrap_or_else(|e| e.into_inner());
         active.retain(|entry| !Weak::ptr_eq(entry, &Arc::downgrade(&self.0)));
         if active.is_empty() {
+            // SAFETY: removes the handler `InterruptGuard::new` added, under the same lock, once the last hook is
+            // gone.
             unsafe {
                 SetConsoleCtrlHandler(Some(console_interrupt), 0);
             }
@@ -415,6 +438,8 @@ fn context(thread: HANDLE) -> Result<AlignedContext> {
         ContextFlags: CONTEXT_ALL_AMD64,
         ..Default::default()
     });
+    // SAFETY: `ctx` is a 16-byte aligned CONTEXT (see `AlignedContext`) with `ContextFlags` set, and the caller
+    // opened `thread` with THREAD_GET_CONTEXT.
     if unsafe { GetThreadContext(thread, &mut ctx.0) } == 0 {
         return Err(win_error("GetThreadContext"));
     }
@@ -422,6 +447,8 @@ fn context(thread: HANDLE) -> Result<AlignedContext> {
 }
 
 fn set_context(thread: HANDLE, ctx: &CONTEXT) -> Result<()> {
+    // SAFETY: every caller passes a context from `context`, so it is 16-byte aligned, and opened `thread` with
+    // THREAD_SET_CONTEXT.
     if unsafe { SetThreadContext(thread, ctx) } == 0 {
         return Err(win_error("SetThreadContext"));
     }
@@ -441,7 +468,9 @@ impl WatchedThread {
     fn install(handle: HANDLE, target: usize) -> Result<Self> {
         // Debug-event thread handles belong to Windows. Open our own handle, which can
         // safely outlive ContinueDebugEvent and is closed once by our RAII guard.
+        // SAFETY: `handle` is the thread handle of the debug event being handled, valid until it is continued.
         let tid = unsafe { GetThreadId(handle) };
+        // SAFETY: takes plain integers; the returned handle is checked below and owned by `Handle`.
         let handle = Handle(unsafe {
             OpenThread(
                 THREAD_GET_CONTEXT
@@ -501,6 +530,8 @@ impl Debugger {
     fn attach(pid: u32, target: usize) -> Result<Self> {
         let system_breakpoint = remote_ntdll_symbol(pid, b"DbgBreakPoint\0")?;
         let system_breakin = remote_ntdll_symbol(pid, b"DbgUiRemoteBreakin\0")?;
+        // SAFETY: takes only a process id; `Drop` detaches through `detach` once `Debugger` exists, and nothing else
+        // can fail before that.
         if unsafe { DebugActiveProcess(pid) } == 0 {
             return Err(win_error("DebugActiveProcess"));
         }
@@ -515,6 +546,7 @@ impl Debugger {
             system_breakpoint,
             system_breakin,
         };
+        // SAFETY: takes only a flag, called on the thread that attached, as Windows requires.
         if unsafe { DebugSetProcessKillOnExit(0) } == 0 {
             return Err(win_error("DebugSetProcessKillOnExit"));
         }
@@ -539,7 +571,9 @@ impl Debugger {
                 bail!("timed out initializing WeChat debugger");
             }
             let mut event = DEBUG_EVENT::default();
+            // SAFETY: `event` is a live, writable DEBUG_EVENT and this thread is the one that attached.
             if unsafe { WaitForDebugEvent(&mut event, 50) } == 0 {
+                // SAFETY: reads this thread's last error; takes no arguments.
                 if unsafe { GetLastError() } == ERROR_SEM_TIMEOUT {
                     continue;
                 }
@@ -552,6 +586,9 @@ impl Debugger {
                 DBG_CONTINUE
             };
             let mut disposition = DBG_CONTINUE;
+            // SAFETY: each arm reads the field of the `event.u` union that `dwDebugEventCode` names; the file handles
+            // closed are the ones the debug event hands over, each closed once; `OpenProcess` takes plain integers
+            // and its handle is owned by `Handle`.
             unsafe {
                 match event.dwDebugEventCode {
                     CREATE_PROCESS_DEBUG_EVENT => {
@@ -675,6 +712,7 @@ impl Debugger {
 
     fn continue_event(&mut self, disposition: i32) -> Result<()> {
         if let Some(event) = &self.pending {
+            // SAFETY: the ids are those of the debug event this thread received and has not continued yet.
             if unsafe { ContinueDebugEvent(event.dwProcessId, event.dwThreadId, disposition) } == 0
             {
                 return Err(win_error("ContinueDebugEvent"));
@@ -700,6 +738,7 @@ impl Debugger {
         for thread in self.threads.values() {
             if let Err(e) = thread.restore() {
                 let mut exit = 0;
+                // SAFETY: `thread.handle` is open for as long as `thread` lives and `exit` is a live local.
                 if unsafe { GetExitCodeThread(thread.handle.0, &mut exit) } == 0
                     || exit == STILL_ACTIVE as u32
                 {
@@ -710,6 +749,7 @@ impl Debugger {
         if let Err(e) = self.continue_event(self.pending_disposition) {
             error.get_or_insert(e);
         }
+        // SAFETY: takes only the id of the process this thread attached to.
         if unsafe { DebugActiveProcessStop(self.pid) } == 0 {
             error.get_or_insert_with(|| win_error("DebugActiveProcessStop"));
         } else {
@@ -728,13 +768,16 @@ impl Debugger {
             .as_ref()
             .context("debugger has no process handle")?
             .0;
+        // SAFETY: `process` is the open handle of the process being debugged.
         if unsafe { DebugBreakProcess(process) } == 0 {
             return Err(win_error("DebugBreakProcess"));
         }
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
             let mut event = DEBUG_EVENT::default();
+            // SAFETY: `event` is a live, writable DEBUG_EVENT and this thread is the one that attached.
             if unsafe { WaitForDebugEvent(&mut event, 50) } == 0 {
+                // SAFETY: reads this thread's last error; takes no arguments.
                 if unsafe { GetLastError() } == ERROR_SEM_TIMEOUT {
                     continue;
                 }
@@ -742,6 +785,8 @@ impl Debugger {
             }
             self.pending = Some(event);
             self.pending_disposition = DBG_CONTINUE;
+            // SAFETY: each arm reads the field of the `event.u` union that `dwDebugEventCode` names; the file handle
+            // closed is the one the debug event hands over, closed once.
             unsafe {
                 match event.dwDebugEventCode {
                     EXIT_THREAD_DEBUG_EVENT => {
@@ -830,6 +875,7 @@ mod tests {
     #[test]
     #[ignore = "synthetic debugger target, launched by capture tests"]
     fn target_process() {
+        // SAFETY: takes no arguments.
         println!("TARGET {} {}", key_target as *const () as usize, unsafe {
             GetCurrentThreadId()
         });
@@ -841,6 +887,8 @@ mod tests {
             }
             if command == "call" || command == "new-thread" {
                 let call = || {
+                    // SAFETY: `unrelated_exception` is a valid handler for the whole block; the exception raised is
+                    // the one it continues, and it is removed before the block ends.
                     unsafe {
                         let handler = AddVectoredExceptionHandler(1, Some(unrelated_exception));
                         assert!(!handler.is_null());
@@ -930,19 +978,24 @@ mod tests {
 
         fn assert_detached_with(&mut self, addresses: [u64; 4], control: u64) {
             let process =
+                // SAFETY: takes plain integers; the returned handle is checked below and owned by `Handle`.
                 Handle(unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, 0, self.child.id()) });
             assert!(!process.0.is_null());
             let mut present = 1;
             assert_ne!(
+                // SAFETY: the process handle is open and `present` is a live local.
                 unsafe { CheckRemoteDebuggerPresent(process.0, &mut present) },
                 0
             );
             assert_eq!(present, 0);
+            // SAFETY: takes plain integers; the returned handle is owned by `Handle`.
             let thread = Handle(unsafe {
                 OpenThread(THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME, 0, self.tid)
             });
+            // SAFETY: the thread handle was opened with THREAD_SUSPEND_RESUME.
             assert_ne!(unsafe { SuspendThread(thread.0) }, u32::MAX);
             let ctx = context(thread.0).unwrap();
+            // SAFETY: the thread handle was opened with THREAD_SUSPEND_RESUME, and this resumes the suspension above.
             assert_ne!(unsafe { ResumeThread(thread.0) }, u32::MAX);
             assert_eq!(
                 ctx.Dr7 & 0xff,
@@ -957,6 +1010,7 @@ mod tests {
         }
 
         fn set_debug_registers(&mut self, addresses: [u64; 4], control: u64) {
+            // SAFETY: takes plain integers; the returned handle is owned by `Handle`.
             let thread = Handle(unsafe {
                 OpenThread(
                     THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME,
@@ -964,12 +1018,14 @@ mod tests {
                     self.tid,
                 )
             });
+            // SAFETY: the thread handle was opened with THREAD_SUSPEND_RESUME.
             assert_ne!(unsafe { SuspendThread(thread.0) }, u32::MAX);
             let mut ctx = context(thread.0).unwrap();
             [ctx.Dr0, ctx.Dr1, ctx.Dr2, ctx.Dr3] = addresses;
             ctx.Dr7 = control;
             ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS_AMD64;
             set_context(thread.0, &ctx).unwrap();
+            // SAFETY: the thread handle was opened with THREAD_SUSPEND_RESUME, and this resumes the suspension above.
             assert_ne!(unsafe { ResumeThread(thread.0) }, u32::MAX);
         }
     }

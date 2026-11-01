@@ -9,6 +9,8 @@ fn built_dll_exports_the_cpp_bool_abi() {
         .parent()
         .unwrap()
         .join("wx_key.dll");
+    // SAFETY: loads the `wx_key.dll` this crate just built, whose exports have exactly the types read here; they are
+    // only called while `dll` is loaded.
     unsafe {
         let dll = libloading::Library::new(path).unwrap();
         let init = dll

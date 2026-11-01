@@ -19,6 +19,7 @@ license = "SEE LICENSE IN LICENSE"
 [workspace.lints.clippy]
 large_futures = "warn"
 redundant_clone = "warn"
+undocumented_unsafe_blocks = "warn"
 
 [workspace.dependencies]
 aes = "0.9"

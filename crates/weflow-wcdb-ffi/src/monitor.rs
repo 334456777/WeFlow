@@ -219,6 +219,7 @@ mod pipe {
         pub fn accept(&self) -> Result<()> {
             // SAFETY: valid pipe handle, synchronous mode.
             let ok = unsafe { ConnectNamedPipe(self.0, std::ptr::null_mut()) };
+            // SAFETY: reads this thread's last error; takes no arguments.
             if ok != 0 || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED {
                 Ok(())
             } else {
