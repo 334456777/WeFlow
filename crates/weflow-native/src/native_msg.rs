@@ -198,6 +198,43 @@ pub enum PageFrom {
     After(MsgPos),
 }
 
+/// Where [`NativeAccount::messages`] starts a page deep into a conversation.
+enum OffsetPosition {
+    /// After this message, the last one the offset skips.
+    At(MsgPos),
+    /// The offset skips every message.
+    Past,
+    /// A sort key of the rows is not stored as an integer (a `sort_seq` may also be null): [`row_key`] and SQLite
+    /// order such values differently, so only reading the rows lists them as before.
+    Unusual,
+}
+
+/// [`row_key`] of the cells `sort_seq`, `create_time` and `local_id`; `None` when one is not an integer, but for a
+/// null `sort_seq`, which is one without, as a zero.
+fn typed_row_key(
+    sort_seq: rusqlite::types::ValueRef,
+    create_time: rusqlite::types::ValueRef,
+    local_id: rusqlite::types::ValueRef,
+) -> Option<(i64, i64, i64)> {
+    use rusqlite::types::ValueRef;
+    let (ValueRef::Integer(create), ValueRef::Integer(local_id)) = (create_time, local_id) else {
+        return None;
+    };
+    let seq = match sort_seq {
+        ValueRef::Integer(0) | ValueRef::Null => create * 1000,
+        ValueRef::Integer(seq) => seq,
+        _ => return None,
+    };
+    Some((seq, create, local_id))
+}
+
+/// The number of the `message_<n>.db` holding a table.
+fn shard_of(t: &MsgTable) -> Option<u32> {
+    t.db.file_name()
+        .and_then(|n| n.to_str())
+        .and_then(is_message_db)
+}
+
 fn is_message_db(name: &str) -> Option<u32> {
     let lower = name.to_ascii_lowercase();
     lower
@@ -299,47 +336,128 @@ impl NativeAccount {
     /// Newest-first page of messages across all shards.
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Value> {
         let (offset, limit) = (offset.max(0) as usize, limit.max(0) as usize);
+        let tables = self.message_tables(session_id)?;
+        if offset > 0 {
+            // A page deep into a long conversation: reading every row before it costs what the offset does (issue
+            // #486), so find the last message it skips from the sort keys alone and page on from there.
+            match self.offset_position(&tables, offset, limit)? {
+                OffsetPosition::At(pos) => {
+                    return self.page_from(&tables, limit as i32, PageFrom::Before(pos));
+                }
+                OffsetPosition::Past => return Ok(Value::Array(Vec::new())),
+                OffsetPosition::Unusual => {}
+            }
+        }
+        self.newest_rows(&tables, offset, limit)
+    }
+
+    /// The SQL of [`newest_rows`](Self::newest_rows) for one table: its `want` (`?1`) newest rows with a `sort_seq`,
+    /// at `?2` or later when `floor`, then its `want` newest without one. With the sender joined, or only `columns`.
+    fn newest_sql(t: &MsgTable, columns: Option<&str>, floor: bool) -> String {
+        let order = "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1";
+        let floor = if floor { "m.sort_seq >= ?2 and " } else { "" };
+        let indexed = format!("where {floor}m.sort_seq <> 0 {order}");
+        // rows without a sort_seq are keyed by create_time * 1000 (see `row_key`): below any floor, they are read
+        // apart
+        let unsequenced = "where (m.sort_seq is null or m.sort_seq = 0) \
+                           order by m.create_time desc, m.local_id desc limit ?1";
+        match columns {
+            None => Self::select_both_sql(t, &indexed, unsequenced),
+            Some(columns) => {
+                let table = &t.table;
+                format!(
+                    "select * from (select {columns} from \"{table}\" m {indexed}) \
+                     union all select * from (select {columns} from \"{table}\" m {unsequenced})"
+                )
+            }
+        }
+    }
+
+    /// Where a page `offset` messages deep starts: the place of the last message it skips. Read from the sort keys of
+    /// the rows [`newest_rows`](Self::newest_rows) would read, without their sender join and JSON objects.
+    fn offset_position(
+        &self,
+        tables: &[MsgTable],
+        offset: usize,
+        limit: usize,
+    ) -> Result<OffsetPosition> {
+        let want = if limit == 0 {
+            -1
+        } else {
+            (offset + limit) as i64
+        };
+        let mut keys: Vec<((i64, i64, i64), u32)> = Vec::new();
+        for t in tables {
+            let Some(shard) = shard_of(t) else {
+                return Ok(OffsetPosition::Unusual);
+            };
+            let floor = if want > 0 {
+                self.sort_seq_floor(t, want)?
+            } else {
+                None
+            };
+            let sql = Self::newest_sql(t, Some("sort_seq, create_time, local_id"), floor.is_some());
+            let read = self.with_db(&t.db, |conn| {
+                // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
+                let mut found = Vec::new();
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .with_context(|| format!("bad query: {sql}"))?;
+                let mut rows = match floor {
+                    Some(floor) => stmt.query(rusqlite::params![want, floor])?,
+                    None => stmt.query(rusqlite::params![want])?,
+                };
+                while let Some(row) = rows.next()? {
+                    let Some(key) =
+                        typed_row_key(row.get_ref(0)?, row.get_ref(1)?, row.get_ref(2)?)
+                    else {
+                        return Ok(None);
+                    };
+                    found.push((key, shard));
+                }
+                Ok(Some(found))
+            })?;
+            let Some(read) = read else {
+                return Ok(OffsetPosition::Unusual);
+            };
+            keys.extend(read);
+        }
+        // the listing's order: newest key first, equal keys by ascending database
+        keys.sort_unstable_by(|(a, sa), (b, sb)| b.cmp(a).then(sa.cmp(sb)));
+        Ok(match keys.get(offset - 1) {
+            Some(&((sort_seq, create_time, local_id), shard)) => OffsetPosition::At(MsgPos {
+                sort_seq,
+                create_time,
+                local_id,
+                shard,
+            }),
+            None => OffsetPosition::Past,
+        })
+    }
+
+    /// Newest-first page of the messages of `tables`, from the rows before it and the page read in full and sorted.
+    fn newest_rows(&self, tables: &[MsgTable], offset: usize, limit: usize) -> Result<Value> {
         let want = if limit == 0 {
             -1
         } else {
             (offset + limit) as i64
         };
         let mut rows: Vec<Value> = Vec::new();
-        for t in self.message_tables(session_id)? {
-            let order = "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1";
+        for t in tables {
             // Asked as is, SQLite sorts the whole table (it walks the sender index for the join). The `want`-th
             // newest sort_seq, read from the sort_seq index, bounds the same rows to a range that index serves.
             let floor = if want > 0 {
-                self.sort_seq_floor(&t, want)?
+                self.sort_seq_floor(t, want)?
             } else {
                 None
             };
-            // rows without a sort_seq are keyed by create_time * 1000 (see `row_key`): below any floor, they are read
-            // apart
-            let unsequenced = "where (m.sort_seq is null or m.sort_seq = 0) \
-                               order by m.create_time desc, m.local_id desc limit ?1";
+            let sql = Self::newest_sql(t, None, floor.is_some());
             let page = match floor {
-                Some(floor) => self.query(
-                    &t.db,
-                    &Self::select_both_sql(
-                        &t,
-                        &format!("where m.sort_seq >= ?2 and m.sort_seq <> 0 {order}"),
-                        unsequenced,
-                    ),
-                    &[&want, &floor],
-                )?,
-                None => self.query(
-                    &t.db,
-                    &Self::select_both_sql(
-                        &t,
-                        &format!("where m.sort_seq <> 0 {order}"),
-                        unsequenced,
-                    ),
-                    &[&want],
-                )?,
+                Some(floor) => self.query(&t.db, &sql, &[&want, &floor])?,
+                None => self.query(&t.db, &sql, &[&want])?,
             };
             for mut r in page {
-                self.finish_row(&mut r, &t, false);
+                self.finish_row(&mut r, t, false);
                 rows.push(r);
             }
         }
@@ -356,6 +474,11 @@ impl NativeAccount {
     /// ones closest to it, still listed newest first; `limit == 0` means all of them. Each table is read from the
     /// position on through its `sort_seq` index, so a page deep into a long conversation costs what the first does.
     pub fn messages_from(&self, session_id: &str, limit: i32, from: PageFrom) -> Result<Value> {
+        self.page_from(&self.message_tables(session_id)?, limit, from)
+    }
+
+    /// [`messages_from`](Self::messages_from) over the message tables of a conversation.
+    fn page_from(&self, tables: &[MsgTable], limit: i32, from: PageFrom) -> Result<Value> {
         let want = if limit <= 0 { -1 } else { i64::from(limit) };
         let (pos, older) = match from {
             PageFrom::Before(p) => (p, true),
@@ -363,12 +486,8 @@ impl NativeAccount {
         };
         let dir = if older { "desc" } else { "asc" };
         let mut rows: Vec<(Value, u32)> = Vec::new();
-        for t in self.message_tables(session_id)? {
-            let Some(shard) =
-                t.db.file_name()
-                    .and_then(|n| n.to_str())
-                    .and_then(is_message_db)
-            else {
+        for t in tables {
+            let Some(shard) = shard_of(t) else {
                 continue;
             };
             // a row with the position's own key is past it only in a database listed after the position's
@@ -391,11 +510,11 @@ impl NativeAccount {
             );
             let page = self.query(
                 &t.db,
-                &Self::select_both_sql(&t, &indexed, &unsequenced),
+                &Self::select_both_sql(t, &indexed, &unsequenced),
                 &[&pos.sort_seq, &pos.create_time, &pos.local_id, &want],
             )?;
             for mut r in page {
-                self.finish_row(&mut r, &t, false);
+                self.finish_row(&mut r, t, false);
                 rows.push((r, shard));
             }
         }
@@ -487,11 +606,7 @@ impl NativeAccount {
         };
         let mut rows: Vec<(Value, u32)> = Vec::new();
         for t in tables {
-            let Some(shard) =
-                t.db.file_name()
-                    .and_then(|n| n.to_str())
-                    .and_then(is_message_db)
-            else {
+            let Some(shard) = shard_of(t) else {
                 continue;
             };
             if local_types.is_empty() {
@@ -1655,6 +1770,114 @@ mod tests {
         assert_eq!(MsgPos::parse(&pos(&all[3]).token()), Some(pos(&all[3])));
         assert_eq!(MsgPos::parse("1.2.3"), None);
         assert_eq!(MsgPos::parse("1.2.3.4.5"), None);
+    }
+
+    /// An account whose `wxid_bob` messages are `shards`, one `message_<n>.db` each: rows of (local_id, sort_seq as
+    /// an SQL literal, create_time as one). Neither column has a type, so a row can store any SQLite value.
+    fn keyed_account(tag: &str, shards: &[Vec<(i64, String, String)>]) -> NativeAccount {
+        let dir = std::env::temp_dir().join(format!("weflow-msg-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("message")).unwrap();
+        let table = table_name_for("wxid_bob");
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        for (n, rows) in shards.iter().enumerate() {
+            let values = rows
+                .iter()
+                .map(|(id, seq, create)| format!("({id}, {seq}, {create}, 1, 1, '{n}:{id}')"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let table = table.clone();
+            let plain = plain_db_with(move |c: &Connection| {
+                c.execute_batch(&format!(
+                    "create table Name2Id(user_name text primary key, is_session integer);
+                     insert into Name2Id(rowid, user_name) values (1, 'wxid_bob');
+                     create table \"{table}\"(local_id integer primary key, sort_seq, create_time,
+                         real_sender_id integer, local_type integer, message_content text);
+                     create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq);
+                     insert into \"{table}\" values {values};"
+                ))
+                .unwrap();
+            });
+            std::fs::write(
+                dir.join(format!("message/message_{n}.db")),
+                encrypt_db(&plain, &cipher),
+            )
+            .unwrap();
+        }
+        NativeAccount::new(&dir, &hex(&KEY)).unwrap()
+    }
+
+    #[test]
+    fn offset_pages_are_the_pages_of_reading_every_row() {
+        // sort_seq ties within a table, rows without one (null or 0), negative ones, and rows of the second database
+        // with the very keys of the first one's
+        let row = |i: i64, salt: i64| -> (i64, String, String) {
+            let seq = match i {
+                _ if i % 9 == 0 => "null".to_string(),
+                _ if i % 11 == 0 => "0".to_string(),
+                _ if i % 7 == 0 => "-5".to_string(),
+                _ => (T0 * 1000 + (i * salt) % 8 * 1000).to_string(),
+            };
+            (i, seq, (T0 + (i * 5) % 13).to_string())
+        };
+        let first: Vec<_> = (1..=40).map(|i| row(i, 1)).collect();
+        let second: Vec<_> = (1..=30)
+            .map(|i| if i <= 10 { row(i, 1) } else { row(i, 3) })
+            .collect();
+        let acct = keyed_account("offset", &[first, second]);
+        let tables = acct.message_tables("wxid_bob").unwrap();
+        assert_eq!(tables.len(), 2);
+        for limit in [0, 1, 3, 7, 50] {
+            for offset in 0..=72 {
+                if offset > 0 {
+                    assert!(
+                        !matches!(
+                            acct.offset_position(&tables, offset, limit).unwrap(),
+                            OffsetPosition::Unusual
+                        ),
+                        "limit {limit} offset {offset}"
+                    );
+                }
+                assert_eq!(
+                    acct.messages("wxid_bob", limit as i32, offset as i32)
+                        .unwrap(),
+                    acct.newest_rows(&tables, offset, limit).unwrap(),
+                    "limit {limit} offset {offset}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn offset_pages_over_keys_of_other_types_read_every_row() {
+        for (tag, seq, create) in [
+            ("numeric-text", "'1.5'", "1"),
+            ("real", "1.5", "1"),
+            ("text", "'x'", "1"),
+            ("blob", "x'31'", "1"),
+            ("null-time", "1000", "null"),
+        ] {
+            let mut rows: Vec<(i64, String, String)> = (1..=6)
+                .map(|i| (i, (i * 1000).to_string(), i.to_string()))
+                .collect();
+            rows.push((7, seq.to_string(), create.to_string()));
+            let acct = keyed_account(&format!("unusual-{tag}"), &[rows]);
+            let tables = acct.message_tables("wxid_bob").unwrap();
+            assert!(
+                matches!(
+                    acct.offset_position(&tables, 3, 0).unwrap(),
+                    OffsetPosition::Unusual
+                ),
+                "{tag}"
+            );
+            for offset in 1..=8 {
+                assert_eq!(
+                    acct.messages("wxid_bob", 2, offset as i32).unwrap(),
+                    acct.newest_rows(&tables, offset, 2).unwrap(),
+                    "{tag} offset {offset}"
+                );
+            }
+        }
     }
 
     #[test]
