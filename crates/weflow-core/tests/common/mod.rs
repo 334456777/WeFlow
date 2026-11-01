@@ -1,6 +1,10 @@
 //! Test harness: a `ServiceHub` wired to a synthetic account made of real encrypted databases
 //! (`weflow_native::fixture`). There is no mock database library any more.
 #![allow(dead_code)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
 
 use std::path::{Path, PathBuf};
 

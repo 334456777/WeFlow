@@ -1,5 +1,9 @@
 //! WebUI versions (issue #148) against a registry on this machine that answers as GHCR does: an anonymous token
 //! after a `401`, tags, manifests and blobs.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
 
 use std::collections::HashMap;
 use std::io::Write;

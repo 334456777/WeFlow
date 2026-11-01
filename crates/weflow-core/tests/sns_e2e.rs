@@ -1,3 +1,8 @@
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
+
 mod common;
 
 use std::io::{Read, Write};

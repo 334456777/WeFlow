@@ -1,6 +1,10 @@
 //! `weflow web` and the WebUI of `weflow serve` (issue #148), with a registry of the test's own
 //! (`WEFLOW_WEB_REGISTRY`): the default version of this weflow downloaded beside the server, a restart without the
 //! network, the API alone, and versions installed, picked and pruned.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};

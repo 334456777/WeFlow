@@ -1,5 +1,9 @@
 //! Keeps `docs/cli-unsupported.md` (and its zh-CN twin) in sync with the code: every database function that
 //! answers "not implemented" or "not supported" must be listed there.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
 
 use std::path::Path;
 

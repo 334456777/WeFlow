@@ -1,5 +1,9 @@
 //! Time a full lite-cursor scan of one conversation (no content is printed).
 //! usage: cursor_bench <account_dir> <key_file> <session id> [lite=1|0] [your wxid]
+#![expect(
+    clippy::unwrap_used,
+    reason = "probe code reports failure by panicking"
+)]
 use std::time::Instant;
 use weflow_native::native_db::NativeAccount;
 

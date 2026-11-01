@@ -2,6 +2,10 @@
 //! rounds, once per database) and decrypting a page (HMAC-SHA512 check, then AES-256-CBC), on synthetic pages; no
 //! account is read. Run it in release to compare crypto crate versions (#371).
 //! usage: cipher_bench [pages=20000] [rounds=5]
+#![expect(
+    clippy::expect_used,
+    reason = "probe code reports failure by panicking"
+)]
 use std::hint::black_box;
 use std::time::Instant;
 

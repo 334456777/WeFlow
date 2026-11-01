@@ -1,5 +1,10 @@
 //! End-to-end tests of the command API (`weflow serve`): a real server process, real HTTP requests, and the
 //! same commands run directly for comparison, over a synthetic encrypted account.
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test helpers fail the test by panicking"
+)]
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};

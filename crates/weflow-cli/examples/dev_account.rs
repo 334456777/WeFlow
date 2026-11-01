@@ -10,6 +10,10 @@
 //! 「图片测试」, a chat of one picture per case of the files WeChat keeps of it (#194): the thumbnail a chat shows
 //! (`<md5>_t.dat`), the image opened (`<md5>.dat`) and the original downloaded on View original (`<md5>_h.dat`), each
 //! there or not. Every picture is a JPEG with its file and size written on it, so which one a page shows is plain.
+#![expect(
+    clippy::expect_used,
+    reason = "probe code reports failure by panicking"
+)]
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

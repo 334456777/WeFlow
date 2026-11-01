@@ -1,3 +1,8 @@
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
+
 use std::ffi::{c_void, CStr, CString};
 use std::path::Path;
 

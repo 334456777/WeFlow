@@ -1,5 +1,10 @@
 //! Read-only probe of the native backend against a real account (prints counts, never message text).
 //! usage: native_probe <account_dir> <key_file>
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "probe code reports failure by panicking"
+)]
 use std::time::Instant;
 use weflow_native::native_db::NativeAccount;
 

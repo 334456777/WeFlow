@@ -1,4 +1,8 @@
 //! Exports read by several workers, page by page: every message once, in the order a single reader gives.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
 mod common;
 
 use serde_json::Value;

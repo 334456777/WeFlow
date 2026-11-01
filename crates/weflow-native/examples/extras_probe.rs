@@ -1,5 +1,9 @@
 //! Exercise the introspection, hardlink and avatar functions on a real account (counts only, no content).
 //! usage: extras_probe <account_dir> <key_file> <wxid>
+#![expect(
+    clippy::unwrap_used,
+    reason = "probe code reports failure by panicking"
+)]
 use serde_json::Value;
 use weflow_native::wcdb::Wcdb;
 

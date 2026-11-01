@@ -1,6 +1,10 @@
 //! Keeps the Markdown docs self-consistent: relative links and `#anchors` resolve, every English doc has a
 //! zh-CN twin (and the reverse), every crate is listed in the architecture tables of `native-cli.md`, and commas
 //! next to Chinese characters are full-width (`，`). The commas are only reported, never rewritten.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
