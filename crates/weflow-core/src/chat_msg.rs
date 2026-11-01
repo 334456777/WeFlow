@@ -554,17 +554,13 @@ pub fn parse_type49_message(content: &str) -> Type49Info {
         r.location_lng = parse_js_float(&lng);
         r.location_poiname = opt(first_non_empty(&[
             xml_attr(content, "location", "poiname"),
-            location_label.clone(),
+            location_label,
         ]));
         r.location_label = opt(xml_attr(content, "location", "label"));
     }
     if is_music {
         r.music_album_url = opt(ev("songalbumurl"));
-        r.music_url = opt(first_non_empty(&[
-            music_url.clone(),
-            data_url.clone(),
-            url.clone(),
-        ]));
+        r.music_url = opt(first_non_empty(&[music_url, data_url, url.clone()]));
     }
     let is_gift = xml_type == "115";
     if is_gift {
@@ -618,7 +614,7 @@ pub fn parse_type49_message(content: &str) -> Type49Info {
             let name = if title.is_empty() {
                 ev("filename")
             } else {
-                title.clone()
+                title
             };
             r.link_title = opt(name.clone());
             r.file_name = opt(name.clone());
@@ -1491,7 +1487,7 @@ pub fn map_rows(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
                     m.quoted_content = t.quoted_content.clone();
                 }
                 if m.quoted_sender.is_none() {
-                    m.quoted_sender = t.quoted_sender.clone();
+                    m.quoted_sender = t.quoted_sender;
                 }
             }
             m.parsed_content = parse_message_content(&content, local_type);

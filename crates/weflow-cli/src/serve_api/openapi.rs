@@ -186,7 +186,7 @@ fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
                 "ETag": { "schema": { "type": "string" } },
                 "Cache-Control": { "schema": { "type": "string" } },
             },
-            "content": content.clone(),
+            "content": content,
         },
         "206": {
             "description": pick(zh, "The part asked for in `Range`", "`Range` 请求的那一部分"),
@@ -602,7 +602,7 @@ pub(super) fn contract() -> &'static Contract {
                 "cache clear",
                 json!({
                     "description": "What was removed; with `dry-run`, what would be",
-                    "anyOf": [of(generator.subschema_for::<CacheCleared>()), plan.clone(), cancelled.clone()],
+                    "anyOf": [of(generator.subschema_for::<CacheCleared>()), plan, cancelled],
                 }),
             );
             data.insert(

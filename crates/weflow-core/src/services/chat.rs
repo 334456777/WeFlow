@@ -554,7 +554,7 @@ impl ServiceHub {
                     }
                 }
             } else if !groups.is_empty() {
-                relation_groups = groups.clone();
+                relation_groups = groups;
             }
             if !relation_groups.is_empty() {
                 let mut private_index: HashMap<String, Vec<String>> = HashMap::new();

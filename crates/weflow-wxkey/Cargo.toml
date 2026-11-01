@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Rust Windows x64 wx_key ABI for the desktop app"
 
+[lints]
+workspace = true
+
 [lib]
 name = "wx_key"
 crate-type = ["cdylib", "rlib"]

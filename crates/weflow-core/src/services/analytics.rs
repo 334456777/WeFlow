@@ -404,7 +404,7 @@ impl ServiceHub {
                     if v["key"].as_str() == Some(key.as_str()) && v.get("data").is_some() {
                         let data = v["data"].clone();
                         self.analytics_state.lock().expect("lock poisoned").cache =
-                            Some((key.clone(), data.clone(), Instant::now()));
+                            Some((key, data.clone(), Instant::now()));
                         return Ok((data, "file-cache"));
                     }
                 }

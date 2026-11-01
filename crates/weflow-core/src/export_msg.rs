@@ -765,11 +765,11 @@ impl<'a, 'n> Exporter<'a, 'n> {
             json!(if profile.display_name.is_empty() {
                 member_name.to_string()
             } else {
-                profile.display_name.clone()
+                profile.display_name
             }),
         );
         let gn = if !profile.group_nickname.is_empty() {
-            profile.group_nickname.clone()
+            profile.group_nickname
         } else {
             group_nickname
         };
@@ -1255,7 +1255,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         o.insert("localType".into(), json!(msg.local_type));
         o.insert(
             "content".into(),
-            content.clone().map(Value::String).unwrap_or(Value::Null),
+            content.map(Value::String).unwrap_or(Value::Null),
         );
         o.insert("isSend".into(), json!(if msg.is_send { 1 } else { 0 }));
         o.insert("senderUsername".into(), json!(sender));
@@ -2333,24 +2333,19 @@ impl ArkCompact {
                 let mut s = Map::new();
                 s.insert("senderID".into(), json!(id));
                 s.insert("wxid".into(), json!(sender));
-                s.insert(
-                    "displayName".into(),
-                    json!(if p.display_name.is_empty() {
-                        sender.clone()
-                    } else {
-                        p.display_name.clone()
-                    }),
-                );
-                s.insert(
-                    "nickname".into(),
-                    json!(if !p.nickname.is_empty() {
-                        p.nickname.clone()
-                    } else if !p.display_name.is_empty() {
-                        p.display_name.clone()
-                    } else {
-                        sender.clone()
-                    }),
-                );
+                let display_name = if p.display_name.is_empty() {
+                    sender.clone()
+                } else {
+                    p.display_name
+                };
+                // without a nickname, the name shown stands in for it
+                let nickname = if p.nickname.is_empty() {
+                    display_name.clone()
+                } else {
+                    p.nickname
+                };
+                s.insert("displayName".into(), json!(display_name));
+                s.insert("nickname".into(), json!(nickname));
                 if !p.remark.is_empty() {
                     s.insert("remark".into(), json!(p.remark));
                 }

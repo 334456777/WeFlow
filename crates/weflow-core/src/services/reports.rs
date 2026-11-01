@@ -960,11 +960,11 @@ impl ServiceHub {
         }
         if is_all && sns_stats.as_ref().is_none_or(|s| s.total_posts <= 0) {
             let id = if cleaned.is_empty() {
-                raw_wxid.clone()
+                &raw_wxid
             } else {
-                cleaned.clone()
+                &cleaned
             };
-            if let Ok(st) = wcdb.sns_export_stats(Some(&id)) {
+            if let Ok(st) = wcdb.sns_export_stats(Some(id)) {
                 let total_posts = num(&st["total_posts"]).max(0);
                 sns_stats = Some(match sns_stats {
                     Some(s) => AnnualSnsStats { total_posts, ..s },

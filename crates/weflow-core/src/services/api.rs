@@ -1830,7 +1830,7 @@ impl ServiceHub {
             if path.is_none() {
                 let cached = self.image_resolve_cache(&crate::services::ImagePayload {
                     force: false,
-                    ..payload.clone()
+                    ..payload
                 });
                 if cached.success {
                     path = cached.local_path;
