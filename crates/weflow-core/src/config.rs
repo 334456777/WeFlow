@@ -232,7 +232,7 @@ impl ConfigStore {
             "http_api_token" | "httpApiToken" => target.http_api_token = Some(as_string(value)?),
             "http_api_host" | "httpApiHost" => target.http_api_host = Some(as_string(value)?),
             "http_api_port" | "httpApiPort" => {
-                target.http_api_port = Some(as_int_in(value, &key, 1, u16::MAX.into())? as u16)
+                target.http_api_port = Some(as_int_in(value, &key, 1, u16::MAX)?)
             }
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => {
                 target.ai_model_api_base_url = Some(as_string(value)?)
@@ -244,8 +244,7 @@ impl ConfigStore {
                 target.ai_model_api_model = Some(as_string(value)?)
             }
             "ai_model_api_max_tokens" | "aiModelApiMaxTokens" => {
-                target.ai_model_api_max_tokens =
-                    Some(as_int_in(value, &key, 1, u32::MAX.into())? as u32)
+                target.ai_model_api_max_tokens = Some(as_int_in(value, &key, 1, u32::MAX)?)
             }
             "ai_insight_enabled" | "aiInsightEnabled" => {
                 target.ai_insight_enabled = Some(as_bool(value)?)
@@ -670,14 +669,21 @@ fn as_i64(value: Value) -> AppResult<i64> {
 }
 
 /// An integer in `min..=max`; anything outside is refused rather than wrapped by a later `as` cast.
-fn as_int_in(value: Value, key: &str, min: i64, max: i64) -> AppResult<i64> {
+/// A whole number from `min` to `max`, as the type of the field it sets.
+fn as_int_in<T>(value: Value, key: &str, min: T, max: T) -> AppResult<T>
+where
+    T: Copy + Into<i64> + TryFrom<i64>,
+{
+    let (min, max) = (min.into(), max.into());
     let n = as_i64(value)?;
-    if !(min..=max).contains(&n) {
-        return Err(AppError::usage(format!(
-            "invalid value {n} for {key}; use a whole number from {min} to {max}"
-        )));
-    }
-    Ok(n)
+    T::try_from(n)
+        .ok()
+        .filter(|_| (min..=max).contains(&n))
+        .ok_or_else(|| {
+            AppError::usage(format!(
+                "invalid value {n} for {key}; use a whole number from {min} to {max}"
+            ))
+        })
 }
 
 fn as_bool(value: Value) -> AppResult<bool> {

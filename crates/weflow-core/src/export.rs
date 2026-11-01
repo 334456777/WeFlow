@@ -84,10 +84,10 @@ pub fn export_excel(messages: &Value, out: &Path) -> Result<()> {
         Lang::Zh => ["序号", "时间", "发送者", "消息类型", "内容"],
     };
     for (col, header) in headers.iter().enumerate() {
-        worksheet.write_string_with_format(0, col as u16, *header, &header_format)?;
+        worksheet.write_string_with_format(0, u16::try_from(col)?, *header, &header_format)?;
     }
     for (row, msg) in items.iter().enumerate() {
-        let r = (row + 1) as u32;
+        let r = u32::try_from(row + 1)?;
         worksheet.write_number(r, 0, (row + 1) as f64)?;
         let time = msg
             .get("createTime")
@@ -225,11 +225,11 @@ pub fn export_table_excel(headers: &[&str], rows: &[Vec<Value>], out: &Path) -> 
     let worksheet = workbook.add_worksheet();
     let bold = rust_xlsxwriter::Format::new().set_bold();
     for (col, header) in headers.iter().enumerate() {
-        worksheet.write_string_with_format(0, col as u16, *header, &bold)?;
+        worksheet.write_string_with_format(0, u16::try_from(col)?, *header, &bold)?;
     }
     for (r, row) in rows.iter().enumerate() {
         for (col, value) in row.iter().enumerate() {
-            let (r, col) = (r as u32 + 1, col as u16);
+            let (r, col) = (u32::try_from(r + 1)?, u16::try_from(col)?);
             match value {
                 Value::Number(n) => worksheet.write_number(r, col, n.as_f64().unwrap_or(0.0))?,
                 Value::String(s) => worksheet.write_string(r, col, s)?,

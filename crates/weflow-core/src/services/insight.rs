@@ -309,10 +309,11 @@ impl ServiceHub {
                         ),
                     );
                     let (inb, outb) = (
-                        num(it.get("incoming_count")) as i64,
-                        num(it.get("outgoing_count")) as i64,
+                        crate::num::saturating_i64(num(it.get("incoming_count"))),
+                        crate::num::saturating_i64(num(it.get("outgoing_count"))),
                     );
-                    let total = (num(it.get("message_count")) as i64).max(inb + outb);
+                    let total =
+                        crate::num::saturating_i64(num(it.get("message_count"))).max(inb + outb);
                     let replied = if it.get("replied").and_then(Value::as_bool) == Some(true) {
                         tr("/replied", "/已回复")
                     } else {
@@ -349,7 +350,10 @@ impl ServiceHub {
                     )
                     .replace("{v0}", &(i + 1).to_string())
                     .replace("{name}", &name)
-                    .replace("{count}", &(num(it.get("count")) as i64).to_string())
+                    .replace(
+                        "{count}",
+                        &crate::num::saturating_i64(num(it.get("count"))).to_string(),
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -368,11 +372,12 @@ impl ServiceHub {
             .replace("{rangeLabel}", &range_label)
             .replace(
                 "{v1}",
-                &(num(summary.get("private_inbound_people")) as i64).to_string(),
+                &crate::num::saturating_i64(num(summary.get("private_inbound_people"))).to_string(),
             )
             .replace(
                 "{v2}",
-                &(num(summary.get("private_outbound_people")) as i64).to_string(),
+                &crate::num::saturating_i64(num(summary.get("private_outbound_people")))
+                    .to_string(),
             )
             .replace(
                 "{v3}",
@@ -380,11 +385,11 @@ impl ServiceHub {
             )
             .replace(
                 "{v4}",
-                &(num(summary.get("mention_count")) as i64).to_string(),
+                &crate::num::saturating_i64(num(summary.get("mention_count"))).to_string(),
             )
             .replace(
                 "{v5}",
-                &(num(summary.get("mention_group_count")) as i64).to_string(),
+                &crate::num::saturating_i64(num(summary.get("mention_group_count"))).to_string(),
             )
             .replace("{topPrivateText}", &top_private)
             .replace("{topMentionText}", &top_mention);
@@ -485,12 +490,12 @@ impl ServiceHub {
             .as_f64()
             .unwrap_or(5.0);
         let count = if raw.floor() >= 1.0 {
-            (raw.floor() as i64).clamp(1, 20)
+            crate::num::saturating_i64(raw.floor()).clamp(1, 20)
         } else {
             5
         };
         let Ok(posts) = self.sns_timeline_query(&super::sns::SnsTimelineQuery {
-            limit: count as i32,
+            limit: crate::num::saturating_i32(count),
             offset: 0,
             usernames: vec![session_id.to_string()],
             keyword: None,
@@ -530,7 +535,7 @@ impl ServiceHub {
                 let ts = post["createTime"]
                     .as_f64()
                     .filter(|n| *n > 0.0)
-                    .map(|n| n as i64)
+                    .map(crate::num::saturating_i64)
                     .map(|n| if n > 1_000_000_000_000 { n } else { n * 1000 });
                 let time = ts
                     .and_then(|ms| Local.timestamp_millis_opt(ms).single())
@@ -590,7 +595,7 @@ impl ServiceHub {
             .as_f64()
             .unwrap_or(3.0);
         let count = if raw.floor() >= 1.0 {
-            (raw.floor() as i64).clamp(1, 5)
+            crate::num::saturating_i64(raw.floor()).clamp(1, 5)
         } else {
             3
         };
@@ -651,6 +656,10 @@ impl ServiceHub {
             .get_key(Some(p), "aiInsightContextCount")
             .as_f64()
             .unwrap_or(0.0);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a message count from settings; `as` saturates"
+        )]
         let context_count = if ctx_raw >= 1.0 { ctx_raw as usize } else { 40 };
         let name = self.insight_display_name(session_id, display_name).await;
         let avatar = self
@@ -726,7 +735,7 @@ impl ServiceHub {
                 return None;
             }
         };
-        let duration = started.elapsed().as_millis() as i64;
+        let duration = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
         if result.trim().to_uppercase() == "SKIP" || result.trim().starts_with("SKIP") {
             return None;
         }
@@ -913,7 +922,7 @@ impl ServiceHub {
             if last <= 0.0 || now - last < threshold_ms {
                 continue;
             }
-            let silent = ((now - last) / 86_400_000.0).floor() as i64;
+            let silent = crate::num::saturating_i64(((now - last) / 86_400_000.0).floor());
             let name = s.display_name.clone();
             if let Some(r) = self
                 .insight_generate(&id, &name, Trigger::Silence, Some(silent))
@@ -936,7 +945,7 @@ impl ServiceHub {
             .get_key(Some(&self.profile_name), "aiInsightCooldownMinutes")
             .as_f64()
             .unwrap_or(120.0);
-        let cooldown_ms = (cooldown_min * 60_000.0) as i64;
+        let cooldown_ms = crate::num::saturating_i64(cooldown_min * 60_000.0);
         let now = ins::now_millis();
         let (mode, list) = self.insight_filter();
         let cooling = |sid: &str| -> bool {

@@ -199,7 +199,7 @@ async fn download(
     if !resp.status().is_success() {
         return Err(failed(&resp.status()));
     }
-    let total = resp.content_length().unwrap_or(0) as usize;
+    let total = usize::try_from(resp.content_length().unwrap_or(0)).unwrap_or(0);
     let mut body = Vec::with_capacity(total);
     while let Some(chunk) = resp.chunk().await.map_err(|e| failed(&e))? {
         body.extend_from_slice(&chunk);

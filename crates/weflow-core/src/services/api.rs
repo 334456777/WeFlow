@@ -28,7 +28,9 @@ struct RowsQuery {
 
 fn js_int(v: Option<&Value>) -> Option<i64> {
     match v? {
-        Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+        Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_f64().map(crate::num::saturating_i64)),
         Value::String(s) => api::js_parse_int(s),
         _ => None,
     }
@@ -248,7 +250,7 @@ impl ServiceHub {
                 session_id,
                 limit,
                 true,
-                min_time.clamp(0, i32::MAX as i64) as i32,
+                crate::num::saturating_i32(min_time.max(0)),
                 0,
                 false,
             )
@@ -411,7 +413,7 @@ impl ServiceHub {
                         .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
                 })
                 .filter(|n: &f64| n.is_finite() && *n >= 0.0)
-                .map(|n| n.floor() as i64);
+                .map(|n| crate::num::saturating_i64(n.floor()));
 
             let text = |key: &str| row.get(key).and_then(Value::as_str).map(str::to_string);
             sessions.push(Session {
@@ -499,7 +501,7 @@ impl ServiceHub {
                         })
                         .unwrap_or(0.0);
                     if c.is_finite() && c > 0.0 {
-                        total += c.floor() as i64;
+                        total += crate::num::saturating_i64(c.floor());
                     }
                     let l = [
                         "last_timestamp",
@@ -516,8 +518,8 @@ impl ServiceHub {
                             .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
                     })
                     .unwrap_or(0.0);
-                    if l.is_finite() && l as i64 > latest_snapshot {
-                        latest_snapshot = l.floor() as i64;
+                    if l.is_finite() && crate::num::saturating_i64(l) > latest_snapshot {
+                        latest_snapshot = crate::num::saturating_i64(l.floor());
                     }
                 }
             }
@@ -748,8 +750,13 @@ impl ServiceHub {
             .get("keyword")
             .map(|k| k.trim().to_string())
             .unwrap_or_default();
-        let limit =
-            api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
+        let limit = usize::try_from(api::parse_int_param(
+            params.get("limit").map(String::as_str),
+            100,
+            1,
+            10000,
+        ))
+        .unwrap_or(usize::MAX);
         let format = params
             .get("format")
             .map(|f| f.trim().to_lowercase())
@@ -820,8 +827,13 @@ impl ServiceHub {
             .get("keyword")
             .map(|k| k.trim().to_lowercase())
             .unwrap_or_default();
-        let limit =
-            api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
+        let limit = usize::try_from(api::parse_int_param(
+            params.get("limit").map(String::as_str),
+            100,
+            1,
+            10000,
+        ))
+        .unwrap_or(usize::MAX);
         let contacts = self
             .chat_contacts_list()
             .map_err(|e| ApiError::new(500, e.into_message()))?;
@@ -897,9 +909,9 @@ impl ServiceHub {
             ascending,
             lite,
         } = query;
-        let batch_size = limit.clamp(500, 2000) as i32;
+        let batch_size = crate::num::saturating_i32(limit.clamp(500, 2000));
         let norm = |t: i64| -> i32 {
-            (if t > 10_000_000_000 { t / 1000 } else { t }).clamp(0, i32::MAX as i64) as i32
+            crate::num::saturating_i32((if t > 10_000_000_000 { t / 1000 } else { t }).max(0))
         };
         let cursor = wcdb
             .open_message_cursor(talker, batch_size, ascending, norm(start), norm(end), lite)
@@ -1297,10 +1309,20 @@ impl ServiceHub {
             .get("talker")
             .map(|t| t.trim().to_string())
             .unwrap_or_default();
-        let limit =
-            api::parse_int_param(params.get("limit").map(String::as_str), 100, 1, 10000) as usize;
-        let offset =
-            api::parse_int_param(params.get("offset").map(String::as_str), 0, 0, i64::MAX) as usize;
+        let limit = usize::try_from(api::parse_int_param(
+            params.get("limit").map(String::as_str),
+            100,
+            1,
+            10000,
+        ))
+        .unwrap_or(usize::MAX);
+        let offset = usize::try_from(api::parse_int_param(
+            params.get("offset").map(String::as_str),
+            0,
+            0,
+            i64::MAX,
+        ))
+        .unwrap_or(usize::MAX);
         let keyword = params
             .get("keyword")
             .map(|k| k.trim().to_string())
@@ -1341,10 +1363,10 @@ impl ServiceHub {
                 .search(
                     &keyword,
                     Some(&talker),
-                    (limit + 1) as i32,
-                    offset as i32,
-                    start as i32,
-                    end as i32,
+                    crate::num::saturating_i32(limit + 1),
+                    crate::num::saturating_i32(offset),
+                    crate::num::saturating_i32(start),
+                    crate::num::saturating_i32(end),
                 )
                 .map_err(|e| ApiError::new(500, e.to_string()))?;
             let rows = rows.as_array().cloned().unwrap_or_default();
@@ -1447,14 +1469,20 @@ impl ServiceHub {
         base_url: &str,
     ) -> Result<Value, ApiError> {
         const PULL_MAX: i64 = 5000;
-        let limit = api::parse_int_param(
+        let limit = usize::try_from(api::parse_int_param(
             params.get("limit").map(String::as_str),
             PULL_MAX,
             1,
             PULL_MAX,
-        ) as usize;
-        let offset =
-            api::parse_int_param(params.get("offset").map(String::as_str), 0, 0, i64::MAX) as usize;
+        ))
+        .unwrap_or(usize::MAX);
+        let offset = usize::try_from(api::parse_int_param(
+            params.get("offset").map(String::as_str),
+            0,
+            0,
+            i64::MAX,
+        ))
+        .unwrap_or(usize::MAX);
         let start = params
             .get("since")
             .filter(|s| !s.is_empty())
@@ -2044,7 +2072,7 @@ impl ServiceHub {
         let page = limit.max(1);
         let probe = (page + 1).min(500);
         let rows = wcdb
-            .messages(session_id, probe as i32, 0)
+            .messages(session_id, crate::num::saturating_i32(probe), 0)
             .map_err(|e| AppError::native(e.to_string()))?;
         let rows: Vec<Value> = rows.as_array().cloned().unwrap_or_default();
         let selected: Vec<Value> = rows.into_iter().take(page).collect();

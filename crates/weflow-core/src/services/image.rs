@@ -216,9 +216,10 @@ impl ImagePayload {
             session_id: s("sessionId"),
             image_md5: s("imageMd5"),
             image_dat_name: s("imageDatName"),
-            create_time: v
-                .get("createTime")
-                .and_then(|t| t.as_i64().or_else(|| t.as_f64().map(|f| f as i64))),
+            create_time: v.get("createTime").and_then(|t| {
+                t.as_i64()
+                    .or_else(|| t.as_f64().map(crate::num::saturating_i64))
+            }),
             prefer_file_path: b("preferFilePath"),
             hardlink_only: b("hardlinkOnly"),
             allow_cache_index: v.get("allowCacheIndex").and_then(Value::as_bool),
@@ -498,7 +499,7 @@ impl ServiceHub {
     fn image_keys(&self) -> (Option<u8>, Option<[u8; 16]>) {
         match self.profile() {
             Ok(p) => (
-                p.image_xor_key.map(|k| k as u8),
+                p.image_xor_key.and_then(|k| u8::try_from(k).ok()),
                 p.image_aes_key
                     .as_deref()
                     .and_then(crate::decrypt::parse_aes_key),

@@ -359,13 +359,18 @@ fn trigger_reply(r: Result<Value, ApiError>) -> Response {
 }
 
 async fn sns_timeline(hub: &Arc<ServiceHub>, params: &Params, base_url: &str) -> Response {
-    let limit = api::parse_int_param(params.get("limit").map(String::as_str), 20, 1, 200) as i32;
-    let offset = api::parse_int_param(
+    let limit = crate::num::saturating_i32(api::parse_int_param(
+        params.get("limit").map(String::as_str),
+        20,
+        1,
+        200,
+    ));
+    let offset = crate::num::saturating_i32(api::parse_int_param(
         params.get("offset").map(String::as_str),
         0,
         0,
-        i32::MAX as i64,
-    ) as i32;
+        i32::MAX.into(),
+    ));
     let usernames = api::parse_string_list_param(params.get("usernames").map(String::as_str))
         .unwrap_or_default();
     let keyword = params
@@ -413,7 +418,7 @@ fn sns_media_key(raw: Option<&str>) -> Option<String> {
     if crate::message::rx(r"^-?\d+$").is_match(text) {
         return text.parse::<f64>().ok().map(|f| {
             if f.abs() < 9.0e15 {
-                format!("{}", f as i64)
+                format!("{}", crate::num::saturating_i64(f))
             } else {
                 format!("{f}")
             }

@@ -699,12 +699,13 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
         }
     }
     if let (Some(s), Some(e)) = (start_index, end_index) {
-        if e >= s && s >= 0 {
+        if let (true, Ok(skip), Ok(take)) = (e >= s, usize::try_from(s), usize::try_from(e - s + 1))
+        {
             let chars: Vec<char> = full.chars().collect();
             let sliced: String = chars
                 .iter()
-                .skip(s as usize)
-                .take((e - s + 1) as usize)
+                .skip(skip)
+                .take(take)
                 .collect::<String>()
                 .trim()
                 .to_string();
@@ -962,9 +963,9 @@ fn parse_voice_duration_seconds(content: &str) -> Option<i64> {
         .ok()
         .filter(|f: &f64| f.is_finite() && *f > 0.0)?;
     Some(if raw > 1000.0 {
-        (raw / 1000.0).round() as i64
+        crate::num::saturating_i64((raw / 1000.0).round())
     } else {
-        raw.round() as i64
+        crate::num::saturating_i64(raw.round())
     })
 }
 

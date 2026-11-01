@@ -289,7 +289,7 @@ pub fn normalize_unsigned_token(value: &str) -> String {
         };
     }
     match text.parse::<f64>() {
-        Ok(f) if f.is_finite() && f > 0.0 => format!("{}", f.floor() as i64),
+        Ok(f) if f.is_finite() && f > 0.0 => format!("{}", crate::num::saturating_i64(f.floor())),
         _ => String::new(),
     }
 }

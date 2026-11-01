@@ -134,7 +134,7 @@ fn num(v: &Value, key: &str) -> i64 {
     v.get(key)
         .and_then(|x| {
             x.as_i64()
-                .or_else(|| x.as_f64().map(|f| f as i64))
+                .or_else(|| x.as_f64().map(crate::num::saturating_i64))
                 .or_else(|| x.as_str().and_then(|s| s.parse().ok()))
         })
         .unwrap_or(0)
@@ -242,7 +242,7 @@ impl ServiceHub {
                     .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
                     .unwrap_or(0.0);
                 if !date.is_empty() && n.is_finite() && n > 0.0 {
-                    counts.insert(date.clone(), n.floor() as i64);
+                    counts.insert(date.clone(), crate::num::saturating_i64(n.floor()));
                 }
             }
         }
@@ -655,7 +655,7 @@ impl ServiceHub {
         let mut hints = self.read_hints();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as i64)
+            .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
             .unwrap_or(0);
         hints.insert(
             chatroom_id.trim().to_string(),
@@ -1007,7 +1007,14 @@ impl ServiceHub {
         };
         let ids_json = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
         let (rows, has_more) = wcdb
-            .scan_media_stream(&ids_json, code, begin as i32, end as i32, limit, offset)
+            .scan_media_stream(
+                &ids_json,
+                code,
+                crate::num::saturating_i32(begin),
+                crate::num::saturating_i32(end),
+                limit,
+                offset,
+            )
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
         let names = self.session_display_names(&wcdb, &ids);

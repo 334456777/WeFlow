@@ -300,7 +300,14 @@ pub fn render_bar(
         );
     }
     let frac = (current as f64 / total as f64).clamp(0.0, 1.0);
-    let filled = (frac * width as f64).round() as usize;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "`frac` is in [0, 1], so both fit"
+    )]
+    let (filled, percent) = (
+        (frac * width as f64).round() as usize,
+        (frac * 100.0) as u32,
+    );
     let bar: String = "█".repeat(filled) + &"░".repeat(width.saturating_sub(filled));
     let eta = match eta_secs {
         Some(e) if current < total => {
@@ -309,8 +316,7 @@ pub fn render_bar(
         _ => String::new(),
     };
     format!(
-        "{message}  [{bar}] {}%  {current}/{total}  {} {}{eta}",
-        (frac * 100.0) as u32,
+        "{message}  [{bar}] {percent}%  {current}/{total}  {} {}{eta}",
         tr("elapsed", "已用时"),
         format_duration(elapsed_secs)
     )
@@ -339,6 +345,10 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
         ProgressMode::Off => {}
         ProgressMode::Ndjson => {
             drop(st);
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a percentage; `as` saturates should `current` pass `total`"
+            )]
             let percent = if total > 0 {
                 ((current as f64 / total as f64) * 100.0) as u8
             } else {
@@ -383,6 +393,10 @@ pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
                 return;
             }
             let elapsed = now.duration_since(st.stage_started).as_secs();
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "seconds left; `as` saturates"
+            )]
             let eta = st
                 .rate
                 .filter(|r| *r > 0.0 && total > current)

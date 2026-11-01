@@ -32,9 +32,11 @@ fn decode_voice_blob(raw: &str) -> Option<Vec<u8>> {
 
 /// `createWavBuffer`: 16-bit PCM WAV header + data.
 pub fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
+    // a WAV header holds 32-bit sizes; a voice message never comes near 4 GiB
+    let data_len = u32::try_from(pcm.len()).unwrap_or(u32::MAX);
     let mut out = Vec::with_capacity(44 + pcm.len());
     out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
+    out.extend_from_slice(&data_len.saturating_add(36).to_le_bytes());
     out.extend_from_slice(b"WAVE");
     out.extend_from_slice(b"fmt ");
     out.extend_from_slice(&16u32.to_le_bytes());
@@ -45,7 +47,7 @@ pub fn create_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Vec<u8> {
     out.extend_from_slice(&(channels * 2).to_le_bytes());
     out.extend_from_slice(&16u16.to_le_bytes());
     out.extend_from_slice(b"data");
-    out.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+    out.extend_from_slice(&data_len.to_le_bytes());
     out.extend_from_slice(pcm);
     out
 }
@@ -86,8 +88,8 @@ impl ServiceHub {
         candidates: &[String],
     ) -> Option<Vec<u8>> {
         let my = self.my_wxid_cleaned();
-        let ct = create_time.clamp(0, i32::MAX as i64) as i32;
-        let lid = local_id.clamp(0, i32::MAX as i64) as i32;
+        let ct = crate::num::saturating_i32(create_time.max(0));
+        let lid = crate::num::saturating_i32(local_id.max(0));
         let svr: i64 = svr_id.parse().unwrap_or(0);
         let mut plans: Vec<Vec<String>> = Vec::new();
         if candidates.is_empty() {
@@ -267,7 +269,7 @@ impl ServiceHub {
                     .map(|v| {
                         v.as_str()
                             .and_then(crate::api::js_parse_int)
-                            .or_else(|| v.as_f64().map(|f| f as i64))
+                            .or_else(|| v.as_f64().map(crate::num::saturating_i64))
                             .unwrap_or(0)
                     })
                     .unwrap_or(0)
@@ -312,7 +314,10 @@ impl ServiceHub {
             for row in rows.as_array().map(|a| a.as_slice()).unwrap_or(&[]) {
                 let idx = row.get("index").and_then(Value::as_i64).unwrap_or(-1);
                 let hex = row.get("hex").and_then(Value::as_str).unwrap_or("").trim();
-                if idx < 0 || idx as usize >= chunk.len() || hex.is_empty() {
+                let Some(idx) = usize::try_from(idx).ok().filter(|&i| i < chunk.len()) else {
+                    continue;
+                };
+                if hex.is_empty() {
                     continue;
                 }
                 let Some(silk) = decode_voice_blob(hex).filter(|b| !b.is_empty()) else {
@@ -322,8 +327,7 @@ impl ServiceHub {
                     continue;
                 };
                 if std::fs::create_dir_all(&dir).is_ok()
-                    && std::fs::write(dir.join(format!("{}.wav", chunk[idx as usize].0)), &wav)
-                        .is_ok()
+                    && std::fs::write(dir.join(format!("{}.wav", chunk[idx].0)), &wav).is_ok()
                 {
                     prepared += 1;
                 }

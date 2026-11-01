@@ -60,7 +60,7 @@ pub fn pick_main_pid(processes: &Value) -> Option<u32> {
             }
             Some((
                 cmd.len(),
-                p.get("ProcessId").and_then(Value::as_u64)? as u32,
+                u32::try_from(p.get("ProcessId").and_then(Value::as_u64)?).ok()?,
             ))
         })
         .min_by_key(|(len, _)| *len)

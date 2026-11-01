@@ -1897,7 +1897,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             ]
         };
         for (i, h) in headers.iter().enumerate() {
-            ws.write_string_with_format(3, i as u16, *h, &head)?;
+            ws.write_string_with_format(3, u16::try_from(i)?, *h, &head)?;
         }
         let widths: Vec<f64> = if compact {
             vec![8.0, 20.0, 18.0, 12.0, 50.0]
@@ -1907,15 +1907,15 @@ impl<'a, 'n> Exporter<'a, 'n> {
             vec![8.0, 20.0, 18.0, 25.0, 18.0, 15.0, 12.0, 50.0]
         };
         for (i, w) in widths.iter().enumerate() {
-            ws.set_column_width(i as u16, *w)?;
+            ws.set_column_width(u16::try_from(i)?, *w)?;
         }
 
-        let content_col = (headers.len() - 1) as u16;
+        let content_col = u16::try_from(headers.len() - 1)?;
         let mut count = 0usize;
         for (i, item) in msgs.into_iter().enumerate() {
             let msg: &ExportMsg = item.borrow();
             count += 1;
-            let row = (i + 4) as u32;
+            let row = u32::try_from(i + 4)?;
             let (content, has_quote) = self.plain_row_content(msg);
             let s = self.sender_fields(msg);
             let type_name = message_type_name(msg.local_type, Some(&msg.content));

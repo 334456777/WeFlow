@@ -140,7 +140,9 @@ pub fn extra_buffer_strings(row: &Value, target: u64) -> Vec<String> {
                 let Some((len, n)) = read_varint(&bytes, offset) else {
                     break;
                 };
-                let len = len as usize;
+                let Ok(len) = usize::try_from(len) else {
+                    break;
+                };
                 offset = n;
                 if offset + len > bytes.len() {
                     break;
@@ -585,6 +587,10 @@ pub fn contact_region(row: &Value) -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test data keeps the low bits of small integers"
+)]
 mod tests {
     use super::*;
     use serde_json::json;

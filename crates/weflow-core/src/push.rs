@@ -568,7 +568,7 @@ impl PushEngine {
             .filter(|m| previous.is_none() || m.create_time > prev_ts || seen_primed)
             .count() as i64;
         let allowance = if previous.is_some() && !seen_primed {
-            (expected_incoming - future_incoming).max(0) as usize
+            usize::try_from(expected_incoming - future_incoming).unwrap_or(0)
         } else {
             0
         };
@@ -715,14 +715,16 @@ impl PushEngine {
                         .trim()
                         .to_string()
                 };
-                let last = ["last_time", "lastTime"]
-                    .iter()
-                    .filter_map(|k| t.get(*k))
-                    .find_map(|x| {
-                        x.as_f64()
-                            .or_else(|| x.as_str().and_then(|s| s.parse().ok()))
-                    })
-                    .unwrap_or(0.0) as i64;
+                let last = crate::num::saturating_i64(
+                    ["last_time", "lastTime"]
+                        .iter()
+                        .filter_map(|k| t.get(*k))
+                        .find_map(|x| {
+                            x.as_f64()
+                                .or_else(|| x.as_str().and_then(|s| s.parse().ok()))
+                        })
+                        .unwrap_or(0.0),
+                );
                 (
                     g(&["db_path", "dbPath"]),
                     g(&["table_name", "tableName"]),
@@ -1278,7 +1280,7 @@ impl PushBroker {
     pub fn from_now() -> std::sync::Arc<Self> {
         let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis() as u64);
+            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
         Self::after(millis)
     }
 

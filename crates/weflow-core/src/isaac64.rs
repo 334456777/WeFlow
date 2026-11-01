@@ -145,6 +145,10 @@ pub fn xor_in_place(data: &mut [u8], key: &str, limit: Option<usize>) {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test data keeps the low bits of small integers"
+)]
 mod tests {
     use super::*;
 
