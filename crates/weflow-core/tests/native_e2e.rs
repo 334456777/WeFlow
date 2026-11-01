@@ -1,5 +1,9 @@
 //! Service-layer behaviour on the native database backend, against a synthetic account made of real
 //! encrypted databases (`weflow_native::fixture::Fixture::standard`).
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 
 mod common;
 

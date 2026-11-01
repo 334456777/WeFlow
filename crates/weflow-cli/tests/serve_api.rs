@@ -5,6 +5,10 @@
     clippy::expect_used,
     reason = "test helpers fail the test by panicking"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};

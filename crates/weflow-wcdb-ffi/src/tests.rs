@@ -301,7 +301,7 @@ fn strings_numbers_and_batches_cover_the_rest_of_the_surface() {
             wcdb_get_voice_data(
                 h,
                 c("wxid_bob").as_ptr(),
-                weflow_native::fixture::T0 as i32 + 500,
+                i32::try_from(weflow_native::fixture::T0).unwrap() + 500,
                 6,
                 9_000_000_000_001,
                 c("[]").as_ptr(),

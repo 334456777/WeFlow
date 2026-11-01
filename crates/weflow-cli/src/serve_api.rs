@@ -1523,7 +1523,10 @@ fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response 
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map_or(0, |d| d.as_nanos());
-                (format!("\"{:x}-{at:x}\"", meta.len()), meta.len() as usize)
+                (
+                    format!("\"{:x}-{at:x}\"", meta.len()),
+                    usize::try_from(meta.len()).unwrap_or(usize::MAX),
+                )
             }
             Err(err) => {
                 return error_response(

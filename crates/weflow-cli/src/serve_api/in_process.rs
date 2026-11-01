@@ -868,7 +868,7 @@ mod tests {
             seed ^= seed << 13;
             seed ^= seed >> 7;
             seed ^= seed << 17;
-            (seed % n as u64) as usize
+            usize::try_from(seed % n as u64).unwrap_or(0)
         };
         for _ in 0..runs {
             let mut params = Params::new();

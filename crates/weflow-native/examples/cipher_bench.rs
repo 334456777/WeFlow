@@ -6,6 +6,10 @@
     clippy::expect_used,
     reason = "probe code reports failure by panicking"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "probe and benchmark data are small values that fit"
+)]
 use std::hint::black_box;
 use std::time::Instant;
 

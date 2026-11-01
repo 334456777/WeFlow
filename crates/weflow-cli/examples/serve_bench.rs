@@ -36,6 +36,10 @@
     clippy::unwrap_used,
     reason = "probe code reports failure by panicking"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "probe and benchmark data are small values that fit"
+)]
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;

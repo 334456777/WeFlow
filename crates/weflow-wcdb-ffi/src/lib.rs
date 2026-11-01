@@ -548,7 +548,7 @@ pub unsafe extern "C" fn wcdb_get_group_member_count(
                 .as_i64()
                 .or_else(|| v.get("count").and_then(Value::as_i64))
                 .ok_or_else(|| anyhow!("unexpected member count {v}"))?;
-            put_value(out_count, n as i32);
+            put_value(out_count, i32::try_from(n).unwrap_or(i32::MAX));
             Ok(())
         },
     )
