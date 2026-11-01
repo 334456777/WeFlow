@@ -484,6 +484,8 @@ unsafe fn our_name(name: *const c_char) -> Option<&'static str> {
 
 fn register_vfs() -> Result<()> {
     static DONE: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+    // SAFETY: the default VFS SQLite returns is checked for null and lives as long as the process; the new VFS is
+    // leaked and names a `'static` string, so both outlive every connection; `DONE` registers it only once.
     DONE.get_or_init(|| unsafe {
         let default = ffi::sqlite3_vfs_find(std::ptr::null());
         if default.is_null() {

@@ -37,6 +37,8 @@ impl WxKey {
         let lib_path = find_wx_key_library(runtime_dir);
         match lib_path {
             Some(path) => {
+                // SAFETY: loading runs the initializers of WeFlow's own wx_key helper, the one `find_wx_key_library`
+                // finds in the runtime directory.
                 let lib = unsafe { Library::new(&path) }
                     .with_context(|| format!("failed to load {}", path.display()))?;
                 Ok(Self {
@@ -94,10 +96,14 @@ impl WxKey {
         else {
             return Err(DbKeyError::Other("wx_key library not loaded".into()));
         };
+        // SAFETY: `init` is `InitializeHook` of the library `self` keeps loaded, read with the type it exports; it
+        // takes a plain pid.
         let ok = unsafe { init(pid) };
         if !ok {
             let error = self
                 .get_last_error_msg
+                // SAFETY: `f` is `GetLastErrorMsg` of the library `self` keeps loaded; it returns null or a
+                // NUL-terminated string, which `take_cstr` copies right away.
                 .map(|f| unsafe { take_cstr(f()) })
                 .unwrap_or_default();
             if !error.is_empty() {
@@ -128,6 +134,8 @@ impl WxKey {
                 on_tick(left);
             }
             buf.iter_mut().for_each(|b| *b = 0);
+            // SAFETY: `poll` is `PollKeyData` of the library `self` keeps loaded, and `buf` is a live buffer of the
+            // `buf.len()` bytes passed as its capacity.
             if unsafe { poll(buf.as_mut_ptr() as *mut c_char, buf.len() as c_int) } {
                 let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
                 let key = String::from_utf8_lossy(&buf[..len]).trim().to_string();
@@ -150,6 +158,7 @@ impl WxKey {
             }
             std::thread::sleep(std::time::Duration::from_millis(120));
         }
+        // SAFETY: `cleanup` is `CleanupHook` of the library `self` keeps loaded and takes no arguments.
         unsafe { cleanup() };
         match result {
             Some(k) => Ok(k),
@@ -162,6 +171,8 @@ impl WxKey {
         let f = self.get_status_message?;
         let mut buf = vec![0u8; 256];
         let mut level: c_int = 0;
+        // SAFETY: `f` is `GetStatusMessage` of the library `self` keeps loaded; `buf` is a live buffer of the
+        // capacity passed and `level` a live local.
         if !unsafe {
             f(
                 buf.as_mut_ptr() as *mut c_char,
@@ -325,6 +336,8 @@ unsafe fn symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
 
 #[cfg(not(windows))]
 fn load_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
+    // SAFETY: each caller names an export with the function type the library declares (the `*Fn` aliases), and
+    // `WxKey` keeps the library loaded for as long as it holds the copied pointers.
     unsafe { symbol::<T>(lib, name) }
 }
 

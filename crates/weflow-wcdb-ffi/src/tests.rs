@@ -1,4 +1,10 @@
 //! The C ABI exercised the way `wcdbCore.ts` calls it, against a synthetic encrypted account.
+#![expect(
+    clippy::undocumented_unsafe_blocks,
+    reason = "every call here has the same contract: NUL-terminated `CString`s that outlive the statement, \
+              out-pointers to live locals, and a handle from `open` or one the ABI must reject; `take` frees each \
+              returned string once"
+)]
 
 use std::ffi::{c_void, CStr, CString};
 use std::ptr::null_mut;

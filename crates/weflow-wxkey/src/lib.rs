@@ -198,6 +198,8 @@ mod tests {
     #[test]
     fn bool_abi_and_buffer_validation() {
         assert_eq!(std::mem::size_of::<bool>(), 1);
+        // SAFETY: null pointers and a buffer too small for the key are what these exports must reject without
+        // writing; `buffer` is 65 live bytes, never less than the capacity passed.
         unsafe {
             assert!(!PollKeyData(std::ptr::null_mut(), 65));
             assert!(!GetStatusMessage(
@@ -218,6 +220,8 @@ mod tests {
     #[test]
     fn failed_initialization_reports_error_and_cleanup_is_idempotent() {
         assert!(!InitializeHook(0));
+        // SAFETY: after a failed initialization `GetLastErrorMsg` returns a NUL-terminated string the library keeps;
+        // `buffer` is 512 live bytes, the capacity passed, and `level` a live local.
         unsafe {
             let error = std::ffi::CStr::from_ptr(GetLastErrorMsg())
                 .to_str()

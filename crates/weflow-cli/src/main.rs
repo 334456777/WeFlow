@@ -42,6 +42,7 @@ fn reserve_allocator_arena() {
     // MIMALLOC_RESERVE_OS_MEMORY makes mimalloc reserve its own arena at startup (with the same call)
     if std::env::var_os("MIMALLOC_RESERVE_OS_MEMORY").is_none() {
         // a failure leaves mimalloc taking memory as it goes, as without the reservation
+        // SAFETY: mimalloc's own function, with the signature declared above; it takes only a size and two flags.
         unsafe { mi_reserve_os_memory(RESERVED_ARENA, true, true) };
     }
 }

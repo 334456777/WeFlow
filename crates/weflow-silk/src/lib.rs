@@ -67,6 +67,7 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
     src = &src[HEADER.len()..];
 
     let mut size = 0i32;
+    // SAFETY: `size` is a live local the SDK writes the decoder's size to.
     let code = unsafe { SKP_Silk_SDK_Get_Decoder_Size(&mut size) };
     if code != 0 || size <= 0 {
         return Err(SilkError::Sdk(code));
@@ -74,6 +75,7 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
     // u64 backing store keeps the state 8-byte aligned
     let mut state = vec![0u64; (size as usize).div_ceil(8)];
     let state_ptr = state.as_mut_ptr() as *mut c_void;
+    // SAFETY: `state` holds at least the `size` bytes the SDK asked for, 8-byte aligned.
     let code = unsafe { SKP_Silk_SDK_InitDecoder(state_ptr) };
     if code != 0 {
         return Err(SilkError::Sdk(code));
@@ -115,6 +117,8 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
                 return Err(SilkError::TooManyInternalFrames);
             }
             let mut n = scratch.len() as i16;
+            // SAFETY: `state_ptr` is the decoder initialized above, kept alive by `state`; `payload` is `len` live
+            // bytes; `scratch` holds the `n` samples passed as its capacity.
             let code = unsafe {
                 SKP_Silk_SDK_Decode(
                     state_ptr,
@@ -174,6 +178,7 @@ pub mod testenc {
     /// Encodes one second of a 440 Hz tone with the vendored encoder into the `.silk` container.
     pub fn encode_tone(rate: i32) -> Vec<u8> {
         let mut size = 0;
+        // SAFETY: `size` is a live local the SDK writes the encoder's size to.
         assert_eq!(unsafe { SKP_Silk_SDK_Get_Encoder_Size(&mut size) }, 0);
         let mut state = vec![0u64; (size as usize).div_ceil(8)];
         let sp = state.as_mut_ptr() as *mut c_void;
@@ -187,6 +192,8 @@ pub mod testenc {
             use_in_band_fec: 0,
             use_dtx: 0,
         };
+        // SAFETY: `state` holds at least the `size` bytes the SDK asked for, 8-byte aligned, and `ctl` is a live
+        // EncControl.
         assert_eq!(unsafe { SKP_Silk_SDK_InitEncoder(sp, &mut ctl) }, 0);
         // `InitEncoder` reports the encoder status, so the settings go in afterwards
         ctl = EncControl {
@@ -210,6 +217,8 @@ pub mod testenc {
             let mut buf = [0u8; 1250];
             let mut n = buf.len() as i16;
             assert_eq!(
+                // SAFETY: `sp` is the encoder initialized above, kept alive by `state`; `chunk` holds the `frame`
+                // samples passed and `buf` the `n` bytes passed as its capacity.
                 unsafe {
                     SKP_Silk_SDK_Encode(
                         sp,
