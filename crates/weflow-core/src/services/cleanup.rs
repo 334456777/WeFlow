@@ -276,7 +276,7 @@ impl ServiceHub {
                 base.join("Voices"),
                 base.join("Emojis"),
             ];
-            for id in [raw.trim().to_string(), normalized.clone()]
+            for id in [raw.trim().to_string(), normalized]
                 .into_iter()
                 .filter(|s| !s.is_empty())
             {

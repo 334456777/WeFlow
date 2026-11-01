@@ -15,6 +15,11 @@ version = "5.0.1"
 edition = "2021"
 license = "SEE LICENSE IN LICENSE"
 
+# Lints every member inherits (`[lints] workspace = true`); CI turns warnings into errors (issue #142).
+[workspace.lints.clippy]
+large_futures = "warn"
+redundant_clone = "warn"
+
 [workspace.dependencies]
 aes = "0.9"
 aes-gcm = "0.11"

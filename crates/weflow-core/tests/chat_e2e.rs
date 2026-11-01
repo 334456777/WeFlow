@@ -83,7 +83,7 @@ fn resources_and_images_are_deduplicated() {
         .chat_resources(&ResourceQuery {
             limit: 1,
             before: paged["nextCursor"].as_str().map(str::to_string),
-            ..q.clone()
+            ..q
         })
         .unwrap();
     assert_eq!(rest["items"].as_array().unwrap().len(), 1);

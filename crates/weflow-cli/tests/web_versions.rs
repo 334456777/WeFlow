@@ -355,7 +355,7 @@ fn versions_are_installed_picked_and_pruned() {
     assert_eq!(pruned["removed"], json!(["0.0.8"]));
     let mut kept: Vec<String> = serde_json::from_value(pruned["kept"].clone()).unwrap();
     kept.sort();
-    let mut want = vec!["0.0.9".to_string(), version.clone()];
+    let mut want = vec!["0.0.9".to_string(), version];
     want.sort();
     assert_eq!(kept, want);
 

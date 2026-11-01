@@ -1266,7 +1266,7 @@ impl ServiceHub {
             &out,
         );
         let local = if p.prefer_file_path {
-            out.clone()
+            out
         } else {
             img::mime_from_extension(ext)
                 .map(|m| {

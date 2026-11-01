@@ -1016,7 +1016,7 @@ pub fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     let cdn_token = if base.contains('_') {
         base.split('_').next().unwrap_or("").to_string()
     } else {
-        base.clone()
+        base
     };
     if rx(r"^[a-fA-F0-9]{16,64}$").is_match(&cdn_token) {
         return Some(cdn_token.to_lowercase());
@@ -2291,7 +2291,7 @@ pub fn format_plain_export_content(
                 };
             }
             let joined: Vec<String> = [
-                title.clone(),
+                title,
                 extract_xml_value(&normalized, "des"),
                 extract_xml_value(&normalized, "money"),
                 extract_xml_value(&normalized, "amount"),
@@ -2310,7 +2310,7 @@ pub fn format_plain_export_content(
             let name = if !song.is_empty() {
                 song
             } else if !title.is_empty() {
-                title.clone()
+                title
             } else {
                 "音乐".into()
             };
@@ -2321,7 +2321,7 @@ pub fn format_plain_export_content(
             let name = if !f.is_empty() {
                 f
             } else if !title.is_empty() {
-                title.clone()
+                title
             } else {
                 "文件".into()
             };
@@ -2345,7 +2345,7 @@ pub fn format_plain_export_content(
             let name = if !a.is_empty() {
                 a
             } else if !title.is_empty() {
-                title.clone()
+                title
             } else {
                 "小程序".into()
             };
@@ -2567,7 +2567,7 @@ pub fn extract_arkme_app_message_meta(
         }
     };
     if !xml_type.is_empty() {
-        put(&mut meta, "appMsgType", xml_type.clone());
+        put(&mut meta, "appMsgType", xml_type);
     } else if kind == Some("quote") {
         put(&mut meta, "appMsgType", "57".into());
     }
@@ -2591,7 +2591,7 @@ pub fn extract_arkme_app_message_meta(
     );
     put(&mut meta, "appMsgDesc", desc);
     put(&mut meta, "appMsgAppName", app_name.clone());
-    put(&mut meta, "appMsgSourceName", source_name.clone());
+    put(&mut meta, "appMsgSourceName", source_name);
     put(&mut meta, "appMsgSourceUsername", source_user);
     put(&mut meta, "appMsgThumbUrl", thumb.clone());
 
@@ -2615,7 +2615,7 @@ pub fn extract_arkme_app_message_meta(
             put(&mut meta, "linkTitle", c.title.clone());
         }
         put(&mut meta, "linkUrl", url);
-        put(&mut meta, "linkThumb", thumb.clone());
+        put(&mut meta, "linkThumb", thumb);
     }
     if is_music {
         put(

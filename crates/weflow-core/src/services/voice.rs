@@ -177,7 +177,7 @@ impl ServiceHub {
                                 .filter(|s| !s.is_empty())
                                 .or(sender);
                             if !m.server_id_raw.is_empty() && m.server_id_raw != "0" {
-                                server = m.server_id_raw.clone();
+                                server = m.server_id_raw;
                             }
                         }
                     }

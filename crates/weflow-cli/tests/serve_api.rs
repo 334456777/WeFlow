@@ -3216,7 +3216,7 @@ fn jobs_keep_the_file_they_wrote_for_the_browser() {
         "{:?}",
         r.headers
     );
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(r.bytes.clone())).unwrap();
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(r.bytes)).unwrap();
     let mut names: Vec<String> = archive.file_names().map(str::to_string).collect();
     names.sort();
     assert_eq!(names, ["wxid_bob.html", "wxid_bob.txt"]);
@@ -3592,7 +3592,7 @@ fn reads_follow_the_profile_right_after_it_changes() {
     // another config file chosen (#413): its profile at once, and the config reads say so
     let config: Value =
         serde_json::from_str(&std::fs::read_to_string(home.join("config.json")).unwrap()).unwrap();
-    let mut moved = config.clone();
+    let mut moved = config;
     moved["current_profile"] = json!("pb");
     let other = root.join("other").join("config.json");
     std::fs::create_dir_all(other.parent().unwrap()).unwrap();

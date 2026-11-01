@@ -146,7 +146,7 @@ fn decrypts_the_hd_variant_and_caches_it() {
     // batch: one row per payload, duplicates answered identically
     let batch = serde_json::to_value(hub.image_resolve_cache_batch(&[
         p.clone(),
-        p.clone(),
+        p,
         ImagePayload {
             image_md5: Some("f".repeat(32)),
             ..Default::default()
