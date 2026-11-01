@@ -108,12 +108,14 @@ fn content_type(path: &Path) -> String {
     }
 }
 
-/// `<kind>; filename="…"` (UTF-8 as browsers read it, quotes and line breaks escaped) and RFC 5987 `filename*`.
+/// `<kind>; filename="…"` (UTF-8 as browsers read it, quotes and control characters replaced) and RFC 5987
+/// `filename*`. A control character, which a Linux file name may hold, is not allowed in a header value.
 fn disposition(kind: &str, name: &str) -> String {
     let plain: String = name
         .chars()
         .map(|c| match c {
-            '"' | '\\' | '\r' | '\n' => '_',
+            '"' | '\\' => '_',
+            c if c.is_control() => '_',
             c => c,
         })
         .collect();
@@ -232,6 +234,12 @@ mod tests {
             disposition("attachment", "群\"1.xlsx"),
             "attachment; filename=\"群_1.xlsx\"; filename*=UTF-8''%E7%BE%A4%221.xlsx"
         );
+        let value = disposition("attachment", "a\tb\u{1}\u{7f}\r\n.txt");
+        assert!(
+            value.starts_with("attachment; filename=\"a_b____.txt\""),
+            "{value}"
+        );
+        assert!(header::HeaderValue::from_str(&value).is_ok(), "{value}");
     }
 
     #[test]
