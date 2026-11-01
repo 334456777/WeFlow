@@ -3,6 +3,10 @@
 ## 命令
  - `make help` 查看构建指南
  - `rust-toolchain.toml` 固定了 Rust 版本（本地与 CI 共用）；升级时改 channel，跑 `make ci` 修掉新增的 clippy 警告，一起提交
+ - `target/` 不会自动清理，用 `cargo sweep` 清理过期编译缓存：
+   - 精确清理：`cargo sweep --stamp` → 正常编译一次（实际会用到的 profile 都要编译，如 `cargo build`、`cargo build --release`、`cargo test --no-run`）→ `cargo sweep --file`，删除时间戳之后没被用到的产物
+   - 日常清理：`cargo sweep --time 30` 删除 30 天没用过的产物；`cargo sweep --installed` 删除已卸载工具链编译的产物
+   - 首次执行任何删除命令前先加 `--dry-run` 预览；不要用 `find -delete` 自制清理，也不要为了腾空间直接 `cargo clean`
  - Windows PowerShell 终端上操作时尝试使用常用的 UNIX/Linux 命令行工具
 
 ## 结构
