@@ -275,9 +275,8 @@ impl ServiceHub {
             return Ok(IndexMap::new());
         }
         let wcdb = self.open_wcdb()?;
-        let raw = wcdb
-            .contact_status(&serde_json::to_string(&ids).unwrap())
-            .map_err(native)?;
+        let payload = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
+        let raw = wcdb.contact_status(&payload).map_err(native)?;
         Ok(ids
             .into_iter()
             .map(|id| {
@@ -349,9 +348,9 @@ impl ServiceHub {
             .or(nick.clone())
             .or(alias.clone())
             .unwrap_or_else(|| id.to_string());
-        let avatar = wcdb
-            .avatar_urls(&serde_json::to_string(&[id]).unwrap())
+        let avatar = serde_json::to_string(&[id])
             .ok()
+            .and_then(|payload| wcdb.avatar_urls(&payload).ok())
             .and_then(|m| m.get(id).and_then(Value::as_str).map(str::to_string))
             .filter(|u| u.starts_with("http") || u.starts_with("data:"));
         let count = wcdb.message_count(id).map(|c| c.max(0)).unwrap_or(0);
@@ -517,11 +516,9 @@ impl ServiceHub {
             "quick_mode": !include_relations && ids.len() > 1,
             "include_group_sender_count": true
         });
+        let ids_json = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
         let native_rows = wcdb
-            .session_message_type_stats_batch(
-                &serde_json::to_string(&ids).unwrap(),
-                &options.to_string(),
-            )
+            .session_message_type_stats_batch(&ids_json, &options.to_string())
             .unwrap_or(Value::Null);
         let groups: Vec<String> = ids
             .iter()
@@ -536,7 +533,9 @@ impl ServiceHub {
         let member_counts = if groups.is_empty() {
             Value::Null
         } else {
-            wcdb.group_member_counts(&serde_json::to_string(&groups).unwrap())
+            let groups_json =
+                serde_json::to_string(&groups).map_err(|e| AppError::runtime(e.to_string()))?;
+            wcdb.group_member_counts(&groups_json)
                 .unwrap_or(Value::Null)
         };
 
@@ -668,11 +667,10 @@ impl ServiceHub {
                 AppError::runtime(format!("failed to create {}: {e}", parent.display()))
             })?;
         }
-        std::fs::write(
-            &path,
-            serde_json::to_vec_pretty(&Value::Object(hints)).unwrap(),
-        )
-        .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
+        let bytes = serde_json::to_vec_pretty(&Value::Object(hints))
+            .map_err(|e| AppError::runtime(e.to_string()))?;
+        std::fs::write(&path, bytes)
+            .map_err(|e| AppError::runtime(format!("failed to write {}: {e}", path.display())))?;
         Ok(GroupHint {
             count: None,
             updated_at: Some(now),
@@ -728,7 +726,10 @@ impl ServiceHub {
         if ids.is_empty() {
             return out;
         }
-        if let Ok(map) = wcdb.display_names(&serde_json::to_string(ids).unwrap()) {
+        let map = serde_json::to_string(ids)
+            .ok()
+            .and_then(|payload| wcdb.display_names(&payload).ok());
+        if let Some(map) = map {
             for (k, v) in map.as_object().into_iter().flatten() {
                 if let Some(name) = v.as_str().filter(|s| !s.is_empty()) {
                     out.insert(k.clone(), name.to_string());
@@ -1004,15 +1005,9 @@ impl ServiceHub {
             "video" => 2,
             _ => 0,
         };
+        let ids_json = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
         let (rows, has_more) = wcdb
-            .scan_media_stream(
-                &serde_json::to_string(&ids).unwrap(),
-                code,
-                begin as i32,
-                end as i32,
-                limit,
-                offset,
-            )
+            .scan_media_stream(&ids_json, code, begin as i32, end as i32, limit, offset)
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
         let names = self.session_display_names(&wcdb, &ids);

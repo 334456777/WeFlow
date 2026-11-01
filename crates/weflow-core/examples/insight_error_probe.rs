@@ -1,4 +1,8 @@
 //! Local synthetic HTTP matrix. No provider or WeChat account is contacted.
+#![expect(
+    clippy::unwrap_used,
+    reason = "probe code reports failure by panicking"
+)]
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use weflow_core::insight::call_api;

@@ -3,6 +3,10 @@
 //! Enabled by the `test-fixtures` feature (and always for this crate's own tests). The databases use the
 //! real table layouts, so everything above the file format — table lookup, sender resolution, contacts,
 //! groups — is exercised exactly as it is on a real account.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test fixtures fail the test by panicking"
+)]
 
 use std::path::{Path, PathBuf};
 

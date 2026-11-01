@@ -108,12 +108,14 @@ fn content_type(path: &Path) -> String {
     }
 }
 
-/// `<kind>; filename="…"` (UTF-8 as browsers read it, quotes and line breaks escaped) and RFC 5987 `filename*`.
+/// `<kind>; filename="…"` (UTF-8 as browsers read it, quotes and control characters replaced) and RFC 5987
+/// `filename*`. A control character, which a Linux file name may hold, is not allowed in a header value.
 fn disposition(kind: &str, name: &str) -> String {
     let plain: String = name
         .chars()
         .map(|c| match c {
-            '"' | '\\' | '\r' | '\n' => '_',
+            '"' | '\\' => '_',
+            c if c.is_control() => '_',
             c => c,
         })
         .collect();
@@ -183,7 +185,7 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
     );
     let tail = format!("\r\n--{boundary}--\r\n");
     let length = head.len() as u64 + length + tail.len() as u64;
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(
             header::CONTENT_TYPE,
@@ -191,13 +193,13 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
         )
         .header(header::CONTENT_LENGTH, length)
         .body(between(head, file, tail))
-        .unwrap())
+        .map_err(|e| format!("cannot answer with {}: {e}", path.display()))
 }
 
 /// The file alone, to be saved (`GET /jobs/{id}/file`): its type from its extension, its name as an attachment.
 pub(super) async fn attachment(path: &Path) -> Result<Response, String> {
     let (file, length, name) = open(path).await?;
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type(path))
         .header(
@@ -206,7 +208,7 @@ pub(super) async fn attachment(path: &Path) -> Result<Response, String> {
         )
         .header(header::CONTENT_LENGTH, length)
         .body(between(String::new(), file, String::new()))
-        .unwrap())
+        .map_err(|e| format!("cannot answer with {}: {e}", path.display()))
 }
 
 #[cfg(test)]
@@ -232,6 +234,12 @@ mod tests {
             disposition("attachment", "群\"1.xlsx"),
             "attachment; filename=\"群_1.xlsx\"; filename*=UTF-8''%E7%BE%A4%221.xlsx"
         );
+        let value = disposition("attachment", "a\tb\u{1}\u{7f}\r\n.txt");
+        assert!(
+            value.starts_with("attachment; filename=\"a_b____.txt\""),
+            "{value}"
+        );
+        assert!(header::HeaderValue::from_str(&value).is_ok(), "{value}");
     }
 
     #[test]

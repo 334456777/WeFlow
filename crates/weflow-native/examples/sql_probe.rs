@@ -1,6 +1,10 @@
 //! Run one read-only SQL statement against a database and print the rows as JSON.
 //! usage: sql_probe <account_dir> <key_file> <db path relative to db_storage> "<sql>"
 //! Only select aggregates/structure here: rows are printed verbatim.
+#![expect(
+    clippy::unwrap_used,
+    reason = "probe code reports failure by panicking"
+)]
 use weflow_native::native_db::NativeAccount;
 
 fn main() -> anyhow::Result<()> {

@@ -140,8 +140,10 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
     } else {
         let mut cipher = Aes128EcbDec::new(aes_key.into());
         let mut decrypted = Vec::with_capacity(aes_data.len());
-        for chunk in aes_data.chunks(16) {
-            let mut block = aes::cipher::Array::try_from(chunk).expect("a 16-byte block");
+        // `aligned` is a multiple of 16, so there is no remainder to drop
+        let (blocks, _) = aes_data.as_chunks::<16>();
+        for chunk in blocks {
+            let mut block = aes::cipher::Array::from(*chunk);
             cipher.decrypt_block(&mut block);
             decrypted.extend_from_slice(&block);
         }

@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
-use axum::response::Response;
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::Router;
 use serde_json::{json, Value};
 
@@ -44,13 +44,16 @@ pub fn router(hub: ServiceHub, cfg: HttpConfig, broker: Arc<PushBroker>) -> Rout
     })
 }
 
+const JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
+
 fn json_response(status: StatusCode, value: &Value) -> Response {
     let body = serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".into());
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
-        .body(Body::from(body))
-        .unwrap()
+    (
+        status,
+        [(header::CONTENT_TYPE, JSON_CONTENT_TYPE)],
+        Body::from(body),
+    )
+        .into_response()
 }
 
 fn send_json(value: &Value) -> Response {
@@ -58,18 +61,34 @@ fn send_json(value: &Value) -> Response {
 }
 
 fn send_error(status: u16, message: &str) -> Response {
-    let body = serde_json::to_string(&json!({ "error": message })).unwrap();
-    Response::builder()
-        .status(StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
-        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
-        .body(Body::from(body))
-        .unwrap()
+    // `Value`'s `Display` is the compact JSON text
+    let body = json!({ "error": message }).to_string();
+    (
+        StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        [(header::CONTENT_TYPE, JSON_CONTENT_TYPE)],
+        Body::from(body),
+    )
+        .into_response()
 }
 
-fn method_not_allowed(allow: &str) -> Response {
+/// A `200 OK` carrying `data` as a file of type `content_type`.
+fn file_response(content_type: HeaderValue, data: Vec<u8>) -> Response {
+    let len = HeaderValue::from(data.len());
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CONTENT_LENGTH, len),
+        ],
+        Body::from(data),
+    )
+        .into_response()
+}
+
+fn method_not_allowed(allow: &'static str) -> Response {
     let mut r = send_error(405, &format!("Method Not Allowed. Allowed: {allow}"));
     r.headers_mut()
-        .insert(header::ALLOW, HeaderValue::from_str(allow).unwrap());
+        .insert(header::ALLOW, HeaderValue::from_static(allow));
     r
 }
 
@@ -127,17 +146,14 @@ fn url_decode(s: &str) -> String {
 }
 
 fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
-    let origin = headers
-        .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let local = crate::message::rx(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$").is_match(origin);
+    let local_origin = headers.get(header::ORIGIN).filter(|v| {
+        v.to_str().is_ok_and(|origin| {
+            crate::message::rx(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$").is_match(origin)
+        })
+    });
     let h = resp.headers_mut();
-    if local {
-        h.insert(
-            header::ACCESS_CONTROL_ALLOW_ORIGIN,
-            HeaderValue::from_str(origin).unwrap(),
-        );
+    if let Some(origin) = local_origin {
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone());
         h.insert(header::VARY, HeaderValue::from_static("Origin"));
     }
     h.insert(
@@ -155,13 +171,7 @@ async fn dispatch(State(st): State<AppState>, req: Request) -> Response {
     let (parts, body) = req.into_parts();
     let headers = parts.headers.clone();
     if parts.method == Method::OPTIONS {
-        return cors(
-            &headers,
-            Response::builder()
-                .status(StatusCode::NO_CONTENT)
-                .body(Body::empty())
-                .unwrap(),
-        );
+        return cors(&headers, StatusCode::NO_CONTENT.into_response());
     }
     let resp = route(&st, &parts.method, &parts.uri, &headers, body).await;
     cors(&headers, resp)
@@ -424,18 +434,13 @@ async fn sns_media_proxy(hub: &Arc<ServiceHub>, params: &Params) -> Response {
     match hub.sns_fetch_media(&url, key.as_deref()).await {
         Err(e) => send_error(502, &e.message),
         Ok(f) => {
-            let ct = if f.content_type.is_empty() {
-                "application/octet-stream".to_string()
-            } else {
-                f.content_type.clone()
-            };
+            // the type comes from the remote server; one that is not a valid header value is treated as missing
+            let ct = HeaderValue::from_str(&f.content_type)
+                .ok()
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| HeaderValue::from_static("application/octet-stream"));
             if let Some(data) = f.data {
-                return Response::builder()
-                    .status(200)
-                    .header(header::CONTENT_TYPE, ct)
-                    .header(header::CONTENT_LENGTH, data.len())
-                    .body(Body::from(data))
-                    .unwrap();
+                return file_response(ct, data);
             }
             match f
                 .cache_path
@@ -443,12 +448,7 @@ async fn sns_media_proxy(hub: &Arc<ServiceHub>, params: &Params) -> Response {
                 .filter(|p| p.exists())
                 .map(std::fs::read)
             {
-                Some(Ok(data)) => Response::builder()
-                    .status(200)
-                    .header(header::CONTENT_TYPE, ct)
-                    .header(header::CONTENT_LENGTH, data.len())
-                    .body(Body::from(data))
-                    .unwrap(),
+                Some(Ok(data)) => file_response(ct, data),
                 _ => send_error(502, "Failed to proxy sns media"),
             }
         }
@@ -539,12 +539,7 @@ fn media_file(base: &Path, relative: &str) -> Response {
         _ => "application/octet-stream",
     };
     match std::fs::read(&full) {
-        Ok(data) => Response::builder()
-            .status(200)
-            .header(header::CONTENT_TYPE, content_type)
-            .header(header::CONTENT_LENGTH, data.len())
-            .body(Body::from(data))
-            .unwrap(),
+        Ok(data) => file_response(HeaderValue::from_static(content_type), data),
         Err(_) => send_error(500, "Failed to read media file"),
     }
 }
@@ -574,7 +569,7 @@ async fn push_stream(st: &AppState, headers: &HeaderMap, params: &Params) -> Res
         st.cfg.host, st.cfg.port
     );
     let stream = async_stream::stream! {
-        let ready = format!("event: ready\ndata: {}\n\n", serde_json::to_string(&json!({ "success": true, "stream": stream_url })).unwrap());
+        let ready = format!("event: ready\ndata: {}\n\n", json!({ "success": true, "stream": stream_url }));
         yield Ok::<_, Infallible>(axum::body::Bytes::from(ready));
         let mut highest = 0u64;
         for (id, body) in replay {
@@ -598,14 +593,17 @@ async fn push_stream(st: &AppState, headers: &HeaderMap, params: &Params) -> Res
             }
         }
     };
-    Response::builder()
-        .status(200)
-        .header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
-        .header(header::CACHE_CONTROL, "no-cache, no-transform")
-        .header(header::CONNECTION, "keep-alive")
-        .header("X-Accel-Buffering", "no")
-        .body(Body::from_stream(stream))
-        .unwrap()
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/event-stream; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache, no-transform"),
+            (header::CONNECTION, "keep-alive"),
+            (HeaderName::from_static("x-accel-buffering"), "no"),
+        ],
+        Body::from_stream(stream),
+    )
+        .into_response()
 }
 
 /// Serves the API on an already-bound listener until the future is dropped.

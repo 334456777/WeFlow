@@ -478,9 +478,8 @@ impl Read {
                 let config = config_of(hub)?;
                 Ok(match key {
                     Some(key) => config.get_key(None, key),
-                    None => {
-                        serde_json::to_value(config.profile(None)).expect("a profile serializes")
-                    }
+                    None => serde_json::to_value(config.profile(None))
+                        .map_err(|err| AppError::runtime(err.to_string()))?,
                 })
             }
             Read::ConfigProfiles => Ok(json!(profiles_summary(&config_of(hub)?))),

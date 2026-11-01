@@ -12,6 +12,7 @@ use serde_json::Value;
 use weflow_core::error::{AppError, AppResult};
 use weflow_core::reads::{image_variant, MediaRead, MessagePage, Read};
 use weflow_core::services::ServiceHub;
+use weflow_core::sync::MutexExt;
 
 use super::{find_param, flag_value, Endpoint, Kind, Params};
 
@@ -176,7 +177,7 @@ impl Hub {
 
     /// The hub, and which one it is: the number changes when the hub is built again.
     pub(super) fn hub_and_generation(&self) -> AppResult<(ServiceHub, u64)> {
-        let mut open = self.open.lock().expect("lock poisoned");
+        let mut open = self.open.lock_or_panic();
         // another config file chosen (`config set config_path`) is a change too
         let in_use = weflow_core::config::default_config_path();
         let before = match open.as_mut() {

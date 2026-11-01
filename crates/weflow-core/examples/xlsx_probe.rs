@@ -1,5 +1,9 @@
 //! Synthetic workbook probe; no WeChat data is opened.
 //! Run with an explicitly writable TEMP/TMP to separate environment from content.
+#![expect(
+    clippy::expect_used,
+    reason = "probe code reports failure by panicking"
+)]
 use rust_xlsxwriter::Workbook;
 
 fn main() -> anyhow::Result<()> {

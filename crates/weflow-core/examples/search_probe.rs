@@ -2,6 +2,10 @@
 //! Usage: search_probe <isolated config.json> [keyword]
 //! Searches the conversation with the most messages. Stdout holds only aggregate counts and timings: no key,
 //! identifier, message content or local path is printed.
+#![expect(
+    clippy::unwrap_used,
+    reason = "probe code reports failure by panicking"
+)]
 
 use anyhow::{Context, Result};
 use std::path::Path;

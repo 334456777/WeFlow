@@ -72,6 +72,7 @@ impl PageCipher {
         let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
         let mut mac_key = [0u8; 32];
         pbkdf2::pbkdf2_hmac::<Sha512>(&enc_key, &mac_salt, 2, &mut mac_key);
+        #[expect(clippy::expect_used, reason = "HMAC accepts a key of any length")]
         let mac =
             <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
         Self {
@@ -93,7 +94,9 @@ impl PageCipher {
         }
         let start = if pgno == 1 { SALT_LEN } else { 0 };
         let body_end = PAGE_SIZE - RESERVE;
-        let iv = &page[body_end..body_end + IV_LEN];
+        let Some(iv) = page.get(body_end..).and_then(<[u8]>::first_chunk::<IV_LEN>) else {
+            bail!("page {pgno} is shorter than {PAGE_SIZE} bytes");
+        };
         let stored_mac = &page[body_end + IV_LEN..];
 
         let mut mac = self.mac.clone();
@@ -109,12 +112,9 @@ impl PageCipher {
         }
         let body = &mut out[start..body_end];
         body.copy_from_slice(&page[start..body_end]);
-        Aes256CbcDec::new(
-            &self.enc_key.into(),
-            iv.try_into().expect("the IV is 16 bytes"),
-        )
-        .decrypt_padded::<NoPadding>(body)
-        .map_err(|_| anyhow!("AES decrypt failed for page {pgno}"))?;
+        Aes256CbcDec::new(&self.enc_key.into(), iv.into())
+            .decrypt_padded::<NoPadding>(body)
+            .map_err(|_| anyhow!("AES decrypt failed for page {pgno}"))?;
         // Keep the reserve area (IV/HMAC slot) zeroed: SQLite treats it as unused.
         Ok(())
     }
@@ -193,9 +193,10 @@ fn parse_keys(bytes: &[u8]) -> Imported {
         .as_chunks::<RECORD>()
         .0
         .iter()
-        .map(|r| {
-            let key = (r[..32].try_into().unwrap(), r[32..48].try_into().unwrap());
-            (key, r[48..].try_into().unwrap())
+        .filter_map(|record| {
+            let (fingerprint, rest) = record.split_first_chunk::<32>()?;
+            let (salt, enc_key) = rest.split_first_chunk::<SALT_LEN>()?;
+            Some(((*fingerprint, *salt), *enc_key.first_chunk::<32>()?))
         })
         .collect()
 }
@@ -206,9 +207,9 @@ fn verify_key_with(
     db: &[u8],
     raw_key: &[u8; 32],
 ) -> Result<PageCipher> {
-    let salt: [u8; SALT_LEN] = db[..SALT_LEN]
-        .try_into()
-        .expect("checked to be a page long");
+    let Some(&salt) = db.first_chunk::<SALT_LEN>() else {
+        return verify_key(db, raw_key); // which says what is wrong
+    };
     if let Some(enc_key) = imported.and_then(|keys| keys.get(&(fingerprint(raw_key), salt))) {
         let cipher = PageCipher::from_enc_key(*enc_key, &salt);
         if check_page1(&cipher, db).is_ok() {
@@ -391,10 +392,13 @@ pub fn total_pages(main_len: u64, overlay: &WalOverlay) -> u32 {
 
 /// Patch a decrypted page 1 so the database opens as a stand-alone file: the header page count becomes
 /// authoritative and WAL mode (bytes 18/19) is downgraded to legacy, so no `-wal` file is looked for.
+///
+/// # Panics
+///
+/// Panics if `page1` is shorter than the 100-byte SQLite header.
 pub fn patch_header(page1: &mut [u8], total_pages: u32) {
     page1[28..32].copy_from_slice(&total_pages.to_be_bytes());
-    let change_counter: [u8; 4] = page1[24..28].try_into().expect("4 bytes");
-    page1[92..96].copy_from_slice(&change_counter); // version-valid-for
+    page1.copy_within(24..28, 92); // the change counter becomes version-valid-for
     page1[18] = 1;
     page1[19] = 1;
 }
@@ -439,6 +443,10 @@ pub mod testutil {
     pub const SALT: [u8; 16] = *b"0123456789abcdef";
 
     /// Encrypt one plaintext page exactly as SQLCipher 4 does (test-only mirror of `decrypt_page`).
+    #[expect(
+        clippy::expect_used,
+        reason = "test fixture: a failure means the test setup is broken"
+    )]
     pub fn encrypt_page(cipher: &PageCipher, pgno: u32, plain: &[u8], iv: [u8; 16]) -> Vec<u8> {
         let start = if pgno == 1 { SALT_LEN } else { 0 };
         let body_end = PAGE_SIZE - RESERVE;
@@ -447,13 +455,14 @@ pub mod testutil {
         let len = body.len();
         Aes256CbcEnc::new(&cipher.enc_key.into(), &iv.into())
             .encrypt_padded::<NoPadding>(&mut body, len)
-            .unwrap();
+            .expect("a whole page body needs no padding");
         page[start..body_end].copy_from_slice(&body);
         if pgno == 1 {
             page[..SALT_LEN].copy_from_slice(&SALT);
         }
         page[body_end..body_end + IV_LEN].copy_from_slice(&iv);
-        let mut mac = <HmacSha512 as KeyInit>::new_from_slice(&cipher.mac_key).unwrap();
+        let mut mac = <HmacSha512 as KeyInit>::new_from_slice(&cipher.mac_key)
+            .expect("hmac accepts any key length");
         mac.update(&page[start..body_end + IV_LEN]);
         mac.update(&pgno.to_le_bytes());
         page[body_end + IV_LEN..].copy_from_slice(&mac.finalize().into_bytes());
@@ -461,9 +470,14 @@ pub mod testutil {
     }
 
     /// A plain SQLite image whose pages leave the 80-byte reserve free; `setup` creates the schema/rows.
+    #[expect(
+        clippy::expect_used,
+        reason = "test fixture: a failure means the test setup is broken"
+    )]
     pub fn plain_db_with(setup: impl FnOnce(&Connection)) -> Vec<u8> {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.pragma_update(None, "page_size", 4096).unwrap();
+        let conn = Connection::open_in_memory().expect("open an in-memory database");
+        conn.pragma_update(None, "page_size", 4096)
+            .expect("set the page size");
         let mut reserve: std::os::raw::c_int = RESERVE as _;
         // SQLITE_FCNTL_RESERVE_BYTES = 38; only legal while the database is still empty.
         // SAFETY: the connection is open, `main` is a NUL-terminated literal and `reserve` a live local;
@@ -478,21 +492,27 @@ pub mod testutil {
         };
         assert_eq!(rc, 0);
         setup(&conn);
-        let data = conn.serialize(rusqlite::MAIN_DB).unwrap();
+        let data = conn
+            .serialize(rusqlite::MAIN_DB)
+            .expect("serialize the database");
         assert_eq!(data[20] as usize, RESERVE);
         data.to_vec()
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "test fixture: a failure means the test setup is broken"
+    )]
     pub fn plain_db(rows: &[&str]) -> Vec<u8> {
         plain_db_with(|conn| {
             conn.execute_batch("create table t(id integer primary key, v text)")
-                .unwrap();
+                .expect("create the table");
             for (i, r) in rows.iter().enumerate() {
                 conn.execute(
                     "insert into t values (?1, ?2)",
                     rusqlite::params![i as i64, r],
                 )
-                .unwrap();
+                .expect("insert a row");
             }
         })
     }

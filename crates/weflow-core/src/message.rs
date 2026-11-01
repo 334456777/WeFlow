@@ -104,7 +104,7 @@ pub fn strip_sender_prefix(content: &str) -> String {
     // 数据库里的群消息是 "wxid:\n正文"；同一行的 "1:3-1:6" 这类是正文本身，不能当作前缀去掉。
     let re = rx(r"^\s*([A-Za-z0-9_-]+):(\r?\n|)");
     if let Some(c) = re.captures(content) {
-        let whole = c.get(0).unwrap();
+        let whole = c.get_match();
         let name = &c[1];
         let has_newline = !c[2].is_empty();
         let looks_like_id = name.starts_with("wxid_") || name.starts_with("gh_");

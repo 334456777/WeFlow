@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 use md5::Digest;
 use serde_json::Value;
 
+use crate::sync::MutexExt;
+
 const TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_POSTS: usize = 5;
 const CACHE_TTL: Duration = Duration::from_secs(30 * 60);
@@ -31,7 +33,7 @@ fn cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
 }
 
 pub fn clear_cache() {
-    cache().lock().expect("lock poisoned").clear();
+    cache().lock_or_panic().clear();
 }
 
 /// `normalizeWeiboCookieInput`: a browser-exported JSON cookie array, or a raw `Cookie:` header.
@@ -324,7 +326,7 @@ pub async fn fetch_recent_posts(
     .map(|b| format!("{b:02x}"))
     .collect();
     let key = format!("{uid}:{count}:{cookie_hash}");
-    if let Some((at, posts)) = cache().lock().expect("lock poisoned").get(&key) {
+    if let Some((at, posts)) = cache().lock_or_panic().get(&key) {
         if at.elapsed() < CACHE_TTL {
             return Ok(posts.clone());
         }
@@ -374,8 +376,7 @@ pub async fn fetch_recent_posts(
         });
     }
     cache()
-        .lock()
-        .expect("lock poisoned")
+        .lock_or_panic()
         .insert(key, (Instant::now(), posts.clone()));
     Ok(posts)
 }

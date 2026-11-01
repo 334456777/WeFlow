@@ -32,6 +32,10 @@
 //! synthetic one. `--save` writes the numbers to a JSON file;
 //! `--compare` reads such a file, adds a column with the ratio to it and fails when a median is more than
 //! `--tolerance` times (default 2) and more than 20 ms slower.
+#![expect(
+    clippy::unwrap_used,
+    reason = "probe code reports failure by panicking"
+)]
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;

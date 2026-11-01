@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use axum::body::Body;
 use axum::http::{header, HeaderValue, Method, StatusCode};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 
 /// A folder holding a built WebUI.
 #[derive(Clone, Debug)]
@@ -67,11 +67,7 @@ impl UiDir {
 pub async fn serve(ui: &UiDir, method: &Method, rest: &str, query: Option<&str>) -> Response {
     if rest.is_empty() {
         let to = format!("/ui/{}", query.map(|q| format!("?{q}")).unwrap_or_default());
-        return Response::builder()
-            .status(StatusCode::PERMANENT_REDIRECT)
-            .header(header::LOCATION, to)
-            .body(Body::empty())
-            .unwrap();
+        return super::redirect(StatusCode::PERMANENT_REDIRECT, &to);
     }
     if method != Method::GET && method != Method::HEAD {
         let mut resp = super::error_response(
@@ -140,28 +136,38 @@ async fn send(ui: &UiDir, file: &Path, head: bool) -> Response {
         .unwrap_or("")
         .to_ascii_lowercase();
     let built = file.starts_with(ui.root.join("assets"));
-    let mut resp = Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type(&ext))
-        .header(header::CONTENT_LENGTH, bytes.len())
-        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        .header(
+    let headers = [
+        (
+            header::CONTENT_TYPE,
+            HeaderValue::from_static(content_type(&ext)),
+        ),
+        (header::CONTENT_LENGTH, HeaderValue::from(bytes.len())),
+        (
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ),
+        (
             header::CACHE_CONTROL,
-            if built {
+            HeaderValue::from_static(if built {
                 "public, max-age=31536000, immutable"
             } else {
                 "no-cache"
-            },
-        );
-    if ext == "html" {
-        resp = resp.header(header::REFERRER_POLICY, "no-referrer");
-    }
-    resp.body(if head {
+            }),
+        ),
+    ];
+    let body = if head {
         Body::empty()
     } else {
         Body::from(bytes)
-    })
-    .unwrap()
+    };
+    let mut resp = (StatusCode::OK, headers, body).into_response();
+    if ext == "html" {
+        resp.headers_mut().insert(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        );
+    }
+    resp
 }
 
 fn content_type(ext: &str) -> &'static str {

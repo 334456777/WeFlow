@@ -15,6 +15,7 @@ use crate::contract::{
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
 use crate::message::rx;
+use crate::sync::MutexExt;
 
 const PANEL_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -404,7 +405,9 @@ impl ServiceHub {
         let refs: Vec<&str> = usernames.iter().map(String::as_str).collect();
         let candidates = build_id_candidates(&refs);
         for batch in candidates.chunks(200) {
-            let payload = serde_json::to_string(batch).unwrap();
+            let Ok(payload) = serde_json::to_string(batch) else {
+                continue;
+            };
             let Ok(Value::Array(rows)) = wcdb.invoke_json(
                 "wcdb_get_contacts_compact",
                 &[weflow_native::wcdb::Arg::S(&payload)],
@@ -672,13 +675,7 @@ impl ServiceHub {
             if include_counts { "full" } else { "members" }
         );
         if !force_refresh {
-            if let Some((at, updated, data)) = self
-                .group_state
-                .lock()
-                .expect("lock poisoned")
-                .panel
-                .get(&key)
-            {
+            if let Some((at, updated, data)) = self.group_state.lock_or_panic().panel.get(&key) {
                 if at.elapsed() < PANEL_CACHE_TTL {
                     return Ok((data.clone(), true, *updated));
                 }
@@ -687,7 +684,7 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let data = self.panel_fresh(&wcdb, chatroom_id, include_counts)?;
         let updated = chrono::Utc::now().timestamp_millis();
-        let mut st = self.group_state.lock().expect("lock poisoned");
+        let mut st = self.group_state.lock_or_panic();
         st.panel
             .insert(key, (Instant::now(), updated, data.clone()));
         if st.panel.len() > 80 {
@@ -714,9 +711,9 @@ impl ServiceHub {
             .map(|r| pick_str(r, &["username", "user_name", "userName"]))
             .filter(|u| u.contains("@chatroom"))
             .collect();
-        let counts = wcdb
-            .group_member_counts(&serde_json::to_string(&ids).unwrap())
+        let counts = serde_json::to_string(&ids)
             .ok()
+            .and_then(|payload| wcdb.group_member_counts(&payload).ok())
             .and_then(|v| v.as_object().cloned())
             .unwrap_or_default();
         let book = self.contact_book(&wcdb, &ids);
@@ -984,19 +981,9 @@ impl ServiceHub {
                 others += c;
             }
         }
-        let mut media: Vec<(i64, String, i64)> = main_types
+        let mut media: Vec<(i64, String, i64)> = names
             .iter()
-            .map(|t| {
-                (
-                    *t,
-                    names
-                        .iter()
-                        .find(|(k, _)| k == t)
-                        .map(|(_, n)| n.to_string())
-                        .unwrap(),
-                    counts.get(t).copied().unwrap_or(0),
-                )
-            })
+            .map(|&(t, n)| (t, n.to_string(), counts.get(&t).copied().unwrap_or(0)))
             .filter(|(_, _, c)| *c > 0)
             .collect();
         if others > 0 {

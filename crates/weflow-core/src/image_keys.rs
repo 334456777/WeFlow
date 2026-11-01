@@ -143,9 +143,10 @@ fn verify_pair(path: &Path, aes: &str, xor: u8) -> bool {
     {
         return false;
     }
-    if crate::decrypt::detect_dat_version(&data) != 2
-        || i32::from_le_bytes(data[10..14].try_into().unwrap()) < 2
-    {
+    let Some(&[.., x0, x1, x2, x3]) = data.first_chunk::<14>() else {
+        return false;
+    };
+    if crate::decrypt::detect_dat_version(&data) != 2 || i32::from_le_bytes([x0, x1, x2, x3]) < 2 {
         return false;
     }
     let Some(key) = crate::decrypt::parse_aes_key(aes) else {
@@ -199,7 +200,8 @@ pub fn acquire_image_keys(
     }
     let identities = account_identities(account, wxid);
     let scan = scan_templates(account, budget, TEMPLATE_LIMIT);
-    let diagnostics = serde_json::to_value(&scan).unwrap();
+    let diagnostics =
+        serde_json::to_value(&scan).map_err(|err| AppError::runtime(err.to_string()))?;
     if scan.templates.is_empty() {
         return Err(fail(
             "image_key_no_template",
@@ -239,14 +241,14 @@ pub fn acquire_image_keys(
     if matches.len() > 1 && matches.values().filter(|m| m.0).count() == 1 {
         matches.retain(|_, m| m.0);
     }
-    if matches.len() != 1 {
+    let mut pairs = matches.into_iter();
+    let (Some(((xor, aes), (verified, sources))), None) = (pairs.next(), pairs.next()) else {
         return Err(fail(
             "image_key_ambiguous",
             "Multiple distinct image-key pairs match the selected account; no pair was chosen",
             Some(diagnostics),
         ));
-    }
-    let ((xor, aes), (verified, sources)) = matches.into_iter().next().unwrap();
+    };
     Ok(crate::contract::ImageKeys {
         image_xor_key: Some(xor),
         image_aes_key: Some(aes),

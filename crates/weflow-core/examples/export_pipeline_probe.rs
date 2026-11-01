@@ -20,6 +20,10 @@
 //!
 //! Process CPU time (user/sys) is printed on Linux only. To compare allocators without rebuilding, run the same
 //! command with `LD_PRELOAD=<path to libjemalloc.so.2>`.
+#![expect(
+    clippy::expect_used,
+    reason = "probe code reports failure by panicking"
+)]
 use std::path::Path;
 use std::time::Instant;
 

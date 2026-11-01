@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::{Datelike, Local, NaiveDate, TimeZone, Timelike};
+use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
@@ -115,7 +115,7 @@ fn parse_local_day(s: &str) -> Option<chrono::DateTime<Local>> {
 fn day_index(dt: chrono::DateTime<Local>) -> i64 {
     // local midnight as unix days, like `Math.floor(dayDate.getTime() / 86400000)`
     let midnight = Local
-        .from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap())
+        .from_local_datetime(&dt.date_naive().and_time(NaiveTime::MIN))
         .earliest()
         .unwrap_or(dt);
     midnight.timestamp().div_euclid(86400)
@@ -545,12 +545,14 @@ impl ServiceHub {
         let (start, end) = year_range(year);
         let now = Local::now();
 
+        let sessions_json =
+            serde_json::to_string(&sessions).map_err(|e| AppError::runtime(e.to_string()))?;
         let (nb, ne) = normalize_range(start, end);
         let d = wcdb
             .invoke_json(
                 "wcdb_get_annual_report_stats",
                 &[
-                    weflow_native::wcdb::Arg::S(&serde_json::to_string(&sessions).unwrap()),
+                    weflow_native::wcdb::Arg::S(&sessions_json),
                     weflow_native::wcdb::Arg::I32(nb),
                     weflow_native::wcdb::Arg::I32(ne),
                 ],
@@ -613,7 +615,7 @@ impl ServiceHub {
         self.emit_progress("annual-report", "loading extended statistics…", 30, 100);
         let (eb, ee) = normalize_range(start, end);
         let extras = wcdb.annual_report_extras(
-            &serde_json::to_string(&sessions).unwrap(),
+            &sessions_json,
             eb,
             ee,
             normalize_timestamp(peak_begin),
@@ -790,7 +792,7 @@ impl ServiceHub {
                         heatmap[wd][dt.hour() as usize] += 1;
                         let idx = day_index(dt);
                         let day_date = Local
-                            .from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap())
+                            .from_local_datetime(&dt.date_naive().and_time(NaiveTime::MIN))
                             .earliest()
                             .unwrap_or(dt);
                         if last_day != Some(idx) {
@@ -869,7 +871,7 @@ impl ServiceHub {
                             continue;
                         }
                         let day_date = Local
-                            .from_local_datetime(&dt.date_naive().and_hms_opt(0, 0, 0).unwrap())
+                            .from_local_datetime(&dt.date_naive().and_time(NaiveTime::MIN))
                             .earliest()
                             .unwrap_or(dt);
                         if last_day.is_some_and(|l| idx - l == 1) {
@@ -994,8 +996,9 @@ impl ServiceHub {
         };
         let self_avatar = {
             let list = vec![raw_wxid.clone(), cleaned.clone()];
-            wcdb.avatar_urls(&serde_json::to_string(&list).unwrap())
+            serde_json::to_string(&list)
                 .ok()
+                .and_then(|payload| wcdb.avatar_urls(&payload).ok())
                 .and_then(|m| {
                     m.get(&raw_wxid)
                         .or_else(|| m.get(&cleaned))
@@ -1217,11 +1220,11 @@ impl ServiceHub {
                 .map(|o| o.keys().cloned().collect())
                 .unwrap_or_default();
             days.sort();
-            if days.len() >= 2 {
-                let first = parse_local_day(&days[0])
+            if let [first_day, .., last_day] = days.as_slice() {
+                let first = parse_local_day(first_day)
                     .map(|d| d.timestamp())
                     .unwrap_or(0);
-                let last = parse_local_day(days.last().unwrap())
+                let last = parse_local_day(last_day)
                     .map(|d| d.timestamp())
                     .unwrap_or(0);
                 let mid = (first + last).div_euclid(2);
@@ -1332,10 +1335,11 @@ impl ServiceHub {
         end: i64,
     ) -> anyhow::Result<Value> {
         let (b, e) = normalize_range(begin, end);
+        let ids_json = serde_json::to_string(ids)?;
         wcdb.invoke_json(
             "wcdb_get_aggregate_stats",
             &[
-                weflow_native::wcdb::Arg::S(&serde_json::to_string(ids).unwrap()),
+                weflow_native::wcdb::Arg::S(&ids_json),
                 weflow_native::wcdb::Arg::I32(b),
                 weflow_native::wcdb::Arg::I32(e),
             ],
@@ -1401,8 +1405,9 @@ impl ServiceHub {
         let (start, end) = year_range(report_year);
 
         let display = |u: &str, fb: &str| -> String {
-            wcdb.display_names(&serde_json::to_string(&[u]).unwrap())
+            serde_json::to_string(&[u])
                 .ok()
+                .and_then(|payload| wcdb.display_names(&payload).ok())
                 .and_then(|m| {
                     m.get(u)
                         .and_then(Value::as_str)
@@ -1423,9 +1428,9 @@ impl ServiceHub {
                 .filter(|s| !s.is_empty() && seen.insert(s.clone()))
                 .collect()
         };
-        let avatars = wcdb
-            .avatar_urls(&serde_json::to_string(&candidates).unwrap())
-            .ok();
+        let avatars = serde_json::to_string(&candidates)
+            .ok()
+            .and_then(|payload| wcdb.avatar_urls(&payload).ok());
         let av = |k: &str| {
             avatars
                 .as_ref()

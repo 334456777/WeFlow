@@ -18,8 +18,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use axum::body::{Body, Bytes};
-use axum::http::{header, StatusCode};
-use axum::response::Response;
+use axum::http::{header, HeaderName, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use serde_json::{json, Value};
 use tokio::sync::watch;
 
@@ -176,13 +176,25 @@ impl Status {
 
 /// An event stream of the command API, with its headers.
 pub(super) fn event_stream(body: Body) -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
-        .header(header::CACHE_CONTROL, "no-cache, no-transform")
-        .header("x-accel-buffering", "no")
-        .body(body)
-        .unwrap()
+    (
+        StatusCode::OK,
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/event-stream; charset=utf-8"),
+            ),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("no-cache, no-transform"),
+            ),
+            (
+                HeaderName::from_static("x-accel-buffering"),
+                HeaderValue::from_static("no"),
+            ),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 /// `GET /health/events`.

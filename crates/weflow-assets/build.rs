@@ -1,4 +1,5 @@
 use std::env;
+use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -6,15 +7,15 @@ use std::process::Command;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
-fn main() {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+fn main() -> Result<(), Box<dyn Error>> {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let repo_root = manifest_dir
         .ancestors()
         .nth(2)
-        .expect("workspace root")
+        .ok_or("workspace root not found above CARGO_MANIFEST_DIR")?
         .to_path_buf();
     let target = env::var("TARGET").unwrap_or_default();
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let output = out_dir.join("assets_generated.rs");
 
     println!(
@@ -27,7 +28,7 @@ fn main() {
     );
 
     let mut assets = Vec::new();
-    collect_assets(&repo_root, &target, &mut assets);
+    collect_assets(&repo_root, &target, &mut assets)?;
     assets.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut generated = String::new();
@@ -37,8 +38,7 @@ fn main() {
     generated.push_str("pub const EMBEDDED_ASSETS: &[EmbeddedAsset] = &[\n");
     for (logical, absolute) in assets {
         // hashed here, so starting the program never has to hash the embedded files
-        let bytes =
-            fs::read(&absolute).unwrap_or_else(|e| panic!("read {}: {e}", absolute.display()));
+        let bytes = fs::read(&absolute).map_err(|e| format!("read {}: {e}", absolute.display()))?;
         let sha256: String = Sha256::digest(&bytes)
             .iter()
             .map(|b| format!("{b:02x}"))
@@ -70,10 +70,15 @@ fn main() {
     generated.push_str(&format!("{:?}", commit));
     generated.push_str(";\n");
 
-    fs::write(output, generated).expect("write assets_generated.rs");
+    fs::write(output, generated).map_err(|e| format!("write assets_generated.rs: {e}"))?;
+    Ok(())
 }
 
-fn collect_assets(repo_root: &Path, target: &str, out: &mut Vec<(String, PathBuf)>) {
+fn collect_assets(
+    repo_root: &Path,
+    target: &str,
+    out: &mut Vec<(String, PathBuf)>,
+) -> Result<(), Box<dyn Error>> {
     let resources = repo_root.join("resources");
     if resources.exists() {
         for entry in WalkDir::new(&resources).into_iter().filter_map(Result::ok) {
@@ -81,9 +86,7 @@ fn collect_assets(repo_root: &Path, target: &str, out: &mut Vec<(String, PathBuf
                 continue;
             }
             let path = entry.path();
-            let relative = path
-                .strip_prefix(repo_root)
-                .expect("relative resource path");
+            let relative = path.strip_prefix(repo_root)?;
             let logical = normalize(relative);
             if include_resource(&logical, target) {
                 out.push((logical, path.to_path_buf()));
@@ -98,10 +101,11 @@ fn collect_assets(repo_root: &Path, target: &str, out: &mut Vec<(String, PathBuf
                 continue;
             }
             let path = entry.path();
-            let relative = path.strip_prefix(repo_root).expect("relative wasm path");
+            let relative = path.strip_prefix(repo_root)?;
             out.push((normalize(relative), path.to_path_buf()));
         }
     }
+    Ok(())
 }
 
 fn include_resource(logical: &str, target: &str) -> bool {

@@ -1546,10 +1546,7 @@ async fn main() -> ExitCode {
     weflow_core::output::finish_progress();
     if json {
         let (doc, exit) = json_document(outcome);
-        println!(
-            "{}",
-            serde_json::to_string(&doc).expect("a JSON document serializes")
-        );
+        println!("{doc}");
         return ExitCode::from(exit);
     }
     match checked(outcome) {
@@ -2442,7 +2439,8 @@ fn handle_config(
     let written = |config_path: Option<PathBuf>| json!(ConfigWritten { config_path });
     match command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
-        ConfigSubcommand::List => Ok(serde_json::to_value(config).expect("the config serializes")),
+        ConfigSubcommand::List => serde_json::to_value(config)
+            .map_err(|err| AppError::runtime(format!("cannot serialize the config: {err}"))),
         ConfigSubcommand::Profiles | ConfigSubcommand::Get { .. } => unreachable!("a read"),
         ConfigSubcommand::Set { key, value } => {
             if matches!(key.as_str(), "config_path" | "configPath") {
@@ -2557,10 +2555,10 @@ async fn handle_ffmpeg(
 fn handle_runtime(command: &RuntimeCommand, ctx: &AppContext) -> AppResult<Value> {
     match command.command {
         RuntimeSubcommand::Info => unreachable!("a read"),
-        RuntimeSubcommand::Manifest => {
-            Ok(serde_json::to_value(weflow_assets::manifest(&ctx.version))
-                .expect("the runtime manifest serializes"))
-        }
+        RuntimeSubcommand::Manifest => serde_json::to_value(weflow_assets::manifest(&ctx.version))
+            .map_err(|err| {
+                AppError::runtime(format!("cannot serialize the runtime manifest: {err}"))
+            }),
     }
 }
 
@@ -3692,6 +3690,7 @@ fn open_in_browser(url: &str) {
 /// `serve` runs the command API (every CLI command over HTTP, see `serve_api`) or, with `--desktop`, the desktop
 /// app's HTTP API, next to the optional insight and image auto-download services.
 async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
+    use weflow_core::sync::RwLockExt;
     if command.message_push && !command.desktop {
         return Err(AppError::usage("--message-push needs --desktop"));
     }
@@ -3851,8 +3850,7 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
     };
     // only its version: a clone of the page kept here would hold its version after the page is replaced
     let shown = ui
-        .read()
-        .expect("lock poisoned")
+        .read_or_panic()
         .as_ref()
         .map(|ui| ui.version().map(str::to_string));
     if !command.desktop {
@@ -3891,7 +3889,7 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
             };
             match installed.map(|meta| serve_api::ui::UiDir::open_version(&store, &meta.version)) {
                 Ok(Some(dir)) => {
-                    *ui.write().expect("lock poisoned") = Some(dir);
+                    *ui.write_or_panic() = Some(dir);
                     weflow_core::output::event(
                         json!({ "type": "webui_ready", "version": version, "uiUrl": page_url }),
                     );
@@ -4013,10 +4011,7 @@ fn write_export(
     match format.as_str() {
         "json" => write_json_file(&path, value)?,
         "csv" => write_csv_file(&path, value)?,
-        "txt" => write_text_file(
-            &path,
-            &serde_json::to_string_pretty(value).expect("a JSON value serializes"),
-        )?,
+        "txt" => write_text_file(&path, &format!("{value:#}"))?,
         "html" => weflow_core::export::export_html(name, value, &json!([]), &path)
             .map_err(|err| AppError::runtime(err.to_string()))?,
         "excel" | "xlsx" => weflow_core::export::export_excel(value, &path)
@@ -4170,6 +4165,10 @@ fn checked(outcome: AppResult<Value>) -> AppResult<Value> {
 
 /// The `--json` document of a command's outcome, and its exit code. The command API's in-process routes answer
 /// with it too, so they match the child process byte for byte.
+#[expect(
+    clippy::expect_used,
+    reason = "a document of JSON values and strings always serializes"
+)]
 fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
     let (mut doc, exit) = match checked(outcome) {
         Ok(value) => (
@@ -4186,7 +4185,11 @@ fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
 }
 
 /// The human-readable output: the payload itself, without the {success, data} envelope.
-fn print_response<T: serde::Serialize>(response: &T, summary: Option<Summary>) {
+fn print_response(response: &weflow_core::output::CliResponse<Value>, summary: Option<Summary>) {
+    #[expect(
+        clippy::expect_used,
+        reason = "a document of JSON values and strings always serializes"
+    )]
     let mut value = serde_json::to_value(response).expect("a response serializes");
     weflow_core::locale::localize_json(&mut value);
     let data = value.get("data").cloned().unwrap_or(Value::Null);

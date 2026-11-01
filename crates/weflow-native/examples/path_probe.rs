@@ -1,4 +1,8 @@
 //! Inspect filesystem access without printing path names or file contents.
+#![expect(
+    clippy::expect_used,
+    reason = "probe code reports failure by panicking"
+)]
 fn main() {
     let root = std::path::PathBuf::from(std::env::args().nth(1).expect("path_probe <account>"));
     for (kind, path) in [
