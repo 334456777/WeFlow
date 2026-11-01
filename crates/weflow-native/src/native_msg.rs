@@ -342,7 +342,11 @@ impl NativeAccount {
             // #486), so find the last message it skips from the sort keys alone and page on from there.
             match self.offset_position(&tables, offset, limit)? {
                 OffsetPosition::At(pos) => {
-                    return self.page_from(&tables, limit as i32, PageFrom::Before(pos));
+                    return self.page_from(
+                        &tables,
+                        i32::try_from(limit).unwrap_or(i32::MAX),
+                        PageFrom::Before(pos),
+                    );
                 }
                 OffsetPosition::Past => return Ok(Value::Array(Vec::new())),
                 OffsetPosition::Unusual => {}
@@ -522,14 +526,11 @@ impl NativeAccount {
         rows.sort_by(|(a, sa), (b, sb)| row_key(b).cmp(&row_key(a)).then(sa.cmp(sb)));
         if !older {
             // the newer rows closest to the position are at the end
-            let skip = if want < 0 {
-                0
-            } else {
-                rows.len().saturating_sub(want as usize)
-            };
+            // a negative `want` keeps every row
+            let skip = usize::try_from(want).map_or(0, |want| rows.len().saturating_sub(want));
             rows.drain(..skip);
-        } else if want >= 0 {
-            rows.truncate(want as usize);
+        } else if let Ok(want) = usize::try_from(want) {
+            rows.truncate(want);
         }
         debug_assert!(rows.iter().all(|(r, s)| {
             let k = row_key(r);
@@ -659,8 +660,8 @@ impl NativeAccount {
             }
         }
         rows.sort_by(|(a, sa), (b, sb)| row_key(b).cmp(&row_key(a)).then(sa.cmp(sb)));
-        if limit >= 0 {
-            rows.truncate(limit as usize);
+        if let Ok(limit) = usize::try_from(limit) {
+            rows.truncate(limit);
         }
         Ok(rows.into_iter().map(|(r, _)| r).collect())
     }
@@ -682,7 +683,7 @@ impl NativeAccount {
             let sql = format!("select count(*) as n from \"{}\"", t.table);
             total += int(&self.query(&t.db, &sql, &[])?[0], "n");
         }
-        Ok(total.min(i32::MAX as i64) as i32)
+        Ok(i32::try_from(total).unwrap_or(i32::MAX))
     }
 
     pub fn session_message_counts(&self, session_ids: &[String]) -> Result<Value> {
@@ -1255,6 +1256,10 @@ impl NativeAccount {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::*;
     use crate::native_db::hex;

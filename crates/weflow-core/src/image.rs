@@ -611,7 +611,7 @@ pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<HevcError>) {
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "test data keeps the low bits of small integers"
+    reason = "test values are known to fit, or are meant to wrap"
 )]
 mod tests {
     use super::*;

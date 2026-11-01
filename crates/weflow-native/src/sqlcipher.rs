@@ -295,7 +295,8 @@ pub fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
         pages: HashMap::new(),
     };
     if let Some((frames, db_pages)) = wal.and_then(committed_wal_frames) {
-        overlay.frames = frames.len() as u32;
+        // each frame holds a page, so a WAL SQLite can read never has `u32::MAX` of them
+        overlay.frames = u32::try_from(frames.len()).unwrap_or(u32::MAX);
         overlay.db_pages = Some(db_pages);
         for f in frames {
             overlay.pages.insert(f.pgno, f.data_offset); // later frames override earlier ones
@@ -386,7 +387,8 @@ fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
 pub fn total_pages(main_len: u64, overlay: &WalOverlay) -> u32 {
     match overlay.db_pages {
         Some(n) => n.max(1),
-        None => (main_len / PAGE_SIZE as u64) as u32,
+        // SQLite numbers pages with 32 bits
+        None => u32::try_from(main_len / PAGE_SIZE as u64).unwrap_or(u32::MAX),
     }
 }
 
@@ -409,7 +411,7 @@ pub fn patch_header(page1: &mut [u8], total_pages: u32) {
 pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> Result<Vec<u8>> {
     let overlay = wal_overlay(wal);
     let total = total_pages(db.len() as u64, &overlay);
-    let main_pages = (db.len() / PAGE_SIZE) as u32;
+    let main_pages = u32::try_from(db.len() / PAGE_SIZE)?;
     let mut out = vec![0u8; total as usize * PAGE_SIZE];
     for pgno in 1..=main_pages.min(total) {
         let i = (pgno as usize - 1) * PAGE_SIZE;
@@ -432,6 +434,10 @@ pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> R
 }
 
 #[cfg(any(test, feature = "test-fixtures"))]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 pub mod testutil {
     use super::*;
     use aes::cipher::BlockModeEncrypt;
@@ -532,6 +538,10 @@ pub mod testutil {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::testutil::*;
     use super::*;

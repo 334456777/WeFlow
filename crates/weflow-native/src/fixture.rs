@@ -540,11 +540,11 @@ impl Fixture {
                 for (rid, user, owner, members, member_ids) in &rooms {
                     let mut ext = vec![0x08, 0x01];
                     for (m, nick) in members.iter().filter(|(_, n)| !n.is_empty()) {
-                        let mut inner = vec![0x0a, m.len() as u8];
+                        let mut inner = vec![0x0a, u8::try_from(m.len()).unwrap()];
                         inner.extend(m.as_bytes());
-                        inner.extend([0x12, nick.len() as u8]);
+                        inner.extend([0x12, u8::try_from(nick.len()).unwrap()]);
                         inner.extend(nick.as_bytes());
-                        ext.extend([0x0a, inner.len() as u8]);
+                        ext.extend([0x0a, u8::try_from(inner.len()).unwrap()]);
                         ext.extend(inner);
                     }
                     c.execute("insert into chat_room(id, username, owner, ext_buffer) values (?1,?2,?3,?4)", params![rid, user, owner, ext]).unwrap();

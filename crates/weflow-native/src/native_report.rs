@@ -349,8 +349,13 @@ impl NativeAccount {
         });
         if !responses.is_empty() {
             let sum: i64 = responses.iter().sum();
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "the rounded mean of `i64` values; float-to-integer `as` saturates"
+            )]
+            let avg = (sum as f64 / responses.len() as f64).round() as i64;
             out["response"] = json!({
-                "avg": (sum as f64 / responses.len() as f64).round() as i64,
+                "avg": avg,
                 "fastest": responses.iter().min(), "slowest": responses.iter().max(), "count": responses.len()
             });
         }
@@ -393,8 +398,8 @@ impl NativeAccount {
             num(&["end", "endTimestamp"]),
         );
         let (mention_limit, private_limit) = (
-            num(&["mention_limit", "mentionLimit"]) as usize,
-            num(&["private_limit", "privateLimit"]) as usize,
+            usize::try_from(num(&["mention_limit", "mentionLimit"])).unwrap_or(usize::MAX),
+            usize::try_from(num(&["private_limit", "privateLimit"])).unwrap_or(usize::MAX),
         );
         let list = |key: &str| -> Vec<String> {
             options
