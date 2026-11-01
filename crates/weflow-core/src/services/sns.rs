@@ -14,6 +14,7 @@ use crate::contract::{
 };
 use crate::isaac64;
 use crate::sns::{self, CachedContact};
+use crate::sync::MutexExt;
 
 const EXPORT_STATS_TTL: Duration = Duration::from_secs(5 * 60);
 const USER_COUNTS_TTL: Duration = Duration::from_secs(5 * 60);
@@ -266,7 +267,10 @@ impl ServiceHub {
         let usernames_json = if q.usernames.is_empty() {
             None
         } else {
-            Some(serde_json::to_string(&q.usernames).unwrap())
+            Some(
+                serde_json::to_string(&q.usernames)
+                    .map_err(|e| AppError::runtime(e.to_string()))?,
+            )
         };
         let raw = wcdb
             .sns_timeline(
@@ -425,7 +429,7 @@ impl ServiceHub {
         let prefer_cache = freshness == Freshness::Cached;
         let allow_fallback = !prefer_cache;
         let my_wxid = Some(self.my_wxid_cleaned()).filter(|w| !w.trim().is_empty());
-        let cached = self.sns_state.lock().expect("lock poisoned").export_stats;
+        let cached = self.sns_state.lock_or_panic().export_stats;
         if prefer_cache {
             if let Some((v, at)) = &cached {
                 if at.elapsed() <= EXPORT_STATS_TTL {
@@ -440,18 +444,14 @@ impl ServiceHub {
         let mut fallback_attempted = false;
         let cooled_down = self
             .sns_state
-            .lock()
-            .expect("lock poisoned")
+            .lock_or_panic()
             .last_timeline_fallback
             .is_none_or(|t| t.elapsed() >= TIMELINE_FALLBACK_COOLDOWN);
         if allow_fallback && (total <= 0 || friends <= 0) && cooled_down {
             fallback_attempted = true;
             match self.export_stats_from_timeline(&wcdb, my_wxid.as_deref()) {
                 Ok((t, f, m)) => {
-                    self.sns_state
-                        .lock()
-                        .expect("lock poisoned")
-                        .last_timeline_fallback = Some(Instant::now());
+                    self.sns_state.lock_or_panic().last_timeline_fallback = Some(Instant::now());
                     if t > 0 {
                         total = t;
                     }
@@ -475,26 +475,23 @@ impl ServiceHub {
             },
         );
         let has_data = total > 0 || friends > 0;
-        let cache_has_data = cached
-            .as_ref()
-            .is_some_and(|(v, _)| v.total_posts > 0 || v.total_friends > 0);
-        if !has_data && cache_has_data {
-            return Ok(cached.unwrap().0);
+        let cached_with_data = cached.filter(|(v, _)| v.total_posts > 0 || v.total_friends > 0);
+        if let (false, Some((v, _))) = (has_data, cached_with_data) {
+            return Ok(v);
         }
         if !has_data && fallback_attempted {
             if let Some(e) = fallback_error {
                 return Err(AppError::native(e));
             }
         }
-        self.sns_state.lock().expect("lock poisoned").export_stats =
-            Some((normalized, Instant::now()));
+        self.sns_state.lock_or_panic().export_stats = Some((normalized, Instant::now()));
         Ok(normalized)
     }
 
     /// Posts per username, in the order of the usernames.
     pub fn sns_user_post_counts(&self, freshness: Freshness) -> AppResult<BTreeMap<String, i64>> {
         if freshness == Freshness::Cached {
-            if let Some((c, at)) = &self.sns_state.lock().expect("lock poisoned").user_counts {
+            if let Some((c, at)) = &self.sns_state.lock_or_panic().user_counts {
                 if at.elapsed() <= USER_COUNTS_TTL {
                     return Ok(c.clone());
                 }
@@ -510,11 +507,10 @@ impl ServiceHub {
         });
         match res {
             Ok(counts) => {
-                self.sns_state.lock().expect("lock poisoned").user_counts =
-                    Some((counts.clone(), Instant::now()));
+                self.sns_state.lock_or_panic().user_counts = Some((counts.clone(), Instant::now()));
                 Ok(counts)
             }
-            Err(e) => match &self.sns_state.lock().expect("lock poisoned").user_counts {
+            Err(e) => match &self.sns_state.lock_or_panic().user_counts {
                 Some((c, _)) => Ok(c.clone()),
                 None => Err(e),
             },
@@ -564,7 +560,7 @@ impl ServiceHub {
     /// `deleteSnsPost`: also drops the stats caches.
     pub fn sns_delete_post(&self, post_id: &str) -> AppResult<Value> {
         let v = self.sns_delete(post_id)?;
-        let mut st = self.sns_state.lock().expect("lock poisoned");
+        let mut st = self.sns_state.lock_or_panic();
         st.user_counts = None;
         st.export_stats = None;
         Ok(json!({ "success": true, "result": v }))
@@ -572,7 +568,7 @@ impl ServiceHub {
 
     /// `clearMemoryCache`: drops the in-memory image cache and the cached statistics.
     pub fn sns_clear_memory_cache(&self) {
-        *self.sns_state.lock().expect("lock poisoned") = SnsState::default();
+        *self.sns_state.lock_or_panic() = SnsState::default();
     }
 
     /// `sns:debugResource`: asks the server for the first bytes of a Moments resource the way WeChat does and
@@ -614,7 +610,7 @@ impl ServiceHub {
 
     fn sns_http_client(&self, insecure: bool) -> AppResult<reqwest::Client> {
         if !insecure {
-            if let Some(client) = self.sns_state.lock().expect("lock poisoned").client.clone() {
+            if let Some(client) = self.sns_state.lock_or_panic().client.clone() {
                 return Ok(client);
             }
         }
@@ -624,7 +620,7 @@ impl ServiceHub {
             .build()
             .map_err(|e| AppError::runtime(format!("failed to create HTTP client: {e}")))?;
         if !insecure {
-            self.sns_state.lock().expect("lock poisoned").client = Some(client.clone());
+            self.sns_state.lock_or_panic().client = Some(client.clone());
         }
         Ok(client)
     }
@@ -688,13 +684,6 @@ impl ServiceHub {
                 err
             });
         }
-        let x_enc = resp
-            .headers()
-            .get("x-enc")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .trim()
-            .to_string();
         let header_ct = resp
             .headers()
             .get("content-type")
@@ -731,9 +720,8 @@ impl ServiceHub {
 
         let mut decoded = raw.clone();
         let raw_is_image = sns::detect_image_mime(&raw, "").starts_with("image/");
-        let should_decrypt = (x_enc == "1" || key.is_some()) && key.is_some();
-        if should_decrypt {
-            let key = key.unwrap();
+        // decrypted whenever there is a key, whatever the `x-enc` header says (as `snsService.ts` does)
+        if let Some(key) = key {
             if key.chars().all(|c| c.is_ascii_digit()) {
                 let mut decrypted = raw.clone();
                 isaac64::xor_in_place(&mut decrypted, key, None);
@@ -763,7 +751,7 @@ impl ServiceHub {
         }
         let cache_key = format!("{url}|{}", key.unwrap_or(""));
         {
-            let mut st = self.sns_state.lock().expect("lock poisoned");
+            let mut st = self.sns_state.lock_or_panic();
             if let Some((data_url, at)) = st.image_cache.get(&cache_key).cloned() {
                 let valid = at.elapsed() <= IMAGE_CACHE_TTL
                     && data_url.split(',').nth(1).is_some_and(|b64| {
@@ -799,7 +787,7 @@ impl ServiceHub {
             fetched.content_type,
             base64::engine::general_purpose::STANDARD.encode(&data)
         );
-        let mut st = self.sns_state.lock().expect("lock poisoned");
+        let mut st = self.sns_state.lock_or_panic();
         st.image_order.retain(|k| k != &cache_key);
         st.image_order.push_back(cache_key.clone());
         st.image_cache
@@ -878,17 +866,14 @@ impl ServiceHub {
     ) -> AppResult<SnsEmojiSaved> {
         let encrypt_url = encrypt_url.filter(|u| !u.is_empty());
         let aes_key = aes_key.filter(|k| !k.is_empty());
-        if url.is_empty() && encrypt_url.is_none() {
+        let Some(source) = (if url.is_empty() {
+            encrypt_url
+        } else {
+            Some(url)
+        }) else {
             return Err(AppError::usage("url must not be empty"));
-        }
-        let cache_key = md5_hex(
-            if url.is_empty() {
-                encrypt_url.unwrap()
-            } else {
-                url
-            }
-            .as_bytes(),
-        );
+        };
+        let cache_key = md5_hex(source.as_bytes());
         let dir = self.emoji_cache_dir();
         for ext in [".gif", ".png", ".webp", ".jpg", ".jpeg"] {
             let p = dir.join(format!("{cache_key}{ext}"));
@@ -1215,8 +1200,9 @@ impl ServiceHub {
                 let posts_json: Vec<Value> =
                     posts.iter().map(|p| export_post_json(p, false)).collect();
                 let data = json!({ "exportTime": export_time, "totalPosts": posts.len(), "filters": filters, "posts": posts_json });
-                std::fs::write(&out_path, serde_json::to_string_pretty(&data).unwrap())
+                let text = serde_json::to_string_pretty(&data)
                     .map_err(|e| AppError::runtime(e.to_string()))?;
+                std::fs::write(&out_path, text).map_err(|e| AppError::runtime(e.to_string()))?;
             }
             "arkmejson" => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.json"));
@@ -1289,8 +1275,9 @@ impl ServiceHub {
                     "filters": filters,
                     "posts": built
                 });
-                std::fs::write(&out_path, serde_json::to_string_pretty(&data).unwrap())
+                let text = serde_json::to_string_pretty(&data)
                     .map_err(|e| AppError::runtime(e.to_string()))?;
+                std::fs::write(&out_path, text).map_err(|e| AppError::runtime(e.to_string()))?;
             }
             _ => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.html"));

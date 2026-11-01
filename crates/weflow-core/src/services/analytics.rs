@@ -10,6 +10,7 @@ use serde_json::{json, Map, Value};
 
 use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
+use crate::sync::MutexExt;
 
 const AGGREGATE_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -138,7 +139,7 @@ impl ServiceHub {
 
     /// `clearCache`
     pub fn analytics_clear_cache(&self) -> AppResult<()> {
-        self.analytics_state.lock().expect("lock poisoned").cache = None;
+        self.analytics_state.lock_or_panic().cache = None;
         let _ = std::fs::remove_file(self.analytics_cache_path());
         Ok(())
     }
@@ -390,11 +391,10 @@ impl ServiceHub {
     ) -> AppResult<(Value, &'static str)> {
         let key = Self::aggregate_key(ids, begin, end);
         if force {
-            self.analytics_state.lock().expect("lock poisoned").cache = None;
+            self.analytics_state.lock_or_panic().cache = None;
         }
         if !force {
-            if let Some((k, data, at)) = &self.analytics_state.lock().expect("lock poisoned").cache
-            {
+            if let Some((k, data, at)) = &self.analytics_state.lock_or_panic().cache {
                 if *k == key && at.elapsed() < AGGREGATE_TTL {
                     return Ok((data.clone(), "cache"));
                 }
@@ -403,7 +403,7 @@ impl ServiceHub {
                 if let Ok(v) = serde_json::from_str::<Value>(&raw) {
                     if v["key"].as_str() == Some(key.as_str()) && v.get("data").is_some() {
                         let data = v["data"].clone();
-                        self.analytics_state.lock().expect("lock poisoned").cache =
+                        self.analytics_state.lock_or_panic().cache =
                             Some((key, data.clone(), Instant::now()));
                         return Ok((data, "file-cache"));
                     }
@@ -414,7 +414,7 @@ impl ServiceHub {
             Ok(d) if num(&d["total"]) > 0 => (d, "dll"),
             _ => (self.aggregate_by_cursor(wcdb, ids, begin, end)?, "cursor"),
         };
-        self.analytics_state.lock().expect("lock poisoned").cache =
+        self.analytics_state.lock_or_panic().cache =
             Some((key.clone(), data.clone(), Instant::now()));
         let _ = std::fs::create_dir_all(self.cache_base());
         let _ = std::fs::write(self.analytics_cache_path(), serde_json::to_string(&json!({ "key": key, "data": data, "updatedAt": chrono::Utc::now().timestamp_millis() })).unwrap_or_default());
@@ -441,8 +441,9 @@ impl ServiceHub {
         if usernames.is_empty() {
             return HashMap::new();
         }
-        wcdb.contact_alias_map(&serde_json::to_string(usernames).unwrap())
+        serde_json::to_string(usernames)
             .ok()
+            .and_then(|payload| wcdb.contact_alias_map(&payload).ok())
             .and_then(|v| v.as_object().cloned())
             .map(|m| {
                 m.into_iter()

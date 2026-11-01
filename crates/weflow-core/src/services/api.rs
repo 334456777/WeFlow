@@ -10,6 +10,7 @@ use crate::api::{self, ApiError, ApiExportedMedia, ApiMediaOptions, Params};
 use crate::chat_msg::{self, ChatMessage};
 use crate::contract::{Contact, ContactKind, Session};
 use crate::message::{row_field, row_int, rx};
+use crate::sync::MutexExt;
 
 const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =
     ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -183,9 +184,9 @@ impl ServiceHub {
         }
         let wcdb = self.open_wcdb().ok()?;
         let contact = wcdb.contact(username).ok().filter(Value::is_object);
-        let avatar = wcdb
-            .avatar_urls(&serde_json::to_string(&[username]).unwrap())
+        let avatar = serde_json::to_string(&[username])
             .ok()
+            .and_then(|payload| wcdb.avatar_urls(&payload).ok())
             .and_then(|m| m.get(username).and_then(Value::as_str).map(str::to_string))
             .filter(|a| !a.is_empty() && !a.contains("base64,ffd8"));
         let pick = |keys: &[&str]| {
@@ -1037,7 +1038,7 @@ impl ServiceHub {
         talker_name: &str,
         media: &HashMap<i64, ApiExportedMedia>,
         base_url: &str,
-    ) -> Value {
+    ) -> Map<String, Value> {
         let is_group = talker.ends_with("@chatroom");
         let my = self.wmy();
         let my_norm = api::normalize_account_id(&my).to_lowercase();
@@ -1097,8 +1098,10 @@ impl ServiceHub {
         };
         let mut avatar_map: HashMap<String, String> = HashMap::new();
         if !lookup.is_empty() {
-            if let Ok(Value::Object(m)) = wcdb.avatar_urls(&serde_json::to_string(&lookup).unwrap())
-            {
+            let urls = serde_json::to_string(&lookup)
+                .ok()
+                .and_then(|payload| wcdb.avatar_urls(&payload).ok());
+            if let Some(Value::Object(m)) = urls {
                 for (u, url) in m {
                     let (u, url) = (
                         u.trim().to_string(),
@@ -1129,8 +1132,9 @@ impl ServiceHub {
                 v.dedup();
                 v
             };
-            wcdb.avatar_urls(&serde_json::to_string(&list).unwrap())
+            serde_json::to_string(&list)
                 .ok()
+                .and_then(|payload| wcdb.avatar_urls(&payload).ok())
                 .and_then(|m| {
                     list.iter().find_map(|k| {
                         m.get(k)
@@ -1171,8 +1175,9 @@ impl ServiceHub {
             }
         }
         let group_avatar = if is_group {
-            wcdb.avatar_urls(&serde_json::to_string(&[talker]).unwrap())
+            serde_json::to_string(&[talker])
                 .ok()
+                .and_then(|payload| wcdb.avatar_urls(&payload).ok())
                 .and_then(|m| {
                     m.get(talker)
                         .and_then(Value::as_str)
@@ -1243,12 +1248,22 @@ impl ServiceHub {
         if !my.is_empty() {
             meta.insert("ownerId".into(), json!(my));
         }
-        json!({
-            "chatlab": { "version": "0.0.2", "exportedAt": chrono::Utc::now().timestamp(), "generator": "WeFlow" },
-            "meta": meta,
-            "members": member_order.iter().filter_map(|s| members.get(s).cloned()).map(Value::Object).collect::<Vec<_>>(),
-            "messages": chat_messages
-        })
+        let mut out = Map::new();
+        out.insert(
+            "chatlab".into(),
+            json!({ "version": "0.0.2", "exportedAt": chrono::Utc::now().timestamp(), "generator": "WeFlow" }),
+        );
+        out.insert("meta".into(), Value::Object(meta));
+        out.insert(
+            "members".into(),
+            member_order
+                .iter()
+                .filter_map(|s| members.get(s).cloned())
+                .map(Value::Object)
+                .collect(),
+        );
+        out.insert("messages".into(), Value::Array(chat_messages));
+        out
     }
 
     pub(super) fn names_and_avatars_pub(
@@ -1412,10 +1427,8 @@ impl ServiceHub {
                 &media_map,
                 base_url,
             );
-            data.as_object_mut()
-                .unwrap()
-                .insert("media".into(), media_info);
-            return Ok(data);
+            data.insert("media".into(), media_info);
+            return Ok(Value::Object(data));
         }
         let api_messages: Vec<Value> = messages
             .iter()
@@ -1493,10 +1506,8 @@ impl ServiceHub {
             sync.insert("nextOffset".into(), json!(offset + messages.len()));
         }
         sync.insert("watermark".into(), json!(chrono::Utc::now().timestamp()));
-        data.as_object_mut()
-            .unwrap()
-            .insert("sync".into(), Value::Object(sync));
-        Ok(data)
+        data.insert("sync".into(), Value::Object(sync));
+        Ok(Value::Object(data))
     }
 
     /// `downloadEmoji`: cached fetch of a sticker by CDN URL.
@@ -1715,13 +1726,13 @@ impl ServiceHub {
                             opts,
                             Some(&written),
                         );
-                        found.lock().expect("lock poisoned").push((k, r));
+                        found.lock_or_panic().push((k, r));
                         let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         self.emit_progress("export", "copying media", done, total);
                     });
                 }
             });
-            for (k, r) in found.into_inner().unwrap() {
+            for (k, r) in found.into_inner_or_panic() {
                 results[k] = r;
             }
             // An image whose own file is not on disk is still exported when another message shows the same image
@@ -2171,7 +2182,7 @@ impl ServiceHub {
                         let dir = out.join(&safe);
                         let r =
                             self.export_local_media(msg, sid, &safe, &dir, &opts, Some(&written));
-                        results.lock().expect("lock poisoned").push((i, r));
+                        results.lock_or_panic().push((i, r));
                         let n = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                         self.emit_progress(
                             "media",
@@ -2182,7 +2193,7 @@ impl ServiceHub {
                     });
                 }
             });
-            for (i, r) in results.into_inner().unwrap() {
+            for (i, r) in results.into_inner_or_panic() {
                 done[i] = Some(r);
             }
             // see `attach_export_media`: an image found through another message's result, whatever the thread order
