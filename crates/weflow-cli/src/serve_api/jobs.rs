@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::sync::{broadcast, watch, Semaphore};
+use weflow_core::sync::MutexExt;
 
 use super::status_for;
 
@@ -159,12 +160,12 @@ impl Job {
 
     /// The job as JSON, without the command's result.
     pub(super) fn to_json(&self) -> Value {
-        self.json_of(&self.state.lock().expect("lock poisoned"), false)
+        self.json_of(&self.state.lock_or_panic(), false)
     }
 
     /// The job as JSON, with the command's result once it has one.
     pub(super) fn to_json_with_result(&self) -> Value {
-        self.json_of(&self.state.lock().expect("lock poisoned"), true)
+        self.json_of(&self.state.lock_or_panic(), true)
     }
 
     fn json_of(&self, st: &State, full: bool) -> Value {
@@ -187,12 +188,12 @@ impl Job {
     }
 
     pub(super) fn status(&self) -> Status {
-        self.state.lock().expect("lock poisoned").status
+        self.state.lock_or_panic().status
     }
 
     /// The file the job wrote, once it succeeded with one.
     pub(super) fn file(&self) -> Option<PathBuf> {
-        self.state.lock().expect("lock poisoned").file.clone()
+        self.state.lock_or_panic().file.clone()
     }
 
     /// Records an event and sends it to the subscribers, under the lock of `st`, so a subscriber sees each event
@@ -214,7 +215,7 @@ impl Job {
 
     /// Queued → running; a job cancelled meanwhile stays cancelled.
     fn set_running(&self) -> bool {
-        let mut st = self.state.lock().expect("lock poisoned");
+        let mut st = self.state.lock_or_panic();
         if st.status != Status::Queued {
             return false;
         }
@@ -235,7 +236,7 @@ impl Job {
         if line.trim().is_empty() {
             return;
         }
-        let mut st = self.state.lock().expect("lock poisoned");
+        let mut st = self.state.lock_or_panic();
         if st.status.finished() {
             return;
         }
@@ -278,7 +279,7 @@ impl Job {
             }
             _ => None,
         };
-        let mut st = self.state.lock().expect("lock poisoned");
+        let mut st = self.state.lock_or_panic();
         if st.status.finished() {
             return false;
         }
@@ -298,7 +299,7 @@ impl Job {
 
     /// The events after `after` (an SSE `Last-Event-ID`), and the new ones.
     pub(super) fn subscribe(&self, after: u64) -> Subscription {
-        let st = self.state.lock().expect("lock poisoned");
+        let st = self.state.lock_or_panic();
         Subscription {
             replay: st
                 .events
@@ -313,7 +314,7 @@ impl Job {
 
     /// The events kept after `after`, for a subscriber that fell behind.
     pub(super) fn kept_after(&self, after: u64) -> Vec<Event> {
-        let st = self.state.lock().expect("lock poisoned");
+        let st = self.state.lock_or_panic();
         st.events
             .iter()
             .filter(|e| e.seq > after)
@@ -351,25 +352,19 @@ impl Jobs {
 
     pub(super) fn get(&self, id: &str) -> Option<Arc<Job>> {
         self.list
-            .lock()
-            .expect("lock poisoned")
+            .lock_or_panic()
             .iter()
             .find(|j| j.id == id)
             .cloned()
     }
 
     pub(super) fn all(&self) -> Vec<Arc<Job>> {
-        self.list
-            .lock()
-            .expect("lock poisoned")
-            .iter()
-            .cloned()
-            .collect()
+        self.list.lock_or_panic().iter().cloned().collect()
     }
 
     /// Forgets the oldest finished jobs beyond [`KEEP_FINISHED`].
     fn prune(&self) {
-        let mut list = self.list.lock().expect("lock poisoned");
+        let mut list = self.list.lock_or_panic();
         let mut finished = list.iter().filter(|j| j.status().finished()).count();
         list.retain(|j| {
             if finished > KEEP_FINISHED && j.status().finished() {
@@ -396,10 +391,7 @@ impl Jobs {
             .chain(args.iter().cloned())
             .collect();
         let job = Arc::new(Job::new(command, file_out));
-        self.list
-            .lock()
-            .expect("lock poisoned")
-            .push_back(job.clone());
+        self.list.lock_or_panic().push_back(job.clone());
         let jobs = self.clone();
         let running = job.clone();
         let cancelled = job.cancel.subscribe();
@@ -417,10 +409,7 @@ impl Jobs {
     pub(super) async fn cancel_or_forget(&self, job: &Arc<Job>) -> Ended {
         let mut events = job.sender.subscribe();
         if job.status().finished() {
-            self.list
-                .lock()
-                .expect("lock poisoned")
-                .retain(|j| !Arc::ptr_eq(j, job));
+            self.list.lock_or_panic().retain(|j| !Arc::ptr_eq(j, job));
             job.remove_folder();
             return Ended::Forgotten;
         }
@@ -457,6 +446,7 @@ async fn run<'a, W, F>(
     W: FnOnce(&'a Job, watch::Receiver<bool>) -> F,
     F: std::future::Future<Output = ()> + 'a,
 {
+    #[expect(clippy::expect_used, reason = "the job semaphores are never closed")]
     let _place = tokio::select! {
         place = limit.acquire_owned() => place.expect("the semaphore is never closed"),
         _ = cancelled.wait_for(|c| *c) => {
@@ -490,8 +480,11 @@ async fn run_child(
             return;
         }
     };
-    let mut stdout = child.stdout.take().expect("stdout is piped");
-    let stderr = child.stderr.take().expect("stderr is piped");
+    #[expect(clippy::expect_used, reason = "`spawn` pipes stdout and stderr")]
+    let (mut stdout, stderr) = (
+        child.stdout.take().expect("stdout is piped"),
+        child.stderr.take().expect("stderr is piped"),
+    );
     let out = tokio::spawn(async move {
         let mut buf = Vec::new();
         let _ = stdout.read_to_end(&mut buf).await;

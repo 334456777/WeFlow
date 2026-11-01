@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use axum::body::{Body, Bytes};
-use axum::http::{header, Method, StatusCode};
+use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
@@ -23,12 +23,10 @@ fn success(status: StatusCode, data: Value) -> Response {
 /// The `202 Accepted` answer to a request that started `job`.
 pub(super) fn accepted(job: &Job) -> Response {
     let mut resp = success(StatusCode::ACCEPTED, job.to_json());
-    resp.headers_mut().insert(
-        header::LOCATION,
-        format!("/jobs/{}", job.id)
-            .parse()
-            .expect("a job id is a valid header value"),
-    );
+    #[expect(clippy::expect_used, reason = "a job id is hex digits")]
+    let location = HeaderValue::from_str(&format!("/jobs/{}", job.id))
+        .expect("a job id is a valid header value");
+    resp.headers_mut().insert(header::LOCATION, location);
     resp
 }
 
@@ -146,11 +144,5 @@ fn event_stream(job: Arc<Job>, after: u64) -> Response {
             }
         }
     };
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
-        .header(header::CACHE_CONTROL, "no-cache, no-transform")
-        .header("X-Accel-Buffering", "no")
-        .body(Body::from_stream(stream))
-        .expect("the event stream's headers are valid")
+    super::status::event_stream(Body::from_stream(stream))
 }

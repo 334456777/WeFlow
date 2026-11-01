@@ -183,7 +183,7 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
     );
     let tail = format!("\r\n--{boundary}--\r\n");
     let length = head.len() as u64 + length + tail.len() as u64;
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(
             header::CONTENT_TYPE,
@@ -191,13 +191,13 @@ pub(super) async fn multipart(path: &Path) -> Result<Response, String> {
         )
         .header(header::CONTENT_LENGTH, length)
         .body(between(head, file, tail))
-        .unwrap())
+        .map_err(|e| format!("cannot answer with {}: {e}", path.display()))
 }
 
 /// The file alone, to be saved (`GET /jobs/{id}/file`): its type from its extension, its name as an attachment.
 pub(super) async fn attachment(path: &Path) -> Result<Response, String> {
     let (file, length, name) = open(path).await?;
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type(path))
         .header(
@@ -206,7 +206,7 @@ pub(super) async fn attachment(path: &Path) -> Result<Response, String> {
         )
         .header(header::CONTENT_LENGTH, length)
         .body(between(String::new(), file, String::new()))
-        .unwrap())
+        .map_err(|e| format!("cannot answer with {}: {e}", path.display()))
 }
 
 #[cfg(test)]

@@ -111,8 +111,14 @@ fn walk(cmd: &Command, path: &mut Vec<String>, zh: bool, paths: &mut Map<String,
 /// does (`std`, `return=file`, jobs).
 fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
     let mut item = item.clone();
-    for op in item.as_object_mut().unwrap().values_mut() {
-        op["operationId"] = format!("api_{}", op["operationId"].as_str().unwrap()).into();
+    for op in item
+        .as_object_mut()
+        .into_iter()
+        .flat_map(|ops| ops.values_mut())
+    {
+        if let Some(id) = op["operationId"].as_str().map(|id| format!("api_{id}")) {
+            op["operationId"] = id.into();
+        }
         let mut note = pick(
             zh,
             "Runs in the server's process on databases it keeps open: much faster than the route without \
@@ -143,7 +149,9 @@ fn in_process_item(item: &Value, name: &str, zh: bool) -> Value {
 /// The `/api/` route of a media command: a `GET` with the command's parameters but `out`, answering the file.
 fn media_item(cmd: &Command, path: &[String], zh: bool) -> Value {
     let mut op = operation(cmd, path, Verb::Get, &Variant::All, false, None, zh);
-    op["operationId"] = format!("api_{}", op["operationId"].as_str().unwrap()).into();
+    if let Some(id) = op["operationId"].as_str().map(|id| format!("api_{id}")) {
+        op["operationId"] = id.into();
+    }
     if let Some(params) = op["parameters"].as_array_mut() {
         params.retain(|p| p.get("$ref").is_none() && p["name"] != "out");
     }
@@ -344,10 +352,9 @@ fn operation(
     if refused(&name, verb) {
         op["x-weflow-refused"] = true.into();
         // it never succeeds: there is no answer to describe
-        op["responses"]
-            .as_object_mut()
-            .expect("an operation has its responses")
-            .remove("200");
+        if let Some(responses) = op["responses"].as_object_mut() {
+            responses.remove("200");
+        }
     }
     if in_body && !properties.is_empty() {
         let mut schema = json!({
@@ -809,12 +816,11 @@ fn left_out_not_null(schema: &mut Value) {
             any.retain(|s| s != &json!({ "type": "null" }));
             if let [one] = any.as_slice() {
                 let one = one.clone();
-                let object = property
-                    .as_object_mut()
-                    .expect("a property with anyOf is an object");
-                object.remove("anyOf");
-                for (k, v) in one.as_object().into_iter().flatten() {
-                    object.insert(k.clone(), v.clone());
+                if let Some(object) = property.as_object_mut() {
+                    object.remove("anyOf");
+                    for (k, v) in one.as_object().into_iter().flatten() {
+                        object.insert(k.clone(), v.clone());
+                    }
                 }
             }
         }
@@ -1277,8 +1283,9 @@ fn components(zh: bool) -> Value {
         },
     });
     // the types of the contract, Error and Job among them
-    let schemas = components["schemas"].as_object_mut().unwrap();
-    schemas.extend(contract().schemas.clone());
+    if let Some(schemas) = components["schemas"].as_object_mut() {
+        schemas.extend(contract().schemas.clone());
+    }
     components
 }
 

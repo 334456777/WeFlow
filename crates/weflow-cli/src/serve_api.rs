@@ -25,11 +25,12 @@ use axum::body::{to_bytes, Body};
 use axum::extract::{Request, State};
 use axum::http::uri::Authority;
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::Router;
 use clap::{ArgAction, Command, CommandFactory};
 use serde_json::{json, Value};
 use tokio::sync::Semaphore;
+use weflow_core::sync::RwLockExt;
 
 // Below 49152: Windows reserves blocks of its dynamic range (49152-65535) for Hyper-V, WSL 2 and Docker,
 // and a reserved port cannot be bound (#188)
@@ -484,7 +485,9 @@ impl Endpoint {
         let mut options = Vec::new();
         let mut positionals: Vec<(usize, Vec<String>)> = Vec::new();
         for (key, values) in params {
-            let param = find_param(self, key).expect("checked");
+            // `check` has answered an unknown one with what is expected
+            let param =
+                find_param(self, key).ok_or_else(|| format!("unknown parameter `{key}`"))?;
             if let Some(index) = param.index {
                 positionals.push((index, texts(param, values)));
                 continue;
@@ -700,11 +703,28 @@ pub async fn serve(cfg: ApiConfig, listener: tokio::net::TcpListener) -> std::io
 }
 
 fn json_body(status: StatusCode, body: impl Into<Body>) -> Response {
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
-        .body(body.into())
-        .unwrap()
+    let content_type = HeaderValue::from_static("application/json; charset=utf-8");
+    let body: Body = body.into();
+    (status, [(header::CONTENT_TYPE, content_type)], body).into_response()
+}
+
+/// A redirect to `to`, a path on this server, which may carry the query of the request.
+fn redirect(status: StatusCode, to: &str) -> Response {
+    match HeaderValue::from_str(to) {
+        Ok(location) => (status, [(header::LOCATION, location)]).into_response(),
+        Err(_) => bad_request("the address cannot be redirected"),
+    }
+}
+
+/// The answer a builder made; `500` when one of the headers given to it is no valid header value.
+fn built(resp: Result<Response, axum::http::Error>) -> Response {
+    resp.unwrap_or_else(|err| {
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "runtime_error",
+            &format!("cannot build the answer: {err}"),
+        )
+    })
 }
 
 /// An error answered by the server itself, in the shape of a failed `--json` command.
@@ -729,8 +749,12 @@ fn method_not_allowed(allowed: &[Verb]) -> Response {
         "method_not_allowed",
         &format!("method not allowed; use {allow}"),
     );
-    resp.headers_mut()
-        .insert(header::ALLOW, HeaderValue::from_str(&allow).unwrap());
+    #[expect(
+        clippy::expect_used,
+        reason = "method names joined by commas are a valid header value"
+    )]
+    let allow = HeaderValue::from_str(&allow).expect("method names are visible ASCII");
+    resp.headers_mut().insert(header::ALLOW, allow);
     resp
 }
 
@@ -775,10 +799,13 @@ fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
 
 /// Allows pages served from this machine (the WebUI's dev server, for one) to call the API.
 fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
-    let origin = headers
+    // the origin is sent back as the request gave it
+    let Some((value, origin)) = headers
         .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
+        .and_then(|v| Some((v, v.to_str().ok()?)))
+    else {
+        return resp;
+    };
     let host = origin
         .strip_prefix("http://")
         .or_else(|| origin.strip_prefix("https://"));
@@ -793,16 +820,10 @@ fn cors(headers: &HeaderMap, mut resp: Response) -> Response {
     });
     let h = resp.headers_mut();
     if local {
-        h.insert(
-            header::ACCESS_CONTROL_ALLOW_ORIGIN,
-            HeaderValue::from_str(origin).unwrap(),
-        );
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value.clone());
         h.insert(header::VARY, HeaderValue::from_static("Origin"));
         // the stages of `Server-Timing` in the page's own performance entries
-        h.insert(
-            "timing-allow-origin",
-            HeaderValue::from_str(origin).unwrap(),
-        );
+        h.insert("timing-allow-origin", value.clone());
         h.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
             HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"),
@@ -856,10 +877,7 @@ async fn dispatch(State(st): State<Arc<AppState>>, req: Request) -> Response {
              start it with --host",
         )
     } else if req.method() == Method::OPTIONS {
-        Response::builder()
-            .status(StatusCode::NO_CONTENT)
-            .body(Body::empty())
-            .unwrap()
+        StatusCode::NO_CONTENT.into_response()
     } else {
         route(&st, req).await
     };
@@ -995,7 +1013,7 @@ async fn route(st: &AppState, req: Request) -> Response {
         .strip_prefix("/ui")
         .filter(|r| r.is_empty() || r.starts_with('/'))
     {
-        let shown = st.cfg.ui.read().expect("lock poisoned").clone();
+        let shown = st.cfg.ui.read_or_panic().clone();
         return match &shown {
             Some(dir) => ui::serve(dir, &parts.method, rest, parts.uri.query()).await,
             None => error_response(
@@ -1005,10 +1023,7 @@ async fn route(st: &AppState, req: Request) -> Response {
             ),
         };
     }
-    if path == "/"
-        && st.cfg.ui.read().expect("lock poisoned").is_some()
-        && parts.method == Method::GET
-    {
+    if path == "/" && st.cfg.ui.read_or_panic().is_some() && parts.method == Method::GET {
         let to = format!(
             "/ui/{}",
             parts
@@ -1017,11 +1032,7 @@ async fn route(st: &AppState, req: Request) -> Response {
                 .map(|q| format!("?{q}"))
                 .unwrap_or_default()
         );
-        return Response::builder()
-            .status(StatusCode::FOUND)
-            .header(header::LOCATION, to)
-            .body(Body::empty())
-            .unwrap();
+        return redirect(StatusCode::FOUND, &to);
     }
     let query = query_pairs(parts.uri.query());
     if !authorized(&st.cfg.token, &parts.headers, &query) {
@@ -1421,10 +1432,8 @@ async fn route(st: &AppState, req: Request) -> Response {
         }
         Std::In => unreachable!(),
     };
-    resp.headers_mut().insert(
-        "x-weflow-exit-code",
-        HeaderValue::from_str(&exit.to_string()).unwrap(),
-    );
+    resp.headers_mut()
+        .insert("x-weflow-exit-code", HeaderValue::from(exit));
     timing.on(resp)
 }
 
@@ -1451,7 +1460,7 @@ fn in_process_document(doc: &Value, exit: u8, fields: Option<&[String]>) -> Resp
 
 /// A `--json` document as the command prints it: on one line.
 fn json_line(doc: &Value) -> String {
-    format!("{}\n", serde_json::to_string(doc).unwrap())
+    format!("{doc}\n")
 }
 
 /// The names of `?fields=`: repeated, comma-separated, or a JSON array.
@@ -1539,10 +1548,7 @@ fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response 
         .header(header::CACHE_CONTROL, "private, max-age=3600")
         .header(header::ACCEPT_RANGES, "bytes");
     if unchanged {
-        return builder
-            .status(StatusCode::NOT_MODIFIED)
-            .body(Body::empty())
-            .unwrap();
+        return built(builder.status(StatusCode::NOT_MODIFIED).body(Body::empty()));
     }
     // `If-Range` asks for the part only while the file is the one it names
     let same = headers
@@ -1565,11 +1571,12 @@ fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response 
             last,
         ),
         Some(Err(())) => {
-            return builder
-                .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                .header(header::CONTENT_RANGE, format!("bytes */{len}"))
-                .body(Body::empty())
-                .unwrap()
+            return built(
+                builder
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .header(header::CONTENT_RANGE, format!("bytes */{len}"))
+                    .body(Body::empty()),
+            )
         }
     };
     let count = if len == 0 { 0 } else { last + 1 - first };
@@ -1581,10 +1588,7 @@ fn media_response(headers: &HeaderMap, file: in_process::MediaFile) -> Response 
         }
         in_process::MediaBody::File(path) => file_part(path, first as u64, count as u64),
     };
-    builder
-        .header(header::CONTENT_LENGTH, count)
-        .body(body)
-        .unwrap()
+    built(builder.header(header::CONTENT_LENGTH, count).body(body))
 }
 
 /// `count` bytes of a file from `first` on, read as they are sent: a video is not held in memory.
@@ -1769,7 +1773,8 @@ fn status_for_exit(exit: i32) -> StatusCode {
         2 => StatusCode::BAD_REQUEST,
         3 => StatusCode::CONFLICT,
         // the client closed the request (nginx's 499)
-        130 => StatusCode::from_u16(499).unwrap(),
+        #[expect(clippy::expect_used, reason = "499 lies in the range of status codes")]
+        130 => StatusCode::from_u16(499).expect("499 is a status code"),
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
