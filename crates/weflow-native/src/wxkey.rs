@@ -124,7 +124,8 @@ impl WxKey {
         }
         let start = std::time::Instant::now();
         let mut login_hint = false;
-        let mut buf = vec![0u8; 128];
+        const KEY_CAPACITY: c_int = 128;
+        let mut buf = vec![0u8; KEY_CAPACITY as usize];
         let mut result = None;
         let mut last_tick = u64::MAX;
         while start.elapsed() < timeout {
@@ -135,8 +136,8 @@ impl WxKey {
             }
             buf.iter_mut().for_each(|b| *b = 0);
             // SAFETY: `poll` is `PollKeyData` of the library `self` keeps loaded, and `buf` is a live buffer of the
-            // `buf.len()` bytes passed as its capacity.
-            if unsafe { poll(buf.as_mut_ptr() as *mut c_char, buf.len() as c_int) } {
+            // `KEY_CAPACITY` bytes passed as its capacity.
+            if unsafe { poll(buf.as_mut_ptr() as *mut c_char, KEY_CAPACITY) } {
                 let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
                 let key = String::from_utf8_lossy(&buf[..len]).trim().to_string();
                 if key.len() == 64 {
@@ -168,18 +169,13 @@ impl WxKey {
     }
 
     fn status_message(&self) -> Option<(String, i32)> {
+        const STATUS_CAPACITY: c_int = 256;
         let f = self.get_status_message?;
-        let mut buf = vec![0u8; 256];
+        let mut buf = vec![0u8; STATUS_CAPACITY as usize];
         let mut level: c_int = 0;
         // SAFETY: `f` is `GetStatusMessage` of the library `self` keeps loaded; `buf` is a live buffer of the
         // capacity passed and `level` a live local.
-        if !unsafe {
-            f(
-                buf.as_mut_ptr() as *mut c_char,
-                buf.len() as c_int,
-                &mut level,
-            )
-        } {
+        if !unsafe { f(buf.as_mut_ptr() as *mut c_char, STATUS_CAPACITY, &mut level) } {
             return None;
         }
         let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
