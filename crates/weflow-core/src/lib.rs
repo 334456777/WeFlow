@@ -32,6 +32,7 @@ pub mod reads;
 pub mod render;
 pub mod services;
 pub mod sns;
+pub mod sync;
 pub mod video;
 pub mod webui;
 pub mod weibo;
