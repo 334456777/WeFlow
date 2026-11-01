@@ -435,14 +435,15 @@ impl NativeAccount {
             let mut seg_no = 0i64;
             let mut last_ts = 0i64;
             for m in &msgs {
-                if seg.is_none() || (last_ts > 0 && m.time - last_ts > GAP) {
+                if last_ts > 0 && m.time - last_ts > GAP {
                     if let Some(s) = seg.take() {
                         segments.push(s.finish(sid));
                     }
-                    seg_no += 1;
-                    seg = Some(Segment::new(seg_no, m.time, m.local_id));
                 }
-                let s = seg.as_mut().expect("segment exists");
+                let s = seg.get_or_insert_with(|| {
+                    seg_no += 1;
+                    Segment::new(seg_no, m.time, m.local_id)
+                });
                 if m.mine {
                     out += 1;
                     if first_in > 0 && m.time >= first_in && first_reply <= 0 {

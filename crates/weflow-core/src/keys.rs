@@ -30,11 +30,17 @@ pub fn derive_image_keys(code: u64, wxid: &str) -> (u8, String) {
 
 /// `verifyDerivedAesKey`: the key must decrypt the template block into an image header.
 pub fn verify_derived_aes_key(aes_key: &str, ciphertext: &[u8]) -> bool {
-    if aes_key.len() < 16 || ciphertext.len() != 16 || !aes_key.is_ascii() {
+    if !aes_key.is_ascii() {
         return false;
     }
-    let cipher = aes::Aes128::new_from_slice(&aes_key.as_bytes()[..16]).expect("a 16-byte key");
-    let mut block = Array::try_from(ciphertext).expect("a 16-byte block");
+    let (Some(key), Ok(ciphertext)) = (
+        aes_key.as_bytes().first_chunk::<16>(),
+        <&[u8; 16]>::try_from(ciphertext),
+    ) else {
+        return false;
+    };
+    let cipher = aes::Aes128::new(key.into());
+    let mut block = Array::from(*ciphertext);
     cipher.decrypt_block(&mut block);
     let d = block.as_slice();
     (d[0] == 0xff && d[1] == 0xd8 && d[2] == 0xff)
@@ -102,8 +108,9 @@ pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateS
             }
             header[..6].copy_from_slice(&magic);
             f.read_exact(&mut header[6..])?;
-            let aes_len = i32::from_le_bytes(header[6..10].try_into().unwrap());
-            let xor_len = i32::from_le_bytes(header[10..14].try_into().unwrap());
+            let [_, _, _, _, _, _, a0, a1, a2, a3, x0, x1, x2, x3, _, cipher @ ..] = header;
+            let aes_len = i32::from_le_bytes([a0, a1, a2, a3]);
+            let xor_len = i32::from_le_bytes([x0, x1, x2, x3]);
             let aligned = (i64::from(aes_len) / 16 + 1) * 16;
             if aes_len < 16 || xor_len < 0 || metadata.len() < 15 + aligned as u64 + xor_len as u64
             {
@@ -123,7 +130,7 @@ pub fn scan_templates(user_dir: &Path, budget: usize, limit: usize) -> TemplateS
             };
             Ok(Some(ImageTemplate {
                 path: entry.path().into(),
-                cipher: header[15..31].try_into().unwrap(),
+                cipher,
                 tail_xor,
                 modified: metadata.modified().ok(),
             }))

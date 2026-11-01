@@ -35,11 +35,10 @@ pub fn clean_utf16(input: &str) -> String {
 
 /// `stripSenderPrefix`: `wxid_x:` (not `http://`) plus the newline / `<br>` that follows.
 pub fn strip_sender_prefix(content: &str) -> String {
-    let Some(caps) = rx(r"^\s*([A-Za-z0-9_@-]+):").captures(content) else {
+    let Some(prefix) = rx(r"^\s*([A-Za-z0-9_@-]+):").find(content) else {
         return content.to_string();
     };
-    let end = caps.get(0).unwrap().end();
-    let rest = &content[end..];
+    let rest = &content[prefix.end()..];
     if rest.starts_with("//") {
         return content.to_string();
     }

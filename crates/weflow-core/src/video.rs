@@ -112,7 +112,9 @@ fn build_index(base: &Path) -> HashMap<String, IndexEntry> {
         let Some(base_entry) = index.get(&base_key).cloned() else {
             continue;
         };
-        let e = index.get_mut(&key).unwrap();
+        let Some(e) = index.get_mut(&key) else {
+            continue;
+        };
         if e.cover.is_none() {
             e.cover = base_entry.cover;
         }

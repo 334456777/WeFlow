@@ -11,6 +11,10 @@ use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed, CollatorPreferences};
 use icu_locale_core::locale;
 
+#[expect(
+    clippy::expect_used,
+    reason = "collation data is compiled into the binary"
+)]
 fn build(prefs: CollatorPreferences) -> CollatorBorrowed<'static> {
     Collator::try_new(prefs, CollatorOptions::default())
         .expect("compiled collation data is always available")

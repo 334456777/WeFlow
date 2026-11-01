@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::contract::{FfmpegDownload, FfmpegFound, FfmpegInstalled};
 use crate::error::{AppError, AppResult};
+use crate::sync::MutexExt;
 
 /// The `ffmpeg-static` release the desktop app's `ffmpeg-static` 5.3.0 downloads (`binary-release-tag`).
 pub const RELEASE_TAG: &str = "b6.1.1";
@@ -132,7 +133,7 @@ pub fn set_home(home: &Path) {
 /// The ffmpeg to run and where it was found: `FFMPEG_PATH`, `PATH`, `installed`, or `missing` (then plain `ffmpeg`,
 /// which fails to start).
 pub fn locate() -> (PathBuf, &'static str) {
-    if let Some(found) = FOUND.lock().expect("lock poisoned").clone() {
+    if let Some(found) = FOUND.lock_or_panic().clone() {
         return found;
     }
     let found = find(
@@ -141,7 +142,7 @@ pub fn locate() -> (PathBuf, &'static str) {
         HOME.get().map(|h| install_dir(h)),
     );
     if found.1 != "missing" {
-        *FOUND.lock().expect("lock poisoned") = Some(found.clone());
+        *FOUND.lock_or_panic() = Some(found.clone());
     }
     found
 }
@@ -315,7 +316,7 @@ pub async fn install(
         .to_string();
     let removed_releases = remove_other_releases(home);
     // which one WXGF images will use: an ffmpeg on PATH or in FFMPEG_PATH comes first
-    *FOUND.lock().expect("lock poisoned") = None;
+    *FOUND.lock_or_panic() = None;
     Ok(FfmpegInstalled {
         download,
         version: first_line,

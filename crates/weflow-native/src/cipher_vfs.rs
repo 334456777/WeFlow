@@ -80,11 +80,11 @@ impl ShmState {
         if b.len() < 136 || b[12] == 0 || b[0..48] != b[48..96] {
             return None;
         }
-        let u32_at = |i: usize| u32::from_ne_bytes(b[i..i + 4].try_into().expect("4 bytes"));
+        let u32_at = |i: usize| b.get(i..)?.first_chunk().copied().map(u32::from_ne_bytes);
         Some(Self {
-            salt: b[32..40].try_into().expect("8 bytes"),
-            backfilled: u32_at(96),
-            attempted: u32_at(128),
+            salt: *b.get(32..)?.first_chunk()?,
+            backfilled: u32_at(96)?,
+            attempted: u32_at(128)?,
         })
     }
 

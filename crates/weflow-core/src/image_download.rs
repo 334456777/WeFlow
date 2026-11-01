@@ -13,6 +13,8 @@ use std::time::Duration;
 use libloading::Library;
 use serde_json::{json, Value};
 
+use crate::sync::MutexExt;
+
 type InitFn = unsafe extern "C" fn(u32, *const c_char) -> bool;
 type UninstallFn = unsafe extern "C" fn();
 type ErrorFn = unsafe extern "C" fn() -> *const c_char;
@@ -149,7 +151,7 @@ impl ImageAutoDownload {
 
     fn check_and_hook(&self, manual_start: bool) -> Value {
         let pid = find_main_wechat_pid();
-        let mut inner = self.inner.lock().expect("lock poisoned");
+        let mut inner = self.inner.lock_or_panic();
         let Some(pid) = pid else {
             if inner.hooked {
                 Self::unhook_locked(&mut inner);
@@ -202,7 +204,7 @@ impl ImageAutoDownload {
     /// `image:startAutoDownload`
     pub fn start(&self, whitelist: Vec<String>) -> Value {
         {
-            let mut inner = self.inner.lock().expect("lock poisoned");
+            let mut inner = self.inner.lock_or_panic();
             if !self.ensure_loaded(&mut inner) {
                 return json!({ "success": false, "error": "core component initialization failed" });
             }
@@ -233,7 +235,7 @@ impl ImageAutoDownload {
 
     /// `image:stopAutoDownload`
     pub fn stop(&self) -> Value {
-        let mut inner = self.inner.lock().expect("lock poisoned");
+        let mut inner = self.inner.lock_or_panic();
         if let Some(stop) = inner.poll_stop.take() {
             stop.store(true, Ordering::Relaxed);
         }
@@ -243,7 +245,7 @@ impl ImageAutoDownload {
 
     /// `image:getAutoDownloadStatus`
     pub fn status(&self) -> Value {
-        let inner = self.inner.lock().expect("lock poisoned");
+        let inner = self.inner.lock_or_panic();
         json!({ "isHooked": inner.hooked, "pid": inner.pid, "supported": supported() })
     }
 }

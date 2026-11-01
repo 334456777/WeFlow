@@ -22,6 +22,10 @@ struct RegionData {
     city_name_by_key: HashMap<String, String>,
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "the region table is bundled at compile time and covered by tests"
+)]
 fn data() -> &'static RegionData {
     static DATA: OnceLock<RegionData> = OnceLock::new();
     DATA.get_or_init(|| {
@@ -30,6 +34,7 @@ fn data() -> &'static RegionData {
     })
 }
 
+#[expect(clippy::expect_used, reason = "callers pass only static patterns")]
 fn rx(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
     cell.get_or_init(|| Regex::new(pattern).expect("static pattern"))
 }

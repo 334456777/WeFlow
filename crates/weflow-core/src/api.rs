@@ -99,11 +99,13 @@ pub fn parse_time_param(param: Option<&str>, is_end: bool) -> i64 {
         return 0;
     };
     if p.len() == 8 && p.chars().all(|c| c.is_ascii_digit()) {
-        let (y, m, d): (i32, u32, u32) = (
-            p[..4].parse().unwrap(),
-            p[4..6].parse().unwrap(),
-            p[6..8].parse().unwrap(),
-        );
+        let (Ok(y), Ok(m), Ok(d)) = (
+            p[..4].parse::<i32>(),
+            p[4..6].parse::<u32>(),
+            p[6..8].parse::<u32>(),
+        ) else {
+            return 0;
+        };
         let Some(date) = NaiveDate::from_ymd_opt(y, m, d) else {
             return 0;
         };

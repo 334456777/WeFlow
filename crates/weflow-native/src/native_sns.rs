@@ -12,6 +12,7 @@ use serde_json::{json, Map, Value};
 
 use crate::native_db::{same_identity, NativeAccount};
 
+#[expect(clippy::expect_used, reason = "callers pass only static patterns")]
 fn re(p: &str) -> Regex {
     Regex::new(p).expect("static regex")
 }
