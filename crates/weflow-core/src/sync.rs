@@ -28,7 +28,10 @@ pub trait MutexExt<T: ?Sized> {
         T: Sized;
 }
 
-#[expect(clippy::expect_used, reason = "a poisoned lock guards state that cannot be trusted")]
+#[expect(
+    clippy::expect_used,
+    reason = "a poisoned lock guards state that cannot be trusted"
+)]
 impl<T: ?Sized> MutexExt<T> for Mutex<T> {
     fn lock_or_panic(&self) -> MutexGuard<'_, T> {
         self.lock().expect(POISONED)
@@ -59,7 +62,10 @@ pub trait RwLockExt<T: ?Sized> {
     fn write_or_panic(&self) -> RwLockWriteGuard<'_, T>;
 }
 
-#[expect(clippy::expect_used, reason = "a poisoned lock guards state that cannot be trusted")]
+#[expect(
+    clippy::expect_used,
+    reason = "a poisoned lock guards state that cannot be trusted"
+)]
 impl<T: ?Sized> RwLockExt<T> for RwLock<T> {
     fn read_or_panic(&self) -> RwLockReadGuard<'_, T> {
         self.read().expect(POISONED)
