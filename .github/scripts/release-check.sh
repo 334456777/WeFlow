@@ -3,6 +3,7 @@
 # before it runs it: a refusal written in the step showed in every log, as if it had happened.
 # usage: release-check.sh tag <tag>                  (in a clone with `origin`; writes tag/sha/new to GITHUB_OUTPUT)
 #        release-check.sh package <tag> <name> <ext>  (in the folder holding the downloaded package)
+#        release-check.sh bench-base <tag> [<base>]   (needs gh; writes bench_base to GITHUB_OUTPUT)
 set -euo pipefail
 
 case "${1:-}" in
@@ -55,8 +56,23 @@ case "${1:-}" in
     echo "weflow --version matches $TAG"
     "$BIN" config path
     ;;
+  bench-base)
+    # The base of the benchmark run after the release (#516): the one asked for, else the previous release by the
+    # rule of release-changelog.sh (a stable tag: the previous stable release; a pre-release: the previous of any
+    # kind). None (a first release): no benchmark.
+    TAG="$2" BASE="${3:-}"
+    if [ -z "$BASE" ]; then
+      if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then KIND='select(.isPrerelease | not)'; else KIND='.'; fi
+      BASE="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 100 \
+        --json tagName,isPrerelease,publishedAt \
+        --jq "[.[] | select(.tagName != \"$TAG\") | $KIND] | sort_by(.publishedAt) | last | .tagName // empty")"
+      [ -n "$BASE" ] || echo "::warning::no earlier release to compare $TAG with: the benchmark is skipped"
+    fi
+    [ -z "$BASE" ] || echo "benchmark after the release: $BASE → $TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+    echo "bench_base=$BASE" >> "$GITHUB_OUTPUT"
+    ;;
   *)
-    echo "usage: $0 tag <tag> | package <tag> <name> <ext>" >&2
+    echo "usage: $0 tag <tag> | package <tag> <name> <ext> | bench-base <tag> [<base>]" >&2
     exit 2
     ;;
 esac

@@ -10,6 +10,8 @@ name: Release
 # every target: the test suite, and the packaged binary run once and checked against the tag), release (only after
 # every build and test passed). v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1,
 # v1.2.3-rc1, ...) is a pre-release.
+# A manual run with `bench` also runs bench.yml after the release (#516): `bench_base` against the tag, by default
+# the previous release; the report goes to GitHub Pages and its link, with a few lines, into the release notes.
 on:
   push:
     tags:
@@ -23,6 +25,16 @@ on:
       notes:
         description: "Optional text shown above the generated changelog (更新日志)"
         required: false
+        type: string
+      bench:
+        description: "发布后运行基准测试，并把报告链接和主要结论补进更新日志（约 25 分钟，不影响发布）"
+        required: false
+        default: false
+        type: boolean
+      bench_base:
+        description: "基准测试用来对比的 tag 或提交；留空时是上一个版本（正式版对比上一个正式版）"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -43,6 +55,7 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
       sha: ${{ steps.tag.outputs.sha }}
       new: ${{ steps.tag.outputs.new }}
+      bench_base: ${{ steps.bench.outputs.bench_base }}
     steps:
       - uses: actions/checkout@v7
 
@@ -54,6 +67,16 @@ jobs:
         # the checks (a release tag, annotated) and their messages are in the script, which Actions does not print
         # as it does a step's own lines
         run: bash .github/scripts/release-check.sh tag "$TAG"
+
+      - id: bench
+        name: Pick the benchmark base
+        if: inputs.bench
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          BASE: ${{ inputs.bench_base }}
+        run: bash .github/scripts/release-check.sh bench-base "$TAG" "$BASE"
 
   build:
     name: Build ${{ matrix.target }}
@@ -344,3 +367,66 @@ jobs:
             "${FLAGS[@]}"
           # the summary said "not published yet" when the run started
           echo "Published: $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url -q .url), the annotated tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  # With `bench` (#516): bench.yml once the release is out, so the release never waits for it and a failed benchmark
+  # leaves it as it is. Base and head are built and measured as in a manual run of bench.yml; the report goes to
+  # GitHub Pages (bench/<tag>/ of the gh-pages branch).
+  bench:
+    name: Benchmark
+    needs: [prepare, release]
+    if: needs.prepare.outputs.bench_base != ''
+    permissions:
+      contents: write   # the report is pushed to the gh-pages branch
+    uses: ./.github/workflows/bench.yml
+    with:
+      base: ${{ needs.prepare.outputs.bench_base }}
+      head: ${{ needs.prepare.outputs.tag }}
+      pages_path: bench/${{ needs.prepare.outputs.tag }}
+
+  # The 性能基准 section of the release notes, before 下载: the link to the report and the lines of highlights.md.
+  # It sits between two markers, so a re-run replaces it instead of adding another.
+  bench-notes:
+    name: Add the benchmark to the release notes
+    needs: [prepare, bench]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      BASE: ${{ needs.prepare.outputs.bench_base }}
+      URL: ${{ needs.bench.outputs.report_url }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: bench-results
+          path: results
+
+      - name: Edit the release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "<!-- bench -->"
+            echo "## 性能基准"
+            echo
+            echo "与 \`$BASE\` 对比，在同一台 GitHub Actions Windows x64 机器上用合成的基准账号测得：**[查看完整报告]($URL)**"
+            echo
+            cat results/highlights.md
+            echo
+            echo "<!-- /bench -->"
+          } > section.md
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > body.md
+          awk -v f=section.md '
+            { sub(/\r$/, "") }
+            /^<!-- bench -->$/ { skip = 1; next }
+            skip && /^<!-- \/bench -->$/ { skip = 0; after = 1; next }
+            skip { next }
+            after && $0 == "" { after = 0; next }
+            { after = 0 }
+            $0 == "<a name=\"weflow-download\"></a>" && !done { while ((getline l < f) > 0) print l; print ""; done = 1 }
+            { print }
+            END { if (!done) { print ""; while ((getline l < f) > 0) print l } }
+          ' body.md > notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+          cat section.md >> "$GITHUB_STEP_SUMMARY"

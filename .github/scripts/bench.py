@@ -20,7 +20,8 @@ throughput and the memory curve of the server, whose median by quarter of the ti
 
 Writes `results.json` (everything, every run and sample), `summary.md` (also appended to `$GITHUB_STEP_SUMMARY`),
 `report.html` (the tables and the memory curves), both in Chinese for the one who reads them, and the output of
-every command under `logs/`; results.json keeps English field names for scripts. The numbers are
+every command under `logs/`; results.json keeps English field names for scripts, and `highlights.md` holds the few
+lines release.yml puts in the release notes (#516). The numbers are
 reported, not judged: nothing fails because head is slower.
 """
 
@@ -554,18 +555,25 @@ LOAD_ROUTES = {
 def fmt(v, scale=1, unit=""):
     if v is None:
         return "-"
+    if isinstance(v, int) and scale == 1:
+        return f"{v:,} {unit}".strip()  # a count
     v = v / scale
-    text = f"{v:,.1f}" if abs(v) < 100 and scale != 1 else f"{v:,.0f}"
+    text = f"{v:,.1f}" if abs(v) < 10 or (abs(v) < 100 and scale != 1) else f"{v:,.0f}"
     return f"{text} {unit}".strip()
 
 
+def mark(r, diff=None, noise=0):
+    """▲ or ▼ when `r` is past 10 %, unless `diff` (head - base) is within `noise`."""
+    if r is None or (diff is not None and abs(diff) <= noise):
+        return ""
+    return "▲" if r > 1.10 else "▼" if r < 0.90 else ""
+
+
 def fmt_ratio(r, diff=None, noise=0):
-    """`r` with ▲ or ▼ past 10 %, unless `diff` (head - base) is within `noise`."""
     if r is None:
         return "-"
-    quiet = diff is not None and abs(diff) <= noise
-    mark = "" if quiet else " ▲" if r > 1.10 else " ▼" if r < 0.90 else ""
-    return f"{r:.2f}×{mark}"
+    m = mark(r, diff, noise)
+    return f"{r:.2f}×" + (f" {m}" if m else "")
 
 
 def ref_line(meta, v):
@@ -704,6 +712,60 @@ def report_blocks(doc):
             rows.append([f"`{route}`", *cells, r])
         blocks.append(("table", ["路由", "base", "head", RATIO_HEADER], rows))
     return blocks
+
+
+def highlights(doc):
+    """A few lines for the release notes (#516): what changed past the noise, the rest in the report."""
+    out = []
+    b, h = doc["binary"]["base"], doc["binary"]["head"]
+    out.append(f"二进制体积：{fmt(b, MIB, 'MiB')} → {fmt(h, MIB, 'MiB')}（{ratio(h, b):.2f}×）")
+    commands = doc.get("commands") or {}
+    if commands:
+        changed = []
+        for name, e in commands.items():
+            mb, mh = e["median"]["base"].get("wall_ms"), e["median"]["head"].get("wall_ms")
+            r = ratio(mh, mb)
+            if not mark(r, None if None in (mb, mh) else mh - mb, NOISE["wall_ms"]):
+                continue
+            spans = [(min(w), max(w)) for w in ([x["wall_ms"] for x in e["runs"][v] if x["exit_code"] == 0]
+                                                 for v in VERSIONS) if w]
+            if len(spans) == 2 and spans[0][0] <= spans[1][1] and spans[1][0] <= spans[0][1]:
+                continue  # the ranges overlap: a command with two run times, not a change
+            changed.append(f"`{name}` {fmt(mb)} → {fmt(mh)} ms（{r:.2f}×）")
+        if changed:
+            out.append(f"命令耗时有变化：{'；'.join(changed)}；其余 {len(commands) - len(changed)} 条在噪声范围内")
+        else:
+            out.append(f"命令耗时：{len(commands)} 条命令都在噪声范围内")
+        failed = [n for n, e in commands.items() if any(e["median"][v]["failed_runs"] for v in VERSIONS)]
+        if failed:
+            out.append("有运行失败的命令：" + "，".join(f"`{n}`" for n in failed))
+    if doc.get("load_failed"):
+        out.append("`weflow serve` 持续负载没有完成，见报告")
+    elif doc.get("load"):
+        lb, lh = doc["load"]["base"], doc["load"]["head"]
+        qb, qh = lb["working_set_mib"]["quarter_medians"][3], lh["working_set_mib"]["quarter_medians"][3]
+        line = (f"`weflow serve` 持续负载：每秒请求数 {fmt(lb['requests_per_s'])} → {fmt(lh['requests_per_s'])}，"
+                f"延迟 p50 {fmt(lb['latency_ms']['p50'])} → {fmt(lh['latency_ms']['p50'])} ms，"
+                f"工作集 {fmt(qb)} → {fmt(qh)} MiB")
+        growth = lh["working_set_mib"]["growth"]
+        if growth is not None and growth > 20:
+            line += f"；head 的内存在后半段上升了 {fmt(growth)} MiB"
+        out.append(line)
+    sb = doc.get("serve_bench")
+    if sb:
+        rb = (sb["base"]["results"] or {}).get("results", {})
+        rh = (sb["head"]["results"] or {}).get("results", {})
+        ups = downs = 0
+        for route in set(rb) & set(rh):
+            notes = (rb[route].get("note") or "") + (rh[route].get("note") or "")
+            mb, mh = rb[route].get("median"), rh[route].get("median")
+            if "status {" in notes or None in (mb, mh):
+                continue
+            m = mark(ratio(mh, mb), mh - mb, NOISE_MS)
+            ups, downs = ups + (m == "▲"), downs + (m == "▼")
+        out.append(f"serve_bench：{downs} 个路由快了 10% 以上，{ups} 个慢了 10% 以上" if ups or downs
+                   else "serve_bench：各路由都在噪声范围内")
+    return out
 
 
 def to_markdown(blocks):
@@ -899,6 +961,8 @@ def main():
         f.write(markdown)
     with open(os.path.join(out, "report.html"), "w", encoding="utf-8") as f:
         f.write(report_html(doc, blocks))
+    with open(os.path.join(out, "highlights.md"), "w", encoding="utf-8") as f:
+        f.write("".join(f"- {line}\n" for line in highlights(doc)))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
             f.write(markdown + "\n")
