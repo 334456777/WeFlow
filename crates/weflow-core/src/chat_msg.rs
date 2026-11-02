@@ -1419,41 +1419,45 @@ pub fn map_rows(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
 pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
     let table_name = weflow_native::native_msg::table_name_for(session_id);
     rows.into_iter()
-        .map(|mut row| {
-            let create_time = crate::message::msg_row_timestamp(&row);
-            let server_id = row.server_id.unwrap_or(0);
-            let fields = RowFields {
-                content: std::mem::take(&mut row.content),
-                local_type: row.local_type,
-                raw_is_send: Some(i64::from(row.is_send)),
-                sender: row
-                    .sender
-                    .take()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty()),
-                create_time,
-                local_id: row.local_id,
-                server_id,
-                server_id_raw: if server_id > 0 {
-                    server_id.to_string()
-                } else {
-                    "0".into()
-                },
-                sort_seq: row.sort_seq.unwrap_or(create_time),
-            };
-            let src = SourceInfo {
-                db_name: format!("message_{}", row.shard),
-                table_name: table_name.clone(),
-                db_path: String::new(),
-            };
-            chat_message(
-                fields,
-                &PackedInfo(row.packed_info.as_deref()),
-                src,
-                my_wxid,
-            )
-        })
+        .map(|row| map_msg_row(row, &table_name, my_wxid))
         .collect()
+}
+
+/// One row of [`map_msg_rows`], for callers that map rows one at a time; `table_name` is the conversation's
+/// (`table_name_for`).
+pub fn map_msg_row(mut row: MsgRow, table_name: &str, my_wxid: &str) -> ChatMessage {
+    let create_time = crate::message::msg_row_timestamp(&row);
+    let server_id = row.server_id.unwrap_or(0);
+    let fields = RowFields {
+        content: std::mem::take(&mut row.content),
+        local_type: row.local_type,
+        raw_is_send: Some(i64::from(row.is_send)),
+        sender: row
+            .sender
+            .take()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        create_time,
+        local_id: row.local_id,
+        server_id,
+        server_id_raw: if server_id > 0 {
+            server_id.to_string()
+        } else {
+            "0".into()
+        },
+        sort_seq: row.sort_seq.unwrap_or(create_time),
+    };
+    let src = SourceInfo {
+        db_name: format!("message_{}", row.shard),
+        table_name: table_name.to_string(),
+        db_path: String::new(),
+    };
+    chat_message(
+        fields,
+        &PackedInfo(row.packed_info.as_deref()),
+        src,
+        my_wxid,
+    )
 }
 
 fn chat_message(
