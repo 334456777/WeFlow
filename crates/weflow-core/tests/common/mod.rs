@@ -55,6 +55,23 @@ fn hub_for(
     fixture: &Fixture,
     tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
 ) -> ServiceHub {
+    hub_for_account(
+        root,
+        &fixture.account_dir,
+        &fixture.key_hex(),
+        "wxid_me_ab12",
+        tweak,
+    )
+}
+
+/// A hub over the account in `account_dir` (its folder name `wxid`), with outputs under `root`.
+pub fn hub_for_account(
+    root: &Path,
+    account_dir: &Path,
+    key_hex: &str,
+    wxid: &str,
+    tweak: impl FnOnce(&mut weflow_core::config::ProfileConfig),
+) -> ServiceHub {
     // the tests compare English texts: they must not depend on the language of the machine they run on
     weflow_core::locale::set(weflow_core::locale::Lang::En);
     let ctx = AppContext {
@@ -70,8 +87,8 @@ fn hub_for(
         ctx,
         config,
         None,
-        Some(fixture.account_dir.to_string_lossy().to_string()),
-        Some(fixture.key_hex()),
-        Some("wxid_me_ab12".into()),
+        Some(account_dir.to_string_lossy().to_string()),
+        Some(key_hex.into()),
+        Some(wxid.into()),
     )
 }
