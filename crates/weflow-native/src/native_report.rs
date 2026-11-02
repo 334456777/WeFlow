@@ -636,7 +636,7 @@ mod tests {
             .with_my_wxid(Some("wxid_me_ab12".into()))
     }
 
-    fn session(username: &'static str) -> SessionSpec {
+    fn session(username: &'static str) -> SessionSpec<'static> {
         SessionSpec {
             username,
             summary: "",

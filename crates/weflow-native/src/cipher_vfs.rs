@@ -718,23 +718,6 @@ unsafe extern "C" fn io_device_characteristics(_: *mut ffi::sqlite3_file) -> c_i
     ffi::SQLITE_IOCAP_IMMUTABLE
 }
 
-/// WAL checksum helpers for the tests (same algorithm as SQLite's, big-endian words).
-#[cfg(test)]
-fn sqlcipher_checksum(data: &[u8]) -> (u32, u32) {
-    sqlcipher_checksum_from(data, (0, 0))
-}
-
-#[cfg(test)]
-fn sqlcipher_checksum_from(data: &[u8], (mut s0, mut s1): (u32, u32)) -> (u32, u32) {
-    for c in data.as_chunks::<8>().0 {
-        let a = u32::from_be_bytes(c[0..4].try_into().unwrap());
-        let b = u32::from_be_bytes(c[4..8].try_into().unwrap());
-        s0 = s0.wrapping_add(a).wrapping_add(s1);
-        s1 = s1.wrapping_add(b).wrapping_add(s0);
-    }
-    (s0, s1)
-}
-
 #[cfg(test)]
 #[expect(
     clippy::cast_possible_truncation,
@@ -742,7 +725,10 @@ fn sqlcipher_checksum_from(data: &[u8], (mut s0, mut s1): (u32, u32)) -> (u32, u
 )]
 mod tests {
     use super::*;
-    use crate::sqlcipher::testutil::{encrypt_db, encrypt_page, plain_db, KEY, SALT};
+    use crate::sqlcipher::testutil::{
+        encrypt_db, encrypt_page, encrypt_wal, encrypted_wal_header, plain_db, wal_checksum_be,
+        KEY, SALT,
+    };
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("weflow-vfs-{}-{tag}", std::process::id()));
@@ -809,51 +795,9 @@ mod tests {
         assert!(CipherFile::open(&path, &KEY, None).is_err());
     }
 
-    fn wal_header(salt: (u32, u32)) -> Vec<u8> {
-        let mut h = Vec::new();
-        for v in [0x377f0683u32, 3007000, PAGE_SIZE as u32, 0, salt.0, salt.1] {
-            h.extend(v.to_be_bytes());
-        }
-        let (c0, c1) = super::sqlcipher_checksum(&h);
-        h.extend(c0.to_be_bytes());
-        h.extend(c1.to_be_bytes());
-        h
-    }
-
-    /// A WAL holding one committed transaction that rewrites every page of `newer`.
-    fn wal_with(cipher: &PageCipher, newer: &[u8], salt: (u32, u32)) -> Vec<u8> {
-        let mut wal = wal_header(salt);
-        let mut sum = (
-            u32::from_be_bytes(wal[24..28].try_into().unwrap()),
-            u32::from_be_bytes(wal[28..32].try_into().unwrap()),
-        );
-        let n = (newer.len() / PAGE_SIZE) as u32;
-        for pgno in 1..=n {
-            let page = encrypt_page(
-                cipher,
-                pgno,
-                &newer[(pgno as usize - 1) * PAGE_SIZE..pgno as usize * PAGE_SIZE],
-                [0x55; 16],
-            );
-            let mut fh = Vec::new();
-            fh.extend(pgno.to_be_bytes());
-            fh.extend((if pgno == n { n } else { 0 }).to_be_bytes());
-            fh.extend(salt.0.to_be_bytes());
-            fh.extend(salt.1.to_be_bytes());
-            let s = super::sqlcipher_checksum_from(&fh[..8], sum);
-            let s = super::sqlcipher_checksum_from(&page, s);
-            fh.extend(s.0.to_be_bytes());
-            fh.extend(s.1.to_be_bytes());
-            sum = s;
-            wal.extend(fh);
-            wal.extend(page);
-        }
-        wal
-    }
-
     /// A WAL holding one committed transaction that rewrites page 1 of `plain` only (one frame).
     fn wal_page_1(cipher: &PageCipher, plain: &[u8], salt: (u32, u32)) -> Vec<u8> {
-        let mut wal = wal_header(salt);
+        let mut wal = encrypted_wal_header(salt);
         let first_page = encrypt_page(cipher, 1, &plain[..PAGE_SIZE], [7; 16]);
         let sum = (
             u32::from_be_bytes(wal[24..28].try_into().unwrap()),
@@ -865,8 +809,7 @@ mod tests {
         fh.extend(pages.to_be_bytes());
         fh.extend(salt.0.to_be_bytes());
         fh.extend(salt.1.to_be_bytes());
-        let s = super::sqlcipher_checksum_from(&fh[..8], sum);
-        let s = super::sqlcipher_checksum_from(&first_page, s);
+        let s = wal_checksum_be(&first_page, wal_checksum_be(&fh[..8], sum));
         fh.extend(s.0.to_be_bytes());
         fh.extend(s.1.to_be_bytes());
         wal.extend(fh);
@@ -897,7 +840,7 @@ mod tests {
         fs::write(&path, encrypt_db(&plain_db(&["old"]), &cipher)).unwrap();
         fs::write(
             sibling(&path, "-wal"),
-            wal_with(&cipher, &plain_db(&["new"]), (1, 2)),
+            encrypt_wal(&cipher, &[], &plain_db(&["new"]), (1, 2)),
         )
         .unwrap();
         let (_, conn) = open(&path);
