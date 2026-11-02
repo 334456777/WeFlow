@@ -8,7 +8,7 @@ name: Bench
 # measuring is done by `.github/scripts/bench.py` (what it measures is in its docstring); the tools that make the
 # account and time the command API (`bench_account`, `serve_bench`) are built from the commit this workflow runs
 # on, so an older base is measured the same way. The results (results.json, summary.md, report.html, the logs) and
-# the binaries measured are uploaded as one artifact; the summary is shown on the run's page.
+# the binaries measured are uploaded as one artifact; the summary (in Chinese) is shown on the run's page.
 on:
   workflow_dispatch:
     inputs:
@@ -145,12 +145,15 @@ jobs:
       - name: Benchmark
         shell: bash
         env:
+          BASE_REF: ${{ inputs.base }}
+          HEAD_REF: ${{ inputs.head }}
           RUNS: ${{ inputs.runs }}
           LOAD_SECONDS: ${{ inputs.load_seconds }}
           ONLY: ${{ inputs.only }}
         run: |
           python .github/scripts/bench.py --base bin/weflow-base.exe --head bin/weflow-head.exe \
             --base-commit "$(cat bin/base-commit.txt)" --head-commit "$(cat bin/head-commit.txt)" \
+            --base-ref "$BASE_REF" --head-ref "$HEAD_REF" \
             --account "$RUNNER_TEMP/account" --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" \
             --serve-bench bin/serve_bench.exe ${ONLY:+--only "$ONLY"}
 
