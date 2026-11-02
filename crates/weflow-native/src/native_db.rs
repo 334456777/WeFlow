@@ -249,7 +249,7 @@ impl NativeAccount {
     /// (number of open snapshots, bytes of decrypted pages they cache, the soft limit in bytes).
     pub fn cache_stats(&self) -> (usize, usize, usize) {
         let Ok(c) = self.cache.lock() else {
-            return (0, 0, HEAP_SOFT_LIMIT as usize);
+            return (0, 0, usize::try_from(HEAP_SOFT_LIMIT).unwrap_or(usize::MAX));
         };
         let mut used = 0usize;
         for conn in c.entries.values().flat_map(|s| &s.conns) {
@@ -268,7 +268,11 @@ impl NativeAccount {
                 used += cur.max(0) as usize;
             }
         }
-        (c.entries.len(), used, HEAP_SOFT_LIMIT as usize)
+        (
+            c.entries.len(),
+            used,
+            usize::try_from(HEAP_SOFT_LIMIT).unwrap_or(usize::MAX),
+        )
     }
 
     /// Connections the snapshot of `path` holds (0 when it is not open).

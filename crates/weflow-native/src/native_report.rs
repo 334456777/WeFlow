@@ -349,8 +349,13 @@ impl NativeAccount {
         });
         if !responses.is_empty() {
             let sum: i64 = responses.iter().sum();
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "the rounded mean of `i64` values; float-to-integer `as` saturates"
+            )]
+            let avg = (sum as f64 / responses.len() as f64).round() as i64;
             out["response"] = json!({
-                "avg": (sum as f64 / responses.len() as f64).round() as i64,
+                "avg": avg,
                 "fastest": responses.iter().min(), "slowest": responses.iter().max(), "count": responses.len()
             });
         }
@@ -393,8 +398,8 @@ impl NativeAccount {
             num(&["end", "endTimestamp"]),
         );
         let (mention_limit, private_limit) = (
-            num(&["mention_limit", "mentionLimit"]) as usize,
-            num(&["private_limit", "privateLimit"]) as usize,
+            usize::try_from(num(&["mention_limit", "mentionLimit"])).unwrap_or(usize::MAX),
+            usize::try_from(num(&["private_limit", "privateLimit"])).unwrap_or(usize::MAX),
         );
         let list = |key: &str| -> Vec<String> {
             options
@@ -559,7 +564,7 @@ impl NativeAccount {
             "mention_groups": mention_groups.into_iter().map(|(s, c, l)| json!({ "session_id": s, "count": c, "latest_ts": l })).collect::<Vec<_>>(),
             "diagnostics": {
                 "truncated": private_truncated || mention_truncated, "private_truncated": private_truncated, "mention_truncated": mention_truncated,
-                "scanned_dbs": self.message_dbs().len(), "elapsed_ms": started.elapsed().as_millis() as u64,
+                "scanned_dbs": self.message_dbs().len(), "elapsed_ms": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 "private_session_count": private_ids.len(), "group_session_count": group_ids.len(), "fallback_used": false
             }
         }))

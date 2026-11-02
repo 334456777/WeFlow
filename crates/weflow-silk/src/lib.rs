@@ -29,6 +29,8 @@ extern "C" {
 const HEADER: &[u8] = b"#!SILK_V3";
 const MAX_PAYLOAD: usize = 1024;
 const MAX_INTERNAL_FRAMES: usize = 5;
+/// Samples the decoder may write per call: 20 ms at 48 kHz, twice over.
+const SCRATCH_SAMPLES: i16 = 960 * 2;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SilkError {
@@ -88,21 +90,21 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
         more_internal_decoder_frames: 0,
         in_band_fec_offset: 0,
     };
-    let mut scratch = vec![0i16; 960 * 2];
+    let mut scratch = vec![0i16; SCRATCH_SAMPLES as usize];
     let mut out: Vec<u8> = Vec::new();
     while !src.is_empty() {
         if src.len() < 2 {
             return Err(SilkError::TruncatedPayload);
         }
-        let len = i16::from_le_bytes([src[0], src[1]]);
+        let packet_len = i16::from_le_bytes([src[0], src[1]]);
         src = &src[2..];
-        if len == -1 {
+        if packet_len == -1 {
             break;
         }
-        if len < 0 {
+        if packet_len < 0 {
             return Err(SilkError::InvalidPacketLength);
         }
-        let len = len as usize;
+        let len = packet_len as usize;
         if len > MAX_PAYLOAD {
             return Err(SilkError::PayloadTooLarge);
         }
@@ -116,7 +118,7 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
             if frames >= MAX_INTERNAL_FRAMES {
                 return Err(SilkError::TooManyInternalFrames);
             }
-            let mut n = scratch.len() as i16;
+            let mut n = SCRATCH_SAMPLES;
             // SAFETY: `state_ptr` is the decoder initialized above, kept alive by `state`; `payload` is `len` live
             // bytes; `scratch` holds the `n` samples passed as its capacity.
             let code = unsafe {
@@ -125,7 +127,7 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
                     &mut ctl,
                     0,
                     payload.as_ptr(),
-                    payload.len() as i32,
+                    i32::from(packet_len),
                     scratch.as_mut_ptr(),
                     &mut n,
                 )
@@ -147,6 +149,10 @@ pub fn decode(silk: &[u8], sample_rate: i32) -> Result<Vec<u8>, SilkError> {
 
 /// Test-only encoder over the vendored SDK, used to build realistic voice fixtures.
 #[cfg(any(test, feature = "test-encoder"))]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a one-second test tone: frame sizes and samples are small"
+)]
 pub mod testenc {
     use std::ffi::c_void;
 

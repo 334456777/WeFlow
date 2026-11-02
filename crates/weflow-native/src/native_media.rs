@@ -227,7 +227,7 @@ fn tables_of(r: &Value, tables: &[(String, crate::native_msg::MsgTable)]) -> Vec
         Some(sid) => (0..tables.len())
             .filter(|&at| tables[at].0 == sid)
             .collect(),
-        None => vec![int(r, "_table") as usize],
+        None => usize::try_from(int(r, "_table")).into_iter().collect(),
     }
 }
 
@@ -999,6 +999,10 @@ impl NativeAccount {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::*;
     use crate::fixture::{Fixture, DAY, T0};

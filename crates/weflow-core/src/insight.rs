@@ -20,7 +20,7 @@ pub const RECORDS_FILE: &str = "weflow-insight-records.json";
 pub fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
         .unwrap_or(0)
 }
 
@@ -215,7 +215,7 @@ impl RecordStore {
         }
         contacts.sort_by_key(|a| std::cmp::Reverse(a.3));
         let keyword = f.keyword.trim().to_lowercase();
-        let offset = f.offset.unwrap_or(0).max(0) as usize;
+        let offset = usize::try_from(f.offset.unwrap_or(0)).unwrap_or(0);
         let limit = f.limit.filter(|l| *l != 0).unwrap_or(100).clamp(1, 200) as usize;
         let mut filtered: Vec<&InsightRecord> = all
             .iter()
@@ -354,7 +354,9 @@ pub fn normalize_api_max_tokens(v: &Value) -> u64 {
         _ => None,
     };
     match n {
-        Some(n) if n.is_finite() => (n.floor() as i64).clamp(1, 2_000_000) as u64,
+        Some(n) if n.is_finite() => {
+            crate::num::saturating_i64(n.floor()).clamp(1, 2_000_000) as u64
+        }
         _ => API_MAX_TOKENS_DEFAULT,
     }
 }

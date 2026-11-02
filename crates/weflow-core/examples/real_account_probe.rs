@@ -2,6 +2,10 @@
 //! Usage: real_account_probe <isolated config.json> <private inventory.json>
 //! The inventory contains conversation identifiers and dates and must remain private. Stdout contains only
 //! aggregate counts. No key, identifier, message content or local account path is printed.
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "probe and benchmark data are small values that fit"
+)]
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};

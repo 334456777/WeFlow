@@ -286,7 +286,9 @@ impl CipherFile {
                 path: path.to_path_buf(),
                 file,
                 cipher: c,
-                main_pages: (len / PAGE_SIZE as u64) as u32,
+                main_pages: u32::try_from(len / PAGE_SIZE as u64).with_context(|| {
+                    format!("{} has more pages than SQLite can number", path.display())
+                })?,
                 total_pages,
                 page1: page1.into_boxed_slice(),
                 wal_pages,
@@ -407,8 +409,14 @@ impl CipherFile {
                 out[done..].fill(0);
                 return ffi::SQLITE_IOERR_SHORT_READ;
             }
-            let pgno = (pos / PAGE_SIZE as u64) as u32 + 1;
-            let in_page = (pos % PAGE_SIZE as u64) as usize;
+            // `pos` is below `total`, whose page count is a `u32`
+            let (Ok(pgno), Ok(in_page)) = (
+                u32::try_from(pos / PAGE_SIZE as u64),
+                usize::try_from(pos % PAGE_SIZE as u64),
+            ) else {
+                return ffi::SQLITE_IOERR_READ;
+            };
+            let pgno = pgno + 1;
             let n = (out.len() - done).min(PAGE_SIZE - in_page);
             let result = if in_page == 0 && n == PAGE_SIZE {
                 self.page_into(pgno, &mut out[done..done + PAGE_SIZE])
@@ -492,6 +500,10 @@ fn register_vfs() -> Result<()> {
             return Err("SQLite has no default VFS".into());
         }
         let d = &*default;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the file struct is a few dozen bytes"
+        )]
         let vfs = Box::new(ffi::sqlite3_vfs {
             iVersion: 2,
             szOsFile: d.szOsFile.max(std::mem::size_of::<VfsFile>() as c_int),
@@ -697,6 +709,7 @@ unsafe extern "C" fn io_file_control(_: *mut ffi::sqlite3_file, _: c_int, _: *mu
     ffi::SQLITE_NOTFOUND
 }
 
+#[expect(clippy::cast_possible_truncation, reason = "PAGE_SIZE is 4096")]
 unsafe extern "C" fn io_sector_size(_: *mut ffi::sqlite3_file) -> c_int {
     PAGE_SIZE as c_int
 }
@@ -723,6 +736,10 @@ fn sqlcipher_checksum_from(data: &[u8], (mut s0, mut s1): (u32, u32)) -> (u32, u
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::*;
     use crate::sqlcipher::testutil::{encrypt_db, encrypt_page, plain_db, KEY, SALT};

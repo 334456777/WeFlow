@@ -145,6 +145,10 @@ pub fn xor_in_place(data: &mut [u8], key: &str, limit: Option<usize>) {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::*;
 

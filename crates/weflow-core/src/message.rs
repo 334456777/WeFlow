@@ -231,7 +231,7 @@ pub fn normalize_timestamp_seconds(value: f64) -> i64 {
     if !value.is_finite() || value <= 0.0 {
         return 0;
     }
-    let mut n = value.floor() as i64;
+    let mut n = crate::num::saturating_i64(value.floor());
     while n > 10_000_000_000 {
         n /= 1000;
     }
@@ -391,7 +391,8 @@ pub fn normalize_unsigned_token(value: &str) -> String {
         };
     }
     match raw.parse::<f64>() {
-        Ok(n) if n.is_finite() && n > 0.0 => format!("{}", n.floor() as i128),
+        // a float displays without an exponent, so a whole number prints as an integer
+        Ok(n) if n.is_finite() && n > 0.0 => format!("{}", n.floor()),
         _ => "0".into(),
     }
 }
@@ -443,7 +444,7 @@ fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
     for pair in bytes.chunks(2) {
         let hi = (pair[0] as char).to_digit(16)?;
         let lo = (pair[1] as char).to_digit(16)?;
-        out.push((hi * 16 + lo) as u8);
+        out.push(u8::try_from(hi * 16 + lo).ok()?);
     }
     Some(out)
 }
@@ -468,7 +469,8 @@ fn base64_to_bytes(s: &str) -> Option<Vec<u8>> {
         bits += 6;
         if bits >= 8 {
             bits -= 8;
-            out.push((buf >> bits) as u8);
+            // `buf` holds fewer than `bits + 8` bits here, so this is one byte
+            out.push(u8::try_from(buf >> bits).ok()?);
             buf &= (1 << bits) - 1;
         }
     }
@@ -958,13 +960,13 @@ fn percent_decode(s: &str) -> String {
 /// `%XX` escapes (two hex digits) turned into bytes; anything else is kept as it is.
 pub fn percent_decode_bytes(s: &str) -> Vec<u8> {
     let bytes = s.as_bytes();
-    let hex = |b: u8| (b as char).to_digit(16);
+    let hex = |b: u8| (b as char).to_digit(16).and_then(|d| u8::try_from(d).ok());
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
             if let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
-                out.push((h * 16 + l) as u8);
+                out.push(h * 16 + l);
                 i += 3;
                 continue;
             }
@@ -1566,12 +1568,9 @@ fn extract_partial_quoted_text(xml: &str, full: &str) -> String {
         }
     }
     if let (Some(s), Some(e)) = (start_index, end_index) {
-        if e >= s && s >= 0 {
-            let sliced: String = full
-                .chars()
-                .skip(s as usize)
-                .take((e - s + 1) as usize)
-                .collect();
+        if let (true, Ok(skip), Ok(take)) = (e >= s, usize::try_from(s), usize::try_from(e - s + 1))
+        {
+            let sliced: String = full.chars().skip(skip).take(take).collect();
             let sliced = sliced.trim().to_string();
             if !sliced.is_empty() {
                 return sliced;
@@ -1972,9 +1971,9 @@ fn parse_duration_seconds(value: &str) -> Option<i64> {
         return None;
     }
     Some(if n >= 1000.0 {
-        (n / 1000.0).round() as i64
+        crate::num::saturating_i64((n / 1000.0).round())
     } else {
-        n.round() as i64
+        crate::num::saturating_i64(n.round())
     })
 }
 

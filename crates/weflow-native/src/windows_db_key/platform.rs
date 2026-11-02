@@ -65,6 +65,10 @@ fn module(pid: u32, name: &str) -> Result<MODULEENTRY32W> {
     if snapshot.0 == INVALID_HANDLE_VALUE {
         return Err(win_error("enumerate WeChat modules"));
     }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the struct is about a kilobyte"
+    )]
     let mut entry = MODULEENTRY32W {
         dwSize: std::mem::size_of::<MODULEENTRY32W>() as u32,
         ..Default::default()
@@ -196,7 +200,7 @@ fn file_version(path: &[u16]) -> Result<[u16; 4]> {
             &mut length,
         )
     } == 0
-        || length < std::mem::size_of::<VS_FIXEDFILEINFO>() as u32
+        || (length as usize) < std::mem::size_of::<VS_FIXEDFILEINFO>()
         || value.is_null()
     {
         bail!("invalid WeChat version resource");
@@ -209,9 +213,9 @@ fn file_version(path: &[u16]) -> Result<[u16; 4]> {
     }
     Ok([
         (info.dwProductVersionMS >> 16) as u16,
-        info.dwProductVersionMS as u16,
+        (info.dwProductVersionMS & 0xFFFF) as u16,
         (info.dwProductVersionLS >> 16) as u16,
-        info.dwProductVersionLS as u16,
+        (info.dwProductVersionLS & 0xFFFF) as u16,
     ])
 }
 
@@ -636,11 +640,13 @@ impl Debugger {
                         } else if exception.ExceptionCode == EXCEPTION_SINGLE_STEP {
                             if let Some(thread) = self.threads.get(&event.dwThreadId) {
                                 let mut ctx = context(thread.handle.0)?;
-                                if ctx.Rip as usize == self.target
+                                if ctx.Rip == self.target as u64
                                     && ctx.Dr6 & (1 << thread.slot) != 0
                                 {
                                     self.pending_disposition = DBG_CONTINUE;
-                                    captured = self.read_key(ctx.Rdx as usize, output);
+                                    captured = usize::try_from(ctx.Rdx)
+                                        .ok()
+                                        .and_then(|structure| self.read_key(structure, output));
                                     ctx.Dr6 &= !(1 << thread.slot);
                                     // RF skips this instruction's execution breakpoint once. All
                                     // integer/SIMD registers, stack and flags remain otherwise intact.
@@ -693,7 +699,7 @@ impl Debugger {
             state.diagnostics.unreadable_arguments += 1;
             return None;
         }
-        let address = u64::from_le_bytes(fields[8..16].try_into().ok()?) as usize;
+        let address = usize::try_from(u64::from_le_bytes(fields[8..16].try_into().ok()?)).ok()?;
         let size = u64::from_le_bytes(fields[16..24].try_into().ok()?);
         if size != 32 || address == 0 {
             state.diagnostics.invalid_arguments += 1;
@@ -809,7 +815,7 @@ impl Debugger {
                         if record.ExceptionCode == EXCEPTION_SINGLE_STEP {
                             if let Some(thread) = self.threads.get(&event.dwThreadId) {
                                 let mut ctx = context(thread.handle.0)?;
-                                if ctx.Rip as usize == self.target
+                                if ctx.Rip == self.target as u64
                                     && ctx.Dr6 & (1 << thread.slot) != 0
                                 {
                                     ctx.Dr6 &= !(1 << thread.slot);
@@ -844,6 +850,10 @@ impl Drop for Debugger {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Write};

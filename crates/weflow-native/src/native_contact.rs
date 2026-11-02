@@ -390,6 +390,10 @@ fn decode_hex(s: &str) -> Vec<u8> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::*;
     use crate::native_db::hex;

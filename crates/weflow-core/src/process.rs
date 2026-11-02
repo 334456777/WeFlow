@@ -34,6 +34,10 @@ pub fn pids_by_image(images: &[&str]) -> Vec<u32> {
         return Vec::new();
     }
     let mut entries = Vec::new();
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the struct is a few hundred bytes"
+    )]
     let mut entry = PROCESSENTRY32W {
         dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()

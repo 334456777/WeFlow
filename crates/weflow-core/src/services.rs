@@ -537,7 +537,7 @@ impl ServiceHub {
         let data = bytes.to_vec();
 
         let profile = self.profile()?;
-        let xor_key = profile.image_xor_key.map(|k| k as u8);
+        let xor_key = profile.image_xor_key.and_then(|k| u8::try_from(k).ok());
         let aes_key_bytes = profile
             .image_aes_key
             .as_deref()
@@ -1878,7 +1878,7 @@ pub(crate) fn normalize_timestamp(input: i64) -> i32 {
     } else {
         input
     };
-    seconds.clamp(0, i32::MAX as i64) as i32
+    crate::num::saturating_i32(seconds.max(0))
 }
 
 /// `normalizeRange`: open end → now, end never before begin.

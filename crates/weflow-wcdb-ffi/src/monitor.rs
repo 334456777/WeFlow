@@ -231,12 +231,14 @@ mod pipe {
     impl Write for Instance {
         fn write(&mut self, buf: &[u8]) -> Result<usize> {
             let mut written = 0u32;
+            // a pipe write may be shorter than asked for; `write_all` sends the rest
+            let len = u32::try_from(buf.len()).unwrap_or(u32::MAX);
             // SAFETY: valid handle; `buf` is readable for its length.
             let ok = unsafe {
                 WriteFile(
                     self.0,
                     buf.as_ptr(),
-                    buf.len() as u32,
+                    len,
                     &mut written,
                     std::ptr::null_mut(),
                 )

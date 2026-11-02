@@ -77,7 +77,7 @@ fn to_optional_number(v: Option<&Value>) -> Option<f64> {
 
 fn num_value(f: f64) -> Value {
     if f.fract() == 0.0 && f.abs() < 9.0e15 {
-        json!(f as i64)
+        json!(crate::num::saturating_i64(f))
     } else {
         json!(f)
     }

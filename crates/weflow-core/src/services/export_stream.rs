@@ -117,7 +117,7 @@ fn read_pages<T: Send, R>(
     with_finisher: &WithFinisher<'_, T>,
     f: impl FnOnce(&mut dyn Iterator<Item = T>) -> R,
 ) -> AppResult<R> {
-    let clamp = |t: i64| t.clamp(0, i32::MAX as i64) as i32;
+    let clamp = |t: i64| crate::num::saturating_i32(t.max(0));
     let (begin, finish) = (req.start.map_or(0, clamp), req.end.map_or(0, clamp));
     let cursor = wcdb
         .open_export_cursor(&req.session_id, PAGE_SIZE, begin, finish)
@@ -471,11 +471,11 @@ impl Stats {
             messages = total,
             // page reads run again because WeChat changed the database meanwhile
             stale_reruns = stale,
-            elapsed_ms = elapsed.as_millis() as u64,
-            fetch_ms = self.fetch.as_millis() as u64,
-            parse_ms = self.parse.as_millis() as u64,
-            render_ms = self.finish.as_millis() as u64,
-            consumer_waiting_ms = self.starved.as_millis() as u64,
+            elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+            fetch_ms = u64::try_from(self.fetch.as_millis()).unwrap_or(u64::MAX),
+            parse_ms = u64::try_from(self.parse.as_millis()).unwrap_or(u64::MAX),
+            render_ms = u64::try_from(self.finish.as_millis()).unwrap_or(u64::MAX),
+            consumer_waiting_ms = u64::try_from(self.starved.as_millis()).unwrap_or(u64::MAX),
             "message export read"
         );
     }
@@ -561,15 +561,15 @@ impl<'a, T> PageStream<'a, T> {
             return;
         }
         let delivered = self.gate.delivered.swap(0, Ordering::Relaxed);
-        let per_page = time / delivered.max(1) as u32;
+        let per_page = time / u32::try_from(delivered.max(1)).unwrap_or(u32::MAX);
         tracing::trace!(
             target: "weflow::export",
             workers = self.gate.active(),
             taken = pages,
             delivered,
-            window_us = time.as_micros() as u64,
-            waited_us = wait.as_micros() as u64,
-            per_page_us = per_page.as_micros() as u64,
+            window_us = u64::try_from(time.as_micros()).unwrap_or(u64::MAX),
+            waited_us = u64::try_from(wait.as_micros()).unwrap_or(u64::MAX),
+            per_page_us = u64::try_from(per_page.as_micros()).unwrap_or(u64::MAX),
             growth = ?self.growth,
             "worker check"
         );
@@ -582,7 +582,8 @@ impl<'a, T> PageStream<'a, T> {
             Growth::Starting { before } => Growth::Judging { before },
             Growth::Judging { before } => {
                 let gain = before.saturating_sub(per_page);
-                let possible = before / self.gate.active().max(1) as u32;
+                let possible =
+                    before / u32::try_from(self.gate.active().max(1)).unwrap_or(u32::MAX);
                 if gain * 2 < possible {
                     Growth::Stopped
                 } else {

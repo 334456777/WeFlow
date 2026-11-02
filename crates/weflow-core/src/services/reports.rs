@@ -33,7 +33,7 @@ fn from_native<T: serde::de::DeserializeOwned>(
 
 fn num(v: &Value) -> i64 {
     v.as_i64()
-        .or_else(|| v.as_f64().map(|f| f as i64))
+        .or_else(|| v.as_f64().map(crate::num::saturating_i64))
         .or_else(|| v.as_str().and_then(crate::api::js_parse_int))
         .unwrap_or(0)
 }
@@ -494,9 +494,9 @@ impl ServiceHub {
                     if n <= 0.0 || !n.is_finite() {
                         0
                     } else if n > 1e12 {
-                        (n / 1000.0).floor() as i64
+                        crate::num::saturating_i64((n / 1000.0).floor())
                     } else {
-                        n.floor() as i64
+                        crate::num::saturating_i64(n.floor())
                     }
                 };
                 Self::add_years_from_range(
@@ -693,8 +693,8 @@ impl ServiceHub {
                     sid,
                     1000,
                     true,
-                    start.clamp(0, i32::MAX as i64) as i32,
-                    end.clamp(0, i32::MAX as i64) as i32,
+                    crate::num::saturating_i32(start.max(0)),
+                    crate::num::saturating_i32(end.max(0)),
                     true,
                 ) else {
                     continue;
@@ -842,8 +842,8 @@ impl ServiceHub {
                     sid,
                     2000,
                     true,
-                    start.clamp(0, i32::MAX as i64) as i32,
-                    end.clamp(0, i32::MAX as i64) as i32,
+                    crate::num::saturating_i32(start.max(0)),
+                    crate::num::saturating_i32(end.max(0)),
                     true,
                 ) else {
                     continue;
@@ -910,8 +910,8 @@ impl ServiceHub {
             (start, end)
         };
         if let Ok(sd) = wcdb.sns_annual_stats(
-            sb.clamp(0, i32::MAX as i64) as i32,
-            se.clamp(0, i32::MAX as i64) as i32,
+            crate::num::saturating_i32(sb.max(0)),
+            crate::num::saturating_i32(se.max(0)),
         ) {
             if sd.is_object() {
                 let listed = |key: &str| -> Vec<(String, i64)> {
@@ -1161,9 +1161,9 @@ impl ServiceHub {
                 }
             }
             (cnt > 0.0).then(|| ResponseSpeed {
-                avg_response_time: (sum / cnt).round() as i64,
+                avg_response_time: crate::num::saturating_i64((sum / cnt).round()),
                 fastest_friend: info(&fastest_id).0,
-                fastest_time: fastest.round() as i64,
+                fastest_time: crate::num::saturating_i64(fastest.round()),
             })
         } else {
             let (mut all, mut fastest_id, mut fastest) =
@@ -1179,10 +1179,11 @@ impl ServiceHub {
                 }
             }
             (!all.is_empty()).then(|| ResponseSpeed {
-                avg_response_time: (all.iter().sum::<i64>() as f64 / all.len() as f64).round()
-                    as i64,
+                avg_response_time: crate::num::saturating_i64(
+                    (all.iter().sum::<i64>() as f64 / all.len() as f64).round(),
+                ),
                 fastest_friend: info(&fastest_id).0,
-                fastest_time: fastest.round() as i64,
+                fastest_time: crate::num::saturating_i64(fastest.round()),
             })
         };
 
@@ -1362,10 +1363,10 @@ impl ServiceHub {
         };
         let Ok(cursor) = wcdb.open_message_cursor(
             session,
-            limit.max(1) as i32,
+            crate::num::saturating_i32(limit.max(1)),
             true,
-            safe_begin.clamp(0, i32::MAX as i64) as i32,
-            safe_end.clamp(0, i32::MAX as i64) as i32,
+            crate::num::saturating_i32(safe_begin.max(0)),
+            crate::num::saturating_i32(safe_end.max(0)),
             false,
         ) else {
             return Vec::new();
@@ -1548,8 +1549,8 @@ impl ServiceHub {
                 friend,
                 500,
                 true,
-                start.clamp(0, i32::MAX as i64) as i32,
-                end.clamp(0, i32::MAX as i64) as i32,
+                crate::num::saturating_i32(start.max(0)),
+                crate::num::saturating_i32(end.max(0)),
                 false,
             ) {
                 loop {

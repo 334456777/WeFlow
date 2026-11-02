@@ -316,7 +316,9 @@ pub async fn fetch_recent_posts(
     let uid = normalize_uid(uid_input)?;
     let cookie = normalize_cookie_input(cookie_input)?;
     let has_cookie = !cookie.is_empty();
-    let count = requested_count.clamp(1, MAX_POSTS as i64) as usize;
+    let count = usize::try_from(requested_count)
+        .unwrap_or(0)
+        .clamp(1, MAX_POSTS);
     let cookie_hash: String = md5::Md5::digest(if has_cookie {
         cookie.as_bytes()
     } else {

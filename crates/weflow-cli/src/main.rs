@@ -1556,7 +1556,7 @@ async fn main() -> ExitCode {
         }
         Err(err) => {
             print_failure(&err);
-            ExitCode::from(err.exit_code as u8)
+            ExitCode::from(exit_status(err.exit_code))
         }
     }
 }
@@ -3466,8 +3466,8 @@ async fn serve_webui(
             weflow_core::output::progress(
                 "web",
                 "downloading the WebUI",
-                done as usize,
-                total as usize,
+                usize::try_from(done).unwrap_or(usize::MAX),
+                usize::try_from(total).unwrap_or(usize::MAX),
             )
         };
         let meta =
@@ -3532,8 +3532,8 @@ async fn handle_web(command: &WebCommand, hub: &ServiceHub) -> AppResult<Value> 
         weflow_core::output::progress(
             "web",
             "downloading the WebUI",
-            done as usize,
-            total as usize,
+            usize::try_from(done).unwrap_or(usize::MAX),
+            usize::try_from(total).unwrap_or(usize::MAX),
         )
     };
     match &command.command {
@@ -3733,7 +3733,7 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
         if command.desktop {
             hub.config_value("httpApiPort")
                 .as_u64()
-                .map(|p| p as u16)
+                .and_then(|p| u16::try_from(p).ok())
                 .unwrap_or(5031)
         } else {
             serve_api::DEFAULT_PORT
@@ -4177,7 +4177,7 @@ fn json_document(outcome: AppResult<Value>) -> (Value, u8) {
         ),
         Err(err) => (
             serde_json::to_value(failure(err.payload())).expect("a failure document serializes"),
-            err.exit_code as u8,
+            exit_status(err.exit_code),
         ),
     };
     weflow_core::locale::localize_json(&mut doc);
@@ -4387,6 +4387,12 @@ fn reported_failure(value: &Value) -> Option<AppError> {
         err.details = Some(Value::Object(details));
     }
     Some(err)
+}
+
+/// The process exit status for an error's exit code; one outside 0 to 255 becomes 1 rather than wrapping (256 would
+/// read as success).
+fn exit_status(code: i32) -> u8 {
+    u8::try_from(code).unwrap_or(1)
 }
 
 fn print_failure(err: &AppError) {

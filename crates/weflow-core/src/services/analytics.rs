@@ -76,7 +76,7 @@ fn is_private_session(username: &str, cleaned_wxid: &str) -> bool {
 
 fn num(v: &Value) -> i64 {
     v.as_i64()
-        .or_else(|| v.as_f64().map(|f| f as i64))
+        .or_else(|| v.as_f64().map(crate::num::saturating_i64))
         .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
         .unwrap_or(0)
 }
@@ -259,8 +259,8 @@ impl ServiceHub {
                 session_id,
                 500,
                 true,
-                begin.clamp(0, i32::MAX as i64) as i32,
-                end.clamp(0, i32::MAX as i64) as i32,
+                crate::num::saturating_i32(begin.max(0)),
+                crate::num::saturating_i32(end.max(0)),
                 false,
             ) else {
                 continue;

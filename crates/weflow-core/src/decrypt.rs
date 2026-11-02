@@ -129,11 +129,10 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
     let aes_size = read_i32_le(data, 6) as i64;
     let xor_size = read_i32_le(data, 10) as i64;
     let remainder = ((aes_size % 16) + 16) % 16;
-    let aligned = aes_size + (16 - remainder);
-    if aligned < 0 || aligned as usize > payload.len() {
-        return Err(anyhow!("invalid aes size"));
-    }
-    let aligned = aligned as usize;
+    let aligned = usize::try_from(aes_size + (16 - remainder))
+        .ok()
+        .filter(|&n| n <= payload.len())
+        .ok_or_else(|| anyhow!("invalid aes size"))?;
     let aes_data = &payload[..aligned];
     let plain_aes = if aes_data.is_empty() {
         Vec::new()
@@ -150,10 +149,11 @@ fn decrypt_dat_v4(data: &[u8], xor_key: u8, aes_key: &[u8; 16]) -> Result<Decryp
         strict_remove_pkcs7(decrypted)?
     };
     let remaining = &payload[aligned..];
-    if xor_size < 0 || xor_size as usize > remaining.len() {
-        return Err(anyhow!("invalid xor size"));
-    }
-    let raw_len = remaining.len() - xor_size as usize;
+    let xor_size = usize::try_from(xor_size)
+        .ok()
+        .filter(|&n| n <= remaining.len())
+        .ok_or_else(|| anyhow!("invalid xor size"))?;
+    let raw_len = remaining.len() - xor_size;
     let mut out = Vec::with_capacity(plain_aes.len() + remaining.len());
     out.extend_from_slice(&plain_aes);
     out.extend_from_slice(&remaining[..raw_len]);
@@ -215,6 +215,10 @@ pub fn decrypt_file_to_json(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 mod tests {
     use super::*;
 

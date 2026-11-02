@@ -24,6 +24,10 @@
     clippy::expect_used,
     reason = "probe code reports failure by panicking"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "probe and benchmark data are small values that fit"
+)]
 use std::path::Path;
 use std::time::Instant;
 

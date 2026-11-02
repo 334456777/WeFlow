@@ -278,8 +278,8 @@ impl ServiceHub {
                 q.offset,
                 usernames_json.as_deref(),
                 q.keyword.as_deref(),
-                q.start as i32,
-                q.end as i32,
+                crate::num::saturating_i32(q.start),
+                crate::num::saturating_i32(q.end),
             )
             .map_err(err_native)?;
         let rows = raw.as_array().cloned().unwrap_or_default();
@@ -351,10 +351,11 @@ impl ServiceHub {
                 break;
             }
             rows.iter().for_each(&mut visit);
-            if (rows.len() as i32) < page {
+            let got = crate::num::saturating_i32(rows.len());
+            if got < page {
                 break;
             }
-            offset += rows.len() as i32;
+            offset = offset.saturating_add(got);
         }
         Ok(())
     }
@@ -388,7 +389,7 @@ impl ServiceHub {
                     raw.get(k)
                         .and_then(|v| {
                             v.as_i64()
-                                .or_else(|| v.as_f64().map(|f| f as i64))
+                                .or_else(|| v.as_f64().map(crate::num::saturating_i64))
                                 .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
                         })
                         .unwrap_or(0)
@@ -997,7 +998,7 @@ impl ServiceHub {
             posts.extend(batch);
             end_ts = last_ts;
             self.emit_progress("sns", "loading Moments…", posts.len(), 0);
-            if (n as i32) < page || (opts.start > 0 && last_ts < opts.start) {
+            if crate::num::saturating_i32(n) < page || (opts.start > 0 && last_ts < opts.start) {
                 break;
             }
         }

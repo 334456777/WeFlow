@@ -2,6 +2,10 @@
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "test values are known to fit, or are meant to wrap"
+)]
 
 mod common;
 

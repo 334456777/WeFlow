@@ -62,7 +62,7 @@ fn pick_int(row: &Value, keys: &[&str], fallback: i64) -> i64 {
                 .as_f64()
                 .or_else(|| v.as_str().and_then(|s| s.trim().parse::<f64>().ok()));
             if let Some(n) = n.filter(|n| n.is_finite()) {
-                return n.floor() as i64;
+                return crate::num::saturating_i64(n.floor());
             }
         }
     }
@@ -73,7 +73,7 @@ fn non_neg_int(v: &Value) -> i64 {
     v.as_f64()
         .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
         .filter(|n: &f64| n.is_finite())
-        .map(|n| n.floor().max(0.0) as i64)
+        .map(|n| crate::num::saturating_i64(n.floor().max(0.0)))
         .unwrap_or(0)
 }
 
@@ -897,7 +897,7 @@ impl ServiceHub {
                         .unwrap_or(id)
                         .to_string(),
                     c.as_i64()
-                        .unwrap_or_else(|| c.as_f64().unwrap_or(0.0) as i64),
+                        .unwrap_or_else(|| crate::num::saturating_i64(c.as_f64().unwrap_or(0.0))),
                 )
             })
             .collect();
@@ -936,7 +936,10 @@ impl ServiceHub {
         for i in 0..24 {
             let v = hourly
                 .and_then(|h| h.get(i.to_string()).or_else(|| h.get(i)))
-                .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
+                .and_then(|v| {
+                    v.as_i64()
+                        .or_else(|| v.as_f64().map(crate::num::saturating_i64))
+                })
                 .unwrap_or(0);
             dist.insert(i.to_string(), v);
         }
@@ -974,7 +977,7 @@ impl ServiceHub {
             let t = crate::api::js_parse_int(&k).unwrap_or(0);
             let c = c
                 .as_i64()
-                .unwrap_or_else(|| c.as_f64().unwrap_or(0.0) as i64);
+                .unwrap_or_else(|| crate::num::saturating_i64(c.as_f64().unwrap_or(0.0)));
             if main_types.contains(&t) {
                 *counts.entry(t).or_insert(0) += c;
             } else {
@@ -1069,9 +1072,9 @@ impl ServiceHub {
             if v <= 0 {
                 0
             } else if v > 10_000_000_000 {
-                (v / 1000) as i32
+                crate::num::saturating_i32(v / 1000)
             } else {
-                v as i32
+                crate::num::saturating_i32(v)
             }
         };
         let (b, e) = (norm(start), norm(end));
@@ -1343,7 +1346,7 @@ impl ServiceHub {
         let limit = limit.clamp(1, 100);
         let wcdb = self.open_wcdb()?;
         let my_wxid = self.my_wxid_cleaned();
-        let batch_size = (limit * 4).max(240) as i32;
+        let batch_size = crate::num::saturating_i32((limit * 4).max(240));
         let db_cursor = self.member_cursor(
             &wcdb,
             chatroom_id,
@@ -1579,43 +1582,32 @@ impl ServiceHub {
             ws.write_with_format(1, 5, "成员wxid", &bold).map_err(x)?;
             ws.merge_range(1, 6, 1, 7, member, &Format::new())
                 .map_err(x)?;
-            for (i, (label, value)) in [
+            // xlsx caps rows and columns far below the integer types, so the writer fails before they could wrap
+            for (i, (label, value)) in (0u16..).zip([
                 ("成员显示名", &member_display),
                 ("成员备注", &remark),
                 ("群昵称", &group_nick),
                 ("微信号", &alias),
-            ]
-            .iter()
-            .enumerate()
-            {
-                ws.write_with_format(2, (i * 2) as u16, *label, &bold)
-                    .map_err(x)?;
-                ws.write(2, (i * 2 + 1) as u16, value.as_str()).map_err(x)?;
+            ]) {
+                ws.write_with_format(2, i * 2, label, &bold).map_err(x)?;
+                ws.write(2, i * 2 + 1, value.as_str()).map_err(x)?;
             }
-            for (i, pair) in meta.chunks(2).enumerate() {
-                ws.write_with_format(3, (i * 2) as u16, pair[0], &bold)
-                    .map_err(x)?;
-                ws.write(3, (i * 2 + 1) as u16, pair[1]).map_err(x)?;
+            for (i, pair) in (0u16..).zip(meta.chunks(2)) {
+                ws.write_with_format(3, i * 2, pair[0], &bold).map_err(x)?;
+                ws.write(3, i * 2 + 1, pair[1]).map_err(x)?;
             }
-            for (i, h) in ["序号", "时间", "发送者wxid", "消息类型", "内容"]
-                .iter()
-                .enumerate()
+            for (i, h) in (0u16..).zip(["序号", "时间", "发送者wxid", "消息类型", "内容"])
             {
-                ws.write_with_format(4, i as u16, *h, &bold).map_err(x)?;
+                ws.write_with_format(4, i, h, &bold).map_err(x)?;
             }
             ws.set_row_height(4, 22).map_err(x)?;
-            for (col, w) in [10.0, 22.0, 30.0, 16.0, 90.0, 16.0, 20.0, 24.0]
-                .iter()
-                .enumerate()
-            {
-                ws.set_column_width(col as u16, *w).map_err(x)?;
+            for (col, w) in (0u16..).zip([10.0, 22.0, 30.0, 16.0, 90.0, 16.0, 20.0, 24.0]) {
+                ws.set_column_width(col, w).map_err(x)?;
             }
-            for (i, r) in records.iter().enumerate() {
-                let row = (5 + i) as u32;
-                ws.write_number_with_format(row, 0, (i + 1) as f64, &wrap)
-                    .map_err(x)?;
-                for (c, cell) in r.iter().enumerate().take(5).skip(1) {
-                    ws.write_with_format(row, c as u16, cell.as_str(), &wrap)
+            for ((row, n), r) in (5u32..).zip(1u32..).zip(records.iter()) {
+                ws.write_number_with_format(row, 0, n, &wrap).map_err(x)?;
+                for (c, cell) in (0u16..).zip(r.iter()).take(5).skip(1) {
+                    ws.write_with_format(row, c, cell.as_str(), &wrap)
                         .map_err(x)?;
                 }
             }
@@ -1792,25 +1784,22 @@ impl ServiceHub {
             ws.merge_range(1, 6, 1, 7, session_remark.as_str(), &Format::new())
                 .map_err(x)?;
             ws.set_row_height(1, 20).map_err(x)?;
-            for (i, pair) in meta.chunks(2).enumerate() {
-                ws.write_with_format(2, (i * 2) as u16, pair[0], &bold)
-                    .map_err(x)?;
-                ws.write(2, (i * 2 + 1) as u16, pair[1]).map_err(x)?;
+            // xlsx caps rows and columns far below the integer types, so the writer fails before they could wrap
+            for (i, pair) in (0u16..).zip(meta.chunks(2)) {
+                ws.write_with_format(2, i * 2, pair[0], &bold).map_err(x)?;
+                ws.write(2, i * 2 + 1, pair[1]).map_err(x)?;
             }
             ws.set_row_height(2, 20).map_err(x)?;
-            for (i, h) in header.iter().enumerate() {
-                ws.write_with_format(3, i as u16, *h, &bold).map_err(x)?;
+            for (i, h) in (0u16..).zip(header.iter()) {
+                ws.write_with_format(3, i, *h, &bold).map_err(x)?;
             }
             ws.set_row_height(3, 22).map_err(x)?;
-            for (col, w) in [28.0, 28.0, 28.0, 36.0, 28.0, 18.0, 24.0, 22.0]
-                .iter()
-                .enumerate()
-            {
-                ws.set_column_width(col as u16, *w).map_err(x)?;
+            for (col, w) in (0u16..).zip([28.0, 28.0, 28.0, 36.0, 28.0, 18.0, 24.0, 22.0]) {
+                ws.set_column_width(col, w).map_err(x)?;
             }
-            for (i, r) in rows.iter().enumerate() {
-                for (c, cell) in r.iter().enumerate().take(5) {
-                    ws.write_with_format((4 + i) as u32, c as u16, cell.as_str(), &wrap)
+            for (row, r) in (4u32..).zip(rows.iter()) {
+                for (c, cell) in (0u16..).zip(r.iter()).take(5) {
+                    ws.write_with_format(row, c, cell.as_str(), &wrap)
                         .map_err(x)?;
                 }
             }
