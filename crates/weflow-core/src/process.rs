@@ -1,5 +1,4 @@
-//! Running processes by image name. On Windows they come from a ToolHelp snapshot of the process list instead of
-//! starting `tasklist` and parsing its CSV output.
+//! Running processes by image name. On Windows they come from a ToolHelp snapshot of the process list.
 
 /// Process ids of the `(image name, pid)` entries whose image is one of `images`, ignoring ASCII case. The ids are
 /// grouped in the order of `images`, each group in the order of `entries` (the order the system lists them).

@@ -3405,7 +3405,7 @@ fn the_footprint_is_exported_as_json_or_as_a_timeline() {
     let xlsx = std::fs::read(v["data"]["out"].as_str().unwrap()).unwrap();
     assert!(xlsx.starts_with(b"PK"), "an xlsx is a zip");
 
-    // JSON as before
+    // JSON as it is
     let (code, v, _) = export("json");
     assert_eq!(code, 0);
     let json: Value =
@@ -3783,7 +3783,7 @@ fn answers_fit_the_contract() {
 
     let sessions = read("/api/chat/sessions", None);
     assert!(sessions.as_array().unwrap().len() >= 3, "{sessions}");
-    // the reads typed since (#430), each answering the shape its route says
+    // the typed reads (#430), each answering the shape its route says
     for target in [
         "/api/chat/statuses?usernames=wxid_bob&usernames=room1%40chatroom",
         "/api/chat/counts?sessions=wxid_bob&sessions=room1%40chatroom",

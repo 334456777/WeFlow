@@ -1012,7 +1012,7 @@ impl NativeAccount {
 
     /// Every sticker caption at once, keyed by lower-case md5 — the same answer as calling
     /// [`emoticon_caption`](Self::emoticon_caption) for each md5, but in two table scans instead of two per sticker
-    /// (the `lower(md5) = lower(?)` lookup cannot use an index, so exporting a group full of stickers was slow).
+    /// (a `lower(md5) = lower(?)` lookup cannot use an index).
     pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
         let mut out = std::collections::HashMap::new();
         // same precedence as `emoticon_caption`: the user's own caption, else the first store caption (Chinese first)

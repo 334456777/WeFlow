@@ -397,7 +397,7 @@ impl NativeAccount {
     }
 
     /// Where a page `offset` messages deep starts: the place of the last message it skips. Read from the sort keys of
-    /// the rows [`newest_rows`](Self::newest_rows) would read, without their sender join and JSON objects.
+    /// the rows [`newest_rows`](Self::newest_rows) would read, not from the rows themselves.
     fn offset_position(
         &self,
         tables: &[MsgTable],

@@ -310,7 +310,7 @@ fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
         serde_json::json!({ "username": "wxid_bob", "displayName": "Bobby", "remark": "Bobby", "nickname": "Bob",
             "alias": "bobby_id", "type": "friend", "avatarUrl": "https://example.com/bob.png" })
     );
-    // the list of the desktop API stays as it was, without avatars
+    // the list of the desktop API has no avatars
     assert!(hub
         .chat_contacts_list()
         .unwrap()

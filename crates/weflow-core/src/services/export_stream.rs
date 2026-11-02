@@ -257,7 +257,7 @@ type PageResult<T> = (usize, AppResult<Page<T>>);
 impl PageSource<'_> {
     fn read(&self, page: usize) -> AppResult<ParsedPage> {
         let t = Instant::now();
-        // typed rows (#491): no JSON object per row, and their text moves into the messages
+        // typed rows (#491): their text moves into the messages
         let rows = self
             .wcdb
             .fetch_message_page_as::<MsgRow>(self.cursor, page)

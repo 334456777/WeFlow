@@ -2,10 +2,10 @@
 //! [`native_msg`](crate::native_msg) in one of two shapes ([`RowShape`]):
 //!
 //! - [`MsgRow`]: the columns typed, the content inflated and decoded once, the sender resolved, the database named by
-//!   its shard number. What the service layer moves to (#491, #492).
+//!   its shard number. What the service layer reads (#491, #492).
 //! - [`LegacyRow`]: the JSON object of WeChat's own columns (`select m.*`) plus `sender_username`, `is_send`,
 //!   `_db_path`, `db_name` and `table_name`. The shape the desktop app reads through `weflow-wcdb-ffi`, which keeps
-//!   `wcdb_api`'s, and that the service layer reads until it has moved.
+//!   `wcdb_api`'s.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -225,7 +225,7 @@ pub(crate) fn finish_legacy(row: &mut Value, ctx: &RowContext<'_>) {
     };
     let t = ctx.table;
     obj.insert("is_send".into(), json!(if is_send { 1 } else { 0 }));
-    // Text was already inflated by the reader, so the WCDB "compressed" flags no longer apply.
+    // Text was already inflated by the reader, so the WCDB "compressed" flag does not apply.
     obj.insert("WCDB_CT_message_content".into(), Value::Null);
     obj.insert("_db_path".into(), json!(t.db.to_string_lossy()));
     obj.insert(

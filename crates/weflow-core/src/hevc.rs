@@ -5,7 +5,7 @@
 //! On a real account all 1763 WXGF images decoded to the same samples as ffmpeg. What it does not cover (10-bit,
 //! 4:2:2 / 4:4:4, inter-predicted first pictures) gives `None`, and the caller falls back to ffmpeg.
 
-/// JPEG quality: as close to the source as ffmpeg's `-q:v 2` was (measured on real WXGF images; the files are about
+/// JPEG quality: as close to the source as ffmpeg's `-q:v 2` (measured on real WXGF images; the files are about
 /// a quarter larger).
 const JPEG_QUALITY: u8 = 92;
 
