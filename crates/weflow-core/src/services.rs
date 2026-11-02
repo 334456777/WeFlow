@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
+use weflow_native::msg_row::MsgRow;
 
 use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
 use crate::error::{AppError, AppResult};
@@ -211,9 +212,9 @@ impl ServiceHub {
         self.messages(session_id, limit, 0)
     }
 
-    /// A newest-first page of a conversation for `chat messages` and `chat latest`: from the newest message, after
-    /// `offset` of them, or next to the message of a `_cursor` (`before`: the older ones; `after`: the newer ones
-    /// closest to it). Every row gets its own `_cursor`, to ask for the page next to it.
+    /// A newest-first page of a conversation for `chat messages` and `chat latest`, as [`MessageRow`]s: from the
+    /// newest message, after `offset` of them, or next to the message of a `_cursor` (`before`: the older ones;
+    /// `after`: the newer ones closest to it). Every row has its own `_cursor`, to ask for the page next to it.
     pub fn message_page(
         &self,
         session_id: &str,
@@ -222,6 +223,22 @@ impl ServiceHub {
         before: Option<&str>,
         after: Option<&str>,
     ) -> AppResult<Value> {
+        let rows = self.message_page_rows(session_id, limit, offset, before, after)?;
+        Ok(json!(rows
+            .into_iter()
+            .map(crate::contract::MessageRow::from)
+            .collect::<Vec<_>>()))
+    }
+
+    /// [`message_page`](Self::message_page) as typed rows (#492).
+    pub fn message_page_rows(
+        &self,
+        session_id: &str,
+        limit: i32,
+        offset: i32,
+        before: Option<&str>,
+        after: Option<&str>,
+    ) -> AppResult<Vec<MsgRow>> {
         use weflow_native::native_msg::{MsgPos, PageFrom};
         let pos = |token: &str| {
             MsgPos::parse(token).ok_or_else(|| {
@@ -236,12 +253,11 @@ impl ServiceHub {
             (None, None) => None,
         };
         let wcdb = self.open_wcdb()?;
-        let page = match from {
-            Some(from) => wcdb.messages_from(session_id, limit, from),
-            None => wcdb.messages(session_id, limit, offset),
+        match from {
+            Some(from) => wcdb.messages_from_as::<MsgRow>(session_id, limit, from),
+            None => wcdb.messages_as::<MsgRow>(session_id, limit, offset),
         }
-        .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(with_cursors(page))
+        .map_err(|err| AppError::native(err.to_string()))
     }
 
     /// `chat messages --since`: the `limit` messages sent at `seconds` (Unix time) or later, the earliest ones, still
@@ -251,27 +267,43 @@ impl ServiceHub {
         session_id: &str,
         limit: i32,
         seconds: i64,
-    ) -> AppResult<Value> {
+    ) -> AppResult<Vec<MsgRow>> {
         use weflow_native::native_msg::{MsgPos, PageFrom};
-        let wcdb = self.open_wcdb()?;
-        let page = wcdb
-            .messages_from(session_id, limit, PageFrom::After(MsgPos::at_time(seconds)))
-            .map_err(|err| AppError::native(err.to_string()))?;
-        Ok(with_cursors(page))
+        self.open_wcdb()?
+            .messages_from_as::<MsgRow>(
+                session_id,
+                limit,
+                PageFrom::After(MsgPos::at_time(seconds)),
+            )
+            .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    /// Typed rows of one conversation as the chat window shows them, each with its `_cursor` (#492).
+    pub fn parsed_rows(
+        &self,
+        rows: Vec<MsgRow>,
+        session_id: &str,
+    ) -> Vec<crate::contract::ParsedMessage> {
+        let cursors: Vec<String> = rows.iter().map(|r| r.pos().token()).collect();
+        crate::chat_msg::map_msg_rows(rows, session_id, &self.wmy())
+            .into_iter()
+            .zip(cursors)
+            .map(|(message, cursor)| crate::contract::ParsedMessage {
+                message,
+                cursor: Some(cursor),
+                session_id: None,
+            })
+            .collect()
     }
 
     /// `chat message --parsed`: the message a lookup found, parsed as a page's are and with its `_cursor`, so a
     /// chat window can open its conversation there (issue #200).
-    pub fn parsed_lookup(&self, lookup: Value) -> Value {
-        let row = lookup.get("row").cloned().unwrap_or(Value::Null);
-        if !row.is_object() {
-            return Value::Null;
-        }
-        let page = self.parsed_message_page(with_cursors(Value::Array(vec![row])));
-        page.as_array()
-            .and_then(|rows| rows.first())
-            .cloned()
-            .unwrap_or(Value::Null)
+    pub fn parsed_lookup(
+        &self,
+        row: MsgRow,
+        session_id: &str,
+    ) -> Option<crate::contract::ParsedMessage> {
+        self.parsed_rows(vec![row], session_id).pop()
     }
 
     /// `chat search`: the hits, newest first, each with the `_cursor` of its message, to page its conversation from.
@@ -417,8 +449,9 @@ impl ServiceHub {
         let local_id = crate::api::js_parse_int(msg_id)
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
-        let row = chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(43))?
-            .ok_or_else(|| AppError::runtime("message not found"))?;
+        let row =
+            chat::legacy_message_by_local_id(&wcdb, session_id, local_id, create_time, Some(43))?
+                .ok_or_else(|| AppError::runtime("message not found"))?;
         let msg = crate::chat_msg::map_rows(std::slice::from_ref(&row), &self.my_wxid_cleaned())
             .into_iter()
             .next()

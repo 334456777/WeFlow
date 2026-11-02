@@ -472,7 +472,7 @@ pub(super) fn contract() -> &'static Contract {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
             AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, ExportStats, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightCleared, InsightLookup, InsightMarked, InsightRecords, InsightReply, InsightScan, InsightTodayStat,
-            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
+            MemberAnalytics, MemberMessages, MessageLookup, MessageRow, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
             ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
@@ -483,18 +483,25 @@ pub(super) fn contract() -> &'static Contract {
             .into_generator();
         let of = |schema: schemars::Schema| schema.to_value();
         let rows = json!({ "type": "array", "items": { "$ref": "#/components/schemas/Row" } });
-        let parsed_or_rows = |parsed: Value, what: &str| {
+        let parsed_or = |parsed: Value, what: &str, raw: Value| {
             json!({
-                "description": format!("With `parsed=true`, {what} as the chat window shows them; else the rows of WeChat's table, each with its `_cursor`"),
-                "anyOf": [parsed, rows.clone()],
+                "description": format!("With `parsed=true`, {what} as the chat window shows them; else as WeChat keeps them, each with its `_cursor`"),
+                "anyOf": [parsed, raw],
             })
         };
         let mut data = std::collections::BTreeMap::new();
         data.insert("chat sessions", of(generator.subschema_for::<Vec<Session>>()));
         let messages = of(generator.subschema_for::<Vec<ParsedMessage>>());
-        data.insert("chat messages", parsed_or_rows(messages.clone(), "the messages"));
-        data.insert("chat search", parsed_or_rows(messages, "the hits, each with its `_session_id`,"));
-        data.insert("chat latest", rows.clone());
+        let message_rows = of(generator.subschema_for::<Vec<MessageRow>>());
+        data.insert(
+            "chat messages",
+            parsed_or(messages.clone(), "the messages", message_rows.clone()),
+        );
+        data.insert(
+            "chat search",
+            parsed_or(messages, "the hits, each with its `_session_id`,", rows.clone()),
+        );
+        data.insert("chat latest", message_rows);
         data.insert(
             "chat message",
             json!({
@@ -591,7 +598,7 @@ pub(super) fn contract() -> &'static Contract {
                 "type": "object",
                 "description": "The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one)",
                 "required": ["accounts"],
-                "properties": { "accounts": rows.clone() },
+                "properties": { "accounts": rows },
             }),
         );
         data.insert("biz messages", of(generator.subschema_for::<BizMessages>()));
@@ -1520,13 +1527,62 @@ mod tests {
                 next_cursor: None,
             },
         ];
+        // the rows of `chat messages` without `parsed` (#492): a text, an app message without a sender, and one with
+        // neither a server id nor a sort_seq
+        let message_rows = [
+            MessageRow {
+                local_id: 1,
+                server_id: Some("9007199254740993".into()),
+                local_type: 1,
+                sort_seq: Some(1700000000000),
+                create_time: Some(1700000000),
+                status: Some(3),
+                sender: Some("wxid_bob".into()),
+                is_send: false,
+                content: "hello".into(),
+                source: Some("<msgsource><signature>v1_abc</signature></msgsource>".into()),
+                packed_info: None,
+                shard: 0,
+                cursor: "1700000000000.1700000000.1.0".into(),
+            },
+            MessageRow {
+                local_id: 2,
+                server_id: Some("-1".into()),
+                local_type: 21474836529,
+                sort_seq: Some(1700000060000),
+                create_time: Some(1700000060),
+                status: None,
+                sender: None,
+                is_send: true,
+                content: "<msg><appmsg><type>5</type><title>link</title></appmsg></msg>".into(),
+                source: None,
+                packed_info: Some("0a0b0c".into()),
+                shard: 1,
+                cursor: "1700000060000.1700000060.2.1".into(),
+            },
+            MessageRow {
+                local_id: 9,
+                server_id: None,
+                local_type: 10000,
+                sort_seq: None,
+                create_time: Some(1700000120),
+                status: None,
+                sender: None,
+                is_send: false,
+                content: String::new(),
+                source: None,
+                packed_info: None,
+                shard: 0,
+                cursor: "1700000120000.1700000120.9.0".into(),
+            },
+        ];
         let lookups = [
             MessageLookup {
-                row: rows[0].clone(),
+                row: message_rows[0].clone(),
                 message: Some(MessageView::of(&image, "wxid_me")),
             },
             MessageLookup {
-                row: json!({ "local_id": 9, "local_type": 1 }),
+                row: message_rows[2].clone(),
                 message: None,
             },
         ];
@@ -1623,6 +1679,7 @@ mod tests {
             "Contact": contacts,
             "ResourcePage": pages,
             "MessageLookup": lookups,
+            "MessageRow": message_rows,
             "Error": errors,
             "Job": jobs,
         })
@@ -1728,6 +1785,13 @@ mod tests {
         broken("MessageLookup", 1, &|v| {
             v.as_object_mut().unwrap().remove("message");
         });
+        broken("MessageRow", 0, &|v| {
+            v["serverId"] = json!(9007199254740993u64)
+        });
+        broken("MessageRow", 1, &|v| {
+            v.as_object_mut().unwrap().remove("_cursor");
+        });
+        broken("MessageRow", 2, &|v| v["isSend"] = json!(0));
         broken("Error", 0, &|v| {
             v.as_object_mut().unwrap().remove("code");
         });
@@ -1773,6 +1837,7 @@ mod tests {
             "ResourcePage",
             "Job",
             "Error",
+            "MessageRow",
             "Row",
             "Failure",
         ] {

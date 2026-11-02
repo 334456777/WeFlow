@@ -2,7 +2,7 @@
 // again once weflow-cli has rewritten the contract.
 
 /** The API version of the contract, `apiVersion` of `/health`. */
-export const CONTRACT_API_VERSION = "2";
+export const CONTRACT_API_VERSION = "3";
 
 /** A conversation of `chat sessions`, newest first. */
 export interface Session {
@@ -111,10 +111,43 @@ export interface ParsedMessage {
   _session_id?: string;
 }
 
-/** `chat message` without `parsed`: the row of WeChat's table, and the message as the query commands list it. */
+/**
+ * A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its
+ * columns read with their types, the text inflated and decoded, the sender resolved (#257, #492).
+ */
+export interface MessageRow {
+  /** Unique within its message database (`shard`), not across them. */
+  localId: number;
+  /** A decimal string, as it may pass 2^53; left out when the message has none. */
+  serverId?: string;
+  /** The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`). */
+  localType: number;
+  /** Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none. */
+  sortSeq?: number;
+  createTime?: number;
+  status?: number;
+  /** The sender's username; left out when WeChat's table of names has none for it. */
+  sender?: string;
+  /** Whether the account's owner sent it. */
+  isSend: boolean;
+  /** The text, or the XML of a message that is not text, inflated and decoded. */
+  content: string;
+  /** The `msgsource` XML (mentions, the group's member count, …). */
+  source?: string;
+  /** WeChat's packed info (protobuf), in lowercase hex. */
+  packedInfo?: string;
+  /** The `<n>` of the `message_<n>.db` holding it. */
+  shard: number;
+  /**
+   * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
+   * It is opaque; only the server reads it.
+   */
+  _cursor: string;
+}
+
+/** `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it. */
 export interface MessageLookup {
-  /** The row, with its columns. */
-  row: unknown;
+  row: MessageRow;
   /** Null when the row could not be read as a message. */
   message: MessageView | null;
 }
@@ -2079,14 +2112,14 @@ export interface Answers {
   "chat image-data": MediaWritten;
   "chat image-info": ImageInfo;
   "chat images": ChatImages;
-  "chat latest": Row[];
+  "chat latest": MessageRow[];
   "chat media-stream": MediaStream;
   /** With `parsed=true`, the message as the chat window shows it; else its row and the message as the query commands list it */
   "chat message": ParsedMessage | MessageLookup;
-  /** With `parsed=true`, the messages as the chat window shows them; else the rows of WeChat's table, each with its `_cursor` */
-  "chat messages": ParsedMessage[] | Row[];
+  /** With `parsed=true`, the messages as the chat window shows them; else as WeChat keeps them, each with its `_cursor` */
+  "chat messages": ParsedMessage[] | MessageRow[];
   "chat resources": ResourcePage;
-  /** With `parsed=true`, the hits, each with its `_session_id`, as the chat window shows them; else the rows of WeChat's table, each with its `_cursor` */
+  /** With `parsed=true`, the hits, each with its `_session_id`, as the chat window shows them; else as WeChat keeps them, each with its `_cursor` */
   "chat search": ParsedMessage[] | Row[];
   "chat sessions": Session[];
   /** Each username asked for, with whether its conversation is folded and muted */

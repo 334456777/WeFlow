@@ -736,7 +736,7 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
         .both(&format!("/chat/messages?session-id={room}&limit=5"), &[])
         .and_then(|d| {
             for m in rows(&d) {
-                let i = number(field(&m, &["local_id"])).unwrap_or(0);
+                let i = number(field(&m, &["local_id", "localId"])).unwrap_or(0);
                 ensure!(
                     m["_cursor"] == cursor(i).as_str(),
                     "message {i}: cursor {}",

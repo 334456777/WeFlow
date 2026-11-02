@@ -270,19 +270,35 @@ impl Wcdb {
         create_time: Option<i64>,
     ) -> Result<Vec<Value>> {
         Ok(self
-            .account()?
-            .messages_by_local_id::<LegacyRow>(session_id, local_id, create_time)?
+            .messages_by_local_id_as::<LegacyRow>(session_id, local_id, create_time)?
             .into_iter()
             .map(LegacyRow::into_value)
             .collect())
     }
 
+    pub fn messages_by_local_id_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        local_id: i64,
+        create_time: Option<i64>,
+    ) -> Result<Vec<R>> {
+        self.account()?
+            .messages_by_local_id(session_id, local_id, create_time)
+    }
+
     /// One message by server id; `{}` when there is none.
     pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Value> {
         Ok(self
-            .account()?
-            .message_by_server_id::<LegacyRow>(session_id, svrid)?
+            .message_by_server_id_as::<LegacyRow>(session_id, svrid)?
             .map_or_else(|| json!({}), LegacyRow::into_value))
+    }
+
+    pub fn message_by_server_id_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        svrid: &str,
+    ) -> Result<Option<R>> {
+        self.account()?.message_by_server_id(session_id, svrid)
     }
 
     pub fn open_message_cursor(

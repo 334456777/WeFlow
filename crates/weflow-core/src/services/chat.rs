@@ -17,6 +17,7 @@ use crate::error::{AppError, AppResult};
 use crate::message::{
     collect_messages, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
 };
+use weflow_native::msg_row::MsgRow;
 use weflow_native::native_msg::table_name_for;
 
 const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -29,26 +30,76 @@ fn native(e: anyhow::Error) -> AppError {
 /// The message a `local_id` names, `None` when there is none. The id is only unique within one message database,
 /// so when several databases hold it, `create_time` (seconds) and then `local_type` (the kind of message the caller
 /// wants, e.g. 3 for an image) pick one; if that still leaves more than one, the error lists them.
-pub(crate) fn message_by_local_id(
+/// What [`message_by_local_id`] tells the messages a local id names apart by.
+pub(crate) trait LookupRow: weflow_native::msg_row::RowShape {
+    /// The type, `fallback` when the row has none.
+    fn local_type_or(&self, fallback: i64) -> i64;
+    fn create_time(&self) -> i64;
+    fn db_name(&self) -> Value;
+}
+
+impl LookupRow for weflow_native::msg_row::LegacyRow {
+    fn local_type_or(&self, fallback: i64) -> i64 {
+        crate::message::row_int(&self.0, &["local_type"], fallback)
+    }
+
+    fn create_time(&self) -> i64 {
+        crate::message::row_int(&self.0, &["create_time"], 0)
+    }
+
+    fn db_name(&self) -> Value {
+        self.0.get("db_name").cloned().unwrap_or(Value::Null)
+    }
+}
+
+impl LookupRow for MsgRow {
+    fn local_type_or(&self, _fallback: i64) -> i64 {
+        self.local_type
+    }
+
+    fn create_time(&self) -> i64 {
+        self.create_time.unwrap_or(0)
+    }
+
+    fn db_name(&self) -> Value {
+        json!(format!("message_{}", self.shard))
+    }
+}
+
+/// [`message_by_local_id`] as a legacy JSON row, for the readers that still take one (#492).
+pub(crate) fn legacy_message_by_local_id(
     wcdb: &weflow_native::wcdb::Wcdb,
     session_id: &str,
     local_id: i64,
     create_time: Option<i64>,
     local_type: Option<i64>,
 ) -> AppResult<Option<Value>> {
+    Ok(message_by_local_id::<weflow_native::msg_row::LegacyRow>(
+        wcdb,
+        session_id,
+        local_id,
+        create_time,
+        local_type,
+    )?
+    .map(weflow_native::msg_row::LegacyRow::into_value))
+}
+
+pub(crate) fn message_by_local_id<R: LookupRow>(
+    wcdb: &weflow_native::wcdb::Wcdb,
+    session_id: &str,
+    local_id: i64,
+    create_time: Option<i64>,
+    local_type: Option<i64>,
+) -> AppResult<Option<R>> {
     let create_time = create_time.filter(|t| *t > 0);
     let mut rows = wcdb
-        .messages_by_local_id(session_id, local_id, create_time)
+        .messages_by_local_id_as::<R>(session_id, local_id, create_time)
         .map_err(native)?;
     if rows.len() > 1 {
         if let Some(want) = local_type {
-            let of_type: Vec<Value> = rows
-                .iter()
-                .filter(|r| crate::message::row_int(r, &["local_type"], -1) & 0xFFFF_FFFF == want)
-                .cloned()
-                .collect();
-            if !of_type.is_empty() {
-                rows = of_type;
+            let of_type = |r: &R| r.local_type_or(-1) & 0xFFFF_FFFF == want;
+            if rows.iter().any(of_type) {
+                rows.retain(of_type);
             }
         }
     }
@@ -57,9 +108,9 @@ pub(crate) fn message_by_local_id(
             .iter()
             .map(|r| {
                 json!({
-                    "createTime": crate::message::row_int(r, &["create_time"], 0),
-                    "localType": crate::message::row_int(r, &["local_type"], 0),
-                    "dbName": r.get("db_name").cloned().unwrap_or(Value::Null),
+                    "createTime": r.create_time(),
+                    "localType": r.local_type_or(0),
+                    "dbName": r.db_name(),
                 })
             })
             .collect();
@@ -182,36 +233,49 @@ impl ServiceHub {
 
     // ── single messages ──
 
+    /// `chat message --local-id` (#492: a typed row).
     pub fn chat_message_by_id(
         &self,
         session_id: &str,
         local_id: i64,
         create_time: Option<i64>,
-    ) -> AppResult<Value> {
+    ) -> AppResult<MsgRow> {
         let wcdb = self.open_wcdb()?;
-        let row = message_by_local_id(&wcdb, session_id, local_id, create_time, None)?;
-        self.lookup_result(row.unwrap_or_default(), session_id)
+        message_by_local_id::<MsgRow>(&wcdb, session_id, local_id, create_time, None)?
+            .ok_or_else(|| AppError::runtime("message not found"))
     }
 
-    pub fn chat_message_by_server_id(&self, session_id: &str, server_id: &str) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let row = wcdb
-            .message_by_server_id(session_id, server_id)
-            .map_err(native)?;
-        self.lookup_result(row, session_id)
+    /// `chat message --server-id`.
+    pub fn chat_message_by_server_id(
+        &self,
+        session_id: &str,
+        server_id: &str,
+    ) -> AppResult<MsgRow> {
+        self.open_wcdb()?
+            .message_by_server_id_as::<MsgRow>(session_id, server_id)
+            .map_err(native)?
+            .ok_or_else(|| AppError::runtime("message not found"))
     }
 
-    fn lookup_result(&self, row: Value, session_id: &str) -> AppResult<Value> {
-        if row.is_null() || row.as_object().is_none_or(|o| o.is_empty()) {
-            return Err(AppError::runtime("message not found"));
-        }
+    /// `chat message` without `parsed`: the row, and the message as the query commands list it.
+    pub fn message_lookup(&self, row: MsgRow, session_id: &str) -> MessageLookup {
         let my = self.my_wxid_cleaned();
-        let message = self
-            .normalize_row(std::slice::from_ref(&row), session_id)
-            .into_iter()
-            .next()
-            .map(|m| MessageView::of(&m, &my));
-        Ok(json!(MessageLookup { row, message }))
+        let message = crate::message::collect_rows(
+            vec![row.clone()],
+            &CollectOptions {
+                session_id,
+                my_wxid: &my,
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        )
+        .pop()
+        .map(|m| MessageView::of(&m, &my));
+        MessageLookup {
+            row: row.into(),
+            message,
+        }
     }
 
     // ── per-day statistics ──

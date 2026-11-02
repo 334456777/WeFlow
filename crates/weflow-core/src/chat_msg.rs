@@ -4,6 +4,7 @@
 //! HTTP API, the chat commands and the analytics code.
 
 use serde_json::Value;
+use weflow_native::msg_row::MsgRow;
 
 use crate::message::{
     decode_message_content, extract_image_dat_name_from_row, extract_xml_value,
@@ -893,10 +894,14 @@ fn packed_bytes(row: &Value) -> Option<Vec<u8>> {
 }
 
 fn video_token_from_packed(row: &Value) -> Option<String> {
-    let bytes = packed_bytes(row)?;
+    video_token_in_packed(&packed_bytes(row)?)
+}
+
+/// A video's file token in a row's packed info: a run of 32 hex digits, else one of 16 to 64.
+fn video_token_in_packed(bytes: &[u8]) -> Option<String> {
     let mut candidates: Vec<String> = Vec::new();
     let mut current = String::new();
-    for b in bytes {
+    for &b in bytes {
         if b.is_ascii_hexdigit() {
             current.push(b as char);
             continue;
@@ -1333,180 +1338,297 @@ pub fn map_rows_lite(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
         .collect()
 }
 
+/// The columns [`chat_message`] turns into a message, read from a row of either shape (#492).
+struct RowFields {
+    content: String,
+    local_type: i64,
+    /// `is_send` as stored, before it is checked against the sender.
+    raw_is_send: Option<i64>,
+    /// The sender's username from its column (trimmed, none when empty).
+    sender: Option<String>,
+    create_time: i64,
+    local_id: i64,
+    server_id: i64,
+    server_id_raw: String,
+    sort_seq: i64,
+}
+
+/// The names of a message's media files that the row gives outside its text.
+trait RowMedia {
+    fn image_dat_name(&self, content: &str) -> Option<String>;
+    fn video_file_name(&self, content: &str) -> Option<String>;
+}
+
+/// A legacy row: its packed info and the desktop app's columns.
+impl RowMedia for &Value {
+    fn image_dat_name(&self, content: &str) -> Option<String> {
+        extract_image_dat_name_from_row(self, content)
+    }
+
+    fn video_file_name(&self, content: &str) -> Option<String> {
+        parse_video_file_name_from_row(self, content)
+    }
+}
+
+/// A typed row's packed info, the only place besides its text a media file is named.
+struct PackedInfo<'a>(Option<&'a [u8]>);
+
+impl RowMedia for PackedInfo<'_> {
+    fn image_dat_name(&self, content: &str) -> Option<String> {
+        self.0
+            .and_then(crate::message::dat_name_in_packed_info)
+            .or_else(|| crate::message::extract_image_dat_name(content))
+    }
+
+    fn video_file_name(&self, content: &str) -> Option<String> {
+        self.0.and_then(video_token_in_packed).or_else(|| {
+            video_md5_from_content(content).and_then(|m| normalize_video_file_token(&m))
+        })
+    }
+}
+
+fn legacy_fields(row: &Value) -> RowFields {
+    let create_time = get_timestamp_seconds(row);
+    RowFields {
+        content: decode_message_content(row),
+        local_type: row_int(row, &["local_type"], 1),
+        raw_is_send: raw_is_send(row),
+        sender: row
+            .get("sender_username")
+            .map(value_to_trimmed_string)
+            .filter(|s| !s.is_empty()),
+        create_time,
+        local_id: row_int(row, &["local_id"], 0),
+        server_id: row_int(row, &["server_id"], 0),
+        server_id_raw: row
+            .get("server_id")
+            .map(|v| normalize_unsigned_token(&value_to_trimmed_string(v)))
+            .unwrap_or_else(|| "0".into()),
+        sort_seq: row_int(row, &["sort_seq"], create_time),
+    }
+}
+
 /// `mapRowsToMessages` (the model fields the API and CLI use).
 pub fn map_rows(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
     rows.iter()
-        .map(|row| {
-            let content = decode_message_content(row);
-            let local_type = row_int(row, &["local_type"], 1);
-            let raw = raw_is_send(row);
-            let sender_raw = row
-                .get("sender_username")
-                .map(value_to_trimmed_string)
-                .filter(|s| !s.is_empty())
-                .or_else(|| extract_sender_from_content(&content));
-            let is_send = resolve_is_send(raw, sender_raw.as_deref(), my_wxid);
-            let create_time = get_timestamp_seconds(row);
-            let mut m = ChatMessage {
-                local_id: row_int(row, &["local_id"], 0),
-                server_id: row_int(row, &["server_id"], 0),
-                server_id_raw: row
-                    .get("server_id")
-                    .map(|v| normalize_unsigned_token(&value_to_trimmed_string(v)))
-                    .unwrap_or_else(|| "0".into()),
-                local_type,
+        .map(|row| chat_message(legacy_fields(row), &row, message_source_info(row), my_wxid))
+        .collect()
+}
+
+/// [`map_rows`] of the typed rows of one conversation, which it takes: their text moves into the messages.
+pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
+    let table_name = weflow_native::native_msg::table_name_for(session_id);
+    rows.into_iter()
+        .map(|mut row| {
+            let create_time = crate::message::msg_row_timestamp(&row);
+            let server_id = row.server_id.unwrap_or(0);
+            let fields = RowFields {
+                content: std::mem::take(&mut row.content),
+                local_type: row.local_type,
+                raw_is_send: Some(i64::from(row.is_send)),
+                sender: row
+                    .sender
+                    .take()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
                 create_time,
-                sort_seq: row_int(row, &["sort_seq"], create_time),
-                is_send,
-                sender_username: sender_raw,
-                ..Default::default()
+                local_id: row.local_id,
+                server_id,
+                server_id_raw: if server_id > 0 {
+                    server_id.to_string()
+                } else {
+                    "0".into()
+                },
+                sort_seq: row.sort_seq.unwrap_or(create_time),
             };
-
-            if local_type == 47 && !content.is_empty() {
-                let e = parse_emoji_info(&content);
-                m.emoji_cdn_url = e.cdn_url;
-                m.emoji_md5 = e.md5;
-                m.cdn_thumb_url = {
-                    let t = rx(r#"(?i)thumburl\s*=\s*['"]([^'"]+)['"]"#)
-                        .captures(&content)
-                        .map(|c| c[1].replace("&amp;", "&"));
-                    t.map(|u| {
-                        if u.contains('%') {
-                            percent_decode_lossy(&u)
-                        } else {
-                            u
-                        }
-                    })
-                };
-            } else if local_type == 3 && !content.is_empty() {
-                let md5 = first_non_empty(&[
-                    extract_xml_value(&content, "md5"),
-                    xml_attr(&content, "img", "md5"),
-                ]);
-                m.image_md5 = opt(md5);
-                m.aes_key = opt(xml_attr(&content, "img", "aeskey"));
-                m.encryp_ver = parse_js_int(&xml_attr(&content, "img", "encrypver"));
-                m.cdn_thumb_url = opt(xml_attr(&content, "img", "cdnthumburl"));
-                m.image_dat_name = extract_image_dat_name_from_row(row, &content);
-                m.quoted_content = parse_media_quote(&content);
-            } else if local_type == 43 {
-                m.video_md5 = parse_video_file_name_from_row(row, &content);
-                m.quoted_content = parse_media_quote(&content);
-            } else if local_type == 34 && !content.is_empty() {
-                m.voice_duration_seconds = parse_voice_duration_seconds(&content);
-                m.quoted_content = parse_media_quote(&content);
-            } else if local_type == 42 && !content.is_empty() {
-                m.card_username = opt(xml_attr(&content, "msg", "username"));
-                m.card_nickname = opt(xml_attr(&content, "msg", "nickname"));
-                m.card_avatar_url = opt(first_non_empty(&[
-                    xml_attr(&content, "msg", "bigheadimgurl"),
-                    xml_attr(&content, "msg", "smallheadimgurl"),
-                ]));
-            } else if local_type == 48 && !content.is_empty() {
-                let lat = first_non_empty(&[
-                    xml_attr(&content, "location", "x"),
-                    xml_attr(&content, "location", "latitude"),
-                ]);
-                let lng = first_non_empty(&[
-                    xml_attr(&content, "location", "y"),
-                    xml_attr(&content, "location", "longitude"),
-                ]);
-                m.location_lat = parse_js_float(&lat);
-                m.location_lng = parse_js_float(&lng);
-                m.location_label = opt(first_non_empty(&[
-                    xml_attr(&content, "location", "label"),
-                    extract_xml_value(&content, "label"),
-                ]));
-                m.location_poiname = opt(first_non_empty(&[
-                    xml_attr(&content, "location", "poiname"),
-                    extract_xml_value(&content, "poiname"),
-                ]));
-            } else if (local_type == 49 || local_type == 8589934592049) && !content.is_empty() {
-                m.t49 = parse_type49_message(&content);
-                m.quoted_content = m.t49.quoted_content.clone();
-                m.quoted_sender = m.t49.quoted_sender.clone();
-            } else if local_type == 244813135921 || content.contains("<type>57</type>") {
-                let (c, s) = parse_quote_message(&content);
-                m.quoted_content = c;
-                m.quoted_sender = s;
-            }
-
-            if content.contains("<appmsg") || content.contains("&lt;appmsg") {
-                let t = parse_type49_message(&content);
-                let cur = &mut m.t49;
-                macro_rules! fill {
-                    ($f:ident) => {
-                        if cur.$f.is_none() {
-                            cur.$f = t.$f.clone();
-                        }
-                    };
-                }
-                fill!(xml_type);
-                fill!(link_title);
-                fill!(link_url);
-                fill!(link_thumb);
-                fill!(file_name);
-                fill!(file_size);
-                fill!(file_ext);
-                fill!(file_md5);
-                fill!(app_msg_kind);
-                fill!(app_msg_desc);
-                fill!(app_msg_app_name);
-                fill!(app_msg_source_name);
-                fill!(app_msg_source_username);
-                fill!(app_msg_thumb_url);
-                fill!(app_msg_music_url);
-                fill!(app_msg_data_url);
-                fill!(app_msg_location_label);
-                fill!(finder_nickname);
-                fill!(finder_username);
-                fill!(finder_cover_url);
-                fill!(finder_avatar);
-                fill!(finder_duration);
-                fill!(music_album_url);
-                fill!(music_url);
-                fill!(gift_image_url);
-                fill!(gift_wish);
-                fill!(gift_price);
-                fill!(chat_record_title);
-                fill!(transfer_payer_username);
-                fill!(transfer_receiver_username);
-                if m.location_lat.is_none() {
-                    m.location_lat = t.location_lat;
-                }
-                if m.location_lng.is_none() {
-                    m.location_lng = t.location_lng;
-                }
-                if m.location_poiname.is_none() {
-                    m.location_poiname = t.location_poiname.clone();
-                }
-                if m.location_label.is_none() {
-                    m.location_label = t.location_label.clone();
-                }
-                if m.quoted_content.is_none() {
-                    m.quoted_content = t.quoted_content.clone();
-                }
-                if m.quoted_sender.is_none() {
-                    m.quoted_sender = t.quoted_sender;
-                }
-            }
-            m.parsed_content = parse_message_content(&content, local_type);
-            m.raw_content = content;
-            let src = message_source_info(row);
-            m.message_key = build_message_key(
-                m.local_id,
-                m.server_id,
-                m.create_time,
-                m.sort_seq,
-                m.sender_username.as_deref(),
-                m.local_type,
-                &src,
-            );
-            m.db_path = Some(src.db_path).filter(|s| !s.is_empty());
-            m.table_name = Some(src.table_name).filter(|s| !s.is_empty());
-            m
+            let src = SourceInfo {
+                db_name: format!("message_{}", row.shard),
+                table_name: table_name.clone(),
+                db_path: String::new(),
+            };
+            chat_message(
+                fields,
+                &PackedInfo(row.packed_info.as_deref()),
+                src,
+                my_wxid,
+            )
         })
         .collect()
+}
+
+fn chat_message(
+    fields: RowFields,
+    media: &dyn RowMedia,
+    src: SourceInfo,
+    my_wxid: &str,
+) -> ChatMessage {
+    let RowFields {
+        content,
+        local_type,
+        raw_is_send: raw,
+        sender,
+        create_time,
+        local_id,
+        server_id,
+        server_id_raw,
+        sort_seq,
+    } = fields;
+    let sender_raw = sender.or_else(|| extract_sender_from_content(&content));
+    let is_send = resolve_is_send(raw, sender_raw.as_deref(), my_wxid);
+    let mut m = ChatMessage {
+        local_id,
+        server_id,
+        server_id_raw,
+        local_type,
+        create_time,
+        sort_seq,
+        is_send,
+        sender_username: sender_raw,
+        ..Default::default()
+    };
+
+    if local_type == 47 && !content.is_empty() {
+        let e = parse_emoji_info(&content);
+        m.emoji_cdn_url = e.cdn_url;
+        m.emoji_md5 = e.md5;
+        m.cdn_thumb_url = {
+            let t = rx(r#"(?i)thumburl\s*=\s*['"]([^'"]+)['"]"#)
+                .captures(&content)
+                .map(|c| c[1].replace("&amp;", "&"));
+            t.map(|u| {
+                if u.contains('%') {
+                    percent_decode_lossy(&u)
+                } else {
+                    u
+                }
+            })
+        };
+    } else if local_type == 3 && !content.is_empty() {
+        let md5 = first_non_empty(&[
+            extract_xml_value(&content, "md5"),
+            xml_attr(&content, "img", "md5"),
+        ]);
+        m.image_md5 = opt(md5);
+        m.aes_key = opt(xml_attr(&content, "img", "aeskey"));
+        m.encryp_ver = parse_js_int(&xml_attr(&content, "img", "encrypver"));
+        m.cdn_thumb_url = opt(xml_attr(&content, "img", "cdnthumburl"));
+        m.image_dat_name = media.image_dat_name(&content);
+        m.quoted_content = parse_media_quote(&content);
+    } else if local_type == 43 {
+        m.video_md5 = media.video_file_name(&content);
+        m.quoted_content = parse_media_quote(&content);
+    } else if local_type == 34 && !content.is_empty() {
+        m.voice_duration_seconds = parse_voice_duration_seconds(&content);
+        m.quoted_content = parse_media_quote(&content);
+    } else if local_type == 42 && !content.is_empty() {
+        m.card_username = opt(xml_attr(&content, "msg", "username"));
+        m.card_nickname = opt(xml_attr(&content, "msg", "nickname"));
+        m.card_avatar_url = opt(first_non_empty(&[
+            xml_attr(&content, "msg", "bigheadimgurl"),
+            xml_attr(&content, "msg", "smallheadimgurl"),
+        ]));
+    } else if local_type == 48 && !content.is_empty() {
+        let lat = first_non_empty(&[
+            xml_attr(&content, "location", "x"),
+            xml_attr(&content, "location", "latitude"),
+        ]);
+        let lng = first_non_empty(&[
+            xml_attr(&content, "location", "y"),
+            xml_attr(&content, "location", "longitude"),
+        ]);
+        m.location_lat = parse_js_float(&lat);
+        m.location_lng = parse_js_float(&lng);
+        m.location_label = opt(first_non_empty(&[
+            xml_attr(&content, "location", "label"),
+            extract_xml_value(&content, "label"),
+        ]));
+        m.location_poiname = opt(first_non_empty(&[
+            xml_attr(&content, "location", "poiname"),
+            extract_xml_value(&content, "poiname"),
+        ]));
+    } else if (local_type == 49 || local_type == 8589934592049) && !content.is_empty() {
+        m.t49 = parse_type49_message(&content);
+        m.quoted_content = m.t49.quoted_content.clone();
+        m.quoted_sender = m.t49.quoted_sender.clone();
+    } else if local_type == 244813135921 || content.contains("<type>57</type>") {
+        let (c, s) = parse_quote_message(&content);
+        m.quoted_content = c;
+        m.quoted_sender = s;
+    }
+
+    if content.contains("<appmsg") || content.contains("&lt;appmsg") {
+        let t = parse_type49_message(&content);
+        let cur = &mut m.t49;
+        macro_rules! fill {
+            ($f:ident) => {
+                if cur.$f.is_none() {
+                    cur.$f = t.$f.clone();
+                }
+            };
+        }
+        fill!(xml_type);
+        fill!(link_title);
+        fill!(link_url);
+        fill!(link_thumb);
+        fill!(file_name);
+        fill!(file_size);
+        fill!(file_ext);
+        fill!(file_md5);
+        fill!(app_msg_kind);
+        fill!(app_msg_desc);
+        fill!(app_msg_app_name);
+        fill!(app_msg_source_name);
+        fill!(app_msg_source_username);
+        fill!(app_msg_thumb_url);
+        fill!(app_msg_music_url);
+        fill!(app_msg_data_url);
+        fill!(app_msg_location_label);
+        fill!(finder_nickname);
+        fill!(finder_username);
+        fill!(finder_cover_url);
+        fill!(finder_avatar);
+        fill!(finder_duration);
+        fill!(music_album_url);
+        fill!(music_url);
+        fill!(gift_image_url);
+        fill!(gift_wish);
+        fill!(gift_price);
+        fill!(chat_record_title);
+        fill!(transfer_payer_username);
+        fill!(transfer_receiver_username);
+        if m.location_lat.is_none() {
+            m.location_lat = t.location_lat;
+        }
+        if m.location_lng.is_none() {
+            m.location_lng = t.location_lng;
+        }
+        if m.location_poiname.is_none() {
+            m.location_poiname = t.location_poiname.clone();
+        }
+        if m.location_label.is_none() {
+            m.location_label = t.location_label.clone();
+        }
+        if m.quoted_content.is_none() {
+            m.quoted_content = t.quoted_content.clone();
+        }
+        if m.quoted_sender.is_none() {
+            m.quoted_sender = t.quoted_sender;
+        }
+    }
+    m.parsed_content = parse_message_content(&content, local_type);
+    m.raw_content = content;
+    m.message_key = build_message_key(
+        m.local_id,
+        m.server_id,
+        m.create_time,
+        m.sort_seq,
+        m.sender_username.as_deref(),
+        m.local_type,
+        &src,
+    );
+    m.db_path = Some(src.db_path).filter(|s| !s.is_empty());
+    m.table_name = Some(src.table_name).filter(|s| !s.is_empty());
+    m
 }
 
 #[cfg(test)]

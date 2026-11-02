@@ -198,15 +198,18 @@
   "MessageLookup": [
     {
       "row": {
-        "local_id": 1,
-        "server_id": "9007199254740993",
-        "create_time": 1700000000,
-        "local_type": 1,
-        "sort_seq": 1700000000000,
-        "is_send": 0,
-        "sender_username": "wxid_bob",
-        "message_content": "hello",
-        "db_name": "message_0"
+        "localId": 1,
+        "serverId": "9007199254740993",
+        "localType": 1,
+        "sortSeq": 1700000000000,
+        "createTime": 1700000000,
+        "status": 3,
+        "sender": "wxid_bob",
+        "isSend": false,
+        "content": "hello",
+        "source": "<msgsource><signature>v1_abc</signature></msgsource>",
+        "shard": 0,
+        "_cursor": "1700000000000.1700000000.1.0"
       },
       "message": {
         "localId": 4,
@@ -223,10 +226,52 @@
     },
     {
       "row": {
-        "local_id": 9,
-        "local_type": 1
+        "localId": 9,
+        "localType": 10000,
+        "createTime": 1700000120,
+        "isSend": false,
+        "content": "",
+        "shard": 0,
+        "_cursor": "1700000120000.1700000120.9.0"
       },
       "message": null
+    }
+  ],
+  "MessageRow": [
+    {
+      "localId": 1,
+      "serverId": "9007199254740993",
+      "localType": 1,
+      "sortSeq": 1700000000000,
+      "createTime": 1700000000,
+      "status": 3,
+      "sender": "wxid_bob",
+      "isSend": false,
+      "content": "hello",
+      "source": "<msgsource><signature>v1_abc</signature></msgsource>",
+      "shard": 0,
+      "_cursor": "1700000000000.1700000000.1.0"
+    },
+    {
+      "localId": 2,
+      "serverId": "-1",
+      "localType": 21474836529,
+      "sortSeq": 1700000060000,
+      "createTime": 1700000060,
+      "isSend": true,
+      "content": "<msg><appmsg><type>5</type><title>link</title></appmsg></msg>",
+      "packedInfo": "0a0b0c",
+      "shard": 1,
+      "_cursor": "1700000060000.1700000060.2.1"
+    },
+    {
+      "localId": 9,
+      "localType": 10000,
+      "createTime": 1700000120,
+      "isSend": false,
+      "content": "",
+      "shard": 0,
+      "_cursor": "1700000120000.1700000120.9.0"
     }
   ],
   "Error": [

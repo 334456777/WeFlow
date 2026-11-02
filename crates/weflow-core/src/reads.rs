@@ -237,11 +237,12 @@ impl Read {
                 Ok(json!(sessions))
             }
             Read::ChatMessages(page) => {
-                let found = match page.since {
+                // typed rows (#492), serialized once: parsed as the chat window shows them, or as they are kept
+                let rows = match page.since {
                     Some(seconds) => {
                         hub.message_page_since(&page.session_id, page.limit, seconds)?
                     }
-                    None => hub.message_page(
+                    None => hub.message_page_rows(
                         &page.session_id,
                         page.limit,
                         page.offset,
@@ -250,9 +251,12 @@ impl Read {
                     )?,
                 };
                 Ok(if page.parsed {
-                    hub.parsed_message_page(found)
+                    json!(hub.parsed_rows(rows, &page.session_id))
                 } else {
-                    found
+                    json!(rows
+                        .into_iter()
+                        .map(crate::contract::MessageRow::from)
+                        .collect::<Vec<_>>())
                 })
             }
             Read::ChatLatest { session_id, limit } => {
@@ -273,9 +277,9 @@ impl Read {
                     )),
                 }?;
                 Ok(if *parsed {
-                    hub.parsed_lookup(found)
+                    json!(hub.parsed_lookup(found, session_id))
                 } else {
-                    found
+                    json!(hub.message_lookup(found, session_id))
                 })
             }
             Read::ChatContact { username } => hub.contact(username),

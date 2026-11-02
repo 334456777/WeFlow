@@ -211,11 +211,74 @@ impl MessageView {
     }
 }
 
-/// `chat message` without `parsed`: the row of WeChat's table, and the message as the query commands list it.
+/// A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its
+/// columns read with their types, the text inflated and decoded, the sender resolved (#257, #492).
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageRow {
+    /// Unique within its message database (`shard`), not across them.
+    pub local_id: i64,
+    /// A decimal string, as it may pass 2^53; left out when the message has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
+    /// The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`).
+    pub local_type: i64,
+    /// Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_seq: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<i64>,
+    /// The sender's username; left out when WeChat's table of names has none for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    /// Whether the account's owner sent it.
+    pub is_send: bool,
+    /// The text, or the XML of a message that is not text, inflated and decoded.
+    pub content: String,
+    /// The `msgsource` XML (mentions, the group's member count, …).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// WeChat's packed info (protobuf), in lowercase hex.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub packed_info: Option<String>,
+    /// The `<n>` of the `message_<n>.db` holding it.
+    pub shard: u32,
+    /// Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
+    /// It is opaque; only the server reads it.
+    #[serde(rename = "_cursor")]
+    pub cursor: String,
+}
+
+impl From<weflow_native::msg_row::MsgRow> for MessageRow {
+    fn from(row: weflow_native::msg_row::MsgRow) -> Self {
+        let cursor = row.pos().token();
+        Self {
+            local_id: row.local_id,
+            server_id: row.server_id.map(|id| id.to_string()),
+            local_type: row.local_type,
+            sort_seq: row.sort_seq,
+            create_time: row.create_time,
+            status: row.status,
+            sender: row.sender,
+            is_send: row.is_send,
+            content: row.content,
+            source: row.source,
+            packed_info: row
+                .packed_info
+                .as_deref()
+                .map(weflow_native::native_db::hex),
+            shard: row.shard,
+            cursor,
+        }
+    }
+}
+
+/// `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct MessageLookup {
-    /// The row, with its columns.
-    pub row: serde_json::Value,
+    pub row: MessageRow,
     /// Null when the row could not be read as a message.
     pub message: Option<MessageView>,
 }

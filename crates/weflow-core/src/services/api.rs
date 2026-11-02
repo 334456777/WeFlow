@@ -208,7 +208,7 @@ impl ServiceHub {
         Some((avatar, name))
     }
 
-    fn wmy(&self) -> String {
+    pub(crate) fn wmy(&self) -> String {
         self.my_wxid_cleaned()
     }
 
@@ -1000,7 +1000,7 @@ impl ServiceHub {
             if local_id > 0 {
                 attempted += 1;
                 // the create time tells apart messages of different databases that share the local id
-                let found = super::chat::message_by_local_id(
+                let found = super::chat::legacy_message_by_local_id(
                     wcdb,
                     talker,
                     local_id,
@@ -1379,7 +1379,7 @@ impl ServiceHub {
             if talker.ends_with("@chatroom") {
                 for m in messages.iter_mut() {
                     if m.local_id > 0 && (m.sender_username.is_none() || m.is_send.is_none()) {
-                        let found = super::chat::message_by_local_id(
+                        let found = super::chat::legacy_message_by_local_id(
                             &wcdb,
                             &talker,
                             m.local_id,

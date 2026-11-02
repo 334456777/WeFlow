@@ -1030,7 +1030,7 @@ pub fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     last_hex_token(&cdn_token, 16, 64).map(|t| t.to_lowercase())
 }
 
-fn extract_image_dat_name(content: &str) -> Option<String> {
+pub(crate) fn extract_image_dat_name(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
@@ -1094,7 +1094,7 @@ pub fn extract_image_dat_name_from_row(row: &Value, content: &str) -> Option<Str
 
 /// The name of an image's `.dat` file in a row's packed info: its printable bytes as text, a `<hex>[.t].dat` name
 /// or else a long run of hex digits.
-fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
+pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
     let text: String = bytes
         .iter()
         .map(|b| {

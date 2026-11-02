@@ -83,20 +83,48 @@ fn session_list_is_filtered_sorted_and_carries_unread_counts() {
     assert_ne!(sessions[2].summary, "daily");
 }
 
+/// `chat message` without `parsed`, as JSON: the row and the message.
+#[expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
+fn lookup_id(
+    hub: &weflow_core::services::ServiceHub,
+    session: &str,
+    id: i64,
+    at: Option<i64>,
+) -> serde_json::Value {
+    let row = hub.chat_message_by_id(session, id, at).unwrap();
+    serde_json::json!(hub.message_lookup(row, session))
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test by panicking"
+)]
+fn lookup_server_id(
+    hub: &weflow_core::services::ServiceHub,
+    session: &str,
+    id: &str,
+) -> serde_json::Value {
+    let row = hub.chat_message_by_server_id(session, id).unwrap();
+    serde_json::json!(hub.message_lookup(row, session))
+}
+
 #[test]
 fn single_messages_are_normalised_across_shards_and_compression() {
     let (hub, _root) = common::mock_hub("n-single");
-    let m = hub.chat_message_by_id("wxid_bob", 5, None).unwrap();
+    let m = lookup_id(&hub, "wxid_bob", 5, None);
     assert_eq!(m["message"]["text"], "see you");
     assert_eq!(m["message"]["isSend"], 0);
     assert_eq!(m["message"]["senderUsername"], "wxid_bob");
 
-    let mine = hub.chat_message_by_id("wxid_bob", 2, None).unwrap();
+    let mine = lookup_id(&hub, "wxid_bob", 2, None);
     assert_eq!(mine["message"]["isSend"], 1);
     assert_eq!(mine["message"]["senderUsername"], "wxid_me");
 
     // local_id 4 lives in shard 1 and is stored as a zstd blob
-    let compressed = hub.chat_message_by_server_id("wxid_bob", "1004").unwrap();
+    let compressed = lookup_server_id(&hub, "wxid_bob", "1004");
     assert_eq!(compressed["message"]["text"], "later, compressed");
     assert!(
         hub.chat_message_by_id("wxid_bob", 99, None).is_err(),
@@ -158,15 +186,13 @@ fn a_local_id_shared_by_two_message_databases_is_told_apart() {
         [T0 + DAY, T0]
     );
     // the create time picks one
-    let image = hub.chat_message_by_id("wxid_bob", 1, Some(T0)).unwrap();
+    let image = lookup_id(&hub, "wxid_bob", 1, Some(T0));
     assert_eq!(image["message"]["localType"], 3);
-    let text = hub
-        .chat_message_by_id("wxid_bob", 1, Some(T0 + DAY))
-        .unwrap();
+    let text = lookup_id(&hub, "wxid_bob", 1, Some(T0 + DAY));
     assert_eq!(text["message"]["text"], "newer text");
     assert!(hub.chat_message_by_id("wxid_bob", 1, Some(T0 + 5)).is_err());
     // an id held by one database needs nothing more
-    let only = hub.chat_message_by_id("wxid_bob", 2, None).unwrap();
+    let only = lookup_id(&hub, "wxid_bob", 2, None);
     assert_eq!(only["message"]["text"], "only here");
 
     // the image of message 1 is the image, not the newer text: it gets as far as looking for the file

@@ -161,9 +161,13 @@ impl ServiceHub {
         let strong = create_time.is_some_and(|t| t > 0) && !server.is_empty();
         if !strong {
             // several message databases may hold the local id: the create time, then the voice type, pick one
-            if let Ok(Some(row)) =
-                super::chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(34))
-            {
+            if let Ok(Some(row)) = super::chat::legacy_message_by_local_id(
+                &wcdb,
+                session_id,
+                local_id,
+                create_time,
+                Some(34),
+            ) {
                 if row.as_object().is_some_and(|o| !o.is_empty()) {
                     let my = self.my_wxid_cleaned();
                     if let Some(m) = chat_msg::map_rows(std::slice::from_ref(&row), &my)

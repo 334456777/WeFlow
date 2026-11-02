@@ -38,7 +38,7 @@ pub const DEFAULT_PORT: u16 = 18108;
 
 /// The version of the API's rules (routes, methods, parameters, answers, jobs), for clients such as the WebUI to
 /// check. Raised only by changes that break existing clients; new commands and options do not raise it.
-pub const API_VERSION: &str = "2";
+pub const API_VERSION: &str = "3";
 
 const MAX_BODY: usize = 1 << 20;
 
