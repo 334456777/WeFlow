@@ -13,6 +13,7 @@ use crate::chat_msg::{self, ChatMessage};
 use crate::message::rx;
 use crate::services::ServiceHub;
 use crate::sync::MutexExt;
+use weflow_native::msg_row::MsgRow;
 
 pub struct EventChannel {
     sender: broadcast::Sender<Value>,
@@ -695,109 +696,41 @@ impl PushEngine {
         (anchor - RECENT_REVOKE_SCAN_SECONDS).max(0)
     }
 
-    fn candidate_tables(
+    /// The messages of `session_id` sent at `since` or later that `condition` keeps (SQL over the message table `m`),
+    /// at most `limit` of each message table, in their order.
+    fn messages_where(
         &self,
-        wcdb: &weflow_native::wcdb::Wcdb,
         session_id: &str,
         since: i64,
-    ) -> Vec<(String, String, i64)> {
-        let Ok(Value::Array(tables)) = wcdb.message_table_stats(session_id) else {
-            return Vec::new();
-        };
-        let mut v: Vec<(String, String, i64)> = tables
-            .iter()
-            .map(|t| {
-                let g = |keys: &[&str]| {
-                    keys.iter()
-                        .filter_map(|k| t.get(*k))
-                        .find_map(|x| x.as_str().map(str::to_string))
-                        .unwrap_or_default()
-                        .trim()
-                        .to_string()
-                };
-                let last = crate::num::saturating_i64(
-                    ["last_time", "lastTime"]
-                        .iter()
-                        .filter_map(|k| t.get(*k))
-                        .find_map(|x| {
-                            x.as_f64()
-                                .or_else(|| x.as_str().and_then(|s| s.parse().ok()))
-                        })
-                        .unwrap_or(0.0),
-                );
-                (
-                    g(&["db_path", "dbPath"]),
-                    g(&["table_name", "tableName"]),
-                    last,
-                )
-            })
-            .filter(|(db, table, last)| {
-                !db.is_empty() && !table.is_empty() && (since <= 0 || *last >= since)
-            })
-            .collect();
-        v.sort_by_key(|a| std::cmp::Reverse(a.2));
-        v
-    }
-
-    fn query_rows(&self, wcdb: &weflow_native::wcdb::Wcdb, db_path: &str, sql: &str) -> Vec<Value> {
-        match wcdb.exec_query("message", db_path, sql) {
-            Ok(Value::Array(rows)) => rows,
-            Ok(v) => v
-                .get("rows")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default(),
-            Err(_) => Vec::new(),
-        }
-    }
-
-    fn recent_revoke_messages(&self, session_id: &str, since: i64) -> Vec<ChatMessage> {
+        condition: &str,
+        limit: usize,
+    ) -> Vec<ChatMessage> {
         let Ok(wcdb) = self.hub.open_wcdb_pub() else {
             return Vec::new();
         };
-        let my = self.hub.my_wxid_pub();
-        let mut msgs = Vec::new();
-        for (db_path, table, _) in self.candidate_tables(&wcdb, session_id, since) {
-            let sql = format!(
-                "SELECT *, '{}' AS _db_path, '{}' AS table_name FROM \"{}\" WHERE create_time >= {} AND (local_type IN (10000, 10002) OR message_content LIKE '%撤回%' OR message_content LIKE '%revokemsg%' OR message_content LIKE '%<replacemsg%' OR compress_content LIKE '%撤回%' OR compress_content LIKE '%revokemsg%') ORDER BY create_time ASC, sort_seq ASC, local_id ASC LIMIT {}",
-                db_path.replace('\'', "''"),
-                table.replace('\'', "''"),
-                table.replace('"', "\"\""),
-                since.max(0),
-                DIRECT_REVOKE_SCAN_LIMIT
-            );
-            msgs.extend(chat_msg::map_rows(
-                &self.query_rows(&wcdb, &db_path, &sql),
-                &my,
-            ));
-        }
-        msgs.retain(is_revoke_system_message);
+        let Ok(rows) = wcdb.messages_where_as::<MsgRow>(session_id, since, condition, limit) else {
+            return Vec::new();
+        };
+        let mut msgs = chat_msg::map_msg_rows(rows, session_id, &self.hub.my_wxid_pub());
         msgs.sort_by(compare_position);
+        msgs
+    }
+
+    fn recent_revoke_messages(&self, session_id: &str, since: i64) -> Vec<ChatMessage> {
+        let mut msgs = self.messages_where(
+            session_id,
+            since,
+            "m.local_type IN (10000, 10002) OR m.message_content LIKE '%撤回%' \
+             OR m.message_content LIKE '%revokemsg%' OR m.message_content LIKE '%<replacemsg%' \
+             OR m.compress_content LIKE '%撤回%' OR m.compress_content LIKE '%revokemsg%'",
+            DIRECT_REVOKE_SCAN_LIMIT,
+        );
+        msgs.retain(is_revoke_system_message);
         msgs
     }
 
     fn recent_context_messages(&self, session_id: &str, since: i64) -> Vec<ChatMessage> {
-        let Ok(wcdb) = self.hub.open_wcdb_pub() else {
-            return Vec::new();
-        };
-        let my = self.hub.my_wxid_pub();
-        let mut msgs = Vec::new();
-        for (db_path, table, _) in self.candidate_tables(&wcdb, session_id, since) {
-            let sql = format!(
-                "SELECT *, '{}' AS _db_path, '{}' AS table_name FROM \"{}\" WHERE create_time >= {} ORDER BY create_time ASC, sort_seq ASC, local_id ASC LIMIT {}",
-                db_path.replace('\'', "''"),
-                table.replace('\'', "''"),
-                table.replace('"', "\"\""),
-                since.max(0),
-                DIRECT_REVOKE_SCAN_LIMIT * 4
-            );
-            msgs.extend(chat_msg::map_rows(
-                &self.query_rows(&wcdb, &db_path, &sql),
-                &my,
-            ));
-        }
-        msgs.sort_by(compare_position);
-        msgs
+        self.messages_where(session_id, since, "1", DIRECT_REVOKE_SCAN_LIMIT * 4)
     }
 
     fn find_by_server_id_direct(
@@ -810,45 +743,24 @@ impl PushEngine {
         if id.is_empty() {
             return None;
         }
-        let wcdb = self.hub.open_wcdb_pub().ok()?;
-        let my = self.hub.my_wxid_pub();
-        let source = revoke.db_path.clone().zip(revoke.table_name.clone());
-        let tables: Vec<(String, String)> = match source {
-            Some(s) => vec![s],
-            None => self
-                .candidate_tables(&wcdb, session_id, (revoke.create_time - 5 * 60).max(0))
-                .into_iter()
-                .map(|t| (t.0, t.1))
-                .collect(),
+        let pred = if id.chars().all(|c| c.is_ascii_digit()) {
+            format!("(m.server_id = {id} OR CAST(m.server_id AS TEXT) = '{id}')")
+        } else {
+            format!("CAST(m.server_id AS TEXT) = '{}'", id.replace('\'', "''"))
         };
-        for (db_path, table) in tables {
-            let col = "\"server_id\"";
-            let pred = if id.chars().all(|c| c.is_ascii_digit()) {
-                format!("({col} = {id} OR CAST({col} AS TEXT) = '{id}')")
-            } else {
-                format!("CAST({col} AS TEXT) = '{}'", id.replace('\'', "''"))
-            };
-            let local_filter = if revoke.local_id > 0 {
-                format!("AND local_id <> {}", revoke.local_id)
-            } else {
-                String::new()
-            };
-            let sql = format!(
-                "SELECT *, '{}' AS _db_path, '{}' AS table_name FROM \"{}\" WHERE {pred} {local_filter} AND local_type NOT IN (10000, 10002) ORDER BY local_id ASC LIMIT 1",
-                db_path.replace('\'', "''"),
-                table.replace('\'', "''"),
-                table.replace('"', "\"\"")
-            );
-            if let Some(m) = chat_msg::map_rows(&self.query_rows(&wcdb, &db_path, &sql), &my)
-                .into_iter()
-                .next()
-            {
-                if !is_revoke_system_message(&m) {
-                    return Some(m);
-                }
-            }
-        }
-        None
+        let local_filter = if revoke.local_id > 0 {
+            format!("AND m.local_id <> {}", revoke.local_id)
+        } else {
+            String::new()
+        };
+        self.messages_where(
+            session_id,
+            0,
+            &format!("{pred} {local_filter} AND m.local_type NOT IN (10000, 10002)"),
+            1,
+        )
+        .into_iter()
+        .find(|m| !is_revoke_system_message(m))
     }
 
     fn find_revoked_in<'a>(
@@ -1390,10 +1302,6 @@ mod tests {
                 .unwrap()
                 .local_id,
             1
-        );
-        assert_eq!(
-            m[0].db_path.as_deref().zip(m[0].table_name.as_deref()),
-            Some(("/m.db", "Msg_x"))
         );
     }
 

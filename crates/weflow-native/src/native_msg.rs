@@ -346,6 +346,28 @@ impl NativeAccount {
         })
     }
 
+    /// The messages of `session_id` sent at `since` or later that `condition` keeps (SQL over the message table
+    /// `m`), oldest first in each table: at most `limit` of each table, the tables one after the other.
+    pub fn messages_where<R: RowShape>(
+        &self,
+        session_id: &str,
+        since: i64,
+        condition: &str,
+        limit: usize,
+    ) -> Result<Vec<R>> {
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        let tail = format!(
+            "where m.create_time >= ?1 and ({condition}) \
+             order by m.create_time asc, m.sort_seq asc, m.local_id asc limit ?2"
+        );
+        let mut out = Vec::new();
+        for t in self.message_tables(session_id)? {
+            let sql = Self::select_sql::<R>(&t, &tail, false);
+            out.extend(self.read_rows::<R>(&t, &sql, &[&since.max(0), &limit], false)?);
+        }
+        Ok(out)
+    }
+
     /// Newest-first page of messages across all shards.
     pub fn messages<R: RowShape>(
         &self,
@@ -2002,6 +2024,31 @@ mod tests {
         );
         let img = rows.iter().find(|r| r["message_content"] == "img").unwrap();
         assert_eq!(img["sender_username"], "wxid_me");
+    }
+
+    #[test]
+    fn messages_where_keeps_what_the_condition_does_from_a_time_on() {
+        use crate::msg_row::MsgRow;
+        let (acct, _dir) = account("where");
+        let all: Vec<MsgRow> = acct.messages("wxid_bob", 0, 0).unwrap();
+        let since = all.iter().filter_map(|m| m.create_time).min().unwrap() + 1;
+        let kept: Vec<MsgRow> = acct
+            .messages_where("wxid_bob", since, "m.local_type = 1", 1000)
+            .unwrap();
+        let mut want: Vec<i64> = all
+            .iter()
+            .filter(|m| m.local_type == 1 && m.create_time.unwrap_or(0) >= since)
+            .map(|m| m.local_id)
+            .collect();
+        let mut got: Vec<i64> = kept.iter().map(|m| m.local_id).collect();
+        assert!(!got.is_empty());
+        want.sort_unstable();
+        got.sort_unstable();
+        assert_eq!(got, want);
+        // at most `limit` of each table, the oldest
+        let one: Vec<MsgRow> = acct.messages_where("wxid_bob", 0, "1", 1).unwrap();
+        let tables = acct.message_tables("wxid_bob").unwrap().len();
+        assert!(!one.is_empty() && one.len() <= tables);
     }
 
     /// The typed rows hold what the legacy ones do, read by the same paging: the same messages in the same order,

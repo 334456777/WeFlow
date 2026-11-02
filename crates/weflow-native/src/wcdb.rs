@@ -184,6 +184,18 @@ impl Wcdb {
         self.account()?.messages_from(session_id, limit, from)
     }
 
+    /// See [`NativeAccount::messages_where`].
+    pub fn messages_where_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        since: i64,
+        condition: &str,
+        limit: usize,
+    ) -> Result<Vec<R>> {
+        self.account()?
+            .messages_where(session_id, since, condition, limit)
+    }
+
     /// See [`NativeAccount::message_tables_by_name`].
     pub fn message_tables_by_name(
         &self,
