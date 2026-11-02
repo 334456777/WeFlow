@@ -275,6 +275,25 @@ impl From<weflow_native::msg_row::MsgRow> for MessageRow {
     }
 }
 
+/// A hit of `chat search` without `parsed`: the message as WeChat keeps it, and its conversation.
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
+pub struct SearchHit {
+    #[serde(flatten)]
+    pub row: MessageRow,
+    /// The conversation the message is in.
+    #[serde(rename = "_session_id")]
+    pub session_id: String,
+}
+
+impl From<weflow_native::native_media::SearchHit<weflow_native::msg_row::MsgRow>> for SearchHit {
+    fn from(hit: weflow_native::native_media::SearchHit<weflow_native::msg_row::MsgRow>) -> Self {
+        Self {
+            row: hit.row.into(),
+            session_id: hit.session_id,
+        }
+    }
+}
+
 /// `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct MessageLookup {

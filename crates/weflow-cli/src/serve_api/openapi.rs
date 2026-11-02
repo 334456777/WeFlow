@@ -473,7 +473,7 @@ pub(super) fn contract() -> &'static Contract {
         use weflow_core::contract::{
             AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, ExportStats, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightCleared, InsightLookup, InsightMarked, InsightRecords, InsightReply, InsightScan, InsightTodayStat,
             MemberAnalytics, MemberMessages, MessageLookup, MessageRow, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
-            ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
+            ResourcePage, SearchHit, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
         };
@@ -499,7 +499,11 @@ pub(super) fn contract() -> &'static Contract {
         );
         data.insert(
             "chat search",
-            parsed_or(messages, "the hits, each with its `_session_id`,", rows.clone()),
+            parsed_or(
+                messages,
+                "the hits, each with its `_session_id`,",
+                of(generator.subschema_for::<Vec<SearchHit>>()),
+            ),
         );
         data.insert("chat latest", message_rows);
         data.insert(
@@ -1576,6 +1580,10 @@ mod tests {
                 cursor: "1700000120000.1700000120.9.0".into(),
             },
         ];
+        let hits = [SearchHit {
+            row: message_rows[0].clone(),
+            session_id: "wxid_bob".into(),
+        }];
         let lookups = [
             MessageLookup {
                 row: message_rows[0].clone(),
@@ -1680,6 +1688,7 @@ mod tests {
             "ResourcePage": pages,
             "MessageLookup": lookups,
             "MessageRow": message_rows,
+            "SearchHit": hits,
             "Error": errors,
             "Job": jobs,
         })
@@ -1792,6 +1801,12 @@ mod tests {
             v.as_object_mut().unwrap().remove("_cursor");
         });
         broken("MessageRow", 2, &|v| v["isSend"] = json!(0));
+        broken("SearchHit", 0, &|v| {
+            v.as_object_mut().unwrap().remove("_session_id");
+        });
+        broken("SearchHit", 0, &|v| {
+            v.as_object_mut().unwrap().remove("localId");
+        });
         broken("Error", 0, &|v| {
             v.as_object_mut().unwrap().remove("code");
         });
@@ -1838,6 +1853,7 @@ mod tests {
             "Job",
             "Error",
             "MessageRow",
+            "SearchHit",
             "Row",
             "Failure",
         ] {

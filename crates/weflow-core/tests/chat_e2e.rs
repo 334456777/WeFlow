@@ -692,9 +692,14 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
     assert_eq!(ids(&newer), vec![8, 7, 6]);
 
     // a hit carries its message's cursor and conversation, parsed or not
-    let hits = hub.search("trip", Some("wxid_bob"), 10, 0, 0, 0).unwrap();
+    let found = hub.search("trip", Some("wxid_bob"), 10, 0, 0, 0).unwrap();
+    let hits = json!(found
+        .iter()
+        .cloned()
+        .map(weflow_core::contract::SearchHit::from)
+        .collect::<Vec<_>>());
     assert_eq!(ids(&hits), vec![10, 9]);
-    let parsed = hub.parsed_message_page(hits.clone());
+    let parsed = json!(hub.parsed_hits(found));
     for (p, h) in parsed
         .as_array()
         .unwrap()
@@ -702,6 +707,7 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
         .zip(hits.as_array().unwrap())
     {
         assert!(h["_cursor"].is_string());
+        assert_eq!(h["_session_id"], "wxid_bob");
         assert_eq!(p["_cursor"], h["_cursor"]);
         assert_eq!(p["_session_id"], "wxid_bob");
     }

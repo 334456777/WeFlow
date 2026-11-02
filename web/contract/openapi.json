@@ -1422,7 +1422,7 @@
                         {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/Row"
+                            "$ref": "#/components/schemas/SearchHit"
                           }
                         }
                       ]
@@ -5156,6 +5156,82 @@
           "_cursor"
         ],
         "description": "A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its\ncolumns read with their types, the text inflated and decoded, the sender resolved (#257, #492)."
+      },
+      "SearchHit": {
+        "type": "object",
+        "properties": {
+          "localId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unique within its message database (`shard`), not across them."
+          },
+          "serverId": {
+            "type": "string",
+            "description": "A decimal string, as it may pass 2^53; left out when the message has none."
+          },
+          "localType": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`)."
+          },
+          "sortSeq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none."
+          },
+          "createTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's username; left out when WeChat's table of names has none for it."
+          },
+          "isSend": {
+            "type": "boolean",
+            "description": "Whether the account's owner sent it."
+          },
+          "content": {
+            "type": "string",
+            "description": "The text, or the XML of a message that is not text, inflated and decoded."
+          },
+          "source": {
+            "type": "string",
+            "description": "The `msgsource` XML (mentions, the group's member count, …)."
+          },
+          "packedInfo": {
+            "type": "string",
+            "description": "WeChat's packed info (protobuf), in lowercase hex."
+          },
+          "shard": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The `<n>` of the `message_<n>.db` holding it."
+          },
+          "_cursor": {
+            "type": "string",
+            "description": "Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.\nIt is opaque; only the server reads it."
+          },
+          "_session_id": {
+            "type": "string",
+            "description": "The conversation the message is in."
+          }
+        },
+        "required": [
+          "localId",
+          "localType",
+          "isSend",
+          "content",
+          "shard",
+          "_cursor",
+          "_session_id"
+        ],
+        "description": "A hit of `chat search` without `parsed`: the message as WeChat keeps it, and its conversation."
       },
       "MessageLookup": {
         "type": "object",

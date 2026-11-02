@@ -274,6 +274,23 @@
       "_cursor": "1700000120000.1700000120.9.0"
     }
   ],
+  "SearchHit": [
+    {
+      "localId": 1,
+      "serverId": "9007199254740993",
+      "localType": 1,
+      "sortSeq": 1700000000000,
+      "createTime": 1700000000,
+      "status": 3,
+      "sender": "wxid_bob",
+      "isSend": false,
+      "content": "hello",
+      "source": "<msgsource><signature>v1_abc</signature></msgsource>",
+      "shard": 0,
+      "_cursor": "1700000000000.1700000000.1.0",
+      "_session_id": "wxid_bob"
+    }
+  ],
   "Error": [
     {
       "code": "invalid_arguments",

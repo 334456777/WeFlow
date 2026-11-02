@@ -6,7 +6,15 @@ use anyhow::Result;
 use rusqlite::ToSql;
 use serde_json::{json, Map, Value};
 
+use crate::msg_row::{LegacyRow, RowShape};
 use crate::native_db::NativeAccount;
+
+/// A hit of [`NativeAccount::search_messages_as`]: the message and its conversation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SearchHit<R> {
+    pub session_id: String,
+    pub row: R,
+}
 
 /// `scan_media_stream` codes: 1 = images, 2 = videos, anything else = both.
 const IMAGE: i64 = 3;
@@ -433,9 +441,33 @@ impl NativeAccount {
         begin: i64,
         end: i64,
     ) -> Result<Value> {
+        let hits =
+            self.search_messages_as::<LegacyRow>(keyword, session_id, limit, offset, begin, end)?;
+        Ok(Value::Array(
+            hits.into_iter()
+                .map(|hit| {
+                    let mut row = hit.row.into_value();
+                    row["_session_id"] = json!(hit.session_id);
+                    row
+                })
+                .collect(),
+        ))
+    }
+
+    /// The messages whose text holds `keyword` (case-insensitively), newest first, `limit` of them from `offset`
+    /// on, in shape `R`; `session_id` keeps the search to one conversation.
+    pub fn search_messages_as<R: RowShape>(
+        &self,
+        keyword: &str,
+        session_id: Option<&str>,
+        limit: i32,
+        offset: i32,
+        begin: i64,
+        end: i64,
+    ) -> Result<Vec<SearchHit<R>>> {
         let needle = keyword.trim().to_lowercase();
         if needle.is_empty() {
-            return Ok(json!([]));
+            return Ok(Vec::new());
         }
         let sessions: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
@@ -496,28 +528,30 @@ impl NativeAccount {
                     .push(int(r, "local_id").to_string());
             }
         }
+        // each row once, found by either place a hit may name it by
+        let mut rows: Vec<Option<SearchHit<R>>> = Vec::new();
         let mut whole = std::collections::HashMap::new();
         for (at, ids) in wanted {
             let (sid, t) = &tables[at];
-            let sql = format!(
-                "select m.*, n.user_name as sender_username from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id \
-                 where m.local_id in ({})",
-                t.table,
-                ids.join(",")
+            let sql = Self::select_sql::<R>(
+                t,
+                &format!("where m.local_id in ({})", ids.join(",")),
+                false,
             );
-            for mut r in self.query(&t.db, &sql, &[])? {
-                let (id, seq) = (int(&r, "local_id"), int(&r, "sort_seq"));
-                self.finish_row(&mut r, t, false);
-                r["_session_id"] = json!(sid);
-                whole.insert(format!("{sid}\n{id}\n{seq}"), r.clone());
-                whole.insert(format!("{at}\n{id}"), r);
+            for row in self.read_rows::<R>(t, &sql, &[], false)? {
+                let (id, seq) = row.index_key();
+                whole.insert(format!("{sid}\n{id}\n{seq}"), rows.len());
+                whole.insert(format!("{at}\n{id}"), rows.len());
+                rows.push(Some(SearchHit {
+                    session_id: sid.clone(),
+                    row,
+                }));
             }
         }
-        Ok(Value::Array(
-            page.iter()
-                .filter_map(|r| whole.remove(&place(r)))
-                .collect(),
-        ))
+        Ok(page
+            .iter()
+            .filter_map(|r| rows.get_mut(*whole.get(&place(r))?)?.take())
+            .collect())
     }
 
     /// The hits of the index among `ranked` whose message is not in its conversation any more.
@@ -1021,6 +1055,33 @@ mod tests {
             .iter()
             .map(|r| r["message_content"].as_str().unwrap().trim().to_string())
             .collect()
+    }
+
+    #[test]
+    fn typed_hits_are_the_legacy_ones() {
+        let a = account("search-typed");
+        for keyword in ["hello", "ok", "COMPRESSED"] {
+            let legacy = a.search_messages(keyword, None, 50, 0, 0, 0).unwrap();
+            let typed = a
+                .search_messages_as::<crate::msg_row::MsgRow>(keyword, None, 50, 0, 0, 0)
+                .unwrap();
+            let named: Vec<(String, i64)> = legacy
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| (text(r, "_session_id"), int(r, "local_id")))
+                .collect();
+            let typed_named: Vec<(String, i64)> = typed
+                .iter()
+                .map(|h| (h.session_id.clone(), h.row.local_id))
+                .collect();
+            assert_eq!(typed_named, named, "{keyword}");
+            let texts: Vec<String> = typed
+                .iter()
+                .map(|h| h.row.content.trim().to_string())
+                .collect();
+            assert_eq!(texts, contents(&legacy), "{keyword}");
+        }
     }
 
     #[test]

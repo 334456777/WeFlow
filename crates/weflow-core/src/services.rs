@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use weflow_native::msg_row::MsgRow;
+use weflow_native::native_media::SearchHit;
 
 use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
 use crate::error::{AppError, AppResult};
@@ -306,7 +307,7 @@ impl ServiceHub {
         self.parsed_rows(vec![row], session_id).pop()
     }
 
-    /// `chat search`: the hits, newest first, each with the `_cursor` of its message, to page its conversation from.
+    /// `chat search`: the hits, newest first.
     pub fn search(
         &self,
         keyword: &str,
@@ -315,11 +316,27 @@ impl ServiceHub {
         offset: i32,
         begin: i32,
         end: i32,
-    ) -> AppResult<Value> {
+    ) -> AppResult<Vec<SearchHit<MsgRow>>> {
         let wcdb = self.open_wcdb()?;
-        wcdb.search(keyword, session_id, limit, offset, begin, end)
-            .map(with_cursors)
+        wcdb.search_as::<MsgRow>(keyword, session_id, limit, offset, begin, end)
             .map_err(|err| AppError::native(err.to_string()))
+    }
+
+    /// `chat search --parsed`: each hit as the chat window shows it, with its `_cursor`, to page its conversation
+    /// from, and its `_session_id`.
+    pub fn parsed_hits(&self, hits: Vec<SearchHit<MsgRow>>) -> Vec<crate::contract::ParsedMessage> {
+        let my = self.wmy();
+        hits.into_iter()
+            .map(|hit| {
+                let cursor = hit.row.pos().token();
+                let table_name = weflow_native::native_msg::table_name_for(&hit.session_id);
+                crate::contract::ParsedMessage {
+                    message: crate::chat_msg::map_msg_row(hit.row, &table_name, &my),
+                    cursor: Some(cursor),
+                    session_id: Some(hit.session_id),
+                }
+            })
+            .collect()
     }
 
     pub fn contacts(&self) -> AppResult<Value> {
@@ -1352,14 +1369,6 @@ impl ServiceHub {
 }
 
 /// Each message row with its `_cursor`, to ask for the page next to it.
-fn with_cursors(mut page: Value) -> Value {
-    for row in page.as_array_mut().into_iter().flatten() {
-        if let Some(pos) = weflow_native::native_msg::MsgPos::of_row(row) {
-            row["_cursor"] = pos.token().into();
-        }
-    }
-    page
-}
 
 /// Account folders of a WeChat data directory (or the folder itself when it is one), with their wxid.
 fn find_accounts(root: &Path) -> Vec<(String, PathBuf)> {

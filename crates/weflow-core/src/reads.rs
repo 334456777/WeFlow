@@ -304,9 +304,12 @@ impl Read {
                     *end,
                 )?;
                 Ok(if *parsed {
-                    hub.parsed_message_page(hits)
+                    json!(hub.parsed_hits(hits))
                 } else {
-                    hits
+                    json!(hits
+                        .into_iter()
+                        .map(crate::contract::SearchHit::from)
+                        .collect::<Vec<_>>())
                 })
             }
             Read::ChatDates { session_id } => Ok(json!(hub.chat_dates(session_id)?)),

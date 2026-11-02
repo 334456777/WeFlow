@@ -462,6 +462,26 @@ impl Wcdb {
         )
     }
 
+    /// [`search`](Self::search) in any [`RowShape`], each hit with its conversation.
+    pub fn search_as<R: RowShape>(
+        &self,
+        keyword: &str,
+        session_id: Option<&str>,
+        limit: i32,
+        offset: i32,
+        begin: i32,
+        end: i32,
+    ) -> Result<Vec<crate::native_media::SearchHit<R>>> {
+        self.account()?.search_messages_as(
+            keyword,
+            session_id,
+            limit,
+            offset,
+            i64::from(begin),
+            i64::from(end),
+        )
+    }
+
     pub fn contact(&self, username: &str) -> Result<Value> {
         self.account()?.contact(username)
     }

@@ -145,6 +145,39 @@ export interface MessageRow {
   _cursor: string;
 }
 
+/** A hit of `chat search` without `parsed`: the message as WeChat keeps it, and its conversation. */
+export interface SearchHit {
+  /** Unique within its message database (`shard`), not across them. */
+  localId: number;
+  /** A decimal string, as it may pass 2^53; left out when the message has none. */
+  serverId?: string;
+  /** The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`). */
+  localType: number;
+  /** Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none. */
+  sortSeq?: number;
+  createTime?: number;
+  status?: number;
+  /** The sender's username; left out when WeChat's table of names has none for it. */
+  sender?: string;
+  /** Whether the account's owner sent it. */
+  isSend: boolean;
+  /** The text, or the XML of a message that is not text, inflated and decoded. */
+  content: string;
+  /** The `msgsource` XML (mentions, the group's member count, …). */
+  source?: string;
+  /** WeChat's packed info (protobuf), in lowercase hex. */
+  packedInfo?: string;
+  /** The `<n>` of the `message_<n>.db` holding it. */
+  shard: number;
+  /**
+   * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
+   * It is opaque; only the server reads it.
+   */
+  _cursor: string;
+  /** The conversation the message is in. */
+  _session_id: string;
+}
+
 /** `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it. */
 export interface MessageLookup {
   row: MessageRow;
@@ -2120,7 +2153,7 @@ export interface Answers {
   "chat messages": ParsedMessage[] | MessageRow[];
   "chat resources": ResourcePage;
   /** With `parsed=true`, the hits, each with its `_session_id`, as the chat window shows them; else as WeChat keeps them, each with its `_cursor` */
-  "chat search": ParsedMessage[] | Row[];
+  "chat search": ParsedMessage[] | SearchHit[];
   "chat sessions": Session[];
   /** Each username asked for, with whether its conversation is folded and muted */
   "chat statuses": Record<string, ChatStatus>;

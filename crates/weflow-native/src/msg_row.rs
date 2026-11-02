@@ -42,6 +42,8 @@ pub trait RowShape: Sized {
     /// `(sort_seq, create_time, local_id)` in the chat's order: a row without a `sort_seq` (null or 0) is placed by
     /// `create_time * 1000`, and a missing integer counts as 0.
     fn key(&self) -> (i64, i64, i64);
+    /// `(local_id, sort_seq)` as stored, a missing one 0: how WeChat's search index names a message.
+    fn index_key(&self) -> (i64, i64);
 }
 
 fn sort_key(sort_seq: i64, create_time: i64, local_id: i64) -> (i64, i64, i64) {
@@ -191,6 +193,10 @@ impl RowShape for MsgRow {
             self.local_id,
         )
     }
+
+    fn index_key(&self) -> (i64, i64) {
+        (self.local_id, self.sort_seq.unwrap_or(0))
+    }
 }
 
 /// A message row in the shape of WeChat's own columns (see the module).
@@ -275,6 +281,10 @@ impl RowShape for LegacyRow {
             self.int("create_time"),
             self.int("local_id"),
         )
+    }
+
+    fn index_key(&self) -> (i64, i64) {
+        (self.int("local_id"), self.int("sort_seq"))
     }
 }
 

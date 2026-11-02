@@ -276,32 +276,6 @@ impl ServiceHub {
         Ok(msgs)
     }
 
-    /// `chat messages --parsed` (and `chat search --parsed`): each raw row of a [`message_page`](Self::message_page)
-    /// as the desktop app parses it ([`crate::contract::ParsedMessage`]: type, text, quote, media, link, file, card,
-    /// location, transfer, …), keeping its `_cursor` (and a search hit's `_session_id`), so a client pages the same way
-    /// without parsing WeChat's XML itself.
-    pub fn parsed_message_page(&self, page: Value) -> Value {
-        let rows = match page {
-            Value::Array(rows) => rows,
-            other => return other,
-        };
-        let text = |row: &Value, key: &str| row.get(key).and_then(Value::as_str).map(String::from);
-        let messages = chat_msg::map_rows(&rows, &self.wmy());
-        Value::Array(
-            messages
-                .into_iter()
-                .zip(&rows)
-                .map(|(message, row)| {
-                    json!(crate::contract::ParsedMessage {
-                        message,
-                        cursor: text(row, "_cursor"),
-                        session_id: text(row, "_session_id"),
-                    })
-                })
-                .collect(),
-        )
-    }
-
     /// `getSessions`: filtered, typed session list. Display names come from WCDB when the
     /// desktop contact cache has none.
     pub fn chat_sessions_list(&self) -> AppResult<Vec<Session>> {
@@ -1354,8 +1328,8 @@ impl ServiceHub {
         let my = self.wmy();
         let (mut messages, has_more);
         if !keyword.is_empty() {
-            let rows = wcdb
-                .search(
+            let hits = wcdb
+                .search_as::<MsgRow>(
                     &keyword,
                     Some(&talker),
                     crate::num::saturating_i32(limit + 1),
@@ -1364,8 +1338,8 @@ impl ServiceHub {
                     crate::num::saturating_i32(end),
                 )
                 .map_err(|e| ApiError::new(500, e.to_string()))?;
-            let rows = rows.as_array().cloned().unwrap_or_default();
-            let mut mapped = chat_msg::map_rows(&rows, &my);
+            let rows = hits.into_iter().map(|hit| hit.row).collect();
+            let mut mapped = chat_msg::map_msg_rows(rows, &talker, &my);
             has_more = mapped.len() > limit;
             if has_more {
                 mapped.truncate(limit);

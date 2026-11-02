@@ -278,7 +278,7 @@ impl NativeAccount {
     }
 
     /// `select` of the columns of `R` over one message table with the sender resolved from `Name2Id`.
-    fn select_sql<R: RowShape>(t: &MsgTable, tail: &str, lite: bool) -> String {
+    pub(crate) fn select_sql<R: RowShape>(t: &MsgTable, tail: &str, lite: bool) -> String {
         format!(
             "select {} from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id {tail}",
             R::columns(lite),
@@ -310,7 +310,7 @@ impl NativeAccount {
     }
 
     /// The rows of `sql` over `t`, whose select list is `R`'s, in shape `R`.
-    fn read_rows<R: RowShape>(
+    pub(crate) fn read_rows<R: RowShape>(
         &self,
         t: &MsgTable,
         sql: &str,
