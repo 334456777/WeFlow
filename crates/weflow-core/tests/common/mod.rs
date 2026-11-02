@@ -1,5 +1,5 @@
 //! Test harness: a `ServiceHub` wired to a synthetic account made of real encrypted databases
-//! (`weflow_native::fixture`). There is no mock database library any more.
+//! (`weflow_native::fixture`).
 #![allow(dead_code)]
 #![expect(
     clippy::unwrap_used,

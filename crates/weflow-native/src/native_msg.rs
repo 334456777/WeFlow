@@ -1052,7 +1052,6 @@ impl NativeAccount {
             let mut rows = stmt.query(params)?;
             while let Some(row) = rows.next()? {
                 // Match int()/row_key(): only SQLite integers count; nulls and other storage types become zero.
-                // Read the cells directly instead of allocating a JSON object and column names for every key.
                 let integer = |column: usize| -> rusqlite::Result<i64> {
                     Ok(match row.get_ref(column)? {
                         rusqlite::types::ValueRef::Integer(i) => i,
