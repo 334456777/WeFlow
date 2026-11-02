@@ -11,6 +11,7 @@ use crate::chat_msg::{self, ChatMessage};
 use crate::contract::{Contact, ContactKind, Session};
 use crate::message::{row_field, row_int, rx};
 use crate::sync::MutexExt;
+use weflow_native::msg_row::MsgRow;
 
 const FRIEND_EXCLUDE_USERNAMES: [&str; 5] =
     ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -255,11 +256,10 @@ impl ServiceHub {
                 false,
             )
             .map_err(|e| AppError::native(e.to_string()))?;
-        let fetched = wcdb.fetch_message_batch(cursor);
+        let fetched = wcdb.fetch_message_batch_as::<MsgRow>(cursor);
         let _ = wcdb.close_message_cursor(cursor);
         let (rows, _) = fetched.map_err(|e| AppError::native(e.to_string()))?;
-        let mut msgs =
-            chat_msg::map_rows(&rows.as_array().cloned().unwrap_or_default(), &self.wmy());
+        let mut msgs = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
         // `normalizeMessageOrder`
         msgs.sort_by(|a, b| {
             let (asq, bsq) = (a.sort_seq.max(0), b.sort_seq.max(0));
@@ -894,13 +894,13 @@ impl ServiceHub {
         )
     }
 
-    /// `fetchMessagesBatch`: cursor paging with offset skipping; returns the raw rows.
+    /// `fetchMessagesBatch`: cursor paging with offset skipping; returns the rows.
     fn fetch_rows_batch(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         talker: &str,
         query: RowsQuery,
-    ) -> Result<(Vec<Value>, bool), ApiError> {
+    ) -> Result<(Vec<MsgRow>, bool), ApiError> {
         let RowsQuery {
             offset,
             limit,
@@ -916,22 +916,20 @@ impl ServiceHub {
         let cursor = wcdb
             .open_message_cursor(talker, batch_size, ascending, norm(start), norm(end), lite)
             .map_err(|e| ApiError::new(500, e.to_string()))?;
-        let mut collected: Vec<Value> = Vec::new();
+        let mut collected: Vec<MsgRow> = Vec::new();
         let mut has_more = true;
         let mut skipped = 0usize;
         let mut reached_limit = false;
         let result = (|| -> Result<(), ApiError> {
             while collected.len() < limit && has_more {
-                let (rows, more) = wcdb
-                    .fetch_message_batch(cursor)
+                let (mut rows, more) = wcdb
+                    .fetch_message_batch_as::<MsgRow>(cursor)
                     .map_err(|e| ApiError::new(500, e.to_string()))?;
-                let rows = rows.as_array().cloned().unwrap_or_default();
                 if rows.is_empty() {
                     has_more = false;
                     break;
                 }
                 has_more = more;
-                let mut rows = rows;
                 if skipped < offset {
                     let remaining = offset - skipped;
                     if remaining >= rows.len() {
@@ -967,6 +965,7 @@ impl ServiceHub {
             return;
         }
         let my = self.wmy();
+        let table_name = weflow_native::native_msg::table_name_for(talker);
         let targets: Vec<usize> = messages
             .iter()
             .enumerate()
@@ -1000,7 +999,7 @@ impl ServiceHub {
             if local_id > 0 {
                 attempted += 1;
                 // the create time tells apart messages of different databases that share the local id
-                let found = super::chat::legacy_message_by_local_id(
+                let found = super::chat::message_by_local_id::<MsgRow>(
                     wcdb,
                     talker,
                     local_id,
@@ -1009,19 +1008,15 @@ impl ServiceHub {
                 );
                 match found {
                     Ok(Some(row)) => {
-                        if let Some(h) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
-                            .into_iter()
-                            .next()
-                        {
-                            if let Some(s) = h.sender_username.clone().filter(|s| !s.is_empty()) {
-                                messages[i].sender_username = Some(s);
-                            }
-                            if messages[i].is_send.is_none() {
-                                messages[i].is_send = h.is_send;
-                            }
-                            if messages[i].raw_content.is_empty() {
-                                messages[i].raw_content = h.raw_content;
-                            }
+                        let h = chat_msg::map_msg_row(row, &table_name, &my);
+                        if let Some(s) = h.sender_username.clone().filter(|s| !s.is_empty()) {
+                            messages[i].sender_username = Some(s);
+                        }
+                        if messages[i].is_send.is_none() {
+                            messages[i].is_send = h.is_send;
+                        }
+                        if messages[i].raw_content.is_empty() {
+                            messages[i].raw_content = h.raw_content;
                         }
                         if messages[i].sender_username.is_some() {
                             hydrated += 1;
@@ -1377,9 +1372,10 @@ impl ServiceHub {
             }
             messages = mapped;
             if talker.ends_with("@chatroom") {
+                let table_name = weflow_native::native_msg::table_name_for(&talker);
                 for m in messages.iter_mut() {
                     if m.local_id > 0 && (m.sender_username.is_none() || m.is_send.is_none()) {
-                        let found = super::chat::legacy_message_by_local_id(
+                        let found = super::chat::message_by_local_id::<MsgRow>(
                             &wcdb,
                             &talker,
                             m.local_id,
@@ -1387,19 +1383,15 @@ impl ServiceHub {
                             None,
                         );
                         if let Ok(Some(row)) = found {
-                            if let Some(d) = chat_msg::map_rows(std::slice::from_ref(&row), &my)
-                                .into_iter()
-                                .next()
-                            {
-                                let (parsed, raw) =
-                                    (m.parsed_content.clone(), m.raw_content.clone());
-                                *m = d;
-                                if !parsed.is_empty() {
-                                    m.parsed_content = parsed;
-                                }
-                                if !raw.is_empty() {
-                                    m.raw_content = raw;
-                                }
+                            let d = chat_msg::map_msg_row(row, &table_name, &my);
+                            let parsed = std::mem::take(&mut m.parsed_content);
+                            let raw = std::mem::take(&mut m.raw_content);
+                            *m = d;
+                            if !parsed.is_empty() {
+                                m.parsed_content = parsed;
+                            }
+                            if !raw.is_empty() {
+                                m.raw_content = raw;
                             }
                         }
                     }
@@ -1419,9 +1411,9 @@ impl ServiceHub {
                 },
             )?;
             messages = if media_opts.enabled {
-                chat_msg::map_rows(&rows, &my)
+                chat_msg::map_msg_rows(rows, &talker, &my)
             } else {
-                chat_msg::map_rows_lite(&rows, &my)
+                chat_msg::map_msg_rows_lite(rows, &talker, &my)
             };
             self.backfill_senders(&wcdb, &talker, &mut messages);
             has_more = more;
@@ -1508,7 +1500,7 @@ impl ServiceHub {
                 lite: true,
             },
         )?;
-        let mut messages = chat_msg::map_rows_lite(&rows, &self.wmy());
+        let mut messages = chat_msg::map_msg_rows_lite(rows, session_id, &self.wmy());
         self.backfill_senders(&wcdb, session_id, &mut messages);
         let (names, _) = self.names_and_avatars_pub(&wcdb, &[session_id.to_string()]);
         let talker_name = names
@@ -2071,12 +2063,11 @@ impl ServiceHub {
         let wcdb = self.open_wcdb()?;
         let page = limit.max(1);
         let probe = (page + 1).min(500);
-        let rows = wcdb
-            .messages(session_id, crate::num::saturating_i32(probe), 0)
+        let mut rows = wcdb
+            .messages_as::<MsgRow>(session_id, crate::num::saturating_i32(probe), 0)
             .map_err(|e| AppError::native(e.to_string()))?;
-        let rows: Vec<Value> = rows.as_array().cloned().unwrap_or_default();
-        let selected: Vec<Value> = rows.into_iter().take(page).collect();
-        let mapped = chat_msg::map_rows(&selected, &self.wmy());
+        rows.truncate(page);
+        let mapped = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
         let is_group = session_id.contains("@chatroom");
         let visible: Vec<ChatMessage> = mapped
             .iter()
@@ -2165,10 +2156,10 @@ impl ServiceHub {
                 if !enabled {
                     continue;
                 }
-                let Ok(rows) = wcdb.messages_by_type(sid, *code, false, 0, 0) else {
+                let Ok(rows) = wcdb.messages_by_type_as::<MsgRow>(sid, *code, false, 0, 0) else {
                     continue;
                 };
-                let msgs = chat_msg::map_rows(&rows.as_array().cloned().unwrap_or_default(), &my);
+                let msgs = chat_msg::map_msg_rows(rows, sid, &my);
                 let mut seen: HashSet<(i64, i64)> = HashSet::new();
                 for m in msgs {
                     let in_range = start.is_none_or(|s| m.create_time >= s)

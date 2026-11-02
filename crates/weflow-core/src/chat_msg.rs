@@ -1276,66 +1276,78 @@ fn raw_is_send(row: &Value) -> Option<i64> {
         .and_then(|m| m.as_str().trim().parse().ok())
 }
 
+/// The order a lite message without a `sort_seq` gets: its send time in milliseconds.
+fn lite_sort_seq(create_time: i64) -> i64 {
+    if create_time > 0 {
+        create_time * 1000
+    } else {
+        0
+    }
+}
+
 /// `mapRowsToMessagesLiteForApi`
 pub fn map_rows_lite(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
     rows.iter()
         .map(|row| {
-            let local_type = row_int(row, &["local_type"], 1);
-            let create_time = get_timestamp_seconds(row);
-            let sort_seq = row_int(
-                row,
-                &["sort_seq"],
-                if create_time > 0 {
-                    create_time * 1000
-                } else {
-                    0
-                },
-            );
-            let content = decode_message_content(row);
-            let raw = raw_is_send(row);
-            let from_row = row
-                .get("sender_username")
-                .map(value_to_trimmed_string)
-                .filter(|s| !s.is_empty())
-                .or_else(|| extract_sender_from_content(&content));
-            let is_send = resolve_is_send(raw, from_row.as_deref(), my_wxid);
-            let sender = from_row.or_else(|| {
-                (is_send == Some(1) && !my_wxid.is_empty()).then(|| my_wxid.to_string())
-            });
-            let src = message_source_info(row);
-            let (local_id, server_id) = (
-                row_int(row, &["local_id"], 0),
-                row_int(row, &["server_id"], 0),
-            );
-            ChatMessage {
-                message_key: build_message_key(
-                    local_id,
-                    server_id,
-                    create_time,
-                    sort_seq,
-                    sender.as_deref(),
-                    local_type,
-                    &src,
-                ),
-                db_path: Some(src.db_path.clone()).filter(|s| !s.is_empty()),
-                table_name: Some(src.table_name.clone()).filter(|s| !s.is_empty()),
-                local_id,
-                server_id,
-                server_id_raw: row
-                    .get("server_id")
-                    .map(|v| normalize_unsigned_token(&value_to_trimmed_string(v)))
-                    .unwrap_or_else(|| "0".into()),
-                local_type,
-                create_time,
-                sort_seq,
-                is_send,
-                sender_username: sender,
-                parsed_content: String::new(),
-                raw_content: content,
-                ..Default::default()
-            }
+            let mut fields = legacy_fields(row);
+            fields.sort_seq = row_int(row, &["sort_seq"], lite_sort_seq(fields.create_time));
+            lite_message(fields, message_source_info(row), my_wxid)
         })
         .collect()
+}
+
+/// [`map_rows_lite`] of the typed rows of one conversation, which it takes: their text moves into the messages.
+pub fn map_msg_rows_lite(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
+    let table_name = weflow_native::native_msg::table_name_for(session_id);
+    rows.into_iter()
+        .map(|mut row| {
+            let fields = typed_fields(&mut row, lite_sort_seq);
+            lite_message(fields, typed_source(&row, &table_name), my_wxid)
+        })
+        .collect()
+}
+
+/// A message with the row's columns and its text as stored, nothing parsed out of it.
+fn lite_message(fields: RowFields, src: SourceInfo, my_wxid: &str) -> ChatMessage {
+    let RowFields {
+        content,
+        local_type,
+        raw_is_send: raw,
+        sender,
+        create_time,
+        local_id,
+        server_id,
+        server_id_raw,
+        sort_seq,
+    } = fields;
+    let from_row = sender.or_else(|| extract_sender_from_content(&content));
+    let is_send = resolve_is_send(raw, from_row.as_deref(), my_wxid);
+    let sender = from_row
+        .or_else(|| (is_send == Some(1) && !my_wxid.is_empty()).then(|| my_wxid.to_string()));
+    ChatMessage {
+        message_key: build_message_key(
+            local_id,
+            server_id,
+            create_time,
+            sort_seq,
+            sender.as_deref(),
+            local_type,
+            &src,
+        ),
+        db_path: Some(src.db_path.clone()).filter(|s| !s.is_empty()),
+        table_name: Some(src.table_name.clone()).filter(|s| !s.is_empty()),
+        local_id,
+        server_id,
+        server_id_raw,
+        local_type,
+        create_time,
+        sort_seq,
+        is_send,
+        sender_username: sender,
+        parsed_content: String::new(),
+        raw_content: content,
+        ..Default::default()
+    }
 }
 
 /// The columns [`chat_message`] turns into a message, read from a row of either shape (#492).
@@ -1426,9 +1438,21 @@ pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<C
 /// One row of [`map_msg_rows`], for callers that map rows one at a time; `table_name` is the conversation's
 /// (`table_name_for`).
 pub fn map_msg_row(mut row: MsgRow, table_name: &str, my_wxid: &str) -> ChatMessage {
-    let create_time = crate::message::msg_row_timestamp(&row);
+    let fields = typed_fields(&mut row, |create_time| create_time);
+    let src = typed_source(&row, table_name);
+    chat_message(
+        fields,
+        &PackedInfo(row.packed_info.as_deref()),
+        src,
+        my_wxid,
+    )
+}
+
+/// The fields of a typed row, its text moved out; a row without a `sort_seq` gets `default_seq(create_time)`.
+fn typed_fields(row: &mut MsgRow, default_seq: fn(i64) -> i64) -> RowFields {
+    let create_time = crate::message::msg_row_timestamp(row);
     let server_id = row.server_id.unwrap_or(0);
-    let fields = RowFields {
+    RowFields {
         content: std::mem::take(&mut row.content),
         local_type: row.local_type,
         raw_is_send: Some(i64::from(row.is_send)),
@@ -1445,19 +1469,17 @@ pub fn map_msg_row(mut row: MsgRow, table_name: &str, my_wxid: &str) -> ChatMess
         } else {
             "0".into()
         },
-        sort_seq: row.sort_seq.unwrap_or(create_time),
-    };
-    let src = SourceInfo {
+        sort_seq: row.sort_seq.unwrap_or_else(|| default_seq(create_time)),
+    }
+}
+
+/// Where a typed row is kept: its database by name, never by path (#443).
+fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
+    SourceInfo {
         db_name: format!("message_{}", row.shard),
         table_name: table_name.to_string(),
         db_path: String::new(),
-    };
-    chat_message(
-        fields,
-        &PackedInfo(row.packed_info.as_deref()),
-        src,
-        my_wxid,
-    )
+    }
 }
 
 fn chat_message(
