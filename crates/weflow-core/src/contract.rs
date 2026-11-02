@@ -285,8 +285,8 @@ pub struct SearchHit {
     pub session_id: String,
 }
 
-impl From<weflow_native::native_media::SearchHit<weflow_native::msg_row::MsgRow>> for SearchHit {
-    fn from(hit: weflow_native::native_media::SearchHit<weflow_native::msg_row::MsgRow>) -> Self {
+impl From<weflow_native::native_media::SessionRow<weflow_native::msg_row::MsgRow>> for SearchHit {
+    fn from(hit: weflow_native::native_media::SessionRow<weflow_native::msg_row::MsgRow>) -> Self {
         Self {
             row: hit.row.into(),
             session_id: hit.session_id,

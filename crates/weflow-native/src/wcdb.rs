@@ -471,7 +471,7 @@ impl Wcdb {
         offset: i32,
         begin: i32,
         end: i32,
-    ) -> Result<Vec<crate::native_media::SearchHit<R>>> {
+    ) -> Result<Vec<crate::native_media::SessionRow<R>>> {
         self.account()?.search_messages_as(
             keyword,
             session_id,
@@ -676,6 +676,26 @@ impl Wcdb {
             media_type,
             begin as i64,
             end as i64,
+            limit,
+            offset,
+        )
+    }
+
+    /// [`scan_media_stream`](Self::scan_media_stream) in any [`RowShape`], of the conversations `session_ids`.
+    pub fn scan_media_stream_as<R: RowShape>(
+        &self,
+        session_ids: &[String],
+        media_type: i32,
+        begin: i32,
+        end: i32,
+        limit: i32,
+        offset: i32,
+    ) -> Result<(Vec<crate::native_media::SessionRow<R>>, bool)> {
+        self.account()?.scan_media_stream_as(
+            session_ids,
+            media_type,
+            i64::from(begin),
+            i64::from(end),
             limit,
             offset,
         )

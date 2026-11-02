@@ -296,19 +296,6 @@ impl NativeAccount {
         )
     }
 
-    /// Completes a legacy row read with its own query (`m.*` and `sender_username`), as [`LegacyRow`] does.
-    pub(crate) fn finish_row(&self, row: &mut Value, t: &MsgTable, lite: bool) {
-        let is_me = |sender: &str| self.is_me(sender);
-        crate::msg_row::finish_legacy(
-            row,
-            &RowContext {
-                table: t,
-                lite,
-                is_me: &is_me,
-            },
-        );
-    }
-
     /// The rows of `sql` over `t`, whose select list is `R`'s, in shape `R`.
     pub(crate) fn read_rows<R: RowShape>(
         &self,
@@ -317,6 +304,29 @@ impl NativeAccount {
         params: &[&dyn rusqlite::ToSql],
         lite: bool,
     ) -> Result<Vec<R>> {
+        let out = std::cell::RefCell::new(Vec::new());
+        self.read_rows_each::<R>(
+            t,
+            sql,
+            params,
+            lite,
+            || out.borrow_mut().clear(),
+            |row| out.borrow_mut().push(row),
+        )?;
+        Ok(out.into_inner())
+    }
+
+    /// [`read_rows`](Self::read_rows), each row handed to `each` as it is read. A query read again on a fresh
+    /// snapshot (see `with_db`) starts over: `start` runs before every attempt.
+    pub(crate) fn read_rows_each<R: RowShape>(
+        &self,
+        t: &MsgTable,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+        lite: bool,
+        mut start: impl FnMut(),
+        mut each: impl FnMut(R),
+    ) -> Result<()> {
         let is_me = |sender: &str| self.is_me(sender);
         let ctx = RowContext {
             table: t,
@@ -324,16 +334,15 @@ impl NativeAccount {
             is_me: &is_me,
         };
         self.with_db(&t.db, |conn| {
-            // each retry starts over with an empty vector (see `with_db`)
-            let mut out = Vec::new();
+            start();
             let mut stmt = conn
                 .prepare(sql)
                 .with_context(|| format!("bad query: {sql}"))?;
             let mut rows = stmt.query(params)?;
             while let Some(row) = rows.next()? {
-                out.push(R::read(row, &ctx)?);
+                each(R::read(row, &ctx)?);
             }
-            Ok(out)
+            Ok(())
         })
     }
 

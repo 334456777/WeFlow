@@ -15,8 +15,7 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 use crate::message::{
-    collect_messages, collect_rows, extract_arkme_app_message_meta, is_same_wxid, CollectOptions,
-    ExportMsg,
+    collect_rows, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
 };
 use weflow_native::msg_row::MsgRow;
 use weflow_native::native_msg::table_name_for;
@@ -1009,10 +1008,10 @@ impl ServiceHub {
             "video" => 2,
             _ => 0,
         };
-        let ids_json = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
+        let ids = uniq(&ids);
         let (rows, has_more) = wcdb
-            .scan_media_stream(
-                &ids_json,
+            .scan_media_stream_as::<MsgRow>(
+                &ids,
                 code,
                 crate::num::saturating_i32(begin),
                 crate::num::saturating_i32(end),
@@ -1023,14 +1022,10 @@ impl ServiceHub {
         let my = self.my_wxid_cleaned();
         let names = self.session_display_names(&wcdb, &ids);
         let mut items: Vec<MediaStreamItem> = Vec::new();
-        for row in rows.as_array().into_iter().flatten() {
-            let sid = ["session_id", "sessionId", "username", "talker"]
-                .iter()
-                .find_map(|k| row.get(*k).and_then(Value::as_str))
-                .unwrap_or(session_id.unwrap_or(""))
-                .to_string();
-            let msgs = collect_messages(
-                std::slice::from_ref(row),
+        for hit in rows {
+            let sid = hit.session_id;
+            let msgs = collect_rows(
+                vec![hit.row],
                 &CollectOptions {
                     session_id: &sid,
                     my_wxid: &my,

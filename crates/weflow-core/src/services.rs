@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use weflow_native::msg_row::MsgRow;
-use weflow_native::native_media::SearchHit;
+use weflow_native::native_media::SessionRow;
 
 use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
 use crate::error::{AppError, AppResult};
@@ -313,7 +313,7 @@ impl ServiceHub {
         offset: i32,
         begin: i32,
         end: i32,
-    ) -> AppResult<Vec<SearchHit<MsgRow>>> {
+    ) -> AppResult<Vec<SessionRow<MsgRow>>> {
         let wcdb = self.open_wcdb()?;
         wcdb.search_as::<MsgRow>(keyword, session_id, limit, offset, begin, end)
             .map_err(|err| AppError::native(err.to_string()))
@@ -321,7 +321,10 @@ impl ServiceHub {
 
     /// `chat search --parsed`: each hit as the chat window shows it, with its `_cursor`, to page its conversation
     /// from, and its `_session_id`.
-    pub fn parsed_hits(&self, hits: Vec<SearchHit<MsgRow>>) -> Vec<crate::contract::ParsedMessage> {
+    pub fn parsed_hits(
+        &self,
+        hits: Vec<SessionRow<MsgRow>>,
+    ) -> Vec<crate::contract::ParsedMessage> {
         let my = self.wmy();
         hits.into_iter()
             .map(|hit| {
