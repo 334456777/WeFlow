@@ -19,7 +19,8 @@ throughput and the memory curve of the server, whose median by quarter of the ti
 `serve_bench` (when given), the latency of each route. Last, the size of each binary.
 
 Writes `results.json` (everything, every run and sample), `summary.md` (also appended to `$GITHUB_STEP_SUMMARY`),
-`report.html` (the tables and the memory curves) and the output of every command under `logs/`. The numbers are
+`report.html` (the tables and the memory curves), both in Chinese for the one who reads them, and the output of
+every command under `logs/`; results.json keeps English field names for scripts. The numbers are
 reported, not judged: nothing fails because head is slower.
 """
 
@@ -28,6 +29,7 @@ import ctypes
 import ctypes.wintypes as wt
 import html
 import json
+import math
 import os
 import random
 import shutil
@@ -316,19 +318,28 @@ def run_command(exe, home, args, out_dir, log):
     }
 
 
+CPU_NOTE = "进程及其子进程的合计（Job Object）。Windows 的 CPU 时间精度是 15.6 ms，1 秒左右的命令差几十毫秒属于噪声。"
+IO_NOTE = "逻辑 I/O，包括命中系统文件缓存的部分；Windows 不按进程统计实际的磁盘 I/O。"
 METRICS = [
-    # (key, label, unit, scale)
-    ("wall_ms", "wall", "ms", 1),
-    ("first_batch_ms", "first batch", "ms", 1),
-    ("user_ms", "user CPU", "ms", 1),
-    ("kernel_ms", "kernel CPU", "ms", 1),
-    ("peak_working_set", "peak working set", "MiB", MIB),
-    ("peak_job_commit", "peak commit", "MiB", MIB),
-    ("peak_threads", "peak threads", "", 1),
-    ("read_bytes", "read", "MiB", MIB),
-    ("write_bytes", "written", "MiB", MIB),
-    ("page_faults", "page faults", "", 1),
+    # (key, label, unit, scale, note): the labels and notes are the report's, which is in Chinese (#259)
+    ("wall_ms", "耗时", "ms", 1, "从启动到退出。括号里是最快和最慢的一次。"),
+    ("first_batch_ms", "第一批结果", "ms", 1,
+     "从启动到第一个有进度的事件（`--progress`）。不输出进度的命令没有这一项。"),
+    ("user_ms", "用户态 CPU", "ms", 1, CPU_NOTE),
+    ("kernel_ms", "内核态 CPU", "ms", 1, CPU_NOTE),
+    ("peak_working_set", "峰值工作集", "MiB", MIB, "主进程占用物理内存的峰值。"),
+    ("peak_job_commit", "峰值提交内存", "MiB", MIB, "进程及其子进程提交内存的峰值，包括还没有占用物理内存的部分。"),
+    ("peak_threads", "峰值线程数", "", 1, "每 20 ms 采样一次主进程得到的最大值。"),
+    ("read_bytes", "读取", "MiB", MIB, IO_NOTE),
+    ("write_bytes", "写入", "MiB", MIB, IO_NOTE),
+    ("page_faults", "页错误", "", 1, "进程及其子进程，包括软页错误。"),
 ]
+# below these differences (in the metric's own unit) a ratio is not marked: the timer's resolution, the noise of a
+# run, or a few MiB of a working set
+NOISE = {"wall_ms": 20, "first_batch_ms": 20, "user_ms": 50, "kernel_ms": 50, "peak_working_set": 5 * MIB,
+         "peak_job_commit": 5 * MIB, "peak_threads": 1, "read_bytes": MIB, "write_bytes": MIB}
+NOISE_MS = 5
+THROUGHPUT = ("items_per_s", "吞吐量", "消息/秒", 1, "命令处理的消息数除以耗时。这是唯一一个越高越好的指标。")
 
 
 def bench_commands(args, exes, homes, manifest, out):
@@ -365,9 +376,10 @@ def bench_commands(args, exes, homes, manifest, out):
 # ---- sustained load on `weflow serve` ----
 
 def start_server(job, exe, home, log):
+    # a refused argument is answered on stdout: keep it for the error below
+    stdout = open(log + ".stdout", "w+b")
     proc = job.start([exe, "--json", "serve", "--port", "0", "--api-token", TOKEN, "--api-only"],
-                     env=environment(home), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.PIPE)
+                     env=environment(home), stdin=subprocess.DEVNULL, stdout=stdout, stderr=subprocess.PIPE)
     begin = time.perf_counter()
     lines = []
     url = None
@@ -382,7 +394,13 @@ def start_server(job, exe, home, log):
             url = event["url"].rstrip("/")
             break
     if url is None:
-        raise RuntimeError("weflow serve exited before it listened:\n" + "\n".join(lines))
+        proc.wait()
+        stdout.seek(0)
+        said = stdout.read().decode("utf-8", "replace").strip()
+        stdout.close()
+        raise RuntimeError(f"weflow serve exited ({proc.returncode}) before it listened: "
+                           + "\n".join(filter(None, [said, *lines])))
+    stdout.close()
     started_ms = (time.perf_counter() - begin) * 1000
 
     def drain():
@@ -417,10 +435,10 @@ def load_routes(manifest):
         pick = rng.random()
         if pick < 0.35:
             offset = rng.randrange(max(1, big["messages"] - 50))
-            return "messages", f"/api/chat/messages?session-id={q(big['username'])}&limit=50&offset={offset}"
+            return "messages-any-page", f"/api/chat/messages?session-id={q(big['username'])}&limit=50&offset={offset}"
         if pick < 0.55:
             c = rng.choice(others)
-            return "messages", f"/api/chat/messages?session-id={q(c['username'])}&limit=50"
+            return "messages-first-page", f"/api/chat/messages?session-id={q(c['username'])}&limit=50"
         if pick < 0.70:
             return "sessions", "/api/chat/sessions?limit=60"
         if pick < 0.80:
@@ -516,6 +534,22 @@ def run_serve_bench(tool, exe, home, runs, out, version):
 
 
 # ---- the report ----
+#
+# The report is for people (the one who started the run), so it is in Chinese like the repository's PRs and issues;
+# command and route names, units and the field names of results.json stay as they are. It is built once as blocks:
+# ("h", level, text), ("p", text), ("ul", [text]), ("table", [header], [[cell]]), then written as Markdown (the run's
+# page, summary.md) and as HTML (report.html). Text may hold `code` and **bold**.
+
+RATIO_HEADER = "head / base"
+LOAD_ROUTES = {
+    "messages-any-page": "`/api/chat/messages`，大群任意一页",
+    "messages-first-page": "`/api/chat/messages`，其他会话第一页",
+    "sessions": "`/api/chat/sessions`",
+    "search": "`/api/chat/search`，全部会话",
+    "date-counts": "`/api/chat/date-counts`",
+    "contacts": "`/api/chat/contacts`",
+}
+
 
 def fmt(v, scale=1, unit=""):
     if v is None:
@@ -525,130 +559,267 @@ def fmt(v, scale=1, unit=""):
     return f"{text} {unit}".strip()
 
 
-def fmt_ratio(r):
+def fmt_ratio(r, diff=None, noise=0):
+    """`r` with ▲ or ▼ past 10 %, unless `diff` (head - base) is within `noise`."""
     if r is None:
         return "-"
-    mark = " ▲" if r > 1.10 else " ▼" if r < 0.90 else ""
+    quiet = diff is not None and abs(diff) <= noise
+    mark = "" if quiet else " ▲" if r > 1.10 else " ▼" if r < 0.90 else ""
     return f"{r:.2f}×{mark}"
 
 
-def summary_markdown(doc):
-    lines = ["# Benchmark: base vs head", ""]
+def ref_line(meta, v):
+    m = meta[v]
+    ref = m.get("ref") or ""
+    commit = (m.get("commit") or "")[:10]
+    named = f"`{ref}`（`{commit}`）" if ref and not commit.startswith(ref) else f"`{commit or ref}`"
+    return f"{v}：{named}，{(m['version'] or '版本未知').split(' (')[0]}"
+
+
+def report_blocks(doc):
     meta = doc["meta"]
-    lines += [f"- base `{meta['base']['commit']}`, head `{meta['head']['commit']}`",
-              f"- account: seed {meta['account']['seed']}, {meta['account']['messages']:,} messages, "
-              f"{len(meta['account']['conversations'])} conversations",
-              f"- {meta['runs']} runs each, base and head taking turns, medians of the successful runs (wall: the fastest and the slowest run in brackets); "
-              f"ratio = head / base (▲ more than 10 % up, ▼ more than 10 % down)",
-              f"- runner: {meta['machine']['cpus']} logical CPUs, {meta['machine']['memory_gib']:.1f} GiB, "
-              f"{meta['machine']['platform']}", ""]
-    lines += ["## Binary size", "", "| | base | head | ratio |", "|---|---|---|---|",
-              f"| weflow.exe | {fmt(doc['binary']['base'], MIB, 'MiB')} | {fmt(doc['binary']['head'], MIB, 'MiB')} "
-              f"| {fmt_ratio(ratio(doc['binary']['head'], doc['binary']['base']))} |", ""]
+    acc, machine = meta["account"], meta["machine"]
+    blocks = [
+        ("h", 1, "基准测试：base 与 head"),
+        ("ul", [
+            ref_line(meta, "base"),
+            ref_line(meta, "head"),
+            f"基准账号：种子 {acc['seed']}，{acc['messages']:,} 条消息，{len(acc['conversations'])} 个会话",
+            f"runner：{machine['cpus']} 个逻辑 CPU，{machine['memory_gib']:.1f} GiB 内存，{machine['platform']}",
+            f"每条命令先各运行一次不计时，再由 base 和 head 交替各运行 {meta['runs']} 次，取成功运行的中位数",
+            "比值是 head / base：▲ 表示增加超过 10%，▼ 表示减少超过 10%；差值小于噪声下限时不标"
+            "（耗时 20 ms，CPU 50 ms，内存 5 MiB，路由延迟 5 ms）。除了吞吐量和每秒请求数，其余指标都是越低越好",
+        ]),
+        ("p", "**怎么看**：同一份代码在 runner 上对比时，耗时比值在 0.99–1.02 之间，个别命令（如 json 导出）每次在两个耗时之间跳。"
+              "比值超过约 10%，并且两边最快到最慢的范围不重叠，才算真正的变化。"),
+        ("h", 2, "二进制体积"),
+        ("table", ["", "base", "head", RATIO_HEADER],
+         [["`weflow.exe`", fmt(doc["binary"]["base"], MIB, "MiB"), fmt(doc["binary"]["head"], MIB, "MiB"),
+           fmt_ratio(ratio(doc["binary"]["head"], doc["binary"]["base"]))]]),
+    ]
     if doc["commands"]:
-        lines += ["## Commands", ""]
-        for key, label, unit, scale in METRICS + [("items_per_s", "throughput", "items/s", 1)]:
-            lines += [f"### {label}" + (f" ({unit})" if unit else ""), "",
-                      "| command | base | head | ratio |", "|---|---|---|---|"]
+        blocks.append(("h", 2, "命令"))
+        failed = [(n, v, e["median"][v]["failed_runs"]) for n, e in doc["commands"].items() for v in VERSIONS
+                  if e["median"][v]["failed_runs"]]
+        if failed:
+            blocks.append(("p", "**有运行失败**（输出见 `logs/`，不计入中位数）："
+                                + "，".join(f"`{n}`（{v} {k} 次）" for n, v, k in failed)))
+        for key, label, unit, scale, note in METRICS + [THROUGHPUT]:
+            rows = []
             for name, e in doc["commands"].items():
                 b, h = e["median"]["base"].get(key), e["median"]["head"].get(key)
                 if b is None and h is None:
                     continue
-                cells = [fmt(b, scale), fmt(h, scale)]
+                cells, r = [fmt(b, scale), fmt(h, scale)], ratio(h, b)
+                ratio_cell = fmt_ratio(r, None if b is None or h is None else h - b, NOISE.get(key, 0))
                 if key == "wall_ms":
-                    # some commands take one of two times run to run: the range shows whether a ratio is noise
+                    spans = []
                     for i, v in enumerate(VERSIONS):
-                        walls = [r["wall_ms"] for r in e["runs"][v] if r["exit_code"] == 0]
+                        walls = [x["wall_ms"] for x in e["runs"][v] if x["exit_code"] == 0]
                         if walls:
-                            cells[i] += f" ({fmt(min(walls))}–{fmt(max(walls))})"
-                lines.append(f"| {name} | {cells[0]} | {cells[1]} | {fmt_ratio(ratio(h, b))} |")
-            lines.append("")
-        failed = [(n, v, e["median"][v]["failed_runs"]) for n, e in doc["commands"].items() for v in VERSIONS
-                  if e["median"][v]["failed_runs"]]
-        if failed:
-            lines += ["**Failed runs** (see `logs/`): " + ", ".join(f"{n} ({v}: {k})" for n, v, k in failed), ""]
+                            spans.append((min(walls), max(walls)))
+                            cells[i] += f"（{fmt(min(walls))}–{fmt(max(walls))}）"
+                    # a ratio past 10 % whose ranges overlap is likely a command with two run times, not a change
+                    if ratio_cell[-1] in "▲▼" and len(spans) == 2 \
+                            and spans[0][0] <= spans[1][1] and spans[1][0] <= spans[0][1]:
+                        ratio_cell += "，范围重叠"
+                rows.append([f"`{name}`", *cells, ratio_cell])
+            if rows:
+                blocks += [("h", 3, f"{label}（{unit}）" if unit else label), ("p", note),
+                           ("table", ["命令", "base", "head", RATIO_HEADER], rows)]
+    if doc.get("load_failed"):
+        blocks += [("h", 2, "`weflow serve` 持续负载"),
+                   ("p", "没有完成：" + "；".join(f"{v}：{msg.replace(chr(10), ' ')[:300]}"
+                                                for v, msg in doc["load_failed"].items())
+                         + "。完整信息见 results.json 的 `load_failed`。")]
     if doc.get("load"):
-        lines += ["## Sustained load on `weflow serve`", "",
-                  "| | base | head | ratio |", "|---|---|---|---|"]
-        rows = [("requests/s", lambda d: d["requests_per_s"], 1, ""),
-                ("errors", lambda d: d["errors"], 1, ""),
-                ("latency p50 (ms)", lambda d: d["latency_ms"]["p50"], 1, ""),
-                ("latency p95 (ms)", lambda d: d["latency_ms"]["p95"], 1, ""),
-                ("latency p99 (ms)", lambda d: d["latency_ms"]["p99"], 1, ""),
-                ("start to listen (ms)", lambda d: d["started_ms"], 1, ""),
-                *[(f"working set, median of quarter {q + 1} (MiB)",
-                   lambda d, q=q: d["working_set_mib"]["quarter_medians"][q], 1, "") for q in range(4)],
-                ("growth, quarter 2 to 4 (MiB)", lambda d: d["working_set_mib"]["growth"], 1, ""),
-                ("peak working set (MiB)", lambda d: d["working_set_mib"]["peak"], 1, ""),
-                ("peak threads", lambda d: d["peak_threads"], 1, ""),
-                ("CPU (ms)", lambda d: d["user_ms"] + d["kernel_ms"], 1, "")]
-        for label, pick, scale, unit in rows:
-            b, h = pick(doc["load"]["base"]), pick(doc["load"]["head"])
-            # a growth near zero makes a ratio meaningless
-            r = None if label.startswith("growth") else ratio(h, b)
-            lines.append(f"| {label} | {fmt(b, scale, unit)} | {fmt(h, scale, unit)} | {fmt_ratio(r)} |")
-        lines += ["", "| route (requests, p50 / p95 ms) | base | head | p50 ratio |", "|---|---|---|---|"]
-        rb, rh = doc["load"]["base"]["by_route"], doc["load"]["head"]["by_route"]
-        for route in sorted(set(rb) | set(rh)):
-            b, h = rb.get(route), rh.get(route)
-            cell = lambda d: f"{d['n']}, {fmt(d['p50'])} / {fmt(d['p95'])}" if d else "-"
-            lines.append(f"| {route} | {cell(b)} | {cell(h)} | "
-                         f"{fmt_ratio(ratio(h and h['p50'], b and b['p50']))} |")
-        lines.append("")
+        load = doc["load"]
+        first = load["base"]
+        blocks += [
+            ("h", 2, "`weflow serve` 持续负载"),
+            ("p", f"每个版本启动一个 `weflow serve`，用 {first['workers']} 个并发连续请求 {first['seconds']} 秒，"
+                  "混合消息分页、会话列表、全局搜索、日期统计和联系人。内存按时间分成四段，各取中位数："
+                  "第 2 段（缓存已经热了）到第 4 段持续上升，才说明内存不稳定。"),
+        ]
+        # (label, value, noise); no noise: no ratio, as for a growth or an error count near zero
+        rows = [("每秒请求数", lambda d: d["requests_per_s"], 0),
+                ("错误数", lambda d: d["errors"], None),
+                ("延迟 p50 (ms)", lambda d: d["latency_ms"]["p50"], NOISE_MS),
+                ("延迟 p95 (ms)", lambda d: d["latency_ms"]["p95"], NOISE_MS),
+                ("延迟 p99 (ms)", lambda d: d["latency_ms"]["p99"], NOISE_MS),
+                ("启动到开始监听 (ms)", lambda d: d["started_ms"], NOISE_MS),
+                *[(f"工作集，第 {q + 1} 段中位数 (MiB)", lambda d, q=q: d["working_set_mib"]["quarter_medians"][q], 5)
+                  for q in range(4)],
+                ("第 2 段到第 4 段的增长 (MiB)", lambda d: d["working_set_mib"]["growth"], None),
+                ("峰值工作集 (MiB)", lambda d: d["working_set_mib"]["peak"], 5),
+                ("峰值线程数", lambda d: d["peak_threads"], 1),
+                ("CPU 时间 (ms)", lambda d: d["user_ms"] + d["kernel_ms"], 50)]
+        table = []
+        for label, pick, noise in rows:
+            b, h = pick(load["base"]), pick(load["head"])
+            r = None if noise is None else ratio(h, b)
+            diff = None if b is None or h is None else h - b
+            table.append([label, fmt(b), fmt(h), fmt_ratio(r, diff, noise or 0)])
+        blocks.append(("table", ["", "base", "head", RATIO_HEADER], table))
+        rb, rh = load["base"]["by_route"], load["head"]["by_route"]
+        cell = lambda d: f"{d['n']} 次，{fmt(d['p50'])} / {fmt(d['p95'])}" if d else "-"
+        p50 = lambda d, k: (d.get(k) or {}).get("p50")
+        blocks += [
+            ("p", "各路由：请求次数，延迟 p50 / p95（ms）。"),
+            ("table", ["路由", "base", "head", f"p50 {RATIO_HEADER}"],
+             [[LOAD_ROUTES.get(k, f"`{k}`"), cell(rb.get(k)), cell(rh.get(k)),
+               fmt_ratio(ratio(p50(rh, k), p50(rb, k)),
+                         None if None in (p50(rh, k), p50(rb, k)) else p50(rh, k) - p50(rb, k), NOISE_MS)]
+              for k in [k for k in LOAD_ROUTES if k in rb or k in rh] + sorted((set(rb) | set(rh)) - set(LOAD_ROUTES))]),
+        ]
     sb = doc.get("serve_bench")
     if sb:
-        lines += ["## serve_bench (median ms per route)", "",
-                  f"exit code: base {sb['base']['exit_code']}, head {sb['head']['exit_code']} "
-                  "(non-zero: a check on its synthetic account failed, see `logs/serve-bench-*.txt`)", "",
-                  "| route | base | head | ratio |", "|---|---|---|---|"]
+        code = lambda v: sb[v]["exit_code"]
+        blocks += [
+            ("h", 2, "serve_bench"),
+            ("p", "各路由响应时间的中位数（ms），由 `serve_bench` 在同一个基准账号上测得。路由名是它自己的；"
+                  "`[api]` 是进程内的 `/api/` 路由，`[sub]` 是启动子进程的路由。"
+                  f"退出码：base {code('base')}，head {code('head')}"
+                  + ("。" if code("base") == 0 and code("head") == 0 else
+                     "。非 0 表示它在自己的合成账号上有检查没通过（旧版本缺少某个路由时会这样），"
+                     "计时照常保留，原因见 `logs/serve-bench-*.txt`。")
+                  + "某一边不是每次都返回 200 时（例如旧版本还没有这个 `/api/` 路由，返回 404 只要零点几毫秒），"
+                    "格子里注明返回的状态，不计算比值。"),
+        ]
         rb = (sb["base"]["results"] or {}).get("results", {})
         rh = (sb["head"]["results"] or {}).get("results", {})
+
+        def status(row):
+            """serve_bench notes the answers that were not 200 as `status {404: 5}`."""
+            note = (row or {}).get("note") or ""
+            return next((part.strip().removeprefix("status ") for part in note.split(";")
+                         if part.strip().startswith("status {")), None)
+
+        rows = []
         for route in sorted(set(rb) | set(rh)):
             b, h = (rb.get(route) or {}).get("median"), (rh.get(route) or {}).get("median")
-            lines.append(f"| {route} | {fmt(b)} | {fmt(h)} | {fmt_ratio(ratio(h, b))} |")
-        lines.append("")
-    return "\n".join(lines)
+            sb_, sh = status(rb.get(route)), status(rh.get(route))
+            cells = [fmt(b) + (f"（状态 {sb_}）" if sb_ else ""), fmt(h) + (f"（状态 {sh}）" if sh else "")]
+            r = "-" if sb_ or sh else fmt_ratio(ratio(h, b), None if None in (b, h) else h - b, NOISE_MS)
+            rows.append([f"`{route}`", *cells, r])
+        blocks.append(("table", ["路由", "base", "head", RATIO_HEADER], rows))
+    return blocks
 
 
-def svg_curves(series, width=640, height=180):
-    """A line per (label, colour, [(t, bytes)]): working set over time."""
-    points = [p for _, _, s in series for p in s]
+def to_markdown(blocks):
+    out = []
+    for block in blocks:
+        kind = block[0]
+        if kind == "h":
+            out.append("#" * block[1] + " " + block[2])
+        elif kind == "p":
+            out.append(block[1])
+        elif kind == "ul":
+            out.append("\n".join(f"- {item}" for item in block[1]))
+        elif kind == "table":
+            row = lambda cells: "| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |"
+            out.append("\n".join([row(block[1]), "|" + "---|" * len(block[1])] + [row(r) for r in block[2]]))
+        out.append("")
+    return "\n".join(out)
+
+
+def inline_html(text):
+    """`code` and **bold** of a report text, the rest escaped."""
+    parts = html.escape(text).split("`")
+    text = "".join(f"<code>{p}</code>" if i % 2 else p for i, p in enumerate(parts))
+    parts = text.split("**")
+    return "".join(f"<strong>{p}</strong>" if i % 2 else p for i, p in enumerate(parts))
+
+
+def to_html(blocks):
+    out = []
+    for block in blocks:
+        kind = block[0]
+        if kind == "h":
+            out.append(f"<h{block[1]}>{inline_html(block[2])}</h{block[1]}>")
+        elif kind == "p":
+            out.append(f"<p>{inline_html(block[1])}</p>")
+        elif kind == "ul":
+            out.append("<ul>" + "".join(f"<li>{inline_html(i)}</li>" for i in block[1]) + "</ul>")
+        elif kind == "table":
+            head = "".join(f"<th>{inline_html(c)}</th>" for c in block[1])
+            body = "".join("<tr>" + "".join(f"<td>{inline_html(c)}</td>" for c in r) + "</tr>" for r in block[2])
+            out.append(f"<div class=scroll><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>")
+    return "\n".join(out)
+
+
+COLOURS = {"base": "#2563eb", "head": "#dc2626"}
+
+
+def nice_step(span, ticks=4):
+    """A step of 1, 2 or 5 times a power of ten that cuts `span` into about `ticks` parts."""
+    raw = span / ticks
+    power = 10 ** math.floor(math.log10(raw))
+    return next(m * power for m in (1, 2, 5, 10) if m * power >= raw)
+
+
+def svg_curves(series, width=720, height=200):
+    """Working set over time, a line per (version, [(seconds, bytes)]), from 0 on both axes."""
+    points = [p for _, s in series for p in s]
     if not points:
-        return ""
-    tmax = max(p[0] for p in points) or 1
-    ymax = max(p[1] for p in points) or 1
-    pad = 40
-    body = []
-    for label, colour, s in series:
-        pts = " ".join(f"{pad + p[0] / tmax * (width - pad - 8):.1f},{height - 20 - p[1] / ymax * (height - 30):.1f}"
-                       for p in s)
-        body.append(f'<polyline fill="none" stroke="{colour}" stroke-width="1.5" points="{pts}"><title>{label}'
-                    f'</title></polyline>')
-    axis = (f'<text x="2" y="14" font-size="11">{ymax / MIB:.0f} MiB</text>'
-            f'<text x="{width - 60}" y="{height - 4}" font-size="11">{tmax:.1f} s</text>'
-            f'<line x1="{pad}" y1="{height - 20}" x2="{width - 8}" y2="{height - 20}" stroke="#999"/>')
-    return f'<svg viewBox="0 0 {width} {height}" width="100%" style="max-width:{width}px">{axis}{"".join(body)}</svg>'
+        return "<p>没有采样。</p>"
+    tstep = nice_step(max(p[0] for p in points) or 1)
+    ystep = nice_step(max(p[1] for p in points) / MIB or 1)
+    tmax = math.ceil(max(p[0] for p in points) / tstep) * tstep
+    ymax = math.ceil(max(p[1] for p in points) / MIB / ystep) * ystep
+    left, bottom, top, right = 64, 24, 10, 24
+    x = lambda t: left + t / tmax * (width - left - right)
+    y = lambda mib: height - bottom - mib / ymax * (height - bottom - top)
+    label = lambda v: f"{v:g}"
+    grid = []
+    for k in range(round(ymax / ystep) + 1):
+        mib = k * ystep
+        grid.append(f'<line x1="{left}" y1="{y(mib):.1f}" x2="{width - right}" y2="{y(mib):.1f}" class=grid />'
+                    f'<text x="{left - 6}" y="{y(mib) + 4:.1f}" text-anchor="end">{label(mib)} MiB</text>')
+    for k in range(round(tmax / tstep) + 1):
+        t = k * tstep
+        grid.append(f'<text x="{x(t):.1f}" y="{height - 6}" text-anchor="middle">{label(round(t, 6))} s</text>')
+    y_bytes = lambda b: y(b / MIB)
+    lines = [f'<polyline fill="none" stroke="{COLOURS[v]}" stroke-width="1.5" '
+             f'points="{" ".join(f"{x(t):.1f},{y_bytes(b):.1f}" for t, b in s)}"><title>{v}</title></polyline>'
+             for v, s in series]
+    return (f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="工作集随时间变化">'
+            f'{"".join(grid)}{"".join(lines)}</svg>')
 
 
-def report_html(doc, markdown):
-    parts = ["<!doctype html><meta charset='utf-8'><title>weflow benchmark</title>",
-             "<style>body{font:14px system-ui;margin:16px;max-width:900px}pre{white-space:pre-wrap}"
-             ".b{color:#2563eb}.h{color:#dc2626}</style>",
-             "<h1>weflow benchmark</h1><p><span class=b>■ base</span> <span class=h>■ head</span>: "
-             "working set of the median run</p>"]
+def report_html(doc, blocks):
+    charts = []
     for name, e in doc["commands"].items():
         series = []
-        for v, colour in (("base", "#2563eb"), ("head", "#dc2626")):
+        for v in VERSIONS:
             ok = sorted((r for r in e["runs"][v] if r["exit_code"] == 0), key=lambda r: r["wall_ms"])
             if ok:
-                series.append((v, colour, [(t, rss) for t, rss, _ in ok[len(ok) // 2]["samples"]]))
-        parts.append(f"<h2>{html.escape(name)}</h2>{svg_curves(series)}")
+                series.append((v, [(t, rss) for t, rss, _ in ok[len(ok) // 2]["samples"]]))
+        charts.append(f"<h3><code>{html.escape(name)}</code></h3>{svg_curves(series)}")
     if doc.get("load"):
-        series = [(v, c, [(t, rss) for t, rss, _ in doc["load"][v]["samples"]])
-                  for v, c in (("base", "#2563eb"), ("head", "#dc2626"))]
-        parts.append(f"<h2>weflow serve under sustained load</h2>{svg_curves(series)}")
-    parts.append(f"<h2>Tables</h2><pre>{html.escape(markdown)}</pre>")
-    return "\n".join(parts)
+        series = [(v, [(t, rss) for t, rss, _ in doc["load"][v]["samples"]]) for v in VERSIONS]
+        charts.append(f"<h3><code>weflow serve</code> 持续负载</h3>{svg_curves(series)}")
+    legend = "".join(f'<span><i style="background:{COLOURS[v]}"></i>{v}</span>' for v in VERSIONS)
+    return f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WeFlow 基准测试</title>
+<style>
+body{{font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;margin:0 auto;padding:16px;max-width:960px;color:#1f2328}}
+h1{{font-size:22px}}h2{{font-size:18px;margin-top:32px;border-bottom:1px solid #d0d7de}}h3{{font-size:15px}}
+code{{font:12px ui-monospace,Consolas,monospace;background:#f6f8fa;padding:1px 4px;border-radius:4px}}
+.scroll{{overflow-x:auto}}table{{border-collapse:collapse;margin:8px 0 16px}}
+th,td{{border:1px solid #d0d7de;padding:4px 10px;text-align:right;white-space:nowrap}}
+th:first-child,td:first-child{{text-align:left}}th{{background:#f6f8fa}}tbody tr:nth-child(even){{background:#fafbfc}}
+svg{{width:100%;max-width:720px;font:11px system-ui;fill:#57606a}}.grid{{stroke:#e5e7eb}}
+.legend span{{margin-right:16px}}.legend i{{display:inline-block;width:12px;height:3px;margin-right:6px;vertical-align:middle}}
+</style></head><body>
+{to_html(blocks)}
+<h2>内存曲线</h2>
+<p>主进程的工作集，每 20 ms 采样一次（持续负载每 0.5 s 一次）。命令取耗时居中的那次运行。</p>
+<p class=legend>{legend}</p>
+{"".join(charts)}
+</body></html>
+"""
 
 
 def binary_info(exe):
@@ -662,6 +833,8 @@ def main():
     p.add_argument("--head", required=True)
     p.add_argument("--base-commit", default="")
     p.add_argument("--head-commit", default="")
+    p.add_argument("--base-ref", default="", help="the name given for base (a tag, a branch), shown in the report")
+    p.add_argument("--head-ref", default="")
     p.add_argument("--account", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--runs", type=int, default=5)
@@ -688,8 +861,8 @@ def main():
     wanted = lambda part: not args.only or part in args.only
     doc = {
         "meta": {
-            "base": {**binary_info(exes["base"]), "commit": args.base_commit},
-            "head": {**binary_info(exes["head"]), "commit": args.head_commit},
+            "base": {**binary_info(exes["base"]), "commit": args.base_commit, "ref": args.base_ref},
+            "head": {**binary_info(exes["head"]), "commit": args.head_commit, "ref": args.head_ref},
             "runs": args.runs,
             "account": {k: manifest[k] for k in ("seed", "messages", "messages_in_wal", "by_type", "conversations")},
             "machine": {"cpus": os.cpu_count(), "memory_gib": psutil.virtual_memory().total / 1024 ** 3,
@@ -701,21 +874,31 @@ def main():
     doc["commands"] = bench_commands(args, exes, homes, manifest, out)
     if wanted("load") and args.load_seconds > 0:
         print("== sustained load", flush=True)
-        doc["load"] = {v: sustained_load(exes[v], template, manifest, args.load_seconds, args.load_workers, out, v)
-                       for v in VERSIONS}
+        load, failed = {}, {}
+        for v in VERSIONS:
+            # an older base whose server does not start must not lose the numbers measured so far
+            try:
+                load[v] = sustained_load(exes[v], template, manifest, args.load_seconds, args.load_workers, out, v)
+            except Exception as e:  # noqa: BLE001
+                failed[v] = str(e)
+        if failed:
+            doc["load_failed"] = failed
+        else:
+            doc["load"] = load
     if args.serve_bench and wanted("serve_bench"):
         print("== serve_bench", flush=True)
         doc["serve_bench"] = {v: run_serve_bench(args.serve_bench, exes[v], homes[v], args.runs, out, v)
                               for v in VERSIONS}
     shutil.rmtree(os.path.join(out, "work"), ignore_errors=True)
 
-    markdown = summary_markdown(doc)
+    blocks = report_blocks(doc)
+    markdown = to_markdown(blocks)
     with open(os.path.join(out, "results.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, indent=1)
     with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
         f.write(markdown)
     with open(os.path.join(out, "report.html"), "w", encoding="utf-8") as f:
-        f.write(report_html(doc, markdown))
+        f.write(report_html(doc, blocks))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
             f.write(markdown + "\n")

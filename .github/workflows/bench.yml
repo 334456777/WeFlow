@@ -8,45 +8,45 @@ name: Bench
 # measuring is done by `.github/scripts/bench.py` (what it measures is in its docstring); the tools that make the
 # account and time the command API (`bench_account`, `serve_bench`) are built from the commit this workflow runs
 # on, so an older base is measured the same way. The results (results.json, summary.md, report.html, the logs) and
-# the binaries measured are uploaded as one artifact; the summary is shown on the run's page.
+# the binaries measured are uploaded as one artifact; the summary (in Chinese) is shown on the run's page.
 on:
   workflow_dispatch:
     inputs:
       base:
-        description: "Base: commit, branch or tag to compare against"
+        description: "base：用来对比的提交、分支或 tag"
         required: true
         type: string
       head:
-        description: "Head: commit, branch or tag being measured"
+        description: "head：要测量的提交、分支或 tag（HEAD 表示运行所在分支的最新提交）"
         required: true
         type: string
       runs:
-        description: "Timed runs of each command, per binary"
+        description: "每条命令、每个版本计时运行的次数"
         required: false
         default: "5"
         type: string
       seed:
-        description: "Seed of the benchmark account"
+        description: "基准账号的随机种子"
         required: false
         default: "1"
         type: string
       group_messages:
-        description: "Messages of the account's biggest group"
+        description: "基准账号最大群聊的消息数"
         required: false
         default: "200000"
         type: string
       conversations:
-        description: "Other conversations of the account"
+        description: "基准账号其他会话的个数"
         required: false
         default: "300"
         type: string
       load_seconds:
-        description: "Seconds of sustained requests on weflow serve (0 skips it)"
+        description: "weflow serve 持续请求的秒数（0 表示跳过）"
         required: false
         default: "90"
         type: string
       only:
-        description: "Only these parts, comma separated: command names (see bench.py), load, serve_bench; empty: all"
+        description: "只测这些项目，逗号分隔：命令名（见 bench.py，如 export messages json）、load、serve_bench；留空测全部"
         required: false
         default: ""
         type: string
@@ -145,12 +145,15 @@ jobs:
       - name: Benchmark
         shell: bash
         env:
+          BASE_REF: ${{ inputs.base }}
+          HEAD_REF: ${{ inputs.head }}
           RUNS: ${{ inputs.runs }}
           LOAD_SECONDS: ${{ inputs.load_seconds }}
           ONLY: ${{ inputs.only }}
         run: |
           python .github/scripts/bench.py --base bin/weflow-base.exe --head bin/weflow-head.exe \
             --base-commit "$(cat bin/base-commit.txt)" --head-commit "$(cat bin/head-commit.txt)" \
+            --base-ref "$BASE_REF" --head-ref "$HEAD_REF" \
             --account "$RUNNER_TEMP/account" --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" \
             --serve-bench bin/serve_bench.exe ${ONLY:+--only "$ONLY"}
 
