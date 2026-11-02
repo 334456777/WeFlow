@@ -20,6 +20,7 @@ bun run dev                               # http://localhost:5173/ui/
 
 - **the page**: Vite serves these sources as they are, the same page `bun run build` makes, nothing added for development;
 - **the server**: a `weflow serve` (debug build, `cargo build` first) of a synthetic account, on a free port of 127.0.0.1 and with a random token of its own. The account is made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time, again only when the generator changes): made-up friends, a group, Moments and 「图片测试」, a chat of one picture per case of the files WeChat keeps of a picture (thumbnail `_t.dat`, image `.dat`, HD original `_h.dat`, each there or not), every picture written with its file and size. Nothing of a real WeChat account is read.
+  With `WEFLOW_DEV_ACCOUNT=bench` (in the shell or `web/.env.local`) it serves the benchmark account instead (`crates/weflow-cli/examples/bench_account.rs`, #488, in `target/bench-account/`): a group of 200,000 messages and 300 other conversations shaped like a real account's, for trying the page at a real size. Its JPEGs are not pictures, and the first build takes a minute or two and about 2.5 GB.
 
 Vite answers `/ui/` itself and passes every other path (`/chat/sessions`, `/api/…`, `/jobs`, `/health`, `/openapi.json`) to that server, adding its token; the page asks for none. Stopping `bun run dev` stops both.
 

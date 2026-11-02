@@ -24,6 +24,7 @@ bun run dev                               # http://localhost:5173/ui/
 
 - **网页**：Vite 直接提供这些源码，和 `bun run build` 做出来的是同一个网页，不加任何只在开发时才有的代码；
 - **后端**：一个读合成账号的 `weflow serve`（调试版，先自动 `cargo build`），监听 127.0.0.1 上的一个空闲端口，令牌每次随机生成。合成账号由 `crates/weflow-cli/examples/dev_account.rs` 生成在 `target/dev-account/` 里，第一次约 20 秒，之后只在生成器改了时才重建。里面有假的好友、一个群、几条朋友圈，还有「图片测试」：一张图片一种情况，对应微信保存的图片文件（缩略图 `_t.dat`、图片 `.dat`、高清原图 `_h.dat`，各自有或没有），每张图上写着它是哪个文件和尺寸。不读任何真实微信账号。
+  设置 `WEFLOW_DEV_ACCOUNT=bench`（在终端或 `web/.env.local` 里）时改用基准账号（`crates/weflow-cli/examples/bench_account.rs`，#488，生成在 `target/bench-account/`）：一个 20 万条消息的群和 300 个其他会话，形态照真实账号，用来在真实的规模下试用网页。它的 JPEG 不是真正的图片；第一次生成约需一两分钟，占用约 2.5 GB。
 
 Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs`、`/health`、`/openapi.json`）都转发给这个后端，并带上它的令牌，网页里不用填。停止 `bun run dev` 时两样一起停。
 
