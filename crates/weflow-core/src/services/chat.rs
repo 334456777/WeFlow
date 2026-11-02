@@ -15,7 +15,8 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 use crate::message::{
-    collect_messages, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
+    collect_messages, collect_rows, extract_arkme_app_message_meta, is_same_wxid, CollectOptions,
+    ExportMsg,
 };
 use weflow_native::msg_row::MsgRow;
 use weflow_native::native_msg::table_name_for;
@@ -217,9 +218,9 @@ impl ServiceHub {
         clean_account_dir_name(&raw)
     }
 
-    fn normalize_row(&self, rows: &[Value], session_id: &str) -> Vec<ExportMsg> {
+    fn normalize_row(&self, rows: Vec<MsgRow>, session_id: &str) -> Vec<ExportMsg> {
         let my = self.my_wxid_cleaned();
-        collect_messages(
+        collect_rows(
             rows,
             &CollectOptions {
                 session_id,
@@ -917,7 +918,7 @@ impl ServiceHub {
             loop {
                 // what is older than the page so far cannot be on it
                 let rows = wcdb
-                    .typed_before(
+                    .typed_before_as::<MsgRow>(
                         tables,
                         &local_types,
                         from,
@@ -926,14 +927,13 @@ impl ServiceHub {
                         want as i64,
                     )
                     .map_err(native)?;
-                for row in &rows {
-                    let Some(pos) = MsgPos::of_row(row) else {
-                        continue;
-                    };
+                let (count, end) = (rows.len(), rows.last().map(MsgRow::pos));
+                for row in rows {
+                    let pos = row.pos();
                     if !seen.insert(place(&pos)) {
                         continue;
                     }
-                    let Some(m) = collect_messages(std::slice::from_ref(row), &opts).pop() else {
+                    let Some(m) = collect_rows(vec![row], &opts).pop() else {
                         continue;
                     };
                     let Some(kind) = Self::resource_type(&m) else {
@@ -944,10 +944,10 @@ impl ServiceHub {
                 }
                 // rows that are not resources (a type-49 app message is a file only by what it says) or
                 // listed already are read past
-                let Some(end) = rows.last().and_then(MsgPos::of_row) else {
+                let Some(end) = end else {
                     break;
                 };
-                if found >= want || rows.len() < want {
+                if found >= want || count < want {
                     break;
                 }
                 from = Some((end, Ties::None));
@@ -990,12 +990,9 @@ impl ServiceHub {
     pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 3, false, 0, 0)
+            .messages_by_type_as::<MsgRow>(session_id, 3, false, 0, 0)
             .map_err(native)?;
-        let msgs = self.normalize_row(
-            rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
-            session_id,
-        );
+        let msgs = self.normalize_row(rows, session_id);
         let mut images: Vec<(i64, ImageRef)> = msgs
             .into_iter()
             .filter(|m| m.local_type == 3 && (m.image_md5.is_some() || m.image_dat_name.is_some()))
@@ -1032,13 +1029,10 @@ impl ServiceHub {
     pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 34, false, 0, 0)
+            .messages_by_type_as::<MsgRow>(session_id, 34, false, 0, 0)
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
-        let mut msgs = self.normalize_row(
-            rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
-            session_id,
-        );
+        let mut msgs = self.normalize_row(rows, session_id);
         msgs.sort_by_key(|a| std::cmp::Reverse(a.create_time));
         let mut seen = HashSet::new();
         let messages: Vec<MessageView> = msgs

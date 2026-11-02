@@ -192,7 +192,7 @@ impl Wcdb {
     }
 
     /// See [`NativeAccount::typed_before`].
-    pub fn typed_before(
+    pub fn typed_before_as<R: RowShape>(
         &self,
         tables: &[crate::native_msg::MsgTable],
         local_types: &[i64],
@@ -200,13 +200,9 @@ impl Wcdb {
         range: (i64, i64),
         floor: i64,
         limit: i64,
-    ) -> Result<Vec<Value>> {
-        Ok(self
-            .account()?
-            .typed_before::<LegacyRow>(tables, local_types, before, range, floor, limit)?
-            .into_iter()
-            .map(LegacyRow::into_value)
-            .collect())
+    ) -> Result<Vec<R>> {
+        self.account()?
+            .typed_before(tables, local_types, before, range, floor, limit)
     }
 
     /// Opens the databases a chat page reads, at the same time (see
@@ -240,10 +236,21 @@ impl Wcdb {
         limit: i32,
         offset: i32,
     ) -> Result<Value> {
-        Ok(LegacyRow::array(
-            self.account()?
-                .messages_by_type::<LegacyRow>(session_id, local_type, ascending, limit, offset)?,
-        ))
+        Ok(LegacyRow::array(self.messages_by_type_as::<LegacyRow>(
+            session_id, local_type, ascending, limit, offset,
+        )?))
+    }
+
+    pub fn messages_by_type_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        local_type: i64,
+        ascending: bool,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<R>> {
+        self.account()?
+            .messages_by_type(session_id, local_type, ascending, limit, offset)
     }
 
     /// One message by `local_id`; `{}` when there is none.
