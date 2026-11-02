@@ -373,7 +373,7 @@ impl Read {
                     start: *start,
                     end: *end,
                 })?;
-                Ok(json!(crate::contract::SnsTimeline::of(posts)?))
+                Ok(json!(crate::contract::SnsTimeline { timeline: posts }))
             }
             Read::SnsUsers => Ok(json!(crate::contract::SnsUsers {
                 usernames: hub.sns_usernames_list()?

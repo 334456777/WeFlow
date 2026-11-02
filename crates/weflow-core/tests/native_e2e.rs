@@ -528,7 +528,9 @@ fn moments_timeline_is_enriched_with_names_avatars_and_fixed_urls() {
         start: 0,
         end: 0,
     };
-    let posts = hub.sns_timeline_query(&q).unwrap();
+    // as `sns timeline` answers them
+    let answer = json!(hub.sns_timeline_query(&q).unwrap());
+    let posts = answer.as_array().unwrap();
     let descs: Vec<&str> = posts
         .iter()
         .map(|p| p["contentDesc"].as_str().unwrap())

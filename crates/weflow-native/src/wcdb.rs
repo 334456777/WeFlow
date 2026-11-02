@@ -574,6 +574,26 @@ impl Wcdb {
         )
     }
 
+    /// [`sns_timeline`](Self::sns_timeline) as typed posts, of the posters `usernames` (all when empty).
+    pub fn sns_timeline_as(
+        &self,
+        limit: i32,
+        offset: i32,
+        usernames: &[String],
+        keyword: Option<&str>,
+        start: i32,
+        end: i32,
+    ) -> Result<Vec<crate::native_sns::SnsPost>> {
+        self.account()?.sns_timeline_as(
+            limit,
+            offset,
+            usernames,
+            keyword,
+            i64::from(start),
+            i64::from(end),
+        )
+    }
+
     pub fn sns_annual_stats(&self, begin: i32, end: i32) -> Result<Value> {
         self.account()?.sns_annual_stats(begin as i64, end as i64)
     }

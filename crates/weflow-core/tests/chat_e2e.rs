@@ -652,12 +652,11 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
             )],
         );
     });
-    // a page's rows are MessageRows (#492), a search's hits still the legacy rows
     let ids = |page: &serde_json::Value| -> Vec<i64> {
         page.as_array()
             .unwrap()
             .iter()
-            .map(|r| r["localId"].as_i64().or(r["local_id"].as_i64()).unwrap())
+            .map(|r| r["localId"].as_i64().unwrap())
             .collect()
     };
     // the earliest messages sent at T0 + 40 or later, newest first: both of that second, then the next ones

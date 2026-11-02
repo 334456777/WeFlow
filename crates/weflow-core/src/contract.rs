@@ -998,17 +998,6 @@ pub struct SnsTimeline {
     pub timeline: Vec<SnsPost>,
 }
 
-impl SnsTimeline {
-    /// The posts as the service builds them (`sns::enrich_post`, with `with-media` `sns_enrich_timeline_media`), read
-    /// into the contract's types. A field they do not know fails here rather than leave the answer unseen; a test
-    /// reads every field back out the same.
-    pub fn of(posts: Vec<serde_json::Value>) -> crate::error::AppResult<Self> {
-        let timeline = serde_json::from_value(serde_json::Value::Array(posts))
-            .map_err(|err| crate::error::AppError::runtime(format!("a Moments post: {err}")))?;
-        Ok(Self { timeline })
-    }
-}
-
 /// A Moments post.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2265,8 +2254,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// A post as `sns timeline` builds it reads into [`SnsPost`] and writes back out the same, every field of it: a
-    /// field `sns::enrich_post` gains or loses fails here before it is lost from the answer.
+    /// A post as `sns timeline` builds it writes out and reads back into [`SnsPost`] the same, every field of it.
     #[test]
     fn a_moments_post_reads_into_the_contract_and_back_the_same() {
         let xml = r#"<TimelineObject><id>1395</id><createTime>1700000000</createTime>
@@ -2286,10 +2274,11 @@ mod tests {
             display_name: Some("Bobby".into()),
             avatar_url: Some("https://wx.qlogo.cn/b".into()),
         };
-        let post = crate::sns::enrich_post(
-            &weflow_native::native_sns::parse_post(2001, "wxid_bob", xml),
+        let built = crate::sns::enrich_post(
+            weflow_native::native_sns::parse_post_as(2001, "wxid_bob", xml),
             Some(&contact),
         );
+        let post = serde_json::to_value(&built).unwrap();
         let typed: SnsPost = serde_json::from_value(post.clone()).unwrap();
         assert_eq!(serde_json::to_value(&typed).unwrap(), post);
         // the test has every kind of field to lose

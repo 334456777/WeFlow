@@ -118,33 +118,96 @@ fn attr(attrs: &str, name: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// `{ url, thumb, token, key, md5, encIdx }` for a `<media>`/`<livePhoto>` fragment.
-fn media_item(frag: &str) -> Value {
-    let (url_attrs, thumb_attrs) = (
-        tag_attrs(frag, "url").unwrap_or_default(),
-        tag_attrs(frag, "thumb").unwrap_or_default(),
-    );
-    let pick = |name: &str| attr(&url_attrs, name).or_else(|| attr(&thumb_attrs, name));
-    let mut o = Map::new();
-    o.insert(
-        "url".into(),
-        json!(tag_text(frag, "url").unwrap_or_default()),
-    );
-    o.insert(
-        "thumb".into(),
-        json!(tag_text(frag, "thumb").unwrap_or_default()),
-    );
-    for (k, v) in [
-        ("token", pick("token")),
-        ("key", pick("key")),
-        ("md5", attr(&url_attrs, "md5")),
-        ("encIdx", pick("enc_idx")),
-    ] {
-        if let Some(v) = v {
-            o.insert(k.into(), json!(v));
+/// A picture or video of a post (`<media>`), or the moving part of a live photo (`<livePhoto>`), as its XML names it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SnsMedia {
+    pub url: String,
+    pub thumb: String,
+    /// The attributes of `<url>`, else of `<thumb>`; `md5` is `<url>`'s only.
+    pub token: Option<String>,
+    pub key: Option<String>,
+    pub md5: Option<String>,
+    pub enc_idx: Option<String>,
+    pub live_photo: Option<Box<SnsMedia>>,
+}
+
+impl SnsMedia {
+    /// The fragment's media.
+    fn of(frag: &str) -> Self {
+        let (url_attrs, thumb_attrs) = (
+            tag_attrs(frag, "url").unwrap_or_default(),
+            tag_attrs(frag, "thumb").unwrap_or_default(),
+        );
+        let pick = |name: &str| attr(&url_attrs, name).or_else(|| attr(&thumb_attrs, name));
+        Self {
+            url: tag_text(frag, "url").unwrap_or_default(),
+            thumb: tag_text(frag, "thumb").unwrap_or_default(),
+            token: pick("token"),
+            key: pick("key"),
+            md5: attr(&url_attrs, "md5"),
+            enc_idx: pick("enc_idx"),
+            live_photo: None,
         }
     }
-    Value::Object(o)
+
+    /// `{ url, thumb, token, key, md5, encIdx, livePhoto }`, the absent ones left out: the legacy shape.
+    fn to_value(&self) -> Value {
+        let mut o = Map::new();
+        o.insert("url".into(), json!(self.url));
+        o.insert("thumb".into(), json!(self.thumb));
+        for (k, v) in [
+            ("token", &self.token),
+            ("key", &self.key),
+            ("md5", &self.md5),
+            ("encIdx", &self.enc_idx),
+        ] {
+            if let Some(v) = v {
+                o.insert(k.into(), json!(v));
+            }
+        }
+        if let Some(live) = &self.live_photo {
+            o.insert("livePhoto".into(), live.to_value());
+        }
+        Value::Object(o)
+    }
+}
+
+/// A Moments post, read from its row of `SnsTimeLine`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SnsPost {
+    /// WeChat's id of the post, `tid` when the XML has none.
+    pub id: String,
+    /// The row's id, the unsigned snowflake in decimal.
+    pub tid: String,
+    /// The row's `user_name`, else the XML's `<username>`.
+    pub username: String,
+    /// `<createTime>`, 0 when there is none.
+    pub create_time: i64,
+    pub content_desc: String,
+    /// `<ContentObject><type>`, 1 when there is none.
+    pub kind: i64,
+    pub raw_xml: String,
+    pub media: Vec<SnsMedia>,
+    /// The nicknames of those who liked it.
+    pub likes: Vec<String>,
+    /// The `<enc key>` that opens the post's video.
+    pub video_key: Option<String>,
+}
+
+impl SnsPost {
+    /// The post as the desktop app's DLL returned it, with an empty `nickname` and `comments`.
+    pub fn to_value(&self) -> Value {
+        let mut post = json!({
+            "id": self.id, "tid": self.tid, "username": self.username, "nickname": "",
+            "createTime": self.create_time, "contentDesc": self.content_desc, "type": self.kind,
+            "rawXml": self.raw_xml, "media": self.media.iter().map(SnsMedia::to_value).collect::<Vec<_>>(),
+            "likes": self.likes, "comments": []
+        });
+        if let Some(key) = &self.video_key {
+            post["videoKey"] = json!(key);
+        }
+        post
+    }
 }
 
 /// `<createTime>` of a post, `0` when it has none.
@@ -155,31 +218,39 @@ fn post_time(xml: &str) -> i64 {
         .unwrap_or(0)
 }
 
-/// One timeline row → the post object the service layer expects.
+/// `<ContentObject><type>` of a post, `1` when it has none.
+fn post_type(xml: &str) -> i64 {
+    R_TYPE
+        .captures(xml)
+        .and_then(|c| c[1].parse::<i64>().ok())
+        .unwrap_or(1)
+}
+
+/// One timeline row as the legacy JSON post (see [`SnsPost::to_value`]).
 pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> Value {
+    parse_post_as(tid, user_name, xml).to_value()
+}
+
+/// One timeline row → its post.
+pub fn parse_post_as(tid: i64, user_name: &str, xml: &str) -> SnsPost {
     let tid_text = (tid as u64).to_string();
     let id = R_ID
         .captures(xml)
         .map(|c| c[1].to_string())
         .unwrap_or_else(|| tid_text.clone());
-    let create_time = post_time(xml);
-    let post_type = R_TYPE
-        .captures(xml)
-        .and_then(|c| c[1].parse::<i64>().ok())
-        .unwrap_or(1);
     let username = if user_name.is_empty() {
         tag_text(xml, "username").unwrap_or_default()
     } else {
         user_name.to_string()
     };
 
-    let media: Vec<Value> = R_MEDIA
+    let media: Vec<SnsMedia> = R_MEDIA
         .captures_iter(xml)
         .map(|c| {
             let frag = &c[1];
-            let mut item = media_item(frag);
+            let mut item = SnsMedia::of(frag);
             if let Some(live) = R_LIVE.captures(frag) {
-                item["livePhoto"] = media_item(&live[1]);
+                item.live_photo = Some(Box::new(SnsMedia::of(&live[1])));
             }
             item
         })
@@ -195,15 +266,18 @@ pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> Value {
         })
         .unwrap_or_default();
 
-    let mut post = json!({
-        "id": id, "tid": tid_text, "username": username, "nickname": "", "createTime": create_time,
-        "contentDesc": tag_text(xml, "contentDesc").unwrap_or_default(), "type": post_type,
-        "rawXml": xml, "media": media, "likes": likes, "comments": []
-    });
-    if let Some(key) = R_ENC_KEY.captures(xml) {
-        post["videoKey"] = json!(key[1].to_string());
+    SnsPost {
+        id,
+        tid: tid_text,
+        username,
+        create_time: post_time(xml),
+        content_desc: tag_text(xml, "contentDesc").unwrap_or_default(),
+        kind: post_type(xml),
+        raw_xml: xml.to_string(),
+        media,
+        likes,
+        video_key: R_ENC_KEY.captures(xml).map(|key| key[1].to_string()),
     }
-    post
 }
 
 /// Usernames that liked the post (from `<like_user_list>`).
@@ -267,7 +341,7 @@ impl NativeAccount {
             .collect())
     }
 
-    /// Newest-first page of posts. `keyword` matches the post text; `start`/`end` are seconds (`0` = unbounded).
+    /// [`sns_timeline_as`](Self::sns_timeline_as) as the legacy JSON posts.
     pub fn sns_timeline(
         &self,
         limit: i32,
@@ -277,6 +351,24 @@ impl NativeAccount {
         start: i64,
         end: i64,
     ) -> Result<Value> {
+        Ok(Value::Array(
+            self.sns_timeline_as(limit, offset, usernames, keyword, start, end)?
+                .iter()
+                .map(SnsPost::to_value)
+                .collect(),
+        ))
+    }
+
+    /// Newest-first page of posts. `keyword` matches the post text; `start`/`end` are seconds (`0` = unbounded).
+    pub fn sns_timeline_as(
+        &self,
+        limit: i32,
+        offset: i32,
+        usernames: &[String],
+        keyword: Option<&str>,
+        start: i64,
+        end: i64,
+    ) -> Result<Vec<SnsPost>> {
         let needle = keyword
             .map(|k| k.trim().to_lowercase())
             .filter(|k| !k.is_empty());
@@ -300,12 +392,12 @@ impl NativeAccount {
         let it = posts
             .into_iter()
             .skip(offset.max(0) as usize)
-            .map(|(_, tid, user, xml)| parse_post(tid as i64, &user, &xml));
-        Ok(Value::Array(if limit > 0 {
+            .map(|(_, tid, user, xml)| parse_post_as(tid as i64, &user, &xml));
+        Ok(if limit > 0 {
             it.take(limit as usize).collect()
         } else {
             it.collect()
-        }))
+        })
     }
 
     /// Distinct usernames that have posts, most recent poster first.
@@ -364,7 +456,7 @@ impl NativeAccount {
         let mut types: BTreeMap<i64, i64> = BTreeMap::new();
         let (mut likers, mut liked): (HashMap<String, i64>, HashMap<String, i64>) =
             Default::default();
-        for (tid, user, xml) in self.sns_rows(&[])? {
+        for (_, user, xml) in self.sns_rows(&[])? {
             let t = post_time(&xml);
             if (begin > 0 && t < begin) || (end > 0 && t > end) {
                 continue;
@@ -373,9 +465,7 @@ impl NativeAccount {
             let likes = liker_usernames(&xml);
             if mine {
                 total += 1;
-                *types
-                    .entry(parse_post(tid, &user, &xml)["type"].as_i64().unwrap_or(1))
-                    .or_default() += 1;
+                *types.entry(post_type(&xml)).or_default() += 1;
                 for l in likes.iter().filter(|l| !self.is_me(l)) {
                     *likers.entry(l.clone()).or_default() += 1;
                 }

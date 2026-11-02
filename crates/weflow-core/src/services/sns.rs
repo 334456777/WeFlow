@@ -10,10 +10,11 @@ use serde_json::{json, Map, Value};
 
 use super::*;
 use crate::contract::{
-    SnsEmojiSaved, SnsExported, SnsResourceHeaders, SnsResourceProbe, SnsStats, UserPosts,
+    SnsComment, SnsEmojiSaved, SnsExported, SnsPost, SnsResourceHeaders, SnsResourceProbe,
+    SnsStats, UserPosts,
 };
 use crate::isaac64;
-use crate::sns::{self, CachedContact};
+use crate::sns::{self, CachedContact, SavedMedia};
 use crate::sync::MutexExt;
 
 const EXPORT_STATS_TTL: Duration = Duration::from_secs(5 * 60);
@@ -253,8 +254,8 @@ impl ServiceHub {
 
     // ── timeline ──
 
-    /// `snsService.getTimeline`: DLL rows enriched with fixed URLs, comments, location, avatar.
-    pub fn sns_timeline_query(&self, q: &SnsTimelineQuery) -> AppResult<Vec<Value>> {
+    /// `snsService.getTimeline`: the posts enriched with fixed URLs, comments, location, avatar.
+    pub fn sns_timeline_query(&self, q: &SnsTimelineQuery) -> AppResult<Vec<SnsPost>> {
         let wcdb = self.open_wcdb()?;
         self.sns_timeline_with(&wcdb, q)
     }
@@ -263,47 +264,42 @@ impl ServiceHub {
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         q: &SnsTimelineQuery,
-    ) -> AppResult<Vec<Value>> {
-        let usernames_json = if q.usernames.is_empty() {
-            None
-        } else {
-            Some(
-                serde_json::to_string(&q.usernames)
-                    .map_err(|e| AppError::runtime(e.to_string()))?,
-            )
-        };
-        let raw = wcdb
-            .sns_timeline(
+    ) -> AppResult<Vec<SnsPost>> {
+        let mut asked = std::collections::HashSet::new();
+        let usernames: Vec<String> = q
+            .usernames
+            .iter()
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty() && asked.insert(u.clone()))
+            .collect();
+        let posts = wcdb
+            .sns_timeline_as(
                 q.limit,
                 q.offset,
-                usernames_json.as_deref(),
+                &usernames,
                 q.keyword.as_deref(),
                 crate::num::saturating_i32(q.start),
                 crate::num::saturating_i32(q.end),
             )
             .map_err(err_native)?;
-        let rows = raw.as_array().cloned().unwrap_or_default();
-        if rows.is_empty() {
-            return Ok(rows);
+        if posts.is_empty() {
+            return Ok(Vec::new());
         }
         let users: Vec<String> = {
             let mut seen = std::collections::BTreeSet::new();
-            rows.iter()
-                .filter_map(|p| p.get("username").and_then(Value::as_str))
+            posts
+                .iter()
+                .map(|p| p.username.as_str())
                 .filter(|u| seen.insert(u.to_string()))
                 .map(str::to_string)
                 .collect()
         };
         let book = self.contact_book(wcdb, &users);
-        Ok(rows
-            .iter()
+        Ok(posts
+            .into_iter()
             .map(|p| {
-                sns::enrich_post(
-                    p,
-                    p.get("username")
-                        .and_then(Value::as_str)
-                        .and_then(|u| book.get(u)),
-                )
+                let contact = book.get(p.username.as_str());
+                sns::enrich_post(p, contact)
             })
             .collect())
     }
@@ -336,17 +332,14 @@ impl ServiceHub {
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         max_rounds: usize,
-        mut visit: impl FnMut(&Value),
+        mut visit: impl FnMut(&weflow_native::native_sns::SnsPost),
     ) -> AppResult<()> {
         let page = 500;
         let mut offset = 0;
         for _ in 0..max_rounds {
-            let raw = wcdb
-                .sns_timeline(page, offset, None, None, 0, 0)
+            let rows = wcdb
+                .sns_timeline_as(page, offset, &[], None, 0, 0)
                 .map_err(err_native)?;
-            let Some(rows) = raw.as_array() else {
-                return Err(AppError::native("failed to read the Moments timeline"));
-            };
             if rows.is_empty() {
                 break;
             }
@@ -368,7 +361,7 @@ impl ServiceHub {
         let mut seen = std::collections::BTreeSet::new();
         let mut order = Vec::new();
         self.scan_timeline_rows(wcdb, max_rounds, |row| {
-            let u = sns::pick_timeline_username(row);
+            let u = row.username.trim().to_string();
             if !u.is_empty() && seen.insert(u.clone()) {
                 order.push(u);
             }
@@ -413,7 +406,7 @@ impl ServiceHub {
         let mut users = std::collections::HashSet::new();
         self.scan_timeline_rows(wcdb, 2000, |row| {
             total += 1;
-            let u = sns::pick_timeline_username(row);
+            let u = row.username.trim().to_string();
             if !u.is_empty() {
                 if my_wxid == Some(u.as_str()) {
                     mine += 1;
@@ -972,7 +965,7 @@ impl ServiceHub {
 
         // 1. load every post page by page
         let wcdb = self.open_wcdb()?;
-        let mut posts: Vec<Value> = Vec::new();
+        let mut posts: Vec<SnsPost> = Vec::new();
         let page = 50;
         let mut end_ts = opts.end;
         self.emit_progress("sns", "loading Moments…", 0, 0);
@@ -989,11 +982,7 @@ impl ServiceHub {
                 Ok(b) if !b.is_empty() => b,
                 _ => break,
             };
-            let last_ts = batch
-                .last()
-                .and_then(|p| p.get("createTime").and_then(Value::as_i64))
-                .unwrap_or(0)
-                - 1;
+            let last_ts = batch.last().map_or(0, |p| p.create_time) - 1;
             let n = batch.len();
             posts.extend(batch);
             end_ts = last_ts;
@@ -1011,9 +1000,13 @@ impl ServiceHub {
             });
         }
 
-        // 2. media
+        // 2. media, the files saved of each medium of each post
         let media_dir = opts.output_dir.join("media");
         let mut media_count = 0usize;
+        let mut saved: Vec<Vec<SavedMedia>> = posts
+            .iter()
+            .map(|p| vec![SavedMedia::default(); p.media.len()])
+            .collect();
         if want_media {
             std::fs::create_dir_all(&media_dir).map_err(|e| AppError::runtime(e.to_string()))?;
             #[derive(Clone)]
@@ -1027,25 +1020,10 @@ impl ServiceHub {
             }
             let mut tasks = Vec::new();
             for (pi, post) in posts.iter().enumerate() {
-                let post_id = post
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                for (mi, m) in post
-                    .get("media")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .enumerate()
-                {
-                    let url = m
-                        .get("url")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    let key = m.get("key").and_then(Value::as_str).map(str::to_string);
+                let post_id = post.id.clone();
+                for (mi, m) in post.media.iter().enumerate() {
+                    let url = m.url.clone();
+                    let key = m.key.clone();
                     let video = sns::is_video_url(&url);
                     if want_images && !video && !url.is_empty() {
                         tasks.push(Task {
@@ -1067,21 +1045,12 @@ impl ServiceHub {
                             post_id: post_id.clone(),
                         });
                     }
-                    if let Some(lp) = m.get("livePhoto").filter(|_| want_live) {
-                        if let Some(lurl) = lp
-                            .get("url")
-                            .and_then(Value::as_str)
-                            .filter(|u| !u.is_empty())
-                        {
+                    if let Some(lp) = m.live_photo.as_ref().filter(|_| want_live) {
+                        if !lp.url.is_empty() {
                             tasks.push(Task {
                                 kind: "livephoto",
-                                url: lurl.to_string(),
-                                key: lp
-                                    .get("key")
-                                    .and_then(Value::as_str)
-                                    .filter(|k| !k.is_empty())
-                                    .map(str::to_string)
-                                    .or(key.clone()),
+                                url: lp.url.clone(),
+                                key: lp.key.clone().filter(|k| !k.is_empty()).or(key.clone()),
                                 post_idx: pi,
                                 media_idx: mi,
                                 post_id: post_id.clone(),
@@ -1130,17 +1099,14 @@ impl ServiceHub {
             for (task, local) in results {
                 let Some(local) = local else { continue };
                 media_count += 1;
-                if let Some(m) = posts[task.post_idx]
-                    .get_mut("media")
-                    .and_then(|m| m.get_mut(task.media_idx))
-                    .and_then(Value::as_object_mut)
+                if let Some(s) = saved
+                    .get_mut(task.post_idx)
+                    .and_then(|s| s.get_mut(task.media_idx))
                 {
                     if task.kind == "livephoto" {
-                        if let Some(lp) = m.get_mut("livePhoto").and_then(Value::as_object_mut) {
-                            lp.insert("localPath".into(), json!(local));
-                        }
+                        s.live = Some(local);
                     } else {
-                        m.insert("localPath".into(), json!(local));
+                        s.file = Some(local);
                     }
                 }
             }
@@ -1152,11 +1118,9 @@ impl ServiceHub {
             std::fs::create_dir_all(&media_dir).map_err(|e| AppError::runtime(e.to_string()))?;
             let mut unique: Vec<(String, String)> = Vec::new();
             for p in &posts {
-                if let (Some(u), Some(a)) = (
-                    p.get("username").and_then(Value::as_str),
-                    p.get("avatarUrl")
-                        .and_then(Value::as_str)
-                        .filter(|a| !a.is_empty()),
+                if let (u, Some(a)) = (
+                    p.username.as_str(),
+                    p.avatar_url.as_deref().filter(|a| !a.is_empty()),
                 ) {
                     if !unique.iter().any(|(x, _)| x == u) {
                         unique.push((u.to_string(), a.to_string()));
@@ -1198,8 +1162,11 @@ impl ServiceHub {
         match opts.format.as_str() {
             "json" => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.json"));
-                let posts_json: Vec<Value> =
-                    posts.iter().map(|p| export_post_json(p, false)).collect();
+                let posts_json: Vec<Value> = posts
+                    .iter()
+                    .zip(&saved)
+                    .map(|(p, s)| export_post_json(p, s, false))
+                    .collect();
                 let data = json!({ "exportTime": export_time, "totalPosts": posts.len(), "filters": filters, "posts": posts_json });
                 let text = serde_json::to_string_pretty(&data)
                     .map_err(|e| AppError::runtime(e.to_string()))?;
@@ -1212,21 +1179,21 @@ impl ServiceHub {
                     let mut seen = std::collections::BTreeSet::new();
                     posts
                         .iter()
-                        .filter_map(|p| p.get("username").and_then(Value::as_str))
+                        .map(|p| p.username.as_str())
                         .filter(|u| seen.insert(u.to_string()))
                         .map(str::to_string)
                         .collect()
                 };
                 let book = self.contact_book(&wcdb, &uniq);
                 let mut built = Vec::with_capacity(posts.len());
-                for (i, post) in posts.iter().enumerate() {
-                    let username = post.get("username").and_then(Value::as_str).unwrap_or("");
+                for (i, (post, saved)) in posts.iter().zip(&saved).enumerate() {
+                    let username = post.username.as_str();
                     let author = self.contact_identity(&wcdb, &book, &mut identity_cache, username).unwrap_or_else(|| {
-                        json!({ "username": username, "wxid": username, "displayName": post.get("nickname").and_then(Value::as_str).filter(|n| !n.is_empty()).unwrap_or(username) })
+                        json!({ "username": username, "wxid": username, "displayName": Some(post.nickname.as_str()).filter(|n| !n.is_empty()).unwrap_or(username) })
                     });
                     let (likes_detail, comments_detail) =
                         self.arkme_interaction_details(&wcdb, &book, &mut identity_cache, post);
-                    let base = export_post_json(post, true);
+                    let base = export_post_json(post, saved, true);
                     let b = base.as_object().cloned().unwrap_or_default();
                     let mut o = Map::new();
                     for k in ["id", "username", "nickname"] {
@@ -1249,11 +1216,6 @@ impl ServiceHub {
                     }
                     o.insert("likesDetail".into(), Value::Array(likes_detail));
                     o.insert("commentsDetail".into(), Value::Array(comments_detail));
-                    for k in ["linkTitle", "linkUrl"] {
-                        if let Some(v) = b.get(k) {
-                            o.insert(k.into(), v.clone());
-                        }
-                    }
                     built.push(Value::Object(o));
                     if (i + 1) % 20 == 0 || i + 1 == posts.len() {
                         self.emit_progress("sns-arkme", "building ArkmeJSON", i + 1, posts.len());
@@ -1282,7 +1244,7 @@ impl ServiceHub {
             }
             _ => {
                 out_path = opts.output_dir.join(format!("朋友圈导出_{stamp}.html"));
-                let html = sns::generate_html(&posts, usernames, keyword, &avatar_map);
+                let html = sns::generate_html(&posts, &saved, usernames, keyword, &avatar_map);
                 std::fs::write(&out_path, html).map_err(|e| AppError::runtime(e.to_string()))?;
             }
         }
@@ -1301,23 +1263,18 @@ impl ServiceHub {
         wcdb: &weflow_native::wcdb::Wcdb,
         book: &HashMap<String, CachedContact>,
         cache: &mut HashMap<String, Option<Value>>,
-        post: &Value,
+        post: &SnsPost,
     ) -> (Vec<Value>, Vec<Value>) {
-        let raw_xml = post.get("rawXml").and_then(Value::as_str).unwrap_or("");
+        let raw_xml = post.raw_xml.as_str();
         let xml_likes = sns::parse_like_users_from_xml(raw_xml);
         let legacy_likes: Vec<sns::LikeUser> = post
-            .get("likes")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(|n| sns::LikeUser {
-                        username: None,
-                        nickname: Some(n.to_string()),
-                    })
-                    .collect()
+            .likes
+            .iter()
+            .map(|n| sns::LikeUser {
+                username: None,
+                nickname: Some(n.clone()),
             })
-            .unwrap_or_default();
+            .collect();
         let (like_candidates, like_source) = if xml_likes.is_empty() {
             (legacy_likes, "legacy")
         } else {
@@ -1376,82 +1333,50 @@ impl ServiceHub {
         }
 
         let xml_comments = sns::parse_comments_from_xml(raw_xml);
-        let post_comments: Vec<Value> = post
-            .get("comments")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let by_id: HashMap<String, &Value> = post_comments
+        let post_comments = &post.comments;
+        let by_id: HashMap<&str, &SnsComment> = post_comments
             .iter()
-            .filter_map(|c| {
-                c.get("id")
-                    .and_then(Value::as_str)
-                    .filter(|i| !i.is_empty())
-                    .map(|i| (i.to_string(), c))
-            })
+            .filter(|c| !c.id.is_empty())
+            .map(|c| (c.id.as_str(), c))
             .collect();
-        let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        let non_empty_arr = |v: Option<&Value>| {
-            v.filter(|e| e.as_array().is_some_and(|a| !a.is_empty()))
-                .cloned()
-        };
 
-        let mut base: Vec<Value> = Vec::new();
+        let mut base: Vec<SnsComment> = Vec::new();
         if !xml_comments.is_empty() {
-            for c in &xml_comments {
-                let fb = c
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .and_then(|i| by_id.get(i))
-                    .copied();
-                let pick = |k: &str| -> String {
-                    let own = s(c, k);
+            for c in xml_comments.iter() {
+                let fb = by_id.get(c.id.as_str()).copied();
+                let pick = |own: &str, of: fn(&SnsComment) -> &str| -> String {
                     if !own.is_empty() {
-                        own
+                        own.to_string()
                     } else {
-                        fb.map(|f| s(f, k)).unwrap_or_default()
+                        fb.map(|f| of(f).to_string()).unwrap_or_default()
                     }
                 };
-                let mut o = Map::new();
-                o.insert("id".into(), json!(pick("id")));
-                o.insert("nickname".into(), json!(pick("nickname")));
-                if let Some(u) = c.get("username") {
-                    o.insert("username".into(), u.clone());
-                }
-                o.insert("content".into(), json!(pick("content")));
-                o.insert("refCommentId".into(), json!(pick("refCommentId")));
-                if let Some(u) = c.get("refUsername") {
-                    o.insert("refUsername".into(), u.clone());
-                }
-                let ref_nick = c
-                    .get("refNickname")
-                    .filter(|v| truthy_json(v))
-                    .cloned()
-                    .or_else(|| fb.and_then(|f| f.get("refNickname")).cloned());
-                if let Some(r) = ref_nick {
-                    o.insert("refNickname".into(), r);
-                }
-                if let Some(e) = non_empty_arr(c.get("emojis"))
-                    .or_else(|| fb.and_then(|f| f.get("emojis")).cloned())
-                {
-                    o.insert("emojis".into(), e);
-                }
-                base.push(Value::Object(o));
+                base.push(SnsComment {
+                    id: pick(&c.id, |f| &f.id),
+                    nickname: pick(&c.nickname, |f| &f.nickname),
+                    username: c.username.clone(),
+                    content: pick(&c.content, |f| &f.content),
+                    ref_comment_id: pick(&c.ref_comment_id, |f| &f.ref_comment_id),
+                    ref_username: c.ref_username.clone(),
+                    ref_nickname: c
+                        .ref_nickname
+                        .clone()
+                        .filter(|n| !n.is_empty())
+                        .or_else(|| fb.and_then(|f| f.ref_nickname.clone())),
+                    emojis: if c.emojis.is_empty() {
+                        fb.map(|f| f.emojis.clone()).unwrap_or_default()
+                    } else {
+                        c.emojis.clone()
+                    },
+                });
             }
             let mapped: std::collections::HashSet<String> = base
                 .iter()
-                .filter_map(|c| {
-                    c.get("id")
-                        .and_then(Value::as_str)
-                        .filter(|i| !i.is_empty())
-                        .map(str::to_string)
-                })
+                .filter(|c| !c.id.is_empty())
+                .map(|c| c.id.clone())
                 .collect();
-            for c in &post_comments {
-                if c.get("id")
-                    .and_then(Value::as_str)
-                    .is_some_and(|i| !i.is_empty() && mapped.contains(i))
-                {
+            for c in post_comments {
+                if !c.id.is_empty() && mapped.contains(&c.id) {
                     continue;
                 }
                 base.push(legacy_comment(c));
@@ -1467,16 +1392,8 @@ impl ServiceHub {
         };
         let mut comments_detail = Vec::new();
         for c in &base {
-            let username = c
-                .get("username")
-                .and_then(Value::as_str)
-                .filter(|u| !u.is_empty())
-                .map(str::to_string);
-            let ref_username = c
-                .get("refUsername")
-                .and_then(Value::as_str)
-                .filter(|u| !u.is_empty())
-                .map(str::to_string);
+            let username = c.username.clone().filter(|u| !u.is_empty());
+            let ref_username = c.ref_username.clone().filter(|u| !u.is_empty());
             let actor = username
                 .as_deref()
                 .and_then(|u| self.contact_identity(wcdb, book, cache, u));
@@ -1489,7 +1406,7 @@ impl ServiceHub {
                     .and_then(Value::as_str)
                     .map(str::to_string)
             };
-            let nickname = Some(s(c, "nickname"))
+            let nickname = Some(c.nickname.clone())
                 .filter(|n| !n.is_empty())
                 .or_else(|| av(&actor, "displayName"))
                 .or_else(|| username.clone())
@@ -1497,7 +1414,7 @@ impl ServiceHub {
             let eff_username = av(&actor, "username").or_else(|| username.clone());
             let eff_ref_username = av(&ref_actor, "username").or_else(|| ref_username.clone());
             let mut o = Map::new();
-            o.insert("id".into(), json!(s(c, "id")));
+            o.insert("id".into(), json!(c.id));
             o.insert("nickname".into(), json!(nickname));
             let mut put = |k: &str, v: Option<String>| {
                 if let Some(v) = v {
@@ -1518,9 +1435,11 @@ impl ServiceHub {
                     .or(eff_username)
                     .unwrap_or_default()),
             );
-            o.insert("content".into(), json!(s(c, "content")));
-            o.insert("refCommentId".into(), json!(s(c, "refCommentId")));
-            let ref_nickname = Some(s(c, "refNickname"))
+            o.insert("content".into(), json!(c.content));
+            o.insert("refCommentId".into(), json!(c.ref_comment_id));
+            let ref_nickname = c
+                .ref_nickname
+                .clone()
                 .filter(|n| !n.is_empty())
                 .or_else(|| av(&ref_actor, "displayName"));
             let mut put2 = |k: &str, v: Option<String>| {
@@ -1536,8 +1455,8 @@ impl ServiceHub {
             put2("refRemark", av(&ref_actor, "remark"));
             put2("refNickName", av(&ref_actor, "nickName"));
             put2("refDisplayName", av(&ref_actor, "displayName"));
-            if let Some(e) = c.get("emojis").filter(|v| !v.is_null()) {
-                o.insert("emojis".into(), e.clone());
+            if !c.emojis.is_empty() {
+                o.insert("emojis".into(), json!(c.emojis));
             }
             o.insert("source".into(), json!(comment_source));
             comments_detail.push(Value::Object(o));
@@ -1548,99 +1467,62 @@ impl ServiceHub {
     /// Adds `media.proxyUrl` style fields used by the HTTP timeline (`enrichSnsTimelineMedia`).
     pub async fn sns_enrich_timeline_media(
         &self,
-        posts: Vec<Value>,
+        mut posts: Vec<SnsPost>,
         proxy_base: &str,
         inline: bool,
         replace: bool,
-    ) -> Vec<Value> {
-        let mut out = Vec::with_capacity(posts.len());
-        for post in posts {
-            let media_list = post
-                .get("media")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            if media_list.is_empty() {
-                out.push(post);
-                continue;
-            }
-            let mut next_media = Vec::with_capacity(media_list.len());
-            for media in &media_list {
-                let raw_url = media
-                    .get("url")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let raw_thumb = media
-                    .get("thumb")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let media_key = media_key_string(media.get("key"));
-                let (url_resolved, url_proxy) = self
-                    .resolve_media_url(proxy_base, &raw_url, media_key.as_deref(), inline)
+    ) -> Vec<SnsPost> {
+        for media in posts.iter_mut().flat_map(|p| p.media.iter_mut()) {
+            let raw_url = std::mem::take(&mut media.url);
+            let raw_thumb = std::mem::take(&mut media.thumb);
+            let key = media_key(media.key.as_deref());
+            let (url_resolved, url_proxy) = self
+                .resolve_media_url(proxy_base, &raw_url, key.as_deref(), inline)
+                .await;
+            let (thumb_resolved, thumb_proxy) = self
+                .resolve_media_url(proxy_base, &raw_thumb, key.as_deref(), inline)
+                .await;
+            (media.url, media.thumb) = if replace {
+                (
+                    url_resolved.clone().unwrap_or_else(|| raw_url.clone()),
+                    thumb_resolved.clone().unwrap_or_else(|| raw_thumb.clone()),
+                )
+            } else {
+                (raw_url.clone(), raw_thumb.clone())
+            };
+            media.raw_url = Some(raw_url);
+            media.raw_thumb = Some(raw_thumb);
+            media.resolved_url = url_resolved;
+            media.resolved_thumb_url = thumb_resolved;
+            media.proxy_url = url_proxy;
+            media.proxy_thumb_url = thumb_proxy;
+            if let Some(live) = media.live_photo.as_mut() {
+                let raw_l_url = std::mem::take(&mut live.url);
+                let raw_l_thumb = std::mem::take(&mut live.thumb);
+                let live_key = media_key(live.key.as_deref()).or_else(|| key.clone());
+                let (lu, lu_proxy) = self
+                    .resolve_media_url(proxy_base, &raw_l_url, live_key.as_deref(), inline)
                     .await;
-                let (thumb_resolved, thumb_proxy) = self
-                    .resolve_media_url(proxy_base, &raw_thumb, media_key.as_deref(), inline)
+                let (lt, lt_proxy) = self
+                    .resolve_media_url(proxy_base, &raw_l_thumb, live_key.as_deref(), inline)
                     .await;
-                let mut item = media.as_object().cloned().unwrap_or_default();
-                item.insert("rawUrl".into(), json!(raw_url));
-                item.insert("rawThumb".into(), json!(raw_thumb));
-                set_opt(&mut item, "resolvedUrl", url_resolved.clone());
-                set_opt(&mut item, "resolvedThumbUrl", thumb_resolved.clone());
-                set_opt(&mut item, "proxyUrl", url_proxy);
-                set_opt(&mut item, "proxyThumbUrl", thumb_proxy);
-                if replace {
-                    item.insert(
-                        "url".into(),
-                        json!(url_resolved.unwrap_or_else(|| raw_url.clone())),
-                    );
-                    item.insert(
-                        "thumb".into(),
-                        json!(thumb_resolved.unwrap_or_else(|| raw_thumb.clone())),
-                    );
-                }
-                if let Some(lp) = media.get("livePhoto").filter(|v| v.is_object()) {
-                    let raw_l_url = lp
-                        .get("url")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    let raw_l_thumb = lp
-                        .get("thumb")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    let live_key = media_key_string(lp.get("key")).or_else(|| media_key.clone());
-                    let (lu, lu_proxy) = self
-                        .resolve_media_url(proxy_base, &raw_l_url, live_key.as_deref(), inline)
-                        .await;
-                    let (lt, lt_proxy) = self
-                        .resolve_media_url(proxy_base, &raw_l_thumb, live_key.as_deref(), inline)
-                        .await;
-                    let mut live = lp.as_object().cloned().unwrap_or_default();
-                    live.insert("rawUrl".into(), json!(raw_l_url));
-                    live.insert("rawThumb".into(), json!(raw_l_thumb));
-                    set_opt(&mut live, "resolvedUrl", lu.clone());
-                    set_opt(&mut live, "resolvedThumbUrl", lt.clone());
-                    set_opt(&mut live, "proxyUrl", lu_proxy);
-                    set_opt(&mut live, "proxyThumbUrl", lt_proxy);
-                    if replace {
-                        live.insert("url".into(), json!(lu.unwrap_or_else(|| raw_l_url.clone())));
-                        live.insert(
-                            "thumb".into(),
-                            json!(lt.unwrap_or_else(|| raw_l_thumb.clone())),
-                        );
-                    }
-                    item.insert("livePhoto".into(), Value::Object(live));
-                }
-                next_media.push(Value::Object(item));
+                (live.url, live.thumb) = if replace {
+                    (
+                        lu.clone().unwrap_or_else(|| raw_l_url.clone()),
+                        lt.clone().unwrap_or_else(|| raw_l_thumb.clone()),
+                    )
+                } else {
+                    (raw_l_url.clone(), raw_l_thumb.clone())
+                };
+                live.raw_url = Some(raw_l_url);
+                live.raw_thumb = Some(raw_l_thumb);
+                live.resolved_url = lu;
+                live.resolved_thumb_url = lt;
+                live.proxy_url = lu_proxy;
+                live.proxy_thumb_url = lt_proxy;
             }
-            let mut p = post.as_object().cloned().unwrap_or_default();
-            p.insert("media".into(), Value::Array(next_media));
-            out.push(Value::Object(p));
         }
-        out
+        posts
     }
 
     async fn resolve_media_url(
@@ -1672,37 +1554,10 @@ impl ServiceHub {
     }
 }
 
-fn truthy_json(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::String(s) => !s.is_empty(),
-        Value::Number(n) => n.as_f64() != Some(0.0),
-        _ => true,
-    }
-}
-
-fn set_opt(o: &mut Map<String, Value>, k: &str, v: Option<String>) {
-    match v {
-        Some(v) => {
-            o.insert(k.into(), json!(v));
-        }
-        None => {
-            o.shift_remove(k);
-        }
-    }
-}
-
-/// `toSnsMediaKey` rendered back to text (numbers and strings both become their string form).
-pub fn media_key_string(v: Option<&Value>) -> Option<String> {
-    match v? {
-        Value::Number(n) => Some(n.to_string()),
-        Value::String(s) => {
-            let t = s.trim();
-            (!t.is_empty()).then(|| t.to_string())
-        }
-        _ => None,
-    }
+/// `toSnsMediaKey` rendered back to text: trimmed, none when empty.
+fn media_key(key: Option<&str>) -> Option<String> {
+    let t = key?.trim();
+    (!t.is_empty()).then(|| t.to_string())
 }
 
 pub fn url_encode(s: &str) -> String {
@@ -1718,68 +1573,48 @@ pub fn url_encode(s: &str) -> String {
     out
 }
 
-fn legacy_comment(c: &Value) -> Value {
-    let s = |k: &str| c.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-    let mut o = Map::new();
-    o.insert("id".into(), json!(s("id")));
-    o.insert("nickname".into(), json!(s("nickname")));
-    o.insert("content".into(), json!(s("content")));
-    o.insert("refCommentId".into(), json!(s("refCommentId")));
-    if let Some(r) = c.get("refNickname").filter(|v| !v.is_null()) {
-        o.insert("refNickname".into(), r.clone());
+/// A comment of the post itself, as ArkmeJSON lists one its XML does not: without the usernames.
+fn legacy_comment(c: &SnsComment) -> SnsComment {
+    SnsComment {
+        username: None,
+        ref_username: None,
+        ..c.clone()
     }
-    if let Some(e) = c.get("emojis").filter(|v| !v.is_null()) {
-        o.insert("emojis".into(), e.clone());
-    }
-    Value::Object(o)
 }
 
-/// One post as written into the JSON / ArkmeJSON export (`undefined` fields dropped).
-fn export_post_json(p: &Value, arkme: bool) -> Value {
-    let get = |k: &str| p.get(k).filter(|v| !v.is_null()).cloned();
+/// One post as written into the JSON / ArkmeJSON export, with the files `saved` of its media.
+fn export_post_json(p: &SnsPost, saved: &[SavedMedia], arkme: bool) -> Value {
+    let local = |path: &Option<String>| path.clone().filter(|l| !l.is_empty());
     let mut o = Map::new();
-    for k in ["id", "username", "nickname"] {
-        o.insert(k.into(), p.get(k).cloned().unwrap_or(Value::Null));
-    }
-    let create_time = p.get("createTime").and_then(Value::as_i64).unwrap_or(0);
-    o.insert("createTime".into(), json!(create_time));
+    o.insert("id".into(), json!(p.id));
+    o.insert("username".into(), json!(p.username));
+    o.insert("nickname".into(), json!(p.nickname));
+    o.insert("createTime".into(), json!(p.create_time));
     o.insert(
         "createTimeStr".into(),
-        json!(sns::zh_locale_from_ts(create_time)),
+        json!(sns::zh_locale_from_ts(p.create_time)),
     );
-    o.insert(
-        "contentDesc".into(),
-        p.get("contentDesc").cloned().unwrap_or(Value::Null),
-    );
-    if let Some(t) = get("type") {
-        o.insert("type".into(), t);
-    }
+    o.insert("contentDesc".into(), json!(p.content_desc));
+    o.insert("type".into(), json!(p.kind));
     let media: Vec<Value> = p
-        .get("media")
-        .and_then(Value::as_array)
-        .map(|a| a.as_slice())
-        .unwrap_or(&[])
+        .media
         .iter()
-        .map(|m| {
+        .enumerate()
+        .map(|(mi, m)| {
+            let files = saved.get(mi).cloned().unwrap_or_default();
             let mut mo = Map::new();
-            mo.insert("url".into(), m.get("url").cloned().unwrap_or(Value::Null));
-            mo.insert(
-                "thumb".into(),
-                m.get("thumb").cloned().unwrap_or(Value::Null),
-            );
-            if let Some(l) = m.get("localPath").filter(|v| truthy_json(v)) {
-                mo.insert("localPath".into(), l.clone());
+            mo.insert("url".into(), json!(m.url));
+            mo.insert("thumb".into(), json!(m.thumb));
+            if let Some(l) = local(&files.file) {
+                mo.insert("localPath".into(), json!(l));
             }
             if arkme {
-                if let Some(lp) = m.get("livePhoto").filter(|v| v.is_object()) {
+                if let Some(lp) = &m.live_photo {
                     let mut lo = Map::new();
-                    lo.insert("url".into(), lp.get("url").cloned().unwrap_or(Value::Null));
-                    lo.insert(
-                        "thumb".into(),
-                        lp.get("thumb").cloned().unwrap_or(Value::Null),
-                    );
-                    if let Some(l) = lp.get("localPath").filter(|v| truthy_json(v)) {
-                        lo.insert("localPath".into(), l.clone());
+                    lo.insert("url".into(), json!(lp.url));
+                    lo.insert("thumb".into(), json!(lp.thumb));
+                    if let Some(l) = local(&files.live) {
+                        lo.insert("localPath".into(), json!(l));
                     }
                     mo.insert("livePhoto".into(), Value::Object(lo));
                 }
@@ -1788,21 +1623,10 @@ fn export_post_json(p: &Value, arkme: bool) -> Value {
         })
         .collect();
     o.insert("media".into(), Value::Array(media));
-    o.insert(
-        "likes".into(),
-        p.get("likes").cloned().unwrap_or_else(|| json!([])),
-    );
-    o.insert(
-        "comments".into(),
-        p.get("comments").cloned().unwrap_or_else(|| json!([])),
-    );
-    if let Some(l) = get("location") {
-        o.insert("location".into(), l);
-    }
-    for k in ["linkTitle", "linkUrl"] {
-        if let Some(v) = get(k) {
-            o.insert(k.into(), v);
-        }
+    o.insert("likes".into(), json!(p.likes));
+    o.insert("comments".into(), json!(p.comments));
+    if let Some(l) = &p.location {
+        o.insert("location".into(), json!(l));
     }
     Value::Object(o)
 }
