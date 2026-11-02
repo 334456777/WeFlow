@@ -14,6 +14,8 @@ Measured, for the heaviest commands, each `--runs` times, base and head taking t
   - peak working set of the process and peak committed memory of the job; a memory and thread-count curve sampled
     every 20 ms, and the peak thread count
   - the size of what the command wrote and of the caches it left
+  - with `--base-alloc` / `--head-alloc` (builds with the `alloc-stats` feature, #513), one more untimed run counting
+    the allocations, the bytes allocated and the peak of live heap
 Then, for each binary: a sustained load on `weflow serve` (`--load-seconds`, default 90) with the latency, the
 throughput and the memory curve of the server, whose median by quarter of the time says whether it stays stable; and
 `serve_bench` (when given), the latency of each route. Last, the size of each binary.
@@ -236,18 +238,29 @@ def environment(home):
 
 # ---- the commands ----
 
-def commands(manifest, out):
-    """The heaviest commands of the CLI on the benchmark account, heaviest first: (name, argv, items, output)."""
+def commands(manifest, out, cursor):
+    """The heaviest commands of the CLI on the benchmark account, heaviest first, then the message reads of #489:
+    (name, argv, items, output). `cursor` is the `_cursor` of a message in the middle of the biggest group."""
     convs = manifest["conversations"]
     group = convs[0]
     private = max((c for c in convs if c["kind"] == "private"), key=lambda c: c["messages"])
     big, n = group["username"], group["messages"]
     o = lambda name: os.path.join(out, name)
+    pages = [
+        ("chat messages first page", ["chat", "messages", big, "--limit", "50"], 50, None),
+        ("chat messages offset", ["chat", "messages", big, "--limit", "50", "--offset", str(n // 2)], 50, None),
+    ]
+    if cursor:
+        pages.append(("chat messages cursor", ["chat", "messages", big, "--limit", "50", "--before", cursor], 50, None))
     return [
         ("export media images", ["export", "media", "--type", "image", "--session", big, "--out", o("media")],
          None, o("media")),
+        ("export messages json with images",
+         ["export", "messages", big, "--format", "json", "--media", "image", "--out", o("mi.json")], n, o("mi.json")),
         ("export messages json", ["export", "messages", big, "--format", "json", "--out", o("m.json")], n,
          o("m.json")),
+        ("export messages chatlab", ["export", "messages", big, "--format", "chatlab", "--out", o("m.chatlab.json")],
+         n, o("m.chatlab.json")),
         ("export messages excel", ["export", "messages", big, "--format", "excel", "--out", o("m.xlsx")], n,
          o("m.xlsx")),
         ("export messages html", ["export", "messages", big, "--format", "html", "--out", o("m.html")], n,
@@ -261,7 +274,39 @@ def commands(manifest, out):
         ("chat date-counts", ["chat", "date-counts", big], n, None),
         ("chat search", ["chat", "search", "the", "--limit", "200"], None, None),
         ("report dual", ["report", "dual", "generate", "--friend", private["username"]], private["messages"], None),
+        *pages,
     ]
+
+
+def middle_cursor(exe, home, manifest):
+    """The `_cursor` of the message in the middle of the biggest group, as `exe` gives it (None if it does not)."""
+    big = manifest["conversations"][0]
+    proc = subprocess.run([exe, "--json", "chat", "messages", big["username"], "--limit", "1",
+                           "--offset", str(big["messages"] // 2)], env=environment(home), capture_output=True,
+                          stdin=subprocess.DEVNULL)
+    try:
+        return json.loads(proc.stdout)["data"][0]["_cursor"]
+    except (ValueError, LookupError, TypeError):
+        return None
+
+
+def count_allocations(exe, home, argv, out_dir, log):
+    """One more run of a command with a binary built with the `alloc-stats` feature (#513), untimed: what it
+    allocated, or None when it failed or wrote no counts."""
+    clear_caches(home)
+    shutil.rmtree(out_dir, ignore_errors=True)
+    os.makedirs(out_dir)
+    report = log + ".alloc.json"
+    proc = subprocess.run([exe, "--json", *argv], env=dict(environment(home), WEFLOW_ALLOC_STATS=report),
+                          capture_output=True, stdin=subprocess.DEVNULL)
+    with open(log, "wb") as f:
+        f.write(proc.stdout + b"\n--- stderr ---\n" + proc.stderr)
+    if proc.returncode != 0 or not os.path.exists(report):
+        return None
+    with open(report, encoding="utf-8") as f:
+        counts = json.load(f)
+    return {"allocations": counts["allocations"] + counts["reallocations"],
+            "allocated_bytes": counts["allocatedBytes"], "peak_live_bytes": counts["peakLiveBytes"]}
 
 
 def run_command(exe, home, args, out_dir, log):
@@ -338,15 +383,24 @@ METRICS = [
 # below these differences (in the metric's own unit) a ratio is not marked: the timer's resolution, the noise of a
 # run, or a few MiB of a working set
 NOISE = {"wall_ms": 20, "first_batch_ms": 20, "user_ms": 50, "kernel_ms": 50, "peak_working_set": 5 * MIB,
-         "peak_job_commit": 5 * MIB, "peak_threads": 1, "read_bytes": MIB, "write_bytes": MIB}
+         "peak_job_commit": 5 * MIB, "peak_threads": 1, "read_bytes": MIB, "write_bytes": MIB,
+         "allocated_bytes": MIB, "peak_live_bytes": 5 * MIB}
 NOISE_MS = 5
 THROUGHPUT = ("items_per_s", "吞吐量", "消息/秒", 1, "命令处理的消息数除以耗时。这是唯一一个越高越好的指标。")
+ALLOC_NOTE = ("用带 `alloc-stats` feature 编译的二进制另外运行一次得到（#513），不计时；"
+              "没有这个 feature 的版本（#513 之前）这一项为空。")
+ALLOC_METRICS = [
+    ("allocations", "分配次数", "", 1, "分配和重新分配的次数。" + ALLOC_NOTE),
+    ("allocated_bytes", "累计分配", "MiB", MIB, "每次分配的大小之和，重新分配只计增长的部分。" + ALLOC_NOTE),
+    ("peak_live_bytes", "峰值存活堆", "MiB", MIB, "同一时刻仍未释放的分配之和的最大值。" + ALLOC_NOTE),
+]
 
 
-def bench_commands(args, exes, homes, manifest, out):
+def bench_commands(args, exes, alloc_exes, homes, manifest, out):
     work = os.path.join(out, "work", "output")
     results = {}
-    for name, argv, items, _ in commands(manifest, work):
+    cursor = middle_cursor(exes["head"], homes["head"], manifest)
+    for name, argv, items, _ in commands(manifest, work, cursor):
         if args.only and name not in args.only:
             continue
         print(f"== {name}", flush=True)
@@ -369,6 +423,12 @@ def bench_commands(args, exes, homes, manifest, out):
             entry["median"][v]["failed_runs"] = len(runs[v]) - len(ok)
             if items and entry["median"][v]["wall_ms"]:
                 entry["median"][v]["items_per_s"] = items / (entry["median"][v]["wall_ms"] / 1000)
+            # the counting build runs apart from the timed ones, so its few atomic operations per call cost nothing
+            # to the timings
+            if alloc_exes.get(v):
+                counts = count_allocations(alloc_exes[v], homes[v], argv, work,
+                                           os.path.join(out, "logs", f"{slug}-{v}-alloc.txt"))
+                entry["median"][v].update(counts or {})
         results[name] = entry
     shutil.rmtree(work, ignore_errors=True)
     return results
@@ -612,7 +672,7 @@ def report_blocks(doc):
         if failed:
             blocks.append(("p", "**有运行失败**（输出见 `logs/`，不计入中位数）："
                                 + "，".join(f"`{n}`（{v} {k} 次）" for n, v, k in failed)))
-        for key, label, unit, scale, note in METRICS + [THROUGHPUT]:
+        for key, label, unit, scale, note in METRICS + [THROUGHPUT] + ALLOC_METRICS:
             rows = []
             for name, e in doc["commands"].items():
                 b, h = e["median"]["base"].get(key), e["median"]["head"].get(key)
@@ -903,6 +963,8 @@ def main():
     p.add_argument("--load-seconds", type=int, default=90)
     p.add_argument("--load-workers", type=int, default=4)
     p.add_argument("--serve-bench")
+    p.add_argument("--base-alloc", help="base built with the alloc-stats feature (#513): allocation counts")
+    p.add_argument("--head-alloc")
     p.add_argument("--only", type=lambda s: [x.strip() for x in s.split(",") if x.strip()],
                    help="comma separated: command names, plus `load` and `serve_bench`")
     args = p.parse_args()
@@ -933,7 +995,8 @@ def main():
         },
         "binary": {v: os.path.getsize(exes[v]) for v in VERSIONS},
     }
-    doc["commands"] = bench_commands(args, exes, homes, manifest, out)
+    alloc_exes = {v: os.path.abspath(x) for v, x in (("base", args.base_alloc), ("head", args.head_alloc)) if x}
+    doc["commands"] = bench_commands(args, exes, alloc_exes, homes, manifest, out)
     if wanted("load") and args.load_seconds > 0:
         print("== sustained load", flush=True)
         load, failed = {}, {}
