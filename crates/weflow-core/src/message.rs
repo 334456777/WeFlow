@@ -11,6 +11,7 @@ use std::rc::Rc;
 
 use regex::Regex;
 use serde_json::{json, Map, Value};
+use weflow_native::msg_row::MsgRow;
 
 // ───────────────────────────── regex + xml helpers ─────────────────────────────
 
@@ -1085,25 +1086,31 @@ pub fn extract_image_dat_name_from_row(row: &Value, content: &str) -> Option<Str
         ],
     )
     .and_then(|v| decode_packed_info(&value_to_string(v)));
-    if let Some(bytes) = packed {
-        let text: String = bytes
-            .iter()
-            .map(|b| {
-                if (0x20..=0x7e).contains(b) {
-                    *b as char
-                } else {
-                    ' '
-                }
-            })
-            .collect();
-        if let Some(c) = rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat").captures(&text) {
-            return Some(c[1].to_lowercase());
-        }
-        if let Some(c) = rx(r"([0-9a-fA-F]{16,})").captures(&text) {
-            return Some(c[1].to_lowercase());
-        }
+    packed
+        .as_deref()
+        .and_then(dat_name_in_packed_info)
+        .or_else(|| extract_image_dat_name(content))
+}
+
+/// The name of an image's `.dat` file in a row's packed info: its printable bytes as text, a `<hex>[.t].dat` name
+/// or else a long run of hex digits.
+fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
+    let text: String = bytes
+        .iter()
+        .map(|b| {
+            if (0x20..=0x7e).contains(b) {
+                *b as char
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    if let Some(c) = rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat").captures(&text) {
+        return Some(c[1].to_lowercase());
     }
-    extract_image_dat_name(content)
+    rx(r"([0-9a-fA-F]{16,})")
+        .captures(&text)
+        .map(|c| c[1].to_lowercase())
 }
 
 fn decode_packed_info(raw: &str) -> Option<Vec<u8>> {
@@ -2843,46 +2850,72 @@ pub fn row_sender(row: &Value, session_id: &str, my_wxid: &str) -> String {
     )
 }
 
-/// `collectMessages` (full mode): normalise raw rows and sort chronologically.
-pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
-    let mut out: Vec<ExportMsg> = Vec::new();
-    for row in rows {
-        let create_time = get_timestamp_seconds(row);
-        if let Some(s) = opts.start.filter(|s| *s > 0) {
-            if create_time > 0 && create_time < s {
-                continue;
-            }
-        }
-        if let Some(e) = opts.end.filter(|e| *e > 0) {
-            if create_time > 0 && create_time > e {
-                continue;
-            }
-        }
-        let local_type = row_int(
-            row,
-            &[
-                "local_type",
-                "localType",
-                "type",
-                "msg_type",
-                "msgType",
-                "WCDB_CT_local_type",
-            ],
-            1,
-        );
-        let content = decode_message_content(row);
-        let sender_username = row
-            .get("sender_username")
+/// What [`collect`] reads of a message row: the legacy JSON object (`&Value`, its columns found by name among the
+/// spellings the desktop app used) or the typed [`MsgRow`] (#257, #491).
+trait ExportSource {
+    /// The send time in Unix seconds (see [`get_timestamp_seconds`]).
+    fn timestamp(&self) -> i64;
+    fn local_type(&self) -> i64;
+    /// The decoded text, taken out of the row when it owns it.
+    fn take_content(&mut self) -> String;
+    fn sender_username(&self) -> String;
+    fn is_send(&self) -> bool;
+    fn local_id(&self) -> i64;
+    /// The server id, and its decimal text when it is a positive number.
+    fn server_id(&self) -> (i64, Option<String>);
+    /// A sticker's CDN url and md5 from columns of their own, and the text of the packed and reserved columns to look
+    /// for them in: only the desktop app's rows have any.
+    fn emoji_columns(&self) -> (Option<String>, Option<String>, String) {
+        (None, None, String::new())
+    }
+    /// An image's md5 from a column of its own: only the desktop app's rows have one.
+    fn image_md5_column(&self) -> Option<String> {
+        None
+    }
+    /// The name of an image's `.dat` file, from the row's columns or else from `content`.
+    fn image_dat_name(&self, content: &str) -> Option<String>;
+}
+
+const LOCAL_TYPE_KEYS: &[&str] = &[
+    "local_type",
+    "localType",
+    "type",
+    "msg_type",
+    "msgType",
+    "WCDB_CT_local_type",
+];
+
+impl ExportSource for &Value {
+    fn timestamp(&self) -> i64 {
+        get_timestamp_seconds(self)
+    }
+
+    fn local_type(&self) -> i64 {
+        row_int(self, LOCAL_TYPE_KEYS, 1)
+    }
+
+    fn take_content(&mut self) -> String {
+        decode_message_content(self)
+    }
+
+    fn sender_username(&self) -> String {
+        self.get("sender_username")
             .map(value_to_string)
-            .unwrap_or_default();
-        let is_send_raw = row
+            .unwrap_or_default()
+    }
+
+    fn is_send(&self) -> bool {
+        let raw = self
             .get("computed_is_send")
-            .or_else(|| row.get("is_send"))
+            .or_else(|| self.get("is_send"))
             .map(value_to_string)
             .unwrap_or_else(|| "0".into());
-        let is_send = is_send_raw.trim().parse::<i64>().unwrap_or(0) == 1;
-        let local_id = row_int(
-            row,
+        raw.trim().parse::<i64>().unwrap_or(0) == 1
+    }
+
+    fn local_id(&self) -> i64 {
+        row_int(
+            self,
             &[
                 "local_id",
                 "localId",
@@ -2897,8 +2930,11 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
                 "WCDB_CT_local_id",
             ],
             0,
-        );
-        let server_keys = [
+        )
+    }
+
+    fn server_id(&self) -> (i64, Option<String>) {
+        let keys = [
             "server_id",
             "serverId",
             "ServerId",
@@ -2912,11 +2948,164 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
             "MsgSvrId",
             "WCDB_CT_server_id",
         ];
-        let server_raw = row_field(row, &server_keys)
+        let raw = row_field(self, &keys)
             .map(value_to_string)
             .map(|v| normalize_unsigned_token(&v))
             .unwrap_or_else(|| "0".into());
-        let server_id = row_int(row, &server_keys, 0);
+        (row_int(self, &keys, 0), (raw != "0").then_some(raw))
+    }
+
+    fn emoji_columns(&self) -> (Option<String>, Option<String>, String) {
+        let col = |keys: &[&str]| {
+            row_field(self, keys)
+                .map(value_to_string)
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+        };
+        let packed = col(&["packed_info", "packedInfo", "PackedInfo"]).unwrap_or_default();
+        let reserved = col(&["reserved0", "Reserved0"]).unwrap_or_default();
+        (
+            col(&["emoji_cdn_url", "emojiCdnUrl"]),
+            col(&["emoji_md5", "emojiMd5"]).and_then(|v| normalize_md5(&v)),
+            format!(
+                "{}\n{}",
+                decode_maybe_compressed(&packed),
+                decode_maybe_compressed(&reserved)
+            ),
+        )
+    }
+
+    fn image_md5_column(&self) -> Option<String> {
+        row_field(self, &["image_md5", "imageMd5"])
+            .map(value_to_string)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    }
+
+    fn image_dat_name(&self, content: &str) -> Option<String> {
+        extract_image_dat_name_from_row(self, content)
+    }
+}
+
+/// A Unix time stored as an integer, normalized as [`get_timestamp_seconds`] normalizes the text of a cell: a
+/// compact date (`YYYYMMDD`, `YYYYMMDDhhmm`, `YYYYMMDDhhmmss`), else seconds, milliseconds or finer cut to seconds.
+fn int_timestamp_seconds(value: i64) -> i64 {
+    if value <= 0 {
+        return 0;
+    }
+    if matches!(value.ilog10() + 1, 8 | 12 | 14) {
+        let compact = parse_compact_datetime(&value.to_string());
+        if compact > 0 {
+            return compact;
+        }
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "as the text of the cell is parsed: a time above 2^53 is not a time to keep exact"
+    )]
+    normalize_timestamp_seconds(value as f64)
+}
+
+/// [`get_timestamp_seconds`] of a typed row.
+pub fn msg_row_timestamp(row: &MsgRow) -> i64 {
+    let primary = row.create_time.map_or(0, int_timestamp_seconds);
+    let sort_seq = row.sort_seq.map_or(0, int_timestamp_seconds);
+    if primary > 0 && primary < 946_684_800 && sort_seq > 946_684_800 {
+        return sort_seq;
+    }
+    if primary > 0 {
+        return primary;
+    }
+    sort_seq.max(0)
+}
+
+impl ExportSource for MsgRow {
+    fn timestamp(&self) -> i64 {
+        msg_row_timestamp(self)
+    }
+
+    fn local_type(&self) -> i64 {
+        self.local_type
+    }
+
+    fn take_content(&mut self) -> String {
+        std::mem::take(&mut self.content)
+    }
+
+    fn sender_username(&self) -> String {
+        self.sender.clone().unwrap_or_default()
+    }
+
+    fn is_send(&self) -> bool {
+        self.is_send
+    }
+
+    fn local_id(&self) -> i64 {
+        self.local_id
+    }
+
+    fn server_id(&self) -> (i64, Option<String>) {
+        let id = self.server_id.unwrap_or(0);
+        (id, (id > 0).then(|| id.to_string()))
+    }
+
+    fn image_dat_name(&self, content: &str) -> Option<String> {
+        self.packed_info
+            .as_deref()
+            .and_then(dat_name_in_packed_info)
+            .or_else(|| extract_image_dat_name(content))
+    }
+}
+
+/// [`message_sender`] of a typed row.
+pub fn msg_row_sender(row: &MsgRow, session_id: &str, my_wxid: &str) -> String {
+    message_sender(
+        row.local_type,
+        if row.local_type == 10000 || row.local_type == 266287972401 {
+            &row.content
+        } else {
+            ""
+        },
+        row.is_send,
+        row.sender.as_deref().unwrap_or(""),
+        session_id,
+        my_wxid,
+    )
+}
+
+/// `collectMessages` (full mode): normalise raw rows and sort chronologically.
+pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
+    collect(rows.iter(), opts)
+}
+
+/// [`collect_messages`] of typed rows, which it takes: their text moves into the messages.
+pub fn collect_rows(rows: Vec<MsgRow>, opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
+    collect(rows, opts)
+}
+
+fn collect<S: ExportSource>(
+    rows: impl IntoIterator<Item = S>,
+    opts: &CollectOptions<'_>,
+) -> Vec<ExportMsg> {
+    let mut out: Vec<ExportMsg> = Vec::new();
+    for mut row in rows {
+        let create_time = row.timestamp();
+        if let Some(s) = opts.start.filter(|s| *s > 0) {
+            if create_time > 0 && create_time < s {
+                continue;
+            }
+        }
+        if let Some(e) = opts.end.filter(|e| *e > 0) {
+            if create_time > 0 && create_time > e {
+                continue;
+            }
+        }
+        let local_type = row.local_type();
+        let content = row.take_content();
+        let sender_username = row.sender_username();
+        let is_send = row.is_send();
+        let local_id = row.local_id();
+        let (server_id, server_id_raw) = row.server_id();
 
         let actual_sender = message_sender(
             local_type,
@@ -2935,14 +3124,9 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
         let mut msg = ExportMsg {
             local_id,
             server_id,
-            server_id_raw: if server_raw != "0" {
-                Some(server_raw)
-            } else {
-                None
-            },
+            server_id_raw,
             create_time,
             local_type,
-            content: content.clone(),
             sender_username: actual_sender,
             is_send,
             ..Default::default()
@@ -2957,21 +3141,9 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
             }
         }
         if local_type == 47 {
-            let col = |keys: &[&str]| {
-                row_field(row, keys)
-                    .map(value_to_string)
-                    .map(|v| v.trim().to_string())
-                    .filter(|v| !v.is_empty())
-            };
-            msg.emoji_cdn_url = col(&["emoji_cdn_url", "emojiCdnUrl"]);
-            msg.emoji_md5 = col(&["emoji_md5", "emojiMd5"]).and_then(|v| normalize_md5(&v));
-            let packed = col(&["packed_info", "packedInfo", "PackedInfo"]).unwrap_or_default();
-            let reserved = col(&["reserved0", "Reserved0"]).unwrap_or_default();
-            let supplemental = format!(
-                "{}\n{}",
-                decode_maybe_compressed(&packed),
-                decode_maybe_compressed(&reserved)
-            );
+            let (cdn_url, md5, supplemental) = row.emoji_columns();
+            msg.emoji_cdn_url = cdn_url;
+            msg.emoji_md5 = md5;
             if !content.is_empty() {
                 if msg.emoji_cdn_url.is_none() {
                     msg.emoji_cdn_url = extract_emoji_url(&content);
@@ -2988,12 +3160,9 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
                     .or_else(|| extract_loose_hex_md5(&supplemental));
             }
         }
-        msg.image_md5 = row_field(row, &["image_md5", "imageMd5"])
-            .map(value_to_string)
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty());
+        msg.image_md5 = row.image_md5_column();
         if local_type == 3 {
-            msg.image_dat_name = extract_image_dat_name_from_row(row, &content);
+            msg.image_dat_name = row.image_dat_name(&content);
             if msg.image_md5.is_none() && !content.is_empty() {
                 msg.image_md5 = extract_image_md5(&content);
             }
@@ -3016,6 +3185,7 @@ pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<Export
                 msg.chat_record_list = parse_chat_history(&normalized);
             }
         }
+        msg.content = content;
         out.push(msg);
     }
     out.sort_by(|a, b| {

@@ -31,7 +31,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use weflow_native::msg_row::MsgRow;
 use weflow_native::wcdb::Wcdb;
 
 use super::MessageExportRequest;
@@ -257,11 +257,11 @@ type PageResult<T> = (usize, AppResult<Page<T>>);
 impl PageSource<'_> {
     fn read(&self, page: usize) -> AppResult<ParsedPage> {
         let t = Instant::now();
-        let rows = match self.wcdb.fetch_message_page(self.cursor, page) {
-            Ok(Value::Array(rows)) => rows,
-            Ok(_) => Vec::new(),
-            Err(e) => return Err(AppError::native(e.to_string())),
-        };
+        // typed rows (#491): no JSON object per row, and their text moves into the messages
+        let rows = self
+            .wcdb
+            .fetch_message_page_as::<MsgRow>(self.cursor, page)
+            .map_err(|e| AppError::native(e.to_string()))?;
         let fetch = t.elapsed();
         let scanned = rows.len();
         let (start, end) = (self.req.start, self.req.end);
@@ -270,24 +270,27 @@ impl PageSource<'_> {
             .sender_filter
             .map(str::trim)
             .filter(|f| !f.is_empty());
-        let rows: Vec<Value> = rows
+        let rows: Vec<MsgRow> = rows
             .into_iter()
             .filter(|m| {
-                let ts = crate::message::get_timestamp_seconds(m);
+                let ts = crate::message::msg_row_timestamp(m);
                 start.is_none_or(|s| ts >= s) && end.is_none_or(|e| ts < e)
             })
             // drop other senders' rows before parsing them
             .filter(|row| {
                 sender.is_none_or(|f| {
                     crate::message::is_same_wxid(
-                        &crate::message::row_sender(row, self.opts.session_id, self.opts.my_wxid),
+                        &crate::message::msg_row_sender(
+                            row,
+                            self.opts.session_id,
+                            self.opts.my_wxid,
+                        ),
                         f,
                     )
                 })
             })
             .collect();
-        let mut msgs = crate::message::collect_messages(&rows, self.opts);
-        drop(rows);
+        let mut msgs = crate::message::collect_rows(rows, self.opts);
         if msgs.iter().any(super::is_sticker) {
             let table = self.captions.get_or_init(self.load_captions);
             super::attach_emoji_captions(table, &mut msgs);
