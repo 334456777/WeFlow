@@ -1,9 +1,8 @@
 //! Message reading on top of [`NativeAccount`]: shard/table lookup, paging, per-day statistics
-//! and cursors. Row objects use WeChat's own column names (`local_id`, `create_time`, `sort_seq`,
-//! `message_content`, ...) plus `sender_username`, `_db_path`, `table_name` and `db_name`, which is
-//! what the service layer expects from a raw message row.
+//! and cursors. Rows are read in a [`RowShape`]: [`MsgRow`](crate::msg_row::MsgRow), typed, or
+//! [`LegacyRow`], WeChat's own column names (`local_id`, `create_time`, `sort_seq`, `message_content`, ...) plus
+//! `sender_username`, `_db_path`, `table_name` and `db_name`.
 
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
@@ -12,19 +11,11 @@ use anyhow::{anyhow, Context, Result};
 use md5::{Digest, Md5};
 use serde_json::{json, Map, Value};
 
+use crate::msg_row::{LegacyRow, RowContext, RowShape};
 use crate::native_db::NativeAccount;
 
 /// A quarter of an hour in seconds: the step of the local dates of messages.
 const QUARTER: i64 = 900;
-
-/// Columns dropped from "lite" rows (bulk scans that only need type, time, sender and text).
-const LITE_DROP: &[&str] = &[
-    "compress_content",
-    "packed_info_data",
-    "source",
-    "WCDB_CT_source",
-    "WCDB_CT_message_content",
-];
 
 /// One message location: which shard database, which table.
 #[derive(Clone, Debug)]
@@ -229,7 +220,7 @@ fn typed_row_key(
 }
 
 /// The number of the `message_<n>.db` holding a table.
-fn shard_of(t: &MsgTable) -> Option<u32> {
+pub(crate) fn shard_of(t: &MsgTable) -> Option<u32> {
     t.db.file_name()
         .and_then(|n| n.to_str())
         .and_then(is_message_db)
@@ -286,55 +277,73 @@ impl NativeAccount {
         Ok(out)
     }
 
-    /// `select` over one message table with the sender resolved from `Name2Id`.
-    fn select_sql(t: &MsgTable, tail: &str) -> String {
+    /// `select` of the columns of `R` over one message table with the sender resolved from `Name2Id`.
+    fn select_sql<R: RowShape>(t: &MsgTable, tail: &str, lite: bool) -> String {
         format!(
-            "select m.*, n.user_name as sender_username from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id {tail}",
+            "select {} from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id {tail}",
+            R::columns(lite),
             t.table
         )
     }
 
     /// The rows of [`select_sql`](Self::select_sql) with `indexed` (rows with a `sort_seq`), then those with
     /// `unsequenced` (rows without one), as one statement: a second one per table costs its own preparation.
-    fn select_both_sql(t: &MsgTable, indexed: &str, unsequenced: &str) -> String {
+    fn select_both_sql<R: RowShape>(t: &MsgTable, indexed: &str, unsequenced: &str) -> String {
         format!(
             "select * from ({}) union all select * from ({})",
-            Self::select_sql(t, indexed),
-            Self::select_sql(t, unsequenced)
+            Self::select_sql::<R>(t, indexed, false),
+            Self::select_sql::<R>(t, unsequenced, false)
         )
     }
 
+    /// Completes a legacy row read with its own query (`m.*` and `sender_username`), as [`LegacyRow`] does.
     pub(crate) fn finish_row(&self, row: &mut Value, t: &MsgTable, lite: bool) {
-        let is_send = self.is_me(
-            row.get("sender_username")
-                .and_then(Value::as_str)
-                .unwrap_or(""),
+        let is_me = |sender: &str| self.is_me(sender);
+        crate::msg_row::finish_legacy(
+            row,
+            &RowContext {
+                table: t,
+                lite,
+                is_me: &is_me,
+            },
         );
-        let Some(obj) = row.as_object_mut() else {
-            return;
-        };
-        obj.insert("is_send".into(), json!(if is_send { 1 } else { 0 }));
-        // Text was already inflated by the reader, so the WCDB "compressed" flags no longer apply.
-        obj.insert("WCDB_CT_message_content".into(), Value::Null);
-        obj.insert("_db_path".into(), json!(t.db.to_string_lossy()));
-        obj.insert(
-            "db_name".into(),
-            json!(t.db.file_stem().and_then(|s| s.to_str()).unwrap_or("")),
-        );
-        obj.insert("table_name".into(), json!(t.table));
-        if lite {
-            for k in LITE_DROP {
-                obj.remove(*k);
-            }
-        }
     }
 
-    fn cmp_desc(a: &Value, b: &Value) -> Ordering {
-        row_key(b).cmp(&row_key(a))
+    /// The rows of `sql` over `t`, whose select list is `R`'s, in shape `R`.
+    fn read_rows<R: RowShape>(
+        &self,
+        t: &MsgTable,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+        lite: bool,
+    ) -> Result<Vec<R>> {
+        let is_me = |sender: &str| self.is_me(sender);
+        let ctx = RowContext {
+            table: t,
+            lite,
+            is_me: &is_me,
+        };
+        self.with_db(&t.db, |conn| {
+            // each retry starts over with an empty vector (see `with_db`)
+            let mut out = Vec::new();
+            let mut stmt = conn
+                .prepare(sql)
+                .with_context(|| format!("bad query: {sql}"))?;
+            let mut rows = stmt.query(params)?;
+            while let Some(row) = rows.next()? {
+                out.push(R::read(row, &ctx)?);
+            }
+            Ok(out)
+        })
     }
 
     /// Newest-first page of messages across all shards.
-    pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Value> {
+    pub fn messages<R: RowShape>(
+        &self,
+        session_id: &str,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<R>> {
         let (offset, limit) = (offset.max(0) as usize, limit.max(0) as usize);
         let tables = self.message_tables(session_id)?;
         if offset > 0 {
@@ -348,7 +357,7 @@ impl NativeAccount {
                         PageFrom::Before(pos),
                     );
                 }
-                OffsetPosition::Past => return Ok(Value::Array(Vec::new())),
+                OffsetPosition::Past => return Ok(Vec::new()),
                 OffsetPosition::Unusual => {}
             }
         }
@@ -356,8 +365,9 @@ impl NativeAccount {
     }
 
     /// The SQL of [`newest_rows`](Self::newest_rows) for one table: its `want` (`?1`) newest rows with a `sort_seq`,
-    /// at `?2` or later when `floor`, then its `want` newest without one. With the sender joined, or only `columns`.
-    fn newest_sql(t: &MsgTable, columns: Option<&str>, floor: bool) -> String {
+    /// at `?2` or later when `floor`, then its `want` newest without one. The rows of `R` with the sender joined, or
+    /// only `columns`.
+    fn newest_sql<R: RowShape>(t: &MsgTable, columns: Option<&str>, floor: bool) -> String {
         let order = "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1";
         let floor = if floor { "m.sort_seq >= ?2 and " } else { "" };
         let indexed = format!("where {floor}m.sort_seq <> 0 {order}");
@@ -366,7 +376,7 @@ impl NativeAccount {
         let unsequenced = "where (m.sort_seq is null or m.sort_seq = 0) \
                            order by m.create_time desc, m.local_id desc limit ?1";
         match columns {
-            None => Self::select_both_sql(t, &indexed, unsequenced),
+            None => Self::select_both_sql::<R>(t, &indexed, unsequenced),
             Some(columns) => {
                 let table = &t.table;
                 format!(
@@ -400,7 +410,11 @@ impl NativeAccount {
             } else {
                 None
             };
-            let sql = Self::newest_sql(t, Some("sort_seq, create_time, local_id"), floor.is_some());
+            let sql = Self::newest_sql::<LegacyRow>(
+                t,
+                Some("sort_seq, create_time, local_id"),
+                floor.is_some(),
+            );
             let read = self.with_db(&t.db, |conn| {
                 // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
                 let mut found = Vec::new();
@@ -440,13 +454,18 @@ impl NativeAccount {
     }
 
     /// Newest-first page of the messages of `tables`, from the rows before it and the page read in full and sorted.
-    fn newest_rows(&self, tables: &[MsgTable], offset: usize, limit: usize) -> Result<Value> {
+    fn newest_rows<R: RowShape>(
+        &self,
+        tables: &[MsgTable],
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<R>> {
         let want = if limit == 0 {
             -1
         } else {
             (offset + limit) as i64
         };
-        let mut rows: Vec<Value> = Vec::new();
+        let mut rows: Vec<R> = Vec::new();
         for t in tables {
             // Asked as is, SQLite sorts the whole table (it walks the sender index for the join). The `want`-th
             // newest sort_seq, read from the sort_seq index, bounds the same rows to a range that index serves.
@@ -455,41 +474,47 @@ impl NativeAccount {
             } else {
                 None
             };
-            let sql = Self::newest_sql(t, None, floor.is_some());
-            let page = match floor {
-                Some(floor) => self.query(&t.db, &sql, &[&want, &floor])?,
-                None => self.query(&t.db, &sql, &[&want])?,
-            };
-            for mut r in page {
-                self.finish_row(&mut r, t, false);
-                rows.push(r);
-            }
+            let sql = Self::newest_sql::<R>(t, None, floor.is_some());
+            rows.extend(match floor {
+                Some(floor) => self.read_rows::<R>(t, &sql, &[&want, &floor], false)?,
+                None => self.read_rows::<R>(t, &sql, &[&want], false)?,
+            });
         }
-        rows.sort_by(Self::cmp_desc);
+        rows.sort_by_key(|r| std::cmp::Reverse(r.key()));
         let it = rows.into_iter().skip(offset);
-        Ok(Value::Array(if limit == 0 {
+        Ok(if limit == 0 {
             it.collect()
         } else {
             it.take(limit).collect()
-        }))
+        })
     }
 
     /// A newest-first page of messages next to a message (see [`MsgPos`]): `limit` of the older ones, or of the newer
     /// ones closest to it, still listed newest first; `limit == 0` means all of them. Each table is read from the
     /// position on through its `sort_seq` index, so a page deep into a long conversation costs what the first does.
-    pub fn messages_from(&self, session_id: &str, limit: i32, from: PageFrom) -> Result<Value> {
+    pub fn messages_from<R: RowShape>(
+        &self,
+        session_id: &str,
+        limit: i32,
+        from: PageFrom,
+    ) -> Result<Vec<R>> {
         self.page_from(&self.message_tables(session_id)?, limit, from)
     }
 
     /// [`messages_from`](Self::messages_from) over the message tables of a conversation.
-    fn page_from(&self, tables: &[MsgTable], limit: i32, from: PageFrom) -> Result<Value> {
+    fn page_from<R: RowShape>(
+        &self,
+        tables: &[MsgTable],
+        limit: i32,
+        from: PageFrom,
+    ) -> Result<Vec<R>> {
         let want = if limit <= 0 { -1 } else { i64::from(limit) };
         let (pos, older) = match from {
             PageFrom::Before(p) => (p, true),
             PageFrom::After(p) => (p, false),
         };
         let dir = if older { "desc" } else { "asc" };
-        let mut rows: Vec<(Value, u32)> = Vec::new();
+        let mut rows: Vec<(R, u32)> = Vec::new();
         for t in tables {
             let Some(shard) = shard_of(t) else {
                 continue;
@@ -512,18 +537,16 @@ impl NativeAccount {
                  and (m.create_time * 1000, m.create_time, m.local_id) {cmp} (?1, ?2, ?3) \
                  order by m.create_time {dir}, m.local_id {dir} limit ?4"
             );
-            let page = self.query(
-                &t.db,
-                &Self::select_both_sql(t, &indexed, &unsequenced),
+            let page = self.read_rows::<R>(
+                t,
+                &Self::select_both_sql::<R>(t, &indexed, &unsequenced),
                 &[&pos.sort_seq, &pos.create_time, &pos.local_id, &want],
+                false,
             )?;
-            for mut r in page {
-                self.finish_row(&mut r, t, false);
-                rows.push((r, shard));
-            }
+            rows.extend(page.into_iter().map(|r| (r, shard)));
         }
         // the listing's order: newest key first, equal keys by ascending database
-        rows.sort_by(|(a, sa), (b, sb)| row_key(b).cmp(&row_key(a)).then(sa.cmp(sb)));
+        rows.sort_by(|(a, sa), (b, sb)| b.key().cmp(&a.key()).then(sa.cmp(sb)));
         if !older {
             // the newer rows closest to the position are at the end
             // a negative `want` keeps every row
@@ -533,14 +556,14 @@ impl NativeAccount {
             rows.truncate(want);
         }
         debug_assert!(rows.iter().all(|(r, s)| {
-            let k = row_key(r);
+            let k = r.key();
             if older {
                 k < pos.key() || (k == pos.key() && *s > pos.shard)
             } else {
                 k > pos.key() || (k == pos.key() && *s < pos.shard)
             }
         }));
-        Ok(Value::Array(rows.into_iter().map(|(r, _)| r).collect()))
+        Ok(rows.into_iter().map(|(r, _)| r).collect())
     }
 
     /// Every message table of the account by its name ([`table_name_for`] a conversation), oldest shard first: one
@@ -575,7 +598,7 @@ impl NativeAccount {
     /// for no bound) and at `floor` or later in the chat's order (its `sort_seq`; 0 for no bound). One statement a
     /// table, of one part a type, so the `(local_type, sort_seq)` index gives each part's rows in order and the
     /// limit stops its read (issue #178).
-    pub fn typed_before(
+    pub fn typed_before<R: RowShape>(
         &self,
         tables: &[MsgTable],
         local_types: &[i64],
@@ -583,7 +606,7 @@ impl NativeAccount {
         range: (i64, i64),
         floor: i64,
         limit: i64,
-    ) -> Result<Vec<Value>> {
+    ) -> Result<Vec<R>> {
         let (pos, ties) = before.unwrap_or((
             MsgPos {
                 sort_seq: i64::MAX,
@@ -605,7 +628,7 @@ impl NativeAccount {
             Ties::All => "<=",
             Ties::None => "<",
         };
-        let mut rows: Vec<(Value, u32)> = Vec::new();
+        let mut rows: Vec<(R, u32)> = Vec::new();
         for t in tables {
             let Some(shard) = shard_of(t) else {
                 continue;
@@ -639,12 +662,12 @@ impl NativeAccount {
                  order by m.create_time desc, m.local_id desc limit ?4)"
             ));
             let sql = format!(
-                "select m.*, n.user_name as sender_username from ({}) m \
-                 left join Name2Id n on n.rowid = m.real_sender_id",
+                "select {} from ({}) m left join Name2Id n on n.rowid = m.real_sender_id",
+                R::columns(false),
                 parts.join(" union all ")
             );
-            let page = self.query(
-                &t.db,
+            let page = self.read_rows::<R>(
+                t,
                 &sql,
                 &[
                     &pos.sort_seq,
@@ -653,13 +676,11 @@ impl NativeAccount {
                     &limit,
                     &floor,
                 ],
+                false,
             )?;
-            for mut r in page {
-                self.finish_row(&mut r, t, false);
-                rows.push((r, shard));
-            }
+            rows.extend(page.into_iter().map(|r| (r, shard)));
         }
-        rows.sort_by(|(a, sa), (b, sb)| row_key(b).cmp(&row_key(a)).then(sa.cmp(sb)));
+        rows.sort_by(|(a, sa), (b, sb)| b.key().cmp(&a.key()).then(sa.cmp(sb)));
         if let Ok(limit) = usize::try_from(limit) {
             rows.truncate(limit);
         }
@@ -729,14 +750,14 @@ impl NativeAccount {
     }
 
     /// Messages of one `local_type`; `limit == 0` means all.
-    pub fn messages_by_type(
+    pub fn messages_by_type<R: RowShape>(
         &self,
         session_id: &str,
         local_type: i64,
         ascending: bool,
         limit: i32,
         offset: i32,
-    ) -> Result<Value> {
+    ) -> Result<Vec<R>> {
         let (offset, limit) = (offset.max(0) as usize, limit.max(0) as usize);
         let want = if limit == 0 {
             -1
@@ -744,71 +765,73 @@ impl NativeAccount {
             (offset + limit) as i64
         };
         let dir = if ascending { "asc" } else { "desc" };
-        let mut rows: Vec<Value> = Vec::new();
+        let mut rows: Vec<R> = Vec::new();
         for t in self.message_tables(session_id)? {
-            let sql = Self::select_sql(
+            let sql = Self::select_sql::<R>(
                 &t,
                 &format!("where m.local_type = ?1 order by m.sort_seq {dir}, m.create_time {dir}, m.local_id {dir} limit ?2"),
+                false,
             );
-            for mut r in self.query(&t.db, &sql, &[&local_type, &want])? {
-                self.finish_row(&mut r, &t, false);
-                rows.push(r);
-            }
+            rows.extend(self.read_rows::<R>(&t, &sql, &[&local_type, &want], false)?);
         }
-        rows.sort_by(|a, b| {
-            if ascending {
-                Self::cmp_desc(b, a)
-            } else {
-                Self::cmp_desc(a, b)
-            }
-        });
+        if ascending {
+            rows.sort_by_key(RowShape::key);
+        } else {
+            rows.sort_by_key(|r| std::cmp::Reverse(r.key()));
+        }
         let it = rows.into_iter().skip(offset);
-        Ok(Value::Array(if limit == 0 {
+        Ok(if limit == 0 {
             it.collect()
         } else {
             it.take(limit).collect()
-        }))
+        })
     }
 
-    /// One message by `local_id`; `{}` when absent. If several shards hold the id, the newest shard wins (the
-    /// `wcdb_api` behaviour); [`messages_by_local_id`](Self::messages_by_local_id) returns every match.
-    pub fn message_by_id(&self, session_id: &str, local_id: i64) -> Result<Value> {
+    /// One message by `local_id`. If several shards hold the id, the newest shard wins (the `wcdb_api` behaviour);
+    /// [`messages_by_local_id`](Self::messages_by_local_id) returns every match.
+    pub fn message_by_id<R: RowShape>(&self, session_id: &str, local_id: i64) -> Result<Option<R>> {
         self.find_one(session_id, "m.local_id = ?1", &local_id)
     }
 
     /// Every message of a session with this `local_id`, newest shard first: the id is only unique within one
     /// `message_N.db`, so different messages in different shards can share it. `create_time` (seconds) keeps only
     /// the one sent then.
-    pub fn messages_by_local_id(
+    pub fn messages_by_local_id<R: RowShape>(
         &self,
         session_id: &str,
         local_id: i64,
         create_time: Option<i64>,
-    ) -> Result<Vec<Value>> {
+    ) -> Result<Vec<R>> {
         let mut out = Vec::new();
         for t in self.message_tables(session_id)?.into_iter().rev() {
-            let rows = match create_time {
-                Some(ct) => self.query(
-                    &t.db,
-                    &Self::select_sql(&t, "where m.local_id = ?1 and m.create_time = ?2 limit 1"),
+            out.extend(match create_time {
+                Some(ct) => self.read_rows::<R>(
+                    &t,
+                    &Self::select_sql::<R>(
+                        &t,
+                        "where m.local_id = ?1 and m.create_time = ?2 limit 1",
+                        false,
+                    ),
                     &[&local_id, &ct],
+                    false,
                 )?,
-                None => self.query(
-                    &t.db,
-                    &Self::select_sql(&t, "where m.local_id = ?1 limit 1"),
+                None => self.read_rows::<R>(
+                    &t,
+                    &Self::select_sql::<R>(&t, "where m.local_id = ?1 limit 1", false),
                     &[&local_id],
+                    false,
                 )?,
-            };
-            for mut r in rows {
-                self.finish_row(&mut r, &t, false);
-                out.push(r);
-            }
+            });
         }
         Ok(out)
     }
 
-    /// One message by server id (a decimal string, may exceed 2^53); `{}` when absent.
-    pub fn message_by_server_id(&self, session_id: &str, server_id: &str) -> Result<Value> {
+    /// One message by server id (a decimal string, may exceed 2^53).
+    pub fn message_by_server_id<R: RowShape>(
+        &self,
+        session_id: &str,
+        server_id: &str,
+    ) -> Result<Option<R>> {
         let id: i64 = server_id
             .trim()
             .parse()
@@ -816,15 +839,18 @@ impl NativeAccount {
         self.find_one(session_id, "m.server_id = ?1", &id)
     }
 
-    fn find_one(&self, session_id: &str, cond: &str, arg: &i64) -> Result<Value> {
+    fn find_one<R: RowShape>(&self, session_id: &str, cond: &str, arg: &i64) -> Result<Option<R>> {
         for t in self.message_tables(session_id)?.into_iter().rev() {
-            let sql = Self::select_sql(&t, &format!("where {cond} limit 1"));
-            if let Some(mut r) = self.query(&t.db, &sql, &[arg])?.into_iter().next() {
-                self.finish_row(&mut r, &t, false);
-                return Ok(r);
+            let sql = Self::select_sql::<R>(&t, &format!("where {cond} limit 1"), false);
+            if let Some(r) = self
+                .read_rows::<R>(&t, &sql, &[arg], false)?
+                .into_iter()
+                .next()
+            {
+                return Ok(Some(r));
             }
         }
-        Ok(json!({}))
+        Ok(None)
     }
 
     // ── cursors ──
@@ -1131,7 +1157,7 @@ impl NativeAccount {
     }
 
     /// Next batch of rows and whether more remain.
-    pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
+    pub fn fetch_message_batch<R: RowShape>(&self, cursor: i64) -> Result<(Vec<R>, bool)> {
         let (tables, chunk, lite, more, derived) = {
             let mut cursors = self
                 .cursors
@@ -1174,8 +1200,8 @@ impl NativeAccount {
 
     /// Batch number `page` of a cursor (the rows [`fetch_message_batch`](Self::fetch_message_batch) returns on its
     /// `page + 1`-th call), without moving the cursor: threads can read different batches of one cursor at once.
-    /// Past the end it is an empty array.
-    pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Value> {
+    /// Past the end it is empty.
+    pub fn fetch_message_page<R: RowShape>(&self, cursor: i64, page: usize) -> Result<Vec<R>> {
         let (tables, chunk, lite, derived) = {
             let cursors = self
                 .cursors
@@ -1203,13 +1229,13 @@ impl NativeAccount {
 
     /// The rows of `keys`, in that order, and the tables whose keys came from the `sort_seq` index (`derived`) and
     /// have a row with another key than the one it was listed under.
-    fn rows_for_keys(
+    fn rows_for_keys<R: RowShape>(
         &self,
         tables: &[MsgTable],
         keys: &[Key],
         lite: bool,
         derived: &[bool],
-    ) -> Result<(Value, Vec<usize>)> {
+    ) -> Result<(Vec<R>, Vec<usize>)> {
         let listed: HashMap<(usize, i64), (i64, i64)> = keys
             .iter()
             .filter(|k| derived.get(k.3).copied().unwrap_or(false))
@@ -1220,13 +1246,13 @@ impl NativeAccount {
         for (_, _, local, idx) in keys {
             by_shard.entry(*idx).or_default().push(*local);
         }
-        let mut fetched: HashMap<(usize, i64), Value> = HashMap::new();
+        let mut fetched: HashMap<(usize, i64), R> = HashMap::new();
         for (idx, ids) in by_shard {
             let t = &tables[idx];
             let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
-            let sql = Self::select_sql(t, &format!("where m.local_id in ({list})"));
-            for mut r in self.query(&t.db, &sql, &[])? {
-                let (seq, create, local) = row_key(&r);
+            let sql = Self::select_sql::<R>(t, &format!("where m.local_id in ({list})"), lite);
+            for r in self.read_rows::<R>(t, &sql, &[], lite)? {
+                let (seq, create, local) = r.key();
                 if listed
                     .get(&(idx, local))
                     .is_some_and(|k| *k != (seq, create))
@@ -1234,7 +1260,6 @@ impl NativeAccount {
                 {
                     mismatched.push(idx);
                 }
-                self.finish_row(&mut r, t, lite);
                 fetched.insert((idx, local), r);
             }
         }
@@ -1242,7 +1267,7 @@ impl NativeAccount {
             .iter()
             .filter_map(|(_, _, local, idx)| fetched.remove(&(*idx, *local)))
             .collect();
-        Ok((Value::Array(rows), mismatched))
+        Ok((rows, mismatched))
     }
 
     pub fn close_message_cursor(&self, cursor: i64) -> Result<()> {
@@ -1262,6 +1287,65 @@ impl NativeAccount {
 )]
 mod tests {
     use super::*;
+    use crate::msg_row::LegacyRow;
+
+    /// The readers in the legacy shape, as JSON, the way the tests compare them.
+    trait LegacyReads {
+        fn messages_v(&self, s: &str, limit: i32, offset: i32) -> Result<Value>;
+        fn messages_from_v(&self, s: &str, limit: i32, from: PageFrom) -> Result<Value>;
+        fn messages_by_type_v(
+            &self,
+            s: &str,
+            t: i64,
+            asc: bool,
+            limit: i32,
+            offset: i32,
+        ) -> Result<Value>;
+        fn message_by_id_v(&self, s: &str, local_id: i64) -> Result<Value>;
+        fn message_by_server_id_v(&self, s: &str, server_id: &str) -> Result<Value>;
+        fn fetch_message_batch_v(&self, cursor: i64) -> Result<(Value, bool)>;
+        fn fetch_message_page_v(&self, cursor: i64, page: usize) -> Result<Value>;
+    }
+
+    impl LegacyReads for NativeAccount {
+        fn messages_v(&self, s: &str, limit: i32, offset: i32) -> Result<Value> {
+            self.messages::<LegacyRow>(s, limit, offset)
+                .map(LegacyRow::array)
+        }
+        fn messages_from_v(&self, s: &str, limit: i32, from: PageFrom) -> Result<Value> {
+            self.messages_from::<LegacyRow>(s, limit, from)
+                .map(LegacyRow::array)
+        }
+        fn messages_by_type_v(
+            &self,
+            s: &str,
+            t: i64,
+            asc: bool,
+            limit: i32,
+            offset: i32,
+        ) -> Result<Value> {
+            self.messages_by_type::<LegacyRow>(s, t, asc, limit, offset)
+                .map(LegacyRow::array)
+        }
+        fn message_by_id_v(&self, s: &str, local_id: i64) -> Result<Value> {
+            Ok(self
+                .message_by_id::<LegacyRow>(s, local_id)?
+                .map_or_else(|| json!({}), LegacyRow::into_value))
+        }
+        fn message_by_server_id_v(&self, s: &str, server_id: &str) -> Result<Value> {
+            Ok(self
+                .message_by_server_id::<LegacyRow>(s, server_id)?
+                .map_or_else(|| json!({}), LegacyRow::into_value))
+        }
+        fn fetch_message_batch_v(&self, cursor: i64) -> Result<(Value, bool)> {
+            let (rows, more) = self.fetch_message_batch::<LegacyRow>(cursor)?;
+            Ok((LegacyRow::array(rows), more))
+        }
+        fn fetch_message_page_v(&self, cursor: i64, page: usize) -> Result<Value> {
+            self.fetch_message_page::<LegacyRow>(cursor, page)
+                .map(LegacyRow::array)
+        }
+    }
     use crate::native_db::hex;
     use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
     use crate::sqlcipher::PageCipher;
@@ -1284,7 +1368,7 @@ mod tests {
             .unwrap();
             c.execute_batch(&format!(
                 "create table \"{table}\"(local_id integer primary key autoincrement, server_id integer, local_type integer, \
-                 sort_seq integer, real_sender_id integer, create_time integer, status integer, message_content, compress_content, packed_info_data blob)"
+                 sort_seq integer, real_sender_id integer, create_time integer, status integer, source text, message_content, compress_content, packed_info_data blob)"
             ))
             .unwrap();
             for (local_id, offset, local_type, sender, text) in &msgs {
@@ -1365,7 +1449,7 @@ mod tests {
     fn page_ids(acct: &NativeAccount, id: i64) -> Result<Vec<i64>> {
         let mut ids = Vec::new();
         for page in 0.. {
-            let rows = acct.fetch_message_page(id, page)?;
+            let rows = acct.fetch_message_page_v(id, page)?;
             let rows = rows.as_array().unwrap();
             if rows.is_empty() {
                 return Ok(ids);
@@ -1436,7 +1520,7 @@ mod tests {
             ]
         );
         assert!(acct
-            .fetch_message_page(fast, 0)
+            .fetch_message_page_v(fast, 0)
             .unwrap_err()
             .to_string()
             .contains(KEYS_CHANGED));
@@ -1642,14 +1726,14 @@ mod tests {
         assert!(acct.message_tables("wxid_nobody").unwrap().is_empty());
         assert_eq!(acct.message_count("wxid_bob").unwrap(), 5);
         assert_eq!(
-            texts(&acct.messages("wxid_bob", 3, 0).unwrap()),
+            texts(&acct.messages_v("wxid_bob", 3, 0).unwrap()),
             ["voice", "fourth", "third"]
         );
         assert_eq!(
-            texts(&acct.messages("wxid_bob", 10, 3).unwrap()),
+            texts(&acct.messages_v("wxid_bob", 10, 3).unwrap()),
             ["img", "hello"]
         );
-        assert_eq!(acct.messages("wxid_bob", 10, 5).unwrap(), json!([]));
+        assert_eq!(acct.messages_v("wxid_bob", 10, 5).unwrap(), json!([]));
     }
 
     #[test]
@@ -1695,10 +1779,10 @@ mod tests {
         // create_time * 1000, so here they are the newest ones
         let t = acct.message_tables("wxid_bob").unwrap().remove(0);
         let reference = |limit: i32, offset: i32| -> Vec<String> {
-            let sql = NativeAccount::select_sql(&t, "");
-            let mut rows = acct.query(&t.db, &sql, &[]).unwrap();
-            rows.sort_by(NativeAccount::cmp_desc);
-            texts(&Value::Array(
+            let sql = NativeAccount::select_sql::<LegacyRow>(&t, "", false);
+            let mut rows: Vec<LegacyRow> = acct.read_rows(&t, &sql, &[], false).unwrap();
+            rows.sort_by_key(|r| std::cmp::Reverse(r.key()));
+            texts(&LegacyRow::array(
                 rows.into_iter()
                     .skip(offset as usize)
                     .take(limit as usize)
@@ -1706,7 +1790,7 @@ mod tests {
             ))
         };
         assert_eq!(
-            acct.messages("wxid_bob", 0, 0)
+            acct.messages_v("wxid_bob", 0, 0)
                 .unwrap()
                 .as_array()
                 .unwrap()
@@ -1724,7 +1808,7 @@ mod tests {
             (50, 5),
             (100, 0),
         ] {
-            let page = texts(&acct.messages("wxid_bob", limit, offset).unwrap());
+            let page = texts(&acct.messages_v("wxid_bob", limit, offset).unwrap());
             assert_eq!(
                 page,
                 reference(limit, offset),
@@ -1737,14 +1821,14 @@ mod tests {
         }
 
         // pages from a cursor, both ways, list the same order through the ties and the rows without a sort_seq
-        let all = acct.messages("wxid_bob", 0, 0).unwrap();
+        let all = acct.messages_v("wxid_bob", 0, 0).unwrap();
         let all = all.as_array().unwrap();
         let pos = |row: &Value| MsgPos::of_row(row).unwrap();
-        let mut back = texts(&acct.messages("wxid_bob", 7, 0).unwrap());
+        let mut back = texts(&acct.messages_v("wxid_bob", 7, 0).unwrap());
         while back.len() < 60 {
             let last = &all[back.len() - 1];
             let page = acct
-                .messages_from("wxid_bob", 7, PageFrom::Before(pos(last)))
+                .messages_from_v("wxid_bob", 7, PageFrom::Before(pos(last)))
                 .unwrap();
             assert!(
                 !page.as_array().unwrap().is_empty(),
@@ -1755,7 +1839,7 @@ mod tests {
         }
         assert_eq!(back, reference(60, 0));
         assert!(acct
-            .messages_from("wxid_bob", 7, PageFrom::Before(pos(&all[59])))
+            .messages_from_v("wxid_bob", 7, PageFrom::Before(pos(&all[59])))
             .unwrap()
             .as_array()
             .unwrap()
@@ -1763,7 +1847,7 @@ mod tests {
         for at in [1, 9, 30, 59] {
             // the 7 rows listed just before row `at`
             let page = acct
-                .messages_from("wxid_bob", 7, PageFrom::After(pos(&all[at])))
+                .messages_from_v("wxid_bob", 7, PageFrom::After(pos(&all[at])))
                 .unwrap();
             let from = at.saturating_sub(7);
             assert_eq!(
@@ -1844,9 +1928,12 @@ mod tests {
                     );
                 }
                 assert_eq!(
-                    acct.messages("wxid_bob", limit as i32, offset as i32)
+                    acct.messages_v("wxid_bob", limit as i32, offset as i32)
                         .unwrap(),
-                    acct.newest_rows(&tables, offset, limit).unwrap(),
+                    LegacyRow::array(
+                        acct.newest_rows::<LegacyRow>(&tables, offset, limit)
+                            .unwrap()
+                    ),
                     "limit {limit} offset {offset}"
                 );
             }
@@ -1877,8 +1964,8 @@ mod tests {
             );
             for offset in 1..=8 {
                 assert_eq!(
-                    acct.messages("wxid_bob", 2, offset as i32).unwrap(),
-                    acct.newest_rows(&tables, offset, 2).unwrap(),
+                    acct.messages_v("wxid_bob", 2, offset as i32).unwrap(),
+                    LegacyRow::array(acct.newest_rows::<LegacyRow>(&tables, offset, 2).unwrap()),
                     "{tag} offset {offset}"
                 );
             }
@@ -1888,7 +1975,7 @@ mod tests {
     #[test]
     fn rows_carry_sender_source_and_inflated_content() {
         let (acct, _dir) = account("rows");
-        let rows = acct.messages("wxid_bob", 0, 0).unwrap();
+        let rows = acct.messages_v("wxid_bob", 0, 0).unwrap();
         let rows = rows.as_array().unwrap();
         let third = rows
             .iter()
@@ -1907,6 +1994,81 @@ mod tests {
         );
         let img = rows.iter().find(|r| r["message_content"] == "img").unwrap();
         assert_eq!(img["sender_username"], "wxid_me");
+    }
+
+    /// The typed rows hold what the legacy ones do, read by the same paging: the same messages in the same order,
+    /// the same keys, and each column typed, the content inflated, the database by its shard.
+    #[test]
+    fn typed_rows_match_the_legacy_ones() {
+        use crate::msg_row::MsgRow;
+        let (acct, _dir) = account("typed");
+        let typed: Vec<MsgRow> = acct.messages("wxid_bob", 0, 0).unwrap();
+        let legacy: Vec<LegacyRow> = acct.messages("wxid_bob", 0, 0).unwrap();
+        assert!(!typed.is_empty());
+        assert_eq!(typed.len(), legacy.len());
+        for (t, LegacyRow(l)) in typed.iter().zip(&legacy) {
+            assert_eq!(t.key(), LegacyRow(l.clone()).key());
+            assert_eq!(Some(t.local_id), l["local_id"].as_i64());
+            assert_eq!(t.server_id, l["server_id"].as_i64());
+            assert_eq!(Some(t.local_type), l["local_type"].as_i64());
+            assert_eq!(t.sort_seq, l["sort_seq"].as_i64());
+            assert_eq!(t.create_time, l["create_time"].as_i64());
+            assert_eq!(t.sender.as_deref(), l["sender_username"].as_str());
+            assert_eq!(t.is_send, l["is_send"] == 1);
+            assert_eq!(Some(t.content.as_str()), l["message_content"].as_str());
+            assert_eq!(
+                t.packed_info.as_deref().map(crate::native_db::hex),
+                l["packed_info_data"].as_str().map(str::to_string)
+            );
+            assert_eq!(format!("message_{}", t.shard), l["db_name"]);
+        }
+        // the cursor pages too, lite rows leaving out the source and packed info
+        let cursor = acct
+            .open_message_cursor("wxid_bob", 100, true, 0, 0, true)
+            .unwrap();
+        let (lite, _) = acct.fetch_message_batch::<MsgRow>(cursor).unwrap();
+        assert_eq!(lite.len(), typed.len());
+        assert!(lite
+            .iter()
+            .all(|r| r.source.is_none() && r.packed_info.is_none()));
+        let third = lite.iter().find(|r| r.content == "third").unwrap(); // stored as a zstd blob
+        assert_eq!(third.sender.as_deref(), Some("wxid_bob"));
+    }
+
+    /// A cell of an integer column that holds another type is read as absent, and counted.
+    #[test]
+    fn odd_integer_cells_are_absent_and_counted() {
+        use crate::fixture::T0;
+        use crate::msg_row::{odd_cell_count, MsgRow};
+        let root = std::env::temp_dir().join(format!("weflow-odd-cells-{}", std::process::id()));
+        let fixture = crate::fixture::Fixture::new(&root, "wxid_synthetic_ab12");
+        let table = table_name_for("wxid_bob");
+        let plain = plain_db_with(|conn| {
+            conn.execute_batch(&format!(
+                "create table Name2Id(user_name text);
+                 insert into Name2Id values ('wxid_bob');
+                 create table \"{table}\"(local_id integer primary key, server_id, local_type integer, sort_seq,
+                     create_time integer, status integer, real_sender_id integer, compress_content, message_content,
+                     source, packed_info_data);
+                 insert into \"{table}\"(local_id, server_id, local_type, sort_seq, create_time, real_sender_id,
+                     message_content) values (1, 'not a number', 1, 1.5, {T0}, 1, 'odd');"
+            ))
+            .unwrap();
+        });
+        let cipher = PageCipher::derive(&KEY, &SALT);
+        std::fs::write(
+            fixture.db_storage().join("message/message_0.db"),
+            encrypt_db(&plain, &cipher),
+        )
+        .unwrap();
+        let acct = NativeAccount::new(fixture.db_storage(), &fixture.key_hex()).unwrap();
+        let before = odd_cell_count();
+        let rows: Vec<MsgRow> = acct.messages("wxid_bob", 0, 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].server_id, rows[0].sort_seq), (None, None));
+        assert_eq!(rows[0].key(), (T0 * 1000, T0, 1));
+        assert!(odd_cell_count() >= before + 2);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1978,33 +2140,34 @@ mod tests {
     fn lookups_by_type_and_id() {
         let (acct, _dir) = account("lookup");
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, true, 0, 0).unwrap()),
+            texts(&acct.messages_by_type_v("wxid_bob", 1, true, 0, 0).unwrap()),
             ["hello", "third", "fourth"]
         );
         assert_eq!(
-            texts(&acct.messages_by_type("wxid_bob", 1, false, 2, 0).unwrap()),
+            texts(&acct.messages_by_type_v("wxid_bob", 1, false, 2, 0).unwrap()),
             ["fourth", "third"]
         );
         assert_eq!(
-            acct.messages_by_type("wxid_bob", 999, false, 0, 0).unwrap(),
+            acct.messages_by_type_v("wxid_bob", 999, false, 0, 0)
+                .unwrap(),
             json!([])
         );
         // local_id 1 exists in both shards: the newest shard wins.
         assert_eq!(
-            acct.message_by_id("wxid_bob", 1).unwrap()["message_content"],
+            acct.message_by_id_v("wxid_bob", 1).unwrap()["message_content"],
             "fourth"
         );
         assert_eq!(
-            acct.message_by_id("wxid_bob", 3).unwrap()["message_content"],
+            acct.message_by_id_v("wxid_bob", 3).unwrap()["message_content"],
             "third"
         );
-        assert_eq!(acct.message_by_id("wxid_bob", 77).unwrap(), json!({}));
+        assert_eq!(acct.message_by_id_v("wxid_bob", 77).unwrap(), json!({}));
         assert_eq!(
-            acct.message_by_server_id("wxid_bob", &(DAY * 4).to_string())
+            acct.message_by_server_id_v("wxid_bob", &(DAY * 4).to_string())
                 .unwrap()["message_content"],
             "voice"
         );
-        assert!(acct.message_by_server_id("wxid_bob", "abc").is_err());
+        assert!(acct.message_by_server_id_v("wxid_bob", "abc").is_err());
     }
 
     #[test]
@@ -2016,7 +2179,7 @@ mod tests {
         let mut all = Vec::new();
         let mut batches = 0;
         loop {
-            let (rows, more) = acct.fetch_message_batch(c).unwrap();
+            let (rows, more) = acct.fetch_message_batch_v(c).unwrap();
             batches += 1;
             all.extend(texts(&rows));
             if !more {
@@ -2026,7 +2189,7 @@ mod tests {
         assert_eq!(batches, 3);
         assert_eq!(all, ["hello", "img", "third", "fourth", "voice"]);
         acct.close_message_cursor(c).unwrap();
-        assert!(acct.fetch_message_batch(c).is_err());
+        assert!(acct.fetch_message_batch_v(c).is_err());
     }
 
     #[test]
@@ -2037,20 +2200,20 @@ mod tests {
             .unwrap();
         assert_eq!(acct.message_cursor_len(c).unwrap(), (5, 2));
         // out of order, repeated and past the end
-        let page = |i| texts(&acct.fetch_message_page(c, i).unwrap());
+        let page = |i| texts(&acct.fetch_message_page_v(c, i).unwrap());
         assert_eq!(page(2), ["voice"]);
         assert_eq!(page(0), ["hello", "img"]);
         assert_eq!(page(1), ["third", "fourth"]);
         assert_eq!(page(1), ["third", "fourth"]);
         assert!(page(3).is_empty());
         // the sequential reads still start at the beginning
-        let (rows, more) = acct.fetch_message_batch(c).unwrap();
+        let (rows, more) = acct.fetch_message_batch_v(c).unwrap();
         assert_eq!(
             (texts(&rows), more),
             (vec!["hello".to_string(), "img".into()], true)
         );
         acct.close_message_cursor(c).unwrap();
-        assert!(acct.fetch_message_page(c, 0).is_err());
+        assert!(acct.fetch_message_page_v(c, 0).is_err());
         assert!(acct.message_cursor_len(c).is_err());
     }
 
@@ -2062,14 +2225,17 @@ mod tests {
             .open_message_cursor("wxid_bob", 1, true, 0, 0, false)
             .unwrap();
         let expected: Vec<Vec<String>> = (0..5)
-            .map(|i| texts(&acct.fetch_message_page(c, i).unwrap()))
+            .map(|i| texts(&acct.fetch_message_page_v(c, i).unwrap()))
             .collect();
         std::thread::scope(|s| {
             for _ in 0..8 {
                 s.spawn(|| {
                     for round in 0..20 {
                         let i = round % 5;
-                        assert_eq!(texts(&acct.fetch_message_page(c, i).unwrap()), expected[i]);
+                        assert_eq!(
+                            texts(&acct.fetch_message_page_v(c, i).unwrap()),
+                            expected[i]
+                        );
                     }
                 });
             }
@@ -2088,7 +2254,7 @@ mod tests {
         let c = acct
             .open_message_cursor("wxid_bob", 10, false, begin, end, true)
             .unwrap();
-        let (rows, more) = acct.fetch_message_batch(c).unwrap();
+        let (rows, more) = acct.fetch_message_batch_v(c).unwrap();
         assert!(!more);
         assert_eq!(texts(&rows), ["fourth", "third", "img"]);
         let first = &rows.as_array().unwrap()[0];
@@ -2104,7 +2270,7 @@ mod tests {
             let c = acct
                 .open_message_cursor_for_senders("wxid_bob", 100, true, (0, 0), true, (ok, mine))
                 .unwrap();
-            let (rows, _) = acct.fetch_message_batch(c).unwrap();
+            let (rows, _) = acct.fetch_message_batch_v(c).unwrap();
             acct.close_message_cursor(c).unwrap();
             texts(&rows)
         };

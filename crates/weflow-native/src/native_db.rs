@@ -138,7 +138,7 @@ const HEX_BLOB_COLUMNS: &[&str] = &[
 
 /// Turn one SQLite value into JSON. zstd blobs (WCDB compresses some text columns) are inflated;
 /// other blobs become text when the column is a text column, hex when it is a binary one.
-fn value_to_json(column: &str, v: ValueRef<'_>) -> Value {
+pub(crate) fn value_to_json(column: &str, v: ValueRef<'_>) -> Value {
     match v {
         ValueRef::Null => Value::Null,
         ValueRef::Integer(i) => json!(i),

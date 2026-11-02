@@ -10,8 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
-use serde_json::Value;
+use serde_json::{json, Value};
 
+use crate::msg_row::{LegacyRow, RowShape};
 use crate::native_db::NativeAccount;
 
 /// A call the backend refuses by design (it opens WeChat's databases read-only) or has not ported yet.
@@ -143,7 +144,22 @@ impl Wcdb {
         self.account()?.sessions()
     }
 
+    // The message readers come in two forms: `<name>` returns the rows of WeChat's own columns as JSON, what
+    // `wcdb_api` returned and the desktop app reads ([`LegacyRow`]); `<name>_as::<R>` returns them in any
+    // [`RowShape`], such as the typed [`MsgRow`](crate::msg_row::MsgRow) (#257, #490).
+
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Value> {
+        Ok(LegacyRow::array(
+            self.messages_as::<LegacyRow>(session_id, limit, offset)?,
+        ))
+    }
+
+    pub fn messages_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<R>> {
         self.account()?.messages(session_id, limit, offset)
     }
 
@@ -154,6 +170,17 @@ impl Wcdb {
         limit: i32,
         from: crate::native_msg::PageFrom,
     ) -> Result<Value> {
+        Ok(LegacyRow::array(
+            self.messages_from_as::<LegacyRow>(session_id, limit, from)?,
+        ))
+    }
+
+    pub fn messages_from_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        limit: i32,
+        from: crate::native_msg::PageFrom,
+    ) -> Result<Vec<R>> {
         self.account()?.messages_from(session_id, limit, from)
     }
 
@@ -174,8 +201,12 @@ impl Wcdb {
         floor: i64,
         limit: i64,
     ) -> Result<Vec<Value>> {
-        self.account()?
-            .typed_before(tables, local_types, before, range, floor, limit)
+        Ok(self
+            .account()?
+            .typed_before::<LegacyRow>(tables, local_types, before, range, floor, limit)?
+            .into_iter()
+            .map(LegacyRow::into_value)
+            .collect())
     }
 
     /// Opens the databases a chat page reads, at the same time (see
@@ -209,12 +240,26 @@ impl Wcdb {
         limit: i32,
         offset: i32,
     ) -> Result<Value> {
-        self.account()?
-            .messages_by_type(session_id, local_type, ascending, limit, offset)
+        Ok(LegacyRow::array(
+            self.account()?
+                .messages_by_type::<LegacyRow>(session_id, local_type, ascending, limit, offset)?,
+        ))
     }
 
+    /// One message by `local_id`; `{}` when there is none.
     pub fn message_by_id(&self, session_id: &str, local_id: i32) -> Result<Value> {
-        self.account()?.message_by_id(session_id, local_id as i64)
+        Ok(self
+            .message_by_id_as::<LegacyRow>(session_id, local_id)?
+            .map_or_else(|| json!({}), LegacyRow::into_value))
+    }
+
+    pub fn message_by_id_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        local_id: i32,
+    ) -> Result<Option<R>> {
+        self.account()?
+            .message_by_id(session_id, i64::from(local_id))
     }
 
     /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
@@ -224,12 +269,20 @@ impl Wcdb {
         local_id: i64,
         create_time: Option<i64>,
     ) -> Result<Vec<Value>> {
-        self.account()?
-            .messages_by_local_id(session_id, local_id, create_time)
+        Ok(self
+            .account()?
+            .messages_by_local_id::<LegacyRow>(session_id, local_id, create_time)?
+            .into_iter()
+            .map(LegacyRow::into_value)
+            .collect())
     }
 
+    /// One message by server id; `{}` when there is none.
     pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Value> {
-        self.account()?.message_by_server_id(session_id, svrid)
+        Ok(self
+            .account()?
+            .message_by_server_id::<LegacyRow>(session_id, svrid)?
+            .map_or_else(|| json!({}), LegacyRow::into_value))
     }
 
     pub fn open_message_cursor(
@@ -274,6 +327,11 @@ impl Wcdb {
 
     /// Returns the next batch of rows and whether more remain.
     pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
+        let (rows, more) = self.fetch_message_batch_as::<LegacyRow>(cursor)?;
+        Ok((LegacyRow::array(rows), more))
+    }
+
+    pub fn fetch_message_batch_as<R: RowShape>(&self, cursor: i64) -> Result<(Vec<R>, bool)> {
         self.account()?.fetch_message_batch(cursor)
     }
 
@@ -284,6 +342,12 @@ impl Wcdb {
 
     /// Batch number `page` of a cursor, without moving it (see [`NativeAccount::fetch_message_page`]).
     pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Value> {
+        Ok(LegacyRow::array(
+            self.fetch_message_page_as::<LegacyRow>(cursor, page)?,
+        ))
+    }
+
+    pub fn fetch_message_page_as<R: RowShape>(&self, cursor: i64, page: usize) -> Result<Vec<R>> {
         self.account()?.fetch_message_page(cursor, page)
     }
 
