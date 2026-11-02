@@ -868,7 +868,16 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
                 let handles: Vec<_> = (0..AT_ONCE)
                     .map(|k| {
                         let target = format!("{prefix}{}", page(k * PAGE));
-                        s.spawn(move || request(addr, "GET", &target, "")?.data())
+                        s.spawn(move || loop {
+                            // the child-process route answers `429` at once over `--max-reads` (one per CPU), as
+                            // documented: on a machine with fewer CPUs than pages, the client tries again later
+                            let reply = request(addr, "GET", &target, "")?;
+                            if reply.status == 429 && prefix.is_empty() {
+                                std::thread::sleep(Duration::from_millis(200));
+                                continue;
+                            }
+                            break reply.data();
+                        })
                     })
                     .collect();
                 handles
