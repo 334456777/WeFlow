@@ -204,25 +204,13 @@ pub fn export_voices(
 
 // ── Emoji ─────────────────────────────────────────────────────────────────────
 
-pub fn extract_emoji_urls(messages: &Value) -> Vec<EmojiMeta> {
-    let Some(items) = messages.as_array() else {
-        return Vec::new();
-    };
+pub fn extract_emoji_urls(messages: &[weflow_native::msg_row::MsgRow]) -> Vec<EmojiMeta> {
     let mut out = Vec::new();
-    for msg in items {
-        let msg_type = msg
-            .get("type")
-            .or_else(|| msg.get("msgType"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        if msg_type != 47 {
+    for msg in messages {
+        if msg.local_type != 47 {
             continue;
         }
-        let content = msg
-            .get("content")
-            .or_else(|| msg.get("rawContent"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
+        let content = msg.content.as_str();
         if content.is_empty() {
             continue;
         }
@@ -374,8 +362,6 @@ fn normalize_path(p: &Path) -> String {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use serde_json::json;
-
     use super::*;
 
     fn temp_dir(prefix: &str) -> PathBuf {
@@ -392,10 +378,7 @@ mod tests {
     fn extract_emoji_urls_from_messages() {
         let xml =
             r#"<msg><emoji cdnurl="https://cdn.example.com/emoji.gif" md5="abc123def456" /></msg>"#;
-        let messages = json!([
-            { "type": 47, "content": xml },
-            { "type": 1, "content": "hello" }
-        ]);
+        let messages = [emoji_row(47, xml), emoji_row(1, "hello")];
         let metas = extract_emoji_urls(&messages);
         assert_eq!(metas.len(), 1);
         assert_eq!(metas[0].md5, "abc123def456");
@@ -437,10 +420,29 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    fn emoji_row(local_type: i64, content: &str) -> weflow_native::msg_row::MsgRow {
+        weflow_native::msg_row::MsgRow {
+            local_id: 1,
+            server_id: None,
+            local_type,
+            sort_seq: None,
+            create_time: None,
+            status: None,
+            sender: None,
+            is_send: false,
+            content: content.into(),
+            source: None,
+            packed_info: None,
+            shard: 0,
+        }
+    }
+
     #[test]
     fn extract_emoji_no_emoji_type_skipped() {
-        let messages =
-            json!([{ "type": 1, "content": r#"<emoji cdnurl="https://x.com/e.gif" md5="aaa"/>"# }]);
+        let messages = [emoji_row(
+            1,
+            r#"<emoji cdnurl="https://x.com/e.gif" md5="aaa"/>"#,
+        )];
         assert!(extract_emoji_urls(&messages).is_empty());
     }
 }

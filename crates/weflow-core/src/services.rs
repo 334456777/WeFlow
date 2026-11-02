@@ -203,14 +203,11 @@ impl ServiceHub {
             .map_err(|err| AppError::native(err.to_string()))
     }
 
-    pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> AppResult<Value> {
+    /// `limit` messages of a conversation from `offset` on, in the order of `chat messages`.
+    pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> AppResult<Vec<MsgRow>> {
         let wcdb = self.open_wcdb()?;
-        wcdb.messages(session_id, limit, offset)
+        wcdb.messages_as::<MsgRow>(session_id, limit, offset)
             .map_err(|err| AppError::native(err.to_string()))
-    }
-
-    pub fn latest(&self, session_id: &str, limit: i32) -> AppResult<Value> {
-        self.messages(session_id, limit, 0)
     }
 
     /// A newest-first page of a conversation for `chat messages` and `chat latest`, as [`MessageRow`]s: from the
@@ -665,7 +662,7 @@ impl ServiceHub {
         offset: i32,
     ) -> AppResult<crate::contract::PayRecords> {
         let messages = self.messages("gh_3dfda90e39d6", limit, offset)?;
-        let read = messages.as_array().map_or(0, Vec::len);
+        let read = messages.len();
         let records = crate::biz::parse_pay_records(&messages);
         Ok(crate::contract::PayRecords {
             records,
