@@ -139,6 +139,11 @@ fn check_page1(cipher: &PageCipher, db: &[u8]) -> Result<()> {
 }
 
 /// Keys being derived or derived, per raw key and salt.
+///
+/// A poisoned lock on the map or on a slot is used as it is: a thread that panics holding one leaves nothing half
+/// updated. The map only ever gains a whole entry or is cleared, either of which is a valid cache, and a slot is
+/// written once, after its keys are verified, so it holds no keys or verified ones. Failing instead would make every
+/// later open of the database fail for the rest of the process.
 type Derived = HashMap<([u8; 32], [u8; SALT_LEN]), Arc<Mutex<Option<Arc<PageCipher>>>>>;
 
 static DERIVED: OnceLock<Mutex<Derived>> = OnceLock::new();
@@ -164,6 +169,7 @@ pub fn export_keys() -> Vec<u8> {
     let slots: Vec<_> = DERIVED
         .get_or_init(Default::default)
         .lock()
+        // poisoning leaves the map whole (see `Derived`)
         .unwrap_or_else(|e| e.into_inner())
         .iter()
         .map(|((raw_key, salt), slot)| (fingerprint(raw_key), *salt, slot.clone()))
@@ -233,12 +239,14 @@ pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
         let mut all = DERIVED
             .get_or_init(Default::default)
             .lock()
+            // poisoning leaves the map whole (see `Derived`)
             .unwrap_or_else(|e| e.into_inner());
         if all.len() >= MAX_DERIVED && !all.contains_key(&(*raw_key, salt)) {
             all.clear();
         }
         all.entry((*raw_key, salt)).or_default().clone()
     };
+    // poisoning leaves the slot empty or with verified keys (see `Derived`)
     let mut slot = slot.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(cipher) = slot.as_ref() {
         return Ok(cipher.clone());
