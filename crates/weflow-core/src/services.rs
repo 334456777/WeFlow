@@ -1365,8 +1365,6 @@ impl ServiceHub {
     }
 }
 
-/// Each message row with its `_cursor`, to ask for the page next to it.
-
 /// Account folders of a WeChat data directory (or the folder itself when it is one), with their wxid.
 fn find_accounts(root: &Path) -> Vec<(String, PathBuf)> {
     let wxid_of = |path: &Path| {

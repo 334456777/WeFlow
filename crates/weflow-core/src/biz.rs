@@ -145,9 +145,6 @@ fn contact_username(contact: &Value) -> &str {
         .unwrap_or("")
 }
 
-/// The XML of a message: `content` / `rawContent` from already mapped messages, otherwise the native row's
-/// `message_content` (or `compress_content`), decoded.
-
 fn build_session_map(sessions: &Value) -> std::collections::HashMap<String, Value> {
     let mut map = std::collections::HashMap::new();
     let Some(items) = sessions.as_array() else {
