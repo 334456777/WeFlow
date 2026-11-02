@@ -204,11 +204,17 @@ jobs:
           LOAD_SECONDS: ${{ inputs.load_seconds }}
           ONLY: ${{ inputs.only }}
         run: |
+          extra=()
+          if [ -n "$ONLY" ]; then extra+=(--only "$ONLY"); fi
+          # the allocation counts (#513) only for the commits built with the feature
+          for part in base head; do
+            if [ -f "bin/weflow-$part-alloc.exe" ]; then extra+=("--$part-alloc" "bin/weflow-$part-alloc.exe"); fi
+          done
           python .github/scripts/bench.py --base bin/weflow-base.exe --head bin/weflow-head.exe \
             --base-commit "$(cat bin/base-commit.txt)" --head-commit "$(cat bin/head-commit.txt)" \
             --base-ref "$BASE_REF" --head-ref "$HEAD_REF" \
             --account "$RUNNER_TEMP/account" --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" \
-            --serve-bench bin/serve_bench.exe ${ONLY:+--only "$ONLY"}             $([ -f bin/weflow-base-alloc.exe ] && echo --base-alloc bin/weflow-base-alloc.exe)             $([ -f bin/weflow-head-alloc.exe ] && echo --head-alloc bin/weflow-head-alloc.exe)
+            --serve-bench bin/serve_bench.exe "${extra[@]}"
 
       - name: Gather the results and the binaries
         if: always()
