@@ -1,0 +1,170 @@
+name: Bench
+
+# Performance of two commits side by side (#259): run by hand from the Actions page with the two commits, after a
+# large change whose cost is in doubt. Both are built in release (as published) and measured one after the other on
+# the same Windows runner, so the comparison holds hardware and software still; a runner's numbers are only compared
+# with numbers of the same run, never with a developer's machine. The account is the synthetic benchmark account of
+# #488, generated on the runner from a seed: real chat data never goes to a public repository's Actions. The
+# measuring is done by `.github/scripts/bench.py` (what it measures is in its docstring); the tools that make the
+# account and time the command API (`bench_account`, `serve_bench`) are built from the commit this workflow runs
+# on, so an older base is measured the same way. The results (results.json, summary.md, report.html, the logs) and
+# the binaries measured are uploaded as one artifact; the summary is shown on the run's page.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Base: commit, branch or tag to compare against"
+        required: true
+        type: string
+      head:
+        description: "Head: commit, branch or tag being measured"
+        required: true
+        type: string
+      runs:
+        description: "Timed runs of each command, per binary"
+        required: false
+        default: "5"
+        type: string
+      seed:
+        description: "Seed of the benchmark account"
+        required: false
+        default: "1"
+        type: string
+      group_messages:
+        description: "Messages of the account's biggest group"
+        required: false
+        default: "200000"
+        type: string
+      conversations:
+        description: "Other conversations of the account"
+        required: false
+        default: "300"
+        type: string
+      load_seconds:
+        description: "Seconds of sustained requests on weflow serve (0 skips it)"
+        required: false
+        default: "90"
+        type: string
+      only:
+        description: "Only these parts, comma separated: command names (see bench.py), load, serve_bench; empty: all"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: x86_64-pc-windows-msvc
+
+jobs:
+  build:
+    name: build ${{ matrix.part }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        part: [base, head, tools]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check out ${{ matrix.part }}
+        if: matrix.part != 'tools'
+        shell: bash
+        env:
+          REF: ${{ matrix.part == 'base' && inputs.base || inputs.head }}
+        run: |
+          sha=$(git rev-parse --verify -q "$REF^{commit}" || git rev-parse --verify "origin/$REF^{commit}")
+          git checkout --detach "$sha"
+
+      - name: Install Rust (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add "$TARGET"
+          rustc --version
+
+      # one cache per part: base and head are usually close, the tools also hold the dev-dependencies
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: bench-${{ matrix.part }}
+
+      - name: Build
+        shell: bash
+        run: |
+          mkdir dist
+          git rev-parse HEAD > "dist/${{ matrix.part }}-commit.txt"
+          if [ "${{ matrix.part }}" = tools ]; then
+            cargo build --release -p weflow-cli --target "$TARGET" --example bench_account --example serve_bench
+            cp "target/$TARGET/release/examples/bench_account.exe" "target/$TARGET/release/examples/serve_bench.exe" dist/
+          else
+            cargo build --release -p weflow-cli --bin weflow --target "$TARGET"
+            cp "target/$TARGET/release/weflow.exe" "dist/weflow-${{ matrix.part }}.exe"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench-${{ matrix.part }}
+          path: dist/
+          retention-days: 7
+
+  bench:
+    name: bench
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bench-*
+          path: bin
+          merge-multiple: true
+
+      - name: Install psutil
+        shell: bash
+        run: python -m pip install psutil==7.2.2
+
+      - name: Generate the benchmark account
+        shell: bash
+        env:
+          SEED: ${{ inputs.seed }}
+          GROUP_MESSAGES: ${{ inputs.group_messages }}
+          CONVERSATIONS: ${{ inputs.conversations }}
+        run: |
+          bin/bench_account.exe "$RUNNER_TEMP/account" --weflow bin/weflow-head.exe --seed "$SEED" \
+            --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS"
+
+      - name: Benchmark
+        shell: bash
+        env:
+          RUNS: ${{ inputs.runs }}
+          LOAD_SECONDS: ${{ inputs.load_seconds }}
+          ONLY: ${{ inputs.only }}
+        run: |
+          python .github/scripts/bench.py --base bin/weflow-base.exe --head bin/weflow-head.exe \
+            --base-commit "$(cat bin/base-commit.txt)" --head-commit "$(cat bin/head-commit.txt)" \
+            --account "$RUNNER_TEMP/account" --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" \
+            --serve-bench bin/serve_bench.exe ${ONLY:+--only "$ONLY"}
+
+      - name: Gather the results and the binaries
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p results/binaries
+          cp bin/* results/binaries/
+          cp "$RUNNER_TEMP/account/manifest.json" results/account-manifest.json || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results
+          path: results/
+          retention-days: 30
