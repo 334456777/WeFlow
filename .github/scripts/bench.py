@@ -538,7 +538,7 @@ def summary_markdown(doc):
     lines += [f"- base `{meta['base']['commit']}`, head `{meta['head']['commit']}`",
               f"- account: seed {meta['account']['seed']}, {meta['account']['messages']:,} messages, "
               f"{len(meta['account']['conversations'])} conversations",
-              f"- {meta['runs']} runs each, base and head taking turns, medians of the successful runs; "
+              f"- {meta['runs']} runs each, base and head taking turns, medians of the successful runs (wall: the fastest and the slowest run in brackets); "
               f"ratio = head / base (▲ more than 10 % up, ▼ more than 10 % down)",
               f"- runner: {meta['machine']['cpus']} logical CPUs, {meta['machine']['memory_gib']:.1f} GiB, "
               f"{meta['machine']['platform']}", ""]
@@ -554,7 +554,14 @@ def summary_markdown(doc):
                 b, h = e["median"]["base"].get(key), e["median"]["head"].get(key)
                 if b is None and h is None:
                     continue
-                lines.append(f"| {name} | {fmt(b, scale)} | {fmt(h, scale)} | {fmt_ratio(ratio(h, b))} |")
+                cells = [fmt(b, scale), fmt(h, scale)]
+                if key == "wall_ms":
+                    # some commands take one of two times run to run: the range shows whether a ratio is noise
+                    for i, v in enumerate(VERSIONS):
+                        walls = [r["wall_ms"] for r in e["runs"][v] if r["exit_code"] == 0]
+                        if walls:
+                            cells[i] += f" ({fmt(min(walls))}–{fmt(max(walls))})"
+                lines.append(f"| {name} | {cells[0]} | {cells[1]} | {fmt_ratio(ratio(h, b))} |")
             lines.append("")
         failed = [(n, v, e["median"][v]["failed_runs"]) for n, e in doc["commands"].items() for v in VERSIONS
                   if e["median"][v]["failed_runs"]]
@@ -664,6 +671,8 @@ def main():
     p.add_argument("--only", type=lambda s: [x.strip() for x in s.split(",") if x.strip()],
                    help="comma separated: command names, plus `load` and `serve_bench`")
     args = p.parse_args()
+    # the runner's console is cp1252, which has no ▲
+    sys.stdout.reconfigure(encoding="utf-8")
 
     out = os.path.abspath(args.out)
     shutil.rmtree(os.path.join(out, "logs"), ignore_errors=True)
