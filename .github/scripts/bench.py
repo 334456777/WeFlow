@@ -682,15 +682,26 @@ def report_blocks(doc):
                   f"退出码：base {code('base')}，head {code('head')}"
                   + ("。" if code("base") == 0 and code("head") == 0 else
                      "。非 0 表示它在自己的合成账号上有检查没通过（旧版本缺少某个路由时会这样），"
-                     "计时照常保留，原因见 `logs/serve-bench-*.txt`。")),
+                     "计时照常保留，原因见 `logs/serve-bench-*.txt`。")
+                  + "某一边不是每次都返回 200 时（例如旧版本还没有这个 `/api/` 路由，返回 404 只要零点几毫秒），"
+                    "格子里注明返回的状态，不计算比值。"),
         ]
         rb = (sb["base"]["results"] or {}).get("results", {})
         rh = (sb["head"]["results"] or {}).get("results", {})
+
+        def status(row):
+            """serve_bench notes the answers that were not 200 as `status {404: 5}`."""
+            note = (row or {}).get("note") or ""
+            return next((part.strip().removeprefix("status ") for part in note.split(";")
+                         if part.strip().startswith("status {")), None)
+
         rows = []
         for route in sorted(set(rb) | set(rh)):
             b, h = (rb.get(route) or {}).get("median"), (rh.get(route) or {}).get("median")
-            rows.append([f"`{route}`", fmt(b), fmt(h),
-                         fmt_ratio(ratio(h, b), None if None in (b, h) else h - b, NOISE_MS)])
+            sb_, sh = status(rb.get(route)), status(rh.get(route))
+            cells = [fmt(b) + (f"（状态 {sb_}）" if sb_ else ""), fmt(h) + (f"（状态 {sh}）" if sh else "")]
+            r = "-" if sb_ or sh else fmt_ratio(ratio(h, b), None if None in (b, h) else h - b, NOISE_MS)
+            rows.append([f"`{route}`", *cells, r])
         blocks.append(("table", ["路由", "base", "head", RATIO_HEADER], rows))
     return blocks
 
