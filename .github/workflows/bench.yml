@@ -50,6 +50,54 @@ on:
         required: false
         default: ""
         type: string
+      pages_path:
+        description: "把报告发布到 GitHub Pages 的这个目录，如 bench/v5.1.0-vs-v5.0.1（只能是 bench/ 下一级）；留空不发布"
+        required: false
+        default: ""
+        type: string
+  # release.yml runs it after publishing a release (#516); with `pages_path` (also in a manual run) the report goes
+  # to that folder of the gh-pages branch (GitHub Pages) and `report_url` is where it can be read
+  workflow_call:
+    inputs:
+      base:
+        required: true
+        type: string
+      head:
+        required: true
+        type: string
+      runs:
+        required: false
+        default: "5"
+        type: string
+      seed:
+        required: false
+        default: "1"
+        type: string
+      group_messages:
+        required: false
+        default: "200000"
+        type: string
+      conversations:
+        required: false
+        default: "300"
+        type: string
+      load_seconds:
+        required: false
+        default: "90"
+        type: string
+      only:
+        required: false
+        default: ""
+        type: string
+      pages_path:
+        description: "Folder of the gh-pages branch for the report, e.g. bench/v5.1.0; empty: not published"
+        required: false
+        default: ""
+        type: string
+    outputs:
+      report_url:
+        description: "The published report (empty when not published)"
+        value: ${{ jobs.publish.outputs.url }}
 
 permissions:
   contents: read
@@ -171,3 +219,70 @@ jobs:
           name: bench-results
           path: results/
           retention-days: 30
+
+  # The report as a web page that stays (#516): report.html becomes <pages_path>/index.html of the gh-pages branch,
+  # which GitHub Pages serves, next to summary.md, highlights.md and results.json (not the binaries or the logs), and
+  # bench/index.html lists every report there. Only when a caller gives `pages_path`.
+  publish:
+    name: publish the report
+    needs: bench
+    if: inputs.pages_path
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+    outputs:
+      url: ${{ steps.push.outputs.url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+          path: pages
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: bench-results
+          path: results
+
+      - id: push
+        name: Push to gh-pages
+        shell: bash
+        working-directory: pages
+        env:
+          PAGES_PATH: ${{ inputs.pages_path }}
+          HEAD_REF: ${{ inputs.head }}
+        run: |
+          if [[ ! "$PAGES_PATH" =~ ^bench/[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::pages_path must be bench/<name>, got '$PAGES_PATH'"
+            exit 1
+          fi
+          mkdir -p "$PAGES_PATH"
+          cp ../results/report.html "$PAGES_PATH/index.html"
+          cp ../results/summary.md ../results/highlights.md ../results/results.json "$PAGES_PATH/"
+          # the list of reports, newest version first
+          {
+            echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+            echo '<meta name="viewport" content="width=device-width,initial-scale=1"><title>WeFlow 基准测试报告</title>'
+            echo '<style>body{font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif;margin:0 auto;padding:16px;max-width:720px}</style>'
+            echo '</head><body><h1>WeFlow 基准测试报告</h1><ul>'
+            for dir in $(find bench -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -rV); do
+              echo "<li><a href=\"$dir/\">$dir</a></li>"
+            done
+            echo '</ul></body></html>'
+          } > bench/index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "bench: report for $HEAD_REF ($PAGES_PATH)"
+          # another publish may have pushed in between: take it and try again
+          for attempt in 1 2 3 4; do
+            git push origin HEAD:gh-pages && break
+            [ "$attempt" = 4 ] && exit 1
+            sleep $((attempt * 5))
+            git pull -q --rebase origin gh-pages
+          done
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "url=https://$owner.github.io/${GITHUB_REPOSITORY#*/}/$PAGES_PATH/" >> "$GITHUB_OUTPUT"
+          echo "Published: https://$owner.github.io/${GITHUB_REPOSITORY#*/}/$PAGES_PATH/" >> "$GITHUB_STEP_SUMMARY"
