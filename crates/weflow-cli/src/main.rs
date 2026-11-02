@@ -3,6 +3,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+#[cfg(feature = "alloc-stats")]
+mod alloc_stats;
 mod i18n;
 mod serve_api;
 use serde_json::{json, Value};
@@ -19,8 +21,14 @@ use weflow_core::services::{CachePart, ServiceHub};
 
 /// Exports read rows on one thread and free them on another; with the system allocator (glibc in particular) that
 /// hand-over costs more than the parsing it runs next to. See issue #14.
+#[cfg(not(feature = "alloc-stats"))]
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+/// The same mimalloc, counting each allocation for the benchmark (#513).
+#[cfg(feature = "alloc-stats")]
+#[global_allocator]
+static ALLOCATOR: alloc_stats::Counting = alloc_stats::Counting;
 
 /// On Windows mimalloc commits memory from the system as it goes, and an export made it commit fresh pages over and
 /// over: on a 200,000-message group about 400,000 extra page faults and 1.2 s of kernel time, enough to make the SQL
@@ -1512,6 +1520,9 @@ enum BackupSubcommand {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // dropped last, when `main` returns: the counts then cover the whole command
+    #[cfg(feature = "alloc-stats")]
+    let _alloc_report = alloc_stats::Report;
     #[cfg(windows)]
     reserve_allocator_arena();
     tracing_subscriber::fmt()

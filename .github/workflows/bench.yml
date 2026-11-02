@@ -151,6 +151,11 @@ jobs:
           else
             cargo build --release -p weflow-cli --bin weflow --target "$TARGET"
             cp "target/$TARGET/release/weflow.exe" "dist/weflow-${{ matrix.part }}.exe"
+            # the same commit counting its allocations (#513), when it has the feature; only weflow-cli is rebuilt
+            if grep -q '^alloc-stats' crates/weflow-cli/Cargo.toml; then
+              cargo build --release -p weflow-cli --bin weflow --target "$TARGET" --features alloc-stats
+              cp "target/$TARGET/release/weflow.exe" "dist/weflow-${{ matrix.part }}-alloc.exe"
+            fi
           fi
 
       - uses: actions/upload-artifact@v7
@@ -203,7 +208,7 @@ jobs:
             --base-commit "$(cat bin/base-commit.txt)" --head-commit "$(cat bin/head-commit.txt)" \
             --base-ref "$BASE_REF" --head-ref "$HEAD_REF" \
             --account "$RUNNER_TEMP/account" --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" \
-            --serve-bench bin/serve_bench.exe ${ONLY:+--only "$ONLY"}
+            --serve-bench bin/serve_bench.exe ${ONLY:+--only "$ONLY"}             $([ -f bin/weflow-base-alloc.exe ] && echo --base-alloc bin/weflow-base-alloc.exe)             $([ -f bin/weflow-head-alloc.exe ] && echo --head-alloc bin/weflow-head-alloc.exe)
 
       - name: Gather the results and the binaries
         if: always()

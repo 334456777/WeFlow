@@ -11,6 +11,10 @@ workspace = true
 name = "weflow"
 path = "src/main.rs"
 
+[features]
+# Counts the allocations of a run for the benchmark (#513); WEFLOW_ALLOC_STATS names the file they go to.
+alloc-stats = []
+
 [dependencies]
 base64.workspace = true
 anyhow.workspace = true
