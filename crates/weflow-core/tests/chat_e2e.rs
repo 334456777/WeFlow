@@ -13,7 +13,7 @@ use serde_json::json;
 use weflow_core::services::ResourceQuery;
 use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, SessionSpec, VoiceSpec, T0};
 
-fn session(username: &'static str) -> SessionSpec {
+fn session(username: &'static str) -> SessionSpec<'static> {
     SessionSpec {
         username,
         summary: "",

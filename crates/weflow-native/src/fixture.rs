@@ -17,32 +17,34 @@ use crate::native_msg::table_name_for;
 use crate::sqlcipher::testutil::{encrypt_db, plain_db_with, KEY, SALT};
 use crate::sqlcipher::PageCipher;
 
-pub struct SessionSpec {
-    pub username: &'static str,
-    pub summary: &'static str,
+pub mod bench;
+
+pub struct SessionSpec<'a> {
+    pub username: &'a str,
+    pub summary: &'a str,
     pub last_timestamp: i64,
     pub unread: i64,
     pub last_msg_type: i64,
 }
 
 #[derive(Clone)]
-pub struct ContactSpec {
-    pub username: &'static str,
+pub struct ContactSpec<'a> {
+    pub username: &'a str,
     pub local_type: i64,
-    pub nick_name: &'static str,
-    pub remark: &'static str,
-    pub alias: &'static str,
-    pub avatar: &'static str,
+    pub nick_name: &'a str,
+    pub remark: &'a str,
+    pub alias: &'a str,
+    pub avatar: &'a str,
     pub flag: i64,
     pub chat_room_notify: i64,
     /// The `description` column.
-    pub description: &'static str,
+    pub description: &'a str,
     /// Raw protobuf bytes of the `extra_buffer` column (signature, region, label ids).
-    pub extra: &'static [u8],
+    pub extra: &'a [u8],
 }
 
-impl ContactSpec {
-    pub const fn new(username: &'static str, local_type: i64, nick_name: &'static str) -> Self {
+impl<'a> ContactSpec<'a> {
+    pub const fn new(username: &'a str, local_type: i64, nick_name: &'a str) -> Self {
         Self {
             username,
             local_type,
@@ -58,11 +60,11 @@ impl ContactSpec {
     }
 }
 
-pub struct RoomSpec {
-    pub username: &'static str,
-    pub owner: &'static str,
+pub struct RoomSpec<'a> {
+    pub username: &'a str,
+    pub owner: &'a str,
     /// (member username, group nickname or "" for none)
-    pub members: &'static [(&'static str, &'static str)],
+    pub members: &'a [(&'a str, &'a str)],
 }
 
 #[derive(Clone)]
@@ -116,31 +118,31 @@ impl MsgSpec {
 
 /// One row of WeChat's full-text index, for [`Fixture::message_fts_db`].
 #[derive(Clone)]
-pub struct FtsSpec {
+pub struct FtsSpec<'a> {
     pub text: String,
     pub local_id: i64,
     pub sort_seq: i64,
     pub local_type: i64,
-    pub session: &'static str,
+    pub session: &'a str,
     pub create_time: i64,
 }
 
 /// One Moments post for [`Fixture::sns_db`].
-pub struct SnsPostSpec {
+pub struct SnsPostSpec<'a> {
     /// Stored as-is (a negative value stands for an unsigned snowflake above `i64::MAX`).
     pub tid: i64,
-    pub user: &'static str,
+    pub user: &'a str,
     pub create_time: i64,
-    pub desc: &'static str,
+    pub desc: &'a str,
     pub kind: i64,
     pub media: usize,
     /// (username, nickname) of each liker
-    pub likes: &'static [(&'static str, &'static str)],
+    pub likes: &'a [(&'a str, &'a str)],
     /// Raw XML appended inside `<TimelineObject>` (location, comment list, ...).
-    pub extra: &'static str,
+    pub extra: &'a str,
 }
 
-impl SnsPostSpec {
+impl SnsPostSpec<'_> {
     fn xml(&self) -> String {
         let media: String = (1..=self.media)
             .map(|i| {
@@ -168,13 +170,13 @@ impl SnsPostSpec {
 }
 
 /// One `VoiceInfo` row for [`Fixture::media_db`].
-pub struct VoiceSpec {
-    pub chat: &'static str,
+pub struct VoiceSpec<'a> {
+    pub chat: &'a str,
     pub create_time: i64,
     pub local_id: i64,
     pub svr_id: i64,
     pub data: Vec<u8>,
-    pub index: &'static str,
+    pub index: &'a str,
 }
 
 /// One own-sticker row for [`Fixture::emoticon_db`].
@@ -188,24 +190,19 @@ pub struct EmoticonSpec {
 /// One row of `hardlink.db`: `kind` 1 = file, 2 = image, 3 = video, 4 = directory entry.
 /// Images live in `<dir1>/<dir2>/Img/`, videos in `<dir1>/`, files in `<dir1>/`.
 #[derive(Clone)]
-pub struct HardlinkSpec {
-    pub md5: &'static str,
-    pub file_name: &'static str,
+pub struct HardlinkSpec<'a> {
+    pub md5: &'a str,
+    pub file_name: &'a str,
     pub kind: i64,
-    pub dir1: &'static str,
-    pub dir2: &'static str,
+    pub dir1: &'a str,
+    pub dir2: &'a str,
     pub size: i64,
     pub modify_time: i64,
 }
 
-impl HardlinkSpec {
+impl<'a> HardlinkSpec<'a> {
     /// An image rendition stored under the talker directory `talker_dir` and month `month`.
-    pub fn image(
-        md5: &'static str,
-        file_name: &'static str,
-        talker_dir: &'static str,
-        month: &'static str,
-    ) -> Self {
+    pub fn image(md5: &'a str, file_name: &'a str, talker_dir: &'a str, month: &'a str) -> Self {
         Self {
             md5,
             file_name,
@@ -217,7 +214,7 @@ impl HardlinkSpec {
         }
     }
 
-    pub fn video(md5: &'static str, file_name: &'static str, month: &'static str) -> Self {
+    pub fn video(md5: &'a str, file_name: &'a str, month: &'a str) -> Self {
         Self {
             md5,
             file_name,
@@ -228,6 +225,83 @@ impl HardlinkSpec {
             modify_time: T0,
         }
     }
+}
+
+// The tables as WeChat lays them out, shared by `Fixture` and `bench`.
+
+const SNS_SCHEMA: &str =
+    "create table SnsTimeLine(tid integer primary key desc, user_name text, content text, pack_info_buf text)";
+
+const MEDIA_SCHEMA: &str = "create table Name2Id(user_name text primary key); create table TimeStamp(timestamp integer);
+     create table VoiceInfo(chat_name_id integer, create_time integer, local_id integer, svr_id integer, voice_data blob, data_index text default '0');";
+
+const EMOTICON_SCHEMA: &str = "create table kNonStoreEmoticonTable(type integer, md5 text, caption text, product_id text, aes_key text, thumb_url text, tp_url text, auth_key text, cdn_url text, extern_url text, extern_md5 text, encrypt_url text, designer_id text, activity_id text);
+     create table kStoreEmoticonCaptionsTable(package_id_ text, md5_ text, language_ text, caption_ text);";
+
+const HEAD_IMAGE_SCHEMA: &str =
+    "create table head_image(username text primary key, md5 text, image_buffer blob, update_time integer)";
+
+const SESSION_SCHEMA: &str = "create table SessionTable(username text primary key, type integer, unread_count integer, unread_first_msg_srv_id integer, \
+     unread_first_pat_msg_local_id integer, unread_first_pat_msg_sort_seq integer, is_hidden integer, summary, draft text, \
+     status integer, last_timestamp integer, sort_timestamp integer, last_clear_unread_timestamp integer, last_msg_locald_id integer, \
+     last_msg_type integer, last_msg_sub_type integer, last_msg_sender text, last_sender_display_name text, last_msg_ext_type integer)";
+
+const NAME2ID_SCHEMA: &str = "create table Name2Id(user_name text primary key, is_session integer)";
+
+const FTS_NAMES_SCHEMA: &str = "create table fts_username_v1(username text primary key)";
+
+fn hardlink_schema() -> String {
+    let table = "(md5_hash integer, md5 text, type integer, file_name text, file_size integer, modify_time integer, dir1 integer, dir2 integer, _rowid_ integer primary key asc, extra_buffer blob)";
+    format!(
+        "create table dir2id(username text primary key); create table image_hardlink_info_v4{table}; \
+         create table video_hardlink_info_v4{table}; create table file_hardlink_info_v4{table};"
+    )
+}
+
+fn contact_schema() -> String {
+    let cols = "id integer primary key, username text, local_type integer, alias text, encrypt_username text, flag integer, \
+                delete_flag integer, verify_flag integer, remark text, remark_quan_pin text, remark_pin_yin_initial text, nick_name text, \
+                pin_yin_initial text, quan_pin text, big_head_url text, small_head_url text, head_img_md5 text, chat_room_notify integer, \
+                is_in_chat_room integer, description text, extra_buffer blob, chat_room_type integer";
+    format!(
+        "create table contact({cols}); create table stranger({cols}); create table name2id(username text primary key);
+         create table contact_label(label_id_ integer primary key, label_name_ text, sort_order_ integer);
+         create table chat_room(id integer primary key, username text, owner text, ext_buffer blob);
+         create table chatroom_member(room_id integer, member_id integer, constraint room_member unique(room_id, member_id));"
+    )
+}
+
+/// The `ext_buffer` of a `chat_room` row: the group nickname of each `(member, nickname)` that has one.
+fn room_ext_buffer<'a>(members: impl IntoIterator<Item = (&'a str, &'a str)>) -> Vec<u8> {
+    let mut ext = vec![0x08, 0x01];
+    for (m, nick) in members.into_iter().filter(|(_, n)| !n.is_empty()) {
+        let mut inner = vec![0x0a, u8::try_from(m.len()).unwrap()];
+        inner.extend(m.as_bytes());
+        inner.extend([0x12, u8::try_from(nick.len()).unwrap()]);
+        inner.extend(nick.as_bytes());
+        ext.extend([0x0a, u8::try_from(inner.len()).unwrap()]);
+        ext.extend(inner);
+    }
+    ext
+}
+
+fn fts_table_schema(g: usize) -> String {
+    format!(
+        "create virtual table message_fts_v4_{g} using fts5(acontent, message_local_id unindexed, \
+         sort_seq unindexed, local_type unindexed, session_id unindexed, sender_id unindexed, \
+         create_time unindexed)"
+    )
+}
+
+fn message_table_schema(table: &str) -> String {
+    format!(
+        "create table \"{table}\"(local_id integer primary key autoincrement, server_id integer, local_type integer, sort_seq integer, \
+         real_sender_id integer, create_time integer, status integer, upload_status integer, download_status integer, server_seq integer, \
+         origin_source integer, source text, message_content, compress_content, packed_info_data blob, \
+         WCDB_CT_message_content integer default null, WCDB_CT_source integer default null); \
+         create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq); \
+         create index \"{table}_TYPE_SEQ\" on \"{table}\"(local_type, sort_seq)"
+    )
 }
 
 pub struct Fixture {
@@ -285,14 +359,18 @@ impl Fixture {
     }
 
     pub fn sns_db(&self, posts: &[SnsPostSpec]) {
-        let rows: Vec<(i64, &'static str, String)> =
+        let rows: Vec<(i64, &str, String)> =
             posts.iter().map(|p| (p.tid, p.user, p.xml())).collect();
         self.write(
             "sns/sns.db",
             plain_db_with(move |c: &Connection| {
-                c.execute_batch("create table SnsTimeLine(tid integer primary key desc, user_name text, content text, pack_info_buf text)").unwrap();
+                c.execute_batch(SNS_SCHEMA).unwrap();
                 for (tid, user, xml) in &rows {
-                    c.execute("insert into SnsTimeLine(tid, user_name, content) values (?1, ?2, ?3)", params![tid, user, xml]).unwrap();
+                    c.execute(
+                        "insert into SnsTimeLine(tid, user_name, content) values (?1, ?2, ?3)",
+                        params![tid, user, xml],
+                    )
+                    .unwrap();
                 }
             }),
         );
@@ -300,7 +378,7 @@ impl Fixture {
 
     pub fn media_db(&self, n: u32, voices: &[VoiceSpec]) {
         /// (chat id, create time, local id, server id, data, chat name)
-        type VoiceRow = (i64, i64, i64, i64, Vec<u8>, &'static str);
+        type VoiceRow<'a> = (i64, i64, i64, i64, Vec<u8>, &'a str);
         let rows: Vec<VoiceRow> = {
             let mut names: Vec<&str> = Vec::new();
             voices
@@ -320,7 +398,7 @@ impl Fixture {
                 })
                 .collect()
         };
-        let mut names: Vec<&'static str> = Vec::new();
+        let mut names: Vec<&str> = Vec::new();
         for v in voices {
             if !names.contains(&v.chat) {
                 names.push(v.chat);
@@ -329,16 +407,20 @@ impl Fixture {
         self.write(
             &format!("message/media_{n}.db"),
             plain_db_with(move |c: &Connection| {
-                c.execute_batch(
-                    "create table Name2Id(user_name text primary key); create table TimeStamp(timestamp integer);
-                     create table VoiceInfo(chat_name_id integer, create_time integer, local_id integer, svr_id integer, voice_data blob, data_index text default '0');",
-                )
-                .unwrap();
+                c.execute_batch(MEDIA_SCHEMA).unwrap();
                 for (i, name) in names.iter().enumerate() {
-                    c.execute("insert into Name2Id(rowid, user_name) values (?1, ?2)", params![i as i64 + 1, name]).unwrap();
+                    c.execute(
+                        "insert into Name2Id(rowid, user_name) values (?1, ?2)",
+                        params![i as i64 + 1, name],
+                    )
+                    .unwrap();
                 }
                 for (chat, ct, local, svr, data, idx) in &rows {
-                    c.execute("insert into VoiceInfo values (?1, ?2, ?3, ?4, ?5, ?6)", params![chat, ct, local, svr, data, idx]).unwrap();
+                    c.execute(
+                        "insert into VoiceInfo values (?1, ?2, ?3, ?4, ?5, ?6)",
+                        params![chat, ct, local, svr, data, idx],
+                    )
+                    .unwrap();
                 }
             }),
         );
@@ -358,11 +440,7 @@ impl Fixture {
         self.write(
             "emoticon/emoticon.db",
             plain_db_with(move |c: &Connection| {
-                c.execute_batch(
-                    "create table kNonStoreEmoticonTable(type integer, md5 text, caption text, product_id text, aes_key text, thumb_url text, tp_url text, auth_key text, cdn_url text, extern_url text, extern_md5 text, encrypt_url text, designer_id text, activity_id text);
-                     create table kStoreEmoticonCaptionsTable(package_id_ text, md5_ text, language_ text, caption_ text);",
-                )
-                .unwrap();
+                c.execute_batch(EMOTICON_SCHEMA).unwrap();
                 for (md5, caption, cdn, ext) in &own {
                     c.execute("insert into kNonStoreEmoticonTable(type, md5, caption, cdn_url, extern_url) values (1, ?1, ?2, ?3, ?4)", params![md5, caption, cdn, ext]).unwrap();
                 }
@@ -379,34 +457,29 @@ impl Fixture {
         self.write(
             "hardlink/hardlink.db",
             plain_db_with(move |c: &Connection| {
-                let table = "(md5_hash integer, md5 text, type integer, file_name text, file_size integer, modify_time integer, dir1 integer, dir2 integer, _rowid_ integer primary key asc, extra_buffer blob)";
-                c.execute_batch(&format!(
-                    "create table dir2id(username text primary key); create table image_hardlink_info_v4{table}; \
-                     create table video_hardlink_info_v4{table}; create table file_hardlink_info_v4{table};"
-                ))
-                .unwrap();
-                fn id(name: &'static str, dirs: &mut Vec<&'static str>) -> i64 {
+                c.execute_batch(&hardlink_schema()).unwrap();
+                fn id<'a>(name: &'a str, dirs: &mut Vec<&'a str>, ids: &mut std::collections::HashMap<&'a str, i64>) -> i64 {
                     if name.is_empty() {
                         return 0;
                     }
-                    if !dirs.contains(&name) {
+                    *ids.entry(name).or_insert_with(|| {
                         dirs.push(name);
-                    }
-                    dirs.iter().position(|d| *d == name).unwrap() as i64 + 1
+                        dirs.len() as i64
+                    })
                 }
-                let mut dir_list: Vec<&'static str> = Vec::new();
+                let mut dir_list: Vec<&str> = Vec::new();
+                let mut dir_ids = std::collections::HashMap::new();
                 for r in &rows {
-                    let (d1, d2) = (id(r.dir1, &mut dir_list), id(r.dir2, &mut dir_list));
+                    let (d1, d2) = (id(r.dir1, &mut dir_list, &mut dir_ids), id(r.dir2, &mut dir_list, &mut dir_ids));
                     let t = match r.kind {
                         2 | 4 => "image_hardlink_info_v4",
                         3 => "video_hardlink_info_v4",
                         _ => "file_hardlink_info_v4",
                     };
-                    c.execute(
-                        &format!("insert into {t}(md5, type, file_name, file_size, modify_time, dir1, dir2) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)"),
-                        params![r.md5, r.kind, r.file_name, r.size, r.modify_time, d1, d2],
-                    )
-                    .unwrap();
+                    c.prepare_cached(&format!("insert into {t}(md5, type, file_name, file_size, modify_time, dir1, dir2) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)"))
+                        .unwrap()
+                        .execute(params![r.md5, r.kind, r.file_name, r.size, r.modify_time, d1, d2])
+                        .unwrap();
                 }
                 for (i, d) in dir_list.iter().enumerate() {
                     c.execute("insert into dir2id(rowid, username) values (?1, ?2)", params![i as i64 + 1, d]).unwrap();
@@ -422,9 +495,13 @@ impl Fixture {
         self.write(
             "head_image/head_image.db",
             plain_db_with(move |c: &Connection| {
-                c.execute_batch("create table head_image(username text primary key, md5 text, image_buffer blob, update_time integer)").unwrap();
+                c.execute_batch(HEAD_IMAGE_SCHEMA).unwrap();
                 for (u, b) in &avatars {
-                    c.execute("insert into head_image values (?1, 'md5', ?2, 1)", params![u, b]).unwrap();
+                    c.execute(
+                        "insert into head_image values (?1, 'md5', ?2, 1)",
+                        params![u, b],
+                    )
+                    .unwrap();
                 }
             }),
         );
@@ -446,13 +523,7 @@ impl Fixture {
         self.write(
             "session/session.db",
             plain_db_with(move |c: &Connection| {
-                c.execute_batch(
-                    "create table SessionTable(username text primary key, type integer, unread_count integer, unread_first_msg_srv_id integer, \
-                     unread_first_pat_msg_local_id integer, unread_first_pat_msg_sort_seq integer, is_hidden integer, summary, draft text, \
-                     status integer, last_timestamp integer, sort_timestamp integer, last_clear_unread_timestamp integer, last_msg_locald_id integer, \
-                     last_msg_type integer, last_msg_sub_type integer, last_msg_sender text, last_sender_display_name text, last_msg_ext_type integer)",
-                )
-                .unwrap();
+                c.execute_batch(SESSION_SCHEMA).unwrap();
                 for (u, summary, ts, unread, t) in &rows {
                     c.execute(
                         "insert into SessionTable(username, type, unread_count, is_hidden, summary, last_timestamp, sort_timestamp, last_msg_type) \
@@ -477,7 +548,7 @@ impl Fixture {
         labels: &[(i64, &'static str)],
     ) {
         let labels = labels.to_vec();
-        let contacts: Vec<(i64, ContactSpec)> = contacts
+        let contacts: Vec<(i64, ContactSpec<'_>)> = contacts
             .iter()
             .cloned()
             .enumerate()
@@ -486,14 +557,8 @@ impl Fixture {
         let ids: std::collections::HashMap<&str, i64> =
             contacts.iter().map(|(id, c)| (c.username, *id)).collect();
         /// (room row id, username, owner, members as (username, nickname), member row ids)
-        type RoomRow = (
-            i64,
-            &'static str,
-            &'static str,
-            &'static [(&'static str, &'static str)],
-            Vec<i64>,
-        );
-        let rooms: Vec<RoomRow> = rooms
+        type RoomRow<'a> = (i64, &'a str, &'a str, &'a [(&'a str, &'a str)], Vec<i64>);
+        let rooms: Vec<RoomRow<'_>> = rooms
             .iter()
             .map(|r| {
                 let rid = *ids
@@ -513,17 +578,7 @@ impl Fixture {
         self.write(
             "contact/contact.db",
             plain_db_with(move |c: &Connection| {
-                let cols = "id integer primary key, username text, local_type integer, alias text, encrypt_username text, flag integer, \
-                            delete_flag integer, verify_flag integer, remark text, remark_quan_pin text, remark_pin_yin_initial text, nick_name text, \
-                            pin_yin_initial text, quan_pin text, big_head_url text, small_head_url text, head_img_md5 text, chat_room_notify integer, \
-                            is_in_chat_room integer, description text, extra_buffer blob, chat_room_type integer";
-                c.execute_batch(&format!(
-                    "create table contact({cols}); create table stranger({cols}); create table name2id(username text primary key);
-                     create table contact_label(label_id_ integer primary key, label_name_ text, sort_order_ integer);
-                     create table chat_room(id integer primary key, username text, owner text, ext_buffer blob);
-                     create table chatroom_member(room_id integer, member_id integer, constraint room_member unique(room_id, member_id));"
-                ))
-                .unwrap();
+                c.execute_batch(&contact_schema()).unwrap();
                 for (id, name) in &labels {
                     c.execute("insert into contact_label(label_id_, label_name_, sort_order_) values (?1, ?2, ?1)", params![id, name]).unwrap();
                 }
@@ -538,15 +593,7 @@ impl Fixture {
                     c.execute("insert into name2id(rowid, username) values (?1, ?2)", params![id, ct.username]).unwrap();
                 }
                 for (rid, user, owner, members, member_ids) in &rooms {
-                    let mut ext = vec![0x08, 0x01];
-                    for (m, nick) in members.iter().filter(|(_, n)| !n.is_empty()) {
-                        let mut inner = vec![0x0a, u8::try_from(m.len()).unwrap()];
-                        inner.extend(m.as_bytes());
-                        inner.extend([0x12, u8::try_from(nick.len()).unwrap()]);
-                        inner.extend(nick.as_bytes());
-                        ext.extend([0x0a, u8::try_from(inner.len()).unwrap()]);
-                        ext.extend(inner);
-                    }
+                    let ext = room_ext_buffer(members.iter().copied());
                     c.execute("insert into chat_room(id, username, owner, ext_buffer) values (?1,?2,?3,?4)", params![rid, user, owner, ext]).unwrap();
                     for mid in member_ids {
                         c.execute("insert into chatroom_member(room_id, member_id) values (?1, ?2)", params![rid, mid]).unwrap();
@@ -564,16 +611,10 @@ impl Fixture {
         self.write(
             "message/message_fts.db",
             plain_db_with(move |c: &Connection| {
-                c.execute_batch("create table fts_username_v1(username text primary key)")
-                    .unwrap();
+                c.execute_batch(FTS_NAMES_SCHEMA).unwrap();
                 let mut ids: std::collections::HashMap<&str, i64> = Default::default();
                 for (g, rows) in groups.iter().enumerate() {
-                    c.execute_batch(&format!(
-                        "create virtual table message_fts_v4_{g} using fts5(acontent, message_local_id unindexed, \
-                         sort_seq unindexed, local_type unindexed, session_id unindexed, sender_id unindexed, \
-                         create_time unindexed)"
-                    ))
-                    .unwrap();
+                    c.execute_batch(&fts_table_schema(g)).unwrap();
                     for r in rows {
                         let next = ids.len() as i64 + 1;
                         let id = *ids.entry(r.session).or_insert_with(|| {
@@ -584,10 +625,18 @@ impl Fixture {
                             .unwrap();
                             next
                         });
-                        c.execute(
-                            &format!("insert into message_fts_v4_{g} values (?1, ?2, ?3, ?4, ?5, 0, ?6)"),
-                            params![r.text, r.local_id, r.sort_seq, r.local_type, id, r.create_time],
-                        )
+                        c.prepare_cached(&format!(
+                            "insert into message_fts_v4_{g} values (?1, ?2, ?3, ?4, ?5, 0, ?6)"
+                        ))
+                        .unwrap()
+                        .execute(params![
+                            r.text,
+                            r.local_id,
+                            r.sort_seq,
+                            r.local_type,
+                            id,
+                            r.create_time
+                        ])
                         .unwrap();
                     }
                 }
@@ -605,7 +654,7 @@ impl Fixture {
         self.write(
             &format!("message/message_{n}.db"),
             plain_db_with(move |c: &Connection| {
-                c.execute_batch("create table Name2Id(user_name text primary key, is_session integer)").unwrap();
+                c.execute_batch(NAME2ID_SCHEMA).unwrap();
                 let mut next_id = 0i64;
                 let mut ids: std::collections::HashMap<String, i64> = Default::default();
                 let mut id_of = |c: &Connection, name: &str| -> i64 {
@@ -618,15 +667,7 @@ impl Fixture {
                 for (session, msgs) in &sessions {
                     id_of(c, session);
                     let table = table_name_for(session);
-                    c.execute_batch(&format!(
-                        "create table \"{table}\"(local_id integer primary key autoincrement, server_id integer, local_type integer, sort_seq integer, \
-                         real_sender_id integer, create_time integer, status integer, upload_status integer, download_status integer, server_seq integer, \
-                         origin_source integer, source text, message_content, compress_content, packed_info_data blob, \
-                         WCDB_CT_message_content integer default null, WCDB_CT_source integer default null); \
-                         create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq); \
-                         create index \"{table}_TYPE_SEQ\" on \"{table}\"(local_type, sort_seq)"
-                    ))
-                    .unwrap();
+                    c.execute_batch(&message_table_schema(&table)).unwrap();
                     for m in msgs {
                         let sender = if m.sender.is_empty() { 0 } else { id_of(c, m.sender) };
                         let content: Box<dyn rusqlite::ToSql> =

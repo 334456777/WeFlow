@@ -257,7 +257,13 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
   listened to, and the CPU time and peak memory of the server process over the whole run. The first page of messages and the contacts are also asked for compressed (gzip, br) and cut to the `fields` a page uses, to
   show what each saves. Videos are read as a player reads them: the first megabyte, then one from the middle. The same page is also asked for many times at once (up to 64), to show how the limits hold. The conversations are picked by message count, and only
   aggregate numbers are printed. `--compare base.json` adds the ratio to an earlier run and fails when a median is more than `--tolerance`
-  times (default 2) and more than 20 ms slower.
+  times (default 2) and more than 20 ms slower. Where there is no real account (a CI runner), `--home` can point at the benchmark account:
+  `cargo build --release -p weflow-cli --bin weflow --example bench_account`, then
+  `target/release/examples/bench_account <work-dir> --weflow target/release/weflow` prints its home. It is drawn from a seed (`--seed`,
+  the same bytes every time) in the shapes of a real account, as measured by `weflow-core`'s `account_profile_probe` (shares only): a group
+  of 200,000 messages and 300 other conversations of long-tailed sizes over 2 message databases (`--group-messages`, `--conversations`,
+  `--shards`), message types, text lengths, hours and bursts as on the real account, the newest messages of each database in its WAL, and
+  the picture, video and file folders (about 1.5 GB, `--no-media` leaves them out). It takes about a minute to build.
 - Both accounts also time the reads that had no `/api/` route ([#175](https://github.com/334456777/WeFlow/issues/175)): through the
   child-process route, and through both routes for those given one since. They decided which were worth one: a read the page makes when
   it opens, on a click or while scrolling, slower than 50 ms through the child process, or asked for many times at once.

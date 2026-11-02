@@ -17,7 +17,7 @@ fn request(session: &str, format: &str) -> MessageExportRequest {
     }
 }
 
-fn session(username: &'static str) -> SessionSpec {
+fn session(username: &'static str) -> SessionSpec<'static> {
     SessionSpec {
         username,
         summary: "",

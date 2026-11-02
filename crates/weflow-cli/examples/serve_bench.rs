@@ -206,7 +206,7 @@ fn group_message(i: i64, members: &[&'static str]) -> MsgSpec {
 
 /// The conversation list: the group, then the private chats ten minutes apart. With `pushed`, that private chat
 /// has a new message ([`PUSHED_AT`]).
-fn session_specs(args: &Args, pushed: Option<usize>) -> Vec<SessionSpec> {
+fn session_specs(args: &Args, pushed: Option<usize>) -> Vec<SessionSpec<'static>> {
     let last = T0 + args.messages * STEP;
     let mut sessions = vec![SessionSpec {
         username: ROOM,

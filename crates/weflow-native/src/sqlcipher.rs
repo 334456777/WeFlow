@@ -484,11 +484,32 @@ pub mod testutil {
     }
 
     /// A plain SQLite image whose pages leave the 80-byte reserve free; `setup` creates the schema/rows.
+    pub fn plain_db_with(setup: impl FnOnce(&Connection)) -> Vec<u8> {
+        let conn = plain_connection();
+        setup(&conn);
+        plain_image(&conn)
+    }
+
     #[expect(
         clippy::expect_used,
         reason = "test fixture: a failure means the test setup is broken"
     )]
-    pub fn plain_db_with(setup: impl FnOnce(&Connection)) -> Vec<u8> {
+    /// The plain image of a database made by [`plain_connection`], as it is now.
+    pub fn plain_image(conn: &Connection) -> Vec<u8> {
+        let data = conn
+            .serialize(rusqlite::MAIN_DB)
+            .expect("serialize the database");
+        assert_eq!(data[20] as usize, RESERVE);
+        data.to_vec()
+    }
+
+    /// An empty in-memory database of 4096-byte pages that leave the reserve SQLCipher needs, to fill and then
+    /// take [`plain_image`]s of.
+    #[expect(
+        clippy::expect_used,
+        reason = "test fixture: a failure means the test setup is broken"
+    )]
+    pub fn plain_connection() -> Connection {
         let conn = Connection::open_in_memory().expect("open an in-memory database");
         conn.pragma_update(None, "page_size", 4096)
             .expect("set the page size");
@@ -505,12 +526,7 @@ pub mod testutil {
             )
         };
         assert_eq!(rc, 0);
-        setup(&conn);
-        let data = conn
-            .serialize(rusqlite::MAIN_DB)
-            .expect("serialize the database");
-        assert_eq!(data[20] as usize, RESERVE);
-        data.to_vec()
+        conn
     }
 
     #[expect(
@@ -529,6 +545,61 @@ pub mod testutil {
                 .expect("insert a row");
             }
         })
+    }
+
+    /// SQLite's WAL checksum of a big-endian WAL, carried on from `sum`.
+    pub fn wal_checksum_be(data: &[u8], sum: (u32, u32)) -> (u32, u32) {
+        wal_checksum(data, true, sum.0, sum.1)
+    }
+
+    /// The 32-byte header of a WAL of generation `salt`.
+    pub fn encrypted_wal_header(salt: (u32, u32)) -> Vec<u8> {
+        let mut h = Vec::new();
+        for v in [0x377f0683u32, 3007000, PAGE_SIZE as u32, 0, salt.0, salt.1] {
+            h.extend(v.to_be_bytes());
+        }
+        let (c0, c1) = wal_checksum_be(&h, (0, 0));
+        h.extend(c0.to_be_bytes());
+        h.extend(c1.to_be_bytes());
+        h
+    }
+
+    /// A WAL holding one committed transaction that turns the plain image `base` into `newer`: a frame for each page
+    /// that differs or is new. An empty `base` rewrites every page.
+    pub fn encrypt_wal(
+        cipher: &PageCipher,
+        base: &[u8],
+        newer: &[u8],
+        salt: (u32, u32),
+    ) -> Vec<u8> {
+        let mut wal = encrypted_wal_header(salt);
+        let mut sum = (
+            u32::from_be_bytes([wal[24], wal[25], wal[26], wal[27]]),
+            u32::from_be_bytes([wal[28], wal[29], wal[30], wal[31]]),
+        );
+        let pages = (newer.len() / PAGE_SIZE) as u32;
+        let changed: Vec<u32> = (1..=pages)
+            .filter(|&pgno| {
+                let at = (pgno as usize - 1) * PAGE_SIZE..pgno as usize * PAGE_SIZE;
+                base.get(at.clone()) != newer.get(at)
+            })
+            .collect();
+        for (i, &pgno) in changed.iter().enumerate() {
+            let at = (pgno as usize - 1) * PAGE_SIZE;
+            let page = encrypt_page(cipher, pgno, &newer[at..at + PAGE_SIZE], [0x55; 16]);
+            let mut fh = Vec::new();
+            fh.extend(pgno.to_be_bytes());
+            // the last frame commits the transaction and gives the database's size in pages
+            fh.extend((if i + 1 == changed.len() { pages } else { 0 }).to_be_bytes());
+            fh.extend(salt.0.to_be_bytes());
+            fh.extend(salt.1.to_be_bytes());
+            sum = wal_checksum_be(&page, wal_checksum_be(&fh[..8], sum));
+            fh.extend(sum.0.to_be_bytes());
+            fh.extend(sum.1.to_be_bytes());
+            wal.extend(fh);
+            wal.extend(page);
+        }
+        wal
     }
 
     pub fn encrypt_db(plain: &[u8], cipher: &PageCipher) -> Vec<u8> {
