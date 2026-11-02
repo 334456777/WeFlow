@@ -13,40 +13,40 @@ on:
   workflow_dispatch:
     inputs:
       base:
-        description: "Base: commit, branch or tag to compare against"
+        description: "base：用来对比的提交、分支或 tag"
         required: true
         type: string
       head:
-        description: "Head: commit, branch or tag being measured"
+        description: "head：要测量的提交、分支或 tag（HEAD 表示运行所在分支的最新提交）"
         required: true
         type: string
       runs:
-        description: "Timed runs of each command, per binary"
+        description: "每条命令、每个版本计时运行的次数"
         required: false
         default: "5"
         type: string
       seed:
-        description: "Seed of the benchmark account"
+        description: "基准账号的随机种子"
         required: false
         default: "1"
         type: string
       group_messages:
-        description: "Messages of the account's biggest group"
+        description: "基准账号最大群聊的消息数"
         required: false
         default: "200000"
         type: string
       conversations:
-        description: "Other conversations of the account"
+        description: "基准账号其他会话的个数"
         required: false
         default: "300"
         type: string
       load_seconds:
-        description: "Seconds of sustained requests on weflow serve (0 skips it)"
+        description: "weflow serve 持续请求的秒数（0 表示跳过）"
         required: false
         default: "90"
         type: string
       only:
-        description: "Only these parts, comma separated: command names (see bench.py), load, serve_bench; empty: all"
+        description: "只测这些项目，逗号分隔：命令名（见 bench.py，如 export messages json）、load、serve_bench；留空测全部"
         required: false
         default: ""
         type: string
