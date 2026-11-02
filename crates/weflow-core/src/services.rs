@@ -449,13 +449,13 @@ impl ServiceHub {
         let local_id = crate::api::js_parse_int(msg_id)
             .ok_or_else(|| AppError::usage("invalid message id"))?;
         let wcdb = self.open_wcdb()?;
-        let row =
-            chat::legacy_message_by_local_id(&wcdb, session_id, local_id, create_time, Some(43))?
-                .ok_or_else(|| AppError::runtime("message not found"))?;
-        let msg = crate::chat_msg::map_rows(std::slice::from_ref(&row), &self.my_wxid_cleaned())
-            .into_iter()
-            .next()
+        let row = chat::message_by_local_id(&wcdb, session_id, local_id, create_time, Some(43))?
             .ok_or_else(|| AppError::runtime("message not found"))?;
+        let msg = crate::chat_msg::map_msg_row(
+            row,
+            &weflow_native::native_msg::table_name_for(session_id),
+            &self.my_wxid_cleaned(),
+        );
         if msg.local_type != 43 {
             return Err(AppError::usage("the message is not a video"));
         }
