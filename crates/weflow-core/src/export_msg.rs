@@ -1154,9 +1154,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         index: usize,
         profiles: &mut HashMap<String, Profile>,
     ) -> JsonMessage<'m> {
-        let source = rx(r"(?i)<msgsource>[\s\S]*?</msgsource>")
-            .find(&msg.content)
-            .map_or("", |m| m.as_str());
+        let source = crate::xml::tag_element(&msg.content, "msgsource").unwrap_or("");
         let content = match msg.media.as_ref().filter(|_| msg.local_type != 47) {
             Some(m) => m.relative_path.clone(),
             None => self.message_text(msg),

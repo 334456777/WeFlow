@@ -3293,6 +3293,7 @@ dependencies = [
  "mime_guess",
  "rand",
  "regex",
+ "regex-syntax",
  "reqwest",
  "rusqlite",
  "rust_xlsxwriter",

@@ -28,6 +28,7 @@ md-5.workspace = true
 memchr.workspace = true
 mime_guess.workspace = true
 regex.workspace = true
+regex-syntax.workspace = true
 reqwest.workspace = true
 rust_xlsxwriter.workspace = true
 # the TLS provider of the HTTP clients (src/http_client.rs)

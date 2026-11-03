@@ -48,6 +48,8 @@ memchr = "2"
 mimalloc = { version = "0.1", default-features = false }
 mime_guess = "2.0.5"
 regex = "1"
+# Unicode word characters for the regex `\b` in the XML scanners (src/xml.rs of weflow-core)
+regex-syntax = "0.8"
 reqwest = { version = "0.13", features = ["json", "query", "rustls-no-provider", "gzip", "deflate", "brotli", "stream"], default-features = false }
 rust_xlsxwriter = { version = "0.100", features = ["constant_memory"] }
 # the JSON Schema of the command API's answers (#399), in /openapi.json

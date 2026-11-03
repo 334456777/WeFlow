@@ -1,7 +1,10 @@
 //! Fast, allocation-free scanning of the XML snippets WeChat stores in messages.
 //!
-//! These replace hot `(?is)<tag>(.*?)</tag>`-style regexes with plain ASCII case-insensitive searches that
-//! give exactly the same results (the tags are ASCII; a non-ASCII tag falls back to the regex at the call site).
+//! These replace the hot regexes of message decoding (`(?is)<tag>(.*?)</tag>`, attribute values, `<tag\b`) with
+//! plain searches that give the same results; each function names the regex it stands for. Tags and attribute
+//! names are ASCII (a non-ASCII one falls back to the regex at the call site) and compare ASCII
+//! case-insensitively; the one difference from the regex's `(?i)` is that `ſ` (U+017F) and the Kelvin sign
+//! (U+212A) do not match `s` and `k`. White space (`\s`) and word characters (`\b`) are Unicode, as in the regex.
 //! Matches always start at an ASCII byte, so every returned offset is a `char` boundary.
 
 use std::borrow::Cow;
@@ -66,6 +69,14 @@ pub fn tag_inner<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
     Some(&xml[start..end])
 }
 
+/// `(?is)<tag>.*?</tag>`: the first element `tag`, tags included. `tag` must be ASCII.
+pub fn tag_element<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
+    let h = xml.as_bytes();
+    let (start, inner) = find_tag(h, 0, tag.as_bytes(), false)?;
+    let (_, end) = find_tag(h, inner, tag.as_bytes(), true)?;
+    Some(&xml[start..end])
+}
+
 /// `(?is)<open.*?>(.*?)</close>` where `open` is an ASCII prefix such as `<appmsg`: the text after the first `>`
 /// that follows the first `open`, up to the first `close` after it.
 pub fn element_inner<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a str> {
@@ -95,6 +106,205 @@ pub fn remove_blocks<'a>(s: &'a str, open: &str, close: &str) -> Cow<'a, str> {
     }
     out.push_str(&s[kept..]);
     Cow::Owned(out)
+}
+
+/// The offset after the run of white space (regex `\s*`, Unicode `White_Space`) starting at `i`.
+pub fn skip_ws(s: &str, i: usize) -> usize {
+    s.len() - s[i..].trim_start().len()
+}
+
+/// `\s*=\s*` at `i`: the offset after it.
+pub fn assignment_end(s: &str, i: usize) -> Option<usize> {
+    let eq = skip_ws(s, i);
+    (s.as_bytes().get(eq) == Some(&b'=')).then(|| skip_ws(s, eq + 1))
+}
+
+/// Every ASCII case-insensitive occurrence of the ASCII `needle` in `hay[from..]`, in order (overlapping ones too).
+pub fn find_all_ci<'a>(
+    hay: &'a str,
+    from: usize,
+    needle: &'a str,
+) -> impl Iterator<Item = usize> + 'a {
+    let mut from = from;
+    std::iter::from_fn(move || {
+        let p = find_ci(hay, from, needle)?;
+        from = p + 1;
+        Some(p)
+    })
+}
+
+/// Byte offset of the next `<` followed by `name` (ASCII case-insensitive) at or after `from`.
+fn find_open(h: &[u8], from: usize, name: &[u8]) -> Option<usize> {
+    let mut i = from;
+    loop {
+        let p = i + memchr::memchr(b'<', h.get(i..)?)?;
+        if h.get(p + 1..p + 1 + name.len())
+            .is_some_and(|w| w.eq_ignore_ascii_case(name))
+        {
+            return Some(p);
+        }
+        i = p + 1;
+    }
+}
+
+/// Whether `s[i..]` starts with `</name>`, ASCII case-insensitive.
+pub(crate) fn is_close_at(h: &[u8], i: usize, name: &[u8]) -> bool {
+    h.get(i..i + 2) == Some(b"</")
+        && h.get(i + 2..i + 2 + name.len())
+            .is_some_and(|w| w.eq_ignore_ascii_case(name))
+        && h.get(i + 2 + name.len()) == Some(&b'>')
+}
+
+/// Whether a regex `\b` holds after a word character that ends at `i`: no Unicode word character follows.
+fn word_ends_at(s: &str, i: usize) -> bool {
+    !s[i..]
+        .chars()
+        .next()
+        .is_some_and(regex_syntax::is_word_character)
+}
+
+/// `(?i)<tag\s+[^>]*attr\s*=\s*"([^"]*)"`: an attribute value in double quotes. `tag` and `attr` must be
+/// non-empty ASCII. As in the regex, `attr` may end another attribute's name (`md5` in `cdnthumbmd5`), and the
+/// last match before the tag's first `>` wins, since `[^>]*` is greedy.
+pub fn attribute<'a>(xml: &'a str, tag: &str, attr: &str) -> Option<&'a str> {
+    debug_assert!(!tag.is_empty() && tag.is_ascii() && !attr.is_empty() && attr.is_ascii());
+    let h = xml.as_bytes();
+    let mut from = 0;
+    while let Some(p) = find_open(h, from, tag.as_bytes()) {
+        from = p + 1;
+        let after = p + 1 + tag.len();
+        let lo = skip_ws(xml, after);
+        if lo == after {
+            continue;
+        }
+        let gt = memchr::memchr(b'>', &h[lo..]).map_or(h.len(), |r| lo + r);
+        let value = find_all_ci(&xml[..gt], lo, attr)
+            .filter_map(|a| {
+                let open = assignment_end(xml, a + attr.len())?;
+                if h.get(open) != Some(&b'"') {
+                    return None;
+                }
+                let close = open + 1 + memchr::memchr(b'"', &h[open + 1..])?;
+                Some(&xml[open + 1..close])
+            })
+            .last();
+        if value.is_some() {
+            return value;
+        }
+    }
+    None
+}
+
+/// `(?i)<open[^>]*\sattr\s*=\s*['"]([a-fA-F0-9]+)['"]`, where `open` is an ASCII prefix such as `<img` and
+/// `attr` is ASCII: a hex attribute value. The last match before the first `>` wins, as in
+/// [`attribute`].
+pub fn spaced_hex_attribute<'a>(xml: &'a str, open: &str, attr: &str) -> Option<&'a str> {
+    let h = xml.as_bytes();
+    let mut from = 0;
+    while let Some(p) = find_ci(xml, from, open) {
+        from = p + 1;
+        let lo = p + open.len();
+        let gt = memchr::memchr(b'>', &h[lo..]).map_or(h.len(), |r| lo + r);
+        let value = find_all_ci(&xml[..gt], lo, attr)
+            .filter(|&a| {
+                xml[lo..a]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace)
+            })
+            .filter_map(|a| {
+                let quote = assignment_end(xml, a + attr.len())?;
+                if !matches!(h.get(quote), Some(b'\'' | b'"')) {
+                    return None;
+                }
+                let start = quote + 1;
+                let end = start
+                    + h[start..]
+                        .iter()
+                        .take_while(|b| b.is_ascii_hexdigit())
+                        .count();
+                (end > start && matches!(h.get(end), Some(b'\'' | b'"'))).then(|| &xml[start..end])
+            })
+            .last();
+        if value.is_some() {
+            return value;
+        }
+    }
+    None
+}
+
+/// `(?i)<tag>([^<]+)</tag>`: the text of the first `<tag>` that holds only text. `tag` must be ASCII.
+pub fn text_inner<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
+    let (h, name) = (xml.as_bytes(), tag.as_bytes());
+    let mut from = 0;
+    while let Some((_, start)) = find_tag(h, from, name, false) {
+        from = start;
+        let end = memchr::memchr(b'<', &h[start..]).map_or(h.len(), |r| start + r);
+        if end > start && is_close_at(h, end, name) {
+            return Some(&xml[start..end]);
+        }
+    }
+    None
+}
+
+/// `(?is)<tag>(.*?)</tag>` matched repeatedly, like `captures_iter`: the text of each element. `tag` must be ASCII.
+pub fn tag_inners<'a>(xml: &'a str, tag: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+    let (h, name) = (xml.as_bytes(), tag.as_bytes());
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        let (_, start) = find_tag(h, from, name, false)?;
+        let (end, after) = find_tag(h, start, name, true)?;
+        from = after;
+        Some(&xml[start..end])
+    })
+}
+
+/// `(?is)<name\b([^>]*)>(.*?)</name>` matched repeatedly, like `captures_iter`: the attribute text and the body
+/// of each element. `name` must be ASCII and end with a word character.
+pub fn elements<'a>(xml: &'a str, name: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> + 'a {
+    let (h, tag) = (xml.as_bytes(), name.as_bytes());
+    let mut from = 0;
+    std::iter::from_fn(move || loop {
+        let p = find_open(h, from, tag)?;
+        let after = p + 1 + tag.len();
+        if !word_ends_at(xml, after) {
+            from = p + 1;
+            continue;
+        }
+        // with no `>` or no closing tag after this start, no later start has one either
+        let gt = after + memchr::memchr(b'>', &h[after..])?;
+        let (end, close_end) = find_tag(h, gt + 1, tag, true)?;
+        from = close_end;
+        return Some((&xml[after..gt], &xml[gt + 1..end]));
+    })
+}
+
+/// `(?i)<name\b`: whether an element `name` opens anywhere. `name` must be ASCII and end with a word character.
+pub fn has_open(xml: &str, name: &str) -> bool {
+    let h = xml.as_bytes();
+    let mut from = 0;
+    while let Some(p) = find_open(h, from, name.as_bytes()) {
+        if word_ends_at(xml, p + 1 + name.len()) {
+            return true;
+        }
+        from = p + 1;
+    }
+    false
+}
+
+/// `(?s)open(.*?)close` matched repeatedly, case-sensitive, like `captures_iter`: the text between each pair.
+pub fn between<'a>(
+    s: &'a str,
+    open: &'a str,
+    close: &'a str,
+) -> impl Iterator<Item = &'a str> + 'a {
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        let start = from + s[from..].find(open)? + open.len();
+        let end = start + s[start..].find(close)?;
+        from = end + close.len();
+        Some(&s[start..end])
+    })
 }
 
 /// `s.replace(from, to)` that does not copy when `from` does not occur.
