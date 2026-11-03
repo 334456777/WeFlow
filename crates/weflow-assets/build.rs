@@ -132,8 +132,7 @@ fn include_resource(logical: &str, target: &str) -> bool {
         return false;
     }
 
-    // The closed-source wcdb_api libraries are no longer used (the database layer is native Rust):
-    // never embed or extract them.
+    // The database layer is native Rust: the closed-source wcdb_api libraries are never embedded or extracted.
     if logical.starts_with("resources/wcdb/") {
         return false;
     }

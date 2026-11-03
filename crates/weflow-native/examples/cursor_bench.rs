@@ -24,10 +24,9 @@ fn main() -> anyhow::Result<()> {
     let (mut rows, mut bytes) = (0usize, 0usize);
     let t = Instant::now();
     loop {
-        let (batch, more) = acct.fetch_message_batch(cursor)?;
-        let list = batch.as_array().cloned().unwrap_or_default();
+        let (list, more) = acct.fetch_message_batch::<weflow_native::msg_row::LegacyRow>(cursor)?;
         rows += list.len();
-        bytes += list.iter().map(|r| r.to_string().len()).sum::<usize>();
+        bytes += list.iter().map(|r| r.0.to_string().len()).sum::<usize>();
         if !more || list.is_empty() {
             break;
         }

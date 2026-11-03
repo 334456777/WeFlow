@@ -380,13 +380,13 @@ fn parsed_pages_keep_the_cursors_and_parse_each_kind() {
         );
     });
     let raw = hub.message_page("wxid_bob", 10, 0, None, None).unwrap();
-    let parsed = hub.parsed_message_page(raw.clone());
+    let parsed = parsed_page(&hub, "wxid_bob", 10);
     let rows = parsed.as_array().unwrap();
     assert_eq!(rows.len(), 3);
     // the same rows, newest first, each with the cursor of its raw row
     for (p, r) in rows.iter().zip(raw.as_array().unwrap()) {
         assert_eq!(p["_cursor"], r["_cursor"]);
-        assert_eq!(p["localId"], r["local_id"]);
+        assert_eq!(p["localId"], r["localId"]);
     }
     assert_eq!(rows[0]["localType"], 49);
     assert_eq!(rows[0]["fileName"], "Trip plan.pdf");
@@ -402,6 +402,26 @@ fn parsed_pages_keep_the_cursors_and_parse_each_kind() {
     assert_eq!(older.as_array().unwrap().len(), 1);
 }
 
+/// Typed rows as the reads answer them without `parsed` (#492).
+fn rows_json(rows: Vec<weflow_native::msg_row::MsgRow>) -> serde_json::Value {
+    serde_json::json!(rows
+        .into_iter()
+        .map(weflow_core::contract::MessageRow::from)
+        .collect::<Vec<_>>())
+}
+
+/// The newest page of a conversation as `chat messages --parsed` answers it.
+fn parsed_page(
+    hub: &weflow_core::services::ServiceHub,
+    session: &str,
+    limit: i32,
+) -> serde_json::Value {
+    let rows = hub
+        .message_page_rows(session, limit, 0, None, None)
+        .unwrap();
+    serde_json::json!(hub.parsed_rows(rows, session))
+}
+
 /// (local_id, database) of each row of a page.
 fn places(page: &serde_json::Value) -> Vec<(i64, String)> {
     page.as_array()
@@ -409,8 +429,8 @@ fn places(page: &serde_json::Value) -> Vec<(i64, String)> {
         .iter()
         .map(|r| {
             (
-                r["local_id"].as_i64().unwrap(),
-                r["db_name"].as_str().unwrap().to_string(),
+                r["localId"].as_i64().unwrap(),
+                format!("message_{}", r["shard"]),
             )
         })
         .collect()
@@ -521,7 +541,7 @@ fn a_message_looked_up_parsed_is_the_one_of_its_page() {
         );
         f.message_shard(1, &[("wxid_bob", vec![msg(2, T0 + 20, "other two")])]);
     });
-    let page = hub.parsed_message_page(hub.message_page("wxid_bob", 10, 0, None, None).unwrap());
+    let page = parsed_page(&hub, "wxid_bob", 10);
     let in_page = |text: &str| {
         page.as_array()
             .unwrap()
@@ -531,14 +551,14 @@ fn a_message_looked_up_parsed_is_the_one_of_its_page() {
             .clone()
     };
     for (at, text) in [(T0 + 10, "two"), (T0 + 20, "other two")] {
-        let found = hub.parsed_lookup(hub.chat_message_by_id("wxid_bob", 2, Some(at)).unwrap());
+        let found = serde_json::json!(hub.parsed_lookup(
+            hub.chat_message_by_id("wxid_bob", 2, Some(at)).unwrap(),
+            "wxid_bob"
+        ));
         assert_eq!(found, in_page(text), "{text}");
         assert!(found["_cursor"].is_string());
     }
     assert!(hub.chat_message_by_id("wxid_bob", 9999, None).is_err());
-    assert!(hub
-        .parsed_lookup(serde_json::json!({ "row": null }))
-        .is_null());
 }
 
 #[test]
@@ -569,13 +589,13 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
         page.as_array()
             .unwrap()
             .iter()
-            .map(|r| r["local_id"].as_i64().unwrap())
+            .map(|r| r["localId"].as_i64().unwrap())
             .collect()
     };
     let newest_first = ids(&hub.message_page("wxid_bob", 10, 0, None, None).unwrap());
     assert_eq!(newest_first, vec![5, 4, 2, 3, 1, 6], "the chat order");
     // the page starts where t falls in that order: 2 opens it, 3 sits right above it
-    let since = hub.message_page_since("wxid_bob", 10, t).unwrap();
+    let since = rows_json(hub.message_page_since("wxid_bob", 10, t).unwrap());
     assert_eq!(ids(&since), vec![5, 4, 2]);
     // pages on both ways join it without a gap or a repeat, in small pages too
     let mut seen = ids(&since);
@@ -591,7 +611,7 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
         seen.extend(ids(&older));
     }
     assert_eq!(seen, newest_first);
-    let small = hub.message_page_since("wxid_bob", 1, t).unwrap();
+    let small = rows_json(hub.message_page_since("wxid_bob", 1, t).unwrap());
     assert_eq!(ids(&small), vec![2]);
     let newer = hub
         .message_page("wxid_bob", 10, 0, None, small[0]["_cursor"].as_str())
@@ -599,7 +619,9 @@ fn a_page_since_a_time_follows_the_chat_order_where_it_is_off_the_send_time() {
     assert_eq!(ids(&newer), vec![5, 4]);
     // a moment exactly at an order position: that message opens the page
     assert_eq!(
-        ids(&hub.message_page_since("wxid_bob", 1, t + 10).unwrap()),
+        ids(&rows_json(
+            hub.message_page_since("wxid_bob", 1, t + 10).unwrap()
+        )),
         vec![4]
     );
 }
@@ -634,21 +656,28 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
         page.as_array()
             .unwrap()
             .iter()
-            .map(|r| r["local_id"].as_i64().unwrap())
+            .map(|r| r["localId"].as_i64().unwrap())
             .collect()
     };
     // the earliest messages sent at T0 + 40 or later, newest first: both of that second, then the next ones
-    let since = hub.message_page_since("wxid_bob", 4, T0 + 40).unwrap();
+    let since = rows_json(hub.message_page_since("wxid_bob", 4, T0 + 40).unwrap());
     assert_eq!(ids(&since), vec![10, 5, 9, 4]);
     // between two messages: the next one is the first
     assert_eq!(
-        ids(&hub.message_page_since("wxid_bob", 2, T0 + 51).unwrap()),
+        ids(&rows_json(
+            hub.message_page_since("wxid_bob", 2, T0 + 51).unwrap()
+        )),
         vec![6, 10]
     );
     // after the last message: nothing; before the first: the oldest
-    assert!(ids(&hub.message_page_since("wxid_bob", 5, T0 + 81).unwrap()).is_empty());
+    assert!(ids(&rows_json(
+        hub.message_page_since("wxid_bob", 5, T0 + 81).unwrap()
+    ))
+    .is_empty());
     assert_eq!(
-        ids(&hub.message_page_since("wxid_bob", 1, T0).unwrap()),
+        ids(&rows_json(
+            hub.message_page_since("wxid_bob", 1, T0).unwrap()
+        )),
         vec![1]
     );
     // the page pages on both ways from its own cursors
@@ -662,9 +691,14 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
     assert_eq!(ids(&newer), vec![8, 7, 6]);
 
     // a hit carries its message's cursor and conversation, parsed or not
-    let hits = hub.search("trip", Some("wxid_bob"), 10, 0, 0, 0).unwrap();
+    let found = hub.search("trip", Some("wxid_bob"), 10, 0, 0, 0).unwrap();
+    let hits = json!(found
+        .iter()
+        .cloned()
+        .map(weflow_core::contract::SearchHit::from)
+        .collect::<Vec<_>>());
     assert_eq!(ids(&hits), vec![10, 9]);
-    let parsed = hub.parsed_message_page(hits.clone());
+    let parsed = json!(hub.parsed_hits(found));
     for (p, h) in parsed
         .as_array()
         .unwrap()
@@ -672,6 +706,7 @@ fn a_page_since_a_time_starts_at_its_first_message_and_hits_page_from_theirs() {
         .zip(hits.as_array().unwrap())
     {
         assert!(h["_cursor"].is_string());
+        assert_eq!(h["_session_id"], "wxid_bob");
         assert_eq!(p["_cursor"], h["_cursor"]);
         assert_eq!(p["_session_id"], "wxid_bob");
     }

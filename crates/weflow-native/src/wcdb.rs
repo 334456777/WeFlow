@@ -10,8 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
-use serde_json::Value;
+use serde_json::{json, Value};
 
+use crate::msg_row::{LegacyRow, RowShape};
 use crate::native_db::NativeAccount;
 
 /// A call the backend refuses by design (it opens WeChat's databases read-only) or has not ported yet.
@@ -143,18 +144,45 @@ impl Wcdb {
         self.account()?.sessions()
     }
 
+    // The message readers come in two forms: `<name>` returns the rows of WeChat's own columns as JSON, what
+    // `wcdb_api` returned and the desktop app reads ([`LegacyRow`]); `<name>_as::<R>` returns them in any
+    // [`RowShape`], such as the typed [`MsgRow`](crate::msg_row::MsgRow) (#257, #490).
+
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Value> {
+        Ok(LegacyRow::array(
+            self.messages_as::<LegacyRow>(session_id, limit, offset)?,
+        ))
+    }
+
+    pub fn messages_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<R>> {
         self.account()?.messages(session_id, limit, offset)
     }
 
     /// See [`NativeAccount::messages_from`](crate::native_db::NativeAccount::messages_from).
-    pub fn messages_from(
+    pub fn messages_from_as<R: RowShape>(
         &self,
         session_id: &str,
         limit: i32,
         from: crate::native_msg::PageFrom,
-    ) -> Result<Value> {
+    ) -> Result<Vec<R>> {
         self.account()?.messages_from(session_id, limit, from)
+    }
+
+    /// See [`NativeAccount::messages_where`].
+    pub fn messages_where_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        since: i64,
+        condition: &str,
+        limit: usize,
+    ) -> Result<Vec<R>> {
+        self.account()?
+            .messages_where(session_id, since, condition, limit)
     }
 
     /// See [`NativeAccount::message_tables_by_name`].
@@ -165,7 +193,7 @@ impl Wcdb {
     }
 
     /// See [`NativeAccount::typed_before`].
-    pub fn typed_before(
+    pub fn typed_before_as<R: RowShape>(
         &self,
         tables: &[crate::native_msg::MsgTable],
         local_types: &[i64],
@@ -173,7 +201,7 @@ impl Wcdb {
         range: (i64, i64),
         floor: i64,
         limit: i64,
-    ) -> Result<Vec<Value>> {
+    ) -> Result<Vec<R>> {
         self.account()?
             .typed_before(tables, local_types, before, range, floor, limit)
     }
@@ -209,26 +237,62 @@ impl Wcdb {
         limit: i32,
         offset: i32,
     ) -> Result<Value> {
+        Ok(LegacyRow::array(self.messages_by_type_as::<LegacyRow>(
+            session_id, local_type, ascending, limit, offset,
+        )?))
+    }
+
+    pub fn messages_by_type_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        local_type: i64,
+        ascending: bool,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<R>> {
         self.account()?
             .messages_by_type(session_id, local_type, ascending, limit, offset)
     }
 
+    /// One message by `local_id`; `{}` when there is none.
     pub fn message_by_id(&self, session_id: &str, local_id: i32) -> Result<Value> {
-        self.account()?.message_by_id(session_id, local_id as i64)
+        Ok(self
+            .message_by_id_as::<LegacyRow>(session_id, local_id)?
+            .map_or_else(|| json!({}), LegacyRow::into_value))
+    }
+
+    pub fn message_by_id_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        local_id: i32,
+    ) -> Result<Option<R>> {
+        self.account()?
+            .message_by_id(session_id, i64::from(local_id))
     }
 
     /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
-    pub fn messages_by_local_id(
+    pub fn messages_by_local_id_as<R: RowShape>(
         &self,
         session_id: &str,
         local_id: i64,
         create_time: Option<i64>,
-    ) -> Result<Vec<Value>> {
+    ) -> Result<Vec<R>> {
         self.account()?
             .messages_by_local_id(session_id, local_id, create_time)
     }
 
+    /// One message by server id; `{}` when there is none.
     pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Value> {
+        Ok(self
+            .message_by_server_id_as::<LegacyRow>(session_id, svrid)?
+            .map_or_else(|| json!({}), LegacyRow::into_value))
+    }
+
+    pub fn message_by_server_id_as<R: RowShape>(
+        &self,
+        session_id: &str,
+        svrid: &str,
+    ) -> Result<Option<R>> {
         self.account()?.message_by_server_id(session_id, svrid)
     }
 
@@ -274,6 +338,11 @@ impl Wcdb {
 
     /// Returns the next batch of rows and whether more remain.
     pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
+        let (rows, more) = self.fetch_message_batch_as::<LegacyRow>(cursor)?;
+        Ok((LegacyRow::array(rows), more))
+    }
+
+    pub fn fetch_message_batch_as<R: RowShape>(&self, cursor: i64) -> Result<(Vec<R>, bool)> {
         self.account()?.fetch_message_batch(cursor)
     }
 
@@ -283,7 +352,7 @@ impl Wcdb {
     }
 
     /// Batch number `page` of a cursor, without moving it (see [`NativeAccount::fetch_message_page`]).
-    pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Value> {
+    pub fn fetch_message_page_as<R: RowShape>(&self, cursor: i64, page: usize) -> Result<Vec<R>> {
         self.account()?.fetch_message_page(cursor, page)
     }
 
@@ -339,16 +408,6 @@ impl Wcdb {
         }
     }
 
-    /// Like [`invoke_json`](Self::invoke_json) for functions whose output is a plain string.
-    pub fn invoke_string(&self, name: &str, _args: &[Arg<'_>]) -> Result<String> {
-        self.pending(name)
-    }
-
-    /// Like [`invoke_json`](Self::invoke_json) for functions that report success by status.
-    pub fn invoke_status(&self, name: &str, _args: &[Arg<'_>]) -> Result<Value> {
-        self.pending(name)
-    }
-
     /// Raw status code and message (some triggers report "already installed" as a positive code).
     pub fn invoke_status_code(&self, name: &str, _args: &[Arg<'_>]) -> Result<(i32, String)> {
         self.pending(name)
@@ -372,6 +431,26 @@ impl Wcdb {
             offset,
             begin as i64,
             end as i64,
+        )
+    }
+
+    /// [`search`](Self::search) in any [`RowShape`], each hit with its conversation.
+    pub fn search_as<R: RowShape>(
+        &self,
+        keyword: &str,
+        session_id: Option<&str>,
+        limit: i32,
+        offset: i32,
+        begin: i32,
+        end: i32,
+    ) -> Result<Vec<crate::native_media::SessionRow<R>>> {
+        self.account()?.search_messages_as(
+            keyword,
+            session_id,
+            limit,
+            offset,
+            i64::from(begin),
+            i64::from(end),
         )
     }
 
@@ -467,6 +546,26 @@ impl Wcdb {
         )
     }
 
+    /// [`sns_timeline`](Self::sns_timeline) as typed posts, of the posters `usernames` (all when empty).
+    pub fn sns_timeline_as(
+        &self,
+        limit: i32,
+        offset: i32,
+        usernames: &[String],
+        keyword: Option<&str>,
+        start: i32,
+        end: i32,
+    ) -> Result<Vec<crate::native_sns::SnsPost>> {
+        self.account()?.sns_timeline_as(
+            limit,
+            offset,
+            usernames,
+            keyword,
+            i64::from(start),
+            i64::from(end),
+        )
+    }
+
     pub fn sns_annual_stats(&self, begin: i32, end: i32) -> Result<Value> {
         self.account()?.sns_annual_stats(begin as i64, end as i64)
     }
@@ -549,6 +648,26 @@ impl Wcdb {
             media_type,
             begin as i64,
             end as i64,
+            limit,
+            offset,
+        )
+    }
+
+    /// [`scan_media_stream`](Self::scan_media_stream) in any [`RowShape`], of the conversations `session_ids`.
+    pub fn scan_media_stream_as<R: RowShape>(
+        &self,
+        session_ids: &[String],
+        media_type: i32,
+        begin: i32,
+        end: i32,
+        limit: i32,
+        offset: i32,
+    ) -> Result<(Vec<crate::native_media::SessionRow<R>>, bool)> {
+        self.account()?.scan_media_stream_as(
+            session_ids,
+            media_type,
+            i64::from(begin),
+            i64::from(end),
             limit,
             offset,
         )

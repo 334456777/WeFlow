@@ -786,7 +786,7 @@ mod tests {
                 let _ = std::hint::black_box(crate::read_of(cli.command));
             }
             let all = begin.elapsed() / RUNS;
-            // what `/api/` does instead since #397
+            // what `/api/` does (#397)
             let begin = std::time::Instant::now();
             for _ in 0..RUNS {
                 let given = Given::new(ep, std::hint::black_box(&params));

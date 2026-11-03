@@ -16,6 +16,7 @@ use crate::contract::{
 };
 use crate::message::rx;
 use crate::sync::MutexExt;
+use weflow_native::msg_row::MsgRow;
 
 const PANEL_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -36,6 +37,9 @@ struct MemberContact {
     encrypt_user_name: String,
     local_type: i64,
 }
+
+/// The `<sender>:` line WeChat puts before the text of a message someone else sent to a group.
+const SENDER_LINE: &str = r"(?i)^\s*([a-zA-Z0-9_@-]{4,}):\s*(?:\r?\n|<br\s*/?>)";
 
 fn pick_str(row: &Value, keys: &[&str]) -> String {
     for k in keys {
@@ -1003,58 +1007,21 @@ impl ServiceHub {
         })
     }
 
-    fn row_sender(&self, row: &Value, my_wxid: &str) -> String {
-        let raw_is_send = ["computed_is_send", "is_send", "isSend", "WCDB_CT_is_send"]
-            .iter()
-            .filter_map(|k| row.get(*k))
-            .find(|v| !v.is_null());
-        if let Some(v) = raw_is_send {
-            let t = v
-                .as_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| v.to_string());
-            if crate::api::js_parse_int(&t) == Some(1) && !my_wxid.is_empty() {
-                return my_wxid.to_string();
+    /// Who sent `row`: the owner when the reader says so, else the sender it resolved, else the `<sender>:` line a
+    /// group message's text starts with.
+    fn row_sender(&self, row: &MsgRow, my_wxid: &str) -> String {
+        if row.is_send && !my_wxid.is_empty() {
+            return my_wxid.to_string();
+        }
+        if let Some(sender) = row.sender.as_deref().map(str::trim) {
+            if !sender.is_empty() {
+                return sender.to_string();
             }
         }
-        let direct = pick_str(
-            row,
-            &[
-                "sender_username",
-                "senderUsername",
-                "sender",
-                "WCDB_CT_sender_username",
-            ],
-        );
-        if !direct.is_empty() {
-            return direct;
-        }
-        if let Some(obj) = row.as_object() {
-            for (k, v) in obj {
-                let kl = k.to_lowercase();
-                if matches!(
-                    kl.as_str(),
-                    "sender_username" | "senderusername" | "sender" | "wcdb_ct_sender_username"
-                ) {
-                    let t = v.as_str().unwrap_or("").trim();
-                    if !t.is_empty() {
-                        return t.to_string();
-                    }
-                }
-            }
-        }
-        let raw = pick_str(
-            row,
-            &["StrContent", "message_content", "content", "msg_content"],
-        );
-        if !raw.is_empty() {
-            if let Some(c) =
-                rx(r"(?i)^\s*([a-zA-Z0-9_@-]{4,}):\s*(?:\r?\n|<br\s*/?>)").captures(&raw)
-            {
-                return c[1].trim().to_string();
-            }
-        }
-        String::new()
+        rx(SENDER_LINE)
+            .captures(row.content.trim())
+            .map(|c| c[1].trim().to_string())
+            .unwrap_or_default()
     }
 
     /// A cursor over the messages `member` may have sent: only their rows (and rows with an unresolved sender) are
@@ -1130,27 +1097,17 @@ impl ServiceHub {
 
         let result = (|| -> AppResult<()> {
             loop {
-                let (rows, has_more) = self.wrap_native(wcdb.fetch_message_batch(cursor))?;
-                let rows = rows.as_array().cloned().unwrap_or_default();
+                let (rows, has_more) =
+                    self.wrap_native(wcdb.fetch_message_batch_as::<MsgRow>(cursor))?;
                 if rows.is_empty() {
                     break;
                 }
                 for row in &rows {
-                    let is_send_raw = ["computed_is_send", "is_send", "isSend", "WCDB_CT_is_send"]
-                        .iter()
-                        .filter_map(|k| row.get(*k))
-                        .find(|v| !v.is_null());
-                    let is_send = is_send_raw.is_some_and(|v| {
-                        crate::api::js_parse_int(
-                            &v.as_str()
-                                .map(str::to_string)
-                                .unwrap_or_else(|| v.to_string()),
-                        ) == Some(1)
-                    });
-                    let mut sender = self.row_sender(row, &my_wxid);
-                    if is_send {
-                        sender = my_wxid.clone();
-                    }
+                    let sender = if row.is_send {
+                        my_wxid.clone()
+                    } else {
+                        self.row_sender(row, &my_wxid)
+                    };
                     if sender.is_empty() {
                         continue;
                     }
@@ -1161,25 +1118,9 @@ impl ServiceHub {
                     if !matched {
                         continue;
                     }
-                    let msg_type = crate::api::js_parse_int(&pick_str(
-                        row,
-                        &["Type", "type", "local_type", "msg_type"],
-                    ))
-                    .unwrap_or(0);
-                    let create_time = crate::api::js_parse_int(&pick_str(
-                        row,
-                        &["CreateTime", "create_time", "createTime", "msg_time"],
-                    ))
-                    .unwrap_or(0);
-                    let mut content = pick_str(
-                        row,
-                        &["StrContent", "message_content", "content", "msg_content"],
-                    );
-                    if !content.is_empty() {
-                        content = rx(r"(?i)^\s*([a-zA-Z0-9_@-]{4,}):\s*(?:\r?\n|<br\s*/?>)")
-                            .replace(&content, "")
-                            .to_string();
-                    }
+                    let msg_type = row.local_type;
+                    let create_time = row.create_time.unwrap_or(0);
+                    let content = rx(SENDER_LINE).replace(row.content.trim(), "");
                     total += 1;
                     if msg_type == 1 || msg_type == 244813135921 {
                         text += 1;
@@ -1283,6 +1224,7 @@ impl ServiceHub {
         end: i64,
     ) -> AppResult<Vec<chat_msg::ChatMessage>> {
         let my_wxid = self.my_wxid_cleaned();
+        let table_name = weflow_native::native_msg::table_name_for(chatroom_id);
         let cursor = self.member_cursor(wcdb, chatroom_id, member, 800, true, (start, end))?;
         let mut out = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
@@ -1295,22 +1237,17 @@ impl ServiceHub {
         };
         let result = (|| -> AppResult<()> {
             loop {
-                let (rows, has_more) = self.wrap_native(wcdb.fetch_message_batch(cursor))?;
-                let rows = rows.as_array().cloned().unwrap_or_default();
+                let (rows, has_more) =
+                    self.wrap_native(wcdb.fetch_message_batch_as::<MsgRow>(cursor))?;
                 if rows.is_empty() {
                     break;
                 }
-                for row in &rows {
-                    let sender = self.row_sender(row, &my_wxid);
+                for row in rows {
+                    let sender = self.row_sender(&row, &my_wxid);
                     if !sender.is_empty() && !matches(&sender, &mut cache) {
                         continue;
                     }
-                    let Some(msg) = chat_msg::map_rows(std::slice::from_ref(row), &my_wxid)
-                        .into_iter()
-                        .next()
-                    else {
-                        continue;
-                    };
+                    let msg = chat_msg::map_msg_row(row, &table_name, &my_wxid);
                     if matches(msg.sender_username.as_deref().unwrap_or(""), &mut cache) {
                         out.push(msg);
                     }
@@ -1355,6 +1292,7 @@ impl ServiceHub {
             false,
             (start.max(0), end.max(0)),
         )?;
+        let table_name = weflow_native::native_msg::table_name_for(chatroom_id);
         let mut matched: Vec<chat_msg::ChatMessage> = Vec::new();
         let mut cache: HashMap<String, bool> = HashMap::new();
         let mut consumed = 0usize;
@@ -1362,8 +1300,8 @@ impl ServiceHub {
         let mut has_more = false;
         let result = (|| -> AppResult<()> {
             while matched.len() < limit {
-                let (rows, batch_more) = self.wrap_native(wcdb.fetch_message_batch(db_cursor))?;
-                let rows = rows.as_array().cloned().unwrap_or_default();
+                let (rows, batch_more) =
+                    self.wrap_native(wcdb.fetch_message_batch_as::<MsgRow>(db_cursor))?;
                 if rows.is_empty() {
                     has_more = false;
                     break;
@@ -1381,9 +1319,10 @@ impl ServiceHub {
                         continue;
                     }
                 }
-                for (index, row) in rows.iter().enumerate().skip(start_index) {
+                let batch_len = rows.len();
+                for (index, row) in rows.into_iter().enumerate().skip(start_index) {
                     consumed += 1;
-                    let sender = self.row_sender(row, &my_wxid);
+                    let sender = self.row_sender(&row, &my_wxid);
                     let is_match = |s: &str, cache: &mut HashMap<String, bool>| -> bool {
                         let key = s.trim().to_lowercase();
                         !key.is_empty()
@@ -1392,19 +1331,14 @@ impl ServiceHub {
                     if !sender.is_empty() && !is_match(&sender, &mut cache) {
                         continue;
                     }
-                    let Some(msg) = chat_msg::map_rows(std::slice::from_ref(row), &my_wxid)
-                        .into_iter()
-                        .next()
-                    else {
-                        continue;
-                    };
+                    let msg = chat_msg::map_msg_row(row, &table_name, &my_wxid);
                     if !is_match(msg.sender_username.as_deref().unwrap_or(""), &mut cache) {
                         continue;
                     }
                     matched.push(msg);
                     if matched.len() >= limit {
                         cursor = consumed;
-                        has_more = index < rows.len() - 1 || batch_more;
+                        has_more = index < batch_len - 1 || batch_more;
                         break;
                     }
                 }

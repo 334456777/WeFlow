@@ -13,7 +13,8 @@ use crate::contract::{
     FriendCount, LongestStreak, LostFriend, MidnightKing, MonthlyTopFriend, MutualFriend, PeakDay,
     PhraseCount, ResponseSpeed, SocialInitiative, YearFirstChat,
 };
-use crate::message::{decode_message_content, row_int, rx};
+use crate::message::rx;
+use weflow_native::msg_row::MsgRow;
 
 const CONVERSATION_GAP: i64 = 3600;
 
@@ -326,33 +327,10 @@ fn parse_emoji_candidate(item: &Value) -> EmojiCandidate {
     }
 }
 
-fn resolve_is_sent(row: &Value, raw_wxid: &str, cleaned_wxid: &str) -> bool {
-    let raw = row
-        .get("computed_is_send")
-        .filter(|v| !v.is_null())
-        .or_else(|| row.get("is_send"))
-        .filter(|v| !v.is_null());
-    if let Some(v) = raw {
-        return crate::api::js_parse_int(
-            &v.as_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| v.to_string()),
-        ) == Some(1);
-    }
-    let sender = ["sender_username", "sender", "talker"]
-        .iter()
-        .filter_map(|k| row.get(*k).and_then(Value::as_str))
-        .find(|s| !s.is_empty())
-        .unwrap_or("")
-        .to_lowercase();
-    if sender.is_empty() {
-        return false;
-    }
-    let (r, c) = (raw_wxid.to_lowercase(), cleaned_wxid.to_lowercase());
-    sender == r
-        || sender == c
-        || (!r.is_empty() && r.starts_with(&format!("{sender}_")))
-        || (!c.is_empty() && c.starts_with(&format!("{sender}_")))
+/// The md5 and the CDN address of an emoji message, read from its XML.
+fn emoji_of(content: &str) -> (Option<String>, Option<String>) {
+    let stripped = strip_emoji_owner_prefix(content);
+    (extract_emoji_md5(&stripped), extract_emoji_url(&stripped))
 }
 
 fn format_date_time(ms: i64) -> String {
@@ -511,16 +489,13 @@ impl ServiceHub {
             strategy = "edge-scan";
             for sid in &sessions {
                 let edge = |asc: bool| -> i64 {
-                    let Ok(cursor) = wcdb.open_message_cursor(sid, 1, asc, 0, 0, false) else {
+                    let Ok(cursor) = wcdb.open_message_cursor(sid, 1, asc, 0, 0, true) else {
                         return 0;
                     };
-                    let r = wcdb.fetch_message_batch(cursor);
+                    let r = wcdb.fetch_message_batch_as::<MsgRow>(cursor);
                     let _ = wcdb.close_message_cursor(cursor);
                     r.ok()
-                        .and_then(|(rows, _)| {
-                            rows.as_array()
-                                .and_then(|a| a.first().map(|r| num(&r["create_time"])))
-                        })
+                        .and_then(|(rows, _)| rows.first().and_then(|r| r.create_time))
                         .unwrap_or(0)
                 };
                 Self::add_years_from_range(&mut years, edge(true), edge(false));
@@ -706,40 +681,22 @@ impl ServiceHub {
                     None::<chrono::DateTime<Local>>,
                 );
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                    let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
                         break;
                     };
-                    let Some(rows) = rows.as_array() else { break };
-                    for row in rows {
-                        let create_time = num(&row["create_time"]);
+                    for row in &rows {
+                        let create_time = row.create_time.unwrap_or(0);
                         if create_time == 0 {
                             continue;
                         }
-                        let raw_is_send = row
-                            .get("computed_is_send")
-                            .filter(|v| !v.is_null())
-                            .or_else(|| row.get("is_send"))
-                            .cloned()
-                            .unwrap_or(json!("0"));
-                        let mut sent = crate::api::js_parse_int(
-                            &raw_is_send
-                                .as_str()
-                                .map(str::to_string)
-                                .unwrap_or_else(|| raw_is_send.to_string()),
-                        ) == Some(1);
-                        let local_type = ["local_type", "type"]
-                            .iter()
-                            .filter_map(|k| row.get(*k))
-                            .map(num)
-                            .find(|n| *n != 0)
-                            .unwrap_or(1);
+                        let mut sent = row.is_send;
+                        let local_type = if row.local_type == 0 {
+                            1
+                        } else {
+                            row.local_type
+                        };
                         if !sent {
-                            let sender = ["sender_username", "sender", "talker"]
-                                .iter()
-                                .filter_map(|k| row.get(*k).and_then(Value::as_str))
-                                .find(|s| !s.is_empty())
-                                .unwrap_or("")
-                                .to_lowercase();
+                            let sender = row.sender.as_deref().unwrap_or("").to_lowercase();
                             if !sender.is_empty() {
                                 let (r, c) = (raw_wxid.to_lowercase(), cleaned.to_lowercase());
                                 if sender == r
@@ -771,7 +728,7 @@ impl ServiceHub {
                         }
                         last_message.insert(sid.clone(), (create_time, sent));
                         if (local_type == 1 || local_type == 244813135921) && sent {
-                            let text = decode_message_content(row).trim().to_string();
+                            let text = row.content.trim().to_string();
                             let n = text.chars().count();
                             if (2..=20).contains(&n)
                                 && !text.contains("http")
@@ -855,11 +812,11 @@ impl ServiceHub {
                     None::<chrono::DateTime<Local>>,
                 );
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                    let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
                         break;
                     };
-                    for row in rows.as_array().map(|a| a.as_slice()).unwrap_or(&[]) {
-                        let ct = num(&row["create_time"]);
+                    for row in &rows {
+                        let ct = row.create_time.unwrap_or(0);
                         if ct == 0 {
                             continue;
                         }
@@ -1354,7 +1311,7 @@ impl ServiceHub {
         limit: usize,
         begin: i64,
         end: i64,
-    ) -> Vec<Value> {
+    ) -> Vec<MsgRow> {
         let safe_begin = begin.max(0);
         let safe_end = if end > 0 {
             end
@@ -1367,22 +1324,16 @@ impl ServiceHub {
             true,
             crate::num::saturating_i32(safe_begin.max(0)),
             crate::num::saturating_i32(safe_end.max(0)),
-            false,
+            true,
         ) else {
             return Vec::new();
         };
-        let mut rows: Vec<Value> = Vec::new();
+        let mut rows: Vec<MsgRow> = Vec::new();
         loop {
-            let Ok((batch, more)) = wcdb.fetch_message_batch(cursor) else {
+            let Ok((batch, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
                 break;
             };
-            let Some(list) = batch.as_array() else { break };
-            for r in list {
-                rows.push(r.clone());
-                if rows.len() >= limit {
-                    break;
-                }
-            }
+            rows.extend(batch.into_iter().take(limit - rows.len()));
             if !more || rows.len() >= limit {
                 break;
             }
@@ -1443,31 +1394,17 @@ impl ServiceHub {
         let self_avatar = av(&raw_wxid).or_else(|| av(&cleaned));
         let friend_avatar = av(friend);
 
-        let message_view = |row: &Value| -> DualMessage {
-            let create_ms = num(&row["create_time"]) * 1000;
-            let raw_content = decode_message_content(row);
-            let local_type = row_int(
-                row,
-                &["local_type", "localType", "type", "msg_type", "msgType"],
-                0,
-            );
-            let (mut md5, mut url) = (None, None);
-            if local_type == 47 {
-                let stripped = strip_emoji_owner_prefix(&raw_content);
-                md5 = normalize_emoji_md5(&coerce_string(record_field(
-                    row,
-                    &["emoji_md5", "emojiMd5", "md5"],
-                )))
-                .or_else(|| extract_emoji_md5(&stripped));
-                url = normalize_emoji_url(&coerce_string(record_field(
-                    row,
-                    &["emoji_cdn_url", "emojiCdnUrl", "cdnurl"],
-                )))
-                .or_else(|| extract_emoji_url(&stripped));
-            }
+        let message_view = |row: &MsgRow| -> DualMessage {
+            let create_ms = row.create_time.unwrap_or(0) * 1000;
+            let local_type = row.local_type;
+            let (md5, url) = if local_type == 47 {
+                emoji_of(&row.content)
+            } else {
+                (None, None)
+            };
             DualMessage {
-                content: raw_content,
-                is_sent_by_me: resolve_is_sent(row, &raw_wxid, &cleaned),
+                content: row.content.clone(),
+                is_sent_by_me: row.is_send,
                 sender_username: None,
                 create_time: create_ms,
                 create_time_str: format_date_time(create_ms),
@@ -1480,11 +1417,7 @@ impl ServiceHub {
         self.emit_progress("dual-report", "first messages…", 15, 100);
         let first_rows = self.first_messages(&wcdb, friend, 10, 0, 0);
         let first_chat = first_rows.first().map(|row| DualMessage {
-            sender_username: ["sender_username", "sender"]
-                .iter()
-                .filter_map(|k| row.get(*k))
-                .find(|v| !v.is_null())
-                .map(|v| coerce_string(Some(v))),
+            sender_username: row.sender.clone(),
             ..message_view(row)
         });
         let first_chat_messages: Vec<DualMessage> = first_rows.iter().map(&message_view).collect();
@@ -1551,52 +1484,20 @@ impl ServiceHub {
                 true,
                 crate::num::saturating_i32(start.max(0)),
                 crate::num::saturating_i32(end.max(0)),
-                false,
+                true,
             ) {
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                    let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
                         break;
                     };
-                    let Some(rows) = rows.as_array() else { break };
-                    for row in rows {
-                        if row_int(
-                            row,
-                            &[
-                                "local_type",
-                                "localType",
-                                "type",
-                                "msg_type",
-                                "msgType",
-                                "WCDB_CT_local_type",
-                            ],
-                            0,
-                        ) != 47
-                        {
+                    for row in &rows {
+                        if row.local_type != 47 {
                             continue;
                         }
-                        let content = strip_emoji_owner_prefix(&decode_message_content(row));
-                        let md5 = normalize_emoji_md5(&coerce_string(record_field(
-                            row,
-                            &["emoji_md5", "emojiMd5", "md5"],
-                        )))
-                        .or_else(|| extract_emoji_md5(&content));
-                        let Some(md5) = md5 else { continue };
-                        let url = normalize_emoji_url(&coerce_string(record_field(
-                            row,
-                            &[
-                                "emoji_cdn_url",
-                                "emojiCdnUrl",
-                                "cdnurl",
-                                "cdn_url",
-                                "emoji_url",
-                                "emojiUrl",
-                                "url",
-                                "thumburl",
-                                "thumb_url",
-                            ],
-                        )))
-                        .or_else(|| extract_emoji_url(&content));
-                        let me = resolve_is_sent(row, &raw_wxid, &cleaned);
+                        let (Some(md5), url) = emoji_of(&row.content) else {
+                            continue;
+                        };
+                        let me = row.is_send;
                         match tally.iter_mut().find(|t| t.0 == me && t.1 == md5) {
                             Some(t) => {
                                 t.3 += 1;

@@ -11,6 +11,7 @@ use serde_json::{json, Map, Value};
 use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
 use crate::sync::MutexExt;
+use weflow_native::msg_row::MsgRow;
 
 const AGGREGATE_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -245,7 +246,6 @@ impl ServiceHub {
         end: i64,
     ) -> AppResult<Value> {
         use chrono::{Datelike, Local, TimeZone, Timelike};
-        let my = self.my_wxid_cleaned().to_lowercase();
         let (mut total, mut sent, mut received, mut first, mut last) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
         let mut type_counts: BTreeMap<i64, i64> = BTreeMap::new();
@@ -261,59 +261,29 @@ impl ServiceHub {
                 true,
                 crate::num::saturating_i32(begin.max(0)),
                 crate::num::saturating_i32(end.max(0)),
-                false,
+                true,
             ) else {
                 continue;
             };
             let (mut s_total, mut s_sent, mut s_recv, mut s_last) = (0i64, 0i64, 0i64, 0i64);
             loop {
-                let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
+                let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
                     break;
                 };
-                let Some(rows) = rows.as_array() else { break };
-                for row in rows {
-                    let create_time = ["create_time", "createTime", "create_time_ms"]
-                        .iter()
-                        .filter_map(|k| row.get(*k))
-                        .map(num)
-                        .find(|n| *n != 0)
-                        .unwrap_or(0);
+                for row in &rows {
+                    let create_time = row.create_time.unwrap_or(0);
                     if create_time == 0
                         || (begin > 0 && create_time < begin)
                         || (end > 0 && create_time > end)
                     {
                         continue;
                     }
-                    let local_type = ["local_type", "type"]
-                        .iter()
-                        .filter_map(|k| row.get(*k))
-                        .map(num)
-                        .find(|n| *n != 0)
-                        .unwrap_or(1);
-                    let raw = row
-                        .get("computed_is_send")
-                        .filter(|v| !v.is_null())
-                        .or_else(|| row.get("is_send"))
-                        .or_else(|| row.get("isSend"))
-                        .filter(|v| !v.is_null());
-                    let mut is_send = raw.is_some_and(|v| {
-                        v.as_str()
-                            .map_or(v.as_i64() == Some(1) || v.as_bool() == Some(true), |s| {
-                                s == "1"
-                            })
-                    });
-                    if raw.is_none() {
-                        if let Some(sender) = ["sender_username", "senderUsername", "sender"]
-                            .iter()
-                            .filter_map(|k| row.get(*k).and_then(Value::as_str))
-                            .find(|s| !s.is_empty())
-                        {
-                            if !my.is_empty() {
-                                let s = sender.to_lowercase();
-                                is_send = s == my || s.starts_with(&format!("{my}_"));
-                            }
-                        }
-                    }
+                    let local_type = if row.local_type == 0 {
+                        1
+                    } else {
+                        row.local_type
+                    };
+                    let is_send = row.is_send;
                     total += 1;
                     s_total += 1;
                     *type_counts.entry(local_type).or_insert(0) += 1;

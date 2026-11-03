@@ -15,8 +15,9 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 use crate::message::{
-    collect_messages, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
+    collect_rows, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
 };
+use weflow_native::msg_row::MsgRow;
 use weflow_native::native_msg::table_name_for;
 
 const FRIEND_EXCLUDE: &[&str] = &["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
@@ -35,20 +36,16 @@ pub(crate) fn message_by_local_id(
     local_id: i64,
     create_time: Option<i64>,
     local_type: Option<i64>,
-) -> AppResult<Option<Value>> {
+) -> AppResult<Option<MsgRow>> {
     let create_time = create_time.filter(|t| *t > 0);
     let mut rows = wcdb
-        .messages_by_local_id(session_id, local_id, create_time)
+        .messages_by_local_id_as::<MsgRow>(session_id, local_id, create_time)
         .map_err(native)?;
     if rows.len() > 1 {
         if let Some(want) = local_type {
-            let of_type: Vec<Value> = rows
-                .iter()
-                .filter(|r| crate::message::row_int(r, &["local_type"], -1) & 0xFFFF_FFFF == want)
-                .cloned()
-                .collect();
-            if !of_type.is_empty() {
-                rows = of_type;
+            let of_type = |r: &MsgRow| r.local_type & 0xFFFF_FFFF == want;
+            if rows.iter().any(of_type) {
+                rows.retain(of_type);
             }
         }
     }
@@ -57,9 +54,9 @@ pub(crate) fn message_by_local_id(
             .iter()
             .map(|r| {
                 json!({
-                    "createTime": crate::message::row_int(r, &["create_time"], 0),
-                    "localType": crate::message::row_int(r, &["local_type"], 0),
-                    "dbName": r.get("db_name").cloned().unwrap_or(Value::Null),
+                    "createTime": r.create_time.unwrap_or(0),
+                    "localType": r.local_type,
+                    "dbName": format!("message_{}", r.shard),
                 })
             })
             .collect();
@@ -166,9 +163,9 @@ impl ServiceHub {
         clean_account_dir_name(&raw)
     }
 
-    fn normalize_row(&self, rows: &[Value], session_id: &str) -> Vec<ExportMsg> {
+    fn normalize_row(&self, rows: Vec<MsgRow>, session_id: &str) -> Vec<ExportMsg> {
         let my = self.my_wxid_cleaned();
-        collect_messages(
+        collect_rows(
             rows,
             &CollectOptions {
                 session_id,
@@ -182,36 +179,49 @@ impl ServiceHub {
 
     // ── single messages ──
 
+    /// `chat message --local-id` (#492: a typed row).
     pub fn chat_message_by_id(
         &self,
         session_id: &str,
         local_id: i64,
         create_time: Option<i64>,
-    ) -> AppResult<Value> {
+    ) -> AppResult<MsgRow> {
         let wcdb = self.open_wcdb()?;
-        let row = message_by_local_id(&wcdb, session_id, local_id, create_time, None)?;
-        self.lookup_result(row.unwrap_or_default(), session_id)
+        message_by_local_id(&wcdb, session_id, local_id, create_time, None)?
+            .ok_or_else(|| AppError::runtime("message not found"))
     }
 
-    pub fn chat_message_by_server_id(&self, session_id: &str, server_id: &str) -> AppResult<Value> {
-        let wcdb = self.open_wcdb()?;
-        let row = wcdb
-            .message_by_server_id(session_id, server_id)
-            .map_err(native)?;
-        self.lookup_result(row, session_id)
+    /// `chat message --server-id`.
+    pub fn chat_message_by_server_id(
+        &self,
+        session_id: &str,
+        server_id: &str,
+    ) -> AppResult<MsgRow> {
+        self.open_wcdb()?
+            .message_by_server_id_as::<MsgRow>(session_id, server_id)
+            .map_err(native)?
+            .ok_or_else(|| AppError::runtime("message not found"))
     }
 
-    fn lookup_result(&self, row: Value, session_id: &str) -> AppResult<Value> {
-        if row.is_null() || row.as_object().is_none_or(|o| o.is_empty()) {
-            return Err(AppError::runtime("message not found"));
-        }
+    /// `chat message` without `parsed`: the row, and the message as the query commands list it.
+    pub fn message_lookup(&self, row: MsgRow, session_id: &str) -> MessageLookup {
         let my = self.my_wxid_cleaned();
-        let message = self
-            .normalize_row(std::slice::from_ref(&row), session_id)
-            .into_iter()
-            .next()
-            .map(|m| MessageView::of(&m, &my));
-        Ok(json!(MessageLookup { row, message }))
+        let message = crate::message::collect_rows(
+            vec![row.clone()],
+            &CollectOptions {
+                session_id,
+                my_wxid: &my,
+                start: None,
+                end: None,
+                sender_filter: None,
+            },
+        )
+        .pop()
+        .map(|m| MessageView::of(&m, &my));
+        MessageLookup {
+            row: row.into(),
+            message,
+        }
     }
 
     // ── per-day statistics ──
@@ -853,7 +863,7 @@ impl ServiceHub {
             loop {
                 // what is older than the page so far cannot be on it
                 let rows = wcdb
-                    .typed_before(
+                    .typed_before_as::<MsgRow>(
                         tables,
                         &local_types,
                         from,
@@ -862,14 +872,13 @@ impl ServiceHub {
                         want as i64,
                     )
                     .map_err(native)?;
-                for row in &rows {
-                    let Some(pos) = MsgPos::of_row(row) else {
-                        continue;
-                    };
+                let (count, end) = (rows.len(), rows.last().map(MsgRow::pos));
+                for row in rows {
+                    let pos = row.pos();
                     if !seen.insert(place(&pos)) {
                         continue;
                     }
-                    let Some(m) = collect_messages(std::slice::from_ref(row), &opts).pop() else {
+                    let Some(m) = collect_rows(vec![row], &opts).pop() else {
                         continue;
                     };
                     let Some(kind) = Self::resource_type(&m) else {
@@ -880,10 +889,10 @@ impl ServiceHub {
                 }
                 // rows that are not resources (a type-49 app message is a file only by what it says) or
                 // listed already are read past
-                let Some(end) = rows.last().and_then(MsgPos::of_row) else {
+                let Some(end) = end else {
                     break;
                 };
-                if found >= want || rows.len() < want {
+                if found >= want || count < want {
                     break;
                 }
                 from = Some((end, Ties::None));
@@ -926,12 +935,9 @@ impl ServiceHub {
     pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 3, false, 0, 0)
+            .messages_by_type_as::<MsgRow>(session_id, 3, false, 0, 0)
             .map_err(native)?;
-        let msgs = self.normalize_row(
-            rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
-            session_id,
-        );
+        let msgs = self.normalize_row(rows, session_id);
         let mut images: Vec<(i64, ImageRef)> = msgs
             .into_iter()
             .filter(|m| m.local_type == 3 && (m.image_md5.is_some() || m.image_dat_name.is_some()))
@@ -968,13 +974,10 @@ impl ServiceHub {
     pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type(session_id, 34, false, 0, 0)
+            .messages_by_type_as::<MsgRow>(session_id, 34, false, 0, 0)
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
-        let mut msgs = self.normalize_row(
-            rows.as_array().map(Vec::as_slice).unwrap_or(&[]),
-            session_id,
-        );
+        let mut msgs = self.normalize_row(rows, session_id);
         msgs.sort_by_key(|a| std::cmp::Reverse(a.create_time));
         let mut seen = HashSet::new();
         let messages: Vec<MessageView> = msgs
@@ -1005,10 +1008,10 @@ impl ServiceHub {
             "video" => 2,
             _ => 0,
         };
-        let ids_json = serde_json::to_string(&ids).map_err(|e| AppError::runtime(e.to_string()))?;
+        let ids = uniq(&ids);
         let (rows, has_more) = wcdb
-            .scan_media_stream(
-                &ids_json,
+            .scan_media_stream_as::<MsgRow>(
+                &ids,
                 code,
                 crate::num::saturating_i32(begin),
                 crate::num::saturating_i32(end),
@@ -1019,14 +1022,10 @@ impl ServiceHub {
         let my = self.my_wxid_cleaned();
         let names = self.session_display_names(&wcdb, &ids);
         let mut items: Vec<MediaStreamItem> = Vec::new();
-        for row in rows.as_array().into_iter().flatten() {
-            let sid = ["session_id", "sessionId", "username", "talker"]
-                .iter()
-                .find_map(|k| row.get(*k).and_then(Value::as_str))
-                .unwrap_or(session_id.unwrap_or(""))
-                .to_string();
-            let msgs = collect_messages(
-                std::slice::from_ref(row),
+        for hit in rows {
+            let sid = hit.session_id;
+            let msgs = collect_rows(
+                vec![hit.row],
                 &CollectOptions {
                     session_id: &sid,
                     my_wxid: &my,

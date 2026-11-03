@@ -150,7 +150,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -d '{"key":"no_progress","value":"
 | `chat messages`，50 条消息 | 126 KB，3.5 ms | 18 KB，5.1 ms | 87 KB | 15 KB，4.9 ms |
 | `chat contacts`，全部 | 538 KB，6.1 ms | 119 KB，10.7 ms | 154 KB | 71 KB，7.4 ms |
 
-（聊天窗口用的 `fields`：`local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,_cursor`；联系人列表用的：`username,alias,remark,nick_name,small_head_url,local_type`。）gzip 比 br 稍大，耗时差不多。两者一起用，全部联系人一次约 70 KB，所以 `chat contacts` 不分页：由网页自己搜索和排序。
+（聊天窗口用的 `fields`，上表测量时消息行还不是 `MessageRow`（#492）：`local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,_cursor`，现在是 `localId,serverId,localType,sortSeq,createTime,sender,isSend,content,_cursor`；联系人列表用的：`username,alias,remark,nick_name,small_head_url,local_type`。）gzip 比 br 稍大，耗时差不多。两者一起用，全部联系人一次约 70 KB，所以 `chat contacts` 不分页：由网页自己搜索和排序。
 
 ## 返回文件
 
@@ -232,7 +232,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 - 每条命令的每个方法是一个操作，`x-weflow-command` 写明对应的命令。`operationId` 是用 `_` 连接的命令路径（`chat_sessions`）；方法由参数决定的命令，每个方法各有一个操作（`analytics_excluded_get`、`analytics_excluded_put`）。
 - 只读数据库层总以 `501` 拒绝的操作，即会写入微信数据库的操作（`chat update-message`、`chat delete-message`、`chat mark-read`、`chat anti-revoke install/uninstall`、带 `install` 或 `uninstall` 的 `sns block-delete`、`sns delete`）和 `sns block-delete check`，带有 `"x-weflow-refused": true`，也没有 `200` 回复，客户端可以不提供它们。
 - `GET` 和 `DELETE` 把参数列为查询参数，其他方法列为 JSON 请求体；两种写法对所有方法都有效（见[参数](#参数)）。类型来自 CLI：数字、开关、列表和可选值。
-- 响应描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`。能成功的命令都描述了 `data` 的结构（#399、#430），只有 `chat contact`（联系人的原始行）和 `config get`（任意键的值）除外，类型放在 `components/schemas` 下（`Session`、`ParsedMessage`、`Contact`、`ResourcePage`、`SessionDetail` 等），`Job` 和 `Error` 也一样。以请求的 ID 为键的回复（`chat statuses`、`chat counts`）是一个对象，用 `additionalProperties` 说明值的类型。这些类型就是命令回复所用的 Rust 结构体（`weflow_core::contract`），所以描述不会和回复脱节。类型的说明是英文的。时间除非字段另有说明，都是 Unix 秒；可能超过 2^53 的微信 ID 用字符串；没有内容的可选字段直接省略，可为空的字段则为 `null`。微信自己的表的原始行（不带 `parsed` 时）是 `Row`，一个列由微信决定的对象。能成功的命令没有描述时，`every_answer_is_described`（serve_api/openapi.rs）会失败。
+- 响应描述外层格式（`{"success", "data"}` 或 `{"success", "error"}`）、作业和 `?return=file`。能成功的命令都描述了 `data` 的结构（#399、#430），只有 `chat contact`（联系人的原始行）和 `config get`（任意键的值）除外，类型放在 `components/schemas` 下（`Session`、`ParsedMessage`、`MessageRow`、`SearchHit`、`Contact`、`ResourcePage`、`SessionDetail` 等），`Job` 和 `Error` 也一样。以请求的 ID 为键的回复（`chat statuses`、`chat counts`）是一个对象，用 `additionalProperties` 说明值的类型。这些类型就是命令回复所用的 Rust 结构体（`weflow_core::contract`），所以描述不会和回复脱节。类型的说明是英文的。时间除非字段另有说明，都是 Unix 秒；可能超过 2^53 的微信 ID 用字符串；没有内容的可选字段直接省略，可为空的字段则为 `null`。微信自己的表的原始行（不带 `parsed` 时）是 `Row`，一个列由微信决定的对象。能成功的命令没有描述时，`every_answer_is_described`（serve_api/openapi.rs）会失败。
 - `web/contract/openapi.json` 只保存这些类型，不含帮助文字，也不含任何与构建相关的内容；WebUI 的类型由它生成（见 web/README.zh-CN.md）。它与代码的回复不一致时，有测试会失败；改了类型之后，用 `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_` 重新生成，同时会重新生成 `web/contract/samples.json`。
 - 契约从两边测试（#400）。`web/contract/samples.json` 里是 weflow-cli 用固定的行构造的各类回复样本，每个都带着客户端可能读错的边界：超过 2^53 和超过 i64 的 ID、没写发送者的行、跨过午夜的日期、两个数据库里相同的 `sort_seq`、还有下一页和已到最后一页的分页、各种状态的任务；WebUI 的测试把它们交给网页自己的代码处理。weflow-cli 有测试拿快照的 schema 校验这些样本，并确认改坏它们（ID 写成数字、可选字段写成 `null`、去掉游标、未知的状态）后校验会失败。`answers_fit_the_contract`（tests/serve_api.rs）在消息分布于三个数据库的账号上，校验运行中的服务端在进程内和子进程里给出的回复；从游标向前、向后翻完消息和资源，确认每条只出现一次；并用 `Failure` 校验失败的回复，用 `Job` 校验任务。契约描述的是完整的回复：`fields` 会去掉没要的键；带不带 `parsed` 的回复也都符合 `Row`，所以测试单独校验解析后的结构。
 - `/health`、`/health/events`、`/openapi.json`、`/jobs` 和 `/api/push/messages` 归在 `server` 标签下；[进程内读取](#进程内读取)有各自的操作，如 `api_chat_sessions`。
@@ -241,7 +241,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `2`（解析过的消息的 `serverId` 改为字符串（#399）、`messageKey` 不再带数据库的路径（#443）之前是 `1`）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
+客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `3`（解析过的消息的 `serverId` 改为字符串（#399）、`messageKey` 不再带数据库的路径（#443）之前是 `1`；`chat messages`、`chat latest` 和 `chat message` 不带 `parsed` 时返回的行改为 `MessageRow`（各列有了明确类型，并改用驼峰命名），`chat search` 的结果改为 `SearchHit`（即 `MessageRow` 加上 `_session_id`，#492）之前是 `2`）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
 
 ```json
 {"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41", "lang": "en",

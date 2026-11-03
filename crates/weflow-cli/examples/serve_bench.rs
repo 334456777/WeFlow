@@ -81,9 +81,11 @@ const UNINDEXED: i64 = 50;
 /// Moments of the synthetic account, from its friends in turn.
 const SNS_POSTS: i64 = 2000;
 /// How long the push engine's CPU time is measured on the real account, idle and with a listener.
-/// The columns a chat window shows of a message, and a list of a contact (`?fields=`).
+/// The columns a chat window shows of a message, and a list of a contact (`?fields=`). A message's are named both
+/// ways: as WeChat's columns until API 3, and as `MessageRow`'s (#492), so a server of either API keeps them.
 const MESSAGE_FIELDS: &str =
-    "local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,_cursor";
+    "local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,\
+     localId,serverId,localType,sortSeq,createTime,sender,isSend,content,_cursor";
 const CONTACT_FIELDS: &str = "username,alias,remark,nick_name,small_head_url,local_type";
 const PUSH_WINDOW: Duration = Duration::from_secs(10);
 
@@ -736,7 +738,7 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
         .both(&format!("/chat/messages?session-id={room}&limit=5"), &[])
         .and_then(|d| {
             for m in rows(&d) {
-                let i = number(field(&m, &["local_id"])).unwrap_or(0);
+                let i = number(field(&m, &["local_id", "localId"])).unwrap_or(0);
                 ensure!(
                     m["_cursor"] == cursor(i).as_str(),
                     "message {i}: cursor {}",
@@ -814,7 +816,9 @@ fn check_answers<'a>(addr: &'a str, data: &Path, args: &Args) -> Checks<'a> {
             let hits = rows(&d);
             ensure!(!hits.is_empty() && hits.len() <= 20, "{} hits", hits.len());
             for m in &hits {
-                let content = m["message_content"].as_str().unwrap_or("");
+                let content = field(m, &["message_content", "content"])
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 ensure!(
                     content.contains(CHECKED_KEYWORD),
                     "a hit without the keyword"

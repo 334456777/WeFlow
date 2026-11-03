@@ -513,30 +513,22 @@ impl ServiceHub {
                         .collect::<Vec<_>>()
                         .join(" ")
                 };
-                let desc = norm(post["contentDesc"].as_str().unwrap_or(""));
-                let text = if !desc.is_empty() {
-                    desc
-                } else {
-                    let t = norm(post["linkTitle"].as_str().unwrap_or(""));
-                    if t.is_empty() {
-                        return None;
-                    } else {
-                        fill(
-                            tr("[Link] {linkTitle}", "[链接] {linkTitle}"),
-                            &[("linkTitle", t)],
-                        )
-                    }
-                };
+                let text = norm(&post.content_desc);
+                if text.is_empty() {
+                    return None;
+                }
                 let short = if text.chars().count() > 180 {
                     format!("{}...", text.chars().take(180).collect::<String>())
                 } else {
                     text
                 };
-                let ts = post["createTime"]
-                    .as_f64()
-                    .filter(|n| *n > 0.0)
-                    .map(crate::num::saturating_i64)
-                    .map(|n| if n > 1_000_000_000_000 { n } else { n * 1000 });
+                let ts = Some(post.create_time).filter(|n| *n > 0).map(|n| {
+                    if n > 1_000_000_000_000 {
+                        n
+                    } else {
+                        n * 1000
+                    }
+                });
                 let time = ts
                     .and_then(|ms| Local.timestamp_millis_opt(ms).single())
                     .map(|d| d.format("%Y/%m/%d %H:%M:%S").to_string())

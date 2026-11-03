@@ -472,8 +472,8 @@ pub(super) fn contract() -> &'static Contract {
         use schemars::generate::SchemaSettings;
         use weflow_core::contract::{
             AnnualReport, BizMessages, CacheUsage, ChatStatus, Contact, DbAccounts, DbCandidates, DbConnection, DualReport, ExportStats, Footprint, ContactRank, ExcludeCandidate, GroupChat, GroupHours, GroupMedia, GroupMembers, GroupRank, ImageInfo, InsightCleared, InsightLookup, InsightMarked, InsightRecords, InsightReply, InsightScan, InsightTodayStat,
-            MemberAnalytics, MemberMessages, MessageLookup, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
-            ResourcePage, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
+            MemberAnalytics, MemberMessages, MessageLookup, MessageRow, OverallStatistics, ParsedMessage, PayRecords, ProfileSummary, ReportYears, RuntimeInfo,
+            ResourcePage, SearchHit, Session, SnsStats, SnsTimeline, SnsUsers, TransferNames, UserPosts,
             SessionDateCounts, SessionDates, SessionDetail, SessionFacts, SessionTables, TabCounts,
             TimeDistribution,
         };
@@ -483,18 +483,29 @@ pub(super) fn contract() -> &'static Contract {
             .into_generator();
         let of = |schema: schemars::Schema| schema.to_value();
         let rows = json!({ "type": "array", "items": { "$ref": "#/components/schemas/Row" } });
-        let parsed_or_rows = |parsed: Value, what: &str| {
+        let parsed_or = |parsed: Value, what: &str, raw: Value| {
             json!({
-                "description": format!("With `parsed=true`, {what} as the chat window shows them; else the rows of WeChat's table, each with its `_cursor`"),
-                "anyOf": [parsed, rows.clone()],
+                "description": format!("With `parsed=true`, {what} as the chat window shows them; else as WeChat keeps them, each with its `_cursor`"),
+                "anyOf": [parsed, raw],
             })
         };
         let mut data = std::collections::BTreeMap::new();
         data.insert("chat sessions", of(generator.subschema_for::<Vec<Session>>()));
         let messages = of(generator.subschema_for::<Vec<ParsedMessage>>());
-        data.insert("chat messages", parsed_or_rows(messages.clone(), "the messages"));
-        data.insert("chat search", parsed_or_rows(messages, "the hits, each with its `_session_id`,"));
-        data.insert("chat latest", rows.clone());
+        let message_rows = of(generator.subschema_for::<Vec<MessageRow>>());
+        data.insert(
+            "chat messages",
+            parsed_or(messages.clone(), "the messages", message_rows.clone()),
+        );
+        data.insert(
+            "chat search",
+            parsed_or(
+                messages,
+                "the hits, each with its `_session_id`,",
+                of(generator.subschema_for::<Vec<SearchHit>>()),
+            ),
+        );
+        data.insert("chat latest", message_rows);
         data.insert(
             "chat message",
             json!({
@@ -591,7 +602,7 @@ pub(super) fn contract() -> &'static Contract {
                 "type": "object",
                 "description": "The official accounts followed: the rows of WeChat's contact table, each with `lastTime`, the time of its conversation's last message (null without one)",
                 "required": ["accounts"],
-                "properties": { "accounts": rows.clone() },
+                "properties": { "accounts": rows },
             }),
         );
         data.insert("biz messages", of(generator.subschema_for::<BizMessages>()));
@@ -1363,37 +1374,75 @@ mod tests {
     /// ends or goes on, an optional field left out, a job in each state.
     fn samples() -> Value {
         use weflow_core::contract::*;
+        use weflow_native::msg_row::MsgRow;
         use weflow_native::native_msg::MsgPos;
 
+        let row =
+            |local_id, server_id, create_time, local_type, sort_seq, content: &str, shard| MsgRow {
+                local_id,
+                server_id,
+                local_type,
+                sort_seq: Some(sort_seq),
+                create_time: Some(create_time),
+                content: content.into(),
+                shard,
+                ..MsgRow::default()
+            };
+        let file_xml = "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen>\
+                        <fileext>pdf</fileext></appattach></appmsg></msg>";
         let rows = [
-            json!({ "local_id": 1, "server_id": "9007199254740993", "create_time": 1700000000, "local_type": 1,
-                "sort_seq": 1700000000000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content": "hello",
-                "db_name": "message_0" }),
-            json!({ "local_id": 2, "server_id": "18446744073709551615", "create_time": 1700000060, "local_type": 49,
-                "sort_seq": 1700000060000i64, "is_send": 1, "message_content":
-                "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen>\
-                 <fileext>pdf</fileext></appattach></appmsg></msg>", "db_name": "message_0" }),
-            json!({ "local_id": 3, "server_id": "0", "create_time": 1700000120, "local_type": 49,
-                "sort_seq": 1700000120000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content":
-                "<msg><appmsg><type>57</type><title>yes</title><refermsg><type>1</type>\
-                 <displayname>Me</displayname><content>are you there?</content></refermsg></appmsg></msg>",
-                "db_name": "message_0" }),
-            // the last second of 2023 in UTC, and a row that says neither who sent it nor whether I did
-            json!({ "local_id": 4, "server_id": "0", "create_time": 1704067199, "local_type": 10000,
-                "sort_seq": 1704067199000i64, "message_content": "\"Bob\" 撤回了一条消息", "db_name": "message_1" }),
+            MsgRow {
+                sender: Some("wxid_bob".into()),
+                ..row(1, Some(9_007_199_254_740_993), 1700000000, 1, 1700000000000, "hello", 0)
+            },
+            MsgRow {
+                is_send: true,
+                ..row(2, None, 1700000060, 49, 1700000060000, file_xml, 0)
+            },
+            MsgRow {
+                sender: Some("wxid_bob".into()),
+                ..row(
+                    3,
+                    None,
+                    1700000120,
+                    49,
+                    1700000120000,
+                    "<msg><appmsg><type>57</type><title>yes</title><refermsg><type>1</type>\
+                     <displayname>Me</displayname><content>are you there?</content></refermsg></appmsg></msg>",
+                    0,
+                )
+            },
+            // the last second of 2023 in UTC
+            row(4, None, 1704067199, 10000, 1704067199000, "\"Bob\" 撤回了一条消息", 1),
             // the next second, in another database, with the same sort_seq as the row before
-            json!({ "local_id": 1, "server_id": "9007199254740995", "create_time": 1704067200, "local_type": 3,
-                "sort_seq": 1704067199000i64, "is_send": 1, "sender_username": "wxid_me", "message_content":
-                "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>", "db_name": "message_2" }),
+            MsgRow {
+                is_send: true,
+                sender: Some("wxid_me".into()),
+                ..row(
+                    1,
+                    Some(9_007_199_254_740_995),
+                    1704067200,
+                    3,
+                    1704067199000,
+                    "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
+                    2,
+                )
+            },
         ];
-        let cursor = |row: &Value| MsgPos::of_row(row).unwrap().token();
-        let parsed: Vec<ParsedMessage> = weflow_core::chat_msg::map_rows(&rows, "wxid_me")
+        let cursors: Vec<String> = rows.iter().map(|row| row.pos().token()).collect();
+        let mut messages =
+            weflow_core::chat_msg::map_msg_rows(rows.to_vec(), "wxid_bob", "wxid_me");
+        // an id past i64, which no row holds but the answer's string can, and a message that says neither who sent
+        // it nor whether I did
+        messages[1].server_id_raw = "18446744073709551615".into();
+        messages[3].is_send = None;
+        let parsed: Vec<ParsedMessage> = messages
             .into_iter()
-            .zip(&rows)
+            .zip(cursors)
             .enumerate()
-            .map(|(i, (message, row))| ParsedMessage {
+            .map(|(i, (message, cursor))| ParsedMessage {
                 message,
-                cursor: Some(cursor(row)),
+                cursor: Some(cursor),
                 // the first is a hit of `chat search`
                 session_id: (i == 0).then(|| "wxid_bob".to_string()),
             })
@@ -1475,7 +1524,7 @@ mod tests {
             server_id_raw: Some("18446744073709551615".into()),
             create_time: 1700000060,
             local_type: 49,
-            content: rows[1]["message_content"].as_str().unwrap().into(),
+            content: file_xml.into(),
             sender_username: "wxid_me".into(),
             is_send: true,
             file_name: Some("report.pdf".into()),
@@ -1520,13 +1569,66 @@ mod tests {
                 next_cursor: None,
             },
         ];
+        // the rows of `chat messages` without `parsed` (#492): a text, an app message without a sender, and one with
+        // neither a server id nor a sort_seq
+        let message_rows = [
+            MessageRow {
+                local_id: 1,
+                server_id: Some("9007199254740993".into()),
+                local_type: 1,
+                sort_seq: Some(1700000000000),
+                create_time: Some(1700000000),
+                status: Some(3),
+                sender: Some("wxid_bob".into()),
+                is_send: false,
+                content: "hello".into(),
+                source: Some("<msgsource><signature>v1_abc</signature></msgsource>".into()),
+                packed_info: None,
+                shard: 0,
+                cursor: "1700000000000.1700000000.1.0".into(),
+            },
+            MessageRow {
+                local_id: 2,
+                server_id: Some("-1".into()),
+                local_type: 21474836529,
+                sort_seq: Some(1700000060000),
+                create_time: Some(1700000060),
+                status: None,
+                sender: None,
+                is_send: true,
+                content: "<msg><appmsg><type>5</type><title>link</title></appmsg></msg>".into(),
+                source: None,
+                packed_info: Some("0a0b0c".into()),
+                shard: 1,
+                cursor: "1700000060000.1700000060.2.1".into(),
+            },
+            MessageRow {
+                local_id: 9,
+                server_id: None,
+                local_type: 10000,
+                sort_seq: None,
+                create_time: Some(1700000120),
+                status: None,
+                sender: None,
+                is_send: false,
+                content: String::new(),
+                source: None,
+                packed_info: None,
+                shard: 0,
+                cursor: "1700000120000.1700000120.9.0".into(),
+            },
+        ];
+        let hits = [SearchHit {
+            row: message_rows[0].clone(),
+            session_id: "wxid_bob".into(),
+        }];
         let lookups = [
             MessageLookup {
-                row: rows[0].clone(),
+                row: message_rows[0].clone(),
                 message: Some(MessageView::of(&image, "wxid_me")),
             },
             MessageLookup {
-                row: json!({ "local_id": 9, "local_type": 1 }),
+                row: message_rows[2].clone(),
                 message: None,
             },
         ];
@@ -1623,6 +1725,8 @@ mod tests {
             "Contact": contacts,
             "ResourcePage": pages,
             "MessageLookup": lookups,
+            "MessageRow": message_rows,
+            "SearchHit": hits,
             "Error": errors,
             "Job": jobs,
         })
@@ -1728,6 +1832,19 @@ mod tests {
         broken("MessageLookup", 1, &|v| {
             v.as_object_mut().unwrap().remove("message");
         });
+        broken("MessageRow", 0, &|v| {
+            v["serverId"] = json!(9007199254740993u64)
+        });
+        broken("MessageRow", 1, &|v| {
+            v.as_object_mut().unwrap().remove("_cursor");
+        });
+        broken("MessageRow", 2, &|v| v["isSend"] = json!(0));
+        broken("SearchHit", 0, &|v| {
+            v.as_object_mut().unwrap().remove("_session_id");
+        });
+        broken("SearchHit", 0, &|v| {
+            v.as_object_mut().unwrap().remove("localId");
+        });
         broken("Error", 0, &|v| {
             v.as_object_mut().unwrap().remove("code");
         });
@@ -1773,6 +1890,8 @@ mod tests {
             "ResourcePage",
             "Job",
             "Error",
+            "MessageRow",
+            "SearchHit",
             "Row",
             "Failure",
         ] {

@@ -1,8 +1,7 @@
 //! Where every HTTP client of weflow is made (#371). reqwest 0.13's own TLS provider for rustls is aws-lc-rs, which
-//! needs a C toolchain (and NASM on x86-64 Windows) on every target weflow ships for; weflow keeps ring, as with
-//! reqwest 0.12, and installs it as rustls' process-wide provider before the first client. A client made without
-//! this panics on its first build. Certificates are checked against the system's store (rustls-platform-verifier),
-//! no longer against a list built into the binary.
+//! needs a C toolchain (and NASM on x86-64 Windows) on every target weflow ships for; weflow uses ring
+//! instead and installs it as rustls' process-wide provider before the first client. A client made without
+//! this panics on its first build. Certificates are checked against the system's store (rustls-platform-verifier).
 use std::sync::Once;
 
 /// `reqwest::Client::builder()`, with ring installed as the TLS provider.

@@ -211,11 +211,93 @@ impl MessageView {
     }
 }
 
-/// `chat message` without `parsed`: the row of WeChat's table, and the message as the query commands list it.
+/// A message as WeChat keeps it (`chat messages` and `chat latest` without `parsed`, the `row` of `chat message`): its
+/// columns read with their types, the text inflated and decoded, the sender resolved (#257, #492).
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageRow {
+    /// Unique within its message database (`shard`), not across them.
+    pub local_id: i64,
+    /// A decimal string, as it may pass 2^53; left out when the message has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
+    /// The type, with an app message's sub-type in the high 32 bits (`(sub << 32) | 49`).
+    pub local_type: i64,
+    /// Its place in the chat's order (the send time in milliseconds and a counter); left out when WeChat stored none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_seq: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<i64>,
+    /// The sender's username; left out when WeChat's table of names has none for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    /// Whether the account's owner sent it.
+    pub is_send: bool,
+    /// The text, or the XML of a message that is not text, inflated and decoded.
+    pub content: String,
+    /// The `msgsource` XML (mentions, the group's member count, …).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// WeChat's packed info (protobuf), in lowercase hex.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub packed_info: Option<String>,
+    /// The `<n>` of the `message_<n>.db` holding it.
+    pub shard: u32,
+    /// Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
+    /// It is opaque; only the server reads it.
+    #[serde(rename = "_cursor")]
+    pub cursor: String,
+}
+
+impl From<weflow_native::msg_row::MsgRow> for MessageRow {
+    fn from(row: weflow_native::msg_row::MsgRow) -> Self {
+        let cursor = row.pos().token();
+        Self {
+            local_id: row.local_id,
+            server_id: row.server_id.map(|id| id.to_string()),
+            local_type: row.local_type,
+            sort_seq: row.sort_seq,
+            create_time: row.create_time,
+            status: row.status,
+            sender: row.sender,
+            is_send: row.is_send,
+            content: row.content,
+            source: row.source,
+            packed_info: row
+                .packed_info
+                .as_deref()
+                .map(weflow_native::native_db::hex),
+            shard: row.shard,
+            cursor,
+        }
+    }
+}
+
+/// A hit of `chat search` without `parsed`: the message as WeChat keeps it, and its conversation.
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
+pub struct SearchHit {
+    #[serde(flatten)]
+    pub row: MessageRow,
+    /// The conversation the message is in.
+    #[serde(rename = "_session_id")]
+    pub session_id: String,
+}
+
+impl From<weflow_native::native_media::SessionRow<weflow_native::msg_row::MsgRow>> for SearchHit {
+    fn from(hit: weflow_native::native_media::SessionRow<weflow_native::msg_row::MsgRow>) -> Self {
+        Self {
+            row: hit.row.into(),
+            session_id: hit.session_id,
+        }
+    }
+}
+
+/// `chat message` without `parsed`: the message as WeChat keeps it, and as the query commands list it.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct MessageLookup {
-    /// The row, with its columns.
-    pub row: serde_json::Value,
+    pub row: MessageRow,
     /// Null when the row could not be read as a message.
     pub message: Option<MessageView>,
 }
@@ -914,17 +996,6 @@ pub struct DualStreak {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SnsTimeline {
     pub timeline: Vec<SnsPost>,
-}
-
-impl SnsTimeline {
-    /// The posts as the service builds them (`sns::enrich_post`, with `with-media` `sns_enrich_timeline_media`), read
-    /// into the contract's types. A field they do not know fails here rather than leave the answer unseen; a test
-    /// reads every field back out the same.
-    pub fn of(posts: Vec<serde_json::Value>) -> crate::error::AppResult<Self> {
-        let timeline = serde_json::from_value(serde_json::Value::Array(posts))
-            .map_err(|err| crate::error::AppError::runtime(format!("a Moments post: {err}")))?;
-        Ok(Self { timeline })
-    }
 }
 
 /// A Moments post.
@@ -2183,8 +2254,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// A post as `sns timeline` builds it reads into [`SnsPost`] and writes back out the same, every field of it: a
-    /// field `sns::enrich_post` gains or loses fails here before it is lost from the answer.
+    /// A post as `sns timeline` builds it writes out and reads back into [`SnsPost`] the same, every field of it.
     #[test]
     fn a_moments_post_reads_into_the_contract_and_back_the_same() {
         let xml = r#"<TimelineObject><id>1395</id><createTime>1700000000</createTime>
@@ -2204,10 +2274,11 @@ mod tests {
             display_name: Some("Bobby".into()),
             avatar_url: Some("https://wx.qlogo.cn/b".into()),
         };
-        let post = crate::sns::enrich_post(
-            &weflow_native::native_sns::parse_post(2001, "wxid_bob", xml),
+        let built = crate::sns::enrich_post(
+            weflow_native::native_sns::parse_post_as(2001, "wxid_bob", xml),
             Some(&contact),
         );
+        let post = serde_json::to_value(&built).unwrap();
         let typed: SnsPost = serde_json::from_value(post.clone()).unwrap();
         assert_eq!(serde_json::to_value(&typed).unwrap(), post);
         // the test has every kind of field to lose
@@ -2238,13 +2309,16 @@ mod tests {
 
     #[test]
     fn a_server_id_past_2_53_keeps_every_digit_and_only_the_fields_of_the_contract_are_written() {
-        let rows = [json!({
-            "local_id": 5, "server_id": "9007199254740993", "create_time": 1700000000, "local_type": 49,
-            "sort_seq": 1700000000000i64, "message_content":
-                "<msg><appmsg><type>6</type><title>a.pdf</title></appmsg></msg>",
-            "_db_path": "/a/message_0.db",
-        })];
-        let message = crate::chat_msg::map_rows(&rows, "wxid_me").remove(0);
+        let row = weflow_native::msg_row::MsgRow {
+            local_id: 5,
+            server_id: Some(9_007_199_254_740_993),
+            create_time: Some(1700000000),
+            local_type: 49,
+            sort_seq: Some(1700000000000),
+            content: "<msg><appmsg><type>6</type><title>a.pdf</title></appmsg></msg>".into(),
+            ..Default::default()
+        };
+        let message = crate::chat_msg::map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
         let doc = json!(ParsedMessage {
             message,
             cursor: Some("1.2.3".into()),

@@ -8,15 +8,12 @@ use aes::cipher::{block_padding::Pkcs7, BlockModeDecrypt, KeyInit, KeyIvInit};
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes128Gcm, Aes256Gcm, Nonce};
 use md5::{Digest, Md5};
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 
+use crate::contract::{SnsComment, SnsEmoji, SnsLivePhoto, SnsLocation, SnsMedia, SnsPost};
 use crate::message::rx;
 
 // ───────────────────────── small JS-compat helpers ─────────────────────────
-
-fn s_of(v: Option<&Value>) -> Option<String> {
-    v.and_then(Value::as_str).map(str::to_string)
-}
 
 /// `typeof value === 'string' && trim().length > 0 ? trimmed : undefined`
 pub fn to_optional_string(v: Option<&Value>) -> Option<String> {
@@ -27,21 +24,6 @@ pub fn to_optional_string(v: Option<&Value>) -> Option<String> {
 fn opt_str(s: &str) -> Option<String> {
     let t = s.trim();
     (!t.is_empty()).then(|| t.to_string())
-}
-
-/// JS `a ?? b ?? c` over JSON values (null and missing both fall through).
-fn coalesce<'a>(items: &[Option<&'a Value>]) -> Option<&'a Value> {
-    items.iter().flatten().find(|v| !v.is_null()).copied()
-}
-
-fn truthy(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0 && !f.is_nan()).unwrap_or(true),
-        Some(_) => true,
-    }
 }
 
 /// JS `parseFloat` (leading numeric prefix).
@@ -60,26 +42,12 @@ fn parse_int(s: &str) -> Option<i64> {
     m.as_str().trim().parse::<i64>().ok()
 }
 
-fn to_optional_number(v: Option<&Value>) -> Option<f64> {
-    match v? {
-        Value::Number(n) => n.as_f64().filter(|f| f.is_finite()),
-        Value::String(s) => {
-            let t = s.trim();
-            if t.is_empty() {
-                None
-            } else {
-                parse_float(t)
-            }
-        }
-        _ => None,
-    }
-}
-
-fn num_value(f: f64) -> Value {
+/// A JS number as JSON writes it: a whole one as an integer.
+fn json_number(f: f64) -> Option<serde_json::Number> {
     if f.fract() == 0.0 && f.abs() < 9.0e15 {
-        json!(crate::num::saturating_i64(f))
+        Some(crate::num::saturating_i64(f).into())
     } else {
-        json!(f)
+        serde_json::Number::from_f64(f)
     }
 }
 
@@ -246,7 +214,7 @@ fn tag_value(block: &str, pattern: &str) -> Option<String> {
 }
 
 /// `parseCommentsFromXml`: comments incl. emoji payloads and reply references.
-pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
+pub fn parse_comments_from_xml(xml: &str) -> Vec<SnsComment> {
     if xml.is_empty() {
         return Vec::new();
     }
@@ -261,17 +229,7 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
         None => return Vec::new(),
     };
 
-    struct Item {
-        id: String,
-        nickname: String,
-        username: Option<String>,
-        content: String,
-        ref_comment_id: String,
-        ref_username: Option<String>,
-        ref_nickname: Option<String>,
-        emojis: Vec<Value>,
-    }
-    let mut items: Vec<Item> = Vec::new();
+    let mut items: Vec<SnsComment> = Vec::new();
     let item_re = rx(
         r"(?is)<(?:CommentUser|commentUser|comment|user_comment)>(.*?)</(?:CommentUser|commentUser|comment|user_comment)>",
     );
@@ -312,37 +270,20 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
             let encrypt_url = enc.map(|u| u.trim().replace("&amp;", "&"));
             let aes_key = aes.map(|a| a.trim().to_string());
             if !url.is_empty() || encrypt_url.as_deref().is_some_and(|u| !u.is_empty()) {
-                let mut o = Map::new();
-                o.insert("url".into(), json!(url));
-                o.insert(
-                    "md5".into(),
-                    json!(md5.map(|m| m.trim().to_string()).unwrap_or_default()),
-                );
-                o.insert(
-                    "width".into(),
-                    w.and_then(|w| parse_int(&w))
-                        .map(|n| json!(n))
-                        .unwrap_or(Value::Null),
-                );
-                o.insert(
-                    "height".into(),
-                    h.and_then(|h| parse_int(&h))
-                        .map(|n| json!(n))
-                        .unwrap_or(Value::Null),
-                );
-                if let Some(e) = encrypt_url.filter(|e| !e.is_empty()) {
-                    o.insert("encryptUrl".into(), json!(e));
-                }
-                if let Some(a) = aes_key.filter(|a| !a.is_empty()) {
-                    o.insert("aesKey".into(), json!(a));
-                }
-                emojis.push(Value::Object(o));
+                emojis.push(SnsEmoji {
+                    url,
+                    md5: md5.map(|m| m.trim().to_string()).unwrap_or_default(),
+                    width: w.and_then(|w| parse_int(&w)),
+                    height: h.and_then(|h| parse_int(&h)),
+                    encrypt_url: encrypt_url.filter(|e| !e.is_empty()),
+                    aes_key: aes_key.filter(|a| !a.is_empty()),
+                });
             }
         }
 
         if nickname.is_some() && (content.is_some() || !emojis.is_empty()) {
             let ref_id = ref_id.map(|r| r.trim().to_string()).unwrap_or_default();
-            items.push(Item {
+            items.push(SnsComment {
                 id: id.map(|i| i.trim().to_string()).unwrap_or_else(|| {
                     format!(
                         "cmt_{}_{}",
@@ -378,28 +319,6 @@ pub fn parse_comments_from_xml(xml: &str) -> Vec<Value> {
     }
 
     items
-        .into_iter()
-        .map(|c| {
-            let mut o = Map::new();
-            o.insert("id".into(), json!(c.id));
-            o.insert("nickname".into(), json!(c.nickname));
-            if let Some(u) = c.username {
-                o.insert("username".into(), json!(u));
-            }
-            o.insert("content".into(), json!(c.content));
-            o.insert("refCommentId".into(), json!(c.ref_comment_id));
-            if let Some(u) = c.ref_username {
-                o.insert("refUsername".into(), json!(u));
-            }
-            if let Some(n) = c.ref_nickname {
-                o.insert("refNickname".into(), json!(n));
-            }
-            if !c.emojis.is_empty() {
-                o.insert("emojis".into(), Value::Array(c.emojis));
-            }
-            Value::Object(o)
-        })
-        .collect()
 }
 
 #[derive(Clone, Debug, Default)]
@@ -465,141 +384,11 @@ pub fn parse_likes_from_xml(xml: &str) -> Vec<String> {
         .collect()
 }
 
-fn attr(attrs: &str, name: &str) -> Option<String> {
-    rx(&format!(r#"(?i){}="([^"]+)""#, regex::escape(name)))
-        .captures(attrs)
-        .map(|c| c[1].to_string())
-}
-
-/// `parseMediaFromXml` (only used when the DLL does not hand back parsed media).
-pub fn parse_media_from_xml(xml: &str) -> (Vec<Value>, Option<String>) {
-    let mut media = Vec::new();
-    if xml.is_empty() {
-        return (media, None);
-    }
-    let video_key = extract_video_key(xml);
-    for m in rx(r"(?is)<media>(.*?)</media>").captures_iter(xml) {
-        let mx = &m[1];
-        let url = tag_value(mx, r"(?i)<url[^>]*>([^<]+)</url>");
-        let url_attrs = tag_value(mx, r"(?i)<url([^>]*)>").unwrap_or_default();
-        let thumb = tag_value(mx, r"(?i)<thumb[^>]*>([^<]+)</thumb>");
-        let thumb_attrs = tag_value(mx, r"(?i)<thumb([^>]*)>").unwrap_or_default();
-
-        let (url_token, url_key, url_md5, url_enc) = (
-            attr(&url_attrs, "token"),
-            attr(&url_attrs, "key"),
-            attr(&url_attrs, "md5"),
-            attr(&url_attrs, "enc_idx"),
-        );
-        let (thumb_token, thumb_key, thumb_enc) = (
-            attr(&thumb_attrs, "token"),
-            attr(&thumb_attrs, "key"),
-            attr(&thumb_attrs, "enc_idx"),
-        );
-
-        let mut item = Map::new();
-        item.insert(
-            "url".into(),
-            json!(url.map(|u| u.trim().to_string()).unwrap_or_default()),
-        );
-        item.insert(
-            "thumb".into(),
-            json!(thumb.map(|u| u.trim().to_string()).unwrap_or_default()),
-        );
-        for (k, v) in [
-            ("token", url_token.or(thumb_token)),
-            ("key", url_key.or(thumb_key)),
-            ("md5", url_md5),
-            ("encIdx", url_enc.or(thumb_enc)),
-        ] {
-            if let Some(v) = v {
-                item.insert(k.into(), json!(v));
-            }
-        }
-
-        if let Some(lp) = rx(r"(?is)<livePhoto>(.*?)</livePhoto>").captures(mx) {
-            let lx = &lp[1];
-            let lp_url = tag_value(lx, r"(?i)<url[^>]*>([^<]+)</url>");
-            let lp_url_attrs = tag_value(lx, r"(?i)<url([^>]*)>").unwrap_or_default();
-            let lp_thumb = tag_value(lx, r"(?i)<thumb[^>]*>([^<]+)</thumb>");
-            let lp_thumb_attrs = tag_value(lx, r"(?i)<thumb([^>]*)>").unwrap_or_default();
-            let token = attr(&lp_url_attrs, "token").or_else(|| attr(&lp_thumb_attrs, "token"));
-            let key = attr(&lp_url_attrs, "key").or_else(|| attr(&lp_thumb_attrs, "key"));
-            let enc = attr(&lp_url_attrs, "enc_idx");
-            let mut live = Map::new();
-            live.insert(
-                "url".into(),
-                json!(lp_url.map(|u| u.trim().to_string()).unwrap_or_default()),
-            );
-            live.insert(
-                "thumb".into(),
-                json!(lp_thumb.map(|u| u.trim().to_string()).unwrap_or_default()),
-            );
-            for (k, v) in [("token", token), ("key", key), ("encIdx", enc)] {
-                if let Some(v) = v {
-                    live.insert(k.into(), json!(v));
-                }
-            }
-            item.insert("livePhoto".into(), Value::Object(live));
-        }
-        media.push(Value::Object(item));
-    }
-    (media, video_key)
-}
-
 // ───────────────────────── location ─────────────────────────
 
-const LOCATION_FIELDS: [&str; 8] = [
-    "latitude",
-    "longitude",
-    "city",
-    "country",
-    "poiName",
-    "poiAddress",
-    "poiAddressName",
-    "label",
-];
-
-fn build_location(values: Vec<(&str, Option<Value>)>) -> Option<Value> {
-    let mut o = Map::new();
-    for key in LOCATION_FIELDS {
-        if let Some((_, Some(v))) = values.iter().find(|(k, _)| *k == key) {
-            o.insert(key.into(), v.clone());
-        }
-    }
-    (!o.is_empty()).then(|| Value::Object(o))
-}
-
-pub fn normalize_location(input: Option<&Value>) -> Option<Value> {
-    let row = input?.as_object()?;
-    let text = |keys: &[&str]| -> Option<Value> {
-        let v = keys
-            .iter()
-            .filter_map(|k| row.get(*k))
-            .find(|v| !v.is_null())?;
-        let s = v.as_str()?;
-        to_optional_string(Some(&json!(decode_xml_text(s)))).map(Value::from)
-    };
-    let number = |keys: &[&str]| -> Option<Value> {
-        let vals: Vec<Option<&Value>> = keys.iter().map(|k| row.get(*k)).collect();
-        to_optional_number(coalesce(&vals)).map(num_value)
-    };
-    build_location(vec![
-        ("latitude", number(&["latitude", "lat", "x"])),
-        ("longitude", number(&["longitude", "lng", "y"])),
-        ("city", text(&["city"])),
-        ("country", text(&["country"])),
-        ("poiName", text(&["poiName", "poiname"])),
-        ("poiAddress", text(&["poiAddress", "poiaddress"])),
-        (
-            "poiAddressName",
-            text(&["poiAddressName", "poiaddressname"]),
-        ),
-        ("label", text(&["label"])),
-    ])
-}
-
-pub fn parse_location_from_xml(xml: &str) -> Option<Value> {
+/// `parseLocationFromXml`: the `<location>` of a post, its attributes first and then its child tags; none when it
+/// says nothing.
+pub fn parse_location_from_xml(xml: &str) -> Option<SnsLocation> {
     if xml.is_empty() {
         return None;
     }
@@ -643,121 +432,37 @@ pub fn parse_location_from_xml(xml: &str) -> Option<Value> {
         None
     };
     // JS order is attr(a) || attr(b) || tag(a) || tag(b)
-    let lat = first(&["latitude", "x"]);
-    let lng = first(&["longitude", "y"]);
-    let num = |s: Option<String>| s.and_then(|s| parse_float(&s)).map(num_value);
-    build_location(vec![
-        ("latitude", num(lat)),
-        ("longitude", num(lng)),
-        ("city", first(&["city"]).map(Value::from)),
-        ("country", first(&["country"]).map(Value::from)),
-        ("poiName", first(&["poiName", "poiname"]).map(Value::from)),
-        (
-            "poiAddress",
-            first(&["poiAddress", "poiaddress"]).map(Value::from),
-        ),
-        (
-            "poiAddressName",
-            first(&["poiAddressName", "poiaddressname"]).map(Value::from),
-        ),
-        ("label", first(&["label"]).map(Value::from)),
-    ])
-}
-
-pub fn merge_location(primary: Option<&Value>, fallback: Option<&Value>) -> Option<Value> {
-    if primary.is_none() && fallback.is_none() {
-        return None;
-    }
-    let pick = |k: &str| -> Option<Value> {
-        primary
-            .and_then(|p| p.get(k))
-            .filter(|v| !v.is_null())
-            .or_else(|| fallback.and_then(|f| f.get(k)).filter(|v| !v.is_null()))
-            .cloned()
+    let num = |names: &[&str]| {
+        first(names)
+            .and_then(|s| parse_float(&s))
+            .and_then(json_number)
     };
-    build_location(LOCATION_FIELDS.iter().map(|k| (*k, pick(k))).collect())
-}
-
-// ───────────────────────── comments / timeline enrichment ─────────────────────────
-
-pub fn fix_comment_refs(comments: &[Value]) -> Vec<Value> {
-    let mut id_to_nick = std::collections::HashMap::new();
-    for (idx, c) in comments.iter().enumerate() {
-        let nick = s_of(c.get("nickname")).unwrap_or_default();
-        if let Some(id) = s_of(c.get("id")).filter(|i| !i.is_empty()) {
-            id_to_nick.insert(id, nick.clone());
-        }
-        id_to_nick.insert((idx + 1).to_string(), nick);
-    }
-    comments
+    let location = SnsLocation {
+        latitude: num(&["latitude", "x"]),
+        longitude: num(&["longitude", "y"]),
+        city: first(&["city"]),
+        country: first(&["country"]),
+        poi_name: first(&["poiName", "poiname"]),
+        poi_address: first(&["poiAddress", "poiaddress"]),
+        poi_address_name: first(&["poiAddressName", "poiaddressname"]),
+        label: first(&["label"]),
+    };
+    let said = location.latitude.is_some()
+        || location.longitude.is_some()
+        || [
+            &location.city,
+            &location.country,
+            &location.poi_name,
+            &location.poi_address,
+            &location.poi_address_name,
+            &location.label,
+        ]
         .iter()
-        .map(|c| {
-            let ref_id = s_of(c.get("refCommentId")).unwrap_or_default();
-            let mut ref_nick = s_of(c.get("refNickname")).unwrap_or_default();
-            if !ref_id.is_empty() && ref_id != "0" && ref_nick.is_empty() {
-                ref_nick = id_to_nick.get(&ref_id).cloned().unwrap_or_default();
-            }
-            let emojis: Vec<Value> = c
-                .get("emojis")
-                .and_then(Value::as_array)
-                .map(|a| a.as_slice())
-                .unwrap_or(&[])
-                .iter()
-                .filter(|e| truthy(e.get("url")) || truthy(e.get("encryptUrl")))
-                .map(|e| {
-                    let mut o = Map::new();
-                    o.insert(
-                        "url".into(),
-                        json!(s_of(e.get("url")).unwrap_or_default().replace("&amp;", "&")),
-                    );
-                    o.insert("md5".into(), json!(s_of(e.get("md5")).unwrap_or_default()));
-                    o.insert(
-                        "width".into(),
-                        if truthy(e.get("width")) {
-                            e["width"].clone()
-                        } else {
-                            json!(0)
-                        },
-                    );
-                    o.insert(
-                        "height".into(),
-                        if truthy(e.get("height")) {
-                            e["height"].clone()
-                        } else {
-                            json!(0)
-                        },
-                    );
-                    if let Some(u) = s_of(e.get("encryptUrl")).filter(|u| !u.is_empty()) {
-                        o.insert("encryptUrl".into(), json!(u.replace("&amp;", "&")));
-                    }
-                    if let Some(a) = s_of(e.get("aesKey")).filter(|a| !a.is_empty()) {
-                        o.insert("aesKey".into(), json!(a));
-                    }
-                    Value::Object(o)
-                })
-                .collect();
-            let mut o = Map::new();
-            o.insert("id".into(), json!(s_of(c.get("id")).unwrap_or_default()));
-            o.insert(
-                "nickname".into(),
-                json!(s_of(c.get("nickname")).unwrap_or_default()),
-            );
-            o.insert(
-                "content".into(),
-                json!(s_of(c.get("content")).unwrap_or_default()),
-            );
-            o.insert(
-                "refCommentId".into(),
-                json!(if ref_id == "0" { String::new() } else { ref_id }),
-            );
-            o.insert("refNickname".into(), json!(ref_nick));
-            if !emojis.is_empty() {
-                o.insert("emojis".into(), Value::Array(emojis));
-            }
-            Value::Object(o)
-        })
-        .collect()
+        .any(|v| v.is_some());
+    said.then_some(location)
 }
+
+// ───────────────────────── timeline enrichment ─────────────────────────
 
 #[derive(Clone, Debug, Default)]
 pub struct CachedContact {
@@ -765,181 +470,83 @@ pub struct CachedContact {
     pub avatar_url: Option<String>,
 }
 
-fn set_or_remove(o: &mut Map<String, Value>, key: &str, v: Option<Value>) {
-    match v {
-        Some(v) => {
-            o.insert(key.into(), v);
-        }
-        None => {
-            o.shift_remove(key);
-        }
-    }
-}
-
-fn str_or_none(s: String) -> Option<Value> {
-    Some(Value::String(s))
-}
-
-/// `getTimeline` post-processing of one raw DLL post.
-pub fn enrich_post(post: &Value, contact: Option<&CachedContact>) -> Value {
-    let mut out = post.as_object().cloned().unwrap_or_default();
-    let is_video_post = post.get("type").and_then(Value::as_i64) == Some(15);
-    let raw_xml = s_of(post.get("rawXml")).unwrap_or_default();
-    let video_key = extract_video_key(&raw_xml).or_else(|| s_of(post.get("videoKey")));
-    let location = merge_location(
-        normalize_location(post.get("location")).as_ref(),
-        parse_location_from_xml(&raw_xml).as_ref(),
-    );
-
-    let fixed_media: Vec<Value> = post
-        .get("media")
-        .and_then(Value::as_array)
-        .map(|a| a.as_slice())
-        .unwrap_or(&[])
-        .iter()
+/// `getTimeline` post-processing of one post as read: the addresses of its media fixed and their keys, its comments
+/// and location from its XML, the poster's name and avatar from `contact`.
+pub fn enrich_post(
+    post: weflow_native::native_sns::SnsPost,
+    contact: Option<&CachedContact>,
+) -> SnsPost {
+    let is_video_post = post.kind == 15;
+    let video_key = extract_video_key(&post.raw_xml).or_else(|| post.video_key.clone());
+    let media = post
+        .media
+        .into_iter()
         .map(|m| {
-            let token = s_of(m.get("token"));
             // A video in a post of another type (a row of type 1 holding one) opens with the post's video key too:
             // its own key opens neither the video nor its cover (#202)
-            let is_video = is_video_post || is_video_url(&s_of(m.get("url")).unwrap_or_default());
-            let mut o = Map::new();
-            o.insert(
-                "url".into(),
-                json!(fix_sns_url(
-                    &s_of(m.get("url")).unwrap_or_default(),
-                    token.as_deref(),
-                    is_video_post
-                )),
-            );
-            o.insert(
-                "thumb".into(),
-                json!(fix_sns_url(
-                    &s_of(m.get("thumb")).unwrap_or_default(),
-                    token.as_deref(),
-                    false
-                )),
-            );
-            for (k, v) in [
-                ("md5", m.get("md5").filter(|v| !v.is_null()).cloned()),
-                ("token", m.get("token").filter(|v| !v.is_null()).cloned()),
-                (
-                    "key",
-                    if is_video {
-                        video_key
-                            .clone()
-                            .map(Value::from)
-                            .or_else(|| m.get("key").filter(|v| !v.is_null()).cloned())
-                    } else {
-                        m.get("key").filter(|v| !v.is_null()).cloned()
-                    },
-                ),
-                (
-                    "encIdx",
-                    coalesce(&[m.get("encIdx"), m.get("enc_idx")])
-                        .filter(|v| truthy(Some(v)))
-                        .cloned(),
-                ),
-            ] {
-                if let Some(v) = v {
-                    o.insert(k.into(), v);
-                }
+            let is_video = is_video_post || is_video_url(&m.url);
+            let live_photo = m.live_photo.map(|lp| SnsLivePhoto {
+                url: fix_sns_url(&lp.url, lp.token.as_deref(), true),
+                thumb: fix_sns_url(&lp.thumb, lp.token.as_deref(), false),
+                key: video_key.clone().or(lp.key).or_else(|| m.key.clone()),
+                token: lp.token,
+                md5: lp.md5,
+                enc_idx: lp.enc_idx,
+                raw_url: None,
+                raw_thumb: None,
+                resolved_url: None,
+                resolved_thumb_url: None,
+                proxy_url: None,
+                proxy_thumb_url: None,
+            });
+            SnsMedia {
+                url: fix_sns_url(&m.url, m.token.as_deref(), is_video_post),
+                thumb: fix_sns_url(&m.thumb, m.token.as_deref(), false),
+                md5: m.md5,
+                key: if is_video {
+                    video_key.clone().or(m.key)
+                } else {
+                    m.key
+                },
+                token: m.token,
+                enc_idx: m.enc_idx,
+                raw_url: None,
+                raw_thumb: None,
+                resolved_url: None,
+                resolved_thumb_url: None,
+                proxy_url: None,
+                proxy_thumb_url: None,
+                live_photo,
             }
-            if let Some(lp) = m.get("livePhoto").filter(|v| v.is_object()) {
-                let mut live = lp.as_object().cloned().unwrap_or_default();
-                let lp_token = s_of(lp.get("token"));
-                live.insert(
-                    "url".into(),
-                    json!(fix_sns_url(
-                        &s_of(lp.get("url")).unwrap_or_default(),
-                        lp_token.as_deref(),
-                        true
-                    )),
-                );
-                live.insert(
-                    "thumb".into(),
-                    json!(fix_sns_url(
-                        &s_of(lp.get("thumb")).unwrap_or_default(),
-                        lp_token.as_deref(),
-                        false
-                    )),
-                );
-                set_or_remove(
-                    &mut live,
-                    "token",
-                    lp.get("token").filter(|v| !v.is_null()).cloned(),
-                );
-                let key = video_key
-                    .clone()
-                    .map(Value::from)
-                    .or_else(|| lp.get("key").filter(|v| truthy(Some(v))).cloned())
-                    .or_else(|| m.get("key").filter(|v| !v.is_null()).cloned());
-                set_or_remove(&mut live, "key", key);
-                set_or_remove(
-                    &mut live,
-                    "encIdx",
-                    coalesce(&[lp.get("encIdx"), lp.get("enc_idx")])
-                        .filter(|v| truthy(Some(v)))
-                        .cloned(),
-                );
-                o.insert("livePhoto".into(), Value::Object(live));
-            }
-            Value::Object(o)
         })
         .collect();
-
-    let dll_comments: Vec<Value> = post
-        .get("comments")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let has_emojis_in_dll = dll_comments.iter().any(|c| {
-        c.get("emojis")
-            .and_then(Value::as_array)
-            .is_some_and(|e| !e.is_empty())
-    });
-    let final_comments = if !dll_comments.is_empty() && (has_emojis_in_dll || raw_xml.is_empty()) {
-        fix_comment_refs(&dll_comments)
-    } else if !raw_xml.is_empty() {
-        let xml_comments = parse_comments_from_xml(&raw_xml);
-        if xml_comments.is_empty() {
-            fix_comment_refs(&dll_comments)
-        } else {
-            xml_comments
-        }
-    } else {
-        fix_comment_refs(&dll_comments)
-    };
-
-    let username = s_of(post.get("username")).unwrap_or_default();
-    let nickname = s_of(post.get("nickname"))
+    let nickname = contact
+        .and_then(|c| c.display_name.clone())
         .filter(|n| !n.is_empty())
-        .or_else(|| {
-            contact
-                .and_then(|c| c.display_name.clone())
-                .filter(|n| !n.is_empty())
-        })
-        .unwrap_or(username);
-
-    set_or_remove(
-        &mut out,
-        "avatarUrl",
-        contact.and_then(|c| c.avatar_url.clone()).map(Value::from),
-    );
-    set_or_remove(&mut out, "nickname", str_or_none(nickname));
-    out.insert("media".into(), Value::Array(fixed_media));
-    out.insert("comments".into(), Value::Array(final_comments));
-    set_or_remove(&mut out, "location", location);
-    Value::Object(out)
+        .unwrap_or_else(|| post.username.clone());
+    SnsPost {
+        comments: parse_comments_from_xml(&post.raw_xml),
+        location: parse_location_from_xml(&post.raw_xml),
+        id: post.id,
+        tid: post.tid,
+        username: post.username,
+        nickname,
+        create_time: post.create_time,
+        content_desc: post.content_desc,
+        kind: post.kind,
+        raw_xml: post.raw_xml,
+        media,
+        likes: post.likes,
+        video_key: post.video_key,
+        avatar_url: contact.and_then(|c| c.avatar_url.clone()),
+    }
 }
 
-/// `pickTimelineUsername`
-pub fn pick_timeline_username(post: &Value) -> String {
-    for k in ["username", "user_name", "userName"] {
-        if let Some(v) = post.get(k).filter(|v| !v.is_null()) {
-            return v.as_str().map(|s| s.trim().to_string()).unwrap_or_default();
-        }
-    }
-    String::new()
+/// The files an export saved next to it of one medium of a post: the picture or video, and a live photo's video.
+#[derive(Clone, Debug, Default)]
+pub struct SavedMedia {
+    pub file: Option<String>,
+    pub live: Option<String>,
 }
 
 // ───────────────────────── HTML export ─────────────────────────
@@ -952,26 +559,30 @@ fn escape_html(s: &str) -> String {
         .replace('\n', "<br>")
 }
 
-fn normalize_location_text(v: Option<&Value>) -> String {
-    let raw = s_of(v).unwrap_or_default();
+fn normalize_location_text(v: Option<&String>) -> String {
     rx(r"\s+")
-        .replace_all(&decode_xml_text(&raw), " ")
+        .replace_all(&decode_xml_text(v.map_or("", String::as_str)), " ")
         .trim()
         .to_string()
 }
 
-fn resolve_location_text(location: Option<&Value>) -> String {
-    let Some(loc) = location.filter(|l| l.is_object()) else {
+fn resolve_location_text(location: Option<&SnsLocation>) -> String {
+    let Some(loc) = location else {
         return String::new();
     };
-    let primary = ["poiName", "poiAddressName", "label", "poiAddress"]
+    let primary = [
+        &loc.poi_name,
+        &loc.poi_address_name,
+        &loc.label,
+        &loc.poi_address,
+    ]
+    .iter()
+    .map(|v| normalize_location_text(v.as_ref()))
+    .find(|s| !s.is_empty())
+    .unwrap_or_default();
+    let region = [&loc.country, &loc.city]
         .iter()
-        .map(|k| normalize_location_text(loc.get(*k)))
-        .find(|s| !s.is_empty())
-        .unwrap_or_default();
-    let region = ["country", "city"]
-        .iter()
-        .map(|k| normalize_location_text(loc.get(*k)))
+        .map(|v| normalize_location_text(v.as_ref()))
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
@@ -1021,8 +632,10 @@ pub fn zh_locale_from_ts(ts: i64) -> String {
 
 const HTML_STYLE: &str = include_str!("sns_export.css");
 
+/// The HTML export of `posts`; `saved` holds, post by post and medium by medium, the files saved of their media.
 pub fn generate_html(
-    posts: &[Value],
+    posts: &[SnsPost],
+    saved: &[Vec<SavedMedia>],
     usernames: &[String],
     keyword: Option<&str>,
     avatar_map: &std::collections::HashMap<String, String>,
@@ -1038,8 +651,9 @@ pub fn generate_html(
 
     let posts_html: Vec<String> = posts
         .iter()
-        .map(|post| {
-            let media = post.get("media").and_then(Value::as_array).cloned().unwrap_or_default();
+        .enumerate()
+        .map(|(pi, post)| {
+            let media = &post.media;
             let grid = match media.len() {
                 1 => "grid-1",
                 2 | 4 => "grid-2",
@@ -1047,37 +661,32 @@ pub fn generate_html(
             };
             let media_html: String = media
                 .iter()
-                .map(|m| {
-                    let url = s_of(m.get("url")).unwrap_or_default();
-                    match s_of(m.get("localPath")).filter(|p| !p.is_empty()) {
-                        Some(local) if is_video_url(&url) => {
-                            format!("<div class=\"mi\"><video src=\"{}\" controls preload=\"metadata\"></video></div>", escape_html(&local))
+                .enumerate()
+                .map(|(mi, m)| {
+                    let url = &m.url;
+                    let local = saved
+                        .get(pi)
+                        .and_then(|s| s.get(mi))
+                        .and_then(|s| s.file.as_deref())
+                        .filter(|p| !p.is_empty());
+                    match local {
+                        Some(local) if is_video_url(url) => {
+                            format!("<div class=\"mi\"><video src=\"{}\" controls preload=\"metadata\"></video></div>", escape_html(local))
                         }
-                        Some(local) => format!("<div class=\"mi\"><img src=\"{}\" loading=\"lazy\" onclick=\"openLb(this.src)\" alt=\"\"></div>", escape_html(&local)),
-                        None => format!("<div class=\"mi ml\"><a href=\"{}\" target=\"_blank\">查看媒体</a></div>", escape_html(&url)),
+                        Some(local) => format!("<div class=\"mi\"><img src=\"{}\" loading=\"lazy\" onclick=\"openLb(this.src)\" alt=\"\"></div>", escape_html(local)),
+                        None => format!("<div class=\"mi ml\"><a href=\"{}\" target=\"_blank\">查看媒体</a></div>", escape_html(url)),
                     }
                 })
                 .collect();
 
-            let link_title = s_of(post.get("linkTitle")).unwrap_or_default();
-            let link_url = s_of(post.get("linkUrl")).unwrap_or_default();
-            let link_html = if !link_title.is_empty() && !link_url.is_empty() {
-                format!(
-                    "<a class=\"lk\" href=\"{}\" target=\"_blank\"><span class=\"lk-t\">{}</span><span class=\"lk-a\">›</span></a>",
-                    escape_html(&link_url),
-                    escape_html(&link_title)
-                )
-            } else {
-                String::new()
-            };
-            let loc_text = resolve_location_text(post.get("location"));
+            let loc_text = resolve_location_text(post.location.as_ref());
             let loc_html = if loc_text.is_empty() {
                 String::new()
             } else {
                 format!("<div class=\"loc\"><span class=\"loc-i\">📍</span><span class=\"loc-t\">{}</span></div>", escape_html(&loc_text))
             };
 
-            let likes: Vec<String> = post.get("likes").and_then(Value::as_array).map(|a| a.iter().filter_map(|l| l.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            let likes = &post.likes;
             let likes_html = if likes.is_empty() {
                 String::new()
             } else {
@@ -1087,47 +696,44 @@ pub fn generate_html(
                 )
             };
 
-            let comments = post.get("comments").and_then(Value::as_array).cloned().unwrap_or_default();
+            let comments = &post.comments;
             let comments_html = if comments.is_empty() {
                 String::new()
             } else {
                 let inner: String = comments
                     .iter()
                     .map(|c| {
-                        let ref_nick = s_of(c.get("refNickname")).unwrap_or_default();
-                        let r = if ref_nick.is_empty() { String::new() } else { format!("<span class=\"re\">回复</span><b>{}</b>", escape_html(&ref_nick)) };
+                        let ref_nick = c.ref_nickname.as_deref().unwrap_or_default();
+                        let r = if ref_nick.is_empty() { String::new() } else { format!("<span class=\"re\">回复</span><b>{}</b>", escape_html(ref_nick)) };
                         format!(
                             "<div class=\"cmt\"><b>{}</b>{}：{}</div>",
-                            escape_html(&s_of(c.get("nickname")).unwrap_or_default()),
+                            escape_html(&c.nickname),
                             r,
-                            escape_html(&s_of(c.get("content")).unwrap_or_default())
+                            escape_html(&c.content)
                         )
                     })
                     .collect();
                 format!("<div class=\"interactions{}\"><div class=\"cmts\">{}</div></div>", if likes.is_empty() { "" } else { " cmt-border" }, inner)
             };
 
-            let username = s_of(post.get("username")).unwrap_or_default();
-            let nickname = s_of(post.get("nickname")).unwrap_or_default();
-            let avatar_html = match avatar_map.get(&username) {
+            let nickname = &post.nickname;
+            let avatar_html = match avatar_map.get(&post.username) {
                 Some(src) => format!("<div class=\"avatar\"><img src=\"{}\" alt=\"\"></div>", escape_html(src)),
                 None => {
                     let ch = nickname.chars().next().map(|c| c.to_string()).unwrap_or_else(|| "?".into());
                     format!("<div class=\"avatar\">{}</div>", escape_html(&ch))
                 }
             };
-            let content_desc = s_of(post.get("contentDesc")).unwrap_or_default();
-            let create_time = post.get("createTime").and_then(Value::as_i64).unwrap_or(0);
+            let content_desc = &post.content_desc;
 
             format!(
-                "<div class=\"post\">\n{avatar}\n<div class=\"body\">\n<div class=\"hd\"><span class=\"nick\">{nick}</span><span class=\"tm\">{tm}</span></div>\n{txt}\n{loc}\n{mg}\n{lk}\n{likes}\n{cmts}\n</div></div>",
+                "<div class=\"post\">\n{avatar}\n<div class=\"body\">\n<div class=\"hd\"><span class=\"nick\">{nick}</span><span class=\"tm\">{tm}</span></div>\n{txt}\n{loc}\n{mg}\n\n{likes}\n{cmts}\n</div></div>",
                 avatar = avatar_html,
-                nick = escape_html(&nickname),
-                tm = format_post_time(create_time, now),
-                txt = if content_desc.is_empty() { String::new() } else { format!("<div class=\"txt\">{}</div>", escape_html(&content_desc)) },
+                nick = escape_html(nickname),
+                tm = format_post_time(post.create_time, now),
+                txt = if content_desc.is_empty() { String::new() } else { format!("<div class=\"txt\">{}</div>", escape_html(content_desc)) },
                 loc = loc_html,
                 mg = if media_html.is_empty() { String::new() } else { format!("<div class=\"mg {grid}\">{media_html}</div>") },
-                lk = link_html,
                 likes = likes_html,
                 cmts = comments_html,
             )
@@ -1450,10 +1056,10 @@ mod tests {
     fn parses_comments_with_refs_and_emojis() {
         let c = parse_comments_from_xml(COMMENT_XML);
         assert_eq!(c.len(), 2);
-        assert_eq!(c[1]["refNickname"], "A");
-        assert_eq!(c[1]["emojis"][0]["url"], "http://e/x?a=1&b=2");
-        assert_eq!(c[1]["emojis"][0]["width"], 10);
-        assert_eq!(c[1]["emojis"][0]["aesKey"], "k");
+        assert_eq!(c[1].ref_nickname.as_deref(), Some("A"));
+        assert_eq!(c[1].emojis[0].url, "http://e/x?a=1&b=2");
+        assert_eq!(c[1].emojis[0].width, Some(10));
+        assert_eq!(c[1].emojis[0].aes_key.as_deref(), Some("k"));
     }
 
     #[test]
@@ -1464,64 +1070,120 @@ mod tests {
         assert_eq!(likes[0].username.as_deref(), Some("u1"));
         assert_eq!(parse_likes_from_xml(xml), vec!["N1", "N2"]);
         let loc = parse_location_from_xml(
-            "<location latitude=\"31.2\" longitude=\"121.5\" city=\"上海\" poiName=\"A &amp; B\"/>",
+            "<location latitude=\"31.2\" longitude=\"121\" city=\"上海\" poiName=\"A &amp; B\"/>",
         )
         .unwrap();
-        assert_eq!(loc["latitude"], 31.2);
-        assert_eq!(loc["poiName"], "A & B");
-        let merged = merge_location(Some(&json!({"city": "X"})), Some(&loc)).unwrap();
-        assert_eq!(merged["city"], "X");
-        assert_eq!(merged["longitude"], 121.5);
+        assert_eq!(loc.latitude.as_ref().and_then(|n| n.as_f64()), Some(31.2));
+        assert_eq!(
+            loc.longitude.as_ref().and_then(|n| n.as_i64()),
+            Some(121),
+            "a whole number stays an integer"
+        );
+        assert_eq!(loc.poi_name.as_deref(), Some("A & B"));
+        assert!(parse_location_from_xml("<location/>").is_none());
+    }
+
+    fn native_post(kind: i64, raw_xml: &str) -> weflow_native::native_sns::SnsPost {
+        weflow_native::native_sns::SnsPost {
+            id: "1".into(),
+            tid: "1".into(),
+            username: "wxid_a".into(),
+            create_time: 1700000000,
+            kind,
+            raw_xml: raw_xml.into(),
+            ..Default::default()
+        }
+    }
+
+    fn native_media(url: &str, thumb: &str, key: &str) -> weflow_native::native_sns::SnsMedia {
+        weflow_native::native_sns::SnsMedia {
+            url: url.into(),
+            thumb: thumb.into(),
+            key: Some(key.into()),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn enriches_posts_like_get_timeline() {
-        let post = json!({
-            "id": "1", "username": "wxid_a", "nickname": "", "createTime": 1700000000, "type": 15,
-            "rawXml": "<x><enc key=\"777\"/><location city=\"X\"/></x>",
-            "media": [{"url": "http://v/snsvideodownload?x=1", "thumb": "http://t/150", "token": "T", "key": "old"}],
-            "comments": [{"id": "1", "nickname": "A", "content": "c"}, {"id": "2", "nickname": "B", "content": "d", "refCommentId": "1"}]
-        });
+        let mut post = native_post(
+            15,
+            "<x><enc key=\"777\"/><location city=\"X\"/><commentUserList>\
+             <comment><id>1</id><nickname>A</nickname><content>c</content></comment>\
+             <comment><id>2</id><nickname>B</nickname><content>d</content><refNickname>A</refNickname><refCommentId>1</refCommentId></comment>\
+             </commentUserList></x>",
+        );
+        post.media = vec![weflow_native::native_sns::SnsMedia {
+            token: Some("T".into()),
+            ..native_media("http://v/snsvideodownload?x=1", "http://t/150", "old")
+        }];
         let contact = CachedContact {
             display_name: Some("Alice".into()),
             avatar_url: Some("http://a".into()),
         };
-        let e = enrich_post(&post, Some(&contact));
-        assert_eq!(e["nickname"], "Alice");
-        assert_eq!(e["avatarUrl"], "http://a");
-        assert_eq!(e["media"][0]["key"], "777");
+        let e = enrich_post(post, Some(&contact));
+        assert_eq!(e.nickname, "Alice");
+        assert_eq!(e.avatar_url.as_deref(), Some("http://a"));
+        assert_eq!(e.media[0].key.as_deref(), Some("777"));
         assert_eq!(
-            e["media"][0]["url"],
+            e.media[0].url,
             "https://v/snsvideodownload?token=T&idx=1&x=1"
         );
-        assert_eq!(e["media"][0]["thumb"], "https://t/0?token=T&idx=1");
-        assert_eq!(e["comments"][1]["refNickname"], "A");
-        assert_eq!(e["location"]["city"], "X");
+        assert_eq!(e.media[0].thumb, "https://t/0?token=T&idx=1");
+        assert_eq!(e.comments[1].ref_nickname.as_deref(), Some("A"));
+        assert_eq!(e.location.and_then(|l| l.city).as_deref(), Some("X"));
+        // no contact: the username
+        assert_eq!(enrich_post(native_post(1, ""), None).nickname, "wxid_a");
     }
 
     #[test]
     fn a_video_in_a_post_of_another_type_takes_the_video_key() {
         // seen on real accounts: a row of type 1 whose medium is a video; only the post's video key opens the
         // video and its cover (#202), while an image of such a row keeps its own
-        let post = json!({
-            "id": "1", "username": "wxid_a", "createTime": 1700000000, "type": 1, "videoKey": "888",
-            "media": [
-                {"url": "http://v.video.qq.com/102/snsvideodownload?m=1", "thumb": "http://v.video.qq.com/t", "key": "own"},
-                {"url": "http://a.qpic.cn/mmsns/x/150", "thumb": "http://a.qpic.cn/mmsns/x/150", "key": "image"}
-            ]
-        });
-        let e = enrich_post(&post, None);
-        assert_eq!(e["media"][0]["key"], "888");
-        assert_eq!(e["media"][1]["key"], "image");
+        let mut post = native_post(1, "");
+        post.video_key = Some("888".into());
+        post.media = vec![
+            native_media(
+                "http://v.video.qq.com/102/snsvideodownload?m=1",
+                "http://v.video.qq.com/t",
+                "own",
+            ),
+            native_media(
+                "http://a.qpic.cn/mmsns/x/150",
+                "http://a.qpic.cn/mmsns/x/150",
+                "image",
+            ),
+        ];
+        let e = enrich_post(post, None);
+        assert_eq!(e.media[0].key.as_deref(), Some("888"));
+        assert_eq!(e.media[1].key.as_deref(), Some("image"));
     }
 
     #[test]
     fn html_export_escapes_and_embeds() {
-        let posts = vec![
-            json!({"username": "u", "nickname": "<Nick>", "createTime": 1700000000, "contentDesc": "a\nb",
-            "media": [{"url": "https://x/1.jpg", "localPath": "media/1_0.jpg"}], "likes": ["L"], "comments": [{"nickname": "C", "content": "hi", "refNickname": "R"}]}),
-        ];
-        let html = generate_html(&posts, &[], Some("kw"), &Default::default());
+        let mut post = enrich_post(
+            native_post(
+                1,
+                "<x><commentUserList><comment><nickname>C</nickname><content>hi</content><refNickname>R</refNickname></comment></commentUserList></x>",
+            ),
+            None,
+        );
+        post.nickname = "<Nick>".into();
+        post.content_desc = "a\nb".into();
+        post.likes = vec!["L".into()];
+        post.media = enrich_post(
+            weflow_native::native_sns::SnsPost {
+                media: vec![native_media("https://x/1.jpg", "", "k")],
+                ..native_post(1, "")
+            },
+            None,
+        )
+        .media;
+        let saved = vec![vec![SavedMedia {
+            file: Some("media/1_0.jpg".into()),
+            live: None,
+        }]];
+        let html = generate_html(&[post], &saved, &[], Some("kw"), &Default::default());
         assert!(html.contains("&lt;Nick&gt;"));
         assert!(html.contains("a<br>b"));
         assert!(html.contains("src=\"media/1_0.jpg\""));

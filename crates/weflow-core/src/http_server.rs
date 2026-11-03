@@ -11,6 +11,7 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
+use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::api::{self, ApiError, Params};
@@ -46,7 +47,7 @@ pub fn router(hub: ServiceHub, cfg: HttpConfig, broker: Arc<PushBroker>) -> Rout
 
 const JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
 
-fn json_response(status: StatusCode, value: &Value) -> Response {
+fn json_response(status: StatusCode, value: &impl Serialize) -> Response {
     let body = serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".into());
     (
         status,
@@ -56,7 +57,7 @@ fn json_response(status: StatusCode, value: &Value) -> Response {
         .into_response()
 }
 
-fn send_json(value: &Value) -> Response {
+fn send_json(value: &impl Serialize) -> Response {
     json_response(StatusCode::OK, value)
 }
 
@@ -92,7 +93,7 @@ fn method_not_allowed(allow: &'static str) -> Response {
     r
 }
 
-fn from_api(r: Result<Value, ApiError>) -> Response {
+fn from_api(r: Result<impl Serialize, ApiError>) -> Response {
     match r {
         Ok(v) => send_json(&v),
         Err(e) => send_error(e.status, &e.message),

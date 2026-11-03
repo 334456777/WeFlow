@@ -203,7 +203,7 @@ fn health_needs_no_token_and_everything_else_does() {
     let r = server.request("GET", "/health", &[], "");
     assert_eq!(r.status, 200);
     assert_eq!(r.json()["status"], "ok");
-    assert_eq!(r.json()["apiVersion"], "2");
+    assert_eq!(r.json()["apiVersion"], "3");
     // how it runs, for the settings (#214)
     assert_eq!(r.json()["limits"]["maxTasks"], 1);
     assert!(r.json()["limits"]["maxReads"].as_u64().unwrap() >= 1);
@@ -1022,7 +1022,7 @@ fn reads_run_in_process_with_the_same_answers() {
             .as_array()
             .unwrap()
             .iter()
-            .map(|m| m["local_id"].as_i64().unwrap())
+            .map(|m| m["localId"].as_i64().unwrap())
             .collect();
         assert_eq!(ids, [3, 2]);
         assert_eq!(
@@ -1146,18 +1146,18 @@ fn answers_are_compressed_when_asked_and_cut_to_fields() {
         assert_eq!(child.status, 200, "{target}: {}", child.body);
         child.json()["data"].clone()
     };
-    let page = rows("/chat/messages?session-id=wxid_bob&fields=local_id,create_time");
+    let page = rows("/chat/messages?session-id=wxid_bob&fields=localId,createTime");
     let full = rows("/chat/messages?session-id=wxid_bob");
     assert!(full[0].as_object().unwrap().len() > 2);
     let cut: Vec<Value> = full
         .as_array()
         .unwrap()
         .iter()
-        .map(|m| json!({ "local_id": m["local_id"], "create_time": m["create_time"] }))
+        .map(|m| json!({ "localId": m["localId"], "createTime": m["createTime"] }))
         .collect();
     assert_eq!(page, Value::Array(cut));
     assert_eq!(
-        rows("/chat/messages?session-id=wxid_bob&fields=local_id&fields=+create_time,,"),
+        rows("/chat/messages?session-id=wxid_bob&fields=localId&fields=+createTime,,"),
         page
     );
     let contacts = rows("/chat/contacts?fields=username,nosuchfield");
@@ -3405,7 +3405,7 @@ fn the_footprint_is_exported_as_json_or_as_a_timeline() {
     let xlsx = std::fs::read(v["data"]["out"].as_str().unwrap()).unwrap();
     assert!(xlsx.starts_with(b"PK"), "an xlsx is a zip");
 
-    // JSON as before
+    // JSON as it is
     let (code, v, _) = export("json");
     assert_eq!(code, 0);
     let json: Value =
@@ -3783,7 +3783,7 @@ fn answers_fit_the_contract() {
 
     let sessions = read("/api/chat/sessions", None);
     assert!(sessions.as_array().unwrap().len() >= 3, "{sessions}");
-    // the reads typed since (#430), each answering the shape its route says
+    // the typed reads (#430), each answering the shape its route says
     for target in [
         "/api/chat/statuses?usernames=wxid_bob&usernames=room1%40chatroom",
         "/api/chat/counts?sessions=wxid_bob&sessions=room1%40chatroom",

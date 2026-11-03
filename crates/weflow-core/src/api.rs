@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use serde_json::{json, Map, Value};
+use serde::Serialize;
 
 use crate::chat_msg::ChatMessage;
 use crate::message::rx;
@@ -362,7 +362,35 @@ pub fn resolve_type49_subtype(msg: &ChatMessage) -> String {
 pub struct ApiQuoteInfo {
     pub reply_text: Option<String>,
     pub reply_to_message_id: Option<String>,
-    pub quote: Map<String, Value>,
+    pub quote: ApiQuote,
+}
+
+/// The `quote` object of an API message: what a reply quotes, each key left out when the reference does not say.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiQuote {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform_message_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// The quoted message's ChatLab type.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<i64>,
+}
+
+impl ApiQuote {
+    /// Whether the object has no keys.
+    pub fn is_empty(&self) -> bool {
+        self.platform_message_id.is_none()
+            && self.sender.is_none()
+            && self.account_name.is_none()
+            && self.content.is_none()
+            && self.kind.is_none()
+    }
 }
 
 fn message_may_contain_quote(content: &str) -> bool {
@@ -495,22 +523,13 @@ pub fn extract_api_quote_info(msg: &ChatMessage) -> Option<ApiQuoteInfo> {
     let account_name = (!display.is_empty() && !looks_like_wxid(&display)).then_some(display);
     let quote_type = map_quoted_message_type(&refer_type, &refer_content);
 
-    let mut quote = Map::new();
-    if let Some(id) = &reply_to {
-        quote.insert("platformMessageId".into(), json!(id));
-    }
-    if let Some(s) = sender {
-        quote.insert("sender".into(), json!(s));
-    }
-    if let Some(a) = account_name {
-        quote.insert("accountName".into(), json!(a));
-    }
-    if !quote_content.is_empty() {
-        quote.insert("content".into(), json!(quote_content));
-    }
-    if let Some(t) = quote_type {
-        quote.insert("type".into(), json!(t));
-    }
+    let quote = ApiQuote {
+        platform_message_id: reply_to.clone(),
+        sender,
+        account_name,
+        content: (!quote_content.is_empty()).then_some(quote_content),
+        kind: quote_type,
+    };
     let reply_text = app_message_title(&normalized);
     if reply_to.is_none() && quote.is_empty() && reply_text.is_empty() {
         return None;
@@ -706,68 +725,88 @@ pub struct ApiExportedMedia {
     pub thumbnail: bool,
 }
 
+/// The URL the HTTP API serves an exported media file at; `relative_path` is the file's path under `api-media`.
+pub fn api_media_url(base_url: &str, relative_path: &str) -> String {
+    format!(
+        "{}/api/v1/media/{relative_path}",
+        base_url.trim_end_matches('/')
+    )
+}
+
+/// One message of the HTTP API (`toApiMessage`), borrowing the text it repeats from its [`ChatMessage`].
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiMessage<'a> {
+    local_id: i64,
+    /// `"0"` when the message has no server id.
+    server_id: String,
+    local_type: i64,
+    create_time: i64,
+    sort_seq: i64,
+    is_send: Option<i64>,
+    sender_username: Option<&'a str>,
+    content: Option<String>,
+    raw_content: &'a str,
+    parsed_content: &'a str,
+    #[serde(flatten)]
+    media: Option<ApiMessageMedia<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply_to_message_id: Option<String>,
+    /// Left out when the reply's reference has no keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quote: Option<ApiQuote>,
+}
+
+/// The media keys of an [`ApiMessage`] whose media was exported.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiMessageMedia<'a> {
+    media_type: &'static str,
+    media_file_name: &'a str,
+    media_url: String,
+    media_local_path: &'a str,
+}
+
 /// `toApiMessage`
-pub fn to_api_message(
-    msg: &ChatMessage,
-    media: Option<&ApiExportedMedia>,
+pub fn to_api_message<'a>(
+    msg: &'a ChatMessage,
+    media: Option<&'a ApiExportedMedia>,
     base_url: &str,
-) -> Value {
+) -> ApiMessage<'a> {
     let server_id = message_server_id(msg);
     let quote = extract_api_quote_info(msg);
-    let mut o = Map::new();
-    o.insert("localId".into(), json!(msg.local_id));
-    o.insert(
-        "serverId".into(),
-        json!(if server_id.is_empty() {
+    let content = message_content(msg, quote.as_ref());
+    let (reply_to_message_id, quote) = match quote {
+        Some(q) => (
+            q.reply_to_message_id,
+            (!q.quote.is_empty()).then_some(q.quote),
+        ),
+        None => (None, None),
+    };
+    ApiMessage {
+        local_id: msg.local_id,
+        server_id: if server_id.is_empty() {
             "0".to_string()
         } else {
             server_id
+        },
+        local_type: msg.local_type,
+        create_time: msg.create_time,
+        sort_seq: msg.sort_seq,
+        is_send: msg.is_send,
+        sender_username: msg.sender_username.as_deref(),
+        content,
+        raw_content: &msg.raw_content,
+        parsed_content: &msg.parsed_content,
+        media: media.map(|m| ApiMessageMedia {
+            media_type: m.kind,
+            media_file_name: &m.file_name,
+            media_url: api_media_url(base_url, &m.relative_path),
+            media_local_path: &m.full_path,
         }),
-    );
-    o.insert("localType".into(), json!(msg.local_type));
-    o.insert("createTime".into(), json!(msg.create_time));
-    o.insert("sortSeq".into(), json!(msg.sort_seq));
-    o.insert(
-        "isSend".into(),
-        msg.is_send.map(Value::from).unwrap_or(Value::Null),
-    );
-    o.insert(
-        "senderUsername".into(),
-        msg.sender_username
-            .clone()
-            .map(Value::from)
-            .unwrap_or(Value::Null),
-    );
-    o.insert(
-        "content".into(),
-        message_content(msg, quote.as_ref())
-            .map(Value::from)
-            .unwrap_or(Value::Null),
-    );
-    o.insert("rawContent".into(), json!(msg.raw_content));
-    o.insert("parsedContent".into(), json!(msg.parsed_content));
-    if let Some(m) = media {
-        o.insert("mediaType".into(), json!(m.kind));
-        o.insert("mediaFileName".into(), json!(m.file_name));
-        o.insert(
-            "mediaUrl".into(),
-            json!(format!(
-                "{}/api/v1/media/{}",
-                base_url.trim_end_matches('/'),
-                m.relative_path
-            )),
-        );
-        o.insert("mediaLocalPath".into(), json!(m.full_path));
+        reply_to_message_id,
+        quote,
     }
-    if let Some(q) = &quote {
-        if let Some(id) = &q.reply_to_message_id {
-            o.insert("replyToMessageId".into(), json!(id));
-        }
-        if !q.quote.is_empty() {
-            o.insert("quote".into(), Value::Object(q.quote.clone()));
-        }
-    }
-    Value::Object(o)
 }
 
 // ───────────────────────── ChatLab sender resolution ─────────────────────────
@@ -851,7 +890,18 @@ pub fn resolve_chatlab_sender_info(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat_msg::map_rows;
+    use crate::chat_msg::map_msg_rows;
+    use weflow_native::msg_row::MsgRow;
+
+    fn row(local_id: i64, create_time: i64, local_type: i64, content: &str) -> MsgRow {
+        MsgRow {
+            local_id,
+            create_time: Some(create_time),
+            local_type,
+            content: content.into(),
+            ..MsgRow::default()
+        }
+    }
 
     #[test]
     fn params() {
@@ -895,12 +945,34 @@ mod tests {
         let quote = "<msg><appmsg><title>ok</title><type>57</type><refermsg><type>1</type><displayname>Bob</displayname><content>hi there</content><svrid>00123</svrid><chatusr>wxid_bob</chatusr></refermsg></appmsg></msg>";
         let link = "<msg><appmsg><title>T</title><type>5</type><url>http://x</url></appmsg></msg>";
         let rows = vec![
-            json!({"local_id": "1", "create_time": "100", "local_type": "49", "message_content": quote, "sender_username": "wxid_me", "is_send": "1"}),
-            json!({"local_id": "2", "server_id": "77", "create_time": "101", "local_type": "49", "message_content": link, "sender_username": "wxid_bob", "is_send": "0"}),
-            json!({"local_id": "3", "create_time": "102", "local_type": "1", "message_content": "wxid_bob:\nhello", "is_send": "0"}),
+            MsgRow {
+                sender: Some("wxid_me".into()),
+                is_send: true,
+                ..row(1, 100, 49, quote)
+            },
+            MsgRow {
+                server_id: Some(77),
+                sender: Some("wxid_bob".into()),
+                ..row(2, 101, 49, link)
+            },
+            row(3, 102, 1, "wxid_bob:\nhello"),
         ];
-        let msgs = map_rows(&rows, "wxid_me");
-        let a = to_api_message(&msgs[0], None, "http://h:1");
+        let msgs = map_msg_rows(rows, "wxid_bob", "wxid_me");
+        fn api_json(
+            msg: &ChatMessage,
+            media: Option<&ApiExportedMedia>,
+            base_url: &str,
+        ) -> serde_json::Value {
+            serde_json::to_value(to_api_message(msg, media, base_url)).expect("serializable")
+        }
+        fn keys(v: &serde_json::Value) -> Vec<&str> {
+            v.as_object()
+                .expect("an object")
+                .keys()
+                .map(String::as_str)
+                .collect()
+        }
+        let a = api_json(&msgs[0], None, "http://h:1");
         assert_eq!(a["content"], "ok");
         assert_eq!(a["replyToMessageId"], "123");
         assert_eq!(a["quote"]["sender"], "wxid_bob");
@@ -908,12 +980,22 @@ mod tests {
         assert_eq!(a["quote"]["content"], "hi there");
         assert_eq!(a["quote"]["type"], 0);
         assert_eq!(a["serverId"], "0");
-        let b = to_api_message(&msgs[1], None, "http://h:1");
+        assert_eq!(
+            keys(&a["quote"]),
+            [
+                "platformMessageId",
+                "sender",
+                "accountName",
+                "content",
+                "type"
+            ]
+        );
+        let b = api_json(&msgs[1], None, "http://h:1");
         assert_eq!(b["content"], "[链接] T");
         assert_eq!(b["serverId"], "77");
         assert_eq!(map_message_type(&msgs[1]), chatlab::LINK);
         assert_eq!(map_message_type(&msgs[0]), chatlab::REPLY);
-        let c = to_api_message(&msgs[2], None, "http://h:1");
+        let c = api_json(&msgs[2], None, "http://h:1");
         assert_eq!(c["content"], "hello");
         let media = ApiExportedMedia {
             kind: "image",
@@ -922,16 +1004,35 @@ mod tests {
             relative_path: "s/images/a.jpg".into(),
             thumbnail: false,
         };
-        let d = to_api_message(&msgs[2], Some(&media), "http://h:1/");
+        let d = api_json(&msgs[2], Some(&media), "http://h:1/");
         assert_eq!(d["mediaUrl"], "http://h:1/api/v1/media/s/images/a.jpg");
+        let e = api_json(&msgs[0], Some(&media), "http://h:1");
+        assert_eq!(
+            keys(&e),
+            [
+                "localId",
+                "serverId",
+                "localType",
+                "createTime",
+                "sortSeq",
+                "isSend",
+                "senderUsername",
+                "content",
+                "rawContent",
+                "parsedContent",
+                "mediaType",
+                "mediaFileName",
+                "mediaUrl",
+                "mediaLocalPath",
+                "replyToMessageId",
+                "quote",
+            ]
+        );
     }
 
     #[test]
     fn chatlab_sender() {
-        let rows = vec![
-            json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "is_send": "0"}),
-        ];
-        let msgs = map_rows(&rows, "wxid_me");
+        let msgs = map_msg_rows(vec![row(9, 5, 1, "x")], "room@chatroom", "wxid_me");
         let info = resolve_chatlab_sender_info(
             &msgs[0],
             "room@chatroom",
@@ -944,10 +1045,11 @@ mod tests {
         assert_eq!(info.account_name, "未知发送者");
         let mut names = HashMap::new();
         names.insert("wxid_bob".to_string(), "Bob".to_string());
-        let rows = vec![
-            json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "sender_username": "wxid_bob", "is_send": "0"}),
-        ];
-        let msgs = map_rows(&rows, "wxid_me");
+        let rows = vec![MsgRow {
+            sender: Some("wxid_bob".into()),
+            ..row(9, 5, 1, "x")
+        }];
+        let msgs = map_msg_rows(rows, "room@chatroom", "wxid_me");
         let mut nicks = HashMap::new();
         nicks.insert("wxid_bob".to_string(), "Bobby".to_string());
         let info =

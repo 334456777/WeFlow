@@ -6,7 +6,16 @@ use anyhow::Result;
 use rusqlite::ToSql;
 use serde_json::{json, Map, Value};
 
+use crate::msg_row::{LegacyRow, RowShape};
 use crate::native_db::NativeAccount;
+
+/// A message of [`NativeAccount::search_messages_as`] or [`NativeAccount::scan_media_stream_as`], and its
+/// conversation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SessionRow<R> {
+    pub session_id: String,
+    pub row: R,
+}
 
 /// `scan_media_stream` codes: 1 = images, 2 = videos, anything else = both.
 const IMAGE: i64 = 3;
@@ -50,43 +59,49 @@ fn sort_key(row: &Value) -> (i64, i64, i64) {
 
 /// The first `k` rows in "newest first, then in the order found" order (what a stable newest-first sort of every
 /// row would put first), without holding the others.
-struct Newest {
+struct Newest<T = Value> {
     k: usize,
     found: usize,
-    heap: std::collections::BinaryHeap<Ranked>,
+    heap: std::collections::BinaryHeap<Ranked<T>>,
 }
 
-struct Ranked {
+struct Ranked<T> {
     key: (i64, i64, i64),
     seq: usize,
-    row: Value,
+    row: T,
 }
 
-impl Ranked {
+impl<T> Ranked<T> {
     /// Ordered so the heap's top is the row that would come last.
     fn rank(&self, other: &Self) -> std::cmp::Ordering {
         other.key.cmp(&self.key).then(self.seq.cmp(&other.seq))
     }
 }
 
-impl PartialEq for Ranked {
+impl<T> PartialEq for Ranked<T> {
     fn eq(&self, other: &Self) -> bool {
         self.rank(other).is_eq()
     }
 }
-impl Eq for Ranked {}
-impl PartialOrd for Ranked {
+impl<T> Eq for Ranked<T> {}
+impl<T> PartialOrd for Ranked<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
-impl Ord for Ranked {
+impl<T> Ord for Ranked<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.rank(other)
     }
 }
 
 impl Newest {
+    fn push(&mut self, row: Value) {
+        self.push_keyed(sort_key(&row), row);
+    }
+}
+
+impl<T> Newest<T> {
     fn new(k: usize) -> Self {
         Self {
             k,
@@ -95,17 +110,14 @@ impl Newest {
         }
     }
 
-    fn push(&mut self, row: Value) {
+    /// Adds `row`, placed by `key` (`(sort_seq, create_time, local_id)`, as [`sort_key`] reads them).
+    fn push_keyed(&mut self, key: (i64, i64, i64), row: T) {
         let seq = self.found;
         self.found += 1;
         if self.k == 0 {
             return;
         }
-        self.heap.push(Ranked {
-            key: sort_key(&row),
-            seq,
-            row,
-        });
+        self.heap.push(Ranked { key, seq, row });
         if self.heap.len() > self.k {
             self.heap.pop();
         }
@@ -118,7 +130,7 @@ impl Newest {
 
     /// Add the rows another `Newest` kept, as if they had been pushed here in the order they were found (after
     /// everything pushed so far). Rows it dropped could not have made the cut here either.
-    fn absorb(&mut self, other: Newest) {
+    fn absorb(&mut self, other: Newest<T>) {
         let base = self.found;
         self.found += other.found;
         for mut r in other.heap.into_vec() {
@@ -131,7 +143,7 @@ impl Newest {
     }
 
     /// The kept rows, first one first.
-    fn into_rows(self) -> Vec<Value> {
+    fn into_rows(self) -> Vec<T> {
         self.heap
             .into_sorted_vec()
             .into_iter()
@@ -433,9 +445,33 @@ impl NativeAccount {
         begin: i64,
         end: i64,
     ) -> Result<Value> {
+        let hits =
+            self.search_messages_as::<LegacyRow>(keyword, session_id, limit, offset, begin, end)?;
+        Ok(Value::Array(
+            hits.into_iter()
+                .map(|hit| {
+                    let mut row = hit.row.into_value();
+                    row["_session_id"] = json!(hit.session_id);
+                    row
+                })
+                .collect(),
+        ))
+    }
+
+    /// The messages whose text holds `keyword` (case-insensitively), newest first, `limit` of them from `offset`
+    /// on, in shape `R`; `session_id` keeps the search to one conversation.
+    pub fn search_messages_as<R: RowShape>(
+        &self,
+        keyword: &str,
+        session_id: Option<&str>,
+        limit: i32,
+        offset: i32,
+        begin: i64,
+        end: i64,
+    ) -> Result<Vec<SessionRow<R>>> {
         let needle = keyword.trim().to_lowercase();
         if needle.is_empty() {
-            return Ok(json!([]));
+            return Ok(Vec::new());
         }
         let sessions: Vec<String> = match session_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => vec![s.to_string()],
@@ -496,28 +532,30 @@ impl NativeAccount {
                     .push(int(r, "local_id").to_string());
             }
         }
+        // each row once, found by either place a hit may name it by
+        let mut rows: Vec<Option<SessionRow<R>>> = Vec::new();
         let mut whole = std::collections::HashMap::new();
         for (at, ids) in wanted {
             let (sid, t) = &tables[at];
-            let sql = format!(
-                "select m.*, n.user_name as sender_username from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id \
-                 where m.local_id in ({})",
-                t.table,
-                ids.join(",")
+            let sql = Self::select_sql::<R>(
+                t,
+                &format!("where m.local_id in ({})", ids.join(",")),
+                false,
             );
-            for mut r in self.query(&t.db, &sql, &[])? {
-                let (id, seq) = (int(&r, "local_id"), int(&r, "sort_seq"));
-                self.finish_row(&mut r, t, false);
-                r["_session_id"] = json!(sid);
-                whole.insert(format!("{sid}\n{id}\n{seq}"), r.clone());
-                whole.insert(format!("{at}\n{id}"), r);
+            for row in self.read_rows::<R>(t, &sql, &[], false)? {
+                let (id, seq) = row.index_key();
+                whole.insert(format!("{sid}\n{id}\n{seq}"), rows.len());
+                whole.insert(format!("{at}\n{id}"), rows.len());
+                rows.push(Some(SessionRow {
+                    session_id: sid.clone(),
+                    row,
+                }));
             }
         }
-        Ok(Value::Array(
-            page.iter()
-                .filter_map(|r| whole.remove(&place(r)))
-                .collect(),
-        ))
+        Ok(page
+            .iter()
+            .filter_map(|r| rows.get_mut(*whole.get(&place(r))?)?.take())
+            .collect())
     }
 
     /// The hits of the index among `ranked` whose message is not in its conversation any more.
@@ -736,7 +774,7 @@ impl NativeAccount {
         Ok((table_hits, stopped))
     }
 
-    /// Image/video messages across sessions, newest first; returns the page and whether more remain.
+    /// [`scan_media_stream_as`](Self::scan_media_stream_as) as legacy rows, each with its `session_id`.
     pub fn scan_media_stream(
         &self,
         session_ids: &[String],
@@ -746,6 +784,35 @@ impl NativeAccount {
         limit: i32,
         offset: i32,
     ) -> Result<(Value, bool)> {
+        let (rows, more) = self.scan_media_stream_as::<LegacyRow>(
+            session_ids,
+            media_type,
+            begin,
+            end,
+            limit,
+            offset,
+        )?;
+        let rows = rows
+            .into_iter()
+            .map(|r| {
+                let mut row = r.row.into_value();
+                row["session_id"] = json!(r.session_id);
+                row
+            })
+            .collect();
+        Ok((Value::Array(rows), more))
+    }
+
+    /// Image/video messages across sessions, newest first, in shape `R`; returns the page and whether more remain.
+    pub fn scan_media_stream_as<R: RowShape>(
+        &self,
+        session_ids: &[String],
+        media_type: i32,
+        begin: i64,
+        end: i64,
+        limit: i32,
+        offset: i32,
+    ) -> Result<(Vec<SessionRow<R>>, bool)> {
         let kinds = match media_type {
             1 => vec![IMAGE],
             2 => vec![VIDEO],
@@ -764,33 +831,38 @@ impl NativeAccount {
         } else {
             usize::MAX
         };
-        let mut rows = Newest::new(k);
+        let mut rows: Newest<SessionRow<R>> = Newest::new(k);
         for sid in session_ids {
             for t in self.message_tables(sid)? {
-                let sql = format!(
-                    "select m.*, n.user_name as sender_username from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id \
-                     where m.local_type in ({kinds}){range}",
-                    t.table
+                let sql = Self::select_sql::<R>(
+                    &t,
+                    &format!("where m.local_type in ({kinds}){range}"),
+                    false,
                 );
                 let table_rows = std::cell::RefCell::new(Newest::new(k));
-                self.query_each(
-                    &t.db,
+                self.read_rows_each::<R>(
+                    &t,
                     &sql,
                     &[],
+                    false,
                     || *table_rows.borrow_mut() = Newest::new(k),
-                    |mut r| {
-                        self.finish_row(&mut r, &t, false);
-                        r["session_id"] = json!(sid);
-                        table_rows.borrow_mut().push(r);
+                    |row| {
+                        table_rows.borrow_mut().push_keyed(
+                            row.key(),
+                            SessionRow {
+                                session_id: sid.clone(),
+                                row,
+                            },
+                        );
                     },
                 )?;
                 rows.absorb(table_rows.into_inner());
             }
         }
         let found = rows.found;
-        let page: Vec<Value> = rows.into_rows().into_iter().skip(offset).collect();
+        let page: Vec<SessionRow<R>> = rows.into_rows().into_iter().skip(offset).collect();
         let more = limit > 0 && found > offset + limit as usize;
-        Ok((Value::Array(page), more))
+        Ok((page, more))
     }
 
     // ── voice ──
@@ -940,7 +1012,7 @@ impl NativeAccount {
 
     /// Every sticker caption at once, keyed by lower-case md5 — the same answer as calling
     /// [`emoticon_caption`](Self::emoticon_caption) for each md5, but in two table scans instead of two per sticker
-    /// (the `lower(md5) = lower(?)` lookup cannot use an index, so exporting a group full of stickers was slow).
+    /// (a `lower(md5) = lower(?)` lookup cannot use an index).
     pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
         let mut out = std::collections::HashMap::new();
         // same precedence as `emoticon_caption`: the user's own caption, else the first store caption (Chinese first)
@@ -1021,6 +1093,33 @@ mod tests {
             .iter()
             .map(|r| r["message_content"].as_str().unwrap().trim().to_string())
             .collect()
+    }
+
+    #[test]
+    fn typed_hits_are_the_legacy_ones() {
+        let a = account("search-typed");
+        for keyword in ["hello", "ok", "COMPRESSED"] {
+            let legacy = a.search_messages(keyword, None, 50, 0, 0, 0).unwrap();
+            let typed = a
+                .search_messages_as::<crate::msg_row::MsgRow>(keyword, None, 50, 0, 0, 0)
+                .unwrap();
+            let named: Vec<(String, i64)> = legacy
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| (text(r, "_session_id"), int(r, "local_id")))
+                .collect();
+            let typed_named: Vec<(String, i64)> = typed
+                .iter()
+                .map(|h| (h.session_id.clone(), h.row.local_id))
+                .collect();
+            assert_eq!(typed_named, named, "{keyword}");
+            let texts: Vec<String> = typed
+                .iter()
+                .map(|h| h.row.content.trim().to_string())
+                .collect();
+            assert_eq!(texts, contents(&legacy), "{keyword}");
+        }
     }
 
     #[test]

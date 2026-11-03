@@ -55,7 +55,7 @@ class FakeStream implements Stream {
   }
 }
 
-const health = { status: 'ok', apiVersion: '2', version: '9.0.0', data: 'a' };
+const health = { status: 'ok', apiVersion: __WEFLOW_WEB__.apiVersion, version: '9.0.0', data: 'a' };
 
 /** A connection on fake streams and timers: the streams it opened, and the states it reported. */
 function connection(options: { loopback?: boolean; tokenTaken?: () => boolean } = {}) {
@@ -115,7 +115,7 @@ describe('Connection (#221)', () => {
 
   it('says when the server does not suit this page', () => {
     const c = connection();
-    c.last().send('hello', { ...health, apiVersion: '3' });
+    c.last().send('hello', { ...health, apiVersion: String(Number(__WEFLOW_WEB__.apiVersion) + 1) });
     expect(c.now().state).toBe('incompatible');
     c.live.stop();
   });

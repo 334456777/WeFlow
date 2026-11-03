@@ -10,7 +10,7 @@
       "senderUsername": "wxid_bob",
       "parsedContent": "hello",
       "rawContent": "hello",
-      "messageKey": "local:message_0:1:1700000000:1700000000000:wxid_bob:1",
+      "messageKey": "message_0:Msg_8a7b11f2fd24e19a60664a5fe5d56342:1",
       "_cursor": "1700000000000.1700000000.1.0",
       "_session_id": "wxid_bob"
     },
@@ -30,7 +30,7 @@
       "fileName": "report.pdf",
       "fileSize": 2048,
       "fileExt": "pdf",
-      "messageKey": "local:message_0:2:1700000060:1700000060000::49",
+      "messageKey": "message_0:Msg_8a7b11f2fd24e19a60664a5fe5d56342:2",
       "_cursor": "1700000060000.1700000060.2.0"
     },
     {
@@ -48,7 +48,7 @@
       "xmlType": "57",
       "linkTitle": "yes",
       "appMsgKind": "quote",
-      "messageKey": "local:message_0:3:1700000120:1700000120000:wxid_bob:49",
+      "messageKey": "message_0:Msg_8a7b11f2fd24e19a60664a5fe5d56342:3",
       "_cursor": "1700000120000.1700000120.3.0"
     },
     {
@@ -61,7 +61,7 @@
       "senderUsername": null,
       "parsedContent": "\"Bob\" 撤回了一条消息",
       "rawContent": "\"Bob\" 撤回了一条消息",
-      "messageKey": "local:message_1:4:1704067199:1704067199000::10000",
+      "messageKey": "message_1:Msg_8a7b11f2fd24e19a60664a5fe5d56342:4",
       "_cursor": "1704067199000.1704067199.4.1"
     },
     {
@@ -75,7 +75,7 @@
       "parsedContent": "[图片]",
       "rawContent": "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
       "imageMd5": "aabbccddeeff00112233445566778899",
-      "messageKey": "local:message_2:1:1704067200:1704067199000:wxid_me:3",
+      "messageKey": "message_2:Msg_8a7b11f2fd24e19a60664a5fe5d56342:1",
       "_cursor": "1704067199000.1704067200.1.2"
     }
   ],
@@ -198,15 +198,18 @@
   "MessageLookup": [
     {
       "row": {
-        "local_id": 1,
-        "server_id": "9007199254740993",
-        "create_time": 1700000000,
-        "local_type": 1,
-        "sort_seq": 1700000000000,
-        "is_send": 0,
-        "sender_username": "wxid_bob",
-        "message_content": "hello",
-        "db_name": "message_0"
+        "localId": 1,
+        "serverId": "9007199254740993",
+        "localType": 1,
+        "sortSeq": 1700000000000,
+        "createTime": 1700000000,
+        "status": 3,
+        "sender": "wxid_bob",
+        "isSend": false,
+        "content": "hello",
+        "source": "<msgsource><signature>v1_abc</signature></msgsource>",
+        "shard": 0,
+        "_cursor": "1700000000000.1700000000.1.0"
       },
       "message": {
         "localId": 4,
@@ -223,10 +226,69 @@
     },
     {
       "row": {
-        "local_id": 9,
-        "local_type": 1
+        "localId": 9,
+        "localType": 10000,
+        "createTime": 1700000120,
+        "isSend": false,
+        "content": "",
+        "shard": 0,
+        "_cursor": "1700000120000.1700000120.9.0"
       },
       "message": null
+    }
+  ],
+  "MessageRow": [
+    {
+      "localId": 1,
+      "serverId": "9007199254740993",
+      "localType": 1,
+      "sortSeq": 1700000000000,
+      "createTime": 1700000000,
+      "status": 3,
+      "sender": "wxid_bob",
+      "isSend": false,
+      "content": "hello",
+      "source": "<msgsource><signature>v1_abc</signature></msgsource>",
+      "shard": 0,
+      "_cursor": "1700000000000.1700000000.1.0"
+    },
+    {
+      "localId": 2,
+      "serverId": "-1",
+      "localType": 21474836529,
+      "sortSeq": 1700000060000,
+      "createTime": 1700000060,
+      "isSend": true,
+      "content": "<msg><appmsg><type>5</type><title>link</title></appmsg></msg>",
+      "packedInfo": "0a0b0c",
+      "shard": 1,
+      "_cursor": "1700000060000.1700000060.2.1"
+    },
+    {
+      "localId": 9,
+      "localType": 10000,
+      "createTime": 1700000120,
+      "isSend": false,
+      "content": "",
+      "shard": 0,
+      "_cursor": "1700000120000.1700000120.9.0"
+    }
+  ],
+  "SearchHit": [
+    {
+      "localId": 1,
+      "serverId": "9007199254740993",
+      "localType": 1,
+      "sortSeq": 1700000000000,
+      "createTime": 1700000000,
+      "status": 3,
+      "sender": "wxid_bob",
+      "isSend": false,
+      "content": "hello",
+      "source": "<msgsource><signature>v1_abc</signature></msgsource>",
+      "shard": 0,
+      "_cursor": "1700000000000.1700000000.1.0",
+      "_session_id": "wxid_bob"
     }
   ],
   "Error": [
