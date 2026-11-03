@@ -8,7 +8,7 @@
 - Sessions, messages, contacts, and Moments; private and group chat analytics; annual reports and dual reports.
 - Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, and `sql`.
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, and stickers.
-- Every command over HTTP (`serve`), the desktop app's local HTTP API (token authentication, SSE push, `serve --desktop`), message push, and AI insights.
+- Every command over HTTP (`serve`), message push, and AI insights.
 - A web interface (WebUI) that `serve` hosts under `/ui/` ([details](docs/serve-api.md#webui)).
 - `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `./weflow lang en|zh` saves your choice.
 
@@ -29,7 +29,7 @@ cp target/release/weflow .
 ./weflow lang en
 ```
 
-The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English, and so do HTTP API error responses. For the full precedence order, see [docs/native-cli.md](docs/native-cli.md#language).
+The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English. For the full precedence order, see [docs/native-cli.md](docs/native-cli.md#language).
 
 ## Check ffmpeg (optional step)
 
@@ -137,7 +137,7 @@ See [docs/cli-unsupported.md](docs/cli-unsupported.md)for the detailed list
 - [Command list](docs/native-cli.md)
 - [What the CLI does not support (detailed list)](docs/cli-unsupported.md) · [Coverage of the original backend](docs/cli-coverage.md)
 - [Command API and WebUI (`weflow serve`)](docs/serve-api.md) · [Windows database keys](docs/windows-db-key.md)
-- [HTTP API](docs/HTTP-API.md) · [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
+- [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
 
 # Disclaimer
 

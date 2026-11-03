@@ -2,7 +2,7 @@
 
 [English](../native-cli.md) | **简体中文**
 
-WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json` 时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。参数错误也一样：带 `--json`（写在 `--` 之前）时，写错选项或缺少子命令会在 stdout 输出 `{"success": false, "error": {"code": "invalid_arguments", "message": ..., "details": {"usage": ...}}}`，退出码为 `2`。命令执行失败（如找不到图片、未配置 API Key 时运行 `insight test` 等）同样按错误处理：`success` 为 `false`、退出码非零，`failureKind` 等字段保留在 `error.details` 中；`success: true` 一定表示成功。HTTP API 的返回格式不变。
+WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的文本（对齐的 `键: 值`，列表用表格），错误写到 stderr，退出码不变。加 `--json` 时，每条命令在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}` 或 `{"success": false, "error": {...}}`）；加 `--progress` 时进度输出到 stderr。参数错误也一样：带 `--json`（写在 `--` 之前）时，写错选项或缺少子命令会在 stdout 输出 `{"success": false, "error": {"code": "invalid_arguments", "message": ..., "details": {"usage": ...}}}`，退出码为 `2`。命令执行失败（如找不到图片、未配置 API Key 时运行 `insight test` 等）同样按错误处理：`success` 为 `false`、退出码非零，`failureKind` 等字段保留在 `error.details` 中；`success: true` 一定表示成功。
 
 帮助：`-h` / `--help` 显示任意命令的帮助；需要参数或子命令的命令在完全不带参数时也会显示帮助（`./weflow config`、`./weflow config set`、`./weflow lang`）；只缺一部分参数时会提示缺少哪些。用法行里 `[选项]` 放在最后（`./weflow config set <KEY> <VALUE> [选项]`）。
 
@@ -14,12 +14,12 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 以 `zh` 开头的取值（`zh_CN.UTF-8`、`zh-TW`、`zh`）输出中文；其他取值（包括 `C` 和 `POSIX`）输出英文。这些变量都没设置时（Windows 上很常见）由操作系统显示语言决定（Windows、macOS）；无法判断时输出英文。`--lang en|zh <命令>` 可对单次运行覆盖以上所有。
 
-语言会影响 `--help`、参数错误、运行时错误、进度文字和生成的文本：TXT/Excel 导出标签（`[Image]` / `[图片]`）、公众号支付的默认商户名称，以及默认的 AI 见解提示词。JSON 键、错误码和 HTTP API 的错误响应仍为英文。
+语言会影响 `--help`、参数错误、运行时错误、进度文字和生成的文本：TXT/Excel 导出标签（`[Image]` / `[图片]`）、公众号支付的默认商户名称，以及默认的 AI 见解提示词。JSON 键和错误码仍为英文。
 
 ## 命令
 
 ```
-./weflow config    path | list | get | set | unset | clear | import
+./weflow config    path | list | get | set | unset | clear
 ./weflow lang      en | zh
 ./weflow db        detect | scan <root> | wxid | test | open
 ./weflow key       db | image | scan-image <user-dir>
@@ -39,7 +39,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ./weflow video     info | parse-md5
 ./weflow image     decrypt | resolve-cache | resolve-batch | auto-download start|status
 ./weflow backup    create | inspect | restore
-./weflow serve     [--desktop [--message-push]] --insight --image-auto-download
+./weflow serve     --insight --image-auto-download
 ./weflow runtime   info | manifest
 ./weflow cache     list | clear | clear-account
 ./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
@@ -83,7 +83,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 | `cache clear --emojis` | 表情 |
 | `cache clear --sns` | 朋友圈的图片和视频 |
 | `cache clear --analytics` | 统计汇总 |
-| `cache clear --api` | HTTP API 导出的媒体（`api-media`）和推送的头像（`push-avatar-files`），以及 `serve` 返回的文件（`serve-files`，见 [serve-api.md](serve-api.md#返回文件)） |
+| `cache clear --api` | 消息推送保存的头像（`push-avatar-files`）、`serve` 返回的文件（`serve-files`，见 [serve-api.md](serve-api.md#返回文件)）和 `api-media` 文件夹 |
 | `cache clear --keys` | 校验通过的密钥指纹；下一条命令会重新校验密钥 |
 | `cache clear --runtime` | 其他 WeFlow 版本在 `runtime/` 下释放的运行时；保留当前版本 |
 | `cache clear --web` | `weflow web` 和 `serve` 下载的网页版本（`cache/web/`，见 [serve-api.md](serve-api.md#网页)）；`serve` 需要的版本会重新下载 |
@@ -126,7 +126,7 @@ AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及�
 
 路径：配置 `%APPDATA%\weflow\config.json`，解压出的运行时 `%APPDATA%\weflow\runtime\<版本>\<target>`（Linux/macOS 位于各平台的数据目录）。
 
-`serve` 在 `127.0.0.1:18108` 把每条命令都提供为 HTTP 接口（[serve-api.md](serve-api.md)）。`serve --desktop` 改为提供桌面端的 HTTP API（[HTTP-API.md](HTTP-API.md)；除 `/health` 外都需要 token；设置 `http_api_token` 或使用 `--api-token`）。
+`serve` 在 `127.0.0.1:18108` 把每条命令都提供为 HTTP 接口（[serve-api.md](serve-api.md)）。
 `serve --insight` 运行 AI 见解引擎，每条生成的见解输出到 stderr（加 `--json` 时为 JSON 行）。
 `image auto-download` 与 `serve --image-auto-download` 通过 `img_helper.dll` 钩住微信，仅支持 Windows x64。
 语音消息使用内置的 Skype SILK SDK 副本（`crates/weflow-silk`）解码。WXGF 图片（微信容器里的一帧 HEVC 画面）用 Rust 解码（`heic-rs`，再写成 JPEG）；只有它读不了的画面（10-bit、4:2:2 或 4:4:4）才交给 `ffmpeg`：先用 `FFMPEG_PATH`，其次是 `PATH` 中的 `ffmpeg`，最后是 `ffmpeg install` 安装到 WeFlow 文件夹的副本（`ffmpeg path` 显示实际使用哪一个）。`ffmpeg install` 下载桌面端自带的同一版本（npm `ffmpeg-static` 5.3.0，即 eugeneware/ffmpeg-static 的 `b6.1.1` 发布，GPL-3.0，附带其许可证文件），校验 SHA-256 后解压到配置文件旁的 `ffmpeg/b6.1.1/`；只有运行这个命令时才会下载。已安装的副本完好时不会重复下载（`--force` 强制重新下载）；新副本完整且通过校验后才替换旧的，`ffmpeg/` 下其他版本的文件夹会被删除。`ffmpeg set baseurl <url>` 可改从这些发布文件的镜像下载，而不是 GitHub（例如 `https://registry.npmmirror.com/-/binary/ffmpeg-static`；地址保存在配置文件里，`ffmpeg unset baseurl` 恢复为 GitHub），文件同样会被校验。Windows 版本是 x64 构建（Windows on Arm 通过模拟运行）。`ffmpeg path` 显示能否找到 ffmpeg（见 [README](README.md#检查-ffmpeg可选步骤)）：需要 ffmpeg 却找不到的 WXGF 图片会以 `failure_kind` `ffmpeg_missing` 失败，错误信息里写明其消息的发送时间；导出会把这类图片计入 `ffmpegMissing`，并在 `ffmpegMissingImages` 里逐张列出所在会话和发送时间。
@@ -138,7 +138,7 @@ AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及�
 | Crate | 作用 |
 |---|---|
 | `crates/weflow-cli` | 命令入口、参数解析、输出；`weflow serve` 的命令 API（`src/serve_api/`，见 [serve-api.md](serve-api.md)） |
-| `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、CLI 与命令 API 共用的类型化读取（`reads`）、命令 API 的契约（`contract`）、桌面端的 HTTP API |
+| `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、CLI 与命令 API 共用的类型化读取（`reads`）、命令 API 的契约（`contract`） |
 | `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、ISAAC-64 密钥流(移植自厂商 WASM)、平台封装 |
 | `crates/weflow-assets` | 内嵌资源、解压、哈希校验 |
 | `crates/weflow-silk` | 内置的 SILK 解码器，用于语音消息 |
@@ -151,7 +151,6 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 厂商的 WASM 解码器(`WxIsaac64`)不在其中:它已用纯 Rust 移植在 `weflow-core/src/isaac64.rs`，并用从原模块抓取的测试向量验证过。
 
 配置放在 `WEFLOW_HOME`，否则是平台配置目录下的 `./weflow`:配置文件 `config.json`(也接受 TOML)，缓存、日志、运行时分目录存放。写配置时会锁住 `config.json.lock` 并先写临时文件再替换，多个 `weflow` 进程同时修改配置也不会互相覆盖。
-`./weflow config import` 迁移桌面端可读的设置，加密的 `safe:` / `lock:` 字段会跳过并提示重新设置。
 
 连接相关的设置（`db_path`、`wxid`、`decrypt_key`）只从配置文件读取，用 `./weflow config set` 设置，没有命令行覆盖选项。`./weflow config set --help` 会解释每个键。`./weflow config set config_path <文件>` 让之后的运行改用另一个配置文件（记录在默认位置旁的 `config_path` 文件里，`./weflow config unset config_path` 或传入默认路径即恢复），`./weflow config path` 显示当前使用的路径。`./weflow config set current_profile <名称>` 切换当前配置档案（档案不存在时自动创建）；`./weflow config profiles` 列出各个档案的账号和数据目录，以及数据库密钥、图片密钥和 AI 模型 API Key 是否已设置（只给出 `true` / `false`，不显示密钥本身）、是否 `complete`（足以打开数据库）。`-h` / `--help` 和 `-V` / `-v` / `--version` 在所有命令中都可用，只是不显示在选项列表里。
 
@@ -162,11 +161,11 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 
 ## 测试
 
-- 各 crate 的单元测试:配置和旧配置导入、内嵌运行时清单、SQLCipher(加解密往返、错误密钥、页被篡改、WAL 合并)、图片和朋友圈解密、导出格式。
+- 各 crate 的单元测试:配置、内嵌运行时清单、SQLCipher(加解密往返、错误密钥、页被篡改、WAL 合并)、图片和朋友圈解密、导出格式。
 - 端到端测试用合成的加密账号(`weflow_native::fixture`:SQLCipher 页、WAL、zstd、SILK)和本地假 HTTP 服务器，位于
   `crates/weflow-core/tests/`。`cargo test --workspace` 会全部运行。
 - 真实数据回归:一个 Windows 微信 4.x 账号，用 Linux 构建，以及在 Windows 上运行 `weflow.exe`(约 80 个命令、带媒体的消息导出、
-  图片导出、HTTP API)。还没验证的部分见 [cli-unsupported.md](cli-unsupported.md#4-平台与验证范围)。
+  图片导出)。还没验证的部分见 [cli-unsupported.md](cli-unsupported.md#4-平台与验证范围)。
 
 要重复测量游标性能，可运行 `cargo run --release -p weflow-core --example export_pipeline_probe -- <工作目录> --mode keys --messages 200000 --shards 2 --runs 5`。
 请使用可丢弃的工作目录：探针会将 `<工作目录>/data` 替换为合成的加密数据库。它先预热快照，再逐次报告精确键、索引推导键和发送者筛选游标的建键耗时、首批内部结果时间和取批耗时。

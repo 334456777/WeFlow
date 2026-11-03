@@ -4,24 +4,19 @@
 
 `weflow serve` makes every CLI command available over HTTP. The path is the command path, the parameters are the command's options, and the answer is what the terminal gets: `GET /config/list` returns exactly what `weflow --json config list` prints. Design and plans: issue #131.
 
-The desktop app's HTTP API (`/api/v1/*`, SSE push) is a separate server started with `weflow serve --desktop`; see [HTTP-API.md](HTTP-API.md).
-
 ## Starting
 
 ```sh
 weflow serve                       # command API on http://127.0.0.1:18108
 weflow serve --port 8080 --host 127.0.0.1
-weflow serve --desktop             # the desktop app's API instead (port `http_api_port`, default 5031)
 weflow serve --ui-dir web/dist     # with the WebUI at http://127.0.0.1:18108/ui/
 ```
 
 | Option | Meaning |
 |---|---|
-| `--host`, `--port` | Listen address; default `127.0.0.1:18108` (with `--desktop`: `http_api_host` / `http_api_port`, default `127.0.0.1:5031`) |
+| `--host`, `--port` | Listen address; default `127.0.0.1:18108` |
 | `--api-token` | Access token (also `WEFLOW_HTTP_TOKEN`, or `http_api_token` in the config) |
-| `--desktop` | Serve the desktop app's API instead of the command API |
-| `--message-push` | SSE push of the desktop API; needs `--desktop` |
-| `--insight`, `--image-auto-download` | Run these services next to either API |
+| `--insight`, `--image-auto-download` | Run these services next to the API |
 | `--max-tasks` | Tasks (`POST` commands) that run at once; default 1 (see [Limits](#limits)) |
 | `--max-reads` | Other commands that run at once; default the number of CPUs |
 | `--max-media` | Images and voices the `/api/` media routes decode at once, more wait in line; default the number of CPUs (see [Media](#media)) |
@@ -87,7 +82,7 @@ The method says what kind of side effect the command has:
 | Method | Commands |
 |---|---|
 | `GET` | Reading (it may fill caches that can be rebuilt): `config path/list/get`, `db *`, `chat sessions/messages/search/…`, `analytics *`, `group list/members/…`, `sns timeline/…`, `biz *`, `runtime *`, `cache list`, … |
-| `POST` | Running a task or writing files: `export *`, `report * generate`, `key *`, `backup create/restore`, `chat voice-data/image-data/video-data/…`, `sns export/media/…`, `image decrypt`, `insight test/trigger/scan`, `config import`, `ffmpeg install`, … |
+| `POST` | Running a task or writing files: `export *`, `report * generate`, `key *`, `backup create/restore`, `chat voice-data/image-data/video-data/…`, `sns export/media/…`, `image decrypt`, `insight test/trigger/scan`, `ffmpeg install`, … |
 | `PUT` | Changing a setting: `config set`, `lang`, `ffmpeg set baseurl`, `insight mark-read`, `analytics excluded` and `chat group-hint` with `set` |
 | `DELETE` | Removing: `config unset/clear`, `cache clear/clear-account`, `ffmpeg unset baseurl`, `insight clear` |
 
@@ -241,7 +236,7 @@ A browser sends at most 6 requests at once to one server (HTTP/1.1), and an open
 curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `3` (it was `1` until a parsed message's `serverId` became a string, #399, and its `messageKey` stopped holding the database's path, #443; `2` until the rows of `chat messages`, `chat latest` and `chat message` without `parsed` became `MessageRow`s, their columns typed and named in camelCase, and the hits of `chat search` `SearchHit`s, a `MessageRow` with its `_session_id`, #492). It is raised only by a change that breaks existing clients, not by new commands or options. For the answers `web/contract/openapi.json` describes, CI tells such a change: `web/scripts/contract-compat.ts` compares the contract with that of the change's base and fails when a client of it could read the new answers wrong and `apiVersion` is the same (see web/README.md). `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
+Two versions tell clients what they talk to: `version` (in `/health`, and `info.version`) is the version of `weflow`; `apiVersion` (in `/health`, and `info.x-weflow-api-version`) is the version of the API's rules — routes, methods, parameters, answers, jobs — now `3` (it was `1` until a parsed message's `serverId` became a string, #399, and its `messageKey` stopped holding the database's path, #443; `2` until the rows of `chat messages`, `chat latest` and `chat message` without `parsed` became `MessageRow`s, their columns typed and named in camelCase, and the hits of `chat search` `SearchHit`s, a `MessageRow` with its `_session_id`, #492, and the API lost `config import`, #537). It is raised only by a change that breaks existing clients, not by new commands or options. For the answers `web/contract/openapi.json` describes, CI tells such a change: `web/scripts/contract-compat.ts` compares the contract with that of the change's base and fails when a client of it could read the new answers wrong and `apiVersion` is the same (see web/README.md). `GET /health` needs no token, so a client such as the WebUI can check both before it asks for one:
 
 ```json
 {"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41", "lang": "en",
@@ -355,7 +350,7 @@ const events = new EventSource("http://127.0.0.1:18108/api/push/messages?access_
 events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
 ```
 
-- First come a `hello` event (what `/health` answers) and a `ready` event, then each new message as `message.new` and each recall as `message.revoke`, with the fields of the desktop app's push ([HTTP-API.md](HTTP-API.md#2-active-push)): `sessionId`, `sessionType`, `rawid`, `sourceName`, `groupName`, `content`, `timestamp`, … Every message event has an `id`; a `heartbeat` event every 15 seconds keeps a quiet stream open and shows it alive (see [Staying connected](#staying-connected)).
+- First come a `hello` event (what `/health` answers) and a `ready` event, then each new message as `message.new` and each recall as `message.revoke`, with the fields `sessionId`, `sessionType`, `rawid`, `sourceName`, `groupName`, `content`, `timestamp`, … Every message event has an `id`; a `heartbeat` event every 15 seconds keeps a quiet stream open and shows it alive (see [Staying connected](#staying-connected)).
 - The server keeps the events of the last 10 minutes (at most 1000). A client that reconnects with `Last-Event-ID` (EventSource does it by itself), or opens a new stream with `?last-event-id=`, gets the ones after that id; without either it gets all kept events.
 - Only while someone listens, the server checks once a second whether the account's session and message databases changed, and then looks for new messages on the hub of the in-process reads (at least every 30 seconds anyway). A new message reaches the page within a second or two; listening costs the server about 5 ms of CPU a second on a large account. The first listener starts from what the account holds at that moment, and so does a listener after the config changed (another account).
-- Only `GET`; the stream is not counted towards `--max-reads`. It is not the desktop app's `--message-push`, which belongs to `--desktop`.
+- Only `GET`; the stream is not counted towards `--max-reads`.

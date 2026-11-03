@@ -9,7 +9,6 @@ Argument errors follow the same rule: with `--json` (before any `--`) a mistyped
 `{"success": false, "error": {"code": "invalid_arguments", "message": ..., "details": {"usage": ...}}}` on stdout and exits with `2`.
 A command whose operation fails (an image that cannot be found, `insight test` without an API key, ...) is an error too:
 `success` is `false` with a non-zero exit code, and fields such as `failureKind` are kept in `error.details`; `success: true` always means it worked.
-The HTTP API keeps its own response shapes.
 
 Help: `-h` / `--help` shows the help of any command, and a command that needs arguments or a subcommand shows its help when it is run without any (`./weflow config`, `./weflow config set`, `./weflow lang`);
 with only some of the arguments it reports which are missing. Usage lines list `[OPTIONS]` last (`./weflow config set <KEY> <VALUE> [OPTIONS]`).
@@ -26,12 +25,12 @@ When none of the variables is set (usual on Windows) the OS display language dec
 `WEFLOW_LANG=en|zh` overrides the saved language for a single run or shell session.
 
 The language affects `--help`, usage errors, runtime errors, progress text and generated text: TXT/Excel export labels (`[Image]` / `[图片]`), the default official-account payment
-merchant name, and the default AI insight prompt. JSON keys, error codes and the HTTP API's error responses stay English.
+merchant name, and the default AI insight prompt. JSON keys and error codes stay English.
 
 ## Commands
 
 ```
-./weflow config    path | list | get | set | unset | clear | import
+./weflow config    path | list | get | set | unset | clear
 ./weflow lang      en | zh
 ./weflow db        detect | scan <root> | wxid | test | open
 ./weflow key       db | image | scan-image <user-dir>
@@ -51,7 +50,7 @@ merchant name, and the default AI insight prompt. JSON keys, error codes and the
 ./weflow video     info | parse-md5
 ./weflow image     decrypt | resolve-cache | resolve-batch | auto-download start|status
 ./weflow backup    create | inspect | restore
-./weflow serve     [--desktop [--message-push]] --insight --image-auto-download
+./weflow serve     --insight --image-auto-download
 ./weflow runtime   info | manifest
 ./weflow cache     list | clear | clear-account
 ./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
@@ -99,7 +98,7 @@ All cache cleanup is under `weflow cache`:
 | `cache clear --emojis` | Stickers |
 | `cache clear --sns` | Images and videos of Moments |
 | `cache clear --analytics` | The analytics aggregate |
-| `cache clear --api` | Media exported (`api-media`) and avatars pushed (`push-avatar-files`) by the HTTP API, and files returned by `serve` (`serve-files`, see [serve-api.md](serve-api.md#files)) |
+| `cache clear --api` | Avatars saved for message push (`push-avatar-files`), files returned by `serve` (`serve-files`, see [serve-api.md](serve-api.md#files)) and the `api-media` folder |
 | `cache clear --keys` | Fingerprints of keys that worked; the next command checks the key again |
 | `cache clear --runtime` | Runtimes unpacked by other WeFlow versions under `runtime/`; the running version's stays |
 | `cache clear --web` | WebUI versions downloaded by `weflow web` and `serve` (`cache/web/`, see [serve-api.md](serve-api.md#webui)); `serve` downloads the one it needs again |
@@ -163,7 +162,7 @@ fresh-key Windows real-client decode, remain separate manual validation requirem
 Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA%\weflow\runtime\<version>\<target>`
 (on Linux/macOS under the platform's data directory).
 
-`serve` offers every command over HTTP on `127.0.0.1:18108` ([serve-api.md](serve-api.md)). `serve --desktop` exposes the desktop app's HTTP API instead ([HTTP-API.md](HTTP-API.md); token required except `/health`; set `http_api_token` or `--api-token`).
+`serve` offers every command over HTTP on `127.0.0.1:18108` ([serve-api.md](serve-api.md)).
 `serve --insight` runs the AI insight engine; each generated insight is printed to stderr (as a JSON line with `--json`).
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
 Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`). WXGF images (an HEVC picture in
@@ -186,7 +185,7 @@ Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, 
 | Crate | Role |
 |---|---|
 | `crates/weflow-cli` | Command entry, argument parsing, output; the command API of `weflow serve` (`src/serve_api/`, see [serve-api.md](serve-api.md)) |
-| `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, the typed reads the CLI and the command API share (`reads`), the command API's contract (`contract`), the desktop app's HTTP API |
+| `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, the typed reads the CLI and the command API share (`reads`), the command API's contract (`contract`) |
 | `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, ISAAC-64 keystream (ported from the vendor WASM), platform wrappers |
 | `crates/weflow-assets` | Embedded resources, unpacking, hash check |
 | `crates/weflow-silk` | Vendored SILK decoder for voice messages |
@@ -200,8 +199,7 @@ The vendor WASM decoder (`WxIsaac64`) is not among them: it is ported to pure Ru
 
 Configuration lives in `WEFLOW_HOME`, otherwise in `./weflow` under the platform's configuration directory: `config.json` (TOML is
 accepted too), with caches, logs and the runtime in separate directories. Changes are written under a lock on `config.json.lock`
-and through a temporary file, so several `weflow` processes can change the config at once without losing each other's changes. `./weflow config import` migrates the desktop app's
-readable settings and skips the encrypted `safe:` / `lock:` values with a hint to set them again.
+and through a temporary file, so several `weflow` processes can change the config at once without losing each other's changes.
 
 The connection settings (`db_path`, `wxid`, `decrypt_key`) are only read from the config file, set them with `./weflow config set`; there are no command-line
 overrides. `./weflow config set --help` explains every key. `./weflow config set config_path <file>` makes later runs use another config file (it is remembered in
@@ -216,12 +214,12 @@ decrypts WeChat 4.x databases itself (SQLCipher 4) and reads them **read-only** 
 
 ## Tests
 
-- Unit tests in each crate: configuration and legacy config import, the embedded runtime manifest, SQLCipher (round trip, wrong
+- Unit tests in each crate: configuration, the embedded runtime manifest, SQLCipher (round trip, wrong
   key, tampered page, WAL merge), image and Moments decryption, export formats.
 - End-to-end tests on synthetic encrypted accounts (`weflow_native::fixture`: SQLCipher pages, WAL, zstd, SILK) and local fake
   HTTP servers, under `crates/weflow-core/tests/`. `cargo test --workspace` runs everything.
 - Real-data regression: one Windows WeChat 4.x account, with a Linux build and with the Windows `weflow.exe` run on Windows
-  (about 80 commands, message exports with media, image exports, the HTTP API). What is still unverified is listed in
+  (about 80 commands, message exports with media, image exports). What is still unverified is listed in
   [cli-unsupported.md](cli-unsupported.md#4-platform-and-verification-limits).
 
 For repeatable cursor measurements, run `cargo run --release -p weflow-core --example export_pipeline_probe -- <work-dir> --mode keys --messages 200000 --shards 2 --runs 5`

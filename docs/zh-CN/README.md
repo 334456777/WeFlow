@@ -8,7 +8,7 @@
 - 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
-- 所有命令的 HTTP 接口（`serve`）、桌面端的本地 HTTP API（token 鉴权、SSE 推送，`serve --desktop`）、消息推送、AI 见解。
+- 所有命令的 HTTP 接口（`serve`）、消息推送、AI 见解。
 - `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](serve-api.md#网页)）。
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
 
@@ -29,7 +29,7 @@ cp target/release/weflow .
 ./weflow lang zh
 ```
 
-语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文，HTTP API 的错误响应也保持英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
+语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
 
 ## 检查 ffmpeg（可选步骤）
 
@@ -121,7 +121,7 @@ WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不�
 - [命令列表](native-cli.md)
 - [CLI 不支持的功能(详细清单)](cli-unsupported.md) · [对原后端的覆盖率](cli-coverage.md)
 - [命令 API 与网页（`weflow serve`）](serve-api.md) · [Windows 数据库密钥](windows-db-key.md)
-- [HTTP API](HTTP-API.md) · [macOS 密钥排障](MAC-KEY-FAQ.md)
+- [macOS 密钥排障](MAC-KEY-FAQ.md)
 
 # 免责声明
 <div id="disclaimer">
