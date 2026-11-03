@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use anyhow::{anyhow, Context, Result};
 use md5::{Digest, Md5};
@@ -47,6 +47,12 @@ enum CursorKeys<'a> {
     Export,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Tables this thread read every key of ([`NativeAccount::table_keys`]).
+    static TABLE_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn exact_key_table(t: &MsgTable) -> bool {
     EXACT_KEY_TABLES
         .lock()
@@ -64,6 +70,9 @@ pub struct MessageCursor {
     derived: Vec<bool>,
     range: (i64, i64),
     ascending: bool,
+    /// Held while keys are read again from the rows ([`NativeAccount::rekey`]): workers whose pages find the same
+    /// table's keys wrong at once wait for one scan of it instead of each scanning the whole table.
+    rekeying: Arc<Mutex<()>>,
 }
 
 #[derive(Default)]
@@ -962,6 +971,7 @@ impl NativeAccount {
                 derived,
                 range: (begin, end),
                 ascending,
+                rekeying: Arc::default(),
             },
         );
         Ok(id)
@@ -975,6 +985,8 @@ impl NativeAccount {
         (begin, end): (i64, i64),
         who: &str,
     ) -> Result<Vec<Key>> {
+        #[cfg(test)]
+        TABLE_SCANS.with(|n| n.set(n.get() + 1));
         let sql = format!(
             "select sort_seq, create_time, local_id from \"{}\" where create_time >= ?1 and (?2 = 0 or create_time <= ?2){who}",
             t.table
@@ -1047,24 +1059,25 @@ impl NativeAccount {
     /// real ones: reads the keys of those tables from their rows and remembers the tables; the other tables keep
     /// theirs and are still checked. Fails with [`KEYS_CHANGED`] when that changes the pages.
     fn rekey(&self, cursor: i64, fix: &[usize]) -> Result<()> {
-        let (tables, range, ascending) = {
-            let cursors = self
-                .cursors
-                .lock()
-                .map_err(|_| anyhow!("cursor lock poisoned"))?;
-            let c = cursors
-                .open
-                .get(&cursor)
-                .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
-            (c.tables.clone(), c.range, c.ascending)
-        };
+        let rekeying = self.cursor_field(cursor, |c| c.rekeying.clone())?;
+        let _one_at_a_time = rekeying
+            .lock()
+            .map_err(|_| anyhow!("rekey lock poisoned"))?;
+        // tables another page fixed while this one waited are done
+        let (tables, range, ascending, fix) = self.cursor_field(cursor, |c| {
+            let fix: Vec<usize> = fix.iter().copied().filter(|&idx| c.derived[idx]).collect();
+            (c.tables.clone(), c.range, c.ascending, fix)
+        })?;
+        if fix.is_empty() {
+            return Ok(());
+        }
         if let Ok(mut set) = EXACT_KEY_TABLES.lock() {
-            for &idx in fix {
+            for &idx in &fix {
                 set.insert((tables[idx].db.clone(), tables[idx].table.clone()));
             }
         }
         let mut exact: Vec<(usize, Vec<Key>)> = Vec::with_capacity(fix.len());
-        for &idx in fix {
+        for &idx in &fix {
             exact.push((idx, self.table_keys(&tables[idx], idx, range, "")?));
         }
         let mut cursors = self
@@ -1075,11 +1088,6 @@ impl NativeAccount {
             .open
             .get_mut(&cursor)
             .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
-        // another page may have fixed some of them meanwhile
-        exact.retain(|(idx, _)| c.derived[*idx]);
-        if exact.is_empty() {
-            return Ok(());
-        }
         // The rows are read from a snapshot that may be newer than the cursor: rows WeChat added since stay out, and a
         // row it deleted keeps its key (no page finds it), as when the keys are read at open. So only an order the
         // index got wrong changes the pages.
@@ -1124,6 +1132,19 @@ impl NativeAccount {
         } else {
             Err(anyhow!(KEYS_CHANGED))
         }
+    }
+
+    /// `read` of the open cursor `cursor`.
+    fn cursor_field<T>(&self, cursor: i64, read: impl FnOnce(&MessageCursor) -> T) -> Result<T> {
+        let cursors = self
+            .cursors
+            .lock()
+            .map_err(|_| anyhow!("cursor lock poisoned"))?;
+        let c = cursors
+            .open
+            .get(&cursor)
+            .ok_or_else(|| anyhow!("unknown message cursor {cursor}"))?;
+        Ok(read(c))
     }
 
     /// Next batch of rows and whether more remain.
@@ -1500,6 +1521,29 @@ mod tests {
                 "the rows agreed with the keys"
             );
         }
+    }
+
+    #[test]
+    fn a_table_another_page_read_again_is_not_read_once_more() {
+        use crate::fixture::{MsgSpec, T0};
+        let text = |id: i64, at: i64| MsgSpec::text(id, "wxid_bob", at, "x");
+        let acct = export_world(
+            "off-once",
+            &[vec![
+                text(1, T0),
+                text(2, T0 + 1).with_sort_seq((T0 + 50) * 1000),
+                text(3, T0 + 60),
+            ]],
+        );
+        let id = acct.open_export_cursor("wxid_bob", 2, 0, 0).unwrap();
+        let scans = || TABLE_SCANS.with(std::cell::Cell::get);
+        let before = scans();
+        // two pages found the table off the rule at once: the second waited for the first one's scan
+        acct.rekey(id, &[0]).unwrap();
+        acct.rekey(id, &[0]).unwrap();
+        assert_eq!(scans() - before, 1, "the table was read once");
+        assert_eq!(cursor_state(&acct, id).1, vec![false]);
+        assert_eq!(page_ids(&acct, id).unwrap(), vec![1, 2, 3]);
     }
 
     #[test]
