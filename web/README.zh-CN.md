@@ -70,7 +70,7 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 2. `bun run contract` 重新生成 `src/api/contract.gen.ts`；
 3. `bun run typecheck` 显示网页需要跟着改的地方。
 
-API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。`scripts/contract-compat.ts` 用来发现这类改动：`bun scripts/contract-compat.ts <之前的 openapi.json>` 列出按之前的契约写的客户端在现在的回复里可能读错的地方（字段可能省略或变为可为空、出现原来没有的类型或取值、路由不再描述），有这类改动而 `info.version` 没变时失败。`web.yml` 拿改动所基于的提交的契约运行它。新增字段或路由不算这类改动。
+API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。`scripts/contract-compat.ts` 用来发现这类改动：`bun scripts/contract-compat.ts <之前的 openapi.json>` 列出按之前的契约写的客户端在现在的回复里可能读错的地方（字段可能省略或变为可为空、出现原来没有的类型或取值、路由不再描述），有这类改动而 `info.version` 没变时失败。`web.yml` 拿 weflow 最新一个发布版的契约运行它，所以还没有发布过的 API 版本可以继续改；开始保存契约之前的发布版只能看出它的 API 版本，和现在的相同时，改为和改动所基于的提交比较。新增字段或路由不算这类改动。
 
 `src/api/contract.test.ts` 把 weflow-cli 生成的 `contract/samples.json` 交给网页自己的代码：先经过 `src/api/` 的读取，再交给聊天窗口、会话列表、通讯录、资源浏览和任务中心处理。weflow-cli 有测试拿契约校验同一份样本和运行中的服务端的回复（docs/zh-CN/serve-api.md，「OpenAPI 描述」），所以网页测的是服务端真正的回复，而不是网页自己的夹具。
 
