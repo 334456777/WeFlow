@@ -2,9 +2,9 @@
 //! `msg/attach/<md5(session)>/<yyyy-mm>/Img` folder, decrypts it (V1 / V2 / legacy XOR), unwraps
 //! WXGF through ffmpeg and keeps the result in `<cache>/Images/<session>/<yyyy-mm>/`.
 //!
-//! The desktop app's render-process events (`image:cacheResolved`, `image:decryptProgress`,
+//! WeFlow's desktop app's render-process events (`image:cacheResolved`, `image:decryptProgress`,
 //! `image:updateAvailable`) and the background "better quality available" check have no
-//! counterpart in a CLI; like the desktop app's headless worker mode they are disabled, so
+//! counterpart in a CLI; like WeFlow's desktop app's headless worker mode they are disabled, so
 //! `hasUpdate` is always `false`.
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

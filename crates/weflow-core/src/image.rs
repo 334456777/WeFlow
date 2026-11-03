@@ -1,4 +1,4 @@
-//! Pure helpers of `electron/services/imageDecryptService.ts`: `.dat` / cache file naming,
+//! Pure helpers of WeFlow's `imageDecryptService.ts`: `.dat` / cache file naming,
 //! quality tiers, WXGF (HEVC) unwrapping and JPEG sanity checks.
 use std::path::{Path, PathBuf};
 
@@ -105,7 +105,7 @@ pub fn is_hd_path(path: &str) -> bool {
     stem_and_ext(path).0.ends_with("_hd")
 }
 
-/// `isThumbnailPath` (a plain substring test, as on the desktop).
+/// `isThumbnailPath` (a plain substring test, as in WeFlow's desktop app).
 pub fn is_thumbnail_path(path: &str) -> bool {
     let l = path.to_lowercase();
     l.contains("_thumb") || l.contains("_t") || l.contains(".t.")

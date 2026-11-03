@@ -1,7 +1,7 @@
-//! Port of `electron/services/imageDownloadService.ts`: the Windows-only `img_helper.dll` hook that
+//! Port of WeFlow's `imageDownloadService.ts`: the Windows-only `img_helper.dll` hook that
 //! makes WeChat download original-size images for a whitelist of conversations.
 //!
-//! The DLL (shipped in `resources/image/win32/x64`) is loaded with `InitImgHelper(pid, whitelist)`
+//! The DLL (embedded from `crates/weflow-assets/assets/image/win32/x64`) is loaded with `InitImgHelper(pid, whitelist)`
 //! against the main `Weixin.exe` process, re-checked every 30 seconds so a restarted WeChat is
 //! hooked again. On every other platform the service reports `supported: false`.
 use std::ffi::{c_char, CStr};

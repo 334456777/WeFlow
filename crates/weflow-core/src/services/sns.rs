@@ -1,4 +1,4 @@
-//! Moments service: ports the stateful parts of `electron/services/snsService.ts`
+//! Moments service: ports the stateful parts of WeFlow's `snsService.ts`
 //! (timeline queries, stats caches, media download/decrypt, export, emoji download).
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -127,11 +127,6 @@ impl ServiceHub {
         let dir = self.cache_base().join("Emojis");
         let _ = std::fs::create_dir_all(&dir);
         dir
-    }
-
-    /// Directory the HTTP API exports media into (`api-media`).
-    pub fn api_media_dir(&self) -> PathBuf {
-        self.cache_base().join("api-media")
     }
 
     fn sns_cache_file(&self, url: &str) -> PathBuf {
@@ -273,7 +268,7 @@ impl ServiceHub {
             .filter(|u| !u.is_empty() && asked.insert(u.clone()))
             .collect();
         let posts = wcdb
-            .sns_timeline_as(
+            .sns_timeline(
                 q.limit,
                 q.offset,
                 &usernames,
@@ -338,7 +333,7 @@ impl ServiceHub {
         let mut offset = 0;
         for _ in 0..max_rounds {
             let rows = wcdb
-                .sns_timeline_as(page, offset, &[], None, 0, 0)
+                .sns_timeline(page, offset, &[], None, 0, 0)
                 .map_err(err_native)?;
             if rows.is_empty() {
                 break;

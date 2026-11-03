@@ -9,7 +9,6 @@ use crate::error::{AppError, AppResult};
 
 mod analytics;
 mod api;
-pub use api::{ApiMessagesPage, ApiMessagesResponse, ChatLabResponse};
 mod chat;
 mod cleanup;
 mod export_stream;
@@ -207,7 +206,7 @@ impl ServiceHub {
     /// `limit` messages of a conversation from `offset` on, in the order of `chat messages`.
     pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> AppResult<Vec<MsgRow>> {
         let wcdb = self.open_wcdb()?;
-        wcdb.messages_as::<MsgRow>(session_id, limit, offset)
+        wcdb.messages(session_id, limit, offset)
             .map_err(|err| AppError::native(err.to_string()))
     }
 
@@ -253,8 +252,8 @@ impl ServiceHub {
         };
         let wcdb = self.open_wcdb()?;
         match from {
-            Some(from) => wcdb.messages_from_as::<MsgRow>(session_id, limit, from),
-            None => wcdb.messages_as::<MsgRow>(session_id, limit, offset),
+            Some(from) => wcdb.messages_from(session_id, limit, from),
+            None => wcdb.messages(session_id, limit, offset),
         }
         .map_err(|err| AppError::native(err.to_string()))
     }
@@ -269,11 +268,7 @@ impl ServiceHub {
     ) -> AppResult<Vec<MsgRow>> {
         use weflow_native::native_msg::{MsgPos, PageFrom};
         self.open_wcdb()?
-            .messages_from_as::<MsgRow>(
-                session_id,
-                limit,
-                PageFrom::After(MsgPos::at_time(seconds)),
-            )
+            .messages_from(session_id, limit, PageFrom::After(MsgPos::at_time(seconds)))
             .map_err(|err| AppError::native(err.to_string()))
     }
 
@@ -314,18 +309,15 @@ impl ServiceHub {
         offset: i32,
         begin: i32,
         end: i32,
-    ) -> AppResult<Vec<SessionRow<MsgRow>>> {
+    ) -> AppResult<Vec<SessionRow>> {
         let wcdb = self.open_wcdb()?;
-        wcdb.search_as::<MsgRow>(keyword, session_id, limit, offset, begin, end)
+        wcdb.search(keyword, session_id, limit, offset, begin, end)
             .map_err(|err| AppError::native(err.to_string()))
     }
 
     /// `chat search --parsed`: each hit as the chat window shows it, with its `_cursor`, to page its conversation
     /// from, and its `_session_id`.
-    pub fn parsed_hits(
-        &self,
-        hits: Vec<SessionRow<MsgRow>>,
-    ) -> Vec<crate::contract::ParsedMessage> {
+    pub fn parsed_hits(&self, hits: Vec<SessionRow>) -> Vec<crate::contract::ParsedMessage> {
         let my = self.wmy();
         hits.into_iter()
             .map(|hit| {
@@ -889,7 +881,7 @@ impl ServiceHub {
         }
     }
 
-    /// Export a conversation's messages in one of the desktop app's formats
+    /// Export a conversation's messages in one of WeFlow's desktop app's formats
     /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
     pub fn export_messages(
         &self,

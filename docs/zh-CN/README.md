@@ -2,19 +2,18 @@
 
 [English](../../README.md) | **简体中文**
 
-`weflow` 是 [WeFlow](weflow-readme.md) 后端的 Rust 原生命令行版本。无需 Electron 桌面端，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
+`weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 原生命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
 - 默认输出便于阅读的文本（对齐的 `键: 值` 和表格；错误写到 stderr）。加 `--json` 则在 stdout 输出一个 JSON 文档（`{"success": true, "data": ...}`），方便脚本处理。
 - 会话、消息、联系人、朋友圈，私聊/群聊统计分析，年度报告与双人报告。
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
-- 所有命令的 HTTP 接口（`serve`）、桌面端的本地 HTTP API（token 鉴权、SSE 推送，`serve --desktop`）、消息推送、AI 见解。
+- 所有命令的 HTTP 接口（`serve`）、消息推送、AI 见解。
+- `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](serve-api.md#网页)）。
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
 
 > [!WARNING]
 > CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库)，已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建，以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过(验证范围见 [第 4 节](cli-unsupported.md#4-平台与验证范围))。可能有粗糙之处，欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](cli-coverage.md) · [不支持的功能](cli-unsupported.md)。
-
-原 WeFlow 项目（Electron 桌面端）的说明见 [docs/zh-CN/weflow-readme.md](weflow-readme.md)。
 
 ## 构建
 
@@ -30,7 +29,7 @@ cp target/release/weflow .
 ./weflow lang zh
 ```
 
-语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文，HTTP API 的错误响应也保持英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
+语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
 
 ## 检查 ffmpeg（可选步骤）
 
@@ -112,7 +111,7 @@ decrypt_key: <数据库密钥>
 ## CLI 不支持的功能
 
 WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不会修改微信数据库~~有些锅我不背~~，会修改微信数据库的命令(`chat update-message`、`chat delete-message`、
-`chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)设计为占位符，另有一些桌面端功能缺失
+`chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)设计为占位符，另有一些 WeFlow 桌面端的功能缺失
 (语音转文字、弹窗等桌面进程功能)。
 
 详细清单见 [docs/zh-CN/cli-unsupported.md](cli-unsupported.md)
@@ -121,10 +120,8 @@ WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不�
 
 - [命令列表](native-cli.md)
 - [CLI 不支持的功能(详细清单)](cli-unsupported.md) · [对原后端的覆盖率](cli-coverage.md)
-- [桌面端改用 Rust 数据库层](desktop-rust-layer.md)
-- [`wcdb_api.dll` 说明:CLI 和新桌面端不依赖它;新旧版本](wcdb-api.md)
-- [HTTP API](HTTP-API.md) · [macOS 密钥排障](MAC-KEY-FAQ.md)
-- [原 WeFlow README](weflow-readme.md) · [Español](../es-ES/weflow-readme.md)
+- [命令 API 与网页（`weflow serve`）](serve-api.md) · [Windows 数据库密钥](windows-db-key.md)
+- [macOS 密钥排障](MAC-KEY-FAQ.md)
 
 # 免责声明
 <div id="disclaimer">

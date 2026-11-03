@@ -18,7 +18,7 @@ These commands are retained for compatibility, but because the native database l
 | `chat mark-read` | `mark_all_sessions_read` | Clear the unread counters of all sessions |
 | `sns block-delete` (check / install / uninstall) | `sns_block_delete_check`, `sns_block_delete_install`, `sns_block_delete_uninstall` | Trigger that keeps Moments that friends delete |
 | `sns delete` | `sns_delete_post` | Delete a Moments post from the local database |
-| (no command) | `import_table_snapshot`, `import_table_snapshot_with_schema` | Restore a table dump into a database (the dump side works and writes only outside `db_storage`) |
+| (no command) | `import_table_snapshot` | Restore a table dump into a database (the dump side works and writes only outside `db_storage`) |
 
 Why: writing into a database that the running WeChat client also has open can corrupt it, and the SQLCipher files would have to be
 re-encrypted page by page. If you need one of these, it has to be designed separately.

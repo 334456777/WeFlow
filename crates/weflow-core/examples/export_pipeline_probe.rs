@@ -274,7 +274,7 @@ fn count_rows(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<usize> {
     let cursor = wcdb.open_message_cursor(ROOM, BATCH, true, begin, end, false)?;
     let mut rows = 0;
     let result = loop {
-        match wcdb.fetch_message_batch_as::<MsgRow>(cursor) {
+        match wcdb.fetch_message_batch(cursor) {
             Ok((page, more)) => {
                 rows += page.len();
                 if !more {
@@ -291,7 +291,7 @@ fn count_rows(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<usize> {
 fn fetch_all(wcdb: &Wcdb, cursor: i64) -> anyhow::Result<Vec<Vec<MsgRow>>> {
     let mut pages = Vec::new();
     loop {
-        let (page, more) = wcdb.fetch_message_batch_as::<MsgRow>(cursor)?;
+        let (page, more) = wcdb.fetch_message_batch(cursor)?;
         if page.is_empty() {
             break;
         }
@@ -371,19 +371,16 @@ fn keys(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
             let result = (|| -> anyhow::Result<()> {
                 loop {
                     let t = Instant::now();
-                    let (page, more) = wcdb.fetch_message_batch(cursor)?;
+                    let (rows, more) = wcdb.fetch_message_batch(cursor)?;
                     fetch_time += t.elapsed();
                     first_batch.get_or_insert_with(|| started.elapsed());
-                    let rows = page
-                        .as_array()
-                        .ok_or_else(|| anyhow::anyhow!("expected rows"))?;
                     count += rows.len();
                     // Validation deliberately stays outside the fetch timer. Hash complete rows in cursor order,
                     // including their content, sender and shard: fewer or differently ordered rows cannot look faster.
-                    for row in rows {
-                        let bytes = serde_json::to_vec(row)?;
+                    for row in &rows {
+                        let bytes = format!("{row:?}");
                         digest.update(&bytes);
-                        let name = row["sender_username"].as_str().unwrap_or("");
+                        let name = row.sender.as_deref().unwrap_or("");
                         if name.is_empty() || name == "wxid_m0" {
                             sender_count += 1;
                             sender_digest.update(&bytes);

@@ -106,7 +106,7 @@ pub fn filter_official_contacts(contacts: &Value, sessions: &Value) -> Vec<Value
                 .or_else(|| c.get("contactType"))
                 .and_then(Value::as_i64)
                 .unwrap_or(0);
-            // Raw contact rows from the native layer carry no `type`; like the desktop app, an official account
+            // Raw contact rows from the native layer carry no `type`; like WeFlow's desktop app, an official account
             // is recognised by its `gh_` user name.
             contact_type == 3 || contact_type == 99 || contact_username(c).starts_with("gh_")
         })

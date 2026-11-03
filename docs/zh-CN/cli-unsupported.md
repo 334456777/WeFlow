@@ -18,7 +18,7 @@
 | `chat mark-read` | `mark_all_sessions_read` | 清除所有会话的未读数 |
 | `sns block-delete`(check / install / uninstall) | `sns_block_delete_check`、`sns_block_delete_install`、`sns_block_delete_uninstall` | 保留好友已删除朋友圈的触发器 |
 | `sns delete` | `sns_delete_post` | 从本地数据库删除一条朋友圈 |
-| (无命令) | `import_table_snapshot`、`import_table_snapshot_with_schema` | 把表快照恢复进数据库(导出一侧可用，且只写到 `db_storage` 之外) |
+| (无命令) | `import_table_snapshot` | 把表快照恢复进数据库(导出一侧可用，且只写到 `db_storage` 之外) |
 
 原因: 正在运行的微信同时打开着这些数据库，往里写可能损坏它们，而且 SQLCipher 文件还得逐页重新加密。
 如果确实需要其中某项，需要单独设计。

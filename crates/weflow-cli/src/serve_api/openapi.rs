@@ -520,7 +520,7 @@ pub(super) fn contract() -> &'static Contract {
         data.insert(
             "chat contacts",
             json!({
-                "description": "With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table",
+                "description": "With `parsed=true`, the contacts sorted and classified; else the rows of WeChat's table",
                 "anyOf": [contacts, rows],
             }),
         );
@@ -612,7 +612,7 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("cache list", of(generator.subschema_for::<Vec<CacheUsage>>()));
         {
             use weflow_core::contract::{
-                AccountCleared, CacheCleared, Cancelled, ConfigImported, ConfigWritten, LangSaved, RemovalPlan,
+                AccountCleared, CacheCleared, Cancelled, ConfigWritten, LangSaved, RemovalPlan,
             };
             let plan = of(generator.subschema_for::<RemovalPlan>());
             let cancelled = of(generator.subschema_for::<Cancelled>());
@@ -633,7 +633,6 @@ pub(super) fn contract() -> &'static Contract {
             for command in ["config set", "config unset", "config clear"] {
                 data.insert(command, of(generator.subschema_for::<ConfigWritten>()));
             }
-            data.insert("config import", of(generator.subschema_for::<ConfigImported>()));
             data.insert("config list", of(generator.subschema_for::<weflow_core::config::ConfigStore>()));
             data.insert(
                 "config path",
@@ -1135,11 +1134,11 @@ fn fixed_paths(zh: bool, paths: &mut Map<String, Value>) {
             "description": pick(
                 zh,
                 "First a `ready` event, then the kept events (up to 10 minutes or 1000 of them) after `Last-Event-ID`, \
-                 then each new one as `message.new` or `message.revoke`, with the fields of the desktop app's push. \
+                 then each new one as `message.new` or `message.revoke`, with the message's session, sender and text. \
                  The server looks for new messages once a second while someone listens. The stream is not counted \
                  with the reads.",
                 "先发送 `ready` 事件，再补发 `Last-Event-ID` 之后保留的事件（最多 10 分钟或 1000 条），之后每条新事件为 \
-                 `message.new` 或 `message.revoke`，字段与桌面端的推送相同。有人订阅时，服务器每秒检查一次新消息。\
+                 `message.new` 或 `message.revoke`，带会话、发送者和文字。有人订阅时，服务器每秒检查一次新消息。\
                  这个连接不计入读取的并发上限。",
             ),
             "parameters": [

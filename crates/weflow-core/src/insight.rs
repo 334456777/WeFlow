@@ -1,4 +1,4 @@
-//! Pure parts of `electron/services/insightService.ts` and `insightRecordService.ts`: record
+//! Pure parts of WeFlow's `insightService.ts` and `insightRecordService.ts`: record
 //! storage, the OpenAI-compatible API call, prompt assembly and text helpers.
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,7 +24,7 @@ pub fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-/// `{name}` placeholder substitution of the desktop `mt()` helper.
+/// `{name}` placeholder substitution of WeFlow's `mt()` helper.
 pub fn fill(template: &str, vars: &[(&str, String)]) -> String {
     let mut out = template.to_string();
     for (k, v) in vars {

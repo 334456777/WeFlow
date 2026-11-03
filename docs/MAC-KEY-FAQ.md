@@ -2,11 +2,11 @@
 
 **English** | [简体中文](zh-CN/MAC-KEY-FAQ.md)
 
-If WeFlow fails to obtain the WeChat database key automatically on macOS, this guide may help.
+If `weflow key db` fails to obtain the WeChat database key on macOS, this guide may help.
 
 ### Stop retrying in a row
 
-When you see any of the following errors, pause and do not keep clicking the retrieve button:
+When you see any of the following errors, pause and do not keep running `key db`:
 
 - SCAN_FAILED, usually accompanied by "No suitable module found" or "Sink pattern not found"
 - HOOK_FAILED or "Native Hook Failed"
@@ -23,8 +23,8 @@ Based on feedback from many community users, if retrieval has already failed, th
 2. **Quit WeChat completely.** Use Command + Q or end the process in Activity Monitor; closing the window is not enough.
 3. **Restart your Mac.** This step is essential and must be a real restart. Logging out or sleep/wake does not clear the low-level blocking state.
 4. **Reopen WeChat.** Click around a little to keep it in the foreground, and make sure it is **not logged in**.
-5. **Go back to WeFlow.** Try "Get key automatically" **once only**.
-6. **Enter your password and log in.** First enter your system password in the dialog; once the page confirms that login is allowed, log in to WeChat.
+5. **Run `weflow key db`.** Run it **once only**.
+6. **Log in.** Once `key db` says to log in (`Hook installed; log in to WeChat now`), log in to WeChat.
 7. **Return to normal use.** As soon as you have the key, you can update WeChat back to the latest version you normally use.
 
 ### Common errors and what to do
@@ -39,7 +39,7 @@ WeFlow does not yet support the signature of the WeChat version you are using. T
 These errors are mostly caused by macOS security mechanisms blocking breakpoint injection or thread state reads. Further attempts are pointless: quit WeChat completely, restart your computer and try again.
 
 **task_for_pid:5**
-The system denied permission to attach to the process. Make sure you are using the packaged WeFlow.app, and check that code signing and debugging permissions are configured correctly.
+The system denied permission to attach to the process. Check that code signing and debugging permissions allow `weflow` to attach to WeChat.
 
 ### About the recommended versions
 
@@ -49,6 +49,6 @@ This does not mean newer versions can never work; it is only a reference for tro
 
 ### Final advice
 
-After the first failure, find the cause first and never click "Get automatically" blindly several times in a row. If you already failed several times before reading this document, the best approach is to start from zero: quit WeChat completely, restart the computer, then try again.
+After the first failure, find the cause first and never run `key db` blindly several times in a row. If you already failed several times before reading this document, the best approach is to start from zero: quit WeChat completely, restart the computer, then try again.
 
 Finally, if none of the above works, save the complete error text, especially the English details after SCAN_FAILED or HOOK_FAILED, and submit it to [the issue](https://github.com/hicccc77/WeFlow/issues/745). It greatly speeds up locating and fixing compatibility problems.

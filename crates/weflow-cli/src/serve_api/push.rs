@@ -1,5 +1,5 @@
 //! `GET /api/push/messages` (issue #140): new and recalled messages as server-sent events, for a page that would
-//! otherwise poll `chat latest`. The desktop app's engine (`weflow_core::push`) finds them on the hub of the
+//! otherwise poll `chat latest`. WeFlow's desktop app's engine (`weflow_core::push`) finds them on the hub of the
 //! in-process routes; it runs only while someone listens, checking once a second whether the account's session and
 //! message databases changed.
 

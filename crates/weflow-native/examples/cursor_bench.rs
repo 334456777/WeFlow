@@ -24,15 +24,15 @@ fn main() -> anyhow::Result<()> {
     let (mut rows, mut bytes) = (0usize, 0usize);
     let t = Instant::now();
     loop {
-        let (list, more) = acct.fetch_message_batch::<weflow_native::msg_row::LegacyRow>(cursor)?;
+        let (list, more) = acct.fetch_message_batch(cursor)?;
         rows += list.len();
-        bytes += list.iter().map(|r| r.0.to_string().len()).sum::<usize>();
+        bytes += list.iter().map(|r| r.content.len()).sum::<usize>();
         if !more || list.is_empty() {
             break;
         }
     }
     println!(
-        "fetched {rows} rows ({} MB of JSON) in {:.2}s",
+        "fetched {rows} rows ({} MB of text) in {:.2}s",
         bytes / 1_000_000,
         t.elapsed().as_secs_f64()
     );

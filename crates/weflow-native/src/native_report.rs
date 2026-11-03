@@ -1,6 +1,6 @@
 //! Report statistics: the two-person report (`dual_report_stats`) and "my footprint" (`footprint_stats`).
 //!
-//! The formulas are the desktop app's, taken from the service layer's own cursor fallbacks:
+//! The formulas are WeFlow's desktop app's, taken from the service layer's own cursor fallbacks:
 //! a *conversation* is a run of messages with gaps of at most one hour; replies are measured only for the
 //! account owner; phrases are short exact-match texts; days and hours are local time.
 //! The annual report's extended statistics (`annual_report_extras`) use the same definitions as the service

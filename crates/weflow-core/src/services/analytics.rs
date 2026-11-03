@@ -1,4 +1,4 @@
-//! Chat analytics (`electron/services/analyticsService.ts`): overall statistics, contact
+//! Chat analytics (WeFlow's `analyticsService.ts`): overall statistics, contact
 //! rankings, time distribution and the exclusion list.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -11,7 +11,6 @@ use serde_json::{json, Map, Value};
 use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
 use crate::sync::MutexExt;
-use weflow_native::msg_row::MsgRow;
 
 const AGGREGATE_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -267,7 +266,7 @@ impl ServiceHub {
             };
             let (mut s_total, mut s_sent, mut s_recv, mut s_last) = (0i64, 0i64, 0i64, 0i64);
             loop {
-                let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
+                let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
                     break;
                 };
                 for row in &rows {
@@ -491,7 +490,8 @@ impl ServiceHub {
             type_count(47),
         );
         let other = (total - text - image - voice - video - emoji).max(0);
-        // the days with a message, which the aggregate counts one by one (the desktop app guesses 20 a month, #307)
+        // the days with a message, which the aggregate counts one by one (WeFlow's desktop app guesses 20 a month,
+        // #307)
         let active_days = d["daily"].as_object().map_or(0, |m| m.len()) as i64;
         let opt = |v: i64| (v != 0).then_some(v);
         Ok(OverallStatistics {

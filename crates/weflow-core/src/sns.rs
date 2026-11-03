@@ -1,4 +1,4 @@
-//! Moments (朋友圈) logic ported from `electron/services/snsService.ts`:
+//! Moments (朋友圈) logic ported from WeFlow's `snsService.ts`:
 //! timeline enrichment, XML parsing, HTML / JSON export builders and media decryption helpers.
 //! Network and database access live in `services/sns.rs`.
 

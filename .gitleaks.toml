@@ -8,16 +8,7 @@ useDefault = true
 [[rules]]
 id = "curl-auth-header"
 [rules.allowlist]
-paths = [
-  '''docs/HTTP-API\.md'''
-]
 regexes = [
   '''YOUR_TOKEN'''
 ]
 
-[[rules]]
-id = "generic-api-key"
-[rules.allowlist]
-paths = [
-  '''src/pages/ChatPage\.tsx'''
-]

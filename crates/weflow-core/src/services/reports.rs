@@ -492,7 +492,7 @@ impl ServiceHub {
                     let Ok(cursor) = wcdb.open_message_cursor(sid, 1, asc, 0, 0, true) else {
                         return 0;
                     };
-                    let r = wcdb.fetch_message_batch_as::<MsgRow>(cursor);
+                    let r = wcdb.fetch_message_batch(cursor);
                     let _ = wcdb.close_message_cursor(cursor);
                     r.ok()
                         .and_then(|(rows, _)| rows.first().and_then(|r| r.create_time))
@@ -681,7 +681,7 @@ impl ServiceHub {
                     None::<chrono::DateTime<Local>>,
                 );
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
+                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
                         break;
                     };
                     for row in &rows {
@@ -812,7 +812,7 @@ impl ServiceHub {
                     None::<chrono::DateTime<Local>>,
                 );
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
+                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
                         break;
                     };
                     for row in &rows {
@@ -1330,7 +1330,7 @@ impl ServiceHub {
         };
         let mut rows: Vec<MsgRow> = Vec::new();
         loop {
-            let Ok((batch, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
+            let Ok((batch, more)) = wcdb.fetch_message_batch(cursor) else {
                 break;
             };
             rows.extend(batch.into_iter().take(limit - rows.len()));
@@ -1487,7 +1487,7 @@ impl ServiceHub {
                 true,
             ) {
                 loop {
-                    let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
+                    let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
                         break;
                     };
                     for row in &rows {

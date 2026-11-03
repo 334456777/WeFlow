@@ -125,11 +125,8 @@ fn human_event(event: &Value) -> String {
             event["ms"].as_f64().unwrap_or(0.0)
         ),
         "server_started" => {
-            let mut services = Vec::new();
+            let mut services = vec![tr("HTTP API", "HTTP API")];
             for (key, en, zh) in [
-                ("api", "HTTP API", "HTTP API"),
-                ("desktop", "desktop HTTP API", "桌面端 HTTP API"),
-                ("messagePush", "message push", "消息推送"),
                 ("insight", "insight", "洞察"),
                 ("imageAutoDownload", "image auto download", "图片自动下载"),
             ] {

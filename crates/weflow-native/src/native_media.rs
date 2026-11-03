@@ -4,17 +4,16 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use rusqlite::ToSql;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
-use crate::msg_row::{LegacyRow, RowShape};
+use crate::msg_row::MsgRow;
 use crate::native_db::NativeAccount;
 
-/// A message of [`NativeAccount::search_messages_as`] or [`NativeAccount::scan_media_stream_as`], and its
-/// conversation.
+/// A message of [`NativeAccount::search_messages`] or [`NativeAccount::scan_media_stream`], and its conversation.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SessionRow<R> {
+pub struct SessionRow {
     pub session_id: String,
-    pub row: R,
+    pub row: MsgRow,
 }
 
 /// `scan_media_stream` codes: 1 = images, 2 = videos, anything else = both.
@@ -430,8 +429,8 @@ impl NativeAccount {
         Ok(newest)
     }
 
-    /// Newest-first messages whose text contains `keyword` (case-insensitive), from one session or all.
-    /// Each row is a message row plus `_session_id`.
+    /// The messages whose text holds `keyword` (case-insensitively), newest first, `limit` of them from `offset`
+    /// on; `session_id` keeps the search to one conversation.
     ///
     /// The text is the one WeChat's own search matches: WeChat's index (`message_fts.db`) is read where it holds the
     /// messages, and the messages it does not hold yet (or every message, without an index) are matched on the same
@@ -444,31 +443,7 @@ impl NativeAccount {
         offset: i32,
         begin: i64,
         end: i64,
-    ) -> Result<Value> {
-        let hits =
-            self.search_messages_as::<LegacyRow>(keyword, session_id, limit, offset, begin, end)?;
-        Ok(Value::Array(
-            hits.into_iter()
-                .map(|hit| {
-                    let mut row = hit.row.into_value();
-                    row["_session_id"] = json!(hit.session_id);
-                    row
-                })
-                .collect(),
-        ))
-    }
-
-    /// The messages whose text holds `keyword` (case-insensitively), newest first, `limit` of them from `offset`
-    /// on, in shape `R`; `session_id` keeps the search to one conversation.
-    pub fn search_messages_as<R: RowShape>(
-        &self,
-        keyword: &str,
-        session_id: Option<&str>,
-        limit: i32,
-        offset: i32,
-        begin: i64,
-        end: i64,
-    ) -> Result<Vec<SessionRow<R>>> {
+    ) -> Result<Vec<SessionRow>> {
         let needle = keyword.trim().to_lowercase();
         if needle.is_empty() {
             return Ok(Vec::new());
@@ -533,16 +508,16 @@ impl NativeAccount {
             }
         }
         // each row once, found by either place a hit may name it by
-        let mut rows: Vec<Option<SessionRow<R>>> = Vec::new();
+        let mut rows: Vec<Option<SessionRow>> = Vec::new();
         let mut whole = std::collections::HashMap::new();
         for (at, ids) in wanted {
             let (sid, t) = &tables[at];
-            let sql = Self::select_sql::<R>(
+            let sql = Self::select_sql(
                 t,
                 &format!("where m.local_id in ({})", ids.join(",")),
                 false,
             );
-            for row in self.read_rows::<R>(t, &sql, &[], false)? {
+            for row in self.read_rows(t, &sql, &[])? {
                 let (id, seq) = row.index_key();
                 whole.insert(format!("{sid}\n{id}\n{seq}"), rows.len());
                 whole.insert(format!("{at}\n{id}"), rows.len());
@@ -774,7 +749,7 @@ impl NativeAccount {
         Ok((table_hits, stopped))
     }
 
-    /// [`scan_media_stream_as`](Self::scan_media_stream_as) as legacy rows, each with its `session_id`.
+    /// Image/video messages across sessions, newest first; returns the page and whether more remain.
     pub fn scan_media_stream(
         &self,
         session_ids: &[String],
@@ -783,36 +758,7 @@ impl NativeAccount {
         end: i64,
         limit: i32,
         offset: i32,
-    ) -> Result<(Value, bool)> {
-        let (rows, more) = self.scan_media_stream_as::<LegacyRow>(
-            session_ids,
-            media_type,
-            begin,
-            end,
-            limit,
-            offset,
-        )?;
-        let rows = rows
-            .into_iter()
-            .map(|r| {
-                let mut row = r.row.into_value();
-                row["session_id"] = json!(r.session_id);
-                row
-            })
-            .collect();
-        Ok((Value::Array(rows), more))
-    }
-
-    /// Image/video messages across sessions, newest first, in shape `R`; returns the page and whether more remain.
-    pub fn scan_media_stream_as<R: RowShape>(
-        &self,
-        session_ids: &[String],
-        media_type: i32,
-        begin: i64,
-        end: i64,
-        limit: i32,
-        offset: i32,
-    ) -> Result<(Vec<SessionRow<R>>, bool)> {
+    ) -> Result<(Vec<SessionRow>, bool)> {
         let kinds = match media_type {
             1 => vec![IMAGE],
             2 => vec![VIDEO],
@@ -831,20 +777,19 @@ impl NativeAccount {
         } else {
             usize::MAX
         };
-        let mut rows: Newest<SessionRow<R>> = Newest::new(k);
+        let mut rows: Newest<SessionRow> = Newest::new(k);
         for sid in session_ids {
             for t in self.message_tables(sid)? {
-                let sql = Self::select_sql::<R>(
+                let sql = Self::select_sql(
                     &t,
                     &format!("where m.local_type in ({kinds}){range}"),
                     false,
                 );
                 let table_rows = std::cell::RefCell::new(Newest::new(k));
-                self.read_rows_each::<R>(
+                self.read_rows_each(
                     &t,
                     &sql,
                     &[],
-                    false,
                     || *table_rows.borrow_mut() = Newest::new(k),
                     |row| {
                         table_rows.borrow_mut().push_keyed(
@@ -860,7 +805,7 @@ impl NativeAccount {
             }
         }
         let found = rows.found;
-        let page: Vec<SessionRow<R>> = rows.into_rows().into_iter().skip(offset).collect();
+        let page: Vec<SessionRow> = rows.into_rows().into_iter().skip(offset).collect();
         let more = limit > 0 && found > offset + limit as usize;
         Ok((page, more))
     }
@@ -997,25 +942,10 @@ impl NativeAccount {
             .unwrap_or_default())
     }
 
-    /// Caption of a sticker: the user's own sticker text, else the store package caption.
-    pub fn emoticon_caption(&self, md5: &str) -> Result<String> {
-        let own = self.query(&self.emoticon_db(), "select caption from kNonStoreEmoticonTable where lower(md5) = lower(?1) and caption <> ''", &[&md5.trim()])?;
-        if let Some(c) = own.first() {
-            return Ok(text(c, "caption"));
-        }
-        let store = self.query(&self.emoticon_db(), "select caption_ from kStoreEmoticonCaptionsTable where lower(md5_) = lower(?1) and caption_ <> '' order by (language_ like 'zh%') desc", &[&md5.trim()])?;
-        Ok(store
-            .first()
-            .map(|c| text(c, "caption_"))
-            .unwrap_or_default())
-    }
-
-    /// Every sticker caption at once, keyed by lower-case md5 — the same answer as calling
-    /// [`emoticon_caption`](Self::emoticon_caption) for each md5, but in two table scans instead of two per sticker
-    /// (a `lower(md5) = lower(?)` lookup cannot use an index).
+    /// Every sticker caption, keyed by lower-case md5: the user's own sticker text, else the store package caption
+    /// (Chinese first). Two table scans: a `lower(md5) = lower(?)` lookup per sticker cannot use an index.
     pub fn emoticon_captions(&self) -> Result<std::collections::HashMap<String, String>> {
         let mut out = std::collections::HashMap::new();
-        // same precedence as `emoticon_caption`: the user's own caption, else the first store caption (Chinese first)
         let own = self.query(
             &self.emoticon_db(),
             "select md5, caption from kNonStoreEmoticonTable where caption <> ''",
@@ -1053,21 +983,6 @@ impl NativeAccount {
                 .collect(),
         )
     }
-
-    /// `[{ db_path, table_name }]` of the shards holding a session's messages.
-    pub fn message_tables_json(&self, session_id: &str) -> Result<Value> {
-        Ok(Value::Array(
-            self.message_tables(session_id)?
-                .into_iter()
-                .map(|t| {
-                    let mut o = Map::new();
-                    o.insert("db_path".into(), json!(t.db.to_string_lossy()));
-                    o.insert("table_name".into(), json!(t.table));
-                    Value::Object(o)
-                })
-                .collect(),
-        ))
-    }
 }
 
 #[cfg(test)]
@@ -1087,39 +1002,10 @@ mod tests {
             .with_my_wxid(Some("wxid_me_ab12".into()))
     }
 
-    fn contents(v: &Value) -> Vec<String> {
-        v.as_array()
-            .unwrap()
-            .iter()
-            .map(|r| r["message_content"].as_str().unwrap().trim().to_string())
+    fn contents(hits: &[SessionRow]) -> Vec<String> {
+        hits.iter()
+            .map(|h| h.row.content.trim().to_string())
             .collect()
-    }
-
-    #[test]
-    fn typed_hits_are_the_legacy_ones() {
-        let a = account("search-typed");
-        for keyword in ["hello", "ok", "COMPRESSED"] {
-            let legacy = a.search_messages(keyword, None, 50, 0, 0, 0).unwrap();
-            let typed = a
-                .search_messages_as::<crate::msg_row::MsgRow>(keyword, None, 50, 0, 0, 0)
-                .unwrap();
-            let named: Vec<(String, i64)> = legacy
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|r| (text(r, "_session_id"), int(r, "local_id")))
-                .collect();
-            let typed_named: Vec<(String, i64)> = typed
-                .iter()
-                .map(|h| (h.session_id.clone(), h.row.local_id))
-                .collect();
-            assert_eq!(typed_named, named, "{keyword}");
-            let texts: Vec<String> = typed
-                .iter()
-                .map(|h| h.row.content.trim().to_string())
-                .collect();
-            assert_eq!(texts, contents(&legacy), "{keyword}");
-        }
     }
 
     #[test]
@@ -1185,31 +1071,31 @@ mod tests {
             ["wxid_quiet:\nok"],
             "group text keeps its sender prefix in the raw row"
         );
-        assert_eq!(ok[0]["_session_id"], "room1@chatroom");
-        assert_eq!(ok[0]["sender_username"], "wxid_quiet");
+        assert_eq!(ok[0].session_id, "room1@chatroom");
+        assert_eq!(ok[0].row.sender.as_deref(), Some("wxid_quiet"));
         // but the prefix is not part of the text searched
-        assert_eq!(
-            a.search_messages("quiet", None, 50, 0, 0, 0).unwrap(),
-            json!([])
-        );
+        assert!(a
+            .search_messages("quiet", None, 50, 0, 0, 0)
+            .unwrap()
+            .is_empty());
         // the image message's XML is type 3, which is never searched
-        assert_eq!(
-            a.search_messages("aabbccdd", None, 50, 0, 0, 0).unwrap(),
-            json!([])
-        );
-        assert_eq!(
-            a.search_messages("  ", None, 50, 0, 0, 0).unwrap(),
-            json!([])
-        );
+        assert!(a
+            .search_messages("aabbccdd", None, 50, 0, 0, 0)
+            .unwrap()
+            .is_empty());
+        assert!(a
+            .search_messages("  ", None, 50, 0, 0, 0)
+            .unwrap()
+            .is_empty());
         // LIKE wildcards in the keyword are literals
-        assert_eq!(
-            a.search_messages("%", None, 50, 0, 0, 0).unwrap(),
-            json!([])
-        );
-        assert_eq!(
-            a.search_messages("h_llo", None, 50, 0, 0, 0).unwrap(),
-            json!([])
-        );
+        assert!(a
+            .search_messages("%", None, 50, 0, 0, 0)
+            .unwrap()
+            .is_empty());
+        assert!(a
+            .search_messages("h_llo", None, 50, 0, 0, 0)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -1237,11 +1123,10 @@ mod tests {
             ),
             ["see you", "later, compressed"]
         );
-        assert_eq!(
-            a.search_messages("e", Some("wxid_bob"), 50, 0, 0, T0 - 1)
-                .unwrap(),
-            json!([])
-        );
+        assert!(a
+            .search_messages("e", Some("wxid_bob"), 50, 0, 0, T0 - 1)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -1351,13 +1236,10 @@ mod tests {
                             end,
                         )
                         .unwrap()
-                        .as_array()
-                        .unwrap()
                         .iter()
-                        .map(|r| {
-                            assert_eq!(r["_session_id"], "wxid_bob");
-                            assert!(r.get("_table").is_none());
-                            (text(r, "db_name"), int(r, "local_id"))
+                        .map(|h| {
+                            assert_eq!(h.session_id, "wxid_bob");
+                            (format!("message_{}", h.row.shard), h.row.local_id)
                         })
                         .collect();
                     assert_eq!(
@@ -1369,9 +1251,9 @@ mod tests {
             }
         }
         // whole rows: the decoded text, as before
-        let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0];
-        assert!(text(first, "message_content").ends_with("Apple pie"));
-        assert_eq!(first["sender_username"], "wxid_bob");
+        let first = &a.search_messages("pie", None, 1, 0, 0, 0).unwrap()[0].row;
+        assert!(first.content.ends_with("Apple pie"));
+        assert_eq!(first.sender.as_deref(), Some("wxid_bob"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1516,10 +1398,10 @@ mod tests {
                 for session in [Some(room), None] {
                     if keyword == "indexed" && session.is_some() && budget != 0 {
                         if budget == usize::MAX {
-                            assert_eq!(
-                                a.search_messages(keyword, session, 50, 0, 0, 0).unwrap(),
-                                json!([])
-                            );
+                            assert!(a
+                                .search_messages(keyword, session, 50, 0, 0, 0)
+                                .unwrap()
+                                .is_empty());
                         }
                         continue;
                     }
@@ -1539,17 +1421,12 @@ mod tests {
                                     end,
                                 )
                                 .unwrap()
-                                .as_array()
-                                .unwrap()
                                 .iter()
-                                .map(|r| {
-                                    assert!(
-                                        r.get("_table").is_none() && r.get("_session").is_none()
-                                    );
+                                .map(|h| {
                                     (
-                                        text(r, "_session_id"),
-                                        text(r, "db_name"),
-                                        int(r, "local_id"),
+                                        h.session_id.clone(),
+                                        format!("message_{}", h.row.shard),
+                                        h.row.local_id,
                                     )
                                 })
                                 .collect();
@@ -1568,9 +1445,10 @@ mod tests {
         TEST_NEWEST_FIRST_ROWS.with(|b| b.set(0));
         let first = &a
             .search_messages("indexed", Some(room), 1, 0, 0, 0)
-            .unwrap()[0];
-        assert_eq!(first["sender_username"], "wxid_alice");
-        assert!(text(first, "message_content").contains("<refermsg>"));
+            .unwrap()[0]
+            .row;
+        assert_eq!(first.sender.as_deref(), Some("wxid_alice"));
+        assert!(first.content.contains("<refermsg>"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1579,23 +1457,21 @@ mod tests {
         let a = account("media");
         let ids = vec!["wxid_bob".to_string(), "room1@chatroom".to_string()];
         let (rows, more) = a.scan_media_stream(&ids, 1, 0, 0, 10, 0).unwrap();
-        assert_eq!(
-            rows.as_array().unwrap().len(),
-            1,
-            "one image in the fixture"
-        );
-        assert_eq!(rows[0]["session_id"], "wxid_bob");
-        assert_eq!(rows[0]["local_type"], 3);
+        assert_eq!(rows.len(), 1, "one image in the fixture");
+        assert_eq!(rows[0].session_id, "wxid_bob");
+        assert_eq!(rows[0].row.local_type, 3);
         assert!(!more);
-        assert_eq!(
-            a.scan_media_stream(&ids, 2, 0, 0, 10, 0).unwrap().0,
-            json!([]),
+        assert!(
+            a.scan_media_stream(&ids, 2, 0, 0, 10, 0)
+                .unwrap()
+                .0
+                .is_empty(),
             "no videos"
         );
         let (both, _) = a.scan_media_stream(&ids, 0, 0, 0, 10, 0).unwrap();
-        assert_eq!(both.as_array().unwrap().len(), 1);
+        assert_eq!(both, rows);
         let (page, more) = a.scan_media_stream(&ids, 1, 0, 0, 1, 1).unwrap();
-        assert_eq!((page, more), (json!([]), false));
+        assert!(page.is_empty() && !more);
     }
 
     #[test]
@@ -1684,34 +1560,20 @@ mod tests {
                 .unwrap(),
             ""
         );
+        let all = a.emoticon_captions().unwrap();
         assert_eq!(
-            a.emoticon_caption("AABBCCDDEEFF00112233445566778899")
-                .unwrap(),
-            "smile"
+            all.get("aabbccddeeff00112233445566778899")
+                .map(String::as_str),
+            Some("smile"),
+            "keyed by the lower-case md5"
         );
         assert_eq!(
-            a.emoticon_caption("deadbeefdeadbeefdeadbeefdeadbeef")
-                .unwrap(),
-            "商店表情",
+            all.get("deadbeefdeadbeefdeadbeefdeadbeef")
+                .map(String::as_str),
+            Some("商店表情"),
             "store captions prefer Chinese"
         );
-        assert_eq!(
-            a.emoticon_caption("ffffffffffffffffffffffffffffffff")
-                .unwrap(),
-            ""
-        );
-        let all = a.emoticon_captions().unwrap();
-        for md5 in [
-            "AABBCCDDEEFF00112233445566778899",
-            "deadbeefdeadbeefdeadbeefdeadbeef",
-            "ffffffffffffffffffffffffffffffff",
-        ] {
-            assert_eq!(
-                all.get(&md5.to_lowercase()).cloned().unwrap_or_default(),
-                a.emoticon_caption(md5).unwrap(),
-                "{md5}"
-            );
-        }
+        assert_eq!(all.get("ffffffffffffffffffffffffffffffff"), None);
     }
 
     #[test]
@@ -1719,8 +1581,5 @@ mod tests {
         let a = account("diag");
         assert_eq!(a.list_message_dbs().as_array().unwrap().len(), 2);
         assert_eq!(a.list_media_dbs().as_array().unwrap().len(), 1);
-        let t = a.message_tables_json("wxid_bob").unwrap();
-        assert_eq!(t.as_array().unwrap().len(), 2);
-        assert!(t[0]["table_name"].as_str().unwrap().starts_with("Msg_"));
     }
 }

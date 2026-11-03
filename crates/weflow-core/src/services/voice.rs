@@ -213,7 +213,7 @@ impl ServiceHub {
         Ok(wav)
     }
 
-    /// `chat:resolveVoiceCache`: the desktop app only consults its in-memory cache here; the CLI has
+    /// `chat:resolveVoiceCache`: WeFlow's desktop app only consults its in-memory cache here; the CLI has
     /// no long-lived memory, so a hit means a cached WAV for the key without a timestamp exists.
     pub fn voice_resolve_cache(
         &self,

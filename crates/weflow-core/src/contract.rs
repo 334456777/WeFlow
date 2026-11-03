@@ -88,7 +88,7 @@ impl ContactKind {
     }
 }
 
-/// A contact of `chat contacts --parsed`, as the desktop app lists it: the most recent conversation first, then by
+/// A contact of `chat contacts --parsed`: the most recent conversation first, then by
 /// name. A text field is left out when it is empty.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -285,8 +285,8 @@ pub struct SearchHit {
     pub session_id: String,
 }
 
-impl From<weflow_native::native_media::SessionRow<weflow_native::msg_row::MsgRow>> for SearchHit {
-    fn from(hit: weflow_native::native_media::SessionRow<weflow_native::msg_row::MsgRow>) -> Self {
+impl From<weflow_native::native_media::SessionRow> for SearchHit {
+    fn from(hit: weflow_native::native_media::SessionRow) -> Self {
         Self {
             row: hit.row.into(),
             session_id: hit.session_id,
@@ -344,7 +344,7 @@ pub struct ChatStatus {
     pub is_muted: bool,
 }
 
-/// How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them.
+/// How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TabCounts {
     #[serde(default)]
@@ -450,7 +450,7 @@ pub struct GroupChat {
     pub avatar_url: Option<String>,
 }
 
-/// The members of a group (`group members`), as the members panel of the desktop app lists them: the owner first,
+/// The members of a group (`group members`): the owner first,
 /// then friends, then by how many messages they sent.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -525,7 +525,7 @@ pub struct MediaCount {
     /// WeChat's type of the message, as `localType`; -1 for all the others together.
     #[serde(rename = "type")]
     pub kind: i64,
-    /// Its name as the desktop app shows it, in Chinese.
+    /// Its name in Chinese.
     pub name: String,
     pub count: i64,
 }
@@ -1147,7 +1147,7 @@ pub struct SnsLocation {
     pub label: Option<String>,
 }
 
-/// The pushes of an official account (`biz messages`), as the desktop app lists them.
+/// The pushes of an official account (`biz messages`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct BizMessages {
     pub username: String,
@@ -1397,7 +1397,7 @@ pub struct FootprintDiagnostics {
     pub fallback_used: bool,
 }
 
-/// One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a
+/// One insight record (`insight get`), with `success` inside. A record not found is a
 /// failure of the command instead, so an answer that succeeds holds `success: true` and the record.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct InsightLookup {
@@ -1821,7 +1821,7 @@ pub struct WebPruned {
     pub shown: Vec<String>,
 }
 
-/// What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow.
+/// What `image auto-download status` answers: the hook is not part of WeFlow.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoDownloadStatus {
@@ -2070,16 +2070,6 @@ pub struct ConfigWritten {
     pub config_path: Option<PathBuf>,
 }
 
-/// What `config import` took from the desktop app's config.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfigImported {
-    pub imported_from: PathBuf,
-    pub config_path: PathBuf,
-    /// The keys left out because the desktop app keeps them encrypted.
-    pub skipped_encrypted_keys: Vec<String>,
-}
-
 /// The language `weflow lang` saved: `en` or `zh`.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct LangSaved {
@@ -2155,7 +2145,7 @@ pub struct InsightSummary {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRecords {
-    /// Always true: the desktop app's shape.
+    /// Always true.
     pub success: bool,
     pub records: Vec<InsightSummary>,
     /// The records the filters match.
@@ -2275,7 +2265,7 @@ mod tests {
             avatar_url: Some("https://wx.qlogo.cn/b".into()),
         };
         let built = crate::sns::enrich_post(
-            weflow_native::native_sns::parse_post_as(2001, "wxid_bob", xml),
+            weflow_native::native_sns::parse_post(2001, "wxid_bob", xml),
             Some(&contact),
         );
         let post = serde_json::to_value(&built).unwrap();

@@ -91,7 +91,7 @@ fn is_member_id(id: &str) -> bool {
 /// Extract `username -> group nickname` pairs from a `chat_room.ext_buffer`.
 ///
 /// The buffer is a protobuf-style stream whose member entries look like
-/// `0x0a <len> <username> 0x12 <len> <nickname> ...`; like the desktop app we scan for that shape
+/// `0x0a <len> <username> 0x12 <len> <nickname> ...`; like WeFlow's desktop app we scan for that shape
 /// instead of relying on the (undocumented) outer message layout.
 pub fn parse_group_nicknames(buf: &[u8]) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
@@ -262,20 +262,6 @@ impl NativeAccount {
         Ok(Value::Object(map))
     }
 
-    /// `{ username: bool }`: whether the contact is currently a friend.
-    pub fn contact_friend_flags(&self, usernames: &[String]) -> Result<Value> {
-        let mut map = Map::new();
-        for r in self.contact_rows(usernames)? {
-            let u = text(&r, "username");
-            let friend = int(&r, "local_type") == 1
-                && !u.ends_with("@chatroom")
-                && !u.starts_with("gh_")
-                && !NOT_PRIVATE.contains(&u.as_str());
-            map.insert(u, json!(friend));
-        }
-        Ok(Value::Object(map))
-    }
-
     /// `{ username: { isFolded, isMuted } }`.
     ///
     /// WeChat keeps these in `contact.flag` bits (folded group chats: bit 28; muted single chats: bit 9)
@@ -303,7 +289,8 @@ impl NativeAccount {
         Ok(rows.into_iter().next())
     }
 
-    /// Members of a group as the desktop app expects them: `[{ username, nickName, remark, alias, avatarUrl?, isOwner? }]`.
+    /// Members of a group in the shape WeFlow's desktop app uses:
+    /// `[{ username, nickName, remark, alias, avatarUrl?, isOwner? }]`.
     pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
         let Some(room) = self.room(chatroom_id)? else {
             return Ok(json!([]));
@@ -564,11 +551,6 @@ mod tests {
         assert_eq!(
             acct.contact_alias_map(&who).unwrap(),
             json!({"wxid_bob": "bb"})
-        );
-        assert_eq!(
-            acct.contact_friend_flags(&ids(&["wxid_bob", "wxid_eve", "room1@chatroom"]))
-                .unwrap(),
-            json!({"wxid_bob": true, "wxid_eve": false, "room1@chatroom": false})
         );
         let st = acct
             .contact_status(&ids(&["room1@chatroom", "wxid_bob"]))

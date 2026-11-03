@@ -688,7 +688,7 @@ fn main() -> Result<()> {
                     let t = Instant::now();
                     let page = account.search_messages(word, session, 20, 0, 0, 0)?;
                     times.push(ms(t));
-                    found = page.as_array().map_or(0, Vec::len);
+                    found = page.len();
                 }
                 println!(
                     "{name} word, {}: first {:.1} ms, then median {:.1} ms, {found} hits",
@@ -734,7 +734,7 @@ fn main() -> Result<()> {
         let t = Instant::now();
         let page = account.search_messages(&keyword, Some(&big), PAGE as i32, 0, 0, 0)?;
         times.push(ms(t));
-        found = page.as_array().map_or(0, Vec::len);
+        found = page.len();
     }
     println!(
         "search_messages: first {:.1} ms, then median {:.1} ms, {found} hits",

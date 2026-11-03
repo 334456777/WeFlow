@@ -1,17 +1,11 @@
 //! The rows of a conversation's `Msg_<md5>` tables (#257, #490), read by the paging, cursor and merge code of
-//! [`native_msg`](crate::native_msg) in one of two shapes ([`RowShape`]):
-//!
-//! - [`MsgRow`]: the columns typed, the content inflated and decoded once, the sender resolved, the database named by
-//!   its shard number. What the service layer reads (#491, #492).
-//! - [`LegacyRow`]: the JSON object of WeChat's own columns (`select m.*`) plus `sender_username`, `is_send`,
-//!   `_db_path`, `db_name` and `table_name`. The shape the desktop app reads through `weflow-wcdb-ffi`, which keeps
-//!   `wcdb_api`'s.
+//! [`native_msg`](crate::native_msg) as [`MsgRow`]s: the columns typed, the content inflated and decoded once, the
+//! sender resolved, the database named by its shard number (#491, #492).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rusqlite::types::ValueRef;
 use rusqlite::Row;
-use serde_json::{json, Map, Value};
 
 use crate::native_msg::{shard_of, MsgPos, MsgTable};
 
@@ -25,25 +19,10 @@ pub fn odd_cell_count() -> u64 {
 }
 
 /// What a row is read with besides its columns.
-pub struct RowContext<'a> {
-    pub table: &'a MsgTable,
-    /// Bulk scans that only need the type, the times, the sender and the text leave the rest out.
-    pub lite: bool,
+pub(crate) struct RowContext<'a> {
+    pub(crate) table: &'a MsgTable,
     /// Whether a sender is the account's owner.
-    pub is_me: &'a dyn Fn(&str) -> bool,
-}
-
-/// A shape of message row: the columns it selects and how it reads them.
-pub trait RowShape: Sized {
-    /// The select list over the message table `m` and `Name2Id` `n`, joined on the sender.
-    fn columns(lite: bool) -> &'static str;
-    /// The row at `row`, whose columns are [`columns`](Self::columns).
-    fn read(row: &Row<'_>, ctx: &RowContext<'_>) -> rusqlite::Result<Self>;
-    /// `(sort_seq, create_time, local_id)` in the chat's order: a row without a `sort_seq` (null or 0) is placed by
-    /// `create_time * 1000`, and a missing integer counts as 0.
-    fn key(&self) -> (i64, i64, i64);
-    /// `(local_id, sort_seq)` as stored, a missing one 0: how WeChat's search index names a message.
-    fn index_key(&self) -> (i64, i64);
+    pub(crate) is_me: &'a dyn Fn(&str) -> bool,
 }
 
 fn sort_key(sort_seq: i64, create_time: i64, local_id: i64) -> (i64, i64, i64) {
@@ -80,19 +59,6 @@ pub struct MsgRow {
     pub shard: u32,
 }
 
-impl MsgRow {
-    /// Where the row is in its conversation's order, to page from.
-    pub fn pos(&self) -> MsgPos {
-        let (sort_seq, create_time, local_id) = self.key();
-        MsgPos {
-            sort_seq,
-            create_time,
-            local_id,
-            shard: self.shard,
-        }
-    }
-}
-
 const MSG_COLUMNS: &str =
     "m.local_id, m.server_id, m.local_type, m.sort_seq, m.create_time, m.status, \
      m.compress_content, m.message_content, m.source, m.packed_info_data, n.user_name";
@@ -115,8 +81,7 @@ fn int_cell(v: ValueRef<'_>) -> Option<i64> {
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 
 /// Bytes as text: inflated first when they are a zstd frame, then UTF-8. Bytes that are not UTF-8 lose the invalid
-/// sequences when they are under a fifth of the characters, and are otherwise read one byte a character (Latin-1),
-/// as the desktop app did.
+/// sequences when they are under a fifth of the characters, and are otherwise read one byte a character (Latin-1).
 pub fn bytes_to_text(bytes: &[u8]) -> String {
     let inflated;
     let bytes = if bytes.starts_with(&ZSTD_MAGIC) {
@@ -151,8 +116,21 @@ fn text_cell(v: ValueRef<'_>) -> Option<String> {
     }
 }
 
-impl RowShape for MsgRow {
-    fn columns(lite: bool) -> &'static str {
+impl MsgRow {
+    /// Where the row is in its conversation's order, to page from.
+    pub fn pos(&self) -> MsgPos {
+        let (sort_seq, create_time, local_id) = self.key();
+        MsgPos {
+            sort_seq,
+            create_time,
+            local_id,
+            shard: self.shard,
+        }
+    }
+
+    /// The select list over the message table `m` and `Name2Id` `n`, joined on the sender; lite rows leave out the
+    /// source and the packed info, which bulk scans do not read.
+    pub(crate) fn columns(lite: bool) -> &'static str {
         if lite {
             MSG_COLUMNS_LITE
         } else {
@@ -160,7 +138,8 @@ impl RowShape for MsgRow {
         }
     }
 
-    fn read(row: &Row<'_>, ctx: &RowContext<'_>) -> rusqlite::Result<Self> {
+    /// The row at `row`, whose columns are [`columns`](Self::columns).
+    pub(crate) fn read(row: &Row<'_>, ctx: &RowContext<'_>) -> rusqlite::Result<Self> {
         let sender = text_cell(row.get_ref(10)?);
         let content = match text_cell(row.get_ref(6)?) {
             Some(c) if !c.is_empty() => c,
@@ -186,7 +165,9 @@ impl RowShape for MsgRow {
         })
     }
 
-    fn key(&self) -> (i64, i64, i64) {
+    /// `(sort_seq, create_time, local_id)` in the chat's order: a row without a `sort_seq` (null or 0) is placed by
+    /// `create_time * 1000`, and a missing integer counts as 0.
+    pub(crate) fn key(&self) -> (i64, i64, i64) {
         sort_key(
             self.sort_seq.unwrap_or(0),
             self.create_time.unwrap_or(0),
@@ -194,97 +175,9 @@ impl RowShape for MsgRow {
         )
     }
 
-    fn index_key(&self) -> (i64, i64) {
+    /// `(local_id, sort_seq)` as stored, a missing one 0: how WeChat's search index names a message.
+    pub(crate) fn index_key(&self) -> (i64, i64) {
         (self.local_id, self.sort_seq.unwrap_or(0))
-    }
-}
-
-/// A message row in the shape of WeChat's own columns (see the module).
-#[derive(Clone, Debug, PartialEq)]
-pub struct LegacyRow(pub Value);
-
-/// Columns left out of lite legacy rows.
-const LITE_DROP: &[&str] = &[
-    "compress_content",
-    "packed_info_data",
-    "source",
-    "WCDB_CT_source",
-    "WCDB_CT_message_content",
-];
-
-/// Adds to a legacy row (`m.*` and `sender_username`) what WeChat's columns do not say: whether the owner sent it, and
-/// where it is kept. Lite rows lose the columns bulk scans do not read.
-pub(crate) fn finish_legacy(row: &mut Value, ctx: &RowContext<'_>) {
-    let is_send = (ctx.is_me)(
-        row.get("sender_username")
-            .and_then(Value::as_str)
-            .unwrap_or(""),
-    );
-    let Some(obj) = row.as_object_mut() else {
-        return;
-    };
-    let t = ctx.table;
-    obj.insert("is_send".into(), json!(if is_send { 1 } else { 0 }));
-    // Text was already inflated by the reader, so the WCDB "compressed" flag does not apply.
-    obj.insert("WCDB_CT_message_content".into(), Value::Null);
-    obj.insert("_db_path".into(), json!(t.db.to_string_lossy()));
-    obj.insert(
-        "db_name".into(),
-        json!(t.db.file_stem().and_then(|s| s.to_str()).unwrap_or("")),
-    );
-    obj.insert("table_name".into(), json!(t.table));
-    if ctx.lite {
-        for k in LITE_DROP {
-            obj.remove(*k);
-        }
-    }
-}
-
-impl LegacyRow {
-    pub fn into_value(self) -> Value {
-        self.0
-    }
-
-    /// The rows as one JSON array, what the `Value` readers of `wcdb` return.
-    pub fn array(rows: Vec<Self>) -> Value {
-        Value::Array(rows.into_iter().map(Self::into_value).collect())
-    }
-
-    fn int(&self, key: &str) -> i64 {
-        self.0.get(key).and_then(Value::as_i64).unwrap_or(0)
-    }
-}
-
-impl RowShape for LegacyRow {
-    fn columns(_lite: bool) -> &'static str {
-        "m.*, n.user_name as sender_username"
-    }
-
-    fn read(row: &Row<'_>, ctx: &RowContext<'_>) -> rusqlite::Result<Self> {
-        let stmt = row.as_ref();
-        let mut obj = Map::with_capacity(stmt.column_count() + 5);
-        for i in 0..stmt.column_count() {
-            let name = stmt.column_name(i)?;
-            obj.insert(
-                name.to_owned(),
-                crate::native_db::value_to_json(name, row.get_ref(i)?),
-            );
-        }
-        let mut row = Value::Object(obj);
-        finish_legacy(&mut row, ctx);
-        Ok(Self(row))
-    }
-
-    fn key(&self) -> (i64, i64, i64) {
-        sort_key(
-            self.int("sort_seq"),
-            self.int("create_time"),
-            self.int("local_id"),
-        )
-    }
-
-    fn index_key(&self) -> (i64, i64) {
-        (self.int("local_id"), self.int("sort_seq"))
     }
 }
 

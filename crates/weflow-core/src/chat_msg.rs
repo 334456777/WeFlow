@@ -1,4 +1,4 @@
-//! The chat service's `Message` model (`electron/services/chatService.ts`):
+//! The chat service's `Message` model (WeFlow's `chatService.ts`):
 //! typed message rows → messages with parsed display text, media tokens, links, quotes.
 //! The exporter has its own (slightly different) model in `message.rs`; this one backs the
 //! HTTP API, the chat commands and the analytics code.
@@ -1072,7 +1072,7 @@ pub fn build_message_key(
         sort_seq.max(0),
     );
     let sender = encode_uri_component(sender.unwrap_or(""));
-    // The database's name, not its path as the desktop app has it: the path would tell the client this
+    // The database's name, not its path as WeFlow's desktop app has it: the path would tell the client this
     // machine's directories and change the key on another one (#443).
     let scope = &src.db_name;
     if local_id > 0 && !scope.is_empty() && !src.table_name.is_empty() {

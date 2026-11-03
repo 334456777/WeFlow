@@ -717,7 +717,7 @@
                       "const": true
                     },
                     "data": {
-                      "description": "With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table",
+                      "description": "With `parsed=true`, the contacts sorted and classified; else the rows of WeChat's table",
                       "anyOf": [
                         {
                           "type": "array",
@@ -1881,46 +1881,6 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/ConfigWritten"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/config/import": {
-      "get": {
-        "operationId": "api_config_import",
-        "x-weflow-command": "config import",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/ConfigImported"
                     }
                   }
                 }
@@ -5405,7 +5365,7 @@
           "displayName",
           "type"
         ],
-        "description": "A contact of `chat contacts --parsed`, as the desktop app lists it: the most recent conversation first, then by\nname. A text field is left out when it is empty."
+        "description": "A contact of `chat contacts --parsed`: the most recent conversation first, then by\nname. A text field is left out when it is empty."
       },
       "ContactKind": {
         "oneOf": [
@@ -5627,7 +5587,7 @@
           "official",
           "former_friend"
         ],
-        "description": "How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them."
+        "description": "How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them."
       },
       "SessionDates": {
         "type": "object",
@@ -5919,7 +5879,7 @@
           "updatedAt",
           "members"
         ],
-        "description": "The members of a group (`group members`), as the members panel of the desktop app lists them: the owner first,\nthen friends, then by how many messages they sent."
+        "description": "The members of a group (`group members`): the owner first,\nthen friends, then by how many messages they sent."
       },
       "GroupMember": {
         "type": "object",
@@ -6056,7 +6016,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Its name as the desktop app shows it, in Chinese."
+            "description": "Its name in Chinese."
           },
           "count": {
             "type": "integer",
@@ -7882,7 +7842,7 @@
           "username",
           "messages"
         ],
-        "description": "The pushes of an official account (`biz messages`), as the desktop app lists them."
+        "description": "The pushes of an official account (`biz messages`)."
       },
       "BizMessage": {
         "type": "object",
@@ -8291,30 +8251,6 @@
         ],
         "description": "The config file a `config` change was written to."
       },
-      "ConfigImported": {
-        "type": "object",
-        "properties": {
-          "importedFrom": {
-            "type": "string"
-          },
-          "configPath": {
-            "type": "string"
-          },
-          "skippedEncryptedKeys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "The keys left out because the desktop app keeps them encrypted."
-          }
-        },
-        "required": [
-          "importedFrom",
-          "configPath",
-          "skippedEncryptedKeys"
-        ],
-        "description": "What `config import` took from the desktop app's config."
-      },
       "ConfigStore": {
         "type": "object",
         "properties": {
@@ -8351,10 +8287,7 @@
                 "image_xor_key": null,
                 "image_aes_key": null,
                 "cache_path": null,
-                "log_enabled": false,
                 "http_api_token": null,
-                "http_api_host": null,
-                "http_api_port": null,
                 "ai_model_api_base_url": null,
                 "ai_model_api_key": null,
                 "ai_model_api_model": null,
@@ -8425,32 +8358,11 @@
             ],
             "default": null
           },
-          "log_enabled": {
-            "type": "boolean",
-            "default": false
-          },
           "http_api_token": {
             "type": [
               "string",
               "null"
             ],
-            "default": null
-          },
-          "http_api_host": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "default": null
-          },
-          "http_api_port": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint16",
-            "minimum": 0,
-            "maximum": 65535,
             "default": null
           },
           "ai_model_api_base_url": {
@@ -8503,10 +8415,7 @@
           "image_xor_key",
           "image_aes_key",
           "cache_path",
-          "log_enabled",
           "http_api_token",
-          "http_api_host",
-          "http_api_port",
           "ai_model_api_base_url",
           "ai_model_api_key",
           "ai_model_api_model",
@@ -8983,7 +8892,7 @@
           "pid",
           "supported"
         ],
-        "description": "What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow."
+        "description": "What `image auto-download status` answers: the hook is not part of WeFlow."
       },
       "VideoInfo": {
         "type": "object",
@@ -9005,7 +8914,7 @@
         "required": [
           "exists"
         ],
-        "description": "Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's\n`VideoInfo`, when there is nothing."
+        "description": "Where a message's video and its poster are (`video info`); the fields left out, as WeFlow's desktop app's\n`VideoInfo`, when there is nothing."
       },
       "VideoMd5": {
         "type": "object",
@@ -10759,7 +10668,7 @@
         "required": [
           "success"
         ],
-        "description": "One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a\nfailure of the command instead, so an answer that succeeds holds `success: true` and the record."
+        "description": "One insight record (`insight get`), with `success` inside. A record not found is a\nfailure of the command instead, so an answer that succeeds holds `success: true` and the record."
       },
       "InsightRecord": {
         "type": "object",
@@ -10881,7 +10790,7 @@
         "properties": {
           "success": {
             "type": "boolean",
-            "description": "Always true: the desktop app's shape."
+            "description": "Always true."
           },
           "records": {
             "type": "array",

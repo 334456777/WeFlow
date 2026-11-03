@@ -76,10 +76,7 @@ pub struct ProfileConfig {
     pub image_xor_key: Option<i64>,
     pub image_aes_key: Option<String>,
     pub cache_path: Option<String>,
-    pub log_enabled: bool,
     pub http_api_token: Option<String>,
-    pub http_api_host: Option<String>,
-    pub http_api_port: Option<u16>,
     pub ai_model_api_base_url: Option<String>,
     pub ai_model_api_key: Option<String>,
     pub ai_model_api_model: Option<String>,
@@ -228,12 +225,7 @@ impl ConfigStore {
             }
             "image_aes_key" | "imageAesKey" => target.image_aes_key = Some(as_string(value)?),
             "cache_path" | "cachePath" => target.cache_path = Some(as_string(value)?),
-            "log_enabled" | "logEnabled" => target.log_enabled = as_bool(value)?,
             "http_api_token" | "httpApiToken" => target.http_api_token = Some(as_string(value)?),
-            "http_api_host" | "httpApiHost" => target.http_api_host = Some(as_string(value)?),
-            "http_api_port" | "httpApiPort" => {
-                target.http_api_port = Some(as_int_in(value, &key, 1, u16::MAX)?)
-            }
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => {
                 target.ai_model_api_base_url = Some(as_string(value)?)
             }
@@ -278,10 +270,7 @@ impl ConfigStore {
             "image_xor_key" | "imageXorKey" => target.image_xor_key = None,
             "image_aes_key" | "imageAesKey" => target.image_aes_key = None,
             "cache_path" | "cachePath" => target.cache_path = None,
-            "log_enabled" | "logEnabled" => target.log_enabled = false,
             "http_api_token" | "httpApiToken" => target.http_api_token = None,
-            "http_api_host" | "httpApiHost" => target.http_api_host = None,
-            "http_api_port" | "httpApiPort" => target.http_api_port = None,
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => target.ai_model_api_base_url = None,
             "ai_model_api_key" | "aiModelApiKey" => target.ai_model_api_key = None,
             "ai_model_api_model" | "aiModelApiModel" => target.ai_model_api_model = None,
@@ -309,47 +298,6 @@ impl ConfigStore {
             }
         }
         (explicit_profile.map(ToString::to_string), key.to_string())
-    }
-
-    pub fn import_electron_config(
-        &mut self,
-        path: &Path,
-        profile: Option<&str>,
-    ) -> Result<Vec<String>> {
-        let raw = fs::read_to_string(path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
-        let value: Value = serde_json::from_str(&raw)
-            .with_context(|| format!("failed to parse {}", path.display()))?;
-        let mut skipped = Vec::new();
-        let Some(map) = value.as_object() else {
-            return Ok(skipped);
-        };
-        for (source, dest) in [
-            ("dbPath", "db_path"),
-            ("decryptKey", "decrypt_key"),
-            ("myWxid", "wxid"),
-            ("imageXorKey", "image_xor_key"),
-            ("imageAesKey", "image_aes_key"),
-            ("cachePath", "cache_path"),
-            ("logEnabled", "log_enabled"),
-            ("httpApiToken", "http_api_token"),
-            ("httpApiHost", "http_api_host"),
-            ("httpApiPort", "http_api_port"),
-            ("aiModelApiBaseUrl", "ai_model_api_base_url"),
-            ("aiModelApiKey", "ai_model_api_key"),
-            ("aiModelApiModel", "ai_model_api_model"),
-            ("aiModelApiMaxTokens", "ai_model_api_max_tokens"),
-            ("aiInsightEnabled", "ai_insight_enabled"),
-        ] {
-            if let Some(v) = map.get(source).cloned() {
-                if is_encrypted_value(&v) {
-                    skipped.push(source.to_string());
-                    continue;
-                }
-                let _ = self.set_key(profile, dest, v);
-            }
-        }
-        Ok(skipped)
     }
 }
 
@@ -385,20 +333,10 @@ impl ProfileConfig {
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
                 .unwrap_or(Value::Null),
-            "log_enabled" | "logEnabled" => Value::Bool(self.log_enabled),
             "http_api_token" | "httpApiToken" => self
                 .http_api_token
                 .as_ref()
                 .map(|value| Value::String(value.clone()))
-                .unwrap_or(Value::Null),
-            "http_api_host" | "httpApiHost" => self
-                .http_api_host
-                .as_ref()
-                .map(|value| Value::String(value.clone()))
-                .unwrap_or(Value::Null),
-            "http_api_port" | "httpApiPort" => self
-                .http_api_port
-                .map(|value| Value::Number(value.into()))
                 .unwrap_or(Value::Null),
             "ai_model_api_base_url" | "aiModelApiBaseUrl" => self
                 .ai_model_api_base_url
@@ -469,19 +407,6 @@ pub fn expand_home(path: &str) -> PathBuf {
         }
     }
     PathBuf::from(path)
-}
-
-pub fn old_electron_config_candidates() -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Some(dir) = dirs::config_dir() {
-        candidates.push(dir.join("WeFlow").join("config.json"));
-        candidates.push(dir.join("weflow").join("config.json"));
-    }
-    #[cfg(target_os = "macos")]
-    if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join("Library/Application Support/WeFlow/config.json"));
-    }
-    candidates
 }
 
 /// Where the config file lives: the path chosen with `config set config_path`, else `config.json` in the home folder.
@@ -604,13 +529,6 @@ pub fn is_account_dir(path: &Path) -> bool {
         || path.join("FileStorage/Image2").exists()
 }
 
-fn is_encrypted_value(value: &Value) -> bool {
-    value
-        .as_str()
-        .map(|s| s.starts_with("safe:") || s.starts_with("lock:"))
-        .unwrap_or(false)
-}
-
 fn is_profile_key(key: &str) -> bool {
     matches!(
         key,
@@ -626,14 +544,8 @@ fn is_profile_key(key: &str) -> bool {
             | "imageAesKey"
             | "cache_path"
             | "cachePath"
-            | "log_enabled"
-            | "logEnabled"
             | "http_api_token"
             | "httpApiToken"
-            | "http_api_host"
-            | "httpApiHost"
-            | "http_api_port"
-            | "httpApiPort"
             | "ai_model_api_base_url"
             | "aiModelApiBaseUrl"
             | "ai_model_api_key"
@@ -706,37 +618,6 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-
-    #[test]
-    fn imports_plain_electron_config_and_skips_encrypted_values() {
-        let dir = temp_dir("weflow-config-import");
-        let source = dir.join("config.json");
-        fs::write(
-            &source,
-            serde_json::to_vec(&json!({
-                "dbPath": "/tmp/wechat",
-                "decryptKey": "safe:encrypted",
-                "myWxid": "wxid_test",
-                "imageXorKey": 123,
-                "logEnabled": true
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-
-        let mut store = ConfigStore::default();
-        let skipped = store
-            .import_electron_config(&source, Some("migrated"))
-            .unwrap();
-        let profile = store.profile(Some("migrated")).unwrap();
-
-        assert_eq!(profile.db_path.as_deref(), Some("/tmp/wechat"));
-        assert_eq!(profile.decrypt_key, None);
-        assert_eq!(profile.wxid.as_deref(), Some("wxid_test"));
-        assert_eq!(profile.image_xor_key, Some(123));
-        assert!(profile.log_enabled);
-        assert_eq!(skipped, vec!["decryptKey"]);
-    }
 
     #[test]
     fn resolves_account_dir_with_wechat_suffix() {
@@ -813,7 +694,7 @@ mod tests {
         ConfigStore::update(&path, |c| c.set_key(None, "wxid", json!("wxid_a"))).unwrap();
         let before = fs::read(&path).unwrap();
         assert!(
-            ConfigStore::update(&path, |c| c.set_key(None, "http_api_port", json!(0))).is_err()
+            ConfigStore::update(&path, |c| c.set_key(None, "image_xor_key", json!(256))).is_err()
         );
         assert_eq!(fs::read(&path).unwrap(), before);
         let _ = fs::remove_dir_all(&dir);
@@ -823,9 +704,6 @@ mod tests {
     fn numeric_keys_refuse_out_of_range_values() {
         let mut store = ConfigStore::default();
         for (key, bad) in [
-            ("http_api_port", json!(65536)),
-            ("http_api_port", json!(0)),
-            ("http_api_port", json!("-1")),
             ("ai_model_api_max_tokens", json!(4294967296_i64)),
             ("ai_model_api_max_tokens", json!(-1)),
             ("image_xor_key", json!(256)),
@@ -843,7 +721,6 @@ mod tests {
             );
         }
         for (key, good) in [
-            ("http_api_port", 65535),
             ("ai_model_api_max_tokens", 4294967295_i64),
             ("image_xor_key", 0),
             ("image_xor_key", 255),

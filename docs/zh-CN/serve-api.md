@@ -4,24 +4,19 @@
 
 `weflow serve` 把每条 CLI 命令都提供为 HTTP 接口。路径就是命令路径，参数就是命令的选项，返回的就是终端看到的内容：`GET /config/list` 返回的正是 `weflow --json config list` 的输出。设计与计划见 issue #131。
 
-桌面端的 HTTP API（`/api/v1/*`、SSE 推送）是另一个服务，用 `weflow serve --desktop` 启动，见 [HTTP-API.md](HTTP-API.md)。
-
 ## 启动
 
 ```sh
 weflow serve                       # 命令 API，地址 http://127.0.0.1:18108
 weflow serve --port 8080 --host 127.0.0.1
-weflow serve --desktop             # 改为启动桌面端 API（端口 `http_api_port`，默认 5031）
 weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.1:18108/ui/
 ```
 
 | 选项 | 含义 |
 |---|---|
-| `--host`、`--port` | 监听地址；默认 `127.0.0.1:18108`（加 `--desktop` 时：`http_api_host` / `http_api_port`，默认 `127.0.0.1:5031`） |
+| `--host`、`--port` | 监听地址；默认 `127.0.0.1:18108` |
 | `--api-token` | 访问令牌（也可用 `WEFLOW_HTTP_TOKEN`，或配置中的 `http_api_token`） |
-| `--desktop` | 启动桌面端 API，而不是命令 API |
-| `--message-push` | 桌面端 API 的 SSE 推送；需要 `--desktop` |
-| `--insight`、`--image-auto-download` | 与任一 API 一起运行这些服务 |
+| `--insight`、`--image-auto-download` | 与 API 一起运行这些服务 |
 | `--max-tasks` | 同时运行的任务（`POST` 命令）数；默认 1（见[并发限制](#并发限制)） |
 | `--max-reads` | 同时运行的其他命令数；默认为 CPU 核数 |
 | `--max-media` | `/api/` 媒体路由同时解码的图片和语音数，超出的排队等待；默认为 CPU 核数（见[媒体](#媒体)） |
@@ -87,7 +82,7 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 | 方法 | 命令 |
 |---|---|
 | `GET` | 读取（可能写入可重建的缓存）：`config path/list/get`、`db *`、`chat sessions/messages/search/…`、`analytics *`、`group list/members/…`、`sns timeline/…`、`biz *`、`runtime *`、`cache list` 等 |
-| `POST` | 执行任务或写文件：`export *`、`report * generate`、`key *`、`backup create/restore`、`chat voice-data/image-data/video-data/…`、`sns export/media/…`、`image decrypt`、`insight test/trigger/scan`、`config import`、`ffmpeg install` 等 |
+| `POST` | 执行任务或写文件：`export *`、`report * generate`、`key *`、`backup create/restore`、`chat voice-data/image-data/video-data/…`、`sns export/media/…`、`image decrypt`、`insight test/trigger/scan`、`ffmpeg install` 等 |
 | `PUT` | 修改设置：`config set`、`lang`、`ffmpeg set baseurl`、`insight mark-read`，以及带 `set` 的 `analytics excluded` 和 `chat group-hint` |
 | `DELETE` | 删除：`config unset/clear`、`cache clear/clear-account`、`ffmpeg unset baseurl`、`insight clear` |
 
@@ -241,7 +236,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `3`（解析过的消息的 `serverId` 改为字符串（#399）、`messageKey` 不再带数据库的路径（#443）之前是 `1`；`chat messages`、`chat latest` 和 `chat message` 不带 `parsed` 时返回的行改为 `MessageRow`（各列有了明确类型，并改用驼峰命名），`chat search` 的结果改为 `SearchHit`（即 `MessageRow` 加上 `_session_id`，#492）之前是 `2`）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
+客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `3`（解析过的消息的 `serverId` 改为字符串（#399）、`messageKey` 不再带数据库的路径（#443）之前是 `1`；`chat messages`、`chat latest` 和 `chat message` 不带 `parsed` 时返回的行改为 `MessageRow`（各列有了明确类型，并改用驼峰命名），`chat search` 的结果改为 `SearchHit`（即 `MessageRow` 加上 `_session_id`，#492）、命令 API 去掉 `config import`（#537）之前是 `2`）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
 
 ```json
 {"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41", "lang": "en",
@@ -355,7 +350,7 @@ const events = new EventSource("http://127.0.0.1:18108/api/push/messages?access_
 events.addEventListener("message.new", (e) => console.log(JSON.parse(e.data)));
 ```
 
-- 先发送 `hello` 事件（数据就是 `/health` 的响应）和 `ready` 事件，之后每条新消息是一个 `message.new` 事件，每次撤回是一个 `message.revoke` 事件。字段与桌面端的推送相同（见 [HTTP-API.md](HTTP-API.md#2-主动推送)），包括 `sessionId`、`sessionType`、`rawid`、`sourceName`、`groupName`、`content`、`timestamp` 等。每个消息事件都有 `id`。每 15 秒发一次 `heartbeat` 事件，防止空闲连接被关闭，也让客户端知道连接还活着（见[保持连接](#保持连接)）。
+- 先发送 `hello` 事件（数据就是 `/health` 的响应）和 `ready` 事件，之后每条新消息是一个 `message.new` 事件，每次撤回是一个 `message.revoke` 事件。字段包括 `sessionId`、`sessionType`、`rawid`、`sourceName`、`groupName`、`content`、`timestamp` 等。每个消息事件都有 `id`。每 15 秒发一次 `heartbeat` 事件，防止空闲连接被关闭，也让客户端知道连接还活着（见[保持连接](#保持连接)）。
 - 服务器保留最近 10 分钟的事件，最多 1000 条。客户端可以带 `Last-Event-ID` 重连（EventSource 会自动这样做），也可以新开连接时带上 `?last-event-id=`，这两种情况都会收到该 id 之后的事件。两者都不带时，会收到所有保留的事件。
 - 只有在有人订阅时，服务器才会每秒检查一次账号的会话库和消息库是否有变化，有变化时才用进程内读取的 hub 查找新消息；即使没有变化，至少每 30 秒也会查找一次。新消息一两秒内就会到达网页。在大账号上，有人订阅时服务端每秒约占用 5 ms CPU。第一个订阅者以订阅那一刻账号里已有的内容为起点；配置变化（例如换了账号）之后的订阅者也一样。
-- 只允许 `GET`。这个连接不计入 `--max-reads`。它与桌面端的 `--message-push` 不是一回事，后者属于 `--desktop`。
+- 只允许 `GET`。这个连接不计入 `--max-reads`。
