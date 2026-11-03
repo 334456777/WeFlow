@@ -13,7 +13,6 @@ use crate::chat_msg::{self, ChatMessage};
 use crate::message::rx;
 use crate::services::ServiceHub;
 use crate::sync::MutexExt;
-use weflow_native::msg_row::MsgRow;
 
 pub struct EventChannel {
     sender: broadcast::Sender<Value>,
@@ -708,7 +707,7 @@ impl PushEngine {
         let Ok(wcdb) = self.hub.open_wcdb_pub() else {
             return Vec::new();
         };
-        let Ok(rows) = wcdb.messages_where_as::<MsgRow>(session_id, since, condition, limit) else {
+        let Ok(rows) = wcdb.messages_where(session_id, since, condition, limit) else {
             return Vec::new();
         };
         let mut msgs = chat_msg::map_msg_rows(rows, session_id, &self.hub.my_wxid_pub());
@@ -1278,6 +1277,7 @@ pub fn message_push_loop(hub: ServiceHub, sender: broadcast::Sender<Value>, inte
 #[cfg(test)]
 mod tests {
     use super::*;
+    use weflow_native::msg_row::MsgRow;
 
     fn row(local_id: i64, create_time: i64, local_type: i64, content: &str) -> MsgRow {
         MsgRow {

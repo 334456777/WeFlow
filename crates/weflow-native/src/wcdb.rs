@@ -10,9 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
-use serde_json::{json, Value};
+use serde_json::Value;
 
-use crate::msg_row::{LegacyRow, RowShape};
+use crate::msg_row::MsgRow;
 use crate::native_db::NativeAccount;
 
 /// A call the backend refuses by design (it opens WeChat's databases read-only) or has not ported yet.
@@ -144,43 +144,28 @@ impl Wcdb {
         self.account()?.sessions()
     }
 
-    // The message readers come in two forms: `<name>` returns the rows of WeChat's own columns as JSON, what
-    // `wcdb_api` returned and the desktop app reads ([`LegacyRow`]); `<name>_as::<R>` returns them in any
-    // [`RowShape`], such as the typed [`MsgRow`](crate::msg_row::MsgRow) (#257, #490).
-
-    pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Value> {
-        Ok(LegacyRow::array(
-            self.messages_as::<LegacyRow>(session_id, limit, offset)?,
-        ))
-    }
-
-    pub fn messages_as<R: RowShape>(
-        &self,
-        session_id: &str,
-        limit: i32,
-        offset: i32,
-    ) -> Result<Vec<R>> {
+    pub fn messages(&self, session_id: &str, limit: i32, offset: i32) -> Result<Vec<MsgRow>> {
         self.account()?.messages(session_id, limit, offset)
     }
 
     /// See [`NativeAccount::messages_from`](crate::native_db::NativeAccount::messages_from).
-    pub fn messages_from_as<R: RowShape>(
+    pub fn messages_from(
         &self,
         session_id: &str,
         limit: i32,
         from: crate::native_msg::PageFrom,
-    ) -> Result<Vec<R>> {
+    ) -> Result<Vec<MsgRow>> {
         self.account()?.messages_from(session_id, limit, from)
     }
 
     /// See [`NativeAccount::messages_where`].
-    pub fn messages_where_as<R: RowShape>(
+    pub fn messages_where(
         &self,
         session_id: &str,
         since: i64,
         condition: &str,
         limit: usize,
-    ) -> Result<Vec<R>> {
+    ) -> Result<Vec<MsgRow>> {
         self.account()?
             .messages_where(session_id, since, condition, limit)
     }
@@ -193,7 +178,7 @@ impl Wcdb {
     }
 
     /// See [`NativeAccount::typed_before`].
-    pub fn typed_before_as<R: RowShape>(
+    pub fn typed_before(
         &self,
         tables: &[crate::native_msg::MsgTable],
         local_types: &[i64],
@@ -201,7 +186,7 @@ impl Wcdb {
         range: (i64, i64),
         floor: i64,
         limit: i64,
-    ) -> Result<Vec<R>> {
+    ) -> Result<Vec<MsgRow>> {
         self.account()?
             .typed_before(tables, local_types, before, range, floor, limit)
     }
@@ -236,63 +221,23 @@ impl Wcdb {
         ascending: bool,
         limit: i32,
         offset: i32,
-    ) -> Result<Value> {
-        Ok(LegacyRow::array(self.messages_by_type_as::<LegacyRow>(
-            session_id, local_type, ascending, limit, offset,
-        )?))
-    }
-
-    pub fn messages_by_type_as<R: RowShape>(
-        &self,
-        session_id: &str,
-        local_type: i64,
-        ascending: bool,
-        limit: i32,
-        offset: i32,
-    ) -> Result<Vec<R>> {
+    ) -> Result<Vec<MsgRow>> {
         self.account()?
             .messages_by_type(session_id, local_type, ascending, limit, offset)
     }
 
-    /// One message by `local_id`; `{}` when there is none.
-    pub fn message_by_id(&self, session_id: &str, local_id: i32) -> Result<Value> {
-        Ok(self
-            .message_by_id_as::<LegacyRow>(session_id, local_id)?
-            .map_or_else(|| json!({}), LegacyRow::into_value))
-    }
-
-    pub fn message_by_id_as<R: RowShape>(
-        &self,
-        session_id: &str,
-        local_id: i32,
-    ) -> Result<Option<R>> {
-        self.account()?
-            .message_by_id(session_id, i64::from(local_id))
-    }
-
     /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
-    pub fn messages_by_local_id_as<R: RowShape>(
+    pub fn messages_by_local_id(
         &self,
         session_id: &str,
         local_id: i64,
         create_time: Option<i64>,
-    ) -> Result<Vec<R>> {
+    ) -> Result<Vec<MsgRow>> {
         self.account()?
             .messages_by_local_id(session_id, local_id, create_time)
     }
 
-    /// One message by server id; `{}` when there is none.
-    pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Value> {
-        Ok(self
-            .message_by_server_id_as::<LegacyRow>(session_id, svrid)?
-            .map_or_else(|| json!({}), LegacyRow::into_value))
-    }
-
-    pub fn message_by_server_id_as<R: RowShape>(
-        &self,
-        session_id: &str,
-        svrid: &str,
-    ) -> Result<Option<R>> {
+    pub fn message_by_server_id(&self, session_id: &str, svrid: &str) -> Result<Option<MsgRow>> {
         self.account()?.message_by_server_id(session_id, svrid)
     }
 
@@ -337,12 +282,7 @@ impl Wcdb {
     }
 
     /// Returns the next batch of rows and whether more remain.
-    pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Value, bool)> {
-        let (rows, more) = self.fetch_message_batch_as::<LegacyRow>(cursor)?;
-        Ok((LegacyRow::array(rows), more))
-    }
-
-    pub fn fetch_message_batch_as<R: RowShape>(&self, cursor: i64) -> Result<(Vec<R>, bool)> {
+    pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Vec<MsgRow>, bool)> {
         self.account()?.fetch_message_batch(cursor)
     }
 
@@ -352,7 +292,7 @@ impl Wcdb {
     }
 
     /// Batch number `page` of a cursor, without moving it (see [`NativeAccount::fetch_message_page`]).
-    pub fn fetch_message_page_as<R: RowShape>(&self, cursor: i64, page: usize) -> Result<Vec<R>> {
+    pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Vec<MsgRow>> {
         self.account()?.fetch_message_page(cursor, page)
     }
 
@@ -415,6 +355,8 @@ impl Wcdb {
 
     // ── not ported yet ──
 
+    /// The messages whose text holds `keyword`, newest first, each hit with its conversation (see
+    /// [`NativeAccount::search_messages`]).
     pub fn search(
         &self,
         keyword: &str,
@@ -423,28 +365,8 @@ impl Wcdb {
         offset: i32,
         begin: i32,
         end: i32,
-    ) -> Result<Value> {
+    ) -> Result<Vec<crate::native_media::SessionRow>> {
         self.account()?.search_messages(
-            keyword,
-            session_id,
-            limit,
-            offset,
-            begin as i64,
-            end as i64,
-        )
-    }
-
-    /// [`search`](Self::search) in any [`RowShape`], each hit with its conversation.
-    pub fn search_as<R: RowShape>(
-        &self,
-        keyword: &str,
-        session_id: Option<&str>,
-        limit: i32,
-        offset: i32,
-        begin: i32,
-        end: i32,
-    ) -> Result<Vec<crate::native_media::SessionRow<R>>> {
-        self.account()?.search_messages_as(
             keyword,
             session_id,
             limit,
@@ -483,23 +405,8 @@ impl Wcdb {
             .group_stats(chatroom_id, begin as i64, end as i64)
     }
 
-    pub fn aggregate_stats(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
-        self.account()?
-            .aggregate_stats(session_ids, begin as i64, end as i64)
-    }
-
     pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
         self.account()?.available_years(session_ids)
-    }
-
-    pub fn annual_report_stats(
-        &self,
-        session_ids: &[String],
-        begin: i32,
-        end: i32,
-    ) -> Result<Value> {
-        self.account()?
-            .annual_report_stats(session_ids, begin as i64, end as i64)
     }
 
     pub fn dual_report_stats(&self, session_id: &str, begin: i32, end: i32) -> Result<Value> {
@@ -511,43 +418,8 @@ impl Wcdb {
         self.account()?.footprint_stats(options)
     }
 
-    pub fn session_message_type_stats(
-        &self,
-        session_id: &str,
-        begin: i32,
-        end: i32,
-    ) -> Result<Value> {
-        self.account()?
-            .session_message_type_stats_batch(
-                &[session_id.to_string()],
-                &serde_json::json!({ "begin": begin, "end": end }),
-            )
-            .map(|v| v[session_id].clone())
-    }
-
+    /// Newest-first page of Moments posts, of the posters `usernames` (all when empty).
     pub fn sns_timeline(
-        &self,
-        limit: i32,
-        offset: i32,
-        username: Option<&str>,
-        keyword: Option<&str>,
-        start: i32,
-        end: i32,
-    ) -> Result<Value> {
-        self.account()?.sns_timeline(
-            limit,
-            offset,
-            &username
-                .map(crate::native_contact::usernames_from_json)
-                .unwrap_or_default(),
-            keyword,
-            start as i64,
-            end as i64,
-        )
-    }
-
-    /// [`sns_timeline`](Self::sns_timeline) as typed posts, of the posters `usernames` (all when empty).
-    pub fn sns_timeline_as(
         &self,
         limit: i32,
         offset: i32,
@@ -556,7 +428,7 @@ impl Wcdb {
         start: i32,
         end: i32,
     ) -> Result<Vec<crate::native_sns::SnsPost>> {
-        self.account()?.sns_timeline_as(
+        self.account()?.sns_timeline(
             limit,
             offset,
             usernames,
@@ -634,27 +506,8 @@ impl Wcdb {
         self.read_only("anti_revoke_uninstall")
     }
 
+    /// Image/video messages of the conversations `session_ids`, newest first, and whether more remain.
     pub fn scan_media_stream(
-        &self,
-        session_ids_json: &str,
-        media_type: i32,
-        begin: i32,
-        end: i32,
-        limit: i32,
-        offset: i32,
-    ) -> Result<(Value, bool)> {
-        self.account()?.scan_media_stream(
-            &crate::native_contact::usernames_from_json(session_ids_json),
-            media_type,
-            begin as i64,
-            end as i64,
-            limit,
-            offset,
-        )
-    }
-
-    /// [`scan_media_stream`](Self::scan_media_stream) in any [`RowShape`], of the conversations `session_ids`.
-    pub fn scan_media_stream_as<R: RowShape>(
         &self,
         session_ids: &[String],
         media_type: i32,
@@ -662,8 +515,8 @@ impl Wcdb {
         end: i32,
         limit: i32,
         offset: i32,
-    ) -> Result<(Vec<crate::native_media::SessionRow<R>>, bool)> {
-        self.account()?.scan_media_stream_as(
+    ) -> Result<(Vec<crate::native_media::SessionRow>, bool)> {
+        self.account()?.scan_media_stream(
             session_ids,
             media_type,
             i64::from(begin),
@@ -694,10 +547,6 @@ impl Wcdb {
             ))
     }
 
-    pub fn message_tables(&self, session_id: &str) -> Result<Value> {
-        self.account()?.message_tables_json(session_id)
-    }
-
     pub fn message_meta(
         &self,
         db_path: &str,
@@ -716,11 +565,6 @@ impl Wcdb {
     pub fn contact_alias_map(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .contact_alias_map(&crate::native_contact::usernames_from_json(usernames_json))
-    }
-
-    pub fn contact_friend_flags(&self, usernames_json: &str) -> Result<Value> {
-        self.account()?
-            .contact_friend_flags(&crate::native_contact::usernames_from_json(usernames_json))
     }
 
     pub fn chat_room_ext_buffer(&self, chatroom_id: &str) -> Result<Value> {
@@ -750,14 +594,6 @@ impl Wcdb {
 
     pub fn emoticon_cdn_url(&self, db_path: &str, md5: &str) -> Result<String> {
         self.account()?.emoticon_cdn_url(md5)
-    }
-
-    pub fn emoticon_caption(&self, db_path: &str, md5: &str) -> Result<String> {
-        self.account()?.emoticon_caption(md5)
-    }
-
-    pub fn emoticon_caption_strict(&self, md5: &str) -> Result<String> {
-        self.account()?.emoticon_caption(md5)
     }
 
     /// Every sticker caption, keyed by lower-case md5 (see `NativeAccount::emoticon_captions`).
@@ -813,12 +649,6 @@ impl Wcdb {
         )
     }
 
-    pub fn session_message_date_counts_batch(&self, session_ids_json: &str) -> Result<Value> {
-        self.account()?.session_message_date_counts_batch(
-            &crate::native_contact::usernames_from_json(session_ids_json),
-        )
-    }
-
     pub fn head_image_buffers(&self, usernames_json: &str) -> Result<Value> {
         self.account()?
             .head_image_buffers(&crate::native_contact::usernames_from_json(usernames_json))
@@ -857,34 +687,9 @@ impl Wcdb {
         self.read_only("import_table_snapshot")
     }
 
-    pub fn import_table_snapshot_with_schema(
-        &self,
-        kind: &str,
-        db_path: &str,
-        table: &str,
-        input_path: &str,
-        create_table_sql: &str,
-    ) -> Result<Value> {
-        self.read_only("import_table_snapshot_with_schema")
-    }
-
-    pub fn message_table_time_range(&self, db_path: &str, table: &str) -> Result<Value> {
-        self.account()?.message_table_time_range(db_path, table)
-    }
-
-    pub fn resolve_image_hardlink(&self, md5: &str, account_dir: &str) -> Result<Value> {
-        self.account()?
-            .resolve_image_hardlink(md5, Some(account_dir))
-    }
-
     pub fn resolve_image_hardlink_batch(&self, requests_json: &str) -> Result<Value> {
         self.account()?
             .resolve_image_hardlink_batch(&serde_json::from_str(requests_json).unwrap_or_default())
-    }
-
-    pub fn resolve_video_hardlink_md5(&self, md5: &str, db_path: &str) -> Result<Value> {
-        self.account()?
-            .resolve_video_hardlink_md5(md5, Some(db_path))
     }
 
     pub fn resolve_video_hardlink_md5_batch(&self, requests_json: &str) -> Result<Value> {

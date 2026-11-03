@@ -260,7 +260,7 @@ impl PageSource<'_> {
         // typed rows (#491): their text moves into the messages
         let rows = self
             .wcdb
-            .fetch_message_page_as::<MsgRow>(self.cursor, page)
+            .fetch_message_page(self.cursor, page)
             .map_err(|e| AppError::native(e.to_string()))?;
         let fetch = t.elapsed();
         let scanned = rows.len();

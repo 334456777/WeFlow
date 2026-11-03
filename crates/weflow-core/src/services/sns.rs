@@ -273,7 +273,7 @@ impl ServiceHub {
             .filter(|u| !u.is_empty() && asked.insert(u.clone()))
             .collect();
         let posts = wcdb
-            .sns_timeline_as(
+            .sns_timeline(
                 q.limit,
                 q.offset,
                 &usernames,
@@ -338,7 +338,7 @@ impl ServiceHub {
         let mut offset = 0;
         for _ in 0..max_rounds {
             let rows = wcdb
-                .sns_timeline_as(page, offset, &[], None, 0, 0)
+                .sns_timeline(page, offset, &[], None, 0, 0)
                 .map_err(err_native)?;
             if rows.is_empty() {
                 break;

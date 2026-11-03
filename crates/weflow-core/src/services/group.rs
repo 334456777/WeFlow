@@ -1097,8 +1097,7 @@ impl ServiceHub {
 
         let result = (|| -> AppResult<()> {
             loop {
-                let (rows, has_more) =
-                    self.wrap_native(wcdb.fetch_message_batch_as::<MsgRow>(cursor))?;
+                let (rows, has_more) = self.wrap_native(wcdb.fetch_message_batch(cursor))?;
                 if rows.is_empty() {
                     break;
                 }
@@ -1237,8 +1236,7 @@ impl ServiceHub {
         };
         let result = (|| -> AppResult<()> {
             loop {
-                let (rows, has_more) =
-                    self.wrap_native(wcdb.fetch_message_batch_as::<MsgRow>(cursor))?;
+                let (rows, has_more) = self.wrap_native(wcdb.fetch_message_batch(cursor))?;
                 if rows.is_empty() {
                     break;
                 }
@@ -1300,8 +1298,7 @@ impl ServiceHub {
         let mut has_more = false;
         let result = (|| -> AppResult<()> {
             while matched.len() < limit {
-                let (rows, batch_more) =
-                    self.wrap_native(wcdb.fetch_message_batch_as::<MsgRow>(db_cursor))?;
+                let (rows, batch_more) = self.wrap_native(wcdb.fetch_message_batch(db_cursor))?;
                 if rows.is_empty() {
                     has_more = false;
                     break;

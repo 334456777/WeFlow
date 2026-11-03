@@ -11,7 +11,6 @@ use serde_json::{json, Map, Value};
 use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
 use crate::sync::MutexExt;
-use weflow_native::msg_row::MsgRow;
 
 const AGGREGATE_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -267,7 +266,7 @@ impl ServiceHub {
             };
             let (mut s_total, mut s_sent, mut s_recv, mut s_last) = (0i64, 0i64, 0i64, 0i64);
             loop {
-                let Ok((rows, more)) = wcdb.fetch_message_batch_as::<MsgRow>(cursor) else {
+                let Ok((rows, more)) = wcdb.fetch_message_batch(cursor) else {
                     break;
                 };
                 for row in &rows {

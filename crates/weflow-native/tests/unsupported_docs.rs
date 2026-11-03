@@ -24,7 +24,7 @@ fn read(rel: &str) -> String {
 fn every_refusing_function_is_documented_in_both_languages() {
     let names = refusing_functions(&read("src/wcdb.rs"));
     assert!(
-        names.len() >= 12,
+        names.len() >= 11,
         "the source scan found only {names:?}; did the stub layout change?"
     );
     for doc in [

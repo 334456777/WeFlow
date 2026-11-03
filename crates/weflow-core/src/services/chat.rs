@@ -39,7 +39,7 @@ pub(crate) fn message_by_local_id(
 ) -> AppResult<Option<MsgRow>> {
     let create_time = create_time.filter(|t| *t > 0);
     let mut rows = wcdb
-        .messages_by_local_id_as::<MsgRow>(session_id, local_id, create_time)
+        .messages_by_local_id(session_id, local_id, create_time)
         .map_err(native)?;
     if rows.len() > 1 {
         if let Some(want) = local_type {
@@ -198,7 +198,7 @@ impl ServiceHub {
         server_id: &str,
     ) -> AppResult<MsgRow> {
         self.open_wcdb()?
-            .message_by_server_id_as::<MsgRow>(session_id, server_id)
+            .message_by_server_id(session_id, server_id)
             .map_err(native)?
             .ok_or_else(|| AppError::runtime("message not found"))
     }
@@ -863,7 +863,7 @@ impl ServiceHub {
             loop {
                 // what is older than the page so far cannot be on it
                 let rows = wcdb
-                    .typed_before_as::<MsgRow>(
+                    .typed_before(
                         tables,
                         &local_types,
                         from,
@@ -935,7 +935,7 @@ impl ServiceHub {
     pub fn chat_all_images(&self, session_id: &str) -> AppResult<ChatImages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type_as::<MsgRow>(session_id, 3, false, 0, 0)
+            .messages_by_type(session_id, 3, false, 0, 0)
             .map_err(native)?;
         let msgs = self.normalize_row(rows, session_id);
         let mut images: Vec<(i64, ImageRef)> = msgs
@@ -974,7 +974,7 @@ impl ServiceHub {
     pub fn chat_all_voices(&self, session_id: &str) -> AppResult<VoiceMessages> {
         let wcdb = self.open_wcdb()?;
         let rows = wcdb
-            .messages_by_type_as::<MsgRow>(session_id, 34, false, 0, 0)
+            .messages_by_type(session_id, 34, false, 0, 0)
             .map_err(native)?;
         let my = self.my_wxid_cleaned();
         let mut msgs = self.normalize_row(rows, session_id);
@@ -1010,7 +1010,7 @@ impl ServiceHub {
         };
         let ids = uniq(&ids);
         let (rows, has_more) = wcdb
-            .scan_media_stream_as::<MsgRow>(
+            .scan_media_stream(
                 &ids,
                 code,
                 crate::num::saturating_i32(begin),

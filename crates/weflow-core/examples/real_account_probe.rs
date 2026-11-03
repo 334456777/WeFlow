@@ -13,7 +13,6 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::Instant;
 use weflow_core::config::{expand_home, resolve_account_dir, ConfigStore};
-use weflow_native::msg_row::LegacyRow;
 use weflow_native::native_db::NativeAccount;
 
 fn number(row: &Value, field: &str) -> i64 {
@@ -25,10 +24,10 @@ fn cursor_digest(account: &NativeAccount, cursor: i64) -> Result<(usize, String)
     let mut hash = Sha256::new();
     let result = (|| -> Result<()> {
         loop {
-            let (rows, more) = account.fetch_message_batch::<LegacyRow>(cursor)?;
+            let (rows, more) = account.fetch_message_batch(cursor)?;
             count += rows.len();
             for row in &rows {
-                hash.update(serde_json::to_vec(&row.0)?);
+                hash.update(format!("{row:?}").as_bytes());
             }
             if !more {
                 break;
@@ -79,7 +78,7 @@ fn measure_cursors(
                 };
                 let keys = started.elapsed();
                 let first = Instant::now();
-                let _ = account.fetch_message_page::<LegacyRow>(cursor, 0)?;
+                let _ = account.fetch_message_page(cursor, 0)?;
                 let first = first.elapsed();
                 let signature = cursor_digest(account, cursor)?;
                 if kind != "sender" {

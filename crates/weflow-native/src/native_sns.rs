@@ -149,27 +149,6 @@ impl SnsMedia {
             live_photo: None,
         }
     }
-
-    /// `{ url, thumb, token, key, md5, encIdx, livePhoto }`, the absent ones left out: the legacy shape.
-    fn to_value(&self) -> Value {
-        let mut o = Map::new();
-        o.insert("url".into(), json!(self.url));
-        o.insert("thumb".into(), json!(self.thumb));
-        for (k, v) in [
-            ("token", &self.token),
-            ("key", &self.key),
-            ("md5", &self.md5),
-            ("encIdx", &self.enc_idx),
-        ] {
-            if let Some(v) = v {
-                o.insert(k.into(), json!(v));
-            }
-        }
-        if let Some(live) = &self.live_photo {
-            o.insert("livePhoto".into(), live.to_value());
-        }
-        Value::Object(o)
-    }
 }
 
 /// A Moments post, read from its row of `SnsTimeLine`.
@@ -194,22 +173,6 @@ pub struct SnsPost {
     pub video_key: Option<String>,
 }
 
-impl SnsPost {
-    /// The post as the desktop app's DLL returned it, with an empty `nickname` and `comments`.
-    pub fn to_value(&self) -> Value {
-        let mut post = json!({
-            "id": self.id, "tid": self.tid, "username": self.username, "nickname": "",
-            "createTime": self.create_time, "contentDesc": self.content_desc, "type": self.kind,
-            "rawXml": self.raw_xml, "media": self.media.iter().map(SnsMedia::to_value).collect::<Vec<_>>(),
-            "likes": self.likes, "comments": []
-        });
-        if let Some(key) = &self.video_key {
-            post["videoKey"] = json!(key);
-        }
-        post
-    }
-}
-
 /// `<createTime>` of a post, `0` when it has none.
 fn post_time(xml: &str) -> i64 {
     R_CREATE
@@ -226,13 +189,8 @@ fn post_type(xml: &str) -> i64 {
         .unwrap_or(1)
 }
 
-/// One timeline row as the legacy JSON post (see [`SnsPost::to_value`]).
-pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> Value {
-    parse_post_as(tid, user_name, xml).to_value()
-}
-
 /// One timeline row → its post.
-pub fn parse_post_as(tid: i64, user_name: &str, xml: &str) -> SnsPost {
+pub fn parse_post(tid: i64, user_name: &str, xml: &str) -> SnsPost {
     let tid_text = (tid as u64).to_string();
     let id = R_ID
         .captures(xml)
@@ -341,26 +299,8 @@ impl NativeAccount {
             .collect())
     }
 
-    /// [`sns_timeline_as`](Self::sns_timeline_as) as the legacy JSON posts.
-    pub fn sns_timeline(
-        &self,
-        limit: i32,
-        offset: i32,
-        usernames: &[String],
-        keyword: Option<&str>,
-        start: i64,
-        end: i64,
-    ) -> Result<Value> {
-        Ok(Value::Array(
-            self.sns_timeline_as(limit, offset, usernames, keyword, start, end)?
-                .iter()
-                .map(SnsPost::to_value)
-                .collect(),
-        ))
-    }
-
     /// Newest-first page of posts. `keyword` matches the post text; `start`/`end` are seconds (`0` = unbounded).
-    pub fn sns_timeline_as(
+    pub fn sns_timeline(
         &self,
         limit: i32,
         offset: i32,
@@ -392,7 +332,7 @@ impl NativeAccount {
         let it = posts
             .into_iter()
             .skip(offset.max(0) as usize)
-            .map(|(_, tid, user, xml)| parse_post_as(tid as i64, &user, &xml));
+            .map(|(_, tid, user, xml)| parse_post(tid as i64, &user, &xml));
         Ok(if limit > 0 {
             it.take(limit as usize).collect()
         } else {
@@ -498,48 +438,42 @@ mod tests {
     #[test]
     fn parses_text_type_media_live_photo_likes_and_video_key() {
         let p = parse_post(-4_000_000_000_000_000_000, "wxid_bob", XML);
-        assert_eq!(p["id"], "14000000000000000001");
+        assert_eq!(p.id, "14000000000000000001");
         assert_eq!(
-            p["tid"], "14446744073709551616",
+            p.tid, "14446744073709551616",
             "a negative stored tid is the unsigned snowflake"
         );
         assert_eq!(
-            (
-                p["username"].as_str(),
-                p["createTime"].as_i64(),
-                p["type"].as_i64()
-            ),
-            (Some("wxid_bob"), Some(1_700_000_500), Some(1))
+            (p.username.as_str(), p.create_time, p.kind),
+            ("wxid_bob", 1_700_000_500, 1)
         );
-        assert_eq!(p["contentDesc"], "hello & <moments>");
-        let media = p["media"].as_array().unwrap();
+        assert_eq!(p.content_desc, "hello & <moments>");
+        let media = &p.media;
         assert_eq!(media.len(), 2);
-        assert_eq!(media[0]["url"], "http://u/1");
+        assert_eq!(media[0].url, "http://u/1");
         assert_eq!(
-            media[0]["thumb"], "http://t/1?a=1&b=2",
+            media[0].thumb, "http://t/1?a=1&b=2",
             "entities in URLs are decoded"
         );
         assert_eq!(
             (
-                media[0]["token"].as_str(),
-                media[0]["key"].as_str(),
-                media[0]["md5"].as_str(),
-                media[0]["encIdx"].as_str()
+                media[0].token.as_deref(),
+                media[0].key.as_deref(),
+                media[0].md5.as_deref(),
+                media[0].enc_idx.as_deref()
             ),
             (Some("TU"), Some("7"), Some("abc"), Some("2"))
         );
-        assert_eq!(media[0]["livePhoto"]["url"], "http://l/1");
+        let live = media[0].live_photo.as_deref().unwrap();
+        assert_eq!(live.url, "http://l/1");
         assert_eq!(
-            (
-                media[0]["livePhoto"]["token"].as_str(),
-                media[0]["livePhoto"]["key"].as_str()
-            ),
+            (live.token.as_deref(), live.key.as_deref()),
             (Some("LT"), Some("5"))
         );
-        assert!(media[1].get("token").is_none() && media[1].get("livePhoto").is_none());
-        assert_eq!(p["likes"], json!(["Carol", "Me"]));
-        assert_eq!(p["videoKey"], "2105122989");
-        assert_eq!(p["rawXml"], XML);
+        assert!(media[1].token.is_none() && media[1].live_photo.is_none());
+        assert_eq!(p.likes, ["Carol", "Me"]);
+        assert_eq!(p.video_key.as_deref(), Some("2105122989"));
+        assert_eq!(p.raw_xml, XML);
         assert_eq!(liker_usernames(XML), ["wxid_carol", "wxid_me"]);
     }
 
@@ -609,20 +543,13 @@ mod tests {
     #[test]
     fn malformed_or_empty_xml_still_yields_a_post() {
         let p = parse_post(7, "wxid_x", "");
-        assert_eq!(
-            (
-                p["id"].as_str(),
-                p["createTime"].as_i64(),
-                p["media"].as_array().unwrap().len()
-            ),
-            (Some("7"), Some(0), 0)
-        );
+        assert_eq!((p.id.as_str(), p.create_time, p.media.len()), ("7", 0, 0));
         let p = parse_post(
             7,
             "",
             "<TimelineObject><username>wxid_y</username></TimelineObject>",
         );
-        assert_eq!(p["username"], "wxid_y");
+        assert_eq!(p.username, "wxid_y");
     }
 }
 
@@ -639,12 +566,8 @@ mod fixture_tests {
             .with_my_wxid(Some("wxid_me_ab12".into()))
     }
 
-    fn descs(v: &Value) -> Vec<&str> {
-        v.as_array()
-            .unwrap()
-            .iter()
-            .map(|p| p["contentDesc"].as_str().unwrap())
-            .collect()
+    fn descs(posts: &[SnsPost]) -> Vec<&str> {
+        posts.iter().map(|p| p.content_desc.as_str()).collect()
     }
 
     #[test]
@@ -661,7 +584,7 @@ mod fixture_tests {
                 "bob trip"
             ]
         );
-        assert_eq!(all[0]["tid"], (-5i64 as u64).to_string());
+        assert_eq!(all[0].tid, (-5i64 as u64).to_string());
         assert_eq!(
             descs(&a.sns_timeline(2, 1, &[], None, 0, 0).unwrap()),
             ["carol video", "second post"]
@@ -686,11 +609,11 @@ mod fixture_tests {
             ["carol video", "second post"]
         );
         let trip = &a.sns_timeline(0, 0, &[], Some("trip"), 0, 0).unwrap()[0];
-        assert_eq!(trip["media"].as_array().unwrap().len(), 2);
-        assert_eq!(trip["media"][0]["thumb"], "http://thumb/1?a=1&b=2");
-        assert_eq!(trip["media"][0]["token"], "TU1");
-        assert_eq!(trip["likes"], json!(["Me Nick", "Carol"]));
-        assert_eq!(a.sns_timeline(0, 0, &[], None, 0, 1).unwrap(), json!([]));
+        assert_eq!(trip.media.len(), 2);
+        assert_eq!(trip.media[0].thumb, "http://thumb/1?a=1&b=2");
+        assert_eq!(trip.media[0].token.as_deref(), Some("TU1"));
+        assert_eq!(trip.likes, ["Me Nick", "Carol"]);
+        assert!(a.sns_timeline(0, 0, &[], None, 0, 1).unwrap().is_empty());
     }
 
     #[test]
@@ -715,15 +638,8 @@ mod fixture_tests {
         );
         // the posts of each poster, as the parsed timeline has them
         let mut from_timeline = BTreeMap::<String, i64>::new();
-        for p in a
-            .sns_timeline(0, 0, &[], None, 0, 0)
-            .unwrap()
-            .as_array()
-            .unwrap()
-        {
-            *from_timeline
-                .entry(p["username"].as_str().unwrap().to_string())
-                .or_default() += 1;
+        for p in a.sns_timeline(0, 0, &[], None, 0, 0).unwrap() {
+            *from_timeline.entry(p.username).or_default() += 1;
         }
         assert_eq!(from_timeline.values().sum::<i64>(), 5);
         assert_eq!(a.sns_post_counts().unwrap(), json!(from_timeline));

@@ -274,15 +274,6 @@ impl NativeAccount {
         Ok(Value::Object(out))
     }
 
-    /// `{ session: { "YYYY-MM-DD": count } }`.
-    pub fn session_message_date_counts_batch(&self, session_ids: &[String]) -> Result<Value> {
-        let mut out = Map::new();
-        for sid in session_ids {
-            out.insert(sid.clone(), self.session_message_date_counts(sid)?);
-        }
-        Ok(Value::Object(out))
-    }
-
     /// `(sender username, message count)` of one table; unknown senders are skipped.
     fn sender_counts(&self, t: &MsgTable, range: &str) -> Result<Vec<(String, i64)>> {
         let sql = format!(
@@ -526,11 +517,8 @@ mod tests {
                 .unwrap(),
             json!([2023])
         );
-        let v = a
-            .session_message_date_counts_batch(&ids(&["wxid_bob", "nobody"]))
-            .unwrap();
-        assert_eq!(sum(&v["wxid_bob"]), 5);
-        assert_eq!(v["nobody"], json!({}));
+        assert_eq!(sum(&a.session_message_date_counts("wxid_bob").unwrap()), 5);
+        assert_eq!(a.session_message_date_counts("nobody").unwrap(), json!({}));
     }
 
     #[test]

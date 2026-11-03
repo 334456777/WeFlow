@@ -386,7 +386,7 @@ impl ServiceHub {
                 false,
             )
             .map_err(|e| AppError::native(e.to_string()))?;
-        let fetched = wcdb.fetch_message_batch_as::<MsgRow>(cursor);
+        let fetched = wcdb.fetch_message_batch(cursor);
         let _ = wcdb.close_message_cursor(cursor);
         let (rows, _) = fetched.map_err(|e| AppError::native(e.to_string()))?;
         let mut msgs = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
@@ -1027,7 +1027,7 @@ impl ServiceHub {
         let result = (|| -> Result<(), ApiError> {
             while collected.len() < limit && has_more {
                 let (mut rows, more) = wcdb
-                    .fetch_message_batch_as::<MsgRow>(cursor)
+                    .fetch_message_batch(cursor)
                     .map_err(|e| ApiError::new(500, e.to_string()))?;
                 if rows.is_empty() {
                     has_more = false;
@@ -1433,7 +1433,7 @@ impl ServiceHub {
         let (mut messages, has_more);
         if !keyword.is_empty() {
             let hits = wcdb
-                .search_as::<MsgRow>(
+                .search(
                     &keyword,
                     Some(&talker),
                     crate::num::saturating_i32(limit + 1),
@@ -2147,7 +2147,7 @@ impl ServiceHub {
         let page = limit.max(1);
         let probe = (page + 1).min(500);
         let mut rows = wcdb
-            .messages_as::<MsgRow>(session_id, crate::num::saturating_i32(probe), 0)
+            .messages(session_id, crate::num::saturating_i32(probe), 0)
             .map_err(|e| AppError::native(e.to_string()))?;
         rows.truncate(page);
         let mapped = chat_msg::map_msg_rows(rows, session_id, &self.wmy());
@@ -2239,7 +2239,7 @@ impl ServiceHub {
                 if !enabled {
                     continue;
                 }
-                let Ok(rows) = wcdb.messages_by_type_as::<MsgRow>(sid, *code, false, 0, 0) else {
+                let Ok(rows) = wcdb.messages_by_type(sid, *code, false, 0, 0) else {
                     continue;
                 };
                 let msgs = chat_msg::map_msg_rows(rows, sid, &my);
