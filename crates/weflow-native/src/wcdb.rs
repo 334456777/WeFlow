@@ -164,17 +164,6 @@ impl Wcdb {
     }
 
     /// See [`NativeAccount::messages_from`](crate::native_db::NativeAccount::messages_from).
-    pub fn messages_from(
-        &self,
-        session_id: &str,
-        limit: i32,
-        from: crate::native_msg::PageFrom,
-    ) -> Result<Value> {
-        Ok(LegacyRow::array(
-            self.messages_from_as::<LegacyRow>(session_id, limit, from)?,
-        ))
-    }
-
     pub fn messages_from_as<R: RowShape>(
         &self,
         session_id: &str,
@@ -282,19 +271,6 @@ impl Wcdb {
     }
 
     /// Every message with this `local_id` (one per message database at most), optionally sent at `create_time`.
-    pub fn messages_by_local_id(
-        &self,
-        session_id: &str,
-        local_id: i64,
-        create_time: Option<i64>,
-    ) -> Result<Vec<Value>> {
-        Ok(self
-            .messages_by_local_id_as::<LegacyRow>(session_id, local_id, create_time)?
-            .into_iter()
-            .map(LegacyRow::into_value)
-            .collect())
-    }
-
     pub fn messages_by_local_id_as<R: RowShape>(
         &self,
         session_id: &str,
@@ -376,12 +352,6 @@ impl Wcdb {
     }
 
     /// Batch number `page` of a cursor, without moving it (see [`NativeAccount::fetch_message_page`]).
-    pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Value> {
-        Ok(LegacyRow::array(
-            self.fetch_message_page_as::<LegacyRow>(cursor, page)?,
-        ))
-    }
-
     pub fn fetch_message_page_as<R: RowShape>(&self, cursor: i64, page: usize) -> Result<Vec<R>> {
         self.account()?.fetch_message_page(cursor, page)
     }
@@ -436,16 +406,6 @@ impl Wcdb {
             }
             _ => self.pending(name),
         }
-    }
-
-    /// Like [`invoke_json`](Self::invoke_json) for functions whose output is a plain string.
-    pub fn invoke_string(&self, name: &str, _args: &[Arg<'_>]) -> Result<String> {
-        self.pending(name)
-    }
-
-    /// Like [`invoke_json`](Self::invoke_json) for functions that report success by status.
-    pub fn invoke_status(&self, name: &str, _args: &[Arg<'_>]) -> Result<Value> {
-        self.pending(name)
     }
 
     /// Raw status code and message (some triggers report "already installed" as a positive code).

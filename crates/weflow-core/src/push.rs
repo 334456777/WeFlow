@@ -1279,17 +1279,38 @@ pub fn message_push_loop(hub: ServiceHub, sender: broadcast::Sender<Value>, inte
 mod tests {
     use super::*;
 
-    fn msg(json_rows: Value) -> Vec<ChatMessage> {
-        chat_msg::map_rows(json_rows.as_array().unwrap(), "wxid_me")
+    fn row(local_id: i64, create_time: i64, local_type: i64, content: &str) -> MsgRow {
+        MsgRow {
+            local_id,
+            create_time: Some(create_time),
+            local_type,
+            content: content.into(),
+            ..MsgRow::default()
+        }
+    }
+
+    fn msg(rows: Vec<MsgRow>) -> Vec<ChatMessage> {
+        chat_msg::map_msg_rows(rows, "wxid_bob", "wxid_me")
     }
 
     #[test]
     fn revoke_detection_and_original_lookup() {
-        let rows = json!([
-            {"local_id": "1", "server_id": "555", "create_time": "100", "local_type": "1", "message_content": "wxid_bob:\nsecret", "sender_username": "wxid_bob", "is_send": "0", "_db_path": "/m.db", "table_name": "Msg_x"},
-            {"local_id": "2", "create_time": "101", "local_type": "10002", "message_content": "<sysmsg type=\"revokemsg\"><revokemsg><newmsgid>555</newmsgid><replacemsg><![CDATA[\"Bob\" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>", "sender_username": "wxid_bob", "is_send": "0", "_db_path": "/m.db", "table_name": "Msg_x"}
+        let m = msg(vec![
+            MsgRow {
+                server_id: Some(555),
+                sender: Some("wxid_bob".into()),
+                ..row(1, 100, 1, "wxid_bob:\nsecret")
+            },
+            MsgRow {
+                sender: Some("wxid_bob".into()),
+                ..row(
+                    2,
+                    101,
+                    10002,
+                    r#"<sysmsg type="revokemsg"><revokemsg><newmsgid>555</newmsgid><replacemsg><![CDATA["Bob" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>"#,
+                )
+            },
         ]);
-        let m = msg(rows);
         assert!(!is_revoke_system_message(&m[0]));
         assert!(is_revoke_system_message(&m[1]));
         assert_eq!(extract_revoked_message_id(&m[1]).as_deref(), Some("555"));
@@ -1327,12 +1348,16 @@ mod tests {
 
     #[test]
     fn display_content_per_type() {
-        let rows = json!([
-            {"local_id": "1", "create_time": "1", "local_type": "3", "message_content": "<msg/>"},
-            {"local_id": "2", "create_time": "1", "local_type": "49", "message_content": "<msg><appmsg><title>[视频号] T</title><type>5</type><url>http://x</url></appmsg></msg>"},
-            {"local_id": "3", "create_time": "1", "local_type": "1", "message_content": "wxid_a:\nhi"},
+        let m = msg(vec![
+            row(1, 1, 3, "<msg/>"),
+            row(
+                2,
+                1,
+                49,
+                "<msg><appmsg><title>[视频号] T</title><type>5</type><url>http://x</url></appmsg></msg>",
+            ),
+            row(3, 1, 1, "wxid_a:\nhi"),
         ]);
-        let m = msg(rows);
         assert_eq!(message_display_content(&m[0]).as_deref(), Some("[图片]"));
         assert_eq!(message_display_content(&m[1]).as_deref(), Some("T"));
         assert_eq!(message_display_content(&m[2]).as_deref(), Some("hi"));

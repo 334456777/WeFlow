@@ -269,62 +269,6 @@ fn parse_compact_datetime(raw: &str) -> i64 {
     }
 }
 
-fn parse_datetime_text(value: &str) -> i64 {
-    let raw = value.trim();
-    if raw.is_empty() {
-        return 0;
-    }
-    let compact = parse_compact_datetime(raw);
-    if compact > 0 {
-        return compact;
-    }
-    if rx(r"[zZ]|[+-]\d{2}:?\d{2}$").is_match(raw) {
-        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
-            return dt.timestamp().max(0);
-        }
-    }
-    let normalized = raw.replace('T', " ");
-    let normalized = rx(r"\.\d+$").replace(&normalized, "").replace('/', "-");
-    let Some(c) = rx(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?: (\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$")
-        .captures(&normalized)
-    else {
-        return 0;
-    };
-    let g = |i: usize| {
-        c.get(i)
-            .map(|m| m.as_str().parse::<u32>().unwrap_or(0))
-            .unwrap_or(0)
-    };
-    match Local
-        .with_ymd_and_hms(g(1) as i32, g(2), g(3), g(4), g(5), g(6))
-        .single()
-    {
-        Some(dt) => dt.timestamp().max(0),
-        None => 0,
-    }
-}
-
-fn normalize_row_timestamp(value: &Value) -> i64 {
-    let raw = match value {
-        Value::Null => return 0,
-        Value::String(s) => s.trim().to_string(),
-        other => other.to_string(),
-    };
-    if raw.is_empty() {
-        return 0;
-    }
-    let compact = parse_compact_datetime(&raw);
-    if compact > 0 {
-        return compact;
-    }
-    if let Ok(n) = raw.parse::<f64>() {
-        if n.is_finite() && n > 0.0 {
-            return normalize_timestamp_seconds(n);
-        }
-    }
-    parse_datetime_text(&raw)
-}
-
 // ─────────────────────────────── row accessors ───────────────────────────────
 
 pub fn row_field<'a>(row: &'a Value, keys: &[&str]) -> Option<&'a Value> {
@@ -396,146 +340,6 @@ pub fn normalize_unsigned_token(value: &str) -> String {
         Ok(n) if n.is_finite() && n > 0.0 => format!("{}", n.floor()),
         _ => "0".into(),
     }
-}
-
-pub fn get_timestamp_seconds(row: &Value) -> i64 {
-    let primary_raw = row_field(
-        row,
-        &[
-            "create_time",
-            "createTime",
-            "createtime",
-            "msg_create_time",
-            "msgCreateTime",
-            "msg_time",
-            "msgTime",
-            "time",
-            "WCDB_CT_create_time",
-        ],
-    );
-    let primary = primary_raw.map(normalize_row_timestamp).unwrap_or(0);
-    let sort_seq = row_field(row, &["sort_seq", "sortSeq", "server_seq", "serverSeq"])
-        .map(normalize_row_timestamp)
-        .unwrap_or(0);
-    if primary > 0 && primary < 946_684_800 && sort_seq > 946_684_800 {
-        return sort_seq;
-    }
-    if primary > 0 {
-        return primary;
-    }
-    sort_seq.max(0)
-}
-
-// ──────────────────────────── content decoding ────────────────────────────
-
-fn looks_like_hex(s: &str) -> bool {
-    s.len().is_multiple_of(2) && !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit())
-}
-
-fn looks_like_base64(s: &str) -> bool {
-    s.len().is_multiple_of(4) && rx(r"^[A-Za-z0-9+/=]+$").is_match(s)
-}
-
-fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
-        return None;
-    }
-    let mut out = Vec::with_capacity(s.len() / 2);
-    let bytes = s.as_bytes();
-    for pair in bytes.chunks(2) {
-        let hi = (pair[0] as char).to_digit(16)?;
-        let lo = (pair[1] as char).to_digit(16)?;
-        out.push(u8::try_from(hi * 16 + lo).ok()?);
-    }
-    Some(out)
-}
-
-fn base64_to_bytes(s: &str) -> Option<Vec<u8>> {
-    let table = |c: u8| -> Option<u32> {
-        match c {
-            b'A'..=b'Z' => Some((c - b'A') as u32),
-            b'a'..=b'z' => Some((c - b'a') as u32 + 26),
-            b'0'..=b'9' => Some((c - b'0') as u32 + 52),
-            b'+' => Some(62),
-            b'/' => Some(63),
-            _ => None,
-        }
-    };
-    let trimmed = s.trim_end_matches('=');
-    let mut out = Vec::with_capacity(trimmed.len() * 3 / 4);
-    let mut buf = 0u32;
-    let mut bits = 0;
-    for c in trimmed.bytes() {
-        buf = (buf << 6) | table(c)?;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            // `buf` holds fewer than `bits + 8` bits here, so this is one byte
-            out.push(u8::try_from(buf >> bits).ok()?);
-            buf &= (1 << bits) - 1;
-        }
-    }
-    Some(out)
-}
-
-fn decode_binary_content(data: &[u8]) -> String {
-    if data.is_empty() {
-        return String::new();
-    }
-    if data.len() >= 4 && u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == 0xFD2F_B528 {
-        if let Ok(out) = zstd::decode_all(data) {
-            return String::from_utf8_lossy(&out).to_string();
-        }
-    }
-    let decoded = String::from_utf8_lossy(data).to_string();
-    let replacement = decoded.chars().filter(|c| *c == '\u{FFFD}').count();
-    if (replacement as f64) < decoded.chars().count() as f64 * 0.2 {
-        return decoded.replace('\u{FFFD}', "");
-    }
-    data.iter().map(|b| *b as char).collect()
-}
-
-pub fn decode_maybe_compressed(raw: &str) -> String {
-    if raw.is_empty() {
-        return String::new();
-    }
-    if raw.chars().all(|c| c.is_ascii_digit()) {
-        return raw.to_string();
-    }
-    if raw.len() > 16 && looks_like_hex(raw) {
-        if let Some(bytes) = hex_to_bytes(raw) {
-            if !bytes.is_empty() {
-                return decode_binary_content(&bytes);
-            }
-        }
-    }
-    if raw.len() > 16 && looks_like_base64(raw) {
-        if let Some(bytes) = base64_to_bytes(raw) {
-            return decode_binary_content(&bytes);
-        }
-    }
-    raw.to_string()
-}
-
-/// `decodeMessageContent(message_content, compress_content)`, plus the WCDB
-/// `WCDB_CT_*` compression flag used by the CLI's raw rows.
-pub fn decode_message_content(row: &Value) -> String {
-    let as_text = |key: &str| row.get(key).map(value_to_string).unwrap_or_default();
-    let compress = as_text("compress_content");
-    let mut content = decode_maybe_compressed(&compress);
-    if content.is_empty() {
-        let raw = as_text("message_content");
-        let flagged = as_text("WCDB_CT_message_content") == "4";
-        content = if flagged && looks_like_hex(&raw) {
-            hex_to_bytes(&raw)
-                .and_then(|b| zstd::decode_all(b.as_slice()).ok())
-                .map(|b| String::from_utf8_lossy(&b).to_string())
-                .unwrap_or_else(|| decode_maybe_compressed(&raw))
-        } else {
-            decode_maybe_compressed(&raw)
-        };
-    }
-    content
 }
 
 // ───────────────────────────── message struct ─────────────────────────────
@@ -1049,49 +853,6 @@ pub(crate) fn extract_image_dat_name(content: &str) -> Option<String> {
     normalize_image_dat_name_token(&pick)
 }
 
-pub fn extract_image_dat_name_from_row(row: &Value, content: &str) -> Option<String> {
-    let by_column = row_field(
-        row,
-        &[
-            "image_path",
-            "imagePath",
-            "image_dat_name",
-            "imageDatName",
-            "img_path",
-            "imgPath",
-            "img_name",
-            "imgName",
-        ],
-    )
-    .map(value_to_string)
-    .and_then(|v| normalize_image_dat_name_token(&v));
-    if by_column.is_some() {
-        return by_column;
-    }
-    let packed = row_field(
-        row,
-        &[
-            "packed_info_data",
-            "packedInfoData",
-            "packed_info_blob",
-            "packedInfoBlob",
-            "packed_info",
-            "packedInfo",
-            "BytesExtra",
-            "bytes_extra",
-            "WCDB_CT_packed_info",
-            "reserved0",
-            "Reserved0",
-            "WCDB_CT_Reserved0",
-        ],
-    )
-    .and_then(|v| decode_packed_info(&value_to_string(v)));
-    packed
-        .as_deref()
-        .and_then(dat_name_in_packed_info)
-        .or_else(|| extract_image_dat_name(content))
-}
-
 /// The name of an image's `.dat` file in a row's packed info: its printable bytes as text, a `<hex>[.t].dat` name
 /// or else a long run of hex digits.
 pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
@@ -1111,20 +872,6 @@ pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
     rx(r"([0-9a-fA-F]{16,})")
         .captures(&text)
         .map(|c| c[1].to_lowercase())
-}
-
-fn decode_packed_info(raw: &str) -> Option<Vec<u8>> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let compact: String = trimmed.split_whitespace().collect();
-    if looks_like_hex(&compact) {
-        if let Some(b) = hex_to_bytes(&compact) {
-            return Some(b);
-        }
-    }
-    base64_to_bytes(trimmed).filter(|b| !b.is_empty())
 }
 
 pub fn extract_image_md5(content: &str) -> Option<String> {
@@ -2812,183 +2559,7 @@ pub fn message_sender(
     }
 }
 
-/// [`message_sender`] of a raw message row.
-pub fn row_sender(row: &Value, session_id: &str, my_wxid: &str) -> String {
-    let local_type = row_int(
-        row,
-        &[
-            "local_type",
-            "localType",
-            "type",
-            "msg_type",
-            "msgType",
-            "WCDB_CT_local_type",
-        ],
-        1,
-    );
-    let is_send_raw = row
-        .get("computed_is_send")
-        .or_else(|| row.get("is_send"))
-        .map(value_to_string)
-        .unwrap_or_else(|| "0".into());
-    let sender_username = row
-        .get("sender_username")
-        .map(value_to_string)
-        .unwrap_or_default();
-    let content = if local_type == 10000 || local_type == 266287972401 {
-        decode_message_content(row)
-    } else {
-        String::new()
-    };
-    message_sender(
-        local_type,
-        &content,
-        is_send_raw.trim().parse::<i64>().unwrap_or(0) == 1,
-        &sender_username,
-        session_id,
-        my_wxid,
-    )
-}
-
-/// What [`collect`] reads of a message row: the legacy JSON object (`&Value`, its columns found by name among the
-/// spellings the desktop app used) or the typed [`MsgRow`] (#257, #491).
-trait ExportSource {
-    /// The send time in Unix seconds (see [`get_timestamp_seconds`]).
-    fn timestamp(&self) -> i64;
-    fn local_type(&self) -> i64;
-    /// The decoded text, taken out of the row when it owns it.
-    fn take_content(&mut self) -> String;
-    fn sender_username(&self) -> String;
-    fn is_send(&self) -> bool;
-    fn local_id(&self) -> i64;
-    /// The server id, and its decimal text when it is a positive number.
-    fn server_id(&self) -> (i64, Option<String>);
-    /// A sticker's CDN url and md5 from columns of their own, and the text of the packed and reserved columns to look
-    /// for them in: only the desktop app's rows have any.
-    fn emoji_columns(&self) -> (Option<String>, Option<String>, String) {
-        (None, None, String::new())
-    }
-    /// An image's md5 from a column of its own: only the desktop app's rows have one.
-    fn image_md5_column(&self) -> Option<String> {
-        None
-    }
-    /// The name of an image's `.dat` file, from the row's columns or else from `content`.
-    fn image_dat_name(&self, content: &str) -> Option<String>;
-}
-
-const LOCAL_TYPE_KEYS: &[&str] = &[
-    "local_type",
-    "localType",
-    "type",
-    "msg_type",
-    "msgType",
-    "WCDB_CT_local_type",
-];
-
-impl ExportSource for &Value {
-    fn timestamp(&self) -> i64 {
-        get_timestamp_seconds(self)
-    }
-
-    fn local_type(&self) -> i64 {
-        row_int(self, LOCAL_TYPE_KEYS, 1)
-    }
-
-    fn take_content(&mut self) -> String {
-        decode_message_content(self)
-    }
-
-    fn sender_username(&self) -> String {
-        self.get("sender_username")
-            .map(value_to_string)
-            .unwrap_or_default()
-    }
-
-    fn is_send(&self) -> bool {
-        let raw = self
-            .get("computed_is_send")
-            .or_else(|| self.get("is_send"))
-            .map(value_to_string)
-            .unwrap_or_else(|| "0".into());
-        raw.trim().parse::<i64>().unwrap_or(0) == 1
-    }
-
-    fn local_id(&self) -> i64 {
-        row_int(
-            self,
-            &[
-                "local_id",
-                "localId",
-                "LocalId",
-                "msg_local_id",
-                "msgLocalId",
-                "MsgLocalId",
-                "msg_id",
-                "msgId",
-                "MsgId",
-                "id",
-                "WCDB_CT_local_id",
-            ],
-            0,
-        )
-    }
-
-    fn server_id(&self) -> (i64, Option<String>) {
-        let keys = [
-            "server_id",
-            "serverId",
-            "ServerId",
-            "msg_server_id",
-            "msgServerId",
-            "MsgServerId",
-            "svr_id",
-            "svrId",
-            "msg_svr_id",
-            "msgSvrId",
-            "MsgSvrId",
-            "WCDB_CT_server_id",
-        ];
-        let raw = row_field(self, &keys)
-            .map(value_to_string)
-            .map(|v| normalize_unsigned_token(&v))
-            .unwrap_or_else(|| "0".into());
-        (row_int(self, &keys, 0), (raw != "0").then_some(raw))
-    }
-
-    fn emoji_columns(&self) -> (Option<String>, Option<String>, String) {
-        let col = |keys: &[&str]| {
-            row_field(self, keys)
-                .map(value_to_string)
-                .map(|v| v.trim().to_string())
-                .filter(|v| !v.is_empty())
-        };
-        let packed = col(&["packed_info", "packedInfo", "PackedInfo"]).unwrap_or_default();
-        let reserved = col(&["reserved0", "Reserved0"]).unwrap_or_default();
-        (
-            col(&["emoji_cdn_url", "emojiCdnUrl"]),
-            col(&["emoji_md5", "emojiMd5"]).and_then(|v| normalize_md5(&v)),
-            format!(
-                "{}\n{}",
-                decode_maybe_compressed(&packed),
-                decode_maybe_compressed(&reserved)
-            ),
-        )
-    }
-
-    fn image_md5_column(&self) -> Option<String> {
-        row_field(self, &["image_md5", "imageMd5"])
-            .map(value_to_string)
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-    }
-
-    fn image_dat_name(&self, content: &str) -> Option<String> {
-        extract_image_dat_name_from_row(self, content)
-    }
-}
-
-/// A Unix time stored as an integer, normalized as [`get_timestamp_seconds`] normalizes the text of a cell: a
-/// compact date (`YYYYMMDD`, `YYYYMMDDhhmm`, `YYYYMMDDhhmmss`), else seconds, milliseconds or finer cut to seconds.
+/// A Unix time stored as an integer: a compact date (`YYYYMMDD`, `YYYYMMDDhhmm`, `YYYYMMDDhhmmss`), else seconds, milliseconds or finer cut to seconds.
 fn int_timestamp_seconds(value: i64) -> i64 {
     if value <= 0 {
         return 0;
@@ -3006,7 +2577,8 @@ fn int_timestamp_seconds(value: i64) -> i64 {
     normalize_timestamp_seconds(value as f64)
 }
 
-/// [`get_timestamp_seconds`] of a typed row.
+/// A typed row's send time in Unix seconds: its `create_time`, or its `sort_seq` when that is the only one that looks
+/// like a time.
 pub fn msg_row_timestamp(row: &MsgRow) -> i64 {
     let primary = row.create_time.map_or(0, int_timestamp_seconds);
     let sort_seq = row.sort_seq.map_or(0, int_timestamp_seconds);
@@ -3017,44 +2589,6 @@ pub fn msg_row_timestamp(row: &MsgRow) -> i64 {
         return primary;
     }
     sort_seq.max(0)
-}
-
-impl ExportSource for MsgRow {
-    fn timestamp(&self) -> i64 {
-        msg_row_timestamp(self)
-    }
-
-    fn local_type(&self) -> i64 {
-        self.local_type
-    }
-
-    fn take_content(&mut self) -> String {
-        std::mem::take(&mut self.content)
-    }
-
-    fn sender_username(&self) -> String {
-        self.sender.clone().unwrap_or_default()
-    }
-
-    fn is_send(&self) -> bool {
-        self.is_send
-    }
-
-    fn local_id(&self) -> i64 {
-        self.local_id
-    }
-
-    fn server_id(&self) -> (i64, Option<String>) {
-        let id = self.server_id.unwrap_or(0);
-        (id, (id > 0).then(|| id.to_string()))
-    }
-
-    fn image_dat_name(&self, content: &str) -> Option<String> {
-        self.packed_info
-            .as_deref()
-            .and_then(dat_name_in_packed_info)
-            .or_else(|| extract_image_dat_name(content))
-    }
 }
 
 /// [`message_sender`] of a typed row.
@@ -3073,23 +2607,12 @@ pub fn msg_row_sender(row: &MsgRow, session_id: &str, my_wxid: &str) -> String {
     )
 }
 
-/// `collectMessages` (full mode): normalise raw rows and sort chronologically.
-pub fn collect_messages(rows: &[Value], opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
-    collect(rows.iter(), opts)
-}
-
-/// [`collect_messages`] of typed rows, which it takes: their text moves into the messages.
+/// `collectMessages` (full mode) of typed rows, which it takes (their text moves into the messages): the messages
+/// in the time range and of the sender asked for, sorted chronologically.
 pub fn collect_rows(rows: Vec<MsgRow>, opts: &CollectOptions<'_>) -> Vec<ExportMsg> {
-    collect(rows, opts)
-}
-
-fn collect<S: ExportSource>(
-    rows: impl IntoIterator<Item = S>,
-    opts: &CollectOptions<'_>,
-) -> Vec<ExportMsg> {
     let mut out: Vec<ExportMsg> = Vec::new();
-    for mut row in rows {
-        let create_time = row.timestamp();
+    for row in rows {
+        let create_time = msg_row_timestamp(&row);
         if let Some(s) = opts.start.filter(|s| *s > 0) {
             if create_time > 0 && create_time < s {
                 continue;
@@ -3100,18 +2623,24 @@ fn collect<S: ExportSource>(
                 continue;
             }
         }
-        let local_type = row.local_type();
-        let content = row.take_content();
-        let sender_username = row.sender_username();
-        let is_send = row.is_send();
-        let local_id = row.local_id();
-        let (server_id, server_id_raw) = row.server_id();
+        let MsgRow {
+            local_id,
+            server_id,
+            local_type,
+            content,
+            sender,
+            is_send,
+            packed_info,
+            ..
+        } = row;
+        let server_id = server_id.unwrap_or(0);
+        let server_id_raw = (server_id > 0).then(|| server_id.to_string());
 
         let actual_sender = message_sender(
             local_type,
             &content,
             is_send,
-            &sender_username,
+            sender.as_deref().unwrap_or(""),
             opts.session_id,
             opts.my_wxid,
         );
@@ -3140,30 +2669,16 @@ fn collect<S: ExportSource>(
                 msg.location_label = label;
             }
         }
-        if local_type == 47 {
-            let (cdn_url, md5, supplemental) = row.emoji_columns();
-            msg.emoji_cdn_url = cdn_url;
-            msg.emoji_md5 = md5;
-            if !content.is_empty() {
-                if msg.emoji_cdn_url.is_none() {
-                    msg.emoji_cdn_url = extract_emoji_url(&content);
-                }
-                if msg.emoji_md5.is_none() {
-                    msg.emoji_md5 = extract_emoji_md5(&content);
-                }
-            }
-            if msg.emoji_cdn_url.is_none() {
-                msg.emoji_cdn_url = extract_emoji_url(&supplemental);
-            }
-            if msg.emoji_md5.is_none() {
-                msg.emoji_md5 = extract_emoji_md5(&supplemental)
-                    .or_else(|| extract_loose_hex_md5(&supplemental));
-            }
+        if local_type == 47 && !content.is_empty() {
+            msg.emoji_cdn_url = extract_emoji_url(&content);
+            msg.emoji_md5 = extract_emoji_md5(&content);
         }
-        msg.image_md5 = row.image_md5_column();
         if local_type == 3 {
-            msg.image_dat_name = row.image_dat_name(&content);
-            if msg.image_md5.is_none() && !content.is_empty() {
+            msg.image_dat_name = packed_info
+                .as_deref()
+                .and_then(dat_name_in_packed_info)
+                .or_else(|| extract_image_dat_name(&content));
+            if !content.is_empty() {
                 msg.image_md5 = extract_image_md5(&content);
             }
         }
@@ -3417,11 +2932,26 @@ mod tests {
     #[test]
     fn row_normalisation() {
         let rows = vec![
-            json!({"local_id": "2", "server_id": "9007199254740993", "create_time": "1700000100", "local_type": "1", "message_content": "wxid_b:second", "sender_username": "wxid_b", "is_send": "0"}),
-            json!({"local_id": "1", "create_time": "1700000000", "local_type": "1", "message_content": "first", "is_send": "1"}),
+            MsgRow {
+                local_id: 2,
+                server_id: Some(9_007_199_254_740_993),
+                create_time: Some(1_700_000_100),
+                local_type: 1,
+                content: "wxid_b:second".into(),
+                sender: Some("wxid_b".into()),
+                ..MsgRow::default()
+            },
+            MsgRow {
+                local_id: 1,
+                create_time: Some(1_700_000_000),
+                local_type: 1,
+                content: "first".into(),
+                is_send: true,
+                ..MsgRow::default()
+            },
         ];
-        let msgs = collect_messages(
-            &rows,
+        let msgs = collect_rows(
+            rows.clone(),
             &CollectOptions {
                 session_id: "wxid_b",
                 my_wxid: "wxid_me",
@@ -3434,8 +2964,8 @@ mod tests {
         assert_eq!(msgs[0].content, "first");
         assert_eq!(msgs[0].sender_username, "wxid_me");
         assert_eq!(msgs[1].server_id_raw.as_deref(), Some("9007199254740993"));
-        let filtered = collect_messages(
-            &rows,
+        let filtered = collect_rows(
+            rows,
             &CollectOptions {
                 session_id: "wxid_b",
                 my_wxid: "wxid_me",
@@ -3448,22 +2978,12 @@ mod tests {
     }
 
     #[test]
-    fn compressed_content_decodes() {
-        let payload = "<msg>hello world, this is compressed</msg>";
-        let compressed = zstd::encode_all(payload.as_bytes(), 1).unwrap();
-        let hex: String = compressed.iter().map(|b| format!("{b:02x}")).collect();
-        assert_eq!(decode_maybe_compressed(&hex), payload);
-        let row = json!({"message_content": hex, "WCDB_CT_message_content": "4"});
-        assert_eq!(decode_message_content(&row), payload);
-    }
-
-    #[test]
     fn timestamps() {
         assert_eq!(
             normalize_timestamp_seconds(1_700_000_000_000.0),
             1_700_000_000
         );
-        assert!(normalize_row_timestamp(&json!("20240102030405")) > 0);
+        assert!(int_timestamp_seconds(20_240_102_030_405) > 0);
         assert_eq!(normalize_unsigned_token("00012"), "12");
         assert_eq!(normalize_unsigned_token("abc"), "0");
         assert_eq!(

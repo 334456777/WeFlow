@@ -56,7 +56,7 @@ fn sort_key(sort_seq: i64, create_time: i64, local_id: i64) -> (i64, i64, i64) {
 }
 
 /// A message row (see the module).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MsgRow {
     pub local_id: i64,
     pub server_id: Option<i64>,

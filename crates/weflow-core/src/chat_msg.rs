@@ -1,15 +1,11 @@
 //! The chat service's `Message` model (`electron/services/chatService.ts`):
-//! raw WCDB rows → typed messages with parsed display text, media tokens, links, quotes.
+//! typed message rows → messages with parsed display text, media tokens, links, quotes.
 //! The exporter has its own (slightly different) model in `message.rs`; this one backs the
 //! HTTP API, the chat commands and the analytics code.
 
-use serde_json::Value;
 use weflow_native::msg_row::MsgRow;
 
-use crate::message::{
-    decode_message_content, extract_image_dat_name_from_row, extract_xml_value,
-    get_timestamp_seconds, normalize_unsigned_token, parse_voip_message, row_field, row_int, rx,
-};
+use crate::message::{extract_xml_value, parse_voip_message, rx};
 use crate::services::clean_account_dir_name;
 
 // ───────────────────────── text helpers ─────────────────────────
@@ -854,49 +850,6 @@ pub fn normalize_video_file_token(value: &str) -> Option<String> {
     None
 }
 
-fn packed_bytes(row: &Value) -> Option<Vec<u8>> {
-    let raw = row_field(
-        row,
-        &[
-            "packed_info_data",
-            "packedInfoData",
-            "packed_info_blob",
-            "packedInfoBlob",
-            "packed_info",
-            "packedInfo",
-            "BytesExtra",
-            "bytes_extra",
-            "WCDB_CT_packed_info",
-            "reserved0",
-            "Reserved0",
-            "WCDB_CT_Reserved0",
-        ],
-    )?;
-    let s = raw.as_str()?.trim();
-    if s.is_empty() {
-        return None;
-    }
-    let compact: String = s.split_whitespace().collect();
-    if compact.len().is_multiple_of(2) && compact.chars().all(|c| c.is_ascii_hexdigit()) {
-        let bytes: Option<Vec<u8>> = (0..compact.len() / 2)
-            .map(|i| u8::from_str_radix(&compact[i * 2..i * 2 + 2], 16).ok())
-            .collect();
-        if let Some(b) = bytes {
-            return Some(b);
-        }
-    }
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD
-        .decode(s)
-        .ok()
-        .or_else(|| Some(crate::sns::lenient_base64(s)))
-        .filter(|b| !b.is_empty())
-}
-
-fn video_token_from_packed(row: &Value) -> Option<String> {
-    video_token_in_packed(&packed_bytes(row)?)
-}
-
 /// A video's file token in a row's packed info: a run of 32 hex digits, else one of 16 to 64.
 fn video_token_in_packed(bytes: &[u8]) -> Option<String> {
     let mut candidates: Vec<String> = Vec::new();
@@ -934,29 +887,6 @@ fn video_md5_from_content(content: &str) -> Option<String> {
         return Some(raw.to_lowercase());
     }
     opt(extract_xml_value(content, "md5")).map(|m| m.to_lowercase())
-}
-
-pub fn parse_video_file_name_from_row(row: &Value, content: &str) -> Option<String> {
-    if let Some(t) = video_token_from_packed(row) {
-        return Some(t);
-    }
-    let by_col = row_field(
-        row,
-        &[
-            "video_md5",
-            "videoMd5",
-            "raw_md5",
-            "rawMd5",
-            "video_file_name",
-            "videoFileName",
-        ],
-    )
-    .and_then(|v| v.as_str())
-    .and_then(normalize_video_file_token);
-    if by_col.is_some() {
-        return by_col;
-    }
-    video_md5_from_content(content).and_then(|m| normalize_video_file_token(&m))
 }
 
 fn parse_voice_duration_seconds(content: &str) -> Option<i64> {
@@ -1077,10 +1007,6 @@ pub struct ChatMessage {
     pub t49: Type49Info,
     /// The message's key: the same message has the same key on every machine. It is opaque; only compare it.
     pub message_key: String,
-    #[serde(skip)]
-    pub db_path: Option<String>,
-    #[serde(skip)]
-    pub table_name: Option<String>,
 }
 
 impl ChatMessage {
@@ -1123,41 +1049,10 @@ pub fn encode_uri_component(s: &str) -> String {
     out
 }
 
+/// Where a message is kept: its database by name (`message_0`), never by path (#443), and its table.
 pub struct SourceInfo {
     pub db_name: String,
     pub table_name: String,
-    pub db_path: String,
-}
-
-pub fn message_source_info(row: &Value) -> SourceInfo {
-    let txt = |keys: &[&str]| {
-        keys.iter()
-            .filter_map(|k| row.get(*k))
-            .map(value_to_trimmed_string)
-            .find(|s| !s.is_empty())
-            .unwrap_or_default()
-    };
-    let db_path = txt(&["_db_path", "db_path"]);
-    let explicit = txt(&["db_name"]);
-    let table_name = txt(&["table_name"]);
-    let db_name = if !explicit.is_empty() {
-        explicit
-    } else {
-        db_base_name(&db_path)
-    };
-    SourceInfo {
-        db_name,
-        table_name,
-        db_path,
-    }
-}
-
-fn db_base_name(path: &str) -> String {
-    let name = path.rsplit(['/', '\\']).next().unwrap_or("");
-    match name.rfind('.') {
-        Some(i) if i > 0 => name[..i].to_string(),
-        _ => name.to_string(),
-    }
 }
 
 /// `buildMessageKey`, scoped by the database's name (`message_0`) instead of its path.
@@ -1179,15 +1074,11 @@ pub fn build_message_key(
     let sender = encode_uri_component(sender.unwrap_or(""));
     // The database's name, not its path as the desktop app has it: the path would tell the client this
     // machine's directories and change the key on another one (#443).
-    let scope = if src.db_name.is_empty() {
-        db_base_name(&src.db_path)
-    } else {
-        src.db_name.clone()
-    };
+    let scope = &src.db_name;
     if local_id > 0 && !scope.is_empty() && !src.table_name.is_empty() {
         return format!(
             "{}:{}:{}",
-            encode_uri_component(&scope),
+            encode_uri_component(scope),
             encode_uri_component(&src.table_name),
             local_id
         );
@@ -1195,14 +1086,14 @@ pub fn build_message_key(
     if local_id > 0 && !scope.is_empty() {
         return format!(
             "local:{}:{local_id}:{create_time}:{sort_seq}:{sender}:{local_type}",
-            encode_uri_component(&scope)
+            encode_uri_component(scope)
         );
     }
     if server_id > 0 {
         let scoped = if scope.is_empty() {
             server_id.to_string()
         } else {
-            format!("{}:{server_id}", encode_uri_component(&scope))
+            format!("{}:{server_id}", encode_uri_component(scope))
         };
         return format!(
             "server:{scoped}:{create_time}:{sort_seq}:{local_id}:{sender}:{local_type}"
@@ -1210,7 +1101,7 @@ pub fn build_message_key(
     }
     format!(
         "fallback:{}:{create_time}:{sort_seq}:{local_id}:{sender}:{local_type}",
-        encode_uri_component(&scope)
+        encode_uri_component(scope)
     )
 }
 
@@ -1254,28 +1145,6 @@ pub fn resolve_is_send(raw: Option<i64>, sender: Option<&str>, my_wxid: &str) ->
     }
 }
 
-fn value_to_trimmed_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.trim().to_string(),
-        Value::Null => String::new(),
-        other => other.to_string(),
-    }
-}
-
-fn raw_is_send(row: &Value) -> Option<i64> {
-    let v = row
-        .get("computed_is_send")
-        .filter(|v| !v.is_null())
-        .or_else(|| row.get("is_send"))?;
-    if v.is_null() {
-        return None;
-    }
-    let text = value_to_trimmed_string(v);
-    rx(r"^\s*[+-]?\d+")
-        .find(&text)
-        .and_then(|m| m.as_str().trim().parse().ok())
-}
-
 /// The order a lite message without a `sort_seq` gets: its send time in milliseconds.
 fn lite_sort_seq(create_time: i64) -> i64 {
     if create_time > 0 {
@@ -1285,18 +1154,8 @@ fn lite_sort_seq(create_time: i64) -> i64 {
     }
 }
 
-/// `mapRowsToMessagesLiteForApi`
-pub fn map_rows_lite(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
-    rows.iter()
-        .map(|row| {
-            let mut fields = legacy_fields(row);
-            fields.sort_seq = row_int(row, &["sort_seq"], lite_sort_seq(fields.create_time));
-            lite_message(fields, message_source_info(row), my_wxid)
-        })
-        .collect()
-}
-
-/// [`map_rows_lite`] of the typed rows of one conversation, which it takes: their text moves into the messages.
+/// `mapRowsToMessagesLiteForApi` of the typed rows of one conversation, which it takes: their text moves into the
+/// messages.
 pub fn map_msg_rows_lite(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
     let table_name = weflow_native::native_msg::table_name_for(session_id);
     rows.into_iter()
@@ -1334,8 +1193,6 @@ fn lite_message(fields: RowFields, src: SourceInfo, my_wxid: &str) -> ChatMessag
             local_type,
             &src,
         ),
-        db_path: Some(src.db_path.clone()).filter(|s| !s.is_empty()),
-        table_name: Some(src.table_name.clone()).filter(|s| !s.is_empty()),
         local_id,
         server_id,
         server_id_raw,
@@ -1350,7 +1207,7 @@ fn lite_message(fields: RowFields, src: SourceInfo, my_wxid: &str) -> ChatMessag
     }
 }
 
-/// The columns [`chat_message`] turns into a message, read from a row of either shape (#492).
+/// The columns [`chat_message`] turns into a message.
 struct RowFields {
     content: String,
     local_type: i64,
@@ -1365,69 +1222,8 @@ struct RowFields {
     sort_seq: i64,
 }
 
-/// The names of a message's media files that the row gives outside its text.
-trait RowMedia {
-    fn image_dat_name(&self, content: &str) -> Option<String>;
-    fn video_file_name(&self, content: &str) -> Option<String>;
-}
-
-/// A legacy row: its packed info and the desktop app's columns.
-impl RowMedia for &Value {
-    fn image_dat_name(&self, content: &str) -> Option<String> {
-        extract_image_dat_name_from_row(self, content)
-    }
-
-    fn video_file_name(&self, content: &str) -> Option<String> {
-        parse_video_file_name_from_row(self, content)
-    }
-}
-
-/// A typed row's packed info, the only place besides its text a media file is named.
-struct PackedInfo<'a>(Option<&'a [u8]>);
-
-impl RowMedia for PackedInfo<'_> {
-    fn image_dat_name(&self, content: &str) -> Option<String> {
-        self.0
-            .and_then(crate::message::dat_name_in_packed_info)
-            .or_else(|| crate::message::extract_image_dat_name(content))
-    }
-
-    fn video_file_name(&self, content: &str) -> Option<String> {
-        self.0.and_then(video_token_in_packed).or_else(|| {
-            video_md5_from_content(content).and_then(|m| normalize_video_file_token(&m))
-        })
-    }
-}
-
-fn legacy_fields(row: &Value) -> RowFields {
-    let create_time = get_timestamp_seconds(row);
-    RowFields {
-        content: decode_message_content(row),
-        local_type: row_int(row, &["local_type"], 1),
-        raw_is_send: raw_is_send(row),
-        sender: row
-            .get("sender_username")
-            .map(value_to_trimmed_string)
-            .filter(|s| !s.is_empty()),
-        create_time,
-        local_id: row_int(row, &["local_id"], 0),
-        server_id: row_int(row, &["server_id"], 0),
-        server_id_raw: row
-            .get("server_id")
-            .map(|v| normalize_unsigned_token(&value_to_trimmed_string(v)))
-            .unwrap_or_else(|| "0".into()),
-        sort_seq: row_int(row, &["sort_seq"], create_time),
-    }
-}
-
-/// `mapRowsToMessages` (the model fields the API and CLI use).
-pub fn map_rows(rows: &[Value], my_wxid: &str) -> Vec<ChatMessage> {
-    rows.iter()
-        .map(|row| chat_message(legacy_fields(row), &row, message_source_info(row), my_wxid))
-        .collect()
-}
-
-/// [`map_rows`] of the typed rows of one conversation, which it takes: their text moves into the messages.
+/// `mapRowsToMessages` (the model fields the API and CLI use) of the typed rows of one conversation, which it
+/// takes: their text moves into the messages.
 pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<ChatMessage> {
     let table_name = weflow_native::native_msg::table_name_for(session_id);
     rows.into_iter()
@@ -1440,12 +1236,7 @@ pub fn map_msg_rows(rows: Vec<MsgRow>, session_id: &str, my_wxid: &str) -> Vec<C
 pub fn map_msg_row(mut row: MsgRow, table_name: &str, my_wxid: &str) -> ChatMessage {
     let fields = typed_fields(&mut row, |create_time| create_time);
     let src = typed_source(&row, table_name);
-    chat_message(
-        fields,
-        &PackedInfo(row.packed_info.as_deref()),
-        src,
-        my_wxid,
-    )
+    chat_message(fields, row.packed_info.as_deref(), src, my_wxid)
 }
 
 /// The fields of a typed row, its text moved out; a row without a `sort_seq` gets `default_seq(create_time)`.
@@ -1473,18 +1264,17 @@ fn typed_fields(row: &mut MsgRow, default_seq: fn(i64) -> i64) -> RowFields {
     }
 }
 
-/// Where a typed row is kept: its database by name, never by path (#443).
 fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
     SourceInfo {
         db_name: format!("message_{}", row.shard),
         table_name: table_name.to_string(),
-        db_path: String::new(),
     }
 }
 
+/// A message of a row's columns; `packed_info` is the row's, the only place besides its text a media file is named.
 fn chat_message(
     fields: RowFields,
-    media: &dyn RowMedia,
+    packed_info: Option<&[u8]>,
     src: SourceInfo,
     my_wxid: &str,
 ) -> ChatMessage {
@@ -1538,10 +1328,14 @@ fn chat_message(
         m.aes_key = opt(xml_attr(&content, "img", "aeskey"));
         m.encryp_ver = parse_js_int(&xml_attr(&content, "img", "encrypver"));
         m.cdn_thumb_url = opt(xml_attr(&content, "img", "cdnthumburl"));
-        m.image_dat_name = media.image_dat_name(&content);
+        m.image_dat_name = packed_info
+            .and_then(crate::message::dat_name_in_packed_info)
+            .or_else(|| crate::message::extract_image_dat_name(&content));
         m.quoted_content = parse_media_quote(&content);
     } else if local_type == 43 {
-        m.video_md5 = media.video_file_name(&content);
+        m.video_md5 = packed_info.and_then(video_token_in_packed).or_else(|| {
+            video_md5_from_content(&content).and_then(|m| normalize_video_file_token(&m))
+        });
         m.quoted_content = parse_media_quote(&content);
     } else if local_type == 34 && !content.is_empty() {
         m.voice_duration_seconds = parse_voice_duration_seconds(&content);
@@ -1652,15 +1446,12 @@ fn chat_message(
         m.local_type,
         &src,
     );
-    m.db_path = Some(src.db_path).filter(|s| !s.is_empty());
-    m.table_name = Some(src.table_name).filter(|s| !s.is_empty());
     m
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn sender_prefix_variants() {
@@ -1731,33 +1522,60 @@ mod tests {
 
     #[test]
     fn message_keys_name_the_database_without_its_path() {
-        let rows = vec![
-            json!({"local_id": "5", "create_time": "10", "local_type": "1", "message_content": "x", "_db_path": "/a b/message_0.db", "table_name": "Msg_abc"}),
-            json!({"local_id": "6", "create_time": "11", "local_type": "1", "message_content": "x", "_db_path": "/a/message_1.db"}),
-            json!({"local_id": "0", "server_id": "77", "create_time": "12", "local_type": "1", "message_content": "x"}),
-        ];
-        let m = map_rows(&rows, "wxid_me");
-        assert_eq!(m[0].message_key, "message_0:Msg_abc:5");
+        let row = |local_id, server_id, create_time, shard| MsgRow {
+            local_id,
+            server_id,
+            create_time: Some(create_time),
+            local_type: 1,
+            content: "x".into(),
+            shard,
+            ..MsgRow::default()
+        };
+        let m = map_msg_rows(
+            vec![row(5, None, 10, 0), row(0, Some(77), 12, 1)],
+            "wxid_bob",
+            "wxid_me",
+        );
+        let table = weflow_native::native_msg::table_name_for("wxid_bob");
+        assert_eq!(m[0].message_key, format!("message_0:{table}:5"));
         assert!(
-            m[1].message_key.starts_with("local:message_1:6:11:11:"),
+            m[1].message_key.starts_with("server:message_1:77:12:12:0:"),
             "{}",
             m[1].message_key
         );
-        assert!(
-            m[2].message_key.starts_with("server:77:12:12:0:"),
-            "{}",
-            m[2].message_key
-        );
+        let in_db = |db_name: &str| SourceInfo {
+            db_name: db_name.into(),
+            table_name: String::new(),
+        };
+        let key = build_message_key(6, 0, 11, 11, None, 1, &in_db("message_1"));
+        assert!(key.starts_with("local:message_1:6:11:11:"), "{key}");
+        let key = build_message_key(0, 77, 12, 12, None, 1, &in_db(""));
+        assert!(key.starts_with("server:77:12:12:0:"), "{key}");
         assert_eq!(encode_uri_component("a b/é"), "a%20b%2F%C3%A9");
     }
 
     #[test]
     fn rows_map_to_messages() {
         let rows = vec![
-            json!({"local_id": "5", "server_id": "9007199254740993", "create_time": "1700000000", "local_type": "1", "message_content": "wxid_bob:\nhello", "sender_username": "", "is_send": "0"}),
-            json!({"local_id": "6", "create_time": "1700000100", "local_type": "3", "message_content": "<msg><img md5=\"aabbccddeeff00112233445566778899\"/></msg>", "is_send": "1"}),
+            MsgRow {
+                local_id: 5,
+                server_id: Some(9_007_199_254_740_993),
+                create_time: Some(1_700_000_000),
+                local_type: 1,
+                content: "wxid_bob:\nhello".into(),
+                sender: Some(String::new()),
+                ..MsgRow::default()
+            },
+            MsgRow {
+                local_id: 6,
+                create_time: Some(1_700_000_100),
+                local_type: 3,
+                content: r#"<msg><img md5="aabbccddeeff00112233445566778899"/></msg>"#.into(),
+                is_send: true,
+                ..MsgRow::default()
+            },
         ];
-        let m = map_rows(&rows, "wxid_me");
+        let m = map_msg_rows(rows.clone(), "wxid_bob", "wxid_me");
         assert_eq!(m[0].sender_username.as_deref(), Some("wxid_bob"));
         assert_eq!(m[0].parsed_content, "hello");
         assert_eq!(m[0].server_id_raw, "9007199254740993");
@@ -1767,7 +1585,7 @@ mod tests {
         );
         assert_eq!(m[1].is_send, Some(1));
         assert_eq!(m[1].sender_username, None);
-        let lite = map_rows_lite(&rows, "wxid_me");
+        let lite = map_msg_rows_lite(rows, "wxid_bob", "wxid_me");
         assert_eq!(lite[1].sender_username.as_deref(), Some("wxid_me"));
         assert_eq!(lite[1].sort_seq, 1700000100 * 1000);
     }

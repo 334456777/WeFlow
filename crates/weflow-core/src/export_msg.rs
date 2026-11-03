@@ -2551,17 +2551,45 @@ fn html_script(count_template: &str, empty_label: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use weflow_native::msg_row::MsgRow;
+
+    fn row(
+        local_id: i64,
+        create_time: i64,
+        local_type: i64,
+        content: &str,
+        sender: Option<&str>,
+    ) -> MsgRow {
+        MsgRow {
+            local_id,
+            create_time: Some(create_time),
+            local_type,
+            content: content.into(),
+            sender: sender.map(str::to_string),
+            ..MsgRow::default()
+        }
+    }
 
     fn fixture() -> (Vec<ExportMsg>, HashMap<String, ContactInfo>) {
         let rows = vec![
-            json!({"local_id": "1", "server_id": "111", "create_time": "1700000000", "local_type": "1", "message_content": "hello \"world\", ok", "is_send": "1"}),
-            json!({"local_id": "2", "server_id": "222", "create_time": "1700000060", "local_type": "1", "message_content": "wxid_bob:hi <b>there</b>", "sender_username": "wxid_bob", "is_send": "0"}),
-            json!({"local_id": "3", "create_time": "1700000120", "local_type": "3", "message_content": "", "sender_username": "wxid_bob", "is_send": "0"}),
-            json!({"local_id": "4", "create_time": "1700000180", "local_type": "49", "message_content": "<msg><appmsg><title>Doc</title><type>5</type><url>https://example.com/x</url></appmsg></msg>", "sender_username": "wxid_bob"}),
-            json!({"local_id": "5", "server_id": "555", "create_time": "1700000240", "local_type": "49", "message_content": "<msg><appmsg><title>yes</title><type>57</type><refermsg><type>1</type><displayname>Me</displayname><content>hello</content><svrid>111</svrid></refermsg></appmsg></msg>", "sender_username": "wxid_bob"}),
+            MsgRow {
+                server_id: Some(111),
+                is_send: true,
+                ..row(1, 1700000000, 1, r#"hello "world", ok"#, None)
+            },
+            MsgRow {
+                server_id: Some(222),
+                ..row(2, 1700000060, 1, "wxid_bob:hi <b>there</b>", Some("wxid_bob"))
+            },
+            row(3, 1700000120, 3, "", Some("wxid_bob")),
+            row(4, 1700000180, 49, "<msg><appmsg><title>Doc</title><type>5</type><url>https://example.com/x</url></appmsg></msg>", Some("wxid_bob")),
+            MsgRow {
+                server_id: Some(555),
+                ..row(5, 1700000240, 49, "<msg><appmsg><title>yes</title><type>57</type><refermsg><type>1</type><displayname>Me</displayname><content>hello</content><svrid>111</svrid></refermsg></appmsg></msg>", Some("wxid_bob"))
+            },
         ];
-        let msgs = collect_messages(
-            &rows,
+        let msgs = collect_rows(
+            rows,
             &CollectOptions {
                 session_id: "wxid_bob",
                 my_wxid: "wxid_me",
@@ -2625,20 +2653,20 @@ mod tests {
     fn message_text_is_uniform_across_message_kinds() {
         let quote_inner = "&lt;msg&gt;&lt;img md5=\"x\"&gt;&lt;extcommoninfo&gt;&lt;refermsg&gt;&lt;svrid&gt;9&lt;/svrid&gt;&lt;/refermsg&gt;&lt;/extcommoninfo&gt;&lt;/msg&gt;";
         let rows = vec![
-            json!({"local_id": "1", "create_time": "1700000000", "local_type": "47", "message_content": "wxid_bob:<msg><emoji md5=\"a\"/></msg>", "sender_username": "wxid_bob"}),
-            json!({"local_id": "2", "create_time": "1700000001", "local_type": "34", "message_content": "", "sender_username": "wxid_bob"}),
-            json!({"local_id": "3", "create_time": "1700000002", "local_type": "10000", "message_content": "\"Bob\" 撤回了一条消息"}),
+            row(1, 1700000000, 47, r#"wxid_bob:<msg><emoji md5="a"/></msg>"#, Some("wxid_bob")),
+            row(2, 1700000001, 34, "", Some("wxid_bob")),
+            row(3, 1700000002, 10000, r#""Bob" 撤回了一条消息"#, None),
             // 图片里夹带 <refermsg>：不是文字引用，仍然是 [图片]
-            json!({"local_id": "4", "create_time": "1700000003", "local_type": "3", "message_content": "wxid_bob:\n<msg><img md5=\"x\"/><extcommoninfo><refermsg><svrid>9</svrid></refermsg></extcommoninfo></msg>", "sender_username": "wxid_bob"}),
+            row(4, 1700000003, 3, "wxid_bob:\n<msg><img md5=\"x\"/><extcommoninfo><refermsg><svrid>9</svrid></refermsg></extcommoninfo></msg>", Some("wxid_bob")),
             // appmsg type 8：以附件形式发送的表情
-            json!({"local_id": "5", "create_time": "1700000004", "local_type": "34359738417", "message_content": "wxid_bob:\n<msg><appmsg><title /><type>8</type></appmsg></msg>", "sender_username": "wxid_bob"}),
+            row(5, 1700000004, 34359738417, "wxid_bob:\n<msg><appmsg><title /><type>8</type></appmsg></msg>", Some("wxid_bob")),
             // 引用一条「带引用的图片」：被引用内容是（转义后的）XML，且里面还嵌着一层 <refermsg>
-            json!({"local_id": "6", "create_time": "1700000005", "local_type": "244813135921", "message_content": format!("wxid_bob:\n<msg><appmsg><title>好看</title><type>57</type><refermsg><type>3</type><content>wxid_me:\n{quote_inner}</content><displayname>Me Nick</displayname><svrid>1</svrid></refermsg></appmsg></msg>"), "sender_username": "wxid_bob"}),
+            row(6, 1700000005, 244813135921, &format!("wxid_bob:\n<msg><appmsg><title>好看</title><type>57</type><refermsg><type>3</type><content>wxid_me:\n{quote_inner}</content><displayname>Me Nick</displayname><svrid>1</svrid></refermsg></appmsg></msg>"), Some("wxid_bob")),
             // 正文里的 "4:1" 不是发送者前缀
-            json!({"local_id": "7", "create_time": "1700000006", "local_type": "1", "message_content": "4:1", "sender_username": "wxid_bob"}),
+            row(7, 1700000006, 1, "4:1", Some("wxid_bob")),
         ];
-        let msgs = collect_messages(
-            &rows,
+        let msgs = collect_rows(
+            rows,
             &CollectOptions {
                 session_id: "room@chatroom",
                 my_wxid: "wxid_me",
@@ -2683,14 +2711,14 @@ mod tests {
     #[test]
     fn formats_share_message_text() {
         let rows = vec![
-            json!({"local_id": "1", "create_time": "1700000000", "local_type": "10000", "message_content": "\"Bob\" 撤回了一条消息"}),
-            json!({"local_id": "2", "create_time": "1700000001", "local_type": "34", "message_content": "", "sender_username": "wxid_bob"}),
-            json!({"local_id": "3", "create_time": "1700000002", "local_type": "49", "message_content": "wxid_bob:\n<msg><appmsg><title>Doc</title><type>5</type><url>https://example.com/x</url></appmsg></msg>", "sender_username": "wxid_bob"}),
-            json!({"local_id": "4", "create_time": "1700000003", "local_type": "103079215153", "message_content": "wxid_bob:\n<msg><appmsg><title /><des>预览</des><type>24</type><recorditem><![CDATA[<recordinfo><datalist><dataitem datatype=\"1\"><datadesc>笔记&#x0A;全文</datadesc></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>", "sender_username": "wxid_bob"}),
-            json!({"local_id": "5", "create_time": "1700000004", "local_type": "244813135921", "message_content": "wxid_bob:\n<msg><appmsg><title>好的</title><type>57</type><refermsg><type>1</type><displayname>Me</displayname><content>hello</content><svrid>1</svrid></refermsg></appmsg></msg>", "sender_username": "wxid_bob"}),
+            row(1, 1700000000, 10000, r#""Bob" 撤回了一条消息"#, None),
+            row(2, 1700000001, 34, "", Some("wxid_bob")),
+            row(3, 1700000002, 49, "wxid_bob:\n<msg><appmsg><title>Doc</title><type>5</type><url>https://example.com/x</url></appmsg></msg>", Some("wxid_bob")),
+            row(4, 1700000003, 103079215153, "wxid_bob:\n<msg><appmsg><title /><des>预览</des><type>24</type><recorditem><![CDATA[<recordinfo><datalist><dataitem datatype=\"1\"><datadesc>笔记&#x0A;全文</datadesc></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>", Some("wxid_bob")),
+            row(5, 1700000004, 244813135921, "wxid_bob:\n<msg><appmsg><title>好的</title><type>57</type><refermsg><type>1</type><displayname>Me</displayname><content>hello</content><svrid>1</svrid></refermsg></appmsg></msg>", Some("wxid_bob")),
         ];
-        let mut msgs = collect_messages(
-            &rows,
+        let mut msgs = collect_rows(
+            rows,
             &CollectOptions {
                 session_id: "wxid_bob",
                 my_wxid: "wxid_me",

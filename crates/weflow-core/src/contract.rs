@@ -2309,13 +2309,16 @@ mod tests {
 
     #[test]
     fn a_server_id_past_2_53_keeps_every_digit_and_only_the_fields_of_the_contract_are_written() {
-        let rows = [json!({
-            "local_id": 5, "server_id": "9007199254740993", "create_time": 1700000000, "local_type": 49,
-            "sort_seq": 1700000000000i64, "message_content":
-                "<msg><appmsg><type>6</type><title>a.pdf</title></appmsg></msg>",
-            "_db_path": "/a/message_0.db",
-        })];
-        let message = crate::chat_msg::map_rows(&rows, "wxid_me").remove(0);
+        let row = weflow_native::msg_row::MsgRow {
+            local_id: 5,
+            server_id: Some(9_007_199_254_740_993),
+            create_time: Some(1700000000),
+            local_type: 49,
+            sort_seq: Some(1700000000000),
+            content: "<msg><appmsg><type>6</type><title>a.pdf</title></appmsg></msg>".into(),
+            ..Default::default()
+        };
+        let message = crate::chat_msg::map_msg_rows(vec![row], "wxid_bob", "wxid_me").remove(0);
         let doc = json!(ParsedMessage {
             message,
             cursor: Some("1.2.3".into()),

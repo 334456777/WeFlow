@@ -1374,37 +1374,75 @@ mod tests {
     /// ends or goes on, an optional field left out, a job in each state.
     fn samples() -> Value {
         use weflow_core::contract::*;
+        use weflow_native::msg_row::MsgRow;
         use weflow_native::native_msg::MsgPos;
 
+        let row =
+            |local_id, server_id, create_time, local_type, sort_seq, content: &str, shard| MsgRow {
+                local_id,
+                server_id,
+                local_type,
+                sort_seq: Some(sort_seq),
+                create_time: Some(create_time),
+                content: content.into(),
+                shard,
+                ..MsgRow::default()
+            };
+        let file_xml = "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen>\
+                        <fileext>pdf</fileext></appattach></appmsg></msg>";
         let rows = [
-            json!({ "local_id": 1, "server_id": "9007199254740993", "create_time": 1700000000, "local_type": 1,
-                "sort_seq": 1700000000000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content": "hello",
-                "db_name": "message_0" }),
-            json!({ "local_id": 2, "server_id": "18446744073709551615", "create_time": 1700000060, "local_type": 49,
-                "sort_seq": 1700000060000i64, "is_send": 1, "message_content":
-                "<msg><appmsg><type>6</type><title>report.pdf</title><appattach><totallen>2048</totallen>\
-                 <fileext>pdf</fileext></appattach></appmsg></msg>", "db_name": "message_0" }),
-            json!({ "local_id": 3, "server_id": "0", "create_time": 1700000120, "local_type": 49,
-                "sort_seq": 1700000120000i64, "is_send": 0, "sender_username": "wxid_bob", "message_content":
-                "<msg><appmsg><type>57</type><title>yes</title><refermsg><type>1</type>\
-                 <displayname>Me</displayname><content>are you there?</content></refermsg></appmsg></msg>",
-                "db_name": "message_0" }),
-            // the last second of 2023 in UTC, and a row that says neither who sent it nor whether I did
-            json!({ "local_id": 4, "server_id": "0", "create_time": 1704067199, "local_type": 10000,
-                "sort_seq": 1704067199000i64, "message_content": "\"Bob\" 撤回了一条消息", "db_name": "message_1" }),
+            MsgRow {
+                sender: Some("wxid_bob".into()),
+                ..row(1, Some(9_007_199_254_740_993), 1700000000, 1, 1700000000000, "hello", 0)
+            },
+            MsgRow {
+                is_send: true,
+                ..row(2, None, 1700000060, 49, 1700000060000, file_xml, 0)
+            },
+            MsgRow {
+                sender: Some("wxid_bob".into()),
+                ..row(
+                    3,
+                    None,
+                    1700000120,
+                    49,
+                    1700000120000,
+                    "<msg><appmsg><type>57</type><title>yes</title><refermsg><type>1</type>\
+                     <displayname>Me</displayname><content>are you there?</content></refermsg></appmsg></msg>",
+                    0,
+                )
+            },
+            // the last second of 2023 in UTC
+            row(4, None, 1704067199, 10000, 1704067199000, "\"Bob\" 撤回了一条消息", 1),
             // the next second, in another database, with the same sort_seq as the row before
-            json!({ "local_id": 1, "server_id": "9007199254740995", "create_time": 1704067200, "local_type": 3,
-                "sort_seq": 1704067199000i64, "is_send": 1, "sender_username": "wxid_me", "message_content":
-                "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>", "db_name": "message_2" }),
+            MsgRow {
+                is_send: true,
+                sender: Some("wxid_me".into()),
+                ..row(
+                    1,
+                    Some(9_007_199_254_740_995),
+                    1704067200,
+                    3,
+                    1704067199000,
+                    "<msg><img md5=\"aabbccddeeff00112233445566778899\" /></msg>",
+                    2,
+                )
+            },
         ];
-        let cursor = |row: &Value| MsgPos::of_row(row).unwrap().token();
-        let parsed: Vec<ParsedMessage> = weflow_core::chat_msg::map_rows(&rows, "wxid_me")
+        let cursors: Vec<String> = rows.iter().map(|row| row.pos().token()).collect();
+        let mut messages =
+            weflow_core::chat_msg::map_msg_rows(rows.to_vec(), "wxid_bob", "wxid_me");
+        // an id past i64, which no row holds but the answer's string can, and a message that says neither who sent
+        // it nor whether I did
+        messages[1].server_id_raw = "18446744073709551615".into();
+        messages[3].is_send = None;
+        let parsed: Vec<ParsedMessage> = messages
             .into_iter()
-            .zip(&rows)
+            .zip(cursors)
             .enumerate()
-            .map(|(i, (message, row))| ParsedMessage {
+            .map(|(i, (message, cursor))| ParsedMessage {
                 message,
-                cursor: Some(cursor(row)),
+                cursor: Some(cursor),
                 // the first is a hit of `chat search`
                 session_id: (i == 0).then(|| "wxid_bob".to_string()),
             })
@@ -1486,7 +1524,7 @@ mod tests {
             server_id_raw: Some("18446744073709551615".into()),
             create_time: 1700000060,
             local_type: 49,
-            content: rows[1]["message_content"].as_str().unwrap().into(),
+            content: file_xml.into(),
             sender_username: "wxid_me".into(),
             is_send: true,
             file_name: Some("report.pdf".into()),

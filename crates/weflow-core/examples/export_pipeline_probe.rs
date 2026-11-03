@@ -37,9 +37,10 @@ use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::export_msg::{
     ContactInfo, DisplayPref, Exporter, NameBook, SessionInfo, Settings,
 };
-use weflow_core::message::{collect_messages, CollectOptions, ExportMsg};
+use weflow_core::message::{collect_rows, CollectOptions, ExportMsg};
 use weflow_core::services::{MessageExportRequest, ServiceHub};
 use weflow_native::fixture::{ContactSpec, Fixture, MsgSpec, RoomSpec, SessionSpec, T0};
+use weflow_native::msg_row::MsgRow;
 use weflow_native::wcdb::Wcdb;
 
 const ROOM: &str = "room_probe@chatroom";
@@ -260,7 +261,7 @@ fn request(format: &str) -> MessageExportRequest {
 }
 
 /// Every page of the conversation's cursor over `[begin, end]` (`0` = unbounded), in order.
-fn read_pages(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<Vec<Vec<Value>>> {
+fn read_pages(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<Vec<Vec<MsgRow>>> {
     let cursor = wcdb.open_message_cursor(ROOM, BATCH, true, begin, end, false)?;
     let pages = fetch_all(wcdb, cursor);
     let _ = wcdb.close_message_cursor(cursor);
@@ -273,9 +274,9 @@ fn count_rows(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<usize> {
     let cursor = wcdb.open_message_cursor(ROOM, BATCH, true, begin, end, false)?;
     let mut rows = 0;
     let result = loop {
-        match wcdb.fetch_message_batch(cursor) {
+        match wcdb.fetch_message_batch_as::<MsgRow>(cursor) {
             Ok((page, more)) => {
-                rows += page.as_array().map_or(0, Vec::len);
+                rows += page.len();
                 if !more {
                     break Ok(rows);
                 }
@@ -287,14 +288,14 @@ fn count_rows(wcdb: &Wcdb, begin: i32, end: i32) -> anyhow::Result<usize> {
     result
 }
 
-fn fetch_all(wcdb: &Wcdb, cursor: i64) -> anyhow::Result<Vec<Vec<Value>>> {
+fn fetch_all(wcdb: &Wcdb, cursor: i64) -> anyhow::Result<Vec<Vec<MsgRow>>> {
     let mut pages = Vec::new();
     loop {
-        let (page, more) = wcdb.fetch_message_batch(cursor)?;
-        match page {
-            Value::Array(rows) if !rows.is_empty() => pages.push(rows),
-            _ => break,
+        let (page, more) = wcdb.fetch_message_batch_as::<MsgRow>(cursor)?;
+        if page.is_empty() {
+            break;
         }
+        pages.push(page);
         if !more {
             break;
         }
@@ -449,10 +450,10 @@ fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
         });
         let _ = wcdb.close_message_cursor(cursor);
         let pages = pages?;
-        let msgs: Vec<ExportMsg> = timed(&format!("parser: collect_messages #{run}"), || {
+        let msgs: Vec<ExportMsg> = timed(&format!("parser: collect_rows #{run}"), || {
             pages
-                .iter()
-                .flat_map(|p| collect_messages(p, &opts))
+                .into_iter()
+                .flat_map(|p| collect_rows(p, &opts))
                 .collect()
         });
         anyhow::ensure!(
@@ -460,13 +461,16 @@ fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
             "parsed {} messages",
             msgs.len()
         );
-        timed("drop the raw pages", || drop(pages));
 
-        let pages = read_pages(wcdb, 0, 0)?;
         let all = std::thread::available_parallelism().map_or(4, |n| n.get());
         for workers in [2, 4, all] {
+            // the parser takes the rows, so each run parses pages of its own
+            let pages: Vec<std::sync::Mutex<Vec<MsgRow>>> = read_pages(wcdb, 0, 0)?
+                .into_iter()
+                .map(std::sync::Mutex::new)
+                .collect();
             timed(
-                &format!("parser: collect_messages on {workers} threads"),
+                &format!("parser: collect_rows on {workers} threads"),
                 || {
                     let next = std::sync::atomic::AtomicUsize::new(0);
                     std::thread::scope(|s| {
@@ -474,14 +478,14 @@ fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
                             s.spawn(|| loop {
                                 let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                 let Some(page) = pages.get(i) else { break };
-                                std::hint::black_box(collect_messages(page, &opts));
+                                let rows = std::mem::take(&mut *page.lock().expect("page lock"));
+                                std::hint::black_box(collect_rows(rows, &opts));
                             });
                         }
                     });
                 },
             );
         }
-        drop(pages);
 
         for format in [args.format.as_str(), "txt"] {
             let mut names = NameBook::new(|u: &str| {

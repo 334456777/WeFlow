@@ -851,7 +851,18 @@ pub fn resolve_chatlab_sender_info(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat_msg::map_rows;
+    use crate::chat_msg::map_msg_rows;
+    use weflow_native::msg_row::MsgRow;
+
+    fn row(local_id: i64, create_time: i64, local_type: i64, content: &str) -> MsgRow {
+        MsgRow {
+            local_id,
+            create_time: Some(create_time),
+            local_type,
+            content: content.into(),
+            ..MsgRow::default()
+        }
+    }
 
     #[test]
     fn params() {
@@ -895,11 +906,19 @@ mod tests {
         let quote = "<msg><appmsg><title>ok</title><type>57</type><refermsg><type>1</type><displayname>Bob</displayname><content>hi there</content><svrid>00123</svrid><chatusr>wxid_bob</chatusr></refermsg></appmsg></msg>";
         let link = "<msg><appmsg><title>T</title><type>5</type><url>http://x</url></appmsg></msg>";
         let rows = vec![
-            json!({"local_id": "1", "create_time": "100", "local_type": "49", "message_content": quote, "sender_username": "wxid_me", "is_send": "1"}),
-            json!({"local_id": "2", "server_id": "77", "create_time": "101", "local_type": "49", "message_content": link, "sender_username": "wxid_bob", "is_send": "0"}),
-            json!({"local_id": "3", "create_time": "102", "local_type": "1", "message_content": "wxid_bob:\nhello", "is_send": "0"}),
+            MsgRow {
+                sender: Some("wxid_me".into()),
+                is_send: true,
+                ..row(1, 100, 49, quote)
+            },
+            MsgRow {
+                server_id: Some(77),
+                sender: Some("wxid_bob".into()),
+                ..row(2, 101, 49, link)
+            },
+            row(3, 102, 1, "wxid_bob:\nhello"),
         ];
-        let msgs = map_rows(&rows, "wxid_me");
+        let msgs = map_msg_rows(rows, "wxid_bob", "wxid_me");
         let a = to_api_message(&msgs[0], None, "http://h:1");
         assert_eq!(a["content"], "ok");
         assert_eq!(a["replyToMessageId"], "123");
@@ -928,10 +947,7 @@ mod tests {
 
     #[test]
     fn chatlab_sender() {
-        let rows = vec![
-            json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "is_send": "0"}),
-        ];
-        let msgs = map_rows(&rows, "wxid_me");
+        let msgs = map_msg_rows(vec![row(9, 5, 1, "x")], "room@chatroom", "wxid_me");
         let info = resolve_chatlab_sender_info(
             &msgs[0],
             "room@chatroom",
@@ -944,10 +960,11 @@ mod tests {
         assert_eq!(info.account_name, "未知发送者");
         let mut names = HashMap::new();
         names.insert("wxid_bob".to_string(), "Bob".to_string());
-        let rows = vec![
-            json!({"local_id": "9", "create_time": "5", "local_type": "1", "message_content": "x", "sender_username": "wxid_bob", "is_send": "0"}),
-        ];
-        let msgs = map_rows(&rows, "wxid_me");
+        let rows = vec![MsgRow {
+            sender: Some("wxid_bob".into()),
+            ..row(9, 5, 1, "x")
+        }];
+        let msgs = map_msg_rows(rows, "room@chatroom", "wxid_me");
         let mut nicks = HashMap::new();
         nicks.insert("wxid_bob".to_string(), "Bobby".to_string());
         let info =

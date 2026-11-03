@@ -100,15 +100,6 @@ fn int(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
 
-fn row_key(row: &Value) -> (i64, i64, i64) {
-    let create = int(row, "create_time");
-    let seq = match int(row, "sort_seq") {
-        0 => create * 1000,
-        s => s,
-    };
-    (seq, create, int(row, "local_id"))
-}
-
 /// A message's place in its conversation's newest-first order, to page from: its sort key (`sort_seq`, or
 /// `create_time * 1000` without one, then `create_time`, `local_id`) and the number of its `message_<n>.db`. Equal
 /// keys of different databases are listed by ascending database number.
@@ -121,18 +112,6 @@ pub struct MsgPos {
 }
 
 impl MsgPos {
-    /// The place of a message row (`sort_seq`, `create_time`, `local_id`, `db_name`).
-    pub fn of_row(row: &Value) -> Option<Self> {
-        let (sort_seq, create_time, local_id) = row_key(row);
-        let shard = is_message_db(&format!("{}.db", row.get("db_name")?.as_str()?))?;
-        Some(Self {
-            sort_seq,
-            create_time,
-            local_id,
-            shard,
-        })
-    }
-
     /// `sort_seq.create_time.local_id.shard`, what [`parse`](Self::parse) reads back.
     pub fn token(&self) -> String {
         format!(
@@ -195,12 +174,12 @@ enum OffsetPosition {
     At(MsgPos),
     /// The offset skips every message.
     Past,
-    /// A sort key of the rows is not stored as an integer (a `sort_seq` may also be null): [`row_key`] and SQLite
+    /// A sort key of the rows is not stored as an integer (a `sort_seq` may also be null): [`typed_row_key`] and SQLite
     /// order such values differently, so only reading the rows lists them as before.
     Unusual,
 }
 
-/// [`row_key`] of the cells `sort_seq`, `create_time` and `local_id`; `None` when one is not an integer, but for a
+/// The sort key of a row (see [`MsgPos`]) from its cells `sort_seq`, `create_time` and `local_id`; `None` when one is not an integer, but for a
 /// null `sort_seq`, which is one without, as a zero.
 fn typed_row_key(
     sort_seq: rusqlite::types::ValueRef,
@@ -402,7 +381,7 @@ impl NativeAccount {
         let order = "order by m.sort_seq desc, m.create_time desc, m.local_id desc limit ?1";
         let floor = if floor { "m.sort_seq >= ?2 and " } else { "" };
         let indexed = format!("where {floor}m.sort_seq <> 0 {order}");
-        // rows without a sort_seq are keyed by create_time * 1000 (see `row_key`): below any floor, they are read
+        // rows without a sort_seq are keyed by create_time * 1000 (see [`MsgPos`]): below any floor, they are read
         // apart
         let unsequenced = "where (m.sort_seq is null or m.sort_seq = 0) \
                            order by m.create_time desc, m.local_id desc limit ?1";
@@ -1045,7 +1024,7 @@ impl NativeAccount {
     /// The keys of `t` in `create_time` range `(begin, end)` from the `sort_seq` index alone (`local_id` is the rowid,
     /// so the index covers the query): `create_time` is taken as `sort_seq / 1000` and the range is turned into a
     /// `sort_seq` range. Rows whose `sort_seq` says nothing about the time (0, negative or none) are read from the
-    /// table, as [`row_key`] does.
+    /// table, as [`typed_row_key`] does.
     fn index_keys(&self, t: &MsgTable, idx: usize, (begin, end): (i64, i64)) -> Result<Vec<Key>> {
         let lo = begin.saturating_mul(1000);
         let hi = if end == 0 {
@@ -1082,7 +1061,7 @@ impl NativeAccount {
                 .with_context(|| format!("bad query: {sql}"))?;
             let mut rows = stmt.query(params)?;
             while let Some(row) = rows.next()? {
-                // Match int()/row_key(): only SQLite integers count; nulls and other storage types become zero.
+                // Match int(): only SQLite integers count; nulls and other storage types become zero.
                 let integer = |column: usize| -> rusqlite::Result<i64> {
                     Ok(match row.get_ref(column)? {
                         rusqlite::types::ValueRef::Integer(i) => i,
@@ -1853,7 +1832,18 @@ mod tests {
         // pages from a cursor, both ways, list the same order through the ties and the rows without a sort_seq
         let all = acct.messages_v("wxid_bob", 0, 0).unwrap();
         let all = all.as_array().unwrap();
-        let pos = |row: &Value| MsgPos::of_row(row).unwrap();
+        let pos = |row: &Value| {
+            let create_time = row["create_time"].as_i64().unwrap();
+            MsgPos {
+                sort_seq: row["sort_seq"]
+                    .as_i64()
+                    .filter(|s| *s != 0)
+                    .unwrap_or(create_time * 1000),
+                create_time,
+                local_id: row["local_id"].as_i64().unwrap(),
+                shard: is_message_db(&format!("{}.db", row["db_name"].as_str().unwrap())).unwrap(),
+            }
+        };
         let mut back = texts(&acct.messages_v("wxid_bob", 7, 0).unwrap());
         while back.len() < 60 {
             let last = &all[back.len() - 1];
