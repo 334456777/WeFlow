@@ -9,7 +9,7 @@ mod i18n;
 mod serve_api;
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
-use weflow_core::config::{old_electron_config_candidates, AppContext, ConfigStore};
+use weflow_core::config::{AppContext, ConfigStore};
 use weflow_core::contract::{
     ExportWritten, MessagesBundle, MessagesFolder, MessagesZip, PlannedRemoval, RemovalPlan,
 };
@@ -313,7 +313,7 @@ enum ConfigSubcommand {
     /// Set a key
     Set {
         #[arg(
-            help = "Key name; `<profile>.<key>` (for example `work.wxid`) sets a key of another profile\n  db_path                  WeChat data directory (`db detect` finds it)\n  wxid                     Account wxid (`db wxid` prints it)\n  decrypt_key              Database key in hex (`key db` prints it)\n  image_xor_key            Image XOR key, a number (`key image` prints it)\n  image_aes_key            Image AES key (`key image` prints it)\n  cache_path               Folder for cached images, voices, stickers and Moments (default: `cache` next to the config file)\n  http_api_token           Access token of the HTTP API (`serve`)\n  http_api_host            Listen address of `serve --desktop` (default 127.0.0.1)\n  http_api_port            Listen port of `serve --desktop` (default 5031)\n  ai_model_api_base_url    Base URL of the AI model API used by `insight`\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  log_enabled              true or false; kept for the desktop app, the CLI does not read it\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears (default 5; 0 = always)\nSettings of the config file itself (stored in that file, not in a profile; each config file has its own):\n  lang                     Output language, en or zh (the same as `weflow lang`)\n  current_profile          Active profile name, created when it does not exist (default: default)\nWhich config file is used (kept next to the default location, not in any config file):\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
+            help = "Key name; `<profile>.<key>` (for example `work.wxid`) sets a key of another profile\n  db_path                  WeChat data directory (`db detect` finds it)\n  wxid                     Account wxid (`db wxid` prints it)\n  decrypt_key              Database key in hex (`key db` prints it)\n  image_xor_key            Image XOR key, a number (`key image` prints it)\n  image_aes_key            Image AES key (`key image` prints it)\n  cache_path               Folder for cached images, voices, stickers and Moments (default: `cache` next to the config file)\n  http_api_token           Access token of the HTTP API (`serve`)\n  ai_model_api_base_url    Base URL of the AI model API used by `insight`\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears (default 5; 0 = always)\nSettings of the config file itself (stored in that file, not in a profile; each config file has its own):\n  lang                     Output language, en or zh (the same as `weflow lang`)\n  current_profile          Active profile name, created when it does not exist (default: default)\nWhich config file is used (kept next to the default location, not in any config file):\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
         )]
         key: String,
         /// Value to store
@@ -326,11 +326,6 @@ enum ConfigSubcommand {
     },
     /// Remove every key of the active profile
     Clear,
-    /// Import settings from the desktop app's config.json
-    Import {
-        /// Desktop app config.json (default: found in the usual locations)
-        path: Option<PathBuf>,
-    },
 }
 
 #[derive(Args, Debug)]
@@ -1419,22 +1414,16 @@ enum InsightSubcommand {
 
 #[derive(Args, Debug)]
 struct ServeCommand {
-    /// Serve the desktop app's HTTP API (`/api/v1/*`) instead of the command API
-    #[arg(long)]
-    desktop: bool,
-    /// Push new messages to HTTP clients (SSE; needs --desktop)
-    #[arg(long)]
-    message_push: bool,
     /// Run the AI insight engine
     #[arg(long)]
     insight: bool,
     /// Run the image auto-download hook (Windows only)
     #[arg(long)]
     image_auto_download: bool,
-    /// Listen address (default: 127.0.0.1; with --desktop: `http_api_host` from the config, else 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
+    /// Listen address (default: 127.0.0.1). On a loopback address the command API only answers requests to localhost, 127.0.0.1 or [::1].
     #[arg(long)]
     host: Option<String>,
-    /// Listen port (default: 18108; with --desktop: `http_api_port` from the config, else 5031).
+    /// Listen port (default: 18108).
     #[arg(long)]
     port: Option<u16>,
     /// Access token for the HTTP API (default: `http_api_token` from the config; without one the command API makes one up for each run).
@@ -2446,7 +2435,7 @@ fn handle_config(
     ctx: &AppContext,
     config: &mut ConfigStore,
 ) -> AppResult<Value> {
-    use weflow_core::contract::{ConfigImported, ConfigWritten};
+    use weflow_core::contract::ConfigWritten;
     let written = |config_path: Option<PathBuf>| json!(ConfigWritten { config_path });
     match command.command {
         ConfigSubcommand::Path => Ok(json!(ctx.config_path.to_string_lossy())),
@@ -2496,26 +2485,6 @@ fn handle_config(
                 Ok(())
             })?;
             Ok(written(Some(ctx.config_path.clone())))
-        }
-        ConfigSubcommand::Import { path } => {
-            let path = path.or_else(|| {
-                old_electron_config_candidates()
-                    .into_iter()
-                    .find(|candidate| candidate.exists())
-            });
-            let path = path.ok_or_else(|| {
-                AppError::config("old Electron config not found; pass an explicit path")
-            })?;
-            let skipped = ConfigStore::update(&ctx.config_path, |config| {
-                config
-                    .import_electron_config(&path, None)
-                    .map_err(|err| AppError::config(err.to_string()))
-            })?;
-            Ok(json!(ConfigImported {
-                imported_from: path,
-                config_path: ctx.config_path.clone(),
-                skipped_encrypted_keys: skipped,
-            }))
         }
     }
 }
@@ -3700,32 +3669,11 @@ fn open_in_browser(url: &str) {
         .spawn();
 }
 
-/// `serve` runs the command API (every CLI command over HTTP, see `serve_api`) or, with `--desktop`, the desktop
-/// app's HTTP API, next to the optional insight and image auto-download services.
+/// `serve` runs the command API (every CLI command over HTTP, see `serve_api`), next to the optional insight and image
+/// auto-download services.
 async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::sync::RwLockExt;
-    if command.message_push && !command.desktop {
-        return Err(AppError::usage("--message-push needs --desktop"));
-    }
-    if command.desktop
-        && (command.max_tasks.is_some()
-            || command.max_reads.is_some()
-            || command.max_media.is_some()
-            || command.log_requests
-            || command.ui_dir.is_some()
-            || command.no_browser
-            || command.web_version.is_some()
-            || command.api_only)
-    {
-        return Err(AppError::usage(
-            "--max-tasks, --max-reads, --max-media, --log-requests, --ui-dir, --no-browser, --web-version and --api-only are for the command API, not --desktop",
-        ));
-    }
-    let (ui, fetch) = if command.desktop {
-        (None, None)
-    } else {
-        serve_webui(&command, hub).await?
-    };
+    let (ui, fetch) = serve_webui(&command, hub).await?;
     let ui = std::sync::Arc::new(std::sync::RwLock::new(ui));
 
     let cfg_str = |key: &str| {
@@ -3735,29 +3683,14 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    let host = command.host.unwrap_or_else(|| {
-        if command.desktop {
-            cfg_str("httpApiHost").unwrap_or_else(|| "127.0.0.1".into())
-        } else {
-            "127.0.0.1".into()
-        }
-    });
-    let port = command.port.unwrap_or_else(|| {
-        if command.desktop {
-            hub.config_value("httpApiPort")
-                .as_u64()
-                .and_then(|p| u16::try_from(p).ok())
-                .unwrap_or(5031)
-        } else {
-            serve_api::DEFAULT_PORT
-        }
-    });
+    let host = command.host.unwrap_or_else(|| "127.0.0.1".into());
+    let port = command.port.unwrap_or(serve_api::DEFAULT_PORT);
     let token = command
         .api_token
         .clone()
         .or_else(|| cfg_str("httpApiToken"));
-    // without a configured token the command API makes one up; the desktop API refuses every request instead
-    let generated_token = (!command.desktop && token.is_none()).then(serve_api::generate_token);
+    // without a configured token the command API makes one up
+    let generated_token = token.is_none().then(serve_api::generate_token);
     let addr = format!("{host}:{port}")
         .parse::<std::net::SocketAddr>()
         .map_err(|err| AppError::usage(format!("invalid listen address: {err}")))?;
@@ -3797,48 +3730,22 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
         spawn_insight_engine(hub.clone(), insight_stop.clone());
     }
 
-    let broker = weflow_core::push::PushBroker::new();
-    if command.message_push {
-        let hub = hub.clone();
-        let broker = broker.clone();
-        std::thread::spawn(move || {
-            let channel = weflow_core::push::EventChannel::new(256);
-            let mut rx = channel.subscribe();
-            let sender = channel.sender();
-            let forward = {
-                let broker = broker.clone();
-                std::thread::spawn(move || {
-                    while let Ok(payload) = rx.blocking_recv() {
-                        broker.broadcast(&payload);
-                    }
-                })
-            };
-            weflow_core::push::message_push_loop(hub, sender, 5);
-            let _ = forward.join();
-        });
-    }
-
     // files returned by an earlier run of the command API are not needed any more
     let files_dir = hub.serve_files_dir();
-    if !command.desktop {
-        if let Err(err) = std::fs::remove_dir_all(&files_dir) {
-            if err.kind() != std::io::ErrorKind::NotFound {
-                eprintln!(
-                    "{}{}: {err}",
-                    weflow_core::locale::tr("warning: cannot clear ", "警告：无法清空 "),
-                    files_dir.display()
-                );
-            }
+    if let Err(err) = std::fs::remove_dir_all(&files_dir) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "{}{}: {err}",
+                weflow_core::locale::tr("warning: cannot clear ", "警告：无法清空 "),
+                files_dir.display()
+            );
         }
     }
 
     let mut started = json!({
         "type": "server_started",
         "url": format!("http://{bound}"),
-        "api": !command.desktop,
-        "desktop": command.desktop,
         "tokenConfigured": token.is_some(),
-        "messagePush": command.message_push,
         "insight": command.insight,
         "imageAutoDownload": command.image_auto_download
     });
@@ -3866,17 +3773,15 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
         .read_or_panic()
         .as_ref()
         .map(|ui| ui.version().map(str::to_string));
-    if !command.desktop {
-        started["ui"] = json!(shown.is_some());
-        if let Some(version) = &shown {
-            started["uiUrl"] = json!(page_url);
-            if let Some(version) = version {
-                started["uiVersion"] = json!(version);
-            }
+    started["ui"] = json!(shown.is_some());
+    if let Some(version) = &shown {
+        started["uiUrl"] = json!(page_url);
+        if let Some(version) = version {
+            started["uiVersion"] = json!(version);
         }
-        if let Some(version) = &fetch {
-            started["uiDownloading"] = json!(version);
-        }
+    }
+    if let Some(version) = &fetch {
+        started["uiDownloading"] = json!(version);
     }
     weflow_core::output::event(started);
     let browse = !command.no_browser && std::io::IsTerminal::is_terminal(&std::io::stderr());
@@ -3917,16 +3822,7 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
             }
         });
     }
-    if command.desktop && token.is_none() {
-        eprintln!(
-            "{}",
-            weflow_core::locale::tr(
-                "warning: no HTTP API token configured; every request except /health will be refused (set http_api_token or pass --api-token)",
-                "警告：未配置 HTTP API 令牌；除 /health 外的所有请求都会被拒绝（请设置 http_api_token 或传入 --api-token）"
-            )
-        );
-    }
-    if !command.desktop && !bound.ip().is_loopback() {
+    if !bound.ip().is_loopback() {
         eprintln!(
             "{}",
             weflow_core::locale::tr(
@@ -3937,16 +3833,7 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
     }
     let farewell = serve_api::Farewell::default();
     let server = async {
-        let stopped = if command.desktop {
-            let cfg = weflow_core::http_server::HttpConfig {
-                host,
-                port: bound.port(),
-                token,
-                push_enabled: command.message_push
-                    || hub.config_value("messagePushEnabled").as_bool() == Some(true),
-            };
-            weflow_core::http_server::serve(hub.clone(), cfg, broker, listener).await
-        } else {
+        let stopped = {
             let cfg = serve_api::ApiConfig {
                 check_host: bound.ip().is_loopback(),
                 exe,
@@ -4223,7 +4110,6 @@ enum Summary {
     Cache(CacheShown),
     /// `config set`, `unset` and `clear`, which succeed silently: the config file path is not news.
     ConfigSaved,
-    ConfigImported,
     DbDetect,
     DbWxid,
     Key(KeyShown),
@@ -4251,13 +4137,12 @@ impl Summary {
                     CacheShown::Cleared
                 }
             }),
-            Commands::Config(ConfigCommand { command }) => match command {
-                ConfigSubcommand::Set { .. }
-                | ConfigSubcommand::Unset { .. }
-                | ConfigSubcommand::Clear => Self::ConfigSaved,
-                ConfigSubcommand::Import { .. } => Self::ConfigImported,
-                _ => return None,
-            },
+            Commands::Config(ConfigCommand {
+                command:
+                    ConfigSubcommand::Set { .. }
+                    | ConfigSubcommand::Unset { .. }
+                    | ConfigSubcommand::Clear,
+            }) => Self::ConfigSaved,
             Commands::Db(DbCommand { command }) => match command {
                 DbSubcommand::Detect => Self::DbDetect,
                 DbSubcommand::Wxid { .. } => Self::DbWxid,
@@ -4279,11 +4164,6 @@ fn key_summary(summary: Summary, data: &Value) -> Option<String> {
     match summary {
         Summary::Cache(shown) => cache_summary(shown, data),
         Summary::ConfigSaved => Some(String::new()),
-        Summary::ConfigImported => {
-            let mut shown = data.clone();
-            shown.as_object_mut()?.remove("configPath");
-            Some(weflow_core::render::render(&shown))
-        }
         Summary::DbDetect => {
             // only the directories that exist, named like the setting that takes them
             let found: Vec<&str> = data["candidates"]

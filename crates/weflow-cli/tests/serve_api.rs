@@ -578,7 +578,6 @@ fn a_token_is_made_up_when_none_is_configured() {
     let _ = child.kill();
     let _ = child.wait();
     assert_eq!(event["tokenConfigured"], false);
-    assert_eq!(event["api"], true);
     assert_eq!(event["generatedToken"].as_str().unwrap().len(), 32);
 }
 
@@ -649,7 +648,7 @@ fn commands_answer_like_the_terminal() {
     for path in ["/nope", "/serve", "/config", "/"] {
         assert_eq!(server.call("GET", path, "").status, 404, "{path}");
     }
-    let r = server.call("POST", "/config/import", "[1]");
+    let r = server.call("PUT", "/config/set", "[1]");
     assert_eq!(r.status, 400);
 }
 
@@ -2882,29 +2881,6 @@ fn a_missing_account_is_a_conflict() {
     let r = server.call("GET", "/chat/sessions", "");
     assert_eq!(r.status, 409, "{}", r.body);
     assert_eq!(r.json()["error"]["code"], "config_error");
-}
-
-#[test]
-fn desktop_mode_serves_the_desktop_api() {
-    let root = temp_root("desktop");
-    let server = start(&root, &["--desktop", "--api-token", TOKEN]);
-    let r = server.call("GET", "/api/v1/health", "");
-    assert_eq!((r.status, r.json()), (200, json!({ "status": "ok" })));
-    // the command API is not there
-    assert_eq!(server.call("GET", "/config/path", "").status, 404);
-
-    let (exit, stdout, _) = run_cli(&root, &["--json", "serve", "--message-push"]);
-    assert_eq!(exit, 2);
-    assert!(stdout.contains("--desktop"), "{stdout}");
-    // the old name of --desktop is gone
-    let (exit, _, _) = run_cli(&root, &["--json", "serve", "--http"]);
-    assert_eq!(exit, 2);
-    // the limits are for the command API only
-    let (exit, stdout, _) = run_cli(&root, &["--json", "serve", "--desktop", "--max-tasks", "2"]);
-    assert_eq!(exit, 2);
-    assert!(stdout.contains("--max-tasks"), "{stdout}");
-    let (exit, _, _) = run_cli(&root, &["--json", "serve", "--max-reads", "0"]);
-    assert_eq!(exit, 2);
 }
 
 /// The events of a server-sent event stream: (name, data).

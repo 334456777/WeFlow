@@ -612,7 +612,7 @@ pub(super) fn contract() -> &'static Contract {
         data.insert("cache list", of(generator.subschema_for::<Vec<CacheUsage>>()));
         {
             use weflow_core::contract::{
-                AccountCleared, CacheCleared, Cancelled, ConfigImported, ConfigWritten, LangSaved, RemovalPlan,
+                AccountCleared, CacheCleared, Cancelled, ConfigWritten, LangSaved, RemovalPlan,
             };
             let plan = of(generator.subschema_for::<RemovalPlan>());
             let cancelled = of(generator.subschema_for::<Cancelled>());
@@ -633,7 +633,6 @@ pub(super) fn contract() -> &'static Contract {
             for command in ["config set", "config unset", "config clear"] {
                 data.insert(command, of(generator.subschema_for::<ConfigWritten>()));
             }
-            data.insert("config import", of(generator.subschema_for::<ConfigImported>()));
             data.insert("config list", of(generator.subschema_for::<weflow_core::config::ConfigStore>()));
             data.insert(
                 "config path",

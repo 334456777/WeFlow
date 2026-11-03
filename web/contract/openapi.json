@@ -1900,46 +1900,6 @@
         }
       }
     },
-    "/config/import": {
-      "get": {
-        "operationId": "api_config_import",
-        "x-weflow-command": "config import",
-        "responses": {
-          "200": {
-            "description": "Its `--json` document",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "data"
-                  ],
-                  "properties": {
-                    "success": {
-                      "const": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/ConfigImported"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/config/list": {
       "get": {
         "operationId": "api_config_list",
@@ -8291,30 +8251,6 @@
         ],
         "description": "The config file a `config` change was written to."
       },
-      "ConfigImported": {
-        "type": "object",
-        "properties": {
-          "importedFrom": {
-            "type": "string"
-          },
-          "configPath": {
-            "type": "string"
-          },
-          "skippedEncryptedKeys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "The keys left out because the desktop app keeps them encrypted."
-          }
-        },
-        "required": [
-          "importedFrom",
-          "configPath",
-          "skippedEncryptedKeys"
-        ],
-        "description": "What `config import` took from the desktop app's config."
-      },
       "ConfigStore": {
         "type": "object",
         "properties": {
@@ -8351,10 +8287,7 @@
                 "image_xor_key": null,
                 "image_aes_key": null,
                 "cache_path": null,
-                "log_enabled": false,
                 "http_api_token": null,
-                "http_api_host": null,
-                "http_api_port": null,
                 "ai_model_api_base_url": null,
                 "ai_model_api_key": null,
                 "ai_model_api_model": null,
@@ -8425,32 +8358,11 @@
             ],
             "default": null
           },
-          "log_enabled": {
-            "type": "boolean",
-            "default": false
-          },
           "http_api_token": {
             "type": [
               "string",
               "null"
             ],
-            "default": null
-          },
-          "http_api_host": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "default": null
-          },
-          "http_api_port": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint16",
-            "minimum": 0,
-            "maximum": 65535,
             "default": null
           },
           "ai_model_api_base_url": {
@@ -8503,10 +8415,7 @@
           "image_xor_key",
           "image_aes_key",
           "cache_path",
-          "log_enabled",
           "http_api_token",
-          "http_api_host",
-          "http_api_port",
           "ai_model_api_base_url",
           "ai_model_api_key",
           "ai_model_api_model",

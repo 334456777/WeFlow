@@ -1,7 +1,5 @@
-//! Message push (`electron/services/messagePushService.ts`).
-//!
-//! The desktop app reacts to WCDB database-change notifications; the CLI has no such callback,
-//! so `message_push_loop` runs the same session-diff / revoke-detection pass on a timer.
+//! Message push: [`PushEngine`] finds new and revoked messages by comparing the sessions on each pass, and
+//! [`PushBroker`] numbers the events and replays them to clients that reconnect.
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -13,25 +11,6 @@ use crate::chat_msg::{self, ChatMessage};
 use crate::message::rx;
 use crate::services::ServiceHub;
 use crate::sync::MutexExt;
-
-pub struct EventChannel {
-    sender: broadcast::Sender<Value>,
-}
-
-impl EventChannel {
-    pub fn new(capacity: usize) -> Self {
-        let (sender, _) = broadcast::channel(capacity);
-        Self { sender }
-    }
-
-    pub fn sender(&self) -> broadcast::Sender<Value> {
-        self.sender.clone()
-    }
-
-    pub fn subscribe(&self) -> broadcast::Receiver<Value> {
-        self.sender.subscribe()
-    }
-}
 
 const LOOKBACK_SECONDS: i64 = 2;
 const RECENT_TTL: Duration = Duration::from_secs(10 * 60);
@@ -1255,22 +1234,6 @@ impl PushBroker {
             .filter(|(id, _, _)| last_id == 0 || *id > last_id)
             .map(|(id, body, _)| (*id, body.clone()))
             .collect()
-    }
-}
-
-/// Polls like the desktop app's debounced change handler and broadcasts each payload.
-pub fn message_push_loop(hub: ServiceHub, sender: broadcast::Sender<Value>, interval_secs: u64) {
-    let mut engine = PushEngine::new(hub);
-    let mut attempts = 0;
-    while !engine.bootstrap() && attempts < 3 {
-        attempts += 1;
-        std::thread::sleep(Duration::from_secs(interval_secs));
-    }
-    loop {
-        std::thread::sleep(Duration::from_secs(interval_secs));
-        for payload in engine.flush(true) {
-            let _ = sender.send(payload);
-        }
     }
 }
 

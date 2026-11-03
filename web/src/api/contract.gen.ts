@@ -1150,14 +1150,6 @@ export interface ConfigWritten {
   configPath: string | null;
 }
 
-/** What `config import` took from the desktop app's config. */
-export interface ConfigImported {
-  importedFrom: string;
-  configPath: string;
-  /** The keys left out because the desktop app keeps them encrypted. */
-  skippedEncryptedKeys: string[];
-}
-
 /** WeFlow's config file (`config list`): the profiles and the settings shared by all of them. */
 export interface ConfigStore {
   current_profile: string;
@@ -1177,10 +1169,7 @@ export interface ProfileConfig {
   image_xor_key: number | null;
   image_aes_key: string | null;
   cache_path: string | null;
-  log_enabled: boolean;
   http_api_token: string | null;
-  http_api_host: string | null;
-  http_api_port: number | null;
   ai_model_api_base_url: string | null;
   ai_model_api_key: string | null;
   ai_model_api_model: string | null;
@@ -2167,7 +2156,6 @@ export interface Answers {
   "chat voice-messages": VoiceMessages;
   "chat voice-preload": VoicesPrepared;
   "config clear": ConfigWritten;
-  "config import": ConfigImported;
   "config list": ConfigStore;
   /** Where the config file is */
   "config path": string;

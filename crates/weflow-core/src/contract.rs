@@ -2070,16 +2070,6 @@ pub struct ConfigWritten {
     pub config_path: Option<PathBuf>,
 }
 
-/// What `config import` took from the desktop app's config.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfigImported {
-    pub imported_from: PathBuf,
-    pub config_path: PathBuf,
-    /// The keys left out because the desktop app keeps them encrypted.
-    pub skipped_encrypted_keys: Vec<String>,
-}
-
 /// The language `weflow lang` saved: `en` or `zh`.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct LangSaved {
