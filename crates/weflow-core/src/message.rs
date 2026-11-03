@@ -21,7 +21,7 @@ thread_local! {
 
 /// Compile (and cache) a regex. Patterns here are static or escaped, so failure is a bug.
 ///
-/// The cache hands out a shared  on purpose:  gives the clone a brand-new
+/// The cache hands out a shared `Rc<Regex>` on purpose: `Regex::clone` gives the clone a brand-new
 /// (cold) search cache, which made every call re-run the lazy DFA construction and dominated exports.
 pub fn rx(pattern: &str) -> Rc<Regex> {
     RX_CACHE.with(|cache| {
@@ -60,6 +60,11 @@ fn strip_cdata(c: &str) -> String {
 }
 
 pub fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
+    if !tag.is_empty() && tag.is_ascii() && !attr.is_empty() && attr.is_ascii() {
+        return crate::xml::attribute(xml, tag, attr)
+            .unwrap_or_default()
+            .to_string();
+    }
     let re = rx(&format!(
         r#"(?i)<{}\s+[^>]*{}\s*=\s*"([^"]*)""#,
         regex::escape(tag),
@@ -71,15 +76,22 @@ pub fn extract_xml_attribute(xml: &str, tag: &str, attr: &str) -> String {
 }
 
 pub fn decode_html_entities(text: &str) -> String {
-    if text.is_empty() {
-        return String::new();
+    decode_html_entities_cow(text).into_owned()
+}
+
+/// [`decode_html_entities`] without a copy when there is no `&`.
+fn decode_html_entities_cow(text: &str) -> std::borrow::Cow<'_, str> {
+    if memchr::memchr(b'&', text.as_bytes()).is_none() {
+        return std::borrow::Cow::Borrowed(text);
     }
-    text.replace("&lt;", "<")
+    let decoded = text
+        .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&amp;", "&")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
-        .replace("&apos;", "'")
+        .replace("&apos;", "'");
+    std::borrow::Cow::Owned(decoded)
 }
 
 pub fn normalize_app_message_content(content: &str) -> String {
@@ -90,7 +102,8 @@ pub fn normalize_app_message_content(content: &str) -> String {
 fn normalize_app_message_cow(content: &str) -> std::borrow::Cow<'_, str> {
     use crate::xml::replace_cow;
     use std::borrow::Cow;
-    if content.contains("&lt;") && content.contains("&gt;") {
+    let has = |entity: &str| memchr::memmem::find(content.as_bytes(), entity.as_bytes()).is_some();
+    if has("&lt;") && has("&gt;") {
         let s = replace_cow(Cow::Borrowed(content), "&lt;", "<");
         let s = replace_cow(s, "&gt;", ">");
         let s = replace_cow(s, "&amp;", "&");
@@ -102,18 +115,36 @@ fn normalize_app_message_cow(content: &str) -> std::borrow::Cow<'_, str> {
 
 /// Strip a leading `wxid_xxx:` sender prefix (but not `http://`).
 pub fn strip_sender_prefix(content: &str) -> String {
+    content[sender_prefix_len(content)..].to_string()
+}
+
+/// Length of the sender prefix [`strip_sender_prefix`] removes: `^\s*([A-Za-z0-9_-]+):(\r?\n|)`, or 0.
+fn sender_prefix_len(content: &str) -> usize {
     // 数据库里的群消息是 "wxid:\n正文"；同一行的 "1:3-1:6" 这类是正文本身，不能当作前缀去掉。
-    let re = rx(r"^\s*([A-Za-z0-9_-]+):(\r?\n|)");
-    if let Some(c) = re.captures(content) {
-        let whole = c.get_match();
-        let name = &c[1];
-        let has_newline = !c[2].is_empty();
-        let looks_like_id = name.starts_with("wxid_") || name.starts_with("gh_");
-        if (has_newline || looks_like_id) && !content[whole.end()..].starts_with("//") {
-            return content[whole.end()..].to_string();
-        }
+    let h = content.as_bytes();
+    let start = crate::xml::skip_ws(content, 0);
+    let name_len = h[start..]
+        .iter()
+        .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        .count();
+    let colon = start + name_len;
+    if name_len == 0 || h.get(colon) != Some(&b':') {
+        return 0;
     }
-    content.to_string()
+    let rest = &h[colon + 1..];
+    let newline = if rest.starts_with(b"\r\n") {
+        2
+    } else {
+        usize::from(rest.starts_with(b"\n"))
+    };
+    let end = colon + 1 + newline;
+    let name = &content[start..colon];
+    let looks_like_id = name.starts_with("wxid_") || name.starts_with("gh_");
+    if (newline > 0 || looks_like_id) && !content[end..].starts_with("//") {
+        end
+    } else {
+        0
+    }
 }
 
 pub fn extract_app_message_type(content: &str) -> String {
@@ -483,8 +514,8 @@ pub fn is_readable_system_message(local_type: i64, content: &str) -> bool {
     if local_type == 10000 {
         return true;
     }
-    let normalized = normalize_app_message_content(content);
-    rx(r"(?i)<sysmsg\b").is_match(&strip_sender_prefix(&normalized))
+    let normalized = normalize_app_message_cow(content);
+    crate::xml::has_open(&normalized[sender_prefix_len(&normalized)..], "sysmsg")
 }
 
 pub fn clean_system_message(content: &str) -> String {
@@ -540,10 +571,9 @@ pub fn extract_readable_system_message_text(content: &str) -> String {
     }
     let normalized = normalize_app_message_content(content);
     let stripped = strip_sender_prefix(&normalized);
-    let source = rx(r"(?is)<sysmsg\b[^>]*>(.*?)</sysmsg>")
-        .captures(&stripped)
-        .map(|c| c[1].to_string())
-        .unwrap_or_else(|| normalized.clone());
+    let source = crate::xml::elements(&stripped, "sysmsg")
+        .next()
+        .map_or_else(|| normalized.clone(), |(_, body)| body.to_string());
     let mut text = extract_xml_value(&source, "plain");
     if text.is_empty() {
         text = extract_xml_value(&source, "text");
@@ -719,39 +749,107 @@ pub fn extract_loose_hex_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    let keyed =
-        rx(r"(?i)(?:emoji|sticker|md5)[^a-fA-F0-9]{0,32}([a-fA-F0-9]{32})").captures(content);
-    if let Some(c) = keyed {
-        return normalize_md5(&c[1]);
+    // `(?i)(?:emoji|sticker|md5)[^a-fA-F0-9]{0,32}([a-fA-F0-9]{32})`: the leftmost keyword that has one
+    let keyed = ["emoji", "sticker", "md5"]
+        .into_iter()
+        .filter_map(|key| {
+            crate::xml::find_all_ci(content, 0, key)
+                .find_map(|p| hex32_after_gap(content, p + key.len()).map(|hex| (p, hex)))
+        })
+        .min_by_key(|(p, _)| *p);
+    if let Some((_, hex)) = keyed {
+        return normalize_md5(hex);
     }
-    rx(r"(?i)([a-fA-F0-9]{32})")
-        .captures(content)
-        .and_then(|c| normalize_md5(&c[1]))
+    first_hex32(content).and_then(normalize_md5)
+}
+
+/// Whether `n` hex digits start at `i`.
+fn hex_at(h: &[u8], i: usize, n: usize) -> bool {
+    h.get(i..i + n)
+        .is_some_and(|w| w.iter().all(u8::is_ascii_hexdigit))
+}
+
+/// `[^a-fA-F0-9]{0,32}([a-fA-F0-9]{32})` at `i`.
+fn hex32_after_gap(s: &str, i: usize) -> Option<&str> {
+    let (_, (offset, _)) = s[i..]
+        .char_indices()
+        .enumerate()
+        .take(33)
+        .find(|(_, (_, c))| c.is_ascii_hexdigit())?;
+    let start = i + offset;
+    hex_at(s.as_bytes(), start, 32).then(|| &s[start..start + 32])
+}
+
+/// `([a-fA-F0-9]{32})`: the first 32 hex digits in a row.
+fn first_hex32(s: &str) -> Option<&str> {
+    let mut run = 0;
+    for (i, b) in s.bytes().enumerate() {
+        run = if b.is_ascii_hexdigit() { run + 1 } else { 0 };
+        if run == 32 {
+            return Some(&s[i + 1 - 32..=i]);
+        }
+    }
+    None
 }
 
 pub fn extract_emoji_url(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    if let Some(c) = rx(r#"(?i)cdnurl\s*=\s*['"]([^'"]+)['"]"#).captures(content) {
-        let url = c[1].replace("&amp;", "&");
-        return Some(percent_decode(&url));
+    let h = content.as_bytes();
+    // `(?i)cdnurl\s*=\s*['"]([^'"]+)['"]`
+    let quoted = crate::xml::find_all_ci(content, 0, "cdnurl").find_map(|p| {
+        let quote = crate::xml::assignment_end(content, p + "cdnurl".len())?;
+        if !matches!(h.get(quote), Some(b'\'' | b'"')) {
+            return None;
+        }
+        let start = quote + 1;
+        let end = start + h[start..].iter().position(|b| matches!(b, b'\'' | b'"'))?;
+        (end > start).then(|| &content[start..end])
+    });
+    if let Some(url) = quoted {
+        return Some(percent_decode(&url.replace("&amp;", "&")));
     }
-    rx(r"(?i)cdnurl[^>]*>([^<]+)")
-        .captures(content)
-        .map(|c| c[1].to_string())
+    // `(?i)cdnurl[^>]*>([^<]+)`
+    crate::xml::find_all_ci(content, 0, "cdnurl").find_map(|p| {
+        let start = p + 1 + memchr::memchr(b'>', &h[p..])?;
+        let end = memchr::memchr(b'<', &h[start..]).map_or(h.len(), |r| start + r);
+        (end > start).then(|| content[start..end].to_string())
+    })
 }
 
 pub fn extract_emoji_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    let found = rx(r#"(?i)md5\s*=\s*['"]([a-fA-F0-9]{32})['"]"#)
-        .captures(content)
-        .or_else(|| rx(r"(?i)md5\s*=\s*([a-fA-F0-9]{32})").captures(content))
-        .or_else(|| rx(r"(?i)<md5>([a-fA-F0-9]{32})</md5>").captures(content));
+    let h = content.as_bytes();
+    let assigned = || {
+        crate::xml::find_all_ci(content, 0, "md5")
+            .filter_map(|p| crate::xml::assignment_end(content, p + "md5".len()))
+    };
+    // `(?i)md5\s*=\s*['"]([a-fA-F0-9]{32})['"]`
+    let found = assigned()
+        .find(|&q| {
+            matches!(h.get(q), Some(b'\'' | b'"'))
+                && hex_at(h, q + 1, 32)
+                && matches!(h.get(q + 33), Some(b'\'' | b'"'))
+        })
+        .map(|q| &content[q + 1..q + 33])
+        // `(?i)md5\s*=\s*([a-fA-F0-9]{32})`
+        .or_else(|| {
+            assigned()
+                .find(|&q| hex_at(h, q, 32))
+                .map(|q| &content[q..q + 32])
+        })
+        // `(?i)<md5>([a-fA-F0-9]{32})</md5>`
+        .or_else(|| {
+            crate::xml::find_all_ci(content, 0, "<md5>")
+                .map(|p| p + "<md5>".len())
+                .find(|&q| hex_at(h, q, 32) && crate::xml::is_close_at(h, q + 32, b"md5"))
+                .map(|q| &content[q..q + 32])
+        });
     found
-        .and_then(|c| normalize_md5(&c[1]))
+        .and_then(normalize_md5)
         .or_else(|| extract_loose_hex_md5(content))
 }
 
@@ -875,26 +973,18 @@ pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
 }
 
 pub fn extract_image_md5(content: &str) -> Option<String> {
-    let attr = rx(r#"(?i)<img[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content);
-    if let Some(c) = attr {
-        return Some(c[1].to_lowercase());
-    }
-    rx(r"(?i)<md5>([^<]+)</md5>")
-        .captures(content)
-        .map(|c| c[1].to_lowercase())
+    crate::xml::spaced_hex_attribute(content, "<img", "md5")
+        .map(str::to_ascii_lowercase)
+        .or_else(|| crate::xml::text_inner(content, "md5").map(str::to_lowercase))
 }
 
 pub fn extract_video_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;
     }
-    if let Some(c) = rx(r#"(?i)<videomsg[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#).captures(content)
-    {
-        return Some(c[1].to_lowercase());
-    }
-    rx(r"(?i)<md5>([^<]+)</md5>")
-        .captures(content)
-        .map(|c| c[1].to_lowercase())
+    crate::xml::spaced_hex_attribute(content, "<videomsg", "md5")
+        .map(str::to_ascii_lowercase)
+        .or_else(|| crate::xml::text_inner(content, "md5").map(str::to_lowercase))
 }
 
 pub struct FileMeta {
@@ -1040,7 +1130,7 @@ fn location_text(content: &str) -> String {
 // ─────────────────────────── forward chat records ───────────────────────────
 
 pub fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
-    let normalized = normalize_app_message_content(content);
+    let normalized = normalize_app_message_cow(content);
     let app_type = extract_app_message_type(&normalized);
     if app_type != "19" && !normalized.contains("<recorditem") {
         return None;
@@ -1057,8 +1147,8 @@ pub fn parse_chat_history(content: &str) -> Option<Vec<ForwardRecord>> {
             r.datatitle.clone().unwrap_or_default()
         )
     };
-    for c in rx(r"(?is)<recorditem>(.*?)</recorditem>").captures_iter(&normalized) {
-        for item in parse_forward_container(&c[1]) {
+    for record in crate::xml::tag_inners(&normalized, "recorditem") {
+        for item in parse_forward_container(record) {
             if seen.insert(dedupe_key(&item)) {
                 items.push(item);
             }
@@ -1082,16 +1172,15 @@ fn parse_forward_container(container: &str) -> Vec<ForwardRecord> {
     if container.is_empty() {
         return Vec::new();
     }
-    let mut segments: Vec<String> = vec![container.to_string()];
-    let decoded = decode_html_entities(container);
+    let mut segments = vec![std::borrow::Cow::Borrowed(container)];
+    let decoded = decode_html_entities_cow(container);
     if decoded != container {
         segments.push(decoded);
     }
-    for c in rx(r"(?s)<!\[CDATA\[(.*?)\]\]>").captures_iter(container) {
-        let inner = c[1].to_string();
+    for inner in crate::xml::between(container, "<![CDATA[", "]]>") {
         if !inner.is_empty() {
-            let decoded_inner = decode_html_entities(&inner);
-            segments.push(inner.clone());
+            let decoded_inner = decode_html_entities_cow(inner);
+            segments.push(std::borrow::Cow::Borrowed(inner));
             if decoded_inner != inner {
                 segments.push(decoded_inner);
             }
@@ -1103,8 +1192,8 @@ fn parse_forward_container(container: &str) -> Vec<ForwardRecord> {
         if seg.is_empty() {
             continue;
         }
-        for c in rx(r"(?is)<dataitem\b([^>]*)>(.*?)</dataitem>").captures_iter(seg) {
-            if let Some(parsed) = parse_forward_data_item(&c[2], &c[1]) {
+        for (attrs, body) in crate::xml::elements(seg, "dataitem") {
+            if let Some(parsed) = parse_forward_data_item(body, attrs) {
                 let key = format!(
                     "{}|{}|{}|{}|{}",
                     parsed.datatype,
@@ -3014,5 +3103,316 @@ mod tests {
             "%ff",
             "invalid UTF-8 keeps the input"
         );
+    }
+
+    /// The regexes the XML scanners replace, kept as the reference they must agree with.
+    mod regex_reference {
+        use super::super::{normalize_app_message_content, normalize_md5, percent_decode, rx};
+
+        pub fn attribute(xml: &str, tag: &str, attr: &str) -> String {
+            rx(&format!(
+                r#"(?i)<{}\s+[^>]*{}\s*=\s*"([^"]*)""#,
+                regex::escape(tag),
+                regex::escape(attr)
+            ))
+            .captures(xml)
+            .map(|c| c[1].to_string())
+            .unwrap_or_default()
+        }
+
+        pub fn strip_sender_prefix(content: &str) -> String {
+            let re = rx(r"^\s*([A-Za-z0-9_-]+):(\r?\n|)");
+            if let Some(c) = re.captures(content) {
+                let whole = c.get_match();
+                let looks_like_id = c[1].starts_with("wxid_") || c[1].starts_with("gh_");
+                if (!c[2].is_empty() || looks_like_id) && !content[whole.end()..].starts_with("//")
+                {
+                    return content[whole.end()..].to_string();
+                }
+            }
+            content.to_string()
+        }
+
+        pub fn is_readable_system_message(content: &str) -> bool {
+            let normalized = normalize_app_message_content(content);
+            rx(r"(?i)<sysmsg\b").is_match(&strip_sender_prefix(&normalized))
+        }
+
+        pub fn sysmsg_body(content: &str) -> Option<String> {
+            rx(r"(?is)<sysmsg\b[^>]*>(.*?)</sysmsg>")
+                .captures(content)
+                .map(|c| c[1].to_string())
+        }
+
+        pub fn loose_hex_md5(content: &str) -> Option<String> {
+            rx(r"(?i)(?:emoji|sticker|md5)[^a-fA-F0-9]{0,32}([a-fA-F0-9]{32})")
+                .captures(content)
+                .or_else(|| rx(r"(?i)([a-fA-F0-9]{32})").captures(content))
+                .and_then(|c| normalize_md5(&c[1]))
+        }
+
+        pub fn emoji_url(content: &str) -> Option<String> {
+            if let Some(c) = rx(r#"(?i)cdnurl\s*=\s*['"]([^'"]+)['"]"#).captures(content) {
+                return Some(percent_decode(&c[1].replace("&amp;", "&")));
+            }
+            rx(r"(?i)cdnurl[^>]*>([^<]+)")
+                .captures(content)
+                .map(|c| c[1].to_string())
+        }
+
+        pub fn emoji_md5(content: &str) -> Option<String> {
+            rx(r#"(?i)md5\s*=\s*['"]([a-fA-F0-9]{32})['"]"#)
+                .captures(content)
+                .or_else(|| rx(r"(?i)md5\s*=\s*([a-fA-F0-9]{32})").captures(content))
+                .or_else(|| rx(r"(?i)<md5>([a-fA-F0-9]{32})</md5>").captures(content))
+                .and_then(|c| normalize_md5(&c[1]))
+        }
+
+        pub fn spaced_md5(content: &str, open: &str) -> Option<String> {
+            let attr = format!(r#"(?i){open}[^>]*\smd5\s*=\s*['"]([a-fA-F0-9]+)['"]"#);
+            if let Some(c) = rx(&attr).captures(content) {
+                return Some(c[1].to_lowercase());
+            }
+            rx(r"(?i)<md5>([^<]+)</md5>")
+                .captures(content)
+                .map(|c| c[1].to_lowercase())
+        }
+
+        pub fn all(re: &str, s: &str, group: usize) -> Vec<String> {
+            rx(re)
+                .captures_iter(s)
+                .map(|c| c[group].to_string())
+                .collect()
+        }
+    }
+
+    #[test]
+    fn xml_scanners_match_the_regexes_on_random_snippets() {
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
+        // `\u{3000}` is white space, `é` and the combining `\u{301}` are word characters (`\b`), `²` is not
+        const TOKENS: &[&str] = &[
+            "<img",
+            "<IMG ",
+            "<videomsg",
+            "<location",
+            "<appattach",
+            " md5",
+            "MD5",
+            "md5",
+            "cdnthumbmd5",
+            "=",
+            " = ",
+            "\"",
+            "'",
+            ">",
+            "<",
+            "/",
+            " ",
+            "\n",
+            "\r\n",
+            "\u{3000}",
+            "<md5>",
+            "</md5>",
+            "</MD5>",
+            "0123456789abcdef0123456789ABCDEF",
+            "deadbeef",
+            "x",
+            "X=",
+            "cdnurl",
+            "CdnUrl",
+            "&amp;",
+            "&lt;",
+            "&gt;",
+            "%41",
+            "emoji",
+            "sticker",
+            "中",
+            "é",
+            "\u{301}",
+            "²",
+            "<sysmsg",
+            "<SysMsg ",
+            "</sysmsg>",
+            "wxid_ab",
+            "gh_",
+            "a-b",
+            ":",
+            "//",
+            "<dataitem",
+            "</dataitem>",
+            "<recorditem>",
+            "</RecordItem>",
+            "<![CDATA[",
+            "]]>",
+            "_",
+            " md5=\"",
+            " x=\"",
+            "cdnurl=\"",
+            "=\"1.5\"",
+            "\"0123456789abcdef0123456789abcdef\"",
+            "wxid_ab:",
+            "gh_x:\n",
+            "a-b:\r\n",
+            "<DataItem datatype=\"1\">",
+        ];
+        let mut rng = StdRng::seed_from_u64(521);
+        // how often each scanner finds something, so that the comparison is not only of misses
+        let mut hits = std::collections::BTreeMap::<&str, usize>::new();
+        let mut hit = |name, found: bool| *hits.entry(name).or_default() += usize::from(found);
+        for _ in 0..40_000 {
+            let s: String = (0..rng.random_range(0..16))
+                .map(|_| TOKENS[rng.random_range(0..TOKENS.len())])
+                .collect();
+            for (tag, attr) in [
+                ("img", "md5"),
+                ("location", "x"),
+                ("appattach", "md5"),
+                ("IMG", "cdnurl"),
+            ] {
+                let found = extract_xml_attribute(&s, tag, attr);
+                assert_eq!(
+                    found,
+                    regex_reference::attribute(&s, tag, attr),
+                    "{tag} {attr} in {s:?}"
+                );
+                hit("attribute", !found.is_empty());
+            }
+            hit("sender prefix", sender_prefix_len(&s) > 0);
+            hit("sysmsg", crate::xml::has_open(&s, "sysmsg"));
+            hit("loose md5", extract_loose_hex_md5(&s).is_some());
+            hit("emoji url", extract_emoji_url(&s).is_some());
+            hit("image md5", extract_image_md5(&s).is_some());
+            hit(
+                "dataitem",
+                crate::xml::elements(&s, "dataitem").next().is_some(),
+            );
+            hit(
+                "recorditem",
+                crate::xml::tag_inners(&s, "recorditem").next().is_some(),
+            );
+            hit(
+                "cdata",
+                crate::xml::between(&s, "<![CDATA[", "]]>").next().is_some(),
+            );
+            assert_eq!(
+                strip_sender_prefix(&s),
+                regex_reference::strip_sender_prefix(&s),
+                "{s:?}"
+            );
+            assert_eq!(
+                is_readable_system_message(1, &s),
+                regex_reference::is_readable_system_message(&s),
+                "{s:?}"
+            );
+            assert_eq!(
+                crate::xml::elements(&s, "sysmsg")
+                    .next()
+                    .map(|(_, b)| b.to_string()),
+                regex_reference::sysmsg_body(&s),
+                "{s:?}"
+            );
+            assert_eq!(
+                extract_loose_hex_md5(&s),
+                regex_reference::loose_hex_md5(&s),
+                "{s:?}"
+            );
+            assert_eq!(
+                extract_emoji_url(&s),
+                regex_reference::emoji_url(&s),
+                "{s:?}"
+            );
+            assert_eq!(
+                extract_emoji_md5(&s),
+                regex_reference::emoji_md5(&s).or_else(|| regex_reference::loose_hex_md5(&s)),
+                "{s:?}"
+            );
+            assert_eq!(
+                extract_image_md5(&s),
+                regex_reference::spaced_md5(&s, "<img"),
+                "{s:?}"
+            );
+            if !s.is_empty() {
+                assert_eq!(
+                    extract_video_md5(&s),
+                    regex_reference::spaced_md5(&s, "<videomsg"),
+                    "{s:?}"
+                );
+            }
+            let pairs = |it: &mut dyn Iterator<Item = (&str, &str)>| -> Vec<String> {
+                it.map(|(a, b)| format!("{a}|{b}")).collect()
+            };
+            assert_eq!(
+                pairs(&mut crate::xml::elements(&s, "dataitem")),
+                rx(r"(?is)<dataitem\b([^>]*)>(.*?)</dataitem>")
+                    .captures_iter(&s)
+                    .map(|c| format!("{}|{}", &c[1], &c[2]))
+                    .collect::<Vec<_>>(),
+                "{s:?}"
+            );
+            assert_eq!(
+                crate::xml::tag_inners(&s, "recorditem").collect::<Vec<_>>(),
+                regex_reference::all(r"(?is)<recorditem>(.*?)</recorditem>", &s, 1),
+                "{s:?}"
+            );
+            assert_eq!(
+                crate::xml::between(&s, "<![CDATA[", "]]>").collect::<Vec<_>>(),
+                regex_reference::all(r"(?s)<!\[CDATA\[(.*?)\]\]>", &s, 1),
+                "{s:?}"
+            );
+            assert_eq!(
+                crate::xml::text_inner(&s, "md5"),
+                rx(r"(?i)<md5>([^<]+)</md5>")
+                    .captures(&s)
+                    .map(|c| c.get(1).unwrap().as_str()),
+                "{s:?}"
+            );
+            assert_eq!(
+                decode_html_entities(&s),
+                s.replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&amp;", "&")
+                    .replace("&quot;", "\"")
+                    .replace("&#39;", "'")
+                    .replace("&apos;", "'"),
+                "{s:?}"
+            );
+        }
+        assert!(
+            hits.values().all(|&n| n >= 100),
+            "too few matches: {hits:?}"
+        );
+    }
+
+    #[test]
+    fn xml_scanners_keep_the_regex_quirks() {
+        // the last attribute that ends in `md5` wins, as `[^>]*` is greedy
+        assert_eq!(
+            extract_xml_attribute(r#"<img md5="a" cdnthumbmd5="b">"#, "img", "md5"),
+            "b"
+        );
+        // a `>` inside an earlier value ends the search
+        assert_eq!(
+            extract_xml_attribute(r#"<img a="x>" md5="m">"#, "img", "md5"),
+            ""
+        );
+        // but a value may run past the first `>`
+        assert_eq!(
+            extract_xml_attribute(r#"<img md5="m>n">"#, "img", "md5"),
+            "m>n"
+        );
+        assert_eq!(
+            extract_image_md5(r#"<img aesmd5="ab" md5='CD"><md5>EF</md5>"#).as_deref(),
+            Some("cd")
+        );
+        assert_eq!(
+            extract_image_md5("<msg><md5> Ab </md5></msg>").as_deref(),
+            Some(" ab ")
+        );
+        assert!(is_readable_system_message(
+            1,
+            "wxid_a:\n<sysmsg type=\"x\">"
+        ));
+        assert!(!is_readable_system_message(1, "<sysmsgé>"));
+        assert!(is_readable_system_message(1, "<SYSMSG²>"));
     }
 }
