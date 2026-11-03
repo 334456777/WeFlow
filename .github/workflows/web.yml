@@ -45,19 +45,40 @@ jobs:
       - name: Types of the contract
         run: bun run contract --check
 
-      # a change of the contract its clients would read wrong raises the API version (#400): compared with the
-      # contract of the commit the change is based on (the pull request's base, or the push's previous commit)
+      # a change of the contract the clients of a released API would read wrong raises the API version (#400):
+      # compared with the contract of the latest release of weflow, so an API version no release has yet may still
+      # change. A release from before the contract was kept (v5.0.1 and older) tells only its API version: when it is
+      # the current one, the change is compared with the contract of the commit it is based on instead.
       - name: Compatibility of the contract
         env:
+          GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
-            || ! git fetch --quiet --depth=1 origin "$BASE" \
-            || ! git show "$BASE:web/contract/openapi.json" > "$RUNNER_TEMP/contract-base.json" 2>/dev/null; then
-            echo "no earlier contract to compare with"
+          earlier="$RUNNER_TEMP/contract-earlier.json"
+          now=$(jq -r .info.version contract/openapi.json)
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
+          if [ -z "$tag" ] || ! git fetch --quiet --depth=1 origin "refs/tags/$tag:refs/tags/$tag"; then
+            echo "no release to compare with"
             exit 0
           fi
-          bun scripts/contract-compat.ts "$RUNNER_TEMP/contract-base.json"
+          if git show "$tag:web/contract/openapi.json" > "$earlier" 2>/dev/null; then
+            echo "compared with the contract of $tag"
+            exec bun scripts/contract-compat.ts "$earlier"
+          fi
+          released=$(git show "$tag:crates/weflow-cli/src/serve_api.rs" \
+            | sed -n 's/^pub const API_VERSION: &str = "\([0-9]*\)";$/\1/p')
+          if [ "$released" != "$now" ]; then
+            echo "API $now is not released yet ($tag has API ${released:-unknown}): nothing to compare with"
+            exit 0
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
+            || ! git fetch --quiet --depth=1 origin "$BASE" \
+            || ! git show "$BASE:web/contract/openapi.json" > "$earlier" 2>/dev/null; then
+            echo "$tag keeps no contract and the base has none: nothing to compare with"
+            exit 0
+          fi
+          echo "$tag keeps no contract: compared with the contract of $BASE"
+          bun scripts/contract-compat.ts "$earlier"
 
       # every text the page passes through t() has its English (#439)
       - name: English of the page

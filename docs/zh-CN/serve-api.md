@@ -236,7 +236,7 @@ curl -N -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18108/jobs/<id>/event
 curl -H "Authorization: Bearer $TOKEN" -o openapi.json http://127.0.0.1:18108/openapi.json
 ```
 
-客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `3`（解析过的消息的 `serverId` 改为字符串（#399）、`messageKey` 不再带数据库的路径（#443）之前是 `1`；`chat messages`、`chat latest` 和 `chat message` 不带 `parsed` 时返回的行改为 `MessageRow`（各列有了明确类型，并改用驼峰命名），`chat search` 的结果改为 `SearchHit`（即 `MessageRow` 加上 `_session_id`，#492）、命令 API 去掉 `config import`（#537）之前是 `2`）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和改动所基于的提交的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
+客户端可以通过两个版本号判断自己连的是什么：`version`（`/health` 里，以及 `info.version`）是 `weflow` 的版本；`apiVersion`（`/health` 里，以及 `info.x-weflow-api-version`）是 API 规则的版本，涵盖路由、方法、参数、响应和作业，目前为 `3`（解析过的消息的 `serverId` 改为字符串（#399）、`messageKey` 不再带数据库的路径（#443）之前是 `1`；`chat messages`、`chat latest` 和 `chat message` 不带 `parsed` 时返回的行改为 `MessageRow`（各列有了明确类型，并改用驼峰命名），`chat search` 的结果改为 `SearchHit`（即 `MessageRow` 加上 `_session_id`，#492）、命令 API 去掉 `config import`（#537）之前是 `2`）。只有会让现有客户端出错的改动才会提升它，新增命令或选项不会。对于 `web/contract/openapi.json` 描述的那些回复，CI 会发现这类改动：`web/scripts/contract-compat.ts` 把契约和 `weflow` 最新一个发布版的契约比较，旧的客户端可能读错新的回复而 `apiVersion` 没变时失败；还没有发布过的 `apiVersion` 可以继续改（见 web/README.zh-CN.md）。`GET /health` 不需要令牌，所以 WebUI 这样的客户端可以在拿到令牌前先检查这两个版本：
 
 ```json
 {"status": "ok", "apiVersion": "2", "version": "5.0.0", "data": "5f1c0a9e3b7d2c41", "lang": "en",

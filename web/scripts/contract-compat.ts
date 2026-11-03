@@ -1,6 +1,6 @@
 // Whether a client written against an earlier contract reads the current one's answers right (#400):
 // `bun scripts/contract-compat.ts <earlier openapi.json>` lists what it could read wrong, and fails when there is
-// something and `info.version` (the API version) is the same; CI compares a change with the contract of its base.
+// something and `info.version` (the API version) is the same; CI compares a change with the contract of the latest release.
 // It reads the schemas schemars writes, as scripts/contract.ts does.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
