@@ -129,11 +129,6 @@ impl ServiceHub {
         dir
     }
 
-    /// Directory the HTTP API exports media into (`api-media`).
-    pub fn api_media_dir(&self) -> PathBuf {
-        self.cache_base().join("api-media")
-    }
-
     fn sns_cache_file(&self, url: &str) -> PathBuf {
         let ext = if sns::is_video_url(url) {
             ".mp4"

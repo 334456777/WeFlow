@@ -24,7 +24,7 @@ Based on feedback from many community users, if retrieval has already failed, th
 3. **Restart your Mac.** This step is essential and must be a real restart. Logging out or sleep/wake does not clear the low-level blocking state.
 4. **Reopen WeChat.** Click around a little to keep it in the foreground, and make sure it is **not logged in**.
 5. **Run `weflow key db`.** Run it **once only**.
-6. **Enter your password and log in.** If macOS asks for your system password, enter it; once `key db` says to log in, log in to WeChat.
+6. **Log in.** Once `key db` says to log in (`Hook installed; log in to WeChat now`), log in to WeChat.
 7. **Return to normal use.** As soon as you have the key, you can update WeChat back to the latest version you normally use.
 
 ### Common errors and what to do
