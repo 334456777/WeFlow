@@ -1,7 +1,7 @@
 //! The ffmpeg that converts WXGF images: `FFMPEG_PATH`, else `ffmpeg` on `PATH`, else the copy `weflow ffmpeg install`
 //! put in WeFlow's folder.
 //!
-//! The install downloads the build the desktop app bundles: npm `ffmpeg-static` 5.3.0, whose binaries are the
+//! The install downloads the build WeFlow's desktop app bundles: npm `ffmpeg-static` 5.3.0, whose binaries are the
 //! release `b6.1.1` of github.com/eugeneware/ffmpeg-static (one gzipped executable per platform, plus its license).
 //! Every file is checked against the SHA-256 pinned below before it is used, so a mirror of that release
 //! (`--base-url`) is as safe as GitHub. Nothing is ever downloaded unless the command is run.
@@ -16,7 +16,7 @@ use crate::contract::{FfmpegDownload, FfmpegFound, FfmpegInstalled};
 use crate::error::{AppError, AppResult};
 use crate::sync::MutexExt;
 
-/// The `ffmpeg-static` release the desktop app's `ffmpeg-static` 5.3.0 downloads (`binary-release-tag`).
+/// The `ffmpeg-static` release WeFlow's desktop app's `ffmpeg-static` 5.3.0 downloads (`binary-release-tag`).
 pub const RELEASE_TAG: &str = "b6.1.1";
 /// Where `ffmpeg-static` downloads its binaries from (the release tag is appended).
 pub const DEFAULT_BASE_URL: &str = "https://github.com/eugeneware/ffmpeg-static/releases/download";

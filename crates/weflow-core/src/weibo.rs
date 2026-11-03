@@ -1,4 +1,4 @@
-//! Port of `electron/services/social/weiboService.ts`: recent public Weibo posts of a bound UID,
+//! Port of WeFlow's `weiboService.ts`: recent public Weibo posts of a bound UID,
 //! used as extra context for AI insights.
 use std::collections::HashMap;
 use std::sync::Mutex;

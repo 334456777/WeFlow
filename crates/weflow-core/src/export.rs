@@ -469,7 +469,7 @@ fn message_type_label_in(lang: Lang, msg_type: i64) -> &'static str {
     }
 }
 
-/// `YYYY-MM-DD HH:MM:SS` in the machine's local time zone, like the desktop app.
+/// `YYYY-MM-DD HH:MM:SS` in the machine's local time zone, like WeFlow's desktop app.
 fn format_timestamp(ts: i64) -> String {
     if ts <= 0 {
         String::new()

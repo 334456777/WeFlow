@@ -1,4 +1,4 @@
-//! Message decoding and formatting, ported from the desktop app's `exportService.ts`.
+//! Message decoding and formatting, ported from WeFlow's desktop app's `exportService.ts`.
 //!
 //! Raw WCDB rows go in, [`ExportMsg`] values and human-readable text come out. The
 //! functions mirror their TypeScript counterparts so exports stay comparable with the
@@ -190,7 +190,7 @@ fn last_hex_token(text: &str, min: usize, max: usize) -> Option<String> {
 
 use chrono::{Local, TimeZone};
 
-/// `YYYY-MM-DD HH:MM:SS` in the local time zone (same as the desktop app).
+/// `YYYY-MM-DD HH:MM:SS` in the local time zone (same as WeFlow's desktop app).
 /// Unix time of 00:00 on a calendar date in the machine's local time zone. A date whose midnight does not exist
 /// (a daylight-saving jump at 00:00) starts at the first moment that does.
 pub fn local_midnight(year: i32, month: u32, day: u32) -> Option<i64> {

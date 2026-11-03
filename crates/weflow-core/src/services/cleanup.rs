@@ -1,5 +1,5 @@
 //! WeFlow's caches part by part (`weflow cache list` / `cache clear`), and the removal of the current account's
-//! data (`weflow cache clear-account`, a port of the `chat:clearCurrentAccountData` handler in `electron/main.ts`).
+//! data (`weflow cache clear-account`, a port of the `chat:clearCurrentAccountData` handler in WeFlow's `main.ts`).
 //! Only WeFlow's own files are touched; WeChat's data is never written.
 
 use std::path::{Path, PathBuf};
@@ -299,7 +299,7 @@ impl ServiceHub {
     }
 
     /// `chat:clearCurrentAccountData`: removes [`Self::account_data_paths`]. The caller resets the account settings
-    /// of the profile when `clear_cache` is set, as the desktop app does.
+    /// of the profile when `clear_cache` is set, as WeFlow's desktop app does.
     pub fn clear_current_account_data(
         &self,
         clear_cache: bool,

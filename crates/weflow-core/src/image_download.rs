@@ -1,4 +1,4 @@
-//! Port of `electron/services/imageDownloadService.ts`: the Windows-only `img_helper.dll` hook that
+//! Port of WeFlow's `imageDownloadService.ts`: the Windows-only `img_helper.dll` hook that
 //! makes WeChat download original-size images for a whitelist of conversations.
 //!
 //! The DLL (embedded from `crates/weflow-assets/assets/image/win32/x64`) is loaded with `InitImgHelper(pid, whitelist)`

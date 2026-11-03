@@ -223,7 +223,7 @@ export interface MessageView {
 }
 
 /**
- * A contact of `chat contacts --parsed`, as the desktop app lists it: the most recent conversation first, then by
+ * A contact of `chat contacts --parsed`: the most recent conversation first, then by
  * name. A text field is left out when it is empty.
  */
 export interface Contact {
@@ -302,7 +302,7 @@ export interface ChatStatus {
   isMuted: boolean;
 }
 
-/** How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them. */
+/** How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them. */
 export interface TabCounts {
   private: number;
   group: number;
@@ -393,7 +393,7 @@ export interface GroupChat {
 }
 
 /**
- * The members of a group (`group members`), as the members panel of the desktop app lists them: the owner first,
+ * The members of a group (`group members`): the owner first,
  * then friends, then by how many messages they sent.
  */
 export interface GroupMembers {
@@ -453,7 +453,7 @@ export interface GroupMedia {
 export interface MediaCount {
   /** WeChat's type of the message, as `localType`; -1 for all the others together. */
   type: number;
-  /** Its name as the desktop app shows it, in Chinese. */
+  /** Its name in Chinese. */
   name: string;
   count: number;
 }
@@ -1012,7 +1012,7 @@ export interface DualStreak {
   endDate: string;
 }
 
-/** The pushes of an official account (`biz messages`), as the desktop app lists them. */
+/** The pushes of an official account (`biz messages`). */
 export interface BizMessages {
   username: string;
   messages: BizMessage[];
@@ -1326,7 +1326,7 @@ export interface AutoDownloadStopped {
   stopped: boolean;
 }
 
-/** What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow. */
+/** What `image auto-download status` answers: the hook is not part of WeFlow. */
 export interface AutoDownloadStatus {
   /** Always false. */
   isHooked: boolean;
@@ -1337,7 +1337,7 @@ export interface AutoDownloadStatus {
 }
 
 /**
- * Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's
+ * Where a message's video and its poster are (`video info`); the fields left out, as WeFlow's desktop app's
  * `VideoInfo`, when there is nothing.
  */
 export interface VideoInfo {
@@ -1927,7 +1927,7 @@ export interface TransferNames {
 }
 
 /**
- * One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a
+ * One insight record (`insight get`), with `success` inside. A record not found is a
  * failure of the command instead, so an answer that succeeds holds `success: true` and the record.
  */
 export interface InsightLookup {
@@ -1969,7 +1969,7 @@ export interface InsightRecordLog {
 
 /** A page of the account's insight records (`insight records`), the newest first, with counts over all of them. */
 export interface InsightRecords {
-  /** Always true: the desktop app's shape. */
+  /** Always true. */
   success: boolean;
   records: InsightSummary[];
   /** The records the filters match. */
@@ -2120,7 +2120,7 @@ export interface Answers {
   "chat anti-revoke check": AntiRevokeResults;
   /** The conversations but official accounts: the rows of WeChat's session table */
   "chat anti-revoke sessions": Row[];
-  /** With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table */
+  /** With `parsed=true`, the contacts sorted and classified; else the rows of WeChat's table */
   "chat contacts": Contact[] | Row[];
   /** Each conversation asked for, with how many messages it has */
   "chat counts": Record<string, number>;

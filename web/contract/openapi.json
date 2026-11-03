@@ -717,7 +717,7 @@
                       "const": true
                     },
                     "data": {
-                      "description": "With `parsed=true`, the contacts as the desktop app lists them; else the rows of WeChat's table",
+                      "description": "With `parsed=true`, the contacts sorted and classified; else the rows of WeChat's table",
                       "anyOf": [
                         {
                           "type": "array",
@@ -5365,7 +5365,7 @@
           "displayName",
           "type"
         ],
-        "description": "A contact of `chat contacts --parsed`, as the desktop app lists it: the most recent conversation first, then by\nname. A text field is left out when it is empty."
+        "description": "A contact of `chat contacts --parsed`: the most recent conversation first, then by\nname. A text field is left out when it is empty."
       },
       "ContactKind": {
         "oneOf": [
@@ -5587,7 +5587,7 @@
           "official",
           "former_friend"
         ],
-        "description": "How many contacts of each kind there are (`chat tab-counts`), as the tabs of the desktop app count them."
+        "description": "How many contacts of each kind there are (`chat tab-counts`), as a contact list's tabs count them."
       },
       "SessionDates": {
         "type": "object",
@@ -5879,7 +5879,7 @@
           "updatedAt",
           "members"
         ],
-        "description": "The members of a group (`group members`), as the members panel of the desktop app lists them: the owner first,\nthen friends, then by how many messages they sent."
+        "description": "The members of a group (`group members`): the owner first,\nthen friends, then by how many messages they sent."
       },
       "GroupMember": {
         "type": "object",
@@ -6016,7 +6016,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Its name as the desktop app shows it, in Chinese."
+            "description": "Its name in Chinese."
           },
           "count": {
             "type": "integer",
@@ -7842,7 +7842,7 @@
           "username",
           "messages"
         ],
-        "description": "The pushes of an official account (`biz messages`), as the desktop app lists them."
+        "description": "The pushes of an official account (`biz messages`)."
       },
       "BizMessage": {
         "type": "object",
@@ -8892,7 +8892,7 @@
           "pid",
           "supported"
         ],
-        "description": "What `image auto-download status` answers: the hook the desktop app used is not part of WeFlow."
+        "description": "What `image auto-download status` answers: the hook is not part of WeFlow."
       },
       "VideoInfo": {
         "type": "object",
@@ -8914,7 +8914,7 @@
         "required": [
           "exists"
         ],
-        "description": "Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's\n`VideoInfo`, when there is nothing."
+        "description": "Where a message's video and its poster are (`video info`); the fields left out, as WeFlow's desktop app's\n`VideoInfo`, when there is nothing."
       },
       "VideoMd5": {
         "type": "object",
@@ -10668,7 +10668,7 @@
         "required": [
           "success"
         ],
-        "description": "One insight record (`insight get`), with `success` inside as the desktop app has it. A record not found is a\nfailure of the command instead, so an answer that succeeds holds `success: true` and the record."
+        "description": "One insight record (`insight get`), with `success` inside. A record not found is a\nfailure of the command instead, so an answer that succeeds holds `success: true` and the record."
       },
       "InsightRecord": {
         "type": "object",
@@ -10790,7 +10790,7 @@
         "properties": {
           "success": {
             "type": "boolean",
-            "description": "Always true: the desktop app's shape."
+            "description": "Always true."
           },
           "records": {
             "type": "array",

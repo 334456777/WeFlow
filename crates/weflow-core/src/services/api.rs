@@ -523,7 +523,7 @@ impl ServiceHub {
             key(b).cmp(&key(a))
         });
 
-        // resolve names / avatars (the desktop app fills these from its contact cache)
+        // resolve names / avatars (WeFlow's desktop app fills these from its contact cache)
         let names: Vec<String> = sessions.iter().map(|s| s.username.clone()).collect();
         let book = self.contact_book(wcdb, &names);
         for s in sessions.iter_mut() {

@@ -1,9 +1,9 @@
 //! ISAAC-64 keystream used to decrypt WeChat Moments images and videos.
 //!
-//! The desktop app ships the vendor's WASM (`WxIsaac64`) for this; its output is
+//! WeFlow's desktop app ships the vendor's WASM (`WxIsaac64`) for this; its output is
 //! the textbook ISAAC-64 generator seeded with the decimal key in `randrsl[0]`,
 //! emitting each batch from `randrsl[255]` down to `randrsl[0]`, every 64-bit word
-//! serialised big-endian. (The pure-TypeScript fallback in `electron/services/isaac64.ts`
+//! serialised big-endian. (The pure-TypeScript fallback in WeFlow's `isaac64.ts`
 //! indexes `mm` through a lossy `Number()` conversion and does not produce this stream;
 //! the vectors in the tests were captured from the real WASM module.)
 

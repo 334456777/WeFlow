@@ -1,4 +1,4 @@
-//! SILK v3 decoder, matching the `silk-wasm` decode loop the desktop app uses for WeChat voice
+//! SILK v3 decoder, matching the `silk-wasm` decode loop WeFlow's desktop app uses for WeChat voice
 //! messages (`#!SILK_V3` header, optional leading `0x02` Tencent byte, `i16` length-prefixed
 //! packets terminated by `-1`).
 use std::ffi::c_void;

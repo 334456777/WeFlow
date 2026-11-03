@@ -1,4 +1,4 @@
-//! Moments service: ports the stateful parts of `electron/services/snsService.ts`
+//! Moments service: ports the stateful parts of WeFlow's `snsService.ts`
 //! (timeline queries, stats caches, media download/decrypt, export, emoji download).
 
 use std::collections::{BTreeMap, HashMap, VecDeque};

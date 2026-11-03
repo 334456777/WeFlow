@@ -91,7 +91,7 @@ fn is_member_id(id: &str) -> bool {
 /// Extract `username -> group nickname` pairs from a `chat_room.ext_buffer`.
 ///
 /// The buffer is a protobuf-style stream whose member entries look like
-/// `0x0a <len> <username> 0x12 <len> <nickname> ...`; like the desktop app we scan for that shape
+/// `0x0a <len> <username> 0x12 <len> <nickname> ...`; like WeFlow's desktop app we scan for that shape
 /// instead of relying on the (undocumented) outer message layout.
 pub fn parse_group_nicknames(buf: &[u8]) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
@@ -289,7 +289,8 @@ impl NativeAccount {
         Ok(rows.into_iter().next())
     }
 
-    /// Members of a group as the desktop app expects them: `[{ username, nickName, remark, alias, avatarUrl?, isOwner? }]`.
+    /// Members of a group in the shape WeFlow's desktop app uses:
+    /// `[{ username, nickName, remark, alias, avatarUrl?, isOwner? }]`.
     pub fn group_members(&self, chatroom_id: &str) -> Result<Value> {
         let Some(room) = self.room(chatroom_id)? else {
             return Ok(json!([]));

@@ -1,4 +1,4 @@
-//! Port of `electron/services/videoService.ts`: locating decrypted-by-WeChat videos on disk
+//! Port of WeFlow's `videoService.ts`: locating decrypted-by-WeChat videos on disk
 //! (`<account>/msg/video/<yyyy-mm>/<md5>.mp4`) plus their cover / thumbnail images, and
 //! extracting the video md5 out of a message's XML.
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ struct IndexEntry {
     thumb: Option<PathBuf>,
 }
 
-/// Where a message's video and its poster are (`video info`); the fields left out, as the desktop app's
+/// Where a message's video and its poster are (`video info`); the fields left out, as WeFlow's desktop app's
 /// `VideoInfo`, when there is nothing.
 #[derive(Debug, Clone, Default, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -294,7 +294,7 @@ pub fn video_files(video_base_dir: &Path, md5: &str, month: &str) -> Option<Vide
     locate(video_base_dir, md5)
 }
 
-/// `parseVideoMd5`: five strategies, in the desktop app's order.
+/// `parseVideoMd5`: five strategies, in WeFlow's desktop app's order.
 pub fn parse_video_md5(content: &str) -> Option<String> {
     if content.is_empty() {
         return None;

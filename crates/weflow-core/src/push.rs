@@ -216,7 +216,7 @@ fn session_type(session_id: &str) -> &'static str {
     } else if session_id.starts_with("gh_") {
         "official"
     } else {
-        // the desktop app compares a numeric `type` with 'friend' / 'official', which never matches
+        // WeFlow's desktop app compares a numeric `type` with 'friend' / 'official', which never matches
         "other"
     }
 }

@@ -881,7 +881,7 @@ impl ServiceHub {
         }
     }
 
-    /// Export a conversation's messages in one of the desktop app's formats
+    /// Export a conversation's messages in one of WeFlow's desktop app's formats
     /// (json, arkme-json, chatlab, chatlab-jsonl, excel, txt, weclone, html, sql).
     pub fn export_messages(
         &self,

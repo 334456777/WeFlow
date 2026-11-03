@@ -3,7 +3,7 @@
 //! Ports `getContactLabelNameMap`, `parseContactLabels`, `getContactSignature` and `getContactRegion` of
 //! `chatService.ts`. WeChat keeps them in the protobuf `extra_buffer` column of the contact row (field 4
 //! signature, 5 country, 6 province, 7 city, 30 label ids) plus the `contact_label` table; the region names are
-//! translated to Chinese with the same lookup tables as the desktop app (`data/contact_region.json`).
+//! translated to Chinese with the same lookup tables as WeFlow's desktop app (`data/contact_region.json`).
 
 use std::collections::HashMap;
 use std::sync::OnceLock;

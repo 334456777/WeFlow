@@ -1,7 +1,7 @@
 //! Numeric conversions that saturate instead of truncating.
 //!
-//! JSON numbers from the database layer and the desktop app's settings arrive as `f64` and are rounded the way
-//! the desktop app's `Math.floor` / `Math.round` / `Math.trunc` round them. Rust's float-to-integer `as` already
+//! JSON numbers from the database layer and WeFlow's desktop app's settings arrive as `f64` and are rounded the way
+//! WeFlow's desktop app's `Math.floor` / `Math.round` / `Math.trunc` round them. Rust's float-to-integer `as` already
 //! saturates at the target's bounds and maps NaN to 0, which is the behavior wanted here, so it is used in one
 //! place instead of at every call site.
 //!

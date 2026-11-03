@@ -1,4 +1,4 @@
-//! Group analytics (`electron/services/groupAnalyticsService.ts`): members panel, rankings,
+//! Group analytics (WeFlow's `groupAnalyticsService.ts`): members panel, rankings,
 //! activity, media mix, per-member analytics and exports.
 
 use std::collections::{BTreeMap, HashMap, HashSet};

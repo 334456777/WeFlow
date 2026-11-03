@@ -1,6 +1,6 @@
 //! Statistics over the message tables, computed with grouped SQL on the decrypted snapshots.
 //!
-//! Dates, hours and weekdays are in local time (SQLite `localtime`), matching what the desktop app shows.
+//! Dates, hours and weekdays are in local time (SQLite `localtime`), matching what WeFlow's desktop app shows.
 //! Output shapes are the ones the service layer already consumes (`total/sent/received/...`).
 
 use std::collections::{BTreeMap, BTreeSet};

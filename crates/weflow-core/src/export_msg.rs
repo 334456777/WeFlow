@@ -1,9 +1,9 @@
-//! Chat-message exporters ported from the desktop app: ChatLab (+JSONL), detailed JSON,
+//! Chat-message exporters ported from WeFlow's desktop app: ChatLab (+JSONL), detailed JSON,
 //! Arkme JSON, Excel, TXT, WeClone CSV and HTML.
 //!
 //! Everything here works on already-collected [`ExportMsg`] values plus a name book for
 //! contacts, so it is testable without a WeChat database. Data values (message text,
-//! type names, JSON keys) follow the desktop app; only human-facing chrome such as
+//! type names, JSON keys) follow WeFlow's desktop app; only human-facing chrome such as
 //! spreadsheet headers and the HTML page follows the CLI language.
 
 use std::collections::{HashMap, HashSet};
@@ -819,7 +819,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         }
     }
 
-    /// The member list with the names resolved like the desktop app does for groups.
+    /// The member list with the names resolved like WeFlow's desktop app does for groups.
     fn chatlab_finish_members(&mut self, mut members: Vec<ChatlabMember>) -> Vec<ChatlabMember> {
         if !self.session.is_group {
             return members;

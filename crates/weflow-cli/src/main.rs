@@ -165,7 +165,7 @@ struct FfmpegCommand {
 
 #[derive(Subcommand, Debug)]
 enum FfmpegSubcommand {
-    /// Download the ffmpeg build the desktop app bundles (ffmpeg-static b6.1.1), check its SHA-256 and unpack it into WeFlow's folder; used when FFMPEG_PATH is unset and no ffmpeg is on PATH
+    /// Download the ffmpeg build of ffmpeg-static b6.1.1, check its SHA-256 and unpack it into WeFlow's folder; used when FFMPEG_PATH is unset and no ffmpeg is on PATH
     Install {
         /// Download it again even when the installed copy is intact
         #[arg(long)]
@@ -439,13 +439,13 @@ enum ChatSubcommand {
         /// Only messages up to this time (Unix seconds, 0 = no limit)
         #[arg(long, default_value_t = 0)]
         end: i32,
-        /// Each hit parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row
+        /// Each hit parsed (type, text, quote, media, link, file, …) instead of the database row
         #[arg(long)]
         parsed: bool,
     },
     /// List all contacts
     Contacts {
-        /// The contact list as the desktop app shows it (friends, groups, official accounts, former friends, with names, labels, region, signature and avatar) instead of the database rows
+        /// The contact list sorted and classified (friends, groups, official accounts, former friends, with names, labels, region, signature and avatar) instead of the database rows
         #[arg(long)]
         parsed: bool,
     },
@@ -732,7 +732,7 @@ struct PageArgs {
     /// The messages from where this time (Unix seconds) falls in the chat's order: the earliest ones, still newest first, as when a chat window jumps to a day
     #[arg(long, conflicts_with_all = ["offset", "before", "after"])]
     since: Option<i64>,
-    /// Each message parsed as the desktop app shows it (type, text, quote, media, link, file, …) instead of the database row
+    /// Each message parsed (type, text, quote, media, link, file, …) instead of the database row
     #[arg(long)]
     parsed: bool,
 }
@@ -2093,7 +2093,7 @@ fn handle_cache(
                 return Ok(json!(Cancelled { cancelled: true }));
             }
             let result = hub.clear_current_account_data(true, exports_dir)?;
-            // like the desktop app: the account is signed out of this profile
+            // like WeFlow's desktop app: the account is signed out of this profile
             ConfigStore::update(&ctx.config_path, |config| {
                 for key in ACCOUNT_KEYS {
                     config.unset_key(None, key);
@@ -3341,7 +3341,7 @@ async fn handle_insight(command: InsightCommand, hub: &ServiceHub) -> AppResult<
     }
 }
 
-/// The background engine of `serve --insight`: polls for new messages (the desktop app reacts to
+/// The background engine of `serve --insight`: polls for new messages (WeFlow's desktop app reacts to
 /// database-change events) and runs the silence scan on its own schedule.
 fn spawn_insight_engine(hub: ServiceHub, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
     use std::sync::atomic::Ordering;
@@ -4257,9 +4257,9 @@ fn keys_summary(shown: KeyShown, data: &Value) -> Option<String> {
     }
 }
 
-/// Some services report a failure in their result (`{"success": false, "error" | "message": …}`), the shape the
-/// HTTP API and the desktop app expect. For the CLI that is a failed command: an error envelope and a non-zero exit
-/// code, with the other fields (such as `failureKind`) kept as details.
+/// Some services report a failure in their result (`{"success": false, "error" | "message": …}`), the shape WeFlow's
+/// desktop app expects. For the CLI that is a failed command: an error envelope and a non-zero exit code, with the
+/// other fields (such as `failureKind`) kept as details.
 fn reported_failure(value: &Value) -> Option<AppError> {
     let fields = value.as_object()?;
     if fields.get("success") != Some(&Value::Bool(false)) {

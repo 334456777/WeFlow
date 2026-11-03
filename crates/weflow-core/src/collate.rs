@@ -1,8 +1,8 @@
 //! Locale-aware string ordering, the Rust counterpart of `Intl.Collator('zh-CN')` and `String.localeCompare`.
 //!
-//! The desktop app sorts contact and member names with the ICU collator (Chinese names by pinyin, Latin
+//! WeFlow's desktop app sorts contact and member names with the ICU collator (Chinese names by pinyin, Latin
 //! letters case-insensitively before the first difference in case). The same ICU collation data is used here
-//! so lists come out in the order the desktop app shows them.
+//! so lists come out in the order WeFlow's desktop app shows them.
 
 use std::cmp::Ordering;
 use std::sync::OnceLock;

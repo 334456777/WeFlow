@@ -290,7 +290,7 @@ fn parsed_contacts_are_grouped_and_named_with_their_avatar() {
             )
         })
         .collect();
-    // newest conversation first, then by name; the kind of each, and the name the desktop app shows
+    // newest conversation first, then by name; the kind of each, and the name WeFlow's desktop app shows
     assert_eq!(
         rows,
         [
@@ -384,7 +384,7 @@ fn group_export_uses_group_nicknames_and_strips_sender_prefixes() {
     let doc: Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
     let msgs = doc["messages"].as_array().unwrap();
     assert_eq!(msgs.len(), 3);
-    // WeChat stores group text as "<wxid>:\n<text>"; the export drops the "<wxid>:" part, as the desktop app does
+    // WeChat stores group text as "<wxid>:\n<text>"; the export drops the "<wxid>:" part, as WeFlow's desktop app does
     // (the newline that follows it is kept, hence the trim).
     let welcome = msgs
         .iter()
