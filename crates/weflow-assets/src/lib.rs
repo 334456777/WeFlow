@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 pub struct EmbeddedAsset {
+    /// Its path under `crates/weflow-assets/assets/`, which is also its path in the runtime directory.
     pub logical_path: &'static str,
     pub bytes: &'static [u8],
     /// Lowercase hex SHA-256 of `bytes`, computed at build time.
@@ -48,8 +49,7 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
 
     let mut entries = Vec::with_capacity(EMBEDDED_ASSETS.len());
     for asset in EMBEDDED_ASSETS {
-        let relative = asset_relative_path(asset.logical_path);
-        let target_path = runtime_dir.join(relative);
+        let target_path = runtime_dir.join(asset.logical_path);
         // An extracted file is reused only when it is byte for byte the embedded one (cheaper than hashing it,
         // and stricter); a missing, truncated or modified file is written again.
         let up_to_date = fs::metadata(&target_path)
@@ -96,7 +96,7 @@ pub fn ensure_runtime(home: &Path, version: &str) -> Result<PathBuf> {
         maybe_make_executable(&target_path)?;
 
         entries.push(AssetManifestEntry {
-            path: relative.to_string(),
+            path: asset.logical_path.to_string(),
             size: asset.bytes.len(),
             sha256: asset.sha256.to_string(),
         });
@@ -127,19 +127,12 @@ pub fn manifest(version: &str) -> RuntimeManifest {
         entries: EMBEDDED_ASSETS
             .iter()
             .map(|asset| AssetManifestEntry {
-                path: asset_relative_path(asset.logical_path).to_string(),
+                path: asset.logical_path.to_string(),
                 size: asset.bytes.len(),
                 sha256: asset.sha256.to_string(),
             })
             .collect(),
     }
-}
-
-fn asset_relative_path(logical_path: &str) -> &str {
-    logical_path
-        .strip_prefix("resources/")
-        .or_else(|| logical_path.strip_prefix("electron/assets/"))
-        .unwrap_or(logical_path)
 }
 
 #[cfg(unix)]
@@ -195,7 +188,7 @@ mod tests {
         let _ = fs::remove_dir_all(&home);
         let dir = ensure_runtime(&home, "test").unwrap();
         let asset = &EMBEDDED_ASSETS[0];
-        let path = dir.join(asset_relative_path(asset.logical_path));
+        let path = dir.join(asset.logical_path);
         assert_eq!(fs::read(&path).unwrap(), asset.bytes);
         let manifest_time = fs::metadata(dir.join("manifest.json"))
             .unwrap()
@@ -234,7 +227,7 @@ mod tests {
         });
         let dir = home.join("runtime").join("test").join(target_triple());
         for asset in EMBEDDED_ASSETS {
-            let path = dir.join(asset_relative_path(asset.logical_path));
+            let path = dir.join(asset.logical_path);
             assert_eq!(fs::read(&path).unwrap(), asset.bytes, "{}", path.display());
         }
         let leftovers = walk(&dir)

@@ -9,26 +9,15 @@ use walkdir::WalkDir;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
-    let repo_root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .ok_or("workspace root not found above CARGO_MANIFEST_DIR")?
-        .to_path_buf();
+    let assets_dir = manifest_dir.join("assets");
     let target = env::var("TARGET").unwrap_or_default();
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let output = out_dir.join("assets_generated.rs");
 
-    println!(
-        "cargo:rerun-if-changed={}",
-        repo_root.join("resources").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        repo_root.join("electron/assets/wasm").display()
-    );
+    println!("cargo:rerun-if-changed={}", assets_dir.display());
 
     let mut assets = Vec::new();
-    collect_assets(&repo_root, &target, &mut assets)?;
+    collect_assets(&assets_dir, &target, &mut assets)?;
     assets.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut generated = String::new();
@@ -74,46 +63,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// The files under `assets/` the program for `target` embeds, by their path there.
 fn collect_assets(
-    repo_root: &Path,
+    assets_dir: &Path,
     target: &str,
     out: &mut Vec<(String, PathBuf)>,
 ) -> Result<(), Box<dyn Error>> {
-    let resources = repo_root.join("resources");
-    if resources.exists() {
-        for entry in WalkDir::new(&resources).into_iter().filter_map(Result::ok) {
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path = entry.path();
-            let relative = path.strip_prefix(repo_root)?;
-            let logical = normalize(relative);
-            if include_resource(&logical, target) {
-                out.push((logical, path.to_path_buf()));
-            }
+    for entry in WalkDir::new(assets_dir).into_iter().filter_map(Result::ok) {
+        if !entry.file_type().is_file() {
+            continue;
         }
-    }
-
-    let wasm_dir = repo_root.join("electron/assets/wasm");
-    if wasm_dir.exists() {
-        for entry in WalkDir::new(&wasm_dir).into_iter().filter_map(Result::ok) {
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path = entry.path();
-            let relative = path.strip_prefix(repo_root)?;
-            out.push((normalize(relative), path.to_path_buf()));
+        let path = entry.path();
+        let logical = normalize(path.strip_prefix(assets_dir)?);
+        if include_asset(&logical, target) {
+            out.push((logical, path.to_path_buf()));
         }
     }
     Ok(())
 }
 
-fn include_resource(logical: &str, target: &str) -> bool {
-    // The annual-report fonts (27 MB) are only used by the desktop renderer.
-    if logical.starts_with("resources/fonts/") {
-        return false;
-    }
-    if logical == "resources/image/README.md" {
+fn include_asset(logical: &str, target: &str) -> bool {
+    if logical.starts_with("wasm/") || logical == "image/README.md" {
         return true;
     }
 
@@ -122,39 +92,23 @@ fn include_resource(logical: &str, target: &str) -> bool {
     let is_linux = target.contains("linux");
     let is_arm64 = target.contains("aarch64") || target.contains("arm64");
 
-    if logical.starts_with("resources/runtime/win32/") {
+    if logical.starts_with("runtime/win32/") || logical.starts_with("image/win32/") {
         return is_windows;
     }
-    if logical.starts_with("resources/image/win32/") {
-        return is_windows;
-    }
-    if logical.starts_with("resources/installer/") || logical.starts_with("resources/icons/") {
-        return false;
-    }
-
-    // The database layer is native Rust: the closed-source wcdb_api libraries are never embedded or extracted.
-    if logical.starts_with("resources/wcdb/") {
-        return false;
-    }
-
-    if logical.starts_with("resources/key/win32/") {
-        // Windows database-key capture is linked into the CLI. Never embed a vendor DLL.
-        return false;
-    }
-    if logical.starts_with("resources/key/macos/") {
+    if logical.starts_with("key/macos/") {
+        // the helpers' source is kept next to them, not embedded
         return is_macos && !logical.contains("/source/");
     }
-    if logical.starts_with("resources/key/linux/") {
+    if logical.starts_with("key/linux/") {
         return is_linux && arch_match(logical, is_arm64);
     }
-
-    if logical.starts_with("resources/wedecrypt/win32/") {
+    if logical.starts_with("wedecrypt/win32/") {
         return is_windows && arch_match(logical, is_arm64);
     }
-    if logical.starts_with("resources/wedecrypt/macos/") {
+    if logical.starts_with("wedecrypt/macos/") {
         return is_macos && (logical.contains("/universal/") || arch_match(logical, is_arm64));
     }
-    if logical.starts_with("resources/wedecrypt/linux/") {
+    if logical.starts_with("wedecrypt/linux/") {
         return is_linux && arch_match(logical, is_arm64);
     }
 
