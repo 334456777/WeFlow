@@ -18,6 +18,11 @@ fn rt() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
 }
 
+/// The JSON the HTTP API answers with.
+fn body(answer: impl serde::Serialize) -> serde_json::Value {
+    serde_json::to_value(answer).unwrap()
+}
+
 #[test]
 fn sessions_are_filtered_typed_and_named() {
     let (hub, _root) = common::mock_hub("api-sessions");
@@ -96,12 +101,13 @@ fn contacts_are_classified() {
 fn messages_endpoint_json_and_chatlab() {
     let (hub, _root) = common::mock_hub("api-messages");
     let rt = rt();
-    let r = rt
-        .block_on(hub.api_messages(
+    let r = body(
+        rt.block_on(hub.api_messages(
             &params(&[("talker", "wxid_bob"), ("limit", "2")]),
             "http://127.0.0.1:5031",
         ))
-        .unwrap();
+        .unwrap(),
+    );
     assert_eq!(r["success"], true);
     assert_eq!(r["count"], 2);
     assert_eq!(r["hasMore"], true, "limit reached with rows left over");
@@ -116,29 +122,32 @@ fn messages_endpoint_json_and_chatlab() {
     assert_eq!(r["messages"][1]["isSend"], 1);
     assert_eq!(r["media"]["enabled"], false);
 
-    let all = rt
-        .block_on(hub.api_messages(
+    let all = body(
+        rt.block_on(hub.api_messages(
             &params(&[("talker", "wxid_bob"), ("limit", "100")]),
             "http://h",
         ))
-        .unwrap();
+        .unwrap(),
+    );
     assert_eq!(all["count"], 5);
     assert_eq!(all["hasMore"], false);
-    let skipped = rt
-        .block_on(hub.api_messages(
+    let skipped = body(
+        rt.block_on(hub.api_messages(
             &params(&[("talker", "wxid_bob"), ("offset", "4")]),
             "http://h",
         ))
-        .unwrap();
+        .unwrap(),
+    );
     assert_eq!(skipped["count"], 1);
     assert_eq!(skipped["messages"][0]["localId"], 1);
 
-    let chatlab = rt
-        .block_on(hub.api_messages(
+    let chatlab = body(
+        rt.block_on(hub.api_messages(
             &params(&[("talker", "room1@chatroom"), ("format", "chatlab")]),
             "http://h",
         ))
-        .unwrap();
+        .unwrap(),
+    );
     assert_eq!(chatlab["chatlab"]["version"], "0.0.2");
     assert_eq!(chatlab["meta"]["type"], "group");
     assert_eq!(chatlab["meta"]["groupId"], "room1@chatroom");
@@ -185,17 +194,19 @@ fn messages_endpoint_validates_input() {
 #[test]
 fn pull_endpoint_reports_sync_block() {
     let (hub, _root) = common::mock_hub("api-pull");
-    let r = rt()
-        .block_on(hub.api_pull_messages("wxid_bob", &params(&[("limit", "2")]), "http://h"))
-        .unwrap();
+    let r = body(
+        rt().block_on(hub.api_pull_messages("wxid_bob", &params(&[("limit", "2")]), "http://h"))
+            .unwrap(),
+    );
     assert_eq!(r["messages"].as_array().unwrap().len(), 2);
     assert_eq!(r["sync"]["hasMore"], true);
     assert_eq!(r["sync"]["nextOffset"], 2);
     assert!(r["sync"]["nextSince"].is_i64());
     assert!(r["sync"]["watermark"].as_i64().unwrap() > 1_700_000_000);
-    let all = rt()
-        .block_on(hub.api_pull_messages("wxid_bob", &params(&[]), "http://h"))
-        .unwrap();
+    let all = body(
+        rt().block_on(hub.api_pull_messages("wxid_bob", &params(&[]), "http://h"))
+            .unwrap(),
+    );
     assert_eq!(all["sync"]["hasMore"], false);
     assert!(all["sync"].get("nextSince").is_none());
 }

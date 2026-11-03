@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use serde::{Serialize, Serializer};
 use serde_json::{json, Map, Value};
 
 use super::*;
@@ -25,6 +26,135 @@ struct RowsQuery {
     end: i64,
     ascending: bool,
     lite: bool,
+}
+
+/// The body of `GET /api/v1/messages`: the API's own message list, or ChatLab.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum ApiMessagesResponse {
+    Json(ApiMessagesPage),
+    ChatLab(ChatLabResponse),
+}
+
+/// `GET /api/v1/messages` in the API's own format.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiMessagesPage {
+    success: bool,
+    talker: String,
+    count: usize,
+    has_more: bool,
+    media: ApiMediaInfo,
+    messages: ApiMessageList,
+}
+
+/// The messages of an [`ApiMessagesPage`], each shaped by [`api::to_api_message`] as it is written.
+#[derive(Debug)]
+struct ApiMessageList {
+    messages: Vec<ChatMessage>,
+    media: HashMap<i64, ApiExportedMedia>,
+    base_url: String,
+}
+
+impl Serialize for ApiMessageList {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(
+            self.messages
+                .iter()
+                .map(|m| api::to_api_message(m, self.media.get(&m.local_id), &self.base_url)),
+        )
+    }
+}
+
+/// The `media` object of a message response: whether media was exported, where to, and how many files.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiMediaInfo {
+    enabled: bool,
+    export_path: PathBuf,
+    count: usize,
+}
+
+/// A ChatLab answer of the message routes; `media` belongs to `GET /api/v1/messages`, `sync` to the Pull route.
+#[derive(Debug, Serialize)]
+pub struct ChatLabResponse {
+    chatlab: ChatLabHeader,
+    meta: ChatLabMeta,
+    members: Vec<ChatLabMember>,
+    messages: Vec<ChatLabMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    media: Option<ApiMediaInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync: Option<ChatLabSync>,
+}
+
+/// The `chatlab` header of a ChatLab answer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatLabHeader {
+    version: &'static str,
+    exported_at: i64,
+    generator: &'static str,
+}
+
+/// The `meta` object of a ChatLab answer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatLabMeta {
+    name: String,
+    platform: &'static str,
+    #[serde(rename = "type")]
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_avatar: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_id: Option<String>,
+}
+
+/// One entry of a ChatLab answer's member list.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatLabMember {
+    platform_id: String,
+    account_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_nickname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    avatar: Option<String>,
+}
+
+/// One message of a ChatLab answer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatLabMessage {
+    sender: String,
+    account_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_nickname: Option<String>,
+    timestamp: i64,
+    #[serde(rename = "type")]
+    kind: i64,
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform_message_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply_to_message_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    media_path: Option<String>,
+}
+
+/// The `sync` object of a ChatLab Pull answer; `nextSince` and `nextOffset` only when more messages follow.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatLabSync {
+    has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_since: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_offset: Option<usize>,
+    watermark: i64,
 }
 
 fn js_int(v: Option<&Value>) -> Option<i64> {
@@ -1019,7 +1149,7 @@ impl ServiceHub {
         talker_name: &str,
         media: &HashMap<i64, ApiExportedMedia>,
         base_url: &str,
-    ) -> Map<String, Value> {
+    ) -> ChatLabResponse {
         let is_group = talker.ends_with("@chatroom");
         let my = self.wmy();
         let my_norm = api::normalize_account_id(&my).to_lowercase();
@@ -1043,27 +1173,32 @@ impl ServiceHub {
         } else {
             HashMap::new()
         };
-        let mut member_order: Vec<String> = Vec::new();
-        let mut members: HashMap<String, Map<String, Value>> = HashMap::new();
-        for m in messages {
-            let info =
-                api::resolve_chatlab_sender_info(m, talker, &my, is_group, &names, &group_nicks);
-            if let std::collections::hash_map::Entry::Vacant(slot) = members.entry(info.sender) {
-                let mut o = Map::new();
-                o.insert("platformId".into(), json!(slot.key()));
-                o.insert("accountName".into(), json!(info.account_name));
-                if let Some(g) = info.group_nickname {
-                    o.insert("groupNickname".into(), json!(g));
-                }
-                member_order.push(slot.key().clone());
-                slot.insert(o);
-            }
-        }
+        let infos: Vec<api::SenderInfo> = messages
+            .iter()
+            .map(|m| {
+                api::resolve_chatlab_sender_info(m, talker, &my, is_group, &names, &group_nicks)
+            })
+            .collect();
+        // one member per sender, in the order they first speak
+        let mut members: Vec<ChatLabMember> = {
+            let mut seen = HashSet::new();
+            infos
+                .iter()
+                .filter(|info| seen.insert(info.sender.as_str()))
+                .map(|info| ChatLabMember {
+                    platform_id: info.sender.clone(),
+                    account_name: info.account_name.clone(),
+                    group_nickname: info.group_nickname.clone(),
+                    avatar: None,
+                })
+                .collect()
+        };
         // avatars
         let lookup: Vec<String> = {
             let mut seen = HashSet::new();
-            member_order
+            members
                 .iter()
+                .map(|member| &member.platform_id)
                 .filter(|s| !s.starts_with("unknown_sender_"))
                 .flat_map(|s| {
                     let n = s.trim().to_string();
@@ -1125,7 +1260,8 @@ impl ServiceHub {
                     })
                 })
         };
-        for sender in &member_order {
+        for member in &mut members {
+            let sender = &member.platform_id;
             if sender.starts_with("unknown_sender_") {
                 continue;
             }
@@ -1151,9 +1287,7 @@ impl ServiceHub {
                         .cloned()
                 })
             });
-            if let (Some(u), Some(m)) = (url, members.get_mut(sender)) {
-                m.insert("avatar".into(), json!(u));
-            }
+            member.avatar = url;
         }
         let group_avatar = if is_group {
             serde_json::to_string(&[talker])
@@ -1169,82 +1303,48 @@ impl ServiceHub {
             None
         };
 
-        let chat_messages: Vec<Value> = messages
+        let chat_messages: Vec<ChatLabMessage> = messages
             .iter()
-            .map(|m| {
-                let info = api::resolve_chatlab_sender_info(
-                    m,
-                    talker,
-                    &my,
-                    is_group,
-                    &names,
-                    &group_nicks,
-                );
+            .zip(infos)
+            .map(|(m, info)| {
                 let quote = api::extract_api_quote_info(m);
-                let mut o = Map::new();
-                o.insert("sender".into(), json!(info.sender));
-                o.insert("accountName".into(), json!(info.account_name));
-                if let Some(g) = info.group_nickname {
-                    o.insert("groupNickname".into(), json!(g));
-                }
-                o.insert("timestamp".into(), json!(m.create_time));
-                o.insert("type".into(), json!(api::map_message_type(m)));
-                o.insert(
-                    "content".into(),
-                    api::message_content(m, quote.as_ref())
-                        .map(Value::from)
-                        .unwrap_or(Value::Null),
-                );
+                let content = api::message_content(m, quote.as_ref());
                 let sid = api::message_server_id(m);
-                if !sid.is_empty() {
-                    o.insert("platformMessageId".into(), json!(sid));
+                ChatLabMessage {
+                    sender: info.sender,
+                    account_name: info.account_name,
+                    group_nickname: info.group_nickname,
+                    timestamp: m.create_time,
+                    kind: api::map_message_type(m),
+                    content,
+                    platform_message_id: (!sid.is_empty()).then_some(sid),
+                    reply_to_message_id: quote.and_then(|q| q.reply_to_message_id),
+                    media_path: media
+                        .get(&m.local_id)
+                        .map(|md| api::api_media_url(base_url, &md.relative_path)),
                 }
-                if let Some(id) = quote.as_ref().and_then(|q| q.reply_to_message_id.clone()) {
-                    o.insert("replyToMessageId".into(), json!(id));
-                }
-                if let Some(md) = media.get(&m.local_id) {
-                    o.insert(
-                        "mediaPath".into(),
-                        json!(format!(
-                            "{}/api/v1/media/{}",
-                            base_url.trim_end_matches('/'),
-                            md.relative_path
-                        )),
-                    );
-                }
-                Value::Object(o)
             })
             .collect();
 
-        let mut meta = Map::new();
-        meta.insert("name".into(), json!(talker_name));
-        meta.insert("platform".into(), json!("wechat"));
-        meta.insert("type".into(), json!(api::api_session_type(talker)));
-        if is_group {
-            meta.insert("groupId".into(), json!(talker));
-            if let Some(a) = group_avatar {
-                meta.insert("groupAvatar".into(), json!(a));
-            }
+        ChatLabResponse {
+            chatlab: ChatLabHeader {
+                version: "0.0.2",
+                exported_at: chrono::Utc::now().timestamp(),
+                generator: "WeFlow",
+            },
+            meta: ChatLabMeta {
+                name: talker_name.to_string(),
+                platform: "wechat",
+                kind: api::api_session_type(talker),
+                group_id: is_group.then(|| talker.to_string()),
+                group_avatar,
+                owner_id: (!my.is_empty()).then_some(my),
+            },
+            members,
+            messages: chat_messages,
+            media: None,
+            sync: None,
         }
-        if !my.is_empty() {
-            meta.insert("ownerId".into(), json!(my));
-        }
-        let mut out = Map::new();
-        out.insert(
-            "chatlab".into(),
-            json!({ "version": "0.0.2", "exportedAt": chrono::Utc::now().timestamp(), "generator": "WeFlow" }),
-        );
-        out.insert("meta".into(), Value::Object(meta));
-        out.insert(
-            "members".into(),
-            member_order
-                .iter()
-                .filter_map(|s| members.get(s).cloned())
-                .map(Value::Object)
-                .collect(),
-        );
-        out.insert("messages".into(), Value::Array(chat_messages));
-        out
     }
 
     pub(super) fn names_and_avatars_pub(
@@ -1273,7 +1373,11 @@ impl ServiceHub {
     }
 
     /// `GET /api/v1/messages`
-    pub async fn api_messages(&self, params: &Params, base_url: &str) -> Result<Value, ApiError> {
+    pub async fn api_messages(
+        &self,
+        params: &Params,
+        base_url: &str,
+    ) -> Result<ApiMessagesResponse, ApiError> {
         let talker = params
             .get("talker")
             .map(|t| t.trim().to_string())
@@ -1405,7 +1509,11 @@ impl ServiceHub {
             .filter(|n| !n.is_empty())
             .cloned()
             .unwrap_or_else(|| talker.clone());
-        let media_info = json!({ "enabled": media_opts.enabled, "exportPath": self.api_media_dir(), "count": media_map.len() });
+        let media_info = ApiMediaInfo {
+            enabled: media_opts.enabled,
+            export_path: self.api_media_dir(),
+            count: media_map.len(),
+        };
         if format == "chatlab" {
             let mut data = self.convert_to_chatlab(
                 &wcdb,
@@ -1415,16 +1523,21 @@ impl ServiceHub {
                 &media_map,
                 base_url,
             );
-            data.insert("media".into(), media_info);
-            return Ok(Value::Object(data));
+            data.media = Some(media_info);
+            return Ok(ApiMessagesResponse::ChatLab(data));
         }
-        let api_messages: Vec<Value> = messages
-            .iter()
-            .map(|m| api::to_api_message(m, media_map.get(&m.local_id), base_url))
-            .collect();
-        Ok(
-            json!({ "success": true, "talker": talker, "count": api_messages.len(), "hasMore": has_more, "media": media_info, "messages": api_messages }),
-        )
+        Ok(ApiMessagesResponse::Json(ApiMessagesPage {
+            success: true,
+            talker,
+            count: messages.len(),
+            has_more,
+            media: media_info,
+            messages: ApiMessageList {
+                messages,
+                media: media_map,
+                base_url: base_url.to_string(),
+            },
+        }))
     }
 
     /// `GET /api/v1/sessions/:id/messages` (ChatLab Pull)
@@ -1433,7 +1546,7 @@ impl ServiceHub {
         session_id: &str,
         params: &Params,
         base_url: &str,
-    ) -> Result<Value, ApiError> {
+    ) -> Result<ChatLabResponse, ApiError> {
         const PULL_MAX: i64 = 5000;
         let limit = usize::try_from(api::parse_int_param(
             params.get("limit").map(String::as_str),
@@ -1491,17 +1604,13 @@ impl ServiceHub {
             base_url,
         );
         let last_ts = messages.last().map(|m| m.create_time);
-        let mut sync = Map::new();
-        sync.insert("hasMore".into(), json!(has_more));
-        if has_more {
-            if let Some(ts) = last_ts.filter(|t| *t != 0) {
-                sync.insert("nextSince".into(), json!(ts));
-            }
-            sync.insert("nextOffset".into(), json!(offset + messages.len()));
-        }
-        sync.insert("watermark".into(), json!(chrono::Utc::now().timestamp()));
-        data.insert("sync".into(), Value::Object(sync));
-        Ok(Value::Object(data))
+        data.sync = Some(ChatLabSync {
+            has_more,
+            next_since: last_ts.filter(|t| has_more && *t != 0),
+            next_offset: has_more.then(|| offset + messages.len()),
+            watermark: chrono::Utc::now().timestamp(),
+        });
+        Ok(data)
     }
 
     /// `downloadEmoji`: cached fetch of a sticker by CDN URL.

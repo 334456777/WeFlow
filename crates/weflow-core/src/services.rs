@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 
 mod analytics;
 mod api;
+pub use api::{ApiMessagesPage, ApiMessagesResponse, ChatLabResponse};
 mod chat;
 mod cleanup;
 mod export_stream;
