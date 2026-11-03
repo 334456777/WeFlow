@@ -153,31 +153,33 @@ impl Spool {
         })
     }
 
-    /// Appends one entry, preceded by `separator` unless it is the first.
-    fn push(&mut self, separator: &str, entry: &str) -> Result<()> {
+    /// Appends one entry, which `write` writes, preceded by `separator` unless it is the first.
+    fn push_with(
+        &mut self,
+        separator: &str,
+        write: impl FnOnce(&mut std::io::BufWriter<std::fs::File>) -> io::Result<()>,
+    ) -> Result<()> {
         use std::io::Write;
         if let Some(w) = self.writer.as_mut() {
             if self.entries > 0 {
                 w.write_all(separator.as_bytes())?;
             }
-            w.write_all(entry.as_bytes())?;
+            write(w)?;
         }
         self.entries += 1;
         Ok(())
     }
 
+    /// Appends one entry, preceded by `separator` unless it is the first.
+    fn push(&mut self, separator: &str, entry: &str) -> Result<()> {
+        use std::io::Write;
+        self.push_with(separator, |w| w.write_all(entry.as_bytes()))
+    }
+
     /// Appends `entry` pretty-printed as one JSON value nested `indent` spaces deep (see [`write_pretty`]),
     /// preceded by `separator` unless it is the first.
     fn push_json(&mut self, separator: &str, entry: &impl Serialize, indent: usize) -> Result<()> {
-        use std::io::Write;
-        if let Some(w) = self.writer.as_mut() {
-            if self.entries > 0 {
-                w.write_all(separator.as_bytes())?;
-            }
-            write_pretty(w, entry, indent)?;
-        }
-        self.entries += 1;
-        Ok(())
+        self.push_with(separator, |w| write_pretty(w, entry, indent))
     }
 
     /// Copies everything written so far to `out`.
@@ -1869,8 +1871,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
         self.message_text_with(msg, None, false)
     }
 
-    /// The `window.WEFLOW_DATA` item of one message (a JSON object, `index` is the number of messages before it).
-    fn html_item(&mut self, msg: &ExportMsg, index: usize) -> String {
+    /// The `window.WEFLOW_DATA` item of one message; `index` is the number of messages before it.
+    fn html_item(&mut self, msg: &ExportMsg, index: usize) -> HtmlItem {
         let is_group = self.session.is_group;
         let sender_name = if is_group {
             self.sender_profile_for(msg).display_name
@@ -1978,21 +1980,15 @@ impl<'a, 'n> Exporter<'a, 'n> {
             media_html,
             text_html
         );
-        let mut item = Map::new();
-        item.insert("i".into(), json!(index + 1));
-        item.insert("t".into(), json!(msg.create_time));
-        item.insert("s".into(), json!(if msg.is_send { 1 } else { 0 }));
-        item.insert("a".into(), json!(avatar_html));
-        item.insert("b".into(), json!(body));
-        if let Some(p) = msg.platform_message_id() {
-            item.insert("p".into(), json!(p));
+        HtmlItem {
+            local_id: index + 1,
+            create_time: msg.create_time,
+            is_send: u8::from(msg.is_send),
+            avatar_html,
+            body_html: body,
+            platform_message_id: msg.platform_message_id(),
+            reply_to_message_id: extract_reply_to_message_id(&msg.content),
         }
-        if let Some(r) = extract_reply_to_message_id(&msg.content) {
-            item.insert("r".into(), json!(r));
-        }
-        serde_json::to_string(&Value::Object(item))
-            .unwrap_or_default()
-            .replace("</", "<\\/")
     }
 
     /// The whole page around the data: `data_marker` stands where the items go.
@@ -2034,12 +2030,16 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     pub fn render_html(&mut self, msgs: &[ExportMsg]) -> String {
-        let data: Vec<String> = msgs
-            .iter()
-            .enumerate()
-            .map(|(i, msg)| self.html_item(msg, i))
-            .collect();
-        self.html_document(msgs.len(), &data.join(",\n"))
+        let mut data: Vec<u8> = Vec::new();
+        for (i, msg) in msgs.iter().enumerate() {
+            if i > 0 {
+                data.extend_from_slice(b",\n");
+            }
+            let item = self.html_item(msg, i);
+            // a Vec takes every write, and an item has only string keys
+            let _ = write_script_json(&mut data, &item);
+        }
+        self.html_document(msgs.len(), &String::from_utf8(data).unwrap_or_default())
     }
 
     /// HTML written from a stream of messages (oldest first): the items go to a spool file as they are read, the
@@ -2054,9 +2054,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
         use std::io::Write;
         let mut spool = Spool::create(out)?;
         let mut count = 0usize;
-        for item in msgs {
-            let html = self.html_item(item.borrow(), count);
-            spool.push(",\n", &html)?;
+        for msg in msgs {
+            let item = self.html_item(msg.borrow(), count);
+            spool.push_with(",\n", |w| write_script_json(w, &item))?;
             count += 1;
         }
         if count == 0 && !write_if_empty {
@@ -2114,7 +2114,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 }
 
-// ─────────────────────────── JSON / ChatLab documents ───────────────────────────
+// ──────────────────────── JSON / ChatLab / HTML documents ────────────────────────
 //
 // The structs below are serialized straight into the output; their field order is the key order of the files.
 
@@ -2497,6 +2497,52 @@ struct JsonDocument<'m> {
     messages: JsonMessages<'m>,
     #[serde(skip_serializing_if = "Option::is_none")]
     group_members: Option<Vec<ArkGroupMember>>,
+}
+
+/// One item of the HTML page's `window.WEFLOW_DATA`, which the page script renders.
+#[derive(Serialize)]
+struct HtmlItem {
+    #[serde(rename = "i")]
+    local_id: usize,
+    #[serde(rename = "t")]
+    create_time: i64,
+    #[serde(rename = "s")]
+    is_send: u8,
+    #[serde(rename = "a")]
+    avatar_html: String,
+    #[serde(rename = "b")]
+    body_html: String,
+    #[serde(rename = "p", skip_serializing_if = "Option::is_none")]
+    platform_message_id: Option<String>,
+    #[serde(rename = "r", skip_serializing_if = "Option::is_none")]
+    reply_to_message_id: Option<String>,
+}
+
+/// serde_json's compact format with every `</` inside a string written as `<\/`, so the JSON cannot close the
+/// `<script>` element it is embedded in.
+struct ScriptSafe;
+
+impl Formatter for ScriptSafe {
+    // `<` and `/` are never escaped, so a `</` of the text always lies within one fragment
+    fn write_string_fragment<W: ?Sized + io::Write>(
+        &mut self,
+        writer: &mut W,
+        fragment: &str,
+    ) -> io::Result<()> {
+        let mut rest = fragment;
+        while let Some(at) = rest.find("</") {
+            writer.write_all(&rest.as_bytes()[..=at])?;
+            writer.write_all(b"\\")?;
+            rest = &rest[at + 1..];
+        }
+        writer.write_all(rest.as_bytes())
+    }
+}
+
+/// Writes `value` as compact JSON that is safe inside a `<script>` element (see [`ScriptSafe`]).
+fn write_script_json(writer: &mut impl io::Write, value: &impl Serialize) -> io::Result<()> {
+    let mut serializer = serde_json::Serializer::with_formatter(writer, ScriptSafe);
+    value.serialize(&mut serializer).map_err(io::Error::from)
 }
 
 // ─────────────────────────────── small helpers ───────────────────────────────
@@ -3474,6 +3520,26 @@ mod tests {
         assert!(html.contains("message-link-card"));
         assert!(!html.contains("<b>there</b>"));
         assert!(html.contains("<title>Bobby - "));
+    }
+
+    /// Script-safe JSON is compact JSON with every `</` written as `<\/`, also next to escaped characters.
+    #[test]
+    fn script_json_escapes_every_closing_tag() {
+        for text in [
+            "</script>",
+            "a</b></c>",
+            "<</",
+            "\"</\"\n</",
+            "<\\/",
+            "</",
+            "plain",
+        ] {
+            let value = json!({ "b": text, "</k": [text, 1] });
+            let mut out = Vec::new();
+            write_script_json(&mut out, &value).unwrap();
+            let want = serde_json::to_string(&value).unwrap().replace("</", "<\\/");
+            assert_eq!(String::from_utf8(out).unwrap(), want, "{text:?}");
+        }
     }
 
     #[test]
