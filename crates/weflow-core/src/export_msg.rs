@@ -208,14 +208,17 @@ pub enum EntryFormat {
     Sql,
     Chatlab,
     ChatlabJsonl,
+    /// Detailed JSON. Not arkme-json: its sender table numbers the senders in the order the messages show them.
+    Json,
 }
 
 impl EntryFormat {
-    /// Whether rendering is slow enough to be worth doing on the reading threads. A ChatLab entry resolves names
-    /// and prints a JSON object, which keeps the writer behind the readers; TXT and SQL entries are cheap enough that
-    /// the writer keeps up, and rendering them elsewhere only holds more text in flight (measured in issue #14).
+    /// Whether rendering is slow enough to be worth doing on the reading threads. A ChatLab or detailed-JSON entry
+    /// resolves names and prints a JSON object, which keeps the writer behind the readers; TXT and SQL entries are
+    /// cheap enough that the writer keeps up, and rendering them elsewhere only holds more text in flight (measured
+    /// in issue #14).
     pub fn renders_ahead(self) -> bool {
-        matches!(self, Self::Chatlab | Self::ChatlabJsonl)
+        matches!(self, Self::Chatlab | Self::ChatlabJsonl | Self::Json)
     }
 
     pub fn parse(format: &str) -> Option<Self> {
@@ -224,6 +227,7 @@ impl EntryFormat {
             "sql" => Some(Self::Sql),
             "chatlab" => Some(Self::Chatlab),
             "chatlab-jsonl" => Some(Self::ChatlabJsonl),
+            "json" => Some(Self::Json),
             _ => None,
         }
     }
@@ -238,6 +242,29 @@ pub struct RenderedEntries {
     pub senders: Vec<String>,
     /// ChatLab: the people named inside forwarded chat histories, in order (they become members too).
     pub record_names: Vec<String>,
+    /// Detailed JSON: the newest `create_time` of the page (the session header has the newest of all).
+    pub latest: Option<i64>,
+}
+
+/// The key of a detailed-JSON message's first field, whose value the writer sets (see
+/// [`Exporter::render_entries`]).
+const JSON_LOCAL_ID_KEY: &str = "\"localId\": ";
+
+/// Writes `entry`, a detailed-JSON message rendered ahead, with `local_id` as the value of its `localId`.
+fn write_json_entry(w: &mut impl io::Write, entry: &str, local_id: usize) -> io::Result<()> {
+    // `localId` is the first field, so the first match is the key and not text inside a later value
+    let Some(key) = entry.find(JSON_LOCAL_ID_KEY) else {
+        return w.write_all(entry.as_bytes());
+    };
+    let start = key + JSON_LOCAL_ID_KEY.len();
+    let digits = entry[start..]
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .count();
+    let bytes = entry.as_bytes();
+    w.write_all(&bytes[..start])?;
+    write!(w, "{local_id}")?;
+    w.write_all(&bytes[start + digits..])
 }
 
 /// Messages rendered at a time when an export is rendered and written on one thread.
@@ -936,10 +963,19 @@ impl<'a, 'n> Exporter<'a, 'n> {
             texts: Vec::with_capacity(msgs.len()),
             ..Default::default()
         };
+        // detailed JSON keeps no sender profiles; json_message wants somewhere to put them
+        let mut profiles: HashMap<String, Profile> = HashMap::new();
         for msg in msgs.iter().map(std::borrow::Borrow::borrow) {
             let text = match format {
                 EntryFormat::Txt => self.txt_entry(msg),
                 EntryFormat::Sql => self.sql_insert(msg),
+                EntryFormat::Json => {
+                    out.latest = out.latest.max(Some(msg.create_time));
+                    // the message's place in the whole export is known only when it is written, which sets
+                    // `localId` (see write_json_entry)
+                    let m = self.json_message(msg, false, 0, &mut profiles);
+                    pretty_string(&m, 4)
+                }
                 EntryFormat::Chatlab | EntryFormat::ChatlabJsonl => {
                     out.senders.push(msg.sender_username.clone());
                     let member_name = if msg.sender_username.is_empty() {
@@ -984,7 +1020,33 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 next,
                 write_if_empty,
             ),
+            EntryFormat::Json => self.write_rendered_json(out, next, write_if_empty),
         }
+    }
+
+    /// Detailed JSON: the entries go to a spool file, numbered as they are written; the session header, which comes
+    /// first in the file and has the totals, is written at the end.
+    fn write_rendered_json(
+        &mut self,
+        out: &Path,
+        next: &mut dyn FnMut(&mut Self) -> Option<RenderedEntries>,
+        write_if_empty: bool,
+    ) -> Result<usize> {
+        let mut spool = Spool::create(out)?;
+        let mut last_ts: Option<i64> = None;
+        let mut count = 0usize;
+        while let Some(page) = next(self) {
+            last_ts = last_ts.max(page.latest);
+            for text in &page.texts {
+                count += 1;
+                spool.push_with(",\n    ", |w| write_json_entry(w, text, count))?;
+            }
+        }
+        if count == 0 && !write_if_empty {
+            return Ok(0);
+        }
+        self.write_json_file(out, &mut spool, count, last_ts, None)?;
+        Ok(count)
     }
 
     /// TXT / SQL: a header, then the entries.
@@ -1395,29 +1457,27 @@ impl<'a, 'n> Exporter<'a, 'n> {
             .windows(2)
             .all(|w| w[0].create_time <= w[1].create_time)
         {
-            self.stream_json(msgs, out, arkme, true)?;
+            if arkme {
+                self.stream_arkme_json(msgs, out, true)?;
+            } else {
+                self.render_and_write(EntryFormat::Json, out, msgs, true)?;
+            }
             return Ok(());
         }
         let document = self.json_document(msgs, arkme);
         write_bytes(out, &serde_json::to_vec_pretty(&document)?)
     }
 
-    /// Detailed JSON / arkme-json written from a stream of messages (oldest first). Each message is serialized as
-    /// soon as it is read and put in a spool file; the header (which has the totals) and the member list (which has
-    /// the senders) are written around it at the end. With no messages nothing is written unless `write_if_empty`.
-    fn stream_json<I>(
-        &mut self,
-        msgs: I,
-        out: &Path,
-        arkme: bool,
-        write_if_empty: bool,
-    ) -> Result<usize>
+    /// arkme-json written from a stream of messages (oldest first). Each message is serialized as soon as it is
+    /// read and put in a spool file; the header (which has the totals) and the sender table and member list (which
+    /// have the senders) are written around it at the end. With no messages nothing is written unless
+    /// `write_if_empty`.
+    fn stream_arkme_json<I>(&mut self, msgs: I, out: &Path, write_if_empty: bool) -> Result<usize>
     where
         I: IntoIterator,
         I::Item: std::borrow::Borrow<ExportMsg>,
     {
         use std::borrow::Borrow;
-        use std::io::Write;
         let is_group = self.session.is_group;
         let mut spool = Spool::create(out)?;
         let mut ark = ArkCompact::default();
@@ -1427,20 +1487,16 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let mut count = 0usize;
         for item in msgs {
             let msg: &ExportMsg = item.borrow();
-            let message = self.json_message(msg, arkme, count, &mut profiles);
-            if arkme {
-                let sender = msg.sender_username.trim();
-                let compact = ark.compact(message, &|s| {
-                    (s == sender)
-                        .then(|| profiles.get(&msg.sender_username).cloned())
-                        .flatten()
-                });
-                spool.push_json(",\n    ", &compact, 4)?;
-            } else {
-                spool.push_json(",\n    ", &message, 4)?;
-            }
+            let message = self.json_message(msg, true, count, &mut profiles);
+            let sender = msg.sender_username.trim();
+            let compact = ark.compact(message, &|s| {
+                (s == sender)
+                    .then(|| profiles.get(&msg.sender_username).cloned())
+                    .flatten()
+            });
+            spool.push_json(",\n    ", &compact, 4)?;
             last_ts = last_ts.max(Some(msg.create_time));
-            if arkme && is_group {
+            if is_group {
                 tally.add(&msg.sender_username);
             }
             count += 1;
@@ -1448,17 +1504,36 @@ impl<'a, 'n> Exporter<'a, 'n> {
         if count == 0 && !write_if_empty {
             return Ok(0);
         }
+        self.write_json_file(out, &mut spool, count, last_ts, Some((&ark.senders, tally)))?;
+        Ok(count)
+    }
+
+    /// Writes the detailed-JSON file, or with `arkme` (its sender table and a tally of the senders) the arkme-json
+    /// file, around the `count` messages in `spool`.
+    fn write_json_file(
+        &mut self,
+        out: &Path,
+        spool: &mut Spool,
+        count: usize,
+        last_ts: Option<i64>,
+        arkme: Option<(&[ArkSender], SenderTally)>,
+    ) -> Result<()> {
+        use std::io::Write;
         let session = self.json_session(count, last_ts);
-        let header = self.weflow_header(arkme.then_some("arkme-json"));
+        let header = self.weflow_header(arkme.is_some().then_some("arkme-json"));
         let mut w = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(out)?);
         w.write_all(b"{\n  \"weflow\": ")?;
         write_pretty(&mut w, &header, 2)?;
         w.write_all(b",\n  \"session\": ")?;
         write_pretty(&mut w, &session, 2)?;
-        if arkme {
-            w.write_all(b",\n  \"senders\": ")?;
-            write_pretty(&mut w, &ark.senders, 2)?;
-        }
+        let tally = match arkme {
+            Some((senders, tally)) => {
+                w.write_all(b",\n  \"senders\": ")?;
+                write_pretty(&mut w, &senders, 2)?;
+                Some(tally)
+            }
+            None => None,
+        };
         w.write_all(b",\n  \"messages\": ")?;
         if count == 0 {
             w.write_all(b"[]")?;
@@ -1467,14 +1542,14 @@ impl<'a, 'n> Exporter<'a, 'n> {
             spool.copy_to(&mut w)?;
             w.write_all(b"\n  ]")?;
         }
-        if arkme && is_group {
+        if let Some(tally) = tally.filter(|_| self.session.is_group) {
             let members = self.ark_group_members_of(tally);
             w.write_all(b",\n  \"groupMembers\": ")?;
             write_pretty(&mut w, &members, 2)?;
         }
         w.write_all(b"\n}")?;
         w.flush()?;
-        Ok(count)
+        Ok(())
     }
 
     // ─────────────────────────────────── TXT ───────────────────────────────────
@@ -1492,8 +1567,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         }
         match format {
             "weclone" => return self.stream_weclone(out, msgs),
-            "json" => return self.stream_json(msgs, out, false, false),
-            "arkme-json" => return self.stream_json(msgs, out, true, false),
+            "arkme-json" => return self.stream_arkme_json(msgs, out, false),
             "html" => return self.stream_html(msgs, out, false),
             "excel" | "xlsx" => return self.stream_excel(msgs, out),
             _ => {}
@@ -3371,6 +3445,7 @@ mod tests {
                 ("sql", EntryFormat::Sql),
                 ("chatlab", EntryFormat::Chatlab),
                 ("chatlab-jsonl", EntryFormat::ChatlabJsonl),
+                ("json", EntryFormat::Json),
             ] {
                 let alone = dir.join(format!("{group}-alone.{name}"));
                 let paged = dir.join(format!("{group}-paged.{name}"));
