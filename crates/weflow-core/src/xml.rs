@@ -69,6 +69,14 @@ pub fn tag_inner<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
     Some(&xml[start..end])
 }
 
+/// `(?is)<tag>.*?</tag>`: the first element `tag`, tags included. `tag` must be ASCII.
+pub fn tag_element<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
+    let h = xml.as_bytes();
+    let (start, inner) = find_tag(h, 0, tag.as_bytes(), false)?;
+    let (_, end) = find_tag(h, inner, tag.as_bytes(), true)?;
+    Some(&xml[start..end])
+}
+
 /// `(?is)<open.*?>(.*?)</close>` where `open` is an ASCII prefix such as `<appmsg`: the text after the first `>`
 /// that follows the first `open`, up to the first `close` after it.
 pub fn element_inner<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a str> {

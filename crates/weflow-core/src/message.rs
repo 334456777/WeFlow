@@ -3254,6 +3254,8 @@ mod tests {
             "gh_x:\n",
             "a-b:\r\n",
             "<DataItem datatype=\"1\">",
+            "<msgsource>",
+            "</MsgSource>",
         ];
         let mut rng = StdRng::seed_from_u64(521);
         // how often each scanner finds something, so that the comparison is not only of misses
@@ -3293,6 +3295,10 @@ mod tests {
             hit(
                 "cdata",
                 crate::xml::between(&s, "<![CDATA[", "]]>").next().is_some(),
+            );
+            hit(
+                "msgsource",
+                crate::xml::tag_element(&s, "msgsource").is_some(),
             );
             assert_eq!(
                 strip_sender_prefix(&s),
@@ -3357,6 +3363,13 @@ mod tests {
             assert_eq!(
                 crate::xml::between(&s, "<![CDATA[", "]]>").collect::<Vec<_>>(),
                 regex_reference::all(r"(?s)<!\[CDATA\[(.*?)\]\]>", &s, 1),
+                "{s:?}"
+            );
+            assert_eq!(
+                crate::xml::tag_element(&s, "msgsource"),
+                rx(r"(?i)<msgsource>[\s\S]*?</msgsource>")
+                    .find(&s)
+                    .map(|m| m.as_str()),
                 "{s:?}"
             );
             assert_eq!(
