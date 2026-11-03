@@ -170,7 +170,7 @@ fn every_crate_is_in_the_architecture_tables() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     assert!(
-        crates.len() >= 6,
+        crates.len() >= 5,
         "found crates {crates:?}; did the layout change?"
     );
     for doc in ["docs/native-cli.md", "docs/zh-CN/native-cli.md"] {

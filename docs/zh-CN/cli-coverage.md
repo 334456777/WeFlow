@@ -28,6 +28,8 @@
 
 ## 如何复现这些数字
 
+下面的 TypeScript 路径指 [ca6c479](https://github.com/334456777/WeFlow/tree/ca6c479496d4c7f00ccf234d567b1c51c79fe170) 中的文件。
+
 - IPC：`grep -oE "ipcMain\.handle\('[^']+'" electron/main.ts`（172 个），按上文手工分类。
 - 数据库函数：`crates/weflow-native/src/wcdb.rs` 中 `Wcdb` 的公开方法里被 `crates/weflow-core` / `weflow-cli` 调用的那些；拒绝或未实现的列在 [cli-unsupported.md](cli-unsupported.md)（有测试保证同步）。
 - 导出格式：`crates/weflow-core` 中的 `MESSAGE_EXPORT_FORMATS` 与 `tests/export_e2e.rs`。

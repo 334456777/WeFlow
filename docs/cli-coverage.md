@@ -28,6 +28,8 @@ Except for `/health`, the HTTP service requires a token for every route (`Author
 
 ## Reproducing the numbers
 
+The TypeScript paths below are files in [ca6c479](https://github.com/334456777/WeFlow/tree/ca6c479496d4c7f00ccf234d567b1c51c79fe170).
+
 - IPC: `grep -oE "ipcMain\.handle\('[^']+'" electron/main.ts` (172 results), classified manually as described above.
 - Database functions: the public `Wcdb` methods in `crates/weflow-native/src/wcdb.rs` that are called by `crates/weflow-core` / `weflow-cli`; refused or unimplemented functions are listed in [cli-unsupported.md](cli-unsupported.md) (a test keeps the list synchronized).
 - Export formats: `MESSAGE_EXPORT_FORMATS` in `crates/weflow-core` and `tests/export_e2e.rs`.

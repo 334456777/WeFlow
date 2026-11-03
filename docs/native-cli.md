@@ -115,7 +115,7 @@ before it asks. Nothing in WeChat's own folders is touched.
 `db detect` prints the WeChat data directories that exist as `db_path: <path>`, and `db wxid` prints the wxid of the
 account(s) it finds as `wxid: <wxid>` (the folder name without its `_ab12` suffix; add a data directory as an optional argument to read a specific one); both names are the ones `config set` takes.
 
-`key db` (Windows) hooks WeChat through `wx_key.dll`. WeChat only produces the key while it opens its databases, so the command
+`key db` (Windows) hooks WeChat to read the database key. WeChat only produces the key while it opens its databases, so the command
 asks you to quit WeChat completely (when it is running) and open it again, checks once a second for the process (the
 whole procedure gives up after `--timeout`, default 180 s, and shows the seconds left), hooks the new process
 (WeChat has quit once none of the processes it had is left, so quitting and opening it again within a second works too) and asks you to
@@ -188,12 +188,10 @@ Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, 
 | `crates/weflow-cli` | Command entry, argument parsing, output; the command API of `weflow serve` (`src/serve_api/`, see [serve-api.md](serve-api.md)) |
 | `crates/weflow-core` | Configuration, accounts, chats, exports, analytics, Moments, backup, AI insights, the typed reads the CLI and the command API share (`reads`), the command API's contract (`contract`), the desktop app's HTTP API |
 | `crates/weflow-native` | Native database reader (SQLCipher decryption, messages, contacts, Moments, statistics, reports), key helpers, image decryption, ISAAC-64 keystream (ported from the vendor WASM), platform wrappers |
-| `crates/weflow-wcdb-ffi` | C-ABI shared library `weflow_wcdb` that exports `weflow-native` with the same interface as `wcdb_api`; loaded by the desktop app (see [desktop-rust-layer.md](desktop-rust-layer.md)) |
-| `crates/weflow-wxkey` | Windows x64 `wx_key.dll` compatibility ABI, built from the Rust database-key capture code |
 | `crates/weflow-assets` | Embedded resources, unpacking, hash check |
 | `crates/weflow-silk` | Vendored SILK decoder for voice messages |
 
-Windows x64 `key db` captures the database key directly in Rust, using a hardware execution breakpoint during login. It restores debug registers and detaches on success, timeout and Ctrl+C; there is no vendor DLL or method selector. The desktop app builds the compatible Rust `wx_key.dll` from the same code. See [Windows database keys](windows-db-key.md) for version limits and verification.
+Windows x64 `key db` captures the database key directly in Rust, using a hardware execution breakpoint during login. It restores debug registers and detaches on success, timeout and Ctrl+C; there is no vendor DLL or method selector. See [Windows database keys](windows-db-key.md) for version limits and verification.
 
 The remaining platform helpers (`img_helper.dll`, `libwx_key.dylib`, `xkey_helper_linux`) are embedded: each binary carries only its own platform's helpers, unpacks them into
 `WEFLOW_HOME/runtime/<version>/<target>/`, checks the manifest hash on every start (unpacking again when the version or a hash
@@ -213,9 +211,8 @@ overrides. `./weflow config set --help` explains every key. `./weflow config set
 **Why the database layer is pure Rust.** The CLI was first meant to call the closed-source `wcdb_api` library through FFI. That
 library has an expiry check (after 2026-09-30 23:59:59 `wcdb_init` returns `-1000`) and unverified network code, so the CLI now
 decrypts WeChat 4.x databases itself (SQLCipher 4) and reads them **read-only** in pure Rust
-(`crates/weflow-native/src/{sqlcipher,native_*}.rs`). Neither the CLI nor the desktop app embeds or loads `wcdb_api`,
-`WCDB.dll`, `libwcdb_api.*` or `libWCDB.dylib` any more; they stay in the repository for the original desktop app, see
-[wcdb-api.md](wcdb-api.md). Coverage of the original backend: [cli-coverage.md](cli-coverage.md).
+(`crates/weflow-native/src/{sqlcipher,native_*}.rs`). The CLI does not embed or load `wcdb_api`, `WCDB.dll`,
+`libwcdb_api.*` or `libWCDB.dylib`. Coverage of the original backend: [cli-coverage.md](cli-coverage.md).
 
 ## Tests
 

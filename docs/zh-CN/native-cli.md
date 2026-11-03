@@ -94,7 +94,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 
 `db detect` 以 `db_path: <路径>` 输出存在的微信数据目录，`db wxid` 以 `wxid: <wxid>` 输出检测到的账号的 wxid（文件夹名去掉 `_ab12` 后缀；也可附带数据目录作为可选参数来指定目录）；这两个名字都是 `config set` 要填的名字。
 
-`key db`（Windows）通过 `wx_key.dll` 挂钩微信。微信只在打开数据库时才会产生密钥，所以命令会先请你完全退出微信（如果它正在运行）再重新打开，每秒检查一次微信进程（整个过程超过 `--timeout`，默认 180 秒，就会自动退出，并显示剩余秒数），然后挂钩新启动的微信（原来的微信进程全部消失就算已经退出，所以一秒内退出又重新打开也能识别），并请你在登录窗口点击「进入微信」。结果以 `decrypt_key: <密钥>` 输出，名字与 `config set` 一致。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`；用 `--pid` 指定时直接挂钩该进程，不再等待重启。`key image` 从 `kvcomm` 缓存推导图片密钥，用账号目录下的 `_t.dat` 模板校验，并输出 `image_xor_key` 和 `image_aes_key`。两条命令加上 `--save` 时，会把密钥写进当前档案而不输出：结果里用 `saved` 列出写入的键名，不含密钥本身。WebUI 的首次配置就是这样通过 `serve` 获取密钥，密钥不会经过浏览器。
+`key db`（Windows）挂钩微信读取数据库密钥。微信只在打开数据库时才会产生密钥，所以命令会先请你完全退出微信（如果它正在运行）再重新打开，每秒检查一次微信进程（整个过程超过 `--timeout`，默认 180 秒，就会自动退出，并显示剩余秒数），然后挂钩新启动的微信（原来的微信进程全部消失就算已经退出，所以一秒内退出又重新打开也能识别），并请你在登录窗口点击「进入微信」。结果以 `decrypt_key: <密钥>` 输出，名字与 `config set` 一致。需要管理员终端，依次查找 `Weixin.exe`、`WeChat.exe`；用 `--pid` 指定时直接挂钩该进程，不再等待重启。`key image` 从 `kvcomm` 缓存推导图片密钥，用账号目录下的 `_t.dat` 模板校验，并输出 `image_xor_key` 和 `image_aes_key`。两条命令加上 `--save` 时，会把密钥写进当前档案而不输出：结果里用 `saved` 列出写入的键名，不含密钥本身。WebUI 的首次配置就是这样通过 `serve` 获取密钥，密钥不会经过浏览器。
 
 `key image`（仅 Windows；Linux 和 macOS 提示尚不支持）直接读取 `kvcomm` 缓存文件，不依赖任何 DLL，也不访问微信进程（#89 的 Windows 切口）：
 
@@ -140,12 +140,10 @@ AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及�
 | `crates/weflow-cli` | 命令入口、参数解析、输出；`weflow serve` 的命令 API（`src/serve_api/`，见 [serve-api.md](serve-api.md)） |
 | `crates/weflow-core` | 配置、账号、聊天、导出、统计分析、朋友圈、备份、AI 见解、CLI 与命令 API 共用的类型化读取（`reads`）、命令 API 的契约（`contract`）、桌面端的 HTTP API |
 | `crates/weflow-native` | 原生数据库读取(SQLCipher 解密、消息、联系人、朋友圈、统计、报告)、密钥辅助、图片解密、ISAAC-64 密钥流(移植自厂商 WASM)、平台封装 |
-| `crates/weflow-wcdb-ffi` | 把 `weflow-native` 导出为与 `wcdb_api` 接口兼容的 C ABI 动态库 `weflow_wcdb`，供桌面端加载(见 [desktop-rust-layer.md](desktop-rust-layer.md)) |
-| `crates/weflow-wxkey` | Windows x64 `wx_key.dll` 兼容接口，与 Rust 数据库密钥捕获共用实现 |
 | `crates/weflow-assets` | 内嵌资源、解压、哈希校验 |
 | `crates/weflow-silk` | 内置的 SILK 解码器，用于语音消息 |
 
-Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获数据库密钥。成功、超时和 Ctrl+C 都会恢复调试寄存器并解除调试连接；不再加载厂商 DLL，也没有方法选择选项。桌面端从同一代码构建兼容的 Rust `wx_key.dll`。版本限制与验证见 [Windows 数据库密钥](windows-db-key.md)。
+Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获数据库密钥。成功、超时和 Ctrl+C 都会恢复调试寄存器并解除调试连接；不再加载厂商 DLL，也没有方法选择选项。版本限制与验证见 [Windows 数据库密钥](windows-db-key.md)。
 
 其余平台辅助程序(`img_helper.dll`、`libwx_key.dylib`、`xkey_helper_linux`)内嵌在程序里:
 每个二进制只内嵌本平台需要的辅助程序，解压到 `WEFLOW_HOME/runtime/<版本>/<target>/`;每次启动校验清单里的哈希(版本或哈希
@@ -159,8 +157,8 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 
 **为什么数据库层是纯 Rust。** 命令行原计划通过 FFI 调用闭源的 `wcdb_api` 库。这个库带有效期检查(2026-09-30 23:59:59 之后
 `wcdb_init` 返回 `-1000`)和未经核实的网络代码，所以命令行改为自己解密微信 4.x 数据库(SQLCipher 4)，用纯 Rust **只读**
-读取(`crates/weflow-native/src/{sqlcipher,native_*}.rs`)。命令行和桌面端都不再内嵌或加载 `wcdb_api`、`WCDB.dll`、
-`libwcdb_api.*`、`libWCDB.dylib`;它们留在仓库里给原版桌面端使用，见 [wcdb-api.md](wcdb-api.md)。对原后端的覆盖率见 [cli-coverage.md](cli-coverage.md)。
+读取(`crates/weflow-native/src/{sqlcipher,native_*}.rs`)。命令行不内嵌也不加载 `wcdb_api`、`WCDB.dll`、
+`libwcdb_api.*`、`libWCDB.dylib`。对原后端的覆盖率见 [cli-coverage.md](cli-coverage.md)。
 
 ## 测试
 
