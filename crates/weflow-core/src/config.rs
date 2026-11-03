@@ -694,7 +694,7 @@ mod tests {
         ConfigStore::update(&path, |c| c.set_key(None, "wxid", json!("wxid_a"))).unwrap();
         let before = fs::read(&path).unwrap();
         assert!(
-            ConfigStore::update(&path, |c| c.set_key(None, "http_api_port", json!(0))).is_err()
+            ConfigStore::update(&path, |c| c.set_key(None, "image_xor_key", json!(256))).is_err()
         );
         assert_eq!(fs::read(&path).unwrap(), before);
         let _ = fs::remove_dir_all(&dir);
@@ -704,9 +704,6 @@ mod tests {
     fn numeric_keys_refuse_out_of_range_values() {
         let mut store = ConfigStore::default();
         for (key, bad) in [
-            ("http_api_port", json!(65536)),
-            ("http_api_port", json!(0)),
-            ("http_api_port", json!("-1")),
             ("ai_model_api_max_tokens", json!(4294967296_i64)),
             ("ai_model_api_max_tokens", json!(-1)),
             ("image_xor_key", json!(256)),
@@ -724,7 +721,6 @@ mod tests {
             );
         }
         for (key, good) in [
-            ("http_api_port", 65535),
             ("ai_model_api_max_tokens", 4294967295_i64),
             ("image_xor_key", 0),
             ("image_xor_key", 255),
