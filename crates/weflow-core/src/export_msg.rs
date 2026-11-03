@@ -20,7 +20,7 @@ use serde_json::{json, Map, Value};
 use crate::locale;
 use crate::message::*;
 
-const HTML_STYLES: &str = include_str!("../../../electron/services/exportHtml.css");
+const HTML_STYLES: &str = include_str!("export_html.css");
 
 fn chrome(zh: &'static str, en: &'static str) -> &'static str {
     locale::tr(en, zh)

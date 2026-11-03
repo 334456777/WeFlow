@@ -15,9 +15,3 @@ regexes = [
   '''YOUR_TOKEN'''
 ]
 
-[[rules]]
-id = "generic-api-key"
-[rules.allowlist]
-paths = [
-  '''src/pages/ChatPage\.tsx'''
-]
