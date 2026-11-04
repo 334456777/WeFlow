@@ -163,6 +163,11 @@ pub fn extract_app_message_type(content: &str) -> String {
     if !normalized.contains("<appmsg") && !normalized.contains("<msg>") {
         return String::new();
     }
+    // the regex needs a `<type>`, and no character but these letters' ASCII cases folds to them: images, voice and
+    // stickers have none
+    if crate::xml::find_ci(&normalized, 0, "<type>").is_none() {
+        return String::new();
+    }
     rx(r"(?i)<type>(\d+)</type>")
         .captures(&normalized)
         .map(|c| c[1].to_string())
@@ -174,20 +179,74 @@ fn looks_like_wxid(text: &str) -> bool {
     if t.is_empty() {
         return false;
     }
-    t.starts_with("wxid_") || rx(r"^wx[a-z0-9_-]{4,}$").is_match(&t)
+    // `^wx[a-z0-9_-]{4,}$`
+    let wx_id = t.len() >= 6
+        && t.starts_with("wx")
+        && t.bytes()
+            .skip(2)
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-'));
+    t.starts_with("wxid_") || wx_id
 }
 
+/// The text of a quote without wxids (`wxid_[A-Za-z0-9_-]{3,}`), the separators in front of it
+/// (`^[\s:：\-]+`), runs of colons (`[:：]{2,}` → `:`), and with white space collapsed to single spaces.
 pub fn sanitize_quoted_content(content: &str) -> String {
     if content.is_empty() {
         return String::new();
     }
-    let mut r = rx(r"wxid_[A-Za-z0-9_-]{3,}")
-        .replace_all(content, "")
-        .to_string();
-    r = rx(r"^[\s:：\-]+").replace(&r, "").to_string();
-    r = rx(r"[:：]{2,}").replace_all(&r, ":").to_string();
-    r = rx(r"^[\s:：\-]+").replace(&r, "").to_string();
-    rx(r"\s+").replace_all(&r, " ").trim().to_string()
+    let is_lead = |c: char| c.is_whitespace() || matches!(c, ':' | '：' | '-');
+    let without_ids = remove_wxids(content);
+    let collapsed = collapse_colon_runs(without_ids.trim_start_matches(is_lead));
+    // `\s` and `split_whitespace` are both Unicode White_Space
+    let words: Vec<&str> = collapsed
+        .trim_start_matches(is_lead)
+        .split_whitespace()
+        .collect();
+    words.join(" ")
+}
+
+/// `wxid_[A-Za-z0-9_-]{3,}` removed from `s`, leftmost first.
+fn remove_wxids(s: &str) -> std::borrow::Cow<'_, str> {
+    let h = s.as_bytes();
+    let mut out = String::new();
+    let (mut kept, mut from) = (0, 0);
+    while let Some(rel) = memchr::memmem::find(&h[from..], b"wxid_") {
+        let at = from + rel;
+        let tail = h[at + 5..]
+            .iter()
+            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            .count();
+        if tail >= 3 {
+            out.push_str(&s[kept..at]);
+            kept = at + 5 + tail;
+            from = kept;
+        } else {
+            from = at + 1;
+        }
+    }
+    if kept == 0 {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    out.push_str(&s[kept..]);
+    std::borrow::Cow::Owned(out)
+}
+
+/// `[:：]{2,}` replaced with `:` in `s`.
+fn collapse_colon_runs(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if !matches!(c, ':' | '：') {
+            out.push(c);
+            continue;
+        }
+        let mut run = 1;
+        while chars.next_if(|n| matches!(n, ':' | '：')).is_some() {
+            run += 1;
+        }
+        out.push(if run >= 2 { ':' } else { c });
+    }
+    out
 }
 
 fn is_hex(c: char) -> bool {
@@ -906,15 +965,18 @@ pub fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     }
     text = text.replace("&amp;", "&");
     text = percent_decode(&text);
-    if let Some(c) = rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat").captures(&text) {
-        return Some(c[1].to_lowercase());
+    if let Some(name) = hex_dat_name(&text) {
+        return Some(name);
     }
     let no_query = text.split(['?', '#']).next().unwrap_or("").to_string();
     let base = rx(r"^.*[\\/]").replace(&no_query, "").to_string();
-    let base = rx(r"(?i)\.(?:t\.)?dat$")
-        .replace(&base, "")
-        .trim()
-        .to_string();
+    // the regex below needs `.dat`, and no character but these letters' ASCII cases folds to them
+    let base = if crate::xml::find_ci(&base, 0, ".dat").is_some() {
+        rx(r"(?i)\.(?:t\.)?dat$").replace(&base, "").to_string()
+    } else {
+        base
+    };
+    let base = base.trim().to_string();
     if base.is_empty() {
         return None;
     }
@@ -923,7 +985,8 @@ pub fn normalize_image_dat_name_token(value: &str) -> Option<String> {
     } else {
         base
     };
-    if rx(r"^[a-fA-F0-9]{16,64}$").is_match(&cdn_token) {
+    // `^[a-fA-F0-9]{16,64}$`
+    if (16..=64).contains(&cdn_token.len()) && cdn_token.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Some(cdn_token.to_lowercase());
     }
     if let Some(t) = last_hex_token(&cdn_token, 32, 32) {
@@ -964,11 +1027,28 @@ pub(crate) fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
             }
         })
         .collect();
-    if let Some(c) = rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat").captures(&text) {
-        return Some(c[1].to_lowercase());
+    if let Some(name) = hex_dat_name(&text) {
+        return Some(name);
     }
-    rx(r"([0-9a-fA-F]{16,})")
-        .captures(&text)
+    // `([0-9a-fA-F]{16,})`: the first run of at least 16 hex digits
+    let h = text.as_bytes();
+    let mut i = 0;
+    while i < h.len() {
+        let run = h[i..].iter().take_while(|b| b.is_ascii_hexdigit()).count();
+        if run >= 16 {
+            return Some(text[i..i + run].to_lowercase());
+        }
+        i += run.max(1);
+    }
+    None
+}
+
+/// `(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat`: the hex name of a `.dat` file in `text`, lowercased.
+fn hex_dat_name(text: &str) -> Option<String> {
+    // the regex needs `.dat`, and no character but these letters' ASCII cases folds to them
+    crate::xml::find_ci(text, 0, ".dat")?;
+    rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat")
+        .captures(text)
         .map(|c| c[1].to_lowercase())
 }
 
@@ -3107,7 +3187,9 @@ mod tests {
 
     /// The regexes the XML scanners replace, kept as the reference they must agree with.
     mod regex_reference {
-        use super::super::{normalize_app_message_content, normalize_md5, percent_decode, rx};
+        use super::super::{
+            last_hex_token, normalize_app_message_content, normalize_md5, percent_decode, rx,
+        };
 
         pub fn attribute(xml: &str, tag: &str, attr: &str) -> String {
             rx(&format!(
@@ -3184,6 +3266,189 @@ mod tests {
                 .map(|c| c[group].to_string())
                 .collect()
         }
+
+        pub fn extract_app_message_type(content: &str) -> String {
+            if content.is_empty() {
+                return String::new();
+            }
+            let normalized = normalize_app_message_content(content);
+            if let Some(c) = crate::xml::element_inner(&normalized, "<appmsg", "</appmsg>") {
+                let inner = crate::xml::remove_blocks(c, "<refermsg", "</refermsg>");
+                let inner = crate::xml::remove_blocks(&inner, "<patmsg", "</patmsg>");
+                if let Some(t) = crate::xml::tag_inner(&inner, "type") {
+                    return t.trim().to_string();
+                }
+            }
+            if !normalized.contains("<appmsg") && !normalized.contains("<msg>") {
+                return String::new();
+            }
+            rx(r"(?i)<type>(\d+)</type>")
+                .captures(&normalized)
+                .map(|c| c[1].to_string())
+                .unwrap_or_default()
+        }
+
+        pub fn looks_like_wxid(text: &str) -> bool {
+            let t = text.trim().to_lowercase();
+            if t.is_empty() {
+                return false;
+            }
+            t.starts_with("wxid_") || rx(r"^wx[a-z0-9_-]{4,}$").is_match(&t)
+        }
+
+        pub fn sanitize_quoted_content(content: &str) -> String {
+            if content.is_empty() {
+                return String::new();
+            }
+            let mut r = rx(r"wxid_[A-Za-z0-9_-]{3,}")
+                .replace_all(content, "")
+                .to_string();
+            r = rx(r"^[\s:：\-]+").replace(&r, "").to_string();
+            r = rx(r"[:：]{2,}").replace_all(&r, ":").to_string();
+            r = rx(r"^[\s:：\-]+").replace(&r, "").to_string();
+            rx(r"\s+").replace_all(&r, " ").trim().to_string()
+        }
+
+        pub fn normalize_image_dat_name_token(value: &str) -> Option<String> {
+            let mut text = value.trim().to_string();
+            if text.is_empty() {
+                return None;
+            }
+            text = text.replace("&amp;", "&");
+            text = percent_decode(&text);
+            if let Some(c) = rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat").captures(&text) {
+                return Some(c[1].to_lowercase());
+            }
+            let no_query = text.split(['?', '#']).next().unwrap_or("").to_string();
+            let base = rx(r"^.*[\\/]").replace(&no_query, "").to_string();
+            let base = rx(r"(?i)\.(?:t\.)?dat$")
+                .replace(&base, "")
+                .trim()
+                .to_string();
+            if base.is_empty() {
+                return None;
+            }
+            let cdn_token = if base.contains('_') {
+                base.split('_').next().unwrap_or("").to_string()
+            } else {
+                base
+            };
+            if rx(r"^[a-fA-F0-9]{16,64}$").is_match(&cdn_token) {
+                return Some(cdn_token.to_lowercase());
+            }
+            if let Some(t) = last_hex_token(&cdn_token, 32, 32) {
+                return Some(t.to_lowercase());
+            }
+            last_hex_token(&cdn_token, 16, 64).map(|t| t.to_lowercase())
+        }
+
+        pub fn dat_name_in_packed_info(bytes: &[u8]) -> Option<String> {
+            let text: String = bytes
+                .iter()
+                .map(|b| {
+                    if (0x20..=0x7e).contains(b) {
+                        *b as char
+                    } else {
+                        ' '
+                    }
+                })
+                .collect();
+            if let Some(c) = rx(r"(?i)([0-9a-fA-F]{8,})(?:\.t)?\.dat").captures(&text) {
+                return Some(c[1].to_lowercase());
+            }
+            rx(r"([0-9a-fA-F]{16,})")
+                .captures(&text)
+                .map(|c| c[1].to_lowercase())
+        }
+    }
+
+    #[test]
+    fn the_regex_free_helpers_match_the_regexes_on_random_snippets() {
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
+        // `\u{3000}` and `\u{85}` are white space, `：` is the full-width colon, `٣` is a Unicode `\d`
+        const TOKENS: &[&str] = &[
+            "wxid_",
+            "wxid_ab",
+            "WXID_",
+            "wx",
+            "abc",
+            "-",
+            "_",
+            ":",
+            "：",
+            " ",
+            "\n",
+            "\u{3000}",
+            "\u{85}",
+            "<type>",
+            "<TYPE>",
+            "</type>",
+            "</Type>",
+            "57",
+            "٣",
+            "<msg>",
+            "<appmsg>",
+            ".dat",
+            ".t.dat",
+            ".DAT",
+            ".T.Dat",
+            "0123456789abcdef",
+            "ABCDEF01",
+            "deadbeef",
+            "/",
+            "\\",
+            "?",
+            "#",
+            "%2F",
+            "&amp;",
+            "x",
+            "中",
+            "\u{1}",
+            "\u{7f}",
+            "<msg><type>57</type>",
+            "<type>5</type>",
+            "<TYPE>٣</type>",
+            "<msg><appmsg><type>",
+        ];
+        let mut rng = StdRng::seed_from_u64(547);
+        let mut hits = [0usize; 5];
+        for _ in 0..40_000 {
+            let s: String = (0..rng.random_range(0..12))
+                .map(|_| TOKENS[rng.random_range(0..TOKENS.len())])
+                .collect();
+            let typed = extract_app_message_type(&s);
+            hits[0] += usize::from(!typed.is_empty());
+            assert_eq!(
+                typed,
+                regex_reference::extract_app_message_type(&s),
+                "{s:?}"
+            );
+            let wx = looks_like_wxid(&s);
+            hits[1] += usize::from(wx && !s.trim().starts_with("wxid_"));
+            assert_eq!(wx, regex_reference::looks_like_wxid(&s), "{s:?}");
+            let sanitized = sanitize_quoted_content(&s);
+            hits[2] += usize::from(sanitized.len() != s.len());
+            assert_eq!(
+                sanitized,
+                regex_reference::sanitize_quoted_content(&s),
+                "{s:?}"
+            );
+            let token = normalize_image_dat_name_token(&s);
+            hits[3] += usize::from(token.is_some());
+            assert_eq!(
+                token,
+                regex_reference::normalize_image_dat_name_token(&s),
+                "{s:?}"
+            );
+            let packed = dat_name_in_packed_info(s.as_bytes());
+            hits[4] += usize::from(packed.is_some());
+            assert_eq!(
+                packed,
+                regex_reference::dat_name_in_packed_info(s.as_bytes()),
+                "{s:?}"
+            );
+        }
+        assert!(hits.iter().all(|&n| n >= 100), "{hits:?}");
     }
 
     #[test]
