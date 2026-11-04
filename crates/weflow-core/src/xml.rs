@@ -9,6 +9,23 @@
 
 use std::borrow::Cow;
 
+/// How often each byte turns up in message XML, roughly: higher is more often, 0 for bytes not listed. Letters
+/// count both cases, which [`find_ci`] searches for together.
+const FREQUENCY: [u8; 256] = {
+    // the most common first; markup and the commonest English letters lead, as in the XML WeChat stores
+    const COMMON: &[u8] = b" <>=\"/etaoinsrhldcum0123456789wfgypbvk.:_-jxqz";
+    let mut table = [0u8; 256];
+    // from the least common up, so the rank counts alongside the index
+    let (mut i, mut rank) = (COMMON.len(), 0u8);
+    while i > 0 {
+        i -= 1;
+        rank += 1;
+        table[COMMON[i] as usize] = rank;
+        table[COMMON[i].to_ascii_uppercase() as usize] = rank;
+    }
+    table
+};
+
 /// Byte offset of the first ASCII case-insensitive occurrence of the ASCII `needle` in `hay[from..]`.
 pub fn find_ci(hay: &str, from: usize, needle: &str) -> Option<usize> {
     let (h, n) = (hay.as_bytes(), needle.as_bytes());
@@ -18,11 +35,15 @@ pub fn find_ci(hay: &str, from: usize, needle: &str) -> Option<usize> {
     if from > h.len() || h.len() - from < n.len() {
         return None;
     }
-    let (lo, up) = (n[0].to_ascii_lowercase(), n[0].to_ascii_uppercase());
+    // look for the needle's rarest byte; each hit is a candidate start `k` bytes before it
+    let k = (0..n.len())
+        .min_by_key(|&i| FREQUENCY[usize::from(n[i])])
+        .unwrap_or(0);
+    let (lo, up) = (n[k].to_ascii_lowercase(), n[k].to_ascii_uppercase());
     let last_start = h.len() - n.len();
     let mut i = from;
     while i <= last_start {
-        let window = &h[i..=last_start];
+        let window = &h[i + k..=last_start + k];
         let rel = if lo == up {
             memchr::memchr(lo, window)
         } else {
@@ -341,6 +362,37 @@ mod tests {
         "<</title>",
         "中文<appmsg>中<type>1</type>文</appmsg>尾",
     ];
+
+    #[test]
+    fn find_ci_finds_the_first_match_at_or_after_from() {
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
+        const PIECES: &[&str] = &[
+            "e", "E", "md5", "MD5", "q", "Q", "<", "5", "中", "x", "ty", "TYPE", " ",
+        ];
+        const NEEDLES: &[&str] = &["", "e", "md5", "emoticonmd5", "<type>", "q5", "xq", "Type"];
+        let naive = |h: &str, from: usize, n: &str| {
+            (from..=h.len().saturating_sub(n.len()))
+                .filter(|_| h.len() >= n.len())
+                .find(|&p| h.as_bytes()[p..p + n.len()].eq_ignore_ascii_case(n.as_bytes()))
+        };
+        let mut rng = StdRng::seed_from_u64(546);
+        let mut hits = 0;
+        for _ in 0..20_000 {
+            let h: String = (0..rng.random_range(0..14))
+                .map(|_| PIECES[rng.random_range(0..PIECES.len())])
+                .collect();
+            let n = NEEDLES[rng.random_range(0..NEEDLES.len())];
+            let from = rng.random_range(0..=h.len() + 1);
+            let want = if from > h.len() {
+                None
+            } else {
+                naive(&h, from, n)
+            };
+            assert_eq!(find_ci(&h, from, n), want, "{h:?} from {from} for {n:?}");
+            hits += usize::from(want.is_some() && !n.is_empty());
+        }
+        assert!(hits >= 1000, "{hits}");
+    }
 
     #[test]
     fn tag_inner_matches_the_regex() {

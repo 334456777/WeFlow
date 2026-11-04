@@ -2402,6 +2402,17 @@ pub fn quote_or_link_app_message_meta(
     content: &str,
     local_type: i64,
 ) -> Option<Map<String, Value>> {
+    // A quote has a `<refermsg>`, the quote's local type or `<type>` 57, a link `<type>` 5 or 49. Those words
+    // survive normalizing (see normalized_may_contain), and cutting `<refermsg>` and `<patmsg>` blocks out of
+    // the `<appmsg>` can join text into a `<type>` only where those words are: without any of the three, the
+    // message is neither.
+    if local_type != 244813135921
+        && ["type", "refermsg", "patmsg"]
+            .iter()
+            .all(|word| crate::xml::find_ci(content, 0, word).is_none())
+    {
+        return None;
+    }
     let class = classify_app_message(content, local_type)?;
     if !matches!(class.kind, Some("quote" | "link")) {
         return None;
@@ -3523,6 +3534,13 @@ mod tests {
             "<url>http://a</url>",
             "<svrid>12</svrid>",
             "<appname>app</appname>",
+            "<ty",
+            "pe>",
+            "TYPE",
+            "<PATMSG>",
+            "</patmsg>",
+            "<REFERMSG>",
+            "57",
             "&lt;",
             "&gt;",
             "&amp;",
@@ -3533,6 +3551,11 @@ mod tests {
             "57", "5", "49", "6", "3", "51", "2001", "33", "19", "2000", "87", "53", "8", "",
         ];
         const LOCAL_TYPES: &[i64] = &[1, 3, 47, 49, 10000, 244813135921, 21474836529];
+        // a `<type>` and `</type>` that only exist once the `<patmsg>` blocks are cut out
+        let joined =
+            "<msg><appmsg><ty<patmsg>a</patmsg>pe>5</ty<patmsg>b</patmsg>pe></appmsg></msg>";
+        assert_eq!(app_message_kind(joined, 1), Some("link"));
+        assert!(quote_or_link_app_message_meta(joined, 1).is_some());
         let mut rng = StdRng::seed_from_u64(546);
         let mut kinds: HashMap<Option<&'static str>, usize> = HashMap::new();
         for _ in 0..20_000 {
