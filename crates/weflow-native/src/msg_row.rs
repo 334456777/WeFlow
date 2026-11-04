@@ -80,21 +80,74 @@ fn int_cell(v: ValueRef<'_>) -> Option<i64> {
 /// zstd frames start with these bytes (`0xFD2FB528`, little-endian).
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 
+/// Largest size a zstd frame may declare for [`inflate`] to reserve it up front.
+const INFLATE_RESERVE_MAX: u64 = 16 << 20;
+
+thread_local! {
+    /// A decompression context kept for the next message, instead of a context and a read buffer made and freed
+    /// for each one (`zstd::stream::decode_all`).
+    static DCTX: std::cell::RefCell<Option<zstd::zstd_safe::DCtx<'static>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// `bytes` (starting with [`ZSTD_MAGIC`]) inflated, or `None` when they are not valid zstd.
+fn inflate(bytes: &[u8]) -> Option<Vec<u8>> {
+    // anything but a clean end of every frame goes the old way, so errors and truncation come out as they did
+    DCTX.with(|slot| {
+        inflate_with(
+            slot.borrow_mut()
+                .get_or_insert_with(zstd::zstd_safe::DCtx::create),
+            bytes,
+        )
+    })
+    .or_else(|| zstd::stream::decode_all(bytes).ok())
+}
+
+/// Every frame of `bytes` inflated with `dctx`; `None` unless the input ends right where a frame does.
+fn inflate_with(dctx: &mut zstd::zstd_safe::DCtx<'static>, bytes: &[u8]) -> Option<Vec<u8>> {
+    use zstd::zstd_safe::{InBuffer, OutBuffer, ResetDirective};
+    dctx.reset(ResetDirective::SessionOnly).ok()?;
+    let reserve = zstd::zstd_safe::get_frame_content_size(bytes)
+        .ok()
+        .flatten()
+        .filter(|&n| n <= INFLATE_RESERVE_MAX)
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(bytes.len().saturating_mul(4));
+    let mut out = Vec::with_capacity(reserve.max(64));
+    let mut input = InBuffer::around(bytes);
+    loop {
+        if out.len() == out.capacity() {
+            out.reserve(out.capacity());
+        }
+        let (read, written) = (input.pos(), out.len());
+        let hint = {
+            let mut output = OutBuffer::around_pos(&mut out, written);
+            dctx.decompress_stream(&mut output, &mut input).ok()?
+        };
+        if input.pos() == bytes.len() && hint == 0 {
+            return Some(out);
+        }
+        if input.pos() == read && out.len() == written && out.len() < out.capacity() {
+            return None; // no progress with room to spare: the input ends inside a frame
+        }
+    }
+}
+
 /// Bytes as text: inflated first when they are a zstd frame, then UTF-8. Bytes that are not UTF-8 lose the invalid
 /// sequences when they are under a fifth of the characters, and are otherwise read one byte a character (Latin-1).
 pub fn bytes_to_text(bytes: &[u8]) -> String {
-    let inflated;
-    let bytes = if bytes.starts_with(&ZSTD_MAGIC) {
-        match zstd::stream::decode_all(bytes) {
-            Ok(v) => {
-                inflated = v;
-                &inflated[..]
-            }
-            Err(_) => bytes,
-        }
+    let inflated = if bytes.starts_with(&ZSTD_MAGIC) {
+        inflate(bytes)
     } else {
-        bytes
+        None
     };
+    let inflated = match inflated.map(String::from_utf8) {
+        // the inflated buffer becomes the text as it is
+        Some(Ok(text)) => return text,
+        Some(Err(e)) => Some(e.into_bytes()),
+        None => None,
+    };
+    let bytes = inflated.as_deref().unwrap_or(bytes);
     if let Ok(s) = std::str::from_utf8(bytes) {
         return s.to_owned();
     }
@@ -194,6 +247,62 @@ mod tests {
         // a stray invalid byte in text is dropped; bytes that are mostly not UTF-8 are read one a character
         assert_eq!(bytes_to_text(b"abcdefghij\xff"), "abcdefghij");
         assert_eq!(bytes_to_text(&[0xff, 0xfe, 0x41]), "\u{ff}\u{fe}A");
+    }
+
+    #[test]
+    fn inflating_with_a_kept_context_gives_what_streaming_gave() {
+        // what bytes_to_text did before it kept a context: stream every frame
+        let streamed = |bytes: &[u8]| -> String {
+            let inflated = zstd::stream::decode_all(bytes).ok();
+            let bytes = inflated.as_deref().unwrap_or(bytes);
+            match std::str::from_utf8(bytes) {
+                Ok(s) => s.to_owned(),
+                Err(_) => bytes_to_text(bytes),
+            }
+        };
+        let text = "<msg><appmsg>引用</appmsg></msg>".repeat(50);
+        let declared = zstd::bulk::compress(text.as_bytes(), 3).unwrap();
+        assert!(zstd::zstd_safe::get_frame_content_size(&declared)
+            .unwrap()
+            .is_some());
+        let undeclared = {
+            let mut e = zstd::stream::Encoder::new(Vec::new(), 3).unwrap();
+            e.include_contentsize(false).unwrap();
+            std::io::Write::write_all(&mut e, text.as_bytes()).unwrap();
+            e.finish().unwrap()
+        };
+        assert_eq!(
+            zstd::zstd_safe::get_frame_content_size(&undeclared).unwrap(),
+            None
+        );
+        let two_frames = [declared.clone(), declared.clone()].concat();
+        let not_utf8 = zstd::bulk::compress(b"abcdefghij\xff", 3).unwrap();
+        let mostly_not_utf8 = zstd::bulk::compress(&[0xff, 0xfe, 0x41], 3).unwrap();
+        let corrupt = [&declared[..declared.len() / 2], b"junk"].concat();
+        let truncated = undeclared[..undeclared.len() / 2].to_vec();
+        let trailing = [&declared[..], b"junk"].concat();
+        for bytes in [
+            &declared,
+            &undeclared,
+            &two_frames,
+            &not_utf8,
+            &mostly_not_utf8,
+            &corrupt,
+            &truncated,
+            &trailing,
+        ] {
+            assert_eq!(bytes_to_text(bytes), streamed(bytes));
+        }
+        // whole frames go through the kept context; the rest fall back to streaming
+        let mut dctx = zstd::zstd_safe::DCtx::create();
+        for whole in [&declared, &undeclared, &two_frames] {
+            assert!(inflate_with(&mut dctx, whole).is_some());
+        }
+        for broken in [&corrupt, &truncated, &trailing] {
+            assert!(inflate_with(&mut dctx, broken).is_none());
+        }
+        assert_eq!(bytes_to_text(&two_frames), text.repeat(2));
+        assert_eq!(bytes_to_text(&not_utf8), "abcdefghij");
     }
 
     #[test]
