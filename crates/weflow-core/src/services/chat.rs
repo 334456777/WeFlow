@@ -14,9 +14,7 @@ use crate::contract::{
     SessionTables, TabCounts, TransferNames, VoiceMessages,
 };
 use crate::error::{AppError, AppResult};
-use crate::message::{
-    collect_rows, extract_arkme_app_message_meta, is_same_wxid, CollectOptions, ExportMsg,
-};
+use crate::message::{app_message_kind, collect_rows, is_same_wxid, CollectOptions, ExportMsg};
 use weflow_native::msg_row::MsgRow;
 use weflow_native::native_msg::table_name_for;
 
@@ -718,9 +716,7 @@ impl ServiceHub {
             t if FILE_APP_TYPES.contains(&t) => {
                 let is_file = t != 49
                     || msg.xml_type.as_deref() == Some("6")
-                    || extract_arkme_app_message_meta(&msg.content, t).is_some_and(|m| {
-                        m.get("appMsgKind").and_then(Value::as_str) == Some("file")
-                    });
+                    || app_message_kind(&msg.content, t) == Some("file");
                 is_file.then_some(ResourceKind::File)
             }
             _ => None,

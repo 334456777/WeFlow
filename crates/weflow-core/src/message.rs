@@ -113,6 +113,14 @@ fn normalize_app_message_cow(content: &str) -> std::borrow::Cow<'_, str> {
     Cow::Borrowed(content)
 }
 
+/// Whether `content` can contain `word` once normalized ([`normalize_app_message_cow`]). Normalizing replaces each
+/// entity with one of `<>&"'`, so a stretch of the result without those characters is in `content` as it is: when
+/// `word` has none of them, one search of `content` can rule it out before anything is normalized.
+fn normalized_may_contain(content: &str, word: &str) -> bool {
+    debug_assert!(!word.contains(['<', '>', '&', '"', '\'']));
+    content.contains(word)
+}
+
 /// Strip a leading `wxid_xxx:` sender prefix (but not `http://`).
 pub fn strip_sender_prefix(content: &str) -> String {
     content[sender_prefix_len(content)..].to_string()
@@ -889,6 +897,8 @@ pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
 
 /// 以 appmsg type 8 发送的表情的 md5（`<emoticonmd5>`），用来查表情描述。
 pub fn appmsg_emoticon_md5(content: &str) -> Option<String> {
+    // the tag is matched ASCII case-insensitively; see normalized_may_contain for why `content` can rule it out
+    crate::xml::find_ci(content, 0, "emoticonmd5")?;
     let normalized = normalize_app_message_content(content);
     if extract_app_message_type(&normalized) != "8" {
         return None;
@@ -1378,10 +1388,10 @@ pub struct QuoteInfo {
 }
 
 fn refermsg_xml(normalized: &str) -> Option<String> {
-    let start = normalized.find("<refermsg>")?;
+    let start = memchr::memmem::find(normalized.as_bytes(), b"<refermsg>")?;
     // 被引用的是「带引用的图片」等消息时，其 content 里还嵌着一层（已解码的）<refermsg>，
     // 取最后一个结束标签才是外层，否则 type / displayname 会被截掉。
-    let end = normalized.rfind("</refermsg>")?;
+    let end = memchr::memmem::rfind(normalized.as_bytes(), b"</refermsg>")?;
     if end < start {
         return None;
     }
@@ -1476,6 +1486,9 @@ pub fn parse_quote_message(content: &str) -> QuoteInfo {
         quote_type: None,
         svrid: None,
     };
+    if !normalized_may_contain(content, "refermsg") {
+        return empty;
+    }
     let normalized = normalize_app_message_content(content);
     let Some(refer) = refermsg_xml(&normalized) else {
         return empty;
@@ -1633,6 +1646,9 @@ pub struct QuotedDisplay {
 }
 
 pub fn extract_quoted_reply_display(content: &str) -> Option<QuotedDisplay> {
+    if !normalized_may_contain(content, "refermsg") {
+        return None;
+    }
     let normalized = normalize_app_message_content(content);
     let refer = refermsg_xml(&normalized)?;
     let info = parse_quote_message(&normalized);
@@ -1694,6 +1710,9 @@ pub fn is_text_quote_message(local_type: i64, content: &str) -> bool {
 }
 
 pub fn extract_reply_to_message_id(content: &str) -> Option<String> {
+    if !normalized_may_contain(content, "refermsg") {
+        return None;
+    }
     let normalized = normalize_app_message_content(content);
     let refer = refermsg_xml(&normalized)?;
     let v = normalize_unsigned_token(&extract_xml_value(&refer, "svrid"));
@@ -1706,6 +1725,9 @@ pub fn extract_reply_to_message_id(content: &str) -> Option<String> {
 
 /// Sender wxid of a quoted message, following `resolveQuotedSenderUsername`.
 pub fn quoted_sender_username(content: &str) -> Option<String> {
+    if !normalized_may_contain(content, "refermsg") {
+        return None;
+    }
     let normalized = normalize_app_message_content(content);
     let refer = refermsg_xml(&normalized)?;
     let chat = extract_xml_value(&refer, "chatusr");
@@ -2349,11 +2371,46 @@ fn first_non_empty(n: &str, tags: &[&str]) -> String {
         .unwrap_or_default()
 }
 
+/// What [`extract_arkme_app_message_meta`] works out before it reads any field.
+struct AppMessageClass {
+    /// The normalized content.
+    n: String,
+    /// `<type>` of the app message, or empty.
+    xml_type: String,
+    is_finder: bool,
+    is_music: bool,
+    /// The `appMsgKind` of the meta.
+    kind: Option<&'static str>,
+}
+
+/// `appMsgKind` of [`extract_arkme_app_message_meta`], without reading the other fields.
+pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> {
+    classify_app_message(content, local_type)?.kind
+}
+
 /// `extractArkmeAppMessageMeta` — extra structured fields for `arkme-json` / `json`.
 pub fn extract_arkme_app_message_meta(
     content: &str,
     local_type: i64,
 ) -> Option<Map<String, Value>> {
+    app_message_fields(classify_app_message(content, local_type)?, local_type)
+}
+
+/// [`extract_arkme_app_message_meta`] of a quote or a link; `None` for every other message, whose fields are not
+/// read.
+pub fn quote_or_link_app_message_meta(
+    content: &str,
+    local_type: i64,
+) -> Option<Map<String, Value>> {
+    let class = classify_app_message(content, local_type)?;
+    if !matches!(class.kind, Some("quote" | "link")) {
+        return None;
+    }
+    app_message_fields(class, local_type)
+}
+
+/// The first part of [`extract_arkme_app_message_meta`]; `None` when the message has no meta at all.
+fn classify_app_message(content: &str, local_type: i64) -> Option<AppMessageClass> {
     if content.is_empty() {
         return None;
     }
@@ -2402,6 +2459,24 @@ pub fn extract_arkme_app_message_meta(
     } else {
         None
     };
+    Some(AppMessageClass {
+        n,
+        xml_type,
+        is_finder,
+        is_music,
+        kind,
+    })
+}
+
+/// The fields of [`extract_arkme_app_message_meta`] for a message `class` describes.
+fn app_message_fields(class: AppMessageClass, local_type: i64) -> Option<Map<String, Value>> {
+    let AppMessageClass {
+        n,
+        xml_type,
+        is_finder,
+        is_music,
+        kind,
+    } = class;
     let mut meta = Map::new();
     let put = |meta: &mut Map<String, Value>, key: &str, value: String| {
         if !value.is_empty() {
@@ -3394,6 +3469,113 @@ mod tests {
             hits.values().all(|&n| n >= 100),
             "too few matches: {hits:?}"
         );
+    }
+
+    #[test]
+    fn a_word_missing_from_the_content_is_missing_once_normalized() {
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
+        const TOKENS: &[&str] = &[
+            "refer", "msg", "refermsg", "emoticon", "EMOTICON", "md5", "MD5", "&lt;", "&gt;",
+            "&amp;", "&quot;", "&#39;", "&", "lt;", "gt;", "amp;", "<", ">", ";", "#39", "x",
+        ];
+        let mut rng = StdRng::seed_from_u64(546);
+        let mut found = [0usize; 2];
+        for _ in 0..40_000 {
+            let s: String = (0..rng.random_range(0..10))
+                .map(|_| TOKENS[rng.random_range(0..TOKENS.len())])
+                .collect();
+            let normalized = normalize_app_message_content(&s);
+            if normalized.contains("refermsg") {
+                found[0] += 1;
+                assert!(normalized_may_contain(&s, "refermsg"), "{s:?}");
+            }
+            if crate::xml::find_ci(&normalized, 0, "emoticonmd5").is_some() {
+                found[1] += 1;
+                assert!(crate::xml::find_ci(&s, 0, "emoticonmd5").is_some(), "{s:?}");
+            }
+        }
+        assert!(found.iter().all(|&n| n >= 100), "{found:?}");
+    }
+
+    #[test]
+    fn the_kind_and_the_quote_or_link_meta_agree_with_the_whole_meta() {
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
+        const TOKENS: &[&str] = &[
+            "<msg>",
+            "</msg>",
+            "<appmsg>",
+            "<appmsg appid=\"wx1\">",
+            "</appmsg>",
+            "<type>",
+            "</type>",
+            "<refermsg>",
+            "</refermsg>",
+            "<patmsg>",
+            "</patmsg>",
+            "<finder",
+            "finderusername",
+            "finderobjectid",
+            "<musicurl",
+            "<playurl>",
+            "<dataurl>",
+            "<des>d</des>",
+            "<title>t</title>",
+            "<url>http://a</url>",
+            "<svrid>12</svrid>",
+            "<appname>app</appname>",
+            "&lt;",
+            "&gt;",
+            "&amp;",
+            " ",
+            "x",
+        ];
+        const TYPES: &[&str] = &[
+            "57", "5", "49", "6", "3", "51", "2001", "33", "19", "2000", "87", "53", "8", "",
+        ];
+        const LOCAL_TYPES: &[i64] = &[1, 3, 47, 49, 10000, 244813135921, 21474836529];
+        let mut rng = StdRng::seed_from_u64(546);
+        let mut kinds: HashMap<Option<&'static str>, usize> = HashMap::new();
+        for _ in 0..20_000 {
+            let mut s = String::new();
+            if rng.random_bool(0.6) {
+                s.push_str("<msg><appmsg><type>");
+                s.push_str(TYPES[rng.random_range(0..TYPES.len())]);
+                s.push_str("</type>");
+            }
+            for _ in 0..rng.random_range(0..8) {
+                s.push_str(TOKENS[rng.random_range(0..TOKENS.len())]);
+            }
+            if rng.random_bool(0.3) {
+                s = s.replace('<', "&lt;").replace('>', "&gt;");
+            }
+            let t = LOCAL_TYPES[rng.random_range(0..LOCAL_TYPES.len())];
+            let whole = extract_arkme_app_message_meta(&s, t);
+            let kind = app_message_kind(&s, t);
+            assert_eq!(
+                kind,
+                whole.as_ref().and_then(|m| m.get("appMsgKind")?.as_str()),
+                "{s:?} as {t}"
+            );
+            let quote_or_link = whole.filter(|_| matches!(kind, Some("quote" | "link")));
+            assert_eq!(
+                quote_or_link_app_message_meta(&s, t),
+                quote_or_link,
+                "{s:?} as {t}"
+            );
+            *kinds.entry(kind).or_default() += 1;
+        }
+        for kind in [
+            None,
+            Some("quote"),
+            Some("link"),
+            Some("card"),
+            Some("finder"),
+            Some("music"),
+            Some("file"),
+        ] {
+            let hits = kinds.get(&kind).copied().unwrap_or(0);
+            assert!(hits >= 100, "{kind:?} came up {hits} times");
+        }
     }
 
     #[test]

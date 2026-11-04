@@ -1255,11 +1255,14 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
         // later keys replace the value of an earlier one in place (the quoted sender and text of a quote)
         let mut extra = Map::new();
-        if let Some(meta) = extract_arkme_app_message_meta(&msg.content, msg.local_type) {
-            let kind = meta.get("appMsgKind").and_then(Value::as_str).unwrap_or("");
-            if arkme || kind == "quote" || kind == "link" {
-                extra.extend(meta);
-            }
+        // detailed JSON keeps the app-message fields of quotes and links only
+        let meta = if arkme {
+            extract_arkme_app_message_meta(&msg.content, msg.local_type)
+        } else {
+            quote_or_link_app_message_meta(&msg.content, msg.local_type)
+        };
+        if let Some(meta) = meta {
+            extra.extend(meta);
         }
         if let Some(q) = &quoted {
             if let Some(s) = q.quoted_sender.as_ref().filter(|s| !s.is_empty()) {

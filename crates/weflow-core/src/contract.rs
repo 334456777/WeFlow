@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub use crate::chat_msg::{ChatMessage, Type49Info};
-use crate::message::{extract_arkme_app_message_meta, parse_message_content, ExportMsg};
+use crate::message::{app_message_kind, parse_message_content, ExportMsg};
 
 /// A message of a page as the chat window shows it (`chat messages`, `chat message` and `chat search` with
 /// `parsed`).
@@ -178,8 +178,7 @@ impl MessageView {
             Some(&m.sender_username),
             m.emoji_caption.as_deref(),
         );
-        let app_msg_kind = extract_arkme_app_message_meta(&m.content, m.local_type)
-            .and_then(|meta| meta.get("appMsgKind")?.as_str().map(String::from));
+        let app_msg_kind = app_message_kind(&m.content, m.local_type).map(String::from);
         Self {
             local_id: m.local_id,
             server_id: m
