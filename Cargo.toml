@@ -11,7 +11,7 @@ resolver = "2"
 [workspace.package]
 version = "5.0.1"
 edition = "2021"
-license = "SEE LICENSE IN LICENSE"
+license = "Unlicense license"
 
 # Lints every member inherits (`[lints] workspace = true`); CI turns warnings into errors (issue #142).
 [workspace.lints.clippy]
