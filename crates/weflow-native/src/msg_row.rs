@@ -9,6 +9,16 @@ use rusqlite::Row;
 
 use crate::native_msg::{shard_of, MsgPos, MsgTable};
 
+/// Which columns of a message row a query reads; the others come back empty.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Columns {
+    All,
+    /// All but `source`, which exports do not use.
+    NoSource,
+    /// Neither `source` nor `packed_info_data`, which bulk scans do not read.
+    Lite,
+}
+
 /// Cells of an integer column (`local_id`, `create_time`, `sort_seq`, …) holding another type: read as absent. WeChat
 /// never writes one; a count above zero says the database is not what the reader expects.
 static ODD_CELLS: AtomicU64 = AtomicU64::new(0);
@@ -62,6 +72,9 @@ pub struct MsgRow {
 const MSG_COLUMNS: &str =
     "m.local_id, m.server_id, m.local_type, m.sort_seq, m.create_time, m.status, \
      m.compress_content, m.message_content, m.source, m.packed_info_data, n.user_name";
+const MSG_COLUMNS_NO_SOURCE: &str =
+    "m.local_id, m.server_id, m.local_type, m.sort_seq, m.create_time, m.status, \
+     m.compress_content, m.message_content, null, m.packed_info_data, n.user_name";
 const MSG_COLUMNS_LITE: &str =
     "m.local_id, m.server_id, m.local_type, m.sort_seq, m.create_time, m.status, \
      m.compress_content, m.message_content, null, null, n.user_name";
@@ -184,10 +197,15 @@ impl MsgRow {
     /// The select list over the message table `m` and `Name2Id` `n`, joined on the sender; lite rows leave out the
     /// source and the packed info, which bulk scans do not read.
     pub(crate) fn columns(lite: bool) -> &'static str {
-        if lite {
-            MSG_COLUMNS_LITE
-        } else {
-            MSG_COLUMNS
+        Self::columns_of(if lite { Columns::Lite } else { Columns::All })
+    }
+
+    /// The select list of [`columns`](Self::columns) for `which` columns.
+    pub(crate) fn columns_of(which: Columns) -> &'static str {
+        match which {
+            Columns::All => MSG_COLUMNS,
+            Columns::NoSource => MSG_COLUMNS_NO_SOURCE,
+            Columns::Lite => MSG_COLUMNS_LITE,
         }
     }
 

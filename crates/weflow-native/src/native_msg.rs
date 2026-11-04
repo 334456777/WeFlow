@@ -9,7 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use md5::{Digest, Md5};
 use serde_json::{json, Map, Value};
 
-use crate::msg_row::{MsgRow, RowContext};
+use crate::msg_row::{Columns, MsgRow, RowContext};
 use crate::native_db::NativeAccount;
 
 /// A quarter of an hour in seconds: the step of the local dates of messages.
@@ -64,7 +64,8 @@ pub struct MessageCursor {
     keys: Vec<Key>,
     pos: usize,
     batch: usize,
-    lite: bool,
+    /// The columns its pages read.
+    columns: Columns,
     /// Per table: whether its keys came from the `sort_seq` index ([`NativeAccount::open_export_cursor`]) and are
     /// still to be checked against the rows.
     derived: Vec<bool>,
@@ -265,9 +266,14 @@ impl NativeAccount {
 
     /// `select` of the [`MsgRow`] columns over one message table with the sender resolved from `Name2Id`.
     pub(crate) fn select_sql(t: &MsgTable, tail: &str, lite: bool) -> String {
+        Self::select_sql_of(t, tail, if lite { Columns::Lite } else { Columns::All })
+    }
+
+    /// [`select_sql`](Self::select_sql) reading `which` columns.
+    fn select_sql_of(t: &MsgTable, tail: &str, which: Columns) -> String {
         format!(
             "select {} from \"{}\" m left join Name2Id n on n.rowid = m.real_sender_id {tail}",
-            MsgRow::columns(lite),
+            MsgRow::columns_of(which),
             t.table
         )
     }
@@ -850,12 +856,13 @@ impl NativeAccount {
             batch,
             ascending,
             (begin, end),
-            lite,
+            if lite { Columns::Lite } else { Columns::All },
             CursorKeys::All,
         )
     }
 
-    /// The cursor of an export: oldest first, full rows, like [`open_message_cursor`](Self::open_message_cursor).
+    /// The cursor of an export: oldest first, full rows but the `source` column, which exports do not use, like
+    /// [`open_message_cursor`](Self::open_message_cursor).
     /// Without time bounds, collecting its keys reads only the `sort_seq` index instead of every row of the table, taking `create_time`
     /// as `sort_seq / 1000`, which is how WeChat makes `sort_seq` (`create_time` in milliseconds plus a counter). The
     /// pages check that against the rows they read: when a table does not follow it, the keys are read from the table
@@ -874,7 +881,7 @@ impl NativeAccount {
             batch,
             true,
             (begin, end),
-            false,
+            Columns::NoSource,
             CursorKeys::Export,
         )
     }
@@ -897,7 +904,7 @@ impl NativeAccount {
             batch,
             ascending,
             range,
-            lite,
+            if lite { Columns::Lite } else { Columns::All },
             CursorKeys::Senders(senders),
         )
     }
@@ -908,7 +915,7 @@ impl NativeAccount {
         batch: i32,
         ascending: bool,
         (begin, end): (i32, i32),
-        lite: bool,
+        columns: Columns,
         listed: CursorKeys<'_>,
     ) -> Result<i64> {
         let (senders, derive) = match listed {
@@ -967,7 +974,7 @@ impl NativeAccount {
                 keys,
                 pos: 0,
                 batch: batch.max(1) as usize,
-                lite,
+                columns,
                 derived,
                 range: (begin, end),
                 ascending,
@@ -1149,7 +1156,7 @@ impl NativeAccount {
 
     /// Next batch of rows and whether more remain.
     pub fn fetch_message_batch(&self, cursor: i64) -> Result<(Vec<MsgRow>, bool)> {
-        let (tables, chunk, lite, more, derived) = {
+        let (tables, chunk, columns, more, derived) = {
             let mut cursors = self
                 .cursors
                 .lock()
@@ -1164,12 +1171,12 @@ impl NativeAccount {
             (
                 c.tables.clone(),
                 chunk,
-                c.lite,
+                c.columns,
                 c.pos < c.keys.len(),
                 c.derived.clone(),
             )
         };
-        let (rows, mismatched) = self.rows_for_keys(&tables, &chunk, lite, &derived)?;
+        let (rows, mismatched) = self.rows_for_keys(&tables, &chunk, columns, &derived)?;
         if !mismatched.is_empty() {
             self.rekey(cursor, &mismatched)?;
         }
@@ -1193,7 +1200,7 @@ impl NativeAccount {
     /// `page + 1`-th call), without moving the cursor: threads can read different batches of one cursor at once.
     /// Past the end it is empty.
     pub fn fetch_message_page(&self, cursor: i64, page: usize) -> Result<Vec<MsgRow>> {
-        let (tables, chunk, lite, derived) = {
+        let (tables, chunk, columns, derived) = {
             let cursors = self
                 .cursors
                 .lock()
@@ -1207,11 +1214,11 @@ impl NativeAccount {
             (
                 c.tables.clone(),
                 c.keys[start..end].to_vec(),
-                c.lite,
+                c.columns,
                 c.derived.clone(),
             )
         };
-        let (rows, mismatched) = self.rows_for_keys(&tables, &chunk, lite, &derived)?;
+        let (rows, mismatched) = self.rows_for_keys(&tables, &chunk, columns, &derived)?;
         if !mismatched.is_empty() {
             self.rekey(cursor, &mismatched)?;
         }
@@ -1224,7 +1231,7 @@ impl NativeAccount {
         &self,
         tables: &[MsgTable],
         keys: &[Key],
-        lite: bool,
+        columns: Columns,
         derived: &[bool],
     ) -> Result<(Vec<MsgRow>, Vec<usize>)> {
         let listed: HashMap<(usize, i64), (i64, i64)> = keys
@@ -1241,7 +1248,7 @@ impl NativeAccount {
         for (idx, ids) in by_shard {
             let t = &tables[idx];
             let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
-            let sql = Self::select_sql(t, &format!("where m.local_id in ({list})"), lite);
+            let sql = Self::select_sql_of(t, &format!("where m.local_id in ({list})"), columns);
             for r in self.read_rows(t, &sql, &[])? {
                 let (seq, create, local) = r.key();
                 if listed
@@ -1311,8 +1318,8 @@ mod tests {
                     Box::new(text.to_string())
                 };
                 c.execute(
-                    &format!("insert into \"{table}\"(local_id, server_id, local_type, sort_seq, real_sender_id, create_time, message_content, packed_info_data) values (?1,?2,?3,?4,?5,?6,?7,?8)"),
-                    params![local_id, offset, local_type, create * 1000, sender, create, content, vec![0u8, 1, 2, 0xff]],
+                    &format!("insert into \"{table}\"(local_id, server_id, local_type, sort_seq, real_sender_id, create_time, message_content, packed_info_data, source) values (?1,?2,?3,?4,?5,?6,?7,?8,?9)"),
+                    params![local_id, offset, local_type, create * 1000, sender, create, content, vec![0u8, 1, 2, 0xff], "<msgsource/>"],
                 )
                 .unwrap();
             }
@@ -1922,7 +1929,7 @@ mod tests {
     }
 
     /// Each column typed, the content inflated, the sender resolved and whether the owner sent it, the database by its
-    /// shard; lite rows of a cursor leave out the source and the packed info.
+    /// shard; lite rows of a cursor leave out the source and the packed info, an export's the source only.
     #[test]
     fn rows_carry_typed_columns_sender_and_inflated_content() {
         let (acct, _dir) = account("rows");
@@ -1942,7 +1949,7 @@ mod tests {
                     sender: Some(sender.to_string()),
                     is_send: sender == "wxid_me",
                     content: content.to_string(),
-                    source: None,
+                    source: Some("<msgsource/>".into()),
                     packed_info: packed.clone(),
                     shard,
                 }
@@ -1963,13 +1970,24 @@ mod tests {
             .unwrap();
         let (lite, _) = acct.fetch_message_batch(cursor).unwrap();
         let unpacked: Vec<MsgRow> = rows
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|r| MsgRow {
+                source: None,
                 packed_info: None,
                 ..r
             })
             .collect();
         assert_eq!(lite, unpacked);
+        // oldest first
+        let export = acct.open_export_cursor("wxid_bob", 100, 0, 0).unwrap();
+        let (exported, _) = acct.fetch_message_batch(export).unwrap();
+        let sourceless: Vec<MsgRow> = rows
+            .into_iter()
+            .rev()
+            .map(|r| MsgRow { source: None, ..r })
+            .collect();
+        assert_eq!(exported, sourceless);
     }
 
     #[test]
