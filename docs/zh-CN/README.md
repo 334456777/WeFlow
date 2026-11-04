@@ -12,9 +12,6 @@
 - `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](serve-api.md#网页)）。
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
 
-> [!WARNING]
-> CLI 是从原 TypeScript 后端移植而来。数据库层是纯 Rust(自己解密并以只读方式读取微信数据库)，已用一个真实的 Windows 微信 4.x 账号验证过(Linux 构建，以及在 Windows 上运行的 `weflow.exe`);macOS/Linux 的微信数据还没有测试过(验证范围见 [第 4 节](cli-unsupported.md#4-平台与验证范围))。可能有粗糙之处，欢迎反馈。已覆盖和未覆盖的内容:[覆盖率](cli-coverage.md) · [不支持的功能](cli-unsupported.md)。
-
 ## 构建
 
 ```bash
