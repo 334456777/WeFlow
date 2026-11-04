@@ -1,5 +1,4 @@
-# WeFlow 命令行
-
+# WeFlow CLI
 [English](../../README.md) | **简体中文**
 
 `weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 原生命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
