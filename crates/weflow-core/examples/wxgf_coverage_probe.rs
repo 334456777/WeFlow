@@ -1,12 +1,14 @@
 //! Read-only coverage of the built-in WXGF decoder on a configured account (#494): decrypts every image `.dat` under
 //! the account's `msg/attach`, and for each WXGF picture tries the candidate streams the way the image service does,
-//! counting why the ones it cannot decode fail.
+//! counting why the ones it cannot decode fail. `decoded_jpegs_sha256`, one hash of the JPEGs of all decoded pictures,
+//! tells whether two builds write the same files.
 //! Usage: wxgf_coverage_probe <isolated config.json>
 //! Stdout contains only aggregate counts. No key, identifier, file name, image or local path is printed, and nothing
 //! is written.
 
 use anyhow::{Context, Result};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
@@ -22,6 +24,8 @@ enum Outcome {
     Embedded,
     Decoded {
         candidate: usize,
+        /// SHA-256 of the JPEG.
+        jpeg: [u8; 32],
         samples: Option<u64>,
         took: Duration,
     },
@@ -45,9 +49,10 @@ fn examine(path: &Path, xor_key: u8, aes_key: Option<&[u8; 16]>) -> Outcome {
     for (k, (_, stream)) in candidates.iter().enumerate() {
         let start = Instant::now();
         match hevc::decode_to_jpeg(stream) {
-            Ok(_) => {
+            Ok(jpg) => {
                 return Outcome::Decoded {
                     candidate: k,
+                    jpeg: Sha256::digest(&jpg).into(),
                     samples: hevc::coded_luma_samples(stream),
                     took: start.elapsed(),
                 }
@@ -72,6 +77,7 @@ struct Tally {
     failures: BTreeMap<String, usize>,
     max_samples: u64,
     times: Vec<Duration>,
+    jpegs: Vec<[u8; 32]>,
 }
 
 fn main() -> Result<()> {
@@ -122,6 +128,7 @@ fn main() -> Result<()> {
                         Outcome::NoCandidate => t.no_candidate += 1,
                         Outcome::Decoded {
                             candidate,
+                            jpeg,
                             samples,
                             took,
                         } => {
@@ -129,6 +136,7 @@ fn main() -> Result<()> {
                             *t.by_candidate.entry(candidate).or_default() += 1;
                             t.max_samples = t.max_samples.max(samples.unwrap_or(0));
                             t.times.push(took);
+                            t.jpegs.push(jpeg);
                         }
                         Outcome::Failed(e) => *t.failures.entry(format!("{e:?}")).or_default() += 1,
                     }
@@ -138,6 +146,12 @@ fn main() -> Result<()> {
     });
     let mut t = tally.into_inner().unwrap_or_else(PoisonError::into_inner);
     t.times.sort();
+    // whatever order the threads found them in: compares two builds without showing any image
+    t.jpegs.sort_unstable();
+    let digest: String = Sha256::digest(t.jpegs.concat())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     let ms = |percent: usize| {
         t.times
             .get(t.times.len().saturating_sub(1) * percent / 100)
@@ -155,6 +169,7 @@ fn main() -> Result<()> {
             "wxgf_without_candidate_stream": t.no_candidate,
             "wxgf_not_decoded_by_reason": t.failures,
             "largest_decoded_luma_samples": t.max_samples,
+            "decoded_jpegs_sha256": digest,
             "decode_ms": { "median": ms(50), "p99": ms(99), "max": ms(100) },
             "threads": threads,
             "elapsed_s": started.elapsed().as_secs_f64(),
