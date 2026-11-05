@@ -197,7 +197,7 @@ struct CacheClearArgs {
     /// Images and videos of Moments
     #[arg(long)]
     sns: bool,
-    /// Analytics aggregate
+    /// The analytics aggregate earlier versions kept
     #[arg(long)]
     analytics: bool,
     /// Media exported and avatars pushed by the HTTP API, and files returned by `serve` (`?return=file`)
@@ -825,11 +825,7 @@ struct AnalyticsCommand {
 #[derive(Subcommand, Debug)]
 enum AnalyticsSubcommand {
     /// Overall chat statistics (private chats, honouring the exclusion list)
-    Overall {
-        /// Recompute instead of using the cached aggregate
-        #[arg(long)]
-        force: bool,
-    },
+    Overall,
     /// Contacts ranked by message count
     Rankings {
         /// Number of contacts
@@ -871,9 +867,6 @@ enum GroupSubcommand {
         /// Include per-member message counts
         #[arg(long)]
         counts: bool,
-        /// Bypass the 10-minute panel cache
-        #[arg(long)]
-        refresh: bool,
     },
     /// Most active members
     Ranking {
@@ -1619,11 +1612,9 @@ fn read_of(command: Commands) -> Result<Read, Commands> {
             GroupSubcommand::Members {
                 chatroom_id,
                 counts,
-                refresh,
             } => Read::GroupMembers {
                 chatroom_id,
                 counts,
-                refresh,
             },
             GroupSubcommand::Ranking {
                 chatroom_id,
@@ -1683,7 +1674,7 @@ fn read_of(command: Commands) -> Result<Read, Commands> {
             command => return Err(Commands::Group(GroupCommand { command })),
         },
         Commands::Analytics(c) => match c.command {
-            AnalyticsSubcommand::Overall { force } => Read::AnalyticsOverall { force },
+            AnalyticsSubcommand::Overall => Read::AnalyticsOverall,
             AnalyticsSubcommand::Rankings { limit, start, end } => {
                 Read::AnalyticsRankings { limit, start, end }
             }

@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use super::*;
-use crate::sync::MutexExt;
 
 /// A part of WeFlow's cache that is listed and cleared on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
@@ -229,9 +228,6 @@ impl ServiceHub {
             }
             match part {
                 CachePart::Images => self.image_forget_cached(),
-                CachePart::Analytics => {
-                    let _ = self.analytics_clear_cache();
-                }
                 CachePart::Sns => self.sns_clear_memory_cache(),
                 _ => {}
             }
@@ -315,10 +311,8 @@ impl ServiceHub {
             remove_path(path, &mut removed, &mut warnings);
         }
         if clear_cache {
-            *self.group_state.lock_or_panic() = Default::default();
             self.sns_clear_memory_cache();
             self.image_forget_cached();
-            let _ = self.analytics_clear_cache();
         }
         Ok(crate::contract::AccountCleared {
             removed_paths: removed,

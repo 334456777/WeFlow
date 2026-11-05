@@ -296,7 +296,6 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `sns timeline`, 20 posts | 235 ms | 6 ms |
 | `chat statuses`, 60 conversations | 24 ms | 2 ms |
 | `group list` | 28 ms | 4 ms |
-| `analytics overall`, the aggregate kept | 25 ms | 2 ms |
 | `report annual years` | 97 ms | 34 ms |
 | 16 pages of messages at once (in all) | 156 ms | 140 ms |
 
@@ -311,9 +310,8 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - Parameters the command line refuses (a required one missing, a value that is no number, one given twice…) are answered by the server's process with the error the terminal prints (`invalid_arguments`, `400`), as the route without `/api/` answers them, but without starting a child process: about 0.3 ms instead of about 30 ms (#432). A request the command line takes but the read in process does not (a rare order of positional arguments) runs in a child process, as the route without `/api/` does.
 - A changed config file (`PUT /config/set`, another profile, another file chosen with `config_path`) is read again on the next request. A change is told by the file's time and size, and for a few seconds after a write by its content too: two writes within one tick of a coarse clock (2 s on FAT) leave the same time, and two profiles whose names are as long the same size.
 - Right after the start, and again after the config changed, the server opens the databases of a chat page in the background, all at once: conversations, contacts, avatars, image links, the search index, messages and voices. Opening a database first derives its key (about 0.1 s), so the first reads would otherwise wait for every database they touch. On a large account the warm-up is over within half a second; the conversation list then first takes about 12 ms instead of about 440 ms, and about 240 ms when asked for right at the start.
-- `group members` keeps a member panel for a while, as the desktop app does: within that time it answers `"fromCache": true`; pass `refresh=true` to build it again.
 - `chat detail` without `fast=true`, `sns timeline` with `with-media=true` and `analytics excluded` with `set` run as the route without `/api/` does: the rest of the details (the tables, the first and last times) is slower to read, the media of the timeline are downloaded, and `set` saves the list.
-- `analytics overall`, `rankings` and `time` answer the aggregate kept from last time, as the command does (`force=true` reads every chat again). The server also keeps it in memory for 5 minutes, so an aggregate that a command route computed again within that time shows after it.
+- `analytics overall`, `rankings` and `time` count the chats again on every request, as the command does, so they follow new messages.
 - The other commands stay command routes only: long tasks and exports, which a cancel stops by ending their process; the key commands, which attach to WeChat; commands that ask on the terminal or set their own process's output; and commands that write.
 - `sns stats` with `fast=true` and `sns post-counts` with `prefer-cache=true` keep their numbers for 5 minutes, as the desktop app does: new posts show in them after that, or at once without those switches.
 - These reads count towards the `--max-reads` limit, and wait in line for a place instead of answering `429` (see [Limits](#limits)).

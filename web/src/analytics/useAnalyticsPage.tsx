@@ -46,7 +46,7 @@ export function useAnalyticsPage(shell: Shell, active: boolean, chatWith: ChatWi
           {group && (member
             ? <MemberView group={group} member={member} range={range} onBack={() => showMember(null)} />
             : <GroupStats group={group} range={range} onMember={showMember} />)}</div>
-        : <PrivateAnalytics state={analytics} onRetry={() => reloadAnalytics()} onRecount={() => reloadAnalytics(true)}
+        : <PrivateAnalytics state={analytics} onReload={reloadAnalytics}
           canChat={username => shell.sessionList.some(s => s.username === username)} onChat={chatWith} />}
     </Connected>
   </ScrollPage>;

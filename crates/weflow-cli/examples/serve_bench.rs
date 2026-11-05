@@ -1469,19 +1469,17 @@ impl Bench<'_> {
         for (op, target) in &reads {
             self.both(op, target)?;
         }
-        // the aggregate of the statistics: computed once, then read from its cache
+        // the statistics count every chat on each read: slow, so read once each
         for route in ["sub", "api"] {
-            self.read_n(
-                "analytics overall --force",
-                route,
-                "/analytics/overall?force=true",
-                1,
-                "",
-            )?;
+            for (op, target) in [
+                ("analytics overall", "/analytics/overall"),
+                ("analytics rankings", "/analytics/rankings"),
+                ("analytics time", "/analytics/time"),
+            ] {
+                self.read_n(op, route, target, 1, "")?;
+            }
         }
-        self.both("analytics overall (cached)", "/analytics/overall")?;
-        self.both("analytics rankings (cached)", "/analytics/rankings")?;
-        self.both("analytics time (cached)", "/analytics/time")
+        Ok(())
     }
 
     /// `AT_ONCE` pages of the big conversation requested at the same time: the wall time of all of them.

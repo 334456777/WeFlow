@@ -414,7 +414,14 @@ fn date_range_and_sender_filters_apply() {
 #[test]
 fn overall_statistics_count_private_chats_by_type_and_direction() {
     let (hub, _root) = common::mock_hub("n-overall");
-    let s = json!(hub.analytics_overall_statistics(Freshness::Cached).unwrap());
+    let s = json!(hub.analytics_overall_statistics().unwrap());
+    // read from the databases every time: nothing kept that could go stale when messages arrive
+    let cache = hub
+        .image_cache_root()
+        .parent()
+        .unwrap()
+        .join("analytics_cache.json");
+    assert!(!cache.exists());
     assert_eq!(
         s["totalMessages"], 5,
         "only private chats count: the group is excluded"

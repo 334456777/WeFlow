@@ -59,12 +59,12 @@ function RankRow({ rank, person, top, canChat, onChat }: { rank: number; person:
   </li>;
 }
 
-export function PrivateAnalytics({ state, onRetry, onRecount, canChat, onChat }: {
-  state: AnalyticsState; onRetry(): void; onRecount(): void; canChat(username: string): boolean; onChat(username: string): void;
+export function PrivateAnalytics({ state, onReload, canChat, onChat }: {
+  state: AnalyticsState; onReload(): void; canChat(username: string): boolean; onChat(username: string): void;
 }) {
   if (state.status === 'error') {
     return <div className="pane-message" role="alert"><strong>读取聊天分析失败</strong><p>{state.message}</p>
-      <button type="button" className="secondary-button" onClick={onRetry}>重试</button></div>;
+      <button type="button" className="secondary-button" onClick={onReload}>重试</button></div>;
   }
   if (state.status !== 'ready') {
     return <div className="analytics-page" aria-busy="true"><GridSkeleton label="正在统计私聊消息，第一次可能要一会儿" cells={6} /><ListSkeleton label="正在读取聊天排行" rows={5} /></div>;
@@ -75,7 +75,7 @@ export function PrivateAnalytics({ state, onRetry, onRecount, canChat, onChat }:
   return <div className="analytics-page">
     <section className="analytics-block" aria-label="总览">
       <div className="analytics-heading"><h2>总览</h2>
-        <button type="button" className="secondary-button" title="不用缓存的结果，重新读取所有私聊" onClick={onRecount}><ArrowClockwise size={12} />重新统计</button></div>
+        <button type="button" className="secondary-button" title="重新读取所有私聊，算上新收到的消息" onClick={onReload}><ArrowClockwise size={12} />重新统计</button></div>
       <dl className="info-grid analytics-numbers">
         <div><dt>消息</dt><dd className="num">{n(overall.totalMessages)} 条</dd></div>
         <div><dt>我发出的</dt><dd className="num">{n(overall.sentMessages)} 条 · {share(overall.sentMessages, overall.totalMessages)}</dd></div>

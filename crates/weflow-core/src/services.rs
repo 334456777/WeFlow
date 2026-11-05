@@ -55,8 +55,6 @@ pub struct ServiceHub {
     wxid_override: Option<String>,
     pub progress_enabled: bool,
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
-    group_state: std::sync::Arc<std::sync::Mutex<group::GroupState>>,
-    analytics_state: std::sync::Arc<std::sync::Mutex<analytics::AnalyticsState>>,
     image_state: std::sync::Arc<std::sync::Mutex<image::ImageState>>,
     insight_state: std::sync::Arc<std::sync::Mutex<insight::InsightState>>,
 }
@@ -80,8 +78,6 @@ impl ServiceHub {
             wxid_override,
             progress_enabled: false,
             sns_state: Default::default(),
-            group_state: Default::default(),
-            analytics_state: Default::default(),
             image_state: Default::default(),
             insight_state: Default::default(),
         }

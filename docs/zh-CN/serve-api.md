@@ -296,7 +296,6 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `sns timeline`，20 条 | 235 ms | 6 ms |
 | `chat statuses`，60 个会话 | 24 ms | 2 ms |
 | `group list` | 28 ms | 4 ms |
-| `analytics overall`，读上次留下的统计结果 | 25 ms | 2 ms |
 | `report annual years` | 97 ms | 34 ms |
 | 同时请求 16 页消息（总耗时） | 156 ms | 140 ms |
 
@@ -311,9 +310,8 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - 命令行不接受的参数（缺少必填项、该是数字的不是数字、同一个参数给了两次等）由服务进程直接回复终端会打印的那条错误（`invalid_arguments`，`400`），与不带 `/api/` 的路由回复的相同，但不起子进程：约 0.3 ms，原来约 30 ms（#432）。命令行接受、进程内读取却不接受的请求（少见的位置参数顺序）按不带 `/api/` 的路由在子进程里执行。
 - 配置文件变化后（`PUT /config/set`、切换配置档案、用 `config_path` 换一个配置文件），下一个请求会重新读取。判断是否变化看文件的修改时间和大小；写入后的几秒内还会比对内容，因为在时间精度较粗的文件系统上（FAT 是 2 秒），两次写入的修改时间可能相同，而两个名字一样长的档案，文件大小也相同。
 - 服务刚启动时，以及配置变化之后，会在后台同时打开聊天页面要用的数据库：会话、联系人、头像、图片链接、搜索索引、消息和语音。每个数据库第一次打开都要先派生密钥（约 0.1 秒），否则最初的几次读取要等它们用到的每个库。在大账号上，预热半秒内完成；之后第一次读取会话列表约 12 ms，原来约 440 ms；如果启动后立即请求，约 240 ms。
-- `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。
 - 不带 `fast=true` 的 `chat detail`、带 `with-media=true` 的 `sns timeline` 和带 `set` 的 `analytics excluded` 按不带 `/api/` 的路由执行：其余的详情（数据表、最早和最新时间）读起来慢，时间线的媒体要下载，`set` 会保存名单。
-- `analytics overall`、`rankings` 和 `time` 与命令一样，返回上次留下的统计结果（`force=true` 时重新读所有聊天）。服务端还会在内存里保留它 5 分钟，所以这段时间内由命令路由重新算出的结果，要过了这段时间才会显示。
+- `analytics overall`、`rankings` 和 `time` 与命令一样，每次请求都重新统计各个聊天，所以会反映新消息。
 - 其余命令只有命令路由：长任务和导出（取消时靠结束它们的进程来停止）；密钥命令（要附加到微信进程）；需要在终端上询问、或要设置自身进程输出方式的命令；以及会写入的命令。
 - 带 `fast=true` 的 `sns stats` 和带 `prefer-cache=true` 的 `sns post-counts` 和桌面端一样，把数字保留 5 分钟：新动态要过了这段时间才计入，不带这两个开关则立即计入。
 - 这些读取计入 `--max-reads` 的上限，超出时排队等位置，而不是返回 `429`（见[并发限制](#并发限制)）。

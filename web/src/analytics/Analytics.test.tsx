@@ -45,28 +45,24 @@ describe('chat analytics', () => {
     expect(long.filter((_, i) => yearStarts(long, i))).toHaveLength(7);
   });
 
-  it('counts the chats first and reads the rankings and hours from what it kept, counting again only when asked', async () => {
+  it('asks for the numbers, the rankings and the hours at once, and again on reload', async () => {
     const urls: string[] = [];
-    let release: () => void = () => {};
-    const first = new Promise<void>(resolve => { release = resolve; });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       urls.push(url);
-      if (url.startsWith('/api/analytics/overall')) { await first; return json({ success: true, data: OVERALL }); }
+      if (url.startsWith('/api/analytics/overall')) return json({ success: true, data: OVERALL });
       return json({ success: true, data: url.startsWith('/api/analytics/rankings') ? READY.rankings : SPREAD });
     }));
     const { result } = renderHook(() => useAnalytics(true, 0));
     await act(async () => {});
-    expect(urls).toEqual(['/api/analytics/overall']);
-    await act(async () => { release(); });
     expect(urls).toEqual(['/api/analytics/overall', '/api/analytics/rankings?limit=20', '/api/analytics/time']);
     expect(result.current[0].status).toBe('ready');
-    await act(async () => { result.current[1](true); });
-    expect(urls[3]).toBe('/api/analytics/overall?force=true');
+    await act(async () => { result.current[1](); });
+    expect(urls.slice(3)).toEqual(['/api/analytics/overall', '/api/analytics/rankings?limit=20', '/api/analytics/time']);
   });
 
   it('shows the numbers, the charts and who the chats are with', () => {
     const onChat = vi.fn();
-    render(<PrivateAnalytics state={READY} onRetry={() => {}} onRecount={() => {}} canChat={u => u === 'wxid_a'} onChat={onChat} />);
+    render(<PrivateAnalytics state={READY} onReload={() => {}} canChat={u => u === 'wxid_a'} onChat={onChat} />);
     const numbers = screen.getByLabelText('总览').textContent!;
     expect(numbers).toContain('1,000 条');
     expect(numbers).toContain('400 条 · 40%');
@@ -84,11 +80,11 @@ describe('chat analytics', () => {
   });
 
   it('says why the analytics cannot be read', () => {
-    const onRetry = vi.fn();
-    render(<PrivateAnalytics state={{ status: 'error', message: 'no message sessions found' }} onRetry={onRetry} onRecount={() => {}} canChat={() => true} onChat={() => {}} />);
+    const onReload = vi.fn();
+    render(<PrivateAnalytics state={{ status: 'error', message: 'no message sessions found' }} onReload={onReload} canChat={() => true} onChat={() => {}} />);
     expect(screen.getByRole('alert').textContent).toContain('no message sessions found');
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
-    expect(onRetry).toHaveBeenCalled();
+    expect(onReload).toHaveBeenCalled();
   });
 
   it('lists everyone left out but only a few others, the rest found by searching', async () => {

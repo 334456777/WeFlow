@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Map, Value};
 
 use crate::native_db::NativeAccount;
@@ -23,6 +23,29 @@ const RED_PACKET: i64 = 8_594_229_559_345;
 
 fn int(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or(0)
+}
+
+/// An integer column as [`int`] reads one from a JSON row: anything but an integer is 0.
+fn sql_int(v: rusqlite::types::ValueRef<'_>) -> i64 {
+    match v {
+        rusqlite::types::ValueRef::Integer(i) => i,
+        _ => 0,
+    }
+}
+
+/// Messages of one table with the same type, local hour, weekday and day and the same sender side.
+struct TimeGroup {
+    kind: i64,
+    /// `%H`, `%w` and `%Y-%m-%d` in local time.
+    hour: i64,
+    weekday: i64,
+    day: String,
+    /// Sent by the account owner.
+    mine: bool,
+    count: i64,
+    /// Earliest and latest `create_time`.
+    first: i64,
+    last: i64,
 }
 
 /// `and create_time >= b and create_time <= e` for the positive bounds (`0` = unbounded).
@@ -89,44 +112,68 @@ impl NativeAccount {
             let mut s_months: BTreeMap<i64, i64> = BTreeMap::new();
             for t in self.message_tables(sid)? {
                 let mine = self.my_ids(&t.db)?;
+                // Grouped by quarter hour first, in integers: the local time is then worked out once a quarter
+                // hour rather than three times a message. Every UTC offset in use is a whole number of quarter
+                // hours and changes on a quarter hour, so all of a quarter hour has one local hour, weekday and day.
+                let local_q = |expr: &str| local(expr).replace("create_time", "q");
                 let sql = format!(
-                    "select coalesce(nullif(local_type, 0), 1) as t, {h} as h, {w} as w, {d} as d, (real_sender_id in ({mine})) as s, \
-                     count(*) as n, min(create_time) as mn, max(create_time) as mx \
-                     from \"{table}\" where create_time > 0{range} group by t, h, w, d, s",
-                    h = local("%H"),
-                    w = local("%w"),
-                    d = local("%Y-%m-%d"),
+                    "select t, {h} as h, {w} as w, {d} as d, s, n, mn, mx from ( \
+                     select coalesce(nullif(local_type, 0), 1) as t, create_time / 900 * 900 as q, \
+                     (real_sender_id in ({mine})) as s, count(*) as n, min(create_time) as mn, max(create_time) as mx \
+                     from \"{table}\" where create_time > 0{range} group by t, create_time / 900, s)",
+                    h = local_q("%H"),
+                    w = local_q("%w"),
+                    d = local_q("%Y-%m-%d"),
                     table = t.table,
                 );
-                for r in self.query(&t.db, &sql, &[])? {
-                    let n = int(&r, "n");
-                    let (mn, mx) = (int(&r, "mn"), int(&r, "mx"));
+                // collected afresh on every attempt: `with_db` runs the closure again on a fresh snapshot when
+                // WeChat changed the file under it
+                let groups = self.with_db(&t.db, |conn| {
+                    let mut stmt = conn
+                        .prepare(&sql)
+                        .with_context(|| format!("bad query: {sql}"))?;
+                    let mut rows = stmt.query([])?;
+                    let mut groups: Vec<TimeGroup> = Vec::new();
+                    while let Some(r) = rows.next()? {
+                        let text = |i: usize| -> Result<String> {
+                            Ok(r.get_ref(i)?.as_str_or_null()?.unwrap_or("").to_string())
+                        };
+                        groups.push(TimeGroup {
+                            kind: sql_int(r.get_ref(0)?),
+                            hour: text(1)?.parse().unwrap_or(0),
+                            weekday: text(2)?.parse().unwrap_or(0),
+                            day: text(3)?,
+                            mine: sql_int(r.get_ref(4)?) == 1,
+                            count: sql_int(r.get_ref(5)?),
+                            first: sql_int(r.get_ref(6)?),
+                            last: sql_int(r.get_ref(7)?),
+                        });
+                    }
+                    Ok(groups)
+                })?;
+                for g in groups {
+                    let n = g.count;
                     total += n;
                     s_total += n;
-                    if int(&r, "s") == 1 {
+                    if g.mine {
                         sent += n;
                         s_sent += n;
                     }
-                    if first == 0 || mn < first {
-                        first = mn;
+                    if first == 0 || g.first < first {
+                        first = g.first;
                     }
-                    last = last.max(mx);
-                    s_last = s_last.max(mx);
-                    *types.entry(int(&r, "t")).or_default() += n;
-                    *hourly
-                        .entry(r["h"].as_str().and_then(|v| v.parse().ok()).unwrap_or(0))
-                        .or_default() += n;
-                    *weekday
-                        .entry(r["w"].as_str().and_then(|v| v.parse().ok()).unwrap_or(0))
-                        .or_default() += n;
-                    let day = r["d"].as_str().unwrap_or("").to_string();
-                    if day.len() >= 7 {
-                        *monthly.entry(day[..7].to_string()).or_default() += n;
-                        if let Ok(month) = day[5..7].parse::<i64>() {
+                    last = last.max(g.last);
+                    s_last = s_last.max(g.last);
+                    *types.entry(g.kind).or_default() += n;
+                    *hourly.entry(g.hour).or_default() += n;
+                    *weekday.entry(g.weekday).or_default() += n;
+                    if g.day.len() >= 7 {
+                        *monthly.entry(g.day[..7].to_string()).or_default() += n;
+                        if let Ok(month) = g.day[5..7].parse::<i64>() {
                             *s_months.entry(month).or_default() += n;
                         }
                     }
-                    *daily.entry(day).or_default() += n;
+                    *daily.entry(g.day).or_default() += n;
                 }
             }
             if s_total > 0 {
@@ -297,16 +344,22 @@ impl NativeAccount {
         let mut hourly: BTreeMap<i64, i64> = BTreeMap::new();
         let mut types: BTreeMap<i64, i64> = BTreeMap::new();
         for t in self.message_tables(chatroom_id)? {
-            for (name, n) in self.sender_counts(&t, &range)? {
-                *totals.entry(name).or_default() += n;
-            }
+            // one pass over the table: the senders' counts come from the same groups as the types and hours (a
+            // sender `Name2Id` does not know counts towards those, not towards a sender; `user_name` is unique, so
+            // a sender row id is one name)
             let sql = format!(
-                "select coalesce(nullif(local_type, 0), 1) as t, {h} as h, count(*) as n from \"{table}\" where create_time > 0{range} group by t, h",
-                h = local("%H"),
-                table = t.table
+                "select n.user_name as u, coalesce(nullif(m.local_type, 0), 1) as t, {h} as h, count(*) as n \
+                 from \"{table}\" m left join Name2Id n on n.rowid = m.real_sender_id \
+                 where m.create_time > 0{range} group by m.real_sender_id, t, h",
+                h = local("%H").replace("create_time", "m.create_time"),
+                table = t.table,
+                range = range.replace("create_time", "m.create_time"),
             );
             for r in self.query(&t.db, &sql, &[])? {
                 let n = int(&r, "n");
+                if let Some(name) = r["u"].as_str() {
+                    *totals.entry(name.to_string()).or_default() += n;
+                }
                 *types.entry(int(&r, "t")).or_default() += n;
                 *hourly
                     .entry(r["h"].as_str().and_then(|v| v.parse().ok()).unwrap_or(0))

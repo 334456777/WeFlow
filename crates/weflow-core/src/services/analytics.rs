@@ -2,22 +2,12 @@
 //! rankings, time distribution and the exclusion list.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
 use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
-use crate::sync::MutexExt;
-
-const AGGREGATE_TTL: Duration = Duration::from_secs(5 * 60);
-
-#[derive(Default)]
-pub(crate) struct AnalyticsState {
-    cache: Option<(String, Value, Instant)>,
-}
 
 fn normalize_username(u: &str) -> String {
     u.trim().to_lowercase()
@@ -95,10 +85,6 @@ fn map_get<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 }
 
 impl ServiceHub {
-    fn analytics_cache_path(&self) -> PathBuf {
-        self.cache_base().join("analytics_cache.json")
-    }
-
     pub(super) fn fresh_config(&self) -> crate::config::ConfigStore {
         if !self.ctx.config_path.exists() {
             return self.config.clone();
@@ -129,19 +115,11 @@ impl ServiceHub {
         Ok(self.excluded_list())
     }
 
-    /// `setExcludedUsernames`: normalises, persists and drops the aggregate caches.
+    /// `setExcludedUsernames`: normalises and persists the list.
     pub fn analytics_set_excluded_usernames(&self, usernames: &[String]) -> AppResult<Vec<String>> {
         let normalized = normalize_excluded(&json!(usernames));
         self.set_config_value("analyticsExcludedUsernames", json!(normalized))?;
-        self.analytics_clear_cache()?;
         Ok(normalized)
-    }
-
-    /// `clearCache`
-    pub fn analytics_clear_cache(&self) -> AppResult<()> {
-        self.analytics_state.lock_or_panic().cache = None;
-        let _ = std::fs::remove_file(self.analytics_cache_path());
-        Ok(())
     }
 
     fn private_sessions(
@@ -330,64 +308,19 @@ impl ServiceHub {
         }))
     }
 
-    fn aggregate_key(ids: &[String], begin: i64, end: i64) -> String {
-        if ids.is_empty() {
-            return format!("{begin}-{end}-0-empty");
-        }
-        let mut uniq: Vec<String> = ids
-            .iter()
-            .cloned()
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        uniq.sort();
-        use sha1::{Digest, Sha1};
-        let mut h = Sha1::new();
-        h.update(uniq.join("|").as_bytes());
-        let hash: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
-        format!("{begin}-{end}-{}-{}", uniq.len(), &hash[..12])
-    }
-
-    /// `getAggregateWithFallback`: memory cache → file cache → native aggregate → cursor scan.
-    /// Returns `(data, source)`.
+    /// `getAggregateWithFallback`: the native aggregate, or a cursor scan when it is empty. Read from the databases
+    /// every time, so it follows new messages.
     fn aggregate_with_fallback(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         ids: &[String],
         begin: i64,
         end: i64,
-        force: bool,
-    ) -> AppResult<(Value, &'static str)> {
-        let key = Self::aggregate_key(ids, begin, end);
-        if force {
-            self.analytics_state.lock_or_panic().cache = None;
+    ) -> AppResult<Value> {
+        match self.aggregate_raw(wcdb, ids, begin, end) {
+            Ok(d) if num(&d["total"]) > 0 => Ok(d),
+            _ => self.aggregate_by_cursor(wcdb, ids, begin, end),
         }
-        if !force {
-            if let Some((k, data, at)) = &self.analytics_state.lock_or_panic().cache {
-                if *k == key && at.elapsed() < AGGREGATE_TTL {
-                    return Ok((data.clone(), "cache"));
-                }
-            }
-            if let Ok(raw) = std::fs::read_to_string(self.analytics_cache_path()) {
-                if let Ok(v) = serde_json::from_str::<Value>(&raw) {
-                    if v["key"].as_str() == Some(key.as_str()) && v.get("data").is_some() {
-                        let data = v["data"].clone();
-                        self.analytics_state.lock_or_panic().cache =
-                            Some((key, data.clone(), Instant::now()));
-                        return Ok((data, "file-cache"));
-                    }
-                }
-            }
-        }
-        let (data, source) = match self.aggregate_raw(wcdb, ids, begin, end) {
-            Ok(d) if num(&d["total"]) > 0 => (d, "dll"),
-            _ => (self.aggregate_by_cursor(wcdb, ids, begin, end)?, "cursor"),
-        };
-        self.analytics_state.lock_or_panic().cache =
-            Some((key.clone(), data.clone(), Instant::now()));
-        let _ = std::fs::create_dir_all(self.cache_base());
-        let _ = std::fs::write(self.analytics_cache_path(), serde_json::to_string(&json!({ "key": key, "data": data, "updatedAt": chrono::Utc::now().timestamp_millis() })).unwrap_or_default());
-        Ok((data, source))
     }
 
     fn analytics_connect(&self) -> AppResult<(weflow_native::wcdb::Wcdb, String)> {
@@ -468,18 +401,14 @@ impl ServiceHub {
     }
 
     /// `getOverallStatistics`
-    pub fn analytics_overall_statistics(
-        &self,
-        freshness: Freshness,
-    ) -> AppResult<OverallStatistics> {
+    pub fn analytics_overall_statistics(&self) -> AppResult<OverallStatistics> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
         self.emit_progress("analytics", "aggregating…", 30, 100);
-        let force = freshness == Freshness::Fresh;
-        let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0, force)?;
+        let d = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0)?;
         let type_count = |t: i64| d["typeCounts"].get(t.to_string()).map(num).unwrap_or(0);
         let total = num(&d["total"]);
         let text = type_count(1) + type_count(244813135921);
@@ -523,7 +452,7 @@ impl ServiceHub {
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
-        let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, begin, end, false)?;
+        let d = self.aggregate_with_fallback(&wcdb, &usernames, begin, end)?;
         let mut sessions = d
             .get("sessions")
             .and_then(Value::as_object)
@@ -594,7 +523,7 @@ impl ServiceHub {
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
-        let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0, false)?;
+        let d = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0)?;
         // native: 0 = Sunday … 6 = Saturday; the UI wants 1 = Monday … 7 = Sunday
         let weekday = counts_of(&d["weekday"])
             .into_iter()

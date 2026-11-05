@@ -268,8 +268,9 @@ def commands(manifest, out, cursor):
          o("m.html")),
         ("export messages txt", ["export", "messages", big, "--out", o("m.txt")], n, o("m.txt")),
         ("report annual", ["report", "annual", "generate"], manifest["messages"], None),
-        ("analytics overall", ["analytics", "overall", "--force"], None, None),
-        ("group members", ["group", "members", big, "--counts", "--refresh"], n, None),
+        # every run starts without a cache folder (clear_caches), so a version that kept the aggregate counts too
+        ("analytics overall", ["analytics", "overall"], None, None),
+        ("group members", ["group", "members", big, "--counts"], n, None),
         ("group ranking", ["group", "ranking", big], n, None),
         ("chat export-stats", ["chat", "export-stats", big], n, None),
         ("chat date-counts", ["chat", "date-counts", big], n, None),
