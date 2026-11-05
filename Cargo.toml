@@ -38,6 +38,8 @@ flate2 = "1"
 futures = "0.3"
 # HEVC still-picture decoder for WXGF images (pure Rust, no unsafe); the thread pool feature is not needed
 heic-rs = { version = "0.1", default-features = false, features = ["std"] }
+# HEVC video decoder for the WXGF pictures heic-rs does not decode: 4:4:4 and the range-extension coding tools
+rust_h265 = "0.4"
 indexmap = { version = "2.14.2", features = ["serde"] }
 jpeg-encoder = "0.7"
 icu_collator = "2.3"

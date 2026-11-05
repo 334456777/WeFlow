@@ -27,7 +27,7 @@ function serve(pages: Record<string, unknown>) {
     calls.push(url.pathname + url.search);
     if (url.pathname === '/api/chat/resources') return json(pages[url.searchParams.get('before') ?? ''] ?? { items: [], hasMore: false, nextCursor: null });
     // why a thumbnail failed
-    return new Response(JSON.stringify({ success: false, error: { code: 'runtime_error', message: 'WXGF 图片无法转换：暂不支持它的格式（10-bit samples）', details: { failureKind: 'unsupported_image' } } }), { status: 422 });
+    return new Response(JSON.stringify({ success: false, error: { code: 'runtime_error', message: 'WXGF 图片无法转换：暂不支持它的格式（P and B slices (inter prediction)）', details: { failureKind: 'unsupported_image' } } }), { status: 422 });
   });
   vi.stubGlobal('fetch', fetch);
   return calls;
@@ -105,7 +105,7 @@ describe('the resource browser (#206)', () => {
     const { container } = page();
     const img = await waitFor(() => { const found = container.querySelector('.resource-thumb img'); if (!found) throw new Error('no thumbnail'); return found; });
     fireEvent.error(img);
-    expect(await screen.findByText('WXGF 图片无法转换：暂不支持它的格式（10-bit samples）')).toBeTruthy();
+    expect(await screen.findByText('WXGF 图片无法转换：暂不支持它的格式（P and B slices (inter prediction)）')).toBeTruthy();
     expect(screen.getByText('图片无法显示')).toBeTruthy();
   });
 

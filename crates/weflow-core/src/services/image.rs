@@ -1525,8 +1525,11 @@ mod tests {
         use crate::hevc::Unsupported;
         let date = crate::message::format_timestamp(1_700_000_000);
         assert_eq!(
-            unsupported_image_message(Some(1_700_000_000), Unsupported::BitDepth(10)),
-            format!("WXGF image sent {date} cannot be converted: its format is not supported yet (10-bit samples)")
+            unsupported_image_message(
+                Some(1_700_000_000),
+                Unsupported::Tool("P and B slices (inter prediction)")
+            ),
+            format!("WXGF image sent {date} cannot be converted: its format is not supported yet (P and B slices (inter prediction))")
         );
         assert_eq!(
             unsupported_image_message(None, Unsupported::NoPicture),

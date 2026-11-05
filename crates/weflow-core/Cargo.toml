@@ -22,6 +22,7 @@ ecb.workspace = true
 flate2.workspace = true
 futures.workspace = true
 heic-rs.workspace = true
+rust_h265.workspace = true
 indexmap.workspace = true
 jpeg-encoder.workspace = true
 md-5.workspace = true

@@ -1,10 +1,11 @@
 //! WXGF pictures: the first picture of a WXGF HEVC stream is decoded in Rust (`heic-rs`, an HEVC still-picture
 //! decoder: WXGF images are single intra pictures, almost all of them Main Still Picture) and written as a JPEG the
-//! way ffmpeg's `mjpeg` does it (the YCbCr planes kept, limited range scaled to the full range JPEG uses).
+//! way ffmpeg's `mjpeg` does it: the YCbCr planes kept at the chroma resolution they have (4:2:0, 4:2:2, 4:4:4 or
+//! grey), deeper samples (Main 10, Rext) rounded to 8 bits, limited range scaled to the full range JPEG uses.
 //!
 //! On a real account 1763 WXGF images decoded to the same samples as ffmpeg, and all 5,668 of a whole account
-//! decoded. What it does not cover (10-bit, 4:2:2 / 4:4:4, inter-predicted first pictures) or damaged data is an
-//! [`Unsupported`], and the image is not converted.
+//! decoded. A picture using a coding tool the decoder does not implement (inter prediction in a first picture, a few
+//! range-extension tools), or damaged data, is an [`Unsupported`], and the image is not converted.
 
 /// JPEG quality: as close to the source as ffmpeg's `-q:v 2` (measured on real WXGF images; the files are about
 /// a quarter larger).
@@ -25,12 +26,8 @@ pub enum Unsupported {
     ParameterSets,
     /// A coded picture larger than [`MAX_LUMA_SAMPLES`].
     TooLarge,
-    /// Samples deeper than 8 bits (the luma bit depth).
+    /// Samples of a bit depth a JPEG cannot be made from (outside 8 to 16 bits).
     BitDepth(u8),
-    /// 4:2:2 chroma.
-    Chroma422,
-    /// 4:4:4 chroma.
-    Chroma444,
     /// The picture uses a coding tool the decoder does not implement, which it names (for example inter prediction
     /// in a first picture).
     Tool(&'static str),
@@ -58,8 +55,6 @@ impl std::fmt::Display for Unsupported {
             Self::ParameterSets => f.write_str("a parameter set is missing"),
             Self::TooLarge => f.write_str("larger than any HEVC level allows"),
             Self::BitDepth(bits) => write!(f, "{bits}-bit samples"),
-            Self::Chroma422 => f.write_str("4:2:2 chroma"),
-            Self::Chroma444 => f.write_str("4:4:4 chroma"),
             Self::Tool(tool) => f.write_str(tool),
             Self::Damaged => f.write_str("broken HEVC bitstream"),
             Self::Jpeg => f.write_str("JPEG encoding"),
@@ -97,14 +92,55 @@ pub fn decode_to_jpeg(hevc: &[u8]) -> Result<Vec<u8>, Unsupported> {
     if largest_coded_picture(&sets).is_some_and(|samples| samples > MAX_LUMA_SAMPLES) {
         return Err(Unsupported::TooLarge);
     }
-    let full_range = sets
-        .iter()
-        .rev()
-        .find(|u| nal_type(u) == 33)
-        .and_then(|sps| sps_full_range(sps))
-        .unwrap_or(false);
-    let frame = heic_rs::hevc::decode_still(&sets, &slices)?;
-    encode(&frame, full_range)
+    let sps = sets.iter().rev().find(|u| nal_type(u) == 33);
+    let signal = Signal {
+        full_range: sps.and_then(|sps| sps_full_range(sps)).unwrap_or(false),
+        chroma_bit_depth: sps.and_then(|sps| sps_chroma_bit_depth(sps)),
+    };
+    let still = match heic_rs::hevc::decode_still(&sets, &slices) {
+        Ok(frame) => return encode(&Picture::of_heic(&frame, signal.chroma_bit_depth)?, signal),
+        Err(e) => Unsupported::from(e),
+    };
+    // A picture heic-rs does not decode (4:4:4, a range-extension tool, or a decoder bug) gets a second try with
+    // rust_h265, which decodes those. Only an IRAP picture: a video decoder would predict any other from mid-grey
+    // references it makes up, and give a wrong picture rather than an error.
+    if !(16..=23).contains(&nal_type(slices[0])) {
+        return Err(still);
+    }
+    match decode_with_rust_h265(&sets, &slices) {
+        Ok(frame) => encode(
+            &Picture::of_rust_h265(&frame, signal.chroma_bit_depth)?,
+            signal,
+        ),
+        // the second decoder names what it does not support (4:2:2, for one); otherwise the first one's reason
+        Err(Unsupported::Tool(tool)) => Err(Unsupported::Tool(tool)),
+        Err(_) => Err(still),
+    }
+}
+
+/// The first picture with rust_h265, from its parameter sets and slices.
+fn decode_with_rust_h265(
+    sets: &[&[u8]],
+    slices: &[&[u8]],
+) -> Result<rust_h265::Frame, Unsupported> {
+    // one thread, so that an error in the slice data comes back from the call that fed the slice
+    let mut decoder = rust_h265::Decoder::new();
+    for unit in sets.iter().chain(slices) {
+        let nal = rust_h265::parse_nal(unit).ok_or(Unsupported::Damaged)?;
+        decoder.decode_nal(&nal)?;
+    }
+    decoder.flush().ok_or(Unsupported::NoPicture)
+}
+
+impl From<rust_h265::DecodeError> for Unsupported {
+    fn from(e: rust_h265::DecodeError) -> Self {
+        match e {
+            rust_h265::DecodeError::Unsupported(tool) => Self::Tool(tool),
+            rust_h265::DecodeError::ResourceLimit(_) => Self::TooLarge,
+            // a broken or short bitstream, and whatever later releases add
+            _ => Self::Damaged,
+        }
+    }
 }
 
 /// Luma samples of the largest coded picture an SPS of the first picture of `hevc` declares, or `None` when it has
@@ -178,37 +214,209 @@ fn first_picture(hevc: &[u8]) -> (Vec<&[u8]>, Vec<&[u8]>) {
     (sets, slices)
 }
 
-/// A decoded 8-bit picture handed to the JPEG encoder row by row, straight from its planes (an interleaved copy of the
-/// whole picture would cost three bytes a pixel on every media thread).
-struct Planes<'a> {
-    frame: &'a heic_rs::hevc::Frame,
-    mono: bool,
+/// What the SPS says about the samples that a decoded frame does not.
+#[derive(Clone, Copy)]
+struct Signal {
     full_range: bool,
-    width: u16,
-    height: u16,
+    /// `BitDepthC`, when it was read (a frame tells only the luma bit depth).
+    chroma_bit_depth: Option<u8>,
 }
 
-impl Planes<'_> {
-    fn luma(&self, v: u16) -> u8 {
-        if self.full_range {
-            v.min(255) as u8
-        } else {
-            ((v as i32 - 16) * 255 + 109).div_euclid(219).clamp(0, 255) as u8
+/// How the chroma planes of a picture are laid out against its luma plane.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Layout {
+    Mono,
+    /// Chroma rows and columns are `1 << y` and `1 << x` luma ones: 4:2:0 is (1, 1), 4:2:2 (1, 0), 4:4:4 (0, 0).
+    Subsampled {
+        x: u32,
+        y: u32,
+    },
+}
+
+impl Layout {
+    /// The chroma plane size of a `width` × `height` picture.
+    fn chroma_size(self, width: usize, height: usize) -> (usize, usize) {
+        match self {
+            Self::Mono => (0, 0),
+            Self::Subsampled { x, y } => (width.div_ceil(1 << x), height.div_ceil(1 << y)),
+        }
+    }
+}
+
+/// The samples of one plane, at the width each decoder gives them.
+#[derive(Clone, Copy)]
+enum Samples<'a> {
+    U8(&'a [u8]),
+    U16(&'a [u16]),
+}
+
+impl Samples<'_> {
+    fn len(self) -> usize {
+        match self {
+            Self::U8(s) => s.len(),
+            Self::U16(s) => s.len(),
         }
     }
 
-    fn chroma(&self, v: u16) -> u8 {
-        if self.full_range {
-            v.min(255) as u8
-        } else {
-            (((v as i32 - 128) * 255 + 112).div_euclid(224) + 128).clamp(0, 255) as u8
+    /// Appends `width` samples of the row starting at `start` to `out`, each column `c` taken from `c >> x` and
+    /// brought to 8 bits by `to8`.
+    fn push_row(
+        self,
+        start: usize,
+        width: usize,
+        x: u32,
+        out: &mut Vec<u8>,
+        to8: impl Fn(u16) -> u8,
+    ) {
+        fn push<T: Copy + Into<u16>>(
+            row: &[T],
+            width: usize,
+            x: u32,
+            out: &mut Vec<u8>,
+            to8: impl Fn(u16) -> u8,
+        ) {
+            if x == 0 {
+                out.extend(row[..width].iter().map(|&v| to8(v.into())));
+            } else {
+                out.extend((0..width).map(|c| to8(row[c >> x].into())));
+            }
+        }
+        match self {
+            Self::U8(s) => push(&s[start..], width, x, out, to8),
+            Self::U16(s) => push(&s[start..], width, x, out, to8),
         }
     }
+}
+
+/// A decoded picture, whichever decoder gave it, its planes checked to be as large as its geometry needs.
+struct Picture<'a> {
+    width: u16,
+    height: u16,
+    layout: Layout,
+    y: Samples<'a>,
+    cb: Samples<'a>,
+    cr: Samples<'a>,
+    y_stride: usize,
+    c_stride: usize,
+    /// Bits more than 8 in a luma sample, and in a chroma sample.
+    luma_shift: u32,
+    chroma_shift: u32,
+}
+
+impl<'a> Picture<'a> {
+    fn of_heic(
+        f: &'a heic_rs::hevc::Frame,
+        chroma_bit_depth: Option<u8>,
+    ) -> Result<Self, Unsupported> {
+        use heic_rs::hevc::ChromaFormat;
+        let layout = match f.chroma {
+            ChromaFormat::Monochrome => Layout::Mono,
+            ChromaFormat::Yuv420 => Layout::Subsampled { x: 1, y: 1 },
+            ChromaFormat::Yuv422 => Layout::Subsampled { x: 1, y: 0 },
+            ChromaFormat::Yuv444 => Layout::Subsampled { x: 0, y: 0 },
+        };
+        Self::new(
+            (f.width, f.height),
+            layout,
+            [Samples::U16(&f.y), Samples::U16(&f.cb), Samples::U16(&f.cr)],
+            (f.y_stride as usize, f.c_stride as usize),
+            (f.bit_depth, chroma_bit_depth),
+        )
+    }
+
+    fn of_rust_h265(
+        f: &'a rust_h265::Frame,
+        chroma_bit_depth: Option<u8>,
+    ) -> Result<Self, Unsupported> {
+        let layout = match f.chroma_format_idc {
+            0 => Layout::Mono,
+            1 => Layout::Subsampled { x: 1, y: 1 },
+            2 => Layout::Subsampled { x: 1, y: 0 },
+            3 => Layout::Subsampled { x: 0, y: 0 },
+            _ => return Err(Unsupported::Damaged),
+        };
+        let plane = |p: &'a rust_h265::PixelData| match p {
+            rust_h265::PixelData::U8(s) => Samples::U8(s),
+            rust_h265::PixelData::U16(s) => Samples::U16(s),
+        };
+        // the planes are cropped, a row for each line
+        let (cw, _) = layout.chroma_size(f.width as usize, f.height as usize);
+        Self::new(
+            (f.width, f.height),
+            layout,
+            [plane(&f.y), plane(&f.u), plane(&f.v)],
+            (f.width as usize, cw),
+            (f.bit_depth, chroma_bit_depth),
+        )
+    }
+
+    fn new(
+        (width, height): (u32, u32),
+        layout: Layout,
+        [y, cb, cr]: [Samples<'a>; 3],
+        (y_stride, c_stride): (usize, usize),
+        (luma_bits, chroma_bits): (u8, Option<u8>),
+    ) -> Result<Self, Unsupported> {
+        let shift = |bits: u8| {
+            (8..=16)
+                .contains(&bits)
+                .then(|| u32::from(bits - 8))
+                .ok_or(Unsupported::BitDepth(bits))
+        };
+        let luma_shift = shift(luma_bits)?;
+        let chroma_shift = shift(chroma_bits.unwrap_or(luma_bits))?;
+        let side = |v: u32| u16::try_from(v).map_err(|_| Unsupported::Jpeg);
+        let (w, h) = (side(width)?, side(height)?);
+        let (cw, ch) = layout.chroma_size(w.into(), h.into());
+        let fits = |plane: Samples<'_>, stride: usize, (w, h): (usize, usize)| {
+            h == 0 || (stride >= w && plane.len() >= stride * (h - 1) + w)
+        };
+        if w == 0
+            || h == 0
+            || !fits(y, y_stride, (w.into(), h.into()))
+            || !fits(cb, c_stride, (cw, ch))
+            || !fits(cr, c_stride, (cw, ch))
+        {
+            return Err(Unsupported::Damaged);
+        }
+        Ok(Self {
+            width: w,
+            height: h,
+            layout,
+            y,
+            cb,
+            cr,
+            y_stride,
+            c_stride,
+            luma_shift,
+            chroma_shift,
+        })
+    }
+}
+
+/// A picture handed to the JPEG encoder row by row, straight from its planes (an interleaved copy of the whole
+/// picture would cost three bytes a pixel on every media thread), its samples brought to the 8 bits a JPEG has.
+struct Planes<'a> {
+    picture: &'a Picture<'a>,
+    full_range: bool,
+}
+
+/// A sample `shift` bits deeper than 8 as an 8-bit full-range one. Full range is rounded to 8 bits. Limited range,
+/// `(offset, range, centre)` at 8 bits (luma 16 to 16 + 219 from 0, chroma 128 ± 112 around 128), is also scaled to
+/// the full range, the way ffmpeg's `mjpeg` does it at 8 bits.
+fn to_8_bits(v: u16, shift: u32, full_range: bool, (offset, range, centre): (i32, i32, i32)) -> u8 {
+    let v = i32::from(v);
+    if full_range {
+        return ((v + ((1 << shift) >> 1)) >> shift).clamp(0, 255) as u8;
+    }
+    let range = range << shift;
+    let scaled = ((v - (offset << shift)) * 255 + range / 2).div_euclid(range);
+    (scaled + centre).clamp(0, 255) as u8
 }
 
 impl jpeg_encoder::ImageBuffer for Planes<'_> {
     fn get_jpeg_color_type(&self) -> jpeg_encoder::JpegColorType {
-        if self.mono {
+        if self.picture.layout == Layout::Mono {
             jpeg_encoder::JpegColorType::Luma
         } else {
             jpeg_encoder::JpegColorType::Ycbcr
@@ -216,57 +424,50 @@ impl jpeg_encoder::ImageBuffer for Planes<'_> {
     }
 
     fn width(&self) -> u16 {
-        self.width
+        self.picture.width
     }
 
     fn height(&self) -> u16 {
-        self.height
+        self.picture.height
     }
 
     fn fill_buffers(&self, y: u16, buffers: &mut [Vec<u8>; 4]) {
-        let f = self.frame;
-        let (r, w) = (y as usize, self.width as usize);
-        let luma = &f.y[r * f.y_stride as usize..][..w];
-        buffers[0].extend(luma.iter().map(|v| self.luma(*v)));
-        if self.mono {
+        let p = self.picture;
+        let (r, w) = (usize::from(y), usize::from(p.width));
+        let full = self.full_range;
+        let luma = |v| to_8_bits(v, p.luma_shift, full, (16, 219, 0));
+        let chroma = |v| to_8_bits(v, p.chroma_shift, full, (128, 224, 128));
+        p.y.push_row(r * p.y_stride, w, 0, &mut buffers[0], luma);
+        let Layout::Subsampled { x, y } = p.layout else {
             return;
-        }
-        let at = (r / 2) * f.c_stride as usize;
-        let (cb, cr) = (&f.cb[at..], &f.cr[at..]);
-        for c in 0..w {
-            buffers[1].push(self.chroma(cb[c / 2]));
-            buffers[2].push(self.chroma(cr[c / 2]));
-        }
+        };
+        let at = (r >> y) * p.c_stride;
+        let [_, cb_out, cr_out, _] = buffers;
+        p.cb.push_row(at, w, x, cb_out, chroma);
+        p.cr.push_row(at, w, x, cr_out, chroma);
     }
 }
 
-fn encode(frame: &heic_rs::hevc::Frame, full_range: bool) -> Result<Vec<u8>, Unsupported> {
-    use heic_rs::hevc::ChromaFormat;
-    if frame.bit_depth != 8 {
-        return Err(Unsupported::BitDepth(frame.bit_depth));
-    }
-    if frame.validate().is_err() {
-        return Err(Unsupported::Damaged);
-    }
-    let mono = match frame.chroma {
-        ChromaFormat::Monochrome => true,
-        ChromaFormat::Yuv420 => false,
-        ChromaFormat::Yuv422 => return Err(Unsupported::Chroma422),
-        ChromaFormat::Yuv444 => return Err(Unsupported::Chroma444),
-    };
-    let side = |v: u32| u16::try_from(v).map_err(|_| Unsupported::Jpeg);
-    let planes = Planes {
-        frame,
-        mono,
-        full_range,
-        width: side(frame.width)?,
-        height: side(frame.height)?,
-    };
+/// `picture` as a JPEG, its chroma kept at the resolution the picture has it.
+fn encode(picture: &Picture<'_>, signal: Signal) -> Result<Vec<u8>, Unsupported> {
     let mut out = Vec::new();
     let mut encoder = jpeg_encoder::Encoder::new(&mut out, JPEG_QUALITY);
-    if !mono {
-        encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_2_2);
+    match picture.layout {
+        Layout::Mono => {}
+        Layout::Subsampled { x: 1, y: 1 } => {
+            encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_2_2)
+        }
+        Layout::Subsampled { x: 1, .. } => {
+            encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_2_1)
+        }
+        Layout::Subsampled { .. } => {
+            encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_1_1)
+        }
     }
+    let planes = Planes {
+        picture,
+        full_range: signal.full_range,
+    };
     encoder
         .encode_image(planes)
         .map_err(|_| Unsupported::Jpeg)?;
@@ -426,6 +627,19 @@ impl SpsStart {
             height,
         })
     }
+}
+
+/// `BitDepthC` of a sequence parameter set (H.265 7.3.2.2), which may differ from the luma one.
+fn sps_chroma_bit_depth(sps: &[u8]) -> Option<u8> {
+    let mut b = Bits::new(sps);
+    SpsStart::read(&mut b)?;
+    if b.flag()? {
+        for _ in 0..4 {
+            b.ue()?; // conformance window
+        }
+    }
+    b.ue()?; // bit_depth_luma_minus8
+    u8::try_from(b.ue()?).ok()?.checked_add(8)
 }
 
 fn profile_tier_level(b: &mut Bits, max_sub_layers_minus1: u32) -> Option<()> {
@@ -592,6 +806,182 @@ mod tests {
                 err / (70.0 * 46.0) < 4.0,
                 "mean luma error {}",
                 err / 3220.0
+            );
+        }
+    }
+
+    /// A stream of another layout or bit depth (testdata/wxgf/README.md).
+    struct Sample {
+        name: &'static str,
+        hevc: &'static [u8],
+        /// ffmpeg's decode of it.
+        yuv: &'static [u8],
+        bits: u32,
+        /// The chroma subsampling as (x, y) shifts; `None` for grey.
+        chroma: Option<(usize, usize)>,
+        full: bool,
+    }
+
+    macro_rules! layout {
+        ($name:literal, $bits:expr, $chroma:expr, $full:expr) => {
+            Sample {
+                name: $name,
+                hevc: include_bytes!(concat!("../testdata/wxgf/", $name, ".hevc")),
+                yuv: include_bytes!(concat!("../testdata/wxgf/", $name, ".yuv")),
+                bits: $bits,
+                chroma: $chroma,
+                full: $full,
+            }
+        };
+    }
+
+    const SAMPLES: &[Sample] = &[
+        layout!("full_range", 8, Some((1, 1)), true),
+        layout!("limited_range", 8, Some((1, 1)), false),
+        layout!("yuv420p10_full", 10, Some((1, 1)), true),
+        layout!("yuv420p10_limited", 10, Some((1, 1)), false),
+        layout!("yuv444p_limited", 8, Some((0, 0)), false),
+        layout!("gray10_full", 10, None, true),
+    ];
+
+    /// The chroma plane size of a 70x46 picture subsampled by `(x, y)`.
+    fn chroma_size((x, y): (usize, usize)) -> (usize, usize) {
+        (70usize.div_ceil(1 << x), 46usize.div_ceil(1 << y))
+    }
+
+    /// ffmpeg's planes of `l`: luma, then Cb and Cr (empty for grey).
+    fn ffmpeg_planes(l: &Sample) -> [Vec<u16>; 3] {
+        let samples: Vec<u16> = if l.bits > 8 {
+            l.yuv
+                .chunks(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect()
+        } else {
+            l.yuv.iter().map(|&b| u16::from(b)).collect()
+        };
+        let luma = 70 * 46;
+        let Some(sub) = l.chroma else {
+            assert_eq!(samples.len(), luma, "{}", l.name);
+            return [samples, Vec::new(), Vec::new()];
+        };
+        let (w, h) = chroma_size(sub);
+        let c = w * h;
+        assert_eq!(samples.len(), luma + 2 * c, "{}", l.name);
+        [
+            samples[..luma].to_vec(),
+            samples[luma..luma + c].to_vec(),
+            samples[luma + c..].to_vec(),
+        ]
+    }
+
+    /// The planes of the first picture of `hevc`, a row after another, from the decoder `decode_to_jpeg` takes them
+    /// from (heic-rs, else rust_h265), and the luma bit depth.
+    fn decoded_planes(hevc: &[u8]) -> ([Vec<u16>; 3], u32) {
+        fn rows(plane: Samples<'_>, stride: usize, (w, h): (usize, usize)) -> Vec<u16> {
+            (0..h)
+                .flat_map(|r| -> Vec<u16> {
+                    match plane {
+                        Samples::U8(s) => s[r * stride..][..w].iter().map(|&v| v.into()).collect(),
+                        Samples::U16(s) => s[r * stride..][..w].to_vec(),
+                    }
+                })
+                .collect()
+        }
+        let of = |p: &Picture<'_>| {
+            let size = (usize::from(p.width), usize::from(p.height));
+            let c = p.layout.chroma_size(size.0, size.1);
+            (
+                [
+                    rows(p.y, p.y_stride, size),
+                    rows(p.cb, p.c_stride, c),
+                    rows(p.cr, p.c_stride, c),
+                ],
+                p.luma_shift + 8,
+            )
+        };
+        let (sets, slices) = first_picture(hevc);
+        match heic_rs::hevc::decode_still(&sets, &slices) {
+            Ok(f) => of(&Picture::of_heic(&f, None).unwrap()),
+            Err(_) => {
+                let f = decode_with_rust_h265(&sets, &slices).unwrap();
+                of(&Picture::of_rust_h265(&f, None).unwrap())
+            }
+        }
+    }
+
+    #[test]
+    fn every_layout_and_bit_depth_decodes_to_ffmpegs_samples() {
+        for l in SAMPLES {
+            let (planes, bits) = decoded_planes(l.hevc);
+            assert_eq!(bits, l.bits, "{}", l.name);
+            assert_eq!(planes, ffmpeg_planes(l), "{}", l.name);
+        }
+    }
+
+    /// heic-rs decodes 4:2:2 wrongly (its own tests have only flat pictures) and rust_h265 does not decode it: the
+    /// picture is said to be in a format not supported yet, naming it.
+    #[test]
+    fn a_4_2_2_picture_is_not_supported_yet() {
+        let hevc = include_bytes!("../testdata/wxgf/yuv422p_full.hevc");
+        let (sets, slices) = first_picture(hevc);
+        assert!(heic_rs::hevc::decode_still(&sets, &slices).is_err());
+        let Err(Unsupported::Tool(tool)) = decode_to_jpeg(hevc) else {
+            panic!("{:?}", decode_to_jpeg(hevc));
+        };
+        assert!(tool.contains("chroma format"), "{tool}");
+    }
+
+    /// The JPEG of each shows the source: its luma and, read back from the RGB by the JFIF equations, its chroma at
+    /// the resolution the source has it, both brought to 8 bits and the full range.
+    #[test]
+    fn every_layout_and_bit_depth_becomes_a_jpeg_of_the_source() {
+        for l in SAMPLES {
+            let jpg = decode_to_jpeg(l.hevc).unwrap_or_else(|e| panic!("{}: {e:?}", l.name));
+            let mut d = jpeg_decoder::Decoder::new(&jpg[..]);
+            let pixels = d.decode().unwrap();
+            let info = d.info().unwrap();
+            assert_eq!((info.width, info.height), (70, 46), "{}", l.name);
+            let [y, cb, cr] = ffmpeg_planes(l);
+            let scale = f64::from(1u32 << (l.bits - 8));
+            let to8 = |v: u16, offset: f64, range: f64, centre: f64| {
+                let v = f64::from(v) / scale;
+                if l.full {
+                    v
+                } else {
+                    (v - offset) * 255.0 / range + centre
+                }
+            };
+            let (mut luma_err, mut chroma_err) = (0f64, 0f64);
+            for r in 0..46 {
+                for c in 0..70 {
+                    let i = r * 70 + c;
+                    let want = to8(y[i], 16.0, 219.0, 0.0);
+                    let Some(sub) = l.chroma else {
+                        assert_eq!(info.pixel_format, jpeg_decoder::PixelFormat::L8);
+                        luma_err += (f64::from(pixels[i]) - want).abs();
+                        continue;
+                    };
+                    let [red, green, blue] = [0, 1, 2].map(|k| f64::from(pixels[i * 3 + k]));
+                    luma_err += (0.299 * red + 0.587 * green + 0.114 * blue - want).abs();
+                    let k = (r >> sub.1) * chroma_size(sub).0 + (c >> sub.0);
+                    let shown_cb = -0.168_736 * red - 0.331_264 * green + 0.5 * blue + 128.0;
+                    let shown_cr = 0.5 * red - 0.418_688 * green - 0.081_312 * blue + 128.0;
+                    chroma_err += (shown_cb - to8(cb[k], 128.0, 224.0, 128.0)).abs()
+                        + (shown_cr - to8(cr[k], 128.0, 224.0, 128.0)).abs();
+                }
+            }
+            let n = 70.0 * 46.0;
+            assert!(
+                luma_err / n < 4.0,
+                "{}: mean luma error {}",
+                l.name,
+                luma_err / n
+            );
+            assert!(
+                chroma_err / (2.0 * n) < 8.0,
+                "{}: mean chroma error {}",
+                l.name,
+                chroma_err / (2.0 * n)
             );
         }
     }

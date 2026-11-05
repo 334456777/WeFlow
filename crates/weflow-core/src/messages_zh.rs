@@ -186,8 +186,8 @@ mod tests {
     #[test]
     fn an_unconverted_wxgf_image_keeps_its_date_and_reason() {
         assert_eq!(
-            translate("WXGF image sent 2023-11-15 06:13:20 cannot be converted: its format is not supported yet (10-bit samples)").as_deref(),
-            Some("2023-11-15 06:13:20 发送的 WXGF 图片无法转换：暂不支持它的格式（10-bit samples）")
+            translate("WXGF image sent 2023-11-15 06:13:20 cannot be converted: its format is not supported yet (P and B slices (inter prediction))").as_deref(),
+            Some("2023-11-15 06:13:20 发送的 WXGF 图片无法转换：暂不支持它的格式（P and B slices (inter prediction)）")
         );
         assert_eq!(
             translate("WXGF image cannot be converted: the data is damaged (no picture)")

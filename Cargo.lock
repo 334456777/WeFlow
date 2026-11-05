@@ -2199,6 +2199,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_h265"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3cab2c2f4041cf53f271ff40980865efbac3b18684024ab9b53a78cab7efbfe"
+
+[[package]]
 name = "rust_xlsxwriter"
 version = "0.100.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3296,6 +3302,7 @@ dependencies = [
  "regex-syntax",
  "reqwest",
  "rusqlite",
+ "rust_h265",
  "rust_xlsxwriter",
  "rustls",
  "schemars",
