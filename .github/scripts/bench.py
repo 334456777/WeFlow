@@ -20,8 +20,9 @@ Then, for each binary: a sustained load on `weflow serve` (`--load-seconds`, def
 throughput and the memory curve of the server, whose median by quarter of the time says whether it stays stable; and
 `serve_bench` (when given), the latency of each route. Last, the size of each binary.
 
-Writes `results.json` (everything, every run and sample), `summary.md` (also appended to `$GITHUB_STEP_SUMMARY`),
-`report.html` (the tables and the memory curves), both in Chinese for the one who reads them, and the output of
+Writes `results.json` (everything, every run and sample), `summary.md` (the tables and the memory curves as Mermaid
+charts, since the job summary drops SVG; also appended to `$GITHUB_STEP_SUMMARY`), `report.html` (the tables and
+the memory curves), both in Chinese for the one who reads them, and the output of
 every command under `logs/`; results.json keeps English field names for scripts, and `highlights.md` holds the few
 lines release.yml puts in the release notes (#516). The numbers are
 reported, not judged: nothing fails because head is slower.
@@ -909,7 +910,11 @@ def svg_curves(series, width=720, height=200):
             f'{"".join(grid)}{"".join(lines)}</svg>')
 
 
-def report_html(doc, blocks):
+CURVES_NOTE = "主进程的工作集，每 20 ms 采样一次（持续负载每 0.5 s 一次）。命令取耗时居中的那次运行。"
+
+
+def memory_series(doc):
+    """(title, [(version, [(seconds, bytes)])]) of each chart: a command's median run, then the sustained load."""
     charts = []
     for name, e in doc["commands"].items():
         series = []
@@ -917,10 +922,62 @@ def report_html(doc, blocks):
             ok = sorted((r for r in e["runs"][v] if r["exit_code"] == 0), key=lambda r: r["wall_ms"])
             if ok:
                 series.append((v, [(t, rss) for t, rss, _ in ok[len(ok) // 2]["samples"]]))
-        charts.append(f"<h3><code>{html.escape(name)}</code></h3>{svg_curves(series)}")
+        charts.append((f"`{name}`", series))
     if doc.get("load"):
         series = [(v, [(t, rss) for t, rss, _ in doc["load"][v]["samples"]]) for v in VERSIONS]
-        charts.append(f"<h3><code>weflow serve</code> 持续负载</h3>{svg_curves(series)}")
+        charts.append(("`weflow serve` 持续负载", series))
+    return charts
+
+
+def mermaid_curves(series, points=60):
+    """The curves of `svg_curves` as a Mermaid xychart for the Actions job summary, which drops inline SVG.
+
+    A linear x-axis spreads each line evenly over the whole axis, so every line gets the same `points` columns: the
+    peak of the samples falling in each column (a peak is never averaged away), the last value carried over a column
+    with no sample, and 0 after the version's last sample (its process has exited).
+    """
+    series = [(v, s) for v, s in series if s]
+    if not series:
+        return "没有采样。"
+    tmax = max(t for _, s in series for t, _ in s) or 1
+    ystep = nice_step(max(b for _, s in series for _, b in s) / MIB or 1)
+    ymax = math.ceil(max(b for _, s in series for _, b in s) / MIB / ystep) * ystep
+    lines = []
+    for _, s in series:
+        columns = [None] * points
+        for t, b in s:
+            i = round(t / tmax * (points - 1))
+            columns[i] = max(columns[i] or 0, b)
+        last = max(i for i, c in enumerate(columns) if c is not None)
+        value, values = next(c for c in columns if c is not None), []
+        for i, c in enumerate(columns):
+            value = c if c is not None else value
+            values.append(value / MIB if i <= last else 0)
+        lines.append("    line [" + ", ".join(f"{m:.1f}" for m in values) + "]")
+    config = {"xyChart": {"width": 720, "height": 260},
+              "themeVariables": {"xyChart": {"plotColorPalette": ", ".join(COLOURS[v] for v, _ in series)}}}
+    return "\n".join([
+        "```mermaid",
+        f"%%{{init: {json.dumps(config)}}}%%",
+        "xychart-beta",
+        f'    x-axis "秒" 0 --> {tmax:g}',
+        f'    y-axis "MiB" 0 --> {ymax:g}',
+        *lines,
+        "```",
+    ])
+
+
+def markdown_curves(doc):
+    """The 内存曲线 section of summary.md and of the job summary."""
+    legend = "，".join(f"{'蓝' if v == 'base' else '红'}线 {v}" for v in VERSIONS)
+    out = ["## 内存曲线", "", f"{CURVES_NOTE}{legend}；先结束的版本在退出后记为 0。", ""]
+    for title, series in memory_series(doc):
+        out += [f"### {title}", "", mermaid_curves(series), ""]
+    return "\n".join(out)
+
+
+def report_html(doc, blocks):
+    charts = [f"<h3>{inline_html(title)}</h3>{svg_curves(series)}" for title, series in memory_series(doc)]
     legend = "".join(f'<span><i style="background:{COLOURS[v]}"></i>{v}</span>' for v in VERSIONS)
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -937,7 +994,7 @@ svg{{width:100%;max-width:720px;font:11px system-ui;fill:#57606a}}.grid{{stroke:
 </style></head><body>
 {to_html(blocks)}
 <h2>内存曲线</h2>
-<p>主进程的工作集，每 20 ms 采样一次（持续负载每 0.5 s 一次）。命令取耗时居中的那次运行。</p>
+<p>{CURVES_NOTE}</p>
 <p class=legend>{legend}</p>
 {"".join(charts)}
 </body></html>
@@ -1017,7 +1074,7 @@ def main():
     shutil.rmtree(os.path.join(out, "work"), ignore_errors=True)
 
     blocks = report_blocks(doc)
-    markdown = to_markdown(blocks)
+    markdown = to_markdown(blocks) + markdown_curves(doc)
     with open(os.path.join(out, "results.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, indent=1)
     with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
