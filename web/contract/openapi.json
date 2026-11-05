@@ -8555,25 +8555,10 @@
             "type": "integer",
             "format": "uint",
             "minimum": 0,
-            "description": "The ones whose file is not on disk, or could not be read."
+            "description": "The ones whose file is not on disk, or could not be read or converted."
           },
           "dir": {
             "type": "string"
-          },
-          "ffmpegMissing": {
-            "type": "integer",
-            "format": "uint",
-            "minimum": 0
-          },
-          "ffmpegMissingImages": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MissingImage"
-            }
-          },
-          "hint": {
-            "type": "string",
-            "description": "What to do, with the dates of the first ones."
           }
         },
         "required": [
@@ -8583,26 +8568,6 @@
           "dir"
         ],
         "description": "The media an export of messages copied to its `media/` folder."
-      },
-      "MissingImage": {
-        "type": "object",
-        "properties": {
-          "session": {
-            "type": "string"
-          },
-          "createTime": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "time": {
-            "type": "string",
-            "description": "The message's local time; `?` without one."
-          }
-        },
-        "required": [
-          "time"
-        ],
-        "description": "An image left out for lack of ffmpeg: where to find it in WeChat."
       },
       "MessagesBundle": {
         "anyOf": [
@@ -8734,21 +8699,6 @@
             "items": {
               "$ref": "#/components/schemas/MediaFileExported"
             }
-          },
-          "ffmpegMissing": {
-            "type": "integer",
-            "format": "uint",
-            "minimum": 0
-          },
-          "ffmpegMissingImages": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MissingImage"
-            }
-          },
-          "hint": {
-            "type": "string",
-            "description": "What to do, with the dates of the first ones."
           }
         },
         "required": [
@@ -8817,7 +8767,7 @@
           },
           "failureKind": {
             "type": "string",
-            "description": "Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, …"
+            "description": "Why it failed: `not_found`, `no_key`, `unsupported_image`, …"
           },
           "isThumb": {
             "type": "boolean",

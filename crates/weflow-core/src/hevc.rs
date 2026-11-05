@@ -1,9 +1,10 @@
-//! WXGF pictures without ffmpeg: the first picture of a WXGF HEVC stream is decoded in Rust (`heic-rs`, an HEVC
-//! still-picture decoder: WXGF images are single intra pictures, almost all of them Main Still Picture) and written as
-//! a JPEG the way ffmpeg's `mjpeg` does it (the YCbCr planes kept, limited range scaled to the full range JPEG uses).
+//! WXGF pictures: the first picture of a WXGF HEVC stream is decoded in Rust (`heic-rs`, an HEVC still-picture
+//! decoder: WXGF images are single intra pictures, almost all of them Main Still Picture) and written as a JPEG the
+//! way ffmpeg's `mjpeg` does it (the YCbCr planes kept, limited range scaled to the full range JPEG uses).
 //!
-//! On a real account all 1763 WXGF images decoded to the same samples as ffmpeg. What it does not cover (10-bit,
-//! 4:2:2 / 4:4:4, inter-predicted first pictures) is an [`Unsupported`], and the caller falls back to ffmpeg.
+//! On a real account 1763 WXGF images decoded to the same samples as ffmpeg, and all 5,668 of a whole account
+//! decoded. What it does not cover (10-bit, 4:2:2 / 4:4:4, inter-predicted first pictures) or damaged data is an
+//! [`Unsupported`], and the image is not converted.
 
 /// JPEG quality: as close to the source as ffmpeg's `-q:v 2` (measured on real WXGF images; the files are about
 /// a quarter larger).
@@ -37,6 +38,33 @@ pub enum Unsupported {
     Damaged,
     /// The decoded picture could not be written as a JPEG.
     Jpeg,
+}
+
+impl Unsupported {
+    /// Whether the stream is damaged, rather than a picture in a format not handled here yet.
+    pub fn is_damaged(self) -> bool {
+        matches!(
+            self,
+            Self::NoPicture | Self::ParameterSets | Self::TooLarge | Self::Damaged
+        )
+    }
+}
+
+/// The detail of the reason, in the terms of the format (an error message says whether it is damage).
+impl std::fmt::Display for Unsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoPicture => f.write_str("no picture"),
+            Self::ParameterSets => f.write_str("a parameter set is missing"),
+            Self::TooLarge => f.write_str("larger than any HEVC level allows"),
+            Self::BitDepth(bits) => write!(f, "{bits}-bit samples"),
+            Self::Chroma422 => f.write_str("4:2:2 chroma"),
+            Self::Chroma444 => f.write_str("4:4:4 chroma"),
+            Self::Tool(tool) => f.write_str(tool),
+            Self::Damaged => f.write_str("broken HEVC bitstream"),
+            Self::Jpeg => f.write_str("JPEG encoding"),
+        }
+    }
 }
 
 impl From<heic_rs::Error> for Unsupported {
@@ -689,7 +717,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stream_without_a_picture_is_left_to_ffmpeg() {
+    fn a_stream_without_a_picture_is_not_decoded() {
         assert!(to_jpeg(&[]).is_none());
         assert!(to_jpeg(&FULL[..FULL.len() / 3]).is_none());
         let sets_only: Vec<u8> = split_annexb(FULL)

@@ -125,13 +125,10 @@ const CATALOG: &[(&str, &str)] = &[
     ("copying media", "正在复制媒体"),
     ("downloading ffmpeg", "正在下载 ffmpeg"),
     ("the ffmpeg download address must start with http:// or https://: {}", "ffmpeg 下载地址必须以 http:// 或 https:// 开头：{}"),
-    ("WXGF image needs ffmpeg: not found on PATH or installed; run `weflow ffmpeg install` or set FFMPEG_PATH", "WXGF 图片需要 ffmpeg：在 PATH 中和已安装的位置都没有找到；请运行 `weflow ffmpeg install` 或设置 FFMPEG_PATH"),
-    ("WXGF image needs ffmpeg: FFMPEG_PATH ({}) cannot be started", "WXGF 图片需要 ffmpeg：FFMPEG_PATH（{}）无法启动"),
-    ("WXGF image sent {} needs ffmpeg: not found on PATH or installed; run `weflow ffmpeg install` or set FFMPEG_PATH", "{} 发送的 WXGF 图片需要 ffmpeg：在 PATH 中和已安装的位置都没有找到；请运行 `weflow ffmpeg install` 或设置 FFMPEG_PATH"),
-    ("WXGF image sent {} needs ffmpeg: FFMPEG_PATH ({}) cannot be started", "{0} 发送的 WXGF 图片需要 ffmpeg：FFMPEG_PATH（{1}）无法启动"),
-    // the longer template first: `{}` would also match the list of the shorter one
-    ("{} WXGF images were not exported because ffmpeg was not found (sent {} and {} more, all listed in ffmpegMissingImages); run `weflow ffmpeg install` or set FFMPEG_PATH, then export again", "有 {0} 张 WXGF 图片因为找不到 ffmpeg 没有导出（发送于 {1}，另有 {2} 张，完整列表见 ffmpegMissingImages）；请运行 `weflow ffmpeg install` 或设置 FFMPEG_PATH，然后重新导出"),
-    ("{} WXGF images were not exported because ffmpeg was not found (sent {}); run `weflow ffmpeg install` or set FFMPEG_PATH, then export again", "有 {0} 张 WXGF 图片因为找不到 ffmpeg 没有导出（发送于 {1}）；请运行 `weflow ffmpeg install` 或设置 FFMPEG_PATH，然后重新导出"),
+    ("WXGF image sent {} cannot be converted: the data is damaged ({})", "{0} 发送的 WXGF 图片无法转换：数据已损坏（{1}）"),
+    ("WXGF image sent {} cannot be converted: its format is not supported yet ({})", "{0} 发送的 WXGF 图片无法转换：暂不支持它的格式（{1}）"),
+    ("WXGF image cannot be converted: the data is damaged ({})", "WXGF 图片无法转换：数据已损坏（{}）"),
+    ("WXGF image cannot be converted: its format is not supported yet ({})", "WXGF 图片无法转换：暂不支持它的格式（{}）"),
     ("SHA-256 of {} does not match: expected {}, got {}", "{} 的 SHA-256 不匹配：应为 {}，实际为 {}"),
     ("download of {} failed: {}", "下载 {} 失败：{}"),
     ("cannot unpack {}: {}", "无法解压 {}：{}"),
@@ -187,19 +184,15 @@ mod tests {
     }
 
     #[test]
-    fn the_dates_of_the_images_missing_ffmpeg_stay_in_the_hint() {
-        let tail = "; run `weflow ffmpeg install` or set FFMPEG_PATH, then export again";
+    fn an_unconverted_wxgf_image_keeps_its_date_and_reason() {
         assert_eq!(
-            translate(&format!("2 WXGF images were not exported because ffmpeg was not found (sent 2023-11-15 06:13:20, 2024-01-02 03:04:05){tail}")).as_deref(),
-            Some("有 2 张 WXGF 图片因为找不到 ffmpeg 没有导出（发送于 2023-11-15 06:13:20, 2024-01-02 03:04:05）；请运行 `weflow ffmpeg install` 或设置 FFMPEG_PATH，然后重新导出")
+            translate("WXGF image sent 2023-11-15 06:13:20 cannot be converted: its format is not supported yet (10-bit samples)").as_deref(),
+            Some("2023-11-15 06:13:20 发送的 WXGF 图片无法转换：暂不支持它的格式（10-bit samples）")
         );
         assert_eq!(
-            translate(&format!("12 WXGF images were not exported because ffmpeg was not found (sent 2023-11-15 06:13:20, ? and 2 more, all listed in ffmpegMissingImages){tail}")).as_deref(),
-            Some("有 12 张 WXGF 图片因为找不到 ffmpeg 没有导出（发送于 2023-11-15 06:13:20, ?，另有 2 张，完整列表见 ffmpegMissingImages）；请运行 `weflow ffmpeg install` 或设置 FFMPEG_PATH，然后重新导出")
-        );
-        assert_eq!(
-            translate("WXGF image sent 2023-11-15 06:13:20 needs ffmpeg: FFMPEG_PATH (/x/ffmpeg) cannot be started").as_deref(),
-            Some("2023-11-15 06:13:20 发送的 WXGF 图片需要 ffmpeg：FFMPEG_PATH（/x/ffmpeg）无法启动")
+            translate("WXGF image cannot be converted: the data is damaged (no picture)")
+                .as_deref(),
+            Some("WXGF 图片无法转换：数据已损坏（no picture）")
         );
     }
 }

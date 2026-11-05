@@ -105,7 +105,7 @@ function previewOf(item: Resource, onOpen: (item: Resource) => void): Preview | 
   return null;
 }
 
-/** A thumbnail; when it cannot be decoded, why (the server's answer: a missing ffmpeg, a file not downloaded…). */
+/** A thumbnail; when it cannot be decoded, why (the server's answer: a format not supported yet, a file not downloaded…). */
 function Thumb({ src, label }: { src: string; label: string }) {
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [reason, setReason] = useState('');

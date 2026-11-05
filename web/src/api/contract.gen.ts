@@ -1226,21 +1226,9 @@ export interface MediaCopied {
   /** The media messages asked for. */
   requested: number;
   exported: number;
-  /** The ones whose file is not on disk, or could not be read. */
+  /** The ones whose file is not on disk, or could not be read or converted. */
   missing: number;
   dir: string;
-  ffmpegMissing?: number;
-  ffmpegMissingImages?: MissingImage[];
-  /** What to do, with the dates of the first ones. */
-  hint?: string;
-}
-
-/** An image left out for lack of ffmpeg: where to find it in WeChat. */
-export interface MissingImage {
-  session?: string;
-  createTime?: number;
-  /** The message's local time; `?` without one. */
-  time: string;
 }
 
 /** One conversation in several formats (`export messages` with several `format`s), or packed (`zip`). */
@@ -1281,10 +1269,6 @@ export interface MediaExport {
   sessions: number;
   out: string;
   files: MediaFileExported[];
-  ffmpegMissing?: number;
-  ffmpegMissingImages?: MissingImage[];
-  /** What to do, with the dates of the first ones. */
-  hint?: string;
 }
 
 /** A media file `export media` wrote. */
@@ -1305,7 +1289,7 @@ export interface ImageResult {
   success: boolean;
   localPath?: string;
   error?: string;
-  /** Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, … */
+  /** Why it failed: `not_found`, `no_key`, `unsupported_image`, … */
   failureKind?: string;
   /** The file is only the thumbnail: the original is not on disk. */
   isThumb?: boolean;

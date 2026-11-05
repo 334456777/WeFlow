@@ -865,7 +865,6 @@ impl ServiceHub {
         );
         let session_dir = out_dir.join("media").join(&name);
         let prefix = format!("media/{name}");
-        self.start_counting_missing_ffmpeg();
         let wanted = |t: i64| match t {
             3 => opts.images,
             34 => opts.voices,
@@ -981,19 +980,7 @@ impl ServiceHub {
             exported,
             missing: total - exported,
             dir: session_dir,
-            ffmpeg: self.ffmpeg_missing(),
         }
-    }
-
-    /// The images skipped for lack of ffmpeg: how many, the conversation and date of each, and what to do (once per
-    /// export); `None` when there were none.
-    fn ffmpeg_missing(&self) -> Option<crate::contract::FfmpegMissing> {
-        let images = self.images_missing_ffmpeg();
-        (!images.is_empty()).then(|| crate::contract::FfmpegMissing {
-            ffmpeg_missing: images.len(),
-            ffmpeg_missing_images: images.iter().map(|i| i.to_contract()).collect(),
-            hint: super::image::ffmpeg_missing_hint(&images),
-        })
     }
 
     /// Images, voices and videos: everything that needs no network, so it can run on several threads (with the
@@ -1296,7 +1283,6 @@ impl ServiceHub {
         }
         std::fs::create_dir_all(out)
             .map_err(|e| AppError::runtime(format!("create {}: {e}", out.display())))?;
-        self.start_counting_missing_ffmpeg();
         let wcdb = self.open_wcdb()?;
         let sessions: Vec<String> = match session {
             Some(s) => vec![s.to_string()],
@@ -1351,7 +1337,7 @@ impl ServiceHub {
         let mut files: Vec<crate::contract::MediaFileExported> = Vec::new();
         let mut missing_by_kind: BTreeMap<&str, usize> = BTreeMap::new();
         let mut thumb_only = 0usize;
-        // Images (WXGF needs an ffmpeg process each), voices and videos have no network step: run them on a few
+        // Images (WXGF decoded on the way), voices and videos have no network step: run them on a few
         // threads first, then walk the list in order for emojis and the report.
         let mut done: Vec<Option<Option<ApiExportedMedia>>> = (0..total).map(|_| None).collect();
         {
@@ -1450,7 +1436,6 @@ impl ServiceHub {
             sessions: sessions.len(),
             out: out.to_path_buf(),
             files,
-            ffmpeg: self.ffmpeg_missing(),
         })
     }
 }

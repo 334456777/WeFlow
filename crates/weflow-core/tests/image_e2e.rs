@@ -511,15 +511,9 @@ async fn a_shared_image_is_exported_for_every_message_whatever_the_thread_order(
 }
 
 #[tokio::test]
-async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
-    // an ffmpeg that cannot be started, whatever is on this machine
-    std::env::set_var(
-        "FFMPEG_PATH",
-        std::env::temp_dir()
-            .join("weflow-no-such-dir")
-            .join("ffmpeg"),
-    );
+async fn a_wxgf_image_the_built_in_decoder_cannot_read_says_why_and_is_counted_missing() {
     let md5 = "aabbccddeeff00112233445566778899";
+    // a WXGF blob without any HEVC picture in it
     let wxgf = {
         let mut blob = b"wxgf".to_vec();
         blob.extend([0x11u8; 1300]);
@@ -533,7 +527,7 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         .unwrap();
     };
 
-    let (hub, root, img_dir) = export_world("img-wxgf-missing");
+    let (hub, root, img_dir) = export_world("img-wxgf-unsupported");
     put(&img_dir);
     let p = ImagePayload {
         session_id: Some("wxid_bob".into()),
@@ -544,20 +538,18 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
     };
     let r = hub.image_decrypt(&p);
     assert!(!r.success);
-    assert_eq!(r.failure_kind, Some("ffmpeg_missing"));
-    let error = r.error.unwrap();
+    assert_eq!(r.failure_kind, Some("unsupported_image"));
     let sent = weflow_core::message::format_timestamp(1_700_000_000);
-    assert!(
-        error.starts_with(&format!("WXGF image sent {sent} needs ffmpeg"))
-            && error.contains("FFMPEG_PATH"),
-        "{error}"
+    assert_eq!(
+        r.error.unwrap(),
+        format!("WXGF image sent {sent} cannot be converted: the data is damaged (no picture)")
     );
     assert!(
         !hub.image_resolve_cache(&p).success,
         "nothing was cached from the unconverted file"
     );
 
-    // an export: one image skipped for lack of ffmpeg, said once; the other image has no file at all
+    // an export: the image is missing like one whose file is not on disk, and nothing else is said about it
     let r = serde_json::to_value(
         hub.export_media(Some("wxid_bob"), &root.join("media"), "image", None, None)
             .await
@@ -569,27 +561,21 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         (Some(0), Some(2)),
         "{r}"
     );
-    // which image, so that it can be found in WeChat: the date of its message
-    let t0 = weflow_native::fixture::T0;
-    let sent = weflow_core::message::format_timestamp(t0);
-    let listed = serde_json::json!([{ "session": "wxid_bob", "createTime": t0, "time": sent }]);
-    assert_eq!(r["ffmpegMissing"], 1, "{r}");
-    assert_eq!(r["ffmpegMissingImages"], listed, "{r}");
-    let hint = r["hint"].as_str().unwrap();
     assert!(
-        hint.contains(&format!("(sent {sent})")) && hint.contains("weflow ffmpeg install"),
+        ["ffmpegMissing", "ffmpegMissingImages", "hint"]
+            .iter()
+            .all(|k| r.get(k).is_none()),
         "{r}"
     );
-    let _ = std::fs::remove_dir_all(root);
 
-    let (hub, root, img_dir) = export_world("img-wxgf-missing-msgs");
+    let (hub, root2, img_dir) = export_world("img-wxgf-unsupported-msgs");
     put(&img_dir);
     let opts = weflow_core::api::ApiMediaOptions {
         enabled: true,
         images: true,
         ..Default::default()
     };
-    let dir = root.join("exp");
+    let dir = root2.join("exp");
     std::fs::create_dir_all(&dir).unwrap();
     let r = serde_json::to_value(
         hub.export_messages_with_media(&media_request("json"), &dir.join("chat.json"), &opts)
@@ -597,34 +583,10 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(r["media"]["ffmpegMissing"], 1, "{r}");
-    assert_eq!(r["media"]["ffmpegMissingImages"], listed, "{r}");
-    assert!(r["media"]["hint"]
-        .as_str()
-        .unwrap()
-        .contains(&format!("(sent {sent}); run `weflow ffmpeg install`")));
+    assert_eq!(r["media"]["exported"], 0, "{r}");
+    assert!(r["media"].get("ffmpegMissing").is_none(), "{r}");
 
-    // an export that needs no conversion has nothing to say
-    let (hub, root2, img_dir) = export_world("img-wxgf-none");
-    std::fs::write(
-        img_dir.join(format!("{md5}_h.dat")),
-        encrypt_v2(&jpeg(3000, 7), KEY.as_bytes().try_into().unwrap(), 0x5a),
-    )
-    .unwrap();
-    let r = serde_json::to_value(
-        hub.export_media(Some("wxid_bob"), &root2.join("media"), "image", None, None)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert!(
-        r.get("ffmpegMissing").is_none()
-            && r.get("ffmpegMissingImages").is_none()
-            && r.get("hint").is_none(),
-        "{r}"
-    );
-
-    // a WXGF picture the built-in decoder reads needs no ffmpeg
+    // a WXGF picture the built-in decoder reads
     let (hub, root3, img_dir) = export_world("img-wxgf-builtin");
     let mut blob = b"wxgf".to_vec();
     blob.extend([0x24u8, 0x01, 0x00, 0x46, 0x00, 0x2e]); // a header, before the HEVC stream
@@ -652,7 +614,6 @@ async fn a_wxgf_image_without_ffmpeg_says_so_and_an_export_counts_them_once() {
         (Some(1), Some(1)),
         "{r}"
     );
-    assert!(r.get("ffmpegMissing").is_none(), "{r}");
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(root2);
     let _ = std::fs::remove_dir_all(root3);
