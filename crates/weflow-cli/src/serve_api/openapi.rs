@@ -683,14 +683,8 @@ pub(super) fn contract() -> &'static Contract {
             );
             data.insert("video parse-md5", of(generator.subschema_for::<VideoMd5>()));
             use weflow_core::contract::{
-                FfmpegBaseUrl, FfmpegInstalled, FfmpegPath, WebChosen, WebInfo, WebInstalled, WebPruned,
-                WebPublished, WebUpdated,
+                WebChosen, WebInfo, WebInstalled, WebPruned, WebPublished, WebUpdated,
             };
-            data.insert("ffmpeg install", of(generator.subschema_for::<FfmpegInstalled>()));
-            data.insert("ffmpeg path", of(generator.subschema_for::<FfmpegPath>()));
-            for command in ["ffmpeg set baseurl", "ffmpeg unset baseurl"] {
-                data.insert(command, of(generator.subschema_for::<FfmpegBaseUrl>()));
-            }
             data.insert(
                 "runtime manifest",
                 of(generator.subschema_for::<weflow_assets::RuntimeManifest>()),

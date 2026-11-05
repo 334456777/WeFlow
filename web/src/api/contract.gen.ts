@@ -1155,8 +1155,6 @@ export interface ConfigStore {
   current_profile: string;
   /** Output language chosen with `weflow lang en|zh` (`None` = follow the system). */
   lang: string | null;
-  /** Mirror of the ffmpeg-static releases `weflow ffmpeg install` downloads from (`None` = GitHub). */
-  ffmpeg_base_url: string | null;
   profiles: Record<string, ProfileConfig>;
   extra: Record<string, unknown>;
 }
@@ -1335,42 +1333,6 @@ export interface VideoInfo {
 /** The MD5 a video message names (`video parse-md5`); null when its XML has none. */
 export interface VideoMd5 {
   md5: string | null;
-}
-
-/** What `ffmpeg install` answers. */
-export interface FfmpegInstalled {
-  path: string;
-  /** The pinned release. */
-  release: string;
-  downloaded: boolean;
-  /** Where it was downloaded from; left out when nothing was. */
-  source?: string;
-  /** The first line of its `-version`. */
-  version: string;
-  /** The folders of other releases taken away. */
-  removedReleases?: string[];
-  /** The ffmpeg WXGF images will use: one on `PATH` or in `FFMPEG_PATH` comes first. */
-  used: FfmpegFound;
-}
-
-/** The ffmpeg WXGF images use, and where it was found. */
-export interface FfmpegFound {
-  path: string;
-  /** `FFMPEG_PATH`, `PATH`, `installed` or `missing`. */
-  source: string;
-}
-
-/** What `ffmpeg path` answers: the ffmpeg in use, and the mirror `ffmpeg install` downloads from. */
-export interface FfmpegPath {
-  path: string;
-  /** `FFMPEG_PATH`, `PATH`, `installed` or `missing`. */
-  source: string;
-  baseUrl: string;
-}
-
-/** The mirror `ffmpeg set baseurl` / `unset baseurl` left. */
-export interface FfmpegBaseUrl {
-  baseUrl: string;
 }
 
 /** What the binary carries (`runtime manifest`): its version, target and built-in files. */
@@ -2157,10 +2119,6 @@ export interface Answers {
   /** The file written; with several formats or `zip`, the folder or zip and each format's file */
   "export messages": MessagesExported | MessagesBundle;
   "export sessions": ExportWritten;
-  "ffmpeg install": FfmpegInstalled;
-  "ffmpeg path": FfmpegPath;
-  "ffmpeg set baseurl": FfmpegBaseUrl;
-  "ffmpeg unset baseurl": FfmpegBaseUrl;
   "group export-member-messages": GroupExported;
   "group export-members": GroupExported;
   "group hours": GroupHours;

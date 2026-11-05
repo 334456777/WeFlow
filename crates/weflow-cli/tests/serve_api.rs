@@ -2405,17 +2405,8 @@ fn tool_answers_fit_the_contract() {
     let home = account_home(&root);
     let server = start(&home, &["--api-token", TOKEN]);
     let contract = contract();
-    // what needs no network: the downloads (`ffmpeg install`, `web install`, `use`, `update`, `list --remote`) are
-    // left out
+    // what needs no network: the downloads (`web install`, `use`, `update`, `list --remote`) are left out
     for (verb, route, body, schema) in [
-        ("GET", "/ffmpeg/path", "", "FfmpegPath"),
-        (
-            "PUT",
-            "/ffmpeg/set/baseurl",
-            r#"{"url": "https://mirror.example.com/ffmpeg"}"#,
-            "FfmpegBaseUrl",
-        ),
-        ("DELETE", "/ffmpeg/unset/baseurl", "", "FfmpegBaseUrl"),
         ("GET", "/runtime/manifest", "", "RuntimeManifest"),
         ("GET", "/web/info", "", "WebInfo"),
         ("DELETE", "/web/prune", "", "WebPruned"),

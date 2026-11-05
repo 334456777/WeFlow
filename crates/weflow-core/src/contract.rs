@@ -1694,57 +1694,6 @@ pub struct ScannedImageKeys {
     pub user_dir: String,
 }
 
-/// The ffmpeg WXGF images use, and where it was found.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-pub struct FfmpegFound {
-    pub path: PathBuf,
-    /// `FFMPEG_PATH`, `PATH`, `installed` or `missing`.
-    pub source: String,
-}
-
-/// What `ffmpeg path` answers: the ffmpeg in use, and the mirror `ffmpeg install` downloads from.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FfmpegPath {
-    #[serde(flatten)]
-    pub found: FfmpegFound,
-    pub base_url: String,
-}
-
-/// The ffmpeg build in WeFlow's folder: downloaded now, or already there and intact.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-pub struct FfmpegDownload {
-    pub path: PathBuf,
-    /// The pinned release.
-    pub release: String,
-    pub downloaded: bool,
-    /// Where it was downloaded from; left out when nothing was.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-}
-
-/// What `ffmpeg install` answers.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FfmpegInstalled {
-    #[serde(flatten)]
-    pub download: FfmpegDownload,
-    /// The first line of its `-version`.
-    pub version: String,
-    /// The folders of other releases taken away.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub removed_releases: Vec<String>,
-    /// The ffmpeg WXGF images will use: one on `PATH` or in `FFMPEG_PATH` comes first.
-    pub used: FfmpegFound,
-}
-
-/// The mirror `ffmpeg set baseurl` / `unset baseurl` left.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FfmpegBaseUrl {
-    pub base_url: String,
-}
-
 /// What `web info` answers: the WebUI `serve` shows, and the versions downloaded.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
