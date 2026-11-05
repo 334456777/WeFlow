@@ -171,9 +171,9 @@ impl Spool {
     }
 
     /// Appends one entry, preceded by `separator` unless it is the first.
-    fn push(&mut self, separator: &str, entry: &str) -> Result<()> {
+    fn push(&mut self, separator: &str, entry: &[u8]) -> Result<()> {
         use std::io::Write;
-        self.push_with(separator, |w| w.write_all(entry.as_bytes()))
+        self.push_with(separator, |w| w.write_all(entry))
     }
 
     /// Appends `entry` pretty-printed as one JSON value nested `indent` spaces deep (see [`write_pretty`]),
@@ -236,8 +236,11 @@ impl EntryFormat {
 /// A page of messages rendered ahead of writing (see [`Exporter::render_entries`]).
 #[derive(Debug, Default)]
 pub struct RenderedEntries {
-    /// One entry per message, in order.
-    pub texts: Vec<String>,
+    /// The entries of the page, one after another, so a page takes a few allocations rather than one or more per
+    /// message.
+    text: Vec<u8>,
+    /// Where each entry ends in `text`, one per message, in order.
+    ends: Vec<usize>,
     /// ChatLab: the sender of each message (the member list follows their first appearance).
     pub senders: Vec<String>,
     /// ChatLab: the people named inside forwarded chat histories, in order (they become members too).
@@ -246,25 +249,39 @@ pub struct RenderedEntries {
     pub latest: Option<i64>,
 }
 
+impl RenderedEntries {
+    /// The entries, in order.
+    fn entries(&self) -> impl Iterator<Item = &[u8]> {
+        let starts = std::iter::once(0).chain(self.ends.iter().copied());
+        starts
+            .zip(&self.ends)
+            .map(|(start, &end)| &self.text[start..end])
+    }
+
+    /// Ends the entry written to `text` since the previous one.
+    fn end_entry(&mut self) {
+        self.ends.push(self.text.len());
+    }
+}
+
 /// The key of a detailed-JSON message's first field, whose value the writer sets (see
 /// [`Exporter::render_entries`]).
-const JSON_LOCAL_ID_KEY: &str = "\"localId\": ";
+const JSON_LOCAL_ID_KEY: &[u8] = b"\"localId\": ";
 
 /// Writes `entry`, a detailed-JSON message rendered ahead, with `local_id` as the value of its `localId`.
-fn write_json_entry(w: &mut impl io::Write, entry: &str, local_id: usize) -> io::Result<()> {
+fn write_json_entry(w: &mut impl io::Write, entry: &[u8], local_id: usize) -> io::Result<()> {
     // `localId` is the first field, so the first match is the key and not text inside a later value
-    let Some(key) = entry.find(JSON_LOCAL_ID_KEY) else {
-        return w.write_all(entry.as_bytes());
+    let Some(key) = memchr::memmem::find(entry, JSON_LOCAL_ID_KEY) else {
+        return w.write_all(entry);
     };
     let start = key + JSON_LOCAL_ID_KEY.len();
     let digits = entry[start..]
-        .bytes()
-        .take_while(u8::is_ascii_digit)
+        .iter()
+        .take_while(|b| b.is_ascii_digit())
         .count();
-    let bytes = entry.as_bytes();
-    w.write_all(&bytes[..start])?;
+    w.write_all(&entry[..start])?;
     write!(w, "{local_id}")?;
-    w.write_all(&bytes[start + digits..])
+    w.write_all(&entry[start + digits..])
 }
 
 /// Messages rendered at a time when an export is rendered and written on one thread.
@@ -960,21 +977,22 @@ impl<'a, 'n> Exporter<'a, 'n> {
         msgs: &[M],
     ) -> RenderedEntries {
         let mut out = RenderedEntries {
-            texts: Vec::with_capacity(msgs.len()),
+            ends: Vec::with_capacity(msgs.len()),
             ..Default::default()
         };
         // detailed JSON keeps no sender profiles; json_message wants somewhere to put them
         let mut profiles: HashMap<String, Profile> = HashMap::new();
         for msg in msgs.iter().map(std::borrow::Borrow::borrow) {
-            let text = match format {
-                EntryFormat::Txt => self.txt_entry(msg),
-                EntryFormat::Sql => self.sql_insert(msg),
+            match format {
+                EntryFormat::Txt => self.write_txt_entry(msg, &mut out.text),
+                EntryFormat::Sql => self.write_sql_insert(msg, &mut out.text),
                 EntryFormat::Json => {
                     out.latest = out.latest.max(Some(msg.create_time));
                     // the message's place in the whole export is known only when it is written, which sets
                     // `localId` (see write_json_entry)
                     let m = self.json_message(msg, false, 0, &mut profiles);
-                    pretty_string(&m, 4)
+                    // a Vec takes every write, and the documents here have only string keys
+                    let _ = write_pretty(&mut out.text, &m, 4);
                 }
                 EntryFormat::Chatlab | EntryFormat::ChatlabJsonl => {
                     out.senders.push(msg.sender_username.clone());
@@ -985,17 +1003,21 @@ impl<'a, 'n> Exporter<'a, 'n> {
                     };
                     let m = self.chatlab_message(msg, &member_name, &mut out.record_names);
                     if format == EntryFormat::ChatlabJsonl {
-                        serde_json::to_string(&Tagged {
+                        let start = out.text.len();
+                        let line = Tagged {
                             kind: "message",
                             entry: &m,
-                        })
-                        .unwrap_or_default()
+                        };
+                        // a line that cannot be serialized is left empty
+                        if serde_json::to_writer(&mut out.text, &line).is_err() {
+                            out.text.truncate(start);
+                        }
                     } else {
-                        pretty_string(&m, 4)
+                        let _ = write_pretty(&mut out.text, &m, 4);
                     }
                 }
-            };
-            out.texts.push(text);
+            }
+            out.end_entry();
         }
         out
     }
@@ -1037,7 +1059,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let mut count = 0usize;
         while let Some(page) = next(self) {
             last_ts = last_ts.max(page.latest);
-            for text in &page.texts {
+            for text in page.entries() {
                 count += 1;
                 spool.push_with(",\n    ", |w| write_json_entry(w, text, count))?;
             }
@@ -1075,12 +1097,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
         // created with the first entry, so an empty range leaves no file behind
         let mut writer: Option<std::io::BufWriter<std::fs::File>> = None;
         while let Some(page) = next(self) {
-            for text in &page.texts {
+            for text in page.entries() {
                 if writer.is_none() {
                     writer = Some(open()?);
                 }
                 if let Some(w) = writer.as_mut() {
-                    w.write_all(text.as_bytes())?;
+                    w.write_all(text)?;
                 }
                 count += 1;
             }
@@ -1110,16 +1132,16 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let mut record_seen: HashSet<String> = HashSet::new();
         let mut count = 0usize;
         let separator = if jsonl { "\n" } else { ",\n    " };
-        while let Some(page) = next(self) {
+        while let Some(mut page) = next(self) {
             for sender in &page.senders {
                 tally.add(sender);
             }
-            for name in page.record_names {
+            for name in std::mem::take(&mut page.record_names) {
                 if record_seen.insert(name.clone()) {
                     record_order.push(name);
                 }
             }
-            for text in &page.texts {
+            for text in page.entries() {
                 spool.push(separator, text)?;
                 count += 1;
             }
@@ -1612,23 +1634,28 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     /// One message of the TXT export: `<time> '<sender>'`, the text, a blank line.
-    pub fn txt_entry(&mut self, msg: &ExportMsg) -> String {
+    /// Appends the TXT entry of `msg` to `out`.
+    fn write_txt_entry(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {
+        use std::io::Write;
         let (content, _) = self.plain_row_content(msg);
         let sender = self.sender_fields(msg);
-        format!(
+        // writing to a Vec cannot fail
+        let _ = write!(
+            out,
             "{} '{}'\n{}\n\n",
             format_timestamp(msg.create_time),
             sender.role,
             content
-        )
+        );
     }
 
     pub fn render_txt(&mut self, msgs: &[ExportMsg]) -> String {
-        let mut out = String::new();
+        let mut out = Vec::new();
         for msg in msgs {
-            out.push_str(&self.txt_entry(msg));
+            self.write_txt_entry(msg, &mut out);
         }
-        out
+        // the entries are written from strings, so the bytes are UTF-8
+        String::from_utf8(out).unwrap_or_default()
     }
 
     pub fn write_txt(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
@@ -2159,10 +2186,14 @@ impl<'a, 'n> Exporter<'a, 'n> {
 
     const SQL_HEADER: &'static str = "CREATE TABLE IF NOT EXISTS \"messages\" (\n\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\tsession_id TEXT,\n\tlocal_id INTEGER,\n\tserver_id TEXT,\n\tcreate_time INTEGER,\n\tsender TEXT,\n\tis_send INTEGER,\n\tlocal_type INTEGER,\n\ttype_name TEXT,\n\tcontent TEXT\n);\n\n";
 
-    fn sql_insert(&mut self, msg: &ExportMsg) -> String {
+    /// Appends the SQL `INSERT` of `msg` to `out`.
+    fn write_sql_insert(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {
+        use std::io::Write;
         let (content, _) = self.plain_row_content(msg);
-        format!(
-            "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');\n",
+        // writing to a Vec cannot fail
+        let _ = writeln!(
+            out,
+            "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');",
             sql_escape(&self.session.id),
             msg.local_id,
             msg.platform_message_id().map(|s| format!("'{s}'")).unwrap_or_else(|| "NULL".into()),
@@ -2172,15 +2203,16 @@ impl<'a, 'n> Exporter<'a, 'n> {
             msg.local_type,
             sql_escape(message_type_name(msg.local_type, Some(&msg.content))),
             sql_escape(&content),
-        )
+        );
     }
 
     pub fn render_sql(&mut self, msgs: &[ExportMsg]) -> String {
-        let mut sql = String::from(Self::SQL_HEADER);
+        let mut sql = Vec::from(Self::SQL_HEADER);
         for msg in msgs {
-            sql.push_str(&self.sql_insert(msg));
+            self.write_sql_insert(msg, &mut sql);
         }
-        sql
+        // the inserts are written from strings, so the bytes are UTF-8
+        String::from_utf8(sql).unwrap_or_default()
     }
 
     pub fn write_sql(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
@@ -2820,14 +2852,6 @@ fn write_pretty(
 ) -> io::Result<()> {
     let mut serializer = serde_json::Serializer::with_formatter(writer, NestedPretty::new(indent));
     value.serialize(&mut serializer).map_err(io::Error::from)
-}
-
-/// [`write_pretty`] into a string.
-fn pretty_string(value: &impl Serialize, indent: usize) -> String {
-    let mut buf = Vec::with_capacity(512);
-    // a Vec takes every write, and the documents here have only string keys
-    let _ = write_pretty(&mut buf, value, indent);
-    String::from_utf8(buf).unwrap_or_default()
 }
 
 /// JavaScript's `encodeURI`: everything except letters, digits and `;,/?:@&=+$-_.!~*'()#` is percent-encoded.
