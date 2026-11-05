@@ -203,7 +203,7 @@ export function MessageView({ sessionId, message, onPreview }: {
   }
 }
 
-/** Why a media address failed: the server answers its error as JSON (a video not downloaded yet, a missing ffmpeg…). */
+/** Why a media address failed: the server answers its error as JSON (a video not downloaded yet, an image in a format not supported yet…). */
 export async function reasonOf(src: string): Promise<string> {
   try {
     const response = await fetch(src, { headers: { Range: 'bytes=0-0' } });

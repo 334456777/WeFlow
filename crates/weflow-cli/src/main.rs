@@ -112,8 +112,6 @@ enum Commands {
     Backup(BackupCommand),
     /// Clear WeFlow's caches
     Cache(CacheCommand),
-    /// Install and locate the ffmpeg for the few WXGF images the built-in decoder cannot read
-    Ffmpeg(FfmpegCommand),
     /// Download, pick and remove versions of the WebUI that `serve` shows
     Web(WebCommand),
     /// Save the output language
@@ -155,49 +153,6 @@ enum WebSubcommand {
     /// Remove the WebUI versions kept here that are neither picked nor the default one of this weflow, nor shown by a
     /// running serve
     Prune,
-}
-
-#[derive(Args, Debug)]
-struct FfmpegCommand {
-    #[command(subcommand)]
-    command: FfmpegSubcommand,
-}
-
-#[derive(Subcommand, Debug)]
-enum FfmpegSubcommand {
-    /// Download the ffmpeg build of ffmpeg-static b6.1.1, check its SHA-256 and unpack it into WeFlow's folder; used when FFMPEG_PATH is unset and no ffmpeg is on PATH
-    Install {
-        /// Download it again even when the installed copy is intact
-        #[arg(long)]
-        force: bool,
-    },
-    /// Show the ffmpeg those WXGF images use and where it was found (FFMPEG_PATH, PATH, installed or missing)
-    Path,
-    /// Change a setting of the ffmpeg download
-    Set {
-        #[command(subcommand)]
-        setting: FfmpegSetting,
-    },
-    /// Go back to the default of a setting of the ffmpeg download
-    Unset {
-        #[command(subcommand)]
-        setting: FfmpegUnsetting,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum FfmpegSetting {
-    /// Download from a mirror of the ffmpeg-static releases instead of GitHub, for example https://registry.npmmirror.com/-/binary/ffmpeg-static (the files are checked either way)
-    Baseurl {
-        /// Address the release folder `b6.1.1` is found under (http:// or https://)
-        url: String,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum FfmpegUnsetting {
-    /// Download from GitHub again
-    Baseurl,
 }
 
 #[derive(Args, Debug)]
@@ -251,7 +206,7 @@ struct CacheClearArgs {
     /// Fingerprints of keys that worked (the next command checks the key again)
     #[arg(long)]
     keys: bool,
-    /// Runtimes unpacked by other WeFlow versions (the running version's stays)
+    /// Runtimes unpacked by other WeFlow versions (the running version's stays), and the ffmpeg earlier versions installed in ffmpeg/
     #[arg(long)]
     runtime: bool,
     /// WebUI versions downloaded by `weflow web` and `serve` (the one `serve` needs is downloaded again)
@@ -1890,7 +1845,6 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         ConfigStore::load(&ctx.config_path).map_err(|err| AppError::config(err.to_string()))?;
 
     apply_progress_settings(&config, progress);
-    weflow_core::ffmpeg::set_home(&ctx.home_dir);
 
     let command = match read_of(command) {
         Ok(read) => return read.run(&ServiceHub::new(ctx, config, None, None, None, None)),
@@ -1912,7 +1866,6 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
             }));
         }
         Commands::Runtime(command) => return handle_runtime(&command, &ctx),
-        Commands::Ffmpeg(command) => return handle_ffmpeg(command, &ctx, &mut config).await,
         Commands::Cache(command) => return handle_cache(&command, &ctx, &mut config),
         command => command,
     };
@@ -2006,11 +1959,9 @@ async fn run(command: Commands, progress: weflow_core::output::ProgressMode) -> 
         Commands::Web(command) => handle_web(&command, &hub).await,
         Commands::Backup(command) => handle_backup(&command, &hub),
         Commands::Biz(_) => unreachable!("a read"),
-        Commands::Runtime(_)
-        | Commands::Ffmpeg(_)
-        | Commands::Cache(_)
-        | Commands::Config(_)
-        | Commands::Lang { .. } => unreachable!(),
+        Commands::Runtime(_) | Commands::Cache(_) | Commands::Config(_) | Commands::Lang { .. } => {
+            unreachable!()
+        }
     }
 }
 
@@ -2148,7 +2099,7 @@ fn cache_part_label(part: CachePart) -> &'static str {
         CachePart::Analytics => tr("analytics", "统计"),
         CachePart::Api => tr("HTTP API", "API 导出"),
         CachePart::Keys => tr("key fingerprints", "密钥指纹"),
-        CachePart::Runtime => tr("older runtimes", "旧运行时"),
+        CachePart::Runtime => tr("unused programs", "不再使用的程序"),
         CachePart::Web => tr("WebUI versions", "网页版本"),
     }
 }
@@ -2485,49 +2436,6 @@ fn handle_config(
                 Ok(())
             })?;
             Ok(written(Some(ctx.config_path.clone())))
-        }
-    }
-}
-
-async fn handle_ffmpeg(
-    command: FfmpegCommand,
-    ctx: &AppContext,
-    config: &mut ConfigStore,
-) -> AppResult<Value> {
-    use weflow_core::contract::FfmpegBaseUrl;
-    match command.command {
-        FfmpegSubcommand::Install { force } => Ok(json!(
-            weflow_core::ffmpeg::install(&ctx.home_dir, config.ffmpeg_base_url.as_deref(), force)
-                .await?
-        )),
-        FfmpegSubcommand::Path => Ok(json!(weflow_core::contract::FfmpegPath {
-            found: weflow_core::ffmpeg::status(),
-            base_url: config
-                .ffmpeg_base_url
-                .as_deref()
-                .unwrap_or(weflow_core::ffmpeg::DEFAULT_BASE_URL)
-                .to_string(),
-        })),
-        FfmpegSubcommand::Set {
-            setting: FfmpegSetting::Baseurl { url },
-        } => {
-            let url = weflow_core::ffmpeg::check_base_url(&url)?;
-            ConfigStore::update(&ctx.config_path, |config| {
-                config.ffmpeg_base_url = Some(url.clone());
-                Ok(())
-            })?;
-            Ok(json!(FfmpegBaseUrl { base_url: url }))
-        }
-        FfmpegSubcommand::Unset {
-            setting: FfmpegUnsetting::Baseurl,
-        } => {
-            ConfigStore::update(&ctx.config_path, |config| {
-                config.ffmpeg_base_url = None;
-                Ok(())
-            })?;
-            Ok(json!(FfmpegBaseUrl {
-                base_url: weflow_core::ffmpeg::DEFAULT_BASE_URL.to_string()
-            }))
         }
     }
 }

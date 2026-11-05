@@ -1155,8 +1155,6 @@ export interface ConfigStore {
   current_profile: string;
   /** Output language chosen with `weflow lang en|zh` (`None` = follow the system). */
   lang: string | null;
-  /** Mirror of the ffmpeg-static releases `weflow ffmpeg install` downloads from (`None` = GitHub). */
-  ffmpeg_base_url: string | null;
   profiles: Record<string, ProfileConfig>;
   extra: Record<string, unknown>;
 }
@@ -1226,21 +1224,9 @@ export interface MediaCopied {
   /** The media messages asked for. */
   requested: number;
   exported: number;
-  /** The ones whose file is not on disk, or could not be read. */
+  /** The ones whose file is not on disk, or could not be read or converted. */
   missing: number;
   dir: string;
-  ffmpegMissing?: number;
-  ffmpegMissingImages?: MissingImage[];
-  /** What to do, with the dates of the first ones. */
-  hint?: string;
-}
-
-/** An image left out for lack of ffmpeg: where to find it in WeChat. */
-export interface MissingImage {
-  session?: string;
-  createTime?: number;
-  /** The message's local time; `?` without one. */
-  time: string;
 }
 
 /** One conversation in several formats (`export messages` with several `format`s), or packed (`zip`). */
@@ -1281,10 +1267,6 @@ export interface MediaExport {
   sessions: number;
   out: string;
   files: MediaFileExported[];
-  ffmpegMissing?: number;
-  ffmpegMissingImages?: MissingImage[];
-  /** What to do, with the dates of the first ones. */
-  hint?: string;
 }
 
 /** A media file `export media` wrote. */
@@ -1305,7 +1287,7 @@ export interface ImageResult {
   success: boolean;
   localPath?: string;
   error?: string;
-  /** Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, … */
+  /** Why it failed: `not_found`, `no_key`, `unsupported_image`, … */
   failureKind?: string;
   /** The file is only the thumbnail: the original is not on disk. */
   isThumb?: boolean;
@@ -1351,42 +1333,6 @@ export interface VideoInfo {
 /** The MD5 a video message names (`video parse-md5`); null when its XML has none. */
 export interface VideoMd5 {
   md5: string | null;
-}
-
-/** What `ffmpeg install` answers. */
-export interface FfmpegInstalled {
-  path: string;
-  /** The pinned release. */
-  release: string;
-  downloaded: boolean;
-  /** Where it was downloaded from; left out when nothing was. */
-  source?: string;
-  /** The first line of its `-version`. */
-  version: string;
-  /** The folders of other releases taken away. */
-  removedReleases?: string[];
-  /** The ffmpeg WXGF images will use: one on `PATH` or in `FFMPEG_PATH` comes first. */
-  used: FfmpegFound;
-}
-
-/** The ffmpeg WXGF images use, and where it was found. */
-export interface FfmpegFound {
-  path: string;
-  /** `FFMPEG_PATH`, `PATH`, `installed` or `missing`. */
-  source: string;
-}
-
-/** What `ffmpeg path` answers: the ffmpeg in use, and the mirror `ffmpeg install` downloads from. */
-export interface FfmpegPath {
-  path: string;
-  /** `FFMPEG_PATH`, `PATH`, `installed` or `missing`. */
-  source: string;
-  baseUrl: string;
-}
-
-/** The mirror `ffmpeg set baseurl` / `unset baseurl` left. */
-export interface FfmpegBaseUrl {
-  baseUrl: string;
 }
 
 /** What the binary carries (`runtime manifest`): its version, target and built-in files. */
@@ -2173,10 +2119,6 @@ export interface Answers {
   /** The file written; with several formats or `zip`, the folder or zip and each format's file */
   "export messages": MessagesExported | MessagesBundle;
   "export sessions": ExportWritten;
-  "ffmpeg install": FfmpegInstalled;
-  "ffmpeg path": FfmpegPath;
-  "ffmpeg set baseurl": FfmpegBaseUrl;
-  "ffmpeg unset baseurl": FfmpegBaseUrl;
   "group export-member-messages": GroupExported;
   "group export-members": GroupExported;
   "group hours": GroupHours;

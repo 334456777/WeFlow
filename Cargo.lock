@@ -1084,8 +1084,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "heic-rs"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8883c3bfa6b4ff19a40e52a6dc051c5612cbe21bf408fc6d4875e8dfd777cb66"
+source = "git+https://github.com/334456777/heic-rs?rev=575a455437278659a067b7361e9f3d85197950c4#575a455437278659a067b7361e9f3d85197950c4"
 
 [[package]]
 name = "hmac"
@@ -2199,6 +2198,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_h265"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3cab2c2f4041cf53f271ff40980865efbac3b18684024ab9b53a78cab7efbfe"
+
+[[package]]
 name = "rust_xlsxwriter"
 version = "0.100.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3296,6 +3301,7 @@ dependencies = [
  "regex-syntax",
  "reqwest",
  "rusqlite",
+ "rust_h265",
  "rust_xlsxwriter",
  "rustls",
  "schemars",

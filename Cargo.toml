@@ -38,6 +38,8 @@ flate2 = "1"
 futures = "0.3"
 # HEVC still-picture decoder for WXGF images (pure Rust, no unsafe); the thread pool feature is not needed
 heic-rs = { version = "0.1", default-features = false, features = ["std"] }
+# HEVC video decoder for the WXGF pictures heic-rs does not decode: the range-extension coding tools it lacks
+rust_h265 = "0.4"
 indexmap = { version = "2.14.2", features = ["serde"] }
 jpeg-encoder = "0.7"
 icu_collator = "2.3"
@@ -83,3 +85,8 @@ opt-level = 2
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# heic-rs 0.1.4 with its 4:2:2 and 4:4:4 intra decoding fixed (tbraun96/heic-rs#15, #559): back to crates.io
+# once a release has the fix
+[patch.crates-io]
+heic-rs = { git = "https://github.com/334456777/heic-rs", rev = "575a455437278659a067b7361e9f3d85197950c4" }

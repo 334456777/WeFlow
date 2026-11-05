@@ -1,6 +1,6 @@
 //! Port of `imageDecryptService.ts`: locates a message image's `.dat` file in the account's
 //! `msg/attach/<md5(session)>/<yyyy-mm>/Img` folder, decrypts it (V1 / V2 / legacy XOR), unwraps
-//! WXGF through ffmpeg and keeps the result in `<cache>/Images/<session>/<yyyy-mm>/`.
+//! WXGF with the built-in decoder and keeps the result in `<cache>/Images/<session>/<yyyy-mm>/`.
 //!
 //! WeFlow's desktop app's render-process events (`image:cacheResolved`, `image:decryptProgress`,
 //! `image:updateAvailable`) and the background "better quality available" check have no
@@ -25,39 +25,10 @@ pub struct ImageState {
     dir_listings: HashMap<PathBuf, Arc<DirListing>>,
     /// Names in the folders of the decrypted-image cache (see [`ServiceHub::possibly_cached`]).
     cache_dirs: HashMap<PathBuf, CacheDirNames>,
-    /// Images that could not be converted since [`ServiceHub::start_counting_missing_ffmpeg`] because ffmpeg was
-    /// not found (by cache key), for the summary of an export.
-    ffmpeg_missing: HashMap<String, MissingImage>,
 }
 
-/// A WXGF image that was not converted for lack of ffmpeg: the conversation and time of the message that shows it
-/// (the earliest, when several messages show the same image), so that it can be found in WeChat.
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct MissingImage {
-    pub session: Option<String>,
-    pub create_time: Option<i64>,
-}
-
-impl MissingImage {
-    /// The message time in the local time zone, like the times of an export; `?` when the message has none.
-    fn time(&self) -> String {
-        self.create_time
-            .map(crate::message::format_timestamp)
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| "?".into())
-    }
-
-    pub fn to_contract(&self) -> crate::contract::MissingImage {
-        crate::contract::MissingImage {
-            session: self.session.clone(),
-            create_time: self.create_time,
-            time: self.time(),
-        }
-    }
-}
-
-/// Dates the hint of an export lists before it refers to `ffmpegMissingImages` for the rest.
-const HINT_DATES: usize = 10;
+/// `failureKind` of a WXGF image the built-in decoder cannot convert.
+const UNSUPPORTED_IMAGE: &str = "unsupported_image";
 
 /// Directory listings (and cache folders' names) kept at most; past that the cache starts over.
 const MAX_DIR_LISTINGS: usize = 1024;
@@ -237,7 +208,7 @@ pub struct ImageResult {
     pub local_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Why it failed: `not_found`, `no_key`, `ffmpeg_missing`, …
+    /// Why it failed: `not_found`, `no_key`, `unsupported_image`, …
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_kind: Option<&'static str>,
     /// The file is only the thumbnail: the original is not on disk.
@@ -275,41 +246,20 @@ impl ImageResult {
     }
 }
 
-/// What a WXGF image that cannot be converted for lack of ffmpeg says (with the time of its message, when known),
-/// and how to fix it.
-fn ffmpeg_missing_message(image: &MissingImage) -> String {
-    let what = match image.create_time {
-        Some(_) => format!("WXGF image sent {}", image.time()),
+/// What a WXGF image the built-in decoder cannot convert says: the time of its message, when known, so that it can be
+/// found in WeChat, and whether the data is damaged or in a format not supported yet.
+fn unsupported_image_message(create_time: Option<i64>, reason: crate::hevc::Unsupported) -> String {
+    let what = match create_time
+        .map(crate::message::format_timestamp)
+        .filter(|t| !t.is_empty())
+    {
+        Some(time) => format!("WXGF image sent {time}"),
         None => "WXGF image".to_string(),
     };
-    let (path, source) = crate::ffmpeg::locate();
-    if source == "FFMPEG_PATH" {
-        format!(
-            "{what} needs ffmpeg: FFMPEG_PATH ({}) cannot be started",
-            path.display()
-        )
+    if reason.is_damaged() {
+        format!("{what} cannot be converted: the data is damaged ({reason})")
     } else {
-        format!("{what} needs ffmpeg: not found on PATH or installed; run `weflow ffmpeg install` or set FFMPEG_PATH")
-    }
-}
-
-/// The summary line of an export that skipped these WXGF images for lack of ffmpeg, with the dates of the first
-/// [`HINT_DATES`] (all of them are in `ffmpegMissingImages`).
-pub(super) fn ffmpeg_missing_hint(images: &[MissingImage]) -> String {
-    let n = images.len();
-    let dates: Vec<String> = images
-        .iter()
-        .take(HINT_DATES)
-        .map(MissingImage::time)
-        .collect();
-    let dates = dates.join(", ");
-    if n > HINT_DATES {
-        format!(
-            "{n} WXGF images were not exported because ffmpeg was not found (sent {dates} and {} more, all listed in ffmpegMissingImages); run `weflow ffmpeg install` or set FFMPEG_PATH, then export again",
-            n - HINT_DATES
-        )
-    } else {
-        format!("{n} WXGF images were not exported because ffmpeg was not found (sent {dates}); run `weflow ffmpeg install` or set FFMPEG_PATH, then export again")
+        format!("{what} cannot be converted: its format is not supported yet ({reason})")
     }
 }
 
@@ -1190,28 +1140,11 @@ impl ServiceHub {
                 }
             };
         let (data, wxgf_failure) = img::unwrap_wxgf(decrypted.data);
-        if wxgf_failure == Some(img::HevcError::FfmpegMissing) {
-            let image = MissingImage {
-                session: p.session_id.clone(),
-                create_time: p.create_time,
-            };
-            self.image_state
-                .lock_or_panic()
-                .ffmpeg_missing
-                .entry(cache_key.to_string())
-                .and_modify(|seen| {
-                    if image
-                        .create_time
-                        .is_some_and(|t| seen.create_time.is_none_or(|s| t < s))
-                    {
-                        *seen = image.clone();
-                    }
-                })
-                .or_insert_with(|| image.clone());
+        if let Some(reason) = wxgf_failure {
             return ImageResult {
                 success: false,
-                error: Some(ffmpeg_missing_message(&image)),
-                failure_kind: Some("ffmpeg_missing"),
+                error: Some(unsupported_image_message(p.create_time, reason)),
+                failure_kind: Some(UNSUPPORTED_IMAGE),
                 is_thumb: Some(img::is_thumbnail_path(&dat)),
                 ..Default::default()
             };
@@ -1435,11 +1368,11 @@ impl ServiceHub {
                 ))
             })?;
         let (data, failure) = img::unwrap_wxgf(decrypted.data);
-        if failure == Some(img::HevcError::FfmpegMissing) {
-            return Err(AppError::runtime(ffmpeg_missing_message(&MissingImage {
-                session: p.session_id.clone(),
-                create_time: p.create_time,
-            })));
+        if let Some(reason) = failure {
+            return Err(
+                AppError::runtime(unsupported_image_message(p.create_time, reason))
+                    .with_details(json!({ "failureKind": UNSUPPORTED_IMAGE })),
+            );
         }
         if img::detect_image_extension(&data).is_none() {
             return Err(AppError::runtime("decrypted data is not a valid image"));
@@ -1551,31 +1484,6 @@ impl ServiceHub {
         std::fs::read(&path).map_err(|e| AppError::runtime(format!("failed to read {path}: {e}")))
     }
 
-    /// Starts counting the images that cannot be converted for lack of ffmpeg (an export's summary).
-    pub(super) fn start_counting_missing_ffmpeg(&self) {
-        self.image_state.lock_or_panic().ffmpeg_missing.clear();
-    }
-
-    /// Images (not messages) that could not be converted for lack of ffmpeg since the count was started, oldest
-    /// first (images without a time last).
-    pub(super) fn images_missing_ffmpeg(&self) -> Vec<MissingImage> {
-        let mut images: Vec<MissingImage> = self
-            .image_state
-            .lock_or_panic()
-            .ffmpeg_missing
-            .values()
-            .cloned()
-            .collect();
-        images.sort_by(|a, b| {
-            (a.create_time.is_none(), a.create_time, &a.session).cmp(&(
-                b.create_time.is_none(),
-                b.create_time,
-                &b.session,
-            ))
-        });
-        images
-    }
-
     /// Forgets what is known about the decrypted-image cache, for when its files are removed.
     pub(super) fn image_forget_cached(&self) {
         let mut state = self.image_state.lock_or_panic();
@@ -1613,29 +1521,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_hint_lists_the_first_dates_and_refers_to_the_list_for_the_rest() {
-        let image = |t: Option<i64>| MissingImage {
-            session: Some("s".into()),
-            create_time: t,
-        };
+    fn an_unsupported_wxgf_image_says_when_it_was_sent_and_whether_it_is_damaged() {
+        use crate::hevc::Unsupported;
         let date = crate::message::format_timestamp(1_700_000_000);
-        let hint = ffmpeg_missing_hint(&[image(Some(1_700_000_000)), image(None)]);
-        assert!(
-            hint.starts_with(&format!(
-                "2 WXGF images were not exported because ffmpeg was not found (sent {date}, ?);"
-            )),
-            "{hint}"
-        );
-        let many: Vec<MissingImage> = (0..12).map(|i| image(Some(1_700_000_000 + i))).collect();
-        let hint = ffmpeg_missing_hint(&many);
-        assert_eq!(hint.matches(&date[..10]).count(), HINT_DATES, "{hint}");
-        assert!(
-            hint.contains(" and 2 more, all listed in ffmpegMissingImages);"),
-            "{hint}"
+        assert_eq!(
+            unsupported_image_message(
+                Some(1_700_000_000),
+                Unsupported::Tool("P and B slices (inter prediction)")
+            ),
+            format!("WXGF image sent {date} cannot be converted: its format is not supported yet (P and B slices (inter prediction))")
         );
         assert_eq!(
-            serde_json::to_value(image(Some(1_700_000_000)).to_contract()).unwrap(),
-            json!({ "session": "s", "createTime": 1_700_000_000, "time": date })
+            unsupported_image_message(None, Unsupported::NoPicture),
+            "WXGF image cannot be converted: the data is damaged (no picture)"
         );
     }
 

@@ -42,7 +42,6 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 ./weflow serve     --insight --image-auto-download
 ./weflow runtime   info | manifest
 ./weflow cache     list | clear | clear-account
-./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
 ```
 
 数据库层是原生 Rust 且**只读**:`chat update-message`、`chat delete-message`、`chat anti-revoke`、`chat mark-read`、`sns block-delete` 和 `sns delete` 会修改微信数据库，因此一律被拒绝(这些以及其他所有不支持的功能见 [cli-unsupported.md](cli-unsupported.md))。这类拒绝的错误码为 `unsupported`（退出码 `4`）。数据库无法打开(密钥错误、文件不可读)时同样返回退出码 `4`，错误码为 `native_error`。
@@ -85,7 +84,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 | `cache clear --analytics` | 统计汇总 |
 | `cache clear --api` | 消息推送保存的头像（`push-avatar-files`）、`serve` 返回的文件（`serve-files`，见 [serve-api.md](serve-api.md#返回文件)）和 `api-media` 文件夹 |
 | `cache clear --keys` | 校验通过的密钥指纹；下一条命令会重新校验密钥 |
-| `cache clear --runtime` | 其他 WeFlow 版本在 `runtime/` 下释放的运行时；保留当前版本 |
+| `cache clear --runtime` | 其他 WeFlow 版本在 `runtime/` 下释放的运行时（保留当前版本），以及旧版本安装在 `ffmpeg/` 下的 ffmpeg |
 | `cache clear --web` | `weflow web` 和 `serve` 下载的网页版本（`cache/web/`，见 [serve-api.md](serve-api.md#网页)）；`serve` 需要的版本会重新下载 |
 | `cache clear --all` | 以上全部 |
 | `cache clear-account [--exports-dir <目录>]` | 删除当前账号缓存的图片、语音、表情、朋友圈、统计和密钥指纹，并把该账号移出配置档案（删除 `db_path`、`wxid`、`decrypt_key` 和图片密钥）；`--exports-dir`（可重复）还会删除该目录下以账号命名的条目 |
@@ -129,7 +128,7 @@ AES 证据。不写入配置。Linux/macOS 目录发现和真实账号，以及�
 `serve` 在 `127.0.0.1:18108` 把每条命令都提供为 HTTP 接口（[serve-api.md](serve-api.md)）。
 `serve --insight` 运行 AI 见解引擎，每条生成的见解输出到 stderr（加 `--json` 时为 JSON 行）。
 `image auto-download` 与 `serve --image-auto-download` 通过 `img_helper.dll` 钩住微信，仅支持 Windows x64。
-语音消息使用内置的 Skype SILK SDK 副本（`crates/weflow-silk`）解码。WXGF 图片（微信容器里的一帧 HEVC 画面）用 Rust 解码（`heic-rs`，再写成 JPEG）；只有它读不了的画面（10-bit、4:2:2 或 4:4:4）才交给 `ffmpeg`：先用 `FFMPEG_PATH`，其次是 `PATH` 中的 `ffmpeg`，最后是 `ffmpeg install` 安装到 WeFlow 文件夹的副本（`ffmpeg path` 显示实际使用哪一个）。`ffmpeg install` 下载桌面端自带的同一版本（npm `ffmpeg-static` 5.3.0，即 eugeneware/ffmpeg-static 的 `b6.1.1` 发布，GPL-3.0，附带其许可证文件），校验 SHA-256 后解压到配置文件旁的 `ffmpeg/b6.1.1/`；只有运行这个命令时才会下载。已安装的副本完好时不会重复下载（`--force` 强制重新下载）；新副本完整且通过校验后才替换旧的，`ffmpeg/` 下其他版本的文件夹会被删除。`ffmpeg set baseurl <url>` 可改从这些发布文件的镜像下载，而不是 GitHub（例如 `https://registry.npmmirror.com/-/binary/ffmpeg-static`；地址保存在配置文件里，`ffmpeg unset baseurl` 恢复为 GitHub），文件同样会被校验。Windows 版本是 x64 构建（Windows on Arm 通过模拟运行）。`ffmpeg path` 显示能否找到 ffmpeg（见 [README](README.md#检查-ffmpeg可选步骤)）：需要 ffmpeg 却找不到的 WXGF 图片会以 `failure_kind` `ffmpeg_missing` 失败，错误信息里写明其消息的发送时间；导出会把这类图片计入 `ffmpegMissing`，并在 `ffmpegMissingImages` 里逐张列出所在会话和发送时间。
+语音消息使用内置的 Skype SILK SDK 副本（`crates/weflow-silk`）解码。WXGF 图片（微信容器里的一帧 HEVC 画面）用 Rust 解码后写成 JPEG，不需要 ffmpeg：`heic-rs` 解码 8-bit 和 10-bit 的 4:2:0、4:2:2、4:4:4 和灰度画面（它的 4:2:2、4:4:4 修复发版之前，workspace 用打了补丁的版本），heic-rs 没实现的 Rext 编码工具交给 `rust_h265`。两者都解不了的画面（首帧不是 intra）或损坏的数据会以 `failure_kind` `unsupported_image` 失败，错误信息写明其消息的发送时间，以及是数据损坏还是暂不支持的格式；导出时计入缺失。旧版本安装在配置文件旁 `ffmpeg/` 下的 ffmpeg 不再使用，`cache clear --runtime` 会删掉它。
 
 退出码：`0` 成功，`1` 运行时错误，`2` 参数错误，`3` 配置/密钥错误，`4` 数据库/原生库错误，`130` 用户中断。
 

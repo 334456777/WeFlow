@@ -82,9 +82,9 @@ The method says what kind of side effect the command has:
 | Method | Commands |
 |---|---|
 | `GET` | Reading (it may fill caches that can be rebuilt): `config path/list/get`, `db *`, `chat sessions/messages/search/…`, `analytics *`, `group list/members/…`, `sns timeline/…`, `biz *`, `runtime *`, `cache list`, … |
-| `POST` | Running a task or writing files: `export *`, `report * generate`, `key *`, `backup create/restore`, `chat voice-data/image-data/video-data/…`, `sns export/media/…`, `image decrypt`, `insight test/trigger/scan`, `ffmpeg install`, … |
-| `PUT` | Changing a setting: `config set`, `lang`, `ffmpeg set baseurl`, `insight mark-read`, `analytics excluded` and `chat group-hint` with `set` |
-| `DELETE` | Removing: `config unset/clear`, `cache clear/clear-account`, `ffmpeg unset baseurl`, `insight clear` |
+| `POST` | Running a task or writing files: `export *`, `report * generate`, `key *`, `backup create/restore`, `chat voice-data/image-data/video-data/…`, `sns export/media/…`, `image decrypt`, `insight test/trigger/scan`, … |
+| `PUT` | Changing a setting: `config set`, `lang`, `insight mark-read`, `analytics excluded` and `chat group-hint` with `set` |
+| `DELETE` | Removing: `config unset/clear`, `cache clear/clear-account`, `insight clear` |
 
 The full table is `METHODS` in `crates/weflow-cli/src/serve_api.rs`; a test keeps it in step with the command tree. A request with another method answers `405` with an `Allow` header. Three commands take their method from an argument: `analytics excluded` and `chat group-hint` are `GET` without `set` and `PUT` with it; `sns block-delete` is `GET` for `action=check`, `PUT` for `install` and `DELETE` for `uninstall`.
 

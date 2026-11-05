@@ -142,7 +142,7 @@ fn matched_entries(root: &Path, ids: &[String]) -> Vec<PathBuf> {
 }
 
 impl ServiceHub {
-    /// Files and folders holding `part`, whether they exist or not (older runtimes: those that exist).
+    /// Files and folders holding `part`, whether they exist or not (unused programs: those that exist).
     pub fn cache_part_paths(&self, part: CachePart) -> Vec<PathBuf> {
         let base = self.cache_base();
         match part {
@@ -158,7 +158,7 @@ impl ServiceHub {
             ],
             // fingerprints of keys that worked, so later commands skip the slower check
             CachePart::Keys => vec![self.ctx.cache_dir().join("verified-keys")],
-            CachePart::Runtime => self.older_runtimes(),
+            CachePart::Runtime => self.unused_programs(),
             // the WebUI versions downloaded (issue #148); `serve` downloads the one it needs again
             CachePart::Web => vec![self.web_store().root().to_path_buf()],
         }
@@ -176,19 +176,23 @@ impl ServiceHub {
 
     /// `<home>/runtime/<version>` folders left by other versions; the running version's is unpacked again on every
     /// start, so it stays.
-    fn older_runtimes(&self) -> Vec<PathBuf> {
-        let Ok(entries) = std::fs::read_dir(self.runtime_root()) else {
-            return Vec::new();
+    /// Programs unpacked or downloaded here that nothing runs: the runtimes of other WeFlow versions, and the ffmpeg
+    /// builds earlier versions installed in `ffmpeg/<release>/` (files of one's own in `ffmpeg/` stay).
+    fn unused_programs(&self) -> Vec<PathBuf> {
+        let subfolders = |dir: PathBuf, keep: &str| -> Vec<PathBuf> {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return Vec::new();
+            };
+            let mut dirs: Vec<PathBuf> = entries
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()) && e.file_name() != keep)
+                .map(|e| e.path())
+                .collect();
+            dirs.sort();
+            dirs
         };
-        let mut dirs: Vec<PathBuf> = entries
-            .filter_map(Result::ok)
-            .filter(|e| {
-                e.file_type().is_ok_and(|t| t.is_dir())
-                    && e.file_name() != self.ctx.version.as_str()
-            })
-            .map(|e| e.path())
-            .collect();
-        dirs.sort();
+        let mut dirs = subfolders(self.runtime_root(), self.ctx.version.as_str());
+        dirs.extend(subfolders(self.ctx.home_dir.join("ffmpeg"), ""));
         dirs
     }
 

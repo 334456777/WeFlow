@@ -482,100 +482,10 @@ pub fn is_wxgf(buf: &[u8]) -> bool {
     buf.len() >= 20 && &buf[0..4] == b"wxgf"
 }
 
-/// Why [`convert_hevc_to_jpg`] gave no image.
-#[derive(Debug, PartialEq, Eq)]
-pub enum HevcError {
-    /// ffmpeg could not be started (see [`crate::ffmpeg::locate`]).
-    FfmpegMissing,
-    /// ffmpeg ran, but no attempt gave a usable image.
-    Undecodable,
-}
-
-/// The ffmpeg attempts of `convertHevcToJpg`: raw HEVC, then autodetected, each with frame 0, 1 and 5. The desktop
-/// app also tries `-f h265`, which no ffmpeg knows: it always fails at once, so it is left out. On a real account
-/// every one of about 1800 WXGF images converted at the first attempt; the others only matter for odd streams.
-const HEVC_ATTEMPTS: [(Option<&str>, Option<u32>); 6] = [
-    (Some("hevc"), None),
-    (Some("hevc"), Some(1)),
-    (Some("hevc"), Some(5)),
-    (None, None),
-    (None, Some(1)),
-    (None, Some(5)),
-];
-
-/// `convertHevcToJpg`: tries [`HEVC_ATTEMPTS`] in order.
-pub fn convert_hevc_to_jpg(hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
-    convert_hevc_with(&crate::ffmpeg::locate().0, hevc)
-}
-
-fn convert_hevc_with(ffmpeg: &Path, hevc: &[u8]) -> Result<Vec<u8>, HevcError> {
-    use std::process::{Command, Stdio};
-    let dir = std::env::temp_dir().join("weflow_hevc");
-    std::fs::create_dir_all(&dir).map_err(|_| HevcError::Undecodable)?;
-    let uid = format!(
-        "{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    );
-    let input = dir.join(format!("hevc_{uid}.hevc"));
-    let output = dir.join(format!("hevc_{uid}.jpg"));
-    std::fs::write(&input, hevc).map_err(|_| HevcError::Undecodable)?;
-    let mut result = Err(HevcError::Undecodable);
-    for (fmt, frame) in HEVC_ATTEMPTS {
-        let _ = std::fs::remove_file(&output);
-        let mut cmd = Command::new(ffmpeg);
-        cmd.args(["-hide_banner", "-loglevel", "error", "-y"]);
-        if let Some(f) = fmt {
-            cmd.args(["-f", f]);
-        }
-        cmd.arg("-i").arg(&input);
-        if let Some(n) = frame {
-            cmd.args(["-vf", &format!("select=eq(n\\,{n})")]);
-        }
-        cmd.args(["-vframes", "1", "-q:v", "2", "-f", "image2"])
-            .arg(&output)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let Ok(mut child) = cmd.spawn() else {
-            result = Err(HevcError::FfmpegMissing);
-            break;
-        };
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(s)) => break Some(s),
-                Ok(None) if std::time::Instant::now() < deadline => {
-                    std::thread::sleep(std::time::Duration::from_millis(2))
-                }
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break None;
-                }
-            }
-        };
-        if status.is_some_and(|s| s.success()) {
-            if let Ok(buf) = std::fs::read(&output) {
-                if !buf.is_empty() && !is_likely_corrupted_jpeg(&buf) {
-                    result = Ok(buf);
-                    break;
-                }
-            }
-        }
-    }
-    let _ = std::fs::remove_file(&input);
-    let _ = std::fs::remove_file(&output);
-    result
-}
-
-/// `unwrapWxgf`: returns the image bytes and, when the data is still an undecoded WXGF blob, why it could not be
-/// converted (`None`: it is an image, or was not WXGF). The built-in decoder ([`crate::hevc`]) tries the candidates
-/// first; ffmpeg only gets the streams it cannot decode.
-pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<HevcError>) {
+/// `unwrapWxgf`: returns the image bytes and, when the data is still an undecoded WXGF blob, why the built-in
+/// decoder ([`crate::hevc`]) could not convert it (`None`: it is an image, or was not WXGF). The candidates are tried in
+/// order; the reason given is the first one's, the stream the others are cut from.
+pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<crate::hevc::Unsupported>) {
     if !is_wxgf(&buf) {
         return (buf, None);
     }
@@ -583,29 +493,23 @@ pub fn unwrap_wxgf(buf: Vec<u8>) -> (Vec<u8>, Option<HevcError>) {
         return (inner.to_vec(), None);
     }
     let candidates = wxgf_hevc_candidates(&buf);
-    if let Some(jpg) = candidates
-        .iter()
-        .find_map(|(_, data)| crate::hevc::to_jpeg(data))
-    {
-        return (jpg, None);
-    }
-    let mut failure = HevcError::Undecodable;
+    let mut failure = None;
     for (_, data) in &candidates {
-        match convert_hevc_to_jpg(data) {
+        match crate::hevc::decode_to_jpeg(data) {
             Ok(jpg) => return (jpg, None),
-            // the other candidates would not start it either
-            Err(HevcError::FfmpegMissing) => {
-                failure = HevcError::FfmpegMissing;
-                break;
+            Err(e) => {
+                failure.get_or_insert(e);
             }
-            Err(HevcError::Undecodable) => {}
         }
     }
     let fallback = candidates
         .first()
         .map(|(_, d)| d.clone())
         .unwrap_or_else(|| buf[4..].to_vec());
-    (fallback, Some(failure))
+    (
+        fallback,
+        Some(failure.unwrap_or(crate::hevc::Unsupported::NoPicture)),
+    )
 }
 
 #[cfg(test)]
@@ -776,7 +680,7 @@ mod tests {
     }
 
     #[test]
-    fn wxgf_with_an_embedded_jpeg_is_unwrapped_without_ffmpeg() {
+    fn wxgf_with_an_embedded_jpeg_is_unwrapped_as_it_is() {
         let mut blob = b"wxgf".to_vec();
         blob.extend([1u8; 20]);
         blob.extend([0xff, 0xd8, 0xff, 0xe0, 9, 9, 9, 9, 9, 9, 9, 9]);
@@ -790,18 +694,21 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_ffmpeg_is_told_apart_from_a_failed_conversion() {
-        let missing = std::env::temp_dir()
-            .join("weflow-no-such-dir")
-            .join("ffmpeg");
+    fn a_wxgf_blob_the_built_in_decoder_cannot_read_says_why() {
+        let mut blob = b"wxgf".to_vec();
+        blob.extend([0x11u8; 1300]);
+        let (out, failure) = unwrap_wxgf(blob);
+        assert_eq!(failure, Some(crate::hevc::Unsupported::NoPicture));
         assert_eq!(
-            convert_hevc_with(&missing, &[0u8; 200]),
-            Err(HevcError::FfmpegMissing)
+            out,
+            vec![0x11u8; 1300],
+            "the stream after the magic is left as it is"
         );
-        assert!(
-            HEVC_ATTEMPTS.iter().all(|(fmt, _)| *fmt != Some("h265")),
-            "ffmpeg has no h265 demuxer"
-        );
+        let mut blob = b"wxgf".to_vec();
+        blob.extend([0x24u8, 0x01, 0x00, 0x46, 0x00, 0x2e]);
+        blob.extend(include_bytes!("../testdata/wxgf/full_range.hevc"));
+        let (jpg, failure) = unwrap_wxgf(blob);
+        assert_eq!((failure, &jpg[..3]), (None, &[0xff, 0xd8, 0xff][..]));
     }
 
     #[test]

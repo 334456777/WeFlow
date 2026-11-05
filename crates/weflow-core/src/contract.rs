@@ -1694,57 +1694,6 @@ pub struct ScannedImageKeys {
     pub user_dir: String,
 }
 
-/// The ffmpeg WXGF images use, and where it was found.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-pub struct FfmpegFound {
-    pub path: PathBuf,
-    /// `FFMPEG_PATH`, `PATH`, `installed` or `missing`.
-    pub source: String,
-}
-
-/// What `ffmpeg path` answers: the ffmpeg in use, and the mirror `ffmpeg install` downloads from.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FfmpegPath {
-    #[serde(flatten)]
-    pub found: FfmpegFound,
-    pub base_url: String,
-}
-
-/// The ffmpeg build in WeFlow's folder: downloaded now, or already there and intact.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-pub struct FfmpegDownload {
-    pub path: PathBuf,
-    /// The pinned release.
-    pub release: String,
-    pub downloaded: bool,
-    /// Where it was downloaded from; left out when nothing was.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-}
-
-/// What `ffmpeg install` answers.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FfmpegInstalled {
-    #[serde(flatten)]
-    pub download: FfmpegDownload,
-    /// The first line of its `-version`.
-    pub version: String,
-    /// The folders of other releases taken away.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub removed_releases: Vec<String>,
-    /// The ffmpeg WXGF images will use: one on `PATH` or in `FFMPEG_PATH` comes first.
-    pub used: FfmpegFound,
-}
-
-/// The mirror `ffmpeg set baseurl` / `unset baseurl` left.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FfmpegBaseUrl {
-    pub base_url: String,
-}
-
 /// What `web info` answers: the WebUI `serve` shows, and the versions downloaded.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -1894,11 +1843,9 @@ pub struct MediaCopied {
     /// The media messages asked for.
     pub requested: usize,
     pub exported: usize,
-    /// The ones whose file is not on disk, or could not be read.
+    /// The ones whose file is not on disk, or could not be read or converted.
     pub missing: usize,
     pub dir: PathBuf,
-    #[serde(flatten)]
-    pub ffmpeg: Option<FfmpegMissing>,
 }
 
 /// What `export media` (and `chat voice`) copied.
@@ -1919,8 +1866,6 @@ pub struct MediaExport {
     pub sessions: usize,
     pub out: PathBuf,
     pub files: Vec<MediaFileExported>,
-    #[serde(flatten)]
-    pub ffmpeg: Option<FfmpegMissing>,
 }
 
 /// A media file `export media` wrote.
@@ -1937,28 +1882,6 @@ pub struct MediaFileExported {
     /// An image's: the file is only its thumbnail.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_thumb: Option<bool>,
-}
-
-/// The images an export left out because ffmpeg, which converts them, was not found.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FfmpegMissing {
-    pub ffmpeg_missing: usize,
-    pub ffmpeg_missing_images: Vec<MissingImage>,
-    /// What to do, with the dates of the first ones.
-    pub hint: String,
-}
-
-/// An image left out for lack of ffmpeg: where to find it in WeChat.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MissingImage {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub create_time: Option<i64>,
-    /// The message's local time; `?` without one.
-    pub time: String,
 }
 
 /// The file an export wrote (`export sessions`, `contacts`, `footprint`).

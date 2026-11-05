@@ -959,6 +959,10 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     // the mock hub runs as version `test`: its runtime stays, other versions' go
     let current = put(hub.runtime_root().join("test/t/manifest.json"));
     let older = put(hub.runtime_root().join("2.0.0/t/manifest.json"));
+    // an ffmpeg `weflow ffmpeg install` put here once goes with them; a file of one's own beside it stays
+    let home = hub.runtime_root().parent().unwrap().to_path_buf();
+    let ffmpeg = put(home.join("ffmpeg/b6.1.1/ffmpeg"));
+    let own = put(home.join("ffmpeg/notes.txt"));
 
     let list = json!(hub.cache_list());
     let entry = |name: &str| {
@@ -980,18 +984,21 @@ fn cache_parts_clear_on_their_own_and_all_together() {
     assert_eq!(entry("api")["files"], 3);
     assert_eq!(
         entry("runtime")["paths"],
-        json!([hub.runtime_root().join("2.0.0")])
+        json!([
+            hub.runtime_root().join("2.0.0"),
+            home.join("ffmpeg").join("b6.1.1")
+        ])
     );
 
     let r = hub.cache_clear(&[CachePart::Images]);
     assert_eq!(r.freed_bytes, 3, "{r:?}");
     assert!(!image.exists());
-    assert!(rest.iter().all(|p| p.exists()) && older.exists());
+    assert!(rest.iter().all(|p| p.exists()) && older.exists() && ffmpeg.exists());
 
     let r = hub.cache_clear(&CachePart::ALL);
     assert!(r.warnings.is_empty(), "{r:?}");
-    assert_eq!(r.freed_bytes, 3 * (rest.len() as u64 + 1), "{r:?}");
+    assert_eq!(r.freed_bytes, 3 * (rest.len() as u64 + 2), "{r:?}");
     assert!(rest.iter().all(|p| !p.exists()), "{r:?}");
-    assert!(!older.exists());
-    assert!(current.exists());
+    assert!(!older.exists() && !ffmpeg.exists());
+    assert!(current.exists() && own.exists());
 }

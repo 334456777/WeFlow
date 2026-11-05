@@ -60,8 +60,6 @@ pub struct ConfigStore {
     pub current_profile: String,
     /// Output language chosen with `weflow lang en|zh` (`None` = follow the system).
     pub lang: Option<String>,
-    /// Mirror of the ffmpeg-static releases `weflow ffmpeg install` downloads from (`None` = GitHub).
-    pub ffmpeg_base_url: Option<String>,
     pub profiles: BTreeMap<String, ProfileConfig>,
     pub extra: BTreeMap<String, Value>,
 }
@@ -92,7 +90,6 @@ impl Default for ConfigStore {
         Self {
             current_profile: "default".to_string(),
             lang: None,
-            ffmpeg_base_url: None,
             profiles,
             extra: BTreeMap::new(),
         }
@@ -627,6 +624,30 @@ mod tests {
 
         let resolved = resolve_account_dir(dir.to_str().unwrap(), "wxid_abc");
         assert_eq!(resolved, account);
+    }
+
+    /// A config file from a version that had `weflow ffmpeg set baseurl` still loads: the key is left out.
+    #[test]
+    fn a_config_with_the_old_ffmpeg_mirror_still_loads() {
+        let dir = temp_dir("weflow-config-ffmpeg");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        fs::write(
+            &path,
+            json!({
+                "current_profile": "default",
+                "lang": "zh",
+                "ffmpeg_base_url": "https://registry.npmmirror.com/-/binary/ffmpeg-static",
+                "profiles": { "default": { "wxid": "wxid_test" } }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let store = ConfigStore::load(&path).unwrap();
+        assert_eq!(store.lang.as_deref(), Some("zh"));
+        assert_eq!(store.get_key(None, "default.wxid"), json!("wxid_test"));
+        assert!(!serde_json::to_string(&store).unwrap().contains("ffmpeg"));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

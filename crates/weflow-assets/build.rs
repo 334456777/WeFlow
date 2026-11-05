@@ -83,7 +83,7 @@ fn collect_assets(
 }
 
 fn include_asset(logical: &str, target: &str) -> bool {
-    if logical.starts_with("wasm/") || logical == "image/README.md" {
+    if logical == "image/README.md" {
         return true;
     }
 
