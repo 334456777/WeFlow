@@ -156,7 +156,7 @@ mod tests {
         b.iter().map(|x| format!("{x:02x}")).collect()
     }
 
-    // Vectors captured from the vendor WASM module (wasm_video_decode.wasm, WxIsaac64).
+    // Vectors captured from the vendor WASM module of WeFlow's desktop app (wasm_video_decode.wasm, WxIsaac64).
     #[test]
     fn matches_vendor_wasm_first_batch() {
         let ks = Isaac64::from_key("2105122989").keystream(32);

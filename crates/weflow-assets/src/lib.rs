@@ -167,7 +167,7 @@ mod tests {
         assert!(manifest
             .entries
             .iter()
-            .any(|entry| entry.path.ends_with("wasm/wasm_video_decode.wasm")));
+            .any(|entry| entry.path.ends_with("image/README.md")));
     }
 
     #[test]
