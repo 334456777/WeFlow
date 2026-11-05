@@ -19,7 +19,7 @@
 
 **部分（4 个）：** `chat:getNewMessages`（采用轮询，而不是响应 WCDB 监听回调），以及 `image:startAutoDownload` / `stopAutoDownload` / `getAutoDownloadStatus`（仅 Windows x64，且只在 `./weflow` 进程运行期间有效）。
 
-这些的细节，以及不改变通道分类的差异（WXGF 需要 `ffmpeg`、导出的媒体目录布局、图片服务事件、仅桌面端的功能），见 [cli-unsupported.md](cli-unsupported.md) 第 3 节。
+这些的细节，以及不改变通道分类的差异（WXGF 图片的转换方式、导出的媒体目录布局、图片服务事件、仅桌面端的功能），见 [cli-unsupported.md](cli-unsupported.md) 第 3 节。
 
 ## 如何复现这些数字
 

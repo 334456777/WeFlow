@@ -82,9 +82,9 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 | 方法 | 命令 |
 |---|---|
 | `GET` | 读取（可能写入可重建的缓存）：`config path/list/get`、`db *`、`chat sessions/messages/search/…`、`analytics *`、`group list/members/…`、`sns timeline/…`、`biz *`、`runtime *`、`cache list` 等 |
-| `POST` | 执行任务或写文件：`export *`、`report * generate`、`key *`、`backup create/restore`、`chat voice-data/image-data/video-data/…`、`sns export/media/…`、`image decrypt`、`insight test/trigger/scan`、`ffmpeg install` 等 |
-| `PUT` | 修改设置：`config set`、`lang`、`ffmpeg set baseurl`、`insight mark-read`，以及带 `set` 的 `analytics excluded` 和 `chat group-hint` |
-| `DELETE` | 删除：`config unset/clear`、`cache clear/clear-account`、`ffmpeg unset baseurl`、`insight clear` |
+| `POST` | 执行任务或写文件：`export *`、`report * generate`、`key *`、`backup create/restore`、`chat voice-data/image-data/video-data/…`、`sns export/media/…`、`image decrypt`、`insight test/trigger/scan` 等 |
+| `PUT` | 修改设置：`config set`、`lang`、`insight mark-read`，以及带 `set` 的 `analytics excluded` 和 `chat group-hint` |
+| `DELETE` | 删除：`config unset/clear`、`cache clear/clear-account`、`insight clear` |
 
 完整的表是 `crates/weflow-cli/src/serve_api.rs` 里的 `METHODS`，有测试保证它与命令树一致。用其他方法请求返回 `405`，并带 `Allow` 头。有三条命令的方法由参数决定：`analytics excluded` 和 `chat group-hint` 不带 `set` 时是 `GET`，带 `set` 时是 `PUT`；`sns block-delete` 在 `action=check` 时是 `GET`，`install` 时是 `PUT`，`uninstall` 时是 `DELETE`。
 

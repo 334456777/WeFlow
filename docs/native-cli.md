@@ -53,7 +53,6 @@ merchant name, and the default AI insight prompt. JSON keys and error codes stay
 ./weflow serve     --insight --image-auto-download
 ./weflow runtime   info | manifest
 ./weflow cache     list | clear | clear-account
-./weflow ffmpeg    install | path | set baseurl <url> | unset baseurl
 ```
 
 The database layer is native Rust and **read-only**: `chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete` and `sns delete` would modify WeChat's databases and are always refused (see [cli-unsupported.md](cli-unsupported.md) for these and everything else that is not supported). Such a refusal has the error code `unsupported` (exit code `4`). Exit code `4` is also used when a database cannot be opened (wrong key, unreadable file), with the error code `native_error`.
@@ -100,7 +99,7 @@ All cache cleanup is under `weflow cache`:
 | `cache clear --analytics` | The analytics aggregate |
 | `cache clear --api` | Avatars saved for message push (`push-avatar-files`), files returned by `serve` (`serve-files`, see [serve-api.md](serve-api.md#files)) and the `api-media` folder |
 | `cache clear --keys` | Fingerprints of keys that worked; the next command checks the key again |
-| `cache clear --runtime` | Runtimes unpacked by other WeFlow versions under `runtime/`; the running version's stays |
+| `cache clear --runtime` | Runtimes unpacked by other WeFlow versions under `runtime/` (the running version's stays), and an ffmpeg earlier versions installed in `ffmpeg/` |
 | `cache clear --web` | WebUI versions downloaded by `weflow web` and `serve` (`cache/web/`, see [serve-api.md](serve-api.md#webui)); `serve` downloads the one it needs again |
 | `cache clear --all` | All of the above |
 | `cache clear-account [--exports-dir <dir>]` | The current account's cached images, voices, stickers, Moments, analytics and key fingerprints; then signs the account out of the profile (`db_path`, `wxid`, `decrypt_key` and the image keys are removed). `--exports-dir` (repeatable) also removes the entries named after the account in that folder |
@@ -166,17 +165,12 @@ Paths: configuration `%APPDATA%\weflow\config.json`, extracted runtime `%APPDATA
 `serve --insight` runs the AI insight engine; each generated insight is printed to stderr (as a JSON line with `--json`).
 `image auto-download` and `serve --image-auto-download` hook WeChat through `img_helper.dll` and only work on Windows x64.
 Voice messages are decoded with a vendored copy of the Skype SILK SDK (`crates/weflow-silk`). WXGF images (an HEVC picture in
-WeChat's container) are decoded in Rust (`heic-rs`, then written as a JPEG); only a picture it cannot read (10-bit, 4:2:2 or
-4:4:4) goes to `ffmpeg`: `FFMPEG_PATH`, else `ffmpeg` on `PATH`, else the copy `ffmpeg install` put in WeFlow's folder
-(`ffmpeg path` shows which one is used). `ffmpeg install` downloads the build the desktop app bundles (npm `ffmpeg-static` 5.3.0, release `b6.1.1` of
-eugeneware/ffmpeg-static, GPL-3.0, with its license file), checks its SHA-256 and unpacks it to `ffmpeg/b6.1.1/` beside the
-config file; it never runs on its own. An intact copy is not downloaded again (`--force` does); a new copy replaces the old
-one only once it is complete and checked, and the folders of other releases under `ffmpeg/` are removed. `ffmpeg set baseurl <url>` makes it download from a mirror of those releases instead of
-GitHub (for example `https://registry.npmmirror.com/-/binary/ffmpeg-static`; it is kept in the config file, `ffmpeg unset
-baseurl` goes back to GitHub), and the files are checked the same way. The Windows build is x64 (Windows on Arm runs it
-emulated). `ffmpeg path` shows whether one is found (see the [README](../README.md#check-ffmpeg-optional-step)): a WXGF image that needs
-ffmpeg and finds none fails with `failure_kind` `ffmpeg_missing` and an error that names the time its message was sent, and
-an export counts these images in `ffmpegMissing` and lists each one's conversation and time in `ffmpegMissingImages`.
+WeChat's container) are decoded in Rust and written as a JPEG, without ffmpeg: `heic-rs` decodes 8- and 10-bit pictures in
+4:2:0, 4:2:2, 4:4:4 and grey (the workspace patches it with a fix for 4:2:2 and 4:4:4 until a release has it), and `rust_h265`
+the range-extension coding tools heic-rs does not implement. A picture neither of them decodes (a first picture that is not
+intra), or damaged data, fails with `failure_kind` `unsupported_image` and an error that gives the time its message was sent and
+whether the data is damaged or in a format not supported yet; an export counts it as missing. An ffmpeg that earlier versions
+installed in `ffmpeg/` beside the config file is no longer used; `cache clear --runtime` removes it.
 
 Exit codes: `0` ok, `1` runtime error, `2` bad arguments, `3` config/key error, `4` database/native library error, `130` interrupted.
 

@@ -19,7 +19,7 @@ The original author's last commit was [ca6c479](https://github.com/334456777/WeF
 
 **Partial (4):** `chat:getNewMessages` (polling instead of reacting to WCDB monitor callbacks), plus `image:startAutoDownload`, `stopAutoDownload`, and `getAutoDownloadStatus` (Windows x64 only, and only while the `./weflow` process is running).
 
-For details, and for differences that do not change a channel's classification (WXGF requiring `ffmpeg`, the exported-media directory layout, image-service events, and desktop-only features), see section 3 of [cli-unsupported.md](cli-unsupported.md).
+For details, and for differences that do not change a channel's classification (how WXGF images are converted, the exported-media directory layout, image-service events, and desktop-only features), see section 3 of [cli-unsupported.md](cli-unsupported.md).
 
 ## Reproducing the numbers
 
