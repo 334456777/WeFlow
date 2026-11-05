@@ -3,17 +3,71 @@
 //! a JPEG the way ffmpeg's `mjpeg` does it (the YCbCr planes kept, limited range scaled to the full range JPEG uses).
 //!
 //! On a real account all 1763 WXGF images decoded to the same samples as ffmpeg. What it does not cover (10-bit,
-//! 4:2:2 / 4:4:4, inter-predicted first pictures) gives `None`, and the caller falls back to ffmpeg.
+//! 4:2:2 / 4:4:4, inter-predicted first pictures) is an [`Unsupported`], and the caller falls back to ffmpeg.
 
 /// JPEG quality: as close to the source as ffmpeg's `-q:v 2` (measured on real WXGF images; the files are about
 /// a quarter larger).
 const JPEG_QUALITY: u8 = 92;
 
+/// Most luma samples a coded picture may have here: `MaxLumaPs` of level 6.2, the highest HEVC level, so no conforming
+/// stream has a larger picture (the largest of the 5,668 WXGF pictures on a real account had 12.4 million). The
+/// decoder allocates the whole coded picture before it reads a slice, and an SPS can declare up to 65535 × 65535
+/// samples, so without this a damaged stream could ask for tens of gigabytes.
+pub const MAX_LUMA_SAMPLES: u64 = 35_651_584;
+
+/// Why the first picture of an HEVC stream is not turned into a JPEG here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Unsupported {
+    /// The stream has no slice of a first picture.
+    NoPicture,
+    /// A parameter set the picture needs is missing.
+    ParameterSets,
+    /// A coded picture larger than [`MAX_LUMA_SAMPLES`].
+    TooLarge,
+    /// Samples deeper than 8 bits (the luma bit depth).
+    BitDepth(u8),
+    /// 4:2:2 chroma.
+    Chroma422,
+    /// 4:4:4 chroma.
+    Chroma444,
+    /// The picture uses a coding tool the decoder does not implement, which it names (for example inter prediction
+    /// in a first picture).
+    Tool(&'static str),
+    /// The stream breaks the HEVC syntax or ends early: damaged data.
+    Damaged,
+    /// The decoded picture could not be written as a JPEG.
+    Jpeg,
+}
+
+impl From<heic_rs::Error> for Unsupported {
+    fn from(e: heic_rs::Error) -> Self {
+        match e {
+            heic_rs::Error::MissingParameterSet(_) => Self::ParameterSets,
+            heic_rs::Error::Unsupported(tool) => Self::Tool(tool),
+            // the codec reports a broken or short bitstream as `Truncated` or `Malformed`; the other kinds belong to
+            // the HEIF container
+            _ => Self::Damaged,
+        }
+    }
+}
+
 /// The first picture of an Annex-B HEVC stream as a JPEG, or `None` when it cannot be decoded here.
 pub fn to_jpeg(hevc: &[u8]) -> Option<Vec<u8>> {
+    decode_to_jpeg(hevc).ok()
+}
+
+/// The first picture of an Annex-B HEVC stream as a JPEG, or why it cannot be decoded here.
+///
+/// # Errors
+///
+/// [`Unsupported`] says why: no picture, a picture this decoder or the JPEG writer does not handle, or damaged data.
+pub fn decode_to_jpeg(hevc: &[u8]) -> Result<Vec<u8>, Unsupported> {
     let (sets, slices) = first_picture(hevc);
     if slices.is_empty() {
-        return None;
+        return Err(Unsupported::NoPicture);
+    }
+    if largest_coded_picture(&sets).is_some_and(|samples| samples > MAX_LUMA_SAMPLES) {
+        return Err(Unsupported::TooLarge);
     }
     let full_range = sets
         .iter()
@@ -21,8 +75,26 @@ pub fn to_jpeg(hevc: &[u8]) -> Option<Vec<u8>> {
         .find(|u| nal_type(u) == 33)
         .and_then(|sps| sps_full_range(sps))
         .unwrap_or(false);
-    let frame = heic_rs::hevc::decode_still(&sets, &slices).ok()?;
+    let frame = heic_rs::hevc::decode_still(&sets, &slices)?;
     encode(&frame, full_range)
+}
+
+/// Luma samples of the largest coded picture an SPS of the first picture of `hevc` declares, or `None` when it has
+/// no SPS that can be read.
+pub fn coded_luma_samples(hevc: &[u8]) -> Option<u64> {
+    largest_coded_picture(&first_picture(hevc).0)
+}
+
+/// Luma samples of the largest coded picture the SPSs among `sets` declare (the decoder picks one by its id; an SPS
+/// that cannot be read is left to the decoder).
+fn largest_coded_picture(sets: &[&[u8]]) -> Option<u64> {
+    sets.iter()
+        .filter(|u| nal_type(u) == 33)
+        .filter_map(|sps| {
+            let size = SpsStart::read(&mut Bits::new(sps))?;
+            Some(u64::from(size.width) * u64::from(size.height))
+        })
+        .max()
 }
 
 fn nal_type(unit: &[u8]) -> u8 {
@@ -140,30 +212,37 @@ impl jpeg_encoder::ImageBuffer for Planes<'_> {
     }
 }
 
-fn encode(frame: &heic_rs::hevc::Frame, full_range: bool) -> Option<Vec<u8>> {
+fn encode(frame: &heic_rs::hevc::Frame, full_range: bool) -> Result<Vec<u8>, Unsupported> {
     use heic_rs::hevc::ChromaFormat;
-    if frame.bit_depth != 8 || frame.validate().is_err() {
-        return None;
+    if frame.bit_depth != 8 {
+        return Err(Unsupported::BitDepth(frame.bit_depth));
+    }
+    if frame.validate().is_err() {
+        return Err(Unsupported::Damaged);
     }
     let mono = match frame.chroma {
         ChromaFormat::Monochrome => true,
         ChromaFormat::Yuv420 => false,
-        _ => return None,
+        ChromaFormat::Yuv422 => return Err(Unsupported::Chroma422),
+        ChromaFormat::Yuv444 => return Err(Unsupported::Chroma444),
     };
+    let side = |v: u32| u16::try_from(v).map_err(|_| Unsupported::Jpeg);
     let planes = Planes {
         frame,
         mono,
         full_range,
-        width: u16::try_from(frame.width).ok()?,
-        height: u16::try_from(frame.height).ok()?,
+        width: side(frame.width)?,
+        height: side(frame.height)?,
     };
     let mut out = Vec::new();
     let mut encoder = jpeg_encoder::Encoder::new(&mut out, JPEG_QUALITY);
     if !mono {
         encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_2_2);
     }
-    encoder.encode_image(planes).ok()?;
-    Some(out)
+    encoder
+        .encode_image(planes)
+        .map_err(|_| Unsupported::Jpeg)?;
+    Ok(out)
 }
 
 /// Reads an RBSP (emulation prevention bytes removed) bit by bit.
@@ -227,17 +306,10 @@ impl Bits {
 /// cannot be parsed. The decoder reads the SPS itself; this only walks to the VUI for the sample range.
 pub fn sps_full_range(sps: &[u8]) -> Option<bool> {
     let mut b = Bits::new(sps);
-    b.skip(16)?; // NAL unit header
-    b.skip(4)?; // sps_video_parameter_set_id
-    let max_sub_layers_minus1 = b.u(3)?;
-    b.skip(1)?;
-    profile_tier_level(&mut b, max_sub_layers_minus1)?;
-    b.ue()?; // sps_seq_parameter_set_id
-    if b.ue()? == 3 {
-        b.skip(1)?; // separate_colour_plane_flag
-    }
-    b.ue()?;
-    b.ue()?; // pic width, height
+    let SpsStart {
+        max_sub_layers_minus1,
+        ..
+    } = SpsStart::read(&mut b)?;
     if b.flag()? {
         for _ in 0..4 {
             b.ue()?; // conformance window
@@ -245,7 +317,8 @@ pub fn sps_full_range(sps: &[u8]) -> Option<bool> {
     }
     b.ue()?;
     b.ue()?; // bit depths
-    let log2_max_poc_lsb = b.ue()? + 4;
+             // log2_max_pic_order_cnt_lsb_minus4 is at most 12; a damaged SPS may hold anything
+    let log2_max_poc_lsb = b.ue()?.checked_add(4)?;
     let first = if b.flag()? { 0 } else { max_sub_layers_minus1 };
     for _ in first..=max_sub_layers_minus1 {
         for _ in 0..3 {
@@ -294,6 +367,37 @@ pub fn sps_full_range(sps: &[u8]) -> Option<bool> {
     }
     b.skip(3)?; // video_format
     b.flag()
+}
+
+/// An SPS (H.265 7.3.2.2) up to the coded picture size.
+struct SpsStart {
+    max_sub_layers_minus1: u32,
+    /// `pic_width_in_luma_samples`.
+    width: u32,
+    /// `pic_height_in_luma_samples`.
+    height: u32,
+}
+
+impl SpsStart {
+    /// Reads an SPS from its NAL unit header to the picture size, leaving `b` right after it.
+    fn read(b: &mut Bits) -> Option<Self> {
+        b.skip(16)?; // NAL unit header
+        b.skip(4)?; // sps_video_parameter_set_id
+        let max_sub_layers_minus1 = b.u(3)?;
+        b.skip(1)?;
+        profile_tier_level(b, max_sub_layers_minus1)?;
+        b.ue()?; // sps_seq_parameter_set_id
+        if b.ue()? == 3 {
+            b.skip(1)?; // separate_colour_plane_flag
+        }
+        let width = b.ue()?;
+        let height = b.ue()?;
+        Some(Self {
+            max_sub_layers_minus1,
+            width,
+            height,
+        })
+    }
 }
 
 fn profile_tier_level(b: &mut Bits, max_sub_layers_minus1: u32) -> Option<()> {
@@ -462,6 +566,126 @@ mod tests {
                 err / 3220.0
             );
         }
+    }
+
+    /// `sample` with its SPS declaring a `width` × `height` coded picture (the rest of the SPS and stream unchanged).
+    fn with_picture_size(sample: &[u8], width: u32, height: u32) -> Vec<u8> {
+        let ue_len = |v: u32| 2 * (u32::BITS - (v + 1).leading_zeros() - 1) as usize + 1;
+        let mut stream = Vec::new();
+        for unit in split_annexb(sample) {
+            let unit = if nal_type(unit) == 33 {
+                let mut b = Bits::new(unit);
+                let old = SpsStart::read(&mut b).unwrap();
+                let rbsp = b.data;
+                let bit = |i: usize| (rbsp[i / 8] >> (7 - i % 8)) & 1 == 1;
+                let after = b.pos;
+                let before = after - ue_len(old.width) - ue_len(old.height);
+                let stop = (0..rbsp.len() * 8).rev().find(|&i| bit(i)).unwrap();
+                let mut bits: Vec<bool> = (0..before).map(bit).collect();
+                for v in [width, height] {
+                    let n = ue_len(v) / 2;
+                    bits.extend(std::iter::repeat_n(false, n));
+                    bits.extend((0..=n).rev().map(|k| (v + 1) >> k & 1 == 1));
+                }
+                bits.extend((after..stop).map(bit));
+                bits.push(true);
+                while !bits.len().is_multiple_of(8) {
+                    bits.push(false);
+                }
+                // back to a NAL unit: emulation prevention bytes where the payload would look like a start code
+                let mut out = Vec::new();
+                let mut zeros = 0;
+                for byte in bits
+                    .chunks(8)
+                    .map(|c| c.iter().fold(0u8, |a, &b| a << 1 | u8::from(b)))
+                {
+                    if zeros >= 2 && byte <= 3 {
+                        out.push(3);
+                        zeros = 0;
+                    }
+                    zeros = if byte == 0 { zeros + 1 } else { 0 };
+                    out.push(byte);
+                }
+                out
+            } else {
+                unit.to_vec()
+            };
+            stream.extend_from_slice(&[0, 0, 0, 1]);
+            stream.extend_from_slice(&unit);
+        }
+        stream
+    }
+
+    #[test]
+    fn a_coded_picture_too_large_for_any_hevc_level_is_refused_before_decoding() {
+        let sps = SpsStart::read(&mut Bits::new(sps(FULL))).unwrap();
+        // the rewriting itself changes nothing when the size stays
+        let same = with_picture_size(FULL, sps.width, sps.height);
+        assert_eq!(split_annexb(&same), split_annexb(FULL));
+        assert!(decode_to_jpeg(&same).is_ok());
+        for (w, h) in [(65535, 65535), (8192, 8192), (1080, 40000)] {
+            let big = with_picture_size(FULL, w, h);
+            assert_eq!(coded_luma_samples(&big), Some(u64::from(w) * u64::from(h)));
+            assert_eq!(decode_to_jpeg(&big), Err(Unsupported::TooLarge), "{w}x{h}");
+        }
+        // within the limit the decoder gets the stream, and finds the slices do not match the size
+        let fits = with_picture_size(FULL, 4096, 4096);
+        assert_ne!(decode_to_jpeg(&fits), Err(Unsupported::TooLarge));
+    }
+
+    /// A WXGF picture is a file on the user's disk, so it may be truncated or damaged: every prefix of a sample, and
+    /// samples with random bytes changed, removed, repeated or inserted, give an error or a picture, never a panic
+    /// (tests build with overflow checks, so an overflow panics here too).
+    #[test]
+    fn damaged_streams_give_an_error_and_never_panic() {
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
+        for sample in [FULL, LIMITED] {
+            for len in 0..=sample.len() {
+                let _ = decode_to_jpeg(&sample[..len]);
+            }
+        }
+        let mut rng = StdRng::seed_from_u64(494);
+        let mut decoded = [0usize; 2];
+        let mut reasons = std::collections::HashSet::new();
+        for i in 0..3000 {
+            let mut data = [FULL, LIMITED][i % 2].to_vec();
+            for _ in 0..rng.random_range(1..=8) {
+                if data.is_empty() {
+                    break;
+                }
+                let at = rng.random_range(0..data.len());
+                let end = (at + rng.random_range(1..32)).min(data.len());
+                match rng.random_range(0..4) {
+                    0 => data[at] ^= 1 << rng.random_range(0..8),
+                    1 => data[at] = rng.random(),
+                    2 => {
+                        data.drain(at..end);
+                    }
+                    _ => {
+                        let piece = data[at..end].to_vec();
+                        data.splice(at..at, piece);
+                    }
+                }
+            }
+            for unit in split_annexb(&data) {
+                let _ = sps_full_range(unit);
+            }
+            let result = decode_to_jpeg(&data);
+            decoded[usize::from(result.is_ok())] += 1;
+            if let Err(e) = result {
+                reasons.insert(std::mem::discriminant(&e));
+            }
+            // and inside a WXGF container, through the candidate streams the image service tries
+            let mut wxgf = b"wxgf".to_vec();
+            wxgf.extend_from_slice(&[0; 16]);
+            wxgf.extend_from_slice(&data);
+            for (_, stream) in crate::image::wxgf_hevc_candidates(&wxgf) {
+                let _ = decode_to_jpeg(&stream);
+            }
+        }
+        // the damage reaches the decoder: some streams still decode, and the others fail for several reasons
+        assert!(decoded.iter().all(|&n| n > 0), "{decoded:?}");
+        assert!(reasons.len() >= 3, "{reasons:?}");
     }
 
     #[test]
