@@ -4,8 +4,9 @@
 //! grey), deeper samples (Main 10, Rext) rounded to 8 bits, limited range scaled to the full range JPEG uses.
 //!
 //! On a real account 1763 WXGF images decoded to the same samples as ffmpeg, and all 5,668 of a whole account
-//! decoded. A picture using a coding tool the decoder does not implement (inter prediction in a first picture, a few
-//! range-extension tools), or damaged data, is an [`Unsupported`], and the image is not converted.
+//! decoded. heic-rs is patched (see the workspace `Cargo.toml`) to decode 4:2:2 and 4:4:4 intra pictures; the
+//! range-extension coding tools it does not implement are left to a second decoder, rust_h265. An inter-predicted
+//! first picture, or damaged data, is an [`Unsupported`], and the image is not converted.
 
 /// JPEG quality: as close to the source as ffmpeg's `-q:v 2` (measured on real WXGF images; the files are about
 /// a quarter larger).
@@ -101,8 +102,8 @@ pub fn decode_to_jpeg(hevc: &[u8]) -> Result<Vec<u8>, Unsupported> {
         Ok(frame) => return encode(&Picture::of_heic(&frame, signal.chroma_bit_depth)?, signal),
         Err(e) => Unsupported::from(e),
     };
-    // A picture heic-rs does not decode (4:4:4, a range-extension tool, or a decoder bug) gets a second try with
-    // rust_h265, which decodes those. Only an IRAP picture: a video decoder would predict any other from mid-grey
+    // A picture heic-rs does not decode (a range-extension coding tool it does not implement, such as RDPCM or
+    // extended precision) gets a second try with rust_h265, which implements them all. Only an IRAP picture: a video decoder would predict any other from mid-grey
     // references it makes up, and give a wrong picture rather than an error.
     if !(16..=23).contains(&nal_type(slices[0])) {
         return Err(still);
@@ -112,7 +113,7 @@ pub fn decode_to_jpeg(hevc: &[u8]) -> Result<Vec<u8>, Unsupported> {
             &Picture::of_rust_h265(&frame, signal.chroma_bit_depth)?,
             signal,
         ),
-        // the second decoder names what it does not support (4:2:2, for one); otherwise the first one's reason
+        // what the second decoder says it does not support; otherwise the first one's reason
         Err(Unsupported::Tool(tool)) => Err(Unsupported::Tool(tool)),
         Err(_) => Err(still),
     }
@@ -840,6 +841,7 @@ mod tests {
         layout!("limited_range", 8, Some((1, 1)), false),
         layout!("yuv420p10_full", 10, Some((1, 1)), true),
         layout!("yuv420p10_limited", 10, Some((1, 1)), false),
+        layout!("yuv422p_full", 8, Some((1, 0)), true),
         layout!("yuv444p_limited", 8, Some((0, 0)), false),
         layout!("gray10_full", 10, None, true),
     ];
@@ -874,9 +876,8 @@ mod tests {
         ]
     }
 
-    /// The planes of the first picture of `hevc`, a row after another, from the decoder `decode_to_jpeg` takes them
-    /// from (heic-rs, else rust_h265), and the luma bit depth.
-    fn decoded_planes(hevc: &[u8]) -> ([Vec<u16>; 3], u32) {
+    /// The planes of `p`, a row after another, and its luma bit depth.
+    fn planes_of(p: &Picture<'_>) -> ([Vec<u16>; 3], u32) {
         fn rows(plane: Samples<'_>, stride: usize, (w, h): (usize, usize)) -> Vec<u16> {
             (0..h)
                 .flat_map(|r| -> Vec<u16> {
@@ -887,26 +888,23 @@ mod tests {
                 })
                 .collect()
         }
-        let of = |p: &Picture<'_>| {
-            let size = (usize::from(p.width), usize::from(p.height));
-            let c = p.layout.chroma_size(size.0, size.1);
-            (
-                [
-                    rows(p.y, p.y_stride, size),
-                    rows(p.cb, p.c_stride, c),
-                    rows(p.cr, p.c_stride, c),
-                ],
-                p.luma_shift + 8,
-            )
-        };
+        let size = (usize::from(p.width), usize::from(p.height));
+        let c = p.layout.chroma_size(size.0, size.1);
+        (
+            [
+                rows(p.y, p.y_stride, size),
+                rows(p.cb, p.c_stride, c),
+                rows(p.cr, p.c_stride, c),
+            ],
+            p.luma_shift + 8,
+        )
+    }
+
+    /// The planes heic-rs gives for the first picture of `hevc`, and its luma bit depth.
+    fn decoded_planes(hevc: &[u8]) -> ([Vec<u16>; 3], u32) {
         let (sets, slices) = first_picture(hevc);
-        match heic_rs::hevc::decode_still(&sets, &slices) {
-            Ok(f) => of(&Picture::of_heic(&f, None).unwrap()),
-            Err(_) => {
-                let f = decode_with_rust_h265(&sets, &slices).unwrap();
-                of(&Picture::of_rust_h265(&f, None).unwrap())
-            }
-        }
+        let f = heic_rs::hevc::decode_still(&sets, &slices).unwrap();
+        planes_of(&Picture::of_heic(&f, None).unwrap())
     }
 
     #[test]
@@ -918,17 +916,20 @@ mod tests {
         }
     }
 
-    /// heic-rs decodes 4:2:2 wrongly (its own tests have only flat pictures) and rust_h265 does not decode it: the
-    /// picture is said to be in a format not supported yet, naming it.
+    /// rust_h265, the second decoder, gives ffmpeg's samples too, for the layouts it decodes (4:2:0 and 4:4:4).
     #[test]
-    fn a_4_2_2_picture_is_not_supported_yet() {
-        let hevc = include_bytes!("../testdata/wxgf/yuv422p_full.hevc");
-        let (sets, slices) = first_picture(hevc);
-        assert!(heic_rs::hevc::decode_still(&sets, &slices).is_err());
-        let Err(Unsupported::Tool(tool)) = decode_to_jpeg(hevc) else {
-            panic!("{:?}", decode_to_jpeg(hevc));
-        };
-        assert!(tool.contains("chroma format"), "{tool}");
+    fn the_second_decoder_decodes_to_ffmpegs_samples() {
+        for l in SAMPLES
+            .iter()
+            .filter(|l| matches!(l.chroma, Some((1, 1) | (0, 0))))
+        {
+            let (sets, slices) = first_picture(l.hevc);
+            let f = decode_with_rust_h265(&sets, &slices)
+                .unwrap_or_else(|e| panic!("{}: {e:?}", l.name));
+            let (planes, bits) = planes_of(&Picture::of_rust_h265(&f, None).unwrap());
+            assert_eq!(bits, l.bits, "{}", l.name);
+            assert_eq!(planes, ffmpeg_planes(l), "{}", l.name);
+        }
     }
 
     /// The JPEG of each shows the source: its luma and, read back from the RGB by the JFIF equations, its chroma at
