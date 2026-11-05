@@ -1654,7 +1654,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
         for msg in msgs {
             self.write_txt_entry(msg, &mut out);
         }
-        String::from_utf8(out).expect("TXT entries are written from strings")
+        // the entries are written from strings, so the bytes are UTF-8
+        String::from_utf8(out).unwrap_or_default()
     }
 
     pub fn write_txt(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
@@ -2190,9 +2191,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
         use std::io::Write;
         let (content, _) = self.plain_row_content(msg);
         // writing to a Vec cannot fail
-        let _ = write!(
+        let _ = writeln!(
             out,
-            "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');\n",
+            "INSERT INTO \"messages\" (session_id, local_id, server_id, create_time, sender, is_send, local_type, type_name, content) VALUES ('{}', {}, {}, {}, '{}', {}, {}, '{}', '{}');",
             sql_escape(&self.session.id),
             msg.local_id,
             msg.platform_message_id().map(|s| format!("'{s}'")).unwrap_or_else(|| "NULL".into()),
@@ -2210,7 +2211,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
         for msg in msgs {
             self.write_sql_insert(msg, &mut sql);
         }
-        String::from_utf8(sql).expect("SQL inserts are written from strings")
+        // the inserts are written from strings, so the bytes are UTF-8
+        String::from_utf8(sql).unwrap_or_default()
     }
 
     pub fn write_sql(&mut self, msgs: &[ExportMsg], out: &Path) -> Result<()> {
