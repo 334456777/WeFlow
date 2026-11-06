@@ -904,7 +904,7 @@ def svg_curves(series, width=720, height=200):
         t = k * tstep
         grid.append(f'<text x="{x(t):.1f}" y="{height - 6}" text-anchor="middle">{label(round(t, 6))} s</text>')
     y_bytes = lambda b: y(b / MIB)
-    lines = [f'<polyline fill="none" stroke="{COLOURS[v]}" stroke-width="1.5" '
+    lines = [f'<polyline fill="none" class={v} stroke-width="1.5" '
              f'points="{" ".join(f"{x(t):.1f},{y_bytes(b):.1f}" for t, b in s)}"><title>{v}</title></polyline>'
              for v, s in series]
     return (f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="工作集随时间变化">'
@@ -977,21 +977,34 @@ def markdown_curves(doc):
     return "\n".join(out)
 
 
+# follows the system's light or dark theme; the light curve colours are COLOURS, which the Mermaid charts also use
+REPORT_CSS = f"""
+:root{{color-scheme:light dark;--fg:#1f2328;--bg:#fff;--muted:#57606a;--border:#d0d7de;--subtle:#f6f8fa;
+--stripe:#fafbfc;--grid:#e5e7eb;--base:{COLOURS["base"]};--head:{COLOURS["head"]}}}
+@media (prefers-color-scheme:dark){{:root{{--fg:#e6edf3;--bg:#0d1117;--muted:#9198a1;--border:#3d444d;
+--subtle:#151b23;--stripe:#10151c;--grid:#262c36;--base:#4493f8;--head:#f85149}}}}
+body{{font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;margin:0 auto;padding:16px;max-width:960px;
+color:var(--fg);background:var(--bg)}}
+h1{{font-size:22px}}h2{{font-size:18px;margin-top:32px;border-bottom:1px solid var(--border)}}h3{{font-size:15px}}
+code{{font:12px ui-monospace,Consolas,monospace;background:var(--subtle);padding:1px 4px;border-radius:4px}}
+.scroll{{overflow-x:auto}}table{{border-collapse:collapse;margin:8px 0 16px}}
+th,td{{border:1px solid var(--border);padding:4px 10px;text-align:right;white-space:nowrap}}
+th:first-child,td:first-child{{text-align:left}}th{{background:var(--subtle)}}
+tbody tr:nth-child(even){{background:var(--stripe)}}
+svg{{width:100%;max-width:720px;font:11px system-ui;fill:var(--muted)}}.grid{{stroke:var(--grid)}}
+polyline.base{{stroke:var(--base)}}polyline.head{{stroke:var(--head)}}i.base{{background:var(--base)}}i.head{{background:var(--head)}}
+.legend span{{margin-right:16px}}.legend i{{display:inline-block;width:12px;height:3px;margin-right:6px;vertical-align:middle}}
+""".strip()
+
+
 def report_html(doc, blocks):
     charts = [f"<h3>{inline_html(title)}</h3>{svg_curves(series)}" for title, series in memory_series(doc)]
-    legend = "".join(f'<span><i style="background:{COLOURS[v]}"></i>{v}</span>' for v in VERSIONS)
+    legend = "".join(f'<span><i class={v}></i>{v}</span>' for v in VERSIONS)
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WeFlow 基准测试</title>
 <style>
-body{{font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;margin:0 auto;padding:16px;max-width:960px;color:#1f2328}}
-h1{{font-size:22px}}h2{{font-size:18px;margin-top:32px;border-bottom:1px solid #d0d7de}}h3{{font-size:15px}}
-code{{font:12px ui-monospace,Consolas,monospace;background:#f6f8fa;padding:1px 4px;border-radius:4px}}
-.scroll{{overflow-x:auto}}table{{border-collapse:collapse;margin:8px 0 16px}}
-th,td{{border:1px solid #d0d7de;padding:4px 10px;text-align:right;white-space:nowrap}}
-th:first-child,td:first-child{{text-align:left}}th{{background:#f6f8fa}}tbody tr:nth-child(even){{background:#fafbfc}}
-svg{{width:100%;max-width:720px;font:11px system-ui;fill:#57606a}}.grid{{stroke:#e5e7eb}}
-.legend span{{margin-right:16px}}.legend i{{display:inline-block;width:12px;height:3px;margin-right:6px;vertical-align:middle}}
+{REPORT_CSS}
 </style></head><body>
 {to_html(blocks)}
 <h2>内存曲线</h2>
