@@ -1104,7 +1104,14 @@ impl NativeAccount {
                     } else {
                         format!("real_sender_id in ({}) or ", wanted.join(","))
                     };
-                    format!(" and ({known}real_sender_id is null or real_sender_id not in (select rowid from Name2Id))")
+                    // senders `Name2Id` does not know are placed by the content later, so they are kept too. Each
+                    // term is one SQLite answers from the sender index (WeChat's `<table>_SENDERID`): the unknown
+                    // ones are the distinct senders of that index, not rows of the table (#576)
+                    format!(
+                        " and ({known}real_sender_id is null or real_sender_id in (select distinct real_sender_id \
+                         from \"{table}\" where real_sender_id not in (select rowid from Name2Id)))",
+                        table = t.table
+                    )
                 }
             };
             keys.extend(self.table_keys(t, idx, (begin, end), &who)?);

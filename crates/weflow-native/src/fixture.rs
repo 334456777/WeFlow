@@ -300,7 +300,9 @@ fn message_table_schema(table: &str) -> String {
          origin_source integer, source text, message_content, compress_content, packed_info_data blob, \
          WCDB_CT_message_content integer default null, WCDB_CT_source integer default null); \
          create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq); \
-         create index \"{table}_TYPE_SEQ\" on \"{table}\"(local_type, sort_seq)"
+         create index \"{table}_TYPE_SEQ\" on \"{table}\"(local_type, sort_seq); \
+         create index \"{table}_SERVERID\" on \"{table}\"(server_id); \
+         create index \"{table}_SENDERID\" on \"{table}\"(real_sender_id)"
     )
 }
 
