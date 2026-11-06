@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use aes::Aes256;
 use anyhow::{anyhow, bail, Result};
-use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, KeyIvInit};
+use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, InnerIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
@@ -58,6 +58,8 @@ pub struct PageCipher {
     mac_key: [u8; 32],
     /// HMAC already keyed with `mac_key`: cloning it per page skips re-hashing the key pads.
     mac: HmacSha512,
+    /// AES with `enc_key` expanded: cloning it per decryption skips the key schedule.
+    aes: Aes256,
 }
 
 impl PageCipher {
@@ -76,6 +78,7 @@ impl PageCipher {
         let mac =
             <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
         Self {
+            aes: <Aes256 as aes::cipher::KeyInit>::new(&enc_key.into()),
             enc_key,
             mac_key,
             mac,
@@ -106,7 +109,7 @@ impl PageCipher {
         };
         let body = &mut out[from..to];
         body.copy_from_slice(&page[from..to]);
-        Aes256CbcDec::new(&self.enc_key.into(), iv.into())
+        Aes256CbcDec::inner_iv_init(self.aes.clone(), iv.into())
             .decrypt_padded::<NoPadding>(body)
             .map_err(|_| anyhow!("AES decrypt failed"))?;
         Ok(())
@@ -154,7 +157,7 @@ impl PageCipher {
         }
         let body = &mut out[start..body_end];
         body.copy_from_slice(&page[start..body_end]);
-        Aes256CbcDec::new(&self.enc_key.into(), iv.into())
+        Aes256CbcDec::inner_iv_init(self.aes.clone(), iv.into())
             .decrypt_padded::<NoPadding>(body)
             .map_err(|_| anyhow!("AES decrypt failed for page {pgno}"))?;
         // Keep the reserve area (IV/HMAC slot) zeroed: SQLite treats it as unused.
@@ -509,7 +512,7 @@ pub mod testutil {
         let mut page = vec![0u8; PAGE_SIZE];
         let mut body = plain[start..body_end].to_vec();
         let len = body.len();
-        Aes256CbcEnc::new(&cipher.enc_key.into(), &iv.into())
+        <Aes256CbcEnc as cbc::cipher::KeyIvInit>::new(&cipher.enc_key.into(), &iv.into())
             .encrypt_padded::<NoPadding>(&mut body, len)
             .expect("a whole page body needs no padding");
         page[start..body_end].copy_from_slice(&body);

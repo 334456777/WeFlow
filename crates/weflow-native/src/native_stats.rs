@@ -1,4 +1,5 @@
-//! Statistics over the message tables, computed with grouped SQL on the decrypted snapshots.
+//! Statistics over the message tables. The ones over every message of a table read the few cells they need through
+//! [`crate::leaf_scan`] and count them here; a table the scan does not read is counted with grouped SQL.
 //!
 //! Dates, hours and weekdays are in local time (SQLite `localtime`), matching what WeFlow's desktop app shows.
 //! Output shapes are the ones the service layer already consumes (`total/sent/received/...`).
@@ -69,8 +70,73 @@ fn local_quarters(
 /// Sender name, type, local hour and count of a group of messages (see [`NativeAccount::sender_groups`]).
 type SenderGroup = (Option<String>, i64, i64, i64);
 
-/// Type, quarter hour (`create_time / 900`) and sender side (`real_sender_id in (…)`: 1, 0 or NULL) of a message.
-type QuarterKey = (i64, i64, Option<i64>);
+/// Type, quarter hour (`create_time / 900`) and whether the owner sent it, of a message.
+type QuarterKey = (i64, i64, bool);
+
+/// The cells of a message the statistics read.
+#[derive(Clone, Copy)]
+struct Msg {
+    /// `coalesce(nullif(local_type, 0), 1)`.
+    kind: i64,
+    time: i64,
+    /// `real_sender_id`.
+    sender: Option<i64>,
+}
+
+/// Most tables a statistic reads at once.
+const TABLE_THREADS: usize = 8;
+
+/// `f` of each of `items`, run on up to [`TABLE_THREADS`] threads (each table's leaf scan spends most of its time on
+/// HMACs, and most conversations are too small to share theirs out), the results in the order of `items`; the
+/// first error in that order.
+fn each_table<I: Sync, T: Send>(items: &[I], f: impl Fn(&I) -> Result<T> + Sync) -> Result<Vec<T>> {
+    let cpus = std::thread::available_parallelism().map_or(1, usize::from);
+    let threads = items.len().min(TABLE_THREADS).min(cpus);
+    if threads <= 1 {
+        return items.iter().map(&f).collect();
+    }
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let (f, next) = (&f, &next);
+    let mut done: Vec<(usize, Result<T>)> = std::thread::scope(|s| {
+        let running: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(move || {
+                    let mut out = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(item) = items.get(i) else { break };
+                        out.push((i, f(item)));
+                    }
+                    out
+                })
+            })
+            .collect();
+        running
+            .into_iter()
+            .flat_map(|h| {
+                h.join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect()
+    });
+    done.sort_by_key(|(i, _)| *i);
+    done.into_iter().map(|(_, r)| r).collect()
+}
+
+/// The message tables of each of `session_ids`, and every one of them in that order.
+fn tables_of(acct: &NativeAccount, session_ids: &[String]) -> Result<Vec<Vec<MsgTable>>> {
+    session_ids
+        .iter()
+        .map(|sid| acct.message_tables(sid))
+        .collect()
+}
+
+/// Sender row ids in the list [`NativeAccount::my_ids`] gives.
+fn id_set(list: &str) -> std::collections::HashSet<i64> {
+    list.split(',')
+        .filter_map(|v| v.trim().parse().ok())
+        .collect()
+}
 
 /// How many messages, and the earliest and latest `create_time` of them.
 struct Tally {
@@ -111,6 +177,56 @@ fn local(expr: &str) -> String {
 }
 
 impl NativeAccount {
+    /// Every message of `t` with a positive time inside `begin..=end` (0: unbounded), read through the leaf scan:
+    /// each thread of the scan counts its messages into an accumulator of its own (`start`, `each`), and `finish`
+    /// gets them all with a connection to the database. `None` when the scan does not read the table.
+    fn scan_messages<A: Send, T>(
+        &self,
+        t: &MsgTable,
+        (begin, end): (i64, i64),
+        start: impl Fn() -> A + Sync,
+        each: impl Fn(&mut A, Msg) + Sync,
+        finish: impl Fn(&rusqlite::Connection, &[A]) -> Result<T>,
+    ) -> Result<Option<T>> {
+        let parts = self.read_db(
+            &t.db,
+            |conn| {
+                crate::leaf_scan::target(
+                    conn,
+                    &t.table,
+                    &["local_type", "create_time", "real_sender_id"],
+                )
+            },
+            |file, target| {
+                let Some((root, columns)) = target else {
+                    return Ok(None);
+                };
+                crate::leaf_scan::int_columns(file, root, &columns, &start, |acc, cells| {
+                    let Some(time) = cells[1] else { return };
+                    if time <= 0 || (begin > 0 && time < begin) || (end > 0 && time > end) {
+                        return;
+                    }
+                    let kind = match cells[0] {
+                        None | Some(0) => 1,
+                        Some(kind) => kind,
+                    };
+                    each(
+                        acc,
+                        Msg {
+                            kind,
+                            time,
+                            sender: cells[2],
+                        },
+                    );
+                })
+            },
+        )?;
+        match parts {
+            Some(parts) => self.with_db(&t.db, |conn| finish(conn, &parts)).map(Some),
+            None => Ok(None),
+        }
+    }
+
     /// Ids of the account owner in a shard's `Name2Id` (as a SQL list literal body).
     pub(crate) fn my_ids(&self, db: &Path) -> Result<String> {
         let rows = self.query(db, "select rowid as id, user_name from Name2Id", &[])?;
@@ -133,24 +249,57 @@ impl NativeAccount {
         let range = range_sql(begin, end);
         let mut total = 0i64;
         let mut sessions = Map::new();
+        let tables = tables_of(self, session_ids)?;
         let mut mine: BTreeMap<PathBuf, String> = BTreeMap::new();
-        for sid in session_ids {
+        for t in tables.iter().flatten() {
+            if !mine.contains_key(&t.db) {
+                mine.insert(t.db.clone(), self.my_ids(&t.db)?);
+            }
+        }
+        let every: Vec<&MsgTable> = tables.iter().flatten().collect();
+        let counted = each_table(&every, |t| -> Result<(i64, i64, i64)> {
+            let t = *t;
+            let ids = id_set(&mine[&t.db]);
+            let scanned = self.scan_messages(
+                t,
+                (begin, end),
+                || (0i64, 0i64, 0i64),
+                |(n, s, mx), m| {
+                    *n += 1;
+                    *s += i64::from(m.sender.is_some_and(|id| ids.contains(&id)));
+                    *mx = (*mx).max(m.time);
+                },
+                |_, parts| {
+                    Ok(parts
+                        .iter()
+                        .fold((0, 0, 0), |(n, s, mx), p| (n + p.0, s + p.1, mx.max(p.2))))
+                },
+            )?;
+            let (n, s, mx) = match scanned {
+                Some(counts) => counts,
+                None => {
+                    let sql = format!(
+                            "select count(*) as n, sum(real_sender_id in ({mine})) as s, max(create_time) as mx \
+                             from \"{table}\" where create_time > 0{range}",
+                            mine = mine[&t.db],
+                            table = t.table,
+                        );
+                    self.query(&t.db, &sql, &[])?
+                        .iter()
+                        .fold((0, 0, 0), |(n, s, mx), r| {
+                            (n + int(r, "n"), s + int(r, "s"), mx.max(int(r, "mx")))
+                        })
+                }
+            };
+            Ok((n, s, mx))
+        })?;
+        let mut counted = counted.into_iter();
+        for (sid, ts) in session_ids.iter().zip(&tables) {
             let (mut s_total, mut s_sent, mut s_last) = (0i64, 0i64, 0i64);
-            for t in self.message_tables(sid)? {
-                if !mine.contains_key(&t.db) {
-                    mine.insert(t.db.clone(), self.my_ids(&t.db)?);
-                }
-                let sql = format!(
-                    "select count(*) as n, sum(real_sender_id in ({mine})) as s, max(create_time) as mx \
-                     from \"{table}\" where create_time > 0{range}",
-                    mine = mine[&t.db],
-                    table = t.table,
-                );
-                for r in self.query(&t.db, &sql, &[])? {
-                    s_total += int(&r, "n");
-                    s_sent += int(&r, "s");
-                    s_last = s_last.max(int(&r, "mx"));
-                }
+            for (n, s, mx) in counted.by_ref().take(ts.len()) {
+                s_total += n;
+                s_sent += s;
+                s_last = s_last.max(mx);
             }
             total += s_total;
             if s_total > 0 {
@@ -188,17 +337,23 @@ impl NativeAccount {
         let mut daily: BTreeMap<String, i64> = BTreeMap::new();
         let mut monthly: BTreeMap<String, i64> = BTreeMap::new();
         let mut sessions = Map::new();
-        let range = range_sql(begin, end);
+        let tables = tables_of(self, session_ids)?;
         // the owner's sender ids, read once a database rather than once a table
         let mut mine_of: BTreeMap<PathBuf, String> = BTreeMap::new();
-        for sid in session_ids {
+        for t in tables.iter().flatten() {
+            if !mine_of.contains_key(&t.db) {
+                mine_of.insert(t.db.clone(), self.my_ids(&t.db)?);
+            }
+        }
+        let every: Vec<&MsgTable> = tables.iter().flatten().collect();
+        let grouped = each_table(&every, |t| {
+            self.time_groups(t, &mine_of[&t.db], (begin, end))
+        })?;
+        let mut grouped = grouped.into_iter();
+        for (sid, ts) in session_ids.iter().zip(&tables) {
             let (mut s_total, mut s_sent, mut s_last) = (0i64, 0i64, 0i64);
             let mut s_months: BTreeMap<i64, i64> = BTreeMap::new();
-            for t in self.message_tables(sid)? {
-                if !mine_of.contains_key(&t.db) {
-                    mine_of.insert(t.db.clone(), self.my_ids(&t.db)?);
-                }
-                let groups = self.time_groups(&t, &mine_of[&t.db], &range)?;
+            for groups in grouped.by_ref().take(ts.len()) {
                 for g in groups {
                     let n = g.count;
                     total += n;
@@ -250,78 +405,71 @@ impl NativeAccount {
         }))
     }
 
-    /// One table's messages grouped by type, local hour, weekday and day, and sender side.
+    /// One table's messages grouped by type, local hour, weekday and day, and whether the owner sent them.
     ///
-    /// The rows are read in their order and grouped here, by type, quarter hour (`create_time / 900`) and side: a
-    /// `GROUP BY` would sort every row first. The local hour, weekday and day of each quarter hour then come from
-    /// SQLite's `localtime` in one more query, so they are what a per-message `strftime` gives: every UTC offset in
-    /// use is a whole number of quarter hours and changes on a quarter hour, so all of a quarter hour has one local
-    /// hour, weekday and day. A table with a non-integer type, time or side is grouped by SQL instead.
-    fn time_groups(&self, t: &MsgTable, mine: &str, range: &str) -> Result<Vec<TimeGroup>> {
-        let sql = format!(
-            "select coalesce(nullif(local_type, 0), 1), create_time / 900, \
-             (real_sender_id in ({mine})), create_time from \"{table}\" where create_time > 0{range}",
-            table = t.table,
-        );
-        // collected afresh on every attempt: `with_db` runs the closure again on a fresh snapshot when WeChat
-        // changed the file under it
-        let streamed = self.with_db(&t.db, |conn| {
-            let mut stmt = conn
-                .prepare(&sql)
-                .with_context(|| format!("bad query: {sql}"))?;
-            let mut rows = stmt.query([])?;
-            let mut groups: std::collections::HashMap<QuarterKey, Tally> =
-                std::collections::HashMap::new();
-            while let Some(r) = rows.next()? {
-                use rusqlite::types::ValueRef::{Integer, Null};
-                let (Integer(kind), Integer(q), Integer(time)) =
-                    (r.get_ref(0)?, r.get_ref(1)?, r.get_ref(3)?)
-                else {
-                    return Ok(None);
-                };
-                let side = match r.get_ref(2)? {
-                    Integer(i) => Some(i),
-                    Null => None,
-                    _ => return Ok(None),
-                };
-                let g = groups.entry((kind, q, side)).or_insert(Tally {
+    /// The messages are read through the leaf scan and grouped here by type, quarter hour (`create_time / 900`) and
+    /// side. The local hour, weekday and day of each quarter hour then come from SQLite's `localtime` in one query, so
+    /// they are what a per-message `strftime` gives: every UTC offset in use is a whole number of quarter hours and
+    /// changes on a quarter hour, so all of a quarter hour has one local hour, weekday and day. A table the scan does
+    /// not read is grouped by SQL.
+    fn time_groups(&self, t: &MsgTable, mine: &str, range: (i64, i64)) -> Result<Vec<TimeGroup>> {
+        let ids = id_set(mine);
+        let scanned = self.scan_messages(
+            t,
+            range,
+            std::collections::HashMap::<QuarterKey, Tally>::new,
+            |groups, m| {
+                let side = m.sender.is_some_and(|id| ids.contains(&id));
+                let g = groups.entry((m.kind, m.time / 900, side)).or_insert(Tally {
                     count: 0,
-                    first: time,
-                    last: time,
+                    first: m.time,
+                    last: m.time,
                 });
                 g.count += 1;
-                g.first = g.first.min(time);
-                g.last = g.last.max(time);
-            }
-            let quarters: BTreeSet<i64> = groups.keys().map(|k| k.1).collect();
-            let local = local_quarters(conn, &quarters)?;
-            Ok(Some(
-                groups
+                g.first = g.first.min(m.time);
+                g.last = g.last.max(m.time);
+            },
+            |conn, parts| {
+                let mut groups: std::collections::HashMap<QuarterKey, Tally> =
+                    std::collections::HashMap::new();
+                for (&key, tally) in parts.iter().flatten() {
+                    let g = groups.entry(key).or_insert(Tally {
+                        count: 0,
+                        first: tally.first,
+                        last: tally.last,
+                    });
+                    g.count += tally.count;
+                    g.first = g.first.min(tally.first);
+                    g.last = g.last.max(tally.last);
+                }
+                let quarters: BTreeSet<i64> = groups.keys().map(|k| k.1).collect();
+                let local = local_quarters(conn, &quarters)?;
+                Ok(groups
                     .into_iter()
-                    .map(|((kind, q, side), Tally { count, first, last })| {
+                    .map(|((kind, q, mine), Tally { count, first, last })| {
                         let (hour, weekday, day) = local.get(&q).cloned().unwrap_or_default();
                         TimeGroup {
                             kind,
                             hour,
                             weekday,
                             day,
-                            mine: side == Some(1),
+                            mine,
                             count,
                             first,
                             last,
                         }
                     })
-                    .collect(),
-            ))
-        })?;
-        match streamed {
+                    .collect())
+            },
+        )?;
+        match scanned {
             Some(groups) => Ok(groups),
-            None => self.time_groups_by_sql(t, mine, range),
+            None => self.time_groups_by_sql(t, mine, &range_sql(range.0, range.1)),
         }
     }
 
-    /// [`time_groups`](Self::time_groups) for a table whose columns are not all integers: grouped by SQL, so that
-    /// SQLite's comparisons and arithmetic apply to them as they always did.
+    /// [`time_groups`](Self::time_groups) for a table the leaf scan does not read: grouped by SQL, so that SQLite's
+    /// comparisons and arithmetic apply to its cells as they always did.
     fn time_groups_by_sql(&self, t: &MsgTable, mine: &str, range: &str) -> Result<Vec<TimeGroup>> {
         let local_q = |expr: &str| local(expr).replace("create_time", "q");
         let sql = format!(
@@ -398,19 +546,43 @@ impl NativeAccount {
 
     /// Calendar years (local time, descending) in which any of the sessions has messages.
     pub fn available_years(&self, session_ids: &[String]) -> Result<Value> {
-        let mut years: BTreeSet<i64> = BTreeSet::new();
-        for sid in session_ids {
-            for t in self.message_tables(sid)? {
-                let sql = format!(
-                    "select distinct cast({} as integer) as y from \"{}\" where create_time > 0",
-                    local("%Y"),
-                    t.table
-                );
-                for r in self.query(&t.db, &sql, &[])? {
-                    years.insert(int(&r, "y"));
+        let tables = tables_of(self, session_ids)?;
+        let every: Vec<&MsgTable> = tables.iter().flatten().collect();
+        let found = each_table(&every, |t| -> Result<Vec<i64>> {
+            let t = *t;
+            // the local year of each quarter of an hour that has a message (see `time_groups`)
+            let scanned = self.scan_messages(
+                t,
+                (0, 0),
+                BTreeSet::<i64>::new,
+                |quarters, m| {
+                    quarters.insert(m.time / 900);
+                },
+                |conn, parts| {
+                    let quarters: BTreeSet<i64> = parts.iter().flatten().copied().collect();
+                    Ok(local_quarters(conn, &quarters)?
+                        .into_values()
+                        .filter_map(|(_, _, day)| day.get(..4)?.parse::<i64>().ok())
+                        .collect::<Vec<_>>())
+                },
+            )?;
+            match scanned {
+                Some(found) => Ok(found),
+                None => {
+                    let sql = format!(
+                            "select distinct cast({} as integer) as y from \"{}\" where create_time > 0",
+                            local("%Y"),
+                            t.table
+                        );
+                    Ok(self
+                        .query(&t.db, &sql, &[])?
+                        .iter()
+                        .map(|r| int(r, "y"))
+                        .collect())
                 }
             }
-        }
+        })?;
+        let years: BTreeSet<i64> = found.into_iter().flatten().collect();
         Ok(Value::Array(
             years.into_iter().rev().map(|y| json!(y)).collect(),
         ))
@@ -494,60 +666,49 @@ impl NativeAccount {
     }
 
     /// One table's messages counted by sender name (`None`: a sender `Name2Id` does not name), type and local hour,
-    /// in one pass: read in their order and grouped here, the hours worked out once a quarter hour (see
-    /// [`time_groups`](Self::time_groups)). A table with a non-integer sender, type or time is grouped by SQL instead.
-    fn sender_groups(&self, t: &MsgTable, range: &str) -> Result<Vec<SenderGroup>> {
-        let sql = format!(
-            "select real_sender_id, coalesce(nullif(local_type, 0), 1), create_time / 900 \
-             from \"{table}\" where create_time > 0{range}",
-            table = t.table,
-        );
-        let streamed = self.with_db(&t.db, |conn| {
-            let mut stmt = conn
-                .prepare(&sql)
-                .with_context(|| format!("bad query: {sql}"))?;
-            let mut rows = stmt.query([])?;
-            let mut counts: std::collections::HashMap<(Option<i64>, i64, i64), i64> =
-                std::collections::HashMap::new();
-            while let Some(r) = rows.next()? {
-                use rusqlite::types::ValueRef::{Integer, Null};
-                let sender = match r.get_ref(0)? {
-                    Integer(i) => Some(i),
-                    Null => None,
-                    _ => return Ok(None),
-                };
-                let (Integer(kind), Integer(q)) = (r.get_ref(1)?, r.get_ref(2)?) else {
-                    return Ok(None);
-                };
-                *counts.entry((sender, kind, q)).or_default() += 1;
-            }
-            // `user_name` is the primary key: a sender row id names one sender
-            let mut names: std::collections::HashMap<i64, String> =
-                std::collections::HashMap::new();
-            let mut stmt = conn.prepare("select rowid, user_name from Name2Id")?;
-            let mut rows = stmt.query([])?;
-            while let Some(r) = rows.next()? {
-                if let (rusqlite::types::ValueRef::Integer(id), Some(name)) =
-                    (r.get_ref(0)?, r.get_ref(1)?.as_str_or_null()?)
-                {
-                    names.insert(id, name.to_string());
+    /// in one pass: read through the leaf scan and grouped here, the hours worked out once a quarter hour (see
+    /// [`time_groups`](Self::time_groups)). A table the scan does not read is grouped by SQL.
+    fn sender_groups(&self, t: &MsgTable, range: (i64, i64)) -> Result<Vec<SenderGroup>> {
+        let scanned = self.scan_messages(
+            t,
+            range,
+            std::collections::HashMap::<(Option<i64>, i64, i64), i64>::new,
+            |counts, m| {
+                *counts.entry((m.sender, m.kind, m.time / 900)).or_default() += 1;
+            },
+            |conn, parts| {
+                let mut counts: std::collections::HashMap<(Option<i64>, i64, i64), i64> =
+                    std::collections::HashMap::new();
+                for (&key, &n) in parts.iter().flatten() {
+                    *counts.entry(key).or_default() += n;
                 }
-            }
-            let quarters: BTreeSet<i64> = counts.keys().map(|k| k.2).collect();
-            let local = local_quarters(conn, &quarters)?;
-            Ok(Some(
-                counts
+                // `user_name` is the primary key: a sender row id names one sender
+                let mut names: std::collections::HashMap<i64, String> =
+                    std::collections::HashMap::new();
+                let mut stmt = conn.prepare("select rowid, user_name from Name2Id")?;
+                let mut rows = stmt.query([])?;
+                while let Some(r) = rows.next()? {
+                    if let (rusqlite::types::ValueRef::Integer(id), Some(name)) =
+                        (r.get_ref(0)?, r.get_ref(1)?.as_str_or_null()?)
+                    {
+                        names.insert(id, name.to_string());
+                    }
+                }
+                let quarters: BTreeSet<i64> = counts.keys().map(|k| k.2).collect();
+                let local = local_quarters(conn, &quarters)?;
+                Ok(counts
                     .into_iter()
                     .map(|((sender, kind, q), n)| {
                         let name = sender.and_then(|id| names.get(&id).cloned());
                         (name, kind, local.get(&q).map_or(0, |l| l.0), n)
                     })
-                    .collect(),
-            ))
-        })?;
-        if let Some(groups) = streamed {
+                    .collect())
+            },
+        )?;
+        if let Some(groups) = scanned {
             return Ok(groups);
         }
+        let range = range_sql(range.0, range.1);
         let sql = format!(
             "select n.user_name as u, coalesce(nullif(m.local_type, 0), 1) as t, {h} as h, count(*) as n \
              from \"{table}\" m left join Name2Id n on n.rowid = m.real_sender_id \
@@ -573,12 +734,11 @@ impl NativeAccount {
     /// Group statistics: per-sender counts (`sessions.<room>.senders` keyed by synthetic ids resolved through
     /// `idMap`, because sender row ids differ between shards), hour histogram and type counts.
     pub fn group_stats(&self, chatroom_id: &str, begin: i64, end: i64) -> Result<Value> {
-        let range = range_sql(begin, end);
         let mut totals: BTreeMap<String, i64> = BTreeMap::new();
         let mut hourly: BTreeMap<i64, i64> = BTreeMap::new();
         let mut types: BTreeMap<i64, i64> = BTreeMap::new();
         for t in self.message_tables(chatroom_id)? {
-            for (name, kind, hour, n) in self.sender_groups(&t, &range)? {
+            for (name, kind, hour, n) in self.sender_groups(&t, (begin, end))? {
                 if let Some(name) = name {
                     *totals.entry(name).or_default() += n;
                 }

@@ -22,6 +22,67 @@ const BLOCK: usize = 16;
 const LEAF_TABLE: u8 = 13;
 const INTERIOR_TABLE: u8 = 5;
 
+#[cfg(test)]
+thread_local! {
+    /// Set by a test to read every table through SQL, as for a table the scan does not read.
+    pub(crate) static SQL_ONLY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The root page of table `table` and the places of its `columns` in a record, for [`int_columns`]; `None` for a
+/// table it does not read: one without a rowid, or without one of the columns.
+pub(crate) fn target(
+    conn: &rusqlite::Connection,
+    table: &str,
+    columns: &[&str],
+) -> Result<Option<(u32, Vec<usize>)>> {
+    #[cfg(test)]
+    if SQL_ONLY.with(std::cell::Cell::get) {
+        return Ok(None);
+    }
+    let one =
+        |sql: &str, params: &[&dyn rusqlite::ToSql]| -> Result<Option<(i64, Option<String>)>> {
+            let mut stmt = conn.prepare(sql)?;
+            let mut rows = stmt.query(params)?;
+            Ok(match rows.next()? {
+                Some(r) => Some((r.get(0)?, r.get(1)?)),
+                None => None,
+            })
+        };
+    let Some((root, sql)) = one(
+        "select rootpage, sql from sqlite_master where type = 'table' and name = ?1",
+        &[&table],
+    )?
+    else {
+        return Ok(None);
+    };
+    let without_rowid = sql.is_some_and(|sql| {
+        sql.to_ascii_lowercase()
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|w| w == ["without", "rowid"])
+    });
+    let Ok(root) = u32::try_from(root) else {
+        return Ok(None);
+    };
+    if without_rowid {
+        return Ok(None);
+    }
+    let mut places = Vec::with_capacity(columns.len());
+    for column in columns {
+        let place = one(
+            "select cid, null from pragma_table_info(?1) where name = ?2",
+            &[&table, column],
+        )?;
+        match place.and_then(|(cid, _)| usize::try_from(cid).ok()) {
+            Some(cid) => places.push(cid),
+            None => return Ok(None),
+        }
+    }
+    Ok(Some((root, places)))
+}
+
 /// Whether a part of a scan read every row of its pages, or stopped at something it does not read (see the module
 /// docs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

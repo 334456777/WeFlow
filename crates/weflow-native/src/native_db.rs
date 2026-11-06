@@ -287,15 +287,18 @@ impl NativeAccount {
         path: &Path,
         mut f: impl FnMut(&Connection) -> Result<T>,
     ) -> Result<T> {
-        self.with_db_file(path, |c, _| f(c))
+        self.read_db(path, |c| f(c), |_, v| Ok(v))
     }
 
-    /// [`with_db`](Self::with_db) that also hands `f` the snapshot's file, for reads that walk its pages themselves
-    /// (see [`crate::leaf_scan`]).
-    pub(crate) fn with_db_file<T>(
+    /// [`with_db`](Self::with_db) in two steps, for reads that walk the file's pages themselves (see
+    /// [`crate::leaf_scan`]): `prepare` runs on the snapshot's connection, then `read` on its file with what `prepare`
+    /// gave, the connection left free for other queries meanwhile. Both run again on a fresh snapshot when WeChat
+    /// changed the file under them.
+    pub(crate) fn read_db<P, T>(
         &self,
         path: &Path,
-        mut f: impl FnMut(&Connection, &CipherFile) -> Result<T>,
+        mut prepare: impl FnMut(&Connection) -> Result<P>,
+        mut read: impl FnMut(&CipherFile, P) -> Result<T>,
     ) -> Result<T> {
         let mut attempt = 0;
         loop {
@@ -312,10 +315,11 @@ impl NativeAccount {
                             .pragma_update(None, "cache_size", -PAGE_CACHE_KIB)?;
                         guard.sized = true;
                     }
-                    f(&guard.conn, &file)
+                    prepare(&guard.conn)
                 };
                 run()
             };
+            let result = result.and_then(|prepared| read(&file, prepared));
             match result {
                 Err(e) if file.is_stale() || file.changed_since_open() => {
                     self.forget(path, &file);

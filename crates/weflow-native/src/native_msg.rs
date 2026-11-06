@@ -104,62 +104,6 @@ pub fn session_usernames(acct: &NativeAccount) -> Result<Vec<String>> {
         .collect())
 }
 
-/// The root page of table `table` and the place of its column `column` in a record, for
-/// [`leaf_scan`](crate::leaf_scan); `None` for a table it does not read (one without a rowid, or without the column).
-fn scan_target(
-    conn: &rusqlite::Connection,
-    table: &str,
-    column: &str,
-) -> Result<Option<(u32, usize)>> {
-    let found = conn
-        .query_row(
-            "select rootpage, sql from sqlite_master where type = 'table' and name = ?1",
-            [table],
-            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?)),
-        )
-        .map(Some)
-        .or_else(|e| {
-            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
-                Ok(None)
-            } else {
-                Err(e)
-            }
-        })?;
-    let Some((root, sql)) = found else {
-        return Ok(None);
-    };
-    let without_rowid = sql.is_some_and(|sql| {
-        sql.to_ascii_lowercase()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .windows(2)
-            .any(|w| w == ["without", "rowid"])
-    });
-    let place: Option<i64> = conn
-        .query_row(
-            "select cid from pragma_table_info(?1) where name = ?2",
-            [table, column],
-            |r| r.get(0),
-        )
-        .map(Some)
-        .or_else(|e| {
-            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
-                Ok(None)
-            } else {
-                Err(e)
-            }
-        })?;
-    Ok(
-        match (
-            u32::try_from(root),
-            place.and_then(|c| usize::try_from(c).ok()),
-        ) {
-            (Ok(root), Some(place)) if !without_rowid => Some((root, place)),
-            _ => None,
-        },
-    )
-}
-
 fn int(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
@@ -861,37 +805,42 @@ impl NativeAccount {
     /// quarter of an hour, and each quarter's local date taken from SQLite's `localtime` (every time zone today is a
     /// whole number of quarters away from UTC and moves on a quarter). `None` when the scan does not read the table.
     fn date_counts_by_scan(&self, t: &MsgTable) -> Result<Option<Vec<(String, i64)>>> {
-        let table = &t.table;
-        self.with_db_file(&t.db, |conn, file| {
-            let Some((root, column)) = scan_target(conn, table, "create_time")? else {
-                return Ok(None);
-            };
-            let parts = crate::leaf_scan::int_columns(
-                file,
-                root,
-                &[column],
-                HashMap::<i64, i64>::new,
-                |quarters, cells| {
-                    if let Some(time) = cells[0].filter(|&time| time > 0) {
-                        *quarters.entry(time / QUARTER).or_default() += 1;
-                    }
-                },
-            )?;
-            let Some(parts) = parts else {
-                return Ok(None);
-            };
-            let mut quarters: HashMap<i64, i64> = HashMap::new();
-            for part in parts {
-                for (q, n) in part {
-                    *quarters.entry(q).or_default() += n;
-                }
+        let parts = self.read_db(
+            &t.db,
+            |conn| crate::leaf_scan::target(conn, &t.table, &["create_time"]),
+            |file, target| {
+                let Some((root, columns)) = target else {
+                    return Ok(None);
+                };
+                crate::leaf_scan::int_columns(
+                    file,
+                    root,
+                    &columns,
+                    HashMap::<i64, i64>::new,
+                    |quarters, cells| {
+                        if let Some(time) = cells[0].filter(|&time| time > 0) {
+                            *quarters.entry(time / QUARTER).or_default() += 1;
+                        }
+                    },
+                )
+            },
+        )?;
+        let Some(parts) = parts else {
+            return Ok(None);
+        };
+        let mut quarters: HashMap<i64, i64> = HashMap::new();
+        for part in parts {
+            for (q, n) in part {
+                *quarters.entry(q).or_default() += n;
             }
-            let list = serde_json::to_string(&quarters.keys().collect::<Vec<_>>())?;
-            let sql = format!(
-                "select value, date(value * {QUARTER}, 'unixepoch', 'localtime') from json_each(?1)"
-            );
+        }
+        let list = serde_json::to_string(&quarters.keys().collect::<Vec<_>>())?;
+        let sql = format!(
+            "select value, date(value * {QUARTER}, 'unixepoch', 'localtime') from json_each(?1)"
+        );
+        self.with_db(&t.db, |conn| {
             let mut stmt = conn.prepare(&sql)?;
-            let mut rows = stmt.query([list])?;
+            let mut rows = stmt.query([&list])?;
             let mut days: HashMap<String, i64> = HashMap::new();
             while let Some(r) = rows.next()? {
                 if let (rusqlite::types::ValueRef::Integer(q), Some(d)) =
@@ -2289,6 +2238,37 @@ mod tests {
             .expect("the scan reads the table");
         assert!(scanned.len() > 300, "{} days", scanned.len());
         assert_eq!(sorted(scanned), sorted(acct.date_counts_by_sql(t).unwrap()));
+    }
+
+    #[test]
+    fn statistics_from_the_leaf_scan_are_those_of_sql() {
+        // senders of the owner, of others, unknown and none; types null, zero and others
+        let fill = format!(
+            "{MANY_ROWS}
+             insert into Name2Id(rowid, user_name) values (1, 'wxid_me'), (2, 'wxid_bob'), (3, 'wxid_carol');
+             update \"t\" set real_sender_id = case when local_id % 11 = 0 then null else local_id % 5 end,
+                 local_type = case when local_id % 13 = 0 then null when local_id % 17 = 0 then 0
+                                   else 1 + local_id % 4 end;"
+        );
+        let acct = scanned_account("stats", &fill, |_, _| {}).with_my_wxid(Some("wxid_me".into()));
+        let ids = vec!["wxid_bob".to_string()];
+        let read = |acct: &NativeAccount| {
+            let (b, e) = (1_705_000_000, 1_720_000_000);
+            (
+                acct.aggregate_stats(&ids, 0, 0).unwrap(),
+                acct.annual_report_stats(&ids, b, e).unwrap(),
+                acct.session_totals(&ids, b, e).unwrap(),
+                acct.available_years(&ids).unwrap(),
+                acct.group_stats("wxid_bob", 0, e).unwrap(),
+            )
+        };
+        let scanned = read(&acct);
+        assert!(scanned.0["total"].as_i64().unwrap() > 5000);
+        assert!(scanned.0["sent"].as_i64().unwrap() > 0);
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(true));
+        let by_sql = read(&acct);
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(false));
+        assert_eq!(scanned, by_sql);
     }
 
     #[test]
