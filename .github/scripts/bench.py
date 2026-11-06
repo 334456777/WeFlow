@@ -983,7 +983,7 @@ REPORT_CSS = f"""
 --stripe:#fafbfc;--grid:#e5e7eb;--base:{COLOURS["base"]};--head:{COLOURS["head"]}}}
 @media (prefers-color-scheme:dark){{:root{{--fg:#e6edf3;--bg:#0d1117;--muted:#9198a1;--border:#3d444d;
 --subtle:#151b23;--stripe:#10151c;--grid:#262c36;--base:#4493f8;--head:#f85149}}}}
-body{{font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;margin:0 auto;padding:16px;max-width:960px;
+body{{font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;margin:0;padding:16px;max-width:960px;
 color:var(--fg);background:var(--bg)}}
 h1{{font-size:22px}}h2{{font-size:18px;margin-top:32px;border-bottom:1px solid var(--border)}}h3{{font-size:15px}}
 code{{font:12px ui-monospace,Consolas,monospace;background:var(--subtle);padding:1px 4px;border-radius:4px}}
