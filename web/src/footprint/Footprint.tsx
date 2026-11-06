@@ -7,11 +7,12 @@ import { Avatar } from '../Avatar';
 import { DateRange } from '../calendar/DateRange';
 import { contactList, type Contact } from '../api/contacts';
 import { currentScope } from '../api/scope';
-import { footprintExport, getFootprint, presetRanges, summarizeFootprint, timeline, type Footprint, type FootprintRange } from '../api/footprint';
+import { FOOTPRINT_FORMATS, footprintExport, getFootprint, presetRanges, summarizeFootprint, timeline, type Footprint, type FootprintFormat, type FootprintRange } from '../api/footprint';
 import { setSetting } from '../api/settings';
 import { n } from '../analytics/AnalyticsViews';
 import { Failed } from '../reports/AnnualReport';
 import { runJob } from '../jobs/useJobs';
+import { Segmented } from '../Segmented';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 
@@ -160,14 +161,15 @@ export function FootprintAi({ range, data, aiReady }: { range: FootprintRange; d
   </div>;
 }
 
-/** The console card: the statistics of the range as a JSON file kept by the server (the CLI's other formats expect rows). */
+/** The console card: the range as a file kept by the server, its statistics as JSON or its timeline as CSV or Excel. */
 export function FootprintExport({ range }: { range: FootprintRange }) {
+  const [format, setFormat] = useState<FootprintFormat>('json');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
   const start = async () => {
     setBusy(true); setNote(null);
     try {
-      await runJob('导出足迹 · ' + range.label, 'POST', 'export/footprint', footprintExport(range));
+      await runJob('导出足迹 · ' + range.label, 'POST', 'export/footprint', footprintExport(range, format));
       setNote({ text: '已加入任务中心，完成后在那里下载。' });
     } catch (problem) {
       setNote({ text: (problem instanceof Error && problem.message) || '导出没有开始，请重试。', error: true });
@@ -176,8 +178,11 @@ export function FootprintExport({ range }: { range: FootprintRange }) {
     }
   };
   return <div className="excluded-people">
-    <button type="button" className="secondary-button" disabled={busy} onClick={start}>{busy ? <CircleNotch size={12} className="spin" /> : <DownloadSimple size={12} />}导出「{range.label}」为 JSON</button>
-    <p className="card-note">包含人数、每段私聊和每条 @我 的消息。</p>
+    <Segmented className="format-group" count={FOOTPRINT_FORMATS.length} index={FOOTPRINT_FORMATS.findIndex(f => f.value === format)} role="group" aria-label="导出格式">
+      {FOOTPRINT_FORMATS.map(f => <button type="button" key={f.value} aria-pressed={format === f.value} onClick={() => setFormat(f.value)}>{f.label}</button>)}
+    </Segmented>
+    <button type="button" className="secondary-button" disabled={busy} onClick={start}>{busy ? <CircleNotch size={12} className="spin" /> : <DownloadSimple size={12} />}导出「{range.label}」为 {FOOTPRINT_FORMATS.find(f => f.value === format)?.label}</button>
+    <p className="card-note">{format === 'json' ? '包含人数、每段私聊和每条 @我 的消息。' : '时间线：每段私聊、每条 @我 的消息各占一行。'}</p>
     {note && <p className={'card-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
   </div>;
 }

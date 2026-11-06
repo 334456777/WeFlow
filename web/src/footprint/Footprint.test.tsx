@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { presetRanges, timeline, type Footprint } from '../api/footprint';
 import type { Contact } from '../api/contacts';
@@ -125,5 +125,23 @@ describe('my footprint', () => {
     fireEvent.click(screen.getByRole('button', { name: '导出「上周」为 JSON' }));
     await act(async () => {});
     expect(calls).toEqual([{ url: '/export/footprint?return=file', body: { format: 'json', start: '2026-10-12', end: '2026-10-18' } }]);
+  });
+
+  it('exports the timeline as CSV or Excel once chosen', async () => {
+    const formats: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      formats.push(JSON.parse(String(init?.body)).format);
+      return json({ success: true, data: { id: 'j1', status: 'queued', command: ['weflow'], createdAt: 0, startedAt: null, finishedAt: null, exitCode: null, httpStatus: null, progress: null } }, 202);
+    }));
+    render(<FootprintExport range={{ label: '上周', from: '2026-10-12', to: '2026-10-18' }} />);
+    const group = screen.getByRole('group', { name: '导出格式' });
+    expect(screen.getByRole('button', { name: 'JSON' }).getAttribute('aria-pressed')).toBe('true');
+    for (const [label, format] of [['CSV', 'csv'], ['Excel', 'excel']]) {
+      fireEvent.click(within(group).getByRole('button', { name: label }));
+      expect(screen.getByText('时间线：每段私聊、每条 @我 的消息各占一行。')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: `导出「上周」为 ${label}` }));
+      await act(async () => {});
+      expect(formats.at(-1)).toBe(format);
+    }
   });
 });
