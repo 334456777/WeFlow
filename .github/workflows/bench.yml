@@ -276,7 +276,11 @@ jobs:
           {
             echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
             echo '<meta name="viewport" content="width=device-width,initial-scale=1"><title>WeFlow 基准测试报告</title>'
-            echo '<style>body{font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif;margin:0 auto;padding:16px;max-width:720px}</style>'
+            # follows the system's light or dark theme
+            echo '<style>:root{color-scheme:light dark;--fg:#1f2328;--bg:#fff;--link:#0969da;--visited:#8250df}'
+            echo '@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--bg:#0d1117;--link:#4493f8;--visited:#ab7df8}}'
+            echo 'body{font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif;margin:0 auto;padding:16px;max-width:720px;color:var(--fg);background:var(--bg)}'
+            echo 'a{color:var(--link)}a:visited{color:var(--visited)}</style>'
             echo '</head><body><h1>WeFlow 基准测试报告</h1><ul>'
             for dir in $(find bench -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -rV); do
               echo "<li><a href=\"$dir/\">$dir</a></li>"
