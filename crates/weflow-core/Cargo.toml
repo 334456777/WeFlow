@@ -61,6 +61,7 @@ jpeg-decoder = { version = "0.3", default-features = false }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
 
 [dev-dependencies]
+proptest.workspace = true
 weflow-native = { path = "../weflow-native", features = ["test-fixtures"] }
 weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
 # examples/search_probe.rs reads rows through `NativeAccount::with_db`

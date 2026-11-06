@@ -1118,4 +1118,76 @@ mod tests {
             .collect();
         assert!(to_jpeg(&sets_only).is_none());
     }
+
+    /// A change to a stream: at a fraction of its length, replace, remove, repeat or insert a byte.
+    #[derive(Clone, Debug)]
+    enum Damage {
+        Replace(f64, u8),
+        Remove(f64),
+        Repeat(f64),
+        Insert(f64, u8),
+    }
+
+    fn damage() -> impl proptest::strategy::Strategy<Value = Damage> {
+        use proptest::prelude::*;
+        prop_oneof![
+            (0.0..1.0, any::<u8>()).prop_map(|(at, b)| Damage::Replace(at, b)),
+            (0.0..1.0).prop_map(Damage::Remove),
+            (0.0..1.0).prop_map(Damage::Repeat),
+            (0.0..1.0, any::<u8>()).prop_map(|(at, b)| Damage::Insert(at, b)),
+        ]
+    }
+
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "a fraction in 0..1 of a short stream's length"
+    )]
+    fn damaged(sample: &[u8], keep: f64, changes: &[Damage]) -> Vec<u8> {
+        let mut data = sample[..(sample.len() as f64 * keep) as usize].to_vec();
+        for change in changes {
+            if data.is_empty() {
+                break;
+            }
+            let at = |f: f64| ((data.len() as f64 * f) as usize).min(data.len() - 1);
+            match *change {
+                Damage::Replace(f, b) => {
+                    let i = at(f);
+                    data[i] = b;
+                }
+                Damage::Remove(f) => {
+                    data.remove(at(f));
+                }
+                Damage::Repeat(f) => {
+                    let i = at(f);
+                    data.insert(i, data[i]);
+                }
+                Damage::Insert(f, b) => data.insert(at(f), b),
+            }
+        }
+        data
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(256))]
+
+        /// Any stream of any layout and bit depth, cut short or with any bytes changed, removed, repeated or inserted,
+        /// gives an error or a picture, never a panic: on its own and inside a WXGF container (#502).
+        #[test]
+        fn any_damaged_stream_gives_an_error_or_a_picture(
+            sample in 0..SAMPLES.len(),
+            keep in 0.0..=1.0f64,
+            changes in proptest::collection::vec(damage(), 0..12),
+        ) {
+            let data = damaged(SAMPLES[sample].hevc, keep, &changes);
+            let _ = decode_to_jpeg(&data);
+            let mut wxgf = b"wxgf".to_vec();
+            wxgf.extend_from_slice(&[0; 16]);
+            wxgf.extend_from_slice(&data);
+            for (_, stream) in crate::image::wxgf_hevc_candidates(&wxgf) {
+                let _ = decode_to_jpeg(&stream);
+            }
+        }
+    }
 }

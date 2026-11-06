@@ -3116,6 +3116,15 @@ mod tests {
         f: impl FnOnce(&mut Exporter<'_, '_>, &[ExportMsg]) -> R,
     ) -> R {
         let (msgs, contacts) = fixture();
+        exporter_with(contacts, group, |ex| f(ex, &msgs))
+    }
+
+    /// The exporter of the chat with `wxid_bob` (or a group of that id), knowing `contacts`.
+    fn exporter_with<R>(
+        contacts: HashMap<String, ContactInfo>,
+        group: bool,
+        f: impl FnOnce(&mut Exporter<'_, '_>) -> R,
+    ) -> R {
         let mut names = NameBook::from_map(contacts);
         let mut ex = Exporter {
             session: SessionInfo {
@@ -3136,7 +3145,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        f(&mut ex, &msgs)
+        f(&mut ex)
     }
 
     /// detailed JSON 与简易 txt 共用 `message_text`：各类消息的写法在两种格式里一致。
@@ -3791,5 +3800,82 @@ mod tests {
             txt.contains("[转账] (") && txt.contains("转账给 Bobby"),
             "{txt}"
         );
+    }
+    /// A text message of the chat with `wxid_bob` as the property test makes it: any text (control characters,
+    /// emoji, any length up to 20000 characters), any server id that is not negative (WeChat's are below 2^63, and
+    /// one of 0 or less is none), sent or received.
+    fn text_message() -> impl proptest::strategy::Strategy<Value = (String, i64, bool)> {
+        use proptest::prelude::*;
+        let text = prop_oneof![
+            4 => any::<String>(),
+            1 => prop::collection::vec(any::<char>(), 0..20_000).prop_map(String::from_iter),
+        ];
+        (text, 0..=i64::MAX, any::<bool>())
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(64))]
+
+        /// Any text, time and server id of text messages comes back unchanged from the JSON, ChatLab and ChatLab
+        /// JSONL files, as the streamed writers write them (#502).
+        #[test]
+        fn text_messages_come_back_from_the_files_unchanged(
+            messages in proptest::collection::vec(text_message(), 1..6),
+            first in 0i64..4_000_000_000,
+        ) {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("weflow-lossless-{}-{n}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            let rows: Vec<MsgRow> = (1i64..)
+                .zip(&messages)
+                .map(|(i, (text, server_id, is_send))| MsgRow {
+                    server_id: Some(*server_id),
+                    is_send: *is_send,
+                    ..row(i, first + i * 60, 1, text, (!*is_send).then_some("wxid_bob"))
+                })
+                .collect();
+            let msgs = collect_rows(
+                rows,
+                &CollectOptions {
+                    session_id: "wxid_bob",
+                    my_wxid: "wxid_me",
+                    start: None,
+                    end: None,
+                    sender_filter: None,
+                },
+            );
+            proptest::prop_assert_eq!(msgs.len(), messages.len());
+            let (json, lab, jsonl) = (dir.join("m.json"), dir.join("m.chatlab.json"), dir.join("m.jsonl"));
+            exporter_with(fixture().1, false, |ex| {
+                ex.write_json(&msgs, &json, false).unwrap();
+                ex.write_chatlab(&msgs, &lab, false).unwrap();
+                ex.write_chatlab(&msgs, &jsonl, true).unwrap();
+            });
+            let read = |f: &Path| -> Value { serde_json::from_str(&fs::read_to_string(f).unwrap()).unwrap() };
+            let (json, lab) = (read(&json), read(&lab));
+            let lines: Vec<Value> = fs::read_to_string(&jsonl)
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str::<Value>(l).unwrap())
+                .filter(|l| l["_type"] == "message")
+                .collect();
+            let _ = fs::remove_dir_all(&dir);
+            for (i, (text, server_id, is_send)) in messages.iter().enumerate() {
+                let time = first + (i as i64 + 1) * 60;
+                let platform = (*server_id > 0).then(|| server_id.to_string());
+                let sender = if *is_send { "wxid_me" } else { "wxid_bob" };
+                let j = &json["messages"][i];
+                proptest::prop_assert_eq!(j["content"].as_str(), Some(text.as_str()), "json {}", i);
+                proptest::prop_assert_eq!(j["createTime"].as_i64(), Some(time));
+                proptest::prop_assert_eq!(j["platformMessageId"].as_str(), platform.as_deref());
+                for (format, m) in [("chatlab", &lab["messages"][i]), ("jsonl", &lines[i])] {
+                    proptest::prop_assert_eq!(m["content"].as_str(), Some(text.as_str()), "{} {}", format, i);
+                    proptest::prop_assert_eq!(m["timestamp"].as_i64(), Some(time), "{}", format);
+                    proptest::prop_assert_eq!(m["sender"].as_str(), Some(sender), "{}", format);
+                    proptest::prop_assert_eq!(m["platformMessageId"].as_str(), platform.as_deref(), "{}", format);
+                }
+            }
+        }
     }
 }

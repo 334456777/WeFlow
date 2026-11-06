@@ -2104,6 +2104,71 @@ mod tests {
         );
     }
 
+    /// The rows of one database for [`keyed_account`]: `sort_seq` tied, missing (null or 0), negative or not, and
+    /// `create_time` tied; every database's local ids start at 1, so they share them.
+    fn shard_rows() -> impl proptest::strategy::Strategy<Value = Vec<(i64, String, String)>> {
+        use proptest::prelude::*;
+        prop::collection::vec((0u8..10, 0i64..6, 0i64..8), 0..30).prop_map(|cells| {
+            (1i64..)
+                .zip(cells)
+                .map(|(id, (kind, seq, time))| {
+                    let seq = match kind {
+                        0 => "null".to_string(),
+                        1 => "0".to_string(),
+                        2 => "-5".to_string(),
+                        _ => (T0 * 1000 + seq * 1000).to_string(),
+                    };
+                    (id, seq, (T0 + time).to_string())
+                })
+                .collect()
+        })
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(24))]
+
+        /// Any page of any offset, and the batches of a cursor, are the rows of reading every row and sorting them
+        /// (#502).
+        #[test]
+        fn any_page_is_the_page_of_reading_every_row(
+            shards in proptest::collection::vec(shard_rows(), 1..=3),
+            pages in proptest::collection::vec((0usize..100, 0usize..25), 1..6),
+            batch in 1i32..40,
+        ) {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let acct = keyed_account(&format!("any-page-{n}"), &shards);
+            let tables = acct.message_tables("wxid_bob").unwrap();
+            for (offset, limit) in pages {
+                proptest::prop_assert_eq!(
+                    acct.messages("wxid_bob", limit as i32, offset as i32).unwrap(),
+                    acct.newest_rows(&tables, offset, limit).unwrap(),
+                    "offset {} limit {}",
+                    offset,
+                    limit
+                );
+            }
+            let every = acct.newest_rows(&tables, 0, 0).unwrap();
+            proptest::prop_assert_eq!(every.len(), shards.iter().map(Vec::len).sum::<usize>());
+            let cursor = acct.open_message_cursor("wxid_bob", batch, false, 0, 0, false).unwrap();
+            let mut read = Vec::new();
+            loop {
+                let (rows, more) = acct.fetch_message_batch(cursor).unwrap();
+                read.extend(rows);
+                if !more {
+                    break;
+                }
+            }
+            acct.close_message_cursor(cursor).unwrap();
+            drop(acct);
+            // each case's account, not left behind by the hundreds
+            let _ = std::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("weflow-msg-{}-any-page-{n}", std::process::id())),
+            );
+            proptest::prop_assert_eq!(read, every);
+        }
+    }
+
     /// Each column typed, the content inflated, the sender resolved and whether the owner sent it, the database by its
     /// shard; lite rows of a cursor leave out the source and the packed info, an export's the source only.
     #[test]
