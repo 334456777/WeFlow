@@ -1,8 +1,9 @@
 name: Bench
 
 # Performance of two commits side by side (#259): run by hand from the Actions page with the two commits, after a
-# large change whose cost is in doubt. Both are built in release (as published) and measured one after the other on
-# the same Windows runner, so the comparison holds hardware and software still; a runner's numbers are only compared
+# large change whose cost is in doubt. Both are built in release, without the PGO of release.yml so that a difference
+# comes from the code alone, and measured one after the other on the same Windows runner, so the comparison holds
+# hardware and software still; a runner's numbers are only compared
 # with numbers of the same run, never with a developer's machine. The account is the synthetic benchmark account of
 # #488, generated on the runner from a seed: real chat data never goes to a public repository's Actions. The
 # measuring is done by `.github/scripts/bench.py` (what it measures is in its docstring); the tools that make the
