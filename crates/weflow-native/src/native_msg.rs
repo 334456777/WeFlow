@@ -2272,6 +2272,42 @@ mod tests {
     }
 
     #[test]
+    fn annual_extras_from_the_leaf_scan_are_those_of_sql() {
+        // the owner's texts: repeated phrases, ones padded with spaces, long ones, ones on overflow pages, a
+        // compressed-looking blob, a null; texts of others and of other types; a missing type
+        let fill = format!(
+            "{MANY_ROWS}
+             insert into Name2Id(rowid, user_name) values (1, 'wxid_me'), (2, 'wxid_bob');
+             update \"t\" set real_sender_id = case when local_id % 3 = 0 then 2 else 1 end,
+                 local_type = case when local_id % 13 = 0 then null when local_id % 7 = 0 then 3 else 1 end,
+                 sort_seq = case when local_id % 19 = 0 then 0 else sort_seq end;
+             update \"t\" set message_content = case
+                 when local_id % 40 = 0 then message_content
+                 when local_id % 41 = 0 then printf('%.300c', 'y')
+                 when local_id % 43 = 0 then '   p' || (local_id % 5) || '   '
+                 when local_id % 47 = 0 then x'6869'
+                 when local_id % 53 = 0 then null
+                 else 'p' || (local_id % 37) end;"
+        );
+        let acct = scanned_account("extras", &fill, |_, _| {}).with_my_wxid(Some("wxid_me".into()));
+        let ids = vec!["wxid_bob".to_string()];
+        let read = |acct: &NativeAccount| {
+            (
+                acct.annual_report_extras(&ids, 0, 0, 1_701_000_000, 1_701_086_399)
+                    .unwrap(),
+                acct.annual_report_extras(&ids, 1_705_000_000, 1_720_000_000, 0, 0)
+                    .unwrap(),
+            )
+        };
+        let scanned = read(&acct);
+        assert!(!scanned.0["topPhrases"].as_array().unwrap().is_empty());
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(true));
+        let by_sql = read(&acct);
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(false));
+        assert_eq!(scanned, by_sql);
+    }
+
+    #[test]
     fn a_time_that_is_not_an_integer_is_counted_through_sql() {
         for (tag, time) in [
             ("text", "'1700000000'"),

@@ -107,7 +107,41 @@ pub(crate) fn int_columns<A: Send>(
     start: impl Fn() -> A + Sync,
     each: impl Fn(&mut A, &[Option<i64>]) + Sync,
 ) -> Result<Option<Vec<A>>> {
-    let Some(&last) = columns.iter().max() else {
+    rows(file, root, columns, None, start, |acc, row| {
+        each(acc, row.ints)
+    })
+}
+
+/// A text cell as [`rows`] hands it over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Text<'a> {
+    /// No text cell was asked for, or the cell is null.
+    Null,
+    /// A text of at most the length asked for, stored in the page and valid UTF-8.
+    Short(&'a str),
+    /// Anything else: a longer text, one that goes on to overflow pages or is not UTF-8, or a cell of another type.
+    Other,
+}
+
+/// A row as [`rows`] hands it over.
+pub(crate) struct Row<'a> {
+    pub(crate) rowid: i64,
+    /// The integer cells asked for, in their order; `None` for a null.
+    pub(crate) ints: &'a [Option<i64>],
+    pub(crate) text: Text<'a>,
+}
+
+/// [`int_columns`] that also hands over each row's rowid and, when `text` names a column and a length in bytes, that
+/// cell as a [`Text`]: only the texts that short are decrypted.
+pub(crate) fn rows<A: Send>(
+    file: &CipherFile,
+    root: u32,
+    columns: &[usize],
+    text: Option<(usize, usize)>,
+    start: impl Fn() -> A + Sync,
+    each: impl Fn(&mut A, Row<'_>) + Sync,
+) -> Result<Option<Vec<A>>> {
+    let Some(last) = columns.iter().copied().chain(text.map(|t| t.0)).max() else {
         bail!("no column asked for");
     };
     let Some(leaves) = leaf_pages(file, root)? else {
@@ -116,6 +150,11 @@ pub(crate) fn int_columns<A: Send>(
     let cpus = std::thread::available_parallelism().map_or(1, usize::from);
     let parts = (leaves.len() / PAGES_PER_PART).clamp(1, MAX_PARTS.min(cpus));
     let per_part = leaves.len().div_ceil(parts).max(1);
+    let wanted = Wanted {
+        columns,
+        text,
+        last,
+    };
     let read = |pages: &[u32]| -> Result<Option<A>> {
         let mut acc = start();
         let mut page = Lazy::new(file.page_cipher());
@@ -128,14 +167,9 @@ pub(crate) fn int_columns<A: Send>(
                     if page.bytes(0, 1)?[0] != LEAF_TABLE {
                         return Ok(Scan::Unusual);
                     }
-                    leaf_rows(
-                        &mut page,
-                        columns,
-                        last,
-                        &mut serials,
-                        &mut values,
-                        &mut |v| each(&mut acc, v),
-                    )
+                    leaf_rows(&mut page, &wanted, &mut serials, &mut values, &mut |row| {
+                        each(&mut acc, row)
+                    })
                 })?
                 .transpose()?;
             if scan != Some(Scan::Done) {
@@ -219,15 +253,24 @@ fn leaf_pages(file: &CipherFile, root: u32) -> Result<Option<Vec<u32>>> {
     }
 }
 
+/// What a scan reads of each row.
+struct Wanted<'a> {
+    columns: &'a [usize],
+    /// The text column and the longest text decrypted.
+    text: Option<(usize, usize)>,
+    /// The last column of the two.
+    last: usize,
+}
+
 /// The rows of one leaf page.
 fn leaf_rows(
     page: &mut Lazy,
-    columns: &[usize],
-    last: usize,
+    wanted: &Wanted,
     serials: &mut Vec<u64>,
     values: &mut [Option<i64>],
-    each: &mut impl FnMut(&[Option<i64>]),
+    each: &mut impl FnMut(Row<'_>),
 ) -> Result<Scan> {
+    let last = wanted.last;
     let header = page.bytes(0, 8)?;
     let cells = usize::from(u16::from_be_bytes([header[3], header[4]]));
     let pointers: Vec<usize> = page
@@ -239,7 +282,9 @@ fn leaf_rows(
         .collect();
     for at in pointers {
         let (payload, n) = page.varint(at)?;
-        let (_rowid, m) = page.varint(at + n)?;
+        let (rowid, m) = page.varint(at + n)?;
+        // a rowid is stored as the two's complement bits of an i64
+        let rowid = i64::from_ne_bytes(rowid.to_ne_bytes());
         let record = at + n + m;
         let local = local_payload(payload);
         let (header_len, k) = page.varint(record)?;
@@ -270,7 +315,7 @@ fn leaf_rows(
             };
             offset += size;
         }
-        for (slot, &c) in values.iter_mut().zip(columns) {
+        for (slot, &c) in values.iter_mut().zip(wanted.columns) {
             let (serial, at) = (serials[c], offsets[c]);
             *slot = match serial {
                 0 => None,
@@ -292,7 +337,29 @@ fn leaf_rows(
                 _ => return Ok(Scan::Unusual),
             };
         }
-        each(values);
+        let text = match wanted.text {
+            None => Text::Null,
+            Some((c, longest)) => match serials[c] {
+                0 => Text::Null,
+                serial if serial >= 13 && serial % 2 == 1 => {
+                    let (size, at) = (serial_size(serial).unwrap_or(usize::MAX), offsets[c]);
+                    if size > longest || at + size - record > local {
+                        Text::Other
+                    } else {
+                        match std::str::from_utf8(page.bytes(at, at + size)?) {
+                            Ok(text) => Text::Short(text),
+                            Err(_) => Text::Other,
+                        }
+                    }
+                }
+                _ => Text::Other,
+            },
+        };
+        each(Row {
+            rowid,
+            ints: values,
+            text,
+        });
     }
     Ok(Scan::Done)
 }

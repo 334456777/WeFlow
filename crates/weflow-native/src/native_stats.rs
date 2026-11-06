@@ -89,7 +89,10 @@ const TABLE_THREADS: usize = 8;
 /// `f` of each of `items`, run on up to [`TABLE_THREADS`] threads (each table's leaf scan spends most of its time on
 /// HMACs, and most conversations are too small to share theirs out), the results in the order of `items`; the
 /// first error in that order.
-fn each_table<I: Sync, T: Send>(items: &[I], f: impl Fn(&I) -> Result<T> + Sync) -> Result<Vec<T>> {
+pub(crate) fn each_table<I: Sync, T: Send>(
+    items: &[I],
+    f: impl Fn(&I) -> Result<T> + Sync,
+) -> Result<Vec<T>> {
     let cpus = std::thread::available_parallelism().map_or(1, usize::from);
     let threads = items.len().min(TABLE_THREADS).min(cpus);
     if threads <= 1 {
@@ -124,7 +127,10 @@ fn each_table<I: Sync, T: Send>(items: &[I], f: impl Fn(&I) -> Result<T> + Sync)
 }
 
 /// The message tables of each of `session_ids`, and every one of them in that order.
-fn tables_of(acct: &NativeAccount, session_ids: &[String]) -> Result<Vec<Vec<MsgTable>>> {
+pub(crate) fn tables_of(
+    acct: &NativeAccount,
+    session_ids: &[String],
+) -> Result<Vec<Vec<MsgTable>>> {
     session_ids
         .iter()
         .map(|sid| acct.message_tables(sid))
@@ -132,7 +138,7 @@ fn tables_of(acct: &NativeAccount, session_ids: &[String]) -> Result<Vec<Vec<Msg
 }
 
 /// Sender row ids in the list [`NativeAccount::my_ids`] gives.
-fn id_set(list: &str) -> std::collections::HashSet<i64> {
+pub(crate) fn id_set(list: &str) -> std::collections::HashSet<i64> {
     list.split(',')
         .filter_map(|v| v.trim().parse().ok())
         .collect()
