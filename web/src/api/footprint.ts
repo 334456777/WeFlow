@@ -17,7 +17,14 @@ export interface FootprintRange { from: string; to: string; label: string }
 export const getFootprint = (range: FootprintRange, signal?: AbortSignal) =>
   get<Footprint>('api/insight/footprint', { start: range.from || undefined, end: range.to || undefined }, signal);
 
-export const footprintExport = (range: FootprintRange) => ({ format: 'json', start: range.from || undefined, end: range.to || undefined });
+/** The formats `export footprint` writes (#390): the statistics as JSON, or the timeline as rows. */
+export const FOOTPRINT_FORMATS = [
+  { value: 'json', label: 'JSON' }, { value: 'csv', label: 'CSV' }, { value: 'excel', label: 'Excel' },
+] as const;
+export type FootprintFormat = (typeof FOOTPRINT_FORMATS)[number]['value'];
+
+export const footprintExport = (range: FootprintRange, format: FootprintFormat = 'json') =>
+  ({ format, start: range.from || undefined, end: range.to || undefined });
 
 /** The ranges offered: today, yesterday, this week and last week (weeks start on Monday). */
 export function presetRanges(now = new Date()): FootprintRange[] {
