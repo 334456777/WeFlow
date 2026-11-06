@@ -1805,7 +1805,7 @@ fn name_book(wcdb: &weflow_native::wcdb::Wcdb) -> crate::export_msg::NameBook<'_
 
 /// A sticker: a plain emoji message, or an appmsg of type 8 (a sticker sent as an attachment).
 fn is_sticker(m: &crate::message::ExportMsg) -> bool {
-    m.local_type == 47 || crate::message::appmsg_emoticon_md5(&m.content).is_some()
+    m.local_type == 47 || m.sticker_md5.is_some()
 }
 
 /// 查表情描述（用户自己的表情文字，否则商店表情的中文描述），写进 `emoji_caption`，
@@ -1817,7 +1817,7 @@ fn attach_emoji_captions(
     for m in messages.iter_mut() {
         let md5 = match m.local_type {
             47 => m.emoji_md5.clone(),
-            _ => crate::message::appmsg_emoticon_md5(&m.content),
+            _ => m.sticker_md5.clone(),
         };
         let Some(md5) = md5 else { continue };
         m.emoji_caption = table
