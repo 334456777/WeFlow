@@ -300,13 +300,6 @@ impl Wcdb {
         self.account()?.close_message_cursor(cursor)
     }
 
-    /// Low-memory mode for long one-way reads such as exports (see [`NativeAccount::set_low_memory`]).
-    pub fn set_low_memory(&self, on: bool) {
-        if let Some(a) = &self.native {
-            a.set_low_memory(on);
-        }
-    }
-
     /// Connections a database may open for this handle's queries (see [`NativeAccount::set_read_connections`]).
     pub fn set_read_connections(&self, n: usize) {
         if let Some(a) = &self.native {
@@ -398,6 +391,13 @@ impl Wcdb {
 
     pub fn group_nicknames(&self, chatroom_id: &str) -> Result<Value> {
         self.account()?.group_nicknames(chatroom_id)
+    }
+
+    /// Messages, sent and received, and the last time, of each of `session_ids` (see
+    /// [`NativeAccount::session_totals`]).
+    pub fn session_totals(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
+        self.account()?
+            .session_totals(session_ids, begin as i64, end as i64)
     }
 
     pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {

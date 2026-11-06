@@ -3,10 +3,7 @@ mod common;
 #[test]
 fn members_panel_is_sorted_and_enriched() {
     let (hub, _root) = common::mock_hub("group-panel");
-    let (entries, from_cache, _) = hub
-        .group_members_panel("room1@chatroom", false, true)
-        .unwrap();
-    assert!(!from_cache);
+    let (entries, _) = hub.group_members_panel("room1@chatroom", true).unwrap();
     let entries = serde_json::to_value(entries).unwrap();
     let names: Vec<&str> = entries
         .as_array()
@@ -31,13 +28,7 @@ fn members_panel_is_sorted_and_enriched() {
         "quiet is in the group but not a friend"
     );
     assert_eq!(entries[2]["messageCount"], 1);
-    let (_, cached, _) = hub
-        .group_members_panel("room1@chatroom", false, true)
-        .unwrap();
-    assert!(cached, "second call is served from the panel cache");
-    let (without_counts, _, _) = hub
-        .group_members_panel("room1@chatroom", true, false)
-        .unwrap();
+    let (without_counts, _) = hub.group_members_panel("room1@chatroom", false).unwrap();
     assert_eq!(without_counts[0].message_count, 0);
     // the panel stored my own count as a hint
     assert_eq!(hub.group_hint("room1@chatroom").unwrap().count, Some(1));

@@ -290,17 +290,16 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `chat latest`，20 条 | 29 ms | 4 ms |
 | `chat contact` | 24 ms | 2 ms |
 | `group members` | 33 ms | 2 ms |
-| `chat date-counts`，21.3 万条消息 | 584 ms | 63 ms |
+| `chat date-counts`，20 万条消息 | 330 ms | 200 ms |
 | `chat detail --fast` | 55 ms | 2 ms |
 | `chat resources`，一页 300 条 | 109 ms | 42 ms |
 | `sns timeline`，20 条 | 235 ms | 6 ms |
 | `chat statuses`，60 个会话 | 24 ms | 2 ms |
 | `group list` | 28 ms | 4 ms |
-| `analytics overall`，读上次留下的统计结果 | 25 ms | 2 ms |
 | `report annual years` | 97 ms | 34 ms |
 | 同时请求 16 页消息（总耗时） | 156 ms | 140 ms |
 
-（这些是 `serve_bench` 测得的中位数，即客户端看到的耗时，见 [native-cli.md](native-cli.md)。）在会话里搜索时，先从最新的消息往前读，找够一页就停，所以常见的词约 5 ms；读了几千条（或 15 ms）还不够，就改查微信自己的索引（见 [cli-unsupported.md](cli-unsupported.md)），所以在有 21 万条消息的会话里，哪里都没有的词约 60 ms，不必读完所有消息。长会话里很靠后的消息页用 `offset` 取时，仍要读出它前面每条消息的排序键（24 万条消息的中间一页约 0.1 秒，走子进程的路由约 0.5 秒），用游标则不必：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
+（这些是 `serve_bench` 测得的中位数，即客户端看到的耗时，见 [native-cli.md](native-cli.md)。）在会话里搜索时，先从最新的消息往前读，找够一页就停，所以常见的词约 5 ms；读了几千条（或 15 ms）还不够，就改查微信自己的索引（见 [cli-unsupported.md](cli-unsupported.md)），所以在有 21 万条消息的会话里，哪里都没有的词约 60 ms，不必读完所有消息。服务进程在请求之间不保留解密后的数据库（每个连接只缓存 16 MiB 的页），所以 `chat dates` 和 `chat date-counts` 每次都要读会话里的每条消息：它们自己逐页读表，每页都校验 HMAC，但只解密存着消息时间的那些字节，最多用八个线程。长会话里很靠后的消息页用 `offset` 取时，从微信的 `sort_seq` 索引读出它前面那些消息的排序键，不解密这些行（20 万条消息的中间一页约 15 ms，走子进程的路由约 0.1 秒）；用游标更快：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
 
 - `chat messages` 带 `parsed=true`（`--parsed`）时，每条消息按桌面端的方式解析后返回，而不是数据库的原始行：`localType`、`parsedContent`、引用（`quotedContent`、`quotedSender`）、媒体的标识（`imageMd5`、`videoMd5`、`voiceDurationSeconds`、`emojiCdnUrl`）、链接、文件、名片、位置、视频号、聊天记录（应用消息的种类见 `appMsgKind`），`_cursor` 照旧。`serverId` 是十进制字符串：微信的 ID 会超过 2^53，超过后 JavaScript 的数字会丢掉末尾几位。同一条消息的 `messageKey` 在任何机器上都一样：它只写数据库的名字（`message_0`），不写数据库在哪里。这样聊天窗口不必自己解析 XML。在大账号上，一页 50 条，服务端多花约 1 ms（中位数 1.9 → 2.8 ms），回复比原始行还小；用 `fields` 可以去掉 `rawContent`，即解析前的 XML。
 - `chat messages` 带 `since=<Unix 秒>`（`--since`）时，返回从这个时间在聊天顺序中的位置开始最早的若干条消息，仍按最新在前排列，每条都带 `_cursor`：聊天窗口跳到某一天时传那天零点，再用 `before` 和 `after` 往两边翻。这里的顺序就是微信自己的顺序（`sort_seq`，即发送时间的毫秒数再加上一点），也是聊天窗口显示的顺序。个别消息的排序位置和发送时间相差一两秒，这时以排序位置为准：在这个时间之前一点发送的消息可能出现在这一页开头，而恰好在这个时间发送的消息可能紧挨在这一页上面，往前翻一页（`before`）就能看到。这样换来的是前后各页首尾相接，不漏也不重复。它和游标走同一个索引，一样快（大账号上，debug 版读一页 50 条并解析约 22 ms）。
@@ -311,9 +310,8 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 - 命令行不接受的参数（缺少必填项、该是数字的不是数字、同一个参数给了两次等）由服务进程直接回复终端会打印的那条错误（`invalid_arguments`，`400`），与不带 `/api/` 的路由回复的相同，但不起子进程：约 0.3 ms，原来约 30 ms（#432）。命令行接受、进程内读取却不接受的请求（少见的位置参数顺序）按不带 `/api/` 的路由在子进程里执行。
 - 配置文件变化后（`PUT /config/set`、切换配置档案、用 `config_path` 换一个配置文件），下一个请求会重新读取。判断是否变化看文件的修改时间和大小；写入后的几秒内还会比对内容，因为在时间精度较粗的文件系统上（FAT 是 2 秒），两次写入的修改时间可能相同，而两个名字一样长的档案，文件大小也相同。
 - 服务刚启动时，以及配置变化之后，会在后台同时打开聊天页面要用的数据库：会话、联系人、头像、图片链接、搜索索引、消息和语音。每个数据库第一次打开都要先派生密钥（约 0.1 秒），否则最初的几次读取要等它们用到的每个库。在大账号上，预热半秒内完成；之后第一次读取会话列表约 12 ms，原来约 440 ms；如果启动后立即请求，约 240 ms。
-- `group members` 和桌面端一样，会把成员面板缓存一段时间：这段时间内返回 `"fromCache": true`；传 `refresh=true` 可以重新生成。
 - 不带 `fast=true` 的 `chat detail`、带 `with-media=true` 的 `sns timeline` 和带 `set` 的 `analytics excluded` 按不带 `/api/` 的路由执行：其余的详情（数据表、最早和最新时间）读起来慢，时间线的媒体要下载，`set` 会保存名单。
-- `analytics overall`、`rankings` 和 `time` 与命令一样，返回上次留下的统计结果（`force=true` 时重新读所有聊天）。服务端还会在内存里保留它 5 分钟，所以这段时间内由命令路由重新算出的结果，要过了这段时间才会显示。
+- `analytics overall`、`rankings` 和 `time` 与命令一样，每次请求都重新统计各个聊天，所以会反映新消息。
 - 其余命令只有命令路由：长任务和导出（取消时靠结束它们的进程来停止）；密钥命令（要附加到微信进程）；需要在终端上询问、或要设置自身进程输出方式的命令；以及会写入的命令。
 - 带 `fast=true` 的 `sns stats` 和带 `prefer-cache=true` 的 `sns post-counts` 和桌面端一样，把数字保留 5 分钟：新动态要过了这段时间才计入，不带这两个开关则立即计入。
 - 这些读取计入 `--max-reads` 的上限，超出时排队等位置，而不是返回 `429`（见[并发限制](#并发限制)）。

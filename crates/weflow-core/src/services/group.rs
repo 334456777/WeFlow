@@ -3,7 +3,6 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
@@ -15,16 +14,9 @@ use crate::contract::{
     MediaCount, MemberAnalytics, MemberMessages, MemberStatistics, PhraseCount, RankedMember,
 };
 use crate::message::rx;
-use crate::sync::MutexExt;
 use weflow_native::msg_row::MsgRow;
 
-const PANEL_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const FRIEND_EXCLUDE: [&str; 5] = ["medianote", "floatbottle", "qmessage", "qqmail", "fmessage"];
-
-#[derive(Default)]
-pub(crate) struct GroupState {
-    panel: HashMap<String, (Instant, i64, Vec<GroupMember>)>,
-}
 
 #[derive(Clone, Debug, Default)]
 struct MemberContact {
@@ -656,51 +648,20 @@ impl ServiceHub {
         Ok(data.into_iter().map(|d| d.0).collect())
     }
 
-    /// `getGroupMembersPanelData`: returns `(entries, fromCache, updatedAt)`.
+    /// `getGroupMembersPanelData`: the members panel and when it was built (Unix milliseconds). It is built
+    /// anew on every call: one pass over the group's messages gives the counts.
     pub fn group_members_panel(
         &self,
         chatroom_id: &str,
-        force_refresh: bool,
         include_counts: bool,
-    ) -> AppResult<(Vec<GroupMember>, bool, i64)> {
+    ) -> AppResult<(Vec<GroupMember>, i64)> {
         let chatroom_id = chatroom_id.trim();
         if chatroom_id.is_empty() {
             return Err(AppError::usage("chatroom id must not be empty"));
         }
-        let wxid = clean_account_dir_name(
-            &self
-                .wxid_override
-                .clone()
-                .or_else(|| self.profile().ok().and_then(|p| p.wxid.clone()))
-                .unwrap_or_default(),
-        );
-        let key = format!(
-            "{wxid}::{chatroom_id}::{}",
-            if include_counts { "full" } else { "members" }
-        );
-        if !force_refresh {
-            if let Some((at, updated, data)) = self.group_state.lock_or_panic().panel.get(&key) {
-                if at.elapsed() < PANEL_CACHE_TTL {
-                    return Ok((data.clone(), true, *updated));
-                }
-            }
-        }
         let wcdb = self.open_wcdb()?;
         let data = self.panel_fresh(&wcdb, chatroom_id, include_counts)?;
-        let updated = chrono::Utc::now().timestamp_millis();
-        let mut st = self.group_state.lock_or_panic();
-        st.panel
-            .insert(key, (Instant::now(), updated, data.clone()));
-        if st.panel.len() > 80 {
-            let mut keys: Vec<(String, Instant)> =
-                st.panel.iter().map(|(k, v)| (k.clone(), v.0)).collect();
-            keys.sort_by_key(|(_, t)| *t);
-            let remove = st.panel.len() - 80;
-            for (k, _) in keys.into_iter().take(remove) {
-                st.panel.remove(&k);
-            }
-        }
-        Ok((data, false, updated))
+        Ok((data, chrono::Utc::now().timestamp_millis()))
     }
 
     /// `getGroupChats`

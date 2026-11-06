@@ -967,9 +967,7 @@ fn reads_run_in_process_with_the_same_answers() {
         "/group/member?chatroom-id=room1%40chatroom&username=wxid_bob",
         "/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob&limit=1",
         "/group/member-messages?chatroom-id=room1%40chatroom&username=wxid_bob&cursor=1",
-        // the aggregate the child process keeps in its file, then read again
         "/analytics/overall",
-        "/analytics/overall?force=true",
         "/analytics/rankings",
         "/analytics/rankings?limit=1&start=2020-01-01",
         "/analytics/time",
@@ -1046,21 +1044,24 @@ fn reads_run_in_process_with_the_same_answers() {
         };
         assert_eq!(timed(&format!("/api{target}")), timed(target), "{target}");
     }
-    // the member panel carries the time it was made, and the open hub keeps it for a while
+    // the member panel carries the time it was made, and is built anew every time
     let target = "/group/members?chatroom-id=room1%40chatroom";
     let panel = |path: &str| {
         let r = server.call("GET", path, "");
         assert_eq!(r.status, 200, "{path}: {}", r.body);
         let mut doc = r.json();
-        let cached = doc["data"]["fromCache"].take();
+        assert!(doc["data"].get("fromCache").is_none());
         doc["data"]["updatedAt"].take();
-        (doc, cached)
+        doc
     };
-    let (child, _) = panel(target);
-    let (own, _) = panel(&format!("/api{target}"));
-    assert_eq!(own, child);
-    assert_eq!(panel(&format!("/api{target}")).1, true);
-    assert_eq!(panel(&format!("/api{target}&refresh=true")).1, false);
+    assert_eq!(panel(&format!("/api{target}")), panel(target));
+    assert_eq!(
+        server
+            .call("GET", &format!("/api{target}&refresh=true"), "")
+            .status,
+        400,
+        "refresh is no parameter of the route"
+    );
     // failures answer the same too: from the command, and from parsing (left to the child process)
     assert_eq!(same("/chat/message?session-id=wxid_bob").status, 400);
     assert_eq!(same("/chat/messages").status, 400);

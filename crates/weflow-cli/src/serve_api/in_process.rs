@@ -393,7 +393,6 @@ impl Given {
             "group members" => Read::GroupMembers {
                 chatroom_id: self.required("chatroom-id")?,
                 counts: self.switch("counts")?,
-                refresh: self.switch("refresh")?,
             },
             "sns timeline" => {
                 // the media are downloaded: in a child process
@@ -452,9 +451,7 @@ impl Given {
                 start: self.text("start")?,
                 end: self.text("end")?,
             },
-            "analytics overall" => Read::AnalyticsOverall {
-                force: self.switch("force")?,
-            },
+            "analytics overall" => Read::AnalyticsOverall,
             "analytics rankings" => Read::AnalyticsRankings {
                 limit: self.number_or("limit", 20)?,
                 start: self.text("start")?,

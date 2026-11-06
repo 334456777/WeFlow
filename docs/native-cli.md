@@ -96,7 +96,7 @@ All cache cleanup is under `weflow cache`:
 | `cache clear --voices` | Decoded voice messages |
 | `cache clear --emojis` | Stickers |
 | `cache clear --sns` | Images and videos of Moments |
-| `cache clear --analytics` | The analytics aggregate |
+| `cache clear --analytics` | The analytics aggregate earlier versions kept (`analytics_cache.json`) |
 | `cache clear --api` | Avatars saved for message push (`push-avatar-files`), files returned by `serve` (`serve-files`, see [serve-api.md](serve-api.md#files)) and the `api-media` folder |
 | `cache clear --keys` | Fingerprints of keys that worked; the next command checks the key again |
 | `cache clear --runtime` | Runtimes unpacked by other WeFlow versions under `runtime/` (the running version's stays), and an ffmpeg earlier versions installed in `ffmpeg/` |
@@ -265,7 +265,7 @@ and run `target/release/examples/serve_bench <work-dir> --home <WEFLOW_HOME> --s
 | `sns users`, `sns stats --fast`, `sns post-counts --prefer-cache` | 22 ms | under 2 ms | added: asked for with the timeline; a child process takes 160 ms more while the server has not opened `sns.db` itself |
 | `chat statuses` (60 conversations), `chat tab-counts`, `group list` | 21–24 ms | – | not added: about the cost of starting the process, once per list |
 | `chat resources`, a page of 300 | 52–123 ms | 16–56 ms | added once it pages from a cursor ([#178](https://github.com/334456777/WeFlow/issues/178)): the media card pages through it while scrolling. It used to read the newest 90 of each type in 80 conversations and cut an `offset` out of them, so it missed newer ones and deep pages came back empty; now it reads every conversation in the chats' order, newest first, and stops once no conversation left can hold a newer one. It is slowest when few conversations hold the type asked for, as each one is then read: 190–360 ms on the synthetic account, with no video, voice or file in its 501 conversations |
-| `analytics overall`, `rankings`, `time` with their cache | 20–23 ms | – | not added: fast enough with the cache; without it (`--force`, 129 ms here) the statistics are counted again, which is for a job |
+| `analytics overall`, `rankings`, `time` | 129 ms | – | not added: the statistics are counted again on every call, which is for a job |
 
 The same measurements found two reads of the Moments slow in themselves, not only through the child process: the timeline parsed
 every post to show 20 (2.5 s for 2,000 posts on the synthetic account, now 77 ms), and `sns post-counts` read the timeline again

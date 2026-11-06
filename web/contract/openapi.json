@@ -5696,10 +5696,6 @@
             "format": "uint",
             "minimum": 0
           },
-          "fromCache": {
-            "type": "boolean",
-            "description": "Whether the panel was kept from a request a short while before (`refresh=true` builds it again)."
-          },
           "updatedAt": {
             "type": "integer",
             "format": "int64",
@@ -5715,7 +5711,6 @@
         "required": [
           "chatroomId",
           "count",
-          "fromCache",
           "updatedAt",
           "members"
         ],

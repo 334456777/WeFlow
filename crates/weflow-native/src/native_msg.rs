@@ -176,14 +176,17 @@ pub enum PageFrom {
     After(MsgPos),
 }
 
+/// A row's sort key (see [`MsgPos`]) and the number of its `message_<n>.db`.
+type ShardKey = ((i64, i64, i64), u32);
+
 /// Where [`NativeAccount::messages`] starts a page deep into a conversation.
 enum OffsetPosition {
     /// After this message, the last one the offset skips.
     At(MsgPos),
     /// The offset skips every message.
     Past,
-    /// A sort key of the rows is not stored as an integer (a `sort_seq` may also be null): [`typed_row_key`] and SQLite
-    /// order such values differently, so only reading the rows lists them as before.
+    /// A sort key read is not stored as an integer (a `sort_seq` may also be null): [`typed_row_key`] and SQLite order
+    /// such values differently, so only reading the rows lists them as before.
     Unusual,
 }
 
@@ -365,11 +368,15 @@ impl NativeAccount {
             // #486), so find the last message it skips from the sort keys alone and page on from there.
             match self.offset_position(&tables, offset, limit)? {
                 OffsetPosition::At(pos) => {
-                    return self.page_from(
+                    let page = self.page_from(
                         &tables,
                         i32::try_from(limit).unwrap_or(i32::MAX),
                         PageFrom::Before(pos),
-                    );
+                    )?;
+                    // a page row whose time is not an integer: SQLite and the sort key order it differently
+                    if page.iter().all(|r| r.create_time.is_some()) {
+                        return Ok(page);
+                    }
                 }
                 OffsetPosition::Past => return Ok(Vec::new()),
                 OffsetPosition::Unusual => {}
@@ -401,8 +408,12 @@ impl NativeAccount {
         }
     }
 
-    /// Where a page `offset` messages deep starts: the place of the last message it skips. Read from the sort keys of
-    /// the rows [`newest_rows`](Self::newest_rows) would read, not from the rows themselves.
+    /// Where a page `offset` messages deep starts: the place of the last message it skips.
+    ///
+    /// The rows [`newest_rows`](Self::newest_rows) would read are ranked by the first part of their sort key alone:
+    /// the `sort_seq` index holds it, so their pages are not decrypted. Only the rows tied on it with the last skipped
+    /// one, or with the page's last one, are read, for their whole key: those two places are where the rest of the
+    /// key can move a row across the page's ends.
     fn offset_position(
         &self,
         tables: &[MsgTable],
@@ -414,27 +425,94 @@ impl NativeAccount {
         } else {
             (offset + limit) as i64
         };
-        let mut keys: Vec<((i64, i64, i64), u32)> = Vec::new();
+        let mut firsts: Vec<i64> = Vec::new();
         for t in tables {
-            let Some(shard) = shard_of(t) else {
+            if shard_of(t).is_none() {
+                return Ok(OffsetPosition::Unusual);
+            }
+            let Some(read) = self.first_keys(t, want)? else {
                 return Ok(OffsetPosition::Unusual);
             };
-            let floor = if want > 0 {
-                self.sort_seq_floor(t, want)?
-            } else {
-                None
+            firsts.extend(read);
+        }
+        firsts.sort_unstable_by(|a, b| b.cmp(a));
+        let Some(&first) = firsts.get(offset - 1) else {
+            return Ok(OffsetPosition::Past);
+        };
+        if let Some(&last) = usize::try_from(want).ok().and_then(|w| firsts.get(w - 1)) {
+            if last != first && self.tied_keys(tables, last)?.is_none() {
+                return Ok(OffsetPosition::Unusual);
+            }
+        }
+        let Some(mut tied) = self.tied_keys(tables, first)? else {
+            return Ok(OffsetPosition::Unusual);
+        };
+        // the listing's order: newest key first, equal keys by ascending database
+        tied.sort_unstable_by(|(a, sa), (b, sb)| b.cmp(a).then(sa.cmp(sb)));
+        let above = firsts.partition_point(|&f| f > first);
+        // fewer tied rows than ranked ones: the table changed between the reads
+        let Some(&((sort_seq, create_time, local_id), shard)) = tied.get(offset - 1 - above) else {
+            return Ok(OffsetPosition::Unusual);
+        };
+        Ok(OffsetPosition::At(MsgPos {
+            sort_seq,
+            create_time,
+            local_id,
+            shard,
+        }))
+    }
+
+    /// The first part of the sort key (see [`MsgPos`]) of the `want` newest rows of `t` with a `sort_seq`, from its
+    /// index, and of its `want` newest without one, from their `create_time`; all of them when `want` is negative.
+    /// `None` when one is not an integer.
+    fn first_keys(&self, t: &MsgTable, want: i64) -> Result<Option<Vec<i64>>> {
+        let table = &t.table;
+        let sequenced = format!(
+            "select sort_seq from \"{table}\" where sort_seq <> 0 order by sort_seq desc limit ?1"
+        );
+        let unsequenced = format!(
+            "select create_time from \"{table}\" where sort_seq is null or sort_seq = 0 \
+             order by create_time desc, local_id desc limit ?1"
+        );
+        self.with_db(&t.db, |conn| {
+            // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
+            let mut firsts = Vec::new();
+            for (sql, scale) in [(&sequenced, 1), (&unsequenced, 1000)] {
+                let mut stmt = conn
+                    .prepare(sql)
+                    .with_context(|| format!("bad query: {sql}"))?;
+                let mut rows = stmt.query([want])?;
+                while let Some(row) = rows.next()? {
+                    let rusqlite::types::ValueRef::Integer(v) = row.get_ref(0)? else {
+                        return Ok(None);
+                    };
+                    firsts.push(v * scale);
+                }
+            }
+            Ok(Some(firsts))
+        })
+    }
+
+    /// The sort keys and databases of the rows of `tables` whose key starts with `first`; `None` when a key is not
+    /// stored as integers (see [`typed_row_key`]).
+    fn tied_keys(&self, tables: &[MsgTable], first: i64) -> Result<Option<Vec<ShardKey>>> {
+        let mut keys = Vec::new();
+        for t in tables {
+            let Some(shard) = shard_of(t) else {
+                return Ok(None);
             };
-            let sql = Self::newest_sql(t, Some("sort_seq, create_time, local_id"), floor.is_some());
+            let table = &t.table;
+            let sql = format!(
+                "select sort_seq, create_time, local_id from \"{table}\" where sort_seq = ?1 and sort_seq <> 0 \
+                 union all select sort_seq, create_time, local_id from \"{table}\" \
+                 where (sort_seq is null or sort_seq = 0) and create_time * 1000 = ?1"
+            );
             let read = self.with_db(&t.db, |conn| {
-                // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
                 let mut found = Vec::new();
                 let mut stmt = conn
                     .prepare(&sql)
                     .with_context(|| format!("bad query: {sql}"))?;
-                let mut rows = match floor {
-                    Some(floor) => stmt.query(rusqlite::params![want, floor])?,
-                    None => stmt.query(rusqlite::params![want])?,
-                };
+                let mut rows = stmt.query([first])?;
                 while let Some(row) = rows.next()? {
                     let Some(key) =
                         typed_row_key(row.get_ref(0)?, row.get_ref(1)?, row.get_ref(2)?)
@@ -446,21 +524,11 @@ impl NativeAccount {
                 Ok(Some(found))
             })?;
             let Some(read) = read else {
-                return Ok(OffsetPosition::Unusual);
+                return Ok(None);
             };
             keys.extend(read);
         }
-        // the listing's order: newest key first, equal keys by ascending database
-        keys.sort_unstable_by(|(a, sa), (b, sb)| b.cmp(a).then(sa.cmp(sb)));
-        Ok(match keys.get(offset - 1) {
-            Some(&((sort_seq, create_time, local_id), shard)) => OffsetPosition::At(MsgPos {
-                sort_seq,
-                create_time,
-                local_id,
-                shard,
-            }),
-            None => OffsetPosition::Past,
-        })
+        Ok(Some(keys))
     }
 
     /// Newest-first page of the messages of `tables`, from the rows before it and the page read in full and sorted.
@@ -714,26 +782,91 @@ impl NativeAccount {
     }
 
     /// `{ "YYYY-MM-DD": count }` in local time, ascending.
+    ///
+    /// Only the time of each message is read, through [`leaf_scan`](crate::leaf_scan), which decrypts only the bytes
+    /// of each page that hold it; a table it does not read is counted through SQL.
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         let mut counts: std::collections::BTreeMap<String, i64> = Default::default();
         for t in self.message_tables(session_id)? {
-            // the local date of each quarter of an hour, not of each message: SQLite's `localtime` is the slow part,
-            // and every time zone today is a whole number of quarters away from UTC, moving on a quarter
-            let sql = format!(
-                "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
-                 (select create_time / {QUARTER} as q, count(*) as n from \"{}\" where create_time > 0 group by q) \
-                 group by d",
-                t.table
-            );
-            for r in self.query(&t.db, &sql, &[])? {
-                if let Some(d) = r["d"].as_str() {
-                    *counts.entry(d.to_string()).or_default() += int(&r, "n");
-                }
+            let days = match self.date_counts_by_scan(&t)? {
+                Some(days) => days,
+                None => self.date_counts_by_sql(&t)?,
+            };
+            for (d, n) in days {
+                *counts.entry(d).or_default() += n;
             }
         }
         Ok(Value::Object(
             counts.into_iter().map(|(d, n)| (d, json!(n))).collect(),
         ))
+    }
+
+    /// One table's messages with a positive time counted by local day, the times read by the leaf scan: counted by
+    /// quarter of an hour, and each quarter's local date taken from SQLite's `localtime` (every time zone today is a
+    /// whole number of quarters away from UTC and moves on a quarter). `None` when the scan does not read the table.
+    fn date_counts_by_scan(&self, t: &MsgTable) -> Result<Option<Vec<(String, i64)>>> {
+        let parts = self.read_db(
+            &t.db,
+            |conn| crate::leaf_scan::target(conn, &t.table, &["create_time"]),
+            |file, target| {
+                let Some((root, columns)) = target else {
+                    return Ok(None);
+                };
+                crate::leaf_scan::int_columns(
+                    file,
+                    root,
+                    &columns,
+                    HashMap::<i64, i64>::new,
+                    |quarters, cells| {
+                        if let Some(time) = cells[0].filter(|&time| time > 0) {
+                            *quarters.entry(time / QUARTER).or_default() += 1;
+                        }
+                    },
+                )
+            },
+        )?;
+        let Some(parts) = parts else {
+            return Ok(None);
+        };
+        let mut quarters: HashMap<i64, i64> = HashMap::new();
+        for part in parts {
+            for (q, n) in part {
+                *quarters.entry(q).or_default() += n;
+            }
+        }
+        let list = serde_json::to_string(&quarters.keys().collect::<Vec<_>>())?;
+        let sql = format!(
+            "select value, date(value * {QUARTER}, 'unixepoch', 'localtime') from json_each(?1)"
+        );
+        self.with_db(&t.db, |conn| {
+            let mut stmt = conn.prepare(&sql)?;
+            let mut rows = stmt.query([&list])?;
+            let mut days: HashMap<String, i64> = HashMap::new();
+            while let Some(r) = rows.next()? {
+                if let (rusqlite::types::ValueRef::Integer(q), Some(d)) =
+                    (r.get_ref(0)?, r.get_ref(1)?.as_str_or_null()?)
+                {
+                    *days.entry(d.to_string()).or_default() +=
+                        quarters.get(&q).copied().unwrap_or(0);
+                }
+            }
+            Ok(Some(days.into_iter().collect()))
+        })
+    }
+
+    /// [`date_counts_by_scan`](Self::date_counts_by_scan) through SQL, for a table the scan does not read.
+    fn date_counts_by_sql(&self, t: &MsgTable) -> Result<Vec<(String, i64)>> {
+        let sql = format!(
+            "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
+             (select create_time / {QUARTER} as q, count(*) as n from \"{}\" where create_time > 0 group by q) \
+             group by d",
+            t.table
+        );
+        Ok(self
+            .query(&t.db, &sql, &[])?
+            .into_iter()
+            .filter_map(|r| Some((r["d"].as_str()?.to_string(), int(&r, "n"))))
+            .collect())
     }
 
     /// `["YYYY-MM-DD", ...]` days that have at least one message, ascending.
@@ -1911,11 +2044,13 @@ mod tests {
             rows.push((7, seq.to_string(), create.to_string()));
             let acct = keyed_account(&format!("unusual-{tag}"), &[rows]);
             let tables = acct.message_tables("wxid_bob").unwrap();
-            assert!(
+            // a time that is not an integer is found where it matters: in the page or tied at its ends
+            assert_eq!(
                 matches!(
                     acct.offset_position(&tables, 3, 0).unwrap(),
                     OffsetPosition::Unusual
                 ),
+                tag != "null-time",
                 "{tag}"
             );
             for offset in 1..=8 {
@@ -2048,6 +2183,164 @@ mod tests {
         assert_eq!(rows[0].key(), (T0 * 1000, T0, 1));
         assert!(odd_cell_count() >= before + 2);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// One conversation in one database whose rows `fill` (SQL run after the schema) writes into table `t`; the
+    /// encrypted file is handed to `damage` before it is written.
+    fn scanned_account(
+        tag: &str,
+        fill: &str,
+        damage: impl FnOnce(&[u8], &mut Vec<u8>),
+    ) -> NativeAccount {
+        let dir = std::env::temp_dir().join(format!("weflow-scan-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("message")).unwrap();
+        let table = table_name_for("wxid_bob");
+        let fill = fill.replace("\"t\"", &format!("\"{table}\""));
+        let plain = plain_db_with(move |c: &Connection| {
+            c.execute_batch(&format!(
+                "create table Name2Id(user_name text primary key, is_session integer);
+                 create table \"{table}\"(local_id integer primary key, server_id integer, local_type integer,
+                     sort_seq integer, real_sender_id integer, create_time, status integer, message_content text);
+                 {fill}"
+            ))
+            .unwrap();
+        });
+        let mut file = encrypt_db(&plain, &PageCipher::derive(&KEY, &SALT));
+        damage(&plain, &mut file);
+        std::fs::write(dir.join("message/message_0.db"), file).unwrap();
+        NativeAccount::new(&dir, &hex(&KEY)).unwrap()
+    }
+
+    /// 6,000 rows over more than a year: a b-tree of several levels, every 40th row's text long enough to overflow,
+    /// and times that are null, zero or negative.
+    const MANY_ROWS: &str =
+        "with recursive n(i) as (select 1 union all select i + 1 from n where i < 6000)
+        insert into \"t\"(local_id, local_type, sort_seq, create_time, message_content)
+        select i, 1, i * 1000,
+               case when i % 97 = 0 then null when i % 89 = 0 then 0 when i % 83 = 0 then -5
+                    else 1700000000 + (i * 7919) % 34000000 end,
+               case when i % 40 = 0 then printf('%.6000c', 'x') else printf('m%d', i) end
+        from n;";
+
+    fn sorted(mut days: Vec<(String, i64)>) -> Vec<(String, i64)> {
+        days.sort();
+        days
+    }
+
+    #[test]
+    fn date_counts_from_the_leaf_scan_are_those_of_sql() {
+        let acct = scanned_account("many", MANY_ROWS, |_, _| {});
+        let t = &acct.message_tables("wxid_bob").unwrap()[0];
+        let scanned = acct
+            .date_counts_by_scan(t)
+            .unwrap()
+            .expect("the scan reads the table");
+        assert!(scanned.len() > 300, "{} days", scanned.len());
+        assert_eq!(sorted(scanned), sorted(acct.date_counts_by_sql(t).unwrap()));
+    }
+
+    #[test]
+    fn statistics_from_the_leaf_scan_are_those_of_sql() {
+        // senders of the owner, of others, unknown and none; types null, zero and others
+        let fill = format!(
+            "{MANY_ROWS}
+             insert into Name2Id(rowid, user_name) values (1, 'wxid_me'), (2, 'wxid_bob'), (3, 'wxid_carol');
+             update \"t\" set real_sender_id = case when local_id % 11 = 0 then null else local_id % 5 end,
+                 local_type = case when local_id % 13 = 0 then null when local_id % 17 = 0 then 0
+                                   else 1 + local_id % 4 end;"
+        );
+        let acct = scanned_account("stats", &fill, |_, _| {}).with_my_wxid(Some("wxid_me".into()));
+        let ids = vec!["wxid_bob".to_string()];
+        let read = |acct: &NativeAccount| {
+            let (b, e) = (1_705_000_000, 1_720_000_000);
+            (
+                acct.aggregate_stats(&ids, 0, 0).unwrap(),
+                acct.annual_report_stats(&ids, b, e).unwrap(),
+                acct.session_totals(&ids, b, e).unwrap(),
+                acct.available_years(&ids).unwrap(),
+                acct.group_stats("wxid_bob", 0, e).unwrap(),
+            )
+        };
+        let scanned = read(&acct);
+        assert!(scanned.0["total"].as_i64().unwrap() > 5000);
+        assert!(scanned.0["sent"].as_i64().unwrap() > 0);
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(true));
+        let by_sql = read(&acct);
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(false));
+        assert_eq!(scanned, by_sql);
+    }
+
+    #[test]
+    fn annual_extras_from_the_leaf_scan_are_those_of_sql() {
+        // the owner's texts: repeated phrases, ones padded with spaces, long ones, ones on overflow pages, a
+        // compressed-looking blob, a null; texts of others and of other types; a missing type
+        let fill = format!(
+            "{MANY_ROWS}
+             insert into Name2Id(rowid, user_name) values (1, 'wxid_me'), (2, 'wxid_bob');
+             update \"t\" set real_sender_id = case when local_id % 3 = 0 then 2 else 1 end,
+                 local_type = case when local_id % 13 = 0 then null when local_id % 7 = 0 then 3 else 1 end,
+                 sort_seq = case when local_id % 19 = 0 then 0 else sort_seq end;
+             update \"t\" set message_content = case
+                 when local_id % 40 = 0 then message_content
+                 when local_id % 41 = 0 then printf('%.300c', 'y')
+                 when local_id % 43 = 0 then '   p' || (local_id % 5) || '   '
+                 when local_id % 47 = 0 then x'6869'
+                 when local_id % 53 = 0 then null
+                 else 'p' || (local_id % 37) end;"
+        );
+        let acct = scanned_account("extras", &fill, |_, _| {}).with_my_wxid(Some("wxid_me".into()));
+        let ids = vec!["wxid_bob".to_string()];
+        let read = |acct: &NativeAccount| {
+            (
+                acct.annual_report_extras(&ids, 0, 0, 1_701_000_000, 1_701_086_399)
+                    .unwrap(),
+                acct.annual_report_extras(&ids, 1_705_000_000, 1_720_000_000, 0, 0)
+                    .unwrap(),
+            )
+        };
+        let scanned = read(&acct);
+        assert!(!scanned.0["topPhrases"].as_array().unwrap().is_empty());
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(true));
+        let by_sql = read(&acct);
+        crate::leaf_scan::SQL_ONLY.with(|off| off.set(false));
+        assert_eq!(scanned, by_sql);
+    }
+
+    #[test]
+    fn a_time_that_is_not_an_integer_is_counted_through_sql() {
+        for (tag, time) in [
+            ("text", "'1700000000'"),
+            ("real", "1700000000.5"),
+            ("blob", "x'31'"),
+        ] {
+            let fill =
+                format!("{MANY_ROWS} update \"t\" set create_time = {time} where local_id = 3000;");
+            let acct = scanned_account(tag, &fill, |_, _| {});
+            let t = &acct.message_tables("wxid_bob").unwrap()[0];
+            assert!(acct.date_counts_by_scan(t).unwrap().is_none(), "{tag}");
+            let counts = acct.session_message_date_counts("wxid_bob").unwrap();
+            let by_sql: Map<String, Value> = sorted(acct.date_counts_by_sql(t).unwrap())
+                .into_iter()
+                .map(|(d, n)| (d, json!(n)))
+                .collect();
+            assert_eq!(counts, Value::Object(by_sql), "{tag}");
+        }
+    }
+
+    #[test]
+    fn a_leaf_page_damaged_on_disk_fails_the_date_counts() {
+        // the last table leaf page of the file is one of the conversation's: its rows were written last
+        let acct = scanned_account("damaged", MANY_ROWS, |plain, file| {
+            let leaf = (0..plain.len() / crate::sqlcipher::PAGE_SIZE)
+                .rev()
+                .find(|&p| p > 0 && plain[p * crate::sqlcipher::PAGE_SIZE] == 13)
+                .expect("a leaf page");
+            // a byte of the page well past the cells' first bytes the scan decrypts
+            file[leaf * crate::sqlcipher::PAGE_SIZE + 3000] ^= 0x40;
+        });
+        let err = acct.session_message_date_counts("wxid_bob").unwrap_err();
+        assert!(format!("{err:#}").contains("HMAC"), "{err:#}");
     }
 
     #[test]

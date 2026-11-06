@@ -81,7 +81,7 @@ WeFlow 后端的 Rust 命令行版本。默认在 stdout 输出便于阅读的�
 | `cache clear --voices` | 已解码的语音 |
 | `cache clear --emojis` | 表情 |
 | `cache clear --sns` | 朋友圈的图片和视频 |
-| `cache clear --analytics` | 统计汇总 |
+| `cache clear --analytics` | 旧版本留下的统计汇总（`analytics_cache.json`） |
 | `cache clear --api` | 消息推送保存的头像（`push-avatar-files`）、`serve` 返回的文件（`serve-files`，见 [serve-api.md](serve-api.md#返回文件)）和 `api-media` 文件夹 |
 | `cache clear --keys` | 校验通过的密钥指纹；下一条命令会重新校验密钥 |
 | `cache clear --runtime` | 其他 WeFlow 版本在 `runtime/` 下释放的运行时（保留当前版本），以及旧版本安装在 `ffmpeg/` 下的 ffmpeg |
@@ -194,6 +194,6 @@ Windows x64 `key db` 直接用 Rust 在登录时设置硬件执行断点捕获�
 | `sns users`、`sns stats --fast`、`sns post-counts --prefer-cache` | 22 ms | 2 ms 以内 | 补：与时间线一起请求；服务端自己还没打开 `sns.db` 时，子进程要多花 160 ms |
 | `chat statuses`（60 个会话）、`chat tab-counts`、`group list` | 21–24 ms | – | 不补：基本只是启动进程的开销，每个列表只请求一次 |
 | `chat resources`，一页 300 条 | 52–123 ms | 16–56 ms | 改成游标分页后补上（[#178](https://github.com/334456777/WeFlow/issues/178)）：媒体卡片滚动时按它翻页。原先只读 80 个会话里每种类型最新的 90 条，再按 `offset` 截取，所以会漏掉较新的，翻得深了就是空页；现在按聊天顺序从新到旧读全部会话，剩下的会话都不可能有更新的一条时就停。所要的类型只有少数会话有时最慢，因为每个会话都要读一遍：合成账号的 501 个会话里没有视频、语音和文件，要 190–360 ms |
-| `analytics overall`、`rankings`、`time`，有缓存时 | 20–23 ms | – | 不补：有缓存已经够快；没有缓存时（`--force`，这里 129 ms）要重新统计，应该用作业 |
+| `analytics overall`、`rankings`、`time` | 129 ms | – | 不补：每次调用都要重新统计，应该用作业 |
 
 同时还发现朋友圈有两项读取本身就慢，与子进程无关：时间线为了显示 20 条要解析全部动态（合成账号 2000 条动态要 2.5 秒，现在 77 ms）；`sns post-counts` 每 500 条就把时间线重读一遍（12 秒，现在 27 ms）。

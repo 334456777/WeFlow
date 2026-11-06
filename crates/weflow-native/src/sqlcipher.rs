@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use aes::Aes256;
 use anyhow::{anyhow, bail, Result};
-use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, KeyIvInit};
+use cbc::cipher::{block_padding::NoPadding, BlockModeDecrypt, InnerIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
@@ -23,7 +23,7 @@ pub const PAGE_SIZE: usize = 4096;
 const SALT_LEN: usize = 16;
 const IV_LEN: usize = 16;
 const HMAC_LEN: usize = 64;
-const RESERVE: usize = IV_LEN + HMAC_LEN;
+pub(crate) const RESERVE: usize = IV_LEN + HMAC_LEN;
 const KDF_ITER: u32 = 256_000;
 const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 
@@ -58,6 +58,8 @@ pub struct PageCipher {
     mac_key: [u8; 32],
     /// HMAC already keyed with `mac_key`: cloning it per page skips re-hashing the key pads.
     mac: HmacSha512,
+    /// AES with `enc_key` expanded: cloning it per decryption skips the key schedule.
+    aes: Aes256,
 }
 
 impl PageCipher {
@@ -76,10 +78,60 @@ impl PageCipher {
         let mac =
             <HmacSha512 as KeyInit>::new_from_slice(&mac_key).expect("hmac accepts any key length");
         Self {
+            aes: <Aes256 as aes::cipher::KeyInit>::new(&enc_key.into()),
             enc_key,
             mac_key,
             mac,
         }
+    }
+
+    /// The 16-byte blocks `blocks` of the body of encrypted page `pgno` (not page 1, whose body starts after the salt),
+    /// decrypted into the same bytes of `out`, without checking the page's HMAC: for reads that need a few bytes of
+    /// each of many pages. CBC decrypts a block from it and the block before (the IV for the first).
+    pub(crate) fn decrypt_blocks(
+        &self,
+        page: &[u8],
+        blocks: std::ops::Range<usize>,
+        out: &mut [u8],
+    ) -> Result<()> {
+        let body_end = PAGE_SIZE - RESERVE;
+        let (from, to) = (blocks.start * 16, blocks.end * 16);
+        if page.len() != PAGE_SIZE || out.len() != PAGE_SIZE || to > body_end || from >= to {
+            bail!("bad block range {blocks:?}");
+        }
+        let iv = if from == 0 {
+            &page[body_end..body_end + IV_LEN]
+        } else {
+            &page[from - 16..from]
+        };
+        let Some(iv) = iv.first_chunk::<IV_LEN>() else {
+            bail!("bad block range {blocks:?}");
+        };
+        let body = &mut out[from..to];
+        body.copy_from_slice(&page[from..to]);
+        Aes256CbcDec::inner_iv_init(self.aes.clone(), iv.into())
+            .decrypt_padded::<NoPadding>(body)
+            .map_err(|_| anyhow!("AES decrypt failed"))?;
+        Ok(())
+    }
+
+    /// Check the HMAC of encrypted page `pgno` (`PAGE_SIZE` bytes): it covers the whole page, so a page that was torn
+    /// or damaged on disk, or one of another position or key, fails it.
+    pub(crate) fn verify(&self, pgno: u32, page: &[u8]) -> Result<()> {
+        let start = if pgno == 1 { SALT_LEN } else { 0 };
+        let body_end = PAGE_SIZE - RESERVE;
+        let (Some(signed), Some(stored_mac)) = (
+            page.get(start..body_end + IV_LEN),
+            page.get(body_end + IV_LEN..),
+        ) else {
+            bail!("page {pgno} is shorter than {PAGE_SIZE} bytes");
+        };
+        let mut mac = self.mac.clone();
+        mac.update(signed);
+        mac.update(&pgno.to_le_bytes());
+        mac.verify_slice(stored_mac).map_err(|_| {
+            anyhow!("HMAC check failed for page {pgno} (wrong key, or the page is corrupt)")
+        })
     }
 
     /// Verify and decrypt one encrypted page into `out` (`PAGE_SIZE` bytes).
@@ -97,14 +149,7 @@ impl PageCipher {
         let Some(iv) = page.get(body_end..).and_then(<[u8]>::first_chunk::<IV_LEN>) else {
             bail!("page {pgno} is shorter than {PAGE_SIZE} bytes");
         };
-        let stored_mac = &page[body_end + IV_LEN..];
-
-        let mut mac = self.mac.clone();
-        mac.update(&page[start..body_end + IV_LEN]);
-        mac.update(&pgno.to_le_bytes());
-        mac.verify_slice(stored_mac).map_err(|_| {
-            anyhow!("HMAC check failed for page {pgno} (wrong key, or the page is corrupt)")
-        })?;
+        self.verify(pgno, page)?;
 
         out.fill(0);
         if pgno == 1 {
@@ -112,7 +157,7 @@ impl PageCipher {
         }
         let body = &mut out[start..body_end];
         body.copy_from_slice(&page[start..body_end]);
-        Aes256CbcDec::new(&self.enc_key.into(), iv.into())
+        Aes256CbcDec::inner_iv_init(self.aes.clone(), iv.into())
             .decrypt_padded::<NoPadding>(body)
             .map_err(|_| anyhow!("AES decrypt failed for page {pgno}"))?;
         // Keep the reserve area (IV/HMAC slot) zeroed: SQLite treats it as unused.
@@ -467,7 +512,7 @@ pub mod testutil {
         let mut page = vec![0u8; PAGE_SIZE];
         let mut body = plain[start..body_end].to_vec();
         let len = body.len();
-        Aes256CbcEnc::new(&cipher.enc_key.into(), &iv.into())
+        <Aes256CbcEnc as cbc::cipher::KeyIvInit>::new(&cipher.enc_key.into(), &iv.into())
             .encrypt_padded::<NoPadding>(&mut body, len)
             .expect("a whole page body needs no padding");
         page[start..body_end].copy_from_slice(&body);

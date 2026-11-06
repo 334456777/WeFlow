@@ -2,8 +2,7 @@
 //! rankings, time distribution and the exclusion list.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Condvar, Mutex};
 
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
@@ -12,11 +11,109 @@ use super::*;
 use crate::contract::{ContactRank, ExcludeCandidate, OverallStatistics, TimeDistribution};
 use crate::sync::MutexExt;
 
-const AGGREGATE_TTL: Duration = Duration::from_secs(5 * 60);
+/// Aggregates being counted right now, by what they count. A request for one of them waits for that count and gets
+/// its result rather than counting the same messages again beside it. A finished count is dropped at once, so a later
+/// request counts anew: nothing is kept that new messages could make stale.
+#[derive(Default)]
+pub(crate) struct Counting {
+    running: Mutex<HashMap<String, Arc<Pending>>>,
+}
 
 #[derive(Default)]
-pub(crate) struct AnalyticsState {
-    cache: Option<(String, Value, Instant)>,
+struct Pending {
+    result: Mutex<Option<Result<Value, ErrorParts>>>,
+    done: Condvar,
+}
+
+/// An [`AppError`] taken apart, so that every request waiting for a count gets one of its own.
+#[derive(Clone)]
+struct ErrorParts {
+    code: String,
+    message: String,
+    exit_code: i32,
+    details: Option<Value>,
+}
+
+impl ErrorParts {
+    fn of(e: &AppError) -> Self {
+        Self {
+            code: e.code.clone(),
+            message: e.message.clone(),
+            exit_code: e.exit_code,
+            details: e.details.clone(),
+        }
+    }
+
+    fn to_error(&self) -> AppError {
+        let mut e = AppError::new(self.code.clone(), self.message.clone(), self.exit_code);
+        e.details = self.details.clone();
+        e
+    }
+}
+
+impl Counting {
+    /// `count()`'s result, or that of the same count (`key`) already running.
+    fn share(&self, key: String, count: impl FnOnce() -> AppResult<Value>) -> AppResult<Value> {
+        let (pending, mine) = {
+            let mut running = self.running.lock_or_panic();
+            match running.get(&key) {
+                Some(p) => (p.clone(), false),
+                None => {
+                    let p = Arc::new(Pending::default());
+                    running.insert(key.clone(), p.clone());
+                    (p, true)
+                }
+            }
+        };
+        if mine {
+            // whatever way the count ends, a panic included, the waiters get an answer and the count is dropped
+            struct Finish<'a> {
+                counting: &'a Counting,
+                key: &'a str,
+                pending: &'a Pending,
+            }
+            impl Drop for Finish<'_> {
+                fn drop(&mut self) {
+                    let mut result = self
+                        .pending
+                        .result
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if result.is_none() {
+                        *result = Some(Err(ErrorParts::of(&AppError::runtime(
+                            "the statistics stopped before they were counted",
+                        ))));
+                    }
+                    drop(result);
+                    self.counting
+                        .running
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(self.key);
+                    self.pending.done.notify_all();
+                }
+            }
+            let _finish = Finish {
+                counting: self,
+                key: &key,
+                pending: &pending,
+            };
+            let result = count();
+            *pending.result.lock_or_panic() =
+                Some(result.as_ref().map(Value::clone).map_err(ErrorParts::of));
+            return result;
+        }
+        let mut slot = pending.result.lock_or_panic();
+        loop {
+            if let Some(r) = slot.as_ref() {
+                return r.clone().map_err(|e| e.to_error());
+            }
+            slot = pending
+                .done
+                .wait(slot)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
 }
 
 fn normalize_username(u: &str) -> String {
@@ -95,10 +192,6 @@ fn map_get<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 }
 
 impl ServiceHub {
-    fn analytics_cache_path(&self) -> PathBuf {
-        self.cache_base().join("analytics_cache.json")
-    }
-
     pub(super) fn fresh_config(&self) -> crate::config::ConfigStore {
         if !self.ctx.config_path.exists() {
             return self.config.clone();
@@ -129,19 +222,11 @@ impl ServiceHub {
         Ok(self.excluded_list())
     }
 
-    /// `setExcludedUsernames`: normalises, persists and drops the aggregate caches.
+    /// `setExcludedUsernames`: normalises and persists the list.
     pub fn analytics_set_excluded_usernames(&self, usernames: &[String]) -> AppResult<Vec<String>> {
         let normalized = normalize_excluded(&json!(usernames));
         self.set_config_value("analyticsExcludedUsernames", json!(normalized))?;
-        self.analytics_clear_cache()?;
         Ok(normalized)
-    }
-
-    /// `clearCache`
-    pub fn analytics_clear_cache(&self) -> AppResult<()> {
-        self.analytics_state.lock_or_panic().cache = None;
-        let _ = std::fs::remove_file(self.analytics_cache_path());
-        Ok(())
     }
 
     fn private_sessions(
@@ -330,64 +415,38 @@ impl ServiceHub {
         }))
     }
 
-    fn aggregate_key(ids: &[String], begin: i64, end: i64) -> String {
-        if ids.is_empty() {
-            return format!("{begin}-{end}-0-empty");
-        }
-        let mut uniq: Vec<String> = ids
-            .iter()
-            .cloned()
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        uniq.sort();
-        use sha1::{Digest, Sha1};
-        let mut h = Sha1::new();
-        h.update(uniq.join("|").as_bytes());
-        let hash: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
-        format!("{begin}-{end}-{}-{}", uniq.len(), &hash[..12])
-    }
-
-    /// `getAggregateWithFallback`: memory cache → file cache → native aggregate → cursor scan.
-    /// Returns `(data, source)`.
+    /// `getAggregateWithFallback`: the native aggregate, or a cursor scan when it is empty. Read from the databases
+    /// every time, so it follows new messages; requests for the same aggregate that arrive while it is counted
+    /// share that count (see [`Counting`]).
     fn aggregate_with_fallback(
         &self,
         wcdb: &weflow_native::wcdb::Wcdb,
         ids: &[String],
         begin: i64,
         end: i64,
-        force: bool,
-    ) -> AppResult<(Value, &'static str)> {
-        let key = Self::aggregate_key(ids, begin, end);
-        if force {
-            self.analytics_state.lock_or_panic().cache = None;
+    ) -> AppResult<Value> {
+        let key = format!("{begin}\u{1f}{end}\u{1f}{}", ids.join("\u{1f}"));
+        self.analytics_counting
+            .share(key, || match self.aggregate_raw(wcdb, ids, begin, end) {
+                Ok(d) if num(&d["total"]) > 0 => Ok(d),
+                _ => self.aggregate_by_cursor(wcdb, ids, begin, end),
+            })
+    }
+
+    /// The `sessions` of [`aggregate_with_fallback`](Self::aggregate_with_fallback) alone, counted without the
+    /// grouping by type and time it needs for the rest; the cursor scan when the native count is empty.
+    fn session_totals(
+        &self,
+        wcdb: &weflow_native::wcdb::Wcdb,
+        ids: &[String],
+        begin: i64,
+        end: i64,
+    ) -> AppResult<Value> {
+        let (b, e) = normalize_range(begin, end);
+        match wcdb.session_totals(ids, b, e) {
+            Ok(d) if num(&d["total"]) > 0 => Ok(d),
+            _ => self.aggregate_by_cursor(wcdb, ids, begin, end),
         }
-        if !force {
-            if let Some((k, data, at)) = &self.analytics_state.lock_or_panic().cache {
-                if *k == key && at.elapsed() < AGGREGATE_TTL {
-                    return Ok((data.clone(), "cache"));
-                }
-            }
-            if let Ok(raw) = std::fs::read_to_string(self.analytics_cache_path()) {
-                if let Ok(v) = serde_json::from_str::<Value>(&raw) {
-                    if v["key"].as_str() == Some(key.as_str()) && v.get("data").is_some() {
-                        let data = v["data"].clone();
-                        self.analytics_state.lock_or_panic().cache =
-                            Some((key, data.clone(), Instant::now()));
-                        return Ok((data, "file-cache"));
-                    }
-                }
-            }
-        }
-        let (data, source) = match self.aggregate_raw(wcdb, ids, begin, end) {
-            Ok(d) if num(&d["total"]) > 0 => (d, "dll"),
-            _ => (self.aggregate_by_cursor(wcdb, ids, begin, end)?, "cursor"),
-        };
-        self.analytics_state.lock_or_panic().cache =
-            Some((key.clone(), data.clone(), Instant::now()));
-        let _ = std::fs::create_dir_all(self.cache_base());
-        let _ = std::fs::write(self.analytics_cache_path(), serde_json::to_string(&json!({ "key": key, "data": data, "updatedAt": chrono::Utc::now().timestamp_millis() })).unwrap_or_default());
-        Ok((data, source))
     }
 
     fn analytics_connect(&self) -> AppResult<(weflow_native::wcdb::Wcdb, String)> {
@@ -468,18 +527,14 @@ impl ServiceHub {
     }
 
     /// `getOverallStatistics`
-    pub fn analytics_overall_statistics(
-        &self,
-        freshness: Freshness,
-    ) -> AppResult<OverallStatistics> {
+    pub fn analytics_overall_statistics(&self) -> AppResult<OverallStatistics> {
         let (wcdb, cleaned) = self.analytics_connect()?;
         let usernames = self.private_sessions(&wcdb, &cleaned, None)?;
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
         self.emit_progress("analytics", "aggregating…", 30, 100);
-        let force = freshness == Freshness::Fresh;
-        let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0, force)?;
+        let d = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0)?;
         let type_count = |t: i64| d["typeCounts"].get(t.to_string()).map(num).unwrap_or(0);
         let total = num(&d["total"]);
         let text = type_count(1) + type_count(244813135921);
@@ -523,7 +578,7 @@ impl ServiceHub {
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
-        let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, begin, end, false)?;
+        let d = self.session_totals(&wcdb, &usernames, begin, end)?;
         let mut sessions = d
             .get("sessions")
             .and_then(Value::as_object)
@@ -594,7 +649,7 @@ impl ServiceHub {
         if usernames.is_empty() {
             return Err(AppError::runtime("no message sessions found"));
         }
-        let (d, _) = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0, false)?;
+        let d = self.aggregate_with_fallback(&wcdb, &usernames, 0, 0)?;
         // native: 0 = Sunday … 6 = Saturday; the UI wants 1 = Monday … 7 = Sunday
         let weekday = counts_of(&d["weekday"])
             .into_iter()
@@ -614,5 +669,84 @@ impl ServiceHub {
             weekday_distribution: weekday,
             monthly_distribution: counts_of(&d["monthly"]),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Barrier;
+
+    #[test]
+    fn requests_that_meet_share_one_count_and_later_ones_count_again() {
+        let counting = Counting::default();
+        let counted = AtomicUsize::new(0);
+        let (started, release) = (Barrier::new(2), Barrier::new(2));
+        let results: Vec<AppResult<Value>> = std::thread::scope(|s| {
+            let first = s.spawn(|| {
+                counting.share("k".into(), || {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                    started.wait();
+                    release.wait();
+                    Ok(json!(1))
+                })
+            });
+            // the second asks while the first is counting
+            started.wait();
+            let second = s.spawn(|| counting.share("k".into(), || panic!("counted twice")));
+            while counting
+                .running
+                .lock_or_panic()
+                .get("k")
+                .map(Arc::strong_count)
+                != Some(3)
+            {
+                std::thread::yield_now();
+            }
+            release.wait();
+            vec![first.join().unwrap(), second.join().unwrap()]
+        });
+        assert_eq!(counted.load(Ordering::SeqCst), 1);
+        assert!(results.iter().all(|r| r.as_ref().ok() == Some(&json!(1))));
+        // nothing is kept once the count is over
+        assert!(counting.running.lock_or_panic().is_empty());
+        assert_eq!(
+            counting.share("k".into(), || Ok(json!(2))).unwrap(),
+            json!(2)
+        );
+        let failed = counting.share("k".into(), || Err(AppError::native("broken")));
+        assert_eq!(failed.unwrap_err().message, "broken");
+    }
+
+    #[test]
+    fn a_count_that_panics_still_answers_who_waits() {
+        let counting = Counting::default();
+        let (started, release) = (Barrier::new(2), Barrier::new(2));
+        let waiter = std::thread::scope(|s| {
+            let first = s.spawn(|| {
+                counting.share("k".into(), || {
+                    started.wait();
+                    release.wait();
+                    panic!("the count broke")
+                })
+            });
+            started.wait();
+            let second = s.spawn(|| counting.share("k".into(), || Ok(json!(0))));
+            while counting
+                .running
+                .lock_or_panic()
+                .get("k")
+                .map(Arc::strong_count)
+                != Some(3)
+            {
+                std::thread::yield_now();
+            }
+            release.wait();
+            assert!(first.join().is_err());
+            second.join().unwrap()
+        });
+        assert!(waiter.is_err());
+        assert!(counting.running.lock_or_panic().is_empty());
     }
 }

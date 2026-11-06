@@ -399,8 +399,6 @@ export interface GroupChat {
 export interface GroupMembers {
   chatroomId: string;
   count: number;
-  /** Whether the panel was kept from a request a short while before (`refresh=true` builds it again). */
-  fromCache: boolean;
   /** When the panel was built, in Unix milliseconds. */
   updatedAt: number;
   members: GroupMember[];

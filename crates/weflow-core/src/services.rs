@@ -55,8 +55,8 @@ pub struct ServiceHub {
     wxid_override: Option<String>,
     pub progress_enabled: bool,
     sns_state: std::sync::Arc<std::sync::Mutex<sns::SnsState>>,
-    group_state: std::sync::Arc<std::sync::Mutex<group::GroupState>>,
-    analytics_state: std::sync::Arc<std::sync::Mutex<analytics::AnalyticsState>>,
+    /// Statistics being counted right now (see [`analytics::Counting`]).
+    analytics_counting: std::sync::Arc<analytics::Counting>,
     image_state: std::sync::Arc<std::sync::Mutex<image::ImageState>>,
     insight_state: std::sync::Arc<std::sync::Mutex<insight::InsightState>>,
 }
@@ -80,8 +80,7 @@ impl ServiceHub {
             wxid_override,
             progress_enabled: false,
             sns_state: Default::default(),
-            group_state: Default::default(),
-            analytics_state: Default::default(),
+            analytics_counting: Default::default(),
             image_state: Default::default(),
             insight_state: Default::default(),
         }
@@ -965,8 +964,6 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
-        // One pass over the conversation: keeping its whole database decrypted would only cost memory.
-        wcdb.set_low_memory(true);
         let opts = CollectOptions {
             session_id: &req.session_id,
             my_wxid: &my_wxid,
@@ -998,7 +995,6 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
-        wcdb.set_low_memory(true);
         let opts = CollectOptions {
             session_id: &req.session_id,
             my_wxid: &my_wxid,

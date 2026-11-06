@@ -1,7 +1,7 @@
 //! Export pipeline probe on a synthetic encrypted account; no WeChat data is opened.
 //!
 //! usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N]
-//!                              [--mode all|full|stages|read|keys] [--no-low-memory] [--connections N]
+//!                              [--mode all|full|stages|read|keys] [--connections N]
 //!
 //! `<work dir>/data` is wiped and rebuilt: one group with N messages (default 200000) spread evenly over the
 //! shards (default 2), cycling through text, zstd-compressed link and quote appmsgs, images, stickers and system
@@ -56,7 +56,6 @@ struct Args {
     format: String,
     runs: usize,
     mode: String,
-    low_memory: bool,
     /// Connections a database may open for the `read` mode's threads.
     connections: usize,
 }
@@ -64,7 +63,7 @@ struct Args {
 fn parse_args() -> anyhow::Result<(std::path::PathBuf, Args)> {
     let mut it = std::env::args().skip(1);
     let dir = it.next().ok_or_else(|| {
-        anyhow::anyhow!("usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N] [--mode all|full|stages|read|keys] [--no-low-memory] [--connections N]")
+        anyhow::anyhow!("usage: export_pipeline_probe <work dir> [--messages N] [--shards N] [--format F] [--runs N] [--mode all|full|stages|read|keys] [--connections N]")
     })?;
     let mut args = Args {
         messages: 200_000,
@@ -72,7 +71,6 @@ fn parse_args() -> anyhow::Result<(std::path::PathBuf, Args)> {
         format: "chatlab".into(),
         runs: 3,
         mode: "all".into(),
-        low_memory: true,
         connections: 1,
     };
     while let Some(flag) = it.next() {
@@ -86,7 +84,6 @@ fn parse_args() -> anyhow::Result<(std::path::PathBuf, Args)> {
             "--format" => args.format = value()?,
             "--runs" => args.runs = value()?.parse()?,
             "--mode" => args.mode = value()?,
-            "--no-low-memory" => args.low_memory = false,
             "--connections" => args.connections = value()?.parse()?,
             other => anyhow::bail!("unknown option {other}"),
         }
@@ -519,8 +516,7 @@ fn stages(root: &Path, wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
 fn parallel_read(wcdb: &Wcdb, args: &Args) -> anyhow::Result<()> {
     wcdb.set_read_connections(args.connections);
     let span = args.messages * STEP;
-    // opens every shard's snapshot (and, with --no-low-memory, fills the page caches), so the rows below compare
-    // the same warm state
+    // opens every shard's snapshot, so the rows below compare the same warm state
     timed("reader: warm-up pass", || count_rows(wcdb, 0, 0))?;
     for parts in [1i64, 2, 4, 8] {
         let rows = timed(&format!("reader: range split over {parts} threads"), || {
@@ -555,8 +551,6 @@ fn main() -> anyhow::Result<()> {
     if matches!(args.mode.as_str(), "all" | "stages" | "read" | "keys") {
         let mut wcdb = Wcdb::new();
         wcdb.open_unchecked(&fixture.account_dir, &fixture.key_hex(), Some(OWNER))?;
-        // exports run in low-memory mode (16 MiB page cache per database)
-        wcdb.set_low_memory(args.low_memory);
         if args.mode == "keys" {
             return keys(&wcdb, &args);
         }

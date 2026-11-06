@@ -11,7 +11,7 @@ export type TimeSpread = Contract.TimeDistribution;
 export type Candidate = Contract.ExcludeCandidate;
 
 /** With `force`, read every chat again rather than the aggregate kept from last time. */
-export const getOverall = (force: boolean, signal?: AbortSignal) => get<Overall>('api/analytics/overall', { force: force || undefined }, signal);
+export const getOverall = (signal?: AbortSignal) => get<Overall>('api/analytics/overall', {}, signal);
 export const getRankings = (limit: number, signal?: AbortSignal) => get<Ranked[]>('api/analytics/rankings', { limit }, signal);
 export const getTimeSpread = (signal?: AbortSignal) => get<TimeSpread>('api/analytics/time', {}, signal);
 export const getExcluded = (signal?: AbortSignal) => get<string[]>('api/analytics/excluded', {}, signal);

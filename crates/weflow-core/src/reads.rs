@@ -90,7 +90,6 @@ pub enum Read {
     GroupMembers {
         chatroom_id: String,
         counts: bool,
-        refresh: bool,
     },
     /// `sns timeline` without its media, which are downloaded.
     SnsTimeline {
@@ -146,10 +145,8 @@ pub enum Read {
         start: Option<String>,
         end: Option<String>,
     },
-    /// `analytics overall`; `force` reads every chat again rather than the aggregate kept.
-    AnalyticsOverall {
-        force: bool,
-    },
+    /// `analytics overall`.
+    AnalyticsOverall,
     AnalyticsRankings {
         limit: usize,
         start: Option<String>,
@@ -345,14 +342,11 @@ impl Read {
             Read::GroupMembers {
                 chatroom_id,
                 counts,
-                refresh,
             } => {
-                let (members, from_cache, updated_at) =
-                    hub.group_members_panel(chatroom_id, *refresh, *counts)?;
+                let (members, updated_at) = hub.group_members_panel(chatroom_id, *counts)?;
                 Ok(json!(crate::contract::GroupMembers {
                     chatroom_id: chatroom_id.clone(),
                     count: members.len(),
-                    from_cache,
                     updated_at,
                     members,
                 }))
@@ -452,9 +446,7 @@ impl Read {
                     *cursor
                 )?))
             }
-            Read::AnalyticsOverall { force } => Ok(json!(
-                hub.analytics_overall_statistics(Freshness::cached_if(!*force))?
-            )),
+            Read::AnalyticsOverall => Ok(json!(hub.analytics_overall_statistics()?)),
             Read::AnalyticsRankings { limit, start, end } => {
                 let (b, e) = day_span(start.as_deref(), end.as_deref())?;
                 Ok(json!(hub.analytics_contact_rankings(*limit, b, e)?))

@@ -456,8 +456,6 @@ pub struct GroupChat {
 pub struct GroupMembers {
     pub chatroom_id: String,
     pub count: usize,
-    /// Whether the panel was kept from a request a short while before (`refresh=true` builds it again).
-    pub from_cache: bool,
     /// When the panel was built, in Unix milliseconds.
     pub updated_at: i64,
     pub members: Vec<GroupMember>,

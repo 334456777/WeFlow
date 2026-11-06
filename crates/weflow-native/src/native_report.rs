@@ -106,13 +106,122 @@ fn is_phrase(t: &str) -> bool {
     (2..=20).contains(&n) && !t.contains("http") && !t.contains('<') && !t.starts_with('[')
 }
 
+/// A message's place in its conversation's order (`sort_seq`, or `create_time * 1000` without one, then
+/// `create_time` and `local_id`), and the message.
+type Placed = ((i64, i64, i64), Msg);
+
+/// The longest text [`NativeAccount::extras_messages`] decrypts in a page: any longer one is read through SQL.
+const LONGEST_TEXT: usize = 4096;
+
+/// What the annual report's extras take from one session's messages (see
+/// [`NativeAccount::annual_report_extras`]).
+struct SessionExtras {
+    /// Weekday (Monday first) × hour.
+    heatmap: [[i64; 24]; 7],
+    night: i64,
+    initiated: i64,
+    received: i64,
+    /// How many replies of mine, and their seconds in all.
+    replies: usize,
+    reply_seconds: i64,
+    in_peak: i64,
+    /// My phrases, in the order of the messages.
+    phrases: Vec<String>,
+    /// The longest run of consecutive days, its first and last day.
+    best: i64,
+    best_start: String,
+    best_end: String,
+}
+
+impl SessionExtras {
+    /// The sums of a session's messages in their order; `None` when it has none.
+    fn of(msgs: impl Iterator<Item = Msg>, peak_begin: i64, peak_end: i64) -> Option<Self> {
+        let mut e = Self {
+            heatmap: [[0; 24]; 7],
+            night: 0,
+            initiated: 0,
+            received: 0,
+            replies: 0,
+            reply_seconds: 0,
+            in_peak: 0,
+            phrases: Vec::new(),
+            best: 0,
+            best_start: String::new(),
+            best_end: String::new(),
+        };
+        let mut any = false;
+        let mut last: Option<(i64, bool)> = None;
+        let (mut last_day, mut run, mut run_start) = (None::<i64>, 0i64, String::new());
+        for m in msgs {
+            any = true;
+            e.heatmap[m.weekday_mon][m.hour] += 1;
+            if m.hour < 6 {
+                e.night += 1;
+            }
+            if peak_begin > 0 && peak_end > 0 && m.time >= peak_begin && m.time <= peak_end {
+                e.in_peak += 1;
+            }
+            match last {
+                Some((t, was_mine)) if m.time - t <= GAP => {
+                    if !was_mine && m.mine && m.time - t > 0 && m.time - t < MAX_RESPONSE {
+                        e.replies += 1;
+                        e.reply_seconds += m.time - t;
+                    }
+                }
+                _ => {
+                    if m.mine {
+                        e.initiated += 1
+                    } else {
+                        e.received += 1
+                    }
+                }
+            }
+            last = Some((m.time, m.mine));
+            if m.kind == TEXT && m.mine {
+                let t = m.content.trim();
+                if is_phrase(t) {
+                    e.phrases.push(t.to_string());
+                }
+            }
+            if last_day != Some(m.day_no) {
+                if last_day.is_some_and(|l| m.day_no - l == 1) {
+                    run += 1;
+                } else {
+                    run = 1;
+                    run_start = m.day.clone();
+                }
+                if run > e.best {
+                    (e.best, e.best_start, e.best_end) = (run, run_start.clone(), m.day.clone());
+                }
+                last_day = Some(m.day_no);
+            }
+        }
+        any.then_some(e)
+    }
+}
+
 impl NativeAccount {
     /// Chronological messages of a session inside `[begin, end]` (all shards merged).
     fn conversation(&self, session_id: &str, begin: i64, end: i64) -> Result<Vec<Msg>> {
-        let range = range_sql(begin, end);
-        let mut rows: Vec<((i64, i64, i64), Msg)> = Vec::new();
+        let mut rows: Vec<Placed> = Vec::new();
         for t in self.message_tables(session_id)? {
-            let mine = self.my_ids(&t.db)?;
+            rows.extend(self.table_messages(&t, &self.my_ids(&t.db)?, begin, end)?);
+        }
+        rows.sort_by_key(|a| a.0);
+        Ok(rows.into_iter().map(|(_, m)| m).collect())
+    }
+
+    /// The messages of one table inside `[begin, end]`, read through SQL, each with its place.
+    fn table_messages(
+        &self,
+        t: &crate::native_msg::MsgTable,
+        mine: &str,
+        begin: i64,
+        end: i64,
+    ) -> Result<Vec<Placed>> {
+        let range = range_sql(begin, end);
+        let mut rows: Vec<Placed> = Vec::new();
+        {
             let local =
                 |f: &str| format!("strftime('{f}', m.create_time, 'unixepoch', 'localtime')");
             let sql = format!(
@@ -157,8 +266,169 @@ impl NativeAccount {
                 },
             )?;
         }
-        rows.sort_by_key(|a| a.0);
-        Ok(rows.into_iter().map(|(_, m)| m).collect())
+        Ok(rows)
+    }
+
+    /// [`table_messages`](Self::table_messages) for the annual report's extras, read through the leaf scan: a text is
+    /// kept only where the extras read one, the owner's text messages that may be a phrase ([`is_phrase`]), and it
+    /// is read through SQL when the scan does not decrypt it (longer than [`LONGEST_TEXT`], stored on overflow pages
+    /// or compressed). Read through SQL altogether when the scan does not read the table.
+    fn extras_messages(
+        &self,
+        t: &crate::native_msg::MsgTable,
+        mine: &str,
+        begin: i64,
+        end: i64,
+    ) -> Result<Vec<Placed>> {
+        let ids = crate::native_stats::id_set(mine);
+        /// A message as the scan finds it: its place, type, whether the owner sent it, and its text when kept.
+        struct Found {
+            key: (i64, i64, i64),
+            kind: i64,
+            mine: bool,
+            text: Option<String>,
+            /// The text is to be read through SQL.
+            unread: bool,
+        }
+        let scanned = self.read_db(
+            &t.db,
+            |conn| {
+                // the rowid the scan hands over is the `local_id` the order and the SQL read
+                let local_id_is_rowid: bool = conn.query_row(
+                    "select count(*) = 1 and coalesce(sum(name = 'local_id' and upper(type) = 'INTEGER'), 0) = 1 \
+                     from pragma_table_info(?1) where pk > 0",
+                    [&t.table],
+                    |r| r.get(0),
+                )?;
+                if !local_id_is_rowid {
+                    return Ok(None);
+                }
+                crate::leaf_scan::target(
+                    conn,
+                    &t.table,
+                    &[
+                        "sort_seq",
+                        "create_time",
+                        "local_type",
+                        "real_sender_id",
+                        "message_content",
+                    ],
+                )
+            },
+            |file, target| {
+                let Some((root, columns)) = target else {
+                    return Ok(None);
+                };
+                crate::leaf_scan::rows(
+                    file,
+                    root,
+                    &columns[..4],
+                    Some((columns[4], LONGEST_TEXT)),
+                    Vec::<Found>::new,
+                    |found, row| {
+                        let [seq, time, kind, sender] = row.ints else {
+                            return;
+                        };
+                        let Some(time) = time.filter(|&t| t > 0) else {
+                            return;
+                        };
+                        if (begin > 0 && time < begin) || (end > 0 && time > end) {
+                            return;
+                        }
+                        let mine = sender.is_some_and(|s| ids.contains(&s));
+                        // the content the SQL reads is that of the text type itself, not of a missing type
+                        let wanted = mine && *kind == Some(TEXT);
+                        let (text, unread) = match (wanted, row.text) {
+                            (false, _) | (true, crate::leaf_scan::Text::Null) => (None, false),
+                            (true, crate::leaf_scan::Text::Short(t)) => {
+                                (is_phrase(t.trim()).then(|| t.to_string()), false)
+                            }
+                            (true, crate::leaf_scan::Text::Other) => (None, true),
+                        };
+                        let seq = match seq.unwrap_or(0) {
+                            0 => time * 1000,
+                            s => s,
+                        };
+                        found.push(Found {
+                            key: (seq, time, row.rowid),
+                            kind: match kind {
+                                None | Some(0) => 1,
+                                Some(k) => *k,
+                            },
+                            mine,
+                            text,
+                            unread,
+                        });
+                    },
+                )
+            },
+        )?;
+        let Some(parts) = scanned else {
+            return self.table_messages(t, mine, begin, end);
+        };
+        let mut found: Vec<Found> = parts.into_iter().flatten().collect();
+        // the texts the scan left
+        let unread: Vec<i64> = found.iter().filter(|f| f.unread).map(|f| f.key.2).collect();
+        let mut texts: HashMap<i64, String> = HashMap::new();
+        for ids in unread.chunks(500) {
+            let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "select m.local_id as l, case when m.local_type = {TEXT} then m.message_content end as c \
+                 from \"{}\" m where m.local_id in ({list})",
+                t.table
+            );
+            for r in self.query(&t.db, &sql, &[])? {
+                texts.insert(int(&r, "l"), text(&r, "c"));
+            }
+        }
+        for f in found.iter_mut().filter(|f| f.unread) {
+            f.text = texts.remove(&f.key.2);
+        }
+        // the local hour, weekday and day of each quarter of an hour (see `native_stats::time_groups`)
+        let quarters: std::collections::BTreeSet<i64> =
+            found.iter().map(|f| f.key.1 / 900).collect();
+        let list = serde_json::to_string(&quarters.iter().collect::<Vec<_>>())?;
+        let day = "date(value * 900, 'unixepoch', 'localtime')";
+        let sql = format!(
+            "select value, cast(strftime('%H', value * 900, 'unixepoch', 'localtime') as integer), \
+             cast(strftime('%w', value * 900, 'unixepoch', 'localtime') as integer), {day}, \
+             cast(julianday({day}) + 0.5 as integer) from json_each(?1)"
+        );
+        let local: HashMap<i64, (i64, i64, String, i64)> = self.with_db(&t.db, |conn| {
+            let mut stmt = conn.prepare(&sql)?;
+            let mut rows = stmt.query([&list])?;
+            let mut out = HashMap::new();
+            while let Some(r) = rows.next()? {
+                let n = |i: usize| -> Result<i64> {
+                    Ok(match r.get_ref(i)? {
+                        rusqlite::types::ValueRef::Integer(v) => v,
+                        _ => 0,
+                    })
+                };
+                let d = r.get_ref(3)?.as_str_or_null()?.unwrap_or("").to_string();
+                out.insert(n(0)?, (n(1)?, n(2)?, d, n(4)?));
+            }
+            Ok(out)
+        })?;
+        Ok(found
+            .into_iter()
+            .map(|f| {
+                let (hour, weekday, day, day_no) =
+                    local.get(&(f.key.1 / 900)).cloned().unwrap_or_default();
+                let msg = Msg {
+                    time: f.key.1,
+                    local_id: f.key.2,
+                    kind: f.kind,
+                    mine: f.mine,
+                    hour: hour.clamp(0, 23) as usize,
+                    weekday_mon: ((weekday + 6) % 7) as usize,
+                    day,
+                    day_no,
+                    content: f.text.unwrap_or_default(),
+                };
+                (f.key, msg)
+            })
+            .collect())
     }
 
     /// Extended annual-report statistics over `session_ids` inside `[begin, end]`:
@@ -182,73 +452,54 @@ impl NativeAccount {
             (Map::new(), Map::new(), Map::new(), Map::new());
         let mut my_texts: Vec<String> = Vec::new();
         let mut streak: Option<(String, i64, String, String)> = None;
-        for sid in session_ids {
-            let msgs = self.conversation(sid, begin, end)?;
-            if msgs.is_empty() {
-                continue;
+        let tables = crate::native_stats::tables_of(self, session_ids)?;
+        let mut mine: HashMap<std::path::PathBuf, String> = HashMap::new();
+        for t in tables.iter().flatten() {
+            if !mine.contains_key(&t.db) {
+                mine.insert(t.db.clone(), self.my_ids(&t.db)?);
             }
-            let (mut initiated, mut received, mut night, mut in_peak) = (0i64, 0i64, 0i64, 0i64);
-            let mut replies: Vec<i64> = Vec::new();
-            let mut last: Option<(i64, bool)> = None;
-            let (mut last_day, mut run, mut run_start) = (None::<i64>, 0i64, String::new());
-            let (mut best, mut best_start, mut best_end) = (0i64, String::new(), String::new());
-            for m in &msgs {
-                heatmap[m.weekday_mon][m.hour] += 1;
-                if m.hour < 6 {
-                    night += 1;
-                }
-                if peak_begin > 0 && peak_end > 0 && m.time >= peak_begin && m.time <= peak_end {
-                    in_peak += 1;
-                }
-                match last {
-                    Some((t, was_mine)) if m.time - t <= GAP => {
-                        if !was_mine && m.mine && m.time - t > 0 && m.time - t < MAX_RESPONSE {
-                            replies.push(m.time - t);
-                        }
-                    }
-                    _ => {
-                        if m.mine {
-                            initiated += 1
-                        } else {
-                            received += 1
-                        }
-                    }
-                }
-                last = Some((m.time, m.mine));
-                if m.kind == TEXT && m.mine {
-                    let t = m.content.trim();
-                    if is_phrase(t) {
-                        my_texts.push(t.to_string());
-                    }
-                }
-                if last_day != Some(m.day_no) {
-                    if last_day.is_some_and(|l| m.day_no - l == 1) {
-                        run += 1;
-                    } else {
-                        run = 1;
-                        run_start = m.day.clone();
-                    }
-                    if run > best {
-                        (best, best_start, best_end) = (run, run_start.clone(), m.day.clone());
-                    }
-                    last_day = Some(m.day_no);
+        }
+        // each session read and summed up on a thread of its own: only the sums stay in memory
+        let sessions: Vec<(&String, &Vec<crate::native_msg::MsgTable>)> =
+            session_ids.iter().zip(&tables).collect();
+        let summed = crate::native_stats::each_table(&sessions, |(_, ts)| {
+            let mut placed: Vec<Placed> = Vec::new();
+            for t in ts.iter() {
+                placed.extend(self.extras_messages(t, &mine[&t.db], begin, end)?);
+            }
+            placed.sort_by_key(|a| a.0);
+            Ok(SessionExtras::of(
+                placed.into_iter().map(|(_, m)| m),
+                peak_begin,
+                peak_end,
+            ))
+        })?;
+        for ((sid, _), e) in sessions.iter().zip(summed) {
+            let Some(e) = e else { continue };
+            for (row, sums) in heatmap.iter_mut().zip(&e.heatmap) {
+                for (cell, n) in row.iter_mut().zip(sums) {
+                    *cell += n;
                 }
             }
-            if night > 0 {
-                midnight.insert(sid.clone(), json!(night));
+            my_texts.extend(e.phrases);
+            if e.night > 0 {
+                midnight.insert((*sid).clone(), json!(e.night));
             }
             conversation.insert(
-                sid.clone(),
-                json!({ "initiated": initiated, "received": received }),
+                (*sid).clone(),
+                json!({ "initiated": e.initiated, "received": e.received }),
             );
-            if replies.len() >= MIN_REPLIES {
-                response.insert(sid.clone(), json!({ "count": replies.len(), "avg": replies.iter().sum::<i64>() as f64 / replies.len() as f64 }));
+            if e.replies >= MIN_REPLIES {
+                response.insert(
+                    (*sid).clone(),
+                    json!({ "count": e.replies, "avg": e.reply_seconds as f64 / e.replies as f64 }),
+                );
             }
-            if in_peak > 0 {
-                peak.insert(sid.clone(), json!(in_peak));
+            if e.in_peak > 0 {
+                peak.insert((*sid).clone(), json!(e.in_peak));
             }
-            if best > streak.as_ref().map_or(0, |s| s.1) {
-                streak = Some((sid.clone(), best, best_start, best_end));
+            if e.best > streak.as_ref().map_or(0, |s| s.1) {
+                streak = Some(((*sid).clone(), e.best, e.best_start, e.best_end));
             }
         }
         let refs: Vec<&str> = my_texts.iter().map(String::as_str).collect();

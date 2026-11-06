@@ -376,6 +376,55 @@ impl CipherFile {
         Ok((chunk, first))
     }
 
+    /// The encrypted bytes of page `pgno` as the snapshot holds it (its WAL copy, else from the main file, checked
+    /// against the guard like any read), its HMAC checked, handed to `f` to decrypt what it needs; `None` for a page
+    /// never written. A page that fails its HMAC fails the read as a torn one does (see [`page_into`](Self::page_into)).
+    pub(crate) fn with_checked_page<T>(
+        &self,
+        pgno: u32,
+        f: impl FnOnce(&[u8]) -> T,
+    ) -> Result<Option<T>> {
+        let read = |enc: &[u8]| -> Result<Option<T>> {
+            if enc.iter().all(|b| *b == 0) {
+                return Ok(None);
+            }
+            if let Err(e) = self.cipher.verify(pgno, enc) {
+                let why = format!("{}: {e}", self.path.display());
+                self.fail(why.clone());
+                return Err(anyhow!(why));
+            }
+            self.pages_decrypted.fetch_add(1, Ordering::Relaxed);
+            Ok(Some(f(enc)))
+        };
+        if let Some(enc) = self.wal_pages.get(&pgno) {
+            return read(enc);
+        }
+        if pgno == 0 || pgno > self.main_pages {
+            return Ok(None);
+        }
+        let (chunk, first) = self
+            .chunk(pgno)
+            .map_err(|_| anyhow!(self.read_error().unwrap_or_else(|| "read failed".into())))?;
+        let i = (pgno - first) as usize * PAGE_SIZE;
+        read(&chunk[i..i + PAGE_SIZE])
+    }
+
+    /// Page `pgno` decrypted and checked, as SQLite gets it.
+    pub(crate) fn page(&self, pgno: u32, out: &mut [u8]) -> Result<()> {
+        self.page_into(pgno, out)
+            .map_err(|_| anyhow!(self.read_error().unwrap_or_else(|| "read failed".into())))
+    }
+
+    /// Pages of the database as the snapshot sees it.
+    pub(crate) fn page_count(&self) -> u32 {
+        self.total_pages
+    }
+
+    /// The keys of the file.
+    pub(crate) fn page_cipher(&self) -> &PageCipher {
+        &self.cipher
+    }
+
     /// Decrypted page `pgno` into `out` (`PAGE_SIZE` bytes).
     fn page_into(&self, pgno: u32, out: &mut [u8]) -> std::result::Result<(), c_int> {
         if pgno == 1 {

@@ -19,13 +19,9 @@ use serde_json::{json, Map, Value};
 use crate::cipher_vfs::{self, CipherFile};
 use crate::sqlcipher;
 
-/// SQLite page cache per snapshot (KiB). It only holds pages a query has read, so it stays small for small
-/// queries; queries that walk a whole message database keep every page decrypted once, as long as the soft limit
-/// below allows.
-const PAGE_CACHE_KIB: i64 = 1024 * 1024;
-/// Page cache while the account handle is in low-memory mode ([`NativeAccount::set_low_memory`]): for long
-/// one-way reads such as exports, where keeping a whole message database decrypted saves little time.
-const LOW_MEMORY_CACHE_KIB: i64 = 16 * 1024;
+/// SQLite page cache per connection (KiB): the pages a query reads again while it runs, such as the inner pages of
+/// a b-tree. A read that walks a whole table decrypts each page once whatever the size.
+const PAGE_CACHE_KIB: i64 = 16 * 1024;
 /// Soft limit of SQLite's heap across all snapshots: above it page caches recycle their oldest pages.
 const HEAP_SOFT_LIMIT: i64 = 1024 * 1024 * 1024;
 /// Snapshots kept open (least recently used ones are closed first).
@@ -41,10 +37,10 @@ struct FileStamp {
     wal_mtime: Option<SystemTime>,
 }
 
-/// A snapshot's connection and the page cache size it is set to.
+/// A snapshot's connection, and whether its page cache is sized yet.
 struct Conn {
     conn: Connection,
-    cache_kib: i64,
+    sized: bool,
 }
 
 struct Snapshot {
@@ -103,7 +99,6 @@ pub struct NativeAccount {
     /// used to tell which messages were sent by the user.
     my_wxid: Option<String>,
     pub(crate) cursors: Mutex<crate::native_msg::Cursors>,
-    low_memory: std::sync::atomic::AtomicBool,
     /// Most connections a snapshot gets for this handle's queries (see [`NativeAccount::set_read_connections`]).
     read_connections: std::sync::atomic::AtomicUsize,
     /// Queries run again because their snapshot went stale (see [`NativeAccount::stale_reruns`]).
@@ -192,17 +187,9 @@ impl NativeAccount {
             cache: shared_cache(),
             my_wxid: None,
             cursors: Mutex::default(),
-            low_memory: Default::default(),
             read_connections: std::sync::atomic::AtomicUsize::new(1),
             stale_reruns: Default::default(),
         })
-    }
-
-    /// Low-memory mode for long one-way reads (exports): the snapshots this handle uses keep a small page cache,
-    /// so a pass over a whole message database does not keep all of it decrypted in memory.
-    pub fn set_low_memory(&self, on: bool) {
-        self.low_memory
-            .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// How many connections a database snapshot may open for this handle's queries (at least one). Queries on one
@@ -300,12 +287,20 @@ impl NativeAccount {
         path: &Path,
         mut f: impl FnMut(&Connection) -> Result<T>,
     ) -> Result<T> {
+        self.read_db(path, |c| f(c), |_, v| Ok(v))
+    }
+
+    /// [`with_db`](Self::with_db) in two steps, for reads that walk the file's pages themselves (see
+    /// [`crate::leaf_scan`]): `prepare` runs on the snapshot's connection, then `read` on its file with what `prepare`
+    /// gave, the connection left free for other queries meanwhile. Both run again on a fresh snapshot when WeChat
+    /// changed the file under them.
+    pub(crate) fn read_db<P, T>(
+        &self,
+        path: &Path,
+        mut prepare: impl FnMut(&Connection) -> Result<P>,
+        mut read: impl FnMut(&CipherFile, P) -> Result<T>,
+    ) -> Result<T> {
         let mut attempt = 0;
-        let cache_kib = if self.low_memory.load(std::sync::atomic::Ordering::Relaxed) {
-            LOW_MEMORY_CACHE_KIB
-        } else {
-            PAGE_CACHE_KIB
-        };
         loop {
             let (conn, file) = self.snapshot(path)?;
             let result = {
@@ -314,14 +309,17 @@ impl NativeAccount {
                     .map_err(|_| anyhow!("database snapshot lock poisoned"))?;
                 // Inside the closure: the pragma reads the schema, so it can hit a stale snapshot like `f` does.
                 let mut run = || {
-                    if guard.cache_kib != cache_kib {
-                        guard.conn.pragma_update(None, "cache_size", -cache_kib)?;
-                        guard.cache_kib = cache_kib;
+                    if !guard.sized {
+                        guard
+                            .conn
+                            .pragma_update(None, "cache_size", -PAGE_CACHE_KIB)?;
+                        guard.sized = true;
                     }
-                    f(&guard.conn)
+                    prepare(&guard.conn)
                 };
                 run()
             };
+            let result = result.and_then(|prepared| read(&file, prepared));
             match result {
                 Err(e) if file.is_stale() || file.changed_since_open() => {
                     self.forget(path, &file);
@@ -424,7 +422,7 @@ impl NativeAccount {
         let file = Arc::new(CipherFile::open(path, &self.raw_key, known_cipher)?);
         let conn = cipher_vfs::open_connection(file.clone())?;
         configure_sqlite();
-        let conn = Arc::new(Mutex::new(Conn { conn, cache_kib: 0 })); // sized by `with_db`
+        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // sized by `with_db`
         let mut cache = self
             .cache
             .lock()
@@ -465,7 +463,7 @@ impl NativeAccount {
         limit: usize,
     ) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
         let conn = cipher_vfs::open_connection(file.clone())?;
-        let conn = Arc::new(Mutex::new(Conn { conn, cache_kib: 0 })); // sized by `with_db`
+        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // sized by `with_db`
         let mut cache = self
             .cache
             .lock()
