@@ -119,6 +119,10 @@ pub struct MsgPos {
     pub shard: u32,
 }
 
+// one per message of a conversation in a cursor: its size changes only on purpose (#505)
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<MsgPos>() == 32);
+
 impl MsgPos {
     /// `sort_seq.create_time.local_id.shard`, what [`parse`](Self::parse) reads back.
     pub fn token(&self) -> String {
