@@ -290,7 +290,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `chat latest`，20 条 | 29 ms | 4 ms |
 | `chat contact` | 24 ms | 2 ms |
 | `group members` | 33 ms | 2 ms |
-| `chat date-counts`，20 万条消息 | 480 ms | 460 ms |
+| `chat date-counts`，20 万条消息 | 330 ms | 200 ms |
 | `chat detail --fast` | 55 ms | 2 ms |
 | `chat resources`，一页 300 条 | 109 ms | 42 ms |
 | `sns timeline`，20 条 | 235 ms | 6 ms |
@@ -299,7 +299,7 @@ Server-Timing: wait;desc="in line for a place";dur=0.0, cmd;desc="in process";du
 | `report annual years` | 97 ms | 34 ms |
 | 同时请求 16 页消息（总耗时） | 156 ms | 140 ms |
 
-（这些是 `serve_bench` 测得的中位数，即客户端看到的耗时，见 [native-cli.md](native-cli.md)。）在会话里搜索时，先从最新的消息往前读，找够一页就停，所以常见的词约 5 ms；读了几千条（或 15 ms）还不够，就改查微信自己的索引（见 [cli-unsupported.md](cli-unsupported.md)），所以在有 21 万条消息的会话里，哪里都没有的词约 60 ms，不必读完所有消息。服务进程在请求之间不保留解密后的数据库（每个连接只缓存 16 MiB 的页），所以 `chat dates` 和 `chat date-counts` 每次都要读会话里的每条消息，按行分给最多四个线程。长会话里很靠后的消息页用 `offset` 取时，从微信的 `sort_seq` 索引读出它前面那些消息的排序键，不解密这些行（20 万条消息的中间一页约 15 ms，走子进程的路由约 0.1 秒）；用游标更快：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
+（这些是 `serve_bench` 测得的中位数，即客户端看到的耗时，见 [native-cli.md](native-cli.md)。）在会话里搜索时，先从最新的消息往前读，找够一页就停，所以常见的词约 5 ms；读了几千条（或 15 ms）还不够，就改查微信自己的索引（见 [cli-unsupported.md](cli-unsupported.md)），所以在有 21 万条消息的会话里，哪里都没有的词约 60 ms，不必读完所有消息。服务进程在请求之间不保留解密后的数据库（每个连接只缓存 16 MiB 的页），所以 `chat dates` 和 `chat date-counts` 每次都要读会话里的每条消息：它们自己逐页读表，每页都校验 HMAC，但只解密存着消息时间的那些字节，最多用八个线程。长会话里很靠后的消息页用 `offset` 取时，从微信的 `sort_seq` 索引读出它前面那些消息的排序键，不解密这些行（20 万条消息的中间一页约 15 ms，走子进程的路由约 0.1 秒）；用游标更快：把已显示的最后一条消息的 `_cursor` 作为 `before` 传入（要更新的消息用 `after`），同一页约 3 ms。
 
 - `chat messages` 带 `parsed=true`（`--parsed`）时，每条消息按桌面端的方式解析后返回，而不是数据库的原始行：`localType`、`parsedContent`、引用（`quotedContent`、`quotedSender`）、媒体的标识（`imageMd5`、`videoMd5`、`voiceDurationSeconds`、`emojiCdnUrl`）、链接、文件、名片、位置、视频号、聊天记录（应用消息的种类见 `appMsgKind`），`_cursor` 照旧。`serverId` 是十进制字符串：微信的 ID 会超过 2^53，超过后 JavaScript 的数字会丢掉末尾几位。同一条消息的 `messageKey` 在任何机器上都一样：它只写数据库的名字（`message_0`），不写数据库在哪里。这样聊天窗口不必自己解析 XML。在大账号上，一页 50 条，服务端多花约 1 ms（中位数 1.9 → 2.8 ms），回复比原始行还小；用 `fields` 可以去掉 `rawContent`，即解析前的 XML。
 - `chat messages` 带 `since=<Unix 秒>`（`--since`）时，返回从这个时间在聊天顺序中的位置开始最早的若干条消息，仍按最新在前排列，每条都带 `_cursor`：聊天窗口跳到某一天时传那天零点，再用 `before` 和 `after` 往两边翻。这里的顺序就是微信自己的顺序（`sort_seq`，即发送时间的毫秒数再加上一点），也是聊天窗口显示的顺序。个别消息的排序位置和发送时间相差一两秒，这时以排序位置为准：在这个时间之前一点发送的消息可能出现在这一页开头，而恰好在这个时间发送的消息可能紧挨在这一页上面，往前翻一页（`before`）就能看到。这样换来的是前后各页首尾相接，不漏也不重复。它和游标走同一个索引，一样快（大账号上，debug 版读一页 50 条并解析约 22 ms）。

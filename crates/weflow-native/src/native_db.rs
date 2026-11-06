@@ -282,74 +282,24 @@ impl NativeAccount {
     ///
     /// When WeChat changes the file under the snapshot while `f` reads it, `f` fails, and it is run again on a fresh
     /// snapshot; so `f` must be safe to repeat (a pure query, or one that starts its output over).
-    pub fn with_db<T>(&self, path: &Path, f: impl FnMut(&Connection) -> Result<T>) -> Result<T> {
-        self.with_db_among(path, 1, f)
-    }
-
-    /// [`with_db`](Self::with_db) for each of `parts` parts of one read, side by side on threads of their own: `f`
-    /// gets the part's number, and a connection no other part uses, so each part's pages are decrypted by the thread
-    /// that reads them. The results come back in part order.
-    pub fn with_db_parts<T: Send>(
+    pub fn with_db<T>(
         &self,
         path: &Path,
-        parts: usize,
-        f: impl Fn(&Connection, usize) -> Result<T> + Sync,
-    ) -> Result<Vec<T>> {
-        if parts <= 1 {
-            return Ok(vec![self.with_db(path, |c| f(c, 0))?]);
-        }
-        // Opened once here: parts that each found the file unopened would each derive its key. The connection it
-        // hands out is the one single queries get, which keeps its cache; the others the parts open drop theirs.
-        let usual = {
-            let (conn, _) = self.snapshot(path, 1)?;
-            let guard = conn
-                .lock()
-                .map_err(|_| anyhow!("database snapshot lock poisoned"))?;
-            // SAFETY: only the handle's address is kept, to tell the connection apart; it is never used through it.
-            unsafe { guard.conn.handle() as usize }
-        };
-        let f = &f;
-        std::thread::scope(|s| {
-            let running: Vec<_> = (0..parts)
-                .map(|part| {
-                    s.spawn(move || {
-                        self.with_db_among(path, parts, |c| {
-                            let out = f(c, part);
-                            // SAFETY: the address is only compared.
-                            let handle = unsafe { c.handle() };
-                            if handle as usize != usual {
-                                // a part's pages are read once: the extra connection stays open, its cache need not
-                                // SAFETY: a valid connection handle, used by this thread alone while it holds the lock.
-                                unsafe {
-                                    rusqlite::ffi::sqlite3_db_release_memory(handle);
-                                }
-                            }
-                            out
-                        })
-                    })
-                })
-                .collect();
-            running
-                .into_iter()
-                .map(|h| {
-                    h.join()
-                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-                })
-                .collect()
-        })
-    }
-
-    /// [`with_db`](Self::with_db) on a connection of a snapshot that may open `at_least` connections, or more when the
-    /// handle allows more (see [`set_read_connections`](Self::set_read_connections)).
-    fn with_db_among<T>(
-        &self,
-        path: &Path,
-        at_least: usize,
         mut f: impl FnMut(&Connection) -> Result<T>,
+    ) -> Result<T> {
+        self.with_db_file(path, |c, _| f(c))
+    }
+
+    /// [`with_db`](Self::with_db) that also hands `f` the snapshot's file, for reads that walk its pages themselves
+    /// (see [`crate::leaf_scan`]).
+    pub(crate) fn with_db_file<T>(
+        &self,
+        path: &Path,
+        mut f: impl FnMut(&Connection, &CipherFile) -> Result<T>,
     ) -> Result<T> {
         let mut attempt = 0;
         loop {
-            let (conn, file) = self.snapshot(path, at_least)?;
+            let (conn, file) = self.snapshot(path)?;
             let result = {
                 let mut guard = conn
                     .lock()
@@ -362,7 +312,7 @@ impl NativeAccount {
                             .pragma_update(None, "cache_size", -PAGE_CACHE_KIB)?;
                         guard.sized = true;
                     }
-                    f(&guard.conn)
+                    f(&guard.conn, &file)
                 };
                 run()
             };
@@ -420,19 +370,13 @@ impl NativeAccount {
         std::thread::scope(|s| {
             for p in missing {
                 s.spawn(move || {
-                    let _ = self.snapshot(p, 1);
+                    let _ = self.snapshot(p);
                 });
             }
         });
     }
 
-    /// The snapshot of `path`, opened or refreshed, and a connection of it: one nobody else holds, else a new one
-    /// while it has fewer than `at_least` or than the handle allows, else the least busy.
-    fn snapshot(
-        &self,
-        path: &Path,
-        at_least: usize,
-    ) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
+    fn snapshot(&self, path: &Path) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
         let stamp = stamp_of(path)?;
         let known_cipher = {
             let mut cache = self
@@ -452,8 +396,7 @@ impl NativeAccount {
                         }
                         let limit = self
                             .read_connections
-                            .load(std::sync::atomic::Ordering::Relaxed)
-                            .max(at_least);
+                            .load(std::sync::atomic::Ordering::Relaxed);
                         if entry.conns.len() >= limit {
                             if let Some(least) =
                                 entry.conns.iter().min_by_key(|c| Arc::strong_count(c))

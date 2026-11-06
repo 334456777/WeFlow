@@ -104,30 +104,60 @@ pub fn session_usernames(acct: &NativeAccount) -> Result<Vec<String>> {
         .collect())
 }
 
-/// Rows of a table that one part of a read by `rowid` covers (see [`rowid_parts`]).
-const ROWS_PER_PART: i64 = if cfg!(test) { 4 } else { 16 * 1024 };
-/// Most parts a read by `rowid` is split into: page decryption (mostly its HMAC-SHA512) gains little past four
-/// threads and costs more CPU.
-const MAX_PARTS: usize = 4;
-
-/// Inclusive ranges that split the rowids `lo..=hi` of a table into parts of about [`ROWS_PER_PART`] rows, at most
-/// [`MAX_PARTS`] and the processors there are; one range when the table is small.
-fn rowid_parts(lo: i64, hi: i64) -> Vec<(i64, i64)> {
-    let span = i128::from(hi) - i128::from(lo) + 1;
-    let cpus = std::thread::available_parallelism().map_or(1, usize::from);
-    let parts = usize::try_from(span / i128::from(ROWS_PER_PART))
-        .unwrap_or(usize::MAX)
-        .clamp(1, MAX_PARTS.min(cpus));
-    let n = parts as i128;
-    (0..n)
-        .map(|i| {
-            let at = |k: i128| i64::try_from(i128::from(lo) + span * k / n).unwrap_or(i64::MAX);
-            (
-                if i == 0 { i64::MIN } else { at(i) },
-                if i + 1 == n { i64::MAX } else { at(i + 1) - 1 },
-            )
-        })
-        .collect()
+/// The root page of table `table` and the place of its column `column` in a record, for
+/// [`leaf_scan`](crate::leaf_scan); `None` for a table it does not read (one without a rowid, or without the column).
+fn scan_target(
+    conn: &rusqlite::Connection,
+    table: &str,
+    column: &str,
+) -> Result<Option<(u32, usize)>> {
+    let found = conn
+        .query_row(
+            "select rootpage, sql from sqlite_master where type = 'table' and name = ?1",
+            [table],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?)),
+        )
+        .map(Some)
+        .or_else(|e| {
+            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        })?;
+    let Some((root, sql)) = found else {
+        return Ok(None);
+    };
+    let without_rowid = sql.is_some_and(|sql| {
+        sql.to_ascii_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|w| w == ["without", "rowid"])
+    });
+    let place: Option<i64> = conn
+        .query_row(
+            "select cid from pragma_table_info(?1) where name = ?2",
+            [table, column],
+            |r| r.get(0),
+        )
+        .map(Some)
+        .or_else(|e| {
+            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        })?;
+    Ok(
+        match (
+            u32::try_from(root),
+            place.and_then(|c| usize::try_from(c).ok()),
+        ) {
+            (Ok(root), Some(place)) if !without_rowid => Some((root, place)),
+            _ => None,
+        },
+    )
 }
 
 fn int(row: &Value, key: &str) -> i64 {
@@ -809,76 +839,85 @@ impl NativeAccount {
 
     /// `{ "YYYY-MM-DD": count }` in local time, ascending.
     ///
-    /// Every row of the conversation is read, so each table is read in parts of its rows by `rowid`, side by side on
-    /// connections of their own (see [`with_db_parts`](Self::with_db_parts)): a part's pages are decrypted once, by
-    /// the thread that counts them.
+    /// Only the time of each message is read, through [`leaf_scan`](crate::leaf_scan), which decrypts only the bytes
+    /// of each page that hold it; a table it does not read is counted through SQL.
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         let mut counts: std::collections::BTreeMap<String, i64> = Default::default();
         for t in self.message_tables(session_id)? {
-            // the local date of each quarter of an hour, not of each message: SQLite's `localtime` is the slow part,
-            // and every time zone today is a whole number of quarters away from UTC, moving on a quarter
-            let count = |part: &str| {
-                format!(
-                    "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
-                     (select create_time / {QUARTER} as q, count(*) as n from \"{}\" where create_time > 0{part} \
-                     group by q) group by d",
-                    t.table
-                )
+            let days = match self.date_counts_by_scan(&t)? {
+                Some(days) => days,
+                None => self.date_counts_by_sql(&t)?,
             };
-            let bounds = self.query(
-                &t.db,
-                &format!(
-                    "select min(rowid) as lo, max(rowid) as hi from \"{}\"",
-                    t.table
-                ),
-                &[],
-            );
-            let parts = match bounds.as_deref() {
-                Ok([r]) => match (r["lo"].as_i64(), r["hi"].as_i64()) {
-                    (Some(lo), Some(hi)) => rowid_parts(lo, hi),
-                    _ => Vec::new(),
-                },
-                // a table without a rowid
-                _ => Vec::new(),
-            };
-            let parts = if parts.is_empty() {
-                vec![(i64::MIN, i64::MAX)]
-            } else {
-                parts
-            };
-            let sql = count(if parts.len() > 1 {
-                " and rowid between ?1 and ?2"
-            } else {
-                ""
-            });
-            let read = self.with_db_parts(&t.db, parts.len(), |conn, part| {
-                let mut stmt = conn
-                    .prepare(&sql)
-                    .with_context(|| format!("bad query: {sql}"))?;
-                let mut rows = if parts.len() > 1 {
-                    stmt.query(rusqlite::params![parts[part].0, parts[part].1])?
-                } else {
-                    stmt.query([])?
-                };
-                let mut days = Vec::new();
-                while let Some(r) = rows.next()? {
-                    if let Some(d) = r.get_ref(0)?.as_str_or_null()? {
-                        let n = match r.get_ref(1)? {
-                            rusqlite::types::ValueRef::Integer(n) => n,
-                            _ => 0,
-                        };
-                        days.push((d.to_string(), n));
-                    }
-                }
-                Ok(days)
-            })?;
-            for (d, n) in read.into_iter().flatten() {
+            for (d, n) in days {
                 *counts.entry(d).or_default() += n;
             }
         }
         Ok(Value::Object(
             counts.into_iter().map(|(d, n)| (d, json!(n))).collect(),
         ))
+    }
+
+    /// One table's messages with a positive time counted by local day, the times read by the leaf scan: counted by
+    /// quarter of an hour, and each quarter's local date taken from SQLite's `localtime` (every time zone today is a
+    /// whole number of quarters away from UTC and moves on a quarter). `None` when the scan does not read the table.
+    fn date_counts_by_scan(&self, t: &MsgTable) -> Result<Option<Vec<(String, i64)>>> {
+        let table = &t.table;
+        self.with_db_file(&t.db, |conn, file| {
+            let Some((root, column)) = scan_target(conn, table, "create_time")? else {
+                return Ok(None);
+            };
+            let parts = crate::leaf_scan::int_columns(
+                file,
+                root,
+                &[column],
+                HashMap::<i64, i64>::new,
+                |quarters, cells| {
+                    if let Some(time) = cells[0].filter(|&time| time > 0) {
+                        *quarters.entry(time / QUARTER).or_default() += 1;
+                    }
+                },
+            )?;
+            let Some(parts) = parts else {
+                return Ok(None);
+            };
+            let mut quarters: HashMap<i64, i64> = HashMap::new();
+            for part in parts {
+                for (q, n) in part {
+                    *quarters.entry(q).or_default() += n;
+                }
+            }
+            let list = serde_json::to_string(&quarters.keys().collect::<Vec<_>>())?;
+            let sql = format!(
+                "select value, date(value * {QUARTER}, 'unixepoch', 'localtime') from json_each(?1)"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let mut rows = stmt.query([list])?;
+            let mut days: HashMap<String, i64> = HashMap::new();
+            while let Some(r) = rows.next()? {
+                if let (rusqlite::types::ValueRef::Integer(q), Some(d)) =
+                    (r.get_ref(0)?, r.get_ref(1)?.as_str_or_null()?)
+                {
+                    *days.entry(d.to_string()).or_default() +=
+                        quarters.get(&q).copied().unwrap_or(0);
+                }
+            }
+            Ok(Some(days.into_iter().collect()))
+        })
+    }
+
+    /// [`date_counts_by_scan`](Self::date_counts_by_scan) through SQL, for a table the scan does not read.
+    fn date_counts_by_sql(&self, t: &MsgTable) -> Result<Vec<(String, i64)>> {
+        let sql = format!(
+            "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
+             (select create_time / {QUARTER} as q, count(*) as n from \"{}\" where create_time > 0 group by q) \
+             group by d",
+            t.table
+        );
+        Ok(self
+            .query(&t.db, &sql, &[])?
+            .into_iter()
+            .filter_map(|r| Some((r["d"].as_str()?.to_string(), int(&r, "n"))))
+            .collect())
     }
 
     /// `["YYYY-MM-DD", ...]` days that have at least one message, ascending.
@@ -1810,29 +1849,6 @@ mod tests {
     }
 
     #[test]
-    fn rowid_parts_cover_every_rowid_once() {
-        for (lo, hi) in [
-            (1, 1),
-            (1, 7),
-            (1, 40),
-            (-3, 100),
-            (5, 1_000_000),
-            (i64::MIN, i64::MAX),
-        ] {
-            let parts = rowid_parts(lo, hi);
-            assert!(!parts.is_empty() && parts.len() <= MAX_PARTS, "{lo}..={hi}");
-            assert_eq!(parts[0].0, i64::MIN, "{lo}..={hi}");
-            assert_eq!(parts[parts.len() - 1].1, i64::MAX, "{lo}..={hi}");
-            for w in parts.windows(2) {
-                assert!(
-                    w[0].0 <= w[0].1 && w[0].1 + 1 == w[1].0,
-                    "{lo}..={hi}: {parts:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn table_name_is_md5_of_session_id() {
         assert_eq!(
             table_name_for("abc"),
@@ -2218,6 +2234,97 @@ mod tests {
         assert_eq!(rows[0].key(), (T0 * 1000, T0, 1));
         assert!(odd_cell_count() >= before + 2);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// One conversation in one database whose rows `fill` (SQL run after the schema) writes into table `t`; the
+    /// encrypted file is handed to `damage` before it is written.
+    fn scanned_account(
+        tag: &str,
+        fill: &str,
+        damage: impl FnOnce(&[u8], &mut Vec<u8>),
+    ) -> NativeAccount {
+        let dir = std::env::temp_dir().join(format!("weflow-scan-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("message")).unwrap();
+        let table = table_name_for("wxid_bob");
+        let fill = fill.replace("\"t\"", &format!("\"{table}\""));
+        let plain = plain_db_with(move |c: &Connection| {
+            c.execute_batch(&format!(
+                "create table Name2Id(user_name text primary key, is_session integer);
+                 create table \"{table}\"(local_id integer primary key, server_id integer, local_type integer,
+                     sort_seq integer, real_sender_id integer, create_time, status integer, message_content text);
+                 {fill}"
+            ))
+            .unwrap();
+        });
+        let mut file = encrypt_db(&plain, &PageCipher::derive(&KEY, &SALT));
+        damage(&plain, &mut file);
+        std::fs::write(dir.join("message/message_0.db"), file).unwrap();
+        NativeAccount::new(&dir, &hex(&KEY)).unwrap()
+    }
+
+    /// 6,000 rows over more than a year: a b-tree of several levels, every 40th row's text long enough to overflow,
+    /// and times that are null, zero or negative.
+    const MANY_ROWS: &str =
+        "with recursive n(i) as (select 1 union all select i + 1 from n where i < 6000)
+        insert into \"t\"(local_id, local_type, sort_seq, create_time, message_content)
+        select i, 1, i * 1000,
+               case when i % 97 = 0 then null when i % 89 = 0 then 0 when i % 83 = 0 then -5
+                    else 1700000000 + (i * 7919) % 34000000 end,
+               case when i % 40 = 0 then printf('%.6000c', 'x') else printf('m%d', i) end
+        from n;";
+
+    fn sorted(mut days: Vec<(String, i64)>) -> Vec<(String, i64)> {
+        days.sort();
+        days
+    }
+
+    #[test]
+    fn date_counts_from_the_leaf_scan_are_those_of_sql() {
+        let acct = scanned_account("many", MANY_ROWS, |_, _| {});
+        let t = &acct.message_tables("wxid_bob").unwrap()[0];
+        let scanned = acct
+            .date_counts_by_scan(t)
+            .unwrap()
+            .expect("the scan reads the table");
+        assert!(scanned.len() > 300, "{} days", scanned.len());
+        assert_eq!(sorted(scanned), sorted(acct.date_counts_by_sql(t).unwrap()));
+    }
+
+    #[test]
+    fn a_time_that_is_not_an_integer_is_counted_through_sql() {
+        for (tag, time) in [
+            ("text", "'1700000000'"),
+            ("real", "1700000000.5"),
+            ("blob", "x'31'"),
+        ] {
+            let fill =
+                format!("{MANY_ROWS} update \"t\" set create_time = {time} where local_id = 3000;");
+            let acct = scanned_account(tag, &fill, |_, _| {});
+            let t = &acct.message_tables("wxid_bob").unwrap()[0];
+            assert!(acct.date_counts_by_scan(t).unwrap().is_none(), "{tag}");
+            let counts = acct.session_message_date_counts("wxid_bob").unwrap();
+            let by_sql: Map<String, Value> = sorted(acct.date_counts_by_sql(t).unwrap())
+                .into_iter()
+                .map(|(d, n)| (d, json!(n)))
+                .collect();
+            assert_eq!(counts, Value::Object(by_sql), "{tag}");
+        }
+    }
+
+    #[test]
+    fn a_leaf_page_damaged_on_disk_fails_the_date_counts() {
+        // the last table leaf page of the file is one of the conversation's: its rows were written last
+        let acct = scanned_account("damaged", MANY_ROWS, |plain, file| {
+            let leaf = (0..plain.len() / crate::sqlcipher::PAGE_SIZE)
+                .rev()
+                .find(|&p| p > 0 && plain[p * crate::sqlcipher::PAGE_SIZE] == 13)
+                .expect("a leaf page");
+            // a byte of the page well past the cells' first bytes the scan decrypts
+            file[leaf * crate::sqlcipher::PAGE_SIZE + 3000] ^= 0x40;
+        });
+        let err = acct.session_message_date_counts("wxid_bob").unwrap_err();
+        assert!(format!("{err:#}").contains("HMAC"), "{err:#}");
     }
 
     #[test]
