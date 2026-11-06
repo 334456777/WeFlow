@@ -45,40 +45,42 @@ pub fn supported() -> bool {
     cfg!(all(target_os = "windows", target_arch = "x86_64"))
 }
 
-/// `findMainWeChatPid`: the `Weixin.exe` with the shortest command line is the main process.
-pub fn pick_main_pid(processes: &Value) -> Option<u32> {
-    let list: Vec<&Value> = match processes {
-        Value::Array(a) => a.iter().collect(),
-        Value::Object(_) => vec![processes],
-        _ => return None,
-    };
-    list.into_iter()
-        .filter_map(|p| {
-            let cmd = p.get("CommandLine").and_then(Value::as_str)?;
-            if !cmd.to_lowercase().contains("weixin.exe") {
-                return None;
-            }
-            Some((
-                cmd.len(),
-                u32::try_from(p.get("ProcessId").and_then(Value::as_u64)?).ok()?,
-            ))
-        })
-        .min_by_key(|(len, _)| *len)
-        .map(|(_, pid)| pid)
+/// The main WeChat process among `(pid, command line)` of the `Weixin.exe` processes: of those whose command line
+/// names `weixin.exe` (ignoring case), the one with the shortest; the others carry `--type=…` and such.
+pub fn pick_main_pid(processes: &[(u32, String)]) -> Option<u32> {
+    processes
+        .iter()
+        .filter(|(_, line)| line.to_lowercase().contains("weixin.exe"))
+        .min_by_key(|(_, line)| line.len())
+        .map(|(pid, _)| *pid)
 }
 
+#[cfg(windows)]
 fn find_main_wechat_pid() -> Option<u32> {
-    let script = "Get-CimInstance Win32_Process -Filter \"Name = 'Weixin.exe'\" | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress";
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-Command", script])
-        .output()
-        .ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    let text = text.trim();
-    if text.is_empty() {
-        return None;
-    }
-    pick_main_pid(&serde_json::from_str::<Value>(text).ok()?)
+    let all = crate::process::processes();
+    let wechat: Vec<&crate::process::Process> = all
+        .iter()
+        .filter(|p| p.image.eq_ignore_ascii_case("Weixin.exe"))
+        .collect();
+    // a process that cannot be opened is left out, as one whose command line WMI did not give
+    let lines: Vec<(u32, String)> = wechat
+        .iter()
+        .filter_map(|p| Some((p.pid, crate::process::command_line(p.pid)?)))
+        .collect();
+    let main = pick_main_pid(&lines);
+    // the other way to tell it, not trusted yet (#101): the one whose parent is no `Weixin.exe`
+    let rootless: Vec<u32> = wechat
+        .iter()
+        .filter(|p| !wechat.iter().any(|q| q.pid == p.parent))
+        .map(|p| p.pid)
+        .collect();
+    tracing::debug!(?main, ?rootless, "main WeChat process");
+    main
+}
+
+#[cfg(not(windows))]
+fn find_main_wechat_pid() -> Option<u32> {
+    None
 }
 
 /// The whitelist as the DLL expects it: UTF-8 names separated by NUL, terminated by two NULs.
@@ -256,21 +258,32 @@ mod tests {
 
     #[test]
     fn main_process_is_the_shortest_weixin_command_line() {
-        let procs = json!([
-            { "ProcessId": 11, "CommandLine": "\"C:\\WeChat\\Weixin.exe\" --type=renderer --lang=en-US" },
-            { "ProcessId": 7, "CommandLine": "\"C:\\WeChat\\Weixin.exe\"" },
-            { "ProcessId": 9, "CommandLine": null }
+        let procs = |list: &[(u32, &str)]| -> Vec<(u32, String)> {
+            list.iter()
+                .map(|(pid, line)| (*pid, line.to_string()))
+                .collect()
+        };
+        let wechat = procs(&[
+            (
+                11,
+                "\"C:\\WeChat\\Weixin.exe\" --type=renderer --lang=en-US",
+            ),
+            (7, "\"C:\\WeChat\\Weixin.exe\""),
+            (9, "\"C:\\WeChat\\Weixin.exe\" --type=gpu-process"),
         ]);
-        assert_eq!(pick_main_pid(&procs), Some(7));
+        assert_eq!(pick_main_pid(&wechat), Some(7));
+        assert_eq!(pick_main_pid(&procs(&[(3, "weixin.exe")])), Some(3));
         assert_eq!(
-            pick_main_pid(&json!({ "ProcessId": 3, "CommandLine": "weixin.exe" })),
-            Some(3),
-            "a single process is an object, not an array"
+            pick_main_pid(&procs(&[(4, "C:\\WECHAT\\WEIXIN.EXE")])),
+            Some(4),
+            "case"
         );
-        assert_eq!(pick_main_pid(&json!([])), None);
+        assert_eq!(pick_main_pid(&[]), None);
+        assert_eq!(pick_main_pid(&procs(&[(1, "other.exe")])), None);
+        // of equal lengths, the first listed
         assert_eq!(
-            pick_main_pid(&json!([{ "ProcessId": 1, "CommandLine": "other.exe" }])),
-            None
+            pick_main_pid(&procs(&[(5, "weixin.exe"), (6, "Weixin.exe")])),
+            Some(5)
         );
     }
 

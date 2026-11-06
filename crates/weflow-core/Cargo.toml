@@ -56,9 +56,9 @@ icu_collator.workspace = true
 icu_locale_core.workspace = true
 jpeg-decoder = { version = "0.3", default-features = false }
 
-# lists running processes (WeChat's pids) without starting `tasklist`
+# lists running processes (WeChat's pids) without starting `tasklist`, and reads their command lines (#101)
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Wdk_System_Threading"] }
 
 [dev-dependencies]
 proptest.workspace = true
