@@ -121,6 +121,185 @@ fn normalized_may_contain(content: &str, word: &str) -> bool {
     content.contains(word)
 }
 
+/// The XML of one message as the export reads it: what its functions each worked out from the content again (the
+/// normalized text, the `<appmsg>` type, the system-message check and the quote), worked out the first time one of
+/// them asks, for all of them.
+///
+/// Some of those functions read the content as it is stored and some read it normalized once more (a quote's text,
+/// for one, is read from the normalized content normalized again), which differs only for markup escaped twice; so
+/// both are kept: `once` is the content normalized, `twice` that normalized again.
+pub struct MsgXml<'a> {
+    content: &'a str,
+    once: std::cell::OnceCell<std::borrow::Cow<'a, str>>,
+    /// `once` normalized again, when that changes it.
+    twice: std::cell::OnceCell<Option<String>>,
+    app_type_once: std::cell::OnceCell<String>,
+    app_type_twice: std::cell::OnceCell<String>,
+    /// The `<refermsg>` blocks of `once` and of `twice`.
+    refer_once: std::cell::OnceCell<Option<String>>,
+    refer_twice: std::cell::OnceCell<Option<String>>,
+    /// [`parse_quote_message`] of `once`, which reads the `<refermsg>` of `twice`.
+    quote_twice: std::cell::OnceCell<QuoteInfo>,
+    display: std::cell::OnceCell<Option<QuotedDisplay>>,
+}
+
+impl<'a> MsgXml<'a> {
+    pub fn new(content: &'a str) -> Self {
+        Self {
+            content,
+            once: Default::default(),
+            twice: Default::default(),
+            app_type_once: Default::default(),
+            app_type_twice: Default::default(),
+            refer_once: Default::default(),
+            refer_twice: Default::default(),
+            quote_twice: Default::default(),
+            display: Default::default(),
+        }
+    }
+
+    pub fn content(&self) -> &'a str {
+        self.content
+    }
+
+    /// [`normalize_app_message_content`] of the content.
+    pub fn once(&self) -> &str {
+        self.once
+            .get_or_init(|| normalize_app_message_cow(self.content))
+    }
+
+    /// [`normalize_app_message_content`] of [`once`](Self::once).
+    pub fn twice(&self) -> &str {
+        let twice = self
+            .twice
+            .get_or_init(|| match normalize_app_message_cow(self.once()) {
+                std::borrow::Cow::Borrowed(_) => None,
+                std::borrow::Cow::Owned(s) => Some(s),
+            });
+        twice.as_deref().unwrap_or_else(|| self.once())
+    }
+
+    /// [`extract_app_message_type`] of the content.
+    pub fn app_type_once(&self) -> &str {
+        self.app_type_once
+            .get_or_init(|| app_type_in(self.content, self.once()))
+    }
+
+    /// [`extract_app_message_type`] of [`once`](Self::once).
+    pub fn app_type_twice(&self) -> &str {
+        self.app_type_twice
+            .get_or_init(|| app_type_in(self.once(), self.twice()))
+    }
+
+    /// [`is_readable_system_message`] of the content.
+    pub fn readable_system_once(&self, local_type: i64) -> bool {
+        local_type == 10000 || has_sysmsg(self.once())
+    }
+
+    /// [`is_readable_system_message`] of [`once`](Self::once).
+    pub fn readable_system_twice(&self, local_type: i64) -> bool {
+        local_type == 10000 || has_sysmsg(self.twice())
+    }
+
+    /// Whether the content can hold a quote at all (see [`normalized_may_contain`]).
+    fn may_quote(&self) -> bool {
+        normalized_may_contain(self.content, "refermsg")
+    }
+
+    /// The `<refermsg>` block of [`once`](Self::once).
+    fn refer_once(&self) -> Option<&str> {
+        self.refer_once
+            .get_or_init(|| {
+                if self.may_quote() {
+                    refermsg_xml(self.once())
+                } else {
+                    None
+                }
+            })
+            .as_deref()
+    }
+
+    /// The `<refermsg>` block of [`twice`](Self::twice).
+    fn refer_twice(&self) -> Option<&str> {
+        // normalizing once more changed nothing: the same block
+        if std::ptr::eq(self.twice(), self.once()) {
+            return self.refer_once();
+        }
+        self.refer_twice
+            .get_or_init(|| {
+                if self.may_quote() {
+                    refermsg_xml(self.twice())
+                } else {
+                    None
+                }
+            })
+            .as_deref()
+    }
+
+    /// [`parse_quote_message`] of [`once`](Self::once).
+    pub fn quote_twice(&self) -> &QuoteInfo {
+        self.quote_twice.get_or_init(|| {
+            self.refer_twice()
+                .map_or_else(QuoteInfo::empty, quote_info_of)
+        })
+    }
+
+    /// [`extract_quoted_reply_display`] of the content.
+    pub fn quoted_display(&self) -> Option<&QuotedDisplay> {
+        self.display
+            .get_or_init(|| {
+                let refer = self.refer_once()?;
+                let info = self.quote_twice();
+                let reply_text = strip_sender_prefix(&extract_xml_value(self.once(), "title"));
+                let preview = info.content.clone().unwrap_or_else(|| {
+                    format_quoted_reference_preview(
+                        &extract_xml_value(refer, "content"),
+                        &extract_xml_value(refer, "type"),
+                    )
+                });
+                if reply_text.is_empty() && preview.is_empty() {
+                    return None;
+                }
+                Some(QuotedDisplay {
+                    reply_text,
+                    quoted_sender: info.sender.clone(),
+                    quoted_preview: if preview.is_empty() {
+                        "[消息]".into()
+                    } else {
+                        preview
+                    },
+                })
+            })
+            .as_ref()
+    }
+
+    /// [`extract_reply_to_message_id`] of the content.
+    pub fn reply_to_message_id(&self) -> Option<String> {
+        let refer = self.refer_once()?;
+        let v = normalize_unsigned_token(&extract_xml_value(refer, "svrid"));
+        (v != "0").then_some(v)
+    }
+
+    /// [`quoted_sender_username`] of the content.
+    pub fn quoted_sender_username(&self) -> Option<String> {
+        let refer = self.refer_once()?;
+        let chat = extract_xml_value(refer, "chatusr");
+        let from = extract_xml_value(refer, "fromusr");
+        if !chat.trim().is_empty() {
+            return Some(chat.trim().to_string());
+        }
+        if from.trim().ends_with("@chatroom") {
+            return None;
+        }
+        let f = from.trim().to_string();
+        if f.is_empty() {
+            None
+        } else {
+            Some(f)
+        }
+    }
+}
+
 /// Strip a leading `wxid_xxx:` sender prefix (but not `http://`).
 pub fn strip_sender_prefix(content: &str) -> String {
     content[sender_prefix_len(content)..].to_string()
@@ -156,12 +335,16 @@ fn sender_prefix_len(content: &str) -> usize {
 }
 
 pub fn extract_app_message_type(content: &str) -> String {
+    app_type_in(content, &normalize_app_message_cow(content))
+}
+
+/// [`extract_app_message_type`] of `content`, given `content` normalized.
+fn app_type_in(content: &str, normalized: &str) -> String {
     if content.is_empty() {
         return String::new();
     }
-    let normalized = normalize_app_message_cow(content);
     // `(?is)<appmsg.*?>(.*?)</appmsg>`, minus `<refermsg…</refermsg>` and `<patMsg…</patMsg>` blocks, then `<type>`
-    if let Some(c) = crate::xml::element_inner(&normalized, "<appmsg", "</appmsg>") {
+    if let Some(c) = crate::xml::element_inner(normalized, "<appmsg", "</appmsg>") {
         let inner = crate::xml::remove_blocks(c, "<refermsg", "</refermsg>");
         let inner = crate::xml::remove_blocks(&inner, "<patmsg", "</patmsg>");
         if let Some(t) = crate::xml::tag_inner(&inner, "type") {
@@ -173,11 +356,11 @@ pub fn extract_app_message_type(content: &str) -> String {
     }
     // the regex needs a `<type>`, and no character but these letters' ASCII cases folds to them: images, voice and
     // stickers have none
-    if crate::xml::find_ci(&normalized, 0, "<type>").is_none() {
+    if crate::xml::find_ci(normalized, 0, "<type>").is_none() {
         return String::new();
     }
     rx(r"(?i)<type>(\d+)</type>")
-        .captures(&normalized)
+        .captures(normalized)
         .map(|c| c[1].to_string())
         .unwrap_or_default()
 }
@@ -480,6 +663,8 @@ pub struct ExportMsg {
     pub image_dat_name: Option<String>,
     pub emoji_cdn_url: Option<String>,
     pub emoji_md5: Option<String>,
+    /// The md5 of a sticker sent as an app message of type 8 ([`appmsg_emoticon_md5`]).
+    pub sticker_md5: Option<String>,
     pub emoji_caption: Option<String>,
     pub video_md5: Option<String>,
     pub xml_type: Option<String>,
@@ -578,11 +763,12 @@ pub fn extract_revoker_info(content: &str) -> RevokeInfo {
 }
 
 pub fn is_readable_system_message(local_type: i64, content: &str) -> bool {
-    if local_type == 10000 {
-        return true;
-    }
-    let normalized = normalize_app_message_cow(content);
-    crate::xml::has_open(&normalized[sender_prefix_len(&normalized)..], "sysmsg")
+    local_type == 10000 || has_sysmsg(&normalize_app_message_cow(content))
+}
+
+/// Whether normalized content opens a `<sysmsg>` after its sender prefix (see [`is_readable_system_message`]).
+fn has_sysmsg(normalized: &str) -> bool {
+    crate::xml::has_open(&normalized[sender_prefix_len(normalized)..], "sysmsg")
 }
 
 pub fn clean_system_message(content: &str) -> String {
@@ -704,11 +890,16 @@ pub fn parse_voip_message(content: &str) -> String {
 // ───────────────────────────── type mapping ─────────────────────────────
 
 pub fn convert_message_type(local_type: i64, content: &str) -> i64 {
-    let normalized = normalize_app_message_content(content);
-    if is_readable_system_message(local_type, &normalized) {
+    convert_message_type_in(local_type, &MsgXml::new(content))
+}
+
+/// [`convert_message_type`] of a message's [`MsgXml`].
+pub fn convert_message_type_in(local_type: i64, x: &MsgXml) -> i64 {
+    let normalized = x.once();
+    if x.readable_system_twice(local_type) {
         return 80;
     }
-    let xml_type_raw = extract_app_message_type(&normalized);
+    let xml_type_raw = x.app_type_twice();
     let xml_type: Option<i64> = xml_type_raw.parse().ok();
     // Only app messages (local_type 49, or any message carrying an `<appmsg>`) are classified by their XML subtype.
     // A bare `<msg>` must not count: image, voice, video, call and sticker messages are all stored as `<msg>...`
@@ -747,13 +938,20 @@ pub fn convert_message_type(local_type: i64, content: &str) -> i64 {
 }
 
 pub fn message_type_name(local_type: i64, content: Option<&str>) -> &'static str {
-    if let Some(content) = content {
-        if !content.is_empty() {
-            let normalized = normalize_app_message_content(content);
-            if is_readable_system_message(local_type, &normalized) {
+    match content {
+        Some(content) => message_type_name_in(local_type, &MsgXml::new(content)),
+        None => message_type_name_of(local_type),
+    }
+}
+
+/// [`message_type_name`] of a message's [`MsgXml`].
+pub fn message_type_name_in(local_type: i64, x: &MsgXml) -> &'static str {
+    {
+        if !x.content().is_empty() {
+            if x.readable_system_twice(local_type) {
                 return "系统消息";
             }
-            match extract_app_message_type(&normalized).as_str() {
+            match x.app_type_twice() {
                 "3" => return "音乐消息",
                 "87" => return "群公告",
                 "2000" => return "转账消息",
@@ -766,6 +964,11 @@ pub fn message_type_name(local_type: i64, content: Option<&str>) -> &'static str
             }
         }
     }
+    message_type_name_of(local_type)
+}
+
+/// [`message_type_name`] by the local type alone.
+fn message_type_name_of(local_type: i64) -> &'static str {
     match local_type {
         1 => "文本消息",
         3 => "图片消息",
@@ -956,13 +1159,17 @@ pub fn format_emoji_semantic_text(caption: Option<&str>) -> String {
 
 /// 以 appmsg type 8 发送的表情的 md5（`<emoticonmd5>`），用来查表情描述。
 pub fn appmsg_emoticon_md5(content: &str) -> Option<String> {
+    appmsg_emoticon_md5_in(&MsgXml::new(content))
+}
+
+/// [`appmsg_emoticon_md5`] of a message's [`MsgXml`].
+pub fn appmsg_emoticon_md5_in(x: &MsgXml) -> Option<String> {
     // the tag is matched ASCII case-insensitively; see normalized_may_contain for why `content` can rule it out
-    crate::xml::find_ci(content, 0, "emoticonmd5")?;
-    let normalized = normalize_app_message_content(content);
-    if extract_app_message_type(&normalized) != "8" {
+    crate::xml::find_ci(x.content(), 0, "emoticonmd5")?;
+    if x.app_type_twice() != "8" {
         return None;
     }
-    let md5 = extract_xml_value(&normalized, "emoticonmd5").to_ascii_lowercase();
+    let md5 = extract_xml_value(x.once(), "emoticonmd5").to_ascii_lowercase();
     (md5.len() == 32 && md5.chars().all(|c| c.is_ascii_hexdigit())).then_some(md5)
 }
 
@@ -1086,29 +1293,34 @@ pub struct FileMeta {
 }
 
 pub fn extract_file_app_message_meta(content: &str) -> Option<FileMeta> {
-    let normalized = normalize_app_message_content(content);
+    extract_file_app_message_meta_in(&MsgXml::new(content))
+}
+
+/// [`extract_file_app_message_meta`] of a message's [`MsgXml`].
+pub fn extract_file_app_message_meta_in(x: &MsgXml) -> Option<FileMeta> {
+    let normalized = x.once();
     if normalized.is_empty() || (!normalized.contains("<appmsg") && !normalized.contains("<msg>")) {
         return None;
     }
-    let xml_type = extract_app_message_type(&normalized);
+    let xml_type = x.app_type_twice().to_string();
     if xml_type.is_empty() {
         return None;
     }
     let first = |keys: &[&str]| {
         keys.iter()
-            .map(|k| extract_xml_value(&normalized, k))
+            .map(|k| extract_xml_value(normalized, k))
             .find(|v| !v.is_empty())
             .unwrap_or_default()
     };
     let raw_name = first(&["filename", "title"]);
-    let raw_ext = extract_xml_value(&normalized, "fileext");
+    let raw_ext = extract_xml_value(normalized, "fileext");
     let raw_size = first(&["totallen", "datasize", "filesize"]);
-    let mut raw_md5 = extract_xml_value(&normalized, "md5");
+    let mut raw_md5 = extract_xml_value(normalized, "md5");
     if raw_md5.is_empty() {
-        raw_md5 = extract_xml_attribute(&normalized, "appattach", "md5");
+        raw_md5 = extract_xml_attribute(normalized, "appattach", "md5");
     }
     if raw_md5.is_empty() {
-        raw_md5 = extract_loose_hex_md5(&normalized).unwrap_or_default();
+        raw_md5 = extract_loose_hex_md5(normalized).unwrap_or_default();
     }
     let size = raw_size.trim().parse::<i64>().ok().filter(|n| *n > 0);
     let non_empty = |s: String| {
@@ -1460,11 +1672,23 @@ pub fn format_forward_chat_record_content(content: &str) -> String {
 
 // ───────────────────────────── quoted replies ─────────────────────────────
 
+#[derive(Clone)]
 pub struct QuoteInfo {
     pub content: Option<String>,
     pub sender: Option<String>,
     pub quote_type: Option<String>,
     pub svrid: Option<String>,
+}
+
+impl QuoteInfo {
+    fn empty() -> Self {
+        Self {
+            content: None,
+            sender: None,
+            quote_type: None,
+            svrid: None,
+        }
+    }
 }
 
 fn refermsg_xml(normalized: &str) -> Option<String> {
@@ -1560,28 +1784,25 @@ fn extract_preferred_quoted_text(refer_xml: &str) -> String {
 }
 
 pub fn parse_quote_message(content: &str) -> QuoteInfo {
-    let empty = QuoteInfo {
-        content: None,
-        sender: None,
-        quote_type: None,
-        svrid: None,
-    };
     if !normalized_may_contain(content, "refermsg") {
-        return empty;
+        return QuoteInfo::empty();
     }
-    let normalized = normalize_app_message_content(content);
-    let Some(refer) = refermsg_xml(&normalized) else {
-        return empty;
-    };
-    let mut sender = extract_xml_value(&refer, "displayname");
+    let normalized = normalize_app_message_cow(content);
+    refermsg_xml(&normalized).map_or_else(QuoteInfo::empty, quote_info_of)
+}
+
+/// [`parse_quote_message`] given the `<refermsg>` block of the normalized content.
+fn quote_info_of(refer: impl AsRef<str>) -> QuoteInfo {
+    let refer = refer.as_ref();
+    let mut sender = extract_xml_value(refer, "displayname");
     if !sender.is_empty() && looks_like_wxid(&sender) {
         sender.clear();
     }
-    let refer_content = extract_xml_value(&refer, "content");
-    let refer_type = extract_xml_value(&refer, "type");
-    let svrid = extract_xml_value(&refer, "svrid");
+    let refer_content = extract_xml_value(refer, "content");
+    let refer_type = extract_xml_value(refer, "type");
+    let svrid = extract_xml_value(refer, "svrid");
     let display = match refer_type.as_str() {
-        "1" => extract_preferred_quoted_text(&refer),
+        "1" => extract_preferred_quoted_text(refer),
         "3" => "[图片]".into(),
         "34" => "[语音消息]".into(),
         "43" => "[视频]".into(),
@@ -1726,31 +1947,7 @@ pub struct QuotedDisplay {
 }
 
 pub fn extract_quoted_reply_display(content: &str) -> Option<QuotedDisplay> {
-    if !normalized_may_contain(content, "refermsg") {
-        return None;
-    }
-    let normalized = normalize_app_message_content(content);
-    let refer = refermsg_xml(&normalized)?;
-    let info = parse_quote_message(&normalized);
-    let reply_text = strip_sender_prefix(&extract_xml_value(&normalized, "title"));
-    let preview = info.content.clone().unwrap_or_else(|| {
-        format_quoted_reference_preview(
-            &extract_xml_value(&refer, "content"),
-            &extract_xml_value(&refer, "type"),
-        )
-    });
-    if reply_text.is_empty() && preview.is_empty() {
-        return None;
-    }
-    Some(QuotedDisplay {
-        reply_text,
-        quoted_sender: info.sender,
-        quoted_preview: if preview.is_empty() {
-            "[消息]".into()
-        } else {
-            preview
-        },
-    })
+    MsgXml::new(content).quoted_display().cloned()
 }
 
 pub fn build_quoted_reply_text(d: &QuotedDisplay) -> String {
@@ -1779,51 +1976,27 @@ pub fn is_quoted_reply_message(local_type: i64, content: &str) -> bool {
 /// 是不是「回复/引用」消息：只认 localType 244813135921 或 appmsg type 57。
 /// 图片、转发的聊天记录等消息里也可能夹带 `<refermsg>`，它们不是文字引用。
 pub fn is_text_quote_message(local_type: i64, content: &str) -> bool {
+    is_text_quote_message_in(local_type, &MsgXml::new(content))
+}
+
+/// [`is_text_quote_message`] of a message's [`MsgXml`].
+pub fn is_text_quote_message_in(local_type: i64, x: &MsgXml) -> bool {
     if local_type == 244_813_135_921 {
         return true;
     }
     if matches!(local_type & 0xFFFF_FFFF, 3 | 34 | 43 | 47) {
         return false;
     }
-    let normalized = normalize_app_message_content(content);
-    extract_app_message_type(&normalized) == "57"
+    x.app_type_twice() == "57"
 }
 
 pub fn extract_reply_to_message_id(content: &str) -> Option<String> {
-    if !normalized_may_contain(content, "refermsg") {
-        return None;
-    }
-    let normalized = normalize_app_message_content(content);
-    let refer = refermsg_xml(&normalized)?;
-    let v = normalize_unsigned_token(&extract_xml_value(&refer, "svrid"));
-    if v != "0" {
-        Some(v)
-    } else {
-        None
-    }
+    MsgXml::new(content).reply_to_message_id()
 }
 
 /// Sender wxid of a quoted message, following `resolveQuotedSenderUsername`.
 pub fn quoted_sender_username(content: &str) -> Option<String> {
-    if !normalized_may_contain(content, "refermsg") {
-        return None;
-    }
-    let normalized = normalize_app_message_content(content);
-    let refer = refermsg_xml(&normalized)?;
-    let chat = extract_xml_value(&refer, "chatusr");
-    let from = extract_xml_value(&refer, "fromusr");
-    if !chat.trim().is_empty() {
-        return Some(chat.trim().to_string());
-    }
-    if from.trim().ends_with("@chatroom") {
-        return None;
-    }
-    let f = from.trim().to_string();
-    if f.is_empty() {
-        None
-    } else {
-        Some(f)
-    }
+    MsgXml::new(content).quoted_sender_username()
 }
 
 // ─────────────────────────────── transfers ───────────────────────────────
@@ -1990,14 +2163,32 @@ pub fn parse_message_content(
     sender_wxid: Option<&str>,
     emoji_caption: Option<&str>,
 ) -> Option<String> {
+    parse_message_content_in(
+        &MsgXml::new(content),
+        local_type,
+        my_wxid,
+        sender_wxid,
+        emoji_caption,
+    )
+}
+
+/// [`parse_message_content`] of a message's [`MsgXml`].
+pub fn parse_message_content_in(
+    x: &MsgXml,
+    local_type: i64,
+    my_wxid: Option<&str>,
+    sender_wxid: Option<&str>,
+    emoji_caption: Option<&str>,
+) -> Option<String> {
+    let content = x.content();
     if content.is_empty() && local_type == 47 {
         return Some(format_emoji_semantic_text(emoji_caption));
     }
     if content.is_empty() {
         return None;
     }
-    let normalized = normalize_app_message_content(content);
-    let xml_type = extract_app_message_type(&normalized);
+    let normalized = x.once();
+    let xml_type = x.app_type_twice();
     let with_title = |prefix: &str, title: &str| {
         if title.is_empty() {
             prefix.to_string()
@@ -2014,13 +2205,13 @@ pub fn parse_message_content(
         47 => Some(format_emoji_semantic_text(emoji_caption)),
         48 => Some(location_text(content)),
         49 => {
-            let title = extract_xml_value(&normalized, "title");
-            let ty = extract_app_message_type(&normalized);
-            let song = extract_xml_value(&normalized, "songname");
+            let title = extract_xml_value(normalized, "title");
+            let ty = xml_type;
+            let song = extract_xml_value(normalized, "songname");
             if ty == "2000" {
-                let feedesc = extract_xml_value(&normalized, "feedesc");
-                let memo = extract_xml_value(&normalized, "pay_memo");
-                let prefix = get_transfer_prefix(&normalized, my_wxid, sender_wxid);
+                let feedesc = extract_xml_value(normalized, "feedesc");
+                let memo = extract_xml_value(normalized, "pay_memo");
+                let prefix = get_transfer_prefix(normalized, my_wxid, sender_wxid);
                 if !feedesc.is_empty() {
                     return Some(if memo.is_empty() {
                         format!("{prefix} {feedesc}")
@@ -2030,9 +2221,9 @@ pub fn parse_message_content(
                 }
                 return Some(prefix.to_string());
             }
-            Some(match ty.as_str() {
+            Some(match ty {
                 "8" => "[表情]".into(),
-                "24" => note_text(&normalized, &title),
+                "24" => note_text(normalized, &title),
                 "3" => {
                     if !song.is_empty() {
                         with_title("[音乐]", &song)
@@ -2041,10 +2232,10 @@ pub fn parse_message_content(
                     }
                 }
                 "6" => with_title("[文件]", &title),
-                "19" => format_forward_chat_record_content(&normalized),
+                "19" => format_forward_chat_record_content(normalized),
                 "33" | "36" => with_title("[小程序]", &title),
-                "57" => match extract_quoted_reply_display(content) {
-                    Some(d) => build_quoted_reply_text(&d),
+                "57" => match x.quoted_display() {
+                    Some(d) => build_quoted_reply_text(d),
                     None => {
                         if title.is_empty() {
                             "[引用消息]".into()
@@ -2058,8 +2249,8 @@ pub fn parse_message_content(
         }
         50 => Some(parse_voip_message(content)),
         10000 | 266287972401 => Some(clean_system_message(content)),
-        244813135921 => match extract_quoted_reply_display(content) {
-            Some(d) => Some(build_quoted_reply_text(&d)),
+        244813135921 => match x.quoted_display() {
+            Some(d) => Some(build_quoted_reply_text(d)),
             None => {
                 let t = extract_xml_value(content, "title");
                 Some(if t.is_empty() {
@@ -2072,9 +2263,9 @@ pub fn parse_message_content(
         _ => {
             if !xml_type.is_empty() {
                 let title = extract_xml_value(content, "title");
-                match xml_type.as_str() {
+                match xml_type {
                     "8" => return Some("[表情]".into()),
-                    "24" => return Some(note_text(&normalized, &title)),
+                    "24" => return Some(note_text(normalized, &title)),
                     "87" => {
                         let t = extract_xml_value(content, "textannouncement");
                         return Some(if t.is_empty() {
@@ -2098,11 +2289,11 @@ pub fn parse_message_content(
                     }
                     "3" => return Some(with_title("[音乐]", &title)),
                     "6" => return Some(with_title("[文件]", &title)),
-                    "19" => return Some(format_forward_chat_record_content(&normalized)),
+                    "19" => return Some(format_forward_chat_record_content(normalized)),
                     "33" | "36" => return Some(with_title("[小程序]", &title)),
                     "57" => {
-                        return Some(match extract_quoted_reply_display(content) {
-                            Some(d) => build_quoted_reply_text(&d),
+                        return Some(match x.quoted_display() {
+                            Some(d) => build_quoted_reply_text(d),
                             None => {
                                 if title.is_empty() {
                                     "[引用消息]".into()
@@ -2131,7 +2322,7 @@ pub fn parse_message_content(
                     return Some(title);
                 }
             }
-            let s = strip_sender_prefix(&normalized);
+            let s = strip_sender_prefix(normalized);
             if s.is_empty() {
                 None
             } else {
@@ -2465,7 +2656,7 @@ struct AppMessageClass {
 
 /// `appMsgKind` of [`extract_arkme_app_message_meta`], without reading the other fields.
 pub fn app_message_kind(content: &str, local_type: i64) -> Option<&'static str> {
-    classify_app_message(content, local_type)?.kind
+    classify_app_message(&MsgXml::new(content), local_type)?.kind
 }
 
 /// `extractArkmeAppMessageMeta` — extra structured fields for `arkme-json` / `json`.
@@ -2473,7 +2664,15 @@ pub fn extract_arkme_app_message_meta(
     content: &str,
     local_type: i64,
 ) -> Option<Map<String, Value>> {
-    app_message_fields(classify_app_message(content, local_type)?, local_type)
+    extract_arkme_app_message_meta_in(&MsgXml::new(content), local_type)
+}
+
+/// [`extract_arkme_app_message_meta`] of a message's [`MsgXml`].
+pub fn extract_arkme_app_message_meta_in(
+    x: &MsgXml,
+    local_type: i64,
+) -> Option<Map<String, Value>> {
+    app_message_fields(classify_app_message(x, local_type)?, local_type, x)
 }
 
 /// [`extract_arkme_app_message_meta`] of a quote or a link; `None` for every other message, whose fields are not
@@ -2482,6 +2681,15 @@ pub fn quote_or_link_app_message_meta(
     content: &str,
     local_type: i64,
 ) -> Option<Map<String, Value>> {
+    quote_or_link_app_message_meta_in(&MsgXml::new(content), local_type)
+}
+
+/// [`quote_or_link_app_message_meta`] of a message's [`MsgXml`].
+pub fn quote_or_link_app_message_meta_in(
+    x: &MsgXml,
+    local_type: i64,
+) -> Option<Map<String, Value>> {
+    let content = x.content();
     // A quote has a `<refermsg>`, the quote's local type or `<type>` 57, a link `<type>` 5 or 49. Those words
     // survive normalizing (see normalized_may_contain), and cutting `<refermsg>` and `<patmsg>` blocks out of
     // the `<appmsg>` can join text into a `<type>` only where those words are: without any of the three, the
@@ -2493,25 +2701,25 @@ pub fn quote_or_link_app_message_meta(
     {
         return None;
     }
-    let class = classify_app_message(content, local_type)?;
+    let class = classify_app_message(x, local_type)?;
     if !matches!(class.kind, Some("quote" | "link")) {
         return None;
     }
-    app_message_fields(class, local_type)
+    app_message_fields(class, local_type, x)
 }
 
 /// The first part of [`extract_arkme_app_message_meta`]; `None` when the message has no meta at all.
-fn classify_app_message(content: &str, local_type: i64) -> Option<AppMessageClass> {
-    if content.is_empty() {
+fn classify_app_message(x: &MsgXml, local_type: i64) -> Option<AppMessageClass> {
+    if x.content().is_empty() {
         return None;
     }
-    let n = normalize_app_message_content(content);
+    let n = x.once().to_string();
     let looks_app = local_type == 49
         || local_type == 244813135921
         || n.contains("<appmsg")
         || n.contains("<msg>");
     let has_refer = n.contains("<refermsg>");
-    let xml_type = extract_app_message_type(&n);
+    let xml_type = x.app_type_twice().to_string();
     let is_finder = xml_type == "51"
         || n.contains("<finder")
         || n.contains("finderusername")
@@ -2560,7 +2768,11 @@ fn classify_app_message(content: &str, local_type: i64) -> Option<AppMessageClas
 }
 
 /// The fields of [`extract_arkme_app_message_meta`] for a message `class` describes.
-fn app_message_fields(class: AppMessageClass, local_type: i64) -> Option<Map<String, Value>> {
+fn app_message_fields(
+    class: AppMessageClass,
+    local_type: i64,
+    x: &MsgXml,
+) -> Option<Map<String, Value>> {
     let AppMessageClass {
         n,
         xml_type,
@@ -2604,7 +2816,7 @@ fn app_message_fields(class: AppMessageClass, local_type: i64) -> Option<Map<Str
     put(&mut meta, "appMsgThumbUrl", thumb.clone());
 
     if kind == Some("quote") {
-        let q = parse_quote_message(&n);
+        let q = x.quote_twice().clone();
         put(&mut meta, "quotedContent", q.content.unwrap_or_default());
         put(&mut meta, "quotedSender", q.sender.unwrap_or_default());
         put(&mut meta, "quotedType", q.quote_type.unwrap_or_default());
@@ -2940,19 +3152,25 @@ pub fn collect_rows(rows: Vec<MsgRow>, opts: &CollectOptions<'_>) -> Vec<ExportM
         if local_type == 43 && !content.is_empty() {
             msg.video_md5 = extract_video_md5(&content);
         }
-        let app_like =
-            local_type == 49 || content.contains("<appmsg") || content.contains("&lt;appmsg");
-        if !content.is_empty() && app_like {
-            if let Some(meta) = extract_file_app_message_meta(&content) {
-                msg.xml_type = meta.xml_type;
-                msg.file_name = meta.file_name;
-                msg.file_size = meta.file_size;
-                msg.file_ext = meta.file_ext;
-                msg.file_md5 = meta.file_md5;
+        {
+            // read once for all of it
+            let x = MsgXml::new(&content);
+            let app_like =
+                local_type == 49 || content.contains("<appmsg") || content.contains("&lt;appmsg");
+            if !content.is_empty() && app_like {
+                if let Some(meta) = extract_file_app_message_meta_in(&x) {
+                    msg.xml_type = meta.xml_type;
+                    msg.file_name = meta.file_name;
+                    msg.file_size = meta.file_size;
+                    msg.file_ext = meta.file_ext;
+                    msg.file_md5 = meta.file_md5;
+                }
+                if x.app_type_twice() == "19" {
+                    msg.chat_record_list = parse_chat_history(x.once());
+                }
             }
-            let normalized = normalize_app_message_content(&content);
-            if extract_app_message_type(&normalized) == "19" {
-                msg.chat_record_list = parse_chat_history(&normalized);
+            if local_type != 47 {
+                msg.sticker_md5 = appmsg_emoticon_md5_in(&x);
             }
         }
         msg.content = content;

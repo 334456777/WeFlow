@@ -620,15 +620,15 @@ impl<'a, 'n> Exporter<'a, 'n> {
         Some(format!("{payer_name} 转账给 {receiver_name}"))
     }
 
-    fn quoted_with_names(&mut self, local_type: i64, content: &str) -> Option<QuotedDisplay> {
-        if !is_text_quote_message(local_type, content) {
+    fn quoted_with_names(&mut self, local_type: i64, x: &MsgXml) -> Option<QuotedDisplay> {
+        if !is_text_quote_message_in(local_type, x) {
             return None;
         }
-        let base = extract_quoted_reply_display(content)?;
+        let base = x.quoted_display()?.clone();
         if base.quoted_sender.as_deref().is_some_and(|s| !s.is_empty()) {
             return Some(base);
         }
-        let Some(user) = quoted_sender_username(content) else {
+        let Some(user) = x.quoted_sender_username() else {
             return Some(base);
         };
         let my = self.my_wxid.clone();
@@ -664,7 +664,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// 引用消息带引用人名字，链接带 URL，转账带「谁转给谁」，系统消息统一用 `[系统: …]` 包裹，
     /// 表情 `[表情]`、语音 `[语音消息]`、图片 `[图片]`（不含媒体文件路径）。
     pub fn message_text(&mut self, msg: &ExportMsg) -> String {
-        self.message_text_with(msg, Some(LinkStyle::AppendUrl), true)
+        self.message_text_in(msg, &MsgXml::new(&msg.content))
+    }
+
+    /// [`message_text`](Self::message_text) given the message's [`MsgXml`].
+    fn message_text_in(&mut self, msg: &ExportMsg, x: &MsgXml) -> String {
+        self.message_text_with(msg, x, Some(LinkStyle::AppendUrl), true)
     }
 
     /// [`message_text`](Self::message_text) 的可调版本：`link` 为链接卡片的写法（`None` 保持解析出的
@@ -673,19 +678,21 @@ impl<'a, 'n> Exporter<'a, 'n> {
     pub fn message_text_with(
         &mut self,
         msg: &ExportMsg,
+        x: &MsgXml,
         link: Option<LinkStyle>,
         wrap_system: bool,
     ) -> String {
         if let Some(text) = plain_message_text(msg) {
             return text;
         }
-        self.message_text_generic(msg, link, wrap_system)
+        self.message_text_generic(msg, x, link, wrap_system)
     }
 
     /// 完整流程（不走快速路径）。
     fn message_text_generic(
         &mut self,
         msg: &ExportMsg,
+        x: &MsgXml,
         link: Option<LinkStyle>,
         wrap_system: bool,
     ) -> String {
@@ -693,21 +700,21 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let mut content = if msg.local_type == 3 {
             Some("[图片]".to_string())
         } else {
-            parse_message_content(
-                &msg.content,
+            parse_message_content_in(
+                x,
                 msg.local_type,
                 Some(&my),
                 Some(&msg.sender_username),
                 msg.emoji_caption.as_deref(),
             )
         };
-        if is_readable_system_message(msg.local_type, &msg.content) {
+        if x.readable_system_once(msg.local_type) {
             let t = extract_readable_system_message_text(&msg.content);
             if !t.is_empty() {
                 content = Some(t);
             }
         }
-        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        let quoted = self.quoted_with_names(msg.local_type, x);
         if let Some(q) = &quoted {
             content = Some(build_quoted_reply_text(q));
         }
@@ -740,12 +747,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     /// Text for TXT / Excel rows (formatPlainExportContent + transfer + quote + link).
-    pub fn plain_row_content(&mut self, msg: &ExportMsg) -> (String, bool) {
+    pub fn plain_row_content(&mut self, msg: &ExportMsg, x: &MsgXml) -> (String, bool) {
         if let Some(m) = msg.media.as_ref().filter(|_| msg.local_type != 47) {
             return (m.relative_path.clone(), false);
         }
-        let has_quote = is_text_quote_message(msg.local_type, &msg.content);
-        (self.message_text(msg), has_quote)
+        let has_quote = is_text_quote_message_in(msg.local_type, x);
+        (self.message_text_in(msg, x), has_quote)
     }
 
     fn sessions_members(&mut self, msgs: &[ExportMsg]) -> Vec<String> {
@@ -821,9 +828,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
                 ..Default::default()
             }
         };
+        let x = MsgXml::new(&msg.content);
         let content = match msg.media.as_ref().filter(|_| msg.local_type == 3) {
             Some(media) => media.relative_path.clone(),
-            None => self.message_text_with(msg, Some(LinkStyle::Markdown), false),
+            None => self.message_text_with(msg, &x, Some(LinkStyle::Markdown), false),
         };
         let account_name = if profile.display_name.is_empty() {
             member_name.to_string()
@@ -855,10 +863,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
             account_name,
             group_nickname: (!group_nickname.is_empty()).then_some(group_nickname),
             timestamp: msg.create_time,
-            kind: convert_message_type(msg.local_type, &msg.content),
+            kind: convert_message_type_in(msg.local_type, &x),
             content,
             platform_message_id: msg.platform_message_id(),
-            reply_to_message_id: extract_reply_to_message_id(&msg.content),
+            reply_to_message_id: x.reply_to_message_id(),
             chat_records,
         }
     }
@@ -1239,11 +1247,12 @@ impl<'a, 'n> Exporter<'a, 'n> {
         profiles: &mut HashMap<String, Profile>,
     ) -> JsonMessage<'m> {
         let source = crate::xml::tag_element(&msg.content, "msgsource").unwrap_or("");
+        let x = MsgXml::new(&msg.content);
         let content = match msg.media.as_ref().filter(|_| msg.local_type != 47) {
             Some(m) => m.relative_path.clone(),
-            None => self.message_text(msg),
+            None => self.message_text_in(msg, &x),
         };
-        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        let quoted = self.quoted_with_names(msg.local_type, &x);
         let sender = msg.sender_username.as_str();
         let contact = self.names.get(sender);
         let nickname = contact
@@ -1279,9 +1288,9 @@ impl<'a, 'n> Exporter<'a, 'n> {
         let mut extra = Map::new();
         // detailed JSON keeps the app-message fields of quotes and links only
         let meta = if arkme {
-            extract_arkme_app_message_meta(&msg.content, msg.local_type)
+            extract_arkme_app_message_meta_in(&x, msg.local_type)
         } else {
-            quote_or_link_app_message_meta(&msg.content, msg.local_type)
+            quote_or_link_app_message_meta_in(&x, msg.local_type)
         };
         if let Some(meta) = meta {
             extra.extend(meta);
@@ -1310,7 +1319,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             local_id: index + 1,
             create_time: msg.create_time,
             formatted_time: format_timestamp(msg.create_time),
-            kind: message_type_name(msg.local_type, Some(&msg.content)),
+            kind: message_type_name_in(msg.local_type, &x),
             local_type: msg.local_type,
             content,
             is_send: u8::from(msg.is_send),
@@ -1325,7 +1334,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             image_dat_name: msg.image_dat_name.as_deref().filter(|_| image),
             video_md5: msg.video_md5.as_deref().filter(|_| video),
             platform_message_id: msg.platform_message_id(),
-            reply_to_message_id: extract_reply_to_message_id(&msg.content),
+            reply_to_message_id: x.reply_to_message_id(),
             extra,
             location_lat: msg.location_lat.filter(|_| location),
             location_lng: msg.location_lng.filter(|_| location),
@@ -1637,7 +1646,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// Appends the TXT entry of `msg` to `out`.
     fn write_txt_entry(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {
         use std::io::Write;
-        let (content, _) = self.plain_row_content(msg);
+        let (content, _) = self.plain_row_content(msg, &MsgXml::new(&msg.content));
         let sender = self.sender_fields(msg);
         // writing to a Vec cannot fail
         let _ = write!(
@@ -1901,9 +1910,10 @@ impl<'a, 'n> Exporter<'a, 'n> {
             let msg: &ExportMsg = item.borrow();
             count += 1;
             let row = u32::try_from(i + 4)?;
-            let (content, has_quote) = self.plain_row_content(msg);
+            let x = MsgXml::new(&msg.content);
+            let (content, has_quote) = self.plain_row_content(msg, &x);
             let s = self.sender_fields(msg);
-            let type_name = message_type_name(msg.local_type, Some(&msg.content));
+            let type_name = message_type_name_in(msg.local_type, &x);
             ws.write_number(row, 0, (i + 1) as f64)?;
             ws.write_string(row, 1, format_timestamp(msg.create_time))?;
             if compact {
@@ -1966,11 +1976,11 @@ impl<'a, 'n> Exporter<'a, 'n> {
     // ─────────────────────────────────── HTML ───────────────────────────────────
 
     /// HTML 气泡里的文本：与其他格式同一套写法，但链接卡片、系统消息样式由 HTML 自己渲染，不再改写。
-    fn html_message_text(&mut self, msg: &ExportMsg) -> String {
+    fn html_message_text(&mut self, msg: &ExportMsg, x: &MsgXml) -> String {
         if msg.content.is_empty() && msg.local_type != 47 {
             return String::new();
         }
-        self.message_text_with(msg, None, false)
+        self.message_text_with(msg, x, None, false)
     }
 
     /// The `window.WEFLOW_DATA` item of one message; `index` is the number of messages before it.
@@ -1994,14 +2004,15 @@ impl<'a, 'n> Exporter<'a, 'n> {
             html_escape(&avatar_fallback(&sender_name))
         );
         let time_text = format_timestamp(msg.create_time);
-        let quoted = self.quoted_with_names(msg.local_type, &msg.content);
+        let x = MsgXml::new(&msg.content);
+        let quoted = self.quoted_with_names(msg.local_type, &x);
         let mut text = match &quoted {
             Some(q) if !q.reply_text.is_empty() => q.reply_text.clone(),
-            _ => self.html_message_text(msg),
+            _ => self.html_message_text(msg, &x),
         };
         if let Some(q) = &quoted {
             if q.reply_text.is_empty() {
-                text = self.html_message_text(msg);
+                text = self.html_message_text(msg, &x);
             }
         }
         if is_transfer_export_content(&text) && !msg.content.is_empty() {
@@ -2089,7 +2100,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             avatar_html,
             body_html: body,
             platform_message_id: msg.platform_message_id(),
-            reply_to_message_id: extract_reply_to_message_id(&msg.content),
+            reply_to_message_id: x.reply_to_message_id(),
         }
     }
 
@@ -2189,7 +2200,8 @@ impl<'a, 'n> Exporter<'a, 'n> {
     /// Appends the SQL `INSERT` of `msg` to `out`.
     fn write_sql_insert(&mut self, msg: &ExportMsg, out: &mut Vec<u8>) {
         use std::io::Write;
-        let (content, _) = self.plain_row_content(msg);
+        let x = MsgXml::new(&msg.content);
+        let (content, _) = self.plain_row_content(msg, &x);
         // writing to a Vec cannot fail
         let _ = writeln!(
             out,
@@ -2201,7 +2213,7 @@ impl<'a, 'n> Exporter<'a, 'n> {
             sql_escape(&msg.sender_username),
             if msg.is_send { 1 } else { 0 },
             msg.local_type,
-            sql_escape(message_type_name(msg.local_type, Some(&msg.content))),
+            sql_escape(message_type_name_in(msg.local_type, &x)),
             sql_escape(&content),
         );
     }
@@ -3232,7 +3244,10 @@ mod tests {
         let sys = |t: &str| format!("[{}: {t}]", chrome("系统", "System"));
         // 导出器 txt / SQL（plain_row_content）与 JSON（message_text）一致
         for m in &msgs {
-            assert_eq!(ex.plain_row_content(m).0, ex.message_text(m));
+            assert_eq!(
+                ex.plain_row_content(m, &MsgXml::new(&m.content)).0,
+                ex.message_text(m)
+            );
         }
         let sql = ex.render_sql(&msgs);
         for want in [
@@ -3320,7 +3335,12 @@ mod tests {
             let fast = plain_message_text(&msg)
                 .unwrap_or_else(|| panic!("no fast path: {ty} {content:?}"));
             // 完整流程：内容里夹一个 appmsg 字样会关掉快速路径，所以改走 message_text_generic
-            let full = ex.message_text_generic(&msg, Some(LinkStyle::AppendUrl), true);
+            let full = ex.message_text_generic(
+                &msg,
+                &MsgXml::new(&msg.content),
+                Some(LinkStyle::AppendUrl),
+                true,
+            );
             assert_eq!(fast, full, "type {ty}, content {content:?}");
         }
         // 含 appmsg / sysmsg / refermsg 的内容不走快速路径
