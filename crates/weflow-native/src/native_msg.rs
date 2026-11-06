@@ -25,6 +25,16 @@ pub struct MsgTable {
 /// Sort key of a message: (sort_seq, create_time, local_id, shard index).
 type Key = (i64, i64, i64, usize);
 
+/// `keys` in the chat's order, oldest or newest first; equal keys of different databases by ascending database
+/// number either way, as the pages by offset list them.
+fn sort_keys(keys: &mut [Key], ascending: bool) {
+    if ascending {
+        keys.sort_unstable();
+    } else {
+        keys.sort_unstable_by(|a, b| (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2)).then(a.3.cmp(&b.3)));
+    }
+}
+
 /// Sender filter of a cursor: (does this username match, also keep the account owner's own messages).
 pub type SenderFilter<'a> = (&'a dyn Fn(&str) -> bool, bool);
 
@@ -1094,10 +1104,7 @@ impl NativeAccount {
             };
             keys.extend(self.table_keys(t, idx, (begin, end), &who)?);
         }
-        keys.sort();
-        if !ascending {
-            keys.reverse();
-        }
+        sort_keys(&mut keys, ascending);
         let mut cursors = self
             .cursors
             .lock()
@@ -1261,10 +1268,7 @@ impl NativeAccount {
             keys.extend(table);
             c.derived[idx] = false;
         }
-        keys.sort();
-        if !ascending {
-            keys.reverse();
-        }
+        sort_keys(&mut keys, ascending);
         let same_pages = c.keys.len() == keys.len()
             && c.keys
                 .iter()
@@ -1969,6 +1973,14 @@ mod tests {
                 .map(|(id, seq, create)| format!("({id}, {seq}, {create}, 1, 1, '{n}:{id}')"))
                 .collect::<Vec<_>>()
                 .join(", ");
+            let insert = if values.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "insert into \"{table}\"(local_id, sort_seq, create_time, real_sender_id, local_type,
+                         message_content) values {values};"
+                )
+            };
             let table = table.clone();
             let plain = plain_db_with(move |c: &Connection| {
                 c.execute_batch(&format!(
@@ -1978,8 +1990,7 @@ mod tests {
                          create_time, status integer, real_sender_id integer, local_type integer, compress_content,
                          message_content text, source text, packed_info_data blob);
                      create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq);
-                     insert into \"{table}\"(local_id, sort_seq, create_time, real_sender_id, local_type,
-                         message_content) values {values};"
+                     {insert}"
                 ))
                 .unwrap();
             });
@@ -2064,6 +2075,97 @@ mod tests {
                     "{tag} offset {offset}"
                 );
             }
+        }
+    }
+    /// Equal keys of different databases (a message both of them keep) come by ascending database number in a
+    /// cursor of either direction, as the pages by offset list them.
+    #[test]
+    fn equal_keys_of_two_databases_come_in_database_order_both_ways() {
+        let row = vec![(1, "null".to_string(), (T0 + 5).to_string())];
+        let acct = keyed_account("equal-keys", &[row.clone(), row]);
+        for ascending in [false, true] {
+            let cursor = acct
+                .open_message_cursor("wxid_bob", 10, ascending, 0, 0, false)
+                .unwrap();
+            let (rows, _) = acct.fetch_message_batch(cursor).unwrap();
+            assert_eq!(
+                rows.iter().map(|r| r.shard).collect::<Vec<_>>(),
+                [0, 1],
+                "ascending {ascending}"
+            );
+        }
+        assert_eq!(
+            acct.messages("wxid_bob", 2, 0)
+                .unwrap()
+                .iter()
+                .map(|r| r.shard)
+                .collect::<Vec<_>>(),
+            [0, 1]
+        );
+    }
+
+    /// The rows of one database for [`keyed_account`]: `sort_seq` tied, missing (null or 0), negative or not, and
+    /// `create_time` tied; every database's local ids start at 1, so they share them.
+    fn shard_rows() -> impl proptest::strategy::Strategy<Value = Vec<(i64, String, String)>> {
+        use proptest::prelude::*;
+        prop::collection::vec((0u8..10, 0i64..6, 0i64..8), 0..30).prop_map(|cells| {
+            (1i64..)
+                .zip(cells)
+                .map(|(id, (kind, seq, time))| {
+                    let seq = match kind {
+                        0 => "null".to_string(),
+                        1 => "0".to_string(),
+                        2 => "-5".to_string(),
+                        _ => (T0 * 1000 + seq * 1000).to_string(),
+                    };
+                    (id, seq, (T0 + time).to_string())
+                })
+                .collect()
+        })
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(24))]
+
+        /// Any page of any offset, and the batches of a cursor, are the rows of reading every row and sorting them
+        /// (#502).
+        #[test]
+        fn any_page_is_the_page_of_reading_every_row(
+            shards in proptest::collection::vec(shard_rows(), 1..=3),
+            pages in proptest::collection::vec((0usize..100, 0usize..25), 1..6),
+            batch in 1i32..40,
+        ) {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let acct = keyed_account(&format!("any-page-{n}"), &shards);
+            let tables = acct.message_tables("wxid_bob").unwrap();
+            for (offset, limit) in pages {
+                proptest::prop_assert_eq!(
+                    acct.messages("wxid_bob", limit as i32, offset as i32).unwrap(),
+                    acct.newest_rows(&tables, offset, limit).unwrap(),
+                    "offset {} limit {}",
+                    offset,
+                    limit
+                );
+            }
+            let every = acct.newest_rows(&tables, 0, 0).unwrap();
+            proptest::prop_assert_eq!(every.len(), shards.iter().map(Vec::len).sum::<usize>());
+            let cursor = acct.open_message_cursor("wxid_bob", batch, false, 0, 0, false).unwrap();
+            let mut read = Vec::new();
+            loop {
+                let (rows, more) = acct.fetch_message_batch(cursor).unwrap();
+                read.extend(rows);
+                if !more {
+                    break;
+                }
+            }
+            acct.close_message_cursor(cursor).unwrap();
+            drop(acct);
+            // each case's account, not left behind by the hundreds
+            let _ = std::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("weflow-msg-{}-any-page-{n}", std::process::id())),
+            );
+            proptest::prop_assert_eq!(read, every);
         }
     }
 

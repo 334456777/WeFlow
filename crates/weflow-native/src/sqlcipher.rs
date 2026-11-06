@@ -776,6 +776,67 @@ mod tests {
         assert!(verify_key(&enc, &KEY).is_err());
     }
 
+    /// The keys of the property tests, derived once: deriving them is the slow part.
+    static PROPERTY_CIPHER: std::sync::LazyLock<PageCipher> =
+        std::sync::LazyLock::new(|| PageCipher::derive(&KEY, &SALT));
+
+    /// A page's plain bytes: any body, and the reserve free as SQLite leaves it.
+    fn plain_page() -> impl proptest::strategy::Strategy<Value = Vec<u8>> {
+        use proptest::prelude::*;
+        prop::collection::vec(any::<u8>(), PAGE_SIZE - RESERVE).prop_map(|mut page| {
+            page.resize(PAGE_SIZE, 0);
+            page
+        })
+    }
+
+    proptest::proptest! {
+        #![proptest_config(crate::property_cases(256))]
+
+        /// Any page decrypts to the bytes it was encrypted from; page 1 with SQLite's header in place of the salt
+        /// (#502).
+        #[test]
+        fn any_page_decrypts_to_its_plain_bytes(
+            plain in plain_page(),
+            pgno in 1u32..=1_000_000,
+            iv in proptest::prelude::any::<[u8; IV_LEN]>(),
+        ) {
+            let page = encrypt_page(&PROPERTY_CIPHER, pgno, &plain, iv);
+            let mut out = vec![0xaa; PAGE_SIZE];
+            proptest::prop_assert!(PROPERTY_CIPHER.decrypt_page(pgno, &page, &mut out).is_ok());
+            let start = if pgno == 1 { SALT_LEN } else { 0 };
+            let body_end = PAGE_SIZE - RESERVE;
+            proptest::prop_assert_eq!(&out[start..body_end], &plain[start..body_end]);
+            proptest::prop_assert!(out[body_end..].iter().all(|&b| b == 0));
+            if pgno == 1 {
+                proptest::prop_assert_eq!(&out[..SALT_LEN], SQLITE_MAGIC);
+            }
+        }
+
+        /// A page with any byte changed, or read as another page, fails its check instead of decrypting to other
+        /// bytes (#502). The salt at the start of page 1 is not signed: the keys come from it, so another salt
+        /// fails every page.
+        #[test]
+        fn any_changed_or_moved_page_fails_its_check(
+            plain in plain_page(),
+            pgno in 1u32..=1_000_000,
+            iv in proptest::prelude::any::<[u8; IV_LEN]>(),
+            at in 0..PAGE_SIZE,
+            flip in 1u8..=255,
+            other in 1u32..=1_000_000,
+        ) {
+            let page = encrypt_page(&PROPERTY_CIPHER, pgno, &plain, iv);
+            let mut out = vec![0; PAGE_SIZE];
+            if pgno != 1 || at >= SALT_LEN {
+                let mut changed = page.clone();
+                changed[at] ^= flip;
+                proptest::prop_assert!(PROPERTY_CIPHER.decrypt_page(pgno, &changed, &mut out).is_err());
+            }
+            if other != pgno {
+                proptest::prop_assert!(PROPERTY_CIPHER.decrypt_page(other, &page, &mut out).is_err());
+            }
+        }
+    }
+
     fn wal_header(salt1: u32, salt2: u32) -> Vec<u8> {
         let mut h = Vec::new();
         for v in [0x377f0683u32, 3007000, PAGE_SIZE as u32, 0, salt1, salt2] {
