@@ -964,8 +964,6 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
-        // One pass over the conversation: keeping its whole database decrypted would only cost memory.
-        wcdb.set_low_memory(true);
         let opts = CollectOptions {
             session_id: &req.session_id,
             my_wxid: &my_wxid,
@@ -997,7 +995,6 @@ impl ServiceHub {
         let my_wxid = clean_account_dir_name(&wxid.unwrap_or_default());
         check_sender(req.sender.as_deref(), &my_wxid)?;
         let wcdb = self.open_wcdb()?;
-        wcdb.set_low_memory(true);
         let opts = CollectOptions {
             session_id: &req.session_id,
             my_wxid: &my_wxid,

@@ -126,7 +126,6 @@ fn main() -> Result<()> {
             .context("database key missing")?,
     )?
     .with_my_wxid(profile.wxid.clone());
-    account.set_low_memory(true);
     account
         .test_connection()
         .context("open configured account")?;

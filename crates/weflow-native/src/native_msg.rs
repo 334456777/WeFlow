@@ -104,6 +104,32 @@ pub fn session_usernames(acct: &NativeAccount) -> Result<Vec<String>> {
         .collect())
 }
 
+/// Rows of a table that one part of a read by `rowid` covers (see [`rowid_parts`]).
+const ROWS_PER_PART: i64 = if cfg!(test) { 4 } else { 16 * 1024 };
+/// Most parts a read by `rowid` is split into: page decryption (mostly its HMAC-SHA512) gains little past four
+/// threads and costs more CPU.
+const MAX_PARTS: usize = 4;
+
+/// Inclusive ranges that split the rowids `lo..=hi` of a table into parts of about [`ROWS_PER_PART`] rows, at most
+/// [`MAX_PARTS`] and the processors there are; one range when the table is small.
+fn rowid_parts(lo: i64, hi: i64) -> Vec<(i64, i64)> {
+    let span = i128::from(hi) - i128::from(lo) + 1;
+    let cpus = std::thread::available_parallelism().map_or(1, usize::from);
+    let parts = usize::try_from(span / i128::from(ROWS_PER_PART))
+        .unwrap_or(usize::MAX)
+        .clamp(1, MAX_PARTS.min(cpus));
+    let n = parts as i128;
+    (0..n)
+        .map(|i| {
+            let at = |k: i128| i64::try_from(i128::from(lo) + span * k / n).unwrap_or(i64::MAX);
+            (
+                if i == 0 { i64::MIN } else { at(i) },
+                if i + 1 == n { i64::MAX } else { at(i + 1) - 1 },
+            )
+        })
+        .collect()
+}
+
 fn int(row: &Value, key: &str) -> i64 {
     row.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
@@ -176,14 +202,17 @@ pub enum PageFrom {
     After(MsgPos),
 }
 
+/// A row's sort key (see [`MsgPos`]) and the number of its `message_<n>.db`.
+type ShardKey = ((i64, i64, i64), u32);
+
 /// Where [`NativeAccount::messages`] starts a page deep into a conversation.
 enum OffsetPosition {
     /// After this message, the last one the offset skips.
     At(MsgPos),
     /// The offset skips every message.
     Past,
-    /// A sort key of the rows is not stored as an integer (a `sort_seq` may also be null): [`typed_row_key`] and SQLite
-    /// order such values differently, so only reading the rows lists them as before.
+    /// A sort key read is not stored as an integer (a `sort_seq` may also be null): [`typed_row_key`] and SQLite order
+    /// such values differently, so only reading the rows lists them as before.
     Unusual,
 }
 
@@ -365,11 +394,15 @@ impl NativeAccount {
             // #486), so find the last message it skips from the sort keys alone and page on from there.
             match self.offset_position(&tables, offset, limit)? {
                 OffsetPosition::At(pos) => {
-                    return self.page_from(
+                    let page = self.page_from(
                         &tables,
                         i32::try_from(limit).unwrap_or(i32::MAX),
                         PageFrom::Before(pos),
-                    );
+                    )?;
+                    // a page row whose time is not an integer: SQLite and the sort key order it differently
+                    if page.iter().all(|r| r.create_time.is_some()) {
+                        return Ok(page);
+                    }
                 }
                 OffsetPosition::Past => return Ok(Vec::new()),
                 OffsetPosition::Unusual => {}
@@ -401,8 +434,12 @@ impl NativeAccount {
         }
     }
 
-    /// Where a page `offset` messages deep starts: the place of the last message it skips. Read from the sort keys of
-    /// the rows [`newest_rows`](Self::newest_rows) would read, not from the rows themselves.
+    /// Where a page `offset` messages deep starts: the place of the last message it skips.
+    ///
+    /// The rows [`newest_rows`](Self::newest_rows) would read are ranked by the first part of their sort key alone:
+    /// the `sort_seq` index holds it, so their pages are not decrypted. Only the rows tied on it with the last skipped
+    /// one, or with the page's last one, are read, for their whole key: those two places are where the rest of the
+    /// key can move a row across the page's ends.
     fn offset_position(
         &self,
         tables: &[MsgTable],
@@ -414,27 +451,94 @@ impl NativeAccount {
         } else {
             (offset + limit) as i64
         };
-        let mut keys: Vec<((i64, i64, i64), u32)> = Vec::new();
+        let mut firsts: Vec<i64> = Vec::new();
         for t in tables {
-            let Some(shard) = shard_of(t) else {
+            if shard_of(t).is_none() {
+                return Ok(OffsetPosition::Unusual);
+            }
+            let Some(read) = self.first_keys(t, want)? else {
                 return Ok(OffsetPosition::Unusual);
             };
-            let floor = if want > 0 {
-                self.sort_seq_floor(t, want)?
-            } else {
-                None
+            firsts.extend(read);
+        }
+        firsts.sort_unstable_by(|a, b| b.cmp(a));
+        let Some(&first) = firsts.get(offset - 1) else {
+            return Ok(OffsetPosition::Past);
+        };
+        if let Some(&last) = usize::try_from(want).ok().and_then(|w| firsts.get(w - 1)) {
+            if last != first && self.tied_keys(tables, last)?.is_none() {
+                return Ok(OffsetPosition::Unusual);
+            }
+        }
+        let Some(mut tied) = self.tied_keys(tables, first)? else {
+            return Ok(OffsetPosition::Unusual);
+        };
+        // the listing's order: newest key first, equal keys by ascending database
+        tied.sort_unstable_by(|(a, sa), (b, sb)| b.cmp(a).then(sa.cmp(sb)));
+        let above = firsts.partition_point(|&f| f > first);
+        // fewer tied rows than ranked ones: the table changed between the reads
+        let Some(&((sort_seq, create_time, local_id), shard)) = tied.get(offset - 1 - above) else {
+            return Ok(OffsetPosition::Unusual);
+        };
+        Ok(OffsetPosition::At(MsgPos {
+            sort_seq,
+            create_time,
+            local_id,
+            shard,
+        }))
+    }
+
+    /// The first part of the sort key (see [`MsgPos`]) of the `want` newest rows of `t` with a `sort_seq`, from its
+    /// index, and of its `want` newest without one, from their `create_time`; all of them when `want` is negative.
+    /// `None` when one is not an integer.
+    fn first_keys(&self, t: &MsgTable, want: i64) -> Result<Option<Vec<i64>>> {
+        let table = &t.table;
+        let sequenced = format!(
+            "select sort_seq from \"{table}\" where sort_seq <> 0 order by sort_seq desc limit ?1"
+        );
+        let unsequenced = format!(
+            "select create_time from \"{table}\" where sort_seq is null or sort_seq = 0 \
+             order by create_time desc, local_id desc limit ?1"
+        );
+        self.with_db(&t.db, |conn| {
+            // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
+            let mut firsts = Vec::new();
+            for (sql, scale) in [(&sequenced, 1), (&unsequenced, 1000)] {
+                let mut stmt = conn
+                    .prepare(sql)
+                    .with_context(|| format!("bad query: {sql}"))?;
+                let mut rows = stmt.query([want])?;
+                while let Some(row) = rows.next()? {
+                    let rusqlite::types::ValueRef::Integer(v) = row.get_ref(0)? else {
+                        return Ok(None);
+                    };
+                    firsts.push(v * scale);
+                }
+            }
+            Ok(Some(firsts))
+        })
+    }
+
+    /// The sort keys and databases of the rows of `tables` whose key starts with `first`; `None` when a key is not
+    /// stored as integers (see [`typed_row_key`]).
+    fn tied_keys(&self, tables: &[MsgTable], first: i64) -> Result<Option<Vec<ShardKey>>> {
+        let mut keys = Vec::new();
+        for t in tables {
+            let Some(shard) = shard_of(t) else {
+                return Ok(None);
             };
-            let sql = Self::newest_sql(t, Some("sort_seq, create_time, local_id"), floor.is_some());
+            let table = &t.table;
+            let sql = format!(
+                "select sort_seq, create_time, local_id from \"{table}\" where sort_seq = ?1 and sort_seq <> 0 \
+                 union all select sort_seq, create_time, local_id from \"{table}\" \
+                 where (sort_seq is null or sort_seq = 0) and create_time * 1000 = ?1"
+            );
             let read = self.with_db(&t.db, |conn| {
-                // Each retry owns a fresh vector: a stale snapshot cannot leave partial or duplicate keys behind.
                 let mut found = Vec::new();
                 let mut stmt = conn
                     .prepare(&sql)
                     .with_context(|| format!("bad query: {sql}"))?;
-                let mut rows = match floor {
-                    Some(floor) => stmt.query(rusqlite::params![want, floor])?,
-                    None => stmt.query(rusqlite::params![want])?,
-                };
+                let mut rows = stmt.query([first])?;
                 while let Some(row) = rows.next()? {
                     let Some(key) =
                         typed_row_key(row.get_ref(0)?, row.get_ref(1)?, row.get_ref(2)?)
@@ -446,21 +550,11 @@ impl NativeAccount {
                 Ok(Some(found))
             })?;
             let Some(read) = read else {
-                return Ok(OffsetPosition::Unusual);
+                return Ok(None);
             };
             keys.extend(read);
         }
-        // the listing's order: newest key first, equal keys by ascending database
-        keys.sort_unstable_by(|(a, sa), (b, sb)| b.cmp(a).then(sa.cmp(sb)));
-        Ok(match keys.get(offset - 1) {
-            Some(&((sort_seq, create_time, local_id), shard)) => OffsetPosition::At(MsgPos {
-                sort_seq,
-                create_time,
-                local_id,
-                shard,
-            }),
-            None => OffsetPosition::Past,
-        })
+        Ok(Some(keys))
     }
 
     /// Newest-first page of the messages of `tables`, from the rows before it and the page read in full and sorted.
@@ -714,21 +808,72 @@ impl NativeAccount {
     }
 
     /// `{ "YYYY-MM-DD": count }` in local time, ascending.
+    ///
+    /// Every row of the conversation is read, so each table is read in parts of its rows by `rowid`, side by side on
+    /// connections of their own (see [`with_db_parts`](Self::with_db_parts)): a part's pages are decrypted once, by
+    /// the thread that counts them.
     pub fn session_message_date_counts(&self, session_id: &str) -> Result<Value> {
         let mut counts: std::collections::BTreeMap<String, i64> = Default::default();
         for t in self.message_tables(session_id)? {
             // the local date of each quarter of an hour, not of each message: SQLite's `localtime` is the slow part,
             // and every time zone today is a whole number of quarters away from UTC, moving on a quarter
-            let sql = format!(
-                "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
-                 (select create_time / {QUARTER} as q, count(*) as n from \"{}\" where create_time > 0 group by q) \
-                 group by d",
-                t.table
+            let count = |part: &str| {
+                format!(
+                    "select date(q * {QUARTER}, 'unixepoch', 'localtime') as d, sum(n) as n from \
+                     (select create_time / {QUARTER} as q, count(*) as n from \"{}\" where create_time > 0{part} \
+                     group by q) group by d",
+                    t.table
+                )
+            };
+            let bounds = self.query(
+                &t.db,
+                &format!(
+                    "select min(rowid) as lo, max(rowid) as hi from \"{}\"",
+                    t.table
+                ),
+                &[],
             );
-            for r in self.query(&t.db, &sql, &[])? {
-                if let Some(d) = r["d"].as_str() {
-                    *counts.entry(d.to_string()).or_default() += int(&r, "n");
+            let parts = match bounds.as_deref() {
+                Ok([r]) => match (r["lo"].as_i64(), r["hi"].as_i64()) {
+                    (Some(lo), Some(hi)) => rowid_parts(lo, hi),
+                    _ => Vec::new(),
+                },
+                // a table without a rowid
+                _ => Vec::new(),
+            };
+            let parts = if parts.is_empty() {
+                vec![(i64::MIN, i64::MAX)]
+            } else {
+                parts
+            };
+            let sql = count(if parts.len() > 1 {
+                " and rowid between ?1 and ?2"
+            } else {
+                ""
+            });
+            let read = self.with_db_parts(&t.db, parts.len(), |conn, part| {
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .with_context(|| format!("bad query: {sql}"))?;
+                let mut rows = if parts.len() > 1 {
+                    stmt.query(rusqlite::params![parts[part].0, parts[part].1])?
+                } else {
+                    stmt.query([])?
+                };
+                let mut days = Vec::new();
+                while let Some(r) = rows.next()? {
+                    if let Some(d) = r.get_ref(0)?.as_str_or_null()? {
+                        let n = match r.get_ref(1)? {
+                            rusqlite::types::ValueRef::Integer(n) => n,
+                            _ => 0,
+                        };
+                        days.push((d.to_string(), n));
+                    }
                 }
+                Ok(days)
+            })?;
+            for (d, n) in read.into_iter().flatten() {
+                *counts.entry(d).or_default() += n;
             }
         }
         Ok(Value::Object(
@@ -1665,6 +1810,29 @@ mod tests {
     }
 
     #[test]
+    fn rowid_parts_cover_every_rowid_once() {
+        for (lo, hi) in [
+            (1, 1),
+            (1, 7),
+            (1, 40),
+            (-3, 100),
+            (5, 1_000_000),
+            (i64::MIN, i64::MAX),
+        ] {
+            let parts = rowid_parts(lo, hi);
+            assert!(!parts.is_empty() && parts.len() <= MAX_PARTS, "{lo}..={hi}");
+            assert_eq!(parts[0].0, i64::MIN, "{lo}..={hi}");
+            assert_eq!(parts[parts.len() - 1].1, i64::MAX, "{lo}..={hi}");
+            for w in parts.windows(2) {
+                assert!(
+                    w[0].0 <= w[0].1 && w[0].1 + 1 == w[1].0,
+                    "{lo}..={hi}: {parts:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn table_name_is_md5_of_session_id() {
         assert_eq!(
             table_name_for("abc"),
@@ -1911,11 +2079,13 @@ mod tests {
             rows.push((7, seq.to_string(), create.to_string()));
             let acct = keyed_account(&format!("unusual-{tag}"), &[rows]);
             let tables = acct.message_tables("wxid_bob").unwrap();
-            assert!(
+            // a time that is not an integer is found where it matters: in the page or tied at its ends
+            assert_eq!(
                 matches!(
                     acct.offset_position(&tables, 3, 0).unwrap(),
                     OffsetPosition::Unusual
                 ),
+                tag != "null-time",
                 "{tag}"
             );
             for offset in 1..=8 {

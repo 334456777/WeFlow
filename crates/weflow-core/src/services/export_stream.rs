@@ -790,7 +790,6 @@ mod tests {
         let account = fixture.db_storage().parent().unwrap().to_path_buf();
         wcdb.open(&account, &fixture.key_hex(), Some("wxid_me_ab12"))
             .unwrap();
-        wcdb.set_low_memory(true); // as the exports do
         let req = MessageExportRequest {
             session_id: "wxid_bob".into(),
             format: "txt".into(),

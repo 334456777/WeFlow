@@ -19,13 +19,9 @@ use serde_json::{json, Map, Value};
 use crate::cipher_vfs::{self, CipherFile};
 use crate::sqlcipher;
 
-/// SQLite page cache per snapshot (KiB). It only holds pages a query has read, so it stays small for small
-/// queries; queries that walk a whole message database keep every page decrypted once, as long as the soft limit
-/// below allows.
-const PAGE_CACHE_KIB: i64 = 1024 * 1024;
-/// Page cache while the account handle is in low-memory mode ([`NativeAccount::set_low_memory`]): for long
-/// one-way reads such as exports, where keeping a whole message database decrypted saves little time.
-const LOW_MEMORY_CACHE_KIB: i64 = 16 * 1024;
+/// SQLite page cache per connection (KiB): the pages a query reads again while it runs, such as the inner pages of
+/// a b-tree. A read that walks a whole table decrypts each page once whatever the size.
+const PAGE_CACHE_KIB: i64 = 16 * 1024;
 /// Soft limit of SQLite's heap across all snapshots: above it page caches recycle their oldest pages.
 const HEAP_SOFT_LIMIT: i64 = 1024 * 1024 * 1024;
 /// Snapshots kept open (least recently used ones are closed first).
@@ -41,10 +37,10 @@ struct FileStamp {
     wal_mtime: Option<SystemTime>,
 }
 
-/// A snapshot's connection and the page cache size it is set to.
+/// A snapshot's connection, and whether its page cache is sized yet.
 struct Conn {
     conn: Connection,
-    cache_kib: i64,
+    sized: bool,
 }
 
 struct Snapshot {
@@ -103,7 +99,6 @@ pub struct NativeAccount {
     /// used to tell which messages were sent by the user.
     my_wxid: Option<String>,
     pub(crate) cursors: Mutex<crate::native_msg::Cursors>,
-    low_memory: std::sync::atomic::AtomicBool,
     /// Most connections a snapshot gets for this handle's queries (see [`NativeAccount::set_read_connections`]).
     read_connections: std::sync::atomic::AtomicUsize,
     /// Queries run again because their snapshot went stale (see [`NativeAccount::stale_reruns`]).
@@ -192,17 +187,9 @@ impl NativeAccount {
             cache: shared_cache(),
             my_wxid: None,
             cursors: Mutex::default(),
-            low_memory: Default::default(),
             read_connections: std::sync::atomic::AtomicUsize::new(1),
             stale_reruns: Default::default(),
         })
-    }
-
-    /// Low-memory mode for long one-way reads (exports): the snapshots this handle uses keep a small page cache,
-    /// so a pass over a whole message database does not keep all of it decrypted in memory.
-    pub fn set_low_memory(&self, on: bool) {
-        self.low_memory
-            .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// How many connections a database snapshot may open for this handle's queries (at least one). Queries on one
@@ -295,28 +282,85 @@ impl NativeAccount {
     ///
     /// When WeChat changes the file under the snapshot while `f` reads it, `f` fails, and it is run again on a fresh
     /// snapshot; so `f` must be safe to repeat (a pure query, or one that starts its output over).
-    pub fn with_db<T>(
+    pub fn with_db<T>(&self, path: &Path, f: impl FnMut(&Connection) -> Result<T>) -> Result<T> {
+        self.with_db_among(path, 1, f)
+    }
+
+    /// [`with_db`](Self::with_db) for each of `parts` parts of one read, side by side on threads of their own: `f`
+    /// gets the part's number, and a connection no other part uses, so each part's pages are decrypted by the thread
+    /// that reads them. The results come back in part order.
+    pub fn with_db_parts<T: Send>(
         &self,
         path: &Path,
+        parts: usize,
+        f: impl Fn(&Connection, usize) -> Result<T> + Sync,
+    ) -> Result<Vec<T>> {
+        if parts <= 1 {
+            return Ok(vec![self.with_db(path, |c| f(c, 0))?]);
+        }
+        // Opened once here: parts that each found the file unopened would each derive its key. The connection it
+        // hands out is the one single queries get, which keeps its cache; the others the parts open drop theirs.
+        let usual = {
+            let (conn, _) = self.snapshot(path, 1)?;
+            let guard = conn
+                .lock()
+                .map_err(|_| anyhow!("database snapshot lock poisoned"))?;
+            // SAFETY: only the handle's address is kept, to tell the connection apart; it is never used through it.
+            unsafe { guard.conn.handle() as usize }
+        };
+        let f = &f;
+        std::thread::scope(|s| {
+            let running: Vec<_> = (0..parts)
+                .map(|part| {
+                    s.spawn(move || {
+                        self.with_db_among(path, parts, |c| {
+                            let out = f(c, part);
+                            // SAFETY: the address is only compared.
+                            let handle = unsafe { c.handle() };
+                            if handle as usize != usual {
+                                // a part's pages are read once: the extra connection stays open, its cache need not
+                                // SAFETY: a valid connection handle, used by this thread alone while it holds the lock.
+                                unsafe {
+                                    rusqlite::ffi::sqlite3_db_release_memory(handle);
+                                }
+                            }
+                            out
+                        })
+                    })
+                })
+                .collect();
+            running
+                .into_iter()
+                .map(|h| {
+                    h.join()
+                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+                })
+                .collect()
+        })
+    }
+
+    /// [`with_db`](Self::with_db) on a connection of a snapshot that may open `at_least` connections, or more when the
+    /// handle allows more (see [`set_read_connections`](Self::set_read_connections)).
+    fn with_db_among<T>(
+        &self,
+        path: &Path,
+        at_least: usize,
         mut f: impl FnMut(&Connection) -> Result<T>,
     ) -> Result<T> {
         let mut attempt = 0;
-        let cache_kib = if self.low_memory.load(std::sync::atomic::Ordering::Relaxed) {
-            LOW_MEMORY_CACHE_KIB
-        } else {
-            PAGE_CACHE_KIB
-        };
         loop {
-            let (conn, file) = self.snapshot(path)?;
+            let (conn, file) = self.snapshot(path, at_least)?;
             let result = {
                 let mut guard = conn
                     .lock()
                     .map_err(|_| anyhow!("database snapshot lock poisoned"))?;
                 // Inside the closure: the pragma reads the schema, so it can hit a stale snapshot like `f` does.
                 let mut run = || {
-                    if guard.cache_kib != cache_kib {
-                        guard.conn.pragma_update(None, "cache_size", -cache_kib)?;
-                        guard.cache_kib = cache_kib;
+                    if !guard.sized {
+                        guard
+                            .conn
+                            .pragma_update(None, "cache_size", -PAGE_CACHE_KIB)?;
+                        guard.sized = true;
                     }
                     f(&guard.conn)
                 };
@@ -376,13 +420,19 @@ impl NativeAccount {
         std::thread::scope(|s| {
             for p in missing {
                 s.spawn(move || {
-                    let _ = self.snapshot(p);
+                    let _ = self.snapshot(p, 1);
                 });
             }
         });
     }
 
-    fn snapshot(&self, path: &Path) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
+    /// The snapshot of `path`, opened or refreshed, and a connection of it: one nobody else holds, else a new one
+    /// while it has fewer than `at_least` or than the handle allows, else the least busy.
+    fn snapshot(
+        &self,
+        path: &Path,
+        at_least: usize,
+    ) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
         let stamp = stamp_of(path)?;
         let known_cipher = {
             let mut cache = self
@@ -402,7 +452,8 @@ impl NativeAccount {
                         }
                         let limit = self
                             .read_connections
-                            .load(std::sync::atomic::Ordering::Relaxed);
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            .max(at_least);
                         if entry.conns.len() >= limit {
                             if let Some(least) =
                                 entry.conns.iter().min_by_key(|c| Arc::strong_count(c))
@@ -424,7 +475,7 @@ impl NativeAccount {
         let file = Arc::new(CipherFile::open(path, &self.raw_key, known_cipher)?);
         let conn = cipher_vfs::open_connection(file.clone())?;
         configure_sqlite();
-        let conn = Arc::new(Mutex::new(Conn { conn, cache_kib: 0 })); // sized by `with_db`
+        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // sized by `with_db`
         let mut cache = self
             .cache
             .lock()
@@ -465,7 +516,7 @@ impl NativeAccount {
         limit: usize,
     ) -> Result<(Arc<Mutex<Conn>>, Arc<CipherFile>)> {
         let conn = cipher_vfs::open_connection(file.clone())?;
-        let conn = Arc::new(Mutex::new(Conn { conn, cache_kib: 0 })); // sized by `with_db`
+        let conn = Arc::new(Mutex::new(Conn { conn, sized: false })); // sized by `with_db`
         let mut cache = self
             .cache
             .lock()

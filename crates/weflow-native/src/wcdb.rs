@@ -300,13 +300,6 @@ impl Wcdb {
         self.account()?.close_message_cursor(cursor)
     }
 
-    /// Low-memory mode for long one-way reads such as exports (see [`NativeAccount::set_low_memory`]).
-    pub fn set_low_memory(&self, on: bool) {
-        if let Some(a) = &self.native {
-            a.set_low_memory(on);
-        }
-    }
-
     /// Connections a database may open for this handle's queries (see [`NativeAccount::set_read_connections`]).
     pub fn set_read_connections(&self, n: usize) {
         if let Some(a) = &self.native {
