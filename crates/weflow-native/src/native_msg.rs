@@ -25,6 +25,16 @@ pub struct MsgTable {
 /// Sort key of a message: (sort_seq, create_time, local_id, shard index).
 type Key = (i64, i64, i64, usize);
 
+/// `keys` in the chat's order, oldest or newest first; equal keys of different databases by ascending database
+/// number either way, as the pages by offset list them.
+fn sort_keys(keys: &mut [Key], ascending: bool) {
+    if ascending {
+        keys.sort_unstable();
+    } else {
+        keys.sort_unstable_by(|a, b| (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2)).then(a.3.cmp(&b.3)));
+    }
+}
+
 /// Sender filter of a cursor: (does this username match, also keep the account owner's own messages).
 pub type SenderFilter<'a> = (&'a dyn Fn(&str) -> bool, bool);
 
@@ -1094,10 +1104,7 @@ impl NativeAccount {
             };
             keys.extend(self.table_keys(t, idx, (begin, end), &who)?);
         }
-        keys.sort();
-        if !ascending {
-            keys.reverse();
-        }
+        sort_keys(&mut keys, ascending);
         let mut cursors = self
             .cursors
             .lock()
@@ -1261,10 +1268,7 @@ impl NativeAccount {
             keys.extend(table);
             c.derived[idx] = false;
         }
-        keys.sort();
-        if !ascending {
-            keys.reverse();
-        }
+        sort_keys(&mut keys, ascending);
         let same_pages = c.keys.len() == keys.len()
             && c.keys
                 .iter()
@@ -1969,6 +1973,14 @@ mod tests {
                 .map(|(id, seq, create)| format!("({id}, {seq}, {create}, 1, 1, '{n}:{id}')"))
                 .collect::<Vec<_>>()
                 .join(", ");
+            let insert = if values.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "insert into \"{table}\"(local_id, sort_seq, create_time, real_sender_id, local_type,
+                         message_content) values {values};"
+                )
+            };
             let table = table.clone();
             let plain = plain_db_with(move |c: &Connection| {
                 c.execute_batch(&format!(
@@ -1978,8 +1990,7 @@ mod tests {
                          create_time, status integer, real_sender_id integer, local_type integer, compress_content,
                          message_content text, source text, packed_info_data blob);
                      create index \"{table}_SORTSEQ\" on \"{table}\"(sort_seq);
-                     insert into \"{table}\"(local_id, sort_seq, create_time, real_sender_id, local_type,
-                         message_content) values {values};"
+                     {insert}"
                 ))
                 .unwrap();
             });
@@ -2065,6 +2076,32 @@ mod tests {
                 );
             }
         }
+    }
+    /// Equal keys of different databases (a message both of them keep) come by ascending database number in a
+    /// cursor of either direction, as the pages by offset list them.
+    #[test]
+    fn equal_keys_of_two_databases_come_in_database_order_both_ways() {
+        let row = vec![(1, "null".to_string(), (T0 + 5).to_string())];
+        let acct = keyed_account("equal-keys", &[row.clone(), row]);
+        for ascending in [false, true] {
+            let cursor = acct
+                .open_message_cursor("wxid_bob", 10, ascending, 0, 0, false)
+                .unwrap();
+            let (rows, _) = acct.fetch_message_batch(cursor).unwrap();
+            assert_eq!(
+                rows.iter().map(|r| r.shard).collect::<Vec<_>>(),
+                [0, 1],
+                "ascending {ascending}"
+            );
+        }
+        assert_eq!(
+            acct.messages("wxid_bob", 2, 0)
+                .unwrap()
+                .iter()
+                .map(|r| r.shard)
+                .collect::<Vec<_>>(),
+            [0, 1]
+        );
     }
 
     /// Each column typed, the content inflated, the sender resolved and whether the owner sent it, the database by its
