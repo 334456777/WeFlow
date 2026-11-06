@@ -485,6 +485,9 @@ async fn run_child(
         child.stdout.take().expect("stdout is piped"),
         child.stderr.take().expect("stderr is piped"),
     );
+    // `Child::wait` closes stdin first, which would end at once a command that ends by itself (`key db`, see
+    // `spawn`): held until the job is cancelled
+    let stdin = child.stdin.take();
     let out = tokio::spawn(async move {
         let mut buf = Vec::new();
         let _ = stdout.read_to_end(&mut buf).await;
@@ -523,9 +526,9 @@ async fn run_child(
     };
     let Some(status) = waited else {
         // a command that ends by itself is asked to (#287), and killed only when it has not within a while
-        if child.stdin.take().is_none()
-            || tokio::time::timeout(CLEAN_UP, child.wait()).await.is_err()
-        {
+        let asked = stdin.is_some();
+        drop(stdin);
+        if !asked || tokio::time::timeout(CLEAN_UP, child.wait()).await.is_err() {
             let _ = child.kill().await;
         }
         job.finish(Status::Cancelled, None, 499, cancelled_result());
