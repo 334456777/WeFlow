@@ -33,6 +33,52 @@ fn sql_int(v: rusqlite::types::ValueRef<'_>) -> i64 {
     }
 }
 
+/// The local `%H`, `%w` and `%Y-%m-%d` of the start of each quarter hour (`create_time / 900`), as SQLite's
+/// `localtime` gives them, in one query.
+fn local_quarters(
+    conn: &rusqlite::Connection,
+    quarters: &BTreeSet<i64>,
+) -> Result<std::collections::HashMap<i64, (i64, i64, String)>> {
+    let list = serde_json::to_string(&quarters.iter().collect::<Vec<_>>())?;
+    let local_q = |expr: &str| local(expr).replace("create_time", "value * 900");
+    let sql = format!(
+        "select value, {h}, {w}, {d} from json_each(?1)",
+        h = local_q("%H"),
+        w = local_q("%w"),
+        d = local_q("%Y-%m-%d"),
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([list])?;
+    let mut out = std::collections::HashMap::with_capacity(quarters.len());
+    while let Some(r) = rows.next()? {
+        let text = |i: usize| -> Result<String> {
+            Ok(r.get_ref(i)?.as_str_or_null()?.unwrap_or("").to_string())
+        };
+        out.insert(
+            sql_int(r.get_ref(0)?),
+            (
+                text(1)?.parse().unwrap_or(0),
+                text(2)?.parse().unwrap_or(0),
+                text(3)?,
+            ),
+        );
+    }
+    Ok(out)
+}
+
+/// Sender name, type, local hour and count of a group of messages (see [`NativeAccount::sender_groups`]).
+type SenderGroup = (Option<String>, i64, i64, i64);
+
+/// Type, quarter hour (`create_time / 900`) and sender side (`real_sender_id in (…)`: 1, 0 or NULL) of a message.
+type QuarterKey = (i64, i64, Option<i64>);
+
+/// How many messages, and the earliest and latest `create_time` of them.
+struct Tally {
+    count: i64,
+    first: i64,
+    last: i64,
+}
+
 /// Messages of one table with the same type, local hour, weekday and day and the same sender side.
 struct TimeGroup {
     kind: i64,
@@ -81,6 +127,42 @@ impl NativeAccount {
         self.aggregate_inner(session_ids, begin, end, false)
     }
 
+    /// Only the `sessions` and `total` of [`aggregate_stats`](Self::aggregate_stats), the same numbers: one count per
+    /// table, without the grouping by type and time the rest needs. `{ total, sessions, idMap }`.
+    pub fn session_totals(&self, session_ids: &[String], begin: i64, end: i64) -> Result<Value> {
+        let range = range_sql(begin, end);
+        let mut total = 0i64;
+        let mut sessions = Map::new();
+        let mut mine: BTreeMap<PathBuf, String> = BTreeMap::new();
+        for sid in session_ids {
+            let (mut s_total, mut s_sent, mut s_last) = (0i64, 0i64, 0i64);
+            for t in self.message_tables(sid)? {
+                if !mine.contains_key(&t.db) {
+                    mine.insert(t.db.clone(), self.my_ids(&t.db)?);
+                }
+                let sql = format!(
+                    "select count(*) as n, sum(real_sender_id in ({mine})) as s, max(create_time) as mx \
+                     from \"{table}\" where create_time > 0{range}",
+                    mine = mine[&t.db],
+                    table = t.table,
+                );
+                for r in self.query(&t.db, &sql, &[])? {
+                    s_total += int(&r, "n");
+                    s_sent += int(&r, "s");
+                    s_last = s_last.max(int(&r, "mx"));
+                }
+            }
+            total += s_total;
+            if s_total > 0 {
+                sessions.insert(
+                    sid.clone(),
+                    json!({ "total": s_total, "sent": s_sent, "received": s_total - s_sent, "lastTime": s_last }),
+                );
+            }
+        }
+        Ok(json!({ "total": total, "sessions": sessions, "idMap": {} }))
+    }
+
     /// [`aggregate_stats`](Self::aggregate_stats) plus, for every session, `monthly`: messages per month of the
     /// year (`"1"`..`"12"`, summed over the years in range) — what the annual report ranks friends by.
     pub fn annual_report_stats(
@@ -107,50 +189,16 @@ impl NativeAccount {
         let mut monthly: BTreeMap<String, i64> = BTreeMap::new();
         let mut sessions = Map::new();
         let range = range_sql(begin, end);
+        // the owner's sender ids, read once a database rather than once a table
+        let mut mine_of: BTreeMap<PathBuf, String> = BTreeMap::new();
         for sid in session_ids {
             let (mut s_total, mut s_sent, mut s_last) = (0i64, 0i64, 0i64);
             let mut s_months: BTreeMap<i64, i64> = BTreeMap::new();
             for t in self.message_tables(sid)? {
-                let mine = self.my_ids(&t.db)?;
-                // Grouped by quarter hour first, in integers: the local time is then worked out once a quarter
-                // hour rather than three times a message. Every UTC offset in use is a whole number of quarter
-                // hours and changes on a quarter hour, so all of a quarter hour has one local hour, weekday and day.
-                let local_q = |expr: &str| local(expr).replace("create_time", "q");
-                let sql = format!(
-                    "select t, {h} as h, {w} as w, {d} as d, s, n, mn, mx from ( \
-                     select coalesce(nullif(local_type, 0), 1) as t, create_time / 900 * 900 as q, \
-                     (real_sender_id in ({mine})) as s, count(*) as n, min(create_time) as mn, max(create_time) as mx \
-                     from \"{table}\" where create_time > 0{range} group by t, create_time / 900, s)",
-                    h = local_q("%H"),
-                    w = local_q("%w"),
-                    d = local_q("%Y-%m-%d"),
-                    table = t.table,
-                );
-                // collected afresh on every attempt: `with_db` runs the closure again on a fresh snapshot when
-                // WeChat changed the file under it
-                let groups = self.with_db(&t.db, |conn| {
-                    let mut stmt = conn
-                        .prepare(&sql)
-                        .with_context(|| format!("bad query: {sql}"))?;
-                    let mut rows = stmt.query([])?;
-                    let mut groups: Vec<TimeGroup> = Vec::new();
-                    while let Some(r) = rows.next()? {
-                        let text = |i: usize| -> Result<String> {
-                            Ok(r.get_ref(i)?.as_str_or_null()?.unwrap_or("").to_string())
-                        };
-                        groups.push(TimeGroup {
-                            kind: sql_int(r.get_ref(0)?),
-                            hour: text(1)?.parse().unwrap_or(0),
-                            weekday: text(2)?.parse().unwrap_or(0),
-                            day: text(3)?,
-                            mine: sql_int(r.get_ref(4)?) == 1,
-                            count: sql_int(r.get_ref(5)?),
-                            first: sql_int(r.get_ref(6)?),
-                            last: sql_int(r.get_ref(7)?),
-                        });
-                    }
-                    Ok(groups)
-                })?;
+                if !mine_of.contains_key(&t.db) {
+                    mine_of.insert(t.db.clone(), self.my_ids(&t.db)?);
+                }
+                let groups = self.time_groups(&t, &mine_of[&t.db], &range)?;
                 for g in groups {
                     let n = g.count;
                     total += n;
@@ -200,6 +248,115 @@ impl NativeAccount {
             "typeCounts": keyed(&types), "hourly": keyed(&hourly), "weekday": keyed(&weekday),
             "daily": named(&daily), "monthly": named(&monthly), "sessions": sessions, "idMap": {}
         }))
+    }
+
+    /// One table's messages grouped by type, local hour, weekday and day, and sender side.
+    ///
+    /// The rows are read in their order and grouped here, by type, quarter hour (`create_time / 900`) and side: a
+    /// `GROUP BY` would sort every row first. The local hour, weekday and day of each quarter hour then come from
+    /// SQLite's `localtime` in one more query, so they are what a per-message `strftime` gives: every UTC offset in
+    /// use is a whole number of quarter hours and changes on a quarter hour, so all of a quarter hour has one local
+    /// hour, weekday and day. A table with a non-integer type, time or side is grouped by SQL instead.
+    fn time_groups(&self, t: &MsgTable, mine: &str, range: &str) -> Result<Vec<TimeGroup>> {
+        let sql = format!(
+            "select coalesce(nullif(local_type, 0), 1), create_time / 900, \
+             (real_sender_id in ({mine})), create_time from \"{table}\" where create_time > 0{range}",
+            table = t.table,
+        );
+        // collected afresh on every attempt: `with_db` runs the closure again on a fresh snapshot when WeChat
+        // changed the file under it
+        let streamed = self.with_db(&t.db, |conn| {
+            let mut stmt = conn
+                .prepare(&sql)
+                .with_context(|| format!("bad query: {sql}"))?;
+            let mut rows = stmt.query([])?;
+            let mut groups: std::collections::HashMap<QuarterKey, Tally> =
+                std::collections::HashMap::new();
+            while let Some(r) = rows.next()? {
+                use rusqlite::types::ValueRef::{Integer, Null};
+                let (Integer(kind), Integer(q), Integer(time)) =
+                    (r.get_ref(0)?, r.get_ref(1)?, r.get_ref(3)?)
+                else {
+                    return Ok(None);
+                };
+                let side = match r.get_ref(2)? {
+                    Integer(i) => Some(i),
+                    Null => None,
+                    _ => return Ok(None),
+                };
+                let g = groups.entry((kind, q, side)).or_insert(Tally {
+                    count: 0,
+                    first: time,
+                    last: time,
+                });
+                g.count += 1;
+                g.first = g.first.min(time);
+                g.last = g.last.max(time);
+            }
+            let quarters: BTreeSet<i64> = groups.keys().map(|k| k.1).collect();
+            let local = local_quarters(conn, &quarters)?;
+            Ok(Some(
+                groups
+                    .into_iter()
+                    .map(|((kind, q, side), Tally { count, first, last })| {
+                        let (hour, weekday, day) = local.get(&q).cloned().unwrap_or_default();
+                        TimeGroup {
+                            kind,
+                            hour,
+                            weekday,
+                            day,
+                            mine: side == Some(1),
+                            count,
+                            first,
+                            last,
+                        }
+                    })
+                    .collect(),
+            ))
+        })?;
+        match streamed {
+            Some(groups) => Ok(groups),
+            None => self.time_groups_by_sql(t, mine, range),
+        }
+    }
+
+    /// [`time_groups`](Self::time_groups) for a table whose columns are not all integers: grouped by SQL, so that
+    /// SQLite's comparisons and arithmetic apply to them as they always did.
+    fn time_groups_by_sql(&self, t: &MsgTable, mine: &str, range: &str) -> Result<Vec<TimeGroup>> {
+        let local_q = |expr: &str| local(expr).replace("create_time", "q");
+        let sql = format!(
+            "select t, {h} as h, {w} as w, {d} as d, s, n, mn, mx from ( \
+             select coalesce(nullif(local_type, 0), 1) as t, create_time / 900 * 900 as q, \
+             (real_sender_id in ({mine})) as s, count(*) as n, min(create_time) as mn, max(create_time) as mx \
+             from \"{table}\" where create_time > 0{range} group by t, create_time / 900, s)",
+            h = local_q("%H"),
+            w = local_q("%w"),
+            d = local_q("%Y-%m-%d"),
+            table = t.table,
+        );
+        self.with_db(&t.db, |conn| {
+            let mut stmt = conn
+                .prepare(&sql)
+                .with_context(|| format!("bad query: {sql}"))?;
+            let mut rows = stmt.query([])?;
+            let mut groups: Vec<TimeGroup> = Vec::new();
+            while let Some(r) = rows.next()? {
+                let text = |i: usize| -> Result<String> {
+                    Ok(r.get_ref(i)?.as_str_or_null()?.unwrap_or("").to_string())
+                };
+                groups.push(TimeGroup {
+                    kind: sql_int(r.get_ref(0)?),
+                    hour: text(1)?.parse().unwrap_or(0),
+                    weekday: text(2)?.parse().unwrap_or(0),
+                    day: text(3)?,
+                    mine: sql_int(r.get_ref(4)?) == 1,
+                    count: sql_int(r.get_ref(5)?),
+                    first: sql_int(r.get_ref(6)?),
+                    last: sql_int(r.get_ref(7)?),
+                });
+            }
+            Ok(groups)
+        })
     }
 
     /// One row per shard table of the session: path, table, row count and first/last message time.
@@ -336,6 +493,83 @@ impl NativeAccount {
             .collect())
     }
 
+    /// One table's messages counted by sender name (`None`: a sender `Name2Id` does not name), type and local hour,
+    /// in one pass: read in their order and grouped here, the hours worked out once a quarter hour (see
+    /// [`time_groups`](Self::time_groups)). A table with a non-integer sender, type or time is grouped by SQL instead.
+    fn sender_groups(&self, t: &MsgTable, range: &str) -> Result<Vec<SenderGroup>> {
+        let sql = format!(
+            "select real_sender_id, coalesce(nullif(local_type, 0), 1), create_time / 900 \
+             from \"{table}\" where create_time > 0{range}",
+            table = t.table,
+        );
+        let streamed = self.with_db(&t.db, |conn| {
+            let mut stmt = conn
+                .prepare(&sql)
+                .with_context(|| format!("bad query: {sql}"))?;
+            let mut rows = stmt.query([])?;
+            let mut counts: std::collections::HashMap<(Option<i64>, i64, i64), i64> =
+                std::collections::HashMap::new();
+            while let Some(r) = rows.next()? {
+                use rusqlite::types::ValueRef::{Integer, Null};
+                let sender = match r.get_ref(0)? {
+                    Integer(i) => Some(i),
+                    Null => None,
+                    _ => return Ok(None),
+                };
+                let (Integer(kind), Integer(q)) = (r.get_ref(1)?, r.get_ref(2)?) else {
+                    return Ok(None);
+                };
+                *counts.entry((sender, kind, q)).or_default() += 1;
+            }
+            // `user_name` is the primary key: a sender row id names one sender
+            let mut names: std::collections::HashMap<i64, String> =
+                std::collections::HashMap::new();
+            let mut stmt = conn.prepare("select rowid, user_name from Name2Id")?;
+            let mut rows = stmt.query([])?;
+            while let Some(r) = rows.next()? {
+                if let (rusqlite::types::ValueRef::Integer(id), Some(name)) =
+                    (r.get_ref(0)?, r.get_ref(1)?.as_str_or_null()?)
+                {
+                    names.insert(id, name.to_string());
+                }
+            }
+            let quarters: BTreeSet<i64> = counts.keys().map(|k| k.2).collect();
+            let local = local_quarters(conn, &quarters)?;
+            Ok(Some(
+                counts
+                    .into_iter()
+                    .map(|((sender, kind, q), n)| {
+                        let name = sender.and_then(|id| names.get(&id).cloned());
+                        (name, kind, local.get(&q).map_or(0, |l| l.0), n)
+                    })
+                    .collect(),
+            ))
+        })?;
+        if let Some(groups) = streamed {
+            return Ok(groups);
+        }
+        let sql = format!(
+            "select n.user_name as u, coalesce(nullif(m.local_type, 0), 1) as t, {h} as h, count(*) as n \
+             from \"{table}\" m left join Name2Id n on n.rowid = m.real_sender_id \
+             where m.create_time > 0{range} group by m.real_sender_id, t, h",
+            h = local("%H").replace("create_time", "m.create_time"),
+            table = t.table,
+            range = range.replace("create_time", "m.create_time"),
+        );
+        Ok(self
+            .query(&t.db, &sql, &[])?
+            .into_iter()
+            .map(|r| {
+                (
+                    r["u"].as_str().map(str::to_string),
+                    int(&r, "t"),
+                    r["h"].as_str().and_then(|v| v.parse().ok()).unwrap_or(0),
+                    int(&r, "n"),
+                )
+            })
+            .collect())
+    }
+
     /// Group statistics: per-sender counts (`sessions.<room>.senders` keyed by synthetic ids resolved through
     /// `idMap`, because sender row ids differ between shards), hour histogram and type counts.
     pub fn group_stats(&self, chatroom_id: &str, begin: i64, end: i64) -> Result<Value> {
@@ -344,26 +578,12 @@ impl NativeAccount {
         let mut hourly: BTreeMap<i64, i64> = BTreeMap::new();
         let mut types: BTreeMap<i64, i64> = BTreeMap::new();
         for t in self.message_tables(chatroom_id)? {
-            // one pass over the table: the senders' counts come from the same groups as the types and hours (a
-            // sender `Name2Id` does not know counts towards those, not towards a sender; `user_name` is unique, so
-            // a sender row id is one name)
-            let sql = format!(
-                "select n.user_name as u, coalesce(nullif(m.local_type, 0), 1) as t, {h} as h, count(*) as n \
-                 from \"{table}\" m left join Name2Id n on n.rowid = m.real_sender_id \
-                 where m.create_time > 0{range} group by m.real_sender_id, t, h",
-                h = local("%H").replace("create_time", "m.create_time"),
-                table = t.table,
-                range = range.replace("create_time", "m.create_time"),
-            );
-            for r in self.query(&t.db, &sql, &[])? {
-                let n = int(&r, "n");
-                if let Some(name) = r["u"].as_str() {
-                    *totals.entry(name.to_string()).or_default() += n;
+            for (name, kind, hour, n) in self.sender_groups(&t, &range)? {
+                if let Some(name) = name {
+                    *totals.entry(name).or_default() += n;
                 }
-                *types.entry(int(&r, "t")).or_default() += n;
-                *hourly
-                    .entry(r["h"].as_str().and_then(|v| v.parse().ok()).unwrap_or(0))
-                    .or_default() += n;
+                *types.entry(kind).or_default() += n;
+                *hourly.entry(hour).or_default() += n;
             }
         }
         let mut senders = Map::new();

@@ -400,6 +400,13 @@ impl Wcdb {
         self.account()?.group_nicknames(chatroom_id)
     }
 
+    /// Messages, sent and received, and the last time, of each of `session_ids` (see
+    /// [`NativeAccount::session_totals`]).
+    pub fn session_totals(&self, session_ids: &[String], begin: i32, end: i32) -> Result<Value> {
+        self.account()?
+            .session_totals(session_ids, begin as i64, end as i64)
+    }
+
     pub fn group_stats(&self, chatroom_id: &str, begin: i32, end: i32) -> Result<Value> {
         self.account()?
             .group_stats(chatroom_id, begin as i64, end as i64)
