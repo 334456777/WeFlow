@@ -2501,8 +2501,7 @@ dependencies = [
 [[package]]
 name = "sha2"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
+source = "git+https://github.com/334456777/hashes?rev=92cb451e94638fa312aba55a51a35c8883ecdf50#92cb451e94638fa312aba55a51a35c8883ecdf50"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",

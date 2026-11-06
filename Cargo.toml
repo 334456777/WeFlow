@@ -90,3 +90,6 @@ codegen-units = 1
 # once a release has the fix
 [patch.crates-io]
 heic-rs = { git = "https://github.com/334456777/heic-rs", rev = "575a455437278659a067b7361e9f3d85197950c4" }
+# sha2 0.11.1 whose SHA-512 AVX2 backend, picked at run time, also enables BMI1/BMI2 (RustCrypto/hashes#940, #535):
+# back to crates.io once a release has it
+sha2 = { git = "https://github.com/334456777/hashes", rev = "92cb451e94638fa312aba55a51a35c8883ecdf50" }
