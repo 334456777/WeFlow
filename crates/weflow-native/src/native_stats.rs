@@ -83,6 +83,10 @@ struct Msg {
     sender: Option<i64>,
 }
 
+// one per message of a table, gathered by the statistics: its size changes only on purpose (#505)
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<Msg>() == 32);
+
 /// Most tables a statistic reads at once.
 const TABLE_THREADS: usize = 8;
 

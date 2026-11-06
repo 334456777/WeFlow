@@ -425,6 +425,12 @@ struct WatchedThread {
 // alignment for the x64 context buffer passed to GetThreadContext/SetThreadContext.
 #[repr(C, align(16))]
 struct AlignedContext(CONTEXT);
+
+// the context itself, on a 16-byte boundary (#505)
+const _: () = {
+    assert!(align_of::<AlignedContext>() == 16);
+    assert!(std::mem::offset_of!(AlignedContext, 0) == 0);
+};
 impl std::ops::Deref for AlignedContext {
     type Target = CONTEXT;
     fn deref(&self) -> &CONTEXT {
@@ -865,6 +871,13 @@ mod tests {
         key: *const u8,
         size: u64,
     }
+
+    // where `read_key` takes the key's address and size from (#505)
+    const _: () = {
+        assert!(size_of::<KeyArgument>() == 24);
+        assert!(std::mem::offset_of!(KeyArgument, key) == 8);
+        assert!(std::mem::offset_of!(KeyArgument, size) == 16);
+    };
 
     #[inline(never)]
     extern "C" fn key_target(first: usize, key: &KeyArgument) -> usize {

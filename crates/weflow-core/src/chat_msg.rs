@@ -1003,24 +1003,29 @@ pub struct ChatMessage {
     pub location_poiname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location_label: Option<String>,
+    /// Only app messages and a few others have these: boxed, the others are smaller (#505).
     #[serde(flatten)]
-    pub t49: Type49Info,
+    pub t49: Option<Box<Type49Info>>,
     /// The message's key: the same message has the same key on every machine. It is opaque; only compare it.
     pub message_key: String,
 }
 
+// one per message of a page of parsed messages or search hits: its size changes only on purpose (#505)
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<ChatMessage>() == 584);
+
 impl ChatMessage {
     pub fn link_title(&self) -> Option<&str> {
-        self.t49.link_title.as_deref()
+        self.t49.as_ref()?.link_title.as_deref()
     }
     pub fn file_name(&self) -> Option<&str> {
-        self.t49.file_name.as_deref()
+        self.t49.as_ref()?.file_name.as_deref()
     }
     pub fn xml_type(&self) -> Option<&str> {
-        self.t49.xml_type.as_deref()
+        self.t49.as_ref()?.xml_type.as_deref()
     }
     pub fn app_msg_kind(&self) -> Option<&str> {
-        self.t49.app_msg_kind.as_deref()
+        self.t49.as_ref()?.app_msg_kind.as_deref()
     }
 }
 
@@ -1367,9 +1372,10 @@ fn chat_message(
             extract_xml_value(&content, "poiname"),
         ]));
     } else if (local_type == 49 || local_type == 8589934592049) && !content.is_empty() {
-        m.t49 = parse_type49_message(&content);
-        m.quoted_content = m.t49.quoted_content.clone();
-        m.quoted_sender = m.t49.quoted_sender.clone();
+        let t = parse_type49_message(&content);
+        m.quoted_content = t.quoted_content.clone();
+        m.quoted_sender = t.quoted_sender.clone();
+        m.t49 = Some(Box::new(t));
     } else if local_type == 244813135921 || content.contains("<type>57</type>") {
         let (c, s) = parse_quote_message(&content);
         m.quoted_content = c;
@@ -1378,7 +1384,7 @@ fn chat_message(
 
     if content.contains("<appmsg") || content.contains("&lt;appmsg") {
         let t = parse_type49_message(&content);
-        let cur = &mut m.t49;
+        let cur = m.t49.get_or_insert_default();
         macro_rules! fill {
             ($f:ident) => {
                 if cur.$f.is_none() {

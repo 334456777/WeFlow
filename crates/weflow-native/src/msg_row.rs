@@ -69,6 +69,10 @@ pub struct MsgRow {
     pub shard: u32,
 }
 
+// one per message read: its size changes only on purpose (#505)
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<MsgRow>() == 184);
+
 const MSG_COLUMNS: &str =
     "m.local_id, m.server_id, m.local_type, m.sort_seq, m.create_time, m.status, \
      m.compress_content, m.message_content, m.source, m.packed_info_data, n.user_name";

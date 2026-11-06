@@ -523,6 +523,9 @@ struct VfsFile {
     file: *const CipherFile,
 }
 
+// SQLite sees a `sqlite3_file *`: the base must come first (#505)
+const _: () = assert!(std::mem::offset_of!(VfsFile, base) == 0);
+
 fn default_vfs(vfs: *mut ffi::sqlite3_vfs) -> *mut ffi::sqlite3_vfs {
     // SAFETY: `pAppData` is set to the default VFS when ours is registered and never changes.
     unsafe { (*vfs).pAppData.cast() }

@@ -681,6 +681,10 @@ pub struct ExportMsg {
     pub media: Option<MediaRef>,
 }
 
+// one per message of an exported page: its size changes only on purpose (#505)
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<ExportMsg>() == 536);
+
 impl ExportMsg {
     /// JSON view used by the CLI query commands ([`crate::contract::MessageView`]).
     pub fn to_json(&self, my_wxid: &str) -> Value {

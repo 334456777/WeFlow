@@ -12,6 +12,17 @@ struct DecControl {
     in_band_fec_offset: i32,
 }
 
+// the layout of SKP_SILK_SDK_DecControlStruct (vendor/interface/SKP_Silk_control.h): five 32-bit integers in this
+// order (#505)
+const _: () = {
+    assert!(size_of::<DecControl>() == 20);
+    assert!(std::mem::offset_of!(DecControl, api_sample_rate) == 0);
+    assert!(std::mem::offset_of!(DecControl, frame_size) == 4);
+    assert!(std::mem::offset_of!(DecControl, frames_per_packet) == 8);
+    assert!(std::mem::offset_of!(DecControl, more_internal_decoder_frames) == 12);
+    assert!(std::mem::offset_of!(DecControl, in_band_fec_offset) == 16);
+};
+
 extern "C" {
     fn SKP_Silk_SDK_Get_Decoder_Size(size: *mut i32) -> i32;
     fn SKP_Silk_SDK_InitDecoder(state: *mut c_void) -> i32;
@@ -167,6 +178,20 @@ pub mod testenc {
         use_in_band_fec: i32,
         use_dtx: i32,
     }
+
+    // the layout of SKP_SILK_SDK_EncControlStruct (vendor/interface/SKP_Silk_control.h): eight 32-bit integers in
+    // this order (#505)
+    const _: () = {
+        assert!(size_of::<EncControl>() == 32);
+        assert!(std::mem::offset_of!(EncControl, api_sample_rate) == 0);
+        assert!(std::mem::offset_of!(EncControl, max_internal_sample_rate) == 4);
+        assert!(std::mem::offset_of!(EncControl, packet_size) == 8);
+        assert!(std::mem::offset_of!(EncControl, bit_rate) == 12);
+        assert!(std::mem::offset_of!(EncControl, packet_loss_percentage) == 16);
+        assert!(std::mem::offset_of!(EncControl, complexity) == 20);
+        assert!(std::mem::offset_of!(EncControl, use_in_band_fec) == 24);
+        assert!(std::mem::offset_of!(EncControl, use_dtx) == 28);
+    };
 
     extern "C" {
         fn SKP_Silk_SDK_Get_Encoder_Size(size: *mut i32) -> i32;
