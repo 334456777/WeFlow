@@ -1232,6 +1232,45 @@ fn key_db_ends_by_itself_when_its_stdin_ends() {
     assert_eq!(status.code(), Some(130));
 }
 
+/// A `key db` job runs until it is cancelled (its stdin held open while it waits), then ends by itself well before
+/// it would be killed: the hook it may have set is out of WeChat first (#287). It is cancelled while it waits for
+/// WeChat, before any hook.
+#[cfg(all(windows, target_arch = "x86_64"))]
+#[test]
+fn a_key_db_job_runs_until_cancelled_then_ends_by_itself() {
+    let root = temp_root("key-db-job");
+    let server = start(&root, &["--api-token", TOKEN]);
+    let auth = format!("Bearer {TOKEN}");
+    let r = server.request(
+        "POST",
+        "/key/db",
+        &[("Authorization", &auth), ("Prefer", "respond-async")],
+        &json!({ "timeout": 60 }).to_string(),
+    );
+    assert_eq!(r.status, 202, "{}", r.body);
+    let id = r.json()["data"]["id"].as_str().unwrap().to_string();
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let job = server.call("GET", &format!("/jobs/{id}"), "").json()["data"].clone();
+    assert_eq!(job["status"], "running", "{job}");
+    let asked = std::time::Instant::now();
+    let r = server.call("DELETE", &format!("/jobs/{id}"), "");
+    assert_eq!(r.status, 200, "{}", r.body);
+    let job = loop {
+        let job = server.call("GET", &format!("/jobs/{id}"), "").json()["data"].clone();
+        if job["status"] != "running" {
+            break job;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert_eq!(job["status"], "cancelled", "{job}");
+    // killed only after 10 s; on its own it ends within about a second
+    assert!(
+        asked.elapsed() < std::time::Duration::from_secs(8),
+        "{:?}",
+        asked.elapsed()
+    );
+}
+
 /// An `/api/` request with parameters the command line refuses gets clap's error from the server's process, the one
 /// the route without `/api/` answers from a child process, without starting one (#432).
 #[test]
