@@ -19,7 +19,7 @@
 - `weflow-cli`：命令行入口（clap），生成二进制 `weflow`；`help_zh.rs`/`i18n.rs` 为中文帮助与本地化；`serve_api.rs` 与 `serve_api/` 是 `weflow serve` 的命令 API：路由和 `/openapi.json` 由 clap 命令树生成，`in_process` 在服务进程内执行 `/api/` 读取，`jobs`（生命周期，不依赖 axum）与 `job_routes`（HTTP 层）是后台任务（#398），其余路由在子进程里运行命令（见 `docs/serve-api.md`「How it runs」）
 - `weflow-silk`：内置 Skype SILK SDK 的语音解码器（`vendor/` 为第三方 C 源码，勿改）
 - `weflow-assets`：构建期把 `assets/` 下的文件（各平台的辅助程序、VC 运行库）嵌入二进制，运行时解压到运行时目录，路径与 `assets/` 下相同
-- 测试：`crates/weflow-core/tests/*_e2e.rs` 为端到端测试（共享 `tests/common`，用 `weflow-native` 的 `test-fixtures` 合成加密账号）；各 crate 的 `examples/*_probe.rs` 是调研用探针；`fixture::bench`（`weflow-cli/examples/bench_account.rs`）按种子生成与真实账号同规模、同分布的基准账号（#488），分布照 `weflow-core/examples/account_profile_probe.rs` 在真实账号上测得的汇总比例
+- 测试：`crates/weflow-core/tests/*_e2e.rs` 为端到端测试（共享 `tests/common`，用 `weflow-native` 的 `test-fixtures` 合成加密账号）；性质测试（proptest，#502）写在各模块的单元测试里，名字以 `any_` 等开头：分页、页解密、WXGF 解码、导出无损，CI 用默认的较小用例数，设 `PROPTEST_CASES` 可以调高，失败时打印缩小后的最小输入，不写回源码目录；各 crate 的 `examples/*_probe.rs` 是调研用探针；`fixture::bench`（`weflow-cli/examples/bench_account.rs`）按种子生成与真实账号同规模、同分布的基准账号（#488），分布照 `weflow-core/examples/account_profile_probe.rs` 在真实账号上测得的汇总比例
 
 ### WebUI（`web/`）
 `weflow serve` 的网页界面（#130），独立的 React + TypeScript + Vite 项目，有自己的 `package.json`。构建产物 `dist/` 由 `serve` 托管在 `/ui/`（#146），与二进制分开发布（#148）。
