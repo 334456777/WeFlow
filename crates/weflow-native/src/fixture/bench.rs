@@ -1023,13 +1023,31 @@ fn mp4(rng: &mut Rng, len: usize) -> Vec<u8> {
     out
 }
 
-/// A SILK voice of `ms` milliseconds: the header WeChat writes, then a frame of noise per 20 ms.
+/// The packets of a second of a 440 Hz tone the SILK SDK encoded at 24 kHz (20 ms each).
+static TONE_PACKETS: std::sync::LazyLock<Vec<Vec<u8>>> = std::sync::LazyLock::new(|| {
+    let stream = weflow_silk::testenc::encode_tone(24_000);
+    let mut packets = Vec::new();
+    let mut rest = &stream[b"#!SILK_V3".len()..];
+    while let [lo, hi, tail @ ..] = rest {
+        let Ok(len) = usize::try_from(i16::from_le_bytes([*lo, *hi])) else {
+            break; // the -1 that ends the stream
+        };
+        packets.push(tail[..len].to_vec());
+        rest = &tail[len..];
+    }
+    packets
+});
+
+/// A SILK voice of `ms` milliseconds the decoder reads (#574): the header WeChat writes, then a packet of the tone
+/// per 20 ms, over again past its second. The random numbers it once drew are still drawn, so the rest of the
+/// account stays the same.
 fn silk(rng: &mut Rng, ms: i64) -> Vec<u8> {
     let mut out = b"\x02#!SILK_V3".to_vec();
-    for _ in 0..(ms / 20).max(1) {
+    for packet in TONE_PACKETS.iter().cycle().take((ms / 20).max(1) as usize) {
         let n = 20 + rng.below(26);
-        out.extend((n as u16).to_le_bytes());
-        out.extend(rng.bytes(n));
+        let _ = rng.bytes(n);
+        out.extend((packet.len() as u16).to_le_bytes());
+        out.extend(packet);
     }
     out
 }
