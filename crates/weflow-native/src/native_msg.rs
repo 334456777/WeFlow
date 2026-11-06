@@ -31,8 +31,13 @@ fn sort_keys(keys: &mut [Key], ascending: bool) {
     if ascending {
         keys.sort_unstable();
     } else {
-        keys.sort_unstable_by(|a, b| (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2)).then(a.3.cmp(&b.3)));
+        keys.sort_unstable_by(newest_first);
     }
+}
+
+/// The newest-first order of keys: by sort key descending, equal ones by ascending database number.
+fn newest_first(a: &Key, b: &Key) -> std::cmp::Ordering {
+    (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2)).then(a.3.cmp(&b.3))
 }
 
 /// Sender filter of a cursor: (does this username match, also keep the account owner's own messages).
@@ -2674,5 +2679,46 @@ mod tests {
             "nobody asked for: nothing read"
         );
         assert_eq!(read(&|_| true, false).len(), 5);
+    }
+}
+
+/// Proofs of `cargo kani` (#501).
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// [`newest_first`] is a total order for any keys, so the standard library's sort puts slices of any length in
+    /// it: equal only for equal keys, the reverse when swapped, and transitive.
+    #[kani::proof]
+    fn newest_first_is_a_total_order() {
+        use std::cmp::Ordering::{Equal, Greater};
+        let (a, b, c): (Key, Key, Key) = kani::any();
+        assert!((newest_first(&a, &b) == Equal) == (a == b));
+        assert!(newest_first(&a, &b) == newest_first(&b, &a).reverse());
+        if newest_first(&a, &b) != Greater && newest_first(&b, &c) != Greater {
+            assert!(newest_first(&a, &c) != Greater);
+        }
+    }
+
+    /// Any 3 keys come out of [`sort_keys`] as a reordering of them, in the chat's order in either direction, equal
+    /// keys of different databases by ascending database number: the sort uses the order proved above.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn keys_are_sorted_either_way_with_ties_by_database() {
+        let mut keys: [Key; 3] = kani::any();
+        let before = keys;
+        let ascending: bool = kani::any();
+        sort_keys(&mut keys, ascending);
+        for w in keys.windows(2) {
+            let (a, b) = ((w[0].0, w[0].1, w[0].2), (w[1].0, w[1].1, w[1].2));
+            assert!(if ascending { a <= b } else { a >= b });
+            if a == b {
+                assert!(w[0].3 <= w[1].3);
+            }
+        }
+        for k in &before {
+            let count = |keys: &[Key]| keys.iter().filter(|x| *x == k).count();
+            assert!(count(&keys) == count(&before));
+        }
     }
 }

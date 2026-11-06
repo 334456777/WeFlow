@@ -36,8 +36,9 @@ pub(crate) struct RowContext<'a> {
 }
 
 fn sort_key(sort_seq: i64, create_time: i64, local_id: i64) -> (i64, i64, i64) {
+    // a time too far off for milliseconds stays at the end it is at, as SQLite's REAL past an overflow does
     let seq = if sort_seq == 0 {
-        create_time * 1000
+        create_time.saturating_mul(1000)
     } else {
         sort_seq
     };
@@ -331,5 +332,22 @@ mod tests {
     fn rows_without_a_sort_seq_are_placed_by_their_send_time() {
         assert_eq!(sort_key(0, 10, 3), (10_000, 10, 3));
         assert_eq!(sort_key(10_005, 10, 3), (10_005, 10, 3));
+    }
+}
+
+/// Proofs of `cargo kani` (#501).
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// A message without a `sort_seq` (0) is placed by its `create_time`, whatever the times: an earlier one sorts
+    /// first, without an overflow; one with a `sort_seq` is placed by it.
+    #[kani::proof]
+    fn messages_without_a_sort_seq_are_in_time_order() {
+        let (t1, t2, a, b): (i64, i64, i64, i64) = kani::any();
+        kani::assume(t1 < t2);
+        assert!(sort_key(0, t1, a) < sort_key(0, t2, b));
+        let seq: i64 = kani::any_where(|&s: &i64| s != 0);
+        assert!(sort_key(seq, t1, a).0 == seq);
     }
 }

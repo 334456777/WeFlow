@@ -232,7 +232,7 @@ impl CipherFile {
                 }
             };
             let overlay = sqlcipher::wal_overlay(wal.as_deref());
-            let total_pages = sqlcipher::total_pages(len, &overlay);
+            let total_pages = sqlcipher::total_pages(len, overlay.db_pages);
             let mut wal_pages = HashMap::with_capacity(overlay.pages.len());
             if let Some(wal) = &wal {
                 for (&pgno, &off) in &overlay.pages {
@@ -449,24 +449,17 @@ impl CipherFile {
 
     /// `xRead`: `out.len()` bytes at `offset` of the plain database.
     fn read(&self, out: &mut [u8], offset: u64) -> c_int {
-        let total = self.total_pages as u64 * PAGE_SIZE as u64;
         let mut done = 0usize;
         let mut scratch: Option<Vec<u8>> = None;
         while done < out.len() {
-            let pos = offset + done as u64;
-            if pos >= total {
+            let Some((pgno, in_page, n)) = page_part(
+                offset.saturating_add(done as u64),
+                out.len() - done,
+                self.total_pages,
+            ) else {
                 out[done..].fill(0);
                 return ffi::SQLITE_IOERR_SHORT_READ;
-            }
-            // `pos` is below `total`, whose page count is a `u32`
-            let (Ok(pgno), Ok(in_page)) = (
-                u32::try_from(pos / PAGE_SIZE as u64),
-                usize::try_from(pos % PAGE_SIZE as u64),
-            ) else {
-                return ffi::SQLITE_IOERR_READ;
             };
-            let pgno = pgno + 1;
-            let n = (out.len() - done).min(PAGE_SIZE - in_page);
             let result = if in_page == 0 && n == PAGE_SIZE {
                 self.page_into(pgno, &mut out[done..done + PAGE_SIZE])
             } else {
@@ -485,6 +478,18 @@ impl CipherFile {
     fn size(&self) -> u64 {
         self.total_pages as u64 * PAGE_SIZE as u64
     }
+}
+
+/// The part of a read that one page holds: from byte `pos` of the file, with `remaining` bytes still to read, (its
+/// page number, the offset in that page, how many bytes); `None` past the last of `total_pages` pages.
+fn page_part(pos: u64, remaining: usize, total_pages: u32) -> Option<(u32, usize, usize)> {
+    if pos >= u64::from(total_pages) * PAGE_SIZE as u64 {
+        return None;
+    }
+    // below `total_pages`, a `u32`
+    let pgno = u32::try_from(pos / PAGE_SIZE as u64).ok()? + 1;
+    let in_page = usize::try_from(pos % PAGE_SIZE as u64).ok()?;
+    Some((pgno, in_page, remaining.min(PAGE_SIZE - in_page)))
 }
 
 // ───────────────────────────── SQLite glue ─────────────────────────────
@@ -1044,5 +1049,30 @@ mod tests {
                 .is_err(),
             "snapshots are read-only"
         );
+    }
+}
+
+/// Proofs of `cargo kani` (#501).
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// Any read position gives a part of one page inside the file, of at least a byte and no more than asked, at
+    /// the very position asked; or nothing past the end.
+    #[kani::proof]
+    fn any_read_position_is_inside_one_page() {
+        let pos: u64 = kani::any();
+        let remaining: usize = kani::any_where(|&n: &usize| n > 0);
+        let total_pages: u32 = kani::any();
+        match page_part(pos, remaining, total_pages) {
+            Some((pgno, in_page, n)) => {
+                assert!(pgno >= 1 && pgno <= total_pages);
+                assert!(
+                    in_page < PAGE_SIZE && n >= 1 && n <= remaining && in_page + n <= PAGE_SIZE
+                );
+                assert!(u64::from(pgno - 1) * PAGE_SIZE as u64 + in_page as u64 == pos);
+            }
+            None => assert!(pos >= u64::from(total_pages) * PAGE_SIZE as u64),
+        }
     }
 }

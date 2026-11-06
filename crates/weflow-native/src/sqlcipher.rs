@@ -94,21 +94,16 @@ impl PageCipher {
         blocks: std::ops::Range<usize>,
         out: &mut [u8],
     ) -> Result<()> {
-        let body_end = PAGE_SIZE - RESERVE;
-        let (from, to) = (blocks.start * 16, blocks.end * 16);
-        if page.len() != PAGE_SIZE || out.len() != PAGE_SIZE || to > body_end || from >= to {
-            bail!("bad block range {blocks:?}");
-        }
-        let iv = if from == 0 {
-            &page[body_end..body_end + IV_LEN]
-        } else {
-            &page[from - 16..from]
-        };
-        let Some(iv) = iv.first_chunk::<IV_LEN>() else {
+        let Some((bytes, iv)) = block_bytes(blocks.clone())
+            .filter(|_| page.len() == PAGE_SIZE && out.len() == PAGE_SIZE)
+        else {
             bail!("bad block range {blocks:?}");
         };
-        let body = &mut out[from..to];
-        body.copy_from_slice(&page[from..to]);
+        let Some(iv) = page[iv].first_chunk::<IV_LEN>() else {
+            bail!("bad block range {blocks:?}");
+        };
+        let body = &mut out[bytes.clone()];
+        body.copy_from_slice(&page[bytes]);
         Aes256CbcDec::inner_iv_init(self.aes.clone(), iv.into())
             .decrypt_padded::<NoPadding>(body)
             .map_err(|_| anyhow!("AES decrypt failed"))?;
@@ -301,6 +296,24 @@ pub fn shared_cipher(db: &[u8], raw_key: &[u8; 32]) -> Result<Arc<PageCipher>> {
     Ok(cipher)
 }
 
+/// The bytes of the 16-byte `blocks` of a page body, and those of the IV that decrypts the first of them (the block
+/// before, or the page's IV for the first block); `None` unless they are all in the body.
+fn block_bytes(
+    blocks: std::ops::Range<usize>,
+) -> Option<(std::ops::Range<usize>, std::ops::Range<usize>)> {
+    let body_end = PAGE_SIZE - RESERVE;
+    let (from, to) = (blocks.start.checked_mul(16)?, blocks.end.checked_mul(16)?);
+    if to > body_end || from >= to {
+        return None;
+    }
+    let iv = if from == 0 {
+        body_end..body_end + IV_LEN
+    } else {
+        from - 16..from
+    };
+    Some((from..to, iv))
+}
+
 /// One committed WAL frame worth applying: (page number, byte offset of its page data in the WAL).
 struct WalFrame {
     pgno: u32,
@@ -347,7 +360,7 @@ pub fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
         db_pages: None,
         pages: HashMap::new(),
     };
-    if let Some((frames, db_pages)) = wal.and_then(committed_wal_frames) {
+    if let Some((frames, db_pages)) = wal.and_then(committed_wal_frames::<PAGE_SIZE>) {
         // each frame holds a page, so a WAL SQLite can read never has `u32::MAX` of them
         overlay.frames = u32::try_from(frames.len()).unwrap_or(u32::MAX);
         overlay.db_pages = Some(db_pages);
@@ -360,12 +373,12 @@ pub fn wal_overlay(wal: Option<&[u8]>) -> WalOverlay {
 
 /// The salt of a WAL whose header is valid.
 fn wal_salt(wal: &[u8]) -> Option<[u8; 8]> {
-    wal_header(wal)?;
+    wal_header::<PAGE_SIZE>(wal)?;
     wal[16..24].try_into().ok()
 }
 
-/// Validate a WAL header: (big-endian checksums?, header checksum words).
-fn wal_header(wal: &[u8]) -> Option<(bool, u32, u32)> {
+/// Validate the header of a WAL of `PAGE`-byte pages: (big-endian checksums?, header checksum words).
+fn wal_header<const PAGE: usize>(wal: &[u8]) -> Option<(bool, u32, u32)> {
     if wal.len() < 32 {
         return None;
     }
@@ -374,7 +387,7 @@ fn wal_header(wal: &[u8]) -> Option<(bool, u32, u32)> {
         return None;
     }
     let big_endian = magic & 1 == 1;
-    if be32(&wal[8..12]) as usize != PAGE_SIZE {
+    if be32(&wal[8..12]) as usize != PAGE {
         return None;
     }
     let (h0, h1) = wal_checksum(&wal[..24], big_endian, 0, 0);
@@ -384,16 +397,16 @@ fn wal_header(wal: &[u8]) -> Option<(bool, u32, u32)> {
     Some((big_endian, h0, h1))
 }
 
-/// Parse a WAL and return the frames of its last valid *committed* prefix, plus the database
+/// Parse a WAL of `PAGE`-byte pages and return the frames of its last valid *committed* prefix, plus the database
 /// size in pages after the last commit. Returns `None` when the WAL holds nothing usable.
-fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
+fn committed_wal_frames<const PAGE: usize>(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
     const WAL_HEADER: usize = 32;
     const FRAME_HEADER: usize = 24;
-    let (big_endian, h0, h1) = wal_header(wal)?;
+    let (big_endian, h0, h1) = wal_header::<PAGE>(wal)?;
     let salt = (&wal[16..20], &wal[20..24]);
     let (mut s0, mut s1) = (h0, h1);
 
-    let frame_size = FRAME_HEADER + PAGE_SIZE;
+    let frame_size = FRAME_HEADER + PAGE;
     let mut pending: Vec<WalFrame> = Vec::new();
     let mut committed: Vec<WalFrame> = Vec::new();
     let mut db_pages = 0u32;
@@ -437,8 +450,8 @@ fn committed_wal_frames(wal: &[u8]) -> Option<(Vec<WalFrame>, u32)> {
 }
 
 /// Pages of the database a reader sees: the size after the last committed WAL transaction, else the main file's.
-pub fn total_pages(main_len: u64, overlay: &WalOverlay) -> u32 {
-    match overlay.db_pages {
+pub fn total_pages(main_len: u64, db_pages: Option<u32>) -> u32 {
+    match db_pages {
         Some(n) => n.max(1),
         // SQLite numbers pages with 32 bits
         None => u32::try_from(main_len / PAGE_SIZE as u64).unwrap_or(u32::MAX),
@@ -463,7 +476,7 @@ pub fn patch_header(page1: &mut [u8], total_pages: u32) {
 #[cfg(any(test, feature = "test-fixtures"))]
 pub fn decrypt_database(db: &[u8], wal: Option<&[u8]>, cipher: &PageCipher) -> Result<Vec<u8>> {
     let overlay = wal_overlay(wal);
-    let total = total_pages(db.len() as u64, &overlay);
+    let total = total_pages(db.len() as u64, overlay.db_pages);
     let main_pages = u32::try_from(db.len() / PAGE_SIZE)?;
     let mut out = vec![0u8; total as usize * PAGE_SIZE];
     for pgno in 1..=main_pages.min(total) {
@@ -944,5 +957,97 @@ mod tests {
             rows_of(decrypt_database(&enc, Some(&wal), &derived).unwrap()),
             ["kept"]
         );
+    }
+}
+
+/// Proofs of `cargo kani` (#501): for every input up to the sizes they state.
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// A WAL header is read from any bytes without a panic, and only from 32 of them or more.
+    #[kani::proof]
+    fn any_bytes_are_read_as_a_wal_header_or_refused() {
+        let bytes: [u8; 40] = kani::any();
+        let len: usize = kani::any_where(|&n| n <= bytes.len());
+        if wal_header::<PAGE_SIZE>(&bytes[..len]).is_some() {
+            assert!(len >= 32);
+        }
+    }
+
+    /// The committed frames of any WAL of up to two frames are read without a panic, each whole inside the WAL,
+    /// after its header and after the frame before, its page number not 0, and the size after the commit not 0.
+    /// The pages are of 8 bytes instead of 4096: the walk and its bounds are the same for any page size, and the
+    /// checksums of 4096 bytes are too big for the solver.
+    #[kani::proof]
+    #[kani::unwind(12)]
+    fn any_wal_gives_committed_frames_inside_it() {
+        const PAGE: usize = 8;
+        const LEN: usize = 32 + 2 * (24 + PAGE) + 8;
+        let bytes: [u8; LEN] = kani::any();
+        let len: usize = kani::any_where(|&n| n <= LEN);
+        if let Some((frames, db_pages)) = committed_wal_frames::<PAGE>(&bytes[..len]) {
+            assert!(db_pages != 0);
+            assert!(!frames.is_empty() && frames.len() <= 2);
+            let mut end = 32;
+            // at most 2, as asserted: a bound the solver can unwind
+            for f in frames.iter().take(2) {
+                assert!(f.pgno != 0);
+                assert!(f.data_offset == end + 24);
+                assert!(f.data_offset + PAGE <= len);
+                end = f.data_offset + PAGE;
+            }
+        }
+    }
+
+    /// The page count never overflows: the size of the last commit (at least a page), else the main file's whole
+    /// pages, at most what 32 bits number.
+    #[kani::proof]
+    fn total_pages_are_the_commit_or_the_main_file() {
+        let main_len: u64 = kani::any();
+        let db_pages: Option<u32> = kani::any();
+        let n = total_pages(main_len, db_pages);
+        match db_pages {
+            Some(p) => assert!(n == p.max(1)),
+            None => assert!(u64::from(n) == (main_len / PAGE_SIZE as u64).min(u64::from(u32::MAX))),
+        }
+    }
+
+    /// Any page 1 of 100 bytes or more is patched without a panic: the page count, the version-valid-for and the
+    /// two format bytes change, nothing else.
+    #[kani::proof]
+    #[kani::unwind(130)]
+    fn page_1_is_patched_in_place() {
+        let mut page: [u8; 128] = kani::any();
+        let before = page;
+        let len: usize = kani::any_where(|&n: &usize| (100..=128).contains(&n));
+        let total: u32 = kani::any();
+        patch_header(&mut page[..len], total);
+        assert!(page[28..32] == total.to_be_bytes());
+        assert!(page[92..96] == before[24..28]);
+        assert!(page[18] == 1 && page[19] == 1);
+        for i in 0..page.len() {
+            if !(18..20).contains(&i) && !(28..32).contains(&i) && !(92..96).contains(&i) {
+                assert!(page[i] == before[i]);
+            }
+        }
+    }
+
+    /// Any range of blocks is refused, or names whole blocks inside the body with an IV of 16 bytes inside the
+    /// page: the block before the first, or the page's own IV for block 0.
+    #[kani::proof]
+    fn any_block_range_stays_inside_the_page() {
+        let (start, end): (usize, usize) = kani::any();
+        if let Some((bytes, iv)) = block_bytes(start..end) {
+            let body_end = PAGE_SIZE - RESERVE;
+            assert!(bytes.start < bytes.end && bytes.end <= body_end);
+            assert!(bytes.start % 16 == 0 && bytes.end % 16 == 0);
+            assert!(iv.end - iv.start == IV_LEN && iv.end <= PAGE_SIZE);
+            assert!(if bytes.start == 0 {
+                iv.start == body_end
+            } else {
+                iv.end == bytes.start
+            });
+        }
     }
 }
