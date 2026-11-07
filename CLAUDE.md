@@ -47,6 +47,7 @@
 - Pull request 创建时及时添加 Lables（如果有对应 Development 则添加对应 Development）；PR关闭时PR描述或 commit message 里用 `closed` `fixed` `resolved` 关键词关闭关联 （只有这几个关键词是英文，PR描述其他部分仍然是中文）Issues；PR 标题和 PR description（PR body）必须使用中文，除非用户明确要求英文，否则不要使用英文撰写 PR description
 - 用户可能会出错，当用户出现明显错误或决策冲突时，请指出
 - 对于需要多个依赖 PR 的开发任务，请使用 `gh stack`
+- 本仓库的工作副本可能同时有多个会话在用，一个会话切换分支，另一个会话接下来的提交就会落到那个分支上：每个会话用自己的 `git worktree`（放在已忽略的 `.claude/worktrees/` 下）在自己的分支上工作，不在共用的工作副本里切换分支；push 显示 up-to-date 但远程没有变化时，先查 `git reflog`
 - 修改 `docs/` 下的文档时，必须同步更新 `docs/zh-CN/` 中的对应版本（反之亦然），新增文档也要两种语言都提供
 
 ## 注意事项
