@@ -2,6 +2,7 @@
 // or its original (`_h.dat`) once shown instead, or the video. Named after the message's time.
 import { useState } from 'react';
 import { CircleNotch, DownloadSimple } from '@phosphor-icons/react';
+import { t } from '../i18n';
 
 const EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/heic': 'heic', 'video/mp4': 'mp4',
@@ -14,7 +15,7 @@ export function downloadName(src: string, kind: 'image' | 'video', type: string,
   const at = seconds > 0 ? new Date(seconds * 1000) : null;
   const stamp = at ? '_' + at.getFullYear() + pad(at.getMonth() + 1) + pad(at.getDate()) + '_' + pad(at.getHours()) + pad(at.getMinutes()) + pad(at.getSeconds()) : '';
   const extension = EXTENSIONS[type.split(';')[0].trim()] ?? (kind === 'video' ? 'mp4' : 'jpg');
-  return (kind === 'video' ? '微信视频' : '微信图片') + stamp + (original ? '_原图' : '') + '.' + extension;
+  return (kind === 'video' ? t('微信视频') : t('微信图片')) + stamp + (original ? t('_原图') : '') + '.' + extension;
 }
 
 export function PreviewDownload({ src, kind, original }: { src: string; kind: 'image' | 'video'; original: boolean }) {
@@ -38,7 +39,7 @@ export function PreviewDownload({ src, kind, original }: { src: string; kind: 'i
       setState('failed');
     }
   };
-  const label = state === 'failed' ? '下载失败，点此重试' : kind === 'video' ? '下载视频' : original ? '下载高清原图' : '下载图片';
+  const label = state === 'failed' ? t('下载失败，点此重试') : kind === 'video' ? t('下载视频') : original ? t('下载高清原图') : t('下载图片');
   return <button type="button" className={'icon-button preview-download' + (state === 'failed' ? ' failed' : '')} aria-label={label} title={label}
     disabled={state === 'busy'} onClick={save}>
     {state === 'busy' ? <CircleNotch size={18} className="spin" /> : <DownloadSimple size={18} />}

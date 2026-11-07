@@ -9,6 +9,7 @@ import { VirtualList, type VirtualListHandle } from '../VirtualList';
 import { filterLabels, FOLDED_ID, formatSessionTime, sessionRows, type SessionFilter, type SessionRow } from './sessions';
 import type { SessionsState } from './useSessions';
 import { ListSkeleton } from '../Skeleton';
+import { t } from '../i18n';
 
 const FILTERS: SessionFilter[] = ['all', 'private', 'group', 'official'];
 /** A row is 56px high with 2px to the next (#192). */
@@ -18,16 +19,16 @@ const SKELETON_ROWS = 8;
 
 function SessionItem({ row, active, now, onClick }: { row: SessionRow; active: boolean; now: Date; onClick(): void }) {
   return <button type="button" data-row-id={row.id} className={'conversation-row' + (active ? ' active' : '') + (row.muted ? ' muted' : '')}
-    aria-label={row.folded ? '打开折叠的群聊，共 ' + row.folded.count + ' 个' : '选择' + row.name} aria-pressed={row.folded ? undefined : active} onClick={onClick}>
+    aria-label={row.folded ? t('打开折叠的群聊，共 {count} 个', { count: row.folded.count }) : t('选择{name}', { name: row.name })} aria-pressed={row.folded ? undefined : active} onClick={onClick}>
     {row.folded ? <span className="avatar avatar-initial" aria-hidden="true"><UsersThree size={20} /></span> : <Avatar name={row.name} url={row.avatarUrl} />}
     <span className="conversation-copy">
       <span className="conversation-head"><span className="conversation-name">{row.name}</span><time className="conversation-time">{formatSessionTime(row.time, now)}</time></span>
       <span className="conversation-foot">
         <span className="conversation-preview clamp-1">{row.preview}</span>
-        {row.muted && !row.folded && <BellSlash className="muted-icon" size={14} aria-label="免打扰" />}
+        {row.muted && !row.folded && <BellSlash className="muted-icon" size={14} aria-label={t('免打扰')} />}
         {row.unread > 0 && (row.muted
-          ? <span className="unread-dot" aria-label={row.unread + ' 条未读'} />
-          : <span className="unread-count" aria-label={row.unread + ' 条未读'}>{row.unread > 99 ? '99+' : row.unread}</span>)}
+          ? <span className="unread-dot" aria-label={t('{n} 条未读', { n: row.unread })} />
+          : <span className="unread-count" aria-label={t('{n} 条未读', { n: row.unread })}>{row.unread > 99 ? '99+' : row.unread}</span>)}
       </span>
     </span>
   </button>;
@@ -90,13 +91,13 @@ export function SessionList({ state, sample, selectedId, onSelect, onRetry, offi
 
   let body;
   if (state.status === 'idle' || state.status === 'loading') {
-    body = <ListSkeleton label="正在读取会话" rows={SKELETON_ROWS} />;
+    body = <ListSkeleton label={t('正在读取会话')} rows={SKELETON_ROWS} />;
   } else if (state.status === 'error') {
-    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
+    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />{t('重试')}</button></div>;
   } else if (!rows.length) {
-    body = <p className="session-message">{query.trim() ? '没有名称匹配的会话。' : state.sessions.length ? '这一类没有会话。' : '这个账号还没有会话。'}</p>;
+    body = <p className="session-message">{query.trim() ? t('没有名称匹配的会话。') : state.sessions.length ? t('这一类没有会话。') : t('这个账号还没有会话。')}</p>;
   } else {
-    body = <VirtualList ref={list} data-roving="vertical" data-roving-items=".conversation-row" data-roving-keys="off" className="conversation-list scroll-area" aria-label="会话列表" items={rows} rowHeight={ROW_HEIGHT} padding={LIST_PADDING} track=".conversation-row"
+    body = <VirtualList ref={list} data-roving="vertical" data-roving-items=".conversation-row" data-roving-keys="off" className="conversation-list scroll-area" aria-label={t('会话列表')} items={rows} rowHeight={ROW_HEIGHT} padding={LIST_PADDING} track=".conversation-row"
       keyOf={row => row.id} onKeyDown={onKeyDown}
       renderRow={row => <SessionItem row={row} active={row.id === selectedId} now={now} onClick={() => open(row)} />} />;
   }
@@ -104,14 +105,14 @@ export function SessionList({ state, sample, selectedId, onSelect, onRetry, offi
   return <div className="session-pane">
     <div className="session-tools">
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
-        <input type="search" aria-label="搜索会话" placeholder="搜索会话" value={query} onChange={event => setQuery(event.target.value)} />
+        <input type="search" aria-label={t('搜索会话')} placeholder={t('搜索会话')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
       {foldedView && !query.trim()
-        ? <div className="folded-head"><button type="button" className="icon-button small" aria-label="返回全部会话" onClick={() => setFoldedView(false)}><ArrowLeft size={16} /></button><strong>折叠的群聊</strong><span className="num">{foldedCount}</span></div>
-        : <Segmented className="session-filter" count={FILTERS.length} index={FILTERS.indexOf(filter)} role="group" aria-label="会话类型">
-          {FILTERS.map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{filterLabels[value]}</button>)}
+        ? <div className="folded-head"><button type="button" className="icon-button small" aria-label={t('返回全部会话')} onClick={() => setFoldedView(false)}><ArrowLeft size={16} /></button><strong>{t('折叠的群聊')}</strong><span className="num">{foldedCount}</span></div>
+        : <Segmented className="session-filter" count={FILTERS.length} index={FILTERS.indexOf(filter)} role="group" aria-label={t('会话类型')}>
+          {FILTERS.map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(filterLabels[value])}</button>)}
         </Segmented>}
-      {sample && <p className="session-note">示例数据 · 连接 weflow serve 后显示真实会话</p>}
+      {sample && <p className="session-note">{t('示例数据 · 连接 weflow serve 后显示真实会话')}</p>}
     </div>
     {body}
   </div>;

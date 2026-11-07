@@ -15,6 +15,7 @@ import { kindOf as sessionKind } from './sessions';
 import { useMessages, type Focus, type Jump } from './useMessages';
 import { SCROLL_INTENT } from '../Scrollbar';
 import { MessagesSkeleton } from '../Skeleton';
+import { t } from '../i18n';
 
 /** Older (newer) messages are asked for while the top (bottom) is closer than this. */
 const LOAD_AHEAD = 600;
@@ -201,20 +202,20 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
   }, [thread, loadOlder, loadNewer, scroller]);
 
   if (thread.status === 'idle' || thread.status === 'loading') {
-    return <MessagesSkeleton label="正在读取消息" />;
+    return <MessagesSkeleton label={t('正在读取消息')} />;
   }
   if (thread.status === 'error') {
-    return <div className="pane-message" role="alert"><p>{thread.error}</p><button type="button" className="secondary-button" onClick={reload}><ArrowClockwise size={14} />重试</button></div>;
+    return <div className="pane-message" role="alert"><p>{thread.error}</p><button type="button" className="secondary-button" onClick={reload}><ArrowClockwise size={14} />{t('重试')}</button></div>;
   }
-  if (!thread.messages.length) return <div className="pane-message"><p>这个会话没有消息。</p></div>;
+  if (!thread.messages.length) return <div className="pane-message"><p>{t('这个会话没有消息。')}</p></div>;
 
   const now = new Date();
   const nameOf = (username: string | null) => (username && people.get(username)?.name) || username || '';
   return <div className="messages live" ref={list}>
     <div className="history-edge" aria-live="polite">{thread.loadingOlder
-      ? <><CircleNotch size={14} className="spin" />正在加载更早的消息</>
-      : thread.error ? <><span>{thread.error}</span><button type="button" className="text-button" onClick={loadOlder}>重试</button></>
-        : thread.hasMore ? null : '没有更早的消息了'}</div>
+      ? <><CircleNotch size={14} className="spin" />{t('正在加载更早的消息')}</>
+      : thread.error ? <><span>{thread.error}</span><button type="button" className="text-button" onClick={loadOlder}>{t('重试')}</button></>
+        : thread.hasMore ? null : t('没有更早的消息了')}</div>
     {thread.messages.map((message, index) => {
       const day = dayOf(message.createTime);
       const newDay = index === 0 || dayOf(thread.messages[index - 1].createTime) !== day;
@@ -238,8 +239,8 @@ export function LiveMessages({ session, scroller, jump, onPreview }: {
           </div>}
       </Fragment>;
     })}
-    {thread.hasNewer && <div className="history-edge newer" aria-live="polite">{thread.loadingNewer ? <><CircleNotch size={14} className="spin" />正在加载更新的消息</> : null}</div>}
-    {thread.hasNewer && <div className="latest-bar"><button type="button" className="secondary-button" onClick={reload}><ArrowDown size={14} />回到最新消息</button></div>}
-    {!thread.hasNewer && (unseen > 0 || far) && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen > 0 ? unseen + ' 条新消息' : '回到最新消息'}</button></div>}
+    {thread.hasNewer && <div className="history-edge newer" aria-live="polite">{thread.loadingNewer ? <><CircleNotch size={14} className="spin" />{t('正在加载更新的消息')}</> : null}</div>}
+    {thread.hasNewer && <div className="latest-bar"><button type="button" className="secondary-button" onClick={reload}><ArrowDown size={14} />{t('回到最新消息')}</button></div>}
+    {!thread.hasNewer && (unseen > 0 || far) && <div className="latest-bar"><button type="button" className="secondary-button" onClick={toNewest}><ArrowDown size={14} />{unseen > 0 ? t('{n} 条新消息', { n: unseen }) : t('回到最新消息')}</button></div>}
   </div>;
 }

@@ -1,11 +1,13 @@
 // What the conversation list shows (#197): the kind of each session, the filters, folding and the times.
 import type { ChatSession, SessionStatus } from '../api/chat';
+import { formatDate, msg, relativeDay, t } from '../i18n';
 
 export type SessionKind = 'private' | 'group' | 'official';
 export type SessionFilter = 'all' | SessionKind;
 
-export const filterLabels: Record<SessionFilter, string> = { all: '全部', private: '私聊', group: '群聊', official: '公众号' };
-export const kindLabels: Record<SessionKind, string> = { private: '私聊', group: '群聊', official: '公众号' };
+// shown through t()
+export const filterLabels: Record<SessionFilter, string> = { all: msg('全部'), private: msg('私聊'), group: msg('群聊'), official: msg('公众号') };
+export const kindLabels: Record<SessionKind, string> = { private: msg('私聊'), group: msg('群聊'), official: msg('公众号') };
 
 /** The row that stands for the folded groups, as in WeChat. */
 export const FOLDED_ID = '@folded';
@@ -88,7 +90,7 @@ export function sessionRows(
     const newest = folded[0];
     entry = {
       // The group's name in front of its last message, without the sender: one prefix is enough on one line.
-      id: FOLDED_ID, name: '折叠的群聊', preview: (newest.displayName || newest.username) + '：' + newest.summary.replace(/\s+/g, ' ').trim(),
+      id: FOLDED_ID, name: t('折叠的群聊'), preview: (newest.displayName || newest.username) + '：' + newest.summary.replace(/\s+/g, ' ').trim(),
       time: timeOf(newest), unread: folded.reduce((sum, s) => sum + (s.unreadCount || 0), 0), muted: true,
       folded: { count: folded.length },
     };
@@ -102,18 +104,17 @@ export function sessionRows(
   return rows;
 }
 
-const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** A session's time as WeChat shows it: 14:12 today, 昨天, a weekday this week, then the date. */
+/** A session's time as WeChat shows it: 14:12 today, 昨天, a weekday this week, then the date (in the page's language). */
 export function formatSessionTime(seconds: number, now = new Date()): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '';
   const date = new Date(seconds * 1000);
   const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((day(now) - day(date)) / 86_400_000);
   if (days <= 0) return pad(date.getHours()) + ':' + pad(date.getMinutes());
-  if (days === 1) return '昨天';
-  if (days < 7) return WEEKDAYS[date.getDay()];
-  if (date.getFullYear() === now.getFullYear()) return (date.getMonth() + 1) + '/' + date.getDate();
-  return date.getFullYear() + '/' + (date.getMonth() + 1) + '/' + date.getDate();
+  if (days === 1) return relativeDay(-1);
+  if (days < 7) return formatDate(date, { weekday: 'long' });
+  if (date.getFullYear() === now.getFullYear()) return formatDate(date, { month: 'numeric', day: 'numeric' });
+  return formatDate(date, { year: 'numeric', month: 'numeric', day: 'numeric' });
 }

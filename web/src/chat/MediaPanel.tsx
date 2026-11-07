@@ -10,17 +10,18 @@ import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
 import { formatClock } from './messages';
 import { MediaSkeleton } from '../Skeleton';
+import { msg, t } from '../i18n';
 
 const FILTERS: { label: string; types: ResourceType[] }[] = [
-  { label: '全部', types: ['image', 'video', 'file'] },
-  { label: '图片', types: ['image'] },
-  { label: '视频', types: ['video'] },
-  { label: '文件', types: ['file'] },
+  { label: msg('全部'), types: ['image', 'video', 'file'] },
+  { label: msg('图片'), types: ['image'] },
+  { label: msg('视频'), types: ['video'] },
+  { label: msg('文件'), types: ['file'] },
 ];
 
 type State = { status: 'loading' } | { status: 'ready'; filter: number; items: Resource[]; next: string | null; more: boolean; error?: string } | { status: 'error'; message: string };
 
-const errorOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || '读取媒体文件失败';
+const errorOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('读取媒体文件失败');
 
 function size(bytes?: number): string {
   if (!bytes) return '';
@@ -94,29 +95,29 @@ export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: st
   };
 
   return <div className="media-panel">
-    <Segmented className="media-filter" count={FILTERS.length} index={filter} role="group" aria-label="媒体类型">
-      {FILTERS.map((f, i) => <button type="button" key={f.label} aria-pressed={filter === i} onClick={() => setFilter(i)}>{f.label}</button>)}
+    <Segmented className="media-filter" count={FILTERS.length} index={filter} role="group" aria-label={t('媒体类型')}>
+      {FILTERS.map((f, i) => <button type="button" key={f.label} aria-pressed={filter === i} onClick={() => setFilter(i)}>{t(f.label)}</button>)}
     </Segmented>
-    {state.status === 'loading' && <MediaSkeleton label="正在读取媒体" />}
-    {state.status === 'error' && <p className="empty-text" role="alert">{state.message} <button type="button" className="text-button" onClick={() => setRound(n => n + 1)}>重试</button></p>}
+    {state.status === 'loading' && <MediaSkeleton label={t('正在读取媒体')} />}
+    {state.status === 'error' && <p className="empty-text" role="alert">{state.message} <button type="button" className="text-button" onClick={() => setRound(n => n + 1)}>{t('重试')}</button></p>}
     {state.status === 'ready' && (state.items.length
       ? <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />
         {state.items.map(item => <MediaItem key={keyOf(item)} sessionId={sessionId} item={item} onOpen={onOpen} />)}
-        {state.next && <button type="button" className="secondary-button media-more" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />正在读取</> : '加载更多'}</button>}
+        {state.next && <button type="button" className="secondary-button media-more" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />{t('正在读取')}</> : t('加载更多')}</button>}
         {state.error && <p className="empty-text" role="alert">{state.error}</p>}
       </div>
-      : <p className="empty-text">{filter ? '这个会话没有这类媒体。' : '这个会话没有图片、视频或文件。'}</p>)}
+      : <p className="empty-text">{filter ? t('这个会话没有这类媒体。') : t('这个会话没有图片、视频或文件。')}</p>)}
   </div>;
 }
 
 function MediaItem({ sessionId, item, onOpen }: { sessionId: string; item: Resource; onOpen: (item: Resource) => void }) {
   const [broken, setBroken] = useState(false);
-  const label = item.resourceType === 'file' ? item.fileName || '文件' : item.resourceType === 'video' ? '视频' : '图片';
+  const label = item.resourceType === 'file' ? item.fileName || t('文件') : item.resourceType === 'video' ? t('视频') : t('图片');
   const detail = [day(item.createTime) + ' ' + formatClock(item.createTime), item.resourceType === 'file' ? size(item.fileSize) : ''].filter(Boolean).join(' · ');
   const thumb = item.resourceType === 'image' && !broken
     ? <img src={mediaUrl('image-data', sessionId, item as unknown as ParsedMessage, { thumb: true })} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
     : <span className="media-icon" aria-hidden="true">{item.resourceType === 'video' ? <VideoCamera size={24} /> : <FileText size={24} />}</span>;
-  return <button className="media-item" type="button" aria-label={label + '，' + detail + '，在会话中定位'} onClick={() => onOpen(item)}>
+  return <button className="media-item" type="button" aria-label={t('{label}，{detail}，在会话中定位', { label, detail })} onClick={() => onOpen(item)}>
     {thumb}<span><span className="clamp-1">{label}</span><small>{detail}</small></span><ArrowSquareOut size={14} />
   </button>;
 }

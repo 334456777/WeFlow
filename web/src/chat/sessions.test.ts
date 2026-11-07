@@ -1,5 +1,6 @@
 import { describe, expect, it } from '#test';
 import type { ChatSession } from '../api/chat';
+import { setLang } from '../i18n';
 import { FOLDED_ID, formatSessionTime, kindOf, previewOf, sessionRows } from './sessions';
 
 const at = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
@@ -65,5 +66,17 @@ describe('formatSessionTime', () => {
     expect(formatSessionTime(at('2026-10-09T12:00:00'), now)).toBe('10/9');
     expect(formatSessionTime(at('2025-12-31T12:00:00'), now)).toBe('2025/12/31');
     expect(formatSessionTime(0, now)).toBe('');
+  });
+
+  it('writes them in the page\'s language', () => {
+    setLang('en');
+    try {
+      expect(formatSessionTime(at('2026-10-15T23:59:00'), now)).toBe('Yesterday');
+      expect(formatSessionTime(at('2026-10-12T12:00:00'), now)).toBe('Monday');
+      expect(formatSessionTime(at('2026-10-09T12:00:00'), now)).toBe('10/9');
+      expect(formatSessionTime(at('2025-12-31T12:00:00'), now)).toBe('12/31/2025');
+    } finally {
+      setLang('zh');
+    }
   });
 });
