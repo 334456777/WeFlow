@@ -73,11 +73,15 @@ export function msg(text: string): string {
 
 /**
  * `text` in the page's language, its `{name}`s replaced by `vars`. The English keeps the same names: `t('共 {n} 个群聊',
- * { n })` is `'{n} groups'` in `en.ts`.
+ * { n })` is `'{n} {n|group|groups}'` in `en.ts`, where `{n|one|other}` is the word for a count of 1 and for any other.
  */
 export function t(text: string, vars?: Record<string, string | number>): string {
   const said = current === 'en' ? (en[text] ?? text) : text;
-  return vars ? said.replace(/\{(\w+)\}/g, (all, name: string) => (name in vars ? String(vars[name]) : all)) : said;
+  if (!vars) return said;
+  return said
+    .replace(/\{(\w+)\|([^|{}]*)\|([^|{}]*)\}/g, (all, name: string, one: string, other: string) =>
+      (name in vars ? (Number(vars[name]) === 1 ? one : other) : all))
+    .replace(/\{(\w+)\}/g, (all, name: string) => (name in vars ? String(vars[name]) : all));
 }
 
 show();

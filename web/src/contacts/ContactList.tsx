@@ -7,13 +7,14 @@ import { Segmented } from '../Segmented';
 import { VirtualList } from '../VirtualList';
 import type { ContactsState } from './useContacts';
 import { ListSkeleton } from '../Skeleton';
+import { t } from '../i18n';
 
 const ROW_HEIGHT = 58;
 
 /** Under the name: the nickname when a remark stands in for it, and where the person is. */
 export function contactLine(c: Contact): string {
   const line = [c.remark && c.nickname && c.nickname !== c.displayName ? c.nickname : '', c.region ?? ''].filter(Boolean).join(' · ');
-  return line || (c.type === 'official' ? c.detailDescription ?? '' : '') || contactKindLabels[c.type];
+  return line || (c.type === 'official' ? c.detailDescription ?? '' : '') || t(contactKindLabels[c.type]);
 }
 
 export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }: {
@@ -32,19 +33,19 @@ export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }
 
   let body;
   if (state.status === 'loading' || state.status === 'idle') {
-    body = <ListSkeleton label="正在读取通讯录" />;
+    body = <ListSkeleton label={t('正在读取通讯录')} />;
   } else if (state.status === 'error') {
-    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
+    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />{t('重试')}</button></div>;
   } else if (!rows.length) {
-    body = <p className="session-message">{searching ? '没有匹配的联系人。' : '没有' + contactKindLabels[kind] + '。'}</p>;
+    body = <p className="session-message">{searching ? t('没有匹配的联系人。') : t('没有{kind}。', { kind: t(contactKindLabels[kind]) })}</p>;
   } else {
-    body = <VirtualList data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label={searching ? '搜索到的联系人' : contactKindLabels[kind]} items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
+    body = <VirtualList data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label={searching ? t('搜索到的联系人') : t(contactKindLabels[kind])} items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
       keyOf={c => c.username} renderRow={c => {
         const active = c.username === selected;
-        return <button type="button" className={'conversation-row' + (active ? ' active' : '')} aria-pressed={active} aria-label={'查看' + c.displayName} onClick={() => onSelect(c.username)}>
+        return <button type="button" className={'conversation-row' + (active ? ' active' : '')} aria-pressed={active} aria-label={t('查看{name}', { name: c.displayName })} onClick={() => onSelect(c.username)}>
           <Avatar name={c.displayName} url={c.avatarUrl} />
           <span className="conversation-copy">
-            <span className="conversation-head"><span className="conversation-name">{c.displayName}</span>{searching && <span className="conversation-time">{contactKindLabels[c.type]}</span>}</span>
+            <span className="conversation-head"><span className="conversation-name">{c.displayName}</span>{searching && <span className="conversation-time">{t(contactKindLabels[c.type])}</span>}</span>
             <span className="conversation-preview clamp-1">{contactLine(c)}</span>
           </span>
         </button>;
@@ -54,11 +55,11 @@ export function ContactList({ state, kind, onKind, selected, onSelect, onRetry }
   return <div className="session-pane">
     <div className="session-tools">
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
-        <input type="search" aria-label="搜索联系人" placeholder="搜索名称、备注或微信号" value={query} onChange={event => setQuery(event.target.value)} />
+        <input type="search" aria-label={t('搜索联系人')} placeholder={t('搜索名称、备注或微信号')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
-      <Segmented className="session-filter contact-kinds" count={CONTACT_KINDS.length} index={CONTACT_KINDS.indexOf(kind)} role="group" aria-label="联系人类型">
-        {CONTACT_KINDS.map(value => <button type="button" key={value} aria-pressed={kind === value} aria-label={contactKindLabels[value] + ' ' + counts[value] + ' 个'}
-          onClick={() => { onKind(value); setQuery(''); }}>{value === 'former_friend' ? '曾经' : contactKindLabels[value]}{state.status === 'ready' && <small className="num">{counts[value]}</small>}</button>)}
+      <Segmented className="session-filter contact-kinds" count={CONTACT_KINDS.length} index={CONTACT_KINDS.indexOf(kind)} role="group" aria-label={t('联系人类型')}>
+        {CONTACT_KINDS.map(value => <button type="button" key={value} aria-pressed={kind === value} aria-label={t('{kind} {n} 个', { kind: t(contactKindLabels[value]), n: counts[value] })}
+          onClick={() => { onKind(value); setQuery(''); }}>{value === 'former_friend' ? t('曾经') : t(contactKindLabels[value])}{state.status === 'ready' && <small className="num">{counts[value]}</small>}</button>)}
       </Segmented>
     </div>
     {body}

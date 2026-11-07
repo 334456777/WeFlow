@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatYuan, type Payment } from '../api/pay';
 import { Avatar } from '../Avatar';
 import { dayOf, formatClock, formatDayHeading } from '../chat/messages';
+import { t } from '../i18n';
 
 /** Records drawn at first and added each time the end comes near. */
 const BATCH = 60;
@@ -13,11 +14,13 @@ const SHOWN = /金额$|方式$|状态$|^(收款方|收款商户|商户名称|商
 
 function PaymentCard({ payment }: { payment: Payment }) {
   const lines = [
-    ...(payment.method ? [{ label: '方式', value: payment.method }] : []),
-    ...(payment.status ? [{ label: '状态', value: payment.status }] : []),
+    ...(payment.method ? [{ label: t('方式'), value: payment.method }] : []),
+    ...(payment.status ? [{ label: t('状态'), value: payment.status }] : []),
     ...payment.lines.filter(l => !SHOWN.test(l.label)),
   ];
-  return <article className="pay-card" aria-label={payment.merchant + (payment.amount === null ? '' : '，' + (payment.refund ? '退款 ' : '') + formatYuan(payment.amount) + ' 元')}>
+  return <article className="pay-card" aria-label={payment.amount === null ? payment.merchant : payment.refund
+    ? t('{merchant}，退款 {yuan} 元', { merchant: payment.merchant, yuan: formatYuan(payment.amount) })
+    : t('{merchant}，{yuan} 元', { merchant: payment.merchant, yuan: formatYuan(payment.amount) })}>
     <Avatar name={payment.merchant} url={payment.icon} />
     <div className="pay-body">
       <header>
@@ -51,10 +54,10 @@ export function PaymentList({ payments, scroller, narrowed }: {
     return () => observer.disconnect();
   }, [scroller, more, shown]);
 
-  if (!payments.length) return <div className="pane-message"><p>{narrowed ? '没有符合筛选条件的支付记录。' : '本机没有支付记录。'}</p></div>;
+  if (!payments.length) return <div className="pane-message"><p>{narrowed ? t('没有符合筛选条件的支付记录。') : t('本机没有支付记录。')}</p></div>;
   const now = new Date();
   const rows = payments.slice(0, shown);
-  return <div className="payments" aria-label="支付记录">
+  return <div className="payments" aria-label={t('支付记录')}>
     {rows.map((p, i) => {
       const day = dayOf(p.time);
       return <div key={p.id} className="pay-row">
@@ -64,8 +67,8 @@ export function PaymentList({ payments, scroller, narrowed }: {
     })}
     <div ref={end} className="moments-end">
       {more
-        ? <button type="button" className="secondary-button" onClick={() => setShown(n => n + BATCH)}>显示更早的记录</button>
-        : <p>共 {payments.length.toLocaleString('zh-CN')} 笔</p>}
+        ? <button type="button" className="secondary-button" onClick={() => setShown(n => n + BATCH)}>{t('显示更早的记录')}</button>
+        : <p>{t('共 {length} 笔', { length: payments.length.toLocaleString('zh-CN') })}</p>}
     </div>
   </div>;
 }

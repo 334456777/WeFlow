@@ -8,6 +8,7 @@ import { ContactsExport, contactsExportSummary, ContactsSummary, DEFAULT_CONTACT
 import { ContactDetail } from './ContactDetail';
 import { ContactList } from './ContactList';
 import { useContacts } from './useContacts';
+import { locale, t } from '../i18n';
 
 export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { backend, connected, scope, setMobileDetail } = shell;
@@ -20,23 +21,23 @@ export function useContactsPage(shell: Shell, active: boolean, chatWith: ChatWit
   const contact = contacts?.find(c => c.username === id);
   const cards = [
     {
-      id: 'contacts-summary', title: '通讯录统计', summary: contacts ? contacts.length.toLocaleString('zh-CN') + ' 个' : '',
+      id: 'contacts-summary', title: t('通讯录统计'), summary: contacts ? t('{n} 个', { n: contacts.length.toLocaleString(locale()) }) : '',
       content: <ContactsSummary contacts={contacts} />,
     },
     {
-      id: 'contacts-export', title: '导出通讯录', summary: contactsExportSummary(exportOptions),
+      id: 'contacts-export', title: t('导出通讯录'), summary: contactsExportSummary(exportOptions),
       content: <ContactsExport options={exportOptions} onChange={setExportOptions} ready={Boolean(contacts)} />,
     },
   ];
-  const view = <BrowserPanel label="通讯录" detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back="返回联系人列表" title={contact?.displayName ?? '联系人资料'} paneLabel="联系人资料"
-    list={<ConnectedList backend={backend} offline="连接 weflow serve 后，可以在这里查看通讯录。">
+  const view = <BrowserPanel label={t('通讯录')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回联系人列表')} title={contact?.displayName ?? t('联系人资料')} paneLabel={t('联系人资料')}
+    list={<ConnectedList backend={backend} offline={t('连接 weflow serve 后，可以在这里查看通讯录。')}>
       <ContactList state={state} kind={kind} onKind={setKind} selected={id} onRetry={reload}
         onSelect={username => { setId(username); setMobileDetail(true); }} />
     </ConnectedList>}>
     {connected && (contact
       ? <ContactDetail key={contact.username} contact={contact} canChat={shell.sessionList.some(s => s.username === contact.username)}
         onChat={() => chatWith(contact.username)} />
-      : <div className="pane-message">{contacts && <p>选择左侧的一个联系人。</p>}</div>)}
+      : <div className="pane-message">{contacts && <p>{t('选择左侧的一个联系人。')}</p>}</div>)}
   </BrowserPanel>;
   return { view, cards, shown: ['tasks', ...(connected ? cards.map(card => card.id) : [])] };
 }

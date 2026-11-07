@@ -7,6 +7,7 @@ import { Avatar } from '../Avatar';
 import { VirtualList } from '../VirtualList';
 import type { Merchant, PaymentsState } from './usePayments';
 import { ListSkeleton } from '../Skeleton';
+import { locale, t } from '../i18n';
 
 const ROW_HEIGHT = 58;
 const ALL = '\u0000all';
@@ -30,26 +31,26 @@ export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry
 
   let body;
   if (state.status === 'loading') {
-    body = <ListSkeleton label="正在读取支付记录" note={state.read ? '已读 ' + state.read.toLocaleString('zh-CN') + ' 条消息' : undefined} />;
+    body = <ListSkeleton label={t('正在读取支付记录')} note={state.read ? t('已读 {n} 条消息', { n: state.read.toLocaleString(locale()) }) : undefined} />;
   } else if (state.status === 'error') {
-    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
+    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />{t('重试')}</button></div>;
   } else if (!state.payments.length) {
-    body = <p className="session-message">本机没有「微信支付」公众号的消息。</p>;
+    body = <p className="session-message">{t('本机没有「微信支付」公众号的消息。')}</p>;
   } else if (rows.length <= 1 && !query.trim()) {
-    body = <p className="session-message">这段时间没有支付记录。</p>;
+    body = <p className="session-message">{t('这段时间没有支付记录。')}</p>;
   } else if (!rows.length) {
-    body = <p className="session-message">没有名称匹配的商户。</p>;
+    body = <p className="session-message">{t('没有名称匹配的商户。')}</p>;
   } else {
-    body = <VirtualList data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label="商户" items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
+    body = <VirtualList data-roving="vertical" data-roving-items=".conversation-row" className="conversation-list scroll-area" aria-label={t('商户')} items={rows} rowHeight={ROW_HEIGHT} padding={8} track=".conversation-row"
       keyOf={m => m.name} renderRow={m => {
         const id = m.name === ALL ? null : m.name;
         const active = id === selected;
-        const name = id ?? '全部商户';
-        return <button type="button" className={'conversation-row' + (active ? ' active' : '')} aria-pressed={active} aria-label={(id ? '只看' + name : name) + '，' + m.count + ' 笔'} onClick={() => onSelect(id)}>
+        const name = id ?? t('全部商户');
+        return <button type="button" className={'conversation-row' + (active ? ' active' : '')} aria-pressed={active} aria-label={id ? t('只看{name}，{n} 笔', { name, n: m.count }) : t('全部商户，{n} 笔', { n: m.count })} onClick={() => onSelect(id)}>
           {id ? <Avatar name={name} url={m.icon} /> : <span className="avatar avatar-initial" aria-hidden="true"><Wallet size={20} /></span>}
           <span className="conversation-copy">
             <span className="conversation-head"><span className="conversation-name">{name}</span><span className="conversation-time num">{formatMoney(m.spent)}</span></span>
-            <span className="conversation-preview clamp-1">{m.count} 笔</span>
+            <span className="conversation-preview clamp-1">{t('{count} 笔', { count: m.count })}</span>
           </span>
         </button>;
       }} />;
@@ -58,7 +59,7 @@ export function PaymentMerchants({ state, merchants, selected, onSelect, onRetry
   return <div className="session-pane">
     <div className="session-tools">
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
-        <input type="search" aria-label="搜索商户" placeholder="搜索商户" value={query} onChange={event => setQuery(event.target.value)} />
+        <input type="search" aria-label={t('搜索商户')} placeholder={t('搜索商户')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
     </div>
     {body}
