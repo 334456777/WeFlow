@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from '#test';
 import { adviceFor, compareVersions, Connection, incompatibility, retryDelay, WATCHDOG_MS, type Backend, type Stream } from './backend';
 import { call, setToken } from './client';
 import { onLive, type LiveEvent } from './live';
-import { lang } from '../i18n';
+import { lang, languageReady } from '../i18n';
 
 const web = { name: 'weflow-web', version: '0.1.0', apiVersion: '1', minBackendVersion: '5.0.0-rc.4' };
 
@@ -91,9 +91,10 @@ describe('Connection (#221)', () => {
     c.live.stop();
   });
 
-  it('shows the page in the language the server says (#439)', () => {
+  it('shows the page in the language the server says (#439)', async () => {
     const c = connection();
     c.last().send('hello', { ...health, lang: 'en' });
+    await languageReady();
     expect(lang()).toBe('en');
     c.last().send('hello', { ...health, lang: 'zh' });
     expect(lang()).toBe('zh');

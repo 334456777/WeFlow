@@ -57,8 +57,8 @@ describe('the resource browser (#206)', () => {
     const onPreview = vi.fn<(p: Preview) => void>();
     const onOpen = vi.fn();
     page(onPreview, onOpen);
-    expect(await screen.findByRole('heading', { name: '2025 年 10 月' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '2025 年 9 月' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '2025年10月' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '2025年9月' })).toBeTruthy();
     // a voice plays where it is, its length read from the message
     expect(screen.getByRole('button', { name: /播放语音，4″/ })).toBeTruthy();
 
@@ -83,12 +83,12 @@ describe('the resource browser (#206)', () => {
       k1: { items: [item(2, 'image', SEP)], hasMore: false, nextCursor: null },
     });
     page();
-    await screen.findByRole('heading', { name: '2025 年 10 月' });
+    await screen.findByRole('heading', { name: '2025年10月' });
     pick('图片');
     await waitFor(() => expect(calls[1]).toBe('/api/chat/resources?type=image&limit=120'));
-    await screen.findByRole('heading', { name: '2025 年 10 月' });
+    await screen.findByRole('heading', { name: '2025年10月' });
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
-    expect(await screen.findByRole('heading', { name: '2025 年 9 月' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '2025年9月' })).toBeTruthy();
     expect(calls[2]).toBe('/api/chat/resources?type=image&limit=120&before=k1');
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
 

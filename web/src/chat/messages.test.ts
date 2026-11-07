@@ -26,7 +26,7 @@ describe('kindOf', () => {
 });
 
 describe('formatting', () => {
-  it('drops a leading label, and writes sizes, durations and day headings', () => {
+  it('drops a leading label, and writes sizes, durations and day headings', async () => {
     expect(withoutLabel('[文件] 旅行计划.pdf')).toBe('旅行计划.pdf');
     expect(withoutLabel('[呲牙] 早')).toBe('早');
     expect(withoutLabel('早[呲牙]')).toBe('早[呲牙]');
@@ -35,7 +35,7 @@ describe('formatting', () => {
     const now = new Date('2026-10-16T10:00:00');
     expect(['2026-10-16', '2026-10-15', '2026-10-12', '2025-12-31'].map(day => formatDayHeading(day, now)))
       .toEqual(['今天', '昨天', '10月12日 周一', '2025年12月31日 周三']);
-    setLang('en');
+    await setLang('en');
     try {
       expect(['2026-10-16', '2026-10-15', '2026-10-12', '2025-12-31'].map(day => formatDayHeading(day, now)))
         .toEqual(['Today', 'Yesterday', 'Mon, Oct 12', 'Wed, Dec 31, 2025']);

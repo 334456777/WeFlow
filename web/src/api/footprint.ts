@@ -1,6 +1,7 @@
 // My footprint (#209): who I talked with and replied to, and where I was @-mentioned, over a range of days
 // (`insight footprint --start --end`); its export (`export footprint`) and its AI summary (`insight footprint-summary`).
 import { call, get } from './client';
+import { t } from '../i18n';
 import type * as Contract from './contract.gen';
 import { dayOf } from '../chat/messages';
 
@@ -31,10 +32,10 @@ export function presetRanges(now = new Date()): FootprintRange[] {
   const day = (offset: number) => { const d = new Date(now); d.setDate(d.getDate() + offset); return dayOf(d.getTime() / 1000); };
   const sinceMonday = (now.getDay() + 6) % 7;
   return [
-    { label: '今天', from: day(0), to: day(0) },
-    { label: '昨天', from: day(-1), to: day(-1) },
-    { label: '本周', from: day(-sinceMonday), to: day(0) },
-    { label: '上周', from: day(-sinceMonday - 7), to: day(-sinceMonday - 1) },
+    { label: t('今天'), from: day(0), to: day(0) },
+    { label: t('昨天'), from: day(-1), to: day(-1) },
+    { label: t('本周'), from: day(-sinceMonday), to: day(0) },
+    { label: t('上周'), from: day(-sinceMonday - 7), to: day(-sinceMonday - 1) },
   ];
 }
 
@@ -51,7 +52,7 @@ export async function summarizeFootprint(range: FootprintRange, data: Footprint,
     mentionGroups: data.mention_groups.slice(0, 12).map(g => ({ session_id: g.session_id, displayName: name(g.session_id), count: g.count })),
   };
   const answer = await call<{ success?: boolean; message?: string; insight?: string }>('POST', 'insight/footprint-summary', { 'payload-json': JSON.stringify(payload) });
-  if (!answer.success || !answer.insight) throw new Error(answer.message || 'AI 没有给出总结。');
+  if (!answer.success || !answer.insight) throw new Error(answer.message || t('AI 没有给出总结。'));
   return answer.insight;
 }
 

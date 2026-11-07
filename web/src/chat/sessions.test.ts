@@ -68,8 +68,8 @@ describe('formatSessionTime', () => {
     expect(formatSessionTime(0, now)).toBe('');
   });
 
-  it('writes them in the page\'s language', () => {
-    setLang('en');
+  it('writes them in the page\'s language', async () => {
+    await setLang('en');
     try {
       expect(formatSessionTime(at('2026-10-15T23:59:00'), now)).toBe('Yesterday');
       expect(formatSessionTime(at('2026-10-12T12:00:00'), now)).toBe('Monday');
