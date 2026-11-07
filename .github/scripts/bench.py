@@ -283,9 +283,9 @@ def commands(manifest, out, cursor):
 def middle_cursor(exe, home, manifest):
     """The `_cursor` of the message in the middle of the biggest group, as `exe` gives it (None if it does not)."""
     big = manifest["conversations"][0]
-    proc = subprocess.run([exe, "--json", "chat", "messages", big["username"], "--limit", "1",
-                           "--offset", str(big["messages"] // 2)], env=environment(home), capture_output=True,
-                          stdin=subprocess.DEVNULL)
+    proc = subprocess.run([exe, "chat", "messages", big["username"], "--limit", "1",
+                           "--offset", str(big["messages"] // 2), "--json"],
+                          env=environment(home), capture_output=True, stdin=subprocess.DEVNULL)
     try:
         return json.loads(proc.stdout)["data"][0]["_cursor"]
     except (ValueError, LookupError, TypeError):
@@ -299,7 +299,7 @@ def count_allocations(exe, home, argv, out_dir, log):
     shutil.rmtree(out_dir, ignore_errors=True)
     os.makedirs(out_dir)
     report = log + ".alloc.json"
-    proc = subprocess.run([exe, "--json", *argv], env=dict(environment(home), WEFLOW_ALLOC_STATS=report),
+    proc = subprocess.run([exe, *argv, "--json"], env=dict(environment(home), WEFLOW_ALLOC_STATS=report),
                           capture_output=True, stdin=subprocess.DEVNULL)
     with open(log, "wb") as f:
         f.write(proc.stdout + b"\n--- stderr ---\n" + proc.stderr)
@@ -317,7 +317,8 @@ def run_command(exe, home, args, out_dir, log):
     os.makedirs(out_dir)
     job = Job()
     begin = time.perf_counter()
-    proc = job.start([exe, "--json", "--progress", *args], env=environment(home), stdin=subprocess.DEVNULL,
+    # the options go after the command, the one place every release takes them (v4.0.0 refused them before it)
+    proc = job.start([exe, *args, "--json", "--progress"], env=environment(home), stdin=subprocess.DEVNULL,
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     sampler = Sampler(proc.pid, begin)
     sampler.start()
@@ -441,7 +442,7 @@ def bench_commands(args, exes, alloc_exes, homes, manifest, out):
 def start_server(job, exe, home, log):
     # a refused argument is answered on stdout: keep it for the error below
     stdout = open(log + ".stdout", "w+b")
-    proc = job.start([exe, "--json", "serve", "--port", "0", "--api-token", TOKEN, "--api-only"],
+    proc = job.start([exe, "serve", "--port", "0", "--api-token", TOKEN, "--api-only", "--json"],
                      env=environment(home), stdin=subprocess.DEVNULL, stdout=stdout, stderr=subprocess.PIPE)
     begin = time.perf_counter()
     lines = []
@@ -787,6 +788,15 @@ def highlights(doc):
     out.append(f"二进制体积：{fmt(b, MIB, 'MiB')} → {fmt(h, MIB, 'MiB')}（{ratio(h, b):.2f}×）")
     commands = doc.get("commands") or {}
     if commands:
+        failed = {v: [n for n, e in commands.items() if e["median"][v]["failed_runs"]] for v in VERSIONS}
+        for v in VERSIONS:
+            if len(failed[v]) == len(commands):
+                out.append(f"{v} 的命令全部运行失败，见报告")
+            elif failed[v]:
+                out.append(f"{v} 有运行失败的命令：" + "，".join(f"`{n}`" for n in failed[v]))
+        # a failed run ends early: only the commands that ran through on both sides are compared
+        commands = {n: e for n, e in commands.items() if all(n not in failed[v] for v in VERSIONS)}
+    if commands:
         changed = []
         for name, e in commands.items():
             mb, mh = e["median"]["base"].get("wall_ms"), e["median"]["head"].get("wall_ms")
@@ -802,9 +812,6 @@ def highlights(doc):
             out.append(f"命令耗时有变化：{'；'.join(changed)}；其余 {len(commands) - len(changed)} 条在噪声范围内")
         else:
             out.append(f"命令耗时：{len(commands)} 条命令都在噪声范围内")
-        failed = [n for n, e in commands.items() if any(e["median"][v]["failed_runs"] for v in VERSIONS)]
-        if failed:
-            out.append("有运行失败的命令：" + "，".join(f"`{n}`" for n in failed))
     if doc.get("load_failed"):
         out.append("`weflow serve` 持续负载没有完成，见报告")
     elif doc.get("load"):
