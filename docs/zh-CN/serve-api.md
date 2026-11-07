@@ -26,6 +26,8 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 | `--web-version` | 只在本次运行中显示这个网页版本，需要时先下载（见[网页的版本](#网页的版本)） |
 | `--api-only` | 只提供 API，不提供网页 |
 
+这些选项也可以保存在配置文件里（#406），命令行没有给出时使用：`weflow config set serve_port 8080`，同样有 `serve_host`、`serve_max_tasks`、`serve_max_reads`、`serve_max_media`，以及开关 `serve_log_requests`、`serve_insight`、`serve_image_auto_download`（`true` 等于加上对应的选项）和 `serve_open_browser`（`false` 等于 `--no-browser`）。命令行只能在一次运行里打开保存的开关，不能关掉，要关掉就 `config unset`。它们属于配置文件本身，不属于某个档案，在 `serve` 启动时生效；网页的设置里也可以修改。
+
 启动提示（stderr 上的事件；加 `--json` 时为一行 JSON）会显示地址。默认端口低于 49152，不在 Windows 的动态端口范围内。Hyper-V、WSL 2、Docker 会在这个范围里成段保留端口，被保留的端口任何程序都无法绑定。绑定回环以外的地址时会给出警告：持有令牌的人可以在这台机器上运行任何 `weflow` 命令，使用服务端的文件系统和配置。
 
 ## 网页

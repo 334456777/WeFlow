@@ -26,6 +26,8 @@ weflow serve --ui-dir web/dist     # with the WebUI at http://127.0.0.1:18108/ui
 | `--web-version` | Show this WebUI version for this run, downloaded first when needed (see [Versions of the WebUI](#versions-of-the-webui)) |
 | `--api-only` | Serve the API alone, without the WebUI |
 
+The options can be saved in the config file instead (#406), each used when the command line does not give it: `weflow config set serve_port 8080`, likewise `serve_host`, `serve_max_tasks`, `serve_max_reads`, `serve_max_media`, and the switches `serve_log_requests`, `serve_insight`, `serve_image_auto_download` (`true` turns on what the flag turns on) and `serve_open_browser` (`false` is `--no-browser`). A flag can turn a saved switch on for a run but not off: `config unset` it. They are settings of the config file, not of a profile, and apply when `serve` starts; the WebUI's settings change them too.
+
 The startup message (an event on stderr; a JSON line with `--json`) shows the address. The default port lies below 49152, outside the range Windows hands out to programs and from which Hyper-V, WSL 2 and Docker reserve blocks of ports that no one can bind. Binding an address other than loopback prints a warning: anyone with the token can run any `weflow` command on this machine, with the server's file system and configuration.
 
 ## WebUI

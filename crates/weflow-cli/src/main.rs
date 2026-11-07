@@ -268,7 +268,7 @@ enum ConfigSubcommand {
     /// Set a key
     Set {
         #[arg(
-            help = "Key name; `<profile>.<key>` (for example `work.wxid`) sets a key of another profile\n  db_path                  WeChat data directory (`db detect` finds it)\n  wxid                     Account wxid (`db wxid` prints it)\n  decrypt_key              Database key in hex (`key db` prints it)\n  image_xor_key            Image XOR key, a number (`key image` prints it)\n  image_aes_key            Image AES key (`key image` prints it)\n  cache_path               Folder for cached images, voices, stickers and Moments (default: `cache` next to the config file)\n  http_api_token           Access token of the HTTP API (`serve`)\n  ai_model_api_base_url    Base URL of the AI model API used by `insight`\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears (default 5; 0 = always)\nSettings of the config file itself (stored in that file, not in a profile; each config file has its own):\n  lang                     Output language, en or zh (the same as `weflow lang`)\n  current_profile          Active profile name, created when it does not exist (default: default)\nWhich config file is used (kept next to the default location, not in any config file):\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
+            help = "Key name; `<profile>.<key>` (for example `work.wxid`) sets a key of another profile\n  db_path                  WeChat data directory (`db detect` finds it)\n  wxid                     Account wxid (`db wxid` prints it)\n  decrypt_key              Database key in hex (`key db` prints it)\n  image_xor_key            Image XOR key, a number (`key image` prints it)\n  image_aes_key            Image AES key (`key image` prints it)\n  cache_path               Folder for cached images, voices, stickers and Moments (default: `cache` next to the config file)\n  http_api_token           Access token of the HTTP API (`serve`)\n  ai_model_api_base_url    Base URL of the AI model API used by `insight`\n  ai_model_api_key         API key of the AI model API\n  ai_model_api_model       Model name\n  ai_model_api_max_tokens  Most tokens in one AI reply\n  ai_insight_enabled       true or false: turn AI insight on or off\n  no_progress              true or false: true hides the automatic progress bar\n  progress_delay_seconds   Seconds a command runs before the progress bar appears (default 5; 0 = always)\nSettings of the config file itself (stored in that file, not in a profile; each config file has its own):\n  lang                     Output language, en or zh (the same as `weflow lang`)\n  current_profile          Active profile name, created when it does not exist (default: default)\nOptions of `serve`, used when its command line does not give them:\n  serve_host               Listen address (as --host)\n  serve_port               Listen port (as --port)\n  serve_max_tasks          Tasks run at once (as --max-tasks)\n  serve_max_reads          Other commands run at once (as --max-reads)\n  serve_max_media          Images and voices decoded at once (as --max-media)\n  serve_log_requests       true or false: true logs each request (as --log-requests)\n  serve_insight            true or false: true runs the AI insight engine (as --insight)\n  serve_image_auto_download  true or false: true runs the image auto-download hook (as --image-auto-download)\n  serve_open_browser       true or false: false does not open the WebUI at the start (as --no-browser)\nWhich config file is used (kept next to the default location, not in any config file):\n  config_path              Config file used from now on; `config unset config_path` or the default path switches back"
         )]
         key: String,
         /// Value to store
@@ -1401,6 +1401,23 @@ struct ServeCommand {
     /// Serve the API alone, without the WebUI
     #[arg(long, conflicts_with_all = ["ui_dir", "web_version", "no_browser"])]
     api_only: bool,
+}
+
+impl ServeCommand {
+    /// These options, with those the command line does not give taken from the config file (#406): a saved switch
+    /// turns on what its flag turns on.
+    fn or_saved(mut self, saved: &weflow_core::config::ServeSettings) -> Self {
+        self.host = self.host.or_else(|| saved.host.clone());
+        self.port = self.port.or(saved.port);
+        self.max_tasks = self.max_tasks.or(saved.max_tasks);
+        self.max_reads = self.max_reads.or(saved.max_reads);
+        self.max_media = self.max_media.or(saved.max_media);
+        self.log_requests |= saved.log_requests == Some(true);
+        self.insight |= saved.insight == Some(true);
+        self.image_auto_download |= saved.image_auto_download == Some(true);
+        self.no_browser |= saved.open_browser == Some(false);
+        self
+    }
 }
 
 #[derive(Args, Debug)]
@@ -3572,6 +3589,7 @@ fn open_in_browser(url: &str) {
 /// auto-download services.
 async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Value> {
     use weflow_core::sync::RwLockExt;
+    let command = command.or_saved(hub.serve_settings());
     let (ui, fetch) = serve_webui(&command, hub).await?;
     let ui = std::sync::Arc::new(std::sync::RwLock::new(ui));
 

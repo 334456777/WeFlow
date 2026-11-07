@@ -8101,6 +8101,21 @@
             "description": "Output language chosen with `weflow lang en|zh` (`None` = follow the system).",
             "default": null
           },
+          "serve": {
+            "$ref": "#/components/schemas/ServeSettings",
+            "description": "Options of `weflow serve` saved here (`serve_*` keys), used where its command line gives none.",
+            "default": {
+              "host": null,
+              "port": null,
+              "max_tasks": null,
+              "max_reads": null,
+              "max_media": null,
+              "log_requests": null,
+              "insight": null,
+              "image_auto_download": null,
+              "open_browser": null
+            }
+          },
           "profiles": {
             "type": "object",
             "additionalProperties": {
@@ -8133,10 +8148,112 @@
         "required": [
           "current_profile",
           "lang",
+          "serve",
           "profiles",
           "extra"
         ],
         "description": "WeFlow's config file (`config list`): the profiles and the settings shared by all of them."
+      },
+      "ServeSettings": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Listen address (`--host`).",
+            "default": null
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Listen port (`--port`).",
+            "default": null
+          },
+          "max_tasks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Tasks run at once (`--max-tasks`).",
+            "default": null
+          },
+          "max_reads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Other commands run at once (`--max-reads`).",
+            "default": null
+          },
+          "max_media": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Images and voices decoded at once (`--max-media`).",
+            "default": null
+          },
+          "log_requests": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`--log-requests`.",
+            "default": null
+          },
+          "insight": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`--insight`.",
+            "default": null
+          },
+          "image_auto_download": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`--image-auto-download`.",
+            "default": null
+          },
+          "open_browser": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to open the WebUI in the browser at the start; `false` is `--no-browser`.",
+            "default": null
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "max_tasks",
+          "max_reads",
+          "max_media",
+          "log_requests",
+          "insight",
+          "image_auto_download",
+          "open_browser"
+        ],
+        "description": "Options of `weflow serve` saved in the config file (#406), each used when the command line does not give it; the\nswitches turn on what their flag turns on, and `None` leaves the default."
       },
       "ProfileConfig": {
         "type": "object",
