@@ -754,7 +754,10 @@ def report_blocks(doc):
                      "。非 0 表示它在自己的合成账号上有检查没通过（旧版本缺少某个路由时会这样），"
                      "计时照常保留，原因见 `logs/serve-bench-*.txt`。")
                   + "某一边不是每次都返回 200 时（例如旧版本还没有这个 `/api/` 路由，返回 404 只要零点几毫秒），"
-                    "格子里注明返回的状态，不计算比值。"),
+                    "格子里注明返回的状态，不计算比值。"
+                  + "".join(f"{v} 没有计时结果：它的 `weflow serve` 没有启动（v5.0.0 之前的版本没有现在的命令 API），"
+                            f"见 `logs/serve-bench-{v}.txt`。"
+                            for v in VERSIONS if not sb[v]["results"])),
         ]
         rb = (sb["base"]["results"] or {}).get("results", {})
         rh = (sb["head"]["results"] or {}).get("results", {})
@@ -772,7 +775,8 @@ def report_blocks(doc):
             cells = [fmt(b) + (f"（状态 {sb_}）" if sb_ else ""), fmt(h) + (f"（状态 {sh}）" if sh else "")]
             r = "-" if sb_ or sh else fmt_ratio(ratio(h, b), None if None in (b, h) else h - b, NOISE_MS)
             rows.append([f"`{route}`", *cells, r])
-        blocks.append(("table", ["路由", "base", "head", RATIO_HEADER], rows))
+        if rows:
+            blocks.append(("table", ["路由", "base", "head", RATIO_HEADER], rows))
     return blocks
 
 
@@ -817,16 +821,22 @@ def highlights(doc):
     if sb:
         rb = (sb["base"]["results"] or {}).get("results", {})
         rh = (sb["head"]["results"] or {}).get("results", {})
-        ups = downs = 0
+        ups = downs = compared = 0
         for route in set(rb) & set(rh):
             notes = (rb[route].get("note") or "") + (rh[route].get("note") or "")
             mb, mh = rb[route].get("median"), rh[route].get("median")
             if "status {" in notes or None in (mb, mh):
                 continue
+            compared += 1
             m = mark(ratio(mh, mb), mh - mb, NOISE_MS)
             ups, downs = ups + (m == "▲"), downs + (m == "▼")
-        out.append(f"serve_bench：{downs} 个路由快了 10% 以上，{ups} 个慢了 10% 以上" if ups or downs
-                   else "serve_bench：各路由都在噪声范围内")
+        if not compared:
+            # an older base whose server never started (or answers none of these routes) leaves nothing to compare
+            out.append("serve_bench：没有两边都能计时的路由，见报告")
+        elif ups or downs:
+            out.append(f"serve_bench：{downs} 个路由快了 10% 以上，{ups} 个慢了 10% 以上")
+        else:
+            out.append(f"serve_bench：{compared} 个路由都在噪声范围内")
     return out
 
 
