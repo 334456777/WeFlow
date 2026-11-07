@@ -14,8 +14,9 @@ name: Bench
 #
 # The runner is a machine of the repository's owner, so this workflow runs only when the owner starts it (or a release
 # they started calls it), never for a pull request; no other workflow uses the `weflow-bench` label. The runner needs
-# `WEFLOW_BENCH_DIR` in its `.env`: its own folder for the accounts, the binaries, the clone the commits are built in
-# and the build cache; Rust is installed there by the first run.
+# `WEFLOW_BENCH_DIR` in its `.env`: its own folder, kept between runs so that nothing a run before set up is
+# installed, downloaded or written again (Rust, the build cache, the account, the anchor's binary), and cleaned after
+# each run of what the next one will not use (`.github/scripts/bench-runner.sh`).
 on:
   workflow_dispatch:
     inputs:
@@ -104,63 +105,23 @@ jobs:
     if: github.actor == github.repository_owner
     runs-on: [self-hosted, Windows, X64, weflow-bench]
     timeout-minutes: 720
-    # Git's sh (its bash): `bash` would be the WSL launcher in System32, which comes first on the machine's PATH, and a
-    # shell cannot be given by its full path; System32 has no sh
-    defaults:
-      run:
-        shell: sh -e -o pipefail {0}
+    # The steps run .github/scripts/bench-runner.sh through cmd with Git's bash by its full path: the runner finds a
+    # `shell: bash` on its own PATH, where System32's WSL launcher comes first.
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Prepare the runner
-        run: |
-          : "${WEFLOW_BENCH_DIR:?the runner has no WEFLOW_BENCH_DIR in its .env}"
-          dir=$(cygpath -m "$WEFLOW_BENCH_DIR")
-          {
-            echo "BENCH_DIR=$dir"
-            echo "CARGO_HOME=$dir/cargo"
-            echo "RUSTUP_HOME=$dir/rustup"
-            echo "CARGO_TARGET_DIR=$dir/target"
-          } >> "$GITHUB_ENV"
-          echo "$dir/cargo/bin" >> "$GITHUB_PATH"
-          if [ ! -x "$dir/cargo/bin/rustup.exe" ]; then
-            curl -sSfLo "$RUNNER_TEMP/rustup-init.exe" https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
-            CARGO_HOME="$dir/cargo" RUSTUP_HOME="$dir/rustup" "$RUNNER_TEMP/rustup-init.exe" -y --no-modify-path \
-              --default-toolchain none --profile minimal
-          fi
-
-      - uses: actions/setup-python@v6
+      # found in the runner's tool cache after the first run; only makes the venv of bench-runner.sh, once
+      - id: python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
-      # a venv of the runner's own, made once: psutil is not installed again on every run
-      - name: Python packages
-        run: |
-          venv="$BENCH_DIR/venv-psutil-7.2.2"
-          if [ ! -x "$venv/Scripts/python.exe" ]; then
-            python -m venv "$venv"
-            "$venv/Scripts/python.exe" -m pip install --quiet psutil==7.2.2
-          fi
-          echo "$venv/Scripts" >> "$GITHUB_PATH"
-
-      - name: Build the tools
-        run: |
-          rustup show active-toolchain || rustup toolchain install
-          rustup target add "$TARGET"
-          cargo build --release -p weflow-cli --target "$TARGET" --bin weflow --example bench_account --example serve_bench
-          mkdir -p tools
-          cp "$CARGO_TARGET_DIR/$TARGET/release/weflow.exe" "$CARGO_TARGET_DIR/$TARGET/release/examples/bench_account.exe" \
-            "$CARGO_TARGET_DIR/$TARGET/release/examples/serve_bench.exe" tools/
-
-      - name: Read what gh-pages holds
-        run: |
-          git fetch -q origin gh-pages
-          git show origin/gh-pages:bench/data/index.json > index.json 2>/dev/null || rm -f index.json
-
-      - name: Measure
+      - name: Build and measure
+        shell: cmd
         env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
           COMMITS: ${{ inputs.commits }}
           RUNS: ${{ inputs.runs }}
           SEED: ${{ inputs.seed || '1' }}
@@ -168,11 +129,8 @@ jobs:
           CONVERSATIONS: ${{ inputs.conversations || '300' }}
           LOAD_SECONDS: ${{ inputs.load_seconds }}
           ONLY: ${{ inputs.only }}
-          FORCE: ${{ inputs.force && '--force' || '' }}
-        run: |
-          python .github/scripts/bench-commits.py --commits "$COMMITS" --bench-dir "$BENCH_DIR" --tools tools \
-            --index index.json --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" --only "$ONLY" \
-            --seed "$SEED" --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS" $FORCE
+          FORCE: ${{ inputs.force && '1' || '' }}
+        run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh measure'
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -180,6 +138,12 @@ jobs:
           name: bench-results
           path: results/
           retention-days: 30
+
+      # what the next run will not use
+      - name: Clean up
+        if: always()
+        shell: cmd
+        run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh clean'
 
   # The results into the gh-pages branch with the viewer (bench-publish.py); with two commits, their comparison on
   # the run's page, and with `release_tag` the 性能基准 section of that release's notes.

@@ -35,8 +35,8 @@ ACCOUNT_PATHS = ("crates/weflow-native/src/fixture", "crates/weflow-native/src/f
                  "crates/weflow-native/src/sqlcipher", "crates/weflow-cli/examples/bench_account.rs")
 # what measures, besides: their versions together name the tools of an environment
 TOOL_PATHS = (*ACCOUNT_PATHS, ".github/scripts/bench.py", "crates/weflow-cli/examples/serve_bench.rs")
-# commit binaries kept besides the anchor's, the newest first
-KEEP_BINARIES = 30
+# the account a run uses when it is given no size
+DEFAULT_SIZE = "s1-g200000-c300"
 
 
 def git(*args, cwd=None):
@@ -89,13 +89,18 @@ def build(sha, bench_dir):
     return exe, alloc if has_alloc else None
 
 
-def prune_binaries(bench_dir, anchor):
+def clean_up(bench_dir, anchors, account):
+    """What the next run will not use: the binaries but the anchors' (a commit measured is not measured again), and
+    the accounts but this run's and the one of the default size, both of the generator of this run."""
     root = os.path.join(bench_dir, "bin")
-    if not os.path.isdir(root):
-        return
-    kept = sorted((d for d in os.listdir(root) if d != anchor), key=lambda d: -os.path.getmtime(os.path.join(root, d)))
-    for d in kept[KEEP_BINARIES:]:
-        shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+    for d in os.listdir(root) if os.path.isdir(root) else []:
+        if d not in anchors:
+            shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+    root, used = os.path.split(account)
+    generator = used.split("-")[0]
+    for d in os.listdir(root):
+        if d not in (used, f"{generator}-{DEFAULT_SIZE}"):
+            shutil.rmtree(os.path.join(root, d), ignore_errors=True)
 
 
 def main():
@@ -126,10 +131,6 @@ def main():
     subprocess.run([os.path.join(tools, "bench_account.exe"), account, "--weflow", os.path.join(tools, "weflow.exe"),
                     "--seed", str(args.seed), "--group-messages", str(args.group_messages),
                     "--conversations", str(args.conversations)], check=True, stdout=subprocess.DEVNULL)
-    accounts = os.path.join(bench_dir, "accounts")
-    for old in os.listdir(accounts):
-        if not old.startswith(generator):
-            shutil.rmtree(os.path.join(accounts, old), ignore_errors=True)
     env = bench.environment_of(account, tid, args.load_seconds, args.load_workers)
     key = env["key"]
     print(f"environment {key}: {json.dumps(env, ensure_ascii=False)}", flush=True)
@@ -175,7 +176,7 @@ def main():
             argv += ["--only", args.only]
         print(f"== measure {c['ref']} ({c['sha'][:10]})", flush=True)
         subprocess.run(argv, check=True)
-    prune_binaries(bench_dir, anchor)
+    clean_up(bench_dir, {anchor} | {e.get("anchor") for e in index.get("envs", {}).values()}, account)
     with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
         json.dump({"env": env, "anchor": anchor, "commits": commits}, f, ensure_ascii=False, indent=1)
 
