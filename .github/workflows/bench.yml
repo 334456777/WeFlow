@@ -104,18 +104,17 @@ jobs:
     if: github.actor == github.repository_owner
     runs-on: [self-hosted, Windows, X64, weflow-bench]
     timeout-minutes: 720
+    # Git's bash by its full path: `bash` would be the WSL launcher in System32, which comes first on the machine's PATH
+    # (the short name of Program Files, since the shell's path cannot hold a space)
+    defaults:
+      run:
+        shell: C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}
     steps:
-      # `bash` is Git's, not the WSL launcher in System32 that comes first on the machine's PATH
-      - name: Put Git's bash first
-        shell: cmd
-        run: '>>"%GITHUB_PATH%" echo C:\Program Files\Git\bin'
-
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Prepare the runner
-        shell: bash
         run: |
           : "${WEFLOW_BENCH_DIR:?the runner has no WEFLOW_BENCH_DIR in its .env}"
           dir=$(cygpath -m "$WEFLOW_BENCH_DIR")
@@ -137,11 +136,9 @@ jobs:
           python-version: "3.13"
 
       - name: Install psutil
-        shell: bash
         run: python -m pip install --quiet psutil==7.2.2
 
       - name: Build the tools
-        shell: bash
         run: |
           rustup show active-toolchain || rustup toolchain install
           rustup target add "$TARGET"
@@ -151,13 +148,11 @@ jobs:
             "$CARGO_TARGET_DIR/$TARGET/release/examples/serve_bench.exe" tools/
 
       - name: Read what gh-pages holds
-        shell: bash
         run: |
           git fetch -q origin gh-pages
           git show origin/gh-pages:bench/data/index.json > index.json 2>/dev/null || rm -f index.json
 
       - name: Measure
-        shell: bash
         env:
           COMMITS: ${{ inputs.commits }}
           RUNS: ${{ inputs.runs }}
