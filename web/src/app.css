@@ -998,6 +998,12 @@ button.calendar-title:hover { box-shadow: var(--neu-pressed); }
 .cache-list .account-copy strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
 .cache-text { color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-xs); }
 .cache-size { flex-shrink: 0; margin-left: auto; color: var(--fg-muted); font-size: var(--text-xs); }
+/* the WebUI versions (#406): the version in use beside the heading, the actions under the list */
+.web-versions-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.web-versions-head h2 { margin: 0; }
+.web-versions-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.web-versions-more { margin-top: var(--space-1); }
+.cache-list > li > .secondary-button { margin-left: auto; }
 .account .skeleton.line { height: 10px; }
 /* as tall as a row of an account: its name, wxid and folder */
 .accounts[aria-busy] .account-copy { gap: 9px; padding: 4px 0; }

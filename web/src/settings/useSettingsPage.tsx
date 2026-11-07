@@ -15,6 +15,7 @@ import { Accounts, AccountsSkeleton } from './Accounts';
 import { AdvancedTools } from './AdvancedTools';
 import { CommandConsole } from './CommandConsole';
 import { AiSetting, CacheSetting } from './MoreSettings';
+import { WebVersions } from './WebVersions';
 import type { ProfilesState } from './useProfiles';
 import { msg, t } from '../i18n';
 
@@ -70,7 +71,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
         <p>weflow {backend.health.version} · API {backend.health.apiVersion}</p>
         {backend.state === 'incompatible' && <p className="setting-warning">{backend.reason}。{backend.advice}</p>}
       </div><span className={'source-name' + (backend.state === 'incompatible' ? ' warning' : '')}>{backend.state === 'incompatible' ? t('不适用于这个网页') : t('适用于这个网页')}</span></div>}
-      <div className="setting-row"><div><h2>{t('网页版本')}</h2><p>{t('需要 API {apiVersion}，weflow {minBackendVersion} 或更新的版本。', { apiVersion: WEB.apiVersion, minBackendVersion: WEB.minBackendVersion })}</p></div><span className="source-name"><Plugs size={14} />{WEB.version}</span></div>
+      {connected && 'health' in backend ? <WebVersions health={backend.health} /> : <div className="setting-row"><div><h2>{t('网页版本')}</h2><p>{t('需要 API {apiVersion}，weflow {minBackendVersion} 或更新的版本。', { apiVersion: WEB.apiVersion, minBackendVersion: WEB.minBackendVersion })}</p></div><span className="source-name"><Plugs size={14} />{WEB.version}</span></div>}
       <div className="setting-row setting-token"><div><h2>{t('令牌')}</h2>
         <p>{tokenSaved
           ? t('这个标签页保存了令牌，关闭后清除。需要更换时在这里粘贴，只保存在这个标签页里。')
