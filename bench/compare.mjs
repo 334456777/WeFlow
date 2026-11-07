@@ -130,7 +130,7 @@ function sideLine(r, side) {
   const commit = (r.commit ?? '').slice(0, 10);
   const named = r.ref && !commit.startsWith(r.ref) ? `\`${r.ref}\`（\`${commit}\`）` : `\`${commit || r.ref}\``;
   const version = (r.version || '版本未知').split(' (')[0];
-  return `${side}：${named}，${version}，测于 ${r.measured_at ?? '-'}`;
+  return `${side}：${named}，${version}，测于 ${r.measured_at ?? '-'}${r.os ? `，${r.os}` : ''}`;
 }
 
 function quietText(q) {
@@ -157,8 +157,9 @@ export function reportBlocks(base, head) {
       ul: [
         sideLine(base, 'base'),
         sideLine(head, 'head'),
-        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 个逻辑 CPU，${m.memory_gib} GiB 内存，${m.os}；测量工具 \`${String(env.tools).slice(0, 12)}\``,
-        `基准账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话（manifest \`${acc.manifest}\`）`,
+        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 个逻辑 CPU，${m.memory_gib} GiB 内存；测法版本 ${env.method}`,
+        `基准账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话（manifest \`${acc.manifest}\`，`
+          + (acc.profile ? `profile \`${acc.profile.hash}\`，测于 ${acc.profile.measured}）` : '默认 profile）'),
         `两个提交分开测量，各自先运行一次不计时，再和锚点 \`${(head.anchor?.commit ?? '').slice(0, 10)}\` 交替各运行 ${base.runs}／${head.runs} 次，取成功运行的中位数`,
         `比值是 head / base：▲ 表示增加超过 10%，▼ 表示减少超过 10%；差值小于噪声下限时不标（耗时 20 ms，CPU 50 ms，内存 5 MiB，路由延迟 5 ms）。除了吞吐量和每秒请求数，其余指标都是越低越好`,
       ],
@@ -174,7 +175,11 @@ export function reportBlocks(base, head) {
           : Math.abs(drift - 1) > DRIFT_LIMIT ? `**锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%**，超过 ${DRIFT_LIMIT * 100}%，下面的比值要打折扣看；耗时表的「校正后」一列除掉了每条命令的锚点漂移。`
             : `锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%，在 ${DRIFT_LIMIT * 100}% 以内。`),
     },
-    { ul: [`base 测量时：${quietText(base.quiet)}`, `head 测量时：${quietText(head.quiet)}`] },
+    {
+      ul: [`base 测量时：${quietText(base.quiet)}`, `head 测量时：${quietText(head.quiet)}`,
+        ...(base.os && head.os && base.os !== head.os
+          ? [`两次测量的 Windows 版本不同（${base.os} → ${head.os}）：系统更新带来的变化算在锚点漂移里`] : [])],
+    },
   ];
   const dr = driftRows(base, head);
   if (dr.length) {
@@ -198,16 +203,23 @@ export function reportBlocks(base, head) {
     if (k) failed.push(`\`${n}\`（${side} ${k} 次）`);
   }
   if (failed.length) blocks.push({ p: '**有运行失败**（不计入中位数）：' + failed.join('，') });
+  const notYet = [['base', base], ['head', head]]
+    .map(([side, r]) => [side, names.filter(n => r.commands[n].unsupported)])
+    .filter(([, list]) => list.length);
+  if (notYet.length) {
+    blocks.push({ p: '这个版本还没有的命令（命令行不认识这条命令、选项或取值，不算失败，也不比较）：'
+      + notYet.map(([side, list]) => `${side}：${list.map(n => `\`${n}\``).join('，')}`).join('；') });
+  }
   for (const [key, label, unit, scale, note] of METRICS) {
     const rows = [];
     for (const n of names) {
       const eb = base.commands[n], eh = head.commands[n];
       const b = eb.median?.[key] ?? null, h = eh.median?.[key] ?? null;
-      if (b === null && h === null) continue;
-      const cells = [fmt(b, scale), fmt(h, scale)];
+      if ((b === null && h === null) || (eb.unsupported && eh.unsupported)) continue;
+      const cells = [eb.unsupported ? '还没有' : fmt(b, scale), eh.unsupported ? '还没有' : fmt(h, scale)];
       let ratioCell = fmtRatio(ratio(h, b), diff(h, b), NOISE[key] ?? 0);
       if (key === 'wall_ms') {
-        const sb = spans(eb), sh = spans(eh);
+        const sb = eb.unsupported ? null : spans(eb), sh = eh.unsupported ? null : spans(eh);
         if (sb) cells[0] += `（${fmt(sb[0])}–${fmt(sb[1])}）`;
         if (sh) cells[1] += `（${fmt(sh[0])}–${fmt(sh[1])}）`;
         // a ratio past 10 % whose ranges overlap is likely a command with two run times, not a change
@@ -322,7 +334,12 @@ export function highlights(base, head) {
     else if (f.length) out.push(`${side} 有运行失败的命令：` + f.map(n => `\`${n}\``).join('，'));
   }
   // a failed run ends early: only the commands that ran through on both sides are compared
-  names = names.filter(n => !base.commands[n].failed_runs && !head.commands[n].failed_runs);
+  for (const [side, r] of [['base', base], ['head', head]]) {
+    const missing = names.filter(n => r.commands[n].unsupported);
+    if (missing.length) out.push(`${side} 还没有 ${missing.length} 条命令（不比较）：` + missing.map(n => `\`${n}\``).join('，'));
+  }
+  names = names.filter(n => !base.commands[n].failed_runs && !head.commands[n].failed_runs
+    && !base.commands[n].unsupported && !head.commands[n].unsupported);
   if (names.length) {
     const changed = [], drifted = [];
     for (const n of names) {
