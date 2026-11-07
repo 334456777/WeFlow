@@ -10,7 +10,7 @@ import { Popover } from '../Popover';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 import { Failed, Heatmap, Moment, Phrases } from './AnnualReport';
-import { locale } from '../i18n';
+import { locale, t } from '../i18n';
 
 /** Up to this many people are listed; the rest are found by name. */
 const LISTED = 50;
@@ -40,25 +40,25 @@ export function FriendPicker({ selected, onSelect }: { selected: Friend | null; 
   return <>
     <button ref={anchor} type="button" className="group-picker" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setAsked(true); setOpen(!open); }}>
       {selected ? <Avatar name={selected.displayName} url={selected.avatarUrl} /> : <span className="avatar avatar-initial" aria-hidden="true"><UserCircle size={20} /></span>}
-      <span className="rank-copy"><strong className="clamp-1">{selected?.displayName ?? '选择一位好友'}</strong>
-        <span className="cache-text">{selected ? '点这里换一位' : '和 TA 的聊天会生成一份双人报告'}</span></span>
+      <span className="rank-copy"><strong className="clamp-1">{selected?.displayName ?? t('选择一位好友')}</strong>
+        <span className="cache-text">{selected ? t('点这里换一位') : t('和 TA 的聊天会生成一份双人报告')}</span></span>
       <CaretDown size={14} aria-hidden="true" />
     </button>
-    <Popover anchor={anchor} open={open} onClose={reason => close(reason === 'escape')} label="选择好友" className="group-popover">
+    <Popover anchor={anchor} open={open} onClose={reason => close(reason === 'escape')} label={t('选择好友')} className="group-popover">
       <label className="token-input"><MagnifyingGlass size={14} aria-hidden="true" />
-        <input type="search" autoFocus aria-label="搜索好友" placeholder="搜索名字或微信号" value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
+        <input type="search" autoFocus aria-label={t('搜索好友')} placeholder={t('搜索名字或微信号')} value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
       {people.status === 'error'
-        ? <><p className="card-note setting-warning" role="alert">{people.message}</p><button type="button" className="secondary-button" onClick={retry}>重试</button></>
-        : people.status === 'loading' ? <ListSkeleton label="正在读取私聊" rows={4} />
-          : <div className="group-options" role="listbox" data-roving="vertical" data-roving-items="[role=option]" aria-label="好友">
+        ? <><p className="card-note setting-warning" role="alert">{people.message}</p><button type="button" className="secondary-button" onClick={retry}>{t('重试')}</button></>
+        : people.status === 'loading' ? <ListSkeleton label={t('正在读取私聊')} rows={4} />
+          : <div className="group-options" role="listbox" data-roving="vertical" data-roving-items="[role=option]" aria-label={t('好友')}>
             {found.slice(0, LISTED).map(p => <button type="button" key={p.username} role="option" aria-selected={p.username === selected?.username}
               className={'conversation-row' + (p.username === selected?.username ? ' active' : '')} onClick={() => { onSelect(p); close(true); }}>
               <Avatar name={p.displayName} url={p.avatarUrl} />
               <span className="conversation-copy"><span className="conversation-name clamp-1">{p.displayName}</span></span>
             </button>)}
-            {!found.length && <p className="card-note">没有找到。</p>}
+            {!found.length && <p className="card-note">{t('没有找到。')}</p>}
           </div>}
-      {found.length > LISTED && <p className="card-note">还有 {n(found.length - LISTED)} 位，搜索名字找到 TA。</p>}
+      {found.length > LISTED && <p className="card-note">{t('还有 {n} 位，搜索名字找到 TA。', { n: n(found.length - LISTED) })}</p>}
     </Popover>
   </>;
 }
@@ -77,57 +77,59 @@ function Exchange({ label, messages, me, friend }: { label: string; messages: Du
 
 export function DualReportView({ report }: { report: DualReport }) {
   const r = report;
-  const span = r.year ? r.year + ' 年' : '这些年';
-  const me = r.selfName || '我';
+  const span = r.year ? t('{year} 年', { year: r.year }) : t('这些年');
+  const me = r.selfName || t('我');
   const firsts = r.firstChatMessages?.length ? r.firstChatMessages : r.firstChat ? [r.firstChat] : [];
   const yearFirsts = r.year && r.yearFirstChat ? (r.yearFirstChat.firstThreeMessages.length ? r.yearFirstChat.firstThreeMessages : [r.yearFirstChat]) : [];
   const months = r.monthly ? monthBars({ hourlyDistribution: {}, weekdayDistribution: {}, monthlyDistribution: r.monthly }) : [];
   const opened = r.initiative ? r.initiative.initiated + r.initiative.received : 0;
-  return <article className="analytics-page report" aria-label={me + '和' + r.friendName + '的' + (r.year ? ' ' + r.year + ' 年' : '') + '双人报告'}>
-    <section className="report-hero" aria-label="总览">
+  return <article className="analytics-page report" aria-label={r.year ? t('{me}和{friend}的 {year} 年双人报告', { me, friend: r.friendName, year: r.year }) : t('{me}和{friend}的双人报告', { me, friend: r.friendName })}>
+    <section className="report-hero" aria-label={t('总览')}>
       <span className="report-pair"><Avatar name={me} url={r.selfAvatarUrl} /><Avatar name={r.friendName} url={r.friendAvatarUrl} /></span>
-      <span className="report-label">{span}，你和{r.friendName}聊了</span>
+      <span className="report-label">{t('{span}，你和{friendName}聊了', { span, friendName: r.friendName })}</span>
       <strong className="report-big num">{n(r.stats.totalMessages)}</strong>
-      <span className="report-note">条消息，写下 {n(r.stats.totalWords)} 个字，还有 {n(r.stats.imageCount)} 张图片、{n(r.stats.voiceCount)} 段语音和 {n(r.stats.emojiCount)} 个表情。</span>
+      <span className="report-note">{t('条消息，写下 {totalWords} 个字，还有 {imageCount} 张图片、{voiceCount} 段语音和 {emojiCount} 个表情。', { totalWords: n(r.stats.totalWords), imageCount: n(r.stats.imageCount), voiceCount: n(r.stats.voiceCount), emojiCount: n(r.stats.emojiCount) })}</span>
     </section>
 
-    {firsts.length > 0 && <section className="analytics-block" aria-label="第一次聊天">
-      <h2>第一次聊天 <small className="muted-num num">{when(firsts[0].createTime)}</small></h2>
-      <Exchange label="最早的几条消息" messages={firsts} me={me} friend={r.friendName} />
+    {firsts.length > 0 && <section className="analytics-block" aria-label={t('第一次聊天')}>
+      <h2>{t('第一次聊天')} <small className="muted-num num">{when(firsts[0].createTime)}</small></h2>
+      <Exchange label={t('最早的几条消息')} messages={firsts} me={me} friend={r.friendName} />
     </section>}
 
-    {yearFirsts.length > 0 && <section className="analytics-block" aria-label="今年的第一句">
-      <h2>{r.year} 年的第一句</h2>
-      <Exchange label={r.year + ' 年最早的几条消息'} messages={yearFirsts} me={me} friend={r.friendName} />
+    {yearFirsts.length > 0 && <section className="analytics-block" aria-label={t('今年的第一句')}>
+      <h2>{t('{year} 年的第一句', { year: r.year })}</h2>
+      <Exchange label={t('{year} 年最早的几条消息', { year: r.year })} messages={yearFirsts} me={me} friend={r.friendName} />
     </section>}
 
-    <section className="analytics-block" aria-label="值得记住的">
-      <h2>值得记住的</h2>
+    <section className="analytics-block" aria-label={t('值得记住的')}>
+      <h2>{t('值得记住的')}</h2>
       <ul className="report-moments">
-        {r.streak && r.streak.days > 0 && <Moment label="连续聊天最久" value={n(r.streak.days) + ' 天'}>{r.streak.startDate} 到 {r.streak.endDate}，每天都有消息。</Moment>}
-        {r.initiative && opened > 0 && <Moment label="由你开场" value={Math.round((r.initiative.initiated / opened) * 100) + '%'}>
-          {n(r.initiative.initiated)} 次对话由你开始，{n(r.initiative.received)} 次由 TA 开始。</Moment>}
-        {r.response && r.response.count > 0 && <Moment label="平均回复" value={formatWait(r.response.avg)}>
-          最快 {formatWait(r.response.fastest)}{r.response.slowest !== undefined && <>，最慢 {formatWait(r.response.slowest)}</>}，共 {n(r.response.count)} 次回复。</Moment>}
+        {r.streak && r.streak.days > 0 && <Moment label={t('连续聊天最久')} value={t('{n} 天', { n: n(r.streak.days) })}>{t('{startDate} 到 {endDate}，每天都有消息。', { startDate: r.streak.startDate, endDate: r.streak.endDate })}</Moment>}
+        {r.initiative && opened > 0 && <Moment label={t('由你开场')} value={Math.round((r.initiative.initiated / opened) * 100) + '%'}>
+          {t('{initiated} 次对话由你开始，{received} 次由 TA 开始。', { initiated: n(r.initiative.initiated), received: n(r.initiative.received) })}</Moment>}
+        {r.response && r.response.count > 0 && <Moment label={t('平均回复')} value={formatWait(r.response.avg)}>
+          {r.response.slowest !== undefined
+            ? t('最快 {fastest}，最慢 {slowest}，共 {n} 次回复。', { fastest: formatWait(r.response.fastest), slowest: formatWait(r.response.slowest), n: n(r.response.count) })
+            : t('最快 {fastest}，共 {n} 次回复。', { fastest: formatWait(r.response.fastest), n: n(r.response.count) })}</Moment>}
       </ul>
     </section>
 
-    {r.heatmap && <section className="analytics-block" aria-label="什么时候聊天">
-      <h2>什么时候聊天</h2>
+    {r.heatmap && <section className="analytics-block" aria-label={t('什么时候聊天')}>
+      <h2>{t('什么时候聊天')}</h2>
       <Heatmap data={r.heatmap} />
     </section>}
 
-    {months.length > 1 && <section className="analytics-block" aria-label="每个月">
-      <h2>每个月</h2>
-      <Columns label="每个月的消息" bars={months} ticks={(i, b) => (r.year ? (i % 3 === 0 ? monthName(b.month!) : null) : yearStarts(months, i) ? String(b.year) : null)} />
+    {months.length > 1 && <section className="analytics-block" aria-label={t('每个月')}>
+      <h2>{t('每个月')}</h2>
+      <Columns label={t('每个月的消息')} bars={months} ticks={(i, b) => (r.year ? (i % 3 === 0 ? monthName(b.month!) : null) : yearStarts(months, i) ? String(b.year) : null)} />
     </section>}
 
-    {(r.topPhrases.length > 0 || r.myExclusivePhrases.length > 0 || r.friendExclusivePhrases.length > 0) && <section className="analytics-block" aria-label="常说的话">
-      <h2>常说的话</h2>
-      {r.topPhrases.length > 0 && <Phrases phrases={r.topPhrases} label="你们都常说" />}
+    {(r.topPhrases.length > 0 || r.myExclusivePhrases.length > 0 || r.friendExclusivePhrases.length > 0) && <section className="analytics-block" aria-label={t('常说的话')}>
+      <h2>{t('常说的话')}</h2>
+      {r.topPhrases.length > 0 && <Phrases phrases={r.topPhrases} label={t('你们都常说')} />}
       <div className="report-likes">
-        {r.myExclusivePhrases.length > 0 && <div><span className="report-label">只有你常说</span><Phrases phrases={r.myExclusivePhrases} label="只有你常说" /></div>}
-        {r.friendExclusivePhrases.length > 0 && <div><span className="report-label">只有 TA 常说</span><Phrases phrases={r.friendExclusivePhrases} label="只有 TA 常说" /></div>}
+        {r.myExclusivePhrases.length > 0 && <div><span className="report-label">{t('只有你常说')}</span><Phrases phrases={r.myExclusivePhrases} label={t('只有你常说')} /></div>}
+        {r.friendExclusivePhrases.length > 0 && <div><span className="report-label">{t('只有 TA 常说')}</span><Phrases phrases={r.friendExclusivePhrases} label={t('只有 TA 常说')} /></div>}
       </div>
     </section>}
   </article>;
@@ -138,10 +140,10 @@ export function DualReportPage({ friend, onFriend, year }: { friend: Friend | nu
   const [report, retry] = useRead('dual:' + (friend?.username ?? '') + ':' + year, signal => (friend ? getDualReport(friend.username, year, signal) : Promise.resolve(null)));
   return <div className="group-analytics">
     <FriendPicker selected={friend} onSelect={onFriend} />
-    {!friend ? <p className="muted">选一位好友，生成你们两个人的报告。</p>
-      : report.status === 'error' ? <Failed title="生成报告失败" message={report.message} onRetry={retry} />
+    {!friend ? <p className="muted">{t('选一位好友，生成你们两个人的报告。')}</p>
+      : report.status === 'error' ? <Failed title={t('生成报告失败')} message={report.message} onRetry={retry} />
         : report.status === 'loading' || !report.value
-          ? <div className="analytics-page" aria-busy="true"><GridSkeleton label={'正在生成和' + friend.displayName + '的报告'} cells={3} /><ListSkeleton label="正在统计" rows={3} /></div>
+          ? <div className="analytics-page" aria-busy="true"><GridSkeleton label={t('正在生成和{name}的报告', { name: friend.displayName })} cells={3} /><ListSkeleton label={t('正在统计')} rows={3} /></div>
           : <DualReportView report={report.value} />}
   </div>;
 }

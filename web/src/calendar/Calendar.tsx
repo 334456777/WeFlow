@@ -124,7 +124,7 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
     <table ref={grid} role="grid" className="calendar-grid" aria-label={monthTitle}
       aria-multiselectable={range || undefined} onKeyDown={keyDown}
       onPointerLeave={() => setHover(null)}>
-      <thead><tr>{weekdays().map(name => <th key={name.long} scope="col" abbr={name.long}>{name.short}</th>)}</tr></thead>
+      <thead><tr>{weekdays().map(name => <th key={name.long} scope="col" abbr={name.long}>{name.narrow}</th>)}</tr></thead>
       <tbody>{monthGrid(year, month).map(week => <tr key={week[0]}>{week.map(day => {
         if (monthOf(day).month !== month) return <td key={day} role="gridcell" className="calendar-blank" />;
         const off = disabled(day);

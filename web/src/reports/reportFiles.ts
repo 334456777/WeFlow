@@ -2,6 +2,7 @@
 // use, as a page of its own (HTML) or a picture (PNG). The CLI has no such output; the desktop app takes a screenshot.
 // Pictures are left out (avatars as their initials): WeChat's avatar links expire, and a picture from elsewhere would
 // stop the canvas from being read.
+import { locale, t } from '../i18n';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 
@@ -44,7 +45,7 @@ const OWN_CSS = 'html, body { height: auto; overflow: auto; } body { padding: 24
 /** The report as a page of its own. */
 export function reportHtml(report: HTMLElement, title: string): string {
   const copy = withoutPictures(report);
-  return '<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+  return '<!doctype html>\n<html lang="' + locale() + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
     + '<title>' + escape(title) + '</title><style>' + pageCss().replaceAll('</style', '<\\/style') + '\n' + OWN_CSS + '</style></head>'
     + '<body style="' + escape(themeVariables()).replaceAll('"', '&quot;') + '"><main class="report-export">' + copy.outerHTML + '</main></body></html>\n';
 }
@@ -76,7 +77,7 @@ export async function reportPng(report: HTMLElement, width = Math.min(880, Math.
   picture.decoding = 'sync';
   await new Promise<void>((resolve, reject) => {
     picture.onload = () => resolve();
-    picture.onerror = () => reject(new Error('没能画出这份报告。'));
+    picture.onerror = () => reject(new Error(t('没能画出这份报告。')));
     picture.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   });
   const scale = 2;
@@ -84,8 +85,8 @@ export async function reportPng(report: HTMLElement, width = Math.min(880, Math.
   canvas.width = width * scale;
   canvas.height = height * scale;
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('浏览器不能生成图片。');
+  if (!context) throw new Error(t('浏览器不能生成图片。'));
   context.scale(scale, scale);
   context.drawImage(picture, 0, 0, width, height);
-  return new Promise((resolve, reject) => canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('浏览器不能生成图片。'))), 'image/png'));
+  return new Promise((resolve, reject) => canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error(t('浏览器不能生成图片。')))), 'image/png'));
 }

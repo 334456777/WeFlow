@@ -5,11 +5,13 @@ import { formatDate, lang } from '../i18n';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** The days of a week from Monday, in the page's language: the column heads (一, M) and their full names. */
-export function weekdays(): { short: string; long: string }[] {
+/** The days of a week from Monday, in the page's language: 一 周一 星期一, M Mon Monday. */
+export function weekdays(): { narrow: string; short: string; long: string }[] {
   return Array.from({ length: 7 }, (_, i) => {
     const date = new Date(2024, 0, 1 + i); // a Monday
-    return { short: formatDate(date, { weekday: 'narrow' }), long: formatDate(date, { weekday: 'long' }) };
+    return {
+      narrow: formatDate(date, { weekday: 'narrow' }), short: formatDate(date, { weekday: 'short' }), long: formatDate(date, { weekday: 'long' }),
+    };
   });
 }
 

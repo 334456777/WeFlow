@@ -39,8 +39,8 @@ describe('annual report', () => {
     expect(screen.getByLabelText('聊得最多的人').textContent).toContain('我发 1,200 · 对方 1,800');
     const months = screen.getByLabelText('每个月').querySelectorAll('li');
     expect(months).toHaveLength(12);
-    expect(months[2].textContent).toBe('3 月林沐400 条');
-    expect(months[0].textContent).toBe('1 月没有聊天');
+    expect(months[2].textContent).toBe('3月林沐400 条');
+    expect(months[0].textContent).toBe('1月没有聊天');
     expect(screen.getByRole('img', { name: '最常聊天的是周六 21 点，30 条' })).toBeTruthy();
     const moments = Array.from(screen.getByLabelText('值得记住的').querySelectorAll('.report-label'), l => l.textContent);
     expect(moments).toEqual(['最热闹的一天', '连续聊天最久', '有来有往', '由你开场', '平均回复']);
