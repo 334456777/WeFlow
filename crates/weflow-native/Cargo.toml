@@ -30,6 +30,8 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 
 [dev-dependencies]
 proptest.workspace = true
+# the fixture is built for the crate's own tests too, without `test-fixtures`
+weflow-silk = { path = "../weflow-silk", features = ["test-encoder"] }
 
 [features]
 # Expose the synthetic-account builder (src/fixture.rs) to other crates' tests.
