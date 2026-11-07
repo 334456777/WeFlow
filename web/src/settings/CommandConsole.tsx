@@ -9,7 +9,7 @@ import {
 import { runJob } from '../jobs/useJobs';
 import { Segmented } from '../Segmented';
 import { ListSkeleton } from '../Skeleton';
-import { locale } from '../i18n';
+import { locale, t } from '../i18n';
 
 type Values = Record<string, string | boolean>;
 /** The answer shown is cut here, so a long list does not freeze the page. */
@@ -31,20 +31,20 @@ export function findCommands(commands: readonly ConsoleCommand[], query: string)
 
 function FieldInput({ field, value, onChange }: { field: Field; value: string | boolean; onChange(value: string | boolean): void }) {
   const id = 'console-field-' + field.name;
-  const label = <label htmlFor={id} className="console-field-name"><code>{field.name}</code>{field.required && <span className="console-required" aria-label="必填">*</span>}</label>;
+  const label = <label htmlFor={id} className="console-field-name"><code>{field.name}</code>{field.required && <span className="console-required" aria-label={t('必填')}>*</span>}</label>;
   let input;
   if (field.type === 'boolean') {
     input = <label className="toggle"><input id={id} type="checkbox" aria-label={field.name} checked={value === true} onChange={event => onChange(event.target.checked)} /><span /></label>;
   } else if (field.type === 'choice') {
     input = <select id={id} className="console-input" value={String(value)} onChange={event => onChange(event.target.value)}>
-      {!field.required && <option value="">（默认{field.defaultValue ? '：' + field.defaultValue : ''}）</option>}
+      {!field.required && <option value="">{t('（默认{value}）', { value: field.defaultValue ? '：' + field.defaultValue : '' })}</option>}
       {field.options!.map(o => <option key={o} value={o}>{o}</option>)}
     </select>;
   } else if (field.type === 'list') {
-    input = <textarea id={id} className="console-input" rows={2} spellCheck={false} placeholder={field.integers ? '每行或用逗号分隔一个整数' : '每行或用逗号分隔一项'} value={String(value)} onChange={event => onChange(event.target.value)} />;
+    input = <textarea id={id} className="console-input" rows={2} spellCheck={false} placeholder={field.integers ? t('每行或用逗号分隔一个整数') : t('每行或用逗号分隔一项')} value={String(value)} onChange={event => onChange(event.target.value)} />;
   } else {
     input = <input id={id} className="console-input" type="text" inputMode={field.type === 'string' ? undefined : 'numeric'} spellCheck={false}
-      placeholder={field.defaultValue ? '默认 ' + field.defaultValue : field.type === 'integer' ? '整数' : ''} value={String(value)} onChange={event => onChange(event.target.value)} />;
+      placeholder={field.defaultValue ? t('默认 {value}', { value: field.defaultValue }) : field.type === 'integer' ? t('整数') : ''} value={String(value)} onChange={event => onChange(event.target.value)} />;
   }
   return <div className={'console-field' + (field.type === 'boolean' ? ' inline' : '')}>{label}{input}{field.description && <small>{field.description}</small>}</div>;
 }
@@ -53,10 +53,10 @@ function Answer({ answer }: { answer: RunAnswer }) {
   const ok = answer.status >= 200 && answer.status < 300;
   const text = typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body, null, 2);
   const cut = text.length > SHOWN_CHARS;
-  return <div className={'console-answer' + (ok ? '' : ' failed')} aria-label="运行结果">
-    <p className="console-answer-head"><strong>HTTP {answer.status}</strong>{answer.exitCode !== null && <span>退出码 {answer.exitCode}</span>}<span className="num">{answer.ms} ms</span></p>
+  return <div className={'console-answer' + (ok ? '' : ' failed')} aria-label={t('运行结果')}>
+    <p className="console-answer-head"><strong>HTTP {answer.status}</strong>{answer.exitCode !== null && <span>{t('退出码 {exitCode}', { exitCode: answer.exitCode })}</span>}<span className="num">{answer.ms} ms</span></p>
     <pre className="console-output scroll-area">{cut ? text.slice(0, SHOWN_CHARS) : text}</pre>
-    {cut && <p className="card-note">只显示前 {SHOWN_CHARS.toLocaleString(locale())} 个字符，共 {text.length.toLocaleString(locale())} 个。</p>}
+    {cut && <p className="card-note">{t('只显示前 {SHOWN_CHARS} 个字符，共 {length} 个。', { SHOWN_CHARS: SHOWN_CHARS.toLocaleString(locale()), length: text.length.toLocaleString(locale()) })}</p>}
   </div>;
 }
 
@@ -90,10 +90,10 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
     setNote(null); setAnswer(null);
     if (job) {
       try {
-        await runJob('命令 · ' + cmd.command, 'POST', cmd.path.slice(1), params, cmd.file);
-        setNote({ text: '已加入任务中心' + (cmd.file ? '，完成后在那里下载写出的文件。' : '。') });
+        await runJob(t('命令 · {command}', { command: cmd.command }), 'POST', cmd.path.slice(1), params, cmd.file);
+        setNote({ text: cmd.file ? t('已加入任务中心，完成后在那里下载写出的文件。') : t('已加入任务中心。') });
       } catch (problem) {
-        setNote({ text: (problem instanceof Error && problem.message) || '没有开始，请重试。', error: true });
+        setNote({ text: (problem instanceof Error && problem.message) || t('没有开始，请重试。'), error: true });
       }
       return;
     }
@@ -104,34 +104,34 @@ function CommandForm({ cmd }: { cmd: ConsoleCommand }) {
     try {
       setAnswer(await runRaw(cmd, params, output === 'out' ? 'out' : undefined, controller.signal));
     } catch (problem) {
-      if (!controller.signal.aborted) setNote({ text: '没有收到回复：' + ((problem instanceof Error && problem.message) || '连接中断'), error: true });
+      if (!controller.signal.aborted) setNote({ text: t('没有收到回复：{why}', { why: (problem instanceof Error && problem.message) || t('连接中断') }), error: true });
     } finally {
       if (run.current === controller) { setRunning(false); run.current = null; }
     }
   };
 
-  return <form className="console-form" onSubmit={submit} aria-label={'运行 ' + cmd.command}>
+  return <form className="console-form" onSubmit={submit} aria-label={t('运行 {command}', { command: cmd.command })}>
     <header>
-      <h3><Terminal size={16} aria-hidden="true" /><code>weflow {cmd.command}</code><span className="badge">{cmd.method}</span>{cmd.refused && <span className="badge refused">只读拒绝</span>}</h3>
+      <h3><Terminal size={16} aria-hidden="true" /><code>weflow {cmd.command}</code><span className="badge">{cmd.method}</span>{cmd.refused && <span className="badge refused">{t('只读拒绝')}</span>}</h3>
       <p>{cmd.summary}</p>
       {cmd.description && <p className="console-description">{cmd.description}</p>}
     </header>
     {cmd.refused
-      ? <p className="setting-warning"><Prohibit size={14} /> 这条命令要写入微信的数据库，而 WeFlow 只读打开数据库，所以它总是被拒绝（HTTP 501）。</p>
+      ? <p className="setting-warning"><Prohibit size={14} /> {t('这条命令要写入微信的数据库，而 WeFlow 只读打开数据库，所以它总是被拒绝（HTTP 501）。')}</p>
       : <>
         {cmd.fields.length ? <div className="console-fields">{cmd.fields.map(f => <FieldInput key={f.name} field={f} value={values[f.name]} onChange={value => setValues(old => ({ ...old, [f.name]: value }))} />)}</div>
-          : <p className="muted">这条命令没有参数。</p>}
+          : <p className="muted">{t('这条命令没有参数。')}</p>}
         <div className="console-options">
-          {cmd.method === 'POST' && <label className="checkbox"><input type="checkbox" aria-label="作为任务运行" checked={asJob} onChange={event => setAsJob(event.target.checked)} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>作为任务运行 <small>{cmd.file ? '在任务中心看进度，并下载写出的文件' : '在任务中心看进度'}</small></span></label>}
-          {!job && <Segmented className="console-output-choice" count={2} index={output === 'json' ? 0 : 1} role="group" aria-label="输出">
+          {cmd.method === 'POST' && <label className="checkbox"><input type="checkbox" aria-label={t('作为任务运行')} checked={asJob} onChange={event => setAsJob(event.target.checked)} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('作为任务运行')} <small>{cmd.file ? t('在任务中心看进度，并下载写出的文件') : t('在任务中心看进度')}</small></span></label>}
+          {!job && <Segmented className="console-output-choice" count={2} index={output === 'json' ? 0 : 1} role="group" aria-label={t('输出')}>
             <button type="button" aria-pressed={output === 'json'} onClick={() => setOutput('json')}>JSON</button>
-            <button type="button" aria-pressed={output === 'out'} onClick={() => setOutput('out')}>终端文字</button>
+            <button type="button" aria-pressed={output === 'out'} onClick={() => setOutput('out')}>{t('终端文字')}</button>
           </Segmented>}
         </div>
-        <p className="console-line" aria-label="等价的命令行">{problems.length ? <span className="setting-warning">{problems.join(' ')}</span> : argv ? <code>{shellLine(argv)}</code> : <span className="muted">…</span>}</p>
+        <p className="console-line" aria-label={t('等价的命令行')}>{problems.length ? <span className="setting-warning">{problems.join(' ')}</span> : argv ? <code>{shellLine(argv)}</code> : <span className="muted">…</span>}</p>
         <div className="console-actions">
-          <button type="submit" className="primary-button" disabled={Boolean(problems.length) || running}>{running ? <CircleNotch size={16} className="spin" /> : <Play size={16} />}{running ? '正在运行' : job ? '加入任务' : '运行'}</button>
-          {running && <button type="button" className="secondary-button" onClick={() => run.current?.abort()}>不再等待</button>}
+          <button type="submit" className="primary-button" disabled={Boolean(problems.length) || running}>{running ? <CircleNotch size={16} className="spin" /> : <Play size={16} />}{running ? t('正在运行') : job ? t('加入任务') : t('运行')}</button>
+          {running && <button type="button" className="secondary-button" onClick={() => run.current?.abort()}>{t('不再等待')}</button>}
         </div>
       </>}
     {note && <p className={'card-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined}>{note.text}</p>}
@@ -153,7 +153,7 @@ export function CommandConsole({ pick, onPicked }: {
     const controller = new AbortController();
     setState({ status: 'loading' });
     getOpenApi(controller.signal).then(commands => setState({ status: 'ready', commands }), problem => {
-      if (!controller.signal.aborted) setState({ status: 'error', message: (problem instanceof Error && problem.message) || '读不到命令列表。' });
+      if (!controller.signal.aborted) setState({ status: 'error', message: (problem instanceof Error && problem.message) || t('读不到命令列表。') });
     });
     return () => controller.abort();
   }, [round]);
@@ -172,21 +172,21 @@ export function CommandConsole({ pick, onPicked }: {
   }, [shown]);
   const chosen = commands.find(c => c.id === selected);
 
-  return <section className="command-console" aria-label="命令控制台">
+  return <section className="command-console" aria-label={t('命令控制台')}>
     <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" />
-      <input type="search" aria-label="搜索命令" placeholder="搜索命令，如 chat messages 或 导出" value={query} onChange={event => setQuery(event.target.value)} />
+      <input type="search" aria-label={t('搜索命令')} placeholder={t('搜索命令，如 chat messages 或 导出')} value={query} onChange={event => setQuery(event.target.value)} />
     </div>
     {state.status === 'loading'
-      ? <ListSkeleton label="正在读取命令列表" rows={4} />
+      ? <ListSkeleton label={t('正在读取命令列表')} rows={4} />
       : state.status === 'error'
-        ? <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={() => setRound(n => n + 1)}><ArrowClockwise size={14} />重试</button></div>
-        : <div className="command-list scroll-area" role="list" aria-label="命令">
+        ? <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={() => setRound(n => n + 1)}><ArrowClockwise size={14} />{t('重试')}</button></div>
+        : <div className="command-list scroll-area" role="list" aria-label={t('命令')}>
           {groups.length ? groups.map(([tag, list]) => <div key={tag} className="command-group" role="listitem">
             <h4>{tag}</h4>
             {list.map(c => <button type="button" key={c.id} className={'command-item' + (c.refused ? ' refused' : '')} aria-pressed={c.id === selected} onClick={() => setSelected(c.id)}>
               <code>{c.command}</code><span className="command-summary clamp-1">{c.summary}</span><span className="command-method">{c.method}</span>
             </button>)}
-          </div>) : <p className="muted">没有匹配的命令。</p>}
+          </div>) : <p className="muted">{t('没有匹配的命令。')}</p>}
         </div>}
     <div ref={formRef}>{chosen && <CommandForm key={chosen.id} cmd={chosen} />}</div>
   </section>;
