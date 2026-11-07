@@ -99,13 +99,12 @@ try {
     --name "weflow-bench-$env:COMPUTERNAME" --labels weflow-bench --work _work `
     --runasservice --windowslogonaccount ".\$Account" --windowslogonpassword $password
   if ($LASTEXITCODE) { throw "config.cmd failed ($LASTEXITCODE)" }
-  # what the jobs see: the bench folder, and a PATH of the machine's own with Git's bash
+  # what the jobs see: the bench folder, and the machine's PATH after Git's, whose bash must come before the WSL
+  # launcher in System32
   Set-Content -Encoding ascii .env "WEFLOW_BENCH_DIR=$BenchDir"
-  $path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-  foreach ($git in @('C:\Program Files\Git\bin', 'C:\Program Files\Git\cmd')) {
-    if (($path -split ';') -notcontains $git) { $path = "$path;$git" }
-  }
-  Set-Content -Encoding ascii .path $path
+  $git = @('C:\Program Files\Git\bin', 'C:\Program Files\Git\cmd')
+  $rest = [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' | Where-Object { $_ -and $git -notcontains $_ }
+  Set-Content -Encoding ascii .path (($git + $rest) -join ';')
   icacls $RunnerDir /grant "${Account}:(OI)(CI)F" /T /Q | Out-Null
   Get-Service -Name 'actions.runner.*' | Where-Object { $_.BinaryPathName -like "*$RunnerDir*" } | Restart-Service
 } finally {
