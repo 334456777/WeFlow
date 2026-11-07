@@ -125,7 +125,7 @@ API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。
 | `src/footprint/`、`src/api/footprint.ts` | 我的足迹（#209）：一段日期内和谁聊过、回复过谁、在哪里被 @，以及它的导出和 AI 总结 |
 | `src/insights/`、`src/api/insights.ts` | AI 见解（#210）：所有人或一个会话的记录，可按文字查找；在控制台生成和清除 |
 | `src/reports/`、`src/api/reports.ts` | 报告（#208）：一年（或全部年份）的年度报告，以及和一位好友的双人报告，可存为图片或单独的网页 |
-| `src/settings/`、`src/api/settings.ts`、`src/api/setup.ts`、`src/api/console.ts` | 设置（#213–#217）：连接、账号及其配置向导、AI 模型、缓存；CLI 自带的工具和基于 `/openapi.json` 的命令控制台 |
+| `src/settings/`、`src/api/settings.ts`、`src/api/setup.ts`、`src/api/console.ts`、`src/api/webVersions.ts` | 设置（#213–#217）：连接、账号及其配置向导、网页版本（#406）、AI 模型、缓存；CLI 自带的工具和基于 `/openapi.json` 的命令控制台 |
 | `src/backup/`、`src/api/backup.ts` | 数据库备份（#212）：作为任务创建并从浏览器保存；查看或还原服务端电脑上的备份 |
 | `src/api/scope.ts`、`src/api/kept.ts`、`src/useRead.ts` | 网页持有的是谁的记录、多个视图共用的读取，以及一个视图显示的一次读取（见「请求与缓存」） |
 | `src/i18n/`、`scripts/i18n.ts` | 网页的语言，即服务端的语言（#439）：`t()`、`msg()`、各条文字的英文，以及检查每条都有英文的脚本；见「语言」 |

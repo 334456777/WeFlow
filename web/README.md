@@ -117,7 +117,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/footprint/`, `src/api/footprint.ts` | My footprint (#209): who I talked with and replied to and where I was @-mentioned, over a range of days, with its export and AI summary |
 | `src/insights/`, `src/api/insights.ts` | AI insights (#210): the records found by words, of everyone or one conversation; made and cleared from the console |
 | `src/reports/`, `src/api/reports.ts` | Reports (#208): the annual report of a year (or all of them) and the dual report with one friend, saved as a picture or a page |
-| `src/settings/`, `src/api/settings.ts`, `src/api/setup.ts`, `src/api/console.ts` | Settings (#213–#217): the connection, the accounts and their setup, the AI model, the cache; the CLI's tools and the command console of `/openapi.json` |
+| `src/settings/`, `src/api/settings.ts`, `src/api/setup.ts`, `src/api/console.ts`, `src/api/webVersions.ts` | Settings (#213–#217): the connection, the accounts and their setup, the WebUI versions (#406), the AI model, the cache; the CLI's tools and the command console of `/openapi.json` |
 | `src/backup/`, `src/api/backup.ts` | Database backups (#212): made as a job and saved from the browser; a backup on the server's computer inspected or restored |
 | `src/api/scope.ts`, `src/api/kept.ts`, `src/useRead.ts` | Whose records the page holds, the reads several views share, and one read as a view shows it (see Requests and what is kept) |
 | `src/i18n/`, `scripts/i18n.ts` | The page's language, the server's (#439): `t()`, `msg()`, the English of the texts, and the check that each has it; see Language |
