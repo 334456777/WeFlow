@@ -4,6 +4,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { ApiError, type Params } from '../api/client';
 import { dropJob, getJob, isFinished, jobEventsUrl, listJobs, startJob, type Job } from '../api/jobs';
+import { t } from '../i18n';
 
 /** How often the list is read again while a job waits or runs. */
 const POLL_MS = 2000;
@@ -61,7 +62,7 @@ export function refreshJobs(): Promise<void> {
       const missing = state.jobs.filter(j => isFinished(j.status) && !j.result && (state.labels[j.id] || j.status === 'failed'));
       await Promise.all(missing.map(j => getJob(j.id).then(merge, () => {})));
     } catch (problem) {
-      set({ error: (problem instanceof ApiError && problem.message) || '读取任务列表失败' });
+      set({ error: (problem instanceof ApiError && problem.message) || t('读取任务列表失败') });
     } finally {
       reading = null;
     }

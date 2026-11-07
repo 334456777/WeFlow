@@ -5,8 +5,9 @@ import { CalendarBlank } from '@phosphor-icons/react';
 import { Popover } from '../Popover';
 import { Calendar, openingDay } from './Calendar';
 import { today } from './dates';
+import { t } from '../i18n';
 
-export function DateField({ value, onChange, onOpen, max = today(), marks, label, placeholder = '选择日期' }: {
+export function DateField({ value, onChange, onOpen, max = today(), marks, label, placeholder = t('选择日期') }: {
   value: string;
   onChange: (day: string) => void;
   /** Called as the calendar opens, to ask for its marks. */
@@ -20,7 +21,7 @@ export function DateField({ value, onChange, onOpen, max = today(), marks, label
   const field = useRef<HTMLButtonElement>(null);
   const close = (focus: boolean) => { if (focus) field.current?.focus(); setOpen(false); };
   return <>
-    <button ref={field} type="button" className={'date-field' + (open ? ' open' : '')} aria-label={label + '：' + (value || '未选择')}
+    <button ref={field} type="button" className={'date-field' + (open ? ' open' : '')} aria-label={t('{label}：{value}', { label, value: value || t('未选择') })}
       aria-haspopup="dialog" aria-expanded={open} onClick={() => { if (!open) onOpen?.(); setOpen(!open); }}>
       <CalendarBlank size={16} aria-hidden="true" /><span className="date-display">{value || placeholder}</span>
     </button>

@@ -8,6 +8,7 @@ import type { SessionsState } from '../chat/useSessions';
 import { Segmented } from '../Segmented';
 import { VirtualList } from '../VirtualList';
 import { ListSkeleton } from '../Skeleton';
+import { locale, t } from '../i18n';
 
 const ROW_HEIGHT = 58;
 const FILTERS: SessionFilter[] = ['all', 'private', 'group', 'official'];
@@ -23,14 +24,14 @@ export function pickable(sessions: readonly ChatSession[], filter: SessionFilter
 
 /** Beside the list: the conversations picked, each one to take off again. */
 export function PickedList({ picked, onRemove }: { picked: ChatSession[]; onRemove(id: string): void }) {
-  if (!picked.length) return <div className="pane-message"><p>在左侧勾选要导出的会话，可以按类型筛选后全选。</p></div>;
-  return <div className="picked" aria-label="已选的会话">
-    <h2>已选 {picked.length.toLocaleString('zh-CN')} 个会话</h2>
+  if (!picked.length) return <div className="pane-message"><p>{t('在左侧勾选要导出的会话，可以按类型筛选后全选。')}</p></div>;
+  return <div className="picked" aria-label={t('已选的会话')}>
+    <h2>{t('已选 {length} 个会话', { length: picked.length.toLocaleString('zh-CN') })}</h2>
     <ul>
       {picked.map(s => <li key={s.username}>
         <Avatar name={nameOf(s)} url={s.avatarUrl || undefined} />
-        <span className="picked-copy"><strong className="clamp-1">{nameOf(s)}</strong><small>{kindLabels[kindOf(s.username)]}{s.messageCountHint ? ' · 约 ' + s.messageCountHint.toLocaleString('zh-CN') + ' 条' : ''}</small></span>
-        <button type="button" className="icon-button small" aria-label={'不导出' + nameOf(s)} onClick={() => onRemove(s.username)}><X size={14} /></button>
+        <span className="picked-copy"><strong className="clamp-1">{nameOf(s)}</strong><small>{t(kindLabels[kindOf(s.username)])}{s.messageCountHint ? ' · ' + t('约 {n} 条', { n: s.messageCountHint.toLocaleString(locale()) }) : ''}</small></span>
+        <button type="button" className="icon-button small" aria-label={t('不导出{name}', { name: nameOf(s) })} onClick={() => onRemove(s.username)}><X size={14} /></button>
       </li>)}
     </ul>
   </div>;
@@ -58,20 +59,20 @@ export function ExportPicker({ state, picked, onChange, onRetry }: {
   };
 
   let body;
-  if (state.status === 'loading') body = <ListSkeleton label="正在读取会话" />;
+  if (state.status === 'loading') body = <ListSkeleton label={t('正在读取会话')} />;
   else if (state.status === 'error') {
-    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />重试</button></div>;
-  } else if (!shown.length) body = <p className="session-message">{query.trim() ? '没有名称匹配的会话。' : '没有这类会话。'}</p>;
+    body = <div className="session-message" role="alert"><p>{state.message}</p><button type="button" className="secondary-button" onClick={onRetry}><ArrowClockwise size={14} />{t('重试')}</button></div>;
+  } else if (!shown.length) body = <p className="session-message">{query.trim() ? t('没有名称匹配的会话。') : t('没有这类会话。')}</p>;
   else {
-    body = <VirtualList data-roving="vertical" data-roving-items=".pick-row input" className="conversation-list scroll-area" aria-label="可导出的会话" items={shown} rowHeight={ROW_HEIGHT} padding={8} track=".pick-row"
+    body = <VirtualList data-roving="vertical" data-roving-items=".pick-row input" className="conversation-list scroll-area" aria-label={t('可导出的会话')} items={shown} rowHeight={ROW_HEIGHT} padding={8} track=".pick-row"
       keyOf={s => s.username} renderRow={s => {
         const on = picked.has(s.username);
         return <label className={'conversation-row pick-row' + (on ? ' active' : '')}>
-          <span className="checkbox"><input type="checkbox" aria-label={'导出' + nameOf(s)} checked={on} onChange={() => toggle(s.username)} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span></span>
+          <span className="checkbox"><input type="checkbox" aria-label={t('导出{name}', { name: nameOf(s) })} checked={on} onChange={() => toggle(s.username)} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span></span>
           <Avatar name={nameOf(s)} url={s.avatarUrl || undefined} />
           <span className="conversation-copy">
             <span className="conversation-head"><span className="conversation-name">{nameOf(s)}</span></span>
-            <span className="conversation-preview clamp-1">{kindLabels[kindOf(s.username)]}{s.messageCountHint ? ' · 约 ' + s.messageCountHint.toLocaleString('zh-CN') + ' 条' : ''}</span>
+            <span className="conversation-preview clamp-1">{t(kindLabels[kindOf(s.username)])}{s.messageCountHint ? ' · ' + t('约 {n} 条', { n: s.messageCountHint.toLocaleString(locale()) }) : ''}</span>
           </span>
         </label>;
       }} />;
@@ -80,14 +81,14 @@ export function ExportPicker({ state, picked, onChange, onRetry }: {
   return <div className="session-pane">
     <div className="session-tools">
       <div className="search-input session-search"><MagnifyingGlass size={16} aria-hidden="true" />
-        <input type="search" aria-label="搜索会话" placeholder="搜索会话" value={query} onChange={event => setQuery(event.target.value)} />
+        <input type="search" aria-label={t('搜索会话')} placeholder={t('搜索会话')} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
-      <Segmented className="session-filter" count={FILTERS.length} index={FILTERS.indexOf(filter)} role="group" aria-label="会话类型">
-        {FILTERS.map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{filterLabels[value]}</button>)}
+      <Segmented className="session-filter" count={FILTERS.length} index={FILTERS.indexOf(filter)} role="group" aria-label={t('会话类型')}>
+        {FILTERS.map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(filterLabels[value])}</button>)}
       </Segmented>
       {state.status === 'ready' && <div className="pick-tools">
-        <label className="checkbox"><input type="checkbox" aria-label="全选当前列出的会话" checked={allShown} disabled={!shown.length} onChange={toggleShown} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>全选当前列出的 {shown.length.toLocaleString('zh-CN')} 个</span></label>
-        {picked.size > 0 && <button type="button" className="text-button" onClick={() => onChange(new Set())}>清空（已选 {picked.size}）</button>}
+        <label className="checkbox"><input type="checkbox" aria-label={t('全选当前列出的会话')} checked={allShown} disabled={!shown.length} onChange={toggleShown} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('全选当前列出的 {length} 个', { length: shown.length.toLocaleString('zh-CN') })}</span></label>
+        {picked.size > 0 && <button type="button" className="text-button" onClick={() => onChange(new Set())}>{t('清空（已选 {size}）', { size: picked.size })}</button>}
       </div>}
     </div>
     {body}

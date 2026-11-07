@@ -214,7 +214,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
           : <DateRange label={t('导出的时间范围')} from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
         <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
           <FormatChips formats={formats} onChange={next => { setFormats(next); resetExport(); }} />
-          <label className="checkbox"><input type="checkbox" aria-label={t('附带媒体文件')} checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('附带媒体文件')} <small>{MEDIA_NOTE}</small></span></label>
+          <label className="checkbox"><input type="checkbox" aria-label={t('附带媒体文件')} checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('附带媒体文件')} <small>{t(MEDIA_NOTE)}</small></span></label>
         </div>
         {selected.live && liveSession
           ? <><ExportControl stage={stage} result={exportResult} ready={formats.length > 0} onStart={exportRecords} onCancel={cancelExport} />

@@ -5,8 +5,10 @@ import { Check, Circle, CircleNotch, DownloadSimple, X } from '@phosphor-icons/r
 import { describeCommand, isFinished, jobFileUrl, type Job } from '../api/jobs';
 import { formatClock } from '../chat/messages';
 import { removeJob, type JobsState } from './useJobs';
+import { msg, t } from '../i18n';
 
-const STATUS: Record<Job['status'], string> = { queued: '排队中', running: '正在运行', succeeded: '已完成', failed: '未完成', cancelled: '已取消' };
+// shown through t()
+const STATUS: Record<Job['status'], string> = { queued: msg('排队中'), running: msg('正在运行'), succeeded: msg('已完成'), failed: msg('未完成'), cancelled: msg('已取消') };
 
 export const formatSize = (bytes: number) =>
   bytes < 1024 ? bytes + ' B' : bytes < 1024 * 1024 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1024 / 1024).toFixed(1) + ' MB';
@@ -16,15 +18,18 @@ export function jobDetail(job: Job): string {
   if (job.status === 'running') {
     const p = job.progress;
     const count = p?.total ? (p.current ?? 0) + ' / ' + p.total : '';
-    return [p?.message, count, p?.percent !== undefined ? Math.round(p.percent) + '%' : ''].filter(Boolean).join(' · ') || '正在运行';
+    return [p?.message, count, p?.percent !== undefined ? Math.round(p.percent) + '%' : ''].filter(Boolean).join(' · ') || t('正在运行');
   }
-  if (job.status === 'failed') return job.result?.error?.message || '命令没有完成' + (job.httpStatus ? '（HTTP ' + job.httpStatus + '）' : '');
-  if (job.status === 'succeeded' && job.file) return (job.file.name ?? '文件') + (job.file.size !== null ? ' · ' + formatSize(job.file.size) : '');
-  return STATUS[job.status];
+  if (job.status === 'failed') return job.result?.error?.message || (job.httpStatus ? t('命令没有完成（HTTP {status}）', { status: job.httpStatus }) : t('命令没有完成'));
+  if (job.status === 'succeeded' && job.file) return (job.file.name ?? t('文件')) + (job.file.size !== null ? ' · ' + formatSize(job.file.size) : '');
+  return t(STATUS[job.status]);
 }
 
 /** The state of a job and what it says: 「未完成 · 磁盘空间不足」. */
-export const jobLine = (job: Job) => (STATUS[job.status] === jobDetail(job) ? STATUS[job.status] : STATUS[job.status] + ' · ' + jobDetail(job));
+export const jobLine = (job: Job) => {
+  const status = t(STATUS[job.status]);
+  return status === jobDetail(job) ? status : status + ' · ' + jobDetail(job);
+};
 
 function JobRow({ job, label }: { job: Job; label: string }) {
   const [busy, setBusy] = useState(false);
@@ -32,7 +37,7 @@ function JobRow({ job, label }: { job: Job; label: string }) {
   const done = isFinished(job.status);
   const remove = () => {
     setBusy(true); setProblem('');
-    removeJob(job.id).catch(() => setProblem(done ? '删除失败，请重试。' : '取消失败，请重试。')).finally(() => setBusy(false));
+    removeJob(job.id).catch(() => setProblem(done ? t('删除失败，请重试。') : t('取消失败，请重试。'))).finally(() => setBusy(false));
   };
   const percent = job.status === 'running' && job.progress?.percent !== undefined ? Math.max(0, Math.min(100, job.progress.percent)) : null;
   return <li className={'task job ' + (job.status === 'succeeded' ? 'complete' : job.status === 'failed' ? 'error' : '')}>
@@ -40,18 +45,18 @@ function JobRow({ job, label }: { job: Job; label: string }) {
     <div>
       <strong className="clamp-1">{label}</strong>
       <small className="clamp-2">{jobLine(job)}</small>
-      {percent !== null && <span className="job-bar" role="progressbar" aria-label={label + '的进度'} aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: percent + '%' }} /></span>}
+      {percent !== null && <span className="job-bar" role="progressbar" aria-label={t('{label}的进度', { label })} aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: percent + '%' }} /></span>}
       {problem && <small role="alert">{problem}</small>}
       <span className="job-actions">
-        {job.status === 'succeeded' && job.file && <a className="download-link" href={jobFileUrl(job.id)} download={job.file.name ?? undefined}><DownloadSimple size={12} />下载文件</a>}
-        <button type="button" className="text-button" disabled={busy} onClick={remove} title={done ? (job.file ? '删除这个任务和它在服务端的文件' : '删除这个任务') : '取消这个任务'}>{done ? '删除' : '取消'}</button>
+        {job.status === 'succeeded' && job.file && <a className="download-link" href={jobFileUrl(job.id)} download={job.file.name ?? undefined}><DownloadSimple size={12} />{t('下载文件')}</a>}
+        <button type="button" className="text-button" disabled={busy} onClick={remove} title={done ? (job.file ? t('删除这个任务和它在服务端的文件') : t('删除这个任务')) : t('取消这个任务')}>{done ? t('删除') : t('取消')}</button>
       </span>
     </div>
     <time className="num">{formatClock(Math.floor(job.createdAt / 1000))}</time>
   </li>;
 }
 
-export function TaskCenter({ jobs, names, empty = '还没有任务。导出等耗时的命令会在这里排队、显示进度。' }: {
+export function TaskCenter({ jobs, names, empty = t('还没有任务。导出等耗时的命令会在这里排队、显示进度。') }: {
   jobs: JobsState;
   /** The conversations by id, to name the one a job started elsewhere exports. */
   names?: ReadonlyMap<string, string>;
@@ -68,6 +73,6 @@ export function TaskCenter({ jobs, names, empty = '还没有任务。导出等�
 export function jobsSummary(jobs: JobsState): string {
   const running = jobs.jobs.filter(j => j.status === 'running').length;
   const queued = jobs.jobs.filter(j => j.status === 'queued').length;
-  if (running || queued) return [running && running + ' 个运行中', queued && queued + ' 个排队'].filter(Boolean).join(' · ');
-  return jobs.jobs.length ? jobs.jobs.length + ' 个任务' : '没有任务';
+  if (running || queued) return [running && t('{n} 个运行中', { n: running }), queued && t('{n} 个排队', { n: queued })].filter(Boolean).join(' · ');
+  return jobs.jobs.length ? t('{n} 个任务', { n: jobs.jobs.length }) : t('没有任务');
 }

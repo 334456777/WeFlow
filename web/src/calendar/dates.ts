@@ -1,10 +1,17 @@
 // Days as `YYYY-MM-DD` strings in local time, for the calendar (#224): they compare as text, and a day never
 // shifts with the time zone the way a Date at midnight UTC would.
 
+import { formatDate, lang } from '../i18n';
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
-const WEEKDAY_NAMES = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+/** The days of a week from Monday, in the page's language: the column heads (一, M) and their full names. */
+export function weekdays(): { short: string; long: string }[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(2024, 0, 1 + i); // a Monday
+    return { short: formatDate(date, { weekday: 'narrow' }), long: formatDate(date, { weekday: 'long' }) };
+  });
+}
 
 export function toDay(date: Date): string {
   return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
@@ -50,10 +57,12 @@ export const monthOf = (day: string) => ({ year: Number(day.slice(0, 4)), month:
 
 export const clampDay = (day: string, max?: string) => (max && day > max ? max : day);
 
-/** `2026年10月12日 星期一`, what a screen reader says for a day. */
+/** What a screen reader says for a day: `2026年10月12日 星期一`, `Monday, October 12, 2026`. */
 export function dayLabel(day: string): string {
-  const { year, month } = monthOf(day);
-  return year + '年' + (month + 1) + '月' + Number(day.slice(8)) + '日 ' + WEEKDAY_NAMES[parseDay(day).getDay()];
+  const date = parseDay(day);
+  const options = { year: 'numeric', month: 'long', day: 'numeric' } as const;
+  if (lang() === 'zh') return formatDate(date, options) + ' ' + formatDate(date, { weekday: 'long' });
+  return formatDate(date, { ...options, weekday: 'long' });
 }
 
 /** The days from `a` to `b` in order, whichever comes first. */

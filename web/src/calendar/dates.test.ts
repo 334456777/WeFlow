@@ -1,5 +1,6 @@
 import { describe, expect, it } from '#test';
-import { addDays, addMonths, dayLabel, endOfWeek, monthGrid, ordered, startOfWeek, weekdayOf } from './dates';
+import { setLang } from '../i18n';
+import { addDays, addMonths, dayLabel, endOfWeek, monthGrid, ordered, startOfWeek, weekdayOf, weekdays } from './dates';
 
 describe('dates', () => {
   it('moves by days and months in local time, keeping the day where the month has it', () => {
@@ -26,5 +27,18 @@ describe('dates', () => {
   it('names a day for a screen reader, and orders two days', () => {
     expect(dayLabel('2026-10-12')).toBe('2026年10月12日 星期一');
     expect(ordered('2026-10-12', '2026-10-03')).toEqual(['2026-10-03', '2026-10-12']);
+  });
+
+  it('names the days in the page\'s language, the week from Monday', () => {
+    expect(weekdays().map(d => d.short).join('')).toBe('一二三四五六日');
+    expect(weekdays()[0].long).toBe('星期一');
+    setLang('en');
+    try {
+      expect(dayLabel('2026-10-12')).toBe('Monday, October 12, 2026');
+      expect(weekdays().map(d => d.short).join('')).toBe('MTWTFSS');
+      expect(weekdays()[6].long).toBe('Sunday');
+    } finally {
+      setLang('zh');
+    }
   });
 });
