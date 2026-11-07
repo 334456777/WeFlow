@@ -2,6 +2,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
 import { SEARCH_PAGE, searchMessages, type SearchHit, type SearchQuery } from '../api/messages';
+import { t } from '../i18n';
 
 export interface SearchState {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -14,7 +15,7 @@ export interface SearchState {
 
 const IDLE: SearchState = { status: 'idle', query: null, hits: [], hasMore: false, loadingMore: false };
 
-const messageOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || '搜索失败，请重试。';
+const messageOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('搜索失败，请重试。');
 
 export function useSearch(): { state: SearchState; search(query: SearchQuery): void; more(): void; clear(): void } {
   const [state, setState] = useState<SearchState>(IDLE);

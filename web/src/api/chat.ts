@@ -2,6 +2,7 @@
 // the server's process (`/api/`).
 import { ApiError, get } from './client';
 import type * as Contract from './contract.gen';
+import { t } from '../i18n';
 
 /** Whether a conversation is folded and muted (the contract's `ChatStatus`, #430). */
 export type SessionStatus = Contract.ChatStatus;
@@ -20,7 +21,7 @@ export type ChatSession = Pick<Contract.Session, Exclude<(typeof SESSION_KEYS)[n
 
 export async function getSessions(signal?: AbortSignal): Promise<ChatSession[]> {
   const data = await get<unknown>('api/chat/sessions', { fields: SESSION_KEYS.join(',') }, signal);
-  if (!Array.isArray(data)) throw new ApiError(200, 'bad_response', '会话列表的格式不对');
+  if (!Array.isArray(data)) throw new ApiError(200, 'bad_response', t('会话列表的格式不对'));
   return data as ChatSession[];
 }
 

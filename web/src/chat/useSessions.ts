@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSessions, getStatuses, type ChatSession, type SessionStatus } from '../api/chat';
 import { ApiError } from '../api/client';
 import { useLive } from '../api/live';
+import { t } from '../i18n';
 
 export type SessionsState =
   | { status: 'idle' }
@@ -11,10 +12,10 @@ export type SessionsState =
 
 function messageOf(problem: unknown): string {
   if (problem instanceof ApiError) {
-    if (problem.code === 'config_error') return 'weflow 还没有配置账号：' + problem.message;
-    return problem.message || '读取会话失败';
+    if (problem.code === 'config_error') return t('weflow 还没有配置账号：{message}', { message: problem.message });
+    return problem.message || t('读取会话失败');
   }
-  return '读取会话失败';
+  return t('读取会话失败');
 }
 
 /**

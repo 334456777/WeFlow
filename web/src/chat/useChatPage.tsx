@@ -36,6 +36,7 @@ import { useBizAccounts } from './useBizAccounts';
 import type { Jump } from './useMessages';
 import { useSearch } from './useSearch';
 import type { SessionsState } from './useSessions';
+import { t } from '../i18n';
 
 const SAMPLE_SESSIONS: SessionsState = { status: 'ready', sessions: sampleSessions, statuses: {} };
 // Until /health has answered, neither the sample nor the real list: no sample flashes up before the real one.
@@ -48,7 +49,7 @@ function liveConversation(session: ChatSession | undefined): Conversation {
   return {
     id: session.username, category: 'chat', name: session.displayName || session.username, avatar: session.avatarUrl,
     preview: session.summary, stamp: formatSessionTime(session.lastTimestamp),
-    description: kindLabels[kindOf(session.username)] + (count ? ' · 约 ' + count + ' 条记录' : ''),
+    description: t(kindLabels[kindOf(session.username)]) + (count ? ' · ' + t('约 {count} 条记录', { count }) : ''),
     messages: [], live: true, messageCount: count, lastTime: session.lastTimestamp,
   };
 }
@@ -151,7 +152,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
   };
 
   const openHit = (hit: SearchHit) => {
-    if (!sessionList.some(session => session.username === hit._session_id)) { toast('这条消息所在的会话不在会话列表里。'); return; }
+    if (!sessionList.some(session => session.username === hit._session_id)) { toast(t('这条消息所在的会话不在会话列表里。')); return; }
     setLiveId(hit._session_id);
     setJumpTo({ sessionId: hit._session_id, target: { at: 'message', message: hit }, seq: ++jumps.current });
     showMessages();
@@ -167,11 +168,11 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
     try {
       const message = await lookupMessage(sessionId, localId, createTime, controller.signal);
       if (controller.signal.aborted) return;
-      if (!message?._cursor) { toast('没有找到这条消息。'); return; }
+      if (!message?._cursor) { toast(t('没有找到这条消息。')); return; }
       setJumpTo({ sessionId, target: { at: 'message', message }, seq: ++jumps.current });
       showMessages();
     } catch {
-      if (!controller.signal.aborted) toast('没有找到这条消息。');
+      if (!controller.signal.aborted) toast(t('没有找到这条消息。'));
     }
   };
 
@@ -184,17 +185,17 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
     if (!liveSession || !formats.length) return;
     setExportError(''); setExportJobId(null);
     try {
-      const job = await runJob('导出 ' + selected.name + ' · ' + formatsLabel(formats), 'POST', 'export/messages', {
+      const job = await runJob(t('导出 {name} · {formats}', { name: selected.name, formats: formatsLabel(formats) }), 'POST', 'export/messages', {
         'session-id': liveSession.username, format: formats, start: liveRange.from || undefined, end: liveRange.to || undefined,
         media: includeMedia ? 'all' : undefined, zip: packed(formats, includeMedia) ? true : undefined,
       });
       setExportJobId(job.id);
     } catch (problem) {
-      setExportError(problem instanceof Error && problem.message ? problem.message : '导出没有开始，请重试。');
+      setExportError(problem instanceof Error && problem.message ? problem.message : t('导出没有开始，请重试。'));
     }
   };
   const cancelExport = () => {
-    if (exportJobId) removeJob(exportJobId).catch(() => setExportError('取消失败，请重试。'));
+    if (exportJobId) removeJob(exportJobId).catch(() => setExportError(t('取消失败，请重试。')));
   };
 
   // an empty search clears the results rather than matching every message (#199), as the live search does
@@ -205,69 +206,71 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
 
   const cards: Card[] = [
     {
-      id: 'export', title: '导出', summary: (formats.length ? formatsLabel(formats) : '未选择格式') + (includeMedia ? ' · 含媒体' : ''),
+      id: 'export', title: t('导出'), summary: (formats.length ? formatsLabel(formats) : t('未选择格式')) + (includeMedia ? ' · ' + t('含媒体') : ''),
       content: <>
-        <p className="card-lead"><span className="clamp-1">{selected.name}的{selected.category === 'chat' ? '聊天记录' : '记录'}</span>{!selected.live && <span className="badge">示例数据</span>}</p>
-        <div className="form-row"><span className="field-label">时间范围</span>{selected.live
-          ? <DateRange label="导出的时间范围" from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
-          : <DateRange label="导出的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
-        <div className="form-row format-row"><span className="field-label">导出格式</span>
+        <p className="card-lead"><span className="clamp-1">{selected.category === 'chat' ? t('{name}的聊天记录', { name: selected.name }) : t('{name}的记录', { name: selected.name })}</span>{!selected.live && <span className="badge">{t('示例数据')}</span>}</p>
+        <div className="form-row"><span className="field-label">{t('时间范围')}</span>{selected.live
+          ? <DateRange label={t('导出的时间范围')} from={liveRange.from} to={liveRange.to} onChange={range => { setLiveRange(range); resetExport(); }} />
+          : <DateRange label={t('导出的时间范围')} from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); resetExport(); }} />}</div>
+        <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
           <FormatChips formats={formats} onChange={next => { setFormats(next); resetExport(); }} />
-          <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>{MEDIA_NOTE}</small></span></label>
+          <label className="checkbox"><input type="checkbox" aria-label={t('附带媒体文件')} checked={includeMedia} onChange={event => { setIncludeMedia(event.target.checked); resetExport(); }} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('附带媒体文件')} <small>{MEDIA_NOTE}</small></span></label>
         </div>
         {selected.live && liveSession
           ? <><ExportControl stage={stage} result={exportResult} ready={formats.length > 0} onStart={exportRecords} onCancel={cancelExport} />
             {stage === 'error' && <p className="card-note" role="alert">{exportJob ? jobDetail(exportJob) : exportError}</p>}
-            {stage === 'exporting' && exportJob && <p className="card-note" aria-live="polite">{exportJob.status === 'queued' ? '排队中：前面的任务完成后开始。' : jobDetail(exportJob)}</p>}
-            {stage === 'done' && packed(formats, includeMedia) && <p className="card-note">{formats.length > 1 ? '各个格式的文件' : '导出文件'}{includeMedia ? '和 media 文件夹' : ''}打包在这个 zip 里。</p>}</>
-          : <><button type="button" className="primary-button large export-pending" disabled><DownloadSimple size={18} />开始导出</button><p className="card-note">{selected.live ? '选择一个会话后导出。' : '连接 weflow serve 后，可以导出本机的真实记录。'}</p></>}
+            {stage === 'exporting' && exportJob && <p className="card-note" aria-live="polite">{exportJob.status === 'queued' ? t('排队中：前面的任务完成后开始。') : jobDetail(exportJob)}</p>}
+            {stage === 'done' && packed(formats, includeMedia) && <p className="card-note">{formats.length > 1
+              ? includeMedia ? t('各个格式的文件和 media 文件夹打包在这个 zip 里。') : t('各个格式的文件打包在这个 zip 里。')
+              : includeMedia ? t('导出文件和 media 文件夹打包在这个 zip 里。') : t('导出文件打包在这个 zip 里。')}</p>}</>
+          : <><button type="button" className="primary-button large export-pending" disabled><DownloadSimple size={18} />{t('开始导出')}</button><p className="card-note">{selected.live ? t('选择一个会话后导出。') : t('连接 weflow serve 后，可以导出本机的真实记录。')}</p></>}
       </>,
     },
     {
-      id: 'search', title: '搜索', summary: selected.live ? searchSummary(liveSearch.state) : submittedQuery === null ? '当前会话' : results.length + ' 条结果',
+      id: 'search', title: t('搜索'), summary: selected.live ? searchSummary(liveSearch.state) : submittedQuery === null ? t('当前会话') : t('{n} 条结果', { n: results.length }),
       content: selected.live
         ? <SearchPanel key={scope} session={liveSession} sessions={sessionList} search={liveSearch} onOpenHit={openHit} onJumpDay={jumpToDay} />
         : <>
         <form className="search-form" onSubmit={search}>
-          <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="搜索此会话的消息" placeholder={'搜索' + selected.name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} /></div>
-          <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="search-button-label">搜索</span></button>
+          <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label={t('搜索此会话的消息')} placeholder={t('搜索{name}的消息', { name: selected.name })} value={query} onChange={event => setQuery(event.target.value)} /></div>
+          <button className="primary-button search-button" type="submit" aria-label={t('搜索')}><MagnifyingGlass size={16} /><span className="search-button-label">{t('搜索')}</span></button>
         </form>
-        <div className="search-date-row"><span className="field-label">时间范围</span><DateRange label="搜索的时间范围" from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); }} /></div>
+        <div className="search-date-row"><span className="field-label">{t('时间范围')}</span><DateRange label={t('搜索的时间范围')} from={from} to={to} onChange={range => { setFrom(range.from); setTo(range.to); }} /></div>
         <div className="search-results" aria-live="polite" data-roving="vertical" data-roving-items=".search-result"><HoverTrack items=".search-result" />{submittedQuery === null
-          ? <p className="empty-text">输入关键词，搜索当前会话的记录。</p>
+          ? <p className="empty-text">{t('输入关键词，搜索当前会话的记录。')}</p>
           : results.length
-            ? <><p className="results-count">找到 {results.length} 条记录<span>点击可定位到消息</span></p>{results.map(message => <button className="search-result" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
-            : <p className="empty-text">没有找到匹配的消息，试试其他关键词或时间范围。</p>}</div>
+            ? <><p className="results-count">{t('找到 {length} 条记录', { length: results.length })}<span>{t('点击可定位到消息')}</span></p>{results.map(message => <button className="search-result" type="button" key={message.id} onClick={() => setHighlighted(message.id)}><span className="search-result-copy"><strong>{message.sender}</strong><span className="clamp-1">{message.text}</span></span><time>{message.date} {message.time}</time><ArrowSquareOut size={14} /></button>)}</>
+            : <p className="empty-text">{t('没有找到匹配的消息，试试其他关键词或时间范围。')}</p>}</div>
       </>,
     },
     {
-      id: 'info', title: '会话资料', summary: selected.live ? (selected.messageCount ? '约 ' + selected.messageCount + ' 条' : '') : selected.messages.length + ' 条记录',
+      id: 'info', title: t('会话资料'), summary: selected.live ? (selected.messageCount ? t('约 {n} 条', { n: selected.messageCount }) : '') : t('{n} 条记录', { n: selected.messages.length }),
       content: selected.live
         ? (open: boolean) => liveSession ? <SessionInfo key={scope + ':' + liveSession.username} session={liveSession} active={open} /> : null
         : <>
           <div className="info-content"><Avatar name={selected.name} url={selected.avatar} /><div><h4>{selected.name}</h4><p className="clamp-2">{selected.description}</p></div></div>
-          <dl className="info-grid"><div><dt>类型</dt><dd>{categoryLabels[selected.category]}</dd></div><div><dt>记录条数</dt><dd className="num">{selected.messages.length} 条</dd></div><div><dt>媒体文件</dt><dd className="num">{media.length} 个</dd></div><div className="info-wide"><dt>时间范围</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>
+          <dl className="info-grid"><div><dt>{t('类型')}</dt><dd>{t(categoryLabels[selected.category])}</dd></div><div><dt>{t('记录条数')}</dt><dd className="num">{t('{length} 条', { length: selected.messages.length })}</dd></div><div><dt>{t('媒体文件')}</dt><dd className="num">{t('{length} 个', { length: media.length })}</dd></div><div className="info-wide"><dt>{t('时间范围')}</dt><dd className="num">{selected.messages[0]?.date} ↔ {selected.messages.at(-1)?.date}</dd></div></dl>
         </>,
     },
     {
-      id: 'media', title: '媒体文件', summary: selected.live ? '图片、视频与文件' : media.length + ' 个',
+      id: 'media', title: t('媒体文件'), summary: selected.live ? t('图片、视频与文件') : t('{length} 个', { length: media.length }),
       content: selected.live
         ? (open: boolean) => liveSession ? <MediaPanel key={scope + ':' + liveSession.username} sessionId={liveSession.username} active={open} onOpen={item => openMedia(liveSession.username, item)} /> : null
-        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? openPreview({ type: 'image', src: message.asset, title: message.text }) : openPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">这段记录中没有媒体文件。</p>}</div>,
+        : <div className="media-list" data-roving="grid" data-roving-items=".media-item"><HoverTrack items=".media-item" />{media.length ? media.map(message => <button className="media-item" type="button" key={message.id} onClick={() => message.asset ? openPreview({ type: 'image', src: message.asset, title: message.text }) : openPreview({ type: 'file', title: message.fileName || message.text })}>{message.asset ? <img src={message.asset} alt="" /> : <FilePdf size={32} />}<span><span className="clamp-1">{message.fileName || message.text}</span><small>{message.date} {message.time}</small></span><ArrowSquareOut size={14} /></button>) : <p className="empty-text">{t('这段记录中没有媒体文件。')}</p>}</div>,
     },
   ];
   // nothing to show of a real conversation until one is open
   const shown = ['export', 'tasks', 'search', 'info', 'media'].filter(id => !(selected.live && !liveSession && (id === 'info' || id === 'media')));
 
-  const view = <BrowserPanel label={categoryLabels[category] + '记录浏览'} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)}
-    back="返回对话列表" title={selected.live ? liveSession?.displayName ?? '' : selected.name} paneLabel={selected.name + '的记录'} pane={paneRef}
+  const view = <BrowserPanel label={t('{category}记录浏览', { category: t(categoryLabels[category]) })} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)}
+    back={t('返回对话列表')} title={selected.live ? liveSession?.displayName ?? '' : selected.name} paneLabel={t('{name}的记录', { name: selected.name })} pane={paneRef}
     list={category === 'chat'
       ? backend.state === 'unauthorized'
         ? <TokenPrompt />
         : <SessionList state={connected ? shell.sessions : backend.state === 'checking' ? CHECKING : SAMPLE_SESSIONS} sample={!connected && backend.state !== 'checking'} selectedId={selected.id || null} onSelect={selectConversation} onRetry={shell.reloadSessions}
           officials={officials} onFilter={filter => { if (filter === 'official') setOfficialsWanted(true); }} />
-      : <><div ref={listRef} className="conversation-list scroll-area" aria-label={categoryLabels[category] + '列表'} data-roving="vertical" data-roving-items=".conversation-row"><HoverTrack items=".conversation-row" />
-        {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={'选择' + conversation.name} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
+      : <><div ref={listRef} className="conversation-list scroll-area" aria-label={t('{category}列表', { category: t(categoryLabels[category]) })} data-roving="vertical" data-roving-items=".conversation-row"><HoverTrack items=".conversation-row" />
+        {list.map(conversation => <button type="button" key={conversation.id} className={'conversation-row' + (conversation.id === selected.id ? ' active' : '')} aria-label={t('选择{name}', { name: conversation.name })} aria-pressed={conversation.id === selected.id} onClick={() => selectConversation(conversation.id)}>
           <Avatar name={conversation.name} url={conversation.avatar} />
           <span className="conversation-copy">
             <span className="conversation-head"><span className="conversation-name">{conversation.name}</span><time className="conversation-time">{conversation.stamp}</time></span>
@@ -279,15 +282,15 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
       ? kindOf(liveSession.username) === 'official'
         ? <BizPushes key={scope + ':' + liveSession.username} session={liveSession} />
         : <LiveMessages key={scope} session={liveSession} scroller={paneRef} jump={jumpTo} onPreview={openPreview} />
-      : <div className="pane-message">{shell.sessions.status === 'ready' && <p>选择左侧的一个会话。</p>}</div>)}
+      : <div className="pane-message">{shell.sessions.status === 'ready' && <p>{t('选择左侧的一个会话。')}</p>}</div>)}
     {!selected.live && <div className="messages">
       {selected.messages.map((message, index) => <div key={message.id}>
         {(index === 0 || selected.messages[index - 1].date !== message.date) && <div className="date-separator">{formatDay(message.date)}</div>}
         <div id={'message-' + message.id} className={'message-row ' + message.direction + (highlighted === message.id ? ' highlighted' : '')}>
           {message.kind === 'image' && message.asset
-            ? <button type="button" className="photo-button" aria-label={'预览' + message.text} onClick={() => openPreview({ type: 'image', src: message.asset!, title: message.text })}><img className="message-photo" src={message.asset} alt={message.text} /></button>
+            ? <button type="button" className="photo-button" aria-label={t('预览{text}', { text: message.text })} onClick={() => openPreview({ type: 'image', src: message.asset!, title: message.text })}><img className="message-photo" src={message.asset} alt={message.text} /></button>
             : message.kind === 'file'
-              ? <button className="message-bubble file-bubble" type="button" onClick={() => openPreview({ type: 'file', title: message.fileName || message.text })}><FilePdf size={28} /><span>{message.fileName}<small>示例文件</small></span></button>
+              ? <button className="message-bubble file-bubble" type="button" onClick={() => openPreview({ type: 'file', title: message.fileName || message.text })}><FilePdf size={28} /><span>{message.fileName}<small>{t('示例文件')}</small></span></button>
               : <div className="message-bubble">{message.text}</div>}
           <time className="message-time">{message.time}</time>
         </div>

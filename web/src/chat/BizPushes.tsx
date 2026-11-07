@@ -11,6 +11,7 @@ import { useLive } from '../api/live';
 import { Avatar } from '../Avatar';
 import { dayOf, formatClock, formatDayHeading } from './messages';
 import { MomentsSkeleton } from '../Skeleton';
+import { t } from '../i18n';
 
 interface Feed {
   status: 'loading' | 'ready' | 'error';
@@ -22,7 +23,7 @@ interface Feed {
 
 const LOADING: Feed = { status: 'loading', pushes: [], hasMore: false, loadingMore: false };
 
-const messageOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || '读取推送失败';
+const messageOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('读取推送失败');
 
 function Cover({ src, className }: { src: string; className: string }) {
   const [failed, setFailed] = useState(false);
@@ -33,7 +34,7 @@ function Cover({ src, className }: { src: string; className: string }) {
 /** A link to an article, or plain text when the push has no address. */
 function ArticleLink({ article, className, children }: { article: Pick<BizArticle, 'url' | 'title'>; className: string; children: ReactNode }) {
   return article.url
-    ? <a className={className} href={article.url} target="_blank" rel="noreferrer noopener" aria-label={article.title || '打开文章'}>{children}</a>
+    ? <a className={className} href={article.url} target="_blank" rel="noreferrer noopener" aria-label={article.title || t('打开文章')}>{children}</a>
     : <div className={className}>{children}</div>;
 }
 
@@ -47,11 +48,11 @@ function PushCard({ push }: { push: BizPush }) {
     <time className="biz-push-time" dateTime={time.toISOString()}>{formatDayHeading(dayOf(seconds), new Date())} {formatClock(seconds)}</time>
     <ArticleLink article={push} className="biz-lead">
       <Cover src={push.cover} className="biz-lead-cover" />
-      <strong className="biz-lead-title clamp-2">{push.title || '无标题'}</strong>
+      <strong className="biz-lead-title clamp-2">{push.title || t('无标题')}</strong>
       {push.description && <span className="biz-lead-summary clamp-2">{push.description}</span>}
     </ArticleLink>
     {more.map((item, index) => <ArticleLink key={index} article={item} className="biz-item">
-      <span className="biz-item-title clamp-2">{item.title || '无标题'}</span>
+      <span className="biz-item-title clamp-2">{item.title || t('无标题')}</span>
       <Cover src={item.cover} className="biz-item-cover" />
     </ArticleLink>)}
   </article>;
@@ -92,22 +93,22 @@ export function BizPushes({ session }: { session: ChatSession }) {
   });
 
   if (feed.status === 'loading') {
-    return <MomentsSkeleton label="正在读取推送" />;
+    return <MomentsSkeleton label={t('正在读取推送')} />;
   }
   if (feed.status === 'error') {
-    return <div className="pane-message" role="alert"><p>{feed.error}</p><button type="button" className="secondary-button" onClick={() => setRound(n => n + 1)}><ArrowClockwise size={14} />重试</button></div>;
+    return <div className="pane-message" role="alert"><p>{feed.error}</p><button type="button" className="secondary-button" onClick={() => setRound(n => n + 1)}><ArrowClockwise size={14} />{t('重试')}</button></div>;
   }
   return <div className="biz-feed">
     <header className="biz-head">
       <Avatar name={session.displayName || id} url={session.avatarUrl} />
-      <div><h2>{session.displayName || id}</h2><p><Article size={12} />公众号 · 最新的推送在最上面</p></div>
+      <div><h2>{session.displayName || id}</h2><p><Article size={12} />{t('公众号 · 最新的推送在最上面')}</p></div>
     </header>
     {feed.pushes.length
       ? feed.pushes.map(push => <PushCard key={push.localId + ':' + push.createTime} push={push} />)
-      : <p className="biz-empty">本机没有这个公众号的推送记录。公众号历史文章可能在网页中显示；已删除或尚未保存在本机的消息无法读取。</p>}
+      : <p className="biz-empty">{t('本机没有这个公众号的推送记录。公众号历史文章可能在网页中显示；已删除或尚未保存在本机的消息无法读取。')}</p>}
     {feed.error && <p className="biz-empty" role="alert">{feed.error}</p>}
     {feed.hasMore && <button type="button" className="secondary-button biz-more" onClick={more} disabled={feed.loadingMore}>
-      {feed.loadingMore ? <><CircleNotch size={14} className="spin" />正在加载</> : '加载更早的推送'}
+      {feed.loadingMore ? <><CircleNotch size={14} className="spin" />{t('正在加载')}</> : t('加载更早的推送')}
     </button>}
   </div>;
 }

@@ -17,6 +17,7 @@ import { dayOf, formatClock, isMine } from './messages';
 import { kindOf } from './sessions';
 import { useDateCounts } from './useDateCounts';
 import { useSearch, type SearchState } from './useSearch';
+import { t } from '../i18n';
 
 type Scope = 'session' | 'all';
 
@@ -49,9 +50,9 @@ function Marked({ text, keyword }: { text: string; keyword: string }) {
 
 /** The card's summary: how many hits, or what a search would cover. */
 export function searchSummary(state: SearchState): string {
-  if (state.status === 'ready') return state.hits.length + (state.hasMore ? '+' : '') + ' 条结果';
-  if (state.status === 'loading') return '正在搜索';
-  return state.query && !state.query.sessionId ? '全部会话' : '当前会话';
+  if (state.status === 'ready') return t('{n} 条结果', { n: state.hits.length + (state.hasMore ? '+' : '') });
+  if (state.status === 'loading') return t('正在搜索');
+  return state.query && !state.query.sessionId ? t('全部会话') : t('当前会话');
 }
 
 export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }: {
@@ -95,7 +96,7 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
 
   const nameOfSession = (id: string) => sessions.find(s => s.username === id)?.displayName || id;
   const senderOf = (hit: SearchHit) => {
-    if (isMine(hit)) return '我';
+    if (isMine(hit)) return t('我');
     const sender = hit.senderUsername;
     if (kindOf(hit._session_id) === 'group') return (sender && memberName(hit._session_id, sender)) || sender || '';
     return nameOfSession(hit._session_id);
@@ -110,37 +111,37 @@ export function SearchPanel({ session, sessions, search, onOpenHit, onJumpDay }:
   return <>
     <form className="search-form" onSubmit={submit}>
       <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" />
-        <input type="search" aria-label={scope === 'all' ? '搜索全部会话的消息' : '搜索此会话的消息'} placeholder={scope === 'all' ? '搜索全部会话的消息' : '搜索' + name + '的消息'} value={query} onChange={event => setQuery(event.target.value)} />
+        <input type="search" aria-label={scope === 'all' ? t('搜索全部会话的消息') : t('搜索此会话的消息')} placeholder={scope === 'all' ? t('搜索全部会话的消息') : t('搜索{name}的消息', { name })} value={query} onChange={event => setQuery(event.target.value)} />
       </div>
-      <button className="primary-button search-button" type="submit" aria-label="搜索"><MagnifyingGlass size={16} /><span className="search-button-label">搜索</span></button>
+      <button className="primary-button search-button" type="submit" aria-label={t('搜索')}><MagnifyingGlass size={16} /><span className="search-button-label">{t('搜索')}</span></button>
     </form>
-    <div className="search-date-row"><span className="field-label">范围</span>
-      <Segmented className="scope-group" count={2} index={scope === 'all' ? 1 : 0} role="group" aria-label="搜索范围">
-        <button type="button" aria-pressed={scope === 'session'} onClick={() => setScope('session')}>当前会话</button>
-        <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>全部会话</button>
+    <div className="search-date-row"><span className="field-label">{t('范围')}</span>
+      <Segmented className="scope-group" count={2} index={scope === 'all' ? 1 : 0} role="group" aria-label={t('搜索范围')}>
+        <button type="button" aria-pressed={scope === 'session'} onClick={() => setScope('session')}>{t('当前会话')}</button>
+        <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{t('全部会话')}</button>
       </Segmented>
     </div>
     {/* always there, and optional: no days, no limit (#345) */}
-    <div className="search-date-row"><span className="field-label">时间范围</span>
-      <DateRange label="搜索的时间范围" from={range.from} to={range.to} onChange={setRange}
+    <div className="search-date-row"><span className="field-label">{t('时间范围')}</span>
+      <DateRange label={t('搜索的时间范围')} from={range.from} to={range.to} onChange={setRange}
         marks={scope === 'session' ? counts : null} onOpen={scope === 'session' ? request : undefined} /></div>
-    <div className="search-date-row"><span className="field-label">跳到日期</span>
-      <DateField label="跳到日期" placeholder="选择一天" value={jumpDay} marks={counts} onOpen={request}
+    <div className="search-date-row"><span className="field-label">{t('跳到日期')}</span>
+      <DateField label={t('跳到日期')} placeholder={t('选择一天')} value={jumpDay} marks={counts} onOpen={request}
         onChange={day => { setJumpDay(day); if (sessionId) onJumpDay(sessionId, day); }} />
     </div>
     <div className="search-results" aria-live="polite" aria-busy={state.status === 'loading'} data-roving="vertical" data-roving-items=".search-result"><HoverTrack items=".search-result" />{
-      state.status === 'idle' ? <p className="empty-text">输入关键词，搜索{scope === 'all' ? '全部会话' : '当前会话'}的消息。</p>
-        : state.status === 'loading' ? <ResultsSkeleton label="正在搜索" />
+      state.status === 'idle' ? <p className="empty-text">{scope === 'all' ? t('输入关键词，搜索全部会话的消息。') : t('输入关键词，搜索当前会话的消息。')}</p>
+        : state.status === 'loading' ? <ResultsSkeleton label={t('正在搜索')} />
           : state.status === 'error' ? <p className="empty-text">{state.error}</p>
             : state.hits.length
-              ? <><p className="results-count">{state.hasMore ? '已显示 ' : '找到 '}{state.hits.length} 条记录<span>点击可定位到消息</span></p>
+              ? <><p className="results-count">{state.hasMore ? t('已显示 {n} 条记录', { n: state.hits.length }) : t('找到 {length} 条记录', { length: state.hits.length })}<span>{t('点击可定位到消息')}</span></p>
                 {state.hits.map(hit => <button className="search-result" type="button" key={hit._session_id + ' ' + hit._cursor} onClick={() => onOpenHit(hit)}>
                   <span className={'search-result-copy' + (state.query?.sessionId ? '' : ' stacked')}><strong className="clamp-1">{titleOf(hit)}</strong><span className="clamp-1"><Marked text={hit.parsedContent} keyword={keyword} /></span></span>
                   <time>{dayOf(hit.createTime)} {formatClock(hit.createTime)}</time><ArrowSquareOut size={14} />
                 </button>)}
                 {state.error && <p className="empty-text">{state.error}</p>}
-                {state.hasMore && <button type="button" className="secondary-button more-button" disabled={state.loadingMore} onClick={search.more}>{state.loadingMore ? <><CircleNotch size={14} className="spin" />正在加载</> : '加载更多'}</button>}</>
-              : <p className="empty-text">没有找到匹配的消息，试试其他关键词或时间范围。</p>
+                {state.hasMore && <button type="button" className="secondary-button more-button" disabled={state.loadingMore} onClick={search.more}>{state.loadingMore ? <><CircleNotch size={14} className="spin" />{t('正在加载')}</> : t('加载更多')}</button>}</>
+              : <p className="empty-text">{t('没有找到匹配的消息，试试其他关键词或时间范围。')}</p>
     }</div>
   </>;
 }

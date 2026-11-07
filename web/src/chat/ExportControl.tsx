@@ -2,6 +2,7 @@
 import { ArrowClockwise, CircleNotch, DownloadSimple, X } from '@phosphor-icons/react';
 import type { Job } from '../api/jobs';
 import type { ExportResult } from '../types';
+import { t } from '../i18n';
 
 export type ExportStage = 'idle' | 'exporting' | 'done' | 'error';
 
@@ -16,14 +17,14 @@ export function ExportControl({ stage, result, ready, onStart, onCancel }: {
   const waiting = !ready && stage !== 'exporting';
   return <div className={'export-control' + (expanded ? ' expanded' : '')}>
     {stage === 'done' && result
-      ? <a className="primary-button large" href={result.downloadUrl} download={result.fileName}><span className="morph-label" key="done"><DownloadSimple size={18} />下载文件</span></a>
+      ? <a className="primary-button large" href={result.downloadUrl} download={result.fileName}><span className="morph-label" key="done"><DownloadSimple size={18} />{t('下载文件')}</span></a>
       : <button type="button" className="primary-button large" disabled={waiting} aria-disabled={stage === 'exporting'} onClick={() => { if (stage !== 'exporting') onStart(); }}>
         <span className="morph-label" key={waiting ? 'waiting' : stage}>{stage === 'exporting'
-          ? <><CircleNotch size={18} className="spin" />正在导出</>
-          : waiting ? <><DownloadSimple size={18} />选择导出格式</>
-          : <><DownloadSimple size={18} />{stage === 'error' ? '重新导出' : '开始导出'}</>}</span>
+          ? <><CircleNotch size={18} className="spin" />{t('正在导出')}</>
+          : waiting ? <><DownloadSimple size={18} />{t('选择导出格式')}</>
+          : <><DownloadSimple size={18} />{stage === 'error' ? t('重新导出') : t('开始导出')}</>}</span>
       </button>}
-    <button type="button" className="export-side" inert={!expanded} aria-label={stage === 'done' ? '再次导出' : '取消导出'} title={stage === 'done' ? '再次导出' : '取消导出'} onClick={stage === 'done' ? onStart : onCancel}>
+    <button type="button" className="export-side" inert={!expanded} aria-label={stage === 'done' ? t('再次导出') : t('取消导出')} title={stage === 'done' ? t('再次导出') : t('取消导出')} onClick={stage === 'done' ? onStart : onCancel}>
       {stage === 'done' ? <ArrowClockwise size={18} /> : <X size={18} />}
     </button>
   </div>;

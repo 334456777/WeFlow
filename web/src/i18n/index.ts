@@ -30,6 +30,25 @@ function show(): void {
 
 export const lang = (): Lang => current;
 
+/** The page's language as a locale, for `Intl` and `toLocaleString`. */
+export const locale = (): string => (current === 'en' ? 'en-US' : 'zh-CN');
+
+const formats = new Map<string, Intl.DateTimeFormat>();
+
+/** `date` in the page's language, as `Intl.DateTimeFormat` writes it with `options` (`10月12日`, `Oct 12`). */
+export function formatDate(date: Date, options: Intl.DateTimeFormatOptions): string {
+  const key = locale() + JSON.stringify(options);
+  let format = formats.get(key);
+  if (!format) formats.set(key, (format = new Intl.DateTimeFormat(locale(), options)));
+  return format.format(date);
+}
+
+/** A day counted from today in the page's language: 今天, 昨天 (Today, Yesterday) for 0 and -1. */
+export function relativeDay(offset: number): string {
+  const word = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' }).format(offset, 'day');
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 /** Shows the page in `next` (a server's `lang`; anything else is left as it is). */
 export function setLang(next: unknown): void {
   if ((next !== 'zh' && next !== 'en') || next === current) return;
