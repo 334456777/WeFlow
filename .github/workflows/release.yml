@@ -11,8 +11,9 @@ name: Release
 # every target: the test suite, and the packaged binary run once and checked against the tag), release (only after
 # every build and test passed). v1.2.3 is published as a stable release; any tag with letters (v1.2.3-beta.1,
 # v1.2.3-rc1, ...) is a pre-release.
-# A manual run with `bench` also runs bench.yml after the release (#516): `bench_base` against the tag, by default
-# the previous release; the report goes to GitHub Pages and its link, with a few lines, into the release notes.
+# A manual run with `bench` also runs bench.yml after the release (#516, #601): `bench_base` and the tag, by default
+# the previous release, each measured on the benchmark runner unless already measured; the link to their comparison
+# in the viewer on GitHub Pages, with a few lines, goes into the release notes.
 on:
   push:
     tags:
@@ -28,7 +29,7 @@ on:
         required: false
         type: string
       bench:
-        description: "发布后运行基准测试，并把报告链接和主要结论补进更新日志（约 25 分钟，不影响发布）"
+        description: "发布后在基准 runner 上测这个版本（上一个版本没测过时一起测），把对比链接和主要结论补进更新日志（不影响发布）"
         required: false
         default: false
         type: boolean
@@ -370,45 +371,16 @@ jobs:
           # the summary said "not published yet" when the run started
           echo "Published: $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url -q .url), the annotated tag $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
 
-  # With `bench` (#516): bench.yml once the release is out, so the release never waits for it and a failed benchmark
-  # leaves it as it is. Base and head are built and measured as in a manual run of bench.yml; the report goes to
-  # GitHub Pages (bench/<tag>/ of the gh-pages branch).
+  # With `bench` (#516, #601): bench.yml once the release is out, so the release never waits for it and a failed
+  # benchmark leaves it as it is. It measures the base and the tag as a manual run of bench.yml does (a commit already
+  # measured is not measured again), publishes the results to GitHub Pages and adds the 性能基准 section to the notes.
   bench:
     name: Benchmark
     needs: [prepare, release]
     if: needs.prepare.outputs.bench_base != ''
     permissions:
-      contents: write   # the report is pushed to the gh-pages branch
+      contents: write   # the results are pushed to the gh-pages branch and the release notes edited
     uses: ./.github/workflows/bench.yml
     with:
-      base: ${{ needs.prepare.outputs.bench_base }}
-      head: ${{ needs.prepare.outputs.tag }}
-      pages_path: bench/${{ needs.prepare.outputs.tag }}
-
-  # The 性能基准 section of the release notes, before 下载: the link to the report and the lines of highlights.md
-  # (`.github/scripts/release-bench-notes.sh`, which bench.yml also runs when an older release is measured).
-  bench-notes:
-    name: Add the benchmark to the release notes
-    needs: [prepare, bench]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github/scripts
-          sparse-checkout-cone-mode: false
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: bench-results
-          path: results
-
-      - name: Edit the release notes
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-          BASE: ${{ needs.prepare.outputs.bench_base }}
-          URL: ${{ needs.bench.outputs.report_url }}
-        run: bash .github/scripts/release-bench-notes.sh "$TAG" "$BASE" "$URL" results/highlights.md
+      commits: ${{ needs.prepare.outputs.bench_base }},${{ needs.prepare.outputs.tag }}
+      release_tag: ${{ needs.prepare.outputs.tag }}

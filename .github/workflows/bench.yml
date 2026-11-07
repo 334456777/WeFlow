@@ -1,28 +1,31 @@
 name: Bench
 
-# Performance of two commits side by side (#259): run by hand from the Actions page with the two commits, after a
-# large change whose cost is in doubt. Both are built in release, without the PGO of release.yml so that a difference
-# comes from the code alone, and measured one after the other on the same Windows runner, so the comparison holds
-# hardware and software still; a runner's numbers are only compared
-# with numbers of the same run, never with a developer's machine. The account is the synthetic benchmark account of
-# #488, generated on the runner from a seed: real chat data never goes to a public repository's Actions. The
-# measuring is done by `.github/scripts/bench.py` (what it measures is in its docstring); the tools that make the
-# account and time the command API (`bench_account`, `serve_bench`) are built from the commit this workflow runs
-# on, so an older base is measured the same way. The results (results.json, summary.md, report.html, the logs) and
-# the binaries measured are uploaded as one artifact; the summary (in Chinese) is shown on the run's page.
+# Performance of commits measured one by one (#601): run by hand from the Actions page with the commits, or by
+# release.yml after a release. Each commit is built in release, without the PGO of release.yml so that a difference
+# comes from the code alone, and measured on its own on the self-hosted benchmark runner (label `weflow-bench`); its
+# result goes to the gh-pages branch (bench/data/<environment>/<sha>.json), where the viewer at bench/ compares any
+# two results of the same environment (`.github/bench/`). A commit the environment already holds is not measured
+# again. The environment is the machine, the version of the measuring tools and the account
+# (`.github/scripts/bench.py`, which says what it measures); in each run an anchor commit, the same for the whole
+# environment, is measured in turns with every commit, so that two results measured apart show how far the machine
+# drifted in between. The account is the synthetic benchmark account of #488, generated on the runner: real chat data
+# never goes to a public repository's Actions. The tools that make the account and time the command API are built
+# from the commit this workflow runs on, so every commit of a run is measured the same way.
+#
+# The runner is a machine of the repository's owner, so this workflow runs only when the owner starts it (or a release
+# they started calls it), never for a pull request; no other workflow uses the `weflow-bench` label. The runner needs
+# `WEFLOW_BENCH_DIR` in its `.env`: its own folder, kept between runs so that nothing a run before set up is
+# installed, downloaded or written again (Rust, the build cache, the account, the anchor's binary), and cleaned after
+# each run of what the next one will not use (`.github/scripts/bench-runner.sh`).
 on:
   workflow_dispatch:
     inputs:
-      base:
-        description: "base：用来对比的提交、分支或 tag"
-        required: true
-        type: string
-      head:
-        description: "head：要测量的提交、分支或 tag（HEAD 表示运行所在分支的最新提交）"
+      commits:
+        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交）；正好两个时，第一个当 base、第二个当 head 生成对比"
         required: true
         type: string
       runs:
-        description: "每条命令、每个版本计时运行的次数"
+        description: "每条命令计时运行的次数"
         required: false
         default: "5"
         type: string
@@ -51,184 +54,81 @@ on:
         required: false
         default: ""
         type: string
-      pages_path:
-        description: "把报告发布到 GitHub Pages 的这个目录，如 bench/v5.1.0-vs-v5.0.1（只能是 bench/ 下一级）；留空不发布"
+      force:
+        description: "已经测过的提交也重新测量"
         required: false
-        default: ""
-        type: string
+        default: false
+        type: boolean
       release_tag:
-        description: "补测已发布的版本时填它的 tag：报告发布后把链接和结论写进这个 release 说明的「性能基准」一节（要同时填 pages_path）；留空不改"
+        description: "给已发布的版本补上「性能基准」一节时填它的 tag（commits 要正好两个：上一个版本、这个版本）；留空不改"
         required: false
         default: ""
         type: string
-  # release.yml runs it after publishing a release (#516); with `pages_path` (also in a manual run) the report goes
-  # to that folder of the gh-pages branch (GitHub Pages) and `report_url` is where it can be read
+  # release.yml runs it after publishing a release (#516) with the previous release and the new tag
   workflow_call:
     inputs:
-      base:
-        required: true
-        type: string
-      head:
+      commits:
         required: true
         type: string
       runs:
         required: false
         default: "5"
         type: string
-      seed:
-        required: false
-        default: "1"
-        type: string
-      group_messages:
-        required: false
-        default: "200000"
-        type: string
-      conversations:
-        required: false
-        default: "300"
-        type: string
       load_seconds:
         required: false
         default: "90"
         type: string
-      only:
-        required: false
-        default: ""
-        type: string
-      pages_path:
-        description: "Folder of the gh-pages branch for the report, e.g. bench/v5.1.0; empty: not published"
+      release_tag:
         required: false
         default: ""
         type: string
     outputs:
-      report_url:
-        description: "The published report (empty when not published)"
+      viewer_url:
+        description: "The comparison of the two commits in the viewer (empty unless two were given)"
         value: ${{ jobs.publish.outputs.url }}
 
 permissions:
   contents: read
+
+# one run at a time on the runner
+concurrency:
+  group: bench
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   TARGET: x86_64-pc-windows-msvc
 
 jobs:
-  build:
-    name: build ${{ matrix.part }}
-    runs-on: windows-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        part: [base, head, tools]
+  measure:
+    name: measure
+    if: github.actor == github.repository_owner
+    runs-on: [self-hosted, Windows, X64, weflow-bench]
+    timeout-minutes: 720
+    # The steps run .github/scripts/bench-runner.sh through cmd with Git's bash by its full path: the runner finds a
+    # `shell: bash` on its own PATH, where System32's WSL launcher comes first.
     steps:
+      # the runner's own PATH has no Git, and actions/checkout without it downloads an archive instead of a clone
+      - name: Find Git
+        shell: cmd
+        run: '>>"%GITHUB_PATH%" echo C:\Program Files\Git\cmd'
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Check out ${{ matrix.part }}
-        if: matrix.part != 'tools'
-        shell: bash
+      - name: Build and measure
+        shell: cmd
         env:
-          REF: ${{ matrix.part == 'base' && inputs.base || inputs.head }}
-        run: |
-          sha=$(git rev-parse --verify -q "$REF^{commit}" || git rev-parse --verify "origin/$REF^{commit}")
-          git checkout --detach "$sha"
-
-      - name: Install Rust (version from rust-toolchain.toml)
-        shell: bash
-        run: |
-          rustup show active-toolchain || rustup toolchain install
-          rustup target add "$TARGET"
-          rustc --version
-
-      # one cache per part: base and head are usually close, the tools also hold the dev-dependencies
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: bench-${{ matrix.part }}
-
-      - name: Build
-        shell: bash
-        run: |
-          mkdir dist
-          git rev-parse HEAD > "dist/${{ matrix.part }}-commit.txt"
-          if [ "${{ matrix.part }}" = tools ]; then
-            cargo build --release -p weflow-cli --target "$TARGET" --example bench_account --example serve_bench
-            cp "target/$TARGET/release/examples/bench_account.exe" "target/$TARGET/release/examples/serve_bench.exe" dist/
-          else
-            cargo build --release -p weflow-cli --bin weflow --target "$TARGET"
-            cp "target/$TARGET/release/weflow.exe" "dist/weflow-${{ matrix.part }}.exe"
-            # the same commit counting its allocations (#513), when it has the feature; only weflow-cli is rebuilt
-            if grep -q '^alloc-stats' crates/weflow-cli/Cargo.toml; then
-              cargo build --release -p weflow-cli --bin weflow --target "$TARGET" --features alloc-stats
-              cp "target/$TARGET/release/weflow.exe" "dist/weflow-${{ matrix.part }}-alloc.exe"
-            fi
-          fi
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: bench-${{ matrix.part }}
-          path: dist/
-          retention-days: 7
-
-  bench:
-    name: bench
-    needs: build
-    runs-on: windows-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github/scripts
-          sparse-checkout-cone-mode: false
-
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: bench-*
-          path: bin
-          merge-multiple: true
-
-      - name: Install psutil
-        shell: bash
-        run: python -m pip install psutil==7.2.2
-
-      - name: Generate the benchmark account
-        shell: bash
-        env:
-          SEED: ${{ inputs.seed }}
-          GROUP_MESSAGES: ${{ inputs.group_messages }}
-          CONVERSATIONS: ${{ inputs.conversations }}
-        run: |
-          bin/bench_account.exe "$RUNNER_TEMP/account" --weflow bin/weflow-head.exe --seed "$SEED" \
-            --group-messages "$GROUP_MESSAGES" --conversations "$CONVERSATIONS"
-
-      - name: Benchmark
-        shell: bash
-        env:
-          BASE_REF: ${{ inputs.base }}
-          HEAD_REF: ${{ inputs.head }}
+          COMMITS: ${{ inputs.commits }}
           RUNS: ${{ inputs.runs }}
+          SEED: ${{ inputs.seed || '1' }}
+          GROUP_MESSAGES: ${{ inputs.group_messages || '200000' }}
+          CONVERSATIONS: ${{ inputs.conversations || '300' }}
           LOAD_SECONDS: ${{ inputs.load_seconds }}
           ONLY: ${{ inputs.only }}
-        run: |
-          extra=()
-          if [ -n "$ONLY" ]; then extra+=(--only "$ONLY"); fi
-          # the allocation counts (#513) only for the commits built with the feature
-          for part in base head; do
-            if [ -f "bin/weflow-$part-alloc.exe" ]; then extra+=("--$part-alloc" "bin/weflow-$part-alloc.exe"); fi
-          done
-          python .github/scripts/bench.py --base bin/weflow-base.exe --head bin/weflow-head.exe \
-            --base-commit "$(cat bin/base-commit.txt)" --head-commit "$(cat bin/head-commit.txt)" \
-            --base-ref "$BASE_REF" --head-ref "$HEAD_REF" \
-            --account "$RUNNER_TEMP/account" --out results --runs "$RUNS" --load-seconds "$LOAD_SECONDS" \
-            --serve-bench bin/serve_bench.exe "${extra[@]}"
-
-      - name: Gather the results and the binaries
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p results/binaries
-          cp bin/* results/binaries/
-          cp "$RUNNER_TEMP/account/manifest.json" results/account-manifest.json || true
+          FORCE: ${{ inputs.force && '1' || '' }}
+        run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh measure'
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -237,13 +137,17 @@ jobs:
           path: results/
           retention-days: 30
 
-  # The report as a web page that stays (#516): report.html becomes <pages_path>/index.html of the gh-pages branch,
-  # which GitHub Pages serves, next to summary.md, highlights.md and results.json (not the binaries or the logs), and
-  # bench/index.html lists every report there. Only when a caller gives `pages_path`.
+      # what the next run will not use
+      - name: Clean up
+        if: always()
+        shell: cmd
+        run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh clean'
+
+  # The results into the gh-pages branch with the viewer (bench-publish.py); with two commits, their comparison on
+  # the run's page, and with `release_tag` the 性能基准 section of that release's notes.
   publish:
-    name: publish the report
-    needs: bench
-    if: inputs.pages_path
+    name: publish
+    needs: measure
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -251,8 +155,14 @@ jobs:
       group: gh-pages
       cancel-in-progress: false
     outputs:
-      url: ${{ steps.push.outputs.url }}
+      url: ${{ steps.compare.outputs.url }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          path: main
+          sparse-checkout: .github
+          sparse-checkout-cone-mode: false
+
       - uses: actions/checkout@v7
         with:
           ref: gh-pages
@@ -266,37 +176,15 @@ jobs:
       - id: push
         name: Push to gh-pages
         shell: bash
-        working-directory: pages
-        env:
-          PAGES_PATH: ${{ inputs.pages_path }}
-          HEAD_REF: ${{ inputs.head }}
         run: |
-          if [[ ! "$PAGES_PATH" =~ ^bench/[A-Za-z0-9._-]+$ ]]; then
-            echo "::error::pages_path must be bench/<name>, got '$PAGES_PATH'"
-            exit 1
-          fi
-          mkdir -p "$PAGES_PATH"
-          cp ../results/report.html "$PAGES_PATH/index.html"
-          cp ../results/summary.md ../results/highlights.md ../results/results.json "$PAGES_PATH/"
-          # the list of reports, newest version first
-          {
-            echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
-            echo '<meta name="viewport" content="width=device-width,initial-scale=1"><title>WeFlow 基准测试报告</title>'
-            # follows the system's light or dark theme
-            echo '<style>:root{color-scheme:light dark;--fg:#1f2328;--bg:#fff;--link:#0969da;--visited:#8250df}'
-            echo '@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--bg:#0d1117;--link:#4493f8;--visited:#ab7df8}}'
-            echo 'body{font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif;margin:0;padding:16px;max-width:720px;color:var(--fg);background:var(--bg)}'
-            echo 'a{color:var(--link)}a:visited{color:var(--visited)}</style>'
-            echo '</head><body><h1>WeFlow 基准测试报告</h1><ul>'
-            for dir in $(find bench -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -rV); do
-              echo "<li><a href=\"$dir/\">$dir</a></li>"
-            done
-            echo '</ul></body></html>'
-          } > bench/index.html
+          python3 main/.github/scripts/bench-publish.py --pages pages --results results --viewer main/.github/bench \
+            > published.txt
+          cd pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "bench: report for $HEAD_REF ($PAGES_PATH)"
+          git add -A bench
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -q -m "bench: results of $(sed -n 1p ../published.txt)"
           # another publish may have pushed in between: take it and try again
           for attempt in 1 2 3 4; do
             git push origin HEAD:gh-pages && break
@@ -304,35 +192,33 @@ jobs:
             sleep $((attempt * 5))
             git pull -q --rebase origin gh-pages
           done
+
+      - id: compare
+        name: Compare the two commits
+        shell: bash
+        env:
+          COMMITS: ${{ inputs.commits }}
+        run: |
+          IFS=, read -ra refs <<< "$COMMITS"
+          mapfile -t lines < published.txt
+          key=${lines[0]}
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "url=https://$owner.github.io/${GITHUB_REPOSITORY#*/}/$PAGES_PATH/" >> "$GITHUB_OUTPUT"
-          echo "Published: https://$owner.github.io/${GITHUB_REPOSITORY#*/}/$PAGES_PATH/" >> "$GITHUB_STEP_SUMMARY"
+          viewer="https://$owner.github.io/${GITHUB_REPOSITORY#*/}/bench/"
+          echo "Viewer: $viewer?env=$key" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${#refs[@]}" != 2 ]; then exit 0; fi
+          # a name in the link when it says more than the commit itself
+          name() { local r; r=$(echo "$1" | xargs); if [ "$r" = HEAD ] || [[ "$2" == "$r"* ]]; then echo "${2:0:12}"; else echo "$r"; fi; }
+          url="$viewer?env=$key&base=$(name "${refs[0]}" "${lines[1]}")&head=$(name "${refs[1]}" "${lines[2]}")"
+          node main/.github/bench/cli.mjs "pages/bench/data/$key/${lines[1]}.json" "pages/bench/data/$key/${lines[2]}.json" \
+            --out compare --url "$url" > /dev/null
+          echo "url=$url" >> "$GITHUB_OUTPUT"
 
-  # A release measured after it was published (#519): the same 性能基准 section release.yml adds after a release with
-  # `bench`. Only in a manual run with `release_tag`; release.yml adds the section itself.
-  release-notes:
-    name: add the benchmark to the release notes
-    needs: publish
-    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && needs.publish.outputs.url != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github/scripts
-          sparse-checkout-cone-mode: false
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: bench-results
-          path: results
-
-      - name: Edit the release notes
+      - name: Add the benchmark to the release notes
+        if: inputs.release_tag != '' && steps.compare.outputs.url != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.release_tag }}
-          BASE: ${{ inputs.base }}
-          URL: ${{ needs.publish.outputs.url }}
-        run: bash .github/scripts/release-bench-notes.sh "$TAG" "$BASE" "$URL" results/highlights.md
+          COMMITS: ${{ inputs.commits }}
+          URL: ${{ steps.compare.outputs.url }}
+        run: bash main/.github/scripts/release-bench-notes.sh "$TAG" "$(echo "${COMMITS%%,*}" | xargs)" "$URL" compare/highlights.md
