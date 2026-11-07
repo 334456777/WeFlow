@@ -16,7 +16,8 @@ set -euo pipefail
 : "${WEFLOW_BENCH_DIR:?the runner has no WEFLOW_BENCH_DIR in its .env}"
 dir=$(cygpath -m "$WEFLOW_BENCH_DIR")
 export CARGO_HOME="$dir/cargo" RUSTUP_HOME="$dir/rustup" CARGO_TARGET_DIR="$dir/target"
-export PATH="$CARGO_HOME/bin:$PATH"
+# a POSIX path: PATH is split at colons, and D:/ has one
+export PATH="$(cygpath -u "$CARGO_HOME/bin"):$PATH"
 target=x86_64-pc-windows-msvc
 tmp=$(cygpath -m "$RUNNER_TEMP")
 venv="$dir/venv-psutil-7.2.2"

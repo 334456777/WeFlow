@@ -108,6 +108,11 @@ jobs:
     # The steps run .github/scripts/bench-runner.sh through cmd with Git's bash by its full path: the runner finds a
     # `shell: bash` on its own PATH, where System32's WSL launcher comes first.
     steps:
+      # the runner's own PATH has no Git, and actions/checkout without it downloads an archive instead of a clone
+      - name: Find Git
+        shell: cmd
+        run: '>>"%GITHUB_PATH%" echo C:\Program Files\Git\cmd'
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
