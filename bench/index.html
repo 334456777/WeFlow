@@ -2,7 +2,8 @@
 <!-- The benchmark viewer on GitHub Pages (#601, #604): pick an environment, then any two commits measured in it, and
      the comparison is made here from their result.json (compare.mjs). The choice is kept in the address
      (?env=&base=&head=, a commit by a name it was asked by, such as a tag, or by its SHA), so a link shows the same
-     comparison; the release notes link here. bench.yml copies this file to bench/ of the gh-pages branch. -->
+     comparison; the release notes link here. `?c=<base SHA>-<head SHA>` (or `?c=<head SHA>`) is the same in one
+     parameter: the repository's autolink turns `BENCH-<base>-<head>` in an issue, a PR or a commit into it. bench.yml copies this file to bench/ of the gh-pages branch. -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -118,6 +119,11 @@ try {
   const keys = Object.keys(index.envs ?? {});
   if (!keys.length) throw new Error('还没有结果');
   const q = new URLSearchParams(location.search);
+  // a BENCH-<base>-<head> autolink: one parameter of SHAs, which hold no hyphen
+  if (q.has('c')) {
+    const [one, two] = q.get('c').split('-');
+    if (two) { q.set('base', one); q.set('head', two); } else q.set('head', one);
+  }
   const newest = keys.sort((a, b) => (commitsOf(b)[0]?.measured_at ?? '').localeCompare(commitsOf(a)[0]?.measured_at ?? ''))[0];
   // an address without the environment: the newest one that holds both commits
   const key = q.has('env') && index.envs[q.get('env')] ? q.get('env')
