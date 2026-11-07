@@ -76,8 +76,9 @@ if ($HighPerformance) {
 
 # ---- the runner ----
 $cutoff = (Get-Date).ToUniversalTime().AddDays(-3)
-$release = Invoke-RestMethod 'https://api.github.com/repos/actions/runner/releases?per_page=20' |
-  Where-Object { -not $_.prerelease -and -not $_.draft -and ([datetime]$_.published_at).ToUniversalTime() -lt $cutoff } |
+# kept in a variable first: piped straight on, the JSON array would go down the pipeline as one object
+$releases = Invoke-RestMethod 'https://api.github.com/repos/actions/runner/releases?per_page=20'
+$release = $releases | Where-Object { -not $_.prerelease -and -not $_.draft -and ([datetime]$_.published_at).ToUniversalTime() -lt $cutoff } |
   Select-Object -First 1
 $asset = $release.assets | Where-Object { $_.name -like 'actions-runner-win-x64-*.zip' } | Select-Object -First 1
 if (-not $asset) { throw 'no Windows x64 runner found in the releases' }
