@@ -22,8 +22,10 @@ whose results never reached gh-pages (its upload or its publishing failed) loses
 environment publishes them along with its own, without measuring them again.
 A commit that does not build or whose measuring stops is left out with a warning (an old commit may not build with
 today's tools), and the others go on; only the anchor's failing stops the run. Writes `<out>/<sha>/result.json` (and
-its logs) for each commit measured and `<out>/run.json`: the environment, the anchor and every commit asked for with
-its SHA, its name, whether it was measured, and why not when it failed.
+its logs) for each commit measured, `<out>/run.json`: the environment, the anchor and every commit asked for with
+its SHA, its name, whether it was measured, and why not when it failed, and `<out>/summary.md`, how the run went (each
+commit's outcome, how long it took to build and to measure, how busy the machine was, what the version lacked or
+failed), also appended to $GITHUB_STEP_SUMMARY.
 """
 
 import argparse
@@ -109,6 +111,64 @@ def note_toolchain(bench_dir, channel):
         f.write(f"{channel} {int(time.time())}\n")
 
 
+def minutes(seconds):
+    if seconds is None:
+        return "-"
+    return "不到 1 分钟" if seconds < 60 else f"{seconds / 60:.0f} 分钟"
+
+
+def run_summary(env, anchor, new_anchor, commits, out, elapsed):
+    """How the run went, in Chinese for the one who started it: the environment, then a row per commit."""
+    m, acc = env["machine"], env["account"]
+    profile = acc.get("profile") or {}
+    outcome = {"measured": "测完", "reused": "沿用之前测完、没发布的结果", "held": "已测过，跳过",
+               "build": "编译失败，跳过", "measure": "测量中断，跳过"}
+    short = {"measured": "测完", "reused": "沿用", "held": "已测过", "build": "编译失败", "measure": "测量中断"}
+    counts = {}
+    rows = []
+    for c in commits:
+        kind = c.get("failed") or ("reused" if c.get("reused") else "measured" if c["measured"] else "held")
+        counts[kind] = counts.get(kind, 0) + 1
+        quiet = cmds = unsupported = failed_runs = load = "-"
+        file = os.path.join(out, c["sha"], "result.json")
+        if c["measured"] and os.path.exists(file):
+            with open(file, encoding="utf-8") as f:
+                r = json.load(f)
+            q = r.get("quiet") or {}
+            quiet = f"{q.get('p50_pct', '-')}% / {q.get('p95_pct', '-')}%"
+            entries = (r.get("commands") or {}).values()
+            cmds = str(len(entries))
+            unsupported = str(sum(1 for e in entries if e.get("unsupported")))
+            failed_runs = str(sum(e.get("failed_runs", 0) for e in entries))
+            load = "有" if r.get("load") else "没跑成"
+        rows.append(f"| {c['ref']} | `{c['sha'][:10]}` | {outcome[kind]} | {minutes(c.get('build_s'))} | "
+                    f"{minutes(c.get('measure_s'))} | {quiet} | {cmds} | {unsupported} | {failed_runs} | {load} |")
+    tally = "，".join(f"{short[k]} {n}" for k, n in counts.items())
+    lines = [
+        "## 运行情况",
+        "",
+        f"- 环境 `{env['key']}`：{m['cpu']}，{m['cpus']} 个逻辑 CPU，{m['memory_gib']} GiB 内存；测法版本 {env['method']}",
+        f"- 基准账号：种子 {acc['seed']}，{acc['messages']:,} 条消息，{acc['conversations']} 个会话，"
+        + (f"profile `{profile['hash']}`（测于 {profile['measured']}）" if profile else "默认 profile"),
+        f"- 锚点 `{(anchor or '')[:10]}`" + ("（这个环境的第一个提交，这次成了锚点）" if new_anchor else ""),
+        f"- {len(commits)} 个提交：{tally}；用时 {minutes(elapsed)}",
+        "",
+        "| 名字 | 提交 | 结果 | 编译 | 测量 | 其他进程 CPU（p50 / p95） | 命令 | 还没有 | 失败的运行 | 持续负载 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+        *rows,
+        "",
+        "「还没有」是这个版本还没有的命令；「失败的运行」是各命令运行失败的次数之和；没有 serve 命令 API 的版本"
+        "（5.0 以前）持续负载没跑成。",
+        "",
+    ]
+    text = "\n".join(lines)
+    with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
+        f.write(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+            f.write(text + "\n")
+
+
 def clean_up(bench_dir, anchors, account):
     """What the next run will not use: the binaries but the anchors' (a commit measured is not measured again), and
     the accounts but this run's and the one of the default size."""
@@ -138,6 +198,7 @@ def main():
     p.add_argument("--conversations", type=int, default=300)
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
+    started = time.time()
     sys.stdout.reconfigure(encoding="utf-8")
 
     bench_dir, out, tools = (os.path.abspath(x) for x in (args.bench_dir, args.out, args.tools))
@@ -203,7 +264,8 @@ def main():
             os.makedirs(os.path.join(out, c["sha"]), exist_ok=True)
             shutil.copyfile(os.path.join(pending_dir, c["sha"], "result.json"), os.path.join(out, c["sha"], "result.json"))
     todo = [c for c in commits if c["measured"] and not c.get("reused")]
-    if todo and not anchor:
+    new_anchor = bool(todo) and not anchor
+    if new_anchor:
         anchor = todo[0]["sha"]
         print(f"environment {key} has no anchor yet: {anchor[:10]} becomes it", flush=True)
 
@@ -211,6 +273,7 @@ def main():
     if todo and any(c["sha"] != anchor for c in todo):
         anchor_exe, anchor_alloc = build(anchor, bench_dir)
     for c in todo:
+        begin = time.time()
         try:
             exe, alloc = build(c["sha"], bench_dir)
         except subprocess.CalledProcessError as e:
@@ -219,6 +282,7 @@ def main():
             print(f"::warning::{c['ref']} ({c['sha'][:10]}) does not build ({e.returncode}): left out", flush=True)
             c.update(measured=False, failed="build")
             continue
+        c["build_s"] = time.time() - begin
         argv = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bench.py"), "measure",
                 "--exe", exe, "--commit", c["sha"], "--ref", c["ref"], "--account", account,
                 "--out", os.path.join(out, c["sha"]), "--runs", str(args.runs),
@@ -233,7 +297,9 @@ def main():
         if args.only:
             argv += ["--only", args.only]
         print(f"== measure {c['ref']} ({c['sha'][:10]})", flush=True)
+        begin = time.time()
         code = subprocess.run(argv).returncode
+        c["measure_s"] = time.time() - begin
         if code:
             if c["sha"] == anchor:
                 raise SystemExit(f"the anchor {anchor[:10]} could not be measured ({code})")
@@ -245,6 +311,7 @@ def main():
     clean_up(bench_dir, {anchor} | {e.get("anchor") for e in index.get("envs", {}).values()}, account)
     with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
         json.dump({"env": env, "anchor": anchor, "commits": commits}, f, ensure_ascii=False, indent=1)
+    run_summary(env, anchor, new_anchor, commits, out, time.time() - started)
 
 
 if __name__ == "__main__":

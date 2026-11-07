@@ -206,6 +206,7 @@ jobs:
             git pull -q --rebase origin gh-pages
           done
 
+      # the few lines of the release notes; the run's page tells how the run went, the viewer compares
       - id: compare
         name: Compare the two commits
         shell: bash
@@ -217,7 +218,6 @@ jobs:
           key=${lines[0]}
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           viewer="https://$owner.github.io/${GITHUB_REPOSITORY#*/}/bench/"
-          echo "Viewer: $viewer?env=$key" >> "$GITHUB_STEP_SUMMARY"
           if [ "${#refs[@]}" != 2 ]; then exit 0; fi
           # a name in the link when it says more than the commit itself (NAME=REF gives NAME), encoded for the address
           name() {
@@ -231,8 +231,6 @@ jobs:
           node main/.github/bench/cli.mjs "pages/bench/data/$key/${lines[1]}.json" "pages/bench/data/$key/${lines[2]}.json" \
             --out compare --url "$url" > /dev/null
           echo "url=$url" >> "$GITHUB_OUTPUT"
-          # what to write in an issue, a PR or a commit: the repository's autolink makes it a link to the comparison
-          echo "引用：\`BENCH-${lines[1]:0:10}-${lines[2]:0:10}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Add the benchmark to the release notes
         if: inputs.release_tag != '' && steps.compare.outputs.url != ''
