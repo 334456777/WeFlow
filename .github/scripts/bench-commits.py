@@ -68,8 +68,11 @@ def build(sha, bench_dir):
     git("fetch", "-q", "--depth=1", "origin", sha, cwd=src)
     git("checkout", "-q", "--detach", "--force", sha, cwd=src)
     git("clean", "-q", "-fdx", cwd=src)
-    note_toolchain(bench_dir, src)
     env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(bench_dir, "target"))
+    # a commit older than rust-toolchain.toml builds with the tools' own toolchain (rustup has no default here)
+    if not os.path.exists(os.path.join(src, "rust-toolchain.toml")):
+        env["RUSTUP_TOOLCHAIN"] = channel_of(os.getcwd())
+    note_toolchain(bench_dir, env.get("RUSTUP_TOOLCHAIN") or channel_of(src))
     cargo = ["cargo", "build", "--release", "-p", "weflow-cli", "--bin", "weflow", "--target", TARGET]
     print(f"== build {sha[:10]}", flush=True)
     subprocess.run(cargo, cwd=src, env=env, check=True)
@@ -85,13 +88,19 @@ def build(sha, bench_dir):
     return exe, alloc if has_alloc else None
 
 
-def note_toolchain(bench_dir, root):
-    """Notes when the Rust toolchain of the checkout at `root` was last used, in `toolchains-used.txt`, so that the
-    clean-up of bench-runner.sh keeps the ones used lately: a backfill spread over several runs downloads each once."""
+def channel_of(root):
+    """The Rust channel the checkout at `root` names in its rust-toolchain.toml, or None."""
     try:
         with open(os.path.join(root, "rust-toolchain.toml"), encoding="utf-8") as f:
-            channel = next(line.split("=", 1)[1].strip().strip('"') for line in f if line.strip().startswith("channel"))
+            return next(line.split("=", 1)[1].strip().strip('"') for line in f if line.strip().startswith("channel"))
     except (OSError, StopIteration):
+        return None
+
+
+def note_toolchain(bench_dir, channel):
+    """Notes when the Rust toolchain `channel` was last used, in `toolchains-used.txt`, so that the clean-up of
+    bench-runner.sh keeps the ones used lately: a backfill spread over several runs downloads each once."""
+    if not channel:
         return
     with open(os.path.join(bench_dir, "toolchains-used.txt"), "a", encoding="utf-8") as f:
         f.write(f"{channel} {int(time.time())}\n")

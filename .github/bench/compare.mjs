@@ -203,16 +203,23 @@ export function reportBlocks(base, head) {
     if (k) failed.push(`\`${n}\`（${side} ${k} 次）`);
   }
   if (failed.length) blocks.push({ p: '**有运行失败**（不计入中位数）：' + failed.join('，') });
+  const notYet = [['base', base], ['head', head]]
+    .map(([side, r]) => [side, names.filter(n => r.commands[n].unsupported)])
+    .filter(([, list]) => list.length);
+  if (notYet.length) {
+    blocks.push({ p: '这个版本还没有的命令（命令行不认识这条命令、选项或取值，不算失败，也不比较）：'
+      + notYet.map(([side, list]) => `${side}：${list.map(n => `\`${n}\``).join('，')}`).join('；') });
+  }
   for (const [key, label, unit, scale, note] of METRICS) {
     const rows = [];
     for (const n of names) {
       const eb = base.commands[n], eh = head.commands[n];
       const b = eb.median?.[key] ?? null, h = eh.median?.[key] ?? null;
-      if (b === null && h === null) continue;
-      const cells = [fmt(b, scale), fmt(h, scale)];
+      if ((b === null && h === null) || (eb.unsupported && eh.unsupported)) continue;
+      const cells = [eb.unsupported ? '还没有' : fmt(b, scale), eh.unsupported ? '还没有' : fmt(h, scale)];
       let ratioCell = fmtRatio(ratio(h, b), diff(h, b), NOISE[key] ?? 0);
       if (key === 'wall_ms') {
-        const sb = spans(eb), sh = spans(eh);
+        const sb = eb.unsupported ? null : spans(eb), sh = eh.unsupported ? null : spans(eh);
         if (sb) cells[0] += `（${fmt(sb[0])}–${fmt(sb[1])}）`;
         if (sh) cells[1] += `（${fmt(sh[0])}–${fmt(sh[1])}）`;
         // a ratio past 10 % whose ranges overlap is likely a command with two run times, not a change
@@ -327,7 +334,12 @@ export function highlights(base, head) {
     else if (f.length) out.push(`${side} 有运行失败的命令：` + f.map(n => `\`${n}\``).join('，'));
   }
   // a failed run ends early: only the commands that ran through on both sides are compared
-  names = names.filter(n => !base.commands[n].failed_runs && !head.commands[n].failed_runs);
+  for (const [side, r] of [['base', base], ['head', head]]) {
+    const missing = names.filter(n => r.commands[n].unsupported);
+    if (missing.length) out.push(`${side} 还没有 ${missing.length} 条命令（不比较）：` + missing.map(n => `\`${n}\``).join('，'));
+  }
+  names = names.filter(n => !base.commands[n].failed_runs && !head.commands[n].failed_runs
+    && !base.commands[n].unsupported && !head.commands[n].unsupported);
   if (names.length) {
     const changed = [], drifted = [];
     for (const n of names) {
