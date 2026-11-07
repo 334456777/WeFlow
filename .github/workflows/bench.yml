@@ -107,8 +107,8 @@ jobs:
     steps:
       # `bash` is Git's, not the WSL launcher in System32 that comes first on the machine's PATH
       - name: Put Git's bash first
-        shell: powershell
-        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
+        shell: cmd
+        run: '>>"%GITHUB_PATH%" echo C:\Program Files\Git\bin'
 
       - uses: actions/checkout@v7
         with:
