@@ -104,11 +104,11 @@ jobs:
     if: github.actor == github.repository_owner
     runs-on: [self-hosted, Windows, X64, weflow-bench]
     timeout-minutes: 720
-    # Git's bash by its full path: `bash` would be the WSL launcher in System32, which comes first on the machine's PATH
-    # (the short name of Program Files, since the shell's path cannot hold a space)
+    # Git's sh (its bash): `bash` would be the WSL launcher in System32, which comes first on the machine's PATH, and a
+    # shell cannot be given by its full path; System32 has no sh
     defaults:
       run:
-        shell: C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}
+        shell: sh -e -o pipefail {0}
     steps:
       - uses: actions/checkout@v7
         with:
