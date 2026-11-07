@@ -1,5 +1,5 @@
-// The rest of the settings page (#213): the language of the CLI's output, the AI model API with a test of it, and the
-// cache, each part with its size, cleared after showing what goes.
+// The rest of the settings page (#213): the AI model API with a test of it, and the cache, each part with its size,
+// cleared after showing what goes.
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Check, CircleNotch, Key, Plugs, Trash } from '@phosphor-icons/react';
@@ -10,43 +10,12 @@ import {
 } from '../api/settings';
 import type { Profile } from '../api/setup';
 import { formatSize } from '../jobs/TaskCenter';
-import { Segmented } from '../Segmented';
 import { GridSkeleton } from '../Skeleton';
-import { locale, msg, t } from '../i18n';
+import { locale, t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 type Note = { text: string; error?: boolean } | null;
 const NoteLine = ({ note }: { note: Note }) => note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>;
-
-// the system's choice shown through t(); a language by its own name
-const LANGS = [{ value: null, label: msg('跟随系统') }, { value: 'zh', label: '中文' }, { value: 'en', label: 'English' }] as const; // i18n-ignore: languages by their own names
-
-/** `lang`: the language of the CLI's output and errors, for the commands the server runs. */
-export function LanguageSetting() {
-  const [lang, setLang] = useState<string | null | undefined>(undefined);
-  const [note, setNote] = useState<Note>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    getSetting('lang', controller.signal).then(setLang, () => { if (!controller.signal.aborted) setLang(null); });
-    return () => controller.abort();
-  }, []);
-  const choose = async (value: string | null) => {
-    const before = lang;
-    setLang(value); setNote(null);
-    try {
-      await (value ? setSetting('lang', value) : unsetSetting('lang'));
-      setNote({ text: t('已保存。服务端进程内的读取在重启 weflow serve 后改用新语言。') });
-    } catch (problem) {
-      setLang(before);
-      setNote({ text: reason(problem, t('保存失败，请重试。')), error: true });
-    }
-  };
-  return <div className="setting-row setting-choice"><div><h2>{t('输出语言')}</h2><p>{t('weflow 命令的输出和错误信息用的语言，比如任务失败时显示的原因。')}</p><NoteLine note={note} /></div>
-    <Segmented className="theme-group" count={LANGS.length} index={Math.max(0, LANGS.findIndex(l => l.value === (lang ?? null)))} role="group" aria-label={t('输出语言')}>
-      {LANGS.map(l => <button type="button" key={l.label} disabled={lang === undefined} aria-pressed={lang !== undefined && (lang ?? null) === l.value} onClick={() => choose(l.value)}>{l.value === null ? t(l.label) : l.label}</button>)}
-    </Segmented>
-  </div>;
-}
 
 type AiForm = Record<(typeof AI_KEYS)[number], string> & { key: string };
 

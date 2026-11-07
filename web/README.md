@@ -72,9 +72,9 @@ A change the clients of the API would not read the same raises `apiVersion` (see
 
 ## Language
 
-The page is in the language of the server it talks to (#439): `lang` of `/health` (docs/serve-api.md), the language of the machine `weflow serve` runs on, so the page and the server's own texts (errors, the commands' help) are in one language. Until a server has said, it is in the language of the last one it talked to, kept in `localStorage`, else in Chinese; `<html lang>` follows.
+The page is in the language of the server it talks to (#439): `lang` of `/health` (docs/serve-api.md), the language of the machine `weflow serve` runs on, so the page and the server's own texts (errors, the commands' help) are in one language. Until a server has said, it is in the language of the last one it talked to, kept in `localStorage`, else in Chinese; `<html lang>` follows. The page has no choice of its own: `weflow lang en|zh` on the server's machine, then a restart of `weflow serve`, changes both.
 
-The page is written in Chinese, and its texts are their own keys (`src/i18n/`): `t('正在读取消息')` is that text in Chinese and its English from `src/i18n/en.ts`, or the Chinese where `en.ts` has none; `t('共 {n} 个群聊', { n })` fills in `{n}`, which its English keeps. A text kept in a table and shown elsewhere is marked `msg('…')` where it is written and passed through `t()` where it is shown. `bun run i18n` lists what has no English and what Chinese is not passed through `t()` yet; the pages are being moved to it a few at a time. The tests run in Chinese.
+The page is written in Chinese, and its texts are their own keys (`src/i18n/`): `t('正在读取消息')` is that text in Chinese and its English from `src/i18n/en.ts`, or the Chinese where `en.ts` has none; `t('共 {n} 个群聊', { n })` fills in `{n}`, which its English keeps. A text kept in a table and shown elsewhere is marked `msg('…')` where it is written and passed through `t()` where it is shown. `bun run i18n` lists what has no English and what Chinese is not passed through `t()` yet. The tests run in Chinese.
 
 ## Versions
 
@@ -117,7 +117,7 @@ To publish a version, raise `version` in `package.json` and push the tag `web-v<
 | `src/footprint/`, `src/api/footprint.ts` | My footprint (#209): who I talked with and replied to and where I was @-mentioned, over a range of days, with its export and AI summary |
 | `src/insights/`, `src/api/insights.ts` | AI insights (#210): the records found by words, of everyone or one conversation; made and cleared from the console |
 | `src/reports/`, `src/api/reports.ts` | Reports (#208): the annual report of a year (or all of them) and the dual report with one friend, saved as a picture or a page |
-| `src/settings/`, `src/api/settings.ts`, `src/api/setup.ts`, `src/api/console.ts` | Settings (#213–#217): the connection, the accounts and their setup, the output language, the AI model, the cache; the CLI's tools and the command console of `/openapi.json` |
+| `src/settings/`, `src/api/settings.ts`, `src/api/setup.ts`, `src/api/console.ts` | Settings (#213–#217): the connection, the accounts and their setup, the AI model, the cache; the CLI's tools and the command console of `/openapi.json` |
 | `src/backup/`, `src/api/backup.ts` | Database backups (#212): made as a job and saved from the browser; a backup on the server's computer inspected or restored |
 | `src/api/scope.ts`, `src/api/kept.ts`, `src/useRead.ts` | Whose records the page holds, the reads several views share, and one read as a view shows it (see Requests and what is kept) |
 | `src/i18n/`, `scripts/i18n.ts` | The page's language, the server's (#439): `t()`, `msg()`, the English of the texts, and the check that each has it; see Language |
