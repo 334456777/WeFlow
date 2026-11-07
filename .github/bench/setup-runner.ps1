@@ -44,8 +44,9 @@ if (-not (Test-Path $vswhere) -or -not (& $vswhere -products * -requires Microso
 }
 
 # ---- the account ----
-Add-Type -AssemblyName System.Web
-$password = [System.Web.Security.Membership]::GeneratePassword(32, 6)
+# a random password nobody needs to know: the service keeps it; one of each kind meets any complexity policy
+$chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!#%+-=?@^_'
+$password = 'Aa1!' + -join (1..32 | ForEach-Object { $chars[[Security.Cryptography.RandomNumberGenerator]::GetInt32($chars.Length)] })
 $secure = ConvertTo-SecureString $password -AsPlainText -Force
 if (Get-LocalUser -Name $Account -ErrorAction SilentlyContinue) {
   Set-LocalUser -Name $Account -Password $secure -PasswordNeverExpires $true
