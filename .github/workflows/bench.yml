@@ -56,6 +56,11 @@ on:
         required: false
         default: ""
         type: string
+      release_tag:
+        description: "补测已发布的版本时填它的 tag：报告发布后把链接和结论写进这个 release 说明的「性能基准」一节（要同时填 pages_path）；留空不改"
+        required: false
+        default: ""
+        type: string
   # release.yml runs it after publishing a release (#516); with `pages_path` (also in a manual run) the report goes
   # to that folder of the gh-pages branch (GitHub Pages) and `report_url` is where it can be read
   workflow_call:
@@ -302,3 +307,32 @@ jobs:
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           echo "url=https://$owner.github.io/${GITHUB_REPOSITORY#*/}/$PAGES_PATH/" >> "$GITHUB_OUTPUT"
           echo "Published: https://$owner.github.io/${GITHUB_REPOSITORY#*/}/$PAGES_PATH/" >> "$GITHUB_STEP_SUMMARY"
+
+  # A release measured after it was published (#519): the same 性能基准 section release.yml adds after a release with
+  # `bench`. Only in a manual run with `release_tag`; release.yml adds the section itself.
+  release-notes:
+    name: add the benchmark to the release notes
+    needs: publish
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && needs.publish.outputs.url != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: bench-results
+          path: results
+
+      - name: Edit the release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+          BASE: ${{ inputs.base }}
+          URL: ${{ needs.publish.outputs.url }}
+        run: bash .github/scripts/release-bench-notes.sh "$TAG" "$BASE" "$URL" results/highlights.md

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# The 性能基准 section of a published release's notes (#516, #519): the link to the benchmark report and the lines of
+# its highlights.md, put before the 下载 anchor (at the end when the notes have none). The section sits between two
+# markers, so running it again replaces the section instead of adding another. Used by release.yml after a release
+# with `bench`, and by bench.yml when an older release is measured afterwards.
+# usage: release-bench-notes.sh <tag> <base> <report url> <highlights.md>
+# env: GH_TOKEN, GITHUB_REPOSITORY; with GITHUB_STEP_SUMMARY the section is shown on the run's page too.
+set -euo pipefail
+
+tag=$1 base=$2 url=$3 highlights=$4
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+{
+  echo "<!-- bench -->"
+  echo "## 性能基准"
+  echo
+  echo "与 \`$base\` 对比，在同一台 GitHub Actions Windows x64 机器上用合成的基准账号测得：**[查看完整报告]($url)**"
+  echo
+  cat "$highlights"
+  echo
+  echo "<!-- /bench -->"
+} > "$work/section.md"
+gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body > "$work/body.md"
+awk -v f="$work/section.md" '
+  { sub(/\r$/, "") }
+  /^<!-- bench -->$/ { skip = 1; next }
+  skip && /^<!-- \/bench -->$/ { skip = 0; after = 1; next }
+  skip { next }
+  after && $0 == "" { after = 0; next }
+  { after = 0 }
+  $0 == "<a name=\"weflow-download\"></a>" && !done { while ((getline l < f) > 0) print l; print ""; done = 1 }
+  { print }
+  END { if (!done) { print ""; while ((getline l < f) > 0) print l } }
+' "$work/body.md" > "$work/notes.md"
+gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file "$work/notes.md"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  cat "$work/section.md" >> "$GITHUB_STEP_SUMMARY"
+fi
