@@ -24,6 +24,7 @@ use aes::cipher::{BlockCipherEncrypt, KeyInit};
 use anyhow::{ensure, Context, Result};
 use md5::{Digest, Md5};
 use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{
@@ -61,6 +62,8 @@ pub struct BenchSpec {
     pub shards: usize,
     /// Write the files of pictures, videos and files (most of the time and the disk space a build takes).
     pub media: bool,
+    /// The shapes copied from a real account.
+    pub profile: Profile,
 }
 
 impl Default for BenchSpec {
@@ -71,11 +74,296 @@ impl Default for BenchSpec {
             conversations: 300,
             shards: 2,
             media: true,
+            profile: Profile::default(),
         }
     }
 }
 
-// ---- the real account's profile: shares and sizes only ----
+// ---- the profile: shares and sizes only ----
+
+/// `(median, 90th percentile, at most)` of a size.
+pub type Spread = (f64, f64, f64);
+
+/// The shapes the account copies from a real one (#488, #605): shares and sizes only, never a name or a message.
+/// [`Profile::default`] is the one measured for #488 (the constants below); a machine may calibrate its own from a
+/// real account (`account_profile_probe --profile-out`), which stays on that machine and is read by [`Profile::load`].
+/// What it holds is never shown: a benchmark result names it by [`Profile::hash`] and the day it was measured.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Profile {
+    /// The day it was measured, `YYYY-MM-DD`.
+    pub measured: String,
+    pub messages: MessageProfile,
+    pub time: TimeProfile,
+    pub text: TextProfile,
+    pub groups: GroupProfile,
+    pub media: MediaProfile,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MessageProfile {
+    /// `(local_type, share)`; an app message's local type is `(its type << 32) | 49`.
+    pub types: Vec<(i64, f64)>,
+    pub sent_in_group: f64,
+    pub sent_in_private: f64,
+    pub at_in_group: f64,
+    pub with_source: f64,
+    pub source_compressed: f64,
+    pub sort_seq_off: f64,
+    pub sort_seq_missing: f64,
+    /// The content size in bytes by type (the size of the XML of all but text), and of the types not listed.
+    pub content_bytes: Vec<(i64, Spread)>,
+    pub content_bytes_other: Spread,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TimeProfile {
+    /// Share of messages by hour of the day (UTC+8).
+    pub hours: [f64; 24],
+    /// Share of messages by day of the week, Monday first.
+    pub weekdays: [f64; 7],
+    /// Seconds between two messages of one burst, as `(from, to, share)`.
+    pub burst_gaps: Vec<(i64, i64, f64)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TextProfile {
+    /// Lengths in characters, as `(from, to, share)`.
+    pub chars: Vec<(u32, u32, f64)>,
+    pub with_emoji: f64,
+    pub with_bracket_emoji: f64,
+    pub with_newline: f64,
+    pub with_odd_control: f64,
+    pub with_url: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupProfile {
+    /// The share of the conversations that are groups.
+    pub share: f64,
+    /// The biggest group: members, and how many of them ever speak.
+    pub big_members: usize,
+    pub big_speakers: usize,
+    /// Who speaks in a group: the member of rank `r` (from 0) says `(r + 1 + q) ^ -s` of it.
+    pub speaker_q: f64,
+    pub speaker_s: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaProfile {
+    /// Which files of a picture are on the computer: `(thumbnail, image, original, share)`.
+    pub image_sets: Vec<(bool, bool, bool, f64)>,
+    pub thumb_bytes: Spread,
+    pub image_bytes: Spread,
+    pub hd_bytes: Spread,
+    /// What the image file holds, as `(png, jpeg, wxgf)` shares.
+    pub image_formats: (f64, f64, f64),
+    pub hd_formats: (f64, f64, f64),
+    pub video_bytes: Spread,
+    pub video_thumb_bytes: Spread,
+    pub video_thumb_here: f64,
+    pub video_here: f64,
+    pub file_bytes: Spread,
+    pub file_here: f64,
+}
+
+impl Default for Profile {
+    fn default() -> Self {
+        Self {
+            measured: MEASURED.to_string(),
+            messages: MessageProfile {
+                types: TYPES.to_vec(),
+                sent_in_group: SENT_IN_GROUP,
+                sent_in_private: SENT_IN_PRIVATE,
+                at_in_group: AT_IN_GROUP,
+                with_source: WITH_SOURCE,
+                source_compressed: SOURCE_COMPRESSED,
+                sort_seq_off: SORT_SEQ_OFF,
+                sort_seq_missing: SORT_SEQ_MISSING,
+                content_bytes: CONTENT_BYTES.to_vec(),
+                content_bytes_other: CONTENT_BYTES_OTHER,
+            },
+            time: TimeProfile {
+                hours: HOURS,
+                weekdays: WEEKDAYS,
+                burst_gaps: BURST_GAPS.to_vec(),
+            },
+            text: TextProfile {
+                chars: TEXT_CHARS.to_vec(),
+                with_emoji: WITH_EMOJI,
+                with_bracket_emoji: WITH_BRACKET_EMOJI,
+                with_newline: WITH_NEWLINE,
+                with_odd_control: WITH_ODD_CONTROL,
+                with_url: WITH_URL,
+            },
+            groups: GroupProfile {
+                share: GROUP_SHARE,
+                big_members: BIG_MEMBERS,
+                big_speakers: BIG_SPEAKERS,
+                speaker_q: SPEAKER_Q,
+                speaker_s: SPEAKER_S,
+            },
+            media: MediaProfile {
+                image_sets: IMAGE_SETS.to_vec(),
+                thumb_bytes: THUMB_BYTES,
+                image_bytes: IMAGE_BYTES,
+                hd_bytes: HD_BYTES,
+                image_formats: IMAGE_FORMATS,
+                hd_formats: HD_FORMATS,
+                video_bytes: VIDEO_BYTES,
+                video_thumb_bytes: VIDEO_THUMB_BYTES,
+                video_thumb_here: VIDEO_THUMB_HERE,
+                video_here: VIDEO_HERE,
+                file_bytes: FILE_BYTES,
+                file_here: FILE_HERE,
+            },
+        }
+    }
+}
+
+impl Profile {
+    /// A profile saved as JSON, checked as [`check`](Self::check) does.
+    ///
+    /// # Errors
+    /// When the file cannot be read, is not a profile, or fails the check.
+    pub fn load(path: &Path) -> Result<Self> {
+        let bytes =
+            std::fs::read(path).with_context(|| format!("read the profile {}", path.display()))?;
+        let profile: Self = serde_json::from_slice(&bytes).context("parse the profile")?;
+        profile.check()?;
+        Ok(profile)
+    }
+
+    /// What the generator needs of it: every list of shares has a positive total, every share is in `0..=1`, every
+    /// range is ordered, and the biggest group has a speaker.
+    ///
+    /// # Errors
+    /// The first part that fails, by name.
+    pub fn check(&self) -> Result<()> {
+        let share = |name: &str, v: f64| {
+            ensure!((0.0..=1.0).contains(&v), "{name}: {v} is not a share");
+            Ok(())
+        };
+        let total = |name: &str, shares: &mut dyn Iterator<Item = f64>| {
+            let mut sum = 0.0;
+            for v in shares {
+                ensure!(v.is_finite() && v >= 0.0, "{name}: {v} is not a share");
+                sum += v;
+            }
+            ensure!(sum > 0.0, "{name}: the shares add up to nothing");
+            Ok(())
+        };
+        let m = &self.messages;
+        total("messages.types", &mut m.types.iter().map(|t| t.1))?;
+        for (name, v) in [
+            ("messages.sent_in_group", m.sent_in_group),
+            ("messages.sent_in_private", m.sent_in_private),
+            ("messages.at_in_group", m.at_in_group),
+            ("messages.with_source", m.with_source),
+            ("messages.source_compressed", m.source_compressed),
+            ("messages.sort_seq_off", m.sort_seq_off),
+            ("messages.sort_seq_missing", m.sort_seq_missing),
+            ("text.with_emoji", self.text.with_emoji),
+            ("text.with_bracket_emoji", self.text.with_bracket_emoji),
+            ("text.with_newline", self.text.with_newline),
+            ("text.with_odd_control", self.text.with_odd_control),
+            ("text.with_url", self.text.with_url),
+            ("groups.share", self.groups.share),
+            ("media.video_thumb_here", self.media.video_thumb_here),
+            ("media.video_here", self.media.video_here),
+            ("media.file_here", self.media.file_here),
+        ] {
+            share(name, v)?;
+        }
+        total("time.hours", &mut self.time.hours.iter().copied())?;
+        ensure!(
+            self.time.hours.iter().all(|&h| h > 0.0),
+            "time.hours: an hour with no message"
+        );
+        total("time.weekdays", &mut self.time.weekdays.iter().copied())?;
+        total(
+            "time.burst_gaps",
+            &mut self.time.burst_gaps.iter().map(|g| g.2),
+        )?;
+        ensure!(
+            self.time.burst_gaps.iter().all(|g| g.0 < g.1),
+            "time.burst_gaps: a range is not ordered"
+        );
+        total("text.chars", &mut self.text.chars.iter().map(|c| c.2))?;
+        ensure!(
+            self.text.chars.iter().all(|c| 0 < c.0 && c.0 < c.1),
+            "text.chars: a range is not ordered"
+        );
+        total(
+            "media.image_sets",
+            &mut self.media.image_sets.iter().map(|s| s.3),
+        )?;
+        ensure!(
+            1 <= self.groups.big_speakers && self.groups.big_speakers <= self.groups.big_members,
+            "groups: the biggest group needs a speaker among its members"
+        );
+        Ok(())
+    }
+
+    /// A short name of what it holds: the first 16 hex digits of the MD5 of its JSON, each fraction written with 9
+    /// significant digits, so that a profile read back from its file (whose last digit may come back off by one)
+    /// has the same name.
+    ///
+    /// # Errors
+    /// When it does not serialize, which plain data does not do.
+    pub fn hash(&self) -> Result<String> {
+        fn canonical(v: &Value, out: &mut String) {
+            match v {
+                Value::Number(n) => match (n.as_i64(), n.as_f64()) {
+                    (Some(i), _) => out.push_str(&i.to_string()),
+                    (None, Some(f)) => out.push_str(&format!("{f:.8e}")),
+                    _ => out.push_str(&n.to_string()),
+                },
+                Value::Array(items) => {
+                    out.push('[');
+                    for item in items {
+                        canonical(item, out);
+                        out.push(',');
+                    }
+                    out.push(']');
+                }
+                Value::Object(fields) => {
+                    out.push('{');
+                    for (k, item) in fields {
+                        out.push_str(k);
+                        out.push(':');
+                        canonical(item, out);
+                        out.push(',');
+                    }
+                    out.push('}');
+                }
+                other => out.push_str(&other.to_string()),
+            }
+        }
+        let mut text = String::new();
+        canonical(
+            &serde_json::to_value(self).context("serialize the profile")?,
+            &mut text,
+        );
+        Ok(hex(&Md5::digest(text))[..16].to_string())
+    }
+
+    fn content_bytes(&self, local_type: i64) -> Spread {
+        self.messages
+            .content_bytes
+            .iter()
+            .find(|(t, _)| *t == local_type)
+            .map_or(self.messages.content_bytes_other, |(_, s)| *s)
+    }
+}
+
+// The default profile, measured on a real account for #488.
+const MEASURED: &str = "2026-11-02";
 
 const fn app(sub: i64) -> i64 {
     (sub << 32) | 49
@@ -194,29 +482,27 @@ const FTS_TABLES: usize = 5;
 const SNS_PER_FRIEND: f64 = 1.1;
 
 /// `(median, 90th percentile, largest)` of the content size in bytes by type (the size of the XML of all but text).
-fn content_bytes(local_type: i64) -> (f64, f64, f64) {
-    match local_type {
-        3 => (1334.0, 1562.0, 17_520.0),
-        34 => (554.0, 556.0, 769.0),
-        43 => (1221.0, 1413.0, 1770.0),
-        47 => (1734.0, 1981.0, 2380.0),
-        50 => (525.0, 554.0, 557.0),
-        t if t == app(4) => (10_670.0, 10_781.0, 10_999.0),
-        t if t == app(5) => (1423.0, 10_611.0, 13_142.0),
-        t if t == app(6) => (1524.0, 10_097.0, 10_658.0),
-        t if t == app(8) => (1973.0, 11_858.0, 12_019.0),
-        t if t == app(19) => (8176.0, 34_069.0, 148_365.0),
-        t if t == app(24) => (3343.0, 6499.0, 39_851.0),
-        t if t == app(51) => (10_787.0, 14_132.0, 20_352.0),
-        t if t == app(57) => (1579.0, 10_560.0, 47_816.0),
-        t if t == app(62) => (1238.0, 1262.0, 1291.0),
-        t if t == app(87) => (4943.0, 13_484.0, 39_462.0),
-        t if t == app(92) => (4716.0, 13_689.0, 14_000.0),
-        t if t == app(2000) => (3194.0, 3253.0, 3287.0),
-        t if t == app(2001) => (2298.0, 5422.0, 6906.0),
-        _ => (2000.0, 6000.0, 20_000.0),
-    }
-}
+const CONTENT_BYTES: &[(i64, Spread)] = &[
+    (3, (1334.0, 1562.0, 17_520.0)),
+    (34, (554.0, 556.0, 769.0)),
+    (43, (1221.0, 1413.0, 1770.0)),
+    (47, (1734.0, 1981.0, 2380.0)),
+    (50, (525.0, 554.0, 557.0)),
+    (app(4), (10_670.0, 10_781.0, 10_999.0)),
+    (app(5), (1423.0, 10_611.0, 13_142.0)),
+    (app(6), (1524.0, 10_097.0, 10_658.0)),
+    (app(8), (1973.0, 11_858.0, 12_019.0)),
+    (app(19), (8176.0, 34_069.0, 148_365.0)),
+    (app(24), (3343.0, 6499.0, 39_851.0)),
+    (app(51), (10_787.0, 14_132.0, 20_352.0)),
+    (app(57), (1579.0, 10_560.0, 47_816.0)),
+    (app(62), (1238.0, 1262.0, 1291.0)),
+    (app(87), (4943.0, 13_484.0, 39_462.0)),
+    (app(92), (4716.0, 13_689.0, 14_000.0)),
+    (app(2000), (3194.0, 3253.0, 3287.0)),
+    (app(2001), (2298.0, 5422.0, 6906.0)),
+];
+const CONTENT_BYTES_OTHER: Spread = (2000.0, 6000.0, 20_000.0);
 
 // ---- random numbers ----
 
@@ -464,14 +750,16 @@ struct Words {
     han: Vec<char>,
     surnames: Vec<char>,
     given: Vec<char>,
+    profile: TextProfile,
 }
 
 impl Words {
-    fn new() -> Self {
+    fn new(profile: TextProfile) -> Self {
         Self {
             han: chars_of(HAN),
             surnames: chars_of(SURNAMES),
             given: chars_of(GIVEN),
+            profile,
         }
     }
 
@@ -479,19 +767,19 @@ impl Words {
     fn text(&self, rng: &mut Rng, chars: usize) -> String {
         // emoji, a second line and links count in the length, so the lengths stay the real ones
         let mut extra = String::new();
-        if rng.chance(WITH_BRACKET_EMOJI) {
+        if rng.chance(self.profile.with_bracket_emoji) {
             extra.push_str(rng.pick(BRACKET_EMOJI));
         }
-        if rng.chance(WITH_EMOJI) {
+        if rng.chance(self.profile.with_emoji) {
             for _ in 0..1 + rng.below(3) {
                 extra.push_str(rng.pick(EMOJI));
             }
         }
-        if rng.chance(WITH_NEWLINE) {
+        if rng.chance(self.profile.with_newline) {
             extra.push('\n');
             extra.push_str(&self.text_between(rng, 3, 23));
         }
-        if rng.chance(WITH_URL) {
+        if rng.chance(self.profile.with_url) {
             extra.push_str(&format!(" https://example.com/s/{}", rng.hex(10)));
         }
         let chars = chars.saturating_sub(extra.chars().count());
@@ -519,7 +807,7 @@ impl Words {
         if out.is_empty() {
             out.push_str(rng.pick(PHRASES));
         }
-        if rng.chance(WITH_ODD_CONTROL) {
+        if rng.chance(self.profile.with_odd_control) {
             let at = out
                 .char_indices()
                 .nth(rng.below(out.chars().count()))
@@ -550,7 +838,7 @@ impl Words {
 
     /// A message's text: its length drawn from the real lengths.
     fn message(&self, rng: &mut Rng) -> String {
-        let chars = draw_range(rng, TEXT_CHARS) as usize;
+        let chars = draw_range(rng, &self.profile.chars) as usize;
         self.text(rng, chars.max(1))
     }
 
@@ -683,15 +971,21 @@ fn user_name(rng: &mut Rng) -> String {
 
 /// When the messages of a conversation of `n` messages are, between `first_day` and `last_day` (local days):
 /// bursts of messages a few seconds apart, on days and hours drawn like the real ones.
-fn timeline(rng: &mut Rng, n: usize, (first_day, last_day): (i64, i64), burst: f64) -> Vec<i64> {
+fn timeline(
+    rng: &mut Rng,
+    n: usize,
+    (first_day, last_day): (i64, i64),
+    burst: f64,
+    profile: &TimeProfile,
+) -> Vec<i64> {
     let days: Vec<i64> = (first_day..=last_day).collect();
     // a few busy days carry much of a conversation, as on a real account
     let day_weights = Weighted::new(days.iter().map(|d| {
         let pareto = (1.0 - rng.unit()).powf(-1.0 / 1.3).min(60.0);
-        WEEKDAYS[(d + 3).rem_euclid(7) as usize] * pareto
+        profile.weekdays[(d + 3).rem_euclid(7) as usize] * pareto
     }));
-    let hours = Weighted::new(HOURS);
-    let gaps = Weighted::new(BURST_GAPS.iter().map(|g| g.2));
+    let hours = Weighted::new(profile.hours);
+    let gaps = Weighted::new(profile.burst_gaps.iter().map(|g| g.2));
     let mut times = Vec::with_capacity(n);
     while times.len() < n {
         // geometric burst length with this mean
@@ -704,12 +998,12 @@ fn timeline(rng: &mut Rng, n: usize, (first_day, last_day): (i64, i64), burst: f
                 break;
             }
             times.push(t);
-            let (from, to, _) = BURST_GAPS[gaps.draw(rng)];
+            let (from, to, _) = profile.burst_gaps[gaps.draw(rng)];
             t += rng.between(from, to);
             // into a quieter hour, a conversation goes on as much less often as that hour is quieter
             let now = ((t + TZ).rem_euclid(DAY) / 3600) as usize;
             if now != hour {
-                if !rng.chance(HOURS[now] / HOURS[hour]) {
+                if !rng.chance(profile.hours[now] / profile.hours[hour]) {
                     break;
                 }
                 hour = now;
@@ -722,7 +1016,8 @@ fn timeline(rng: &mut Rng, n: usize, (first_day, last_day): (i64, i64), burst: f
 
 impl World {
     fn new(rng: &mut Rng, spec: &BenchSpec) -> Self {
-        let words = Words::new();
+        let profile = &spec.profile;
+        let words = Words::new(profile.text.clone());
         let mut taken = HashSet::from([OWNER.to_string()]);
         let mut people = vec![Person {
             username: OWNER.into(),
@@ -761,10 +1056,10 @@ impl World {
             people.len() - 1
         };
 
-        let groups = (spec.conversations as f64 * GROUP_SHARE).round() as usize;
+        let groups = (spec.conversations as f64 * profile.groups.share).round() as usize;
         let privates = spec.conversations - groups;
         // friends are about four times the private chats on the real account; the private chats are with some of them
-        let friends: Vec<usize> = (0..(privates * 4).max(BIG_MEMBERS / 3))
+        let friends: Vec<usize> = (0..(privates * 4).max(profile.groups.big_members / 3))
             .map(|_| person(rng, 1))
             .collect();
         // a few contacts of the other kinds a real account has
@@ -796,13 +1091,13 @@ impl World {
                 kind: Kind::Group,
                 members: pool,
                 speakers,
-                times: timeline(rng, messages, days, burst),
+                times: timeline(rng, messages, days, burst, &profile.time),
             }
         };
         conversations.push(group(
             rng,
-            BIG_MEMBERS,
-            BIG_SPEAKERS,
+            profile.groups.big_members,
+            profile.groups.big_speakers,
             spec.group_messages,
             (END_DAY - 400, END_DAY),
             120.0,
@@ -829,7 +1124,7 @@ impl World {
                 kind: Kind::Private,
                 members: vec![partner],
                 speakers: 1,
-                times: timeline(rng, messages, days, 10.0),
+                times: timeline(rng, messages, days, 10.0, &profile.time),
             });
         }
         // official accounts: in the conversation list, their messages in another database
@@ -1126,6 +1421,7 @@ struct Row {
 
 struct Writer<'a> {
     world: &'a World,
+    profile: &'a Profile,
     account_dir: &'a Path,
     media: bool,
     written: Written,
@@ -1169,7 +1465,7 @@ impl<'a> Writer<'a> {
         let world: &'a World = self.world;
         let c = &world.conversations[conv];
         let words = &world.words;
-        let target = { rng.spread(content_bytes(local_type)) };
+        let target = rng.spread(self.profile.content_bytes(local_type));
         let from = world.user(sender);
         let to = &c.username;
         let made = |content: String, summary: &str| Made {
@@ -1182,7 +1478,7 @@ impl<'a> Writer<'a> {
             1 => {
                 let mut text = words.message(rng);
                 let mut mention = None;
-                if c.kind == Kind::Group && rng.chance(AT_IN_GROUP) {
+                if c.kind == Kind::Group && rng.chance(self.profile.messages.at_in_group) {
                     let who = c.members[rng.below(c.members.len())];
                     text = format!("@{}\u{2005}{text}", world.nick(who));
                     mention = Some(who);
@@ -1373,8 +1669,8 @@ impl<'a> Writer<'a> {
                 let stem: String = words.text_between(rng, 2, 14).replace('，', "_");
                 title = format!("{stem}.{ext}");
                 summary = format!("[文件] {title}");
-                let size = rng.spread(FILE_BYTES).max(100.0) as usize;
-                if self.media && rng.chance(FILE_HERE) {
+                let size = rng.spread(self.profile.media.file_bytes).max(100.0) as usize;
+                if self.media && rng.chance(self.profile.media.file_here) {
                     let dir = month(time);
                     let path = self.account_dir.join("msg/file").join(&dir).join(&title);
                     let data = rng.bytes(size);
@@ -1540,11 +1836,13 @@ impl<'a> Writer<'a> {
     /// A picture message: which of its files are here is drawn like the real ones.
     fn image(&mut self, rng: &mut Rng, talker: &str, time: i64, target: f64) -> Result<String> {
         let md5 = rng.hex(32);
+        let p = &self.profile.media;
         let (thumb_here, image_here, hd_here, _) =
-            IMAGE_SETS[Weighted::new(IMAGE_SETS.iter().map(|s| s.3)).draw(rng)];
-        let thumb = rng.spread(THUMB_BYTES).max(800.0) as usize;
-        let image = rng.spread(IMAGE_BYTES).max(800.0) as usize;
-        let hd = rng.spread(HD_BYTES).max(4000.0) as usize;
+            p.image_sets[Weighted::new(p.image_sets.iter().map(|s| s.3)).draw(rng)];
+        let thumb = rng.spread(p.thumb_bytes).max(800.0) as usize;
+        let image = rng.spread(p.image_bytes).max(800.0) as usize;
+        let hd = rng.spread(p.hd_bytes).max(4000.0) as usize;
+        let (image_formats, hd_formats) = (p.image_formats, p.hd_formats);
         let has_original = hd_here || rng.chance(0.3);
         if self.media {
             let talker_dir = hex(&Md5::digest(talker.to_lowercase().as_bytes()));
@@ -1567,8 +1865,8 @@ impl<'a> Writer<'a> {
             };
             for (here, suffix, plain) in [
                 (thumb_here, "_t", jpeg(rng, thumb)),
-                (image_here, "", formats(rng, IMAGE_FORMATS, image)),
-                (hd_here, "_h", formats(rng, HD_FORMATS, hd)),
+                (image_here, "", formats(rng, image_formats, image)),
+                (hd_here, "_h", formats(rng, hd_formats, hd)),
             ] {
                 if !here {
                     continue;
@@ -1608,12 +1906,14 @@ impl<'a> Writer<'a> {
 
     fn video(&mut self, rng: &mut Rng, from: &str, time: i64, target: f64) -> Result<String> {
         let md5 = rng.hex(32);
-        let len = rng.spread(VIDEO_BYTES).max(100_000.0) as usize;
-        let thumb = rng.spread(VIDEO_THUMB_BYTES).max(1000.0) as usize;
+        let p = &self.profile.media;
+        let (thumb_here, video_here) = (p.video_thumb_here, p.video_here);
+        let len = rng.spread(p.video_bytes).max(100_000.0) as usize;
+        let thumb = rng.spread(p.video_thumb_bytes).max(1000.0) as usize;
         if self.media {
             let dir = month(time);
             let folder = self.account_dir.join("msg/video").join(&dir);
-            if rng.chance(VIDEO_THUMB_HERE) {
+            if rng.chance(thumb_here) {
                 let data = jpeg(rng, thumb);
                 self.written.file(
                     "video thumbnail",
@@ -1621,7 +1921,7 @@ impl<'a> Writer<'a> {
                     &data,
                 )?;
             }
-            if rng.chance(VIDEO_HERE) {
+            if rng.chance(video_here) {
                 let file_name = format!("{md5}.mp4");
                 let data = mp4(rng, len);
                 self.written
@@ -1751,8 +2051,11 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
     let world = World::new(&mut rng.fork(1), spec);
     let shard_of = assign_shards(&mut rng.fork(2), &world.conversations, spec.shards);
     write_contacts(&f, &world);
+    let profile = &spec.profile;
+    profile.check()?;
     let mut writer = Writer {
         world: &world,
+        profile,
         account_dir: &f.account_dir,
         media: spec.media,
         written: Written::default(),
@@ -1794,7 +2097,7 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
         })
         .collect::<Result<_>>()?;
 
-    let types = Weighted::new(TYPES.iter().map(|t| t.1));
+    let types = Weighted::new(profile.messages.types.iter().map(|t| t.1));
     let mut by_type: BTreeMap<i64, u64> = BTreeMap::new();
     let mut fts: Vec<Vec<FtsSpec<'_>>> = (0..FTS_TABLES).map(|_| Vec::new()).collect();
     let mut sessions = Vec::new();
@@ -1813,13 +2116,14 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
             continue;
         }
         let table = table_name_for(&c.username);
-        let speakers = Weighted::new(
-            (0..c.speakers.max(1)).map(|r| (r as f64 + 1.0 + SPEAKER_Q).powf(-SPEAKER_S)),
-        );
+        let speakers =
+            Weighted::new((0..c.speakers.max(1)).map(|r| {
+                (r as f64 + 1.0 + profile.groups.speaker_q).powf(-profile.groups.speaker_s)
+            }));
         let sent = if c.kind == Kind::Group {
-            SENT_IN_GROUP
+            profile.messages.sent_in_group
         } else {
-            SENT_IN_PRIVATE
+            profile.messages.sent_in_private
         };
         let mut next_local: Vec<i64> = vec![0; spec.shards];
         let mut recent: VecDeque<Recent> = VecDeque::new();
@@ -1828,7 +2132,7 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
         let mut last = (0, 1, String::new());
         let mut same_second = (0i64, 0i64);
         for (&time, &k) in c.times.iter().zip(&shard_of[ci]) {
-            let local_type = TYPES[types.draw(&mut rng)].0;
+            let local_type = profile.messages.types[types.draw(&mut rng)].0;
             let local_type = if c.kind == Kind::Private && local_type == app(87) {
                 1
             } else {
@@ -1863,9 +2167,9 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
             } else {
                 (time, 0)
             };
-            let sort_seq = if rng.chance(SORT_SEQ_MISSING) {
+            let sort_seq = if rng.chance(profile.messages.sort_seq_missing) {
                 Some(0)
-            } else if rng.chance(SORT_SEQ_OFF) {
+            } else if rng.chance(profile.messages.sort_seq_off) {
                 Some((time + rng.between(-30 * DAY, 30 * DAY)) * 1000)
             } else {
                 Some(time * 1000 + same_second.1)
@@ -1883,9 +2187,9 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
             let compress = !matches!(local_type, 1 | 10000) || content.len() > ZSTD_ABOVE;
             let (content_bytes, compressed) = zstd_or_plain(content, compress)?;
             let at = made.mention.map(|m| world.user(m));
-            let source = if rng.chance(WITH_SOURCE) {
+            let source = if rng.chance(profile.messages.with_source) {
                 let s = source(&mut rng, c.kind, c.members.len(), at);
-                let (bytes, z) = zstd_or_plain(s, rng.chance(SOURCE_COMPRESSED))?;
+                let (bytes, z) = zstd_or_plain(s, rng.chance(profile.messages.source_compressed))?;
                 (Some(bytes), z)
             } else {
                 // an empty source is stored as empty text
@@ -2047,6 +2351,7 @@ pub fn build(root: &Path, spec: &BenchSpec) -> Result<Value> {
         "conversations_asked": spec.conversations,
         "shards": spec.shards,
         "media": spec.media,
+        "profile": {"measured": profile.measured, "hash": profile.hash()?},
         "account_dir": ACCOUNT_DIR,
         "messages": by_type.values().sum::<u64>(),
         "messages_in_wal": wal_messages,

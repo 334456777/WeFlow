@@ -1,15 +1,16 @@
 """Benchmark one weflow binary on the benchmark account of #488, for the results of one commit (#601, #602).
 
-usage: python bench.py measure --exe EXE --commit SHA --account DIR --tools-id ID --out DIR
+usage: python bench.py measure --exe EXE --commit SHA --account DIR --out DIR
                                [--ref NAME] [--alloc EXE] [--anchor EXE --anchor-commit SHA [--anchor-alloc EXE]]
                                [--runs N] [--load-seconds S] [--serve-bench EXE] [--only NAME[,NAME...]]
-       python bench.py env --account DIR --tools-id ID [--load-seconds S]
+       python bench.py env --account DIR [--load-seconds S]
 
 Each commit is measured on its own and its `result.json` kept; any two results of the same environment are compared
 later by `.github/bench/compare.mjs`. The environment (`env`, printed by the `env` mode) is what must stay the same
-for two results to be compared: the machine (CPU, logical CPUs, memory, Windows build), `--tools-id` (the version of
-this script and of the tools that build the account and time the command API, given by the workflow), the account
-(a hash of its `manifest.json`) and the length of the sustained load; its `key` names it.
+for two results to be compared, and only that, so that a long history stays one environment: the machine (CPU,
+logical CPUs, memory), [`METHOD`] (how this script measures), the account (the hash of its `manifest.json`, which
+names its profile, and the generator's layout from `spec.json`) and the length of the sustained load; its `key` names
+it. The Windows build is kept with each result but not in the key: what an update changes shows in the anchor.
 
 Two commits measured at different times lose what measuring them in turns gave: the machine drifts in between
 (updates, heat, other work). So the `--anchor` binary, the same commit for every result of an environment, is measured
@@ -59,6 +60,10 @@ import urllib.request
 
 import psutil
 
+# The version of the way a commit is measured: bump it when what is measured changes (the commands and their options,
+# the load, how serve_bench is run or what it times, the numbers kept), so that results measured differently are
+# never compared. A change that measures the same (a comment, a name in the report) keeps it, and with it the history.
+METHOD = 1
 # the commit measured and the one every result of its environment is measured next to
 ROLES = ("target", "anchor")
 TOKEN = "bench"
@@ -658,20 +663,21 @@ def cpu_name():
         return platform.processor()
 
 
-def environment_of(account, tools_id, load_seconds, load_workers):
+def environment_of(account, load_seconds, load_workers):
     """What two results must share to be compared, and the key that names it."""
     with open(os.path.join(account, "manifest.json"), "rb") as f:
         manifest_bytes = f.read()
     manifest = json.loads(manifest_bytes)
+    with open(os.path.join(account, "spec.json"), encoding="utf-8") as f:
+        layout = json.load(f)["layout"]
     env = {
         "machine": {"cpu": cpu_name(), "cpus": os.cpu_count(),
-                    "memory_gib": round(psutil.virtual_memory().total / 1024 ** 3),
-                    # the build, not the monthly revision: the anchor shows what an update changes
-                    "os": f"{platform.system()} {platform.version()}"},
-        "tools": tools_id,
-        # what the account holds is known by its manifest, so only its hash and its size are kept
-        "account": {"manifest": hashlib.sha256(manifest_bytes).hexdigest()[:16], "seed": manifest["seed"],
-                    "messages": manifest["messages"], "conversations": len(manifest["conversations"])},
+                    "memory_gib": round(psutil.virtual_memory().total / 1024 ** 3)},
+        "method": METHOD,
+        # what the account holds is known by its manifest, so only its hash, its size and its profile's name are kept
+        "account": {"manifest": hashlib.sha256(manifest_bytes).hexdigest()[:16], "layout": layout,
+                    "seed": manifest["seed"], "messages": manifest["messages"],
+                    "conversations": len(manifest["conversations"]), "profile": manifest.get("profile")},
         "load": {"seconds": load_seconds, "workers": load_workers},
     }
     canonical = json.dumps(env, sort_keys=True, separators=(",", ":")).encode()
@@ -733,7 +739,8 @@ def measure(args):
         "measured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "runs": args.runs,
         "only": args.only or None,
-        "env": environment_of(args.account, args.tools_id, args.load_seconds, args.load_workers),
+        "env": environment_of(args.account, args.load_seconds, args.load_workers),
+        "os": f"{platform.system()} {platform.version()}",
         "quiet": quiet.stop(),
         **parts["target"],
     }
@@ -777,14 +784,13 @@ def main():
     e = modes.add_parser("env", help="print the environment and its key as JSON")
     for sub in (m, e):
         sub.add_argument("--account", required=True)
-        sub.add_argument("--tools-id", required=True)
         sub.add_argument("--load-seconds", type=int, default=90)
         sub.add_argument("--load-workers", type=int, default=4)
     args = p.parse_args()
     # the runner's console may be cp1252
     sys.stdout.reconfigure(encoding="utf-8")
     if args.mode == "env":
-        print(json.dumps(environment_of(args.account, args.tools_id, args.load_seconds, args.load_workers),
+        print(json.dumps(environment_of(args.account, args.load_seconds, args.load_workers),
                          ensure_ascii=False))
         return
     if args.anchor and not args.anchor_commit:
