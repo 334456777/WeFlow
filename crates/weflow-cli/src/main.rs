@@ -3747,6 +3747,10 @@ async fn handle_serve(command: ServeCommand, hub: &ServiceHub) -> AppResult<Valu
                     .map_or_else(serve_api::default_max_reads, usize::from),
                 log_requests: command.log_requests,
                 ui,
+                web_store: (!command.api_only
+                    && command.ui_dir.is_none()
+                    && command.web_version.is_none())
+                .then(|| hub.web_store()),
                 config_path: hub.config_path().to_path_buf(),
                 farewell: farewell.clone(),
                 insight: command.insight,

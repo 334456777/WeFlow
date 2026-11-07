@@ -61,6 +61,7 @@ weflow serve --ui-dir web/dist     # 同时提供网页，地址 http://127.0.0.
 | `web prune` | 删除本机上既没有选定、也不是这个 `weflow` 的默认版本；正在运行的 `serve` 显示的版本会保留（列在 `shown` 里），等该服务停止后才能删除 |
 
 - 一个版本适用于这个 `weflow`，要求它需要的 API 正是这个 `weflow` 提供的（`/health` 的 `apiVersion`），并且它要求的最低 `weflow` 版本（`minBackendVersion`）不高于这个 `weflow`。manifest 里写着这两项，所以不适用的版本在下载前就会被拒绝；`weflow-web.json` 里也写着，下载后再检查一次。本机已有的版本可能是其他 `weflow` 下载的，所以每次安装、选定或显示时都会重新检查；`web use` 拒绝不适用的版本时，原来选定的版本保持不变。
+- 网页跟随选定的版本时（上面第 4 种情况，没有用 `--ui-dir` 或 `--web-version`），通过这个服务端自己的 API 发出的 `web use` 或 `web update` 会立刻换上选定的版本，不用重启，网页刷新后就是新版本；服务端运行时在终端里运行的，下次启动才换上。
 - 下载的内容要和 manifest 给出的大小与 SHA-256 摘要一致，然后在限制下解压到单独的目录：压缩包最大 64 MB，解压后最多 256 MB、10,000 个文件，不允许指向目录外的路径和链接。检查 `index.html`、元数据和所要的版本之后，再用一次重命名放到正式位置。下载失败、损坏或中断时，本机已有的版本保持不变；同时下载同一个版本时，只保留一份。
 - 这些版本和 WeFlow 的其他缓存放在一起，存放在 `<home>/cache/web/<版本>/`；选定的版本记在 `<home>/cache/web/current` 里。正在运行的 `serve` 对所显示的版本持有 `<home>/cache/web/.lock-<版本>` 的共享锁，`web prune` 删除前会检查这个锁；服务无论以什么方式结束，锁都会随之释放。`cache clear --web` 会把它们全部删除，`serve` 需要时会重新下载。
 - 访问仓库的方式遵循 OCI Distribution API：先取匿名令牌，再读 manifest 和 blob。用 `WEFLOW_WEB_REGISTRY` 可以指定其他仓库（镜像，或测试用的仓库）。

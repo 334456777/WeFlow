@@ -335,8 +335,15 @@ fn params_of(cmd: &Command) -> Vec<Param> {
 /// The arguments of a command that a request may set.
 fn api_args(cmd: &Command) -> impl Iterator<Item = &clap::Arg> {
     cmd.get_arguments().filter(|a| {
-        let id = a.get_id().as_str();
-        !a.is_global_set() && !a.is_hide_set() && id != "help" && id != "version"
+        // clap's own `--help` and `--version`, not an argument named `version` (`web use <VERSION>`)
+        let built_in = matches!(
+            a.get_action(),
+            clap::ArgAction::Help
+                | clap::ArgAction::HelpShort
+                | clap::ArgAction::HelpLong
+                | clap::ArgAction::Version
+        );
+        !a.is_global_set() && !a.is_hide_set() && !built_in
     })
 }
 
@@ -549,6 +556,9 @@ pub struct ApiConfig {
     pub log_requests: bool,
     /// The WebUI served at `/ui/` (issue #146), if any; set later when its version is downloaded beside the server.
     pub ui: Arc<std::sync::RwLock<Option<ui::UiDir>>>,
+    /// The versions kept by `weflow web` that `ui` comes from, unless `--ui-dir`, `--web-version` or `--api-only`
+    /// chose otherwise: once `web use` or `web update` answers through the API, the version it chose is shown.
+    pub web_store: Option<weflow_core::webui::WebStore>,
     /// The configuration the commands read: what `data` of `/health` follows.
     pub config_path: PathBuf,
     /// Ends the event streams with `bye` when the server stops.
@@ -1376,6 +1386,10 @@ async fn route(st: &AppState, req: Request) -> Response {
         Std::Json => match serde_json::from_slice::<Value>(&output.stdout) {
             Ok(doc) => {
                 let status = status_for(&doc, exit);
+                if status == StatusCode::OK && matches!(command.as_str(), "web use" | "web update")
+                {
+                    show_chosen(&st.cfg, &doc);
+                }
                 match file_out {
                     Some(file) if status == StatusCode::OK => {
                         let mut path = files::written_file(&doc, file.field, &file.out);
@@ -1430,6 +1444,20 @@ async fn route(st: &AppState, req: Request) -> Response {
     resp.headers_mut()
         .insert("x-weflow-exit-code", HeaderValue::from(exit));
     timing.on(resp)
+}
+
+/// Shows at `/ui/` the version `web use` or `web update` chose (`data.version` of its answer), when the page follows
+/// the versions kept by `weflow web`; the page reloads to get it.
+fn show_chosen(cfg: &ApiConfig, doc: &Value) {
+    let Some(store) = &cfg.web_store else {
+        return;
+    };
+    let Some(version) = doc.pointer("/data/version").and_then(Value::as_str) else {
+        return;
+    };
+    if let Some(dir) = ui::UiDir::open_version(store, version) {
+        *cfg.ui.write_or_panic() = Some(dir);
+    }
 }
 
 /// A read run in this process that did not end (it panicked).
