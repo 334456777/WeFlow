@@ -1,5 +1,4 @@
 - 二进制体积：24.3 MiB → 24.6 MiB（1.01×）
-- 命令耗时：17 条命令都在噪声范围内
-- 有运行失败的命令：`export media images`，`export messages json with images`，`export messages json`，`export messages chatlab`，`export messages excel`，`export messages html`，`export messages txt`，`report annual`，`analytics overall`，`group members`，`group ranking`，`chat export-stats`，`chat date-counts`，`chat search`，`report dual`，`chat messages first page`，`chat messages offset`
+- 命令耗时有变化：`export media images` 69,037 → 42,364 ms（0.61×）；`export messages json with images` 75,338 → 47,448 ms（0.63×）；`export messages json` 6,239 → 5,371 ms（0.86×）；`export messages chatlab` 5,652 → 4,854 ms（0.86×）；`export messages excel` 8,264 → 6,755 ms（0.82×）；`export messages html` 5,650 → 4,276 ms（0.76×）；`export messages txt` 5,456 → 4,114 ms（0.75×）；`report annual` 4,943 → 4,263 ms（0.86×）；其余 9 条在噪声范围内
 - `weflow serve` 持续负载没有完成，见报告
 - serve_bench：没有两边都能计时的路由，见报告
