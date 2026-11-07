@@ -9,7 +9,9 @@ usage: python bench-publish.py --pages DIR --results DIR --viewer DIR
     were asked by (a tag or a branch; a commit asked again by another name gains that name) and when they were
     measured; the viewer lists them from here
   - `index.html` and `compare.mjs`, the viewer, as they are in `--viewer`
-Prints the environment key and the full SHAs of the commits asked for, one per line, for the steps after it.
+Prints the environment key and the full SHAs of the commits asked for, one per line, for the steps after it, and
+appends what reached gh-pages to $GITHUB_STEP_SUMMARY: how many results, the viewer and, for each commit, the
+`BENCH-<anchor>-<commit>` reference to its comparison with the anchor.
 """
 
 import argparse
@@ -63,6 +65,18 @@ def main():
         json.dump(index, f, ensure_ascii=False, indent=1)
     for name in ("index.html", "compare.mjs"):
         shutil.copyfile(os.path.join(args.viewer, name), os.path.join(root, name))
+    published = [c for c in run["commits"] if c["measured"]]
+    anchor = held.get("anchor", "")
+    owner = os.environ.get("GITHUB_REPOSITORY_OWNER", "334456777").lower()
+    repo = os.environ.get("GITHUB_REPOSITORY", "334456777/WeFlow").split("/")[-1]
+    viewer = f"https://{owner}.github.io/{repo}/bench/?env={key}"
+    lines = ["## 发布", "", f"- {len(published)} 份结果推到 gh-pages，环境 `{key}`；查看页：{viewer}"]
+    refs = [f"  - {c['ref']}：`BENCH-{anchor[:10]}-{c['sha'][:10]}`" for c in published if c["sha"] != anchor]
+    if refs:
+        lines += ["- 和锚点的对比（在 issue、PR 和提交说明里写这个引用，会自动链接到查看页）："] + refs
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
     print(key)
     for c in run["commits"]:
         print(c["sha"])
