@@ -1,10 +1,10 @@
-// The rest of the settings (#213): the output language, the AI model API and the cache: read in the server's
+// The rest of the settings (#213): the AI model API and the cache: read in the server's
 // process (`/api/`), changed through the command routes.
 import { call, get } from './client';
 import { msg } from '../i18n';
 import type * as Contract from './contract.gen';
 
-/** `config get <key>` of the current profile (or the config file, for `lang`); null when it is not set. */
+/** `config get <key>` of the current profile; null when it is not set. */
 export async function getSetting(key: string, signal?: AbortSignal): Promise<string | null> {
   const value = await get<unknown>('api/config/get', { key }, signal);
   return value === null || value === undefined || value === '' ? null : String(value);

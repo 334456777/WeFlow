@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import type { Profile } from '../api/setup';
-import { AiSetting, CacheSetting, LanguageSetting } from './MoreSettings';
+import { AiSetting, CacheSetting } from './MoreSettings';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -21,21 +21,6 @@ function serve(answer: (method: string, url: string) => Response | undefined) {
 const PROFILE: Profile = { name: 'default', current: true, wxid: 'wxid_a', dbPath: 'D:/x', decryptKey: true, imageKeys: true, aiKey: true, complete: true };
 
 describe('settings', () => {
-  it('saves the output language, and follows the system again by unsetting it', async () => {
-    const calls = serve((_method, url) => (url === '/api/config/get?key=lang' ? ok('zh') : undefined));
-    render(<LanguageSetting />);
-    await act(async () => {});
-    expect(screen.getByRole('button', { name: '中文' }).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'English' }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole('button', { name: '跟随系统' }));
-    await act(async () => {});
-    expect(calls.slice(1)).toEqual([
-      { method: 'PUT', url: '/config/set', body: { key: 'lang', value: 'en' } },
-      { method: 'DELETE', url: '/config/unset?key=lang', body: undefined },
-    ]);
-  });
-
   it('saves only the AI settings changed, sends the key without ever reading it, and tests the saved ones', async () => {
     const values: Record<string, unknown> = { ai_model_api_base_url: 'https://api.example.com/v1', ai_model_api_model: 'm1', ai_model_api_max_tokens: null, ai_insight_enabled: true };
     const calls = serve((_method, url) => {
