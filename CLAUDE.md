@@ -26,6 +26,7 @@
 - `src/api/` 调用命令 API，用 `/health/events` 长连接显示连接状态并检查版本（#221）；`src/mock/` 是未连接服务时显示的示例记录（会话列表、记录浏览和控制台的默认日期范围），不是暂用的数据
 - `bun run dev`（`scripts/dev.mjs`，#333；依赖由 Bun 按 `bun.lock` 安装；测试用 `bun test` 加 happy-dom，`test/` 下是测试 API 和 preload，不需要 Node.js）同时启动 Vite 和一个读合成账号的 `weflow serve`（`crates/weflow-cli/examples/dev_account.rs` 生成在 `target/dev-account/`，含「图片测试」会话），随机令牌由代理加上，不编进网页；设了 `WEFLOW_SERVE_URL` 时只启动 Vite，转给那个 serve；设 `WEFLOW_DEV_ACCOUNT=bench` 时改用基准账号（#488）
 - `package.json` 的 `weflow.apiVersion` / `minBackendVersion` 声明需要的 API，构建时写入 `dist/weflow-web.json`
+- 界面跟随服务端的语言（#439，`/health` 的 `lang`）：文字以中文原文作键写成 `t('…')`，英文在 `src/i18n/en.ts`（单独的 chunk，需要英文时才下载），带变量的写 `{name}`，英文的计数可写 `{n|one|other}`，模块顶层的标签用 `msg()` 标出、显示时再 `t()`；日期和星期用 `formatDate` / `relativeDay`（`Intl`）。`bun run i18n` 列出缺英文、多余的英文和还没进 `t()` 的中文，`--check` 在 CI 里拦前两种；读取的数据里的中文（如微信支付消息的标签）在那一行写 `// i18n-ignore: <原因>`
 
 ### 其他
 - `docs/`：英文文档，`docs/zh-CN/` 为对应中文版

@@ -2,6 +2,7 @@
 // directory and its accounts, saving settings, and testing that the database opens. The keys are fetched by
 // `key db --save` / `key image --save`, which store them on the server: they never reach the page.
 import { call, get } from './client';
+import { t } from '../i18n';
 import type * as Contract from './contract.gen';
 
 /** A row of `config profiles`: the keys only as whether they are set (the contract's, #430). */
@@ -60,8 +61,8 @@ export const clearAccount = () => call<Contract.AccountCleared>('DELETE', 'cache
 /** A name `config set current_profile` takes for a new profile: letters, digits, `-` and `_`, and not one in use. */
 export function profileNameProblem(name: string, profiles: readonly Profile[]): string | null {
   const typed = name.trim();
-  if (!typed) return '请填写档案名称。';
-  if (!/^[\p{L}\p{N}_-]+$/u.test(typed)) return '档案名称只能包含文字、数字、- 和 _。';
-  if (profiles.some(p => p.name === typed)) return '已经有这个档案了。';
+  if (!typed) return t('请填写档案名称。');
+  if (!/^[\p{L}\p{N}_-]+$/u.test(typed)) return t('档案名称只能包含文字、数字、- 和 _。');
+  if (profiles.some(p => p.name === typed)) return t('已经有这个档案了。');
   return null;
 }

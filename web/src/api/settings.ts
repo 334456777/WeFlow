@@ -1,6 +1,7 @@
 // The rest of the settings (#213): the output language, the AI model API and the cache: read in the server's
 // process (`/api/`), changed through the command routes.
 import { call, get } from './client';
+import { msg } from '../i18n';
 import type * as Contract from './contract.gen';
 
 /** `config get <key>` of the current profile (or the config file, for `lang`); null when it is not set. */
@@ -24,16 +25,17 @@ export type CachePartName = Contract.CachePart;
 /** A row of `cache list`. */
 export type CachePart = Contract.CacheUsage;
 
+/** Shown through t(). */
 export const CACHE_LABELS: Record<CachePartName, { title: string; text: string }> = {
-  images: { title: '图片', text: '解密过的聊天图片。' },
-  voices: { title: '语音', text: '解码过的语音消息。' },
-  emojis: { title: '表情', text: '下载过的表情。' },
-  sns: { title: '朋友圈', text: '朋友圈的图片和视频。' },
-  analytics: { title: '统计', text: '聊天统计的汇总，下次统计时重新计算。' },
-  api: { title: '网页的媒体和文件', text: '网页里看过的媒体、推送的头像，以及任务中心里可以下载的文件。' },
-  keys: { title: '密钥指纹', text: '校验通过的密钥；清理后，下一条命令会重新校验。' },
-  runtime: { title: '旧的运行时', text: '其他 WeFlow 版本释放的运行时，当前版本的保留。' },
-  web: { title: '网页版本', text: '下载过的网页版本；正在用的版本需要时会重新下载。' },
+  images: { title: msg('图片'), text: msg('解密过的聊天图片。') },
+  voices: { title: msg('语音'), text: msg('解码过的语音消息。') },
+  emojis: { title: msg('表情'), text: msg('下载过的表情。') },
+  sns: { title: msg('朋友圈'), text: msg('朋友圈的图片和视频。') },
+  analytics: { title: msg('统计'), text: msg('聊天统计的汇总，下次统计时重新计算。') },
+  api: { title: msg('网页的媒体和文件'), text: msg('网页里看过的媒体、推送的头像，以及任务中心里可以下载的文件。') },
+  keys: { title: msg('密钥指纹'), text: msg('校验通过的密钥；清理后，下一条命令会重新校验。') },
+  runtime: { title: msg('旧的运行时'), text: msg('其他 WeFlow 版本释放的运行时，当前版本的保留。') },
+  web: { title: msg('网页版本'), text: msg('下载过的网页版本；正在用的版本需要时会重新下载。') },
 };
 
 export const listCache = (signal?: AbortSignal) => get<CachePart[]>('api/cache/list', {}, signal);

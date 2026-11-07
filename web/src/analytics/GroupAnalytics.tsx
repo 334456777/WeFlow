@@ -85,7 +85,7 @@ export function GroupStats({ group, range, onMember }: { group: Group; range: Da
   return <div className="analytics-page">
     <section className="analytics-block" aria-label={t('消息类型')}>
       <h2>{t('消息类型')} <small className="muted-num num">{t('共 {total} 条', { total: n(media.total) })}</small></h2>
-      {media.total ? <Shares label={t('各类消息的条数')} bars={media.typeCounts.map(t => ({ label: t.name, value: t.count }))} total={media.total} /> : <p className="muted">{t('这段时间没有消息。')}</p>}
+      {media.total ? <Shares label={t('各类消息的条数')} bars={media.typeCounts.map(kind => ({ label: kind.name, value: kind.count }))} total={media.total} /> : <p className="muted">{t('这段时间没有消息。')}</p>}
     </section>
     <section className="analytics-block" aria-label={t('一天中的时段')}>
       <h2>{t('一天中的时段')}</h2>

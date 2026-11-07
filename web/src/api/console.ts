@@ -1,6 +1,7 @@
 // The command console (#217): every command `/openapi.json` describes, as a form from its parameters, run as the
 // server runs it, with the answer shown as it comes (status, exit code and document), and the command line it is.
 import { apiUrl, token, type Params } from './client';
+import { t } from '../i18n';
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -89,7 +90,7 @@ export function commandsOf(doc: unknown): ConsoleCommand[] {
 export async function getOpenApi(signal?: AbortSignal): Promise<ConsoleCommand[]> {
   const bearer = token();
   const response = await fetch('/openapi.json', { headers: { Accept: 'application/json', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) }, signal });
-  if (!response.ok) throw new Error(response.status === 401 ? '令牌不对，读不到命令列表。' : '读不到命令列表（HTTP ' + response.status + '）。');
+  if (!response.ok) throw new Error(response.status === 401 ? t('令牌不对，读不到命令列表。') : t('读不到命令列表（HTTP {status}）。', { status: response.status }));
   return commandsOf(await response.json());
 }
 
@@ -116,10 +117,10 @@ export function formProblems(cmd: ConsoleCommand, values: Record<string, string 
   for (const field of cmd.fields) {
     const value = values[field.name];
     const text = typeof value === 'string' ? value.trim() : '';
-    if (field.required && field.type !== 'boolean' && !text) problems.push('请填写 ' + field.name + '。');
-    if (text && field.type === 'integer' && !/^-?\d+$/.test(text)) problems.push(field.name + ' 要填整数。');
-    if (text && field.type === 'number' && !Number.isFinite(Number(text))) problems.push(field.name + ' 要填数字。');
-    if (text && field.type === 'list' && field.integers && text.split(/[\n,，]/).some(s => s.trim() && !/^-?\d+$/.test(s.trim()))) problems.push(field.name + ' 的每一项都要是整数。');
+    if (field.required && field.type !== 'boolean' && !text) problems.push(t('请填写 {name}。', { name: field.name }));
+    if (text && field.type === 'integer' && !/^-?\d+$/.test(text)) problems.push(t('{name} 要填整数。', { name: field.name }));
+    if (text && field.type === 'number' && !Number.isFinite(Number(text))) problems.push(t('{name} 要填数字。', { name: field.name }));
+    if (text && field.type === 'list' && field.integers && text.split(/[\n,，]/).some(s => s.trim() && !/^-?\d+$/.test(s.trim()))) problems.push(t('{name} 的每一项都要是整数。', { name: field.name }));
   }
   return problems;
 }

@@ -6,13 +6,14 @@ import { CheckCircle, CircleNotch, Plus, Trash, Warning } from '@phosphor-icons/
 import { ApiError } from '../api/client';
 import { clearAccount, planClearAccount, profileNameProblem, switchProfile, type ClearPlan, type Profile } from '../api/setup';
 import { formatSize } from '../jobs/TaskCenter';
+import { t } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 
 /** How far a profile is set up, in a few words. */
 export function profileState(p: Profile): string {
-  if (!p.complete) return p.dbPath ? '缺少数据库密钥' : '还没有配置';
-  return p.imageKeys ? '已配置' : '已配置，没有图片密钥';
+  if (!p.complete) return p.dbPath ? t('缺少数据库密钥') : t('还没有配置');
+  return p.imageKeys ? t('已配置') : t('已配置，没有图片密钥');
 }
 
 export function Accounts({ profiles, onChanged, onSetup }: {
@@ -37,19 +38,19 @@ export function Accounts({ profiles, onChanged, onSetup }: {
       onChanged();
       return true;
     } catch (problem) {
-      setNote({ text: reason(problem, '没有完成，请重试。'), error: true });
+      setNote({ text: reason(problem, t('没有完成，请重试。')), error: true });
       return false;
     } finally {
       setBusy(null);
     }
   };
-  const switchTo = (p: Profile) => { setPlan(null); void run('switch:' + p.name, () => switchProfile(p.name), '已切换到档案 ' + p.name + '，各页会重新读取。'); };
+  const switchTo = (p: Profile) => { setPlan(null); void run('switch:' + p.name, () => switchProfile(p.name), t('已切换到档案 {name}，各页会重新读取。', { name: p.name })); };
   const problem = adding ? profileNameProblem(name, profiles) : null;
   const add = async (event: FormEvent) => {
     event.preventDefault();
     if (problem) return;
     const typed = name.trim();
-    if (await run('add', () => switchProfile(typed), '已添加档案 ' + typed + '。')) {
+    if (await run('add', () => switchProfile(typed), t('已添加档案 {name}。', { name: typed }))) {
       setAdding(false); setName(''); setPlan(null);
       onSetup();
     }
@@ -57,23 +58,23 @@ export function Accounts({ profiles, onChanged, onSetup }: {
   const lookAtClearing = async () => {
     setBusy('plan'); setNote(null);
     try { setPlan(await planClearAccount()); }
-    catch (problem) { setNote({ text: reason(problem, '读不到将要清除的内容。'), error: true }); }
+    catch (problem) { setNote({ text: reason(problem, t('读不到将要清除的内容。')), error: true }); }
     finally { setBusy(null); }
   };
-  const clear = () => { void run('clear', clearAccount, '已清除这个账号的数据，档案里的账号和密钥也已移除。').then(ok => { if (ok) setPlan(null); }); };
+  const clear = () => { void run('clear', clearAccount, t('已清除这个账号的数据，档案里的账号和密钥也已移除。')).then(ok => { if (ok) setPlan(null); }); };
 
-  return <section className="accounts" aria-label="账号">
+  return <section className="accounts" aria-label={t('账号')}>
     <ul className="account-list">
       {profiles.map(p => <li key={p.name} className={'account' + (p.current ? ' current' : '')}>
         <span className="account-copy">
-          <strong>{p.name}{p.current && <span className="badge">当前</span>}</strong>
-          <span className="account-id">{p.wxid || '未选择账号'}</span>
+          <strong>{p.name}{p.current && <span className="badge">{t('当前')}</span>}</strong>
+          <span className="account-id">{p.wxid || t('未选择账号')}</span>
           {p.dbPath && <span className="account-path" title={p.dbPath}>{p.dbPath}</span>}
         </span>
         <span className={'account-state' + (p.complete ? ' ok' : '')}>{p.complete ? <CheckCircle size={14} weight="fill" /> : <Warning size={14} />}{profileState(p)}</span>
         {p.current
-          ? <button type="button" className="secondary-button" onClick={onSetup}>配置向导</button>
-          : <button type="button" className="secondary-button" disabled={busy !== null} onClick={() => switchTo(p)}>{busy === 'switch:' + p.name ? <CircleNotch size={12} className="spin" /> : null}切换</button>}
+          ? <button type="button" className="secondary-button" onClick={onSetup}>{t('配置向导')}</button>
+          : <button type="button" className="secondary-button" disabled={busy !== null} onClick={() => switchTo(p)}>{busy === 'switch:' + p.name ? <CircleNotch size={12} className="spin" /> : null}{t('切换')}</button>}
       </li>)}
     </ul>
 
@@ -81,25 +82,25 @@ export function Accounts({ profiles, onChanged, onSetup }: {
       {adding
         ? <form className="token-form" onSubmit={add}>
           <label className="token-input"><Plus size={16} aria-hidden="true" />
-            <input type="text" spellCheck={false} autoFocus aria-label="新档案的名称" placeholder="新档案的名称，如 work" value={name} onChange={event => setName(event.target.value)} />
+            <input type="text" spellCheck={false} autoFocus aria-label={t('新档案的名称')} placeholder={t('新档案的名称，如 work')} value={name} onChange={event => setName(event.target.value)} />
           </label>
-          <button type="submit" className="secondary-button" disabled={Boolean(problem) || busy !== null}>添加并配置</button>
-          <button type="button" className="text-button" onClick={() => { setAdding(false); setName(''); }}>取消</button>
+          <button type="submit" className="secondary-button" disabled={Boolean(problem) || busy !== null}>{t('添加并配置')}</button>
+          <button type="button" className="text-button" onClick={() => { setAdding(false); setName(''); }}>{t('取消')}</button>
         </form>
-        : <button type="button" className="secondary-button" onClick={() => { setAdding(true); setPlan(null); }}><Plus size={14} />添加账号</button>}
+        : <button type="button" className="secondary-button" onClick={() => { setAdding(true); setPlan(null); }}><Plus size={14} />{t('添加账号')}</button>}
       {!adding && current?.wxid && !plan && <button type="button" className="secondary-button" disabled={busy !== null} onClick={lookAtClearing}>
-        {busy === 'plan' ? <CircleNotch size={12} className="spin" /> : <Trash size={14} />}清除账号数据</button>}
+        {busy === 'plan' ? <CircleNotch size={12} className="spin" /> : <Trash size={14} />}{t('清除账号数据')}</button>}
     </div>
     {adding && name.trim() && problem && <p className="setting-warning">{problem}</p>}
 
-    {plan && <div className="clear-plan" role="group" aria-label="将要清除的内容">
-      <p>清除档案 <strong>{current?.name}</strong> 的账号 <strong>{current?.wxid}</strong>：删除 WeFlow 为它保存的以下文件（共 {formatSize(plan.bytes)}），并从档案里移除 {plan.profileKeys.join('、')}。微信自己的文件不会被动。</p>
+    {plan && <div className="clear-plan" role="group" aria-label={t('将要清除的内容')}>
+      <p>{t('清除档案 {name} 的账号 {wxid}：删除 WeFlow 为它保存的以下文件（共 {bytes}），并从档案里移除 {keys}。微信自己的文件不会被动。', { name: current?.name ?? '', wxid: current?.wxid ?? '', bytes: formatSize(plan.bytes), keys: plan.profileKeys.join(t('、')) })}</p>
       {plan.paths.length
         ? <ul>{plan.paths.map(p => <li key={p.path}><span className="num">{formatSize(p.bytes)}</span><span className="account-path" title={p.path}>{p.path}</span></li>)}</ul>
-        : <p className="muted">没有需要删除的文件，只会移除档案里的账号和密钥。</p>}
+        : <p className="muted">{t('没有需要删除的文件，只会移除档案里的账号和密钥。')}</p>}
       <div className="clear-plan-actions">
-        <button type="button" className="secondary-button" disabled={busy === 'clear'} onClick={() => setPlan(null)}>取消</button>
-        <button type="button" className="primary-button danger" disabled={busy === 'clear'} onClick={clear}>{busy === 'clear' ? <CircleNotch size={14} className="spin" /> : <Trash size={14} />}确认清除</button>
+        <button type="button" className="secondary-button" disabled={busy === 'clear'} onClick={() => setPlan(null)}>{t('取消')}</button>
+        <button type="button" className="primary-button danger" disabled={busy === 'clear'} onClick={clear}>{busy === 'clear' ? <CircleNotch size={14} className="spin" /> : <Trash size={14} />}{t('确认清除')}</button>
       </div>
     </div>}
     {note && <p className={'account-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
@@ -108,7 +109,7 @@ export function Accounts({ profiles, onChanged, onSetup }: {
 
 /** While the profiles are read (#282): rows in the shape of the accounts, so the settings do not jump. */
 export function AccountsSkeleton() {
-  return <div className="accounts" aria-busy="true" aria-label="正在读取账号配置">
+  return <div className="accounts" aria-busy="true" aria-label={t('正在读取账号配置')}>
     <ul className="account-list">
       {[64, 48].map(w => <li key={w} className="account">
         <span className="account-copy"><span className="skeleton line" style={{ width: '20%' }} /><span className="skeleton line" style={{ width: '30%' }} /><span className="skeleton line" style={{ width: w + '%' }} /></span>
