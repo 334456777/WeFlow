@@ -67,6 +67,8 @@ foreach ($dir in $Protect) {
     Write-Host "denied $Account on $dir"
   }
 }
+# Git's folder may have lost the Users group to another tool's sandbox: the account reads and runs it by name
+icacls 'C:\Program Files\Git' /grant "${Account}:(OI)(CI)RX" /T /Q | Out-Null
 Add-MpPreference -ExclusionPath $BenchDir, (Join-Path $RunnerDir '_work')
 Write-Host "Defender exclusions: $BenchDir, $(Join-Path $RunnerDir '_work')"
 if ($HighPerformance) {

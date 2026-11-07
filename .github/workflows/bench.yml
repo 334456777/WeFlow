@@ -112,16 +112,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # found in the runner's tool cache after the first run; only makes the venv of bench-runner.sh, once
-      - id: python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
       - name: Build and measure
         shell: cmd
         env:
-          PYTHON: ${{ steps.python.outputs.python-path }}
           COMMITS: ${{ inputs.commits }}
           RUNS: ${{ inputs.runs }}
           SEED: ${{ inputs.seed || '1' }}
