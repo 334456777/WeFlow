@@ -1,7 +1,13 @@
-//! Aggregate profile of a configured account, the numbers the synthetic benchmark account copies (#488).
-//! usage: account_profile_probe <isolated config.json>
+//! Aggregate profile of a configured account, the numbers the synthetic benchmark account copies (#488, #605).
+//! usage: account_profile_probe <config.json> [--calibrate <profile.json>]
 //! Prints one JSON object of counts, proportions and quantiles. No conversation, user name, message content, key or
-//! local path is printed: message types are WeChat's numeric codes, everything else is counted.
+//! local path is printed: message types are WeChat's numeric codes, everything else is counted. The config is only
+//! read.
+//!
+//! With `--calibrate`, prints nothing of the account: the numbers become a benchmark profile
+//! (`weflow_native::fixture::bench::Profile`) that replaces the one in that file when some part of it moved past
+//! [`SHARE_MOVED`] or [`SIZE_MOVED`] (or when the file has none), and only whether it did, how many parts moved and the
+//! profile's hash are printed. The parts the account says nothing of keep the default profile's values.
 #![expect(
     clippy::cast_possible_truncation,
     reason = "probe and benchmark data are small values that fit"
@@ -14,6 +20,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Map, Value};
 use weflow_core::config::{expand_home, resolve_account_dir, ConfigStore};
 use weflow_core::decrypt::{decrypt_dat, parse_aes_key};
+use weflow_native::fixture::bench::{Profile, Spread};
 use weflow_native::native_db::NativeAccount;
 use weflow_native::native_msg::{table_name_for, MsgTable};
 
@@ -25,6 +32,12 @@ const DAT_SAMPLES: usize = 1500;
 const GROUP_MIN_MESSAGES: usize = 200;
 const TEXT_BUCKETS: &[i64] = &[0, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 5000];
 const GAP_BUCKETS: &[i64] = &[0, 5, 60, 600, 3600, 86_400, 7 * 86_400, 30 * 86_400];
+/// A share (a number in `0..=1`) that moved more than this makes a new profile.
+const SHARE_MOVED: f64 = 0.02;
+/// Any other number (a size, a count, a fitted exponent) that moved more than this share of itself makes one.
+const SIZE_MOVED: f64 = 0.25;
+/// The largest video and file the synthetic account writes, as the default profile has it.
+const MEDIA_MAX: f64 = 8.0 * 1024.0 * 1024.0;
 
 fn quantiles(mut v: Vec<i64>) -> Value {
     if v.is_empty() {
@@ -165,6 +178,11 @@ struct Messages {
     stored: BTreeMap<&'static str, u64>,
     text: Text,
     sent: u64,
+    /// Messages and those sent by the owner, in groups and in private chats.
+    group: (u64, u64),
+    private: (u64, u64),
+    /// Text messages in groups, and those that mention someone.
+    group_texts: (u64, u64),
     sort_seq_missing: u64,
     sort_seq_off: u64,
     with_source: u64,
@@ -224,8 +242,15 @@ fn read_table(
                 m.with_source += 1;
                 m.with_at += u64::from(source.contains("atuserlist"));
             }
-            if sender.is_some_and(|s| account.is_me(s)) {
-                m.sent += 1;
+            let mine = sender.is_some_and(|s| account.is_me(s));
+            m.sent += u64::from(mine);
+            let by_kind = if group { &mut m.group } else { &mut m.private };
+            *by_kind = (by_kind.0 + 1, by_kind.1 + u64::from(mine));
+            if group && kind == 1 {
+                m.group_texts = (
+                    m.group_texts.0 + 1,
+                    m.group_texts.1 + u64::from(source.contains("atuserlist")),
+                );
             }
             let local = time + TZ;
             *m.hours.entry(local.rem_euclid(86_400) / 3600).or_default() += 1;
@@ -348,6 +373,9 @@ fn conversations(account: &NativeAccount) -> Result<Value> {
         "bytes": m.stored,
         "text": m.text.report(),
         "sent_share": m.sent as f64 / total,
+        "sent_share_group": m.group.1 as f64 / m.group.0.max(1) as f64,
+        "sent_share_private": m.private.1 as f64 / m.private.0.max(1) as f64,
+        "at_share_group_text": m.group_texts.1 as f64 / m.group_texts.0.max(1) as f64,
         "sort_seq_missing_share": m.sort_seq_missing as f64 / total,
         "sort_seq_not_create_time_share": m.sort_seq_off as f64 / total,
         "with_source_share": m.with_source as f64 / total,
@@ -537,11 +565,14 @@ fn media(account_dir: &Path, xor: u8, aes: Option<[u8; 16]>) -> Value {
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    anyhow::ensure!(
-        args.len() == 1,
-        "usage: account_profile_probe <isolated config.json>"
-    );
-    let config = ConfigStore::load(Path::new(&args[0])).context("read isolated account config")?;
+    let calibrate = match args.as_slice() {
+        [_] => None,
+        [_, flag, file] if flag == "--calibrate" => Some(PathBuf::from(file)),
+        _ => {
+            anyhow::bail!("usage: account_profile_probe <config.json> [--calibrate <profile.json>]")
+        }
+    };
+    let config = ConfigStore::load(Path::new(&args[0])).context("read the WeFlow config")?;
     let profile = config
         .profiles
         .get(&config.current_profile)
@@ -579,6 +610,318 @@ fn main() -> Result<()> {
         "databases": others(&account)?,
         "media": media(&root, xor, aes),
     });
-    println!("{}", serde_json::to_string_pretty(&profile)?);
+    match calibrate {
+        None => println!("{}", serde_json::to_string_pretty(&profile)?),
+        Some(file) => adopt(&to_profile(&profile), &file)?,
+    }
+    Ok(())
+}
+
+// ---- --calibrate ----
+
+fn num(v: &Value) -> Option<f64> {
+    v.as_f64().filter(|x| x.is_finite())
+}
+
+/// `(median, 90th percentile, largest)` of quantiles, the largest at most `cap`.
+fn spread(q: &Value, cap: f64) -> Option<Spread> {
+    let (p50, p90, max) = (num(&q["p50"])?, num(&q["p90"])?, num(&q["max"])?);
+    (q["n"].as_u64()? >= 20 && p50 > 0.0).then_some((p50, p90.max(p50), max.max(p90).min(cap)))
+}
+
+/// The shares of `shares` (`{"key": {"share": x}}`) over the keys `keys`, renormalized; None when they hold none.
+fn picked(shares: &Value, keys: impl Iterator<Item = String>) -> Option<Vec<f64>> {
+    let v: Vec<f64> = keys
+        .map(|k| num(&shares[&k]["share"]).unwrap_or(0.0))
+        .collect();
+    let total: f64 = v.iter().sum();
+    (total > 0.0).then(|| v.iter().map(|x| x / total).collect())
+}
+
+/// `(q, s)` of the speaker weights `(r + 1 + q) ^ -s` that give a group of `speakers` the share of the first speaker
+/// and of the first tenth closest to `top1` and `top10`.
+fn fit_speakers(speakers: usize, top1: f64, top10: f64) -> (f64, f64) {
+    let tenth = speakers.div_ceil(10);
+    let mut best = (f64::INFINITY, 0.0, 0.0);
+    for qi in 0..=120 {
+        let q = f64::from(qi) * 0.5;
+        for si in 5..=80 {
+            let s = f64::from(si) * 0.1;
+            let w: Vec<f64> = (0..speakers)
+                .map(|r| (r as f64 + 1.0 + q).powf(-s))
+                .collect();
+            let total: f64 = w.iter().sum();
+            let err = (w[0] / total - top1).powi(2)
+                + (w[..tenth].iter().sum::<f64>() / total - top10).powi(2);
+            if err < best.0 {
+                best = (err, q, s);
+            }
+        }
+    }
+    (best.1, best.2)
+}
+
+/// The benchmark profile of the account's numbers, from the default one: what the account says nothing of stays.
+fn to_profile(p: &Value) -> Profile {
+    let mut out = Profile::default();
+    let (c, d, m) = (&p["conversations"], &p["databases"], &p["media"]);
+    out.measured = (chrono::Utc::now() + chrono::Duration::seconds(TZ))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    let msg = &mut out.messages;
+    if let Some(types) = c["types"].as_object() {
+        let mut v: Vec<(i64, f64)> = types
+            .iter()
+            .filter_map(|(k, x)| Some((k.parse().ok()?, num(&x["share"])?)))
+            .filter(|(_, share)| *share >= 0.000_01)
+            .collect();
+        v.sort_unstable_by_key(|t| t.0);
+        if !v.is_empty() {
+            msg.types = v;
+        }
+    }
+    let share_of = |key: &str| num(&c[key]).filter(|x| (0.0..=1.0).contains(x));
+    for (field, key) in [
+        (&mut msg.sent_in_group, "sent_share_group"),
+        (&mut msg.sent_in_private, "sent_share_private"),
+        (&mut msg.at_in_group, "at_share_group_text"),
+        (&mut msg.with_source, "with_source_share"),
+        (&mut msg.sort_seq_off, "sort_seq_not_create_time_share"),
+        (&mut msg.sort_seq_missing, "sort_seq_missing_share"),
+    ] {
+        if let Some(x) = share_of(key) {
+            *field = x;
+        }
+    }
+    let storage = &c["storage_by_type"];
+    let source_n = |kind: &str| {
+        storage[format!("source {kind}")]["n"]
+            .as_f64()
+            .unwrap_or(0.0)
+    };
+    if source_n("zstd") + source_n("text") > 0.0 {
+        msg.source_compressed = source_n("zstd") / (source_n("zstd") + source_n("text"));
+    }
+    if let Some(sizes) = c["content_bytes_by_type"].as_object() {
+        let mut v: Vec<(i64, Spread)> = sizes
+            .iter()
+            .filter_map(|(k, q)| Some((k.parse().ok()?, spread(q, f64::MAX)?)))
+            .filter(|(t, _)| *t != 1)
+            .collect();
+        v.sort_unstable_by_key(|t| t.0);
+        if !v.is_empty() {
+            msg.content_bytes = v;
+        }
+    }
+
+    let time = &mut out.time;
+    if let Some(v) = picked(&c["hour_utc8"], (0..24).map(|h| h.to_string())) {
+        // every hour keeps a little: the generator divides by an hour's share
+        for (h, x) in time.hours.iter_mut().zip(v) {
+            *h = x.max(0.0001);
+        }
+    }
+    if let Some(v) = picked(&c["weekday_monday0"], (0..7).map(|d| d.to_string())) {
+        time.weekdays.iter_mut().zip(v).for_each(|(w, x)| *w = x);
+    }
+    if let Some(buckets) = c["gap_seconds"].as_array() {
+        // the gaps within a burst: those under an hour
+        let v: Vec<(i64, i64, f64)> = buckets
+            .windows(2)
+            .filter_map(|w| {
+                Some((
+                    w[0]["from"].as_i64()?,
+                    w[1]["from"].as_i64()?,
+                    num(&w[0]["share"])?,
+                ))
+            })
+            .filter(|g| g.1 <= 3600)
+            .collect();
+        let total: f64 = v.iter().map(|g| g.2).sum();
+        if total > 0.0 {
+            time.burst_gaps = v.into_iter().map(|(a, b, x)| (a, b, x / total)).collect();
+        }
+    }
+
+    let text = &mut out.text;
+    let t = &c["text"];
+    if let Some(buckets) = t["chars_histogram"].as_array() {
+        let longest = t["chars"]["max"].as_u64().unwrap_or(4500).clamp(1001, 4500) as u32;
+        let v: Vec<(u32, u32, f64)> = buckets
+            .iter()
+            .enumerate()
+            .filter_map(|(i, b)| {
+                let from = b["from"].as_u64()?.max(1) as u32;
+                let to = buckets
+                    .get(i + 1)
+                    .and_then(|n| n["from"].as_u64())
+                    .map_or(longest, |n| n as u32);
+                Some((from, to.max(from + 1), num(&b["share"])?))
+            })
+            .filter(|r| r.2 > 0.0)
+            .collect();
+        if !v.is_empty() {
+            text.chars = v;
+        }
+    }
+    for (field, key) in [
+        (&mut text.with_emoji, "with_emoji"),
+        (&mut text.with_bracket_emoji, "with_bracket_emoji"),
+        (&mut text.with_newline, "with_newline"),
+        (&mut text.with_odd_control, "with_odd_control"),
+        (&mut text.with_url, "with_url"),
+    ] {
+        if let Some(x) = num(&t[key]).filter(|x| (0.0..=1.0).contains(x)) {
+            *field = x;
+        }
+    }
+
+    let groups = &mut out.groups;
+    let kinds = &c["conversations"];
+    let (g, pr) = (
+        kinds["group"]["n"].as_f64().unwrap_or(0.0),
+        kinds["private"]["n"].as_f64().unwrap_or(0.0),
+    );
+    if g + pr > 0.0 {
+        groups.share = g / (g + pr);
+    }
+    let speaking = &c["groups_speaking"];
+    if let (Some(speakers), Some(top1), Some(top10)) = (
+        speaking["speakers"]["p50"].as_u64(),
+        num(&speaking["top1_share_permille"]["p50"]),
+        num(&speaking["top10pct_share_permille"]["p50"]),
+    ) {
+        if speakers >= 10 {
+            (groups.speaker_q, groups.speaker_s) =
+                fit_speakers(speakers as usize, top1 / 1000.0, top10 / 1000.0);
+        }
+    }
+    if let (Some(members), Some(speakers)) = (
+        d["room_members"]["max"].as_u64(),
+        speaking["speakers"]["max"].as_u64(),
+    ) {
+        if speakers >= 1 {
+            groups.big_members = members.max(speakers) as usize;
+            groups.big_speakers = speakers as usize;
+        }
+    }
+
+    let media = &mut out.media;
+    let sets = &m["image_file_sets"];
+    let set_keys = [
+        ("thumb", (true, false, false)),
+        ("normal+thumb", (true, true, false)),
+        ("hd+normal+thumb", (true, true, true)),
+        ("normal", (false, true, false)),
+    ];
+    if let Some(v) = picked(sets, set_keys.iter().map(|(k, _)| (*k).to_string())) {
+        media.image_sets = set_keys
+            .iter()
+            .zip(v)
+            .map(|((_, (t, i, h)), x)| (*t, *i, *h, x))
+            .collect();
+    }
+    let images = &m["image_bytes"];
+    for (field, key) in [
+        (&mut media.thumb_bytes, "thumb"),
+        (&mut media.image_bytes, "normal"),
+        (&mut media.hd_bytes, "hd"),
+    ] {
+        if let Some(s) = spread(&images[key], f64::MAX) {
+            *field = s;
+        }
+    }
+    let formats = &m["image_formats_sampled"];
+    for (field, variant) in [
+        (&mut media.image_formats, "normal"),
+        (&mut media.hd_formats, "hd"),
+    ] {
+        if let Some(v) = picked(
+            formats,
+            [".png", ".jpg", ".wxgf"]
+                .iter()
+                .map(|e| format!("{variant} {e}")),
+        ) {
+            *field = (v[0], v[1], v[2]);
+        }
+    }
+    let videos = &m["video_bytes"];
+    if let Some(s) = spread(&videos["mp4"], MEDIA_MAX) {
+        media.video_bytes = s;
+    }
+    if let Some(s) = spread(&videos["thumb"], f64::MAX) {
+        media.video_thumb_bytes = s;
+    }
+    if let Some(s) = spread(&m["file_bytes"], MEDIA_MAX) {
+        media.file_bytes = s;
+    }
+    let type_n = |t: i64| c["types"][t.to_string()]["n"].as_f64().unwrap_or(0.0);
+    let here = |files: Option<u64>, messages: f64| {
+        files
+            .filter(|_| messages >= 20.0)
+            .map(|f| (f as f64 / messages).min(1.0))
+    };
+    if let Some(x) = here(videos["thumb"]["n"].as_u64(), type_n(43)) {
+        media.video_thumb_here = x;
+    }
+    if let Some(x) = here(videos["mp4"]["n"].as_u64(), type_n(43)) {
+        media.video_here = x;
+    }
+    if let Some(x) = here(m["file_bytes"]["n"].as_u64(), type_n((6 << 32) | 49)) {
+        media.file_here = x;
+    }
+    out
+}
+
+/// How many numbers moved past [`SHARE_MOVED`] or [`SIZE_MOVED`] from `old` to `new`, as JSON; a list of a
+/// different length counts as one.
+fn moved(old: &Value, new: &Value) -> usize {
+    match (old, new) {
+        (Value::Object(a), Value::Object(b)) => b
+            .iter()
+            .map(|(k, v)| a.get(k).map_or(1, |o| moved(o, v)))
+            .sum(),
+        (Value::Array(a), Value::Array(b)) if a.len() == b.len() => {
+            a.iter().zip(b).map(|(x, y)| moved(x, y)).sum()
+        }
+        (Value::Number(a), Value::Number(b)) => {
+            let (a, b) = (a.as_f64().unwrap_or(0.0), b.as_f64().unwrap_or(0.0));
+            let shares = (0.0..=1.0).contains(&a) && (0.0..=1.0).contains(&b);
+            let limit = if shares {
+                SHARE_MOVED
+            } else {
+                SIZE_MOVED * a.abs().max(b.abs())
+            };
+            usize::from((a - b).abs() > limit)
+        }
+        (a, b) => usize::from(a != b),
+    }
+}
+
+/// Writes `new` to `file` unless the profile there is close enough, and says which, without a number of the account.
+fn adopt(new: &Profile, file: &Path) -> Result<()> {
+    new.check().context("the calibrated profile")?;
+    let mut fresh = serde_json::to_value(new)?;
+    let old = Profile::load(file).ok();
+    if let Some(old) = &old {
+        let mut kept = serde_json::to_value(old)?;
+        // the day it was measured is not a change
+        kept["measured"] = Value::Null;
+        fresh["measured"] = Value::Null;
+        let n = moved(&kept, &fresh);
+        if n == 0 {
+            println!("unchanged: the profile {} still fits", old.hash()?);
+            return Ok(());
+        }
+        println!("{n} parts moved");
+    }
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = file.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(new)?)?;
+    std::fs::rename(&tmp, file)?;
+    println!("written: the profile {} of {}", new.hash()?, new.measured);
     Ok(())
 }

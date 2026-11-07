@@ -1,5 +1,5 @@
 //! The benchmark account (#488) at a small size: the same bytes from the same seed, every message read back (those
-//! still in a WAL too), and its pictures readable.
+//! still in a WAL too), and its pictures readable; its profile (#605) read back from a file as it was written.
 #![expect(clippy::unwrap_used, reason = "test code fails the test by panicking")]
 mod common;
 
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use weflow_core::decrypt::{decrypt_dat, parse_aes_key};
-use weflow_native::fixture::bench::{self, BenchSpec};
+use weflow_native::fixture::bench::{self, BenchSpec, Profile};
 use weflow_native::native_db::hex;
 use weflow_native::sqlcipher::testutil::KEY;
 
@@ -19,6 +19,7 @@ fn small(seed: u64) -> BenchSpec {
         conversations: 12,
         shards: 3,
         media: true,
+        profile: Profile::default(),
     }
 }
 
@@ -56,6 +57,59 @@ fn a_seed_gives_the_same_bytes_and_another_seed_other_ones() {
     assert_ne!(a["conversations"], c["conversations"]);
     let db = Path::new(bench::ACCOUNT_DIR).join("db_storage/message/message_1.db");
     assert_ne!(fa[&db], files(&root.join("c"))[&db]);
+}
+
+#[test]
+fn a_profile_read_back_from_its_file_is_the_same_and_builds_the_same_account() {
+    let root = common::temp_dir("bench-profile");
+    let mut profile = Profile::default();
+    // a calibrated profile is made of fractions that do not print short
+    profile.text.with_emoji = 1.0 / 3.0;
+    profile.groups.speaker_s = 4.0 / 7.0 + 3.0;
+    let file = root.join("profile.json");
+    std::fs::write(&file, serde_json::to_vec_pretty(&profile).unwrap()).unwrap();
+    let read = Profile::load(&file).unwrap();
+    assert_eq!(read.hash().unwrap(), profile.hash().unwrap());
+    assert_ne!(read.hash().unwrap(), Profile::default().hash().unwrap());
+
+    let spec = |profile: Profile| BenchSpec {
+        profile,
+        media: false,
+        ..small(3)
+    };
+    let a = bench::build(&root.join("a"), &spec(profile)).unwrap();
+    let b = bench::build(&root.join("b"), &spec(read)).unwrap();
+    assert_eq!(a, b);
+    assert_eq!(a["profile"]["hash"], b["profile"]["hash"]);
+    let c = bench::build(&root.join("c"), &spec(Profile::default())).unwrap();
+    assert_ne!(a["profile"]["hash"], c["profile"]["hash"]);
+}
+
+#[test]
+fn a_profile_the_generator_cannot_use_is_refused() {
+    let root = common::temp_dir("bench-profile-bad");
+    assert!(Profile::default().check().is_ok());
+    let mut bad = Profile::default();
+    bad.messages.sent_in_group = 1.5;
+    assert!(bad.check().is_err());
+    let mut bad = Profile::default();
+    bad.time.hours = [0.0; 24];
+    assert!(bad.check().is_err());
+    let mut bad = Profile::default();
+    bad.groups.big_speakers = bad.groups.big_members + 1;
+    assert!(bad.check().is_err());
+    let file = root.join("bad.json");
+    std::fs::write(&file, serde_json::to_vec(&bad).unwrap()).unwrap();
+    assert!(Profile::load(&file).is_err());
+    assert!(bench::build(
+        &root.join("a"),
+        &BenchSpec {
+            profile: bad,
+            media: false,
+            ..small(3)
+        }
+    )
+    .is_err());
 }
 
 #[test]

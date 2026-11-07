@@ -130,7 +130,7 @@ function sideLine(r, side) {
   const commit = (r.commit ?? '').slice(0, 10);
   const named = r.ref && !commit.startsWith(r.ref) ? `\`${r.ref}\`（\`${commit}\`）` : `\`${commit || r.ref}\``;
   const version = (r.version || '版本未知').split(' (')[0];
-  return `${side}：${named}，${version}，测于 ${r.measured_at ?? '-'}`;
+  return `${side}：${named}，${version}，测于 ${r.measured_at ?? '-'}${r.os ? `，${r.os}` : ''}`;
 }
 
 function quietText(q) {
@@ -157,8 +157,9 @@ export function reportBlocks(base, head) {
       ul: [
         sideLine(base, 'base'),
         sideLine(head, 'head'),
-        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 个逻辑 CPU，${m.memory_gib} GiB 内存，${m.os}；测量工具 \`${String(env.tools).slice(0, 12)}\``,
-        `基准账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话（manifest \`${acc.manifest}\`）`,
+        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 个逻辑 CPU，${m.memory_gib} GiB 内存；测法版本 ${env.method}`,
+        `基准账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话（manifest \`${acc.manifest}\`，`
+          + (acc.profile ? `profile \`${acc.profile.hash}\`，测于 ${acc.profile.measured}）` : '默认 profile）'),
         `两个提交分开测量，各自先运行一次不计时，再和锚点 \`${(head.anchor?.commit ?? '').slice(0, 10)}\` 交替各运行 ${base.runs}／${head.runs} 次，取成功运行的中位数`,
         `比值是 head / base：▲ 表示增加超过 10%，▼ 表示减少超过 10%；差值小于噪声下限时不标（耗时 20 ms，CPU 50 ms，内存 5 MiB，路由延迟 5 ms）。除了吞吐量和每秒请求数，其余指标都是越低越好`,
       ],
@@ -174,7 +175,11 @@ export function reportBlocks(base, head) {
           : Math.abs(drift - 1) > DRIFT_LIMIT ? `**锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%**，超过 ${DRIFT_LIMIT * 100}%，下面的比值要打折扣看；耗时表的「校正后」一列除掉了每条命令的锚点漂移。`
             : `锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%，在 ${DRIFT_LIMIT * 100}% 以内。`),
     },
-    { ul: [`base 测量时：${quietText(base.quiet)}`, `head 测量时：${quietText(head.quiet)}`] },
+    {
+      ul: [`base 测量时：${quietText(base.quiet)}`, `head 测量时：${quietText(head.quiet)}`,
+        ...(base.os && head.os && base.os !== head.os
+          ? [`两次测量的 Windows 版本不同（${base.os} → ${head.os}）：系统更新带来的变化算在锚点漂移里`] : [])],
+    },
   ];
   const dr = driftRows(base, head);
   if (dr.length) {

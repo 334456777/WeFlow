@@ -2,12 +2,14 @@
 //! seed (see `weflow_native::fixture::bench`).
 //!
 //! usage: bench_account <work dir> --weflow <weflow binary> [--seed N] [--group-messages N] [--conversations N]
-//!                      [--shards N] [--no-media]
+//!                      [--shards N] [--no-media] [--profile <profile.json>]
 //!
 //! `<work dir>/data` holds the account, `<work dir>/home` the WeFlow home pointing at it and `<work dir>/manifest.json`
 //! what is in it (conversations, messages by type, files written). They are built again only when an option changes;
 //! the home is printed on stdout. The defaults: seed 1, a group of 200000 messages, 300 other conversations, 2 message
-//! databases, and the files of pictures, videos and files (about 1.5 GB; `--no-media` leaves them out).
+//! databases, and the files of pictures, videos and files (about 1.5 GB; `--no-media` leaves them out). `--profile`
+//! takes the shapes from a calibrated profile (`account_profile_probe --calibrate`, #605) instead of the default one;
+//! the manifest names it by its hash and the day it was measured, never by what it holds.
 #![expect(
     clippy::cast_possible_truncation,
     reason = "probe and benchmark data are small values that fit"
@@ -24,7 +26,7 @@ use weflow_native::sqlcipher::testutil::KEY;
 
 const USAGE: &str =
     "usage: bench_account <work dir> --weflow <weflow binary> [--seed N] [--group-messages N] \
-                     [--conversations N] [--shards N] [--no-media]";
+                     [--conversations N] [--shards N] [--no-media] [--profile <profile.json>]";
 /// Bump on any change to what `bench::build` makes, so an account built before is built again.
 const LAYOUT: u32 = 3;
 
@@ -51,6 +53,13 @@ fn main() -> Result<()> {
             "--conversations" => spec.conversations = number(&mut args, &arg)? as usize,
             "--shards" => spec.shards = number(&mut args, &arg)? as usize,
             "--no-media" => spec.media = false,
+            "--profile" => {
+                let path = PathBuf::from(
+                    args.next()
+                        .ok_or_else(|| anyhow!("--profile needs a file"))?,
+                );
+                spec.profile = bench::Profile::load(&path)?;
+            }
             other => return Err(anyhow!("unknown argument {other}\n{USAGE}")),
         }
     }
@@ -64,6 +73,7 @@ fn main() -> Result<()> {
         "conversations": spec.conversations,
         "shards": spec.shards,
         "media": spec.media,
+        "profile": spec.profile.hash()?,
     });
     let built = std::fs::read(&stamp)
         .ok()

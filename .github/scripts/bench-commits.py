@@ -8,8 +8,10 @@ Run from a checkout of the commit whose tools measure (the workflow's), with the
 (`weflow.exe`, `bench_account.exe`, `serve_bench.exe`). `--bench-dir` is the runner's own folder that outlives a
 job, so nothing is installed, downloaded or written again that a run before already has: the accounts
 (`accounts/`), the weflow binaries of the commits measured (`bin/<sha>/`), a clone to build them in (`src/`), the
-build cache (`target/`), Rust and the Python packages (set up by bench.yml). `--index` is `bench/data/index.json` of the gh-pages branch (missing:
-nothing measured yet), which says which commits the environment already holds and which is its anchor.
+build cache (`target/`), Rust and the Python packages (set up by bench-runner.sh); `profile/profile.json`, when
+there, is the account's profile calibrated on this machine (#605), which the account is built from instead of the
+default one. `--index` is `bench/data/index.json` of the gh-pages branch (missing: nothing measured yet), which says
+which commits the environment already holds and which is its anchor.
 
 For each commit: resolved to its full SHA; skipped when the environment holds a full result of it (a result of
 `--only` some parts is measured again by a full run), unless `--force`; else built (unless its binary is kept) and
@@ -19,7 +21,6 @@ and every commit asked for with its SHA, whether it was measured, and the name i
 """
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -30,22 +31,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench  # noqa: E402
 
 TARGET = "x86_64-pc-windows-msvc"
-# what builds the account: an account is built again only when one of these changes
-ACCOUNT_PATHS = ("crates/weflow-native/src/fixture", "crates/weflow-native/src/fixture.rs",
-                 "crates/weflow-native/src/sqlcipher.rs", "crates/weflow-cli/examples/bench_account.rs")
-# what measures, besides: their versions together name the tools of an environment
-TOOL_PATHS = (*ACCOUNT_PATHS, ".github/scripts/bench.py", "crates/weflow-cli/examples/serve_bench.rs")
 # the account a run uses when it is given no size
 DEFAULT_SIZE = "s1-g200000-c300"
 
 
 def git(*args, cwd=None):
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
-
-
-def version_of(paths):
-    trees = [f"{p}={git('rev-parse', f'HEAD:{p}')}" for p in paths]
-    return hashlib.sha256("\n".join(trees).encode()).hexdigest()[:12]
 
 
 def resolve(ref):
@@ -91,15 +82,14 @@ def build(sha, bench_dir):
 
 def clean_up(bench_dir, anchors, account):
     """What the next run will not use: the binaries but the anchors' (a commit measured is not measured again), and
-    the accounts but this run's and the one of the default size, both of the generator of this run."""
+    the accounts but this run's and the one of the default size."""
     root = os.path.join(bench_dir, "bin")
     for d in os.listdir(root) if os.path.isdir(root) else []:
         if d not in anchors:
             shutil.rmtree(os.path.join(root, d), ignore_errors=True)
     root, used = os.path.split(account)
-    generator = used.split("-")[0]
     for d in os.listdir(root):
-        if d not in (used, f"{generator}-{DEFAULT_SIZE}"):
+        if d not in (used, DEFAULT_SIZE):
             shutil.rmtree(os.path.join(root, d), ignore_errors=True)
 
 
@@ -123,15 +113,17 @@ def main():
 
     bench_dir, out, tools = (os.path.abspath(x) for x in (args.bench_dir, args.out, args.tools))
     os.makedirs(out, exist_ok=True)
-    tid, generator = version_of(TOOL_PATHS), version_of(ACCOUNT_PATHS)
-    # an account per version of its generator and size, kept between runs (about 1.5 GB to write): a changed
-    # generator never reuses an older account, a change elsewhere in the tools reuses it
-    account = os.path.join(bench_dir, "accounts",
-                           f"{generator}-s{args.seed}-g{args.group_messages}-c{args.conversations}")
+    # an account per size, kept between runs (about 1.5 GB to write): bench_account builds it again only when its
+    # generator's layout, its size or its profile changed
+    account = os.path.join(bench_dir, "accounts", f"s{args.seed}-g{args.group_messages}-c{args.conversations}")
+    # a profile calibrated on this machine (#605), else the default one
+    profile = os.path.join(bench_dir, "profile", "profile.json")
     subprocess.run([os.path.join(tools, "bench_account.exe"), account, "--weflow", os.path.join(tools, "weflow.exe"),
                     "--seed", str(args.seed), "--group-messages", str(args.group_messages),
-                    "--conversations", str(args.conversations)], check=True, stdout=subprocess.DEVNULL)
-    env = bench.environment_of(account, tid, args.load_seconds, args.load_workers)
+                    "--conversations", str(args.conversations),
+                    *(["--profile", profile] if os.path.exists(profile) else [])],
+                   check=True, stdout=subprocess.DEVNULL)
+    env = bench.environment_of(account, args.load_seconds, args.load_workers)
     key = env["key"]
     print(f"environment {key}: {json.dumps(env, ensure_ascii=False)}", flush=True)
 
@@ -162,7 +154,7 @@ def main():
     for c in todo:
         exe, alloc = build(c["sha"], bench_dir)
         argv = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bench.py"), "measure",
-                "--exe", exe, "--commit", c["sha"], "--ref", c["ref"], "--account", account, "--tools-id", tid,
+                "--exe", exe, "--commit", c["sha"], "--ref", c["ref"], "--account", account,
                 "--out", os.path.join(out, c["sha"]), "--runs", str(args.runs),
                 "--load-seconds", str(args.load_seconds), "--load-workers", str(args.load_workers),
                 "--serve-bench", os.path.join(tools, "serve_bench.exe")]
