@@ -366,8 +366,11 @@ def run_command(exe, home, args, out_dir, log):
     with open(log, "wb") as f:
         f.write(stdout + b"\n--- stderr ---\n" + "\n".join(err_lines).encode())
     samples = sampler.samples
+    said = (stdout.decode("utf-8", "replace") + "\n".join(err_lines)).lower()
     return {
         "exit_code": proc.returncode,
+        # the command line refused: a command, an option or a value this version does not have yet
+        "unsupported": proc.returncode != 0 and any(s in said for s in UNSUPPORTED),
         "wall_ms": wall * 1000,
         "first_event_ms": first["event"] and first["event"] * 1000,
         "first_batch_ms": first["batch"] and first["batch"] * 1000,
@@ -386,6 +389,8 @@ METRICS = ("wall_ms", "first_batch_ms", "user_ms", "kernel_ms", "cpu_ms", "peak_
            "peak_threads", "read_bytes", "write_bytes", "page_faults", "output_bytes", "cache_bytes")
 # at most this many points of a memory curve are kept
 CURVE_POINTS = 300
+# what weflow's command line (clap) says when it refuses what it does not know
+UNSUPPORTED = ("unrecognized subcommand", "unexpected argument", "invalid value", "unrecognized option")
 
 
 def curve(samples):
@@ -403,14 +408,17 @@ def curve(samples):
 
 def summarize(runs, items):
     """What a command's runs by one binary come to: the medians of the runs that succeeded, every run without its
-    samples, and the memory curve of the median run."""
+    samples, and the memory curve of the median run; `unsupported` when every run was refused by the command line
+    (the version does not have the command yet), which is no failure."""
     ok = sorted((r for r in runs if r["exit_code"] == 0), key=lambda r: r["wall_ms"])
+    unsupported = bool(runs) and all(r.get("unsupported") for r in runs)
     med = {k: median([r[k] for r in ok]) for k in METRICS}
     if items and med["wall_ms"]:
         med["items_per_s"] = items / (med["wall_ms"] / 1000)
     return {
         "median": med,
-        "failed_runs": len(runs) - len(ok),
+        "failed_runs": 0 if unsupported else len(runs) - len(ok),
+        "unsupported": unsupported,
         "runs": [{k: v for k, v in r.items() if k != "samples"} for r in runs],
         "curve": curve(ok[len(ok) // 2]["samples"]) if ok else [],
     }

@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       commits:
-        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交）；正好两个时，第一个当 base、第二个当 head 生成对比"
+        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交；写成 名字=提交 时查看页显示这个名字，如 #424前=c054035f^）；正好两个时，第一个当 base、第二个当 head 生成对比"
         required: true
         type: string
       runs:
@@ -206,9 +206,15 @@ jobs:
           viewer="https://$owner.github.io/${GITHUB_REPOSITORY#*/}/bench/"
           echo "Viewer: $viewer?env=$key" >> "$GITHUB_STEP_SUMMARY"
           if [ "${#refs[@]}" != 2 ]; then exit 0; fi
-          # a name in the link when it says more than the commit itself
-          name() { local r; r=$(echo "$1" | xargs); if [ "$r" = HEAD ] || [[ "$2" == "$r"* ]]; then echo "${2:0:12}"; else echo "$r"; fi; }
+          # a name in the link when it says more than the commit itself (NAME=REF gives NAME), encoded for the address
+          name() {
+            local r; r=$(echo "${1%%=*}" | xargs)
+            if [ "$r" = HEAD ] || [[ "$2" == "$r"* ]]; then r=${2:0:12}; fi
+            jq -rn --arg v "$r" '$v | @uri'
+          }
           url="$viewer?env=$key&base=$(name "${refs[0]}" "${lines[1]}")&head=$(name "${refs[1]}" "${lines[2]}")"
+          # one of them may have failed to build or to be measured
+          for sha in "${lines[1]}" "${lines[2]}"; do [ -f "pages/bench/data/$key/$sha.json" ] || exit 0; done
           node main/.github/bench/cli.mjs "pages/bench/data/$key/${lines[1]}.json" "pages/bench/data/$key/${lines[2]}.json" \
             --out compare --url "$url" > /dev/null
           echo "url=$url" >> "$GITHUB_OUTPUT"

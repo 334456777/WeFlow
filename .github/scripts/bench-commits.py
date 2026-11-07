@@ -1,6 +1,6 @@
 """Measure a list of commits one by one on the benchmark runner (#601, #603), skipping those already measured.
 
-usage: python bench-commits.py --commits REF[,REF...] --bench-dir DIR --tools DIR --index FILE --out DIR
+usage: python bench-commits.py --commits [NAME=]REF[,...] --bench-dir DIR --tools DIR --index FILE --out DIR
                                [--runs N] [--load-seconds S] [--only NAMES] [--seed N] [--group-messages N]
                                [--conversations N] [--force]
 
@@ -13,11 +13,14 @@ there, is the account's profile calibrated on this machine (#605), which the acc
 default one. `--index` is `bench/data/index.json` of the gh-pages branch (missing: nothing measured yet), which says
 which commits the environment already holds and which is its anchor.
 
-For each commit: resolved to its full SHA; skipped when the environment holds a full result of it (a result of
-`--only` some parts is measured again by a full run), unless `--force`; else built (unless its binary is kept) and
-measured by bench.py next to the anchor. An environment with no anchor yet takes the first commit measured. Writes
-`<out>/<sha>/result.json` (and its logs) for each commit measured and `<out>/run.json`: the environment, the anchor
-and every commit asked for with its SHA, whether it was measured, and the name it was asked by.
+A commit is a ref (a SHA, a tag, a branch, `abc123^`), or `NAME=REF` to give it a name the viewer shows (such as
+`#424前=c054035f^`). For each: resolved to its full SHA; skipped when the environment holds a full result of it (a
+result of `--only` some parts is measured again by a full run), unless `--force`; else built (unless its binary is
+kept) and measured by bench.py next to the anchor. An environment with no anchor yet takes the first commit measured.
+A commit that does not build or whose measuring stops is left out with a warning (an old commit may not build with
+today's tools), and the others go on; only the anchor's failing stops the run. Writes `<out>/<sha>/result.json` (and
+its logs) for each commit measured and `<out>/run.json`: the environment, the anchor and every commit asked for with
+its SHA, its name, whether it was measured, and why not when it failed.
 """
 
 import argparse
@@ -26,6 +29,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench  # noqa: E402
@@ -65,6 +69,10 @@ def build(sha, bench_dir):
     git("checkout", "-q", "--detach", "--force", sha, cwd=src)
     git("clean", "-q", "-fdx", cwd=src)
     env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(bench_dir, "target"))
+    # a commit older than rust-toolchain.toml builds with the tools' own toolchain (rustup has no default here)
+    if not os.path.exists(os.path.join(src, "rust-toolchain.toml")):
+        env["RUSTUP_TOOLCHAIN"] = channel_of(os.getcwd())
+    note_toolchain(bench_dir, env.get("RUSTUP_TOOLCHAIN") or channel_of(src))
     cargo = ["cargo", "build", "--release", "-p", "weflow-cli", "--bin", "weflow", "--target", TARGET]
     print(f"== build {sha[:10]}", flush=True)
     subprocess.run(cargo, cwd=src, env=env, check=True)
@@ -78,6 +86,24 @@ def build(sha, bench_dir):
         subprocess.run([*cargo, "--features", "alloc-stats"], cwd=src, env=env, check=True)
         shutil.copy2(built, alloc)
     return exe, alloc if has_alloc else None
+
+
+def channel_of(root):
+    """The Rust channel the checkout at `root` names in its rust-toolchain.toml, or None."""
+    try:
+        with open(os.path.join(root, "rust-toolchain.toml"), encoding="utf-8") as f:
+            return next(line.split("=", 1)[1].strip().strip('"') for line in f if line.strip().startswith("channel"))
+    except (OSError, StopIteration):
+        return None
+
+
+def note_toolchain(bench_dir, channel):
+    """Notes when the Rust toolchain `channel` was last used, in `toolchains-used.txt`, so that the clean-up of
+    bench-runner.sh keeps the ones used lately: a backfill spread over several runs downloads each once."""
+    if not channel:
+        return
+    with open(os.path.join(bench_dir, "toolchains-used.txt"), "a", encoding="utf-8") as f:
+        f.write(f"{channel} {int(time.time())}\n")
 
 
 def clean_up(bench_dir, anchors, account):
@@ -136,7 +162,10 @@ def main():
     results = held.get("results", {})
 
     asked = [r.strip() for r in args.commits.split(",") if r.strip()]
-    commits = [{"ref": r, "sha": resolve(r)} for r in asked]
+    commits = []
+    for item in asked:
+        name, _, rev = item.rpartition("=")
+        commits.append({"ref": name.strip() or rev.strip(), "sha": resolve(rev.strip())})
     print("commits: " + ", ".join(f"{c['ref']} = {c['sha'][:10]}" for c in commits), flush=True)
     for c in commits:
         have = results.get(c["sha"])
@@ -152,7 +181,14 @@ def main():
     if todo and any(c["sha"] != anchor for c in todo):
         anchor_exe, anchor_alloc = build(anchor, bench_dir)
     for c in todo:
-        exe, alloc = build(c["sha"], bench_dir)
+        try:
+            exe, alloc = build(c["sha"], bench_dir)
+        except subprocess.CalledProcessError as e:
+            if c["sha"] == anchor:
+                raise
+            print(f"::warning::{c['ref']} ({c['sha'][:10]}) does not build ({e.returncode}): left out", flush=True)
+            c.update(measured=False, failed="build")
+            continue
         argv = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bench.py"), "measure",
                 "--exe", exe, "--commit", c["sha"], "--ref", c["ref"], "--account", account,
                 "--out", os.path.join(out, c["sha"]), "--runs", str(args.runs),
@@ -167,7 +203,12 @@ def main():
         if args.only:
             argv += ["--only", args.only]
         print(f"== measure {c['ref']} ({c['sha'][:10]})", flush=True)
-        subprocess.run(argv, check=True)
+        code = subprocess.run(argv).returncode
+        if code:
+            if c["sha"] == anchor:
+                raise SystemExit(f"the anchor {anchor[:10]} could not be measured ({code})")
+            print(f"::warning::measuring {c['ref']} ({c['sha'][:10]}) stopped ({code}): left out", flush=True)
+            c.update(measured=False, failed="measure")
     clean_up(bench_dir, {anchor} | {e.get("anchor") for e in index.get("envs", {}).values()}, account)
     with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
         json.dump({"env": env, "anchor": anchor, "commits": commits}, f, ensure_ascii=False, indent=1)
