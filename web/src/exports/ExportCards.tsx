@@ -7,6 +7,7 @@ import { DateRange } from '../calendar/DateRange';
 import { runJob } from '../jobs/useJobs';
 import { Segmented } from '../Segmented';
 import { nameOf } from './ExportPicker';
+import { msg, t } from '../i18n';
 
 /** The formats of `export messages --format`, as the page names them. */
 export const MESSAGE_FORMATS = [
@@ -38,15 +39,16 @@ export const formatsLabel = (formats: readonly MessageFormat[]) => formats.map(f
 
 /** The formats as chips, several at once (#342). */
 export function FormatChips({ formats, onChange }: { formats: readonly MessageFormat[]; onChange(formats: MessageFormat[]): void }) {
-  return <div className="choice-chips" role="group" aria-label="导出格式（可多选）">
+  return <div className="choice-chips" role="group" aria-label={t('导出格式（可多选）')}>
     {MESSAGE_FORMATS.map(f => <button type="button" key={f.value} className="chip" aria-pressed={formats.includes(f.value)} onClick={() => onChange(toggleFormat(formats, f.value))}>{f.label}</button>)}
   </div>;
 }
 
 /** What the media box says it does. */
-export const MEDIA_NOTE = '图片、语音、视频与表情放进 media 文件夹，和导出文件一起打包成 zip';
+/** Shown through t(). */
+export const MEDIA_NOTE = msg('图片、语音、视频与表情放进 media 文件夹，和导出文件一起打包成 zip');
 
-const NAMES = [{ value: 'group-nickname', label: '群昵称' }, { value: 'remark', label: '备注' }, { value: 'nickname', label: '昵称' }] as const;
+const NAMES = [{ value: 'group-nickname', label: msg('群昵称') }, { value: 'remark', label: msg('备注') }, { value: 'nickname', label: msg('昵称') }] as const;
 type NameChoice = typeof NAMES[number]['value'];
 
 export interface BatchOptions {
@@ -74,7 +76,7 @@ export function exportParams(session: string, options: BatchOptions) {
 export const formatLabel = (format: MessageFormat) => MESSAGE_FORMATS.find(f => f.value === format)!.label;
 
 export function batchSummary(picked: number, options: BatchOptions): string {
-  return (picked ? picked + ' 个会话' : '未选会话') + ' · ' + formatsLabel(options.formats) + (options.media ? ' · 含媒体' : '');
+  return (picked ? t('{n} 个会话', { n: picked }) : t('未选会话')) + ' · ' + formatsLabel(options.formats) + (options.media ? ' · ' + t('含媒体') : '');
 }
 
 export function BatchExport({ picked, options, onChange }: {
@@ -91,32 +93,32 @@ export function BatchExport({ picked, options, onChange }: {
     try {
       // one job each, in the order of the list; the server runs them one after another
       for (const session of picked) {
-        await runJob('导出 ' + nameOf(session) + ' · ' + formatsLabel(options.formats), 'POST', 'export/messages', exportParams(session.username, options));
+        await runJob(t('导出 {name} · {formats}', { name: nameOf(session), formats: formatsLabel(options.formats) }), 'POST', 'export/messages', exportParams(session.username, options));
         queued += 1;
       }
-      setNote({ text: '已加入 ' + queued + ' 个导出任务，在任务中心查看进度和下载文件。' });
+      setNote({ text: t('已加入 {n} 个导出任务，在任务中心查看进度和下载文件。', { n: queued }) });
     } catch (problem) {
-      const why = problem instanceof Error && problem.message ? problem.message : '请重试';
-      setNote({ text: (queued ? '已加入 ' + queued + ' 个，其余没有开始：' : '导出没有开始：') + why, error: true });
+      const why = problem instanceof Error && problem.message ? problem.message : t('请重试');
+      setNote({ text: queued ? t('已加入 {n} 个，其余没有开始：{why}', { n: queued, why }) : t('导出没有开始：{why}', { why }), error: true });
     } finally {
       setBusy(false);
     }
   };
   return <>
-    <div className="form-row format-row"><span className="field-label">导出格式</span>
+    <div className="form-row format-row"><span className="field-label">{t('导出格式')}</span>
       <FormatChips formats={options.formats} onChange={formats => set({ formats })} />
     </div>
-    <div className="form-row"><span className="field-label">时间范围</span><DateRange label="批量导出的时间范围" from={options.from} to={options.to} onChange={range => set(range)} /></div>
-    <div className="form-row"><span className="field-label">发送者名称</span>
-      <Segmented className="format-group" count={NAMES.length} index={NAMES.findIndex(n => n.value === options.names)} role="group" aria-label="发送者名称">
-        {NAMES.map(n => <button type="button" key={n.value} aria-pressed={options.names === n.value} onClick={() => set({ names: n.value })}>{n.label}</button>)}
+    <div className="form-row"><span className="field-label">{t('时间范围')}</span><DateRange label={t('批量导出的时间范围')} from={options.from} to={options.to} onChange={range => set(range)} /></div>
+    <div className="form-row"><span className="field-label">{t('发送者名称')}</span>
+      <Segmented className="format-group" count={NAMES.length} index={NAMES.findIndex(n => n.value === options.names)} role="group" aria-label={t('发送者名称')}>
+        {NAMES.map(n => <button type="button" key={n.value} aria-pressed={options.names === n.value} onClick={() => set({ names: n.value })}>{t(n.label)}</button>)}
       </Segmented>
     </div>
-    <label className="checkbox"><input type="checkbox" aria-label="附带媒体文件" checked={options.media} onChange={event => set({ media: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>附带媒体文件 <small>{MEDIA_NOTE}</small></span></label>
-    {options.formats.includes('excel') && <label className="checkbox"><input type="checkbox" aria-label="Excel 精简列" checked={options.compact} onChange={event => set({ compact: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>精简列 <small>时间、发送者、类型、内容</small></span></label>}
-    <button type="button" className="primary-button large export-pending" disabled={!options.formats.length || !picked.length || busy} onClick={start}><DownloadSimple size={18} />{!options.formats.length ? '选择导出格式' : picked.length ? '导出 ' + picked.length + ' 个会话' : '先在左侧选择会话'}</button>
+    <label className="checkbox"><input type="checkbox" aria-label={t('附带媒体文件')} checked={options.media} onChange={event => set({ media: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('附带媒体文件')} <small>{t(MEDIA_NOTE)}</small></span></label>
+    {options.formats.includes('excel') && <label className="checkbox"><input type="checkbox" aria-label={t('Excel 精简列')} checked={options.compact} onChange={event => set({ compact: event.target.checked })} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('精简列')} <small>{t('时间、发送者、类型、内容')}</small></span></label>}
+    <button type="button" className="primary-button large export-pending" disabled={!options.formats.length || !picked.length || busy} onClick={start}><DownloadSimple size={18} />{!options.formats.length ? t('选择导出格式') : picked.length ? t('导出 {n} 个会话', { n: picked.length }) : t('先在左侧选择会话')}</button>
     {note && <p className="card-note" role={note.error ? 'alert' : 'status'}>{note.text}</p>}
-    <p className="card-note">每个会话一个任务，在服务端依次运行；完成后在任务中心下载。</p>
+    <p className="card-note">{t('每个会话一个任务，在服务端依次运行；完成后在任务中心下载。')}</p>
   </>;
 }
 
@@ -125,12 +127,12 @@ export function SessionsExport({ picked }: { picked: ChatSession[] }) {
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
   const start = () => {
     setNote(null);
-    runJob(picked.length ? '导出会话列表 · ' + picked.length + ' 个' : '导出会话列表 · 全部', 'POST', 'export/sessions', { session: picked.length ? picked.map(s => s.username) : undefined })
-      .then(() => setNote({ text: '已加入任务中心。' }), problem => setNote({ text: problem instanceof Error && problem.message ? problem.message : '导出没有开始，请重试。', error: true }));
+    runJob(picked.length ? t('导出会话列表 · {n} 个', { n: picked.length }) : t('导出会话列表 · 全部'), 'POST', 'export/sessions', { session: picked.length ? picked.map(s => s.username) : undefined })
+      .then(() => setNote({ text: t('已加入任务中心。') }), problem => setNote({ text: problem instanceof Error && problem.message ? problem.message : t('导出没有开始，请重试。'), error: true }));
   };
   return <>
-    <p className="card-lead">把{picked.length ? '已选的 ' + picked.length + ' 个会话' : '全部会话'}的列表（会话表的每一行）导出为 JSON。</p>
-    <button type="button" className="secondary-button" onClick={start}><DownloadSimple size={14} />导出会话列表</button>
+    <p className="card-lead">{picked.length ? t('把已选的 {n} 个会话的列表（会话表的每一行）导出为 JSON。', { n: picked.length }) : t('把全部会话的列表（会话表的每一行）导出为 JSON。')}</p>
+    <button type="button" className="secondary-button" onClick={start}><DownloadSimple size={14} />{t('导出会话列表')}</button>
     {note && <p className="card-note" role={note.error ? 'alert' : 'status'}>{note.text}</p>}
   </>;
 }

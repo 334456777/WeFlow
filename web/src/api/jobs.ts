@@ -2,6 +2,7 @@
 // as server-sent events, cancelling them, and the file a `return=file` job wrote (docs/serve-api.md, "Jobs").
 import { apiUrl, call, get, token, type Params } from './client';
 import type * as Contract from './contract.gen';
+import { msg, t } from '../i18n';
 
 export type JobStatus = Contract.JobStatus;
 
@@ -47,22 +48,24 @@ export const jobEventsUrl = (id: string) => apiUrl('jobs/' + encodeURIComponent(
 export function describeCommand(command: string[], names?: ReadonlyMap<string, string>): string {
   const words = command.slice(1).filter(word => !word.startsWith('-'));
   const name = words.slice(0, 2).join(' ');
-  const what = COMMANDS[name] ?? COMMANDS[words[0]] ?? name;
+  const known = COMMANDS[name] ?? COMMANDS[words[0]];
+  const what = known ? t(known) : name;
   const about = names && command.find(word => names.has(word));
   return about ? what + ' · ' + names.get(about) : what;
 }
 
+// shown through t()
 const COMMANDS: Record<string, string> = {
-  'export messages': '导出聊天记录',
-  'export sessions': '导出会话列表',
-  'export contacts': '导出通讯录',
-  'export media': '导出媒体文件',
-  'export footprint': '导出足迹',
-  'backup create': '备份数据库',
-  'backup restore': '恢复备份',
-  'sns export': '导出朋友圈',
-  'group export-members': '导出群成员',
-  'group export-member-messages': '导出群成员的消息',
-  key: '获取密钥',
-  report: '生成报告',
+  'export messages': msg('导出聊天记录'),
+  'export sessions': msg('导出会话列表'),
+  'export contacts': msg('导出通讯录'),
+  'export media': msg('导出媒体文件'),
+  'export footprint': msg('导出足迹'),
+  'backup create': msg('备份数据库'),
+  'backup restore': msg('恢复备份'),
+  'sns export': msg('导出朋友圈'),
+  'group export-members': msg('导出群成员'),
+  'group export-member-messages': msg('导出群成员的消息'),
+  key: msg('获取密钥'),
+  report: msg('生成报告'),
 };

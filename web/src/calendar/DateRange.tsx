@@ -6,12 +6,13 @@ import { ArrowsLeftRight, CalendarBlank } from '@phosphor-icons/react';
 import { Popover } from '../Popover';
 import { Calendar, openingDay } from './Calendar';
 import { ordered, today } from './dates';
+import { t } from '../i18n';
 
 export interface Range { from: string; to: string }
 
 type Side = 'from' | 'to';
 
-export function DateRange({ from, to, onChange, onOpen, max = today(), marks, label = '时间范围' }: {
+export function DateRange({ from, to, onChange, onOpen, max = today(), marks, label = t('时间范围') }: {
   from: string;
   to: string;
   onChange: (range: Range) => void;
@@ -58,17 +59,17 @@ export function DateRange({ from, to, onChange, onOpen, max = today(), marks, la
 
   const field = (which: Side, value: string, name: string) =>
     <button ref={fields[which]} type="button" className={'date-field' + (side === which ? ' open' : '')}
-      aria-label={name + '：' + (value || '未选择')} aria-haspopup="dialog" aria-expanded={side === which}
+      aria-label={t('{label}：{value}', { label: name, value: value || t('未选择') })} aria-haspopup="dialog" aria-expanded={side === which}
       onClick={() => toggle(which)}>
-      <CalendarBlank size={16} aria-hidden="true" /><span className="date-display">{value || '选择日期'}</span>
+      <CalendarBlank size={16} aria-hidden="true" /><span className="date-display">{value || t('选择日期')}</span>
     </button>;
 
   return <div ref={anchor} className="date-range">
-    {field('from', from, '开始日期')}
+    {field('from', from, t('开始日期'))}
     <ArrowsLeftRight className="range-arrow" size={16} aria-hidden="true" />
-    {field('to', to, '结束日期')}
+    {field('to', to, t('结束日期'))}
     <Popover anchor={anchor} open={side !== null} onClose={reason => close(reason === 'escape')}
-      label={label + '：' + (shown.current === 'to' || pending ? '选择结束日期' : '选择开始日期')} className="calendar-popover">
+      label={t('{label}：{value}', { label, value: shown.current === 'to' || pending ? t('选择结束日期') : t('选择开始日期') })} className="calendar-popover">
       <Calendar key={shown.current} range from={from} to={to} pending={pending} max={max} marks={marks}
         initial={openingDay(shown.current === 'to' ? to || from : from || to, max)} onPick={pick} />
     </Popover>

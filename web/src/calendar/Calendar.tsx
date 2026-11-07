@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import {
-  addDays, addMonths, clampDay, dayLabel, endOfWeek, monthGrid, monthOf, ordered, startOfWeek, today, toDay, WEEKDAYS,
+  addDays, addMonths, clampDay, dayLabel, endOfWeek, monthGrid, monthOf, ordered, startOfWeek, today, toDay, weekdays,
 } from './dates';
+import { formatDate, t } from '../i18n';
 
 type View = 'days' | 'months' | 'years';
 
@@ -83,19 +84,19 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
   const heat = (count: number) => Math.max(1, Math.ceil((3 * Math.log1p(count)) / Math.log1p(most)));
 
   const shift = (months: number) => { setFocus(clampDay(addMonths(focus, months), max)); };
-  const header = (title: string, onTitle: (() => void) | null, back: () => void, forward: (() => void) | null, unit: string) =>
+  const header = (title: string, onTitle: (() => void) | null, back: () => void, forward: (() => void) | null, [before, after]: [string, string]) =>
     <div className="calendar-head">
-      <button type="button" className="icon-button small" aria-label={'上一' + unit} onClick={back}><CaretLeft size={14} /></button>
+      <button type="button" className="icon-button small" aria-label={before} onClick={back}><CaretLeft size={14} /></button>
       {onTitle
         ? <button type="button" className="calendar-title" aria-live="polite" onClick={onTitle}>{title}</button>
         : <span className="calendar-title" aria-live="polite">{title}</span>}
-      <button type="button" className="icon-button small" aria-label={'下一' + unit} disabled={!forward} onClick={forward ?? undefined}><CaretRight size={14} /></button>
+      <button type="button" className="icon-button small" aria-label={after} disabled={!forward} onClick={forward ?? undefined}><CaretRight size={14} /></button>
     </div>;
 
   if (view === 'years') {
     return <div ref={root} className="calendar">
       {header(firstYear + ' – ' + (firstYear + YEARS - 1), null, () => shift(-12 * YEARS),
-        maxMonth && firstYear + YEARS > maxMonth.year ? null : () => shift(12 * YEARS), '组年份')}
+        maxMonth && firstYear + YEARS > maxMonth.year ? null : () => shift(12 * YEARS), [t('上一组年份'), t('下一组年份')])}
       <div className="calendar-choices">
         {Array.from({ length: YEARS }, (_, i) => firstYear + i).map(y =>
           <button type="button" key={y} className={'calendar-choice' + (y === year ? ' chosen' : '')} aria-pressed={y === year}
@@ -106,23 +107,24 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
 
   if (view === 'months') {
     return <div ref={root} className="calendar">
-      {header(year + '年', () => setView('years'), () => shift(-12),
-        maxMonth && year >= maxMonth.year ? null : () => shift(12), '年')}
+      {header(formatDate(new Date(year, 0, 1), { year: 'numeric' }), () => setView('years'), () => shift(-12),
+        maxMonth && year >= maxMonth.year ? null : () => shift(12), [t('上一年'), t('下一年')])}
       <div className="calendar-choices">
         {Array.from({ length: 12 }, (_, m) => m).map(m =>
           <button type="button" key={m} className={'calendar-choice' + (m === month ? ' chosen' : '')} aria-pressed={m === month}
-            disabled={monthDisabled(year, m)} onClick={() => { move(addMonths(focus, m - month)); setView('days'); }}>{m + 1}月</button>)}
+            disabled={monthDisabled(year, m)} onClick={() => { move(addMonths(focus, m - month)); setView('days'); }}>{formatDate(new Date(2000, m, 1), { month: 'short' })}</button>)}
       </div>
     </div>;
   }
 
+  const monthTitle = formatDate(new Date(year, month, 1), { year: 'numeric', month: 'long' });
   return <div ref={root} className="calendar">
-    {header(year + '年' + (month + 1) + '月', () => setView('months'), () => shift(-1),
-      monthDisabled(year, month + 1) ? null : () => shift(1), '个月')}
-    <table ref={grid} role="grid" className="calendar-grid" aria-label={year + '年' + (month + 1) + '月'}
+    {header(monthTitle, () => setView('months'), () => shift(-1),
+      monthDisabled(year, month + 1) ? null : () => shift(1), [t('上一个月'), t('下一个月')])}
+    <table ref={grid} role="grid" className="calendar-grid" aria-label={monthTitle}
       aria-multiselectable={range || undefined} onKeyDown={keyDown}
       onPointerLeave={() => setHover(null)}>
-      <thead><tr>{WEEKDAYS.map(name => <th key={name} scope="col" abbr={'星期' + name}>{name}</th>)}</tr></thead>
+      <thead><tr>{weekdays().map(name => <th key={name.long} scope="col" abbr={name.long}>{name.short}</th>)}</tr></thead>
       <tbody>{monthGrid(year, month).map(week => <tr key={week[0]}>{week.map(day => {
         if (monthOf(day).month !== month) return <td key={day} role="gridcell" className="calendar-blank" />;
         const off = disabled(day);
@@ -133,7 +135,7 @@ export function Calendar({ from, to, range, pending, initial, max, marks, onPick
           + (marks ? (count ? ' marked' : ' quiet') : '');
         return <td key={day} role="gridcell" data-day={day} data-heat={count ? heat(count) : undefined} className={className} tabIndex={day === focus ? 0 : -1}
           aria-selected={ends || between} aria-disabled={off || undefined} aria-current={day === now ? 'date' : undefined}
-          aria-label={dayLabel(day) + (count ? '，' + count + ' 条消息' : '')}
+          aria-label={count ? t('{day}，{n} 条消息', { day: dayLabel(day), n: count }) : dayLabel(day)}
           onClick={() => { if (!off) { setFocus(day); onPick(day); } }} onPointerEnter={() => setHover(day)}>
           <span aria-hidden="true">{Number(day.slice(8))}</span>
         </td>;

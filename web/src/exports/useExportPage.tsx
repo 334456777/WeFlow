@@ -4,6 +4,7 @@ import type { Page, Shell } from '../shell/page';
 import { BrowserPanel, ConnectedList } from '../shell/panels';
 import { batchSummary, BatchExport, DEFAULT_BATCH, SessionsExport, type BatchOptions } from './ExportCards';
 import { ExportPicker, PickedList } from './ExportPicker';
+import { t } from '../i18n';
 
 export function useExportPage(shell: Shell): Page {
   const { connected, scope, sessionList, setMobileDetail } = shell;
@@ -13,13 +14,13 @@ export function useExportPage(shell: Shell): Page {
   const pickedSessions = useMemo(() => sessionList.filter(s => picked.has(s.username)), [sessionList, picked]);
   const cards = [
     {
-      id: 'batch-export', title: '批量导出', summary: batchSummary(pickedSessions.length, batch),
+      id: 'batch-export', title: t('批量导出'), summary: batchSummary(pickedSessions.length, batch),
       content: <BatchExport picked={pickedSessions} options={batch} onChange={setBatch} />,
     },
-    { id: 'sessions-export', title: '导出会话列表', content: <SessionsExport picked={pickedSessions} /> },
+    { id: 'sessions-export', title: t('导出会话列表'), content: <SessionsExport picked={pickedSessions} /> },
   ];
-  const view = <BrowserPanel label="导出" detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back="返回会话列表" title="已选的会话" paneLabel="已选的会话"
-    list={<ConnectedList backend={shell.backend} offline="连接 weflow serve 后，可以在这里选择会话批量导出。">
+  const view = <BrowserPanel label={t('导出')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回会话列表')} title={t('已选的会话')} paneLabel={t('已选的会话')}
+    list={<ConnectedList backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里选择会话批量导出。')}>
       <ExportPicker state={shell.sessions} picked={picked} onChange={setPicked} onRetry={shell.reloadSessions} />
     </ConnectedList>}>
     {connected && <PickedList picked={pickedSessions} onRemove={id => setPicked(old => { const next = new Set(old); next.delete(id); return next; })} />}
