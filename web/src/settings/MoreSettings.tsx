@@ -12,6 +12,7 @@ import type { Profile } from '../api/setup';
 import { formatSize } from '../jobs/TaskCenter';
 import { Segmented } from '../Segmented';
 import { GridSkeleton } from '../Skeleton';
+import { locale } from '../i18n';
 
 const reason = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 type Note = { text: string; error?: boolean } | null;
@@ -160,7 +161,7 @@ export function CacheSetting() {
     {!parts ? <GridSkeleton label="正在读取缓存" cells={6} /> : <ul className="cache-list">
       {parts.map(p => <li key={p.part}>
         <span className="account-copy"><strong>{CACHE_LABELS[p.part]?.title ?? p.part}</strong><span className="cache-text">{CACHE_LABELS[p.part]?.text}</span></span>
-        <span className="cache-size num">{formatSize(p.bytes)}{p.files ? ' · ' + p.files.toLocaleString('zh-CN') + ' 个文件' : ''}</span>
+        <span className="cache-size num">{formatSize(p.bytes)}{p.files ? ' · ' + p.files.toLocaleString(locale()) + ' 个文件' : ''}</span>
         <button type="button" className="secondary-button" aria-label={'清理' + (CACHE_LABELS[p.part]?.title ?? p.part)} disabled={!p.bytes || busy !== null} onClick={() => look(p.part)}>
           {busy === 'plan:' + p.part ? <CircleNotch size={12} className="spin" /> : <Trash size={12} />}清理</button>
         {plan && plan.part === p.part && <ClearPlan plan={plan} busy={busy === 'clear'} onCancel={() => setPlan(null)} onClear={clear} />}

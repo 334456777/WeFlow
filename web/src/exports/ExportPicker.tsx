@@ -26,7 +26,7 @@ export function pickable(sessions: readonly ChatSession[], filter: SessionFilter
 export function PickedList({ picked, onRemove }: { picked: ChatSession[]; onRemove(id: string): void }) {
   if (!picked.length) return <div className="pane-message"><p>{t('在左侧勾选要导出的会话，可以按类型筛选后全选。')}</p></div>;
   return <div className="picked" aria-label={t('已选的会话')}>
-    <h2>{t('已选 {length} 个会话', { length: picked.length.toLocaleString('zh-CN') })}</h2>
+    <h2>{t('已选 {length} 个会话', { length: picked.length.toLocaleString(locale()) })}</h2>
     <ul>
       {picked.map(s => <li key={s.username}>
         <Avatar name={nameOf(s)} url={s.avatarUrl || undefined} />
@@ -87,7 +87,7 @@ export function ExportPicker({ state, picked, onChange, onRetry }: {
         {FILTERS.map(value => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(filterLabels[value])}</button>)}
       </Segmented>
       {state.status === 'ready' && <div className="pick-tools">
-        <label className="checkbox"><input type="checkbox" aria-label={t('全选当前列出的会话')} checked={allShown} disabled={!shown.length} onChange={toggleShown} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('全选当前列出的 {length} 个', { length: shown.length.toLocaleString('zh-CN') })}</span></label>
+        <label className="checkbox"><input type="checkbox" aria-label={t('全选当前列出的会话')} checked={allShown} disabled={!shown.length} onChange={toggleShown} /><span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{t('全选当前列出的 {length} 个', { length: shown.length.toLocaleString(locale()) })}</span></label>
         {picked.size > 0 && <button type="button" className="text-button" onClick={() => onChange(new Set())}>{t('清空（已选 {size}）', { size: picked.size })}</button>}
       </div>}
     </div>

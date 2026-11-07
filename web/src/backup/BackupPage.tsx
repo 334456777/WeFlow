@@ -86,7 +86,7 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
           const done = job.status === 'succeeded';
           const where = backupPath(job);
           return <li key={job.id}>
-            <span className="account-copy"><strong>{new Date(job.createdAt).toLocaleString('zh-CN', { hour12: false })}</strong>
+            <span className="account-copy"><strong>{new Date(job.createdAt).toLocaleString(locale(), { hour12: false })}</strong>
               <span className={'cache-text' + (job.status === 'failed' ? ' backup-failed' : '')}>{jobLine(job)}</span></span>
             {done && job.file && <a className="secondary-button" href={jobFileUrl(job.id)} download={job.file.name}><DownloadSimple size={12} />{t('下载')}</a>}
             {done && where && <button type="button" className="secondary-button" onClick={() => inspect(where)}><MagnifyingGlass size={12} />{t('查看内容')}</button>}
@@ -106,7 +106,7 @@ export function BackupPage({ jobs }: { jobs: JobsState }) {
       {manifest && <div className="backup-manifest" aria-label={t('备份的内容')}>
         <dl className="info-grid">
           <div><dt>{t('账号')}</dt><dd className="info-id">{manifest.value.wxid || '—'}</dd></div>
-          <div><dt>{t('创建于')}</dt><dd className="num">{manifest.value.created_at ? new Date(manifest.value.created_at * 1000).toLocaleString('zh-CN', { hour12: false }) : '—'}</dd></div>
+          <div><dt>{t('创建于')}</dt><dd className="num">{manifest.value.created_at ? new Date(manifest.value.created_at * 1000).toLocaleString(locale(), { hour12: false }) : '—'}</dd></div>
           <div><dt>{t('WeFlow 版本')}</dt><dd className="num">{manifest.value.weflow_version || '—'}</dd></div>
           {backupParts(manifest.value.entries).map(p => <div key={p.label}><dt>{t(p.label)}</dt><dd className="num">{t('{files} 个 · {bytes}', { files: p.files.toLocaleString(locale()), bytes: formatSize(p.bytes) })}</dd></div>)}
         </dl>

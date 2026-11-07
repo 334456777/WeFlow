@@ -15,12 +15,12 @@ import { runJob } from '../jobs/useJobs';
 import { Segmented } from '../Segmented';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 
 /** A group message's text without the `sender:` line it starts with. */
 export const mentionText = (content: string) => content.replace(/^[^\n:]{1,64}:\n/, '').trim() || t('[空消息]');
 
-const clock = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+const clock = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString(locale(), { hour12: false, hour: '2-digit', minute: '2-digit' });
 const lasted = (seconds: number) => (seconds < 60 ? t('不到 1 分钟') : seconds < 3600 ? t('{n} 分钟', { n: Math.round(seconds / 60) }) : t('{n} 小时', { n: Math.round(seconds / 360) / 10 }));
 
 /** Names and avatars of people and groups, from the contact list. */
@@ -81,7 +81,7 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
           <input type="search" aria-label={t('筛选时间线')} placeholder={t('联系人、群聊或内容')} value={keyword} onChange={event => onKeyword(event.target.value)} /></label></div>
       {events.length
         ? <ol className="footprint-timeline">{events.map(e => {
-          const day = new Date(e.at * 1000).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+          const day = new Date(e.at * 1000).toLocaleDateString(locale(), { month: 'long', day: 'numeric', weekday: 'short' });
           const head = day !== lastDay ? <li className="footprint-day" aria-hidden="true">{day}</li> : null;
           lastDay = day;
           if (e.kind === 'chat') {

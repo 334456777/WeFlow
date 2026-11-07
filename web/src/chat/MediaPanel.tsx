@@ -10,7 +10,7 @@ import { HoverTrack } from '../HoverTrack';
 import { Segmented } from '../Segmented';
 import { formatClock } from './messages';
 import { MediaSkeleton } from '../Skeleton';
-import { msg, t } from '../i18n';
+import { locale, msg, t } from '../i18n';
 
 const FILTERS: { label: string; types: ResourceType[] }[] = [
   { label: msg('全部'), types: ['image', 'video', 'file'] },
@@ -51,7 +51,7 @@ function withFirstPage(old: State, filter: number, page: ResourcePage): State {
   return { status: 'ready', filter, items: [...page.items, ...rest], next: rest.length ? old.next : page.nextCursor, more: false };
 }
 
-const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
+const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString(locale(), { year: 'numeric', month: 'numeric', day: 'numeric' });
 
 /** One conversation's media, read while `active` (its card open): give it a `key` per conversation. */
 export function MediaPanel({ sessionId, active = true, onOpen }: { sessionId: string; active?: boolean; onOpen: (item: Resource) => void }) {

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from '#test';
 import { hourBars, monthBars, typeBars, weekdayBars, type Overall, type TimeSpread } from '../api/analytics';
+import { setLang } from '../i18n';
 import { ExcludedPeople, PrivateAnalytics, yearStarts } from './AnalyticsViews';
 import { useAnalytics, type AnalyticsState } from './useAnalytics';
 
@@ -32,17 +33,30 @@ describe('chat analytics', () => {
     expect(weekdayBars(SPREAD).map(b => b.value)).toEqual([10, 0, 0, 0, 0, 0, 990]);
     expect(weekdayBars(SPREAD)[6].label).toBe('周日');
     expect(monthBars(SPREAD)).toEqual([
-      { label: '2024 年 11 月', value: 400 }, { label: '2024 年 12 月', value: 0 }, { label: '2025 年 1 月', value: 0 }, { label: '2025 年 2 月', value: 600 },
+      { label: '2024年11月', value: 400, year: 2024, month: 11 }, { label: '2024年12月', value: 0, year: 2024, month: 12 },
+      { label: '2025年1月', value: 0, year: 2025, month: 1 }, { label: '2025年2月', value: 600, year: 2025, month: 2 },
     ]);
     expect(monthBars({ ...SPREAD, monthlyDistribution: {} })).toEqual([]);
     expect(typeBars(OVERALL).map(b => b.label)).toEqual(['文字', '图片', '表情', '其他']);
     // the first month is named only when the next January is far enough away not to run into it
     const fromMarch = monthBars({ ...SPREAD, monthlyDistribution: { '2024-03': 1, '2025-02': 1 } });
-    expect(fromMarch.map((_, i) => yearStarts(fromMarch, i))).toEqual(fromMarch.map(b => b.label === '2024 年 3 月' || b.label === '2025 年 1 月'));
+    expect(fromMarch.map((_, i) => yearStarts(fromMarch, i))).toEqual(fromMarch.map(b => b.label === '2024年3月' || b.label === '2025年1月'));
     // over seven years an eighth is 11 months: May is too close to the January after it
     const long = monthBars({ ...SPREAD, monthlyDistribution: { '2019-05': 1, '2026-10': 1 } });
     expect(yearStarts(long, 0)).toBe(false);
     expect(long.filter((_, i) => yearStarts(long, i))).toHaveLength(7);
+  });
+
+  it('names the hours, weekdays and months in the page\'s language', async () => {
+    await setLang('en');
+    try {
+      expect(hourBars(SPREAD.hourlyDistribution)[21].label).toBe('21:00');
+      expect(weekdayBars(SPREAD).map(b => b.label)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+      expect(monthBars(SPREAD)[0]).toEqual({ label: 'Nov 2024', value: 400, year: 2024, month: 11 });
+      expect(typeBars(OVERALL)[0].label).toBe('Text');
+    } finally {
+      await setLang('zh');
+    }
   });
 
   it('asks for the numbers, the rankings and the hours at once, and again on reload', async () => {

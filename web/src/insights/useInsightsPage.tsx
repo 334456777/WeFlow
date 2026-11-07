@@ -6,6 +6,7 @@ import type { ChatWith, Page, Shell } from '../shell/page';
 import { BrowserPanel, ConnectedList } from '../shell/panels';
 import { InsightClear, InsightContacts, InsightList, InsightsSummary, InsightTrigger } from './InsightViews';
 import { useInsights, type InsightFilter } from './useInsights';
+import { t } from '../i18n';
 
 export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWith): Page {
   const { backend, connected, scope, setMobileDetail } = shell;
@@ -18,14 +19,14 @@ export function useInsightsPage(shell: Shell, active: boolean, chatWith: ChatWit
   const read = (id: string) => { insights.markRead(id); markInsightRead(id).catch(() => {}); };
   const cards = [
     {
-      id: 'insights-summary', title: '见解概况', summary: page ? page.unreadCount + ' 条未读' : '',
+      id: 'insights-summary', title: t('见解概况'), summary: page ? t('{n} 条未读', { n: page.unreadCount }) : '',
       content: <InsightsSummary state={insights.state} engine={'health' in backend ? backend.health.insight : undefined} aiReady={shell.profile?.aiKey} />,
     },
-    { id: 'insights-trigger', title: '生成见解', summary: name ?? '', content: <InsightTrigger session={filter.session} name={name} onDone={insights.reload} /> },
-    { id: 'insights-clear', title: '删除见解', content: <InsightClear session={filter.session} name={name} count={count} onDone={insights.reload} /> },
+    { id: 'insights-trigger', title: t('生成见解'), summary: name ?? '', content: <InsightTrigger session={filter.session} name={name} onDone={insights.reload} /> },
+    { id: 'insights-clear', title: t('删除见解'), content: <InsightClear session={filter.session} name={name} count={count} onDone={insights.reload} /> },
   ];
-  const view = <BrowserPanel label="灵感信箱" detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back="返回联系人" title="见解" paneLabel="见解"
-    list={<ConnectedList backend={backend} offline="连接 weflow serve 后，可以在这里查看 AI 见解。">
+  const view = <BrowserPanel label={t('灵感信箱')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回联系人')} title={t('见解')} paneLabel={t('见解')}
+    list={<ConnectedList backend={backend} offline={t('连接 weflow serve 后，可以在这里查看 AI 见解。')}>
       <InsightContacts state={insights.state} selected={filter.session} onRetry={insights.reload}
         keyword={filter.keyword} onKeyword={keyword => setFilter(f => ({ ...f, keyword }))}
         onSelect={session => { setFilter(f => ({ ...f, session })); setMobileDetail(true); }} />

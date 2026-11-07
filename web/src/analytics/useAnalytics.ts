@@ -2,6 +2,7 @@
 // server or account or once the people left out change; and the group chats to pick from.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
+import { t } from '../i18n';
 import { getOverall, getRankings, getTimeSpread, type Overall, type Ranked, type TimeSpread } from '../api/analytics';
 import { getGroups, type Group } from '../api/groups';
 
@@ -33,7 +34,7 @@ export function useAnalytics(enabled: boolean, scope: number): [AnalyticsState, 
       if (controller.signal.aborted) return;
       done = true;
       read.current = null;
-      setState({ status: 'error', message: problem instanceof ApiError && problem.message ? problem.message : '读取聊天分析失败' });
+      setState({ status: 'error', message: problem instanceof ApiError && problem.message ? problem.message : t('读取聊天分析失败') });
     });
     return () => { if (done) return; controller.abort(); if (read.current === key) read.current = null; };
   }, [enabled, scope, round]);
@@ -63,7 +64,7 @@ export function useGroups(enabled: boolean, scope: number): [GroupsState, () => 
       if (controller.signal.aborted) return;
       done = true;
       read.current = null;
-      setState({ status: 'error', message: problem instanceof ApiError && problem.message ? problem.message : '读取群聊失败' });
+      setState({ status: 'error', message: problem instanceof ApiError && problem.message ? problem.message : t('读取群聊失败') });
     });
     return () => { if (done) return; controller.abort(); if (read.current === key) read.current = null; };
   }, [enabled, scope, round]);

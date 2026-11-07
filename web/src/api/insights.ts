@@ -2,6 +2,7 @@
 // the command routes; one record's log is read in the server's process (`/api/`). The records of the current account
 // only, newest first.
 import { call, get } from './client';
+import { msg, t } from '../i18n';
 import type * as Contract from './contract.gen';
 
 /** A record as `insight records` lists it (the contract's, #430). */
@@ -38,5 +39,6 @@ export const clearInsights = (session?: string | null) => call<Contract.InsightC
 export const triggerInsight = (session?: string | null) =>
   call<Contract.InsightReply>('POST', 'insight/trigger', { 'session-id': session || undefined });
 
-export const REASONS: Record<string, string> = { activity: '聊天活跃', silence: '久未联系', test: '手动生成' };
-export const reasonLabel = (reason: string) => REASONS[reason] ?? reason;
+// shown through t()
+export const REASONS: Record<string, string> = { activity: msg('聊天活跃'), silence: msg('久未联系'), test: msg('手动生成') };
+export const reasonLabel = (reason: string) => (reason in REASONS ? t(REASONS[reason]) : reason);

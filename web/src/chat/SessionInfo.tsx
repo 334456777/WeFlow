@@ -17,7 +17,7 @@ type Loaded<T> = { status: 'loading' } | { status: 'ready'; value: T } | { statu
 const errorOf = (problem: unknown, fallback: string) => (problem instanceof ApiError && problem.message) || fallback;
 
 const when = (seconds: number | null | undefined) =>
-  seconds ? new Date(seconds * 1000).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  seconds ? new Date(seconds * 1000).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
 /** Reads `load` for `key`, again on `refresh`; the previous value stays shown while a refresh reads. */
 function useLoaded<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>, fallback: string): [Loaded<T>, () => void] {

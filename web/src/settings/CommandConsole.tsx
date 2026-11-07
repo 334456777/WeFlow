@@ -9,6 +9,7 @@ import {
 import { runJob } from '../jobs/useJobs';
 import { Segmented } from '../Segmented';
 import { ListSkeleton } from '../Skeleton';
+import { locale } from '../i18n';
 
 type Values = Record<string, string | boolean>;
 /** The answer shown is cut here, so a long list does not freeze the page. */
@@ -55,7 +56,7 @@ function Answer({ answer }: { answer: RunAnswer }) {
   return <div className={'console-answer' + (ok ? '' : ' failed')} aria-label="运行结果">
     <p className="console-answer-head"><strong>HTTP {answer.status}</strong>{answer.exitCode !== null && <span>退出码 {answer.exitCode}</span>}<span className="num">{answer.ms} ms</span></p>
     <pre className="console-output scroll-area">{cut ? text.slice(0, SHOWN_CHARS) : text}</pre>
-    {cut && <p className="card-note">只显示前 {SHOWN_CHARS.toLocaleString('zh-CN')} 个字符，共 {text.length.toLocaleString('zh-CN')} 个。</p>}
+    {cut && <p className="card-note">只显示前 {SHOWN_CHARS.toLocaleString(locale())} 个字符，共 {text.length.toLocaleString(locale())} 个。</p>}
   </div>;
 }
 

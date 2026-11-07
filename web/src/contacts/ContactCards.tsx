@@ -12,7 +12,7 @@ export function ContactsSummary({ contacts }: { contacts: Contact[] | null }) {
   const remarked = contacts.filter(c => c.type === 'friend' && c.remark).length;
   return <dl className="info-grid">
     {CONTACT_KINDS.map(kind => <div key={kind}><dt>{t(contactKindLabels[kind])}</dt><dd className="num">{t('{n} 个', { n: counts[kind].toLocaleString(locale()) })}</dd></div>)}
-    <div><dt>{t('有备注的好友')}</dt><dd className="num">{t('{remarked} 个', { remarked: remarked.toLocaleString('zh-CN') })}</dd></div>
+    <div><dt>{t('有备注的好友')}</dt><dd className="num">{t('{remarked} 个', { remarked: remarked.toLocaleString(locale()) })}</dd></div>
   </dl>;
 }
 

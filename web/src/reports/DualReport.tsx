@@ -3,13 +3,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { CaretDown, MagnifyingGlass, UserCircle } from '@phosphor-icons/react';
 import { Avatar } from '../Avatar';
-import { getExcludeCandidates, getRankings, monthBars, type Candidate } from '../api/analytics';
+import { getExcludeCandidates, getRankings, monthBars, monthName, type Candidate } from '../api/analytics';
 import { formatWait, getDualReport, messageText, type DualMessage, type DualReport } from '../api/reports';
 import { Columns, n, yearStarts } from '../analytics/AnalyticsViews';
 import { Popover } from '../Popover';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
 import { Failed, Heatmap, Moment, Phrases } from './AnnualReport';
+import { locale } from '../i18n';
 
 /** Up to this many people are listed; the rest are found by name. */
 const LISTED = 50;
@@ -62,7 +63,7 @@ export function FriendPicker({ selected, onSelect }: { selected: Friend | null; 
   </>;
 }
 
-const when = (ms: number) => new Date(ms).toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = (ms: number) => new Date(ms).toLocaleString(locale(), { hour12: false, year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** A few messages as they went back and forth, mine on the right. */
 function Exchange({ label, messages, me, friend }: { label: string; messages: DualMessage[]; me: string; friend: string }) {
@@ -118,7 +119,7 @@ export function DualReportView({ report }: { report: DualReport }) {
 
     {months.length > 1 && <section className="analytics-block" aria-label="每个月">
       <h2>每个月</h2>
-      <Columns label="每个月的消息" bars={months} ticks={(i, b) => (r.year ? (i % 3 === 0 ? b.label.slice(7) : null) : yearStarts(months, i) ? b.label.slice(0, 4) : null)} />
+      <Columns label="每个月的消息" bars={months} ticks={(i, b) => (r.year ? (i % 3 === 0 ? monthName(b.month!) : null) : yearStarts(months, i) ? String(b.year) : null)} />
     </section>}
 
     {(r.topPhrases.length > 0 || r.myExclusivePhrases.length > 0 || r.friendExclusivePhrases.length > 0) && <section className="analytics-block" aria-label="常说的话">

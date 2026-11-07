@@ -1,7 +1,7 @@
 // WeChat Pay (#204): the notices of the WeChat Pay account (`biz pay-records`), read in the server's process
 // (`/api/`, docs/serve-api.md), and what the page makes of their text: the amount, how it was paid, its state, the payee.
 import { get } from './client';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 import type * as Contract from './contract.gen';
 
 /** A notice as `biz pay-records` gives it (the contract's, #430); its `description` holds lines such as 「付款金额¥28.00」
@@ -86,7 +86,7 @@ export function paymentOf(record: PayRecord): Payment {
 }
 
 /** 「28.00」 of 2800 fen. */
-export const formatYuan = (fen: number) => (fen / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const formatYuan = (fen: number) => (fen / 100).toLocaleString(locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** 「¥28.00」, or 「-¥5.00」 for money that came back. */
 export const formatMoney = (fen: number) => (fen < 0 ? '-' : '') + '¥' + formatYuan(Math.abs(fen));

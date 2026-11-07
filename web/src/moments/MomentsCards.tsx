@@ -6,7 +6,7 @@ import { getSnsStats, type SnsFilter, type SnsStats } from '../api/sns';
 import { DateRange } from '../calendar/DateRange';
 import { addDays, parseDay } from '../calendar/dates';
 import { GridSkeleton } from '../Skeleton';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 
 /** Unix seconds of the start of a local day, and of the last second of one. */
 const startOf = (day: string) => (day ? parseDay(day).getTime() / 1000 : 0);
@@ -55,8 +55,8 @@ export function MomentsStats({ scope, active }: { scope: number; active: boolean
   if (failed && !value) return <p className="empty-text" role="alert">{t('读取朋友圈统计失败。')}</p>;
   if (!value) return <GridSkeleton label={t('正在统计朋友圈')} cells={3} />;
   return <dl className="info-grid">
-    <div><dt>{t('朋友圈')}</dt><dd className="num">{t('{totalPosts} 条', { totalPosts: value.totalPosts.toLocaleString('zh-CN') })}</dd></div>
-    <div><dt>{t('发布者')}</dt><dd className="num">{t('{totalFriends} 人', { totalFriends: value.totalFriends.toLocaleString('zh-CN') })}</dd></div>
-    {value.myPosts !== null && <div><dt>{t('我发的')}</dt><dd className="num">{t('{myPosts} 条', { myPosts: value.myPosts.toLocaleString('zh-CN') })}</dd></div>}
+    <div><dt>{t('朋友圈')}</dt><dd className="num">{t('{totalPosts} 条', { totalPosts: value.totalPosts.toLocaleString(locale()) })}</dd></div>
+    <div><dt>{t('发布者')}</dt><dd className="num">{t('{totalFriends} 人', { totalFriends: value.totalFriends.toLocaleString(locale()) })}</dd></div>
+    {value.myPosts !== null && <div><dt>{t('我发的')}</dt><dd className="num">{t('{myPosts} 条', { myPosts: value.myPosts.toLocaleString(locale()) })}</dd></div>}
   </dl>;
 }

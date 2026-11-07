@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatYuan, type Payment } from '../api/pay';
 import { Avatar } from '../Avatar';
 import { dayOf, formatClock, formatDayHeading } from '../chat/messages';
-import { t } from '../i18n';
+import { locale, t } from '../i18n';
 
 /** Records drawn at first and added each time the end comes near. */
 const BATCH = 60;
@@ -68,7 +68,7 @@ export function PaymentList({ payments, scroller, narrowed }: {
     <div ref={end} className="moments-end">
       {more
         ? <button type="button" className="secondary-button" onClick={() => setShown(n => n + BATCH)}>{t('显示更早的记录')}</button>
-        : <p>{t('共 {length} 笔', { length: payments.length.toLocaleString('zh-CN') })}</p>}
+        : <p>{t('共 {length} 笔', { length: payments.length.toLocaleString(locale()) })}</p>}
     </div>
   </div>;
 }
