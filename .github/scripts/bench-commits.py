@@ -17,6 +17,9 @@ A commit is a ref (a SHA, a tag, a branch, `abc123^`), or `NAME=REF` to give it 
 `#424前=c054035f^`). For each: resolved to its full SHA; skipped when the environment holds a full result of it (a
 result of `--only` some parts is measured again by a full run), unless `--force`; else built (unless its binary is
 kept) and measured by bench.py next to the anchor. An environment with no anchor yet takes the first commit measured.
+Each result is also kept in `<bench dir>/pending/<sha>/` as soon as it is measured, until gh-pages holds it: a run
+whose results never reached gh-pages (its upload or its publishing failed) loses nothing, and the next run of the same
+environment publishes them along with its own, without measuring them again.
 A commit that does not build or whose measuring stops is left out with a warning (an old commit may not build with
 today's tools), and the others go on; only the anchor's failing stops the run. Writes `<out>/<sha>/result.json` (and
 its logs) for each commit measured and `<out>/run.json`: the environment, the anchor and every commit asked for with
@@ -161,6 +164,23 @@ def main():
     anchor = held.get("anchor")
     results = held.get("results", {})
 
+    # results measured but not published yet; those gh-pages holds now are dropped
+    pending_dir = os.path.join(bench_dir, "pending")
+    os.makedirs(pending_dir, exist_ok=True)
+    pending = {}
+    for sha in os.listdir(pending_dir):
+        file = os.path.join(pending_dir, sha, "result.json")
+        if sha in results or not os.path.exists(file):
+            shutil.rmtree(os.path.join(pending_dir, sha), ignore_errors=True)
+            continue
+        with open(file, encoding="utf-8") as f:
+            kept = json.load(f)
+        if kept["env"]["key"] == key:
+            pending[sha] = kept
+    if pending:
+        print(f"{len(pending)} results measured before but not published: published with this run", flush=True)
+        anchor = anchor or next(iter(pending.values()))["anchor"]["commit"]
+
     asked = [r.strip() for r in args.commits.split(",") if r.strip()]
     commits = []
     for item in asked:
@@ -172,7 +192,17 @@ def main():
         c["measured"] = args.force or not have or (bool(have.get("only")) and not args.only)
         if not c["measured"]:
             print(f"== {c['ref']} ({c['sha'][:10]}): already measured in {key}", flush=True)
-    todo = [c for c in commits if c["measured"]]
+        elif c["sha"] in pending and not args.force:
+            c["reused"] = True
+    # the pending results nobody asked for this time go along too
+    asked_shas = {c["sha"] for c in commits}
+    commits += [{"ref": r.get("ref") or sha[:10], "sha": sha, "measured": True, "reused": True}
+                for sha, r in pending.items() if sha not in asked_shas]
+    for c in commits:
+        if c.get("reused"):
+            os.makedirs(os.path.join(out, c["sha"]), exist_ok=True)
+            shutil.copyfile(os.path.join(pending_dir, c["sha"], "result.json"), os.path.join(out, c["sha"], "result.json"))
+    todo = [c for c in commits if c["measured"] and not c.get("reused")]
     if todo and not anchor:
         anchor = todo[0]["sha"]
         print(f"environment {key} has no anchor yet: {anchor[:10]} becomes it", flush=True)
@@ -209,6 +239,9 @@ def main():
                 raise SystemExit(f"the anchor {anchor[:10]} could not be measured ({code})")
             print(f"::warning::measuring {c['ref']} ({c['sha'][:10]}) stopped ({code}): left out", flush=True)
             c.update(measured=False, failed="measure")
+            continue
+        os.makedirs(os.path.join(pending_dir, c["sha"]), exist_ok=True)
+        shutil.copyfile(os.path.join(out, c["sha"], "result.json"), os.path.join(pending_dir, c["sha"], "result.json"))
     clean_up(bench_dir, {anchor} | {e.get("anchor") for e in index.get("envs", {}).values()}, account)
     with open(os.path.join(out, "run.json"), "w", encoding="utf-8") as f:
         json.dump({"env": env, "anchor": anchor, "commits": commits}, f, ensure_ascii=False, indent=1)
