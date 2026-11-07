@@ -197,6 +197,35 @@ impl Server {
 }
 
 #[test]
+fn options_saved_in_the_config_apply_where_the_command_line_gives_none() {
+    let root = temp_root("saved");
+    for (key, value) in [
+        ("serve_max_tasks", "3"),
+        ("serve_max_reads", "9"),
+        ("serve_log_requests", "true"),
+    ] {
+        let out = weflow(&root)
+            .args(["config", "set", key, value])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{key}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let out = weflow(&root)
+        .args(["config", "set", "serve_port", "99999"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let server = start(&root, &["--api-token", TOKEN, "--max-reads", "5"]);
+    let limits = server.request("GET", "/health", &[], "").json()["limits"].clone();
+    assert_eq!(limits["maxTasks"], 3);
+    assert_eq!(limits["maxReads"], 5);
+}
+
+#[test]
 fn health_needs_no_token_and_everything_else_does() {
     let root = temp_root("auth");
     let server = start(&root, &["--api-token", TOKEN]);

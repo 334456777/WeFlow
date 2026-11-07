@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use weflow_native::msg_row::MsgRow;
 use weflow_native::native_media::SessionRow;
 
-use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig};
+use crate::config::{resolve_account_dir, AppContext, ConfigStore, ProfileConfig, ServeSettings};
 use crate::error::{AppError, AppResult};
 
 mod analytics;
@@ -92,6 +92,11 @@ impl ServiceHub {
 
     pub fn config_path(&self) -> &Path {
         &self.ctx.config_path
+    }
+
+    /// The options of `weflow serve` saved in the config file (#406).
+    pub fn serve_settings(&self) -> &ServeSettings {
+        &self.config.serve
     }
 
     /// Where this hub keeps its files, and its version.

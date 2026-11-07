@@ -1153,8 +1153,35 @@ export interface ConfigStore {
   current_profile: string;
   /** Output language chosen with `weflow lang en|zh` (`None` = follow the system). */
   lang: string | null;
+  /** Options of `weflow serve` saved here (`serve_*` keys), used where its command line gives none. */
+  serve: ServeSettings;
   profiles: Record<string, ProfileConfig>;
   extra: Record<string, unknown>;
+}
+
+/**
+ * Options of `weflow serve` saved in the config file (#406), each used when the command line does not give it; the
+ * switches turn on what their flag turns on, and `None` leaves the default.
+ */
+export interface ServeSettings {
+  /** Listen address (`--host`). */
+  host: string | null;
+  /** Listen port (`--port`). */
+  port: number | null;
+  /** Tasks run at once (`--max-tasks`). */
+  max_tasks: number | null;
+  /** Other commands run at once (`--max-reads`). */
+  max_reads: number | null;
+  /** Images and voices decoded at once (`--max-media`). */
+  max_media: number | null;
+  /** `--log-requests`. */
+  log_requests: boolean | null;
+  /** `--insight`. */
+  insight: boolean | null;
+  /** `--image-auto-download`. */
+  image_auto_download: boolean | null;
+  /** Whether to open the WebUI in the browser at the start; `false` is `--no-browser`. */
+  open_browser: boolean | null;
 }
 
 /** One profile of the config file: an account and its settings. */

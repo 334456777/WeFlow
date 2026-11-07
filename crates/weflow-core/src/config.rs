@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
 
@@ -60,8 +60,110 @@ pub struct ConfigStore {
     pub current_profile: String,
     /// Output language chosen with `weflow lang en|zh` (`None` = follow the system).
     pub lang: Option<String>,
+    /// Options of `weflow serve` saved here (`serve_*` keys), used where its command line gives none.
+    pub serve: ServeSettings,
     pub profiles: BTreeMap<String, ProfileConfig>,
     pub extra: BTreeMap<String, Value>,
+}
+
+/// Options of `weflow serve` saved in the config file (#406), each used when the command line does not give it; the
+/// switches turn on what their flag turns on, and `None` leaves the default.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct ServeSettings {
+    /// Listen address (`--host`).
+    pub host: Option<String>,
+    /// Listen port (`--port`).
+    pub port: Option<u16>,
+    /// Tasks run at once (`--max-tasks`).
+    pub max_tasks: Option<u16>,
+    /// Other commands run at once (`--max-reads`).
+    pub max_reads: Option<u16>,
+    /// Images and voices decoded at once (`--max-media`).
+    pub max_media: Option<u16>,
+    /// `--log-requests`.
+    pub log_requests: Option<bool>,
+    /// `--insight`.
+    pub insight: Option<bool>,
+    /// `--image-auto-download`.
+    pub image_auto_download: Option<bool>,
+    /// Whether to open the WebUI in the browser at the start; `false` is `--no-browser`.
+    pub open_browser: Option<bool>,
+}
+
+impl ServeSettings {
+    /// The keys, as `config set` names them after `serve_`.
+    pub const KEYS: [&'static str; 9] = [
+        "host",
+        "port",
+        "max_tasks",
+        "max_reads",
+        "max_media",
+        "log_requests",
+        "insight",
+        "image_auto_download",
+        "open_browser",
+    ];
+
+    /// The value of `key` (`host` of `serve_host`), or `None` when it is not one of these.
+    fn get(&self, key: &str) -> Option<Value> {
+        let value = match key {
+            "host" => json!(self.host),
+            "port" => json!(self.port),
+            "max_tasks" => json!(self.max_tasks),
+            "max_reads" => json!(self.max_reads),
+            "max_media" => json!(self.max_media),
+            "log_requests" => json!(self.log_requests),
+            "insight" => json!(self.insight),
+            "image_auto_download" => json!(self.image_auto_download),
+            "open_browser" => json!(self.open_browser),
+            _ => return None,
+        };
+        Some(value)
+    }
+
+    /// Sets `key`, one of [`Self::KEYS`], to `value`, checked.
+    fn set(&mut self, key: &str, value: Value) -> AppResult<()> {
+        let name = format!("serve_{key}");
+        match key {
+            "host" => {
+                let host = as_string(value)?.trim().to_string();
+                if format!("{host}:0").parse::<std::net::SocketAddr>().is_err() {
+                    return Err(AppError::usage(format!(
+                        "invalid value '{host}' for {name}; use an IP address such as 127.0.0.1, 0.0.0.0 or [::1]"
+                    )));
+                }
+                self.host = Some(host);
+            }
+            "port" => self.port = Some(as_int_in(value, &name, 1, u16::MAX)?),
+            "max_tasks" => self.max_tasks = Some(as_int_in(value, &name, 1, u16::MAX)?),
+            "max_reads" => self.max_reads = Some(as_int_in(value, &name, 1, u16::MAX)?),
+            "max_media" => self.max_media = Some(as_int_in(value, &name, 1, u16::MAX)?),
+            "log_requests" => self.log_requests = Some(as_bool(value)?),
+            "insight" => self.insight = Some(as_bool(value)?),
+            "image_auto_download" => self.image_auto_download = Some(as_bool(value)?),
+            "open_browser" => self.open_browser = Some(as_bool(value)?),
+            _ => unreachable!("`{key}` is not one of ServeSettings::KEYS"),
+        }
+        Ok(())
+    }
+
+    /// Unsets `key` (`host` of `serve_host`); `false` when it is not one of these.
+    fn unset(&mut self, key: &str) -> bool {
+        match key {
+            "host" => self.host = None,
+            "port" => self.port = None,
+            "max_tasks" => self.max_tasks = None,
+            "max_reads" => self.max_reads = None,
+            "max_media" => self.max_media = None,
+            "log_requests" => self.log_requests = None,
+            "insight" => self.insight = None,
+            "image_auto_download" => self.image_auto_download = None,
+            "open_browser" => self.open_browser = None,
+            _ => return false,
+        }
+        true
+    }
 }
 
 /// One profile of the config file: an account and its settings.
@@ -90,6 +192,7 @@ impl Default for ConfigStore {
         Self {
             current_profile: "default".to_string(),
             lang: None,
+            serve: ServeSettings::default(),
             profiles,
             extra: BTreeMap::new(),
         }
@@ -178,6 +281,9 @@ impl ConfigStore {
         if key == "lang" {
             return self.lang.clone().map_or(Value::Null, Value::String);
         }
+        if let Some(value) = key.strip_prefix("serve_").and_then(|k| self.serve.get(k)) {
+            return value;
+        }
         if key == "profiles" {
             return serde_json::to_value(&self.profiles).unwrap_or(Value::Null);
         }
@@ -202,6 +308,12 @@ impl ConfigStore {
             }
             self.lang = Some(lang);
             return Ok(());
+        }
+        if let Some(name) = key
+            .strip_prefix("serve_")
+            .filter(|k| ServeSettings::KEYS.contains(k))
+        {
+            return self.serve.set(name, value);
         }
         if key == "current_profile" || key == "currentProfile" {
             self.current_profile = as_string(value)?;
@@ -248,6 +360,12 @@ impl ConfigStore {
     pub fn unset_key(&mut self, profile: Option<&str>, key: &str) {
         if key == "lang" {
             self.lang = None;
+            return;
+        }
+        if key
+            .strip_prefix("serve_")
+            .is_some_and(|k| self.serve.unset(k))
+        {
             return;
         }
         if key == "current_profile" || key == "currentProfile" {
@@ -749,6 +867,41 @@ mod tests {
             store.set_key(None, key, json!(good.to_string())).unwrap();
             assert_eq!(store.get_key(None, key), json!(good));
         }
+    }
+
+    #[test]
+    fn serve_options_are_settings_of_the_file_and_checked() {
+        let mut store = ConfigStore::default();
+        store.set_key(None, "serve_port", json!("8080")).unwrap();
+        store
+            .set_key(None, "serve_host", json!(" 0.0.0.0 "))
+            .unwrap();
+        store
+            .set_key(None, "serve_open_browser", json!("false"))
+            .unwrap();
+        assert_eq!(store.get_key(None, "serve_port"), json!(8080));
+        assert_eq!(store.get_key(None, "serve_host"), json!("0.0.0.0"));
+        assert_eq!(store.serve.open_browser, Some(false));
+        // not a profile's: another profile sees them too
+        assert_eq!(store.get_key(Some("work"), "serve_port"), json!(8080));
+        assert!(store.profile(None).unwrap().extra.is_empty());
+
+        for (key, bad) in [
+            ("serve_port", json!(0)),
+            ("serve_max_tasks", json!(65536)),
+            ("serve_host", json!("localhost")),
+            ("serve_insight", json!("maybe")),
+        ] {
+            assert!(
+                store.set_key(None, key, bad.clone()).is_err(),
+                "{key}={bad}"
+            );
+        }
+        assert_eq!(store.get_key(None, "serve_insight"), Value::Null);
+
+        store.unset_key(None, "serve_port");
+        assert_eq!(store.get_key(None, "serve_port"), Value::Null);
+        assert_eq!(store.serve.host.as_deref(), Some("0.0.0.0"));
     }
 
     fn temp_dir(prefix: &str) -> PathBuf {
