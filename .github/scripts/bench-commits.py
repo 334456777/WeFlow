@@ -32,7 +32,7 @@ import bench  # noqa: E402
 TARGET = "x86_64-pc-windows-msvc"
 # what builds the account: an account is built again only when one of these changes
 ACCOUNT_PATHS = ("crates/weflow-native/src/fixture", "crates/weflow-native/src/fixture.rs",
-                 "crates/weflow-native/src/sqlcipher", "crates/weflow-cli/examples/bench_account.rs")
+                 "crates/weflow-native/src/sqlcipher.rs", "crates/weflow-cli/examples/bench_account.rs")
 # what measures, besides: their versions together name the tools of an environment
 TOOL_PATHS = (*ACCOUNT_PATHS, ".github/scripts/bench.py", "crates/weflow-cli/examples/serve_bench.rs")
 # the account a run uses when it is given no size
