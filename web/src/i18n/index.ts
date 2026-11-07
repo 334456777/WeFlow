@@ -2,9 +2,9 @@
 // (`/health`'s `lang`, docs/serve-api.md), so the page and the server's texts are in one language. The page is written
 // in Chinese and its texts are their own keys: `t('正在读取消息')` is that text in Chinese, its English from `en.ts`,
 // or the Chinese again where `en.ts` has none (`bun run i18n` lists those). Until a server has said, the page is in
-// the language of the last one it talked to, else in Chinese.
+// the language of the last one it talked to, else in Chinese. The English is a chunk of its own, fetched the first time
+// it is wanted: a page in Chinese never downloads it.
 import { useSyncExternalStore } from 'react';
-import { en } from './en';
 
 export type Lang = 'zh' | 'en';
 
@@ -19,7 +19,18 @@ function remembered(): Lang {
   }
 }
 
-let current: Lang = remembered();
+// the language asked for (kept for the next visit), and the one the page is drawn in: English once its words are here
+let wanted: Lang = remembered();
+let current: Lang = 'zh';
+let en: Record<string, string> = {};
+let english: Promise<boolean> | null = null;
+
+/** Fetches the English once; false when it could not be fetched (the page stays in Chinese, and a later call tries again). */
+function loadEnglish(): Promise<boolean> {
+  english ??= import('./en').then(m => { en = m.en; return true; }, () => { english = null; return false; });
+  return english;
+}
+
 const TITLE = msg('WeFlow · 记录工作台');
 
 /** What the document says of its language: `<html lang>` and the tab's title. */
@@ -49,16 +60,35 @@ export function relativeDay(offset: number): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-/** Shows the page in `next` (a server's `lang`; anything else is left as it is). */
-export function setLang(next: unknown): void {
-  if ((next !== 'zh' && next !== 'en') || next === current) return;
+let drawn: Promise<void> = Promise.resolve();
+
+/**
+ * Shows the page in `next` (a server's `lang`; anything else is left as it is), English once its words are fetched;
+ * settles when the page is drawn in it.
+ */
+export function setLang(next: unknown): Promise<void> {
+  drawn = draw(next);
+  return drawn;
+}
+
+/** Settles once the page is drawn in the language asked for last (at first, that of the last visit). */
+export const languageReady = (): Promise<void> => drawn;
+
+async function draw(next: unknown): Promise<void> {
+  if (next !== 'zh' && next !== 'en') return;
+  if (next !== wanted) {
+    wanted = next;
+    try {
+      localStorage.setItem(KEPT, next);
+    } catch {
+      // not kept: the next visit starts in Chinese until the server says
+    }
+  }
+  if (next === 'en' && !(await loadEnglish())) return;
+  // asked again for the other language while the English was on its way
+  if (wanted !== next || current === next) return;
   current = next;
   show();
-  try {
-    localStorage.setItem(KEPT, next);
-  } catch {
-    // not kept: the next visit starts in Chinese until the server says
-  }
   for (const listener of listeners) listener();
 }
 
@@ -85,3 +115,5 @@ export function t(text: string, vars?: Record<string, string | number>): string 
 }
 
 show();
+
+void setLang(wanted);

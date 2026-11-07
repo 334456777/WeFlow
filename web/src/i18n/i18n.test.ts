@@ -5,36 +5,36 @@ import { en } from './en';
 afterEach(() => setLang('zh'));
 
 describe('the page speaks the server\'s language (#439)', () => {
-  test('Chinese as written, English from en.ts, and the Chinese where it has none', () => {
+  test('Chinese as written, English from en.ts, and the Chinese where it has none', async () => {
     expect(t('任务中心')).toBe('任务中心');
-    setLang('en');
+    await setLang('en');
     expect(t('任务中心')).toBe(en['任务中心']);
     expect(t('一段 en.ts 里没有的话')).toBe('一段 en.ts 里没有的话');
   });
 
-  test('names are filled in either language', () => {
+  test('names are filled in either language', async () => {
     expect(t('回复不是 JSON（HTTP {status}）', { status: 502 })).toBe('回复不是 JSON（HTTP 502）');
-    setLang('en');
+    await setLang('en');
     expect(t('回复不是 JSON（HTTP {status}）', { status: 502 })).toBe('The answer is not JSON (HTTP 502)');
   });
 
-  test('an English word follows its count', () => {
-    setLang('en');
+  test('an English word follows its count', async () => {
+    await setLang('en');
     expect(t('{n} 条结果', { n: 1 })).toBe('1 result');
     expect(t('{n} 条结果', { n: 2 })).toBe('2 results');
     expect(t('{n} 条结果', { n: '1,280' })).toBe('1,280 results');
   });
 
-  test('the document says it, and the next visit starts in it', () => {
-    setLang('en');
+  test('the document says it, and the next visit starts in it', async () => {
+    await setLang('en');
     expect(document.documentElement.lang).toBe('en');
     expect(localStorage.getItem('weflow.lang')).toBe('en');
     setLang('zh');
     expect(document.documentElement.lang).toBe('zh-CN');
   });
 
-  test('what an older server or anything else says leaves it as it is', () => {
-    setLang('en');
+  test('what an older server or anything else says leaves it as it is', async () => {
+    await setLang('en');
     setLang(undefined);
     setLang('fr');
     expect(lang()).toBe('en');

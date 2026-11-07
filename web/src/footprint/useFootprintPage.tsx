@@ -6,6 +6,7 @@ import { presetRanges, type Footprint, type FootprintRange } from '../api/footpr
 import type { OpenAt, Page, Shell } from '../shell/page';
 import { Connected, ScrollPage } from '../shell/panels';
 import { FootprintAi, FootprintExport, FootprintPage } from './Footprint';
+import { t } from '../i18n';
 
 export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
   const [range, setRange] = useState<FootprintRange>(() => presetRanges()[0]);
@@ -13,11 +14,11 @@ export function useFootprintPage(shell: Shell, openAt: OpenAt): Page {
   const [data, setData] = useState<Footprint | null>(null);
   const scroller = useRef<HTMLElement>(null);
   const cards = [
-    { id: 'footprint-ai', title: 'AI 足迹总结', summary: range.label, content: <FootprintAi range={range} data={data} aiReady={shell.profile?.aiKey} /> },
-    { id: 'footprint-export', title: '导出足迹', summary: range.label, content: <FootprintExport range={range} /> },
+    { id: 'footprint-ai', title: t('AI 足迹总结'), summary: range.label, content: <FootprintAi range={range} data={data} aiReady={shell.profile?.aiKey} /> },
+    { id: 'footprint-export', title: t('导出足迹'), summary: range.label, content: <FootprintExport range={range} /> },
   ];
-  const view = <ScrollPage label="我的足迹" icon={Footprints} scroller={scroller}>
-    <Connected backend={shell.backend} offline="连接 weflow serve 后，可以在这里查看你和谁聊过天、谁 @过你。">
+  const view = <ScrollPage label={t('我的足迹')} icon={Footprints} scroller={scroller}>
+    <Connected backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里查看你和谁聊过天、谁 @过你。')}>
       <FootprintPage key={shell.scope} range={range} onRange={next => { setRange(next); scroller.current?.scrollTo({ top: 0 }); }}
         keyword={keyword} onKeyword={setKeyword} onOpen={openAt} onData={setData} />
     </Connected>

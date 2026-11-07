@@ -16,13 +16,14 @@ import { Popover } from '../Popover';
 import { Failed } from '../reports/AnnualReport';
 import { Segmented } from '../Segmented';
 import { MediaSkeleton } from '../Skeleton';
+import { formatDate, locale, msg, t } from '../i18n';
 
 const FILTERS: { label: string; types: ResourceType[] }[] = [
-  { label: '全部', types: ['image', 'video', 'voice', 'file'] },
-  { label: '图片', types: ['image'] },
-  { label: '视频', types: ['video'] },
-  { label: '语音', types: ['voice'] },
-  { label: '文件', types: ['file'] },
+  { label: msg('全部'), types: ['image', 'video', 'voice', 'file'] },
+  { label: msg('图片'), types: ['image'] },
+  { label: msg('视频'), types: ['video'] },
+  { label: msg('语音'), types: ['voice'] },
+  { label: msg('文件'), types: ['file'] },
 ];
 
 /** The conversation and days the console card narrows the page to. */
@@ -39,8 +40,8 @@ const narrowed = (filter: ResourceFilter) => Boolean(filter.session || filter.fr
 
 export function resourceFilterSummary(filter: ResourceFilter, sessions: readonly ChatSession[]): string {
   const name = filter.session && (sessions.find(s => s.username === filter.session)?.displayName || filter.session);
-  const parts = [name, (filter.from || filter.to) && '按日期'].filter(Boolean);
-  return parts.length ? parts.join(' · ') : '全部';
+  const parts = [name, (filter.from || filter.to) && t('按日期')].filter(Boolean);
+  return parts.length ? parts.join(' · ') : t('全部');
 }
 
 /** Resources a page: a few screens of the grid. */
@@ -53,7 +54,7 @@ type Pages =
   | { status: 'error'; message: string }
   | { status: 'ready'; items: Resource[]; next: string | null; more: boolean; error?: string };
 
-const errorOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || '读取资源失败';
+const errorOf = (problem: unknown) => (problem instanceof ApiError && problem.message) || t('读取资源失败');
 
 /** The pages of `query` read so far, the next one read by `more`. */
 function usePages(query: ResourceQuery): [Pages, () => void, () => void] {
@@ -91,15 +92,15 @@ function usePages(query: ResourceQuery): [Pages, () => void, () => void] {
 const asMessage = (item: Resource) => ({ ...item, voiceDurationSeconds: voiceSeconds(item) }) as unknown as ParsedMessage;
 const sessionOf = (item: Resource) => item.sessionId ?? '';
 const nameOf = (item: Resource) => item.sessionDisplayName || item.sessionId || '';
-const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
-const month = (seconds: number) => { const d = new Date(seconds * 1000); return d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月'; };
+const day = (seconds: number) => new Date(seconds * 1000).toLocaleDateString(locale(), { year: 'numeric', month: 'numeric', day: 'numeric' });
+const month = (seconds: number) => formatDate(new Date(seconds * 1000), { year: 'numeric', month: 'long' });
 const keyOf = (item: Resource) => item._cursor ?? sessionOf(item) + ':' + item.localId + '.' + item.createTime;
 
 /** What a picture or video opens in the preview, with its way back to the conversation. */
 function previewOf(item: Resource, onOpen: (item: Resource) => void): Preview | null {
   const message = asMessage(item);
   const locate = () => onOpen(item);
-  const title = (item.resourceType === 'video' ? '视频' : '图片') + ' · ' + nameOf(item);
+  const title = (item.resourceType === 'video' ? t('视频') : t('图片')) + ' · ' + nameOf(item);
   if (item.resourceType === 'image') return { ...imagePreview(sessionOf(item), message, title), locate };
   if (item.resourceType === 'video') return { type: 'video', src: mediaUrl('video-data', sessionOf(item), message), poster: mediaUrl('video-data', sessionOf(item), message, { thumb: true }), title, locate };
   return null;
@@ -116,7 +117,7 @@ function Thumb({ src, label }: { src: string; label: string }) {
     return () => { live = false; };
   }, [state, src]);
   return state === 'failed'
-    ? <span className="resource-missing"><Warning size={20} /><small>{label}无法显示</small>{reason && <small className="clamp-2">{reason}</small>}</span>
+    ? <span className="resource-missing"><Warning size={20} /><small>{t('{label}无法显示', { label })}</small>{reason && <small className="clamp-2">{reason}</small>}</span>
     : <img className={state === 'loading' ? 'loading' : undefined} src={src} alt="" loading="lazy" decoding="async" onLoad={() => setState('ready')} onError={() => setState('failed')} />;
 }
 
@@ -127,23 +128,23 @@ function Tile({ item, onPreview, onOpen }: { item: Resource; onPreview(item: Res
   const caption = <span className="resource-caption">
     <span className="clamp-1">{nameOf(item)}</span><small className="num">{when}</small>
     {/* a voice opens its message from here; a picture or video from its preview, a file from the tile */}
-    {item.resourceType === 'voice' && <button type="button" className="icon-button resource-locate" tabIndex={-1} aria-label="在会话中定位" title="在会话中定位" onClick={() => onOpen(item)}><ArrowSquareOut size={14} /></button>}
+    {item.resourceType === 'voice' && <button type="button" className="icon-button resource-locate" tabIndex={-1} aria-label={t('在会话中定位')} title={t('在会话中定位')} onClick={() => onOpen(item)}><ArrowSquareOut size={14} /></button>}
   </span>;
   switch (item.resourceType) {
     case 'image':
-      return <div className="resource-tile"><button type="button" className="resource-open resource-thumb" aria-label={'预览图片，' + nameOf(item) + '，' + when} onClick={() => onPreview(item)}>
-        <Thumb src={mediaUrl('image-data', sid, message, { thumb: true })} label="图片" />
+      return <div className="resource-tile"><button type="button" className="resource-open resource-thumb" aria-label={t('预览图片，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
+        <Thumb src={mediaUrl('image-data', sid, message, { thumb: true })} label={t('图片')} />
       </button>{caption}</div>;
     case 'video':
-      return <div className="resource-tile"><button type="button" className="resource-open resource-thumb" aria-label={'播放视频，' + nameOf(item) + '，' + when} onClick={() => onPreview(item)}>
-        <Thumb src={mediaUrl('video-data', sid, message, { thumb: true })} label="视频" /><span className="play-badge" aria-hidden="true"><Play size={18} weight="fill" /></span>
+      return <div className="resource-tile"><button type="button" className="resource-open resource-thumb" aria-label={t('播放视频，{name}，{when}', { name: nameOf(item), when })} onClick={() => onPreview(item)}>
+        <Thumb src={mediaUrl('video-data', sid, message, { thumb: true })} label={t('视频')} /><span className="play-badge" aria-hidden="true"><Play size={18} weight="fill" /></span>
       </button>{caption}</div>;
     case 'voice':
       return <div className="resource-tile"><Voice sessionId={sid} message={message} className="resource-open resource-voice" />{caption}</div>;
     default:
-      return <div className="resource-tile"><button type="button" className="resource-open resource-file" aria-label={(item.fileName || '文件') + '，' + nameOf(item) + '，' + when + '，在会话中定位'} onClick={() => onOpen(item)}>
+      return <div className="resource-tile"><button type="button" className="resource-open resource-file" aria-label={t('{file}，{name}，{when}，在会话中定位', { file: item.fileName || t('文件'), name: nameOf(item), when })} onClick={() => onOpen(item)}>
         {/^pdf$/i.test(item.fileExt ?? '') ? <FilePdf size={32} /> : <FileText size={32} />}
-        <span className="clamp-2">{item.fileName || '文件'}</span><small className="num">{formatFileSize(item.fileSize)}</small>
+        <span className="clamp-2">{item.fileName || t('文件')}</span><small className="num">{formatFileSize(item.fileSize)}</small>
       </button>{caption}</div>;
   }
 }
@@ -164,26 +165,26 @@ function SessionPicker({ sessions, selected, onSelect }: { sessions: readonly Ch
   return <>
     <button ref={anchor} type="button" className="group-picker" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
       {chosen ? <Avatar name={chosen.displayName || chosen.username} url={chosen.avatarUrl} /> : <span className="avatar avatar-initial" aria-hidden="true"><ChatsCircle size={20} /></span>}
-      <span className="rank-copy"><strong className="clamp-1">{chosen ? chosen.displayName || chosen.username : selected ?? '全部会话'}</strong>
-        <span className="cache-text">{selected ? '只看这个会话' : '所有会话的资源'}</span></span>
+      <span className="rank-copy"><strong className="clamp-1">{chosen ? chosen.displayName || chosen.username : selected ?? t('全部会话')}</strong>
+        <span className="cache-text">{selected ? t('只看这个会话') : t('所有会话的资源')}</span></span>
       <CaretDown size={14} aria-hidden="true" />
     </button>
-    <Popover anchor={anchor} open={open} onClose={reason => close(reason === 'escape')} label="选择会话" className="group-popover">
+    <Popover anchor={anchor} open={open} onClose={reason => close(reason === 'escape')} label={t('选择会话')} className="group-popover">
       <label className="token-input"><MagnifyingGlass size={14} aria-hidden="true" />
-        <input type="search" autoFocus aria-label="搜索会话" placeholder="搜索会话名称" value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
-      <div className="group-options" role="listbox" data-roving="vertical" data-roving-items="[role=option]" aria-label="会话">
+        <input type="search" autoFocus aria-label={t('搜索会话')} placeholder={t('搜索会话名称')} value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
+      <div className="group-options" role="listbox" data-roving="vertical" data-roving-items="[role=option]" aria-label={t('会话')}>
         {!keyword.trim() && <button type="button" role="option" aria-selected={!selected} className={'conversation-row' + (!selected ? ' active' : '')} onClick={() => pick(null)}>
           <span className="avatar avatar-initial" aria-hidden="true"><ChatsCircle size={20} /></span>
-          <span className="conversation-copy"><span className="conversation-name clamp-1">全部会话</span></span>
+          <span className="conversation-copy"><span className="conversation-name clamp-1">{t('全部会话')}</span></span>
         </button>}
         {found.slice(0, LISTED).map(s => <button type="button" key={s.username} role="option" aria-selected={s.username === selected}
           className={'conversation-row' + (s.username === selected ? ' active' : '')} onClick={() => pick(s.username)}>
           <Avatar name={s.displayName || s.username} url={s.avatarUrl} />
           <span className="conversation-copy"><span className="conversation-name clamp-1">{s.displayName || s.username}</span></span>
         </button>)}
-        {!found.length && <p className="card-note">没有找到。</p>}
+        {!found.length && <p className="card-note">{t('没有找到。')}</p>}
       </div>
-      {found.length > LISTED && <p className="card-note">还有 {found.length - LISTED} 个，搜索名称找到它。</p>}
+      {found.length > LISTED && <p className="card-note">{t('还有 {value} 个，搜索名称找到它。', { value: found.length - LISTED })}</p>}
     </Popover>
   </>;
 }
@@ -192,9 +193,9 @@ function SessionPicker({ sessions, selected, onSelect }: { sessions: readonly Ch
 export function ResourceFilterCard({ sessions, filter, onChange }: { sessions: readonly ChatSession[]; filter: ResourceFilter; onChange(filter: ResourceFilter): void }) {
   return <div className="resource-filter">
     <SessionPicker sessions={sessions} selected={filter.session} onSelect={session => onChange({ ...filter, session })} />
-    <div className="search-date-row"><span className="field-label">时间范围</span>
-      <DateRange label="资源的时间范围" from={filter.from} to={filter.to} onChange={range => onChange({ ...filter, ...range })} /></div>
-    {narrowed(filter) && <button type="button" className="text-button moments-clear" onClick={() => onChange(ALL_RESOURCES)}><X size={12} />清除筛选</button>}
+    <div className="search-date-row"><span className="field-label">{t('时间范围')}</span>
+      <DateRange label={t('资源的时间范围')} from={filter.from} to={filter.to} onChange={range => onChange({ ...filter, ...range })} /></div>
+    {narrowed(filter) && <button type="button" className="text-button moments-clear" onClick={() => onChange(ALL_RESOURCES)}><X size={12} />{t('清除筛选')}</button>}
   </div>;
 }
 
@@ -231,11 +232,11 @@ export function ResourcesPage({ filter, onPreview, onOpen }: {
 
   let lastMonth = '';
   return <div className="resources">
-    <Segmented className="resource-types" count={FILTERS.length} index={kind} role="group" aria-label="资源类型">
-      {FILTERS.map((f, i) => <button type="button" key={f.label} aria-pressed={kind === i} onClick={() => setKind(i)}>{f.label}</button>)}
+    <Segmented className="resource-types" count={FILTERS.length} index={kind} role="group" aria-label={t('资源类型')}>
+      {FILTERS.map((f, i) => <button type="button" key={f.label} aria-pressed={kind === i} onClick={() => setKind(i)}>{t(f.label)}</button>)}
     </Segmented>
-    {state.status === 'loading' && <MediaSkeleton label="正在读取资源" items={8} />}
-    {state.status === 'error' && <Failed title="读取资源失败" message={state.message} onRetry={retry} />}
+    {state.status === 'loading' && <MediaSkeleton label={t('正在读取资源')} items={8} />}
+    {state.status === 'error' && <Failed title={t('读取资源失败')} message={state.message} onRetry={retry} />}
     {state.status === 'ready' && (items.length
       ? <div className="resource-grid" data-roving="grid" data-roving-items=".resource-open">
         {items.map(item => {
@@ -245,10 +246,12 @@ export function ResourcesPage({ filter, onPreview, onOpen }: {
           return [heading, <Tile key={keyOf(item)} item={item} onPreview={preview} onOpen={open} />];
         })}
       </div>
-      : <p className="empty-text">{narrowed(filter) ? '没有符合筛选条件的' + (kind ? FILTERS[kind].label : '资源') + '。' : '没有找到' + (kind ? FILTERS[kind].label : '图片、视频、语音或文件') + '。'}</p>)}
+      : <p className="empty-text">{narrowed(filter)
+        ? kind ? t('没有符合筛选条件的{kind}。', { kind: t(FILTERS[kind].label) }) : t('没有符合筛选条件的资源。')
+        : kind ? t('没有找到{kind}。', { kind: t(FILTERS[kind].label) }) : t('没有找到图片、视频、语音或文件。')}</p>)}
     {state.status === 'ready' && <div ref={end} className="resource-end">
       {state.error && <p className="empty-text" role="alert">{state.error}</p>}
-      {state.next && <button type="button" className="secondary-button" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />正在读取</> : '加载更多'}</button>}
+      {state.next && <button type="button" className="secondary-button" onClick={more} disabled={state.more}>{state.more ? <><CircleNotch size={14} className="spin" />{t('正在读取')}</> : t('加载更多')}</button>}
     </div>}
   </div>;
 }

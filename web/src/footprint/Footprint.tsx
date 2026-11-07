@@ -15,12 +15,13 @@ import { runJob } from '../jobs/useJobs';
 import { Segmented } from '../Segmented';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import { useRead } from '../useRead';
+import { t } from '../i18n';
 
 /** A group message's text without the `sender:` line it starts with. */
-export const mentionText = (content: string) => content.replace(/^[^\n:]{1,64}:\n/, '').trim() || '[空消息]';
+export const mentionText = (content: string) => content.replace(/^[^\n:]{1,64}:\n/, '').trim() || t('[空消息]');
 
 const clock = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
-const lasted = (seconds: number) => (seconds < 60 ? '不到 1 分钟' : seconds < 3600 ? Math.round(seconds / 60) + ' 分钟' : Math.round(seconds / 360) / 10 + ' 小时');
+const lasted = (seconds: number) => (seconds < 60 ? t('不到 1 分钟') : seconds < 3600 ? t('{n} 分钟', { n: Math.round(seconds / 60) }) : t('{n} 小时', { n: Math.round(seconds / 360) / 10 }));
 
 /** Names and avatars of people and groups, from the contact list. */
 export function useNames(): (username: string) => Contact | undefined {
@@ -36,12 +37,12 @@ export function FootprintRanges({ range, onRange }: { range: FootprintRange; onR
   const presets = presetRanges();
   const custom = !presets.some(p => p.label === range.label);
   return <div className="footprint-ranges">
-    <div className="choice-chips" role="group" aria-label="时间范围">
+    <div className="choice-chips" role="group" aria-label={t('时间范围')}>
       {presets.map(p => <button type="button" key={p.label} className="chip" aria-pressed={range.label === p.label} onClick={() => onRange(p)}>{p.label}</button>)}
-      <button type="button" className="chip" aria-pressed={custom} onClick={() => { if (!custom) onRange({ ...range, label: range.from === range.to ? range.from : range.from + ' 至 ' + range.to }); }}>自定义</button>
+      <button type="button" className="chip" aria-pressed={custom} onClick={() => { if (!custom) onRange({ ...range, label: range.from === range.to ? range.from : t('{from} 至 {to}', { from: range.from, to: range.to }) }); }}>{t('自定义')}</button>
     </div>
-    {custom && <DateRange label="足迹的时间范围" from={range.from} to={range.to}
-      onChange={r => r.from && onRange({ from: r.from, to: r.to || r.from, label: r.to && r.to !== r.from ? r.from + ' 至 ' + r.to : r.from })} />}
+    {custom && <DateRange label={t('足迹的时间范围')} from={range.from} to={range.to}
+      onChange={r => r.from && onRange({ from: r.from, to: r.to || r.from, label: r.to && r.to !== r.from ? t('{from} 至 {to}', { from: r.from, to: r.to }) : r.from })} />}
   </div>;
 }
 
@@ -57,27 +58,27 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
     : name(e.mention.session_id).toLowerCase().includes(words) || name(e.mention.sender_username).toLowerCase().includes(words) || e.mention.message_content.toLowerCase().includes(words)));
   let lastDay = '';
   return <div className="analytics-page footprint">
-    <section className="analytics-block" aria-label="总览">
+    <section className="analytics-block" aria-label={t('总览')}>
       <dl className="info-grid analytics-numbers">
-        <div><dt>给我发消息的人</dt><dd className="num">{n(s.private_inbound_people)} 人</dd></div>
-        <div><dt>我回复了</dt><dd className="num">{n(s.private_replied_people)} 人 · {Math.round(s.private_reply_rate * 100)}%</dd></div>
-        <div><dt>我主动联系</dt><dd className="num">{n(s.private_outbound_people)} 人</dd></div>
-        <div><dt>@我</dt><dd className="num">{n(s.mention_count)} 次</dd></div>
-        <div><dt>涉及群聊</dt><dd className="num">{n(s.mention_group_count)} 个</dd></div>
+        <div><dt>{t('给我发消息的人')}</dt><dd className="num">{t('{private_inbound_people} 人', { private_inbound_people: n(s.private_inbound_people) })}</dd></div>
+        <div><dt>{t('我回复了')}</dt><dd className="num">{t('{private_replied_people} 人 · {round}%', { private_replied_people: n(s.private_replied_people), round: Math.round(s.private_reply_rate * 100) })}</dd></div>
+        <div><dt>{t('我主动联系')}</dt><dd className="num">{t('{private_outbound_people} 人', { private_outbound_people: n(s.private_outbound_people) })}</dd></div>
+        <div><dt>{t('@我')}</dt><dd className="num">{t('{mention_count} 次', { mention_count: n(s.mention_count) })}</dd></div>
+        <div><dt>{t('涉及群聊')}</dt><dd className="num">{t('{mention_group_count} 个', { mention_group_count: n(s.mention_group_count) })}</dd></div>
       </dl>
-      {data.diagnostics.truncated && <p className="card-note">记录太多，只统计了一部分。可以把时间范围缩短一些。</p>}
+      {data.diagnostics.truncated && <p className="card-note">{t('记录太多，只统计了一部分。可以把时间范围缩短一些。')}</p>}
     </section>
 
-    {data.mention_groups.length > 0 && <section className="analytics-block" aria-label="@我的群">
-      <h2>@我的群</h2>
+    {data.mention_groups.length > 0 && <section className="analytics-block" aria-label={t('@我的群')}>
+      <h2>{t('@我的群')}</h2>
       <ul className="word-chips">{[...data.mention_groups].sort((a, b) => b.count - a.count).map(g =>
         <li key={g.session_id}><span className="clamp-1">{name(g.session_id)}</span><small className="num">{n(g.count)}</small></li>)}</ul>
     </section>}
 
-    <section className="analytics-block" aria-label="联络时间线">
-      <div className="analytics-heading"><h2>联络时间线</h2>
+    <section className="analytics-block" aria-label={t('联络时间线')}>
+      <div className="analytics-heading"><h2>{t('联络时间线')}</h2>
         <label className="token-input footprint-search"><MagnifyingGlass size={14} aria-hidden="true" />
-          <input type="search" aria-label="筛选时间线" placeholder="联系人、群聊或内容" value={keyword} onChange={event => onKeyword(event.target.value)} /></label></div>
+          <input type="search" aria-label={t('筛选时间线')} placeholder={t('联系人、群聊或内容')} value={keyword} onChange={event => onKeyword(event.target.value)} /></label></div>
       {events.length
         ? <ol className="footprint-timeline">{events.map(e => {
           const day = new Date(e.at * 1000).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
@@ -90,9 +91,9 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
               <Avatar name={who?.displayName ?? g.session_id} url={who?.avatarUrl} />
               <span className="rank-copy">
                 <span className="rank-line"><strong>{name(g.session_id)}</strong><span className="num cache-text">{clock(g.start_ts)}{g.end_ts > g.start_ts ? '–' + clock(g.end_ts) : ''}</span></span>
-                <span className="cache-text">收到 {n(g.incoming_count)} · 发出 {n(g.outgoing_count)} · {lasted(g.end_ts - g.start_ts)}{g.incoming_count > 0 && (g.replied ? ' · 已回复' : ' · 没有回复')}</span>
+                <span className="cache-text">{t('收到 {incoming} · 发出 {outgoing}', { incoming: n(g.incoming_count), outgoing: n(g.outgoing_count) })} · {lasted(g.end_ts - g.start_ts)}{g.incoming_count > 0 && ' · ' + (g.replied ? t('已回复') : t('没有回复'))}</span>
               </span>
-              <button type="button" className="icon-button" aria-label={'打开和' + name(g.session_id) + '的这段聊天'} title="打开聊天" onClick={() => onOpen(g.session_id, g.anchor_local_id, g.anchor_create_time)}><ArrowSquareOut size={14} /></button>
+              <button type="button" className="icon-button" aria-label={t('打开和{name}的这段聊天', { name: name(g.session_id) })} title={t('打开聊天')} onClick={() => onOpen(g.session_id, g.anchor_local_id, g.anchor_create_time)}><ArrowSquareOut size={14} /></button>
             </li></Fragment>;
           }
           const m = e.mention;
@@ -103,10 +104,10 @@ export function FootprintView({ data, keyword, onKeyword, names, onOpen }: {
               <span className="rank-line"><strong>{name(m.session_id)}</strong><span className="num cache-text">{clock(m.create_time)}</span></span>
               <span className="cache-text clamp-2">{sender ? sender + '：' : ''}{mentionText(m.message_content)}</span>
             </span>
-            <button type="button" className="icon-button" aria-label={'打开' + name(m.session_id) + '里的这条消息'} title="打开聊天" onClick={() => onOpen(m.session_id, m.local_id, m.create_time)}><ArrowSquareOut size={14} /></button>
+            <button type="button" className="icon-button" aria-label={t('打开{name}里的这条消息', { name: name(m.session_id) })} title={t('打开聊天')} onClick={() => onOpen(m.session_id, m.local_id, m.create_time)}><ArrowSquareOut size={14} /></button>
           </li></Fragment>;
         })}</ol>
-        : <p className="muted">{words ? '没有符合的联络。' : '这段时间没有私聊，也没有人 @我。'}</p>}
+        : <p className="muted">{words ? t('没有符合的联络。') : t('这段时间没有私聊，也没有人 @我。')}</p>}
     </section>
   </div>;
 }
@@ -124,8 +125,8 @@ export function FootprintPage({ range, onRange, keyword, onKeyword, onOpen, onDa
   });
   return <>
     <FootprintRanges range={range} onRange={onRange} />
-    {state.status === 'error' ? <Failed title="读取足迹失败" message={state.message} onRetry={retry} />
-      : state.status === 'loading' ? <div className="analytics-page" aria-busy="true"><GridSkeleton label={'正在统计' + range.label + '的足迹'} cells={5} /><ListSkeleton label="正在读取联络时间线" rows={5} /></div>
+    {state.status === 'error' ? <Failed title={t('读取足迹失败')} message={state.message} onRetry={retry} />
+      : state.status === 'loading' ? <div className="analytics-page" aria-busy="true"><GridSkeleton label={t('正在统计{range}的足迹', { range: range.label })} cells={5} /><ListSkeleton label={t('正在读取联络时间线')} rows={5} /></div>
         : <FootprintView data={state.value} keyword={keyword} onKeyword={onKeyword} names={names} onOpen={onOpen} />}
   </>;
 }
@@ -142,22 +143,23 @@ export function FootprintAi({ range, data, aiReady }: { range: FootprintRange; d
     try {
       setText({ range: range.label, text: await summarizeFootprint(range, data, s => names(s)?.displayName ?? s) });
     } catch (problem) {
-      const message = (problem instanceof Error && problem.message) || '没有生成，请重试。';
-      setNote({ text: message, error: true, enable: message.includes('AI 足迹总结') });
+      const message = (problem instanceof Error && problem.message) || t('没有生成，请重试。');
+      // the server's answer, in its language, when the summary is not turned on
+      setNote({ text: message, error: true, enable: /AI 足迹总结|AI Footprint summary/i.test(message) });
     } finally {
       setBusy(false);
     }
   };
   const enable = async () => {
-    try { await setSetting('aiFootprintEnabled', 'true'); setNote({ text: '已开启，可以生成了。' }); } catch (problem) { setNote({ text: (problem instanceof Error && problem.message) || '没有开启，请重试。', error: true }); }
+    try { await setSetting('aiFootprintEnabled', 'true'); setNote({ text: t('已开启，可以生成了。') }); } catch (problem) { setNote({ text: (problem instanceof Error && problem.message) || t('没有开启，请重试。'), error: true }); }
   };
   return <div className="excluded-people">
-    {aiReady === false && <p className="card-note">还没有填写 AI 的 API Key，先到「设置 › 常规 › AI 见解」里填写。</p>}
-    <button type="button" className="secondary-button" disabled={!data || busy} onClick={write}>{busy ? <CircleNotch size={12} className="spin" /> : <Sparkle size={12} />}总结「{range.label}」</button>
-    {text && <blockquote className="footprint-ai" aria-label="AI 足迹总结"><span className="report-label">{text.range}</span>{text.text}</blockquote>}
+    {aiReady === false && <p className="card-note">{t('还没有填写 AI 的 API Key，先到「设置 › 常规 › AI 见解」里填写。')}</p>}
+    <button type="button" className="secondary-button" disabled={!data || busy} onClick={write}>{busy ? <CircleNotch size={12} className="spin" /> : <Sparkle size={12} />}{t('总结「{range}」', { range: range.label })}</button>
+    {text && <blockquote className="footprint-ai" aria-label={t('AI 足迹总结')}><span className="report-label">{text.range}</span>{text.text}</blockquote>}
     {note && <p className={'card-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
-    {note?.enable && <button type="button" className="secondary-button" onClick={enable}>开启 AI 足迹总结</button>}
-    <p className="card-note">会把这段时间的人数，以及最多 12 段私聊和 12 个群的名字和条数发给你设置的 AI 模型，不发送消息内容。</p>
+    {note?.enable && <button type="button" className="secondary-button" onClick={enable}>{t('开启 AI 足迹总结')}</button>}
+    <p className="card-note">{t('会把这段时间的人数，以及最多 12 段私聊和 12 个群的名字和条数发给你设置的 AI 模型，不发送消息内容。')}</p>
   </div>;
 }
 
@@ -169,20 +171,20 @@ export function FootprintExport({ range }: { range: FootprintRange }) {
   const start = async () => {
     setBusy(true); setNote(null);
     try {
-      await runJob('导出足迹 · ' + range.label, 'POST', 'export/footprint', footprintExport(range, format));
-      setNote({ text: '已加入任务中心，完成后在那里下载。' });
+      await runJob(t('导出足迹 · {range}', { range: range.label }), 'POST', 'export/footprint', footprintExport(range, format));
+      setNote({ text: t('已加入任务中心，完成后在那里下载。') });
     } catch (problem) {
-      setNote({ text: (problem instanceof Error && problem.message) || '导出没有开始，请重试。', error: true });
+      setNote({ text: (problem instanceof Error && problem.message) || t('导出没有开始，请重试。'), error: true });
     } finally {
       setBusy(false);
     }
   };
   return <div className="excluded-people">
-    <Segmented className="format-group" count={FOOTPRINT_FORMATS.length} index={FOOTPRINT_FORMATS.findIndex(f => f.value === format)} role="group" aria-label="导出格式">
+    <Segmented className="format-group" count={FOOTPRINT_FORMATS.length} index={FOOTPRINT_FORMATS.findIndex(f => f.value === format)} role="group" aria-label={t('导出格式')}>
       {FOOTPRINT_FORMATS.map(f => <button type="button" key={f.value} aria-pressed={format === f.value} onClick={() => setFormat(f.value)}>{f.label}</button>)}
     </Segmented>
-    <button type="button" className="secondary-button" disabled={busy} onClick={start}>{busy ? <CircleNotch size={12} className="spin" /> : <DownloadSimple size={12} />}导出「{range.label}」为 {FOOTPRINT_FORMATS.find(f => f.value === format)?.label}</button>
-    <p className="card-note">{format === 'json' ? '包含人数、每段私聊和每条 @我 的消息。' : '时间线：每段私聊、每条 @我 的消息各占一行。'}</p>
+    <button type="button" className="secondary-button" disabled={busy} onClick={start}>{busy ? <CircleNotch size={12} className="spin" /> : <DownloadSimple size={12} />}{t('导出「{range}」为 {format}', { range: range.label, format: FOOTPRINT_FORMATS.find(f => f.value === format)?.label ?? '' })}</button>
+    <p className="card-note">{format === 'json' ? t('包含人数、每段私聊和每条 @我 的消息。') : t('时间线：每段私聊、每条 @我 的消息各占一行。')}</p>
     {note && <p className={'card-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
   </div>;
 }

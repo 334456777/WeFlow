@@ -29,10 +29,10 @@ describe('dates', () => {
     expect(ordered('2026-10-12', '2026-10-03')).toEqual(['2026-10-03', '2026-10-12']);
   });
 
-  it('names the days in the page\'s language, the week from Monday', () => {
+  it('names the days in the page\'s language, the week from Monday', async () => {
     expect(weekdays().map(d => d.short).join('')).toBe('一二三四五六日');
     expect(weekdays()[0].long).toBe('星期一');
-    setLang('en');
+    await setLang('en');
     try {
       expect(dayLabel('2026-10-12')).toBe('Monday, October 12, 2026');
       expect(weekdays().map(d => d.short).join('')).toBe('MTWTFSS');
