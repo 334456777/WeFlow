@@ -7,26 +7,27 @@ import { ApiError } from '../api/client';
 import { getExcludeCandidates, getExcluded, hourBars, monthBars, setExcluded, typeBars, weekdayBars, type Bar, type Candidate, type Ranked } from '../api/analytics';
 import { GridSkeleton, ListSkeleton } from '../Skeleton';
 import type { AnalyticsState } from './useAnalytics';
+import { locale, t } from '../i18n';
 
-export const n = (value: number) => value.toLocaleString('zh-CN');
-export const day = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toLocaleDateString('zh-CN') : '—');
+export const n = (value: number) => value.toLocaleString(locale());
+export const day = (seconds: number | null) => (seconds ? new Date(seconds * 1000).toLocaleDateString(locale()) : '—');
 export const share = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0) + '%';
 
 /** Bars standing side by side, as tall as their share of the largest; `ticks` names some of them underneath. */
 export function Columns({ label, bars, ticks }: { label: string; bars: Bar[]; ticks(index: number, bar: Bar): string | null }) {
-  if (!bars.length) return <p className="muted">没有消息。</p>;
+  if (!bars.length) return <p className="muted">{t('没有消息。')}</p>;
   const max = Math.max(1, ...bars.map(b => b.value));
   const peak = bars.reduce((a, b) => (b.value > a.value ? b : a));
   return <figure className="chart">
-    <div className="chart-columns" role="img" aria-label={label + '：最多的是' + peak.label + '，' + n(peak.value) + ' 条'}>
-      {bars.map(b => <span key={b.label} className="chart-column" title={b.label + ' · ' + n(b.value) + ' 条'}>
+    <div className="chart-columns" role="img" aria-label={t('{label}：最多的是{peak}，{n} 条', { label, peak: peak.label, n: n(peak.value) })}>
+      {bars.map(b => <span key={b.label} className="chart-column" title={b.label + ' · ' + t('{n} 条', { n: n(b.value) })}>
         <span style={{ height: (b.value / max) * 100 + '%' }} /></span>)}
     </div>
     <div className="chart-ticks" aria-hidden="true">{bars.map((b, i) => <span key={b.label}>{ticks(i, b)}</span>)}</div>
   </figure>;
 }
 
-const january = (b: Bar) => b.label.endsWith(' 1 月');
+const january = (b: Bar) => b.month === 1;
 /**
  * Where a year's name goes under the months: each January, and the first month when no January follows soon, that is
  * within 6 months or an eighth of the chart, as the bars of a long chart are narrow on a phone.
@@ -51,11 +52,11 @@ function RankRow({ rank, person, top, canChat, onChat }: { rank: number; person:
     <span className="rank-number num" aria-hidden="true">{rank}</span>
     <Avatar name={person.displayName} url={person.avatarUrl} />
     <span className="rank-copy">
-      <span className="rank-line"><strong>{person.displayName}</strong><span className="num">{n(person.messageCount)} 条</span></span>
+      <span className="rank-line"><strong>{person.displayName}</strong><span className="num">{t('{messageCount} 条', { messageCount: n(person.messageCount) })}</span></span>
       <span className="rank-split" aria-hidden="true"><span style={{ width: width(person.sentCount) }} /><span style={{ width: width(person.receivedCount) }} /></span>
-      <span className="cache-text">我发 {n(person.sentCount)} · 对方 {n(person.receivedCount)} · 最近 {day(person.lastMessageTime)}</span>
+      <span className="cache-text">{t('我发 {sentCount} · 对方 {receivedCount} · 最近 {lastMessageTime}', { sentCount: n(person.sentCount), receivedCount: n(person.receivedCount), lastMessageTime: day(person.lastMessageTime) })}</span>
     </span>
-    <button type="button" className="secondary-button rank-wide" disabled={!canChat} title={canChat ? undefined : '会话列表里没有这个聊天'} aria-label={'查看和' + person.displayName + '的聊天'} onClick={onChat}><ChatCircleDots size={12} />查看聊天</button>
+    <button type="button" className="secondary-button rank-wide" disabled={!canChat} title={canChat ? undefined : t('会话列表里没有这个聊天')} aria-label={t('查看和{name}的聊天', { name: person.displayName })} onClick={onChat}><ChatCircleDots size={12} />{t('查看聊天')}</button>
   </li>;
 }
 
@@ -63,52 +64,52 @@ export function PrivateAnalytics({ state, onReload, canChat, onChat }: {
   state: AnalyticsState; onReload(): void; canChat(username: string): boolean; onChat(username: string): void;
 }) {
   if (state.status === 'error') {
-    return <div className="pane-message" role="alert"><strong>读取聊天分析失败</strong><p>{state.message}</p>
-      <button type="button" className="secondary-button" onClick={onReload}>重试</button></div>;
+    return <div className="pane-message" role="alert"><strong>{t('读取聊天分析失败')}</strong><p>{state.message}</p>
+      <button type="button" className="secondary-button" onClick={onReload}>{t('重试')}</button></div>;
   }
   if (state.status !== 'ready') {
-    return <div className="analytics-page" aria-busy="true"><GridSkeleton label="正在统计私聊消息，第一次可能要一会儿" cells={6} /><ListSkeleton label="正在读取聊天排行" rows={5} /></div>;
+    return <div className="analytics-page" aria-busy="true"><GridSkeleton label={t('正在统计私聊消息，第一次可能要一会儿')} cells={6} /><ListSkeleton label={t('正在读取聊天排行')} rows={5} /></div>;
   }
   const { overall, rankings, spread } = state;
   const months = monthBars(spread);
   const top = rankings[0]?.messageCount ?? 0;
   return <div className="analytics-page">
-    <section className="analytics-block" aria-label="总览">
-      <div className="analytics-heading"><h2>总览</h2>
-        <button type="button" className="secondary-button" title="重新读取所有私聊，算上新收到的消息" onClick={onReload}><ArrowClockwise size={12} />重新统计</button></div>
+    <section className="analytics-block" aria-label={t('总览')}>
+      <div className="analytics-heading"><h2>{t('总览')}</h2>
+        <button type="button" className="secondary-button" title={t('重新读取所有私聊，算上新收到的消息')} onClick={onReload}><ArrowClockwise size={12} />{t('重新统计')}</button></div>
       <dl className="info-grid analytics-numbers">
-        <div><dt>消息</dt><dd className="num">{n(overall.totalMessages)} 条</dd></div>
-        <div><dt>我发出的</dt><dd className="num">{n(overall.sentMessages)} 条 · {share(overall.sentMessages, overall.totalMessages)}</dd></div>
-        <div><dt>我收到的</dt><dd className="num">{n(overall.receivedMessages)} 条 · {share(overall.receivedMessages, overall.totalMessages)}</dd></div>
-        <div><dt>有消息的月份</dt><dd className="num">{n(Object.values(spread.monthlyDistribution).filter(v => v > 0).length)} 个</dd></div>
-        <div><dt>第一条</dt><dd className="num">{day(overall.firstMessageTime)}</dd></div>
-        <div><dt>最近一条</dt><dd className="num">{day(overall.lastMessageTime)}</dd></div>
+        <div><dt>{t('消息')}</dt><dd className="num">{t('{totalMessages} 条', { totalMessages: n(overall.totalMessages) })}</dd></div>
+        <div><dt>{t('我发出的')}</dt><dd className="num">{t('{sentMessages} 条 · {totalMessages}', { sentMessages: n(overall.sentMessages), totalMessages: share(overall.sentMessages, overall.totalMessages) })}</dd></div>
+        <div><dt>{t('我收到的')}</dt><dd className="num">{t('{receivedMessages} 条 · {totalMessages}', { receivedMessages: n(overall.receivedMessages), totalMessages: share(overall.receivedMessages, overall.totalMessages) })}</dd></div>
+        <div><dt>{t('有消息的月份')}</dt><dd className="num">{t('{length} 个', { length: n(Object.values(spread.monthlyDistribution).filter(v => v > 0).length) })}</dd></div>
+        <div><dt>{t('第一条')}</dt><dd className="num">{day(overall.firstMessageTime)}</dd></div>
+        <div><dt>{t('最近一条')}</dt><dd className="num">{day(overall.lastMessageTime)}</dd></div>
       </dl>
-      <p className="card-note">只统计私聊，不含群聊、公众号和「不统计的好友」。</p>
+      <p className="card-note">{t('只统计私聊，不含群聊、公众号和「不统计的好友」。')}</p>
     </section>
-    <section className="analytics-block" aria-label="消息类型">
-      <h2>消息类型</h2>
-      <Shares label="各类消息的条数" bars={typeBars(overall)} total={overall.totalMessages} />
+    <section className="analytics-block" aria-label={t('消息类型')}>
+      <h2>{t('消息类型')}</h2>
+      <Shares label={t('各类消息的条数')} bars={typeBars(overall)} total={overall.totalMessages} />
     </section>
-    <section className="analytics-block" aria-label="一天中的时段">
-      <h2>一天中的时段</h2>
-      <Columns label="每小时的消息" bars={hourBars(spread.hourlyDistribution)} ticks={i => (i % 6 === 0 ? String(i) : null)} />
+    <section className="analytics-block" aria-label={t('一天中的时段')}>
+      <h2>{t('一天中的时段')}</h2>
+      <Columns label={t('每小时的消息')} bars={hourBars(spread.hourlyDistribution)} ticks={i => (i % 6 === 0 ? String(i) : null)} />
     </section>
-    <section className="analytics-block" aria-label="一周中的哪天">
-      <h2>一周中的哪天</h2>
-      <Columns label="星期几的消息" bars={weekdayBars(spread)} ticks={(_, b) => b.label} />
+    <section className="analytics-block" aria-label={t('一周中的哪天')}>
+      <h2>{t('一周中的哪天')}</h2>
+      <Columns label={t('星期几的消息')} bars={weekdayBars(spread)} ticks={(_, b) => b.label} />
     </section>
-    <section className="analytics-block" aria-label="每个月">
-      <h2>每个月</h2>
-      <Columns label="每个月的消息" bars={months} ticks={(i, b) => (yearStarts(months, i) ? b.label.slice(0, 4) : null)} />
+    <section className="analytics-block" aria-label={t('每个月')}>
+      <h2>{t('每个月')}</h2>
+      <Columns label={t('每个月的消息')} bars={months} ticks={(i, b) => (yearStarts(months, i) ? String(b.year) : null)} />
     </section>
-    <section className="analytics-block" aria-label="聊得最多的人">
-      <h2>聊得最多的人</h2>
+    <section className="analytics-block" aria-label={t('聊得最多的人')}>
+      <h2>{t('聊得最多的人')}</h2>
       {rankings.length
         ? <><ol className="rank-list">{rankings.map((person, i) => <RankRow key={person.username} rank={i + 1} person={person} top={top}
           canChat={canChat(person.username)} onChat={() => onChat(person.username)} />)}</ol>
-          <p className="card-note"><span className="rank-key rank-key-sent" />我发出的　<span className="rank-key rank-key-received" />对方发来的</p></>
-        : <p className="muted">没有私聊消息。</p>}
+          <p className="card-note"><span className="rank-key rank-key-sent" />{t('我发出的')}　<span className="rank-key rank-key-received" />{t('对方发来的')}</p></>
+        : <p className="muted">{t('没有私聊消息。')}</p>}
     </section>
   </div>;
 }
@@ -127,7 +128,7 @@ export function ExcludedPeople({ onSaved }: { onSaved(): void }) {
     Promise.all([getExcluded(controller.signal), getExcludeCandidates(controller.signal)]).then(([saved, people]) => {
       setData({ saved, people });
       setPicked(new Set(saved));
-    }, problem => { if (!controller.signal.aborted) setData({ error: (problem instanceof ApiError && problem.message) || '读取失败' }); });
+    }, problem => { if (!controller.signal.aborted) setData({ error: (problem instanceof ApiError && problem.message) || t('读取失败') }); });
     return () => controller.abort();
   }, [round]);
   const shown = useMemo(() => {
@@ -142,8 +143,8 @@ export function ExcludedPeople({ onSaved }: { onSaved(): void }) {
   const out = data && !('error' in data) ? shown.filter(p => data.saved.includes(p.username)).length : 0;
   const listed = shown.slice(0, out + 8);
 
-  if (!data) return <ListSkeleton label="正在读取私聊" rows={4} />;
-  if ('error' in data) return <><p className="card-note setting-warning" role="alert">{data.error}</p><button type="button" className="secondary-button" onClick={() => setRound(r => r + 1)}>重试</button></>;
+  if (!data) return <ListSkeleton label={t('正在读取私聊')} rows={4} />;
+  if ('error' in data) return <><p className="card-note setting-warning" role="alert">{data.error}</p><button type="button" className="secondary-button" onClick={() => setRound(r => r + 1)}>{t('重试')}</button></>;
   const changed = picked.size !== data.saved.length || data.saved.some(u => !picked.has(u));
   const save = async () => {
     setBusy(true); setNote(null);
@@ -151,18 +152,18 @@ export function ExcludedPeople({ onSaved }: { onSaved(): void }) {
       const saved = await setExcluded([...picked]);
       setData({ ...data, saved });
       setPicked(new Set(saved));
-      setNote({ text: '已保存，正在按新的名单重新统计。' });
+      setNote({ text: t('已保存，正在按新的名单重新统计。') });
       onSaved();
     } catch (problem) {
-      setNote({ text: (problem instanceof Error && problem.message) || '没有保存，请重试。', error: true });
+      setNote({ text: (problem instanceof Error && problem.message) || t('没有保存，请重试。'), error: true });
     } finally {
       setBusy(false);
     }
   };
   return <div className="excluded-people">
     <label className="token-input"><MagnifyingGlass size={14} aria-hidden="true" />
-      <input type="search" aria-label="搜索私聊" placeholder="搜索名字或微信号" value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
-    <div className="excluded-list" role="group" aria-label="不统计的好友">
+      <input type="search" aria-label={t('搜索私聊')} placeholder={t('搜索名字或微信号')} value={keyword} onChange={event => setKeyword(event.target.value)} /></label>
+    <div className="excluded-list" role="group" aria-label={t('不统计的好友')}>
       {listed.map(p => <label key={p.username} className="checkbox">
         <input type="checkbox" checked={picked.has(p.username)} onChange={event => {
           const next = new Set(picked);
@@ -170,10 +171,10 @@ export function ExcludedPeople({ onSaved }: { onSaved(): void }) {
           setPicked(next); setNote(null);
         }} />
         <span className="checkbox-box" aria-hidden="true"><Check size={12} weight="bold" /></span><span>{p.displayName}</span></label>)}
-      {!shown.length && <p className="card-note">没有找到。</p>}
+      {!shown.length && <p className="card-note">{t('没有找到。')}</p>}
     </div>
-    {shown.length > listed.length && <p className="card-note">还有 {n(shown.length - listed.length)} 个，搜索名字或微信号找到他们。</p>}
-    <button type="button" className="primary-button" disabled={!changed || busy} onClick={save}>{busy && <CircleNotch size={14} className="spin" />}保存（不统计 {n(picked.size)} 人）</button>
+    {shown.length > listed.length && <p className="card-note">{t('还有 {n} 个，搜索名字或微信号找到他们。', { n: n(shown.length - listed.length) })}</p>}
+    <button type="button" className="primary-button" disabled={!changed || busy} onClick={save}>{busy && <CircleNotch size={14} className="spin" />}{t('保存（不统计 {n} 人）', { n: n(picked.size) })}</button>
     {note && <p className={'card-note' + (note.error ? ' setting-warning' : '')} role={note.error ? 'alert' : undefined} aria-live="polite">{note.text}</p>}
   </div>;
 }

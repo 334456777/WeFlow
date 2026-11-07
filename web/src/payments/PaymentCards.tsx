@@ -33,7 +33,7 @@ export function PaymentsSummary({ payments }: { payments: Payment[] | null }) {
   if (!payments) return <GridSkeleton label={t('正在读取支付记录')} cells={2} />;
   const totals = totalsOf(payments);
   return <dl className="info-grid">
-    <div><dt>{t('笔数')}</dt><dd className="num">{t('{count} 笔', { count: totals.count.toLocaleString('zh-CN') })}</dd></div>
+    <div><dt>{t('笔数')}</dt><dd className="num">{t('{count} 笔', { count: totals.count.toLocaleString(locale()) })}</dd></div>
     <div><dt>{t('支出')}</dt><dd className="num">{formatMoney(totals.paid)}</dd></div>
     {totals.refunded > 0 && <div><dt>{t('退款')}</dt><dd className="num">{formatMoney(totals.refunded)}</dd></div>}
     {totals.refunded > 0 && <div><dt>{t('净支出')}</dt><dd className="num">{formatMoney(totals.paid - totals.refunded)}</dd></div>}

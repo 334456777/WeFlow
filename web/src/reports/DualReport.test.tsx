@@ -44,7 +44,7 @@ describe('dual report', () => {
     expect(moments).toContain('由你开场75%');
     expect(moments).toContain('最快 3 秒，最慢 2 小时，共 400 次回复。');
     expect(screen.getByRole('img', { name: '最常聊天的是周三 22 点，50 条' })).toBeTruthy();
-    expect(Array.from(screen.getByLabelText('每个月').querySelectorAll('.chart-ticks span'), s => s.textContent)).toEqual(['1 月', '', '']);
+    expect(Array.from(screen.getByLabelText('每个月').querySelectorAll('.chart-ticks span'), s => s.textContent)).toEqual(['1月', '', '']);
     expect(screen.getByLabelText('只有你常说').textContent).toBe('好嘞20');
     expect(screen.queryByLabelText('只有 TA 常说')).toBeNull();
   });

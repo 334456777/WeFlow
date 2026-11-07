@@ -2,6 +2,7 @@
 // words, read again for another server or account and when something changed them.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
+import { t } from '../i18n';
 import { getInsights, PAGE, type InsightPage } from '../api/insights';
 
 export interface InsightFilter { keyword: string; session: string | null }
@@ -26,7 +27,7 @@ export function useInsights(enabled: boolean, scope: number, filter: InsightFilt
     if (latest.current.status !== 'ready') setState({ status: 'loading' });
     getInsights(filter, controller.signal).then(
       page => setState({ status: 'ready', page, more: page.records.length < page.total, loadingMore: false }),
-      problem => { if (!controller.signal.aborted) setState({ status: 'error', message: messageOf(problem, '读取见解失败') }); },
+      problem => { if (!controller.signal.aborted) setState({ status: 'error', message: messageOf(problem, t('读取见解失败')) }); },
     );
     return () => controller.abort();
   }, [enabled, scope, filter, round]);
@@ -42,7 +43,7 @@ export function useInsights(enabled: boolean, scope: number, filter: InsightFilt
       setState({ ...cur, page: { ...next, records }, more: next.records.length === PAGE && records.length < next.total, loadingMore: false });
     }, problem => {
       const cur = latest.current;
-      if (cur.status === 'ready') setState({ ...cur, loadingMore: false, error: messageOf(problem, '读取更早的见解失败') });
+      if (cur.status === 'ready') setState({ ...cur, loadingMore: false, error: messageOf(problem, t('读取更早的见解失败')) });
     });
   }, [filter]);
 

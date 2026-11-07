@@ -10,6 +10,7 @@ import { Connected, ScrollPage } from '../shell/panels';
 import { ExcludedPeople, PrivateAnalytics } from './AnalyticsViews';
 import { GroupExport, GroupPicker, GroupStats, MemberView } from './GroupAnalytics';
 import { useAnalytics, useGroups } from './useAnalytics';
+import { t } from '../i18n';
 
 type Member = { username: string; displayName: string; avatarUrl?: string };
 
@@ -28,19 +29,19 @@ export function useAnalyticsPage(shell: Shell, active: boolean, chatWith: ChatWi
   const showMember = (next: Member | null) => { setMember(next); scroller.current?.scrollTo({ top: 0 }); };
   const cards = [
     {
-      id: 'analytics-range', title: '时间范围', summary: range.from || range.to ? (range.from || '最早') + ' 至 ' + (range.to || '今天') : '全部',
-      content: <><DateRange label="统计的时间范围" from={range.from} to={range.to} onChange={setRange} />
-        {(range.from || range.to) && <button type="button" className="secondary-button range-clear" onClick={() => setRange({ from: '', to: '' })}>不限时间</button>}</>,
+      id: 'analytics-range', title: t('时间范围'), summary: range.from || range.to ? t('{from} 至 {to}', { from: range.from || t('最早'), to: range.to || t('今天') }) : t('全部'),
+      content: <><DateRange label={t('统计的时间范围')} from={range.from} to={range.to} onChange={setRange} />
+        {(range.from || range.to) && <button type="button" className="secondary-button range-clear" onClick={() => setRange({ from: '', to: '' })}>{t('不限时间')}</button>}</>,
     },
-    { id: 'group-export', title: '导出', summary: group?.displayName ?? '', content: <GroupExport group={group} member={member} range={range} /> },
-    { id: 'analytics-excluded', title: '不统计的好友', content: <ExcludedPeople key={scope} onSaved={() => reloadAnalytics()} /> },
+    { id: 'group-export', title: t('导出'), summary: group?.displayName ?? '', content: <GroupExport group={group} member={member} range={range} /> },
+    { id: 'analytics-excluded', title: t('不统计的好友'), content: <ExcludedPeople key={scope} onSaved={() => reloadAnalytics()} /> },
   ];
-  const view = <ScrollPage label="聊天分析" icon={ChartBar} scroller={scroller} tabs={
-    <Segmented className="settings-tabs" count={2} index={mode === 'private' ? 0 : 1} role="group" aria-label="分析哪种聊天">
-      <button type="button" aria-pressed={mode === 'private'} onClick={() => setMode('private')}>私聊</button>
-      <button type="button" aria-pressed={mode === 'group'} onClick={() => setMode('group')}>群聊</button>
+  const view = <ScrollPage label={t('聊天分析')} icon={ChartBar} scroller={scroller} tabs={
+    <Segmented className="settings-tabs" count={2} index={mode === 'private' ? 0 : 1} role="group" aria-label={t('分析哪种聊天')}>
+      <button type="button" aria-pressed={mode === 'private'} onClick={() => setMode('private')}>{t('私聊')}</button>
+      <button type="button" aria-pressed={mode === 'group'} onClick={() => setMode('group')}>{t('群聊')}</button>
     </Segmented>}>
-    <Connected backend={shell.backend} offline="连接 weflow serve 后，可以在这里查看私聊和群聊的统计。">
+    <Connected backend={shell.backend} offline={t('连接 weflow serve 后，可以在这里查看私聊和群聊的统计。')}>
       {mode === 'group'
         ? <div className="group-analytics"><GroupPicker state={groups} selected={group} onRetry={reloadGroups} onSelect={id => { setGroupId(id); setMember(null); }} />
           {group && (member
