@@ -276,7 +276,7 @@ time, .num { font-variant-numeric: tabular-nums; }
 .session-message { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-4); color: var(--fg-muted); font-size: var(--text-sm); }
 .virtual-list.conversation-list { position: relative; display: block; flex: 1; padding: 0; }
 .virtual-space { position: relative; }
-.virtual-row { position: absolute; top: 0; left: var(--space-2); right: var(--space-2); }
+.virtual-row { position: absolute; top: 0; left: var(--space-2); right: var(--space-3); }
 .virtual-row > .conversation-row { height: calc(100% - 2px); }
 /* Loading placeholders (#282, Skeleton.tsx): each takes the place and the shape of what it waits for. */
 .list-skeleton { flex: 1; overflow: hidden; padding: 8px; }

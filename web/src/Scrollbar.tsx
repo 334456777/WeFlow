@@ -62,7 +62,7 @@ export function Scrollbar({ target }: { target: RefObject<HTMLElement | null> })
       if (!overflow) return;
       const height = clientHeight - 2 * INSET;
       bar.style.top = area.offsetTop + area.clientTop + INSET + 'px';
-      bar.style.left = area.offsetLeft + area.clientLeft + area.clientWidth - bar.offsetWidth - INSET / 2 + 'px';
+      bar.style.left = area.offsetLeft + area.clientLeft + area.clientWidth - bar.offsetWidth + 'px';
       bar.style.height = height + 'px';
       const size = Math.min(height, Math.max(MIN_THUMB, (height * clientHeight) / scrollHeight));
       travel = height - size;
