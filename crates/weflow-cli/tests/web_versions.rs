@@ -241,6 +241,11 @@ impl Server {
 
     /// `GET target`: (status, body).
     fn get(&self, target: &str) -> (u16, String) {
+        self.send("GET", target, "")
+    }
+
+    /// `method target` with the token, and `body` as JSON: (status, body).
+    fn send(&self, method: &str, target: &str, body: &str) -> (u16, String) {
         let addr = self.started["url"]
             .as_str()
             .unwrap()
@@ -248,7 +253,9 @@ impl Server {
         let mut stream = TcpStream::connect(addr).unwrap();
         write!(
             stream,
-            "GET {target} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+            "{method} {target} HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer {TOKEN}\r\n\
+             Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
         )
         .unwrap();
         let mut raw = String::new();
@@ -457,4 +464,28 @@ fn prune_leaves_the_version_a_server_shows() {
     let pruned = cli(&home, &reg, &["web", "prune"]);
     assert_eq!(pruned["shown"], json!(["0.0.8"]));
     assert_eq!(server.get("/ui/").0, 200);
+}
+
+#[test]
+fn a_version_picked_through_the_api_is_shown_at_once() {
+    let home = temp_root("live");
+    let version = built_in();
+    let reg = registry(&["0.0.8", &version]);
+    cli(&home, &reg, &["web", "install", &version]);
+    let server = Server::start(&home, &reg, &[]);
+    assert_eq!(server.started["uiVersion"], version.as_str());
+
+    let (status, body) = server.send("PUT", "/web/use", r#"{"version":"0.0.8"}"#);
+    assert_eq!(status, 200, "{body}");
+    assert!(server.get("/ui/").1.contains("WeFlow 0.0.8"));
+    let (status, body) = server.send("POST", "/web/update", "{}");
+    assert_eq!(status, 200, "{body}");
+    assert!(server.get("/ui/").1.contains(&format!("WeFlow {version}")));
+    drop(server);
+
+    // a page chosen for the run stays
+    let server = Server::start(&home, &reg, &["--web-version", &version]);
+    let (status, body) = server.send("PUT", "/web/use", r#"{"version":"0.0.8"}"#);
+    assert_eq!(status, 200, "{body}");
+    assert!(server.get("/ui/").1.contains(&format!("WeFlow {version}")));
 }
