@@ -9,6 +9,7 @@ import { payFilterSummary, PaymentsExport, PaymentsFilter, PaymentsSummary } fro
 import { PaymentList } from './PaymentList';
 import { PaymentMerchants } from './PaymentMerchants';
 import { ALL_PAYMENTS, merchantsOf, usePayments, withinDays, type PayFilter } from './usePayments';
+import { t } from '../i18n';
 
 /** `active`: the page browsed, the one the console keeps the cards of while the settings are open. */
 export function usePaymentsPage(shell: Shell, active: boolean): Page {
@@ -23,27 +24,27 @@ export function usePaymentsPage(shell: Shell, active: boolean): Page {
   const pane = useRef<HTMLDivElement>(null);
   const cards = [
     {
-      id: 'pay-filter', title: '筛选支付记录', summary: payFilterSummary(filter),
+      id: 'pay-filter', title: t('筛选支付记录'), summary: payFilterSummary(filter),
       content: <PaymentsFilter filter={filter} onChange={setFilter} />,
     },
     {
-      id: 'pay-summary', title: '合计', summary: chosen ? chosen.length + ' 笔' : '',
+      id: 'pay-summary', title: t('合计'), summary: chosen ? t('{n} 笔', { n: chosen.length }) : '',
       content: <PaymentsSummary payments={chosen} />,
     },
     {
-      id: 'pay-export', title: '导出支付记录',
+      id: 'pay-export', title: t('导出支付记录'),
       content: <PaymentsExport key={scope + ':' + JSON.stringify(filter)} payments={chosen} filter={filter} />,
     },
   ];
   if (!live && !(active && backend.state === 'unauthorized')) return { cards };
-  const view = <BrowserPanel label="微信支付浏览" detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back="返回商户列表" title="支付记录" paneLabel="支付记录" pane={pane}
+  const view = <BrowserPanel label={t('微信支付浏览')} detail={shell.mobileDetail} onBack={() => setMobileDetail(false)} back={t('返回商户列表')} title={t('支付记录')} paneLabel={t('支付记录')} pane={pane}
     list={backend.state === 'unauthorized'
       ? <TokenPrompt />
       : <PaymentMerchants state={state} merchants={merchants} selected={filter.merchant} onRetry={reload}
         onSelect={merchant => { setFilter(f => ({ ...f, merchant })); setMobileDetail(true); }} />}>
     {live && (chosen
       ? <PaymentList key={scope + ':' + JSON.stringify(filter)} payments={chosen} scroller={pane} narrowed={Boolean(filter.merchant || filter.from || filter.to)} />
-      : state.status === 'loading' && <PaymentsSkeleton label="正在读取支付记录" />)}
+      : state.status === 'loading' && <PaymentsSkeleton label={t('正在读取支付记录')} />)}
   </BrowserPanel>;
   return { view, cards, shown: live ? cards.map(card => card.id) : undefined };
 }

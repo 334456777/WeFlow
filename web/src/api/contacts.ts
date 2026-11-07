@@ -1,12 +1,14 @@
 // The contacts (#205): `chat contacts --parsed`, the list as the desktop app shows it, read in process (`/api/`).
 import { get } from './client';
+import { msg } from '../i18n';
 import { keptRead } from './kept';
 
 export type { Contact, ContactKind } from './contract.gen';
 import type { Contact, ContactKind } from './contract.gen';
 
 export const CONTACT_KINDS: ContactKind[] = ['friend', 'group', 'official', 'former_friend'];
-export const contactKindLabels: Record<ContactKind, string> = { friend: '好友', group: '群聊', official: '公众号', former_friend: '曾经的好友' };
+// shown through t()
+export const contactKindLabels: Record<ContactKind, string> = { friend: msg('好友'), group: msg('群聊'), official: msg('公众号'), former_friend: msg('曾经的好友') };
 
 
 export async function getContacts(signal?: AbortSignal): Promise<Contact[]> {

@@ -2,6 +2,7 @@
 // too (`contactList`), kept for the server and account.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
+import { t } from '../i18n';
 import { contactList, type Contact } from '../api/contacts';
 
 export type ContactsState =
@@ -30,7 +31,7 @@ export function useContacts(enabled: boolean, scope: number): [ContactsState, ()
       if (left) return;
       done = true;
       read.current = null;
-      setState({ status: 'error', message: problem instanceof ApiError && problem.message ? problem.message : '读取通讯录失败' });
+      setState({ status: 'error', message: problem instanceof ApiError && problem.message ? problem.message : t('读取通讯录失败') });
     });
     // left before the list came: read it again next time
     return () => { left = true; if (!done && read.current === key) read.current = null; };

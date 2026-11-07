@@ -2,6 +2,7 @@
 // narrows them by days and payee itself, as `biz pay-records` has no filters.
 import { useEffect, useState } from 'react';
 import { ApiError } from '../api/client';
+import { t } from '../i18n';
 import { getPayRecords, paymentOf, PAY_PAGE, type Payment } from '../api/pay';
 import { dayOf } from '../chat/messages';
 
@@ -37,7 +38,7 @@ export function usePayments(enabled: boolean, scope: number): [PaymentsState, ()
       payments => { if (!signal.aborted) setState({ scope, value: { status: 'ready', payments } }); },
       problem => {
         if (signal.aborted) return;
-        setState({ scope, value: { status: 'error', message: (problem instanceof ApiError && problem.message) || '读取支付记录失败' } });
+        setState({ scope, value: { status: 'error', message: (problem instanceof ApiError && problem.message) || t('读取支付记录失败') } });
       },
     );
     return () => controller.abort();

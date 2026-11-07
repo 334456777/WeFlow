@@ -3,6 +3,7 @@
 // (`keptRead`): the whole table, as some who post are in no list of `chat contacts --parsed`.
 import { useEffect, useState } from 'react';
 import { ApiError, get } from '../api/client';
+import { t } from '../i18n';
 import { keptRead } from '../api/kept';
 import { getPostCounts } from '../api/sns';
 
@@ -33,7 +34,7 @@ export function peopleOf(counts: Record<string, number>, contacts: Record<string
     .filter(([, posts]) => posts > 0)
     .map(([username, posts]) => {
       const row = known.get(username);
-      const name = username === self ? '我' : (row && text(row, 'remark', 'nick_name', 'nickName', 'alias')) || username;
+      const name = username === self ? t('我') : (row && text(row, 'remark', 'nick_name', 'nickName', 'alias')) || username;
       const avatarUrl = row ? text(row, 'small_head_url', 'big_head_url', 'avatarUrl') || undefined : undefined;
       return { username, name, avatarUrl, posts };
     })
@@ -51,7 +52,7 @@ export function useMomentPeople(enabled: boolean, scope: number, self?: string):
       ([counts, contacts]) => { if (!controller.signal.aborted) setState({ scope, value: { status: 'ready', people: peopleOf(counts, Array.isArray(contacts) ? contacts : [], self) } }); },
       problem => {
         if (controller.signal.aborted) return;
-        setState({ scope, value: { status: 'error', message: (problem instanceof ApiError && problem.message) || '读取朋友圈的发布者失败' } });
+        setState({ scope, value: { status: 'error', message: (problem instanceof ApiError && problem.message) || t('读取朋友圈的发布者失败') } });
       },
     );
     return () => controller.abort();

@@ -1,6 +1,7 @@
 // The page's English (#439): every text of a `t('…')` or `msg('…')` in src/ needs its English in src/i18n/en.ts. `bun run i18n`
 // lists the texts without it, the English no text uses any more, and the Chinese of the page not in a `t()` yet, by
-// file; `bun run i18n --check` fails on the first two (CI runs it).
+// file; `bun run i18n --check` fails on the first two (CI runs it). Chinese that is data, not the page's words (the
+// labels of a WeChat Pay message it reads, say), is left out of that list with `// i18n-ignore: <why>` on its line.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,7 @@ const SRC = fileURLToPath(new URL('../src', import.meta.url));
 const HAN = /[一-鿿]/;
 // a text in quotes right after `t(`, as the page writes them: one line, no `${}`
 const CALL = /\b(?:t|msg)\(\s*(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/g;
+const IGNORE = /\/\/ i18n-ignore\b/;
 const LITERAL = /(['"`])((?:\\.|(?!\1)[^\\\n])*)\1|>([^<>{}\n]+)</g;
 
 function files(dir: string): string[] {
@@ -39,6 +41,7 @@ for (const path of files(SRC)) {
       if (!(text in en)) missing.push(`${name}:${i + 1}: ${text}`);
       inCalls.add(m.index! + m[0].indexOf(m[1]));
     }
+    if (IGNORE.test(line)) continue;
     for (const m of line.matchAll(LITERAL)) {
       const body = m[2] ?? m[3];
       if (!HAN.test(body)) continue;

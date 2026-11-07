@@ -6,14 +6,15 @@ import { getSnsStats, type SnsFilter, type SnsStats } from '../api/sns';
 import { DateRange } from '../calendar/DateRange';
 import { addDays, parseDay } from '../calendar/dates';
 import { GridSkeleton } from '../Skeleton';
+import { t } from '../i18n';
 
 /** Unix seconds of the start of a local day, and of the last second of one. */
 const startOf = (day: string) => (day ? parseDay(day).getTime() / 1000 : 0);
 const endOf = (day: string) => (day ? parseDay(addDays(day, 1)).getTime() / 1000 - 1 : 0);
 
 export function filterSummary(filter: SnsFilter): string {
-  const parts = [filter.keyword.trim() && '「' + filter.keyword.trim() + '」', (filter.start || filter.end) && '按日期'].filter(Boolean);
-  return parts.length ? parts.join(' · ') : '全部';
+  const parts = [filter.keyword.trim() && t('「{keyword}」', { keyword: filter.keyword.trim() }), (filter.start || filter.end) && t('按日期')].filter(Boolean);
+  return parts.length ? parts.join(' · ') : t('全部');
 }
 
 /** Words and days, applied when sent; the poster is picked in the list. */
@@ -28,14 +29,14 @@ export function MomentsFilter({ filter, onChange }: { filter: SnsFilter; onChang
   return <form className="moments-filter" onSubmit={submit}>
     <div className="search-form">
       <div className="search-input"><MagnifyingGlass size={16} aria-hidden="true" />
-        <input type="search" aria-label="朋友圈里的文字" placeholder="朋友圈里的文字" value={keyword} onChange={event => setKeyword(event.target.value)} />
+        <input type="search" aria-label={t('朋友圈里的文字')} placeholder={t('朋友圈里的文字')} value={keyword} onChange={event => setKeyword(event.target.value)} />
       </div>
-      <button className="primary-button search-button" type="submit"><MagnifyingGlass size={16} /><span className="search-button-label">筛选</span></button>
+      <button className="primary-button search-button" type="submit"><MagnifyingGlass size={16} /><span className="search-button-label">{t('筛选')}</span></button>
     </div>
-    <div className="search-date-row"><span className="field-label">时间范围</span>
-      <DateRange label="朋友圈的时间范围" from={range.from} to={range.to} onChange={setRange} /></div>
+    <div className="search-date-row"><span className="field-label">{t('时间范围')}</span>
+      <DateRange label={t('朋友圈的时间范围')} from={range.from} to={range.to} onChange={setRange} /></div>
     {narrowed && <button type="button" className="text-button moments-clear" onClick={() => { setKeyword(''); setRange({ from: '', to: '' }); onChange({ ...filter, keyword: '', start: 0, end: 0 }); }}>
-      <X size={12} />清除筛选</button>}
+      <X size={12} />{t('清除筛选')}</button>}
   </form>;
 }
 
@@ -51,11 +52,11 @@ export function MomentsStats({ scope, active }: { scope: number; active: boolean
     return () => controller.abort();
   }, [scope, active]);
   const value = stats?.scope === scope ? stats.value : null;
-  if (failed && !value) return <p className="empty-text" role="alert">读取朋友圈统计失败。</p>;
-  if (!value) return <GridSkeleton label="正在统计朋友圈" cells={3} />;
+  if (failed && !value) return <p className="empty-text" role="alert">{t('读取朋友圈统计失败。')}</p>;
+  if (!value) return <GridSkeleton label={t('正在统计朋友圈')} cells={3} />;
   return <dl className="info-grid">
-    <div><dt>朋友圈</dt><dd className="num">{value.totalPosts.toLocaleString('zh-CN')} 条</dd></div>
-    <div><dt>发布者</dt><dd className="num">{value.totalFriends.toLocaleString('zh-CN')} 人</dd></div>
-    {value.myPosts !== null && <div><dt>我发的</dt><dd className="num">{value.myPosts.toLocaleString('zh-CN')} 条</dd></div>}
+    <div><dt>{t('朋友圈')}</dt><dd className="num">{t('{totalPosts} 条', { totalPosts: value.totalPosts.toLocaleString('zh-CN') })}</dd></div>
+    <div><dt>{t('发布者')}</dt><dd className="num">{t('{totalFriends} 人', { totalFriends: value.totalFriends.toLocaleString('zh-CN') })}</dd></div>
+    {value.myPosts !== null && <div><dt>{t('我发的')}</dt><dd className="num">{t('{myPosts} 条', { myPosts: value.myPosts.toLocaleString('zh-CN') })}</dd></div>}
   </dl>;
 }

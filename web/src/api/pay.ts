@@ -1,6 +1,7 @@
 // WeChat Pay (#204): the notices of the WeChat Pay account (`biz pay-records`), read in the server's process
 // (`/api/`, docs/serve-api.md), and what the page makes of their text: the amount, how it was paid, its state, the payee.
 import { get } from './client';
+import { t } from '../i18n';
 import type * as Contract from './contract.gen';
 
 /** A notice as `biz pay-records` gives it (the contract's, #430); its `description` holds lines such as 「付款金额¥28.00」
@@ -41,7 +42,7 @@ export async function getPayRecords(offset: number, signal?: AbortSignal): Promi
 }
 
 // longest first, so 「付款金额」 is not read as 「金额」
-const LABELS = ['付款金额', '支付金额', '消费金额', '交易金额', '退款金额', '到账金额', '收款金额', '支付方式', '付款方式', '退款方式', '到账方式', '交易状态', '支付状态', '退款状态', '当前状态', '商户名称', '收款方', '收款商户', '商品详情', '商品', '商户', '金额', '方式', '状态']
+const LABELS = ['付款金额', '支付金额', '消费金额', '交易金额', '退款金额', '到账金额', '收款金额', '支付方式', '付款方式', '退款方式', '到账方式', '交易状态', '支付状态', '退款状态', '当前状态', '商户名称', '收款方', '收款商户', '商品详情', '商品', '商户', '金额', '方式', '状态'] // i18n-ignore: the labels of a WeChat Pay message, read from it
   .sort((a, b) => b.length - a.length);
 const AMOUNT = /^(付款|支付|消费|交易|退款|到账|收款)?金额$/;
 const METHOD = /方式$/;
@@ -69,12 +70,12 @@ export function paymentOf(record: PayRecord): Payment {
   const find = (pattern: RegExp) => lines.find(l => pattern.test(l.label));
   const amountLine = find(AMOUNT);
   const amount = (amountLine && fenOf(amountLine.value)) ?? fenOf(record.title) ?? lines.map(l => fenOf(l.value)).find(v => v !== null) ?? null;
-  const refund = Boolean(amountLine?.label.startsWith('退款')) || /退款/.test(record.title);
+  const refund = Boolean(amountLine?.label.startsWith('退款')) || /退款/.test(record.title); // i18n-ignore: read from the message
   return {
     id: record.localId + ':' + record.createTime,
     time: record.timestamp || (record.createTime ?? 0),
     title: record.title,
-    merchant: find(PAYEE)?.value || record.merchantName || '微信支付',
+    merchant: find(PAYEE)?.value || record.merchantName || t('微信支付'),
     icon: record.merchantIcon || undefined,
     amount,
     refund,

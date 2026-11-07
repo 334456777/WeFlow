@@ -18,6 +18,13 @@ describe('the page speaks the server\'s language (#439)', () => {
     expect(t('回复不是 JSON（HTTP {status}）', { status: 502 })).toBe('The answer is not JSON (HTTP 502)');
   });
 
+  test('an English word follows its count', () => {
+    setLang('en');
+    expect(t('{n} 条结果', { n: 1 })).toBe('1 result');
+    expect(t('{n} 条结果', { n: 2 })).toBe('2 results');
+    expect(t('{n} 条结果', { n: '1,280' })).toBe('1,280 results');
+  });
+
   test('the document says it, and the next visit starts in it', () => {
     setLang('en');
     expect(document.documentElement.lang).toBe('en');
