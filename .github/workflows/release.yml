@@ -385,19 +385,20 @@ jobs:
       head: ${{ needs.prepare.outputs.tag }}
       pages_path: bench/${{ needs.prepare.outputs.tag }}
 
-  # The 性能基准 section of the release notes, before 下载: the link to the report and the lines of highlights.md.
-  # It sits between two markers, so a re-run replaces it instead of adding another.
+  # The 性能基准 section of the release notes, before 下载: the link to the report and the lines of highlights.md
+  # (`.github/scripts/release-bench-notes.sh`, which bench.yml also runs when an older release is measured).
   bench-notes:
     name: Add the benchmark to the release notes
     needs: [prepare, bench]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TAG: ${{ needs.prepare.outputs.tag }}
-      BASE: ${{ needs.prepare.outputs.bench_base }}
-      URL: ${{ needs.bench.outputs.report_url }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v8
         with:
           name: bench-results
@@ -407,28 +408,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          {
-            echo "<!-- bench -->"
-            echo "## 性能基准"
-            echo
-            echo "与 \`$BASE\` 对比，在同一台 GitHub Actions Windows x64 机器上用合成的基准账号测得：**[查看完整报告]($URL)**"
-            echo
-            cat results/highlights.md
-            echo
-            echo "<!-- /bench -->"
-          } > section.md
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > body.md
-          awk -v f=section.md '
-            { sub(/\r$/, "") }
-            /^<!-- bench -->$/ { skip = 1; next }
-            skip && /^<!-- \/bench -->$/ { skip = 0; after = 1; next }
-            skip { next }
-            after && $0 == "" { after = 0; next }
-            { after = 0 }
-            $0 == "<a name=\"weflow-download\"></a>" && !done { while ((getline l < f) > 0) print l; print ""; done = 1 }
-            { print }
-            END { if (!done) { print ""; while ((getline l < f) > 0) print l } }
-          ' body.md > notes.md
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
-          cat section.md >> "$GITHUB_STEP_SUMMARY"
+          TAG: ${{ needs.prepare.outputs.tag }}
+          BASE: ${{ needs.prepare.outputs.bench_base }}
+          URL: ${{ needs.bench.outputs.report_url }}
+        run: bash .github/scripts/release-bench-notes.sh "$TAG" "$BASE" "$URL" results/highlights.md

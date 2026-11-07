@@ -283,9 +283,9 @@ def commands(manifest, out, cursor):
 def middle_cursor(exe, home, manifest):
     """The `_cursor` of the message in the middle of the biggest group, as `exe` gives it (None if it does not)."""
     big = manifest["conversations"][0]
-    proc = subprocess.run([exe, "--json", "chat", "messages", big["username"], "--limit", "1",
-                           "--offset", str(big["messages"] // 2)], env=environment(home), capture_output=True,
-                          stdin=subprocess.DEVNULL)
+    proc = subprocess.run([exe, "chat", "messages", big["username"], "--limit", "1",
+                           "--offset", str(big["messages"] // 2), "--json"],
+                          env=environment(home), capture_output=True, stdin=subprocess.DEVNULL)
     try:
         return json.loads(proc.stdout)["data"][0]["_cursor"]
     except (ValueError, LookupError, TypeError):
@@ -299,7 +299,7 @@ def count_allocations(exe, home, argv, out_dir, log):
     shutil.rmtree(out_dir, ignore_errors=True)
     os.makedirs(out_dir)
     report = log + ".alloc.json"
-    proc = subprocess.run([exe, "--json", *argv], env=dict(environment(home), WEFLOW_ALLOC_STATS=report),
+    proc = subprocess.run([exe, *argv, "--json"], env=dict(environment(home), WEFLOW_ALLOC_STATS=report),
                           capture_output=True, stdin=subprocess.DEVNULL)
     with open(log, "wb") as f:
         f.write(proc.stdout + b"\n--- stderr ---\n" + proc.stderr)
@@ -317,7 +317,8 @@ def run_command(exe, home, args, out_dir, log):
     os.makedirs(out_dir)
     job = Job()
     begin = time.perf_counter()
-    proc = job.start([exe, "--json", "--progress", *args], env=environment(home), stdin=subprocess.DEVNULL,
+    # the options go after the command, the one place every release takes them (v4.0.0 refused them before it)
+    proc = job.start([exe, *args, "--json", "--progress"], env=environment(home), stdin=subprocess.DEVNULL,
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     sampler = Sampler(proc.pid, begin)
     sampler.start()
@@ -441,7 +442,7 @@ def bench_commands(args, exes, alloc_exes, homes, manifest, out):
 def start_server(job, exe, home, log):
     # a refused argument is answered on stdout: keep it for the error below
     stdout = open(log + ".stdout", "w+b")
-    proc = job.start([exe, "--json", "serve", "--port", "0", "--api-token", TOKEN, "--api-only"],
+    proc = job.start([exe, "serve", "--port", "0", "--api-token", TOKEN, "--api-only", "--json"],
                      env=environment(home), stdin=subprocess.DEVNULL, stdout=stdout, stderr=subprocess.PIPE)
     begin = time.perf_counter()
     lines = []
@@ -754,7 +755,10 @@ def report_blocks(doc):
                      "。非 0 表示它在自己的合成账号上有检查没通过（旧版本缺少某个路由时会这样），"
                      "计时照常保留，原因见 `logs/serve-bench-*.txt`。")
                   + "某一边不是每次都返回 200 时（例如旧版本还没有这个 `/api/` 路由，返回 404 只要零点几毫秒），"
-                    "格子里注明返回的状态，不计算比值。"),
+                    "格子里注明返回的状态，不计算比值。"
+                  + "".join(f"{v} 没有计时结果：它的 `weflow serve` 没有启动（v5.0.0 之前的版本没有现在的命令 API），"
+                            f"见 `logs/serve-bench-{v}.txt`。"
+                            for v in VERSIONS if not sb[v]["results"])),
         ]
         rb = (sb["base"]["results"] or {}).get("results", {})
         rh = (sb["head"]["results"] or {}).get("results", {})
@@ -772,7 +776,8 @@ def report_blocks(doc):
             cells = [fmt(b) + (f"（状态 {sb_}）" if sb_ else ""), fmt(h) + (f"（状态 {sh}）" if sh else "")]
             r = "-" if sb_ or sh else fmt_ratio(ratio(h, b), None if None in (b, h) else h - b, NOISE_MS)
             rows.append([f"`{route}`", *cells, r])
-        blocks.append(("table", ["路由", "base", "head", RATIO_HEADER], rows))
+        if rows:
+            blocks.append(("table", ["路由", "base", "head", RATIO_HEADER], rows))
     return blocks
 
 
@@ -782,6 +787,15 @@ def highlights(doc):
     b, h = doc["binary"]["base"], doc["binary"]["head"]
     out.append(f"二进制体积：{fmt(b, MIB, 'MiB')} → {fmt(h, MIB, 'MiB')}（{ratio(h, b):.2f}×）")
     commands = doc.get("commands") or {}
+    if commands:
+        failed = {v: [n for n, e in commands.items() if e["median"][v]["failed_runs"]] for v in VERSIONS}
+        for v in VERSIONS:
+            if len(failed[v]) == len(commands):
+                out.append(f"{v} 的命令全部运行失败，见报告")
+            elif failed[v]:
+                out.append(f"{v} 有运行失败的命令：" + "，".join(f"`{n}`" for n in failed[v]))
+        # a failed run ends early: only the commands that ran through on both sides are compared
+        commands = {n: e for n, e in commands.items() if all(n not in failed[v] for v in VERSIONS)}
     if commands:
         changed = []
         for name, e in commands.items():
@@ -798,9 +812,6 @@ def highlights(doc):
             out.append(f"命令耗时有变化：{'；'.join(changed)}；其余 {len(commands) - len(changed)} 条在噪声范围内")
         else:
             out.append(f"命令耗时：{len(commands)} 条命令都在噪声范围内")
-        failed = [n for n, e in commands.items() if any(e["median"][v]["failed_runs"] for v in VERSIONS)]
-        if failed:
-            out.append("有运行失败的命令：" + "，".join(f"`{n}`" for n in failed))
     if doc.get("load_failed"):
         out.append("`weflow serve` 持续负载没有完成，见报告")
     elif doc.get("load"):
@@ -817,16 +828,22 @@ def highlights(doc):
     if sb:
         rb = (sb["base"]["results"] or {}).get("results", {})
         rh = (sb["head"]["results"] or {}).get("results", {})
-        ups = downs = 0
+        ups = downs = compared = 0
         for route in set(rb) & set(rh):
             notes = (rb[route].get("note") or "") + (rh[route].get("note") or "")
             mb, mh = rb[route].get("median"), rh[route].get("median")
             if "status {" in notes or None in (mb, mh):
                 continue
+            compared += 1
             m = mark(ratio(mh, mb), mh - mb, NOISE_MS)
             ups, downs = ups + (m == "▲"), downs + (m == "▼")
-        out.append(f"serve_bench：{downs} 个路由快了 10% 以上，{ups} 个慢了 10% 以上" if ups or downs
-                   else "serve_bench：各路由都在噪声范围内")
+        if not compared:
+            # an older base whose server never started (or answers none of these routes) leaves nothing to compare
+            out.append("serve_bench：没有两边都能计时的路由，见报告")
+        elif ups or downs:
+            out.append(f"serve_bench：{downs} 个路由快了 10% 以上，{ups} 个慢了 10% 以上")
+        else:
+            out.append(f"serve_bench：{compared} 个路由都在噪声范围内")
     return out
 
 
