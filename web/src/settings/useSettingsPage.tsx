@@ -15,6 +15,7 @@ import { Accounts, AccountsSkeleton } from './Accounts';
 import { AdvancedTools } from './AdvancedTools';
 import { CommandConsole } from './CommandConsole';
 import { AiSetting, CacheSetting } from './MoreSettings';
+import { ServeOptions } from './ServeOptions';
 import { WebVersions } from './WebVersions';
 import type { ProfilesState } from './useProfiles';
 import { msg, t } from '../i18n';
@@ -79,6 +80,7 @@ export function useSettingsPage(shell: Shell, prefs: Preferences, { profiles: { 
         <TokenForm label={t('新的令牌')} />
       </div>{tokenSaved && <button className="secondary-button" type="button" onClick={() => setToken(null)}>{t('清除')}</button>}</div>
       {'health' in backend && serverDetail(backend.health) && <div className="setting-row"><div><h2>{t('运行方式')}</h2><p>{serverDetail(backend.health)}</p></div></div>}
+      {connected && <ServeOptions />}
       {connected && <><AiSetting profile={profile} onSaved={reload} /><CacheSetting /></>}
       <div className="setting-row"><div><h2>{t('实时消息')}</h2><p>{t('微信收到消息后几秒内显示在会话列表和打开的会话里。关掉后不再接收，左下角显示「已连接」而不是「实时」。')}</p></div><label className="toggle"><input type="checkbox" aria-label={t('实时消息')} checked={prefs.realtime} onChange={event => prefs.setRealtime(event.target.checked)} /><span /></label></div>
       <div className="setting-row"><div><h2>{t('默认附带媒体文件')}</h2><p>{t('导出时把照片等媒体放进 media 文件夹，和导出文件一起打包成 zip。默认关闭。')}</p></div><label className="toggle"><input type="checkbox" aria-label={t('默认附带媒体文件')} checked={prefs.includeMedia} onChange={event => prefs.setIncludeMedia(event.target.checked)} /><span /></label></div>
