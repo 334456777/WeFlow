@@ -1,4 +1,0 @@
-- 二进制体积：30.7 MiB → 30.3 MiB（0.99×）
-- 命令耗时有变化：`export messages json` 5,310 → 4,557 ms（0.86×）；`export messages chatlab` 4,708 → 4,018 ms（0.85×）；`export messages txt` 3,951 → 3,387 ms（0.86×）；`report dual` 439 → 360 ms（0.82×）；其余 14 条在噪声范围内
-- `weflow serve` 持续负载：每秒请求数 19 → 19，延迟 p50 56 → 55 ms，工作集 342 → 371 MiB；head 的内存在后半段上升了 34 MiB
-- serve_bench：8 个路由快了 10% 以上，0 个慢了 10% 以上

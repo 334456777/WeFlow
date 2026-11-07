@@ -1,4 +1,0 @@
-- 二进制体积：30.7 MiB → 30.8 MiB（1.00×）
-- 命令耗时有变化：`export messages chatlab` 4,673 → 4,057 ms（0.87×）；`export messages txt` 3,935 → 3,384 ms（0.86×）；其余 16 条在噪声范围内
-- `weflow serve` 持续负载：每秒请求数 18 → 19，延迟 p50 68 → 63 ms，工作集 353 → 345 MiB
-- serve_bench：0 个路由快了 10% 以上，1 个慢了 10% 以上

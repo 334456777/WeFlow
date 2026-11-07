@@ -1,5 +1,0 @@
-- 二进制体积：24.8 MiB → 28.4 MiB（1.14×）
-- base 有运行失败的命令：`chat messages cursor`
-- 命令耗时有变化：`report annual` 2,138 → 1,285 ms（0.60×）；`analytics overall` 623 → 537 ms（0.86×）；`group members` 779 → 609 ms（0.78×）；`group ranking` 789 → 599 ms（0.76×）；`chat export-stats` 751 → 571 ms（0.76×）；`chat date-counts` 549 → 434 ms（0.79×）；`chat search` 1,696 → 274 ms（0.16×）；`report dual` 402 → 239 ms（0.60×）；`chat messages first page` 194 → 108 ms（0.56×）；其余 8 条在噪声范围内
-- `weflow serve` 持续负载没有完成，见报告
-- serve_bench：没有两边都能计时的路由，见报告

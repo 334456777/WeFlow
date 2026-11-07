@@ -1,4 +1,0 @@
-- 二进制体积：24.6 MiB → 24.8 MiB（1.01×）
-- 命令耗时有变化：`export media images` 33,337 → 20,867 ms（0.63×）；`export messages json with images` 35,813 → 24,002 ms（0.67×）；其余 15 条在噪声范围内
-- `weflow serve` 持续负载没有完成，见报告
-- serve_bench：没有两边都能计时的路由，见报告
