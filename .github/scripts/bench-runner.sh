@@ -7,8 +7,10 @@
 #
 # usage: bench-runner.sh measure   (env: COMMITS, RUNS, SEED, GROUP_MESSAGES, CONVERSATIONS, LOAD_SECONDS, ONLY, FORCE
 #                                    as bench.yml passes them)
-#        bench-runner.sh clean     what the next run will not use: the Rust toolchains other than this commit's (an
-#                                   older commit built here may have brought its own), the build cache once it passes
+#        bench-runner.sh clean     what the next run will not use: the Rust toolchains neither this commit's nor used
+#                                   in the last TOOLCHAIN_DAYS days (an older commit built here brings its own, and a
+#                                   backfill over several runs keeps it; bench-commits.py notes in
+#                                   toolchains-used.txt when each was used), the build cache once it passes
 #                                   TARGET_LIMIT_MIB, what the clone no longer reaches, and this run's files in the
 #                                   checkout (bench-commits.py already removed the binaries and accounts)
 set -euo pipefail
@@ -25,6 +27,7 @@ UV_VERSION=0.12.19
 UV_SHA256=6dbb02d79e419522f1c500f0adb1cddcff0cda7d59b0d66ea7f5e3b4a1b2f5f0
 export UV_PYTHON_INSTALL_DIR="$dir/python" UV_CACHE_DIR="$dir/uv-cache"
 TARGET_LIMIT_MIB=30720
+TOOLCHAIN_DAYS=14
 
 case "${1:-}" in
   measure)
@@ -61,10 +64,20 @@ case "${1:-}" in
     ;;
   clean)
     keep=$(rustup show active-toolchain 2>/dev/null | cut -d' ' -f1 || true)
+    used="$dir/toolchains-used.txt"
+    since=$(( $(date +%s) - TOOLCHAIN_DAYS * 86400 ))
+    recent=$( [ -f "$used" ] && awk -v s="$since" '$2 >= s { print $1 }' "$used" | sort -u || true)
     if [ -n "$keep" ]; then
       for t in $(rustup toolchain list | cut -d' ' -f1); do
-        [ "$t" = "$keep" ] || rustup toolchain uninstall "$t"
+        [ "$t" = "$keep" ] && continue
+        # a channel such as 1.95.0 names the toolchain 1.95.0-x86_64-pc-windows-msvc
+        if printf '%s\n' $recent | grep -qxF "${t%-x86_64-pc-windows-msvc}"; then continue; fi
+        rustup toolchain uninstall "$t"
       done
+    fi
+    # only what is still recent stays noted
+    if [ -f "$used" ]; then
+      awk -v s="$since" '$2 >= s' "$used" > "$used.tmp" && mv "$used.tmp" "$used"
     fi
     if [ -d "$CARGO_TARGET_DIR" ]; then
       size=$(du -sm "$CARGO_TARGET_DIR" | cut -f1)

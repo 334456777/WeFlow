@@ -29,6 +29,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench  # noqa: E402
@@ -67,6 +68,7 @@ def build(sha, bench_dir):
     git("fetch", "-q", "--depth=1", "origin", sha, cwd=src)
     git("checkout", "-q", "--detach", "--force", sha, cwd=src)
     git("clean", "-q", "-fdx", cwd=src)
+    note_toolchain(bench_dir, src)
     env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(bench_dir, "target"))
     cargo = ["cargo", "build", "--release", "-p", "weflow-cli", "--bin", "weflow", "--target", TARGET]
     print(f"== build {sha[:10]}", flush=True)
@@ -81,6 +83,18 @@ def build(sha, bench_dir):
         subprocess.run([*cargo, "--features", "alloc-stats"], cwd=src, env=env, check=True)
         shutil.copy2(built, alloc)
     return exe, alloc if has_alloc else None
+
+
+def note_toolchain(bench_dir, root):
+    """Notes when the Rust toolchain of the checkout at `root` was last used, in `toolchains-used.txt`, so that the
+    clean-up of bench-runner.sh keeps the ones used lately: a backfill spread over several runs downloads each once."""
+    try:
+        with open(os.path.join(root, "rust-toolchain.toml"), encoding="utf-8") as f:
+            channel = next(line.split("=", 1)[1].strip().strip('"') for line in f if line.strip().startswith("channel"))
+    except (OSError, StopIteration):
+        return
+    with open(os.path.join(bench_dir, "toolchains-used.txt"), "a", encoding="utf-8") as f:
+        f.write(f"{channel} {int(time.time())}\n")
 
 
 def clean_up(bench_dir, anchors, account):
