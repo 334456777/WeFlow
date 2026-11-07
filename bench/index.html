@@ -1,22 +1,135 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>WeFlow 基准测试报告</title>
-<style>:root{color-scheme:light dark;--fg:#1f2328;--bg:#fff;--link:#0969da;--visited:#8250df}
-@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--bg:#0d1117;--link:#4493f8;--visited:#ab7df8}}
-body{font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif;margin:0;padding:16px;max-width:720px;color:var(--fg);background:var(--bg)}
-a{color:var(--link)}a:visited{color:var(--visited)}</style>
-</head><body><h1>WeFlow 基准测试报告</h1><ul>
-<li><a href="v5.0.1/">v5.0.1</a></li>
-<li><a href="v5.0.0/">v5.0.0</a></li>
-<li><a href="v4.2.1/">v4.2.1</a></li>
-<li><a href="v4.2.0/">v4.2.0</a></li>
-<li><a href="v4.1.0/">v4.1.0</a></li>
-<li><a href="v4.0.0/">v4.0.0</a></li>
-<li><a href="v3.0.1/">v3.0.1</a></li>
-<li><a href="v3.0.0/">v3.0.0</a></li>
-<li><a href="v2.0.0/">v2.0.0</a></li>
-<li><a href="export-hotspots-521-523-522/">export-hotspots-521-523-522</a></li>
-<li><a href="492-reads-msg-row/">492-reads-msg-row</a></li>
-<li><a href="491-export-msg-row/">491-export-msg-row</a></li>
-<li><a href="489-baseline/">489-baseline</a></li>
-<li><a href="257-final/">257-final</a></li>
-</ul></body></html>
+<!doctype html>
+<!-- The benchmark viewer on GitHub Pages (#601, #604): pick an environment, then any two commits measured in it, and
+     the comparison is made here from their result.json (compare.mjs). The choice is kept in the address
+     (?env=&base=&head=, a commit by a name it was asked by, such as a tag, or by its SHA), so a link shows the same
+     comparison; the release notes link here. bench.yml copies this file to bench/ of the gh-pages branch. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WeFlow 基准测试</title>
+<style>
+:root{color-scheme:light dark;--fg:#1f2328;--bg:#fff;--muted:#57606a;--border:#d0d7de;--subtle:#f6f8fa;--stripe:#fafbfc;
+--grid:#e5e7eb;--base:#2563eb;--head:#dc2626;--warn:#9a6700;--link:#0969da}
+@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--bg:#0d1117;--muted:#9198a1;--border:#3d444d;--subtle:#151b23;
+--stripe:#10151c;--grid:#262c36;--base:#4493f8;--head:#f85149;--warn:#d29922;--link:#4493f8}}
+body{font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif;margin:0;padding:16px;max-width:1000px;color:var(--fg);background:var(--bg)}
+a{color:var(--link)}
+h1{font-size:22px}h2{font-size:18px;margin-top:32px;border-bottom:1px solid var(--border)}h3{font-size:15px}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--subtle);padding:1px 4px;border-radius:4px}
+.scroll{overflow-x:auto}table{border-collapse:collapse;margin:8px 0 16px}
+th,td{border:1px solid var(--border);padding:4px 10px;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{background:var(--subtle)}tbody tr:nth-child(even){background:var(--stripe)}
+svg{width:100%;max-width:720px;font:11px system-ui;fill:var(--muted)}.grid{stroke:var(--grid)}
+polyline.base{stroke:var(--base)}polyline.head{stroke:var(--head)}i.base{background:var(--base)}i.head{background:var(--head)}
+.legend span{margin-right:16px}.legend i{display:inline-block;width:12px;height:3px;margin-right:6px;vertical-align:middle}
+form{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:center;padding:12px;border:1px solid var(--border);
+border-radius:8px;background:var(--subtle)}
+label{color:var(--muted)}select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+padding:4px 6px;min-width:0;width:100%}
+.note{color:var(--muted)}.warn{color:var(--warn)}
+@media (max-width:560px){form{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<h1>WeFlow 基准测试</h1>
+<p class="note">每个提交在同一台自托管机器上分别测量，结果按环境（机器、测量工具、合成账号）分组；只有同一个环境里的两个结果能比较。</p>
+<form id="pick" aria-label="选择要比较的结果">
+  <label for="env">环境</label><select id="env"></select>
+  <label for="base">base</label><select id="base"></select>
+  <label for="head">head</label><select id="head"></select>
+</form>
+<p id="status" class="note" role="status" aria-live="polite">正在读取……</p>
+<main id="report"></main>
+<script type="module">
+import { CURVES_NOTE, incomparable, inlineHtml, memorySeries, reportBlocks, svgCurves, toHtml } from './compare.mjs';
+
+const $ = id => document.getElementById(id);
+const status = (text, warn = false) => { $('status').textContent = text; $('status').className = warn ? 'warn' : 'note'; };
+const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const cache = new Map();
+const load = path => {
+  if (!cache.has(path)) cache.set(path, fetch(path, { cache: 'no-cache' }).then(r => {
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return r.json();
+  }));
+  return cache.get(path);
+};
+
+let index;
+const commitsOf = key => Object.entries(index.envs[key].results)
+  .map(([sha, e]) => ({ sha, ...e }))
+  .sort((a, b) => b.measured_at.localeCompare(a.measured_at));
+const nameOf = c => (c.refs.length ? c.refs.join('，') : c.sha.slice(0, 10));
+/** The commit a name in the address means: one it was asked by, or the start of its SHA. */
+const find = (key, name) => name && commitsOf(key).find(c => c.refs.includes(name) || c.sha.startsWith(name.toLowerCase()));
+/** How a commit is named in the address: its first name, else its SHA's start. */
+const linkName = c => c.refs[0] ?? c.sha.slice(0, 12);
+
+function envLabel(key) {
+  const e = index.envs[key], list = commitsOf(key);
+  const last = list[0]?.measured_at.slice(0, 10) ?? '-';
+  return `${key} · ${e.machine.cpu} · ${list.length} 个提交 · 最近 ${last}`;
+}
+
+function fill(select, items, chosen) {
+  select.replaceChildren(...items.map(([value, label]) => new Option(label, value, false, value === chosen)));
+}
+
+function commitLabel(c) {
+  const version = (c.version || '').replace(/^weflow /, '').split(' (')[0];
+  return `${nameOf(c)} · ${version} · ${c.measured_at.slice(0, 16).replace('T', ' ')}${c.only ? ' · 部分' : ''}`;
+}
+
+function choose(key, baseName, headName) {
+  const list = commitsOf(key);
+  const head = find(key, headName) ?? list[0];
+  const base = find(key, baseName) ?? list.find(c => c.sha !== head?.sha) ?? head;
+  fill($('env'), Object.keys(index.envs).sort((a, b) => (commitsOf(b)[0]?.measured_at ?? '').localeCompare(commitsOf(a)[0]?.measured_at ?? '')).map(k => [k, envLabel(k)]), key);
+  fill($('base'), list.map(c => [c.sha, commitLabel(c)]), base?.sha);
+  fill($('head'), list.map(c => [c.sha, commitLabel(c)]), head?.sha);
+  return { base, head };
+}
+
+async function show() {
+  const key = $('env').value, base = index.envs[key].results[$('base').value], head = index.envs[key].results[$('head').value];
+  const params = new URLSearchParams({ env: key, base: linkName({ sha: $('base').value, ...base }), head: linkName({ sha: $('head').value, ...head }) });
+  history.replaceState(null, '', `?${params}`);
+  $('report').replaceChildren();
+  if ($('base').value === $('head').value) { status('base 和 head 是同一个提交，选两个不同的提交来比较。', true); return; }
+  status('正在读取两份结果……');
+  try {
+    const [b, h] = await Promise.all([load(`data/${key}/${$('base').value}.json`), load(`data/${key}/${$('head').value}.json`)]);
+    const why = incomparable(b, h);
+    if (why) { status(why, true); return; }
+    const charts = memorySeries(b, h).map(([title, series]) => `<h3>${inlineHtml(title)}</h3>${svgCurves(series)}`);
+    // the page has its own title
+    $('report').innerHTML = toHtml(reportBlocks(b, h).filter(block => block.h !== 1))
+      + `<h2>内存曲线</h2><p>${escape(CURVES_NOTE)}</p><p class="legend"><span><i class="base"></i>base</span><span><i class="head"></i>head</span></p>`
+      + charts.join('');
+    status('');
+  } catch (e) {
+    status(`读不到结果：${e.message}`, true);
+  }
+}
+
+try {
+  index = await load('data/index.json');
+  const keys = Object.keys(index.envs ?? {});
+  if (!keys.length) throw new Error('还没有结果');
+  const q = new URLSearchParams(location.search);
+  const newest = keys.sort((a, b) => (commitsOf(b)[0]?.measured_at ?? '').localeCompare(commitsOf(a)[0]?.measured_at ?? ''))[0];
+  // an address without the environment: the newest one that holds both commits
+  const key = q.has('env') && index.envs[q.get('env')] ? q.get('env')
+    : keys.find(k => find(k, q.get('base')) && find(k, q.get('head'))) ?? newest;
+  choose(key, q.get('base'), q.get('head'));
+  $('env').addEventListener('change', () => { choose($('env').value); show(); });
+  $('base').addEventListener('change', show);
+  $('head').addEventListener('change', show);
+  await show();
+} catch (e) {
+  status(`没有可以显示的结果：${e.message}`, true);
+}
+</script>
+</body>
+</html>
