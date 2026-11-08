@@ -36,7 +36,7 @@ fn built_in() -> String {
 fn package(version: &str) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let opts = zip::write::SimpleFileOptions::default();
-    let meta = json!({ "name": "weflow-web", "version": version, "apiVersion": "3", "minBackendVersion": "0.0.1" });
+    let meta = json!({ "name": "weflow-web", "version": version, "apiVersion": "2", "minBackendVersion": "0.0.1" });
     for (name, content) in [
         (
             "index.html",

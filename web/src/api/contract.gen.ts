@@ -2,7 +2,7 @@
 // again once weflow-cli has rewritten the contract.
 
 /** The API version of the contract, `apiVersion` of `/health`. */
-export const CONTRACT_API_VERSION = "3";
+export const CONTRACT_API_VERSION = "2";
 
 /** A conversation of `chat sessions`, newest first. */
 export interface Session {
