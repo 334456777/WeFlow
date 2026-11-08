@@ -101,7 +101,7 @@ fn answer(mut stream: TcpStream, packages: &HashMap<String, Vec<u8>>) {
                 "schemaVersion": 2,
                 "artifactType": "application/vnd.weflow.web.v1",
                 "layers": [{ "mediaType": "application/vnd.weflow.web.layer.v1+zip", "digest": format!("sha256:{}", sha(p)), "size": p.len() }],
-                "annotations": { "io.weflow.web.api-version": "3", "io.weflow.web.min-backend-version": "0.0.1" },
+                "annotations": { "io.weflow.web.api-version": "2", "io.weflow.web.min-backend-version": "0.0.1" },
             }).to_string().into_bytes()),
             None => ("404 Not Found", Vec::new()),
         }
@@ -387,7 +387,7 @@ fn versions_are_installed_picked_and_pruned() {
 fn the_page_address_carries_the_token_as_it_is() {
     let home = temp_root("token");
     let version = built_in();
-    keep(&home, &version, "3", "0.0.1");
+    keep(&home, &version, "2", "0.0.1");
     let token = "abc+def/ghi==&x#y z%";
     let server = Server::start_with(&home, "http://127.0.0.1:9", token, &[]);
     let url = server.started["uiUrl"].as_str().unwrap();
@@ -404,7 +404,7 @@ fn versions_kept_by_another_weflow_are_checked_again() {
     cli(&home, &reg, &["web", "use", "0.0.9"]);
     // kept by a newer weflow: another API, and a weflow newer than this one
     keep(&home, "0.0.6", "4", "0.0.1");
-    keep(&home, "0.0.7", "3", "99.0.0");
+    keep(&home, "0.0.7", "2", "99.0.0");
     for version in ["0.0.6", "0.0.7"] {
         for args in [["web", "install", version], ["web", "use", version]] {
             let error = cli_error(&home, &reg, &args);
