@@ -238,6 +238,111 @@
       "max_pct": 21.0,
       "busy_share": 0.226
      }
+    },
+    "c5804b541a8a3bdf06a6ee21f797e5f701fe616a": {
+     "refs": [
+      "v5.0.0-rc.1"
+     ],
+     "version": "weflow 2.1.1 (c5804b5 2026-11-07 23:52Z)",
+     "measured_at": "2026-11-08T00:19:39+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 387,
+      "p50_pct": 6.0,
+      "p95_pct": 13.8,
+      "max_pct": 19.6,
+      "busy_share": 0.22
+     }
+    },
+    "11090bcb9f0149e5995cd74b4cac0e24f5eaeb53": {
+     "refs": [
+      "v5.0.0-rc.2"
+     ],
+     "version": "weflow 1.1.1 (11090bc 2026-11-08 00:19Z)",
+     "measured_at": "2026-11-08T00:46:39+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 389,
+      "p50_pct": 6.5,
+      "p95_pct": 14.1,
+      "max_pct": 20.1,
+      "busy_share": 0.27
+     }
+    },
+    "8042e6261226571794aa1fc0fe744347acda274f": {
+     "refs": [
+      "v5.0.0-rc.3"
+     ],
+     "version": "weflow 1.1.1 (8042e62 2026-11-08 00:46Z)",
+     "measured_at": "2026-11-08T01:13:35+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 386,
+      "p50_pct": 6.5,
+      "p95_pct": 13.3,
+      "max_pct": 21.4,
+      "busy_share": 0.262
+     }
+    },
+    "5e4575f11012d8092dd065b7d0826c86bcf2c275": {
+     "refs": [
+      "v5.0.0-rc.4"
+     ],
+     "version": "weflow 1.1.1 (5e4575f 2026-11-08 01:13Z)",
+     "measured_at": "2026-11-08T01:41:38+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 403,
+      "p50_pct": 6.3,
+      "p95_pct": 13.8,
+      "max_pct": 22.9,
+      "busy_share": 0.213
+     }
+    },
+    "712907df5e210dc69bffaae925ff9755e2c373ee": {
+     "refs": [
+      "v5.0.0-rc.5"
+     ],
+     "version": "weflow 1.1.1 (712907d 2026-11-08 01:41Z)",
+     "measured_at": "2026-11-08T02:09:43+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 401,
+      "p50_pct": 5.6,
+      "p95_pct": 13.2,
+      "max_pct": 18.6,
+      "busy_share": 0.135
+     }
+    },
+    "34895f4f70b5211b90ec3f7e54b4d128a0a46aa4": {
+     "refs": [
+      "v5.0.0-rc.6"
+     ],
+     "version": "weflow 1.1.1 (34895f4 2026-11-08 02:10Z)",
+     "measured_at": "2026-11-08T02:39:48+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 434,
+      "p50_pct": 5.5,
+      "p95_pct": 12.7,
+      "max_pct": 20.2,
+      "busy_share": 0.134
+     }
+    },
+    "8a568feeeb408a5b045ecdad23c916d21fa35cfd": {
+     "refs": [
+      "v5.0.0-rc.7"
+     ],
+     "version": "weflow 1.1.1 (8a568fe 2026-11-08 02:40Z)",
+     "measured_at": "2026-11-08T03:10:09+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 433,
+      "p50_pct": 6.1,
+      "p95_pct": 13.8,
+      "max_pct": 19.4,
+      "busy_share": 0.249
+     }
     }
    },
    "anchor": "6115746c5f6e5124ed7aaf4febc300d5969cead3"
