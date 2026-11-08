@@ -1,56 +1,6 @@
 {
  "format": 1,
  "envs": {
-  "a129a141eff3": {
-   "machine": {
-    "cpu": "Intel(R) Core(TM) i7-10700F CPU @ 2.90GHz",
-    "cpus": 16,
-    "memory_gib": 64,
-    "os": "Windows 10.0.26300"
-   },
-   "tools": "9a9ad81b95e0",
-   "account": {
-    "manifest": "70b90d8faeb9419c",
-    "seed": 1,
-    "messages": 325798,
-    "conversations": 316
-   },
-   "load": {
-    "seconds": 90,
-    "workers": 4
-   },
-   "results": {
-    "6115746c5f6e5124ed7aaf4febc300d5969cead3": {
-     "refs": [
-      "v5.0.1"
-     ],
-     "version": "weflow 5.0.1 (6115746 2026-11-07 10:53Z)",
-     "measured_at": "2026-11-07T11:11:03+00:00",
-     "only": null,
-     "quiet": {
-      "samples": 211,
-      "p50_pct": 10.7,
-      "p95_pct": 19.0,
-      "max_pct": 24.0,
-      "busy_share": 0.588
-     }
-    },
-    "a0d306a6c3b91752dd237074511bd88a0bf04503": {
-     "refs": [],
-     "version": "weflow 5.0.1 (a0d306a 2026-11-07 11:11Z)",
-     "measured_at": "2026-11-07T11:44:38+00:00",
-     "only": null,
-     "quiet": {
-      "samples": 410,
-      "p50_pct": 11.4,
-      "p95_pct": 20.5,
-      "max_pct": 34.5,
-      "busy_share": 0.678
-     }
-    }
-   },
-   "anchor": "6115746c5f6e5124ed7aaf4febc300d5969cead3"
-  },
   "a0a366e07ba3": {
    "machine": {
     "cpu": "Intel(R) Core(TM) i7-10700F CPU @ 2.90GHz",
