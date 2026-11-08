@@ -10,25 +10,25 @@ export const MIB = 1024 * 1024;
 export const SIDES = ['base', 'head'];
 export const COLOURS = { base: '#2563eb', head: '#dc2626' };
 
-const CPU_NOTE = '进程及其子进程的合计（Job Object）。Windows 的 CPU 时间精度是 15.6 ms，1 秒左右的命令差几十毫秒属于噪声。';
-const IO_NOTE = '逻辑 I/O，包括命中系统文件缓存的部分；Windows 不按进程统计实际的磁盘 I/O。';
-const ALLOC_NOTE = '用带 `alloc-stats` feature 编译的二进制另外运行一次得到（#513），不计时；没有这个 feature 的版本这一项为空。';
+const CPU_NOTE = '进程及其子进程的合计（Job Object）。Windows 的 CPU 时间精度为 15.6 ms，对耗时约 1 秒的命令而言，数十毫秒的差异属于噪声。';
+const IO_NOTE = '逻辑 I/O，含命中系统文件缓存的部分；Windows 不按进程统计实际磁盘 I/O。';
+const ALLOC_NOTE = '由带 `alloc-stats` feature 编译的二进制另行运行一次测得（#513），不计时；不含该 feature 的版本此项为空。';
 // [key, label, unit, scale, note]
 const METRICS = [
-  ['wall_ms', '耗时', 'ms', 1, '从启动到退出。括号里是最快和最慢的一次。'],
-  ['first_batch_ms', '第一批结果', 'ms', 1, '从启动到第一个有进度的事件（`--progress`）。不输出进度的命令没有这一项。'],
+  ['wall_ms', '耗时', 'ms', 1, '自启动至退出。括号内为最快与最慢的一次。'],
+  ['first_batch_ms', '第一批结果', 'ms', 1, '自启动至第一个进度事件（`--progress`）。不输出进度的命令无此项。'],
   ['user_ms', '用户态 CPU', 'ms', 1, CPU_NOTE],
   ['kernel_ms', '内核态 CPU', 'ms', 1, CPU_NOTE],
-  ['peak_working_set', '峰值工作集', 'MiB', MIB, '主进程占用物理内存的峰值。'],
-  ['peak_job_commit', '峰值提交内存', 'MiB', MIB, '进程及其子进程提交内存的峰值，包括还没有占用物理内存的部分。'],
-  ['peak_threads', '峰值线程数', '', 1, '每 20 ms 采样一次主进程得到的最大值。'],
+  ['peak_working_set', '峰值工作集', 'MiB', MIB, '主进程物理内存占用的峰值。'],
+  ['peak_job_commit', '峰值提交内存', 'MiB', MIB, '进程及其子进程提交内存的峰值，含尚未占用物理内存的部分。'],
+  ['peak_threads', '峰值线程数', '', 1, '每 20 ms 对主进程采样一次所得的最大值。'],
   ['read_bytes', '读取', 'MiB', MIB, IO_NOTE],
   ['write_bytes', '写入', 'MiB', MIB, IO_NOTE],
-  ['page_faults', '页错误', '', 1, '进程及其子进程，包括软页错误。'],
-  ['items_per_s', '吞吐量', '消息/秒', 1, '命令处理的消息数除以耗时。这是唯一一个越高越好的指标。'],
-  ['allocations', '分配次数', '', 1, '分配和重新分配的次数。' + ALLOC_NOTE],
-  ['allocated_bytes', '累计分配', 'MiB', MIB, '每次分配的大小之和，重新分配只计增长的部分。' + ALLOC_NOTE],
-  ['peak_live_bytes', '峰值存活堆', 'MiB', MIB, '同一时刻仍未释放的分配之和的最大值。' + ALLOC_NOTE],
+  ['page_faults', '页错误', '', 1, '进程及其子进程，含软页错误。'],
+  ['items_per_s', '吞吐量', '消息/秒', 1, '命令处理的消息数除以耗时。此为命令指标中唯一以高为优的一项。'],
+  ['allocations', '分配次数', '', 1, '分配与重新分配的次数。' + ALLOC_NOTE],
+  ['allocated_bytes', '累计分配', 'MiB', MIB, '各次分配大小之和，重新分配仅计增长部分。' + ALLOC_NOTE],
+  ['peak_live_bytes', '峰值存活堆', 'MiB', MIB, '同一时刻尚未释放的分配之和的最大值。' + ALLOC_NOTE],
 ];
 // below these differences (in the metric's own unit) a ratio is not marked: the timer's resolution, the noise of a
 // run, or a few MiB of a working set
@@ -83,8 +83,8 @@ function fmtRatio(r, d = null, noise = 0) {
 /** Why the two results cannot be compared, or null when they can. */
 export function incomparable(base, head) {
   if (!base || !head) return '缺少结果';
-  if (base.format !== 1 || head.format !== 1) return '结果格式不认识';
-  if (base.env?.key !== head.env?.key) return `两份结果的环境不同（${base.env?.key} 与 ${head.env?.key}），不能放在一起比`;
+  if (base.format !== 1 || head.format !== 1) return '无法识别的结果格式';
+  if (base.env?.key !== head.env?.key) return `两份结果的环境不同（${base.env?.key} 与 ${head.env?.key}），无法比较`;
   return null;
 }
 
@@ -138,7 +138,7 @@ function sideLine(r, side) {
 
 /** The other processes' CPU while a result was measured, median / p95. */
 function quietText(q) {
-  return q && q.samples ? `${q.p50_pct}% / ${q.p95_pct}%` : '没有记录';
+  return q && q.samples ? `${q.p50_pct}% / ${q.p95_pct}%` : '无记录';
 }
 
 const commandNames = (base, head) => Object.keys(base.commands ?? {}).filter(n => n in (head.commands ?? {}));
@@ -157,9 +157,9 @@ export function reportBlocks(base, head) {
   const anchor = (head.anchor?.commit ?? '').slice(0, 10);
   const runs = base.runs === head.runs ? `${head.runs}` : `${base.runs}／${head.runs}`;
   const sameOs = base.os && base.os === head.os;
-  const driftWords = drift === null ? '两份结果没有可比的锚点数据'
-    : `锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%` + (Math.abs(drift - 1) > DRIFT_LIMIT
-      ? `，**超过 ${DRIFT_LIMIT * 100}%**，比值要打折扣看（耗时表的「校正后」已除掉各命令的锚点漂移）`
+  const driftWords = drift === null ? '两份结果缺少可比较的锚点数据'
+    : `锚点耗时整体变化 ${((drift - 1) * 100).toFixed(1)}%` + (Math.abs(drift - 1) > DRIFT_LIMIT
+      ? `，**超过 ${DRIFT_LIMIT * 100}%**，比值需审慎看待（耗时表「校正后」一列已扣除各命令的锚点漂移）`
       : `，在 ${DRIFT_LIMIT * 100}% 以内`);
   const blocks = [
     { h: 1, text: '基准测试：base 与 head' },
@@ -167,26 +167,26 @@ export function reportBlocks(base, head) {
       ul: [
         sideLine(base, 'base'),
         sideLine(head, 'head'),
-        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 线程，${m.memory_gib} GiB${sameOs ? `，${head.os}` : ''}；测法 ${env.method}`,
-        `账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话，`
-          + (acc.profile ? `profile \`${acc.profile.hash}\`（${acc.profile.measured}）` : '默认 profile'),
+        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 线程，${m.memory_gib} GiB${sameOs ? `，${head.os}` : ''}；测法版本 ${env.method}`,
+        `基准账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话，`
+          + (acc.profile ? `profile \`${acc.profile.hash}\`（测于 ${acc.profile.measured}）` : '默认 profile'),
       ],
     },
     {
-      p: `每条命令先空跑一次，再和锚点 \`${anchor}\` 交替各跑 ${runs} 次取中位数。比值 = head / base，▲▼ 是变化超过 10%（差值低于噪声下限不标），`
-        + '除吞吐量和每秒请求数外越低越好。同一份代码的比值一般在 0.98–1.02；超过约 10%、两边范围不重叠、锚点也没漂，才算真的变化。',
+      p: `每条命令先运行一次预热（不计时），再与锚点 \`${anchor}\` 交替各运行 ${runs} 次，取中位数。比值为 head / base；▲▼ 表示变化超过 10%，差值低于噪声下限时不予标注。`
+        + '除吞吐量与每秒请求数外，各项指标均以低为优。同一代码的比值通常位于 0.98–1.02；仅当比值偏离约 10% 以上、两侧取值范围不重叠且锚点无明显漂移时，方可视为实际变化。',
     },
     { h: 2, text: '两次测量的环境' },
     {
-      p: `锚点是每次都一起测的同一个提交，它变了多少就是机器漂了多少：${driftWords}。`
-        + `其他进程 CPU（中位数 / p95）：base ${quietText(base.quiet)}，head ${quietText(head.quiet)}。`
-        + (base.os && head.os && !sameOs ? `Windows 版本不同（${base.os} → ${head.os}），系统更新的影响算在锚点漂移里。` : ''),
+      p: `锚点为每次测量均同时运行的同一提交，其耗时变化反映机器状态的漂移：${driftWords}。`
+        + `测量期间其他进程的 CPU 占用（中位数 / p95）：base ${quietText(base.quiet)}，head ${quietText(head.quiet)}。`
+        + (base.os && head.os && !sameOs ? `两次测量的 Windows 版本不同（${base.os} → ${head.os}），系统更新的影响计入锚点漂移。` : ''),
     },
   ];
   const dr = driftRows(base, head);
   if (dr.length) {
     blocks.push({
-      table: ['锚点', 'base 那次', 'head 那次', '漂移'],
+      table: ['锚点', 'base 测量时', 'head 测量时', '漂移'],
       rows: dr.map(r => [r.label, fmt(r.a), fmt(r.b), r.drift === null ? '-' : `${r.drift.toFixed(3)}×${Math.abs(r.drift - 1) > DRIFT_LIMIT ? ' ⚠' : ''}`]),
     });
   }
@@ -198,18 +198,18 @@ export function reportBlocks(base, head) {
   const names = commandNames(base, head);
   const onlyOne = [...Object.keys(base.commands ?? {}), ...Object.keys(head.commands ?? {})].filter(n => !names.includes(n));
   if (names.length || onlyOne.length) blocks.push({ h: 2, text: '命令' });
-  if (onlyOne.length) blocks.push({ p: '只有一边测过的命令不比：' + [...new Set(onlyOne)].map(n => `\`${n}\``).join('，') });
+  if (onlyOne.length) blocks.push({ p: '仅一侧测量过的命令，不作比较：' + [...new Set(onlyOne)].map(n => `\`${n}\``).join('，') });
   const failed = [];
   for (const n of names) for (const [side, r] of [['base', base], ['head', head]]) {
     const k = r.commands[n].failed_runs;
     if (k) failed.push(`\`${n}\`（${side} ${k} 次）`);
   }
-  if (failed.length) blocks.push({ p: '**有运行失败**（不计入中位数）：' + failed.join('，') });
+  if (failed.length) blocks.push({ p: '**部分运行失败**（不计入中位数）：' + failed.join('，') });
   const notYet = [['base', base], ['head', head]]
     .map(([side, r]) => [side, names.filter(n => r.commands[n].unsupported)])
     .filter(([, list]) => list.length);
   if (notYet.length) {
-    blocks.push({ p: '这个版本还没有的命令（命令行不认识这条命令、选项或取值，不算失败，也不比较）：'
+    blocks.push({ p: '「还没有」表示该版本尚不支持的命令（命令行无法识别该命令、选项或取值），不计为失败，也不作比较：'
       + notYet.map(([side, list]) => `${side}：${list.map(n => `\`${n}\``).join('，')}`).join('；') });
   }
   for (const [key, label, unit, scale, note] of METRICS) {
@@ -225,7 +225,7 @@ export function reportBlocks(base, head) {
         if (sb) cells[0] += `（${fmt(sb[0])}–${fmt(sb[1])}）`;
         if (sh) cells[1] += `（${fmt(sh[0])}–${fmt(sh[1])}）`;
         // a ratio past 10 % whose ranges overlap is likely a command with two run times, not a change
-        if (/[▲▼]$/.test(ratioCell) && overlap(sb, sh)) ratioCell += '，范围重叠';
+        if (/[▲▼]$/.test(ratioCell) && overlap(sb, sh)) ratioCell += '，取值范围重叠';
         const d = commandDrift(base, head, n), r = ratio(h, b);
         const corrected = d && r !== null ? r / d : null;
         rows.push([`\`${n}\``, ...cells, ratioCell, d === null ? '-' : d.toFixed(3) + '×', corrected === null ? '-' : fmtRatio(corrected, diff(h, isNum(b) ? b * d : null), NOISE.wall_ms)]);
@@ -247,13 +247,13 @@ function loadBlocks(base, head) {
   const out = [{ h: 2, text: '`weflow serve` 持续负载' }];
   const failed = [['base', base], ['head', head]].filter(([, r]) => r.load_failed || !r.load);
   if (failed.length) {
-    out.push({ p: '没有完成或没有测：' + failed.map(([s, r]) => `${s}：${(r.load_failed ?? '没有测').replace(/\n/g, ' ').slice(0, 300)}`).join('；') });
+    out.push({ p: '未完成或未测量：' + failed.map(([s, r]) => `${s}：${(r.load_failed ?? '未测量').replace(/\n/g, ' ').slice(0, 300)}`).join('；') });
     return out;
   }
   const lb = base.load, lh = head.load;
   out.push({
-    p: `每次测量启动一个 \`weflow serve\`，用 ${lh.workers} 个并发连续请求 ${lh.seconds} 秒，混合消息分页、会话列表、全局搜索、日期统计和联系人。`
-      + '内存按时间分成四段，各取中位数：第 2 段（缓存已经热了）到第 4 段持续上升，才说明内存不稳定。',
+    p: `每次测量启动一个 \`weflow serve\`，以 ${lh.workers} 个并发连续请求 ${lh.seconds} 秒，请求混合消息分页、会话列表、全局搜索、日期统计与联系人。`
+      + '内存按时间分为四段，各取中位数；仅当第 2 段（缓存已预热）至第 4 段持续上升时，方表明内存不稳定。',
   });
   // [label, pick, noise]; a null noise: no ratio, as for a growth or an error count near zero
   const rows = [
@@ -262,9 +262,9 @@ function loadBlocks(base, head) {
     ['延迟 p50 (ms)', d => d.latency_ms.p50, NOISE_MS],
     ['延迟 p95 (ms)', d => d.latency_ms.p95, NOISE_MS],
     ['延迟 p99 (ms)', d => d.latency_ms.p99, NOISE_MS],
-    ['启动到开始监听 (ms)', d => d.started_ms, NOISE_MS],
+    ['启动至开始监听 (ms)', d => d.started_ms, NOISE_MS],
     ...[0, 1, 2, 3].map(q => [`工作集，第 ${q + 1} 段中位数 (MiB)`, d => d.working_set_mib.quarter_medians[q], 5]),
-    ['第 2 段到第 4 段的增长 (MiB)', d => d.working_set_mib.growth, null],
+    ['第 2 段至第 4 段的增长 (MiB)', d => d.working_set_mib.growth, null],
     ['峰值工作集 (MiB)', d => d.working_set_mib.peak, 5],
     ['峰值线程数', d => d.peak_threads, 1],
     ['CPU 时间 (ms)', d => d.user_ms + d.kernel_ms, 50],
@@ -300,14 +300,14 @@ function status(row) {
 function serveBenchBlocks(base, head) {
   const sb = base.serve_bench, sh = head.serve_bench;
   if (!sb && !sh) return [];
-  const code = s => (s ? s.exit_code : '没有测');
+  const code = s => (s ? s.exit_code : '未测量');
   const out = [
     { h: 2, text: 'serve_bench' },
     {
-      p: '各路由响应时间的中位数（ms），由 `serve_bench` 在同一个基准账号上测得。路由名是它自己的；`[api]` 是进程内的 `/api/` 路由，`[sub]` 是启动子进程的路由。'
+      p: '各路由响应时间的中位数（ms），由 `serve_bench` 在同一基准账号上测得。路由名称沿用 `serve_bench` 的命名：`[api]` 为进程内的 `/api/` 路由，`[sub]` 为启动子进程的路由。'
         + `退出码：base ${code(sb)}，head ${code(sh)}`
-        + (sb?.exit_code === 0 && sh?.exit_code === 0 ? '。' : '。非 0 表示它在自己的合成账号上有检查没通过（旧版本缺少某个路由时会这样），计时照常保留。')
-        + '某一边不是每次都返回 200 时（例如旧版本还没有这个 `/api/` 路由），格子里注明返回的状态，不计算比值。',
+        + (sb?.exit_code === 0 && sh?.exit_code === 0 ? '。' : '。非 0 表示其在自身合成账号上的部分检查未通过（旧版本缺少某个路由时即会如此），计时数据照常保留。')
+        + '若某一侧并非每次均返回 200（例如旧版本尚无该 `/api/` 路由），单元格内注明返回状态，且不计算比值。',
     },
   ];
   const rb = sb?.results?.results ?? {}, rh = sh?.results?.results ?? {};
@@ -408,7 +408,7 @@ export function toHtml(blocks) {
   }).join('\n');
 }
 
-export const CURVES_NOTE = '主进程的工作集，每 20 ms 采样一次（持续负载每 0.5 s 一次），每条曲线最多保留 300 个点（每段取峰值）。命令取耗时居中的那次运行。';
+export const CURVES_NOTE = '主进程的工作集，每 20 ms 采样一次（持续负载为每 0.5 s 一次），每条曲线最多保留 300 个点（每段取峰值）。命令取耗时居中的一次运行。';
 
 /** [title, [[side, [[seconds, MiB]]]]] of each chart: each command's median run, then the sustained load. */
 export function memorySeries(base, head) {
@@ -430,7 +430,7 @@ function niceStep(span, ticks = 4) {
 /** Working set over time, a line per side, from 0 on both axes; the lines take the classes `base` and `head`. */
 export function svgCurves(series, width = 720, height = 200) {
   const points = series.flatMap(([, s]) => s);
-  if (!points.length) return '<p>没有采样。</p>';
+  if (!points.length) return '<p>无采样数据。</p>';
   const tMax0 = Math.max(...points.map(p => p[0])) || 1, yMax0 = Math.max(...points.map(p => p[1])) || 1;
   const tstep = niceStep(tMax0), ystep = niceStep(yMax0);
   const tmax = Math.ceil(tMax0 / tstep) * tstep, ymax = Math.ceil(yMax0 / ystep) * ystep;
