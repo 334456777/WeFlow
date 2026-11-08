@@ -130,14 +130,15 @@ jobs:
           FORCE: ${{ inputs.force && '1' || '' }}
         run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh measure'
 
-      # the results alone, a few small files: a run whose upload fails keeps them in the runner's pending/ folder
-      # (bench-commits.py), and the next run publishes them
+      # the results alone, a few small files, and how the run went: a run whose upload fails keeps the results in the
+      # runner's pending/ folder (bench-commits.py), and the next run publishes them
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: bench-results
           path: |
             results/run.json
+            results/summary.md
             results/*/result.json
           retention-days: 30
 
@@ -156,8 +157,10 @@ jobs:
         shell: cmd
         run: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc .github/scripts/bench-runner.sh clean'
 
-  # The results into the gh-pages branch with the viewer (bench-publish.py); with two commits, their comparison on
-  # the run's page, and with `release_tag` the 性能基准 section of that release's notes.
+  # How the run went on the run's Summary page, written here rather than on the runner, whose network may drop the
+  # upload; the results into the gh-pages branch with the viewer (bench-publish.py), which adds what was published to
+  # the page; with two commits the few lines of the release notes, and with `release_tag` the 性能基准 section of that
+  # release's notes.
   publish:
     name: publish
     needs: measure
@@ -190,6 +193,7 @@ jobs:
         name: Push to gh-pages
         shell: bash
         run: |
+          if [ -f results/summary.md ]; then cat results/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
           python3 main/.github/scripts/bench-publish.py --pages pages --results results --viewer main/.github/bench \
             > published.txt
           cd pages
