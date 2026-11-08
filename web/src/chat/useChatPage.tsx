@@ -14,6 +14,7 @@ import { parseDay } from '../calendar/dates';
 import type { Card } from '../CardStack';
 import { FormatChips, formatsLabel, MEDIA_NOTE, packed, type MessageFormat } from '../exports/ExportCards';
 import { HoverTrack } from '../HoverTrack';
+import { FormatLanes } from '../exports/FormatLanes';
 import { jobDetail } from '../jobs/TaskCenter';
 import { findJob, removeJob, runJob } from '../jobs/useJobs';
 import { categoryLabels, conversations, CURRENT_DATE, DEFAULT_FROM, formatDay, sampleSessions } from '../mock/data';
@@ -220,6 +221,7 @@ export function useChatPage(shell: Shell, prefs: Preferences, category: Category
           ? <><ExportControl stage={stage} result={exportResult} ready={formats.length > 0} onStart={exportRecords} onCancel={cancelExport} />
             {stage === 'error' && <p className="card-note" role="alert">{exportJob ? jobDetail(exportJob) : exportError}</p>}
             {stage === 'exporting' && exportJob && <p className="card-note" aria-live="polite">{exportJob.status === 'queued' ? t('排队中：前面的任务完成后开始。') : jobDetail(exportJob)}</p>}
+            {stage === 'exporting' && <FormatLanes progress={exportJob?.progress} />}
             {stage === 'done' && packed(formats, includeMedia) && <p className="card-note">{formats.length > 1
               ? includeMedia ? t('各个格式的文件和 media 文件夹打包在这个 zip 里。') : t('各个格式的文件打包在这个 zip 里。')
               : includeMedia ? t('导出文件和 media 文件夹打包在这个 zip 里。') : t('导出文件打包在这个 zip 里。')}</p>}</>

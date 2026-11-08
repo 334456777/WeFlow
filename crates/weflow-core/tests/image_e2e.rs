@@ -900,6 +900,49 @@ async fn message_exports_point_at_copied_media_in_every_format_that_has_room_for
 }
 
 #[tokio::test]
+async fn several_formats_without_media_are_what_each_writes_alone() {
+    // #628: read once and written side by side, each file as the streaming export of that format writes it
+    let (hub, root) = embed_world("formats-alone");
+    let (together, alone) = (root.join("together"), root.join("alone"));
+    std::fs::create_dir_all(&together).unwrap();
+    std::fs::create_dir_all(&alone).unwrap();
+    let formats = [
+        "txt",
+        "json",
+        "arkme-json",
+        "chatlab",
+        "chatlab-jsonl",
+        "weclone",
+        "sql",
+        "html",
+    ];
+    let outs: Vec<(String, std::path::PathBuf)> = formats
+        .iter()
+        .map(|f| (f.to_string(), together.join(format!("chat.{f}"))))
+        .collect();
+    let results = hub
+        .export_messages_formats(
+            &media_request("txt"),
+            &outs,
+            &weflow_core::api::ApiMediaOptions::default(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(results.len(), formats.len());
+    for (format, out) in &outs {
+        let single = alone.join(out.file_name().unwrap());
+        hub.export_messages(&media_request(format), &single)
+            .unwrap();
+        assert_eq!(
+            std::fs::read(out).unwrap(),
+            std::fs::read(&single).unwrap(),
+            "{format}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn several_formats_share_one_media_folder_and_pack_into_one_zip() {
     // #342: the messages read and the media copied once, every format pointing at the same files
     let (hub, root) = embed_world("formats-zip");

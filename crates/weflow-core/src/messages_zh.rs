@@ -130,6 +130,7 @@ const CATALOG: &[(&str, &str)] = &[
     ("scanning messages", "正在扫描消息"),
     ("exporting {} media", "正在导出{}媒体"),
     ("reading messages", "正在读取消息"),
+    ("writing formats", "正在写出各个格式"),
     // result fields and hints
     ("no insight was generated (AI not configured, request failed, or the model answered SKIP)", "未生成洞察（AI 未配置、请求失败，或模型回答了 SKIP）"),
     ("waiting for WeChat to start", "正在等待微信启动"),

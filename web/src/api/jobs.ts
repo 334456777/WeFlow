@@ -13,6 +13,8 @@ export interface JobProgress {
   current?: number;
   total?: number;
   percent?: number;
+  /** The formats of an export written side by side (#628), and which of them are written. */
+  formats?: { name: string; done: boolean }[];
 }
 
 /** A job (the contract's, #399), with what the page reads of its last progress event and of its result. */

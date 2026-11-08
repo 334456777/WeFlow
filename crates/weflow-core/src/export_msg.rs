@@ -1483,21 +1483,13 @@ impl<'a, 'n> Exporter<'a, 'n> {
     }
 
     pub fn write_json(&mut self, msgs: &[ExportMsg], out: &Path, arkme: bool) -> Result<()> {
-        // Written message by message (the same bytes as pretty-printing the whole document); that needs the
-        // messages in time order, which collected conversations always are.
-        if msgs
-            .windows(2)
-            .all(|w| w[0].create_time <= w[1].create_time)
-        {
-            if arkme {
-                self.stream_arkme_json(msgs, out, true)?;
-            } else {
-                self.render_and_write(EntryFormat::Json, out, msgs, true)?;
-            }
-            return Ok(());
+        // written message by message in the order given, as a streaming export writes them
+        if arkme {
+            self.stream_arkme_json(msgs, out, true)?;
+        } else {
+            self.render_and_write(EntryFormat::Json, out, msgs, true)?;
         }
-        let document = self.json_document(msgs, arkme);
-        write_bytes(out, &serde_json::to_vec_pretty(&document)?)
+        Ok(())
     }
 
     /// arkme-json written from a stream of messages (oldest first). Each message is serialized as soon as it is
