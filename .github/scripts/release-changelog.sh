@@ -3,8 +3,7 @@
 # usage: release-changelog.sh <tag> <commit>
 # Run inside a clone that has the history and tags; needs gh (with GH_TOKEN) and jq.
 #
-# It compares <commit> with the previous release: a stable tag (vX.Y.Z) with the previous stable release, a
-# pre-release with the previous release of any kind. Pull requests come from the merge commits in between
+# It compares <commit> with the previous release, as release-previous.sh picks it. Pull requests come from the merge commits in between
 # ("Merge pull request #N" or a squash merge's "(#N)"), with the layers below each that came in by the same merge:
 # `gh stack merge` leaves main one merge commit, the top's, and every layer of the stack has it as its merge commit;
 # a layer's base is the head branch of the one below (#382). It lists:
@@ -18,13 +17,7 @@ TAG="$1"
 SHA="$2"
 REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
 
-if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  KIND='select(.isPrerelease | not)'
-else
-  KIND='.'
-fi
-PREV_JSON="$(gh release list --repo "$REPO" --exclude-drafts --limit 100 --json tagName,isPrerelease,publishedAt \
-  --jq "[.[] | select(.tagName != \"$TAG\") | $KIND] | sort_by(.publishedAt) | last // empty")"
+PREV_JSON="$(bash "$(dirname "$0")/release-previous.sh" "$TAG")"
 if [ -z "$PREV_JSON" ]; then
   echo "首个版本。"
   exit 0
