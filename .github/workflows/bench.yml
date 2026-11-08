@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       commits:
-        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交；写成 名字=提交 时查看页显示这个名字，如 #424前=c054035f^）；正好两个时，第一个当 base、第二个当 head，运行页面的「发布」一节给出它们的对比链接"
+        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交；分支记成 分支@提交，如 main@74185784f6；写成 名字=提交 时查看页显示这个名字，如 #424前=c054035f^）；正好两个时，第一个当 base、第二个当 head，运行页面的「发布」一节给出它们的对比链接"
         required: true
         type: string
       runs:
