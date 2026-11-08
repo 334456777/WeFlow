@@ -25,7 +25,8 @@ fi
 PREV="$(jq -r .tagName <<< "$PREV_JSON")"
 PREV_DATE="$(jq -r .publishedAt <<< "$PREV_JSON")"
 
-MERGES="$(git log --format=%s "$PREV..$SHA" |
+# Only the first parents: a commit inside a merged pull request may end in the (#N) of an issue
+MERGES="$(git log --first-parent --format=%s "$PREV..$SHA" |
   sed -nE 's/^Merge pull request #([0-9]+).*/\1/p; s/.*\(#([0-9]+)\)$/\1/p')"
 
 DEFAULT="$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)"
@@ -61,14 +62,14 @@ PR_JSON="$(for n in $PRS; do
       labels: [.labels.nodes[].name],
       issues: [.closingIssuesReferences.nodes[] | {number, title, labels: [.labels.nodes[].name]}]
     }'
-done | jq -s .)"
+done | jq -s 'map(select(.number))')" # gh prints the error's answer for a number that is no pull request
 
 NEW_JSON="$(gh issue list --repo "$REPO" --state open --search "created:>=$PREV_DATE" --limit 100 \
   --json number,title,labels --jq '[.[] | {number, title, labels: [.labels[].name]}]')"
 
-jq -rn --argjson prs "$PR_JSON" --argjson new "$NEW_JSON" \
-  --arg repo "$REPO" --arg prev "$PREV" --arg tag "$TAG" '
-  def group:
+jq -r --argjson new "$NEW_JSON" --arg repo "$REPO" --arg prev "$PREV" --arg tag "$TAG" '
+  . as $prs
+  | def group:
     if any(.[]; . == "增强" or . == "优化") then "新功能和优化"
     elif any(.[]; . == "bug" or . == "反常") then "修复"
     elif any(.[]; . == "文档") then null
@@ -94,4 +95,4 @@ jq -rn --argjson prs "$PR_JSON" --argjson new "$NEW_JSON" \
       (if ($new | length) > 0 then "### 新登记的 issue\n" + ($new | map(line) | join("\n")) else empty end),
       "**完整对比**：[\($prev)...\($tag)](https://github.com/\($repo)/compare/\($prev)...\($tag))"
     ]
-  | join("\n\n")'
+  | join("\n\n")' <<< "$PR_JSON"
