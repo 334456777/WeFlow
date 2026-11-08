@@ -77,9 +77,10 @@ function fill(select, items, chosen) {
   select.replaceChildren(...items.map(([value, label]) => new Option(label, value, false, value === chosen)));
 }
 
+// by its name, not by the version the binary reports: the tags of a release candidate built a Cargo.toml that still
+// held the version before
 function commitLabel(c) {
-  const version = (c.version || '').replace(/^weflow /, '').split(' (')[0];
-  return `${nameOf(c)} · ${version} · ${c.measured_at.slice(0, 16).replace('T', ' ')}${c.only ? ' · 部分' : ''}`;
+  return `${nameOf(c)} · ${c.measured_at.slice(0, 16).replace('T', ' ')}${c.only ? ' · 部分' : ''}`;
 }
 
 function choose(key, baseName, headName) {

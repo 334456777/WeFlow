@@ -131,9 +131,9 @@ function sideLine(r, side) {
   // a name that holds the commit (branch@sha) says it already
   const named = !r.ref || commit.startsWith(r.ref) ? `\`${commit || r.ref}\``
     : r.ref.includes(commit) ? `\`${r.ref}\`` : `\`${r.ref}\`（\`${commit}\`）`;
-  const version = (r.version || '版本未知').split(' (')[0];
+  // the name tells the version; the one the binary reports came from a Cargo.toml a release candidate's tag left behind
   const at = r.measured_at ? `${r.measured_at.slice(0, 16).replace('T', ' ')} UTC` : '-';
-  return `${side}：${named}，${version}，测于 ${at}`;
+  return `${side}：${named}，测于 ${at}`;
 }
 
 /** The other processes' CPU while a result was measured, median / p95. */
