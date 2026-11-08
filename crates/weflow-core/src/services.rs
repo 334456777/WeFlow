@@ -653,17 +653,48 @@ impl ServiceHub {
         })
     }
 
-    /// The WeChat Pay notices among `limit` messages of the WeChat Pay account, from `offset` on, newest first.
-    /// Other messages of the account are left out, so a page may hold fewer records than `limit`: `hasMore`
-    /// says whether the account has messages past this page.
+    /// The WeChat Pay notices among `limit` messages from `offset` on, newest first: the messages of the WeChat Pay
+    /// account and the service notices, where WeChat keeps its cards. Other messages are left out, so a page may
+    /// hold fewer records than `limit`: `hasMore` says whether there are messages past this page.
     pub fn biz_pay_records(
         &self,
         limit: i32,
         offset: i32,
     ) -> AppResult<crate::contract::PayRecords> {
-        let messages = self.messages("gh_3dfda90e39d6", limit, offset)?;
-        let read = messages.len();
-        let records = crate::biz::parse_pay_records(&messages);
+        const PAY_ACCOUNT: &str = "gh_3dfda90e39d6";
+        // the two conversations together are paged here, so each is read up to the end of this page
+        let upto = if limit > 0 {
+            limit.saturating_add(offset.max(0))
+        } else {
+            limit
+        };
+        let own = self.messages(PAY_ACCOUNT, upto, 0)?;
+        let cards = self.messages("notifymessage", upto, 0)?;
+        let mut rows: Vec<(MsgRow, bool)> = own.into_iter().map(|m| (m, true)).collect();
+        rows.extend(cards.into_iter().map(|m| {
+            let from_pay = crate::biz::extract_xml_value(&m.content, "fromusername") == PAY_ACCOUNT;
+            (m, from_pay)
+        }));
+        rows.sort_by_key(|(m, _)| {
+            let at = m.pos();
+            std::cmp::Reverse((at.sort_seq, at.create_time, at.local_id))
+        });
+        let page: Vec<(MsgRow, bool)> = rows
+            .into_iter()
+            .skip(usize::try_from(offset.max(0)).unwrap_or(usize::MAX))
+            .take(
+                usize::try_from(limit)
+                    .ok()
+                    .filter(|n| *n > 0)
+                    .unwrap_or(usize::MAX),
+            )
+            .collect();
+        let read = page.len();
+        let notices: Vec<MsgRow> = page
+            .into_iter()
+            .filter_map(|(m, pay)| pay.then_some(m))
+            .collect();
+        let records = crate::biz::parse_pay_records(&notices);
         Ok(crate::contract::PayRecords {
             records,
             has_more: limit > 0 && read >= limit as usize,

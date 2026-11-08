@@ -4940,7 +4940,7 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0,
-            "description": "The `<n>` of the `message_<n>.db` holding it."
+            "description": "The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on)."
           },
           "_cursor": {
             "type": "string",
@@ -5011,7 +5011,7 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0,
-            "description": "The `<n>` of the `message_<n>.db` holding it."
+            "description": "The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on)."
           },
           "_cursor": {
             "type": "string",

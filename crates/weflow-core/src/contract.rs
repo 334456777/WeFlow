@@ -249,7 +249,7 @@ pub struct MessageRow {
     /// WeChat's packed info (protobuf), in lowercase hex.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub packed_info: Option<String>,
-    /// The `<n>` of the `message_<n>.db` holding it.
+    /// The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on).
     pub shard: u32,
     /// Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
     /// It is opaque; only the server reads it.

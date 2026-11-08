@@ -54,7 +54,7 @@ pub(crate) fn message_by_local_id(
                 json!({
                     "createTime": r.create_time.unwrap_or(0),
                     "localType": r.local_type,
-                    "dbName": format!("message_{}", r.shard),
+                    "dbName": weflow_native::native_msg::shard_name(r.shard),
                 })
             })
             .collect();

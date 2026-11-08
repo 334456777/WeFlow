@@ -2099,7 +2099,7 @@ fn wechat_pay_records_come_in_pages_that_say_whether_more_follow() {
     };
     const PAY: &str = "gh_3dfda90e39d6";
     let home = account_home_with(&root, |f| {
-        f.message_shard(
+        f.biz_message_db(
             0,
             &[(
                 PAY,
@@ -2161,6 +2161,40 @@ fn wechat_pay_records_come_in_pages_that_say_whether_more_follow() {
     let all = server.call("GET", "/biz/pay-records?limit=0", "").json();
     assert_eq!(all["data"]["records"].as_array().unwrap().len(), 2);
     assert_eq!(all["data"]["hasMore"], false);
+}
+
+#[test]
+fn pay_records_include_the_cards_among_the_service_notices() {
+    use weflow_native::fixture::{MsgSpec, T0};
+    let root = temp_root("pay-cards");
+    const PAY: &str = "gh_3dfda90e39d6";
+    let card = |from: &str, title: &str| {
+        format!(
+            "<msg><fromusername>{from}</fromusername><appmsg><title>{title}</title><des>d</des></appmsg></msg>"
+        )
+    };
+    let home = account_home_with(&root, |f| {
+        f.biz_message_db(
+            0,
+            &[(
+                "notifymessage",
+                vec![
+                    MsgSpec::text(1, "notifymessage", T0, &card(PAY, "付款")).of_type(49),
+                    MsgSpec::text(2, "notifymessage", T0 + 60, &card("gh_other", "别的通知"))
+                        .of_type(49),
+                ],
+            )],
+        );
+    });
+    let server = start(&home, &["--api-token", TOKEN]);
+    let all = server.call("GET", "/biz/pay-records?limit=0", "").json();
+    let records = all["data"]["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["title"], "付款");
+    // a page counts the card of another account too
+    let newest = server.call("GET", "/biz/pay-records?limit=1", "").json();
+    assert_eq!(newest["data"]["records"].as_array().unwrap().len(), 0);
+    assert_eq!(newest["data"]["hasMore"], true);
 }
 
 #[test]
