@@ -1,10 +1,10 @@
 // The comparison of two benchmark results (#601, #602): the `result.json` of two commits measured by
 // `.github/scripts/bench.py` in the same environment. Used by the viewer on GitHub Pages (index.html, in the browser)
-// and by cli.mjs (Node, for the run's page and the release notes), so it has no dependency and touches no DOM.
+// and by cli.mjs (Node, for the release notes), so it has no dependency and touches no DOM.
 //
 // The report is for people, so it is in Chinese like the repository's PRs and issues; command and route names, units
 // and the field names of result.json stay as they are. It is built as blocks: {h, level, text}, {p, text},
-// {ul, items}, {table, header, rows}, then written as Markdown or HTML. Text may hold `code` and **bold**.
+// {ul, items}, {table, header, rows}, then written as HTML. Text may hold `code` and **bold**.
 
 export const MIB = 1024 * 1024;
 export const SIDES = ['base', 'head'];
@@ -387,16 +387,6 @@ export function highlights(base, head) {
 
 // ---- writing it out ----
 
-export function toMarkdown(blocks) {
-  const row = cells => '| ' + cells.map(c => String(c).replace(/\|/g, '\\|')).join(' | ') + ' |';
-  return blocks.map(b => {
-    if ('h' in b) return '#'.repeat(b.h) + ' ' + b.text;
-    if ('p' in b) return b.p;
-    if ('ul' in b) return b.ul.map(i => `- ${i}`).join('\n');
-    return [row(b.table), '|' + '---|'.repeat(b.table.length), ...b.rows.map(row)].join('\n');
-  }).join('\n\n') + '\n';
-}
-
 const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** `code` and **bold** of a report text, the rest escaped. */
@@ -458,39 +448,4 @@ export function svgCurves(series, width = 720, height = 200) {
   }
   const lines = series.map(([side, s]) => `<polyline fill="none" class="${side}" stroke-width="1.5" points="${s.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ')}"><title>${side}</title></polyline>`);
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="工作集随时间变化">${grid.join('')}${lines.join('')}</svg>`;
-}
-
-/**
- * The curves of `svgCurves` as a Mermaid xychart for the Actions job summary, which drops inline SVG. A linear x-axis
- * spreads each line evenly over the whole axis, so every line gets the same `points` columns: the peak of the samples
- * falling in each column, the last value carried over a column with no sample, and 0 after the side's last sample.
- */
-export function mermaidCurves(series, points = 60) {
-  series = series.filter(([, s]) => s.length);
-  if (!series.length) return '没有采样。';
-  const all = series.flatMap(([, s]) => s);
-  const tmax = Math.max(...all.map(p => p[0])) || 1;
-  const yMax0 = Math.max(...all.map(p => p[1])) || 1;
-  const ystep = niceStep(yMax0), ymax = Math.ceil(yMax0 / ystep) * ystep;
-  const lines = series.map(([, s]) => {
-    const columns = new Array(points).fill(null);
-    for (const [t, v] of s) {
-      const i = Math.round((t / tmax) * (points - 1));
-      columns[i] = Math.max(columns[i] ?? 0, v);
-    }
-    const last = columns.reduce((acc, c, i) => (c !== null ? i : acc), 0);
-    let value = columns.find(c => c !== null);
-    const values = columns.map((c, i) => { value = c ?? value; return i <= last ? value : 0; });
-    return '    line [' + values.map(v => v.toFixed(1)).join(', ') + ']';
-  });
-  const config = { xyChart: { width: 720, height: 260 }, themeVariables: { xyChart: { plotColorPalette: series.map(([s]) => COLOURS[s]).join(', ') } } };
-  return ['```mermaid', `%%{init: ${JSON.stringify(config)}}%%`, 'xychart-beta', `    x-axis "秒" 0 --> ${+tmax.toPrecision(6)}`,
-    `    y-axis "MiB" 0 --> ${+ymax.toPrecision(6)}`, ...lines, '```'].join('\n');
-}
-
-/** The 内存曲线 section of the Markdown report. */
-export function markdownCurves(base, head) {
-  const out = ['## 内存曲线', '', `${CURVES_NOTE}蓝线 base，红线 head；先结束的一边在退出后记为 0。`, ''];
-  for (const [title, series] of memorySeries(base, head)) out.push(`### ${title}`, '', mermaidCurves(series), '');
-  return out.join('\n');
 }

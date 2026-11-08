@@ -9,7 +9,8 @@
   - the runner (the newest stable release at least 3 days old, its download checked against the digest GitHub
     publishes) in -RunnerDir, registered to the repository with the label weflow-bench
   - -BenchDir, the runner's own folder (accounts, binaries, build cache, Rust), named in the runner's .env as
-    WEFLOW_BENCH_DIR; Git for Windows' bash on the runner's PATH (bench.yml's steps use bash)
+    WEFLOW_BENCH_DIR (bench.yml's steps call Git for Windows' bash by its full path and put Git on their own PATH,
+    so the runner's PATH needs no Git)
   - Microsoft Defender exclusions for -BenchDir and the runner's work folder: real-time scanning of what a benchmark
     writes is noise in its timings (the code built there is the repository's own)
   The registration token comes from the repository's Settings > Actions > Runners > New self-hosted runner, or from
@@ -101,12 +102,8 @@ try {
     --name "weflow-bench-$env:COMPUTERNAME" --labels weflow-bench --work _work `
     --runasservice --windowslogonaccount ".\$Account" --windowslogonpassword $password
   if ($LASTEXITCODE) { throw "config.cmd failed ($LASTEXITCODE)" }
-  # what the jobs see: the bench folder, and the machine's PATH after Git's, whose bash must come before the WSL
-  # launcher in System32
+  # what the jobs see: the bench folder
   Set-Content -Encoding ascii .env "WEFLOW_BENCH_DIR=$BenchDir"
-  $git = @('C:\Program Files\Git\bin', 'C:\Program Files\Git\cmd')
-  $rest = [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' | Where-Object { $_ -and $git -notcontains $_ }
-  Set-Content -Encoding ascii .path (($git + $rest) -join ';')
   icacls $RunnerDir /grant "${Account}:(OI)(CI)F" /T /Q | Out-Null
   Get-Service -Name 'actions.runner.*' | Where-Object { $_.BinaryPathName -like "*$RunnerDir*" } | Restart-Service
 } finally {

@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       commits:
-        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交；写成 名字=提交 时查看页显示这个名字，如 #424前=c054035f^）；正好两个时，第一个当 base、第二个当 head 生成对比"
+        description: "要测的提交、分支或 tag，逗号分隔（HEAD 表示运行所在分支的最新提交；写成 名字=提交 时查看页显示这个名字，如 #424前=c054035f^）；正好两个时，第一个当 base、第二个当 head，运行页面的「发布」一节给出它们的对比链接"
         required: true
         type: string
       runs:
@@ -159,7 +159,7 @@ jobs:
 
   # How the run went on the run's Summary page, written here rather than on the runner, whose network may drop the
   # upload; the results into the gh-pages branch with the viewer (bench-publish.py), which adds what was published to
-  # the page; with two commits the few lines of the release notes, and with `release_tag` the 性能基准 section of that
+  # the page and, with two commits, the link to their comparison; with `release_tag` the 性能基准 section of that
   # release's notes.
   publish:
     name: publish
@@ -171,7 +171,7 @@ jobs:
       group: gh-pages
       cancel-in-progress: false
     outputs:
-      url: ${{ steps.compare.outputs.url }}
+      url: ${{ steps.push.outputs.url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -210,38 +210,19 @@ jobs:
             git pull -q --rebase origin gh-pages
           done
 
-      # the few lines of the release notes; the run's page tells how the run went, the viewer compares
-      - id: compare
-        name: Compare the two commits
-        shell: bash
-        env:
-          COMMITS: ${{ inputs.commits }}
-        run: |
-          IFS=, read -ra refs <<< "$COMMITS"
-          mapfile -t lines < published.txt
-          key=${lines[0]}
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
-          viewer="https://$owner.github.io/${GITHUB_REPOSITORY#*/}/bench/"
-          if [ "${#refs[@]}" != 2 ]; then exit 0; fi
-          # a name in the link when it says more than the commit itself (NAME=REF gives NAME), encoded for the address
-          name() {
-            local r; r=$(echo "${1%%=*}" | xargs)
-            if [ "$r" = HEAD ] || [[ "$2" == "$r"* ]]; then r=${2:0:12}; fi
-            jq -rn --arg v "$r" '$v | @uri'
-          }
-          url="$viewer?env=$key&base=$(name "${refs[0]}" "${lines[1]}")&head=$(name "${refs[1]}" "${lines[2]}")"
-          # one of them may have failed to build or to be measured
-          for sha in "${lines[1]}" "${lines[2]}"; do [ -f "pages/bench/data/$key/$sha.json" ] || exit 0; done
-          node main/.github/bench/cli.mjs "pages/bench/data/$key/${lines[1]}.json" "pages/bench/data/$key/${lines[2]}.json" \
-            --out compare --url "$url" > /dev/null
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-
+      # the base and the head (bench-publish.py gives them when two commits were asked for and both are held): the few
+      # lines of the release notes, and the comparison's address in them
       - name: Add the benchmark to the release notes
-        if: inputs.release_tag != '' && steps.compare.outputs.url != ''
+        if: inputs.release_tag != '' && steps.push.outputs.url != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.release_tag }}
           COMMITS: ${{ inputs.commits }}
-          URL: ${{ steps.compare.outputs.url }}
-        run: bash main/.github/scripts/release-bench-notes.sh "$TAG" "$(echo "${COMMITS%%,*}" | xargs)" "$URL" compare/highlights.md
+          KEY: ${{ steps.push.outputs.key }}
+          BASE: ${{ steps.push.outputs.base }}
+          HEAD: ${{ steps.push.outputs.head }}
+          URL: ${{ steps.push.outputs.url }}
+        run: |
+          node main/.github/bench/cli.mjs "pages/bench/data/$KEY/$BASE.json" "pages/bench/data/$KEY/$HEAD.json" --out compare
+          bash main/.github/scripts/release-bench-notes.sh "$TAG" "$(echo "${COMMITS%%,*}" | xargs)" "$URL" compare/highlights.md
