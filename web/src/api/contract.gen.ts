@@ -136,7 +136,7 @@ export interface MessageRow {
   source?: string;
   /** WeChat's packed info (protobuf), in lowercase hex. */
   packedInfo?: string;
-  /** The `<n>` of the `message_<n>.db` holding it. */
+  /** The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on). */
   shard: number;
   /**
    * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.
@@ -167,7 +167,7 @@ export interface SearchHit {
   source?: string;
   /** WeChat's packed info (protobuf), in lowercase hex. */
   packedInfo?: string;
-  /** The `<n>` of the `message_<n>.db` holding it. */
+  /** The number of the message database holding it (`message_<n>.db`, or `biz_message_<n>.db` from 16777216 on). */
   shard: number;
   /**
    * Where the message stands in its conversation: pass it as `before` or `after` to read the messages next to it.

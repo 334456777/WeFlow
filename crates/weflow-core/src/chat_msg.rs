@@ -1271,7 +1271,7 @@ fn typed_fields(row: &mut MsgRow, default_seq: fn(i64) -> i64) -> RowFields {
 
 fn typed_source(row: &MsgRow, table_name: &str) -> SourceInfo {
     SourceInfo {
-        db_name: format!("message_{}", row.shard),
+        db_name: weflow_native::native_msg::shard_name(row.shard),
         table_name: table_name.to_string(),
     }
 }

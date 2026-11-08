@@ -649,12 +649,22 @@ impl Fixture {
     /// Add `msgs` of `session` to `message/message_<n>.db` (created when missing, merged when present
     /// is not supported: one call per session per shard, several sessions per shard are fine).
     pub fn message_shard(&self, n: u32, sessions: &[(&str, Vec<MsgSpec>)]) {
+        self.message_db(&format!("message/message_{n}.db"), sessions);
+    }
+
+    /// [`message_shard`](Self::message_shard) for `message/biz_message_<n>.db`, where WeChat keeps official accounts
+    /// and service notices.
+    pub fn biz_message_db(&self, n: u32, sessions: &[(&str, Vec<MsgSpec>)]) {
+        self.message_db(&format!("message/biz_message_{n}.db"), sessions);
+    }
+
+    fn message_db(&self, rel: &str, sessions: &[(&str, Vec<MsgSpec>)]) {
         let sessions: Vec<(String, Vec<MsgSpec>)> = sessions
             .iter()
             .map(|(s, m)| (s.to_string(), m.clone()))
             .collect();
         self.write(
-            &format!("message/message_{n}.db"),
+            rel,
             plain_db_with(move |c: &Connection| {
                 c.execute_batch(NAME2ID_SCHEMA).unwrap();
                 let mut next_id = 0i64;

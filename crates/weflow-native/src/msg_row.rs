@@ -66,7 +66,7 @@ pub struct MsgRow {
     pub source: Option<String>,
     /// `packed_info_data` as stored; left out of lite rows.
     pub packed_info: Option<Vec<u8>>,
-    /// The `<n>` of the `message_<n>.db` holding the row.
+    /// The number of the message database holding the row (see [`shard_name`](crate::native_msg::shard_name)).
     pub shard: u32,
 }
 

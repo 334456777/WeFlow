@@ -228,7 +228,19 @@ fn typed_row_key(
     Some((seq, create, local_id))
 }
 
-/// The number of the `message_<n>.db` holding a table.
+/// Numbers of the `biz_message_<n>.db` databases, where official accounts and service notices are kept, start here:
+/// a message's database is told by its number alone, so they must not meet those of `message_<n>.db`.
+const BIZ_SHARD_BASE: u32 = 1 << 24;
+
+/// The name of the database with this number: `message_<n>`, or `biz_message_<n>`.
+pub fn shard_name(shard: u32) -> String {
+    match shard.checked_sub(BIZ_SHARD_BASE) {
+        Some(n) => format!("biz_message_{n}"),
+        None => format!("message_{shard}"),
+    }
+}
+
+/// The number of the message database holding a table.
 pub(crate) fn shard_of(t: &MsgTable) -> Option<u32> {
     t.db.file_name()
         .and_then(|n| n.to_str())
@@ -237,15 +249,20 @@ pub(crate) fn shard_of(t: &MsgTable) -> Option<u32> {
 
 fn is_message_db(name: &str) -> Option<u32> {
     let lower = name.to_ascii_lowercase();
-    lower
-        .strip_prefix("message_")?
-        .strip_suffix(".db")?
-        .parse()
-        .ok()
+    let numbered = |prefix: &str| -> Option<u32> {
+        lower
+            .strip_prefix(prefix)?
+            .strip_suffix(".db")?
+            .parse()
+            .ok()
+    };
+    numbered("message_")
+        .filter(|n| *n < BIZ_SHARD_BASE)
+        .or_else(|| BIZ_SHARD_BASE.checked_add(numbered("biz_message_")?))
 }
 
 impl NativeAccount {
-    /// `message/message_<n>.db` shards, ascending by number.
+    /// The message databases in `message/`, ascending by number: `message_<n>.db`, then `biz_message_<n>.db`.
     pub fn message_dbs(&self) -> Vec<PathBuf> {
         let dir = self.db_path("message");
         let mut found: Vec<(u32, PathBuf)> = std::fs::read_dir(&dir)
@@ -1823,6 +1840,33 @@ mod tests {
             table_name_for("abc"),
             "Msg_900150983cd24fb0d6963f7d28e17f72"
         );
+    }
+
+    #[test]
+    fn biz_message_databases_are_read_with_numbers_of_their_own() {
+        let root = std::env::temp_dir().join(format!("weflow-msg-{}-biz", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let f = crate::fixture::Fixture::new(&root, "wxid_me_ab12");
+        let spec = |text| vec![crate::fixture::MsgSpec::text(1, "gh_a", 100, text)];
+        f.message_shard(0, &[("gh_a", spec("plain"))]);
+        f.biz_message_db(0, &[("gh_a", spec("biz"))]);
+        let acct = NativeAccount::new(f.db_storage(), &f.key_hex()).unwrap();
+        assert_eq!(acct.message_dbs().len(), 2);
+        assert_eq!(acct.message_tables("gh_a").unwrap().len(), 2);
+        let rows = acct.messages("gh_a", 0, 0).unwrap();
+        let names: Vec<String> = rows.iter().map(|r| shard_name(r.shard)).collect();
+        assert_eq!(rows.len(), 2);
+        assert!(names.contains(&"message_0".to_string()), "{names:?}");
+        assert!(names.contains(&"biz_message_0".to_string()), "{names:?}");
+    }
+
+    #[test]
+    fn only_message_databases_have_a_shard_number() {
+        assert_eq!(is_message_db("message_3.db"), Some(3));
+        assert_eq!(is_message_db("biz_message_0.db"), Some(BIZ_SHARD_BASE));
+        for name in ["biz_message_0.kvdb", "message_fts.db", "biz_message.db"] {
+            assert_eq!(is_message_db(name), None, "{name}");
+        }
     }
 
     #[test]
