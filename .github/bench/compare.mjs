@@ -128,14 +128,17 @@ export function overallDrift(base, head) {
 
 function sideLine(r, side) {
   const commit = (r.commit ?? '').slice(0, 10);
-  const named = r.ref && !commit.startsWith(r.ref) ? `\`${r.ref}\`（\`${commit}\`）` : `\`${commit || r.ref}\``;
+  // a name that holds the commit (branch@sha) says it already
+  const named = !r.ref || commit.startsWith(r.ref) ? `\`${commit || r.ref}\``
+    : r.ref.includes(commit) ? `\`${r.ref}\`` : `\`${r.ref}\`（\`${commit}\`）`;
   const version = (r.version || '版本未知').split(' (')[0];
-  return `${side}：${named}，${version}，测于 ${r.measured_at ?? '-'}${r.os ? `，${r.os}` : ''}`;
+  const at = r.measured_at ? `${r.measured_at.slice(0, 16).replace('T', ' ')} UTC` : '-';
+  return `${side}：${named}，${version}，测于 ${at}`;
 }
 
+/** The other processes' CPU while a result was measured, median / p95. */
 function quietText(q) {
-  if (!q || !q.samples) return '没有记录';
-  return `其他进程占用 CPU 中位数 ${q.p50_pct}%，p95 ${q.p95_pct}%，超过 10% 的时间占 ${Math.round(q.busy_share * 100)}%`;
+  return q && q.samples ? `${q.p50_pct}% / ${q.p95_pct}%` : '没有记录';
 }
 
 const commandNames = (base, head) => Object.keys(base.commands ?? {}).filter(n => n in (head.commands ?? {}));
@@ -151,34 +154,33 @@ export function reportBlocks(base, head) {
   const env = head.env;
   const m = env.machine, acc = env.account;
   const drift = overallDrift(base, head);
+  const anchor = (head.anchor?.commit ?? '').slice(0, 10);
+  const runs = base.runs === head.runs ? `${head.runs}` : `${base.runs}／${head.runs}`;
+  const sameOs = base.os && base.os === head.os;
+  const driftWords = drift === null ? '两份结果没有可比的锚点数据'
+    : `锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%` + (Math.abs(drift - 1) > DRIFT_LIMIT
+      ? `，**超过 ${DRIFT_LIMIT * 100}%**，比值要打折扣看（耗时表的「校正后」已除掉各命令的锚点漂移）`
+      : `，在 ${DRIFT_LIMIT * 100}% 以内`);
   const blocks = [
     { h: 1, text: '基准测试：base 与 head' },
     {
       ul: [
         sideLine(base, 'base'),
         sideLine(head, 'head'),
-        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 个逻辑 CPU，${m.memory_gib} GiB 内存；测法版本 ${env.method}`,
-        `基准账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话（manifest \`${acc.manifest}\`，`
-          + (acc.profile ? `profile \`${acc.profile.hash}\`，测于 ${acc.profile.measured}）` : '默认 profile）'),
-        `两个提交分开测量，各自先运行一次不计时，再和锚点 \`${(head.anchor?.commit ?? '').slice(0, 10)}\` 交替各运行 ${base.runs}／${head.runs} 次，取成功运行的中位数`,
-        `比值是 head / base：▲ 表示增加超过 10%，▼ 表示减少超过 10%；差值小于噪声下限时不标（耗时 20 ms，CPU 50 ms，内存 5 MiB，路由延迟 5 ms）。除了吞吐量和每秒请求数，其余指标都是越低越好`,
+        `环境 \`${env.key}\`：${m.cpu}，${m.cpus} 线程，${m.memory_gib} GiB${sameOs ? `，${head.os}` : ''}；测法 ${env.method}`,
+        `账号：种子 ${acc.seed}，${fmt(acc.messages)} 条消息，${acc.conversations} 个会话，`
+          + (acc.profile ? `profile \`${acc.profile.hash}\`（${acc.profile.measured}）` : '默认 profile'),
       ],
     },
     {
-      p: '**怎么看**：同一份代码对比时，耗时比值一般在 0.98–1.02 之间，个别命令（如 json 导出）每次在两个耗时之间跳。'
-        + '比值超过约 10%、两边最快到最慢的范围不重叠、锚点也没有明显漂移，才算真正的变化。',
+      p: `每条命令先空跑一次，再和锚点 \`${anchor}\` 交替各跑 ${runs} 次取中位数。比值 = head / base，▲▼ 是变化超过 10%（差值低于噪声下限不标），`
+        + '除吞吐量和每秒请求数外越低越好。同一份代码的比值一般在 0.98–1.02；超过约 10%、两边范围不重叠、锚点也没漂，才算真的变化。',
     },
     { h: 2, text: '两次测量的环境' },
     {
-      p: `锚点是这个环境里每次都一起测的同一个提交：它在两次测量之间变了多少，机器就漂了多少。`
-        + (drift === null ? '这两份结果没有可比的锚点数据。'
-          : Math.abs(drift - 1) > DRIFT_LIMIT ? `**锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%**，超过 ${DRIFT_LIMIT * 100}%，下面的比值要打折扣看；耗时表的「校正后」一列除掉了每条命令的锚点漂移。`
-            : `锚点耗时整体变了 ${((drift - 1) * 100).toFixed(1)}%，在 ${DRIFT_LIMIT * 100}% 以内。`),
-    },
-    {
-      ul: [`base 测量时：${quietText(base.quiet)}`, `head 测量时：${quietText(head.quiet)}`,
-        ...(base.os && head.os && base.os !== head.os
-          ? [`两次测量的 Windows 版本不同（${base.os} → ${head.os}）：系统更新带来的变化算在锚点漂移里`] : [])],
+      p: `锚点是每次都一起测的同一个提交，它变了多少就是机器漂了多少：${driftWords}。`
+        + `其他进程 CPU（中位数 / p95）：base ${quietText(base.quiet)}，head ${quietText(head.quiet)}。`
+        + (base.os && head.os && !sameOs ? `Windows 版本不同（${base.os} → ${head.os}），系统更新的影响算在锚点漂移里。` : ''),
     },
   ];
   const dr = driftRows(base, head);
