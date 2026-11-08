@@ -34,7 +34,7 @@ padding:4px 6px;min-width:0;width:100%}
 </head>
 <body>
 <h1>WeFlow 基准测试</h1>
-<p class="note">每个提交在同一台自托管机器上分别测量，结果按环境（机器、测量工具、合成账号）分组；只有同一个环境里的两个结果能比较。</p>
+<p class="note">每个提交在同一台自托管机器上分别测量，结果按环境（机器、测量工具、合成账号）分组；仅同一环境内的结果可相互比较。</p>
 <form id="pick" aria-label="选择要比较的结果">
   <label for="env">环境</label><select id="env"></select>
   <label for="base">base</label><select id="base"></select>
@@ -70,7 +70,7 @@ const linkName = c => c.refs[0] ?? c.sha.slice(0, 12);
 function envLabel(key) {
   const e = index.envs[key], list = commitsOf(key);
   const last = list[0]?.measured_at.slice(0, 10) ?? '-';
-  return `${key} · ${e.machine.cpu} · ${list.length} 个提交 · 最近 ${last}`;
+  return `${key} · ${e.machine.cpu} · ${list.length} 个提交 · 最近测量 ${last}`;
 }
 
 function fill(select, items, chosen) {
@@ -80,7 +80,7 @@ function fill(select, items, chosen) {
 // by its name, not by the version the binary reports: the tags of a release candidate built a Cargo.toml that still
 // held the version before
 function commitLabel(c) {
-  return `${nameOf(c)} · ${c.measured_at.slice(0, 16).replace('T', ' ')}${c.only ? ' · 部分' : ''}`;
+  return `${nameOf(c)} · ${c.measured_at.slice(0, 16).replace('T', ' ')}${c.only ? ' · 部分测量' : ''}`;
 }
 
 function choose(key, baseName, headName) {
@@ -98,7 +98,7 @@ async function show() {
   const params = new URLSearchParams({ env: key, base: linkName({ sha: $('base').value, ...base }), head: linkName({ sha: $('head').value, ...head }) });
   history.replaceState(null, '', `?${params}`);
   $('report').replaceChildren();
-  if ($('base').value === $('head').value) { status('base 和 head 是同一个提交，选两个不同的提交来比较。', true); return; }
+  if ($('base').value === $('head').value) { status('base 与 head 为同一提交，请选择两个不同的提交进行比较。', true); return; }
   status('正在读取两份结果……');
   try {
     const [b, h] = await Promise.all([load(`data/${key}/${$('base').value}.json`), load(`data/${key}/${$('head').value}.json`)]);
@@ -111,14 +111,14 @@ async function show() {
       + charts.join('');
     status('');
   } catch (e) {
-    status(`读不到结果：${e.message}`, true);
+    status(`无法读取结果：${e.message}`, true);
   }
 }
 
 try {
   index = await load('data/index.json');
   const keys = Object.keys(index.envs ?? {});
-  if (!keys.length) throw new Error('还没有结果');
+  if (!keys.length) throw new Error('尚无结果');
   const q = new URLSearchParams(location.search);
   // a BENCH-<base>-<head> autolink: one parameter of SHAs, which hold no hyphen
   if (q.has('c')) {
@@ -135,7 +135,7 @@ try {
   $('head').addEventListener('change', show);
   await show();
 } catch (e) {
-  status(`没有可以显示的结果：${e.message}`, true);
+  status(`无可显示的结果：${e.message}`, true);
 }
 </script>
 </body>
