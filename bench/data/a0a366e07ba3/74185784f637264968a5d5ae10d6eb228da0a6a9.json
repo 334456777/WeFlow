@@ -1,7 +1,7 @@
 {
  "format": 1,
  "commit": "74185784f637264968a5d5ae10d6eb228da0a6a9",
- "ref": "main",
+ "ref": "main@74185784f6",
  "version": "weflow 5.0.1 (7418578 2026-11-07 23:16Z)",
  "binary_bytes": 28285440,
  "measured_at": "2026-11-07T23:47:23+00:00",
