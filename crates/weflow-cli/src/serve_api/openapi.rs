@@ -1859,6 +1859,18 @@ mod tests {
         let package: Value = serde_json::from_str(&text("../../web/package.json")).unwrap();
         assert_eq!(package["weflow"]["apiVersion"], API_VERSION);
         assert_eq!(contract_document()["info"]["version"], API_VERSION);
+        let sample = format!("\"apiVersion\": \"{API_VERSION}\"");
+        for (path, now) in [
+            ("../../docs/serve-api.md", format!("now `{API_VERSION}`")),
+            (
+                "../../docs/zh-CN/serve-api.md",
+                format!("目前为 `{API_VERSION}`"),
+            ),
+        ] {
+            let doc = text(path);
+            assert!(doc.contains(&now), "{path} does not say {now}");
+            assert!(doc.contains(&sample), "{path} has no sample with {sample}");
+        }
     }
 
     #[test]
