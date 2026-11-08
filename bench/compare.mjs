@@ -327,18 +327,18 @@ export function highlights(base, head) {
   out.push(`二进制体积：${fmt(base.binary_bytes, MIB, 'MiB')} → ${fmt(head.binary_bytes, MIB, 'MiB')}（${ratio(head.binary_bytes, base.binary_bytes).toFixed(2)}×）`);
   const drift = overallDrift(base, head);
   if (drift !== null && Math.abs(drift - 1) > DRIFT_LIMIT) {
-    out.push(`两次测量之间机器漂移了 ${((drift - 1) * 100).toFixed(1)}%（锚点耗时），下面的耗时已按锚点校正，仍要谨慎看`);
+    out.push(`两次测量之间机器漂移 ${((drift - 1) * 100).toFixed(1)}%（以锚点耗时计），以下耗时已按锚点校正，仍需审慎看待`);
   }
   let names = commandNames(base, head);
   for (const [side, r] of [['base', base], ['head', head]]) {
     const f = names.filter(n => r.commands[n].failed_runs);
-    if (f.length && f.length === names.length) out.push(`${side} 的命令全部运行失败，见报告`);
-    else if (f.length) out.push(`${side} 有运行失败的命令：` + f.map(n => `\`${n}\``).join('，'));
+    if (f.length && f.length === names.length) out.push(`${side} 的命令全部运行失败，详见报告`);
+    else if (f.length) out.push(`${side} 存在运行失败的命令：` + f.map(n => `\`${n}\``).join('，'));
   }
   // a failed run ends early: only the commands that ran through on both sides are compared
   for (const [side, r] of [['base', base], ['head', head]]) {
     const missing = names.filter(n => r.commands[n].unsupported);
-    if (missing.length) out.push(`${side} 还没有 ${missing.length} 条命令（不比较）：` + missing.map(n => `\`${n}\``).join('，'));
+    if (missing.length) out.push(`${side} 有 ${missing.length} 条命令标为「还没有」（不作比较）：` + missing.map(n => `\`${n}\``).join('，'));
   }
   names = names.filter(n => !base.commands[n].failed_runs && !head.commands[n].failed_runs
     && !base.commands[n].unsupported && !head.commands[n].unsupported);
@@ -355,18 +355,18 @@ export function highlights(base, head) {
       changed.push(`\`${n}\` ${fmt(mb)} → ${fmt(mh)} ms（${corrected.toFixed(2)}×${d !== null ? '，已按锚点校正' : ''}）`);
     }
     const rest = names.length - changed.length - drifted.length;
-    if (changed.length) out.push(`命令耗时有变化：${changed.join('；')}；其余 ${rest} 条在噪声范围内`);
-    else out.push(`命令耗时：${rest} 条命令都在噪声范围内`);
-    if (drifted.length) out.push(`锚点漂移超过 ${2 * DRIFT_LIMIT * 100}%、不下结论的命令：${drifted.join('，')}`);
+    if (changed.length) out.push(`命令耗时变化：${changed.join('；')}；其余 ${rest} 条处于噪声范围内`);
+    else out.push(`命令耗时：${rest} 条命令均处于噪声范围内`);
+    if (drifted.length) out.push(`锚点漂移超过 ${2 * DRIFT_LIMIT * 100}%、不作结论的命令：${drifted.join('，')}`);
   }
-  if (base.load_failed || head.load_failed) out.push('`weflow serve` 持续负载没有完成，见报告');
+  if (base.load_failed || head.load_failed) out.push('`weflow serve` 持续负载未完成，详见报告');
   else if (base.load && head.load) {
     const lb = base.load, lh = head.load;
     let line = `\`weflow serve\` 持续负载：每秒请求数 ${fmt(lb.requests_per_s)} → ${fmt(lh.requests_per_s)}，`
       + `延迟 p50 ${fmt(lb.latency_ms.p50)} → ${fmt(lh.latency_ms.p50)} ms，`
       + `工作集 ${fmt(lb.working_set_mib.quarter_medians[3])} → ${fmt(lh.working_set_mib.quarter_medians[3])} MiB`;
     const growth = lh.working_set_mib.growth;
-    if (isNum(growth) && growth > 20) line += `；head 的内存在后半段上升了 ${fmt(growth)} MiB`;
+    if (isNum(growth) && growth > 20) line += `；head 的内存在后半段上升 ${fmt(growth)} MiB`;
     out.push(line);
   }
   if (base.serve_bench && head.serve_bench) {
@@ -380,9 +380,9 @@ export function highlights(base, head) {
       const m = mark(ratio(mh, mb), mh - mb, NOISE_MS);
       ups += m === '▲'; downs += m === '▼';
     }
-    if (!compared) out.push('serve_bench：没有两边都能计时的路由，见报告');
-    else if (ups || downs) out.push(`serve_bench：${downs} 个路由快了 10% 以上，${ups} 个慢了 10% 以上`);
-    else out.push(`serve_bench：${compared} 个路由都在噪声范围内`);
+    if (!compared) out.push('serve_bench：没有两侧均可计时的路由，详见报告');
+    else if (ups || downs) out.push(`serve_bench：${downs} 个路由加快 10% 以上，${ups} 个变慢 10% 以上`);
+    else out.push(`serve_bench：${compared} 个路由均处于噪声范围内`);
   }
   return out;
 }

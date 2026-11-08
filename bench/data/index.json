@@ -578,6 +578,21 @@
       "max_pct": 23.1,
       "busy_share": 0.847
      }
+    },
+    "05efbc36bb572d664478ac00d241d22104b56239": {
+     "refs": [
+      "v6.0.0"
+     ],
+     "version": "weflow 6.0.0 (05efbc3 2026-11-08 20:32Z)",
+     "measured_at": "2026-11-08T21:02:59+00:00",
+     "only": null,
+     "quiet": {
+      "samples": 409,
+      "p50_pct": 4.9,
+      "p95_pct": 9.8,
+      "max_pct": 18.0,
+      "busy_share": 0.044
+     }
     }
    },
    "anchor": "6115746c5f6e5124ed7aaf4febc300d5969cead3"
