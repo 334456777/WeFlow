@@ -40,7 +40,7 @@ time, .num { font-variant-numeric: tabular-nums; }
     box-shadow var(--duration-hover) var(--ease-out);
 }
 .nav-item:active, .primary-button:active:not(:disabled), .secondary-button:active, .icon-button:active,
-.segmented button:active, .file-bubble:active, .photo-button:active, .media-item:active {
+.segmented button:active, .file-bubble:active, .photo-button:active, .media-item:active, .conversation-row:active {
   transform: scale(var(--press-scale));
 }
 /*
@@ -188,8 +188,8 @@ time, .num { font-variant-numeric: tabular-nums; }
   box-shadow: var(--neu-inset-pressed);
   transition-duration: var(--duration-snap), var(--duration-snap), var(--duration-snap), var(--duration-hover), var(--duration-micro), var(--duration-micro);
 }
-/* it shrinks only where its items do (the navigation, the media), as they shrink when held down */
-.hover-track-host:has(> :is(.nav-item, .media-item)) > .hover-hollow[data-pressed] { scale: var(--press-scale); }
+/* it shrinks only where its items do (the navigation, the media, the conversations), as they shrink when held down */
+.hover-track-host:has(> :is(.nav-item, .media-item, .conversation-row), > .virtual-row > .conversation-row) > .hover-hollow[data-pressed] { scale: var(--press-scale); }
 .hover-track-host :is(.nav-item, .conversation-row, .search-result, .media-item):hover:not(.selected, .active, :active) { box-shadow: var(--neu-flat); }
 /*
  * Folded, the rail's inside (56px less 8px each side) is the 40px of a button, so an item fills its sidebar either
