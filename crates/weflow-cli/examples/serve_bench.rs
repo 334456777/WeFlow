@@ -82,7 +82,7 @@ const UNINDEXED: i64 = 50;
 const SNS_POSTS: i64 = 2000;
 /// How long the push engine's CPU time is measured on the real account, idle and with a listener.
 /// The columns a chat window shows of a message, and a list of a contact (`?fields=`). A message's are named both
-/// ways: as WeChat's columns until API 3, and as `MessageRow`'s (#492), so a server of either API keeps them.
+/// ways: as WeChat's columns and as `MessageRow`'s (#492), so a server answering either keeps them.
 const MESSAGE_FIELDS: &str =
     "local_id,server_id,local_type,sort_seq,create_time,sender_username,is_send,message_content,\
      localId,serverId,localType,sortSeq,createTime,sender,isSend,content,_cursor";

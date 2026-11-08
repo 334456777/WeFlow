@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use serde_json::{json, Value};
+use weflow_core::contract::API_VERSION;
 use weflow_native::fixture::Fixture;
 
 const TOKEN: &str = "t0k-for-tests";
@@ -232,7 +233,7 @@ fn health_needs_no_token_and_everything_else_does() {
     let r = server.request("GET", "/health", &[], "");
     assert_eq!(r.status, 200);
     assert_eq!(r.json()["status"], "ok");
-    assert_eq!(r.json()["apiVersion"], "3");
+    assert_eq!(r.json()["apiVersion"], API_VERSION);
     // how it runs, for the settings (#214)
     assert_eq!(r.json()["limits"]["maxTasks"], 1);
     assert!(r.json()["limits"]["maxReads"].as_u64().unwrap() >= 1);

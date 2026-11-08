@@ -17,6 +17,13 @@ use serde::{Deserialize, Serialize};
 pub use crate::chat_msg::{ChatMessage, Type49Info};
 use crate::message::{app_message_kind, parse_message_content, ExportMsg};
 
+/// The version of the API's rules (routes, methods, parameters, answers, jobs), for clients such as the WebUI to
+/// check. Raised only by changes that break existing clients; new commands and options do not raise it.
+///
+/// `web/package.json`, `web/contract/openapi.json` and `docs/serve-api.md` (both languages) say it too:
+/// `the_webui_and_the_contract_have_the_server_s_api_version` fails until they agree with this.
+pub const API_VERSION: &str = "2";
+
 /// A message of a page as the chat window shows it (`chat messages`, `chat message` and `chat search` with
 /// `parsed`).
 #[derive(Clone, Debug, Serialize, JsonSchema)]
