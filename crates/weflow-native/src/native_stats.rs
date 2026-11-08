@@ -4,7 +4,7 @@
 //! Dates, hours and weekdays are in local time (SQLite `localtime`), matching what WeFlow's desktop app shows.
 //! Output shapes are the ones the service layer already consumes (`total/sent/received/...`).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -139,6 +139,49 @@ pub(crate) fn tables_of(
         .iter()
         .map(|sid| acct.message_tables(sid))
         .collect()
+}
+
+/// The message kinds counted one by one in [`TypeCounts::kinds`], in its order after the total.
+const COUNTED_KINDS: [i64; 7] = [VOICE, IMAGE, VIDEO, EMOJI, CALL, TRANSFER, RED_PACKET];
+
+/// Messages of one table, or of a session's tables together, as the export window counts them.
+#[derive(Default)]
+struct TypeCounts {
+    /// The total, then one count for each of [`COUNTED_KINDS`].
+    kinds: [i64; 8],
+    /// Earliest `create_time` (`0`: no message).
+    first: i64,
+    last: i64,
+    /// Messages the account owner sent.
+    mine: i64,
+}
+
+impl TypeCounts {
+    fn add(&mut self, other: &Self) {
+        for (slot, n) in self.kinds.iter_mut().zip(other.kinds) {
+            *slot += n;
+        }
+        if other.first > 0 && (self.first == 0 || other.first < self.first) {
+            self.first = other.first;
+        }
+        self.last = self.last.max(other.last);
+        self.mine += other.mine;
+    }
+}
+
+/// `Name2Id` as sender row id to name; `user_name` is the primary key, so a row id names one sender.
+fn sender_names(conn: &rusqlite::Connection) -> Result<HashMap<i64, String>> {
+    let mut names = HashMap::new();
+    let mut stmt = conn.prepare("select rowid, user_name from Name2Id")?;
+    let mut rows = stmt.query([])?;
+    while let Some(r) = rows.next()? {
+        if let (rusqlite::types::ValueRef::Integer(id), Some(name)) =
+            (r.get_ref(0)?, r.get_ref(1)?.as_str_or_null()?)
+        {
+            names.insert(id, name.to_string());
+        }
+    }
+    Ok(names)
 }
 
 /// Sender row ids in the list [`NativeAccount::my_ids`] gives.
@@ -607,45 +650,23 @@ impl NativeAccount {
     ) -> Result<Value> {
         let begin = options.get("begin").and_then(Value::as_i64).unwrap_or(0);
         let end = options.get("end").and_then(Value::as_i64).unwrap_or(0);
-        let range = range_sql(begin, end);
         let mut out = Map::new();
         for sid in session_ids {
             let is_group = sid.ends_with("@chatroom");
-            let mut c = [0i64; 8]; // total voice image video emoji call transfer red
-            let (mut first, mut last, mut mine_total) = (0i64, 0i64, 0i64);
+            let mut all = TypeCounts::default();
             let mut senders: BTreeSet<String> = BTreeSet::new();
             for t in self.message_tables(sid)? {
                 let mine = self.my_ids(&t.db)?;
-                let sql = format!(
-                    "select count(*) as total, coalesce(sum(local_type = {VOICE}), 0) as voice, coalesce(sum(local_type = {IMAGE}), 0) as image, \
-                     coalesce(sum(local_type = {VIDEO}), 0) as video, coalesce(sum(local_type = {EMOJI}), 0) as emoji, \
-                     coalesce(sum(local_type = {CALL}), 0) as call, coalesce(sum(local_type = {TRANSFER}), 0) as transfer, \
-                     coalesce(sum(local_type = {RED_PACKET}), 0) as red, min(nullif(create_time, 0)) as mn, max(create_time) as mx, \
-                     coalesce(sum(real_sender_id in ({mine})), 0) as mine from \"{table}\" where 1 = 1{range}",
-                    table = t.table
-                );
-                let r = self
-                    .query(&t.db, &sql, &[])?
-                    .into_iter()
-                    .next()
-                    .unwrap_or(Value::Null);
-                for (slot, key) in c.iter_mut().zip([
-                    "total", "voice", "image", "video", "emoji", "call", "transfer", "red",
-                ]) {
-                    *slot += int(&r, key);
-                }
-                let (mn, mx) = (int(&r, "mn"), int(&r, "mx"));
-                if mn > 0 && (first == 0 || mn < first) {
-                    first = mn;
-                }
-                last = last.max(mx);
-                mine_total += int(&r, "mine");
-                if is_group {
-                    for (name, _) in self.sender_counts(&t, &range)? {
-                        senders.insert(name);
-                    }
-                }
+                let (counts, names) = self.type_counts(&t, &mine, (begin, end), is_group)?;
+                all.add(&counts);
+                senders.extend(names);
             }
+            let TypeCounts {
+                kinds: c,
+                first,
+                last,
+                mine: mine_total,
+            } = all;
             let mut o = json!({
                 "total_messages": c[0], "voice_messages": c[1], "image_messages": c[2], "video_messages": c[3],
                 "emoji_messages": c[4], "call_messages": c[5], "transfer_messages": c[6], "red_packet_messages": c[7],
@@ -658,6 +679,94 @@ impl NativeAccount {
             out.insert(sid.clone(), o);
         }
         Ok(Value::Object(out))
+    }
+
+    /// One table's [`TypeCounts`] and, with `named`, the names of its senders (`Name2Id` names them), from one read of
+    /// the table through the leaf scan. A table the scan does not read is counted by SQL.
+    fn type_counts(
+        &self,
+        t: &MsgTable,
+        mine: &str,
+        range: (i64, i64),
+        named: bool,
+    ) -> Result<(TypeCounts, Vec<String>)> {
+        let ids = id_set(mine);
+        let scanned = self.scan_messages(
+            t,
+            range,
+            || (TypeCounts::default(), HashSet::<i64>::new()),
+            |(counts, senders), m| {
+                counts.kinds[0] += 1;
+                if let Some(slot) = COUNTED_KINDS.iter().position(|&kind| kind == m.kind) {
+                    counts.kinds[slot + 1] += 1;
+                }
+                counts.first = if counts.first == 0 {
+                    m.time
+                } else {
+                    counts.first.min(m.time)
+                };
+                counts.last = counts.last.max(m.time);
+                if let Some(id) = m.sender {
+                    counts.mine += i64::from(ids.contains(&id));
+                    senders.insert(id);
+                }
+            },
+            |conn, parts| {
+                let mut all = TypeCounts::default();
+                for (counts, _) in parts {
+                    all.add(counts);
+                }
+                let names = if named {
+                    let known = sender_names(conn)?;
+                    let senders: HashSet<i64> =
+                        parts.iter().flat_map(|(_, s)| s.iter().copied()).collect();
+                    senders
+                        .iter()
+                        .filter_map(|id| known.get(id).cloned())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                Ok((all, names))
+            },
+        )?;
+        if let Some(counted) = scanned {
+            return Ok(counted);
+        }
+        let range = range_sql(range.0, range.1);
+        let sql = format!(
+            "select count(*) as total, coalesce(sum(local_type = {VOICE}), 0) as voice, coalesce(sum(local_type = {IMAGE}), 0) as image, \
+             coalesce(sum(local_type = {VIDEO}), 0) as video, coalesce(sum(local_type = {EMOJI}), 0) as emoji, \
+             coalesce(sum(local_type = {CALL}), 0) as call, coalesce(sum(local_type = {TRANSFER}), 0) as transfer, \
+             coalesce(sum(local_type = {RED_PACKET}), 0) as red, min(create_time) as mn, max(create_time) as mx, \
+             coalesce(sum(real_sender_id in ({mine})), 0) as mine from \"{table}\" where create_time > 0{range}",
+            table = t.table
+        );
+        let r = self
+            .query(&t.db, &sql, &[])?
+            .into_iter()
+            .next()
+            .unwrap_or(Value::Null);
+        let mut counts = TypeCounts {
+            first: int(&r, "mn"),
+            last: int(&r, "mx"),
+            mine: int(&r, "mine"),
+            ..TypeCounts::default()
+        };
+        for (slot, key) in counts.kinds.iter_mut().zip([
+            "total", "voice", "image", "video", "emoji", "call", "transfer", "red",
+        ]) {
+            *slot = int(&r, key);
+        }
+        let names = if named {
+            self.sender_counts(t, &range)?
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Ok((counts, names))
     }
 
     /// `(sender username, message count)` of one table; unknown senders are skipped.
@@ -692,18 +801,7 @@ impl NativeAccount {
                 for (&key, &n) in parts.iter().flatten() {
                     *counts.entry(key).or_default() += n;
                 }
-                // `user_name` is the primary key: a sender row id names one sender
-                let mut names: std::collections::HashMap<i64, String> =
-                    std::collections::HashMap::new();
-                let mut stmt = conn.prepare("select rowid, user_name from Name2Id")?;
-                let mut rows = stmt.query([])?;
-                while let Some(r) = rows.next()? {
-                    if let (rusqlite::types::ValueRef::Integer(id), Some(name)) =
-                        (r.get_ref(0)?, r.get_ref(1)?.as_str_or_null()?)
-                    {
-                        names.insert(id, name.to_string());
-                    }
-                }
+                let names = sender_names(conn)?;
                 let quarters: BTreeSet<i64> = counts.keys().map(|k| k.2).collect();
                 let local = local_quarters(conn, &quarters)?;
                 Ok(counts
