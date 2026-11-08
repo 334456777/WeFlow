@@ -18,10 +18,7 @@ export const formatSize = (bytes: number) =>
 export function jobDetail(job: Job): string {
   if (job.status === 'running') {
     const p = job.progress;
-    if (p?.formats) {
-      const done = p.formats.filter(f => f.done).length;
-      return done < p.formats.length ? t('同时写出 {n} 种格式，已完成 {done} 种', { n: p.formats.length, done }) : t('正在打包');
-    }
+    if (p?.formats?.every(f => f.done)) return t('正在打包');
     const count = p?.total ? (p.current ?? 0) + ' / ' + p.total : '';
     return [p?.message, count, p?.percent !== undefined ? Math.round(p.percent) + '%' : ''].filter(Boolean).join(' · ') || t('正在运行');
   }

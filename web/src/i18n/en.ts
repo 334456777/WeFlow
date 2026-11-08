@@ -69,7 +69,6 @@ export const en: Record<string, string> = {
   "下载文件": "Download the file",
   "正在导出": "Exporting",
   "正在打包": "Packing",
-  "同时写出 {n} 种格式，已完成 {done} 种": "Writing {n} formats at once, {done} done",
   "各个格式的进度": "Progress of each format",
   "选择导出格式": "Choose the export formats",
   "重新导出": "Export again",
