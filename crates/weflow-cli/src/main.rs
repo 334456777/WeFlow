@@ -3393,14 +3393,19 @@ async fn serve_webui(
     match weflow_core::webui::kept(&store, &wanted, backend) {
         Ok(Some(meta)) => Ok((UiDir::open_version(&store, &meta.version), None)),
         Ok(None) => Ok((fallback(), Some(wanted))),
-        // kept by another weflow: downloading it again would not help
+        // kept by another weflow: downloading it again would not help, but with nothing else suitable kept here (a
+        // version picked before this weflow changed its API, say) the default version of this weflow does
         Err(refused) => {
             eprintln!(
                 "{}{}",
                 weflow_core::locale::tr("warning: ", "警告："),
                 weflow_core::locale::localize(refused.message.clone())
             );
-            Ok((fallback(), None))
+            let shown = fallback();
+            let default_version =
+                (shown.is_none() && !WEB_VERSION.is_empty() && wanted != WEB_VERSION)
+                    .then(|| WEB_VERSION.to_string());
+            Ok((shown, default_version))
         }
     }
 }

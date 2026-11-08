@@ -435,6 +435,27 @@ fn versions_kept_by_another_weflow_are_checked_again() {
 }
 
 #[test]
+fn a_picked_version_of_another_api_gives_way_to_the_default_one() {
+    let home = temp_root("upgraded");
+    let version = built_in();
+    let reg = registry(&[&version]);
+    // upgraded from a weflow of another API, with a version picked there and nothing else kept
+    keep(&home, "0.0.6", "0", "0.0.1");
+    std::fs::write(home.join("cache").join("web").join("current"), "0.0.6\n").unwrap();
+    let server = Server::start(&home, &reg, &[]);
+    assert_eq!(server.started["ui"], false);
+    assert_eq!(server.started["uiDownloading"], version.as_str());
+    assert_eq!(server.wait("webui_ready")["version"], version.as_str());
+    assert!(server.get("/ui/").1.contains(&format!("WeFlow {version}")));
+    drop(server);
+
+    // kept now: shown at once, offline too
+    let server = Server::start(&home, "http://127.0.0.1:9", &[]);
+    assert_eq!(server.started["uiVersion"], version.as_str());
+    assert!(server.started["uiDownloading"].is_null());
+}
+
+#[test]
 fn prune_leaves_the_version_a_server_shows() {
     let home = temp_root("shown");
     let version = built_in();
