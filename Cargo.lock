@@ -3262,7 +3262,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-assets"
-version = "6.0.0-rc.1"
+version = "6.0.0"
 dependencies = [
  "anyhow",
  "schemars",
@@ -3274,7 +3274,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-cli"
-version = "6.0.0-rc.1"
+version = "6.0.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3308,7 +3308,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-core"
-version = "6.0.0-rc.1"
+version = "6.0.0"
 dependencies = [
  "aes 0.9.3",
  "aes-gcm",
@@ -3363,7 +3363,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-native"
-version = "6.0.0-rc.1"
+version = "6.0.0"
 dependencies = [
  "aes 0.9.3",
  "anyhow",
@@ -3386,7 +3386,7 @@ dependencies = [
 
 [[package]]
 name = "weflow-silk"
-version = "6.0.0-rc.1"
+version = "6.0.0"
 dependencies = [
  "cc",
 ]
