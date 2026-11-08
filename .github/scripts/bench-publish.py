@@ -9,15 +9,28 @@ usage: python bench-publish.py --pages DIR --results DIR --viewer DIR
     were asked by (a tag or a branch; a commit asked again by another name gains that name) and when they were
     measured; the viewer lists them from here
   - `index.html` and `compare.mjs`, the viewer, as they are in `--viewer`
-Prints the environment key and the full SHAs of the commits asked for, one per line, for the steps after it, and
-appends what reached gh-pages to $GITHUB_STEP_SUMMARY: how many results, the viewer and, for each commit, the
-`BENCH-<anchor>-<commit>` reference to its comparison with the anchor.
+Prints the environment key, for the commit message, and appends what reached gh-pages to $GITHUB_STEP_SUMMARY: how
+many results, the viewer and, for each commit, the `BENCH-<anchor>-<commit>` reference to its comparison with the
+anchor. When exactly two commits were asked for and the environment holds both, they are a base and a head: the
+summary adds the reference and the viewer's address of their comparison, also given to the steps after it as the
+outputs `key`, `url`, `base` and `head` (full SHAs).
 """
 
 import argparse
 import json
 import os
 import shutil
+from urllib.parse import quote
+
+
+def says_more(c):
+    """Whether the name a commit was asked by says more than the commit itself (a SHA, or its start, or HEAD)."""
+    return c["ref"] != "HEAD" and not c["sha"].startswith(c["ref"])
+
+
+def link_name(c):
+    """How the viewer's address names a commit: by its name when that says more, else by its SHA."""
+    return quote(c["ref"] if says_more(c) else c["sha"][:12], safe="")
 
 
 def main():
@@ -56,8 +69,7 @@ def main():
                      "measured_at": result["measured_at"], "only": result["only"], "quiet": result["quiet"]}
         if entry is None:
             continue
-        # a name that is the commit itself (a SHA, or its start) or HEAD says nothing more
-        if c["ref"] not in entry["refs"] and c["ref"] != "HEAD" and not sha.startswith(c["ref"]):
+        if says_more(c) and c["ref"] not in entry["refs"]:
             entry["refs"].append(c["ref"])
         held["results"][sha] = entry
 
@@ -74,12 +86,19 @@ def main():
     refs = [f"  - {c['ref']}：`BENCH-{anchor[:10]}-{c['sha'][:10]}`" for c in published if c["sha"] != anchor]
     if refs:
         lines += ["- 和锚点的对比（在 issue、PR 和提交说明里写这个引用，会自动链接到查看页）："] + refs
+    # two commits asked for are a base and a head, compared when the environment holds both
+    pair = run["commits"] if len(run["commits"]) == 2 else []
+    if pair and all(c["sha"] in held["results"] for c in pair):
+        base, head = pair
+        url = f"{viewer}&base={link_name(base)}&head={link_name(head)}"
+        lines.append(f"- base 对 head：`BENCH-{base['sha'][:10]}-{head['sha'][:10]}`，查看页：{url}")
+        if os.environ.get("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+                f.write(f"key={key}\nurl={url}\nbase={base['sha']}\nhead={head['sha']}\n")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
     print(key)
-    for c in run["commits"]:
-        print(c["sha"])
 
 
 if __name__ == "__main__":
