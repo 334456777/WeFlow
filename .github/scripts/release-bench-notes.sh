@@ -16,7 +16,7 @@ trap 'rm -rf "$work"' EXIT
   echo "<!-- bench -->"
   echo "## 性能基准"
   echo
-  echo "与 \`$base\` 对比，两个版本在同一台自托管的 Windows x64 机器上用合成的基准账号分别测得：**[在查看页打开]($url)**"
+  echo "与 \`$base\` 对比。两个版本在同一台自托管 Windows x64 机器上、以合成的基准账号分别测得：**[在查看页中查看]($url)**"
   echo
   cat "$highlights"
   echo
