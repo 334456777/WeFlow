@@ -60,7 +60,7 @@ on:
         default: false
         type: boolean
       release_tag:
-        description: "给已发布的版本补上「性能基准」一节时填它的 tag（commits 要正好两个：上一个版本、这个版本）；留空不改"
+        description: "补写某个已发布版本的「性能基准」：填它的 tag，commits 填「上一个版本,这个版本」；留空不改任何 release"
         required: false
         default: ""
         type: string
