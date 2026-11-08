@@ -74,3 +74,6 @@ weflow.exe
 /docs/ycccccccy/
 weflow.exe
 __pycache__/
+
+# docs: wiki
+/wiki/
