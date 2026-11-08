@@ -33,7 +33,9 @@ awk -v f="$work/section.md" '
   $0 == "<a name=\"weflow-download\"></a>" && !done { while ((getline l < f) > 0) print l; print ""; done = 1 }
   { print }
   END { if (!done) { print ""; while ((getline l < f) > 0) print l } }
-' "$work/body.md" > "$work/notes.md"
+' "$work/body.md" |
+  # without the blank lines at the end, which the body as read ends with and running it again would add to
+  awk 'NF { for (; blank > 0; blank--) print ""; print; next } { blank++ }' > "$work/notes.md"
 gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file "$work/notes.md"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   cat "$work/section.md" >> "$GITHUB_STEP_SUMMARY"
