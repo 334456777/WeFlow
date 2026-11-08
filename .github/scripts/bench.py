@@ -430,6 +430,10 @@ def bench_commands(args, exes, alloc_exes, homes, manifest, out):
     roles = [r for r in ROLES if r in exes]
     results = {r: {} for r in roles}
     cursor = middle_cursor(exes["target"], homes["target"], manifest)
+    # a version whose messages carry no `_cursor` has no paging by cursor yet: noted like a command it does not know
+    if not cursor and (not args.only or "chat messages cursor" in args.only):
+        results["target"]["chat messages cursor"] = {"argv": None, "items": 50, **summarize([], 50),
+                                                     "unsupported": True}
     for name, argv, items, _ in commands(manifest, work, cursor):
         if args.only and name not in args.only:
             continue

@@ -25,7 +25,8 @@ today's tools), and the others go on; only the anchor's failing stops the run. W
 its logs) for each commit measured, `<out>/run.json`: the environment, the anchor and every commit asked for with
 its SHA, its name, whether it was measured, and why not when it failed, and `<out>/summary.md`, how the run went (each
 commit's outcome, how long it took to build and to measure, how busy the machine was, what the version lacked or
-failed), also appended to $GITHUB_STEP_SUMMARY.
+failed), also printed to the log; the publish job puts it on the run's Summary page, whose network is steadier than
+the runner's (an upload from the runner that fails is not tried again).
 """
 
 import argparse
@@ -114,7 +115,19 @@ def note_toolchain(bench_dir, channel):
 def minutes(seconds):
     if seconds is None:
         return "-"
-    return "不到 1 分钟" if seconds < 60 else f"{seconds / 60:.0f} 分钟"
+    if seconds < 60:
+        return "不到 1 分钟"
+    hours, mins = divmod(round(seconds / 60), 60)
+    return f"{hours} 小时 {mins} 分钟" if hours else f"{mins} 分钟"
+
+
+def load_outcome(result):
+    """Whether the sustained load of a result ran: 有, 还没有 (the version's serve refuses what the load asks of it)
+    or 没跑成."""
+    if result.get("load"):
+        return "有"
+    said = result.get("load_failed") or ""
+    return "还没有" if any(s in said for s in bench.UNSUPPORTED) else "没跑成"
 
 
 def run_summary(env, anchor, new_anchor, commits, out, elapsed):
@@ -123,12 +136,12 @@ def run_summary(env, anchor, new_anchor, commits, out, elapsed):
     profile = acc.get("profile") or {}
     outcome = {"measured": "测完", "reused": "沿用之前测完、没发布的结果", "held": "已测过，跳过",
                "build": "编译失败，跳过", "measure": "测量中断，跳过"}
-    short = {"measured": "测完", "reused": "沿用", "held": "已测过", "build": "编译失败", "measure": "测量中断"}
-    counts = {}
+    short = {"measured": "测完", "held": "已测过", "reused": "沿用", "build": "编译失败", "measure": "测量中断"}
+    counts = dict.fromkeys(short, 0)
     rows = []
     for c in commits:
         kind = c.get("failed") or ("reused" if c.get("reused") else "measured" if c["measured"] else "held")
-        counts[kind] = counts.get(kind, 0) + 1
+        counts[kind] += 1
         quiet = cmds = unsupported = failed_runs = load = "-"
         file = os.path.join(out, c["sha"], "result.json")
         if c["measured"] and os.path.exists(file):
@@ -140,33 +153,32 @@ def run_summary(env, anchor, new_anchor, commits, out, elapsed):
             cmds = str(len(entries))
             unsupported = str(sum(1 for e in entries if e.get("unsupported")))
             failed_runs = str(sum(e.get("failed_runs", 0) for e in entries))
-            load = "有" if r.get("load") else "没跑成"
+            load = load_outcome(r)
         rows.append(f"| {c['ref']} | `{c['sha'][:10]}` | {outcome[kind]} | {minutes(c.get('build_s'))} | "
                     f"{minutes(c.get('measure_s'))} | {quiet} | {cmds} | {unsupported} | {failed_runs} | {load} |")
-    tally = "，".join(f"{short[k]} {n}" for k, n in counts.items())
+    tally = "，".join(f"{short[k]} {counts[k]}" for k in short)
     lines = [
         "## 运行情况",
         "",
         f"- 环境 `{env['key']}`：{m['cpu']}，{m['cpus']} 个逻辑 CPU，{m['memory_gib']} GiB 内存；测法版本 {env['method']}",
         f"- 基准账号：种子 {acc['seed']}，{acc['messages']:,} 条消息，{acc['conversations']} 个会话，"
         + (f"profile `{profile['hash']}`（测于 {profile['measured']}）" if profile else "默认 profile"),
-        f"- 锚点 `{(anchor or '')[:10]}`" + ("（这个环境的第一个提交，这次成了锚点）" if new_anchor else ""),
+        f"- 锚点 `{(anchor or '')[:10]}`" + ("（这个环境的第一个提交，这次新成为锚点）" if new_anchor
+                                             else "（沿用这个环境原有的锚点）"),
         f"- {len(commits)} 个提交：{tally}；用时 {minutes(elapsed)}",
         "",
         "| 名字 | 提交 | 结果 | 编译 | 测量 | 其他进程 CPU（p50 / p95） | 命令 | 还没有 | 失败的运行 | 持续负载 |",
         "|---|---|---|---|---|---|---|---|---|---|",
         *rows,
         "",
-        "「还没有」是这个版本还没有的命令；「失败的运行」是各命令运行失败的次数之和；没有 serve 命令 API 的版本"
-        "（5.0 以前）持续负载没跑成。",
+        "「还没有」是这个版本还没有的命令（命令行不认识它的子命令、选项或取值）；「失败的运行」是各命令运行失败的次数之和；"
+        "持续负载「还没有」是这个版本的 `weflow serve` 还不认识测量用的参数，「没跑成」是服务没有启动或中途出错。",
         "",
     ]
     text = "\n".join(lines)
     with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
         f.write(text)
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-            f.write(text + "\n")
+    print(text, flush=True)
 
 
 def clean_up(bench_dir, anchors, account):
