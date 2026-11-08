@@ -57,15 +57,12 @@ case "${1:-}" in
     "$BIN" config path
     ;;
   bench-base)
-    # The base of the benchmark run after the release (#516): the one asked for, else the previous release by the
-    # rule of release-changelog.sh (a stable tag: the previous stable release; a pre-release: the previous of any
-    # kind). None (a first release): no benchmark.
+    # The base of the benchmark run after the release (#516): the one asked for, else the previous release, as
+    # release-previous.sh picks it. None (a first release): no benchmark.
     TAG="$2" BASE="${3:-}"
     if [ -z "$BASE" ]; then
-      if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then KIND='select(.isPrerelease | not)'; else KIND='.'; fi
-      BASE="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 100 \
-        --json tagName,isPrerelease,publishedAt \
-        --jq "[.[] | select(.tagName != \"$TAG\") | $KIND] | sort_by(.publishedAt) | last | .tagName // empty")"
+      PREV="$(bash "$(dirname "$0")/release-previous.sh" "$TAG")"
+      BASE="$(jq -r '.tagName // empty' <<< "${PREV:-null}")"
       [ -n "$BASE" ] || echo "::warning::no earlier release to compare $TAG with: the benchmark is skipped"
     fi
     [ -z "$BASE" ] || echo "benchmark after the release: $BASE → $TAG" | tee -a "$GITHUB_STEP_SUMMARY"
