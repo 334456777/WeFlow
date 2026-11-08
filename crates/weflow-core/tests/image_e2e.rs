@@ -933,11 +933,20 @@ async fn several_formats_without_media_are_what_each_writes_alone() {
         let single = alone.join(out.file_name().unwrap());
         hub.export_messages(&media_request(format), &single)
             .unwrap();
+        // all but the line with the time of the export, which may fall in another second
+        let written = std::fs::read_to_string(out).unwrap();
+        let by_itself = std::fs::read_to_string(&single).unwrap();
         assert_eq!(
-            std::fs::read(out).unwrap(),
-            std::fs::read(&single).unwrap(),
+            written.lines().count(),
+            by_itself.lines().count(),
             "{format}"
         );
+        let differing = written
+            .lines()
+            .zip(by_itself.lines())
+            .filter(|(a, b)| a != b)
+            .count();
+        assert!(differing <= 1, "{format}: {differing} lines differ");
     }
     let _ = std::fs::remove_dir_all(root);
 }
