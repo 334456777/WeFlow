@@ -193,7 +193,7 @@ A job is `{"id", "status", "command", "createdAt", "startedAt", "finishedAt", "e
 The event stream sends, each with an `id`:
 
 - `status`: `{"type": "status", "status": "running"}` when the job leaves the queue;
-- the command's `--progress` events, named by their `type` (`progress`: `{"type": "progress", "stage", "message", "current", "total", "percent"}`), and its other events on stderr;
+- the command's `--progress` events, named by their `type` (`progress`: `{"type": "progress", "stage", "message", "current", "total", "percent"}`; an export writing several formats at once adds `formats`, `[{"name", "done"}]`, which of them are written), and its other events on stderr;
 - `stderr`: `{"type": "stderr", "text"}` for other lines on stderr;
 - `result`: the finished job with its `result`, after which the stream ends.
 

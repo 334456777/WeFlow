@@ -16,6 +16,9 @@ describe('task centre', () => {
   it('says how far a job is, why it failed, or what it wrote', () => {
     expect(jobDetail(job('running', { progress: { message: '正在导出消息', current: 5, total: 10, percent: 50 } }))).toBe('正在导出消息 · 5 / 10 · 50%');
     expect(jobDetail(job('running'))).toBe('正在运行');
+    const lanes = (...done: boolean[]) => ({ formats: done.map((d, i) => ({ name: 'f' + i, done: d })), message: '正在写出各个格式', current: 1, total: 2, percent: 50 });
+    expect(jobDetail(job('running', { progress: lanes(true, false) }))).toBe('正在写出各个格式 · 1 / 2 · 50%');
+    expect(jobDetail(job('running', { progress: lanes(true, true) }))).toBe('正在打包');
     expect(jobDetail(job('failed', { result: { success: false, error: { message: 'no such session' } } }))).toBe('no such session');
     expect(jobDetail(job('failed', { httpStatus: 500 }))).toBe('命令没有完成（HTTP 500）');
     expect(jobDetail(job('succeeded', { file: { name: 'a.html', size: 3350170 } }))).toBe('a.html · 3.2 MB');

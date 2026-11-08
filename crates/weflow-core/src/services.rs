@@ -919,14 +919,17 @@ impl ServiceHub {
         let stats = self
             .attach_export_media(&wcdb, &mut collected, &req.session_id, out, media)
             .await;
-        let mut result = self.export_write(req, out, &wcdb, collected)?;
+        let mut result = self.export_write(req, out, &wcdb, &collected)?;
         result.media = Some(stats);
         Ok(result)
     }
 
-    /// One conversation in several formats at once (#342), each to its file in `outs`, all in one folder. With media,
-    /// the messages are read once and the selected media copied once, to `<out dir>/media/<first out name>/`, which
-    /// every format points at; without, each format streams as [`export_messages`](Self::export_messages) does.
+    /// One conversation in several formats at once (#342), each to its file in `outs`, all in one folder. The messages
+    /// are read once and the formats written side by side, the selected media copied once before them, to
+    /// `<out dir>/media/<first out name>/`, which every format points at.
+    ///
+    /// Reading once holds the whole conversation in memory, where one format alone streams: about 1.6 KiB a message
+    /// more for half the CPU time and, in eight formats, 45% less time (#628). One format without media still streams.
     pub async fn export_messages_formats(
         &self,
         req: &MessageExportRequest,
@@ -937,27 +940,56 @@ impl ServiceHub {
             format: format.to_string(),
             ..req.clone()
         };
-        if !media.enabled {
-            return outs
-                .iter()
-                .map(|(format, out)| self.export_messages(&request(format), out))
-                .collect();
+        if let ([(format, out)], false) = (outs, media.enabled) {
+            return Ok(vec![self.export_messages(&request(format), out)?]);
         }
         let Some((_, first)) = outs.first() else {
             return Ok(Vec::new());
         };
         let (wcdb, mut collected) = again_if_keys_changed(|| self.export_collect(req))?;
-        let stats = self
-            .attach_export_media(&wcdb, &mut collected, &req.session_id, first, media)
-            .await;
-        outs.iter()
-            .map(|(format, out)| {
-                let mut result =
-                    self.export_write(&request(format), out, &wcdb, collected.clone())?;
-                result.media = Some(stats.clone());
-                Ok(result)
-            })
-            .collect()
+        let stats = if media.enabled {
+            Some(
+                self.attach_export_media(&wcdb, &mut collected, &req.session_id, first, media)
+                    .await,
+            )
+        } else {
+            None
+        };
+        let lanes: Vec<_> = outs
+            .iter()
+            .map(|(format, _)| (format.clone(), false))
+            .collect();
+        crate::output::progress_formats(&lanes);
+        let lanes = std::sync::Mutex::new(lanes);
+        let (wcdb, collected, stats, lanes) = (&wcdb, &collected, &stats, &lanes);
+        std::thread::scope(|scope| {
+            let writers: Vec<_> = outs
+                .iter()
+                .enumerate()
+                .map(|(index, (format, out))| {
+                    let request = request(format);
+                    scope.spawn(move || {
+                        let written = self.export_write(&request, out, wcdb, collected);
+                        use crate::sync::MutexExt as _;
+                        let mut lanes = lanes.lock_or_panic();
+                        lanes[index].1 = true;
+                        crate::output::progress_formats(&lanes);
+                        written.map(|mut result| {
+                            result.media.clone_from(stats);
+                            result
+                        })
+                    })
+                })
+                .collect();
+            writers
+                .into_iter()
+                .map(|writer| {
+                    writer
+                        .join()
+                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+                })
+                .collect()
+        })
     }
 
     fn export_collect(
@@ -976,12 +1008,8 @@ impl ServiceHub {
             end: req.end,
             sender_filter: req.sender.as_deref(),
         };
-        let mut collected = export_stream::collect_export_messages(&wcdb, req, &opts)?;
-        collected.sort_by(|a, b| {
-            a.create_time
-                .cmp(&b.create_time)
-                .then(a.local_id.cmp(&b.local_id))
-        });
+        // in the order of the cursor, as a streaming export writes them
+        let collected = export_stream::collect_export_messages(&wcdb, req, &opts)?;
         if collected.is_empty() {
             return Err(no_messages(req));
         }
@@ -1156,7 +1184,7 @@ impl ServiceHub {
         req: &MessageExportRequest,
         out: &Path,
         wcdb: &weflow_native::wcdb::Wcdb,
-        collected: Vec<crate::message::ExportMsg>,
+        collected: &[crate::message::ExportMsg],
     ) -> AppResult<crate::contract::MessagesExported> {
         let format = req.format.to_ascii_lowercase();
         let runtime = |e: anyhow::Error| AppError::runtime(e.to_string());
@@ -1168,18 +1196,18 @@ impl ServiceHub {
             wcdb,
             |exporter| match format.as_str() {
                 "chatlab" => exporter
-                    .write_chatlab(&collected, out, false)
+                    .write_chatlab(collected, out, false)
                     .map_err(runtime),
                 "chatlab-jsonl" => exporter
-                    .write_chatlab(&collected, out, true)
+                    .write_chatlab(collected, out, true)
                     .map_err(runtime),
-                "json" => exporter.write_json(&collected, out, false).map_err(runtime),
-                "arkme-json" => exporter.write_json(&collected, out, true).map_err(runtime),
-                "excel" | "xlsx" => exporter.write_excel(&collected, out).map_err(runtime),
-                "txt" => exporter.write_txt(&collected, out).map_err(runtime),
-                "weclone" => exporter.write_weclone(&collected, out).map_err(runtime),
-                "html" => exporter.write_html(&collected, out).map_err(runtime),
-                "sql" => exporter.write_sql(&collected, out).map_err(runtime),
+                "json" => exporter.write_json(collected, out, false).map_err(runtime),
+                "arkme-json" => exporter.write_json(collected, out, true).map_err(runtime),
+                "excel" | "xlsx" => exporter.write_excel(collected, out).map_err(runtime),
+                "txt" => exporter.write_txt(collected, out).map_err(runtime),
+                "weclone" => exporter.write_weclone(collected, out).map_err(runtime),
+                "html" => exporter.write_html(collected, out).map_err(runtime),
+                "sql" => exporter.write_sql(collected, out).map_err(runtime),
                 other => Err(AppError::usage(format!(
                     "unsupported message export format: {other}; supported: {MESSAGE_EXPORT_FORMATS}"
                 ))),

@@ -68,6 +68,8 @@ export const en: Record<string, string> = {
   "加载更早的推送": "Load earlier posts",
   "下载文件": "Download the file",
   "正在导出": "Exporting",
+  "正在打包": "Packing",
+  "各个格式的进度": "Progress of each format",
   "选择导出格式": "Choose the export formats",
   "重新导出": "Export again",
   "开始导出": "Export",

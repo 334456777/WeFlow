@@ -193,7 +193,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -o reply.bin "http://127.0.0.1:18
 事件流依次发送以下事件，每个都带 `id`：
 
 - `status`：作业出队开始运行时发送 `{"type": "status", "status": "running"}`；
-- 命令的 `--progress` 事件，以其 `type` 命名（`progress`：`{"type": "progress", "stage", "message", "current", "total", "percent"}`），以及命令写在 stderr 上的其他事件；
+- 命令的 `--progress` 事件，以其 `type` 命名（`progress`：`{"type": "progress", "stage", "message", "current", "total", "percent"}`；同时写出多种格式的导出还带 `formats`，即 `[{"name", "done"}]`，表示各个格式是否已写完），以及命令写在 stderr 上的其他事件；
 - `stderr`：stderr 上的其他文本行，`{"type": "stderr", "text"}`；
 - `result`：结束后的作业及其 `result`，之后事件流结束。
 

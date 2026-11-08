@@ -335,6 +335,29 @@ fn terminal_columns() -> usize {
         .unwrap_or(100)
 }
 
+/// [`progress`] of the formats of one export written side by side (#628): `(format, written)`. With `--progress` the
+/// event also says which are written, as `formats`, for the WebUI to show them running at once.
+pub fn progress_formats(formats: &[(String, bool)]) {
+    const MESSAGE: &str = "writing formats";
+    let total = formats.len();
+    let done = formats.iter().filter(|(_, written)| *written).count();
+    if !matches!(bar_state().lock_or_panic().mode, ProgressMode::Ndjson) {
+        progress("formats", MESSAGE, done, total);
+        return;
+    }
+    let lanes: Vec<_> = formats
+        .iter()
+        .map(|(name, written)| serde_json::json!({ "name": name, "done": written }))
+        .collect();
+    eprintln!(
+        "{}",
+        serde_json::json!({
+            "type": "progress", "stage": "formats", "message": crate::locale::localize(MESSAGE.to_string()),
+            "current": done, "total": total, "percent": done * 100 / total.max(1), "formats": lanes,
+        })
+    );
+}
+
 pub fn progress(stage: &str, message: &str, current: usize, total: usize) {
     let message = &crate::locale::localize(message.to_string());
     let mut st = bar_state().lock_or_panic();

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Check, Circle, CircleNotch, DownloadSimple, X } from '@phosphor-icons/react';
 import { describeCommand, isFinished, jobFileUrl, type Job } from '../api/jobs';
 import { formatClock } from '../chat/messages';
+import { FormatLanes } from '../exports/FormatLanes';
 import { removeJob, type JobsState } from './useJobs';
 import { msg, t } from '../i18n';
 
@@ -17,6 +18,7 @@ export const formatSize = (bytes: number) =>
 export function jobDetail(job: Job): string {
   if (job.status === 'running') {
     const p = job.progress;
+    if (p?.formats?.every(f => f.done)) return t('正在打包');
     const count = p?.total ? (p.current ?? 0) + ' / ' + p.total : '';
     return [p?.message, count, p?.percent !== undefined ? Math.round(p.percent) + '%' : ''].filter(Boolean).join(' · ') || t('正在运行');
   }
@@ -45,7 +47,8 @@ function JobRow({ job, label }: { job: Job; label: string }) {
     <div>
       <strong className="clamp-1">{label}</strong>
       <small className="clamp-2">{jobLine(job)}</small>
-      {percent !== null && <span className="job-bar" role="progressbar" aria-label={t('{label}的进度', { label })} aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: percent + '%' }} /></span>}
+      {job.status === 'running' && <FormatLanes progress={job.progress} />}
+      {percent !== null && !job.progress?.formats && <span className="job-bar" role="progressbar" aria-label={t('{label}的进度', { label })} aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: percent + '%' }} /></span>}
       {problem && <small role="alert">{problem}</small>}
       <span className="job-actions">
         {job.status === 'succeeded' && job.file && <a className="download-link" href={jobFileUrl(job.id)} download={job.file.name ?? undefined}><DownloadSimple size={12} />{t('下载文件')}</a>}
