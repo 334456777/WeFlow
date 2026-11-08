@@ -58,6 +58,14 @@ def resolve(ref):
     raise SystemExit(f"no commit named {ref!r}")
 
 
+def is_branch(ref):
+    """Whether `ref` names a branch (here or on origin) and no tag; HEAD is no branch's name."""
+    def has(full):
+        return subprocess.run(["git", "show-ref", "--verify", "-q", full]).returncode == 0
+    return ref != "HEAD" and not has(f"refs/tags/{ref}") and (has(f"refs/heads/{ref}")
+                                                             or has(f"refs/remotes/origin/{ref}"))
+
+
 def build(sha, bench_dir):
     """The weflow binary of `sha` (and its alloc-stats build when it has the feature), built once and kept."""
     kept = os.path.join(bench_dir, "bin", sha)
@@ -258,7 +266,12 @@ def main():
     commits = []
     for item in asked:
         name, _, rev = item.rpartition("=")
-        commits.append({"ref": name.strip() or rev.strip(), "sha": resolve(rev.strip())})
+        name, rev = name.strip(), rev.strip()
+        sha = resolve(rev)
+        # a branch moves on: its name alone would later stand for another commit, so the commit goes with it
+        if not name and is_branch(rev):
+            name = f"{rev}@{sha[:10]}"
+        commits.append({"ref": name or rev, "sha": sha})
     print("commits: " + ", ".join(f"{c['ref']} = {c['sha'][:10]}" for c in commits), flush=True)
     for c in commits:
         have = results.get(c["sha"])
