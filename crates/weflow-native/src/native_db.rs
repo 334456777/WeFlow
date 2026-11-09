@@ -26,7 +26,7 @@ const PAGE_CACHE_KIB: i64 = 16 * 1024;
 const HEAP_SOFT_LIMIT: i64 = 1024 * 1024 * 1024;
 /// Snapshots kept open (least recently used ones are closed first).
 const MAX_SNAPSHOTS: usize = 32;
-/// How often a query is run again on a fresh snapshot when WeChat changed the file under it.
+/// How many times a query runs at most, the first included, while WeChat keeps changing the file under it.
 const STALE_RETRIES: usize = 4;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
