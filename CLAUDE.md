@@ -30,7 +30,7 @@
 
 ### Wiki（`wiki/`）
 GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档的新地方，也是唯一的地方：不再往仓库里新增文档文件。
-- 只写中文，以技术文档为主
+- 只写中文，以技术文档为主，用正式语气书写
 - `wiki/` 是 Wiki（`WeFlow.wiki.git`，分支 `master`）的 clone，是独立的 git 仓库：`.gitignore` 把它排除在主仓库之外，`.ignore` 让 ripgrep 等搜索工具仍能搜到它；改 Wiki 时在这个目录里单独提交和推送
 - Wiki 是公开的，隐私规则同样适用
 - 页面写法：页面之间用 `[文字](页面名#锚点)`，指向仓库文件用完整的 `https://github.com/334456777/WeFlow/blob/main/...` 地址，issue 写完整链接（Wiki 不会自动链接 `#123`）
