@@ -18,11 +18,11 @@
   Running it again updates the folders and the .env and registers the runner again (--replace).
 
 .EXAMPLE
-  .\setup-runner.ps1 -Token <token> -BenchDir D:\weflow-bench -Protect D:\WeFlow-target
+  .\setup-runner.ps1 -Token <token> -BenchDir E:\weflow-bench -Protect E:\weflow-target
 #>
 param(
   [Parameter(Mandatory)] [string] $Token,
-  [string] $BenchDir = 'D:\weflow-bench',
+  [string] $BenchDir = 'E:\weflow-bench',
   [string] $RunnerDir = 'C:\actions-runner-weflow',
   [string] $Account = 'weflow-bench',
   [string] $Repository = '334456777/WeFlow',
