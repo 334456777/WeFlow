@@ -12,7 +12,11 @@
 - A web interface (WebUI) that `serve` hosts under `/ui/` ([details](https://github.com/334456777/WeFlow/wiki/WebUI#网页)).
 - `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `./weflow lang en|zh` saves your choice.
 
-## Build
+## Install
+
+Download the archive for your platform from [Releases](https://github.com/334456777/WeFlow/releases/latest) and unpack it to get `weflow`.
+
+Or build from source:
 
 ```bash
 make release
@@ -50,25 +54,38 @@ The language affects `--help`, argument errors, runtime errors, and generated te
 
 > stdout: `wxid: wxid_xxxxxxxx`
 
-3. Set the database key (see details below)
+3. Get and save the database key (see details below)
 
 ```powershell
-./weflow key db
-./weflow config set decrypt_key <database-key>
+./weflow key db --save
 ```
 
-> stdout: `decrypt_key: <database-key>`
+> stdout: `Database key obtained and saved to the active profile`
 
-4. Set the image keys
+4. Get and save the image keys (Windows only for now)
 
 ```powershell
-./weflow key image
-./weflow config set image_xor_key <image-xor-key>
-./weflow config set image_aes_key <image-aes-key>
+./weflow key image --save
 ```
 
-> stdout: `image_xor_key: <image-xor-key>` <br>
-> stdout: `image_aes_key: <image-aes-key>`
+> stdout: `Image keys obtained and saved to the active profile`
+
+Without `--save`, the commands print the keys instead of saving them, and you can save them yourself with `./weflow config set`.
+
+5. Check that the database opens
+
+```powershell
+./weflow db test
+```
+
+6. List the conversations and export one (a private chat's conversation ID is the other person's wxid; a group's is `xxx@chatroom`)
+
+```powershell
+./weflow chat sessions
+./weflow export messages <conversation-id> --format html --out chat.html
+```
+
+You can also run `./weflow serve` to open the web interface in your browser.
 
 `./weflow config list` shows the saved configuration, and `./weflow config path` shows where the configuration file lives.
 
@@ -84,8 +101,7 @@ WeChat has quit. Open it again.
 Waiting for WeChat to start... (exits automatically in 171 s)
 WeChat found (pid 20816). Click "Enter WeChat" in the login window.
 Waiting for the key... (exits automatically in 150 s)
-Database key obtained
-decrypt_key: <database-key>
+Database key obtained and saved to the active profile
 ```
 
 The 180-second automatic exit can be adjusted with `./weflow key db --timeout <seconds>`.

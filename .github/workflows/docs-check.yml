@@ -8,7 +8,6 @@ on:
       - "README.md"
       - "README.zh-CN.md"
       - "CLAUDE.md"
-      - "docs/**"
       - ".github/workflows/docs-check.yml"
   push:
     branches: [main]
@@ -16,7 +15,6 @@ on:
       - "README.md"
       - "README.zh-CN.md"
       - "CLAUDE.md"
-      - "docs/**"
       - ".github/workflows/docs-check.yml"
   workflow_dispatch:
 

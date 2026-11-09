@@ -2,13 +2,18 @@
 
 English | [简体中文](README.zh-CN.md)
 
-The web interface of `weflow serve` (#130): React + TypeScript, built with Vite into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148). The API it talks to is described in [the wiki](https://github.com/334456777/WeFlow/wiki/命令-API).
+The web interface of `weflow serve` (#130): React + TypeScript, built with Vite into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148).
 
-The screens read the real server once it is connected. Until then (no server, not while the token is wrong or the connection is still being checked) the chat, Moments and payments lists and the console show sample records (`src/mock/`), marked as such, so the page can be looked at without a server.
+This file covers development only. The rest is in the wiki, in Chinese:
+
+- [WebUI 实现](https://github.com/334456777/WeFlow/wiki/WebUI-实现): layout, page structure, requests and caching, language, the API's types and the tests
+- [WebUI](https://github.com/334456777/WeFlow/wiki/WebUI): hosting and versions
+- [命令 API](https://github.com/334456777/WeFlow/wiki/命令-API): the API the page calls
+- [发布与 CI](https://github.com/334456777/WeFlow/wiki/发布与-CI#发布-webui): publishing the page
 
 ## Development
 
-Needs Bun 1.4.3+ (the version is pinned in `packageManager` of `package.json`) and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`); no Node.js. Bun installs the packages from `bun.lock` and runs everything: the scripts, `tsc`, Vite and the tests:
+Needs Bun 1.4.3+ (the version is pinned in `packageManager` of `package.json`) and the Rust toolchain of the repository (`rustup`, see `rust-toolchain.toml`); no Node.js.
 
 ```sh
 cd web
@@ -16,15 +21,14 @@ bun install --frozen-lockfile
 bun run dev                               # http://localhost:5173/ui/
 ```
 
-`bun run dev` (`scripts/dev.mjs`, #333) starts two things:
+`bun run dev` (`scripts/dev.mjs`, #333) starts two things, and stopping it stops both:
 
-- **the page**: Vite serves these sources as they are, the same page `bun run build` makes, nothing added for development;
-- **the server**: a `weflow serve` (debug build, `cargo build` first) of a synthetic account, on a free port of 127.0.0.1 and with a random token of its own. The account is made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time, again only when the generator changes): made-up friends, a group, Moments and 「图片测试」, a chat of one picture per case of the files WeChat keeps of a picture (thumbnail `_t.dat`, image `.dat`, HD original `_h.dat`, each there or not), every picture written with its file and size. Nothing of a real WeChat account is read.
-  With `WEFLOW_DEV_ACCOUNT=bench` (in the shell or `web/.env.local`) it serves the benchmark account instead (`crates/weflow-cli/examples/bench_account.rs`, #488, in `target/bench-account/`): a group of 200,000 messages and 300 other conversations shaped like a real account's, for trying the page at a real size. Its JPEGs are not pictures, and the first build takes a minute or two and about 2.5 GB.
+- **the page**: Vite serves these sources as they are, the same page `bun run build` makes.
+- **the server**: a `weflow serve` (debug build, `cargo build` first) of a synthetic account, on a free port of 127.0.0.1 with a random token, which the proxy adds. The account is made by `crates/weflow-cli/examples/dev_account.rs` in `target/dev-account/` (about 20 s the first time); its 「图片测试」 chat has one picture per case of the files WeChat keeps of a picture. Nothing of a real WeChat account is read.
 
-Vite answers `/ui/` itself and passes every other path (`/chat/sessions`, `/api/…`, `/jobs`, `/health`, `/openapi.json`) to that server, adding its token; the page asks for none. Stopping `bun run dev` stops both.
+With `WEFLOW_DEV_ACCOUNT=bench` (in the shell or `web/.env.local`) it serves the benchmark account instead (`crates/weflow-cli/examples/bench_account.rs`, #488): a group of 200,000 messages and 300 other conversations. The first build takes a minute or two and about 2.5 GB.
 
-To work against another `weflow serve`, a real account for instance, set it in the shell or `web/.env.local` (not committed); then only Vite starts:
+To work against another `weflow serve`, a real account for instance, set these in the shell or `web/.env.local` (not committed); then only Vite starts:
 
 | Variable | Default | |
 |---|---|---|
@@ -33,9 +37,7 @@ To work against another `weflow serve`, a real account for instance, set it in t
 
 To open the dev server from another computer or a phone, run `bun run dev --host` and open `http://<this machine's address>:5173/ui/`. On the synthetic account that is safe. With `WEFLOW_SERVE_URL` and `WEFLOW_HTTP_TOKEN`, do not: the proxy hands the token to everyone who can reach the port, and with it every `weflow` command on that account.
 
-Opened by `weflow serve --ui-dir web/dist` (after `bun run build`), the page gets its token from the address (`/ui/?token=…`), keeps it in `sessionStorage` for the tab and removes it from the address bar.
-
-A refused token (HTTP 401) shows an input to reconnect. Settings can replace or clear the tab's token; it never goes into `localStorage` or the build. Settings also show the server and API versions, compatibility advice, and the server's task/read/media limits and insight status when provided by `/health` or the stream's `hello` (#214).
+After `bun run build`, `weflow serve --ui-dir web/dist` opens the built page.
 
 ## Scripts
 
@@ -46,100 +48,6 @@ A refused token (HTTP 401) shows an input to reconnect. Settings can replace or 
 | `bun test` | The tests (`bun:test`, with a DOM from happy-dom) |
 | `bun run build` | Type-check, then build into `dist/` |
 | `bun run preview` | Serve `dist/` with the same proxy |
-| `bun run contract` | Write `src/api/contract.gen.ts` from `contract/openapi.json` (see below); `--check` only checks it |
-| `bun run i18n` | List the page's texts without their English, and the Chinese not passed through `t()` yet (see Language); `--check` fails on the first |
+| `bun run contract` | Write `src/api/contract.gen.ts` from `contract/openapi.json`; `--check` only checks it |
+| `bun run i18n` | List the page's texts without their English, and the Chinese not passed through `t()` yet; `--check` fails on the first |
 | `bun run check` | Check the types of the contract and the English, type-check, test and build, as CI does |
-
-The tests import their API from `#test` (`test/index.ts`): `bun:test`, and a `vi` with what they use of Vitest's that Bun's lacks (`stubGlobal`, `unstubAllGlobals`, `setSystemTime`, `advanceTimersByTimeAsync`, `waitFor`, fake timers for `Date` alone). `test/setup.ts`, loaded first (`bunfig.toml`), registers happy-dom and keeps it to what the tests were written for under jsdom: a wide window, the runtime's own `fetch`, a `WheelEvent` that is a `MouseEvent`, `display: inline` for inline elements, and short failure messages for DOM nodes. Bun runs every test file in one process, so a test leaves no global behind: `vi.unstubAllGlobals()`, `vi.useRealTimers()` and `cleanup()` in `afterEach`.
-
-`.github/workflows/web.yml` runs `contract --check`, the compatibility of the contract (see below), `i18n --check`, `typecheck`, `test` and `build` for changes under `web/`, and uploads `dist/`.
-
-The build fails when the JavaScript the page loads before it shows is over the budget in `plugins/sizeBudget.ts` (#159); raise it there on purpose when a change needs more. Icons keep only the weights the app draws (`plugins/iconWeights.ts`: regular, fill, bold); a test fails when the code asks for another.
-
-## Types of the API
-
-The answers the page reads most (the conversations and their states and details, messages, the days with messages, search hits, contacts, resources, the files of an image, the chat and group analytics, the group members, the Moments timeline and its counts, the years of the reports, the annual and dual reports, the pushes of official accounts and the WeChat Pay notices, the profiles, the cache and the account setup, my footprint and the insights, jobs and errors) have their types in `src/api/contract.gen.ts`, generated from `contract/openapi.json` (#399). That file is the contract `weflow serve` answers with: its schemas come from the Rust types of the answers (`weflow_core::contract`), and a test of weflow-cli fails when it is not current, so the page's types follow the server's. `src/api/` builds its own types on them: a `Pick` of the keys a request asks for with `fields`, checked against the contract's keys with `satisfies`.
-
-`scripts/contract.ts` writes the types without a dependency: it reads the few kinds of JSON Schema that schemars writes and refuses the rest. When a type of the answers changes:
-
-1. `WEFLOW_UPDATE_CONTRACT=1 cargo test -p weflow-cli --bin weflow contract_` rewrites `contract/openapi.json` and `contract/samples.json` (answers of each type, for the boundary tests of #400);
-2. `bun run contract` rewrites `src/api/contract.gen.ts`;
-3. `bun run typecheck` shows what the page has to change.
-
-A change the clients of the API would not read the same raises `apiVersion` (see Versions). `scripts/contract-compat.ts` tells such a change: `bun scripts/contract-compat.ts <earlier openapi.json>` lists what a client of the earlier contract could read wrong in the current one's answers (a field left out or turned nullable, a type or a value it did not have, a route no longer described) and fails when there is something and `info.version` is the same. `web.yml` runs it against the contract of the latest release of weflow, so an API version no release has yet may still change; a release from before the contract was kept tells only its API version, and when that is the current one the change is compared with its base instead. Adding a field or a route is no such change.
-
-`src/api/contract.test.ts` hands `contract/samples.json`, which weflow-cli builds, to the page's own code: the reads of `src/api/`, then what the chat window, the conversation list, the contacts, the resource browser and the task centre make of them. A test of weflow-cli checks the same samples, and a running server's answers, against the contract ([the wiki](https://github.com/334456777/WeFlow/wiki/命令-API#openapi-描述)), so the page is tested on what the server answers rather than on a fixture of its own.
-
-## Language
-
-The page is in the language of the server it talks to (#439): `lang` of `/health` ([the wiki](https://github.com/334456777/WeFlow/wiki/命令-API#参数)), the language of the machine `weflow serve` runs on, so the page and the server's own texts (errors, the commands' help) are in one language. Until a server has said, it is in the language of the last one it talked to, kept in `localStorage`, else in Chinese; `<html lang>` follows. The page has no choice of its own: `weflow lang en|zh` on the server's machine, then a restart of `weflow serve`, changes both.
-
-The page is written in Chinese, and its texts are their own keys (`src/i18n/`): `t('正在读取消息')` is that text in Chinese and its English from `src/i18n/en.ts`, or the Chinese where `en.ts` has none; `t('共 {n} 个群聊', { n })` fills in `{n}`, which its English keeps. A text kept in a table and shown elsewhere is marked `msg('…')` where it is written and passed through `t()` where it is shown. `bun run i18n` lists what has no English and what Chinese is not passed through `t()` yet. The tests run in Chinese.
-
-## Versions
-
-`package.json` holds the WebUI's own version and, under `weflow`, the API it needs: `apiVersion` must equal the `apiVersion` of `GET /health`, and the server's `version` must be at least `minBackendVersion` (a development build's `git describe` version counts as its tag). The build writes these to `dist/weflow-web.json` for `weflow web` (#148); the page checks them against the `hello` of `/health/events` and shows "版本不兼容" otherwise. A server without `/health/events` (5.0.0-rc.5 and older) is not supported: the page shows "未连接".
-
-To publish a version, raise `version` in `package.json` and push the tag `web-v<version>` (or run *WebUI release* in Actions): `.github/workflows/web-release.yml` builds it and publishes it to `ghcr.io/334456777/weflow-web:<version>`, where `weflow web` and `weflow serve` find it. A version is published once. Each `weflow` build shows, by default, the version `package.json` had when it was built (see [the wiki](https://github.com/334456777/WeFlow/wiki/WebUI#网页的版本)).
-
-## Layout
-
-| Path | |
-|---|---|
-| `src/api/contract.gen.ts`, `scripts/contract.ts`, `contract/` | The types of the answers, generated from the contract (#399); see Types of the API |
-| `scripts/contract-compat.ts`, `src/api/contract.test.ts` | Whether a change of the contract breaks its clients, and the page's code on the contract's samples (#400) |
-| `src/api/client.ts` | Calls to `weflow serve`: query or JSON body, token, `ApiError` with the server's error code |
-| `src/TokenForm.tsx` | Token input and reconnection prompt (#214) |
-| `src/api/backend.ts` | The connection: one `/health/events` stream with a watchdog and backoff (#221), or `/api/push/messages` with live messages on (#201); version checks, `useBackend` |
-| `src/api/live.ts` | Live message events, handed to the conversation list and the open conversation (#201) |
-| `src/api/biz.ts` | Official accounts: the ones followed (`/api/biz/accounts`) and their pushes (`/api/biz/messages`) (#203) |
-| `src/api/sns.ts`, `src/moments/` | Moments (#202): the timeline, who posts and how often, the totals (`/api/sns/timeline`, `post-counts`, `stats`), and the pictures and videos of a post through `/api/sns/media`; the page beside the timeline lists the posters, the console narrows it by words and days |
-| `src/api/pay.ts`, `src/payments/` | WeChat Pay (#204): every notice of the WeChat Pay account, read a page after another (`/api/biz/pay-records`), with the amount, method, state and payee taken from its lines; the list beside them sums up each payee, the console narrows them by days, adds them up and exports them as HTML, JSON or Excel |
-| `src/api/details.ts` | Conversation details, group member statistics, media and parsed message lookups; reads the one route that runs a command (`chat detail --extra`) one at a time (#200) |
-| `src/chat/SessionInfo.tsx`, `src/chat/MediaPanel.tsx` | Console cards loaded while open: conversation facts, virtualized group members, and media that open at their message (#200) |
-| `src/api/chat.ts` | Chat reads: the conversation list (`/api/chat/sessions`), and the folded and muted states (`/api/chat/statuses`, in batches of 100) |
-| `src/styles/tokens.css` | Design tokens: type, control heights, radii, colours (with dark mode), the five neumorphic surfaces (#220), motion durations and curves (#192, #193). Page styles use only these variables |
-| `src/motion.ts` | Spring presets; `usePresence` keeps popovers, dialogs and notices until their exit has played |
-| `src/theme.ts` | The colour theme chosen in the settings: follow the system (default), light or dark, kept in `localStorage`; sets `data-theme` on `<html>`, which `index.html` already sets before the first paint (#252) |
-| `src/CardStack.tsx` | The console's cards: the header opens and closes a card; drag it with the mouse or press Alt+↑ / Alt+↓ to reorder. Order and open state stay in the browser's `localStorage` |
-| `src/VirtualList.tsx` | A list that draws only the rows in sight, for lists of thousands of rows (#159) |
-| `src/Scrollbar.tsx` | The page's own scrollbar: floats over a scroll area (the browser's is hidden), takes no width, can be dragged |
-| `src/HoverTrack.tsx` | The hover hollow that slides (#232): in a group of items, the pointer crossing into another item slides the hollow over from the last one |
-| `src/Popover.tsx` | A floating layer anchored to a control: grows out of it, stays on screen, closes on Esc or a click outside |
-| `src/calendar/` | The page's own calendar (#224): `Calendar.tsx` (a month in the ARIA grid pattern, Monday first, month and year views), `DateRange.tsx` (a range picked in one calendar), `DateField.tsx` (one day), `dates.ts` (days as `YYYY-MM-DD` in local time) |
-| `src/api/messages.ts` | Messages of a conversation as the server parses them (`chat messages --parsed`, cursor pages), group members, and media addresses for `<img>`, `<audio>`, `<video>` |
-| `src/chat/` | The chat page (#196): the conversation list with search, filters, folded groups and arrow keys (#197); the messages of each kind, paged back as the window scrolls up (#198); the search card and the jump to a day or a search hit, with newer pages loaded below (#199) |
-| `src/App.tsx`, `src/app.css` | The workspace (#401): navigation on the left, a page in the middle, the operations console on the right; it holds what the pages share (the connection, the account, the conversation list, the jobs), opens one page from another and gathers the pages' cards into the console |
-| `src/shell/` | What every page is in: the sidebar with the connection indicator, the media preview, the preferences of the whole page (live messages, media in exports, reduced motion), the two shapes of a page (`ScrollPage`, `BrowserPanel`), and `page.ts`, what a page is given (`Shell`) and gives back (`Page`) |
-| `src/contacts/`, `src/api/contacts.ts` | The contacts page (#205): the list by kind or searched across all kinds, one contact beside it, counted and exported from the console |
-| `src/analytics/`, `src/api/analytics.ts`, `src/api/groups.ts` | Chat analytics (#207): the private chats' numbers and the people left out of them; a group over a range of days, and one of its members |
-| `src/resources/` | The resource browser (#206): the images, videos, voices and files of every conversation in a grid by month, narrowed by type, conversation and days |
-| `src/footprint/`, `src/api/footprint.ts` | My footprint (#209): who I talked with and replied to and where I was @-mentioned, over a range of days, with its export and AI summary |
-| `src/insights/`, `src/api/insights.ts` | AI insights (#210): the records found by words, of everyone or one conversation; made and cleared from the console |
-| `src/reports/`, `src/api/reports.ts` | Reports (#208): the annual report of a year (or all of them) and the dual report with one friend, saved as a picture or a page |
-| `src/settings/`, `src/api/settings.ts`, `src/api/setup.ts`, `src/api/console.ts`, `src/api/webVersions.ts` | Settings (#213–#217): the connection, the accounts and their setup, the options `serve` starts with and the WebUI versions (#406), the AI model, the cache; the CLI's tools and the command console of `/openapi.json` |
-| `src/backup/`, `src/api/backup.ts` | Database backups (#212): made as a job and saved from the browser; a backup on the server's computer inspected or restored |
-| `src/api/scope.ts`, `src/api/kept.ts`, `src/useRead.ts` | Whose records the page holds, the reads several views share, and one read as a view shows it (see Requests and what is kept) |
-| `src/i18n/`, `scripts/i18n.ts` | The page's language, the server's (#439): `t()`, `msg()`, the English of the texts, and the check that each has it; see Language |
-| `src/mock/` | Sample records shown while no server is connected, with the console's default range of days for them |
-| `src/api/jobs.ts`, `src/jobs/` | Jobs (#211): commands started with `Prefer: respond-async` (`?return=file` for an export), the list of `/jobs`, the running one followed through `/jobs/<id>/events`, cancelled or forgotten with `DELETE`, its file saved from `/jobs/<id>/file`; the task centre shows them all, and the console exports the open conversation with `export messages` |
-| `src/exports/` | The export page (#211): conversations picked from the list (by kind, all those shown at once), exported one job each with `export messages` in any of its 9 formats, days, sender names, media and Excel's compact columns; and the list itself with `export sessions` |
-| `src/files.ts` | Files the page saves: an .xlsx of rows, any bytes as a download |
-
-Each page is a hook in its own folder, `use…Page` (`src/chat/useChatPage.tsx`, `src/contacts/useContactsPage.tsx`, …): it keeps the page's state and returns what the page shows, its cards of the console and the cards it shows. App calls them all on every render, so a page is as it was left when it is opened again, while each reads its records only when open. State sits where it is used: a page's filters and picks in its hook; what several pages use (the conversation list, the jobs, the profiles) in App, which hands it to them in `Shell`; what one component alone needs in that component. One page opens another only through App (`chatWith`, `openInChat`).
-
-## Requests and what is kept
-
-What the page reads belongs to one server and one account, its scope (`src/api/scope.ts`). A new scope starts when the `data` of `/health/events` changes (another account or configuration, or the server started again) and when the server comes back after it was gone: everything kept is forgotten, and an answer to a request of the scope before is not shown (#198, #402).
-
-| Kept | Where | For | Read again on |
-|---|---|---|---|
-| The conversation list and its states | `chat/useSessions.ts`, held by App | the scope; none is shown in another, so nothing of the account before is asked of the new one | a new scope; live messages (quietly); retry |
-| The messages of up to 20 conversations (#159) | `chat/useMessages.ts` | the scope and the conversation; only threads that reach the newest message | a new scope; a live message of the conversation; a reconnection (all of them) |
-| The contact lists, parsed and whole | `api/kept.ts`: `contactList` (contacts page, footprint), the posters of Moments | the scope and the list | a new scope; retry |
-| Private chat analytics, the group list | `analytics/useAnalytics.ts` in the page's hook | the scope | a new scope; 「重新统计」; the people left out changed |
-| The rest: the Moments timeline, payments, resources, insights, the footprint, the reports' years, the settings | the component that shows them | — | each time the page or card is opened, as they grow |
-
-A read that several views share goes through `keptRead`: views asking at the same time share one request. A view that is left lets its answers go (`useRead` and the hooks drop an answer that comes after their effect was cleaned up), and a new search or page cancels the one before. `src/requests.test.tsx` holds the requests of the usual flows, late answers among them; a change of those lists is explained in its PR.
-
-With the pages of the workspace (#401), the hooks that read are called with `(enabled, scope)`: those whose records several pages use in App, the others in the page's hook; what is kept between views sits under them, in `src/api/`, so a page does not change for it.

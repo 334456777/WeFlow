@@ -11,7 +11,11 @@
 - `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](https://github.com/334456777/WeFlow/wiki/WebUI#网页)）。
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
 
-## 构建
+## 安装
+
+从 [Releases](https://github.com/334456777/WeFlow/releases/latest) 下载对应平台的压缩包，解压后就能使用里面的 `weflow`。
+
+也可以从源码构建：
 
 ```bash
 make release
@@ -45,21 +49,32 @@ cp target/release/weflow .
 ```
 > stdout: `wxid: wxid_xxxxxxxx`
 
-3. 设置数据库密钥（详细见下文）
+3. 获取并保存数据库密钥（详细见下文）
 ```powershell
-./weflow key db
-./weflow config set decrypt_key <数据库密钥>
+./weflow key db --save
 ```
-> stdout: `decrypt_key: <数据库密钥>`
+> stdout: `已获取数据库密钥，已保存到当前档案`
 
-4. 设置图片密钥
+4. 获取并保存图片密钥（目前只支持 Windows）
 ```powershell
-./weflow key image
-./weflow config set image_xor_key <图片xor密钥>
-./weflow config set image_aes_key <图片aes密钥>
+./weflow key image --save
 ```
-> stdout: `image_xor_key: <图片xor密钥>` <br>
-> stdout: `image_aes_key: <图片aes密钥>`
+> stdout: `已获取图片密钥，已保存到当前档案`
+
+不加 `--save` 时，命令输出密钥而不保存，可以用 `./weflow config set` 手动保存。
+
+5. 确认数据库可以打开
+```powershell
+./weflow db test
+```
+
+6. 列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
+```powershell
+./weflow chat sessions
+./weflow export messages <会话 ID> --format html --out chat.html
+```
+
+也可以运行 `./weflow serve`，在浏览器中打开网页界面。
 
 `./weflow config list` 查看已保存的配置，`./weflow config path` 查看配置文件的位置。
 
@@ -74,8 +89,7 @@ cp target/release/weflow .
 等待微信启动…（剩余 171 秒自动退出）
 检测到微信（pid 20816）请在登录窗口点击「进入微信」。
 等待密钥…（剩余 150 秒自动退出）
-已获取数据库密钥
-decrypt_key: <数据库密钥>
+已获取数据库密钥，已保存到当前档案
 ```
 `180 秒后自动退出` 可用 `./weflow key db --timeout <秒>` 调整
 
