@@ -78,7 +78,7 @@ Without `--save`, the commands print the keys instead of saving them, and you ca
 ./weflow db test
 ```
 
-6. List the conversations and export one (a private chat's conversation ID is the other person's wxid; a group's is `xxx@chatroom`)
+6. Try to list the conversations and export one (a private chat's conversation ID is the other person's wxid; a group's is `xxx@chatroom`)
 
 ```powershell
 ./weflow chat sessions
