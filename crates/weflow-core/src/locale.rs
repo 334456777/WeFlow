@@ -3,12 +3,13 @@
 //! The language follows the system. Chinese is used when the locale asks for it, English otherwise
 //! (English and Chinese are the only translations). In order of precedence:
 //!
-//! 1. `--lang en|zh` (set by the command line parser);
-//! 2. the environment: `WEFLOW_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, `LANGUAGE` (the first variable that is set
-//!    and not empty decides; `C`/`POSIX` and any non-Chinese locale resolve to English);
-//! 3. when none of those is set (typical on Windows), the operating system's display language:
+//! 1. the environment variable `WEFLOW_LANG`;
+//! 2. the language saved with `weflow lang` (set by the command line parser);
+//! 3. the environment: `LC_ALL`, `LC_MESSAGES`, `LANG`, `LANGUAGE` (the first variable that is set and not empty
+//!    decides; `C`/`POSIX` and any non-Chinese locale resolve to English);
+//! 4. when none of those is set (typical on Windows), the operating system's display language:
 //!    Windows `GetUserDefaultUILanguage`, macOS `AppleLanguages`;
-//! 4. English.
+//! 5. English.
 
 use std::sync::OnceLock;
 
@@ -106,7 +107,7 @@ fn first_apple_language(output: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Force the language (used by `--lang`). Must run before the first `current()`.
+/// Force the language (the one saved with `weflow lang`). Must run before the first `current()`.
 pub fn set(lang: Lang) {
     let _ = CURRENT.set(lang);
 }
