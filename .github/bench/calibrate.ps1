@@ -19,7 +19,7 @@
   .\calibrate.ps1 -Register       # every four weeks, Sunday 04:00, whether you are logged on or not
 #>
 param(
-  [string] $BenchDir = 'D:\weflow-bench',
+  [string] $BenchDir = 'E:\weflow-bench',
   [string] $Config = (Join-Path ($env:WEFLOW_HOME ? $env:WEFLOW_HOME : (Join-Path $env:APPDATA 'weflow')) 'config.json'),
   [string] $RunnerAccount = 'weflow-bench',
   [string] $Repository = 'https://github.com/334456777/WeFlow.git',
