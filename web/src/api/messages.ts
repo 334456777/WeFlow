@@ -1,4 +1,4 @@
-// Messages, people and media of a conversation (the wiki's in-process reads page). Messages come parsed by the
+// Messages, people and media of a conversation (the wiki's command API page). Messages come parsed by the
 // server as the desktop app parses them (`chat messages --parsed`), so the page reads no WeChat XML.
 import { apiUrl, get, token, type Params } from './client';
 import type * as Contract from './contract.gen';

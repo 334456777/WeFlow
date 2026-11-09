@@ -115,6 +115,6 @@ gh attestation verify weflow-{{TAG}}-linux-arm64.tar.gz --repo {{REPO}}
 
 ### 下载后怎么用
 
-每个压缩包里有 `weflow` 程序、`README.md`（英文说明）和 `LICENSE`，中文说明见 [Wiki](https://github.com/334456777/WeFlow/wiki)。下载后解压（tar.gz文件用`tar -zxvf <文件名.tar.gz>`）就能使用里面的 `weflow`。
+每个压缩包里有 `weflow` 程序、`README.md`（英文说明）和 `LICENSE`，技术文档见 [Wiki](https://github.com/334456777/WeFlow/wiki)。下载后解压（tar.gz文件用`tar -zxvf <文件名.tar.gz>`）就能使用里面的 `weflow`。
 
 > 没见过？不会用？把文件扔给蓝色大肥鱼，她会解释。
