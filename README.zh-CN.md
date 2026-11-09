@@ -68,7 +68,7 @@ cp target/release/weflow .
 ./weflow db test
 ```
 
-6. 列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
+6. 尝试列出会话并导出聊天记录（私聊的会话 ID 是对方的 wxid，群聊是 `xxx@chatroom`）
 ```powershell
 ./weflow chat sessions
 ./weflow export messages <会话 ID> --format html --out chat.html
