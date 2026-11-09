@@ -1,11 +1,12 @@
 name: Docs check
 
-# Changes to the README or CLAUDE.md only run `make docs-check`: the README's links and anchors resolve, and commas
+# Changes to the READMEs or CLAUDE.md only run `make docs-check`: the READMEs' links and anchors resolve, and commas
 # next to Chinese text are full-width. Code changes are covered by ci.yml, which runs this check as well.
 on:
   pull_request:
     paths:
       - "README.md"
+      - "README.zh-CN.md"
       - "CLAUDE.md"
       - "docs/**"
       - ".github/workflows/docs-check.yml"
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - "README.md"
+      - "README.zh-CN.md"
       - "CLAUDE.md"
       - "docs/**"
       - ".github/workflows/docs-check.yml"

@@ -1,6 +1,6 @@
 # WeFlow CLI
 
-**English** | [简体中文](https://github.com/334456777/WeFlow/wiki)
+**English** | [简体中文](README.zh-CN.md)
 
 `weflow` is a native Rust command-line build of the [WeFlow](https://github.com/hicccc77/WeFlow) backend. It reads, analyzes, and exports local WeChat 4.0+ chat history directly from the terminal.
 

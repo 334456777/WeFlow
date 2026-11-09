@@ -1,4 +1,4 @@
-//! Keeps the Markdown in the repository self-consistent: the README's relative links and `#anchors` resolve, and
+//! Keeps the Markdown in the repository self-consistent: the READMEs' relative links and `#anchors` resolve, and
 //! commas next to Chinese characters are full-width (`，`). The commas are only reported, never rewritten.
 #![expect(
     clippy::unwrap_used,
@@ -16,7 +16,7 @@ fn root() -> PathBuf {
 
 /// Docs covered by the checks. The documentation itself is in the GitHub Wiki, outside this repository.
 fn doc_files() -> Vec<PathBuf> {
-    vec![root().join("README.md")]
+    vec![root().join("README.md"), root().join("README.zh-CN.md")]
 }
 
 fn rel(path: &Path) -> String {
