@@ -32,7 +32,7 @@ cp target/release/weflow .
 
 The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English. For the full precedence order, see the [command reference](https://github.com/334456777/WeFlow/wiki/命令参考#语言).
 
-## First-time setup and export (required steps)
+## First-time setup (required steps)
 
 **Run PowerShell as administrator.** WeChat 4.0 or later is supported, and you must have logged in to a WeChat account at least once, sent messages, and opened images.
 
