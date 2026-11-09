@@ -1292,7 +1292,7 @@ struct InsightCommand {
 enum InsightSubcommand {
     /// Test the AI model connection
     Test,
-    /// Generate a test insight for the first eligible private chat (or for --session)
+    /// Generate a test insight for the first eligible private chat, or for the given conversation
     Trigger {
         /// Generate for this conversation instead of the first eligible one
         session_id: Option<String>,
