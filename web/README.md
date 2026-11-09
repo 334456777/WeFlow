@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-The web interface of `weflow serve` (#130): React + TypeScript, built with Vite into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148). The API it talks to is described in [docs/serve-api.md](../docs/serve-api.md).
+The web interface of `weflow serve` (#130): React + TypeScript, built with Vite into static files that `weflow serve` hosts under `/ui/` (#146) and that are published apart from the `weflow` binary (#148). The API it talks to is described in [the wiki](https://github.com/334456777/WeFlow/wiki/命令-API).
 
 The screens read the real server once it is connected. Until then (no server, not while the token is wrong or the connection is still being checked) the chat, Moments and payments lists and the console show sample records (`src/mock/`), marked as such, so the page can be looked at without a server.
 
@@ -68,11 +68,11 @@ The answers the page reads most (the conversations and their states and details,
 
 A change the clients of the API would not read the same raises `apiVersion` (see Versions). `scripts/contract-compat.ts` tells such a change: `bun scripts/contract-compat.ts <earlier openapi.json>` lists what a client of the earlier contract could read wrong in the current one's answers (a field left out or turned nullable, a type or a value it did not have, a route no longer described) and fails when there is something and `info.version` is the same. `web.yml` runs it against the contract of the latest release of weflow, so an API version no release has yet may still change; a release from before the contract was kept tells only its API version, and when that is the current one the change is compared with its base instead. Adding a field or a route is no such change.
 
-`src/api/contract.test.ts` hands `contract/samples.json`, which weflow-cli builds, to the page's own code: the reads of `src/api/`, then what the chat window, the conversation list, the contacts, the resource browser and the task centre make of them. A test of weflow-cli checks the same samples, and a running server's answers, against the contract (docs/serve-api.md, "OpenAPI description"), so the page is tested on what the server answers rather than on a fixture of its own.
+`src/api/contract.test.ts` hands `contract/samples.json`, which weflow-cli builds, to the page's own code: the reads of `src/api/`, then what the chat window, the conversation list, the contacts, the resource browser and the task centre make of them. A test of weflow-cli checks the same samples, and a running server's answers, against the contract ([the wiki](https://github.com/334456777/WeFlow/wiki/命令-API#openapi-描述)), so the page is tested on what the server answers rather than on a fixture of its own.
 
 ## Language
 
-The page is in the language of the server it talks to (#439): `lang` of `/health` (docs/serve-api.md), the language of the machine `weflow serve` runs on, so the page and the server's own texts (errors, the commands' help) are in one language. Until a server has said, it is in the language of the last one it talked to, kept in `localStorage`, else in Chinese; `<html lang>` follows. The page has no choice of its own: `weflow lang en|zh` on the server's machine, then a restart of `weflow serve`, changes both.
+The page is in the language of the server it talks to (#439): `lang` of `/health` ([the wiki](https://github.com/334456777/WeFlow/wiki/命令-API#参数)), the language of the machine `weflow serve` runs on, so the page and the server's own texts (errors, the commands' help) are in one language. Until a server has said, it is in the language of the last one it talked to, kept in `localStorage`, else in Chinese; `<html lang>` follows. The page has no choice of its own: `weflow lang en|zh` on the server's machine, then a restart of `weflow serve`, changes both.
 
 The page is written in Chinese, and its texts are their own keys (`src/i18n/`): `t('正在读取消息')` is that text in Chinese and its English from `src/i18n/en.ts`, or the Chinese where `en.ts` has none; `t('共 {n} 个群聊', { n })` fills in `{n}`, which its English keeps. A text kept in a table and shown elsewhere is marked `msg('…')` where it is written and passed through `t()` where it is shown. `bun run i18n` lists what has no English and what Chinese is not passed through `t()` yet. The tests run in Chinese.
 
@@ -80,7 +80,7 @@ The page is written in Chinese, and its texts are their own keys (`src/i18n/`): 
 
 `package.json` holds the WebUI's own version and, under `weflow`, the API it needs: `apiVersion` must equal the `apiVersion` of `GET /health`, and the server's `version` must be at least `minBackendVersion` (a development build's `git describe` version counts as its tag). The build writes these to `dist/weflow-web.json` for `weflow web` (#148); the page checks them against the `hello` of `/health/events` and shows "版本不兼容" otherwise. A server without `/health/events` (5.0.0-rc.5 and older) is not supported: the page shows "未连接".
 
-To publish a version, raise `version` in `package.json` and push the tag `web-v<version>` (or run *WebUI release* in Actions): `.github/workflows/web-release.yml` builds it and publishes it to `ghcr.io/334456777/weflow-web:<version>`, where `weflow web` and `weflow serve` find it. A version is published once. Each `weflow` build shows, by default, the version `package.json` had when it was built (see [docs/serve-api.md](../docs/serve-api.md#versions-of-the-webui)).
+To publish a version, raise `version` in `package.json` and push the tag `web-v<version>` (or run *WebUI release* in Actions): `.github/workflows/web-release.yml` builds it and publishes it to `ghcr.io/334456777/weflow-web:<version>`, where `weflow web` and `weflow serve` find it. A version is published once. Each `weflow` build shows, by default, the version `package.json` had when it was built (see [the wiki](https://github.com/334456777/WeFlow/wiki/WebUI#网页的版本)).
 
 ## Layout
 

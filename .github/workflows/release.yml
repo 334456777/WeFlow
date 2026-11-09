@@ -146,8 +146,7 @@ jobs:
           DIR="weflow-${TAG}-${{ matrix.name }}"
           mkdir "$DIR"
           cp "target/${{ matrix.target }}/release/weflow${{ matrix.ext }}" "$DIR/"
-          cp README.md LICENSE "$DIR/"
-          cp docs/zh-CN/README.md "$DIR/README.zh-CN.md"
+          cp README.md README.zh-CN.md LICENSE "$DIR/"
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "$DIR.zip" "$DIR" > /dev/null
             echo "ASSET=$DIR.zip" >> "$GITHUB_ENV"

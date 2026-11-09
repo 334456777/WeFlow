@@ -6,7 +6,7 @@
 - 由 `weflow serve` 托管在 `/ui/` 下（#146）；
 - 与 `weflow` 二进制分开发布（#148）。
 
-它调用的 API 见 [docs/zh-CN/serve-api.md](../docs/zh-CN/serve-api.md)。
+它调用的 API 见 [Wiki](https://github.com/334456777/WeFlow/wiki/命令-API)。
 
 连接到服务后，各个界面读的都是真实的服务。连接之前（没有服务时；令牌不对或仍在检测连接时除外），聊天、朋友圈、支付三个列表和控制台显示示例记录（`src/mock/`），并标明是示例，这样没有服务也能看到页面。
 
@@ -72,11 +72,11 @@ Vite 自己处理 `/ui/`，其他路径（`/chat/sessions`、`/api/…`、`/jobs
 
 API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。`scripts/contract-compat.ts` 用来发现这类改动：`bun scripts/contract-compat.ts <之前的 openapi.json>` 列出按之前的契约写的客户端在现在的回复里可能读错的地方（字段可能省略或变为可为空、出现原来没有的类型或取值、路由不再描述），有这类改动而 `info.version` 没变时失败。`web.yml` 拿 weflow 最新一个发布版的契约运行它，所以还没有发布过的 API 版本可以继续改；开始保存契约之前的发布版只能看出它的 API 版本，和现在的相同时，改为和改动所基于的提交比较。新增字段或路由不算这类改动。
 
-`src/api/contract.test.ts` 把 weflow-cli 生成的 `contract/samples.json` 交给网页自己的代码：先经过 `src/api/` 的读取，再交给聊天窗口、会话列表、通讯录、资源浏览和任务中心处理。weflow-cli 有测试拿契约校验同一份样本和运行中的服务端的回复（docs/zh-CN/serve-api.md，「OpenAPI 描述」），所以网页测的是服务端真正的回复，而不是网页自己的夹具。
+`src/api/contract.test.ts` 把 weflow-cli 生成的 `contract/samples.json` 交给网页自己的代码：先经过 `src/api/` 的读取，再交给聊天窗口、会话列表、通讯录、资源浏览和任务中心处理。weflow-cli 有测试拿契约校验同一份样本和运行中的服务端的回复（[Wiki](https://github.com/334456777/WeFlow/wiki/命令-API#openapi-描述)），所以网页测的是服务端真正的回复，而不是网页自己的夹具。
 
 ## 语言
 
-网页使用它所连服务端的语言（#439）：即 `/health` 的 `lang`（docs/zh-CN/serve-api.md），也就是运行 `weflow serve` 的那台机器的语言，所以网页和服务端自己的文字（错误信息、命令帮助）是同一种语言。服务端还没告诉之前，网页用上一次所连服务端的语言（保存在 `localStorage` 里），没有记录时用中文；`<html lang>` 也随之设置。网页自己不提供语言选项：在服务端那台机器上运行 `weflow lang en|zh` 并重启 `weflow serve`，两边一起换。
+网页使用它所连服务端的语言（#439）：即 `/health` 的 `lang`（[Wiki](https://github.com/334456777/WeFlow/wiki/命令-API#参数)），也就是运行 `weflow serve` 的那台机器的语言，所以网页和服务端自己的文字（错误信息、命令帮助）是同一种语言。服务端还没告诉之前，网页用上一次所连服务端的语言（保存在 `localStorage` 里），没有记录时用中文；`<html lang>` 也随之设置。网页自己不提供语言选项：在服务端那台机器上运行 `weflow lang en|zh` 并重启 `weflow serve`，两边一起换。
 
 网页用中文写成，界面文字本身就是键（`src/i18n/`）：`t('正在读取消息')` 在中文下就是这句话，英文从 `src/i18n/en.ts` 里取，`en.ts` 没有时仍显示中文；`t('共 {n} 个群聊', { n })` 会填入 `{n}`，英文里保留同样的名字。写在表格里、在别处显示的文字，在写的地方用 `msg('…')` 标出，在显示的地方经过 `t()`。`bun run i18n` 列出还没有英文的文字，以及还没经过 `t()` 的中文。测试用中文运行。
 
@@ -88,7 +88,7 @@ API 的客户端会读错的改动要提高 `apiVersion`（见「版本」）。
 
 构建时，这些信息写入 `dist/weflow-web.json`，供 `weflow web` 使用（#148）。网页也会拿它们和 `/health/events` 的 `hello` 比对，不满足时显示「版本不兼容」。没有 `/health/events` 的服务端（5.0.0-rc.5 及更早）不再支持，连接时显示「未连接」。
 
-发布新版本时，先提高 `package.json` 里的 `version`，再推送 tag `web-v<版本>`（或在 Actions 里运行 *WebUI release*）：`.github/workflows/web-release.yml` 构建后发布到 `ghcr.io/334456777/weflow-web:<版本>`，`weflow web` 和 `weflow serve` 从那里下载。同一个版本只能发布一次。每个 `weflow` 构建默认显示构建时 `package.json` 里的版本（见 [docs/serve-api.md](../docs/zh-CN/serve-api.md#网页的版本)）。
+发布新版本时，先提高 `package.json` 里的 `version`，再推送 tag `web-v<版本>`（或在 Actions 里运行 *WebUI release*）：`.github/workflows/web-release.yml` 构建后发布到 `ghcr.io/334456777/weflow-web:<版本>`，`weflow web` 和 `weflow serve` 从那里下载。同一个版本只能发布一次。每个 `weflow` 构建默认显示构建时 `package.json` 里的版本（见 [Wiki](https://github.com/334456777/WeFlow/wiki/WebUI#网页的版本)）。
 
 ## 目录
 

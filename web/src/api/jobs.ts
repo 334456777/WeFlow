@@ -1,5 +1,5 @@
 // Jobs (#211): commands run in the background with `Prefer: respond-async` — exports above all — their progress
-// as server-sent events, cancelling them, and the file a `return=file` job wrote (docs/serve-api.md, "Jobs").
+// as server-sent events, cancelling them, and the file a `return=file` job wrote (the wiki's command API page).
 import { apiUrl, call, get, token, type Params } from './client';
 import type * as Contract from './contract.gen';
 import { msg, t } from '../i18n';

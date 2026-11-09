@@ -1,6 +1,6 @@
 # WeFlow CLI
 
-**English** | [简体中文](docs/zh-CN/README.md)
+**English** | [简体中文](README.zh-CN.md)
 
 `weflow` is a native Rust command-line build of the [WeFlow](https://github.com/hicccc77/WeFlow) backend. It reads, analyzes, and exports local WeChat 4.0+ chat history directly from the terminal.
 
@@ -9,7 +9,7 @@
 - Message export in 9 formats: `txt`, `json`, `arkme-json`, `chatlab`, `chatlab-jsonl`, `excel`, `weclone`, `html`, and `sql`.
 - Images (`.dat` decryption), voice (SILK → WAV), video lookup, and stickers.
 - Every command over HTTP (`serve`), message push, and AI insights.
-- A web interface (WebUI) that `serve` hosts under `/ui/` ([details](docs/serve-api.md#webui)).
+- A web interface (WebUI) that `serve` hosts under `/ui/` ([details](https://github.com/334456777/WeFlow/wiki/WebUI#网页)).
 - `--help`, argument errors, runtime errors, and generated text follow the system language (Chinese or English) by default; `./weflow lang en|zh` saves your choice.
 
 ## Build
@@ -26,7 +26,7 @@ cp target/release/weflow .
 ./weflow lang en
 ```
 
-The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English. For the full precedence order, see [docs/native-cli.md](docs/native-cli.md#language).
+The language affects `--help`, argument errors, runtime errors, and generated text. JSON keys and error codes stay in English. For the full precedence order, see the [command reference](https://github.com/334456777/WeFlow/wiki/命令参考#语言).
 
 ## First-time setup and export (required steps)
 
@@ -94,14 +94,11 @@ The 180-second automatic exit can be adjusted with `./weflow key db --timeout <s
 
 The WeFlow Rust CLI ~~, since my skills aren't up to it,~~ opens databases **read-only** and never modifies WeChat databases ~~— I'm not taking the blame for that~~. Commands that would modify a database (`chat update-message`, `chat delete-message`, `chat anti-revoke`, `chat mark-read`, `sns block-delete`, and `sns delete`) are designed as placeholders. Some features of the WeFlow desktop app are also missing (desktop-process features such as voice-to-text and popups).
 
-See [docs/cli-unsupported.md](docs/cli-unsupported.md)for the detailed list
+See the [detailed list](https://github.com/334456777/WeFlow/wiki/不支持的功能).
 
 ## Documentation
 
-- [Command list](docs/native-cli.md)
-- [What the CLI does not support (detailed list)](docs/cli-unsupported.md) · [Coverage of the original backend](docs/cli-coverage.md)
-- [Command API and WebUI (`weflow serve`)](docs/serve-api.md) · [Windows database keys](docs/windows-db-key.md)
-- [macOS key troubleshooting](docs/MAC-KEY-FAQ.md)
+[WeFlow Wiki](https://github.com/334456777/WeFlow/wiki)
 
 # Disclaimer
 

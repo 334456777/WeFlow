@@ -132,7 +132,7 @@ if (import.meta.main) {
   if (!problems.length) {
     console.log(`the answers of API ${now.info.version} read as those of API ${old.info.version} did`);
   } else if (same) {
-    console.error(`a client of API ${old.info.version} could read these answers wrong; raise apiVersion (docs/serve-api.md, "Versions"):`);
+    console.error(`a client of API ${old.info.version} could read these answers wrong; raise apiVersion (the wiki's command API page):`);
     for (const p of problems) console.error('  ' + p);
     process.exit(1);
   } else {

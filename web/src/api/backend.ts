@@ -1,6 +1,6 @@
 // Whether `weflow serve` is there and speaks the API this build was written for. `GET /health/events` needs no
 // token; its `hello` is `/health`'s `{"status": "ok", "apiVersion": "…", "version": "5.0.0", "data": "…", "lang": "zh"}`
-// (docs/serve-api.md, "Versions"). A server without it (5.0.0-rc.5 and older) is not supported.
+// (the wiki's command API page). A server without it (5.0.0-rc.5 and older) is not supported.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiUrl, checkToken, onAuth, token } from './client';
 import { emitLive } from './live';

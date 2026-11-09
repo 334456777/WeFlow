@@ -1,4 +1,4 @@
-// Calls to `weflow serve` (docs/serve-api.md). Answers are `{"success": true, "data": ...}` or
+// Calls to `weflow serve` (the wiki's command API page). Answers are `{"success": true, "data": ...}` or
 // `{"success": false, "error": {"code", "message", "details"}}`; `call` returns the data or throws an ApiError.
 import { t } from '../i18n';
 

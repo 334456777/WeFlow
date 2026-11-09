@@ -1,5 +1,5 @@
 # WeFlow CLI
-[English](../../README.md) | **简体中文**
+[English](README.md) | **简体中文**
 
 `weflow` 是 [WeFlow](https://github.com/hicccc77/WeFlow) 后端的 Rust 原生命令行版本，直接在终端读取、分析和导出本地的微信 4.0 及以上版本聊天记录。
 
@@ -8,7 +8,7 @@
 - 消息导出支持 9 种格式：`txt`、`json`、`arkme-json`、`chatlab`、`chatlab-jsonl`、`excel`、`weclone`、`html`、`sql`。
 - 图片（`.dat` 解密）、语音（SILK → WAV）、视频查找、表情。
 - 所有命令的 HTTP 接口（`serve`）、消息推送、AI 见解。
-- `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](serve-api.md#网页)）。
+- `serve` 在 `/ui/` 下提供网页界面（WebUI，[详情](https://github.com/334456777/WeFlow/wiki/WebUI#网页)）。
 - `--help`、参数错误、运行错误和生成的文本默认跟随系统语言(中文或英文);`./weflow lang en|zh` 可保存选择。
 
 ## 构建
@@ -25,7 +25,7 @@ cp target/release/weflow .
 ./weflow lang zh
 ```
 
-语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文。完整的优先级见 [docs/zh-CN/native-cli.md](native-cli.md#语言)。
+语言会影响 `--help`、参数错误、运行时错误和生成的文本;JSON 键和错误码仍为英文。完整的优先级见[命令参考](https://github.com/334456777/WeFlow/wiki/命令参考#语言)。
 
 ## 首次设置与导出（必要步骤）
 
@@ -85,14 +85,11 @@ WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不�
 `chat anti-revoke`、`chat mark-read`、`sns block-delete`、`sns delete`)设计为占位符，另有一些 WeFlow 桌面端的功能缺失
 (语音转文字、弹窗等桌面进程功能)。
 
-详细清单见 [docs/zh-CN/cli-unsupported.md](cli-unsupported.md)
+详细清单见[不支持的功能](https://github.com/334456777/WeFlow/wiki/不支持的功能)。
 
 ## 文档
 
-- [命令列表](native-cli.md)
-- [CLI 不支持的功能(详细清单)](cli-unsupported.md) · [对原后端的覆盖率](cli-coverage.md)
-- [命令 API 与网页（`weflow serve`）](serve-api.md) · [Windows 数据库密钥](windows-db-key.md)
-- [macOS 密钥排障](MAC-KEY-FAQ.md)
+[WeFlow Wiki](https://github.com/334456777/WeFlow/wiki)
 
 # 免责声明
 <div id="disclaimer">
@@ -102,18 +99,18 @@ WeFlow Rust CLI ~~因为本人技艺不精湛所以~~**只读**数据库，不�
 
 <table>
   <tr>
-    <td><img src="../images/SSD.JPG" alt="SSD" width="150"></td>
-    <td><img src="../images/PMM.JPG" alt="PMM" width="150"></td>
-    <td><img src="../images/HDD.JPG" alt="HDD" width="150"></td>
-    <td><img src="../images/MONITOR.JPG" alt="MONITOR" width="150"></td>
+    <td><img src="docs/images/SSD.JPG" alt="SSD" width="150"></td>
+    <td><img src="docs/images/PMM.JPG" alt="PMM" width="150"></td>
+    <td><img src="docs/images/HDD.JPG" alt="HDD" width="150"></td>
+    <td><img src="docs/images/MONITOR.JPG" alt="MONITOR" width="150"></td>
   </tr>
 </table>
 
 <table>
   <tr>
-    <td><img src="../images/MB.JPG" alt="MB" width="150"></td>
-    <td><img src="../images/GPU.JPG" alt="GPU" width="150"></td>
-    <td><img src="../images/RAM.JPG" alt="RAM" width="150"></td>
+    <td><img src="docs/images/MB.JPG" alt="MB" width="150"></td>
+    <td><img src="docs/images/GPU.JPG" alt="GPU" width="150"></td>
+    <td><img src="docs/images/RAM.JPG" alt="RAM" width="150"></td>
   </tr>
 </table>
 
