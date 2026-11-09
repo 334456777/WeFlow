@@ -63,3 +63,4 @@ GitHub Wiki（ https://github.com/334456777/WeFlow/wiki ）是今后增添文档
 
 ## 注意事项
 - 默认用中文回复，代码注释用英文
+- 读文件、改文件、搜索必须使用 Claude Code 自带的工具（Read、Write、Edit、Glob、Grep 等），不要写脚本（`.sh`/`.py`/`.ps1`）或用 Bash heredoc、`sed`、`echo >` 去做：修改已有文件用 Edit（多处修改就多次调用），新建文件用 Write；只有批量机械替换、长时间测量这类自带工具确实做不了的事才用脚本，脚本先用 Write 写成文件再运行，用完即删
