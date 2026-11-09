@@ -1,8 +1,7 @@
 name: Docs check
 
-# Documentation changes only run `make docs-check`: cli-unsupported.md matches the code, links and anchors resolve,
-# docs/ and docs/zh-CN/ are paired, every crate is in the architecture tables, and commas next to Chinese text
-# are full-width. Code changes are covered by ci.yml, which runs this check as well.
+# Changes to the README or CLAUDE.md only run `make docs-check`: the README's links and anchors resolve, and commas
+# next to Chinese text are full-width. Code changes are covered by ci.yml, which runs this check as well.
 on:
   pull_request:
     paths:

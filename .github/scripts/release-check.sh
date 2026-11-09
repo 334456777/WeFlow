@@ -42,10 +42,10 @@ case "${1:-}" in
     DIR="weflow-${TAG}-${NAME}"
     if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
     if [ "${RUNNER_OS:-}" = "Windows" ]; then 7z x -y "$DIR.zip" > /dev/null; else tar -xzf "$DIR.tar.gz"; fi
-    for f in "weflow$EXT" README.md README.zh-CN.md LICENSE; do
+    for f in "weflow$EXT" README.md LICENSE; do
       [ -f "$DIR/$f" ] || { echo "::error::$f is missing from the package"; exit 1; }
     done
-    echo "the package holds weflow$EXT, README.md, README.zh-CN.md and LICENSE"
+    echo "the package holds weflow$EXT, README.md and LICENSE"
     BIN="$DIR/weflow$EXT"
     OUT="$("$BIN" --version)"
     echo "$OUT"

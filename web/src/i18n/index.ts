@@ -1,5 +1,5 @@
 // The page's language (#439): that of the server, which answers in the language of the machine it runs on
-// (`/health`'s `lang`, docs/serve-api.md), so the page and the server's texts are in one language. The page is written
+// (`/health`'s `lang`, the wiki's command API page), so the page and the server's texts are in one language. The page is written
 // in Chinese and its texts are their own keys: `t('正在读取消息')` is that text in Chinese, its English from `en.ts`,
 // or the Chinese again where `en.ts` has none (`bun run i18n` lists those). Until a server has said, the page is in
 // the language of the last one it talked to, else in Chinese. The English is a chunk of its own, fetched the first time

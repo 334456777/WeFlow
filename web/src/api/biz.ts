@@ -1,5 +1,5 @@
 // Official accounts (#203): the ones followed (`biz accounts`), and an account's pushes as articles
-// (`biz messages`), both read in the server's process (`/api/`, docs/serve-api.md).
+// (`biz messages`), both read in the server's process (`/api/`, the wiki's in-process reads page).
 import { get } from './client';
 import type * as Contract from './contract.gen';
 

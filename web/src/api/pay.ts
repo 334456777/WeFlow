@@ -1,5 +1,5 @@
 // WeChat Pay (#204): the notices of the WeChat Pay account (`biz pay-records`), read in the server's process
-// (`/api/`, docs/serve-api.md), and what the page makes of their text: the amount, how it was paid, its state, the payee.
+// (`/api/`, the wiki's in-process reads page), and what the page makes of their text: the amount, how it was paid, its state, the payee.
 import { get } from './client';
 import { locale, t } from '../i18n';
 import type * as Contract from './contract.gen';

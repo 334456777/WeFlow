@@ -1,4 +1,4 @@
-// The chat reads of `weflow serve` (docs/serve-api.md): the conversation list and the folded and muted states, read in
+// The chat reads of `weflow serve` (the wiki's command API page): the conversation list and the folded and muted states, read in
 // the server's process (`/api/`).
 import { ApiError, get } from './client';
 import type * as Contract from './contract.gen';

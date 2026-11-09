@@ -200,7 +200,7 @@ test: check-rust
 
 docs-check: check-rust
 	@printf "$(BOLD)▶ 检查指定 Markdown 文档的一致性$(RESET)\n"
-	cargo test -p weflow-native --test unsupported_docs --test docs_consistency
+	cargo test -p weflow-native --test docs_consistency
 
 check: check-rust
 	@printf "$(BOLD)▶ cargo check --workspace$(RESET)\n"

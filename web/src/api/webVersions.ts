@@ -1,5 +1,5 @@
 // The WebUI versions (#406), through `weflow web`: those kept on the server's machine and those published. A version
-// picked through the server's own API is shown at once when the server follows the picked one (docs/serve-api.md).
+// picked through the server's own API is shown at once when the server follows the picked one (the wiki's WebUI page).
 import { call, get } from './client';
 import type * as Contract from './contract.gen';
 

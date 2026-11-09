@@ -1,8 +1,7 @@
 name: CI
 
 # Code changes run `make ci` (rustfmt, clippy with warnings as errors, the whole test suite) on Linux and macOS,
-# plus `make docs-check`, because the docs are checked against the code (cli-unsupported.md, the crate tables).
-# Documentation-only changes run docs-check.yml instead. Windows x64 (MSVC, a release target) builds the CLI,
+# plus `make docs-check`. Changes to the README or CLAUDE.md alone run docs-check.yml instead. Windows x64 (MSVC, a release target) builds the CLI,
 # runs the test suite and runs the CLI once, since some code (the allocator setup, the platform helpers) only
 # compiles there; Windows arm64 is left to release.yml, so CI covers the three main platforms. The tests use the
 # dev profile like Linux and macOS: the release profile (thin LTO, one codegen unit) took ~13 minutes to compile

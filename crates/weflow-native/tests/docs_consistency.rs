@@ -1,6 +1,5 @@
-//! Keeps the Markdown docs self-consistent: relative links and `#anchors` resolve, every English doc has a
-//! zh-CN twin (and the reverse), every crate is listed in the architecture tables of `native-cli.md`, and commas
-//! next to Chinese characters are full-width (`，`). The commas are only reported, never rewritten.
+//! Keeps the Markdown in the repository self-consistent: the README's relative links and `#anchors` resolve, and
+//! commas next to Chinese characters are full-width (`，`). The commas are only reported, never rewritten.
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test by panicking"
@@ -15,20 +14,9 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Docs covered by the checks. `es-ES/` is outside the bilingual rule in CLAUDE.md.
+/// Docs covered by the checks. The documentation itself is in the GitHub Wiki, outside this repository.
 fn doc_files() -> Vec<PathBuf> {
-    let root = root();
-    let mut files = vec![root.join("README.md")];
-    for dir in ["docs", "docs/zh-CN"] {
-        for entry in std::fs::read_dir(root.join(dir)).unwrap() {
-            let path = entry.unwrap().path();
-            if path.extension().is_some_and(|e| e == "md") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    files
+    vec![root().join("README.md")]
 }
 
 fn rel(path: &Path) -> String {
@@ -134,56 +122,6 @@ fn relative_links_and_anchors_resolve() {
         "broken doc links:\n{}",
         problems.join("\n")
     );
-}
-
-#[test]
-fn every_doc_has_a_twin_in_the_other_language() {
-    let docs = root().join("docs");
-    let md_names = |dir: PathBuf| -> HashSet<String> {
-        std::fs::read_dir(dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n.ends_with(".md"))
-            .collect()
-    };
-    // The English root README lives at the repository root, not in docs/.
-    let mut english = md_names(docs.clone());
-    english.insert("README.md".to_string());
-    let chinese = md_names(docs.join("zh-CN"));
-    let mut only_en: Vec<_> = english.difference(&chinese).collect();
-    let mut only_zh: Vec<_> = chinese.difference(&english).collect();
-    only_en.sort();
-    only_zh.sort();
-    assert!(
-        only_en.is_empty() && only_zh.is_empty(),
-        "docs/ and docs/zh-CN/ differ: only in English {only_en:?}, only in Chinese {only_zh:?}"
-    );
-}
-
-#[test]
-fn every_crate_is_in_the_architecture_tables() {
-    let crates: Vec<String> = std::fs::read_dir(root().join("crates"))
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().join("Cargo.toml").exists())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
-    assert!(
-        crates.len() >= 5,
-        "found crates {crates:?}; did the layout change?"
-    );
-    for doc in ["docs/native-cli.md", "docs/zh-CN/native-cli.md"] {
-        let text = std::fs::read_to_string(root().join(doc)).unwrap();
-        let missing: Vec<&String> = crates
-            .iter()
-            .filter(|c| !text.contains(&format!("| `crates/{c}` |")))
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "{doc} architecture table lacks: {missing:?}"
-        );
-    }
 }
 
 /// An ASCII comma next to a Han character, optionally with closing/opening brackets, emphasis marks or spaces in
