@@ -173,6 +173,46 @@ fn decrypts_the_hd_variant_and_caches_it() {
 }
 
 #[test]
+fn a_username_with_a_folder_like_suffix_is_looked_for_whole_then_cut() {
+    let (hub, root, account, _img_dir) = setup("img-suffix");
+    let key: [u8; 16] = KEY.as_bytes().try_into().unwrap();
+    let month = weflow_core::image::year_month_from_create_time(Some(1_700_000_000));
+    // `name_1998` keeps its images under md5 of the whole username; `name_2001`'s are under md5("name"), where the
+    // desktop app looked (#657)
+    for (session, folder, seed) in [("name_1998", "name_1998", 4), ("name_2001", "name", 5)] {
+        let dir = account
+            .join("msg/attach")
+            .join(md5_hex(folder))
+            .join(&month)
+            .join("Img");
+        std::fs::create_dir_all(&dir).unwrap();
+        // an image md5 of its own, so that neither finds the other's in the cache
+        let image_md5 = md5_hex(session);
+        let image = jpeg(2000, seed);
+        std::fs::write(
+            dir.join(format!("{image_md5}_t.dat")),
+            encrypt_v2(&image, &key, 0x5a),
+        )
+        .unwrap();
+        let r = hub.image_decrypt(&ImagePayload {
+            session_id: Some(session.into()),
+            image_md5: Some(image_md5),
+            create_time: Some(1_700_000_000),
+            prefer_file_path: true,
+            allow_cache_index: Some(false),
+            ..Default::default()
+        });
+        assert!(r.success, "{session}: {:?}", r.error);
+        assert_eq!(
+            std::fs::read(r.local_path.unwrap()).unwrap(),
+            image,
+            "{session}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn falls_back_to_the_thumbnail_and_promotes_it_when_hd_appears() {
     let (hub, root, _account, img_dir) = setup("img-thumb");
     let thumb = jpeg(1500, 3);

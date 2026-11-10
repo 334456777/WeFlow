@@ -514,7 +514,8 @@ impl ServiceHub {
         }
     }
 
-    /// `collectDatCandidatesFromSessionMonth`: `msg/attach/<md5(session)>/<yyyy-mm>/Img`, at most 240 directories.
+    /// `collectDatCandidatesFromSessionMonth`: `msg/attach/<md5(session)>/<yyyy-mm>/Img`, at most 240 directories;
+    /// `<md5(session)>` is the first of [`img::session_dirs_for_storage`] with that month's folder.
     fn collect_dat_candidates(
         &self,
         account_dir: &Path,
@@ -527,20 +528,22 @@ impl ServiceHub {
         if session.is_empty() || month.is_empty() {
             return Vec::new();
         }
-        let session_dir = img::session_dir_for_storage(session);
-        if session_dir.is_empty() {
+        // the month's folder in the first of the conversation's folders that has one
+        let Some(root) = img::session_dirs_for_storage(session)
+            .into_iter()
+            .map(|session_dir| {
+                account_dir
+                    .join("msg")
+                    .join("attach")
+                    .join(session_dir)
+                    .join(&month)
+                    .join("Img")
+            })
+            .find(|root| root.is_dir())
+        else {
             return Vec::new();
-        }
-        let root = account_dir
-            .join("msg")
-            .join("attach")
-            .join(&session_dir)
-            .join(&month)
-            .join("Img");
+        };
         let mut out: Vec<String> = Vec::new();
-        if !root.is_dir() {
-            return out;
-        }
         let mut budget = 240i32;
         let mut stack: Vec<(PathBuf, u32)> = vec![(root, 0)];
         while let Some((dir, depth)) = stack.pop() {
