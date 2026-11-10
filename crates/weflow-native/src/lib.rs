@@ -6,7 +6,6 @@ pub mod msg_row;
 pub mod native_contact;
 pub mod native_db;
 pub mod native_media;
-pub mod native_meta;
 pub mod native_msg;
 pub mod native_report;
 pub mod native_sns;

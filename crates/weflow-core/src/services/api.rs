@@ -597,18 +597,9 @@ impl ServiceHub {
         map
     }
 
-    /// `getContacts`: friends / groups / official accounts / former friends, newest contact first.
-    pub fn chat_contacts_list(&self) -> AppResult<Vec<Contact>> {
-        self.contacts_list(false)
-    }
-
-    /// `chat contacts --parsed` (#205): [`Self::chat_contacts_list`] with each contact's `avatarUrl`, for a contact
-    /// list that shows the faces without asking for them one by one.
+    /// `chat contacts --parsed` (#205): friends / groups / official accounts / former friends, newest contact first,
+    /// each with its `avatarUrl`, for a contact list that shows the faces without asking for them one by one.
     pub fn chat_contacts_parsed(&self) -> AppResult<Vec<Contact>> {
-        self.contacts_list(true)
-    }
-
-    fn contacts_list(&self, with_avatar: bool) -> AppResult<Vec<Contact>> {
         let wcdb = self.open_wcdb()?;
         let raw = wcdb
             .contacts()
@@ -681,9 +672,7 @@ impl ServiceHub {
                 detail_description: set(crate::contact_extra::contact_signature(row)),
                 region: set(crate::contact_extra::contact_region(row)),
                 kind,
-                avatar_url: with_avatar
-                    .then(|| first_str(row, &["big_head_url", "small_head_url"]))
-                    .and_then(set),
+                avatar_url: set(first_str(row, &["big_head_url", "small_head_url"])),
                 username,
             };
             contacts.push((contact, t));
@@ -1186,20 +1175,12 @@ fn put_media(
     })
 }
 
-/// httpService `detectImageExt`
+/// httpService `detectImageExt`: the picture's extension, `.bmp` for a bitmap, `.jpg` for anything else.
 fn api_detect_image_ext(b: &[u8]) -> &'static str {
-    if b.len() >= 3 && b[..3] == [0xff, 0xd8, 0xff] {
-        ".jpg"
-    } else if b.len() >= 8 && b[..8] == [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] {
-        ".png"
-    } else if b.len() >= 6 && (&b[..6] == b"GIF87a" || &b[..6] == b"GIF89a") {
-        ".gif"
-    } else if b.len() >= 12 && &b[..4] == b"RIFF" && &b[8..12] == b"WEBP" {
-        ".webp"
-    } else if b.len() >= 2 && b[..2] == [0x42, 0x4d] {
-        ".bmp"
-    } else {
-        ".jpg"
+    match crate::image::ImageFormat::of(b) {
+        Some(format) => format.extension(),
+        None if b.starts_with(b"BM") => ".bmp",
+        None => ".jpg",
     }
 }
 

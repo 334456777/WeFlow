@@ -1297,7 +1297,7 @@ impl ServiceHub {
         let (payload, content) = self.image_payload_and_content(session_id, msg_id, create_time)?;
         let files = self.dat_files(&payload).unwrap_or_default();
         let attr = |name: &str| -> Option<u64> {
-            let re = regex::Regex::new(&format!(r#"\s{name}\s*=\s*"(\d+)""#)).ok()?;
+            let re = crate::message::rx(&format!(r#"\s{name}\s*=\s*"(\d+)""#));
             re.captures(&content)?
                 .get(1)?
                 .as_str()
@@ -1314,8 +1314,8 @@ impl ServiceHub {
             thumb: files.thumb.is_some(),
             normal: files.base.is_some(),
             hd: files.hd.is_some(),
-            normal_bytes: attr("length").or(size(&files.base)),
-            hd_bytes: attr("hdlength").or(size(&files.hd)),
+            normal_bytes: attr("length").or_else(|| size(&files.base)),
+            hd_bytes: attr("hdlength").or_else(|| size(&files.hd)),
         })
     }
 
@@ -1489,30 +1489,6 @@ impl ServiceHub {
         let mut state = self.image_state.lock_or_panic();
         state.resolved.clear();
         state.cache_dirs.clear();
-    }
-
-    /// `image:clearCache`: empties the decrypted-image cache (keeps the folder layout).
-    pub fn image_clear_cache(&self) -> Value {
-        self.image_forget_cached();
-        let root = self.cache_base().join("Images");
-        if !root.exists() {
-            return json!({ "success": true });
-        }
-        fn clear(dir: &Path) {
-            let Ok(rd) = std::fs::read_dir(dir) else {
-                return;
-            };
-            for e in rd.filter_map(Result::ok) {
-                let p = e.path();
-                if p.is_dir() {
-                    clear(&p);
-                } else {
-                    let _ = std::fs::remove_file(&p);
-                }
-            }
-        }
-        clear(&root);
-        json!({ "success": true })
     }
 }
 

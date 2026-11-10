@@ -14,7 +14,7 @@ use crate::contract::{
     SessionTables, TabCounts, TransferNames, VoiceMessages,
 };
 use crate::error::{AppError, AppResult};
-use crate::message::{app_message_kind, collect_rows, is_same_wxid, CollectOptions, ExportMsg};
+use crate::message::{app_message_kind, collect_rows, CollectOptions, ExportMsg};
 use weflow_native::msg_row::MsgRow;
 use weflow_native::native_msg::table_name_for;
 
@@ -1109,10 +1109,5 @@ impl ServiceHub {
             payer_name: resolve(payer),
             receiver_name: resolve(receiver),
         })
-    }
-
-    /// Whether two account identifiers refer to the same user.
-    pub fn same_account(a: &str, b: &str) -> bool {
-        is_same_wxid(a, b)
     }
 }

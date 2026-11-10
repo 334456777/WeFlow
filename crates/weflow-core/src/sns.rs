@@ -11,6 +11,7 @@ use md5::{Digest, Md5};
 use serde_json::Value;
 
 use crate::contract::{SnsComment, SnsEmoji, SnsLivePhoto, SnsLocation, SnsMedia, SnsPost};
+use crate::image::ImageFormat;
 use crate::message::rx;
 
 // ───────────────────────── small JS-compat helpers ─────────────────────────
@@ -123,17 +124,8 @@ pub fn detect_image_mime(buf: &[u8], fallback: &str) -> String {
     if buf.len() < 4 {
         return fallback.to_string();
     }
-    if buf[..3] == [0xff, 0xd8, 0xff] {
-        return "image/jpeg".into();
-    }
-    if buf.len() >= 8 && buf[..8] == [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] {
-        return "image/png".into();
-    }
-    if buf.len() >= 6 && (&buf[..6] == b"GIF87a" || &buf[..6] == b"GIF89a") {
-        return "image/gif".into();
-    }
-    if buf.len() >= 12 && &buf[..4] == b"RIFF" && &buf[8..12] == b"WEBP" {
-        return "image/webp".into();
+    if let Some(format) = ImageFormat::of(buf) {
+        return format.mime().into();
     }
     if buf[0] == 0x42 && buf[1] == 0x4d {
         return "image/bmp".into();
@@ -162,13 +154,7 @@ pub fn is_valid_image_buffer(buf: &[u8]) -> bool {
     if buf.len() < 12 {
         return false;
     }
-    if buf[..3] == [0x47, 0x49, 0x46]
-        || buf[..4] == [0x89, 0x50, 0x4e, 0x47]
-        || buf[..3] == [0xff, 0xd8, 0xff]
-    {
-        return true;
-    }
-    if &buf[..4] == b"RIFF" && &buf[8..12] == b"WEBP" {
+    if ImageFormat::of(buf).is_some() {
         return true;
     }
     if &buf[4..8] == b"ftyp" {
@@ -182,20 +168,9 @@ pub fn is_valid_image_buffer(buf: &[u8]) -> bool {
     false
 }
 
+/// The extension an emoji is saved under: its format's, `.gif` when it is none of the four.
 pub fn image_ext_from_buffer(buf: &[u8]) -> &'static str {
-    if buf.len() >= 3 && buf[..3] == [0x47, 0x49, 0x46] {
-        return ".gif";
-    }
-    if buf.len() >= 4 && buf[..4] == [0x89, 0x50, 0x4e, 0x47] {
-        return ".png";
-    }
-    if buf.len() >= 3 && buf[..3] == [0xff, 0xd8, 0xff] {
-        return ".jpg";
-    }
-    if buf.len() >= 12 && &buf[..4] == b"RIFF" && &buf[8..12] == b"WEBP" {
-        return ".webp";
-    }
-    ".gif"
+    ImageFormat::of(buf).map_or(".gif", ImageFormat::extension)
 }
 
 // ───────────────────────── XML parsing ─────────────────────────
@@ -364,24 +339,6 @@ pub fn parse_like_users_from_xml(xml: &str) -> Vec<LikeUser> {
         }
     }
     out
-}
-
-/// Legacy nickname-only like parser (`parseLikesFromXml`).
-pub fn parse_likes_from_xml(xml: &str) -> Vec<String> {
-    if xml.is_empty() {
-        return Vec::new();
-    }
-    let Some(list) = like_list(xml) else {
-        return Vec::new();
-    };
-    rx(LIKE_ITEM)
-        .captures_iter(&list)
-        .filter_map(|m| {
-            tag_value(&m[1], r"(?is)<nickname>([^<]*)</nickname>")
-                .or_else(|| tag_value(&m[1], r"(?is)<nickName>([^<]*)</nickName>"))
-                .map(|n| n.trim().to_string())
-        })
-        .collect()
 }
 
 // ───────────────────────── location ─────────────────────────
@@ -1068,7 +1025,8 @@ mod tests {
         let likes = parse_like_users_from_xml(xml);
         assert_eq!(likes.len(), 2);
         assert_eq!(likes[0].username.as_deref(), Some("u1"));
-        assert_eq!(parse_likes_from_xml(xml), vec!["N1", "N2"]);
+        let nicknames: Vec<Option<&str>> = likes.iter().map(|l| l.nickname.as_deref()).collect();
+        assert_eq!(nicknames, [Some("N1"), Some("N2")]);
         let loc = parse_location_from_xml(
             "<location latitude=\"31.2\" longitude=\"121\" city=\"上海\" poiName=\"A &amp; B\"/>",
         )

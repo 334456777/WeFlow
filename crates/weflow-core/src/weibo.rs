@@ -276,29 +276,6 @@ async fn fetch_detail(id: &str, cookie: &str) -> Result<Value, String> {
     Ok(v)
 }
 
-/// `validateUid`: `(uid, screen name)`; without a cookie only the UID format is checked.
-pub async fn validate_uid(
-    uid_input: &str,
-    cookie_input: &str,
-) -> Result<(String, Option<String>), String> {
-    let uid = normalize_uid(uid_input)?;
-    let cookie = normalize_cookie_input(cookie_input)?;
-    if cookie.is_empty() {
-        return Ok((uid, None));
-    }
-    let list = fetch_timeline(&uid, &cookie).await?;
-    let first = list.first().ok_or_else(|| {
-        "this Weibo account has no recent public posts, or the cookie has expired".to_string()
-    })?;
-    Ok((
-        uid,
-        first
-            .pointer("/user/screen_name")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-    ))
-}
-
 fn js_string(v: Option<&Value>) -> String {
     match v {
         Some(Value::String(s)) => s.clone(),

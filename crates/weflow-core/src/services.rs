@@ -110,17 +110,6 @@ impl ServiceHub {
         crate::webui::WebStore::new(self.ctx.cache_dir().join("web"))
     }
 
-    pub fn runtime_info(&self) -> Value {
-        json!({
-            "homeDir": self.ctx.home_dir,
-            "configPath": self.ctx.config_path,
-            "runtimeDir": self.ctx.runtime_dir,
-            "version": self.ctx.version,
-            "target": weflow_assets::target_triple(),
-            "assetCount": weflow_assets::manifest(&self.ctx.version).entries.len()
-        })
-    }
-
     pub fn db_detect(&self) -> crate::contract::DbCandidates {
         let candidates = default_db_candidates()
             .into_iter()

@@ -12,7 +12,6 @@ aes.workspace = true
 anyhow.workspace = true
 cbc.workspace = true
 hmac = "0.13"
-libloading.workspace = true
 md-5.workspace = true
 pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 regex.workspace = true
@@ -27,6 +26,10 @@ weflow-silk = { path = "../weflow-silk", features = ["test-encoder"], optional =
 
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Memory", "Win32_Storage_FileSystem", "Win32_System_Kernel", "Win32_System_SystemInformation", "Win32_System_Console", "Win32_System_LibraryLoader"] }
+
+# `wxkey` loads the key library (`libwx_key`) everywhere but on Windows, where `windows_db_key` reads the key itself
+[target.'cfg(not(windows))'.dependencies]
+libloading.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

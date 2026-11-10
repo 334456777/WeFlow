@@ -225,43 +225,6 @@ impl NativeAccount {
         &self.db_storage
     }
 
-    /// Account directory (`db_storage`'s parent): where `msg/`, `cache/` and friends live.
-    pub fn account_dir(&self) -> PathBuf {
-        self.db_storage
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| self.db_storage.clone())
-    }
-
-    /// (number of open snapshots, bytes of decrypted pages they cache, the soft limit in bytes).
-    pub fn cache_stats(&self) -> (usize, usize, usize) {
-        let Ok(c) = self.cache.lock() else {
-            return (0, 0, usize::try_from(HEAP_SOFT_LIMIT).unwrap_or(usize::MAX));
-        };
-        let mut used = 0usize;
-        for conn in c.entries.values().flat_map(|s| &s.conns) {
-            if let Ok(c) = conn.lock() {
-                let (mut cur, mut hi) = (0, 0);
-                // SAFETY: a valid connection handle and two out-parameters.
-                unsafe {
-                    rusqlite::ffi::sqlite3_db_status(
-                        c.conn.handle(),
-                        rusqlite::ffi::SQLITE_DBSTATUS_CACHE_USED,
-                        &mut cur,
-                        &mut hi,
-                        0,
-                    )
-                };
-                used += cur.max(0) as usize;
-            }
-        }
-        (
-            c.entries.len(),
-            used,
-            usize::try_from(HEAP_SOFT_LIMIT).unwrap_or(usize::MAX),
-        )
-    }
-
     /// Connections the snapshot of `path` holds (0 when it is not open).
     #[cfg(test)]
     pub(crate) fn snapshot_connections(&self, path: &Path) -> usize {

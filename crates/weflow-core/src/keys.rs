@@ -43,11 +43,8 @@ pub fn verify_derived_aes_key(aes_key: &str, ciphertext: &[u8]) -> bool {
     let mut block = Array::from(*ciphertext);
     cipher.decrypt_block(&mut block);
     let d = block.as_slice();
-    (d[0] == 0xff && d[1] == 0xd8 && d[2] == 0xff)
-        || d[..4] == [0x89, 0x50, 0x4e, 0x47]
-        || d[..4] == [0x52, 0x49, 0x46, 0x46]
-        || d[..4] == [0x77, 0x78, 0x67, 0x66]
-        || d[..3] == [0x47, 0x49, 0x46]
+    // one block shows a RIFF file's start, not the `WEBP` at byte 8
+    crate::image::ImageFormat::of(d).is_some() || d.starts_with(b"RIFF") || d.starts_with(b"wxgf")
 }
 
 /// Bounded template search: examine at most `budget` entries, then select the newest
@@ -167,64 +164,6 @@ fn finish_scan(mut scan: TemplateScan, limit: usize) -> TemplateScan {
     scan
 }
 
-/// Legacy helper interface, with explicit traversal budget and newest-valid selection.
-/// New callers should use `scan_templates` to retain diagnostics and truncation information.
-pub fn find_template_data(user_dir: &Path, limit: usize) -> (Option<[u8; 16]>, Option<u8>) {
-    let scan = scan_templates(user_dir, 10_000, limit.min(32));
-    let cipher = scan.templates.first().map(|t| t.cipher);
-    let mut tails = std::collections::BTreeMap::<u8, usize>::new();
-    for t in &scan.templates {
-        if let Some(k) = t.tail_xor {
-            *tails.entry(k).or_default() += 1;
-        }
-    }
-    let xor = tails.into_iter().max_by_key(|(_, n)| *n).map(|(k, _)| k);
-    (cipher, xor)
-}
-
-/// `collectWxidCandidates`: the configured wxid, the directory name and sibling account
-/// directories under `xwechat_files` / `WeChat Files`, and finally `unknown`.
-pub fn collect_wxid_candidates(manual_dir: Option<&str>, wxid: Option<&str>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut push = |v: &str| {
-        let v = v.trim();
-        if !v.is_empty() && !out.iter().any(|o| o == v) {
-            out.push(v.to_string());
-        }
-    };
-    if let Some(w) = wxid.filter(|w| w.starts_with("wxid_")) {
-        push(w);
-    }
-    if let Some(dir) = manual_dir {
-        let norm = dir.trim_end_matches(['\\', '/']);
-        let name = norm.rsplit(['\\', '/']).next().unwrap_or("");
-        if name.starts_with("wxid_") {
-            push(name);
-        }
-        let lower = norm.to_lowercase();
-        for marker in ["xwechat_files", "wechat files"] {
-            if let Some(pos) = lower.find(marker) {
-                let root = &norm[..pos + marker.len()];
-                if let Ok(rd) = std::fs::read_dir(root) {
-                    let mut names: Vec<String> = rd
-                        .filter_map(Result::ok)
-                        .filter(|e| e.path().is_dir())
-                        .map(|e| e.file_name().to_string_lossy().to_string())
-                        .filter(|n| n.starts_with("wxid_"))
-                        .collect();
-                    names.sort();
-                    for n in names {
-                        push(&n);
-                    }
-                }
-                break;
-            }
-        }
-    }
-    push("unknown");
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn template_data_yields_cipher_and_xor_key() {
+    fn a_scanned_template_yields_cipher_and_xor_key() {
         let dir = std::env::temp_dir().join(format!("weflow-keys-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("a/b")).unwrap();
@@ -284,25 +223,10 @@ mod tests {
         data[n - 1] = y;
         std::fs::write(dir.join("a/b/x_t.dat"), &data).unwrap();
         std::fs::write(dir.join("a/other.dat"), b"nope").unwrap();
-        let (c, k) = find_template_data(&dir, 32);
-        assert_eq!(c.unwrap()[..4], [0, 1, 2, 3]);
-        assert_eq!(k, Some(x ^ 0xff));
+        let scan = scan_templates(&dir, 10_000, 32);
+        let template = scan.templates.first().expect("the thumbnail is a template");
+        assert_eq!(template.cipher[..4], [0, 1, 2, 3]);
+        assert_eq!(template.tail_xor, Some(x ^ 0xff));
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn candidates_include_siblings() {
-        let root =
-            std::env::temp_dir().join(format!("weflow-cand-{}/xwechat_files", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("wxid_a_1111")).unwrap();
-        std::fs::create_dir_all(root.join("wxid_b_2222")).unwrap();
-        std::fs::create_dir_all(root.join("all_users")).unwrap();
-        let c = collect_wxid_candidates(
-            Some(root.join("wxid_b_2222").to_str().unwrap()),
-            Some("wxid_cfg"),
-        );
-        assert_eq!(c, vec!["wxid_cfg", "wxid_b_2222", "wxid_a_1111", "unknown"]);
-        let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 }

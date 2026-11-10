@@ -552,11 +552,8 @@ pub enum MediaBody {
 
 /// The content type of an image, from its first bytes.
 pub fn image_mime(bytes: &[u8]) -> &'static str {
-    let ext = crate::decrypt::detect_image_extension(bytes);
-    mime_guess::from_ext(ext.trim_start_matches('.'))
-        .first_raw()
-        .filter(|m| m.starts_with("image/"))
-        .unwrap_or("application/octet-stream")
+    crate::image::ImageFormat::of(bytes)
+        .map_or("application/octet-stream", crate::image::ImageFormat::mime)
 }
 
 impl MediaRead {

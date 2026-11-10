@@ -2821,17 +2821,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-stream"
-version = "0.1.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
-dependencies = [
- "futures-core",
- "pin-project-lite",
- "tokio",
-]
-
-[[package]]
 name = "tokio-util"
 version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3289,14 +3278,12 @@ dependencies = [
  "mimalloc",
  "mime_guess",
  "rand",
- "reqwest",
  "schemars",
  "serde",
  "serde_json",
  "sha2",
  "tokio",
  "tower-http 0.7.1",
- "tracing",
  "tracing-subscriber",
  "weflow-assets",
  "weflow-core",
@@ -3313,7 +3300,6 @@ dependencies = [
  "aes 0.9.3",
  "aes-gcm",
  "anyhow",
- "async-stream",
  "axum",
  "base64",
  "cbc",
@@ -3331,7 +3317,6 @@ dependencies = [
  "libloading",
  "md-5",
  "memchr",
- "mime_guess",
  "proptest",
  "rand",
  "regex",
@@ -3349,7 +3334,6 @@ dependencies = [
  "terminal_size",
  "thiserror",
  "tokio",
- "tokio-stream",
  "toml",
  "tracing",
  "walkdir",
